@@ -1,4 +1,5 @@
 import inspect
+from copy import deepcopy
 from dataclasses import dataclass
 from threading import Thread
 from typing import Any, AsyncIterator, Dict, Iterator, List, Literal, Optional, Union
@@ -56,6 +57,8 @@ class PtEngine(InferEngine):
             device_map: Optional[Union[str, Dict[str, Any]]] = None,
             quantization_config: Optional[Dict[str, Any]] = None,
             model_kwargs: Optional[Dict[str, Any]] = None):
+        if model_kwargs is None:
+            model_kwargs = {}
         if device_map is not None:
             model_kwargs['device_map'] = device_map
         if quantization_config is not None:
@@ -353,7 +356,7 @@ class PtEngine(InferEngine):
         lora_request: Optional[PtLoRARequest] = None,
     ) -> Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
         self.model.eval()
-        request_config = request_config or RequestConfig()
+        request_config = deepcopy(request_config or RequestConfig())
 
         batched_inputs = []
         for infer_request in infer_requests:

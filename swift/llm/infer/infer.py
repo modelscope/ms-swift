@@ -27,7 +27,6 @@ class InferCliState:
 
     multiline_mode: bool = False
     input_system: bool = False
-    result_path: Optional[str] = None
 
     def clear(self):
         self.messages = []
@@ -127,10 +126,10 @@ class SwiftInfer(SwiftPipeline):
         return template
 
     def run(self) -> List[Dict[str, Any]]:
-        if self.args.eval_dataset:
-            return self.infer_dataset()
-        else:
+        if self.args.eval_human:
             return self.infer_cli()
+        else:
+            return self.infer_dataset()
 
     @staticmethod
     def _input_mm_data(infer_state: InferCliState) -> None:
@@ -165,11 +164,11 @@ class SwiftInfer(SwiftPipeline):
     @staticmethod
     def _input_text(multiline_mode: bool, input_system: bool) -> str:
         if multiline_mode:
-            addi_prompt = 'MS' if input_system else 'M'
+            addi_prompt = '[MS]' if input_system else '[M]'
             text = SwiftInfer._input_multiline(f'<<<[{addi_prompt}] ')
         else:
-            addi_prompt = 'S' if input_system else ''
-            text = input(f'<<<[{addi_prompt}] ')
+            addi_prompt = '[S]' if input_system else ''
+            text = input(f'<<<{addi_prompt} ')
         return text
 
     @staticmethod
@@ -215,14 +214,13 @@ class SwiftInfer(SwiftPipeline):
             stream=args.stream,
             repetition_penalty=args.repetition_penalty)
 
-    @staticmethod
     def infer_single(self, infer_request: InferRequest, request_config: RequestConfig) -> Tuple[str, Messages]:
         messages = infer_request.messages
         res_or_gen = self.infer(self.template, [infer_request], request_config, use_tqdm=False)
         if request_config.stream:
             response = ''
             for res in res_or_gen:
-                delta = res[0].choices[0].delta
+                delta = res[0].choices[0].delta.content
                 print(delta, end='', flush=True)
                 response += delta
             print()
@@ -235,15 +233,13 @@ class SwiftInfer(SwiftPipeline):
     def infer_cli(self) -> List[Dict[str, Any]]:
         args = self.args
         template = self.template
-        result_path = None
-        if args.save_result:
-            result_path = self._prepare_save_result()
         request_config = self._prepare_request_config()
 
         logger.info('Input `exit` or `quit` to exit the conversation.')
         logger.info('Input `multi-line` to switch to multi-line input mode.')
         logger.info('Input `reset-system` to reset the system and clear the history.')
-        if template.support_multi_round:
+        support_multi_round = template.template_meta.support_multi_round
+        if support_multi_round:
             logger.info('Input `clear` to clear the history.')
         else:
             logger.info('The current template only supports single-round dialogues.')
@@ -251,7 +247,7 @@ class SwiftInfer(SwiftPipeline):
         infer_state = InferCliState()
         result_list = []
         while True:
-            if not template.support_multi_round:
+            if not support_multi_round:
                 infer_state.clear()
             query = self._input_text(infer_state.multiline_mode, infer_state.input_system)
             if query.strip().lower() in {'exit', 'quit'}:
@@ -267,8 +263,8 @@ class SwiftInfer(SwiftPipeline):
 
             data['messages'] = messages
             result_list.append(data)
-            if result_path is not None:
-                append_to_jsonl(result_path, data, strict=False)
+            if args.result_path is not None:
+                append_to_jsonl(args.result_path, data, strict=False)
 
         return result_list
 

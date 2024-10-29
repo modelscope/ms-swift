@@ -168,3 +168,7 @@ def get_template(
         max_pixels=max_pixels,
         sequence_parallel_size=sequence_parallel_size,
         tools_prompt=tools_prompt)
+
+
+def get_template_meta(template_type: str) -> TemplateMeta:
+    return TEMPLATE_MAPPING[template_type]['template_meta']

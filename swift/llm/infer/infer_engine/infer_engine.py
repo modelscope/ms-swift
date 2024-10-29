@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
 import asyncio
+from copy import deepcopy
 from queue import Queue
 from threading import Thread
 from typing import Any, AsyncIterator, Dict, Iterator, List, Literal, Optional, Union
@@ -46,10 +47,10 @@ class InferEngine(BaseInferEngine):
             attn_impl=attn_impl)
         self.tokenizer = tokenizer
         self.model = model
-        model_info = tokenizer.model_info
-        self.model_info = model_info
-        self.model_dir = model_info.model_dir
-        self.config = model_info.config
+        self.model_info = tokenizer.model_info
+        self.model_meta = tokenizer.model_meta
+        self.model_dir = self.model_info.model_dir
+        self.config = self.model_info.config
 
     def _get_stop_words(self, stop_words: List[Union[str, List[int], None]]) -> List[str]:
         stop: List[str] = []
@@ -82,7 +83,8 @@ class InferEngine(BaseInferEngine):
 
         queue = Queue()
         new_tasks = [_run_infer(i, task, queue, stream) for i, task in enumerate(tasks)]
-        thread = Thread(target=lambda: asyncio.run(_batch_run(new_tasks)))
+        loop = asyncio.get_event_loop()
+        thread = Thread(target=lambda: loop.run_until_complete(_batch_run(new_tasks)))
         thread.start()
 
         prog_bar = tqdm(total=len(new_tasks), dynamic_ncols=True, disable=not use_tqdm)
@@ -117,6 +119,8 @@ class InferEngine(BaseInferEngine):
 
     @staticmethod
     def _update_metrics(result, metrics: Optional[List[Metric]] = None):
+        if metrics is None:
+            return result
         result_origin = result
         if not isinstance(result, (list, tuple)):
             result = [result]
@@ -169,7 +173,7 @@ class InferEngine(BaseInferEngine):
                           infer_request: InferRequest,
                           request_config: Optional[RequestConfig] = None,
                           **kwargs) -> Union[ChatCompletionResponse, AsyncIterator[ChatCompletionStreamResponse]]:
-        request_config = request_config or RequestConfig()
+        request_config = deepcopy(request_config or RequestConfig())
 
         inputs = template.encode(infer_request)
         assert len(inputs) >= 0

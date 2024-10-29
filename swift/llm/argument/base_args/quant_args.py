@@ -25,6 +25,7 @@ class QuantizeArguments:
 
     def _init_quantization_config(self) -> None:
         if self.quant_method is None:
+            self.quantization_config = None
             return
         assert self.quant_method in {'bnb', 'hqq', 'eetq'}
         if self.quant_method == 'bnb':

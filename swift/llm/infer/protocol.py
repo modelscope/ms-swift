@@ -48,7 +48,7 @@ class RequestConfig:
     top_k: Optional[int] = None
     top_p: Optional[float] = None
     repetition_penalty: Optional[float] = None
-    num_beams: Optional[int] = None
+    num_beams: int = 1
     stop: List[str] = field(default_factory=list)
 
     seed: Optional[int] = None

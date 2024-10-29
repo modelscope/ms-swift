@@ -343,9 +343,11 @@ def get_model_tokenizer(
     model, tokenizer = get_function(model_dir, model_config, model_kwargs, load_model, **kwargs)
 
     tokenizer.model_info = model_info
+    tokenizer.model_meta = model_meta
 
     if model is not None:
         model.model_info = model_info
+        model.model_meta = model_meta
         fix_gradient_checkpointing_warning(model_meta.is_moe)
         fix_transformers_upgrade(model)
 

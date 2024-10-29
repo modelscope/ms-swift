@@ -85,7 +85,7 @@ class StdTemplateInputs:
         from .agent import get_tools_prompt
         messages = deepcopy(inputs['messages'])
         tools = deepcopy(inputs.get('tools'))
-        objects = deepcopy(inputs.get('objects')) or []
+        objects = deepcopy(inputs.get('objects') or [])
 
         assert len(messages) >= 1
 

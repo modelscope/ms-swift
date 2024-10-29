@@ -7,7 +7,7 @@ from typing import Any, List, Literal, Optional, Tuple
 import json
 from transformers.utils.versions import require_version
 
-from swift.llm import MODEL_MAPPING, TEMPLATE_MAPPING, ModelInfo, PtLoRARequest, get_model_meta
+from swift.llm import MODEL_MAPPING, TEMPLATE_MAPPING, ModelInfo, PtLoRARequest, get_template_meta
 from swift.utils import get_logger, is_lmdeploy_available, is_vllm_available
 from .base_args import BaseArguments, to_abspath
 from .lmdeploy_args import LmdeployArguments
@@ -51,11 +51,12 @@ class InferArguments(BaseArguments, MergeArguments, VllmArguments, LmdeployArgum
         logger.info(f'args.result_path: {self.result_path}')
 
     def _init_stream(self):
-        self.eval_dataset = bool(self.dataset and self.split_dataset_ratio > 0 or self.val_dataset)
+        self.eval_human = not (self.dataset and self.split_dataset_ratio > 0 or self.val_dataset)
         if self.stream is None:
-            self.stream = not self.eval_dataset
-        template_info = TEMPLATE_MAPPING[self.template]
-        if self.num_beams != 1 or not template_info.get('stream', True):
+            self.stream = self.eval_human
+
+        template_meta = get_template_meta(self.template)
+        if self.num_beams != 1 or not template_meta.support_stream:
             self.stream = False
             logger.info('Setting args.stream: False')
 
