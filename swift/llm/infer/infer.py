@@ -84,6 +84,7 @@ class SwiftInfer(SwiftPipeline):
                 'attn_impl': args.attn_impl,
                 'device_map': args.device_map_config,
                 'quantization_config': args.quantization_config,
+                'max_batch_size': args.max_batch_size
             })
         elif args.infer_backend == 'vllm':
             from .infer_engine import VllmEngine
@@ -270,7 +271,6 @@ class SwiftInfer(SwiftPipeline):
 
     def _prepare_val_dataset(self) -> HfDataset:
         args = self.args
-        load_dataset(args.val_dataset, args.split_dataset_ratio)
         dataset_kwargs = {
             'dataset_seed': args.dataset_seed,
             'num_proc': args.num_proc,
@@ -285,8 +285,7 @@ class SwiftInfer(SwiftPipeline):
         else:
             _, val_dataset = load_dataset(args.dataset, args.split_dataset_ratio, **dataset_kwargs)
         assert val_dataset is not None
-        if args.val_dataset_sample is not None:
-            val_dataset = sample_dataset(val_dataset, args.val_dataset_sample, self.random_state)
+        val_dataset = sample_dataset(val_dataset, args.val_dataset_sample, self.random_state)
         return val_dataset
 
     def infer_dataset(self) -> List[Dict[str, Any]]:
@@ -307,7 +306,9 @@ class SwiftInfer(SwiftPipeline):
         else:
             infer_requests = []
             for data in val_dataset:
-                infer_requests.append(InferRequest(**data))
+                infer_request = InferRequest(**data)
+                infer_request.remove_response()
+                infer_requests.append(infer_request)
             resp_list = self.infer(self.template, infer_requests, request_config, use_tqdm=True)
             for data, resp in zip(val_dataset, resp_list):
                 response = resp.choices[0].message.content

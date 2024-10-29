@@ -53,6 +53,8 @@ class PtEngine(InferEngine):
             use_hf: Optional[bool] = None,
             revision: Optional[str] = None,
             attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None,
+            # TODO: async batch_size
+            max_batch_size: int = 16,
             # model kwargs
             device_map: Optional[Union[str, Dict[str, Any]]] = None,
             quantization_config: Optional[Dict[str, Any]] = None,
@@ -72,6 +74,7 @@ class PtEngine(InferEngine):
             revision=revision,
             attn_impl=attn_impl,
             model_kwargs=model_kwargs)
+        self.max_batch_size = max_batch_size
         self.engine = self.model
         self.generation_config = self.model.generation_config
         self._lora_request_pool = {}
@@ -390,7 +393,6 @@ class PtEngine(InferEngine):
         metrics: Optional[List[Metric]] = None,
         *,
         use_tqdm: Optional[bool] = None,
-        max_batch_size: int = 16,  # TODO: async batch_size
         lora_request: Optional[PtLoRARequest] = None
     ) -> Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
 
@@ -402,22 +404,22 @@ class PtEngine(InferEngine):
             res = []
             i = 0
             while i < len(infer_requests):
-                infer_requests_samples = infer_requests[i:i + max_batch_size]
+                infer_requests_samples = infer_requests[i:i + self.max_batch_size]
                 res += self._infer(template, infer_requests_samples, request_config, metrics, lora_request=lora_request)
-                i += max_batch_size
+                i += self.max_batch_size
                 prog_bar.update(len(infer_requests_samples))
             return res
 
         def _infer_stream() -> Iterator[List[Optional[ChatCompletionStreamResponse]]]:
             i = 0
             while i < len(infer_requests):
-                infer_requests_samples = infer_requests[i:i + max_batch_size]
+                infer_requests_samples = infer_requests[i:i + self.max_batch_size]
                 gen = self._infer(template, infer_requests_samples, request_config, metrics, lora_request=lora_request)
                 for response in gen:
                     res = [None] * len(infer_requests)
-                    res[i:i + max_batch_size] = response
+                    res[i:i + self.max_batch_size] = response
                     yield res
-                i += max_batch_size
+                i += self.max_batch_size
                 prog_bar.update(len(infer_requests_samples))
 
         if request_config.stream:

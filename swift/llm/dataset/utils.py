@@ -36,6 +36,8 @@ def sample_dataset(dataset: HfDataset,
     Returns:
         The sampled dataset
     """
+    if dataset_sample in {None, -1, len(dataset)}:
+        return dataset
     if random_state is None:
         random_state = np.random.RandomState()
 

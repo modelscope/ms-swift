@@ -150,7 +150,7 @@ def get_template(
         *,
         use_generate_template: bool = False,
         truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
-        max_pixels: int = -1,  # h * w
+        max_pixels: Optional[int] = None,  # h * w
         tools_prompt: str = 'react_en',
         # train
         loss_scale: str = 'default',

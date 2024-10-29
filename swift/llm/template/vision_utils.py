@@ -86,7 +86,7 @@ def rescale_image(img: Image.Image, max_pixels: int) -> Image.Image:
     import torchvision.transforms as T
     width = img.width
     height = img.height
-    if max_pixels <= 0 or width * height <= max_pixels:
+    if max_pixels is None or max_pixels <= 0 or width * height <= max_pixels:
         return img
 
     ratio = width / height

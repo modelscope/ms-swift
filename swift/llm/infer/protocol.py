@@ -247,4 +247,8 @@ class CompletionStreamResponse:
 
 @dataclass
 class InferRequest(TemplateInputs):
-    pass
+
+    def remove_response(self):
+        last_role = self.messages[-1]['role']
+        if last_role == 'assistant':
+            self.messages.pop()

@@ -62,7 +62,7 @@ class Template:
             *,
             use_generate_template: bool = False,
             truncation_strategy: Literal['delete', 'truncation_left'] = 'truncation_left',
-            max_pixels: int = -1,
+            max_pixels: Optional[int] = None,
             tools_prompt: Optional[str] = None,
             # only for train
             loss_scale: str = 'default',
@@ -72,7 +72,7 @@ class Template:
         max_length: Max length of the sequence
         truncation_strategy: The truncation strategy
         loss_scale: The loss scale function to use
-        max_pixels: Rescale image to reduce memory usage, default `-1` means no limitation.
+        max_pixels: Rescale image to reduce memory usage, default `None` means no limitation.
             e.g. 512 * 512 (H*W)
         tools_prompt: The type of tools_prompt added in the system.
         """
@@ -104,7 +104,7 @@ class Template:
         self,
         inputs: StdTemplateInputs,
         *,
-        max_pixels: int = -1,
+        max_pixels: Optional[int] = None,
     ) -> None:
         template_meta = self.template_meta
         system = inputs.system
@@ -121,7 +121,7 @@ class Template:
         images = inputs.images
         if images and self.load_medias:
             images = load_batch(images, load_image)
-            if max_pixels != -1:
+            if max_pixels is not None:
                 assert self.grounding_type != 'real', 'not support'  # TODO:check
                 images = [rescale_image(img, max_pixels) for img in images]
             inputs.images = images

@@ -17,7 +17,7 @@ class TemplateArguments:
 
     truncation_strategy: Literal['delete', 'truncation_left'] = 'truncation_left'
     tools_prompt: str = 'react_en'  # Override the default_tools_prompt in the template.
-    max_pixels: int = -1
+    max_pixels: Optional[int] = None
     # train
     loss_scale: str = 'default'
     sequence_parallel_size: int = 1
