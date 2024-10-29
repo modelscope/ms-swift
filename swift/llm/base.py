@@ -15,9 +15,6 @@ T_Args = TypeVar('T_Args', bound=BaseArguments)
 class SwiftPipeline(ABC):
     args_class = None
 
-    def __init__(self, args: BaseArguments):
-        self.args = self.parse_args(args)
-
     def parse_args(self, args: Union[List[str], T_Args, None] = None) -> T_Args:
         if isinstance(args, BaseArguments):
             return args

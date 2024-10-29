@@ -394,18 +394,7 @@ class PtEngine(InferEngine):
             use_tqdm = request_config is None or not request_config.stream
         prog_bar = tqdm(total=len(infer_requests), dynamic_ncols=True, disable=not use_tqdm)
 
-        def _infer_full():
-            res = []
-            i = 0
-            while i < len(infer_requests):
-                infer_requests_samples = infer_requests[i:i + self.max_batch_size]
-                res += self._infer(
-                    infer_requests_samples, request_config, metrics, template=template, lora_request=lora_request)
-                i += self.max_batch_size
-                prog_bar.update(len(infer_requests_samples))
-            return res
-
-        def _infer_stream() -> Iterator[List[Optional[ChatCompletionStreamResponse]]]:
+        def _gen_wrapper() -> Iterator[List[Optional[ChatCompletionStreamResponse]]]:
             i = 0
             while i < len(infer_requests):
                 infer_requests_samples = infer_requests[i:i + self.max_batch_size]
@@ -419,6 +408,14 @@ class PtEngine(InferEngine):
                 prog_bar.update(len(infer_requests_samples))
 
         if request_config.stream:
-            return _infer_stream()
+            return _gen_wrapper()
         else:
-            return _infer_full()
+            res = []
+            i = 0
+            while i < len(infer_requests):
+                infer_requests_samples = infer_requests[i:i + self.max_batch_size]
+                res += self._infer(
+                    infer_requests_samples, request_config, metrics, template=template, lora_request=lora_request)
+                i += self.max_batch_size
+                prog_bar.update(len(infer_requests_samples))
+            return res
