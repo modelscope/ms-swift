@@ -37,24 +37,24 @@ class SwiftDeploy(SwiftInfer):
         while True:
             await asyncio.sleep(log_interval)
             global_stats = self.infer_states.compute()
-            global_stats.reset()
+            self.infer_states.reset()
             for k, v in global_stats.items():
                 global_stats[k] = round(v, 8)
             logger.info(global_stats)
 
     def lifespan(self, app: FastAPI):
-        global _args
-        if _args.log_interval > 0:
-            thread = Thread(target=lambda: asyncio.run(self._log_stats_hook(_args.log_interval)))
+        args = self.args
+        if args.log_interval > 0:
+            thread = Thread(target=lambda: asyncio.run(self._log_stats_hook(args.log_interval)))
             thread.start()
         yield
 
     async def get_available_models(self):
         args = self.args
         model_list = [args.served_model_name or self.model_dir]
-        if _args.lora_request_list is not None:
-            model_list += [lora_request.lora_name for lora_request in _args.lora_request_list]
-        data = [Model(id=model_id, owned_by=_args.owned_by) for model_id in model_list]
+        if args.lora_request_list is not None:
+            model_list += [lora_request.lora_name for lora_request in args.lora_request_list]
+        data = [Model(id=model_id, owned_by=args.owned_by) for model_id in model_list]
         return ModelList(data=data)
 
     async def check_model(self, request: ChatCompletionRequest) -> Optional[str]:
@@ -83,10 +83,10 @@ class SwiftDeploy(SwiftInfer):
                                      *,
                                      return_cmpl_response: bool = False):
         infer_request, request_config = request.parse()
-        res_or_gen = await self.infer_async(self.template, infer_request, request_config)
+        res_or_gen = await self.infer_async(infer_request, request_config, template=self.template)
         if request_config.stream:
 
-            def _gen_wrapper():
+            async def _gen_wrapper():
                 async for res in res_or_gen:
                     res = self._post_process(res, return_cmpl_response)
                     yield f'data: {json.dumps(asdict(res), ensure_ascii=False)}\n\n'

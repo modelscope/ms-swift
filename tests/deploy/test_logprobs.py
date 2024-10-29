@@ -19,9 +19,7 @@ def _test_client(print_logprobs: bool = False):
     infer_request = InferRequest(messages=[{'role': 'user', 'content': '你是谁'}])
     request_config = RequestConfig(seed=42, max_tokens=256, temperature=0.8, logprobs=True, top_logprobs=5)
 
-    resp = infer_client.infer(
-        [infer_request],
-        request_config=request_config)[0]
+    resp = infer_client.infer([infer_request], request_config=request_config)[0]
     response = resp.choices[0].message.content
     print(f'query: {query}')
     print(f'response: {response}')
@@ -30,8 +28,7 @@ def _test_client(print_logprobs: bool = False):
 
     request_config = RequestConfig(
         stream=True, seed=42, max_tokens=256, temperature=0.8, top_k=20, top_p=0.8, logprobs=True, top_logprobs=5)
-    stream_resp = infer_client.infer(
-        [infer_request], request_config=request_config)
+    stream_resp = infer_client.infer([infer_request], request_config=request_config)
     print(f'query: {query}')
     print('response: ', end='')
     for chunk in stream_resp:
@@ -47,12 +44,12 @@ def _test(infer_backend):
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
     from swift.llm import DeployArguments
-    from swift.llm.infer.deploy import llm_deploy
+    from swift.llm import deploy_main
     import multiprocessing
     mp = multiprocessing.get_context('spawn')
     process = mp.Process(
-        target=llm_deploy,
-        args=(DeployArguments(model_type='qwen2-7b-instruct', infer_backend=infer_backend, verbose=False), ))
+        target=deploy_main,
+        args=(DeployArguments(model='qwen/Qwen2-7B-Instruct', infer_backend=infer_backend, verbose=False), ))
     process.start()
     _test_client(True)
     process.terminate()
@@ -83,7 +80,7 @@ def test_vllm_orgin():
 
 
 if __name__ == '__main__':
-    test_vllm_orgin()
-    # test_vllm()
+    # test_vllm_orgin()
+    test_vllm()
     # test_lmdeploy()
     # test_pt()

@@ -16,3 +16,12 @@ class DeployArguments(InferArguments):
     served_model_name: Optional[str] = None
     verbose: bool = True  # Whether to log request_info
     log_interval: int = 10  # Interval for printing global statistics
+
+    def _init_stream(self):
+        pass
+
+    def _init_eval_human(self):
+        pass
+
+    def _init_result_dir(self, folder_name: str = 'deploy_result') -> None:
+        super()._init_result_dir(folder_name=folder_name)

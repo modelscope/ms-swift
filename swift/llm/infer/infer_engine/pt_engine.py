@@ -149,19 +149,18 @@ class PtEngine(InferEngine):
             *,
             template: Optional[Template] = None,
             lora_request: Optional[PtLoRARequest] = None) -> AsyncIterator[ChatCompletionStreamResponse]:
-        if template is None:
-            template = self.default_template
-        gen = self.infer(template, [infer_request], request_config, use_tqdm=False, lora_request=lora_request)
+        gen = self.infer([infer_request], request_config, template=template, use_tqdm=False, lora_request=lora_request)
         for response in gen:
             yield response[0]
 
     async def _infer_full_async(self,
-                                template: Template,
                                 infer_request: InferRequest,
                                 request_config: RequestConfig,
                                 *,
+                                template: Optional[Template] = None,
                                 lora_request: Optional[PtLoRARequest] = None) -> ChatCompletionResponse:
-        return self.infer(template, [infer_request], request_config, use_tqdm=False, lora_request=lora_request)[0]
+        return self.infer([infer_request], request_config, template=template, use_tqdm=False,
+                          lora_request=lora_request)[0]
 
     @staticmethod
     def _update_batched_logprobs(batched_logprobs: List[torch.Tensor], logits_streamer: Optional[LogitsStreamer],
@@ -347,23 +346,25 @@ class PtEngine(InferEngine):
         template: Optional[Template] = None,
         lora_request: Optional[PtLoRARequest] = None,
     ) -> Union[ChatCompletionResponse, AsyncIterator[ChatCompletionStreamResponse]]:
-        infer_args = (template, infer_request, request_config)
+        infer_args = (infer_request, request_config)
         if request_config.stream:
-            return self._infer_stream_async(*infer_args, lora_request=lora_request)
+            return self._infer_stream_async(*infer_args, template=template, lora_request=lora_request)
         else:
-            return await self._infer_full_async(*infer_args, lora_request=lora_request)
+            return await self._infer_full_async(*infer_args, template=template, lora_request=lora_request)
 
     def _infer(
         self,
-        template: Template,
         infer_requests: List[InferRequest],
         request_config: Optional[RequestConfig] = None,
         metrics: Optional[List[Metric]] = None,
         *,
+        template: Optional[Template] = None,
         lora_request: Optional[PtLoRARequest] = None,
     ) -> Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
         self.model.eval()
         request_config = deepcopy(request_config or RequestConfig())
+        if template is None:
+            template = self.default_template
 
         batched_inputs = []
         for infer_request in infer_requests:
@@ -399,10 +400,8 @@ class PtEngine(InferEngine):
         use_tqdm: Optional[bool] = None,
         lora_request: Optional[PtLoRARequest] = None
     ) -> Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
-        if template is None:
-            template = self.default_template
         if use_tqdm is None:
-            use_tqdm = not request_config.stream
+            use_tqdm = request_config is None or not request_config.stream
         prog_bar = tqdm(total=len(infer_requests), dynamic_ncols=True, disable=not use_tqdm)
 
         def _infer_full():
@@ -410,7 +409,8 @@ class PtEngine(InferEngine):
             i = 0
             while i < len(infer_requests):
                 infer_requests_samples = infer_requests[i:i + self.max_batch_size]
-                res += self._infer(template, infer_requests_samples, request_config, metrics, lora_request=lora_request)
+                res += self._infer(
+                    infer_requests_samples, request_config, metrics, template=template, lora_request=lora_request)
                 i += self.max_batch_size
                 prog_bar.update(len(infer_requests_samples))
             return res
@@ -419,7 +419,8 @@ class PtEngine(InferEngine):
             i = 0
             while i < len(infer_requests):
                 infer_requests_samples = infer_requests[i:i + self.max_batch_size]
-                gen = self._infer(template, infer_requests_samples, request_config, metrics, lora_request=lora_request)
+                gen = self._infer(
+                    infer_requests_samples, request_config, metrics, template=template, lora_request=lora_request)
                 for response in gen:
                     res = [None] * len(infer_requests)
                     res[i:i + self.max_batch_size] = response

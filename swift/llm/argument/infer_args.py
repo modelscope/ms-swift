@@ -48,15 +48,15 @@ class VllmArguments:
 class InferArguments(BaseArguments, MergeArguments, VllmArguments, LmdeployArguments):
     infer_backend: Literal['vllm', 'pt', 'lmdeploy'] = 'pt'
     ckpt_dir: Optional[str] = field(default=None, metadata={'help': '/path/to/your/vx-xxx/checkpoint-xxx'})
+    max_batch_size: int = 16  # for pt engine
 
+    # only for inference
     val_dataset_sample: Optional[int] = None
     result_dir: Optional[str] = field(default=None, metadata={'help': '/path/to/your/infer_result'})
     save_result: bool = True
-
-    max_batch_size: int = 16  # for pt engine
     stream: Optional[bool] = None
 
-    def _init_result_dir(self) -> None:
+    def _init_result_dir(self, folder_name: str = 'infer_result') -> None:
         self.result_path = None
         if not self.save_result:
             return
@@ -66,7 +66,7 @@ class InferArguments(BaseArguments, MergeArguments, VllmArguments, LmdeployArgum
                 result_dir = self.model_info.model_dir
             else:
                 result_dir = self.ckpt_dir
-            result_dir = os.path.join(result_dir, 'infer_result')
+            result_dir = os.path.join(result_dir, folder_name)
         else:
             result_dir = self.result_dir
         result_dir = to_abspath(result_dir)
@@ -90,11 +90,11 @@ class InferArguments(BaseArguments, MergeArguments, VllmArguments, LmdeployArgum
         BaseArguments.__post_init__(self)
         MergeArguments.__post_init__(self)
         VllmArguments.__post_init__(self)
+        self._parse_lora_modules()
 
         self._init_result_dir()
         self._init_stream()
         self._init_eval_human()
-        self._parse_lora_modules()
 
     def _init_eval_human(self):
         if len(self.dataset) == 0 and len(self.val_dataset) == 0:
@@ -106,6 +106,7 @@ class InferArguments(BaseArguments, MergeArguments, VllmArguments, LmdeployArgum
 
     def _parse_lora_modules(self) -> None:
         if len(self.lora_modules) == 0:
+            self.lora_request_list = []
             return
         assert self.infer_backend in {'vllm', 'pt'}
         if self.infer_backend == 'vllm':

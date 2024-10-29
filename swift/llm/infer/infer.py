@@ -220,7 +220,7 @@ class SwiftInfer(SwiftPipeline):
 
     def infer_single(self, infer_request: InferRequest, request_config: RequestConfig) -> Tuple[str, Messages]:
         messages = infer_request.messages
-        res_or_gen = self.infer(self.template, [infer_request], request_config, use_tqdm=False)
+        res_or_gen = self.infer([infer_request], request_config, template=self.template, use_tqdm=False)
         if request_config.stream:
             response = ''
             for res in res_or_gen:
@@ -312,7 +312,7 @@ class SwiftInfer(SwiftPipeline):
                 infer_request = InferRequest(**data)
                 infer_request.remove_response()
                 infer_requests.append(infer_request)
-            resp_list = self.infer(self.template, infer_requests, request_config, use_tqdm=True)
+            resp_list = self.infer(infer_requests, request_config, template=self.template, use_tqdm=True)
             for data, resp in zip(val_dataset, resp_list):
                 response = resp.choices[0].message.content
                 data['messages'].append({'role': 'assistant', 'content': response})

@@ -4,11 +4,6 @@ from typing import List
 
 
 class LLMTemplateType:
-    # base
-    default_generation = 'default-generation'
-    chatglm_generation = 'chatglm-generation'
-
-    # chat
     default = 'default'
     qwen = 'qwen'
     qwen2_5 = 'qwen2_5'
@@ -29,7 +24,7 @@ class LLMTemplateType:
     internlm2 = 'internlm2'
 
     deepseek = 'deepseek'
-    deepseek_coder = 'deepseek-coder'
+    deepseek_coder = 'deepseek_coder'
     deepseek2 = 'deepseek2'
     deepseek2_5 = 'deepseek2_5'
 
@@ -38,16 +33,16 @@ class LLMTemplateType:
     openbuddy2 = 'openbuddy2'
     minicpm = 'minicpm'
     telechat = 'telechat'
-    telechat_v2 = 'telechat-v2'
+    telechat_v2 = 'telechat_v2'
 
-    yi_coder = 'yi-coder'
+    yi_coder = 'yi_coder'
     codefuse = 'codefuse'
-    codefuse_codellama = 'codefuse-codellama'
+    codefuse_codellama = 'codefuse_codellama'
 
-    numina_math = 'numina-math'
-    mistral_nemo = 'mistral-nemo'
+    numina_math = 'numina_math'
+    mistral_nemo = 'mistral_nemo'
     gemma = 'gemma'
-    wizardlm2_awq = 'wizardlm2-awq'
+    wizardlm2_awq = 'wizardlm2_awq'
     wizardlm2 = 'wizardlm2'
     atom = 'atom'
     phi3 = 'phi3'
@@ -67,38 +62,29 @@ class LLMTemplateType:
 
 
 class MLLMTemplateType:
-    # base
-    qwen_vl_generation = 'qwen_vl_generation'
-    qwen_audio_generation = 'qwen_audio_generation'
-    qwen2_vl_generation = 'qwen2_vl_generation'
-    qwen2_audio_generation = 'qwen2_audio_generation'
-
-    llama3_2_vision_generation = 'llama3_2_vision_generation'
-
-    # chat
     qwen_vl = 'qwen_vl'
     qwen_audio = 'qwen_audio'
     qwen2_vl = 'qwen2_vl'
     qwen2_audio = 'qwen2_audio'
 
-    llama3_1_omni = 'llama3_1-omni'
-    llama3_2_vision = 'llama3_2-vision'
+    llama3_1_omni = 'llama3_1_omni'
+    llama3_2_vision = 'llama3_2_vision'
 
     llava1_5 = 'llava1_5'
     llava_mistral = 'llava_mistral'
     llava_vicuna = 'llava_vicuna'
     llava_yi = 'llava_yi'
     llama3_llava_next_hf = 'llama3_llava_next_hf'
-    llava_qwen_hf = 'llama-qwen-hf'
+    llava_qwen_hf = 'llama_qwen_hf'
     llava_onevision_qwen = 'llava_onevision_qwen'
     llava_next_video = 'llava_next_video'
     llava_next_video_yi = 'llava_next_video_yi'
 
-    llava_next_llama3 = 'llava-next-llama3'  # DaozeZhang
+    llava_next_llama3 = 'llava_next_llama3'  # DaozeZhang
     llava_llama_instruct = 'llava_llama_instruct'  # xtuner
-    llama3_llava_next = 'llama3-llava-next'  # lmms-lab
-    llava_qwen = 'llava-qwen'  # lmms-lab
-    yi_vl = 'yi-vl'
+    llama3_llava_next = 'llama3_llava_next'  # lmms-lab
+    llava_qwen = 'llava_qwen'  # lmms-lab
+    yi_vl = 'yi_vl'
 
     internvl = 'internvl'
     internvl_phi3 = 'internvl_phi3'
@@ -120,7 +106,7 @@ class MLLMTemplateType:
     minicpmv2_6 = 'minicpmv2_6'
 
     deepseek_vl = 'deepseek_vl'
-    mplug_owl2 = 'mplug-owl2'
+    mplug_owl2 = 'mplug_owl2'
     mplug_owl3 = 'mplug_owl3'
     got_ocr2 = 'got_ocr2'
 
