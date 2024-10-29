@@ -7,6 +7,7 @@ if TYPE_CHECKING:
     from .vllm_engine import VllmEngine
     from .lmdeploy_engine import LmdeployEngine
     from .pt_engine import PtEngine, PtLoRARequest
+    from .infer_client import InferClient
     from .infer_engine import InferEngine
     from .base import BaseInferEngine
     from .utils import InferStats
@@ -16,9 +17,10 @@ else:
         'vllm_engine': ['VllmEngine'],
         'lmdeploy_engine': ['LmdeployEngine'],
         'pt_engine': ['PtEngine', 'PtLoRARequest'],
+        'infer_client': ['InferClient'],
         'infer_engine': ['InferEngine'],
         'base': ['BaseInferEngine'],
-        'utils': ['InferStats']
+        'utils': ['InferStats'],
     }
 
     import sys
