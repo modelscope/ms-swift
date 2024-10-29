@@ -56,61 +56,38 @@ def get_model_tokenizer_chatglm(model_dir: str,
 register_model(
     ModelMeta(
         LLMModelType.chatglm2,
-        'ChatGLMModel',
-        ModelGroup([
-            Model('ZhipuAI/chatglm3-6b-base', 'THUDM/chatglm3-6b-base'),
-            Model('ZhipuAI/chatglm2-6b', 'THUDM/chatglm2-6b'),
-            Model('ZhipuAI/chatglm2-6b-32k', 'THUDM/chatglm2-6b-32k')
-        ]),
-        TemplateType.chatglm2,  # chatglm_generation
-        get_model_tokenizer_chatglm,
-        requires=['transformers<4.42'],
-        support_vllm=True,
-    ))
-
-register_model(
-    ModelMeta(
-        LLMModelType.codegeex2,
-        'ChatGLMModel',
-        ModelGroup(
-            [Model('ZhipuAI/codegeex2-6b', 'THUDM/codegeex2-6b')],
-            tags=['coding'],
-        ),
-        TemplateType.chatglm2,
-        get_model_tokenizer_chatglm,
-        requires=['transformers<4.34'],
-        support_vllm=True,
-    ))
-
-register_model(
-    ModelMeta(
-        LLMModelType.codefuse_codegeex2,
-        'ChatGLMModel',
-        ModelGroup(
-            [Model('codefuse-ai/CodeFuse-CodeGeeX2-6B', 'codefuse-ai/CodeFuse-CodeGeeX2-6B')],
-            tags=['coding'],
-        ),
-        TemplateType.codefuse,
-        get_model_tokenizer_chatglm,
-        requires=['transformers<4.34'],
-        support_vllm=True))
-
-register_model(
-    ModelMeta(
-        LLMModelType.chatglm3,
-        'ChatGLMModel',
-        ModelGroup(
-            [
+        ['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
+        [
+            ModelGroup([
+                Model('ZhipuAI/chatglm2-6b', 'THUDM/chatglm2-6b'),
+                Model('ZhipuAI/chatglm2-6b-32k', 'THUDM/chatglm2-6b-32k')
+            ],
+                       TemplateType.chatglm2,
+                       requires=['transformers<4.42']),
+            ModelGroup([
+                Model('ZhipuAI/chatglm3-6b-base', 'THUDM/chatglm3-6b-base'),
                 Model('ZhipuAI/chatglm3-6b', 'THUDM/chatglm3-6b'),
                 Model('ZhipuAI/chatglm3-6b-32k', 'THUDM/chatglm3-6b-32k'),
                 Model('ZhipuAI/chatglm3-6b-128k', 'THUDM/chatglm3-6b-128k'),
             ],
-            tags=['coding'],
-        ),
+                       TemplateType.chatglm3,
+                       requires=['transformers<4.42']),
+            ModelGroup(
+                [Model('ZhipuAI/codegeex2-6b', 'THUDM/codegeex2-6b')],
+                TemplateType.chatglm2,
+                requires=['transformers<4.34'],
+                tags=['coding'],
+            ),
+            ModelGroup(
+                [Model('codefuse-ai/CodeFuse-CodeGeeX2-6B', 'codefuse-ai/CodeFuse-CodeGeeX2-6B')],
+                TemplateType.codefuse,
+                requires=['transformers<4.34'],
+                tags=['coding'],
+            ),
+        ],
         get_model_tokenizer_chatglm,
-        TemplateType.chatglm3,
-        requires=['transformers<4.42'],
-        support_vllm=True))
+        support_vllm=True,
+    ))
 
 
 def get_model_tokenizer_glm4(model_dir: str,
@@ -119,57 +96,36 @@ def get_model_tokenizer_glm4(model_dir: str,
                              load_model: bool = True,
                              **kwargs):
     AttnImpl.update_attn_impl(model_config, kwargs.get('attn_impl'))
-    return get_model_tokenizer_chatglm(model_dir, model_config, model_kwargs, load_model, **kwargs)
-
-
-register_model(
-    ModelMeta(
-        LLMModelType.glm4,
-        'ChatGLMModel',
-        ModelGroup([
-            Model('ZhipuAI/glm-4-9b', 'THUDM/glm-4-9b'),
-            Model('ZhipuAI/glm-4-9b-chat', 'THUDM/glm-4-9b-chat'),
-            Model('ZhipuAI/glm-4-9b-chat-1m', 'THUDM/glm-4-9b-chat-1m'),
-        ]),
-        TemplateType.chatglm4,
-        get_model_tokenizer_glm4,
-        requires=['transformers>=4.42'],
-        support_vllm=True,
-        support_flash_attn=True,
-        support_lmdeploy=True))
-
-register_model(
-    ModelMeta(
-        LLMModelType.codegeex4,
-        'ChatGLMModel',
-        ModelGroup([
-            Model('ZhipuAI/codegeex4-all-9b', 'THUDM/codegeex4-all-9b'),
-        ], tags=['coding']),
-        TemplateType.codegeex4,
-        get_model_tokenizer_glm4,
-        requires=['transformers<4.42'],
-        support_vllm=True,
-        support_flash_attn=True,
-        support_lmdeploy=True))
-
-
-def get_model_tokenizer_longwriter_glm4(*args, **kwargs):
-    model, tokenizer = get_model_tokenizer_glm4(*args, **kwargs)
-    for k in tokenizer.special_tokens.keys():
-        tokenizer.add_tokens(k)
+    model, tokenizer = get_model_tokenizer_chatglm(model_dir, model_config, model_kwargs, load_model, **kwargs)
+    if len(tokenizer.encode('<|user|>', add_special_tokens=False)) > 1:
+        for k in tokenizer.special_tokens.keys():
+            tokenizer.add_tokens(k)
     return model, tokenizer
 
 
 register_model(
     ModelMeta(
-        LLMModelType.longwriter_glm4,
-        'ChatGLMModel',
-        ModelGroup([
-            Model('ZhipuAI/LongWriter-glm4-9b', 'THUDM/LongWriter-glm4-9b'),
-        ]),
-        TemplateType.chatglm4,
-        get_model_tokenizer_longwriter_glm4,
-        requires=['transformers>=4.42'],
+        LLMModelType.glm4, ['ChatGLMModel', 'ChatGLMForConditionalGeneration'], [
+            ModelGroup([
+                Model('ZhipuAI/glm-4-9b', 'THUDM/glm-4-9b'),
+                Model('ZhipuAI/glm-4-9b-chat', 'THUDM/glm-4-9b-chat'),
+                Model('ZhipuAI/glm-4-9b-chat-1m', 'THUDM/glm-4-9b-chat-1m'),
+            ],
+                       TemplateType.chatglm4,
+                       requires=['transformers>=4.42']),
+            ModelGroup([
+                Model('ZhipuAI/codegeex4-all-9b', 'THUDM/codegeex4-all-9b'),
+            ],
+                       TemplateType.codegeex4,
+                       requires=['transformers<4.42'],
+                       tags=['coding']),
+            ModelGroup([
+                Model('ZhipuAI/LongWriter-glm4-9b', 'THUDM/LongWriter-glm4-9b'),
+            ],
+                       TemplateType.chatglm4,
+                       requires=['transformers>=4.42'])
+        ],
+        get_model_tokenizer_glm4,
         support_vllm=True,
         support_flash_attn=True,
         support_lmdeploy=True))
@@ -199,12 +155,10 @@ def get_model_tokenizer_glm4v(model_dir: str,
 
 register_model(
     ModelMeta(
-        MLLMModelType.glm4v,
-        'ChatGLMModel',
-        ModelGroup([
+        MLLMModelType.glm4v, ['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
+        [ModelGroup([
             Model('ZhipuAI/glm-4v-9b', 'THUDM/glm-4v-9b'),
-        ]),
-        TemplateType.glm4v,
+        ], TemplateType.glm4v)],
         get_model_tokenizer_glm4v,
         is_multimodal=True,
         requires=['transformers>=4.42']))
@@ -228,42 +182,23 @@ def get_model_tokenizer_cogvlm(model_dir: str,
 register_model(
     ModelMeta(
         MLLMModelType.cogvlm,
-        'CogVLMForCausalLM',
-        ModelGroup([
-            Model('ZhipuAI/cogvlm-chat', 'THUDM/cogvlm-chat-hf'),
-        ]),
-        TemplateType.cogvlm,
+        ['CogVLMForCausalLM', 'CogAgentForCausalLM'],
+        [
+            ModelGroup([
+                Model('ZhipuAI/cogvlm-chat', 'THUDM/cogvlm-chat-hf'),
+            ], TemplateType.cogvlm),
+            ModelGroup([
+                Model('ZhipuAI/cogagent-chat', 'THUDM/cogagent-chat-hf'),
+            ], TemplateType.cogvlm),
+            ModelGroup([
+                Model('ZhipuAI/cogagent-vqa', 'THUDM/cogagent-vqa-hf'),
+            ], TemplateType.cogagent_vqa)
+        ],
         get_model_tokenizer_cogvlm,
         is_multimodal=True,
         support_gradient_checkpointing=False,
         requires=['transformers<4.42'],
     ))
-
-register_model(
-    ModelMeta(
-        MLLMModelType.cogagent_chat,
-        'CogAgentForCausalLM',
-        ModelGroup([
-            Model('ZhipuAI/cogagent-chat', 'THUDM/cogagent-chat-hf'),
-        ]),
-        TemplateType.cogvlm,
-        get_model_tokenizer_cogvlm,
-        is_multimodal=True,
-        support_gradient_checkpointing=False,
-        requires=['transformers<4.42']))
-
-register_model(
-    ModelMeta(
-        MLLMModelType.cogagent_vqa,
-        'CogAgentForCausalLM',
-        ModelGroup([
-            Model('ZhipuAI/cogagent-vqa', 'THUDM/cogagent-vqa-hf'),
-        ]),
-        TemplateType.cogagent_vqa,
-        get_model_tokenizer_cogvlm,
-        is_multimodal=True,
-        support_gradient_checkpointing=False,
-        requires=['transformers<4.42']))
 
 
 def get_model_tokenizer_cogvlm2(*args, **kwargs):
@@ -282,28 +217,21 @@ def get_model_tokenizer_cogvlm2(*args, **kwargs):
 
 register_model(
     ModelMeta(
-        MLLMModelType.cogvlm2,
-        'CogVLMForCausalLM',
-        ModelGroup([
-            Model('ZhipuAI/cogvlm2-llama3-chat-19B', 'THUDM/cogvlm2-llama3-chat-19B'),
-            Model('ZhipuAI/cogvlm2-llama3-chinese-chat-19B', 'THUDM/cogvlm2-llama3-chinese-chat-19B'),
-        ]),
-        TemplateType.cogvlm,
+        MLLMModelType.cogvlm2, ['CogVLMForCausalLM', 'CogVLMVideoForCausalLM'], [
+            ModelGroup([
+                Model('ZhipuAI/cogvlm2-llama3-chat-19B', 'THUDM/cogvlm2-llama3-chat-19B'),
+                Model('ZhipuAI/cogvlm2-llama3-chinese-chat-19B', 'THUDM/cogvlm2-llama3-chinese-chat-19B'),
+            ],
+                       TemplateType.cogvlm,
+                       requires=['transformers<4.42'],
+                       support_lmdeploy=True),
+            ModelGroup([
+                Model('ZhipuAI/cogvlm2-video-llama3-chat', 'THUDM/cogvlm2-video-llama3-chat'),
+            ],
+                       TemplateType.cogvlm2_video,
+                       requires=['transformers>=4.42'],
+                       tags=['video']),
+        ],
         get_model_tokenizer_cogvlm2,
         is_multimodal=True,
-        support_gradient_checkpointing=False,
-        requires=['transformers<4.42'],
-        support_lmdeploy=True))
-
-register_model(
-    ModelMeta(
-        MLLMModelType.cogvlm2_video,
-        'CogVLMVideoForCausalLM',
-        ModelGroup([
-            Model('ZhipuAI/cogvlm2-video-llama3-chat', 'THUDM/cogvlm2-video-llama3-chat'),
-        ], tags=['video']),
-        TemplateType.cogvlm2_video,
-        get_model_tokenizer_cogvlm2,
-        is_multimodal=True,
-        support_gradient_checkpointing=False,
-        requires=['transformers>=4.42']))
+        support_gradient_checkpointing=False))

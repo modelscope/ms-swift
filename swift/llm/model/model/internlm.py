@@ -26,19 +26,18 @@ def get_model_tokenizer_internlm_chat(model_dir: str,
 
 register_model(
     ModelMeta(
-        LLMModelType.internlm,
-        'InternLMForCausalLM',
-        ModelGroup([
-            Model('Shanghai_AI_Laboratory/internlm-7b', 'internlm/internlm-7b'),
-            Model('Shanghai_AI_Laboratory/internlm-chat-7b', 'internlm/internlm-chat-7b'),
-            Model('Shanghai_AI_Laboratory/internlm-chat-7b-8k'),
-            Model('Shanghai_AI_Laboratory/internlm-20b', 'internlm/internlm-20b'),
-            Model('Shanghai_AI_Laboratory/internlm-chat-20b', 'internlm/internlm-chat-20b'),
-        ]),
-        TemplateType.internlm,
+        LLMModelType.internlm, ['InternLMForCausalLM'], [
+            ModelGroup([
+                Model('Shanghai_AI_Laboratory/internlm-7b', 'internlm/internlm-7b'),
+                Model('Shanghai_AI_Laboratory/internlm-chat-7b', 'internlm/internlm-chat-7b'),
+                Model('Shanghai_AI_Laboratory/internlm-chat-7b-8k'),
+                Model('Shanghai_AI_Laboratory/internlm-20b', 'internlm/internlm-20b'),
+                Model('Shanghai_AI_Laboratory/internlm-chat-20b', 'internlm/internlm-chat-20b'),
+            ], TemplateType.internlm)
+        ],
         get_model_tokenizer_internlm_chat,
         support_vllm=True,
-        support_lmdeploy=True), )
+        support_lmdeploy=True))
 
 
 def get_model_tokenizer_internlm2(model_dir: str,
@@ -62,8 +61,7 @@ def get_model_tokenizer_internlm2(model_dir: str,
 
 register_model(
     ModelMeta(
-        LLMModelType.internlm2,
-        'InternLM2ForCausalLM', [
+        LLMModelType.internlm2, ['InternLM2ForCausalLM'], [
             ModelGroup([
                 Model('Shanghai_AI_Laboratory/internlm2-1_8b', 'internlm/internlm2-1_8b'),
                 Model('Shanghai_AI_Laboratory/internlm2-chat-1_8b', 'internlm/internlm2-chat-1_8b'),
@@ -76,13 +74,14 @@ register_model(
                 Model('Shanghai_AI_Laboratory/internlm2-20b', 'internlm/internlm2-20b'),
                 Model('Shanghai_AI_Laboratory/internlm2-chat-20b', 'internlm/internlm2-chat-20b'),
                 Model('Shanghai_AI_Laboratory/internlm2-chat-20b-sft', 'internlm/internlm2-chat-20b-sft'),
-            ]),
+            ], TemplateType.internlm2),
             ModelGroup([
                 Model('Shanghai_AI_Laboratory/internlm2-math-base-7b', 'internlm/internlm2-math-base-7b'),
                 Model('Shanghai_AI_Laboratory/internlm2-math-7b', 'internlm/internlm2-math-7b'),
                 Model('Shanghai_AI_Laboratory/internlm2-math-base-20b', 'internlm/internlm2-math-base-20b'),
                 Model('Shanghai_AI_Laboratory/internlm2-math-20b', 'internlm/internlm2-math-20b'),
             ],
+                       TemplateType.internlm2,
                        tags=['math']),
             ModelGroup([
                 Model('Shanghai_AI_Laboratory/internlm2_5-1_8b', 'internlm/internlm2_5-1_8b'),
@@ -93,9 +92,9 @@ register_model(
                 Model('Shanghai_AI_Laboratory/internlm2_5-20b', 'internlm/internlm2_5-20b'),
                 Model('Shanghai_AI_Laboratory/internlm2_5-20b-chat', 'internlm/internlm2_5-20b-chat'),
             ],
+                       TemplateType.internlm2,
                        tags=['math'])
         ],
-        TemplateType.internlm2,
         get_model_tokenizer_internlm2,
         requires=['transformers>=4.38'],
         support_flash_attn=True,

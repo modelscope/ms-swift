@@ -39,42 +39,41 @@ class Model:
 @dataclass
 class ModelGroup:
     models: List[Model]
+    template: str
+    # File patterns to ignore when downloading the model.
+    ignore_file_pattern: List[str] = field(default_factory=list)
     tags: List[str] = field(default_factory=list)
+
+    # Higher priority. If set to None, the attributes of the DatasetMeta will be used.
+    requires: Optional[List[str]] = None
+    support_flash_attn: Optional[bool] = None
+    support_vllm: Optional[bool] = None
+    support_lmdeploy: Optional[bool] = None
+    support_megatron: Optional[bool] = None
 
 
 @dataclass
 class ModelMeta:
     model_type: str
     # Used to automatically infer the model_type from config.json.
-    architectures: Union[List[str], str]
+    architectures: List[str]
     # Used to list the model_ids from huggingface/modelscope,
     # which participate in the automatic inference of the model_type.
-    model_groups: Union[List[ModelGroup], ModelGroup]
-    template: str
+    model_groups: List[ModelGroup]
     get_function: GetModelTokenizerFunction
     is_moe: bool = False
     is_multimodal: bool = False
 
-    # Usually specifies the version limits of transformers.
-    requires: List[str] = field(default_factory=list)
-    # File patterns to ignore when downloading the model.
-    ignore_file_pattern: List[str] = field(default_factory=list)
     # Additional files that need to be saved for full parameter training/merge-lora.
     additional_saved_files: List[str] = field(default_factory=list)
-
     support_gradient_checkpointing: bool = True
+
+    # Usually specifies the version limits of transformers.
+    requires: List[str] = field(default_factory=list)
     support_flash_attn: bool = False
     support_vllm: bool = False
     support_lmdeploy: bool = False
     support_megatron: bool = False
-
-    tags: List[str] = field(default_factory=list)
-
-    def __post_init__(self):
-        if isinstance(self.architectures, str):
-            self.architectures = [self.architectures]
-        if not isinstance(self.model_groups, (list, tuple)):
-            self.model_groups = [self.model_groups]
 
     def check_requires(self):
         # TODO: error to warning

@@ -4,24 +4,15 @@ from typing import List
 class LLMModelType:
     # dense
     qwen = 'qwen'
-    modelscope_agent = 'modelscope_agent'
     qwen2 = 'qwen2'
-    qwen2_5 = 'qwen2_5'
 
-    llama2 = 'llama2'
-    llama3 = 'llama3'
-    llama3_1 = 'llama3_1'
-    llama3_2 = 'llama3_2'
+    llama = 'llama'
     yi = 'yi'
-    yi_coder = 'yi_coder'
+
     reflection_llama3_1 = 'reflection_llama3_1'
 
     chatglm2 = 'chatglm2'
-    codegeex2 = 'codegeex2'
-    codefuse_codegeex2 = 'codefuse_codegeex2'
-    chatglm3 = 'chatglm3'
     glm4 = 'glm4'
-    codegeex4 = 'codegeex4'
 
     internlm = 'internlm'
     internlm2 = 'internlm2'
@@ -45,10 +36,7 @@ class MLLMModelType:
 
     glm4v = 'glm4v'
     cogvlm = 'cogvlm'
-    cogagent_vqa = 'cogagent_vqa'
-    cogagent_chat = 'cogagent_chat'
     cogvlm2 = 'cogvlm2'
-    cogvlm2_video = 'cogvlm2_video'
 
     xcomposer2 = 'xcomposer2'
     xcomposer2_4khd = 'xcomposer2_4khd'
