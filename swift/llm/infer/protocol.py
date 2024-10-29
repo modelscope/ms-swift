@@ -1,13 +1,16 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import base64
+import io
+import os
 import time
 import uuid
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field, fields
-from http import HTTPStatus
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
-from swift.llm import TemplateInputs
-from swift.llm.template import Messages, Tool
+from PIL import Image
+
+from swift.llm.template import InferRequest, Messages, Tool
 
 
 def random_uuid() -> str:
@@ -92,12 +95,70 @@ class ChatCompletionRequestMixin:
 
 
 @dataclass
-class CompletionRequest(RequestConfig, CompletionRequestMixin):
+class MultiModalRequestMixin:
+    images: List[str] = field(default_factory=list)
+    audios: List[str] = field(default_factory=list)
+    videos: List[str] = field(default_factory=list)
+
+    @staticmethod
+    def _to_base64(mm_data: Union[str, Image.Image, bytes]) -> str:
+        if isinstance(mm_data, str) and not os.path.isfile(mm_data):
+            # base64 or url
+            return mm_data
+        if isinstance(mm_data, str):
+            # local_path
+            with open(mm_data, 'rb') as f:
+                bytes_ = f.read()
+        elif isinstance(mm_data, Image.Image):
+            bytes_io = io.BytesIO()
+            mm_data.save(bytes_io, format='png')
+            bytes_ = bytes_io.getvalue()
+        else:
+            bytes_ = mm_data
+        img_base64: str = base64.b64encode(bytes_).decode('utf-8')
+        return img_base64
+
+    def convert_to_base64(self):
+        for key in ['images', 'audios', 'videos']:
+            values = getattr(self, key)
+            for i, val in enumerate(values):
+                values[i] = self._to_base64(val)
+
+    def __post_init__(self):
+        self.convert_to_base64()
+
+
+@dataclass
+class CompletionRequest(RequestConfig, MultiModalRequestMixin, CompletionRequestMixin):
     pass
 
 
 @dataclass
-class ChatCompletionRequest(RequestConfig, ChatCompletionRequestMixin):
+class ChatCompletionRequest(RequestConfig, MultiModalRequestMixin, ChatCompletionRequestMixin):
+
+    def _messages_convert_to_base64(self):
+        for message in self.messages:
+            content = message['content']
+            if isinstance(content, str):
+                continue
+            for item in content:
+                key: str = item['type']
+                key_origin = key
+                value = item[key]
+                if key.endswith('_url'):
+                    key = key[:-len('_url')]
+                if isinstance(value, str) and os.path.isfile(value):
+                    suffix = os.path.splitext(value)[1].lower()
+                elif isinstance(value, Image.Image):
+                    suffix = 'jpeg'
+                else:
+                    raise ValueError(f'value: {value}')
+                mm_data_base64 = self._to_base64(value)
+                item[key_origin] = f'data:{key}/{suffix};base64,{mm_data_base64}'
+
+    def convert_to_base64(self):
+        super().convert_to_base64()
+        self._messages_convert_to_base64()
 
     def parse(self) -> Tuple['InferRequest', 'RequestConfig']:
         data = asdict(self)
@@ -239,12 +300,3 @@ class CompletionStreamResponse:
     id: str = field(default_factory=lambda: f'cmpl-{random_uuid()}')
     object: str = 'text_completion.chunk'
     created: int = field(default_factory=lambda: int(time.time()))
-
-
-@dataclass
-class InferRequest(TemplateInputs):
-
-    def remove_response(self):
-        last_role = self.messages[-1]['role']
-        if last_role == 'assistant':
-            self.messages.pop()

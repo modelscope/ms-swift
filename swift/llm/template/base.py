@@ -1,5 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import hashlib
 import inspect
+import os
 import re
 from contextlib import contextmanager
 from functools import partial, wraps
@@ -10,11 +12,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 from modelscope import get_logger
 from peft import PeftModel
+from PIL import Image
 from torch.nn.utils.rnn import pad_sequence
 from transformers import PreTrainedTokenizerBase
 from transformers.integrations import is_deepspeed_zero3_enabled
 
-from ..utils import decode_base64
 from .agent import loss_scale_map, split_str_parts_by
 from .template_inputs import StdTemplateInputs, TemplateInputs
 from .utils import Context, ContextType, Prompt, Word, fetch_one, findall
@@ -170,9 +172,19 @@ class Template:
         # Normalize grounding bboxes
         normalize_bbox(objects, images, to_type=self.grounding_type)
         if not self.load_medias:  # fix pt & qwen-vl
-            images = decode_base64(images=images)['images']  # PIL.Image/base64 -> local_path
+            for i, image in enumerate(images):
+                images[i] = self._save_pil_image(image)
         inputs.images = images
         inputs.objects = objects
+
+    @staticmethod
+    def _save_pil_image(image: Image.Image) -> str:
+        img_bytes = image.tobytes()
+        img_hash = hashlib.sha256(img_bytes).hexdigest()
+        img_path = os.path.join('tmp', f'{img_hash}.png')
+        if not os.path.exists(img_path):
+            image.save(img_path)
+        return img_path
 
     @staticmethod
     def _concat_context_list(

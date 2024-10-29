@@ -2,8 +2,9 @@
 from abc import ABC, abstractmethod
 from typing import AsyncIterator, Iterator, List, Optional, Union
 
+from swift.llm import InferRequest
 from swift.plugin import Metric
-from ..protocol import ChatCompletionResponse, ChatCompletionStreamResponse, InferRequest, RequestConfig
+from ..protocol import ChatCompletionResponse, ChatCompletionStreamResponse, RequestConfig
 
 
 class BaseInferEngine(ABC):

@@ -2,6 +2,7 @@
 
 import asyncio
 from copy import deepcopy
+from dataclasses import asdict
 from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
 
 import aiohttp
@@ -10,7 +11,8 @@ from dacite import from_dict
 from requests.exceptions import HTTPError
 
 from swift.plugin import Metric
-from ..protocol import ChatCompletionResponse, ChatCompletionStreamResponse, InferRequest, ModelList, RequestConfig
+from ..protocol import (ChatCompletionRequest, ChatCompletionResponse, ChatCompletionStreamResponse, InferRequest,
+                        ModelList, RequestConfig)
 from .infer_engine import InferEngine
 
 
@@ -64,7 +66,7 @@ class InferClient(InferEngine):
 
     @staticmethod
     def _prepare_request_data(model: str, infer_request: InferRequest, request_config: RequestConfig) -> Dict[str, Any]:
-        pass
+        return asdict(ChatCompletionRequest(model, **asdict(infer_request), **asdict(request_config)))
 
     @staticmethod
     def _parse_stream_data(data: bytes) -> Optional[str]:

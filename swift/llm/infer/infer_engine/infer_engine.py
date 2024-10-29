@@ -10,12 +10,12 @@ import torch
 from tqdm import tqdm
 from transformers import PreTrainedTokenizerBase
 
-from swift.llm import Template, TemplateInputs, get_model_tokenizer, get_template, load_dataset
+from swift.llm import InferRequest, Template, get_model_tokenizer, get_template
 from swift.llm.template import split_action_action_input
 from swift.plugin import Metric
 from swift.utils import get_logger
 from ..protocol import (ChatCompletionMessageToolCall, ChatCompletionResponse, ChatCompletionStreamResponse, Function,
-                        InferRequest, RequestConfig, UsageInfo)
+                        RequestConfig, UsageInfo)
 from .base import BaseInferEngine
 
 logger = get_logger()
