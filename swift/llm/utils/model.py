@@ -989,6 +989,11 @@ def get_model_tokenizer_from_repo(model_dir: str,
     """load from an independent repository"""
     if model_config is None:
         model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+    # fix prediction_step (internvl2, ovis, ...)
+    if not hasattr(model_config, 'keys_to_ignore_at_inference'):
+        model_config.keys_to_ignore_at_inference = []
+    if 'past_key_values' not in model_config.keys_to_ignore_at_inference:
+        model_config.keys_to_ignore_at_inference.append('past_key_values')
     # multimodal
     llm_config = None
     for k in ['language_config', 'llm_config', 'text_config']:
@@ -1926,6 +1931,16 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_lmdeploy=True,
     requires=['transformers>=4.42'],
     hf_model_id='THUDM/glm-4-9b-chat-1m')
+@register_model(
+    ModelType.longwriter_glm4_9b,
+    'ZhipuAI/LongWriter-glm4-9b',
+    LoRATM.chatglm,
+    TemplateType.chatglm4,
+    support_flash_attn=True,
+    support_vllm=True,
+    support_lmdeploy=True,
+    requires=['transformers>=4.42'],
+    hf_model_id='THUDM/LongWriter-glm4-9b')
 def get_model_tokenizer_glm4(model_dir: str,
                              torch_dtype: torch.dtype,
                              model_kwargs: Dict[str, Any],
@@ -1937,24 +1952,11 @@ def get_model_tokenizer_glm4(model_dir: str,
         model_config._attn_implementation = 'flash_attention_2'
     elif use_flash_attn is False:
         model_config._attn_implementation = 'eager'
-    return get_model_tokenizer_chatglm(
+    model, tokenizer = get_model_tokenizer_chatglm(
         model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
-
-
-@register_model(
-    ModelType.longwriter_glm4_9b,
-    'ZhipuAI/LongWriter-glm4-9b',
-    LoRATM.chatglm,
-    TemplateType.chatglm4,
-    support_flash_attn=True,
-    support_vllm=True,
-    support_lmdeploy=True,
-    requires=['transformers>=4.42'],
-    hf_model_id='THUDM/LongWriter-glm4-9b')
-def get_model_tokenizer_longwriter_glm4(*args, **kwargs):
-    model, tokenizer = get_model_tokenizer_glm4(*args, **kwargs)
-    for k in tokenizer.special_tokens.keys():
-        tokenizer.add_tokens(k)
+    if len(tokenizer.encode('<|user|>', add_special_tokens=False)) > 1:
+        for k in tokenizer.special_tokens.keys():
+            tokenizer.add_tokens(k)
     return model, tokenizer
 
 
@@ -2978,7 +2980,6 @@ def get_model_tokenizer_ovis(*args, **kwargs):
         _use_submodel_func(model, 'llm', func_list)
         embedding = model.get_input_embeddings()
         embedding.register_forward_hook(_clone_hook)
-        model.config.keys_to_ignore_at_inference = ['past_key_values']  # fix prediction_step
     try:
         # fix device_map
         from transformers.cache_utils import HybridCache
