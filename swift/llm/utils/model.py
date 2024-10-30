@@ -989,6 +989,9 @@ def get_model_tokenizer_from_repo(model_dir: str,
     """load from an independent repository"""
     if model_config is None:
         model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+    if len(getattr(model_config, "keys_to_ignore_at_inference", [])) == 0:
+        # fix prediction_step (internvl2, ovis, ...)
+        model_config.keys_to_ignore_at_inference = ['past_key_values']
     # multimodal
     llm_config = None
     for k in ['language_config', 'llm_config', 'text_config']:
@@ -2975,7 +2978,6 @@ def get_model_tokenizer_ovis(*args, **kwargs):
         _use_submodel_func(model, 'llm', func_list)
         embedding = model.get_input_embeddings()
         embedding.register_forward_hook(_clone_hook)
-        model.config.keys_to_ignore_at_inference = ['past_key_values']  # fix prediction_step
     try:
         # fix device_map
         from transformers.cache_utils import HybridCache
@@ -4801,7 +4803,6 @@ def get_model_tokenizer_internvl(model_dir: str,
         _use_submodel_func(model, 'language_model', func_list)
         embedding = model.language_model.get_input_embeddings()
         embedding.register_forward_hook(_clone_hook)
-        model.config.keys_to_ignore_at_inference = ['past_key_values']  # fix prediction_step
 
     return model, tokenizer
 
