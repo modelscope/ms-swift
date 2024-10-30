@@ -989,9 +989,11 @@ def get_model_tokenizer_from_repo(model_dir: str,
     """load from an independent repository"""
     if model_config is None:
         model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    if len(getattr(model_config, "keys_to_ignore_at_inference", [])) == 0:
-        # fix prediction_step (internvl2, ovis, ...)
-        model_config.keys_to_ignore_at_inference = ['past_key_values']
+    # fix prediction_step (internvl2, ovis, ...)
+    if not hasattr(model_config, 'keys_to_ignore_at_inference'):
+        model_config.keys_to_ignore_at_inference = []
+    if 'past_key_values' not in model_config.keys_to_ignore_at_inference:
+        model_config.keys_to_ignore_at_inference.append('past_key_values')
     # multimodal
     llm_config = None
     for k in ['language_config', 'llm_config', 'text_config']:
