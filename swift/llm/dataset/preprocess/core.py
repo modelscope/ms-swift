@@ -4,7 +4,6 @@ from collections import Counter
 from functools import partial
 from typing import Any, Callable, Dict, List, Literal, Optional, Set, Union
 
-import numpy as np
 from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HfIterableDataset
 

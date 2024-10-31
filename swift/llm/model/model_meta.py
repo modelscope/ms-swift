@@ -1,5 +1,15 @@
+import itertools
 from dataclasses import dataclass, field
-from typing import Optional, List
+from typing import Callable, List, Optional, Tuple, TypeVar, Union
+
+from transformers import PreTrainedModel, PreTrainedTokenizerBase
+from transformers.utils.versions import require_version
+
+from swift.utils import get_logger
+
+logger = get_logger()
+GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]]
+
 
 @dataclass
 class Model:
@@ -52,6 +62,7 @@ class ModelMeta:
     support_megatron: bool = False
 
     def get_matched_model_groups(self, model_dir: str) -> List[ModelGroup]:
+        from .utils import HfConfigFactory
         model_name = HfConfigFactory._get_model_name(model_dir).lower()
         res = []
         seen = set()

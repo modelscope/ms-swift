@@ -14,16 +14,15 @@ from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer, Gener
                           PreTrainedModel, PreTrainedTokenizerBase)
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import is_torch_bf16_gpu_available, is_torch_cuda_available, is_torch_npu_available
-from transformers.utils.versions import require_version
 
 from swift.utils import get_dist_setting, get_logger, is_ddp_plus_mp, is_dist, is_unsloth_available, use_torchacc
+from .model_meta import ModelMeta
 from .utils import AttnImpl, HfConfigFactory, safe_snapshot_download
 
 MODEL_MAPPING: Dict[str, Dict[str, Any]] = {}
 
 ARCH_MAPPING: Optional[Dict[str, Dict[str, List[str]]]] = None
 
-GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]]
 logger = get_logger()
 
 
@@ -237,13 +236,11 @@ def get_model_tokenizer(
     if download_model is None:
         download_model = load_model
     # download config.json
-    model_dir = safe_snapshot_download(
-                model_id_or_path, revision=revision, download_model=False, use_hf=use_hf)
+    model_dir = safe_snapshot_download(model_id_or_path, revision=revision, download_model=False, use_hf=use_hf)
     model_info = HfConfigFactory.get_model_info(model_dir)
 
     if download_model:
-        safe_snapshot_download(
-            model_id_or_path, revision=revision, download_model=download_model, use_hf=use_hf)
+        safe_snapshot_download(model_id_or_path, revision=revision, download_model=download_model, use_hf=use_hf)
 
     if not use_torchacc() and device_map is None:
         device_map = get_default_device_map()

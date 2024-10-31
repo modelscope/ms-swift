@@ -15,8 +15,10 @@ from transformers import PretrainedConfig
 
 from swift.hub import HFHub, MSHub, default_hub
 from swift.utils import deep_getattr, get_logger, is_dist, is_dist_ta, safe_ddp_context
+from .model_meta import ModelMeta
 
 logger = get_logger()
+
 
 @dataclass
 class ModelInfo:
@@ -27,6 +29,7 @@ class ModelInfo:
     quant_method: Literal['gptq', 'awq', 'bnb', 'aqlm', None]
     quant_bits: int
     config: PretrainedConfig
+
 
 class HfConfigFactory:
     """This class is used to read config from config.json(maybe params.json also)"""
