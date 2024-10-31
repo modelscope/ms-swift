@@ -235,7 +235,8 @@ register_model(
         MLLMModelType.cogagent_vqa,
         [ModelGroup([
             Model('ZhipuAI/cogagent-vqa', 'THUDM/cogagent-vqa-hf'),
-        ], TemplateType.cogagent_vqa)],
+        ])],
+        TemplateType.cogagent_vqa,
         get_model_tokenizer_cogvlm,
         is_multimodal=True,
         support_gradient_checkpointing=False,

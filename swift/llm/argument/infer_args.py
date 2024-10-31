@@ -27,7 +27,7 @@ class LmdeployArguments:
         quant_policy (int): Quantization policy, e.g., 4, 8. Default is 0.
         vision_batch_size (int): Maximum batch size in VisionConfig. Default is 1.
     """
-    
+
     # lmdeploy
     tp: int = 1
     cache_max_entry_count: float = 0.8

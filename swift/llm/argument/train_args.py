@@ -179,7 +179,7 @@ class MegatronArguments:
     Methods:
         __post_init__(self: 'SftArguments'):
             Post-initialization method to set up Megatron-specific arguments.
-        
+
         init_megatron(self: 'SftArguments'):
             Initializes Megatron if using the Megatron training backend.
     """

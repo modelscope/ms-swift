@@ -134,12 +134,11 @@ class TemplateMeta:
         return system
 
 
-def register_template(template_meta: TemplateMeta, *, exist_ok: bool = False, **kwargs) -> None:
+def register_template(template_meta: TemplateMeta, *, exist_ok: bool = False) -> None:
     template_type = template_meta.template_type
     if not exist_ok and template_type in TEMPLATE_MAPPING:
         raise ValueError(f'The `{template_type}` has already been registered in the TEMPLATE_MAPPING.')
-    template_info = {'template_meta': template_meta, **kwargs}
-    TEMPLATE_MAPPING[template_type] = template_info
+    TEMPLATE_MAPPING['template_meta'] = template_meta
 
 
 def get_template(

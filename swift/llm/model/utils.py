@@ -152,16 +152,6 @@ class HfConfigFactory:
         return res or None
 
     @staticmethod
-    def _get_model_name(model_dir: str) -> str:
-        # compat hf hub
-        match_ = re.search('/models--.+?--(.+?)/snapshots/', model_dir)
-        if match_ is not None:
-            model_name = match_.group(1)
-        else:
-            model_name = model_dir.rsplit('/', 1)[-1]
-        return model_name
-
-    @staticmethod
     def _get_matched_model_types(config: PretrainedConfig, model_dir: str) -> List[str]:
         """Get possible model_type."""
         # get possible model_types based on the model architecture.

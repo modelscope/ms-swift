@@ -17,7 +17,7 @@ logger = get_logger()
 class ExportArguments(BaseArguments, MergeArguments):
     """
     ExportArguments is a dataclass that inherits from BaseArguments and MergeArguments.
-    
+
     Attributes:
         output_dir (Optional[str]): Directory where the output will be saved.
         to_peft_format (bool): Flag to indicate if the output should be in PEFT format. This argument is useless for now.

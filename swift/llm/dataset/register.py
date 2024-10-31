@@ -75,7 +75,7 @@ class DatasetMeta:
                 self.subsets[i] = SubsetDataset(name=subset)
 
 
-def register_dataset(dataset_meta: DatasetMeta, *, exist_ok: bool = False, **kwargs) -> None:
+def register_dataset(dataset_meta: DatasetMeta, *, exist_ok: bool = False) -> None:
     """Register dataset to the dataset mapping
 
     Args:
@@ -96,8 +96,7 @@ def register_dataset(dataset_meta: DatasetMeta, *, exist_ok: bool = False, **kwa
     if not exist_ok and dataset_name in DATASET_MAPPING:
         raise ValueError(f'The `{dataset_name}` has already been registered in the DATASET_MAPPING.')
 
-    dataset_info = {'dataset_meta': dataset_meta, **kwargs}
-    DATASET_MAPPING[dataset_name] = dataset_info
+    DATASET_MAPPING['dataset_meta'] = dataset_meta
 
 
 def _preprocess_d_info(d_info: Dict[str, Any], *, base_dir: Optional[str] = None) -> Dict[str, Any]:

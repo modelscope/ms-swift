@@ -22,8 +22,6 @@ from .utils import AttnImpl, HfConfigFactory, safe_snapshot_download
 
 MODEL_MAPPING: Dict[str, Dict[str, Any]] = {}
 
-ARCH_MAPPING: Optional[Dict[str, Dict[str, List[str]]]] = None
-
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]]
 logger = get_logger()
 
@@ -77,26 +75,6 @@ class ModelMeta:
     support_lmdeploy: bool = False
     support_megatron: bool = False
 
-    def get_matched_model_groups(self, model_dir: str) -> List[ModelGroup]:
-        from .utils import HfConfigFactory
-        model_name = HfConfigFactory._get_model_name(model_dir).lower()
-        res = []
-        seen = set()
-        for model_group in self.model_groups:
-            id_ = id(model_group)
-            for model, key in itertools.product(model_group.models, ['ms_model_id', 'hf_model_id', 'model_path']):
-                value = getattr(model, key)
-                if value is None:
-                    continue
-                m_name = value.rsplit('/', 1)[-1].lower()
-                if m_name == model_name and id_ not in seen:
-                    seen.add(id_)
-                    res.append(model_group)
-                    break
-        if len(res) == 0:
-            return self.model_groups
-        return res
-
     def get_model_names(self) -> List[str]:
         res = set()
         for model_group in self.model_groups:
@@ -134,7 +112,7 @@ class ModelMeta:
 
 
 # [TODO:eos_token -> template]
-def register_model(model_meta: ModelMeta, *, exist_ok: bool = False, **kwargs) -> None:
+def register_model(model_meta: ModelMeta, *, exist_ok: bool = False) -> None:
     """
     model_type: The unique ID for the model type. Models with the same model_type share
         the same architectures, template, get_function, etc.
@@ -146,8 +124,7 @@ def register_model(model_meta: ModelMeta, *, exist_ok: bool = False, **kwargs) -
     if not model_meta.is_multimodal:
         assert model_type not in MLLMModelType.__dict__
 
-    model_info = {'model_meta': model_meta, **kwargs}
-    MODEL_MAPPING[model_type] = model_info
+    MODEL_MAPPING[model_type] = model_meta
 
 
 def load_by_unsloth(model_dir: str,
@@ -310,6 +287,53 @@ def get_default_torch_dtype(torch_dtype: torch.dtype):
     return res
 
 
+def _get_model_name(model_id_or_path: str) -> str:
+    # compat hf hub
+    match_ = re.search('/models--.+?--(.+?)/snapshots/', model_dir)
+    if match_ is not None:
+        model_name = match_.group(1)
+    else:
+        model_name = model_dir.rsplit('/', 1)[-1]
+    return model_name
+
+
+_model_name_mapping = {}
+
+
+def get_arch_mapping() -> Dict[str, Dict[str, List[str]]]:
+    global ARCH_MAPPING
+    if ARCH_MAPPING is None:
+        # arch(str) -> Dict[model_type(str), List[model_name(str)]]
+        ARCH_MAPPING = {}
+        for model_type, model_info in MODEL_MAPPING.items():
+            model_meta = model_info['model_meta']
+            archs = model_meta.architectures
+            model_names = model_meta.get_model_names()
+            for arch in archs:
+                if arch not in ARCH_MAPPING:
+                    ARCH_MAPPING[arch] = {}
+                ARCH_MAPPING[arch][model_type] = model_names
+    return ARCH_MAPPING
+
+
+def get_model_name_mapping():
+    global _model_name_mapping
+    if _model_name_mapping is not None:
+        return _model_name_mapping
+    for model_type, model_meta in MODEL_MAPPING.items():
+        model_meta.get_model_names()
+
+
+def get_matched_model_meta(model_id_or_path: str):
+    model_name = _get_model_name(model_id_or_path).lower()
+    model_type_dict_reversed = {}
+    for model_type, model_names in model_type_dict.items():
+        model_type_dict_reversed.update({model_name.lower(): model_type for model_name in model_names})
+    model_type = model_type_dict_reversed.get(model_name)
+
+    model_name_mapping = get_model_name_mapping()
+
+
 def get_model_tokenizer(
         model_id_or_path: str,
         torch_dtype: Optional[torch.dtype] = None,
@@ -342,12 +366,9 @@ def get_model_tokenizer(
         model_kwargs = {}
     if download_model is None:
         download_model = load_model
-    # download config.json
-    model_dir = safe_snapshot_download(model_id_or_path, revision=revision, download_model=False, use_hf=use_hf)
-    model_info = HfConfigFactory.get_model_info(model_dir)
-
-    if download_model:
-        safe_snapshot_download(model_id_or_path, revision=revision, download_model=download_model, use_hf=use_hf)
+    model_meta = get_matched_model_meta(model_id_or_path)
+    model_dir = safe_snapshot_download(
+        model_id_or_path, revision=revision, download_model=download_model, use_hf=use_hf)
 
     if not use_torchacc() and device_map is None:
         device_map = get_default_device_map()
@@ -396,22 +417,6 @@ def get_model_tokenizer(
         # fix llama2 warning
         fix_do_sample_warning(model.generation_config)
     return model, tokenizer
-
-
-def get_arch_mapping() -> Dict[str, Dict[str, List[str]]]:
-    global ARCH_MAPPING
-    if ARCH_MAPPING is None:
-        # arch(str) -> Dict[model_type(str), List[model_name(str)]]
-        ARCH_MAPPING = {}
-        for model_type, model_info in MODEL_MAPPING.items():
-            model_meta = model_info['model_meta']
-            archs = model_meta.architectures
-            model_names = model_meta.get_model_names()
-            for arch in archs:
-                if arch not in ARCH_MAPPING:
-                    ARCH_MAPPING[arch] = {}
-                ARCH_MAPPING[arch][model_type] = model_names
-    return ARCH_MAPPING
 
 
 def get_model_meta(model_type: str) -> ModelMeta:

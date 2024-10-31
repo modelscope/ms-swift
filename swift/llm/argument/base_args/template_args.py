@@ -41,6 +41,5 @@ class TemplateArguments:
     def __post_init__(self):
         if self.template is None:
             model_meta = get_model_meta(self.model_type)
-            model_groups = model_meta.get_matched_model_groups(self.model_info.model_dir)
             # TODO:
             self.template = model_meta.template
