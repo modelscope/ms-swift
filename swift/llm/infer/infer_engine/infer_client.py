@@ -24,6 +24,15 @@ class InferClient(InferEngine):
                  api_key: str = 'EMPTY',
                  *,
                  timeout: Optional[int] = None) -> None:
+        """
+        Initialize the InferClient.
+
+        Args:
+            host (str): The hostname of the inference server. Defaults to '127.0.0.1'.
+            port (str): The port of the inference server. Defaults to '8000'.
+            api_key (str): The API key for authentication. Defaults to 'EMPTY'.
+            timeout (Optional[int]): The timeout for requests in seconds. Defaults to None.
+        """
         self.api_key = api_key
         self.host = host
         self.port = port
@@ -34,6 +43,8 @@ class InferClient(InferEngine):
         assert len(self.models) > 0, f'self.models: {self.models}'
 
     def get_model_list(self, *, url: Optional[str] = None) -> ModelList:
+        """Get model list from the inference server.
+        """
         return asyncio.run(self.get_model_list_async(url=url))
 
     def _get_request_kwargs(self) -> Dict[str, Any]:
@@ -62,6 +73,21 @@ class InferClient(InferEngine):
         url: Optional[str] = None,
         use_tqdm: Optional[bool] = None
     ) -> Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
+        """
+        Perform inference using the specified model.
+
+        Args:
+            infer_requests (List[InferRequest]): A list of inference requests.
+            request_config (Optional[RequestConfig]): Configuration for the request. Defaults to None.
+            metrics (Optional[List[Metric]]): The usage information to return. Defaults to None.
+            model (Optional[str]): The model name to be used for inference. Defaults to None.
+            url (Optional[str]): The URL for the inference request. Defaults to None.
+            use_tqdm (Optional[bool]): Whether to use tqdm for progress tracking. Defaults to None.
+
+        Returns:
+            Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
+            The inference responses or an iterator of streaming responses.
+        """
         return super().infer(infer_requests, request_config, metrics, model=model, url=url, use_tqdm=use_tqdm)
 
     @staticmethod

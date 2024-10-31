@@ -13,18 +13,16 @@ class TemplateArguments:
     """
     TemplateArguments class is a dataclass that holds various arguments related to template configuration and usage.
 
-    Attributes:
+    Args:
         template (Optional[str]): Template identifier. Default is None, meaning use the template of the model_type.
         system (Optional[str]): Override the default system in the template. Default is None.
         max_length (Optional[int]): Maximum length for the template. Default is None.
         truncation_strategy (Literal): Strategy for truncating the template. Default is 'truncation_left'.
         tools_prompt (str): Override the default tools prompt in the template. Default is 'react_en'.
         max_pixels (Optional[int]): Maximum number of pixels for the template. Default is None.
-        loss_scale (str): Loss scale for training. Default is 'default', meaning only calculate the loss of the response.
+        loss_scale (str): Loss scale for training. Default is 'default',
+            meaning only calculate the loss of the response.
         sequence_parallel_size (int): Size of sequence parallelism. Default is 1.
-
-    Methods:
-        __post_init__: Initializes the class and sets up the template based on model metadata.
     """
     template: Optional[str] = field(
         default=None, metadata={'help': f'template choices: {list(TEMPLATE_MAPPING.keys())}'})

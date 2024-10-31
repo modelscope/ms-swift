@@ -13,17 +13,14 @@ class QuantizeArguments:
     """
     QuantizeArguments is a dataclass that holds the configuration for model quantization.
 
-    Attributes:
+    Args:
         quant_method (Literal['bnb', 'hqq', 'eetq', 'awq', 'gptq']): The quantization method to be used.
         quant_bits (Literal[0, 1, 2, 3, 4, 8]): The number of bits to use for quantization.
         hqq_axis (Optional[int]): The axis for hqq quantization.
-        bnb_4bit_compute_dtype (Literal['float16', 'bfloat16', 'float32', None]): The compute dtype for bnb 4-bit quantization.
+        bnb_4bit_compute_dtype (Literal['float16', 'bfloat16', 'float32', None]):
+            The compute dtype for bnb 4-bit quantization.
         bnb_4bit_quant_type (Literal['fp4', 'nf4']): The quantization type for bnb 4-bit quantization.
         bnb_4bit_use_double_quant (bool): Whether to use double quantization for bnb 4-bit quantization.
-
-    Methods:
-        _init_quantization_config(): Initializes the quantization configuration based on the quant_method and quant_bits.
-        __post_init__(): Post-initialization method to set default values and initialize the quantization configuration.
     """
     # awq, gptq, and aqlm need to be pre-quantized models,
     # while bnb, hqq, and eetq can be quantized during SFT using the original models.

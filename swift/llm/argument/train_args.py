@@ -169,19 +169,12 @@ class MegatronArguments:
     """
     MegatronArguments is a dataclass that holds arguments specific to the Megatron training backend.
 
-    Attributes:
+    Args:
         train_backend (Literal['hf', 'megatron']): Specifies the training backend to use. Default is 'hf'.
         tp (int): Tensor parallelism degree. Default is 1.
         pp (int): Pipeline parallelism degree. Default is 1.
         min_lr (Optional[float]): Minimum learning rate. Default is None.
         sequence_parallel (bool): Whether to use sequence parallelism. Default is False.
-
-    Methods:
-        __post_init__(self: 'SftArguments'):
-            Post-initialization method to set up Megatron-specific arguments.
-        
-        init_megatron(self: 'SftArguments'):
-            Initializes Megatron if using the Megatron training backend.
     """
 
     # megatron
@@ -232,7 +225,7 @@ class SftArguments(BaseArguments, Seq2SeqTrainingOverrideArguments, TunerArgumen
     """
     SftArguments class is a dataclass that holds various arguments related to training configuration and usage.
 
-    Attributes:
+    Args:
         freeze_vit (bool): Flag to indicate if ViT should be frozen. Default is True.
         freeze_aligner (bool): Flag to indicate if aligner should be frozen. Default is True.
         freeze_llm (bool): Flag to indicate if LLM should be frozen. Default is False.
@@ -241,16 +234,16 @@ class SftArguments(BaseArguments, Seq2SeqTrainingOverrideArguments, TunerArgumen
         additional_trainable_parameters (List[str]): List of additional trainable parameters. Default is an empty list.
         add_output_dir_suffix (bool): Flag to indicate if output directory suffix should be added. Default is True.
         resume_from_checkpoint (Optional[str]): Path to resume from checkpoint. Default is None.
-        resume_only_model (bool): Flag to indicate if only the model should be resumed when resume-training. Default is False.
-        check_model_is_latest (bool): Flag to check if the model is the latest. Default is True. Turn this to False if you network is unstable.
+        resume_only_model (bool): Flag to indicate if only the model should be resumed when resume-training.
+            Default is False.
+        check_model_is_latest (bool): Flag to check if the model is the latest. Default is True.
+            Turn this to False if you network is unstable.
         loss_type (Optional[str]): Type of loss function. Default is None.
         packing (bool): Flag to indicate if packing is used. Default is False.
         lazy_tokenize (Optional[bool]): Flag to indicate if lazy tokenization is used. Default is None.
         acc_strategy (Literal): Strategy for accuracy calculation. Default is 'token'.
-        test_oom_error (bool): Set this to True if you sequence is long. This will put the longest sequence to the first batch.
-
-    Methods:
-        __post_init__: Initializes the class and sets up various training configurations.
+        test_oom_error (bool): Set this to True if you sequence is long.
+            This will put the longest sequence to the first batch.
     """
     freeze_vit: bool = True
     freeze_aligner: bool = True
@@ -440,6 +433,25 @@ class PtArguments(SftArguments):
 
 @dataclass
 class RLHFArguments(SftArguments):
+    """
+    RLHFArguments is a dataclass that holds arguments specific to the Reinforcement
+        Learning with Human Feedback (RLHF) training backend.
+
+    Args:
+        rlhf_type (Literal): Specifies the type of RLHF to use. Default is 'dpo'.
+            Allowed values are 'dpo', 'orpo', 'simpo', 'kto', 'cpo'.
+        ref_model_type (Optional[str]): Type of reference model. Default is None.
+        ref_model_id_or_path (Optional[str]): Path or identifier for the reference model. Default is None.
+        ref_model_revision (Optional[str]): Revision of the reference model. Default is None.
+        beta (Optional[float]): Beta parameter for RLHF. Default is None.
+        label_smoothing (float): Label smoothing value. Default is 0.
+        loss_type (Optional[str]): Type of loss function. Default is None.
+        rpo_alpha (float): Alpha parameter for RPO. Default is 1.
+        cpo_alpha (float): Alpha parameter for CPO. Default is 1.
+        simpo_gamma (float): Gamma parameter for SimPO. Default is 1.
+        desirable_weight (float): Weight for desirable outcomes in KTO. Default is 1.0.
+        undesirable_weight (float): Weight for undesirable outcomes in KTO. Default is 1.0.
+    """
     rlhf_type: Literal['dpo', 'orpo', 'simpo', 'kto', 'cpo'] = 'dpo'
     ref_model_type: Optional[str] = field(
         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})

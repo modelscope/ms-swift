@@ -17,10 +17,11 @@ logger = get_logger()
 class ExportArguments(BaseArguments, MergeArguments):
     """
     ExportArguments is a dataclass that inherits from BaseArguments and MergeArguments.
-    
-    Attributes:
+
+    Args:
         output_dir (Optional[str]): Directory where the output will be saved.
-        to_peft_format (bool): Flag to indicate if the output should be in PEFT format. This argument is useless for now.
+        to_peft_format (bool): Flag to indicate if the output should be in PEFT format.
+            This argument is useless for now.
         quant_n_samples (int): Number of samples for quantization.
         quant_seqlen (int): Sequence length for quantization.
         quant_device_map (str): Device map for quantization, e.g., 'cpu', 'auto'.

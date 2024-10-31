@@ -16,9 +16,10 @@ class TunerArguments:
     """
     TunerArguments is a dataclass that holds configuration for various tuners.
 
-    Attributes:
+    Args:
         tuner_backend (Literal): Backend to use for tuning. Default is 'peft'. Allowed values are 'peft', 'unsloth'.
-        train_type (str): Type of training to be performed. Default is 'lora'. Choices are defined by `get_supported_tuners()`.
+        train_type (str): Type of training to be performed. Default is 'lora'.
+            Choices are defined by `get_supported_tuners()`.
 
         target_modules (List[str]): List of target modules for tuning. Default is ['ALL'].
         target_regex (Optional[str]): Regular expression to match target modules. Default is None.
@@ -27,12 +28,14 @@ class TunerArguments:
         lora_rank (int): Rank for LoRA. Default is 8.
         lora_alpha (int): Alpha value for LoRA. Default is 32.
         lora_dropout (float): Dropout rate for LoRA. Default is 0.05.
-        lora_bias_trainable (Literal): Specifies if LoRA bias is trainable. Default is 'none'. Allowed values are 'none', 'all'.
+        lora_bias_trainable (Literal): Specifies if LoRA bias is trainable. Default is 'none'.
+            Allowed values are 'none', 'all'.
         lora_dtype (Literal): Data type for LoRA. Default is 'AUTO'. Allowed values are 'fp16', 'bf16', 'fp32', 'AUTO'.
         lora_lr_ratio (float): Learning rate ratio for LoRA. Default is None.
         use_rslora (bool): Flag to indicate if RSLora is used. Default is False.
         use_dora (bool): Flag to indicate if Dora is used. Default is False.
-        init_lora_weights (str): Initialization method for LoRA weights. Default is 'true'. Allowed values are 'gaussian', 'pissa', 'pissa_niter_[number of iters]', 'olora', 'loftq', 'true', 'false'.
+        init_lora_weights (str): Initialization method for LoRA weights. Default is 'true'.
+            Allowed values are 'gaussian', 'pissa', 'pissa_niter_[number of iters]', 'olora', 'loftq', 'true', 'false'.
 
         fourier_n_frequency (int): Number of frequencies for FourierFT. Default is 2000.
         fourier_scaling (float): Scaling factor for FourierFT. Default is 300.0.
@@ -56,7 +59,8 @@ class TunerArguments:
         galore_update_proj_gap (int): Update projection gap for Galore. Default is 50.
         galore_scale (float): Scaling factor for Galore. Default is 1.0.
         galore_proj_type (str): Projection type for Galore. Default is 'std'.
-        galore_optim_per_parameter (bool): Flag to indicate if optimization is per parameter for Galore. Default is False.
+        galore_optim_per_parameter (bool): Flag to indicate if optimization is per parameter for Galore.
+            Default is False.
         galore_with_embedding (bool): Flag to indicate if embedding is used with Galore. Default is False.
         galore_quantization (bool): Flag to indicate if use Q-Galore. Default is False.
         galore_proj_quant (bool): Flag to indicate if projection quantization is used for Galore. Default is False.
@@ -84,8 +88,7 @@ class TunerArguments:
         reft_layer_key (Optional[str]): Key identifier for ReFT layer. Default is None.
         reft_layers (Optional[List[int]]): List of layers involved in ReFT. Default is None.
         reft_rank (int): Rank parameter for ReFT. Default is 4.
-        reft_intervention_type (Literal): Type of intervention for ReFT. Default is 'LoreftIntervention'. Choices are defined by `get_supported_tuners()`.
-                                        'LobireftIntervention', 'DireftIntervention',
+        reft_intervention_type (Literal): Type of intervention for ReFT. Default is 'LoreftIntervention'.
         reft_args (Optional[str]): Additional arguments for ReFT. Default is None.
 
         use_liger (bool): Flag to indicate if Liger-kernel is used. Default is False.

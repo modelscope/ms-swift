@@ -12,7 +12,7 @@ class MergeArguments:
     """
     MergeArguments is a dataclass that holds configuration for merging models.
 
-    Attributes:
+    Args:
         merge_lora (bool): Flag to indicate if LoRA merging is enabled. Default is False.
         merge_device_map (str): Device map configuration for merging. Default is 'auto'.
         use_merge_kit (bool): Flag to indicate merge with `mergekit`. Default is False.

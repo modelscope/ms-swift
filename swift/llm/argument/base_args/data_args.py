@@ -16,7 +16,7 @@ class DataArguments:
     """
     DataArguments class is a dataclass that holds various arguments related to dataset handling and processing.
 
-    Attributes:
+    Args:
         dataset (List[str]): List of dataset identifiers or paths.
         val_dataset (List[str]): List of validation dataset identifiers or paths.
         split_dataset_ratio (float): Ratio to split the dataset for validation if val_dataset is empty. Default is 0.01.
@@ -25,17 +25,13 @@ class DataArguments:
         load_from_cache_file (bool): Flag to load dataset from cache file. Default is False.
         download_mode (Literal): Mode for downloading datasets. Default is 'reuse_dataset_if_exists'.
         model_name (List[str]): List containing Chinese and English names of the model. Default is [None, None].
-        model_author (List[str]): List containing Chinese and English names of the model author. Default is [None, None].
+        model_author (List[str]): List containing Chinese and English names of the model author.
+            Default is [None, None].
         streaming (bool): Flag to enable streaming of datasets. Default is False.
         streaming_val_size (int): Size of the validation set when streaming. Default is 0.
         streaming_buffer_size (int): Buffer size for streaming. Default is 16384.
         custom_register_path (Optional[str]): Path to custom .py file for dataset registration. Default is None.
         custom_dataset_info (Optional[str]): Path to custom dataset_info.json file. Default is None.
-
-    Methods:
-        _init_custom_register: Registers a custom .py file to datasets.
-        _init_custom_dataset_info: Registers a custom dataset_info.json file to datasets.
-        __post_init__: Initializes the class and sets up custom dataset registration and information.
     """
     # dataset_id or dataset_name or dataset_path or ...
     dataset: List[str] = field(

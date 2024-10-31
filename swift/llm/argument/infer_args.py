@@ -21,13 +21,13 @@ class LmdeployArguments:
     """
     LmdeployArguments is a dataclass that holds the configuration for lmdeploy.
 
-    Attributes:
+    Args:
         tp (int): Tensor parallelism degree. Default is 1.
         cache_max_entry_count (float): Maximum entry count for cache. Default is 0.8.
         quant_policy (int): Quantization policy, e.g., 4, 8. Default is 0.
         vision_batch_size (int): Maximum batch size in VisionConfig. Default is 1.
     """
-    
+
     # lmdeploy
     tp: int = 1
     cache_max_entry_count: float = 0.8
@@ -40,7 +40,7 @@ class VllmArguments:
     """
     VllmArguments is a dataclass that holds the configuration for vllm.
 
-    Attributes:
+    Args:
         gpu_memory_utilization (float): GPU memory utilization. Default is 0.9.
         tensor_parallel_size (int): Tensor parallelism size. Default is 1.
         max_num_seqs (int): Maximum number of sequences. Default is 256.
@@ -75,19 +75,15 @@ class InferArguments(BaseArguments, MergeArguments, VllmArguments, LmdeployArgum
     InferArguments is a dataclass that extends BaseArguments, MergeArguments, VllmArguments, and LmdeployArguments.
     It is used to define the arguments required for model inference.
 
-    Attributes:
-        infer_backend (Literal): Backend to use for inference. Default is 'pt'. Allowed values are 'vllm', 'pt', 'lmdeploy'.
+    Args:
+        infer_backend (Literal): Backend to use for inference. Default is 'pt'.
+            Allowed values are 'vllm', 'pt', 'lmdeploy'.
         ckpt_dir (Optional[str]): Directory to the checkpoint. Default is None.
         max_batch_size (int): Maximum batch size for the pt engine. Default is 16.
         val_dataset_sample (Optional[int]): Sample size for validation dataset. Default is None.
         result_dir (Optional[str]): Directory to store inference results. Default is None.
         save_result (bool): Flag to indicate if results should be saved. Default is True.
         stream (Optional[bool]): Flag to indicate if streaming should be enabled. Default is None.
-
-    Methods:
-        _init_result_dir: Initializes the result directory.
-        _init_stream: Initializes the stream settings.
-        __post_init__: Post-initialization method to set default values and initialize configurations.
     """
     infer_backend: Literal['vllm', 'pt', 'lmdeploy'] = 'pt'
     ckpt_dir: Optional[str] = field(default=None, metadata={'help': '/path/to/your/vx-xxx/checkpoint-xxx'})
