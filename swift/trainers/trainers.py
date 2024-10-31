@@ -141,7 +141,7 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
 
         return loss, generated_tokens, labels
 
-    def compute_loss(self, model, inputs, return_outputs=None, **kwargs):
+    def compute_loss(self, model, inputs, return_outputs=None, num_items_in_batch=None):
         if not hasattr(self, '_custom_metrics'):
             self._custom_metrics = {}
 
@@ -159,6 +159,9 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
 
         loss_kwargs['labels'] = labels
         outputs = model(**inputs)
+        # fix https://github.com/huggingface/transformers/issues/34263
+        if outputs.loss is not None and num_items_in_batch is not None:
+            outputs.loss = outputs.loss * (inputs['labels'][:, 1:] != -100).sum() / num_items_in_batch
         if loss_name is not None:
             loss_func = get_loss_func(loss_name)
             outputs['loss'] = loss_func(outputs, **loss_kwargs)
