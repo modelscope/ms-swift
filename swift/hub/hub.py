@@ -278,7 +278,6 @@ class MSHub(HubOperation):
     def download_model(cls,
                        model_id_or_path: Optional[str] = None,
                        revision: Optional[str] = None,
-                       download_model: bool = True,
                        ignore_file_pattern: Optional[List[str]] = None,
                        token: Optional[str] = None,
                        **kwargs):
@@ -286,8 +285,6 @@ class MSHub(HubOperation):
         if revision is None or revision == 'main':
             revision = 'master'
         logger.info(f'Downloading the model from ModelScope Hub, model_id: {model_id_or_path}')
-        if not download_model:
-            kwargs['allow_patterns'] = ['*.json']
         from modelscope import snapshot_download
         return snapshot_download(model_id_or_path, revision, ignore_file_pattern=ignore_file_pattern, **kwargs)
 
@@ -410,7 +407,6 @@ class HFHub(HubOperation):
     def download_model(cls,
                        model_id_or_path: Optional[str] = None,
                        revision: Optional[str] = None,
-                       download_model: bool = True,
                        ignore_file_pattern: Optional[List[str]] = None,
                        **kwargs):
         if revision is None or revision == 'master':
@@ -421,8 +417,6 @@ class HFHub(HubOperation):
             from huggingface_hub import _snapshot_download
             _snapshot_download.HF_HUB_ENABLE_HF_TRANSFER = True
         from huggingface_hub import snapshot_download
-        if not download_model:
-            kwargs['allow_patterns'] = ['*.json']
         return snapshot_download(
             model_id_or_path, repo_type='model', revision=revision, ignore_patterns=ignore_file_pattern, **kwargs)
 

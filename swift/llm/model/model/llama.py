@@ -272,7 +272,6 @@ register_model(
         ],
         TemplateType.llama3_2_vision,
         get_model_tokenizer_llama3_2_vision,
-        ignore_file_pattern=['*.pth'],
         requires=['transformers>=4.45'],
         is_multimodal=True,
         support_flash_attn=True,

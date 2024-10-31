@@ -3,7 +3,8 @@ import inspect
 import itertools
 import os
 import re
-from dataclasses import dataclass, field
+from copy import deepcopy
+from dataclasses import asdict, dataclass, field
 from functools import partial, update_wrapper
 from types import MethodType
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
@@ -76,17 +77,14 @@ class ModelMeta:
     support_lmdeploy: bool = False
     support_megatron: bool = False
 
-    def get_model_names(self) -> List[str]:
-        res = set()
+    def get_matched_model_group(self, model_name: str) -> Optional[ModelGroup]:
         for model_group in self.model_groups:
             for model in model_group.models:
                 for key in ['ms_model_id', 'hf_model_id', 'model_path']:
                     value = getattr(model, key)
 
-                    if isinstance(value, str):
-                        model_name = value.rsplit('/', 1)[-1]
-                        res.add(model_name.lower())
-        return list(res)
+                    if isinstance(value, str) and model_name == value.rsplit('/', 1)[-1].lower():
+                        return model_group
 
     def check_requires(self):
         # TODO: error to warning
@@ -298,25 +296,16 @@ def _get_model_name(model_id_or_path: str) -> str:
     return model_name.lower()
 
 
-_model_name_mapping = {}
-
-
-def get_model_name_mapping():
-    # model_name -> model_type
-    global _model_name_mapping
-    if _model_name_mapping is not None:
-        return _model_name_mapping
-    for model_type, model_meta in MODEL_MAPPING.items():
-        model_names = model_meta.get_model_names()
-        for model_name in model_names:
-            _model_name_mapping[model_name] = model_type
-    return _model_name_mapping
-
-
 def get_matched_model_meta(model_id_or_path: str) -> Optional[str]:
     model_name = _get_model_name(model_id_or_path).lower()
-    model_name_mapping = get_model_name_mapping()
-    return model_name_mapping.get(model_name)
+    for model_type, model_meta in MODEL_MAPPING.items():
+        model_group = model_meta.get_matched_model_group(model_name)
+        if model_group is not None:
+            model_meta = deepcopy(model_meta)
+            for k, v in asdict(model_group).items():
+                if v is not None and k in model_meta.__dict__:
+                    setattr(model_meta, k, v)
+            return model_meta
 
 
 def get_model_tokenizer(
@@ -351,15 +340,23 @@ def get_model_tokenizer(
         model_kwargs = {}
     if download_model is None:
         download_model = load_model
+    ignore_file_pattern = ['*.zip', '*.gguf', '*.pth', '*.pt', 'consolidated*']
     model_meta = get_matched_model_meta(model_id_or_path)
+    if getattr(model_meta, 'ignore_file_pattern', None) is not None:
+        ignore_file_pattern += model_meta.ignore_file_pattern
+
     model_dir = safe_snapshot_download(
-        model_id_or_path, revision=revision, download_model=download_model, use_hf=use_hf)
+        model_id_or_path,
+        revision=revision,
+        download_model=download_model,
+        use_hf=use_hf,
+        ignore_file_pattern=ignore_file_pattern)
 
     if not use_torchacc() and device_map is None:
         device_map = get_default_device_map()
     model_kwargs['device_map'] = device_map
 
-    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+    model_info = HfConfigFactory.get_model_info(model_dir, getattr(model_meta, 'model_type', None))
     if model_type is None:
         model_type = model_info.model_type
         logger.info(f'Setting model_type: {model_type}')
@@ -367,6 +364,7 @@ def get_model_tokenizer(
         torch_dtype = get_default_torch_dtype(model_info.torch_dtype)
         logger.info(f'Setting torch_dtype: {torch_dtype}')
     _check_torch_dtype(torch_dtype)
+    model_config = model_info.config
     model_config.torch_dtype = torch_dtype
     HfConfigFactory.compat_zero3(model_config)
     rope_scaling = kwargs.get('rope_scaling')
