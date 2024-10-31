@@ -142,6 +142,7 @@ class TemplateType:
     dbrx = 'dbrx'
     mengzi = 'mengzi'
     c4ai = 'c4ai'
+    aya = 'aya'
     chatml = 'chatml'
     got_ocr2 = 'got_ocr2'
     ovis1_6 = 'ovis1_6'
@@ -3819,6 +3820,17 @@ register_template(
         ['<BOS_TOKEN>'],
         ['<|START_OF_TURN_TOKEN|><|USER_TOKEN|>{{QUERY}}<|END_OF_TURN_TOKEN|><|START_OF_TURN_TOKEN|><|CHATBOT_TOKEN|>'],
         ['<|END_OF_TURN_TOKEN|>'], ['<|END_OF_TURN_TOKEN|>'], C4AI_SYSTEM,
+        ['<|START_OF_TURN_TOKEN|><|SYSTEM_TOKEN|>{{SYSTEM}}<|END_OF_TURN_TOKEN|']))
+
+AYA_SYSTEM = ('You are Aya, a brilliant, sophisticated, multilingual AI-assistant trained to assist human users by '
+              'providing thorough responses. You are able to interact and respond to questions in 23 languages and '
+              'you are powered by a multilingual model built by Cohere For AI.')
+register_template(
+    TemplateType.aya,
+    Template(
+        ['<BOS_TOKEN>'],
+        ['<|START_OF_TURN_TOKEN|><|USER_TOKEN|>{{QUERY}}<|END_OF_TURN_TOKEN|><|START_OF_TURN_TOKEN|><|CHATBOT_TOKEN|>'],
+        ['<|END_OF_TURN_TOKEN|>'], ['<|END_OF_TURN_TOKEN|>'], AYA_SYSTEM,
         ['<|START_OF_TURN_TOKEN|><|SYSTEM_TOKEN|>{{SYSTEM}}<|END_OF_TURN_TOKEN|']))
 
 

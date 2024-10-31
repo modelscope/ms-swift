@@ -30,7 +30,6 @@ from transformers.trainer import PREFIX_CHECKPOINT_DIR, TRAINER_STATE_NAME, Trai
 from transformers.trainer_utils import EvalPrediction
 from transformers.training_args import TrainingArguments
 from transformers.utils import is_sagemaker_mp_enabled, is_torch_npu_available
-from trl import AutoModelForCausalLMWithValueHead
 
 from swift.hub.check_model import check_local_model_is_latest
 from swift.torchacc_utils import (save_ta_ddp_checkpoint, save_ta_fsdp_checkpoint, ta_eval_dataloader,
@@ -42,6 +41,11 @@ from swift.utils.constants import Invoke
 from .callback import DefaultFlowCallbackNew, PrinterCallbackNew, ProgressCallbackNew
 from .optimizers.galore import create_optimizer_and_scheduler
 from .utils import can_return_loss, find_labels, get_function, is_instance_of_ms_model
+
+try:
+    from trl import AutoModelForCausalLMWithValueHead
+except (ImportError, RuntimeError):
+    AutoModelForCausalLMWithValueHead = None
 
 logger = get_logger()
 
@@ -296,7 +300,10 @@ class SwiftMixin:
         if generation_config is not None:
             generation_config.save_pretrained(output_dir)
         # model
-        supported_classes = (SwiftModel, PreTrainedModel, PeftModel, AutoModelForCausalLMWithValueHead)
+
+        supported_classes = (SwiftModel, PreTrainedModel, PeftModel)
+        if AutoModelForCausalLMWithValueHead is not None:
+            supported_classes = supported_classes + (AutoModelForCausalLMWithValueHead, )
         save_safetensors = self.args.save_safetensors
 
         if not isinstance(self.model, supported_classes):
@@ -315,7 +322,8 @@ class SwiftMixin:
         elif is_instance_of_ms_model(self.model):
             PreTrainedModel.save_pretrained(
                 self.model, output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
-        elif isinstance(self.model, AutoModelForCausalLMWithValueHead):
+        elif AutoModelForCausalLMWithValueHead is not None and isinstance(self.model,
+                                                                          AutoModelForCausalLMWithValueHead):
             # save reward model
             state_dict = self.model.state_dict()
             decoder_state_dict, v_head_state_dict = {}, {}
