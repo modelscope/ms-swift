@@ -360,6 +360,8 @@ def get_model_tokenizer(
     if model_type is None:
         model_type = model_info.model_type
         logger.info(f'Setting model_type: {model_type}')
+    if model_meta is None:
+        model_meta = MODEL_MAPPING[model_type]
     if torch_dtype is None:
         torch_dtype = get_default_torch_dtype(model_info.torch_dtype)
         logger.info(f'Setting torch_dtype: {torch_dtype}')
@@ -374,9 +376,8 @@ def get_model_tokenizer(
     if model_info.quant_method is not None:
         kwargs['quant_method'] = model_info.quant_method
         kwargs['quant_bits'] = model_info.quant_bits
-    kwargs.update({'is_training': is_training, 'model_type': model_type, 'attn_impl': attn_impl})
+    kwargs.update({'is_training': is_training, 'attn_impl': attn_impl})
 
-    model_meta = get_model_meta(model_type)
     model_meta.check_requires()
     model_meta.check_flash_attn(attn_impl)
 
@@ -400,7 +401,3 @@ def get_model_tokenizer(
         # fix llama2 warning
         fix_do_sample_warning(model.generation_config)
     return model, tokenizer
-
-
-def get_model_meta(model_type: str) -> ModelMeta:
-    return MODEL_MAPPING[model_type]['model_meta']

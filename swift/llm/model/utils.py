@@ -11,7 +11,7 @@ import transformers
 from datasets.utils.filelock import FileLock
 from modelscope.hub.utils.utils import get_cache_dir
 from packaging import version
-from transformers import PretrainedConfig
+from transformers import PretrainedConfig, AutoConfig
 
 from swift.hub import HFHub, MSHub, default_hub
 from swift.utils import deep_getattr, get_logger, is_dist, is_dist_ta, safe_ddp_context

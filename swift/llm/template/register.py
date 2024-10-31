@@ -138,7 +138,7 @@ def register_template(template_meta: TemplateMeta, *, exist_ok: bool = False) ->
     template_type = template_meta.template_type
     if not exist_ok and template_type in TEMPLATE_MAPPING:
         raise ValueError(f'The `{template_type}` has already been registered in the TEMPLATE_MAPPING.')
-    TEMPLATE_MAPPING['template_meta'] = template_meta
+    TEMPLATE_MAPPING[template_type] = template_meta
 
 
 def get_template(
@@ -154,7 +154,7 @@ def get_template(
         # train
         loss_scale: str = 'default',
         sequence_parallel_size: int = 1) -> 'Template':
-    template_meta = TEMPLATE_MAPPING[template_type]['template_meta']
+    template_meta = TEMPLATE_MAPPING[template_type]
     template_cls = template_meta.template_cls
     return template_cls(
         tokenizer,
@@ -170,4 +170,4 @@ def get_template(
 
 
 def get_template_meta(template_type: str) -> TemplateMeta:
-    return TEMPLATE_MAPPING[template_type]['template_meta']
+    return TEMPLATE_MAPPING[template_type]

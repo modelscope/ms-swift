@@ -12,7 +12,7 @@ from lmdeploy.api import autoget_backend_config
 from lmdeploy.serve import async_engine
 from transformers import GenerationConfig, PreTrainedTokenizerBase
 
-from swift.llm import Template, TemplateMeta, get_model_meta
+from swift.llm import Template, TemplateMeta
 from swift.utils import get_logger, get_seed
 from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                         ChatCompletionStreamResponse, ChatMessage, DeltaMessage, RequestConfig, UsageInfo, random_uuid)
@@ -73,7 +73,7 @@ class LmdeployEngine(InferEngine):
         logger.info(f'backend_config: {backend_config}')
 
         pipeline_kwargs = {}
-        is_multimodal = get_model_meta(self.model_info.model_type)
+        is_multimodal = self.model_meta.is_multimodal
         if is_multimodal:
             vision_config = VisionConfig(max_batch_size=vision_batch_size)
             pipeline_kwargs['vision_config'] = vision_config

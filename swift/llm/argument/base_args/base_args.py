@@ -71,7 +71,7 @@ class BaseArguments(ModelArguments, TemplateArguments, QuantizeArguments, Genera
             ckpt_dir = self.ckpt_dir
         if ckpt_dir is None:
             return
-        # Determine the imported JSON file.
+
         args_path = os.path.join(ckpt_dir, 'args.json')
         if not os.path.exists(args_path):
             logger.warning(f'{args_path} not found')

@@ -86,14 +86,15 @@ def get_dataset_name_mapping() -> Dict[str, str]:
     global _dataset_name_mapping
     if _dataset_name_mapping is not None:
         return _dataset_name_mapping
-    for dataset_name, v in DATASET_MAPPING.items():
-        dataset_meta: DatasetMeta = v['dataset_meta']
+    _dataset_name_mapping = {}
+    for dataset_name, dataset_meta in DATASET_MAPPING.items():
         if dataset_meta.dataset_path is not None:
             _dataset_name_mapping[('path', dataset_meta.dataset_path)] = dataset_name
         if dataset_meta.ms_dataset_id is not None:
-            _dataset_name_mapping[('ms', dataset_meta.dataset_path)] = dataset_name
+            _dataset_name_mapping[('ms', dataset_meta.ms_dataset_id)] = dataset_name
         if dataset_meta.hf_dataset_id is not None:
-            _dataset_name_mapping[('hf', dataset_meta.dataset_path)] = dataset_name
+            _dataset_name_mapping[('hf', dataset_meta.hf_dataset_id)] = dataset_name
+    return _dataset_name_mapping
 
 
 class DatasetLoader:
@@ -429,7 +430,7 @@ def load_dataset(
         dataset_syntax = DatasetSyntax.parse(dataset)
         assert dataset_syntax.dataset_type == 'name'
         dataset_name = dataset_syntax.dataset
-        dataset_meta = DATASET_MAPPING[dataset_name]['dataset_meta']
+        dataset_meta = DATASET_MAPPING[dataset_name]
         load_function = dataset_meta.load_function
         train_dataset = load_function(dataset_syntax, dataset_meta, **load_kwargs)
         train_dataset, val_dataset = DatasetLoader.post_process(
