@@ -18,6 +18,23 @@ logger = get_logger()
 
 @dataclass
 class BaseArguments(ModelArguments, TemplateArguments, QuantizeArguments, GenerationArguments, DataArguments):
+    """
+    BaseArguments class is a dataclass that inherits from multiple argument classes:
+    ModelArguments, TemplateArguments, QuantizeArguments, GenerationArguments, and DataArguments.
+    
+    Attributes:
+        seed (int): Random seed for reproducibility. Default is 42.
+        load_args (bool): Flag to determine if arguments should be loaded from sft_args.json. Default is True.
+        load_dataset_config (bool): Flag to determine if dataset configuration should be loaded. Default is False.
+        save_safetensors (bool): Flag to determine if save to safetensors. Default is True.
+        hub_token (Optional[str]): SDK token for authentication. Default is None.
+        gpu_memory_fraction (Optional[float]): Fraction of GPU memory to be used. Default is None.
+        ignore_args_error (bool): Flag to ignore argument errors for notebook compatibility. Default is False.
+    
+    Methods:
+        __post_init__: Initializes the class and loads/saves arguments.
+        _load_args: Loads specific attributes from sft_args.json.
+    """
     seed: int = 42
     load_args: bool = True
     load_dataset_config: bool = False

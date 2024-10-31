@@ -166,6 +166,23 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
 
 @dataclass
 class MegatronArguments:
+    """
+    MegatronArguments is a dataclass that holds arguments specific to the Megatron training backend.
+
+    Attributes:
+        train_backend (Literal['hf', 'megatron']): Specifies the training backend to use. Default is 'hf'.
+        tp (int): Tensor parallelism degree. Default is 1.
+        pp (int): Pipeline parallelism degree. Default is 1.
+        min_lr (Optional[float]): Minimum learning rate. Default is None.
+        sequence_parallel (bool): Whether to use sequence parallelism. Default is False.
+
+    Methods:
+        __post_init__(self: 'SftArguments'):
+            Post-initialization method to set up Megatron-specific arguments.
+        
+        init_megatron(self: 'SftArguments'):
+            Initializes Megatron if using the Megatron training backend.
+    """
 
     # megatron
     train_backend: Literal['hf', 'megatron'] = 'hf'
@@ -212,6 +229,29 @@ class TorchAccArguments:
 @dataclass
 class SftArguments(BaseArguments, Seq2SeqTrainingOverrideArguments, TunerArguments, MegatronArguments,
                    TorchAccArguments):
+    """
+    SftArguments class is a dataclass that holds various arguments related to training configuration and usage.
+
+    Attributes:
+        freeze_vit (bool): Flag to indicate if ViT should be frozen. Default is True.
+        freeze_aligner (bool): Flag to indicate if aligner should be frozen. Default is True.
+        freeze_llm (bool): Flag to indicate if LLM should be frozen. Default is False.
+        freeze_parameters (List[str]): List of parameters to freeze. Default is an empty list.
+        freeze_parameters_ratio (float): Ratio of parameters to freeze. Default is 0.
+        additional_trainable_parameters (List[str]): List of additional trainable parameters. Default is an empty list.
+        add_output_dir_suffix (bool): Flag to indicate if output directory suffix should be added. Default is True.
+        resume_from_checkpoint (Optional[str]): Path to resume from checkpoint. Default is None.
+        resume_only_model (bool): Flag to indicate if only the model should be resumed when resume-training. Default is False.
+        check_model_is_latest (bool): Flag to check if the model is the latest. Default is True. Turn this to False if you network is unstable.
+        loss_type (Optional[str]): Type of loss function. Default is None.
+        packing (bool): Flag to indicate if packing is used. Default is False.
+        lazy_tokenize (Optional[bool]): Flag to indicate if lazy tokenization is used. Default is None.
+        acc_strategy (Literal): Strategy for accuracy calculation. Default is 'token'.
+        test_oom_error (bool): Set this to True if you sequence is long. This will put the longest sequence to the first batch.
+
+    Methods:
+        __post_init__: Initializes the class and sets up various training configurations.
+    """
     freeze_vit: bool = True
     freeze_aligner: bool = True
     freeze_llm: bool = False

@@ -15,6 +15,27 @@ logger = get_logger()
 
 @dataclass
 class ExportArguments(BaseArguments, MergeArguments):
+    """
+    ExportArguments is a dataclass that inherits from BaseArguments and MergeArguments.
+    
+    Attributes:
+        output_dir (Optional[str]): Directory where the output will be saved.
+        to_peft_format (bool): Flag to indicate if the output should be in PEFT format. This argument is useless for now.
+        quant_n_samples (int): Number of samples for quantization.
+        quant_seqlen (int): Sequence length for quantization.
+        quant_device_map (str): Device map for quantization, e.g., 'cpu', 'auto'.
+        quant_batch_size (int): Batch size for quantization.
+        to_ollama (bool): Flag to indicate export model to ollama format.
+        gguf_file (Optional[str]): Path to the GGUF file when exporting to ollama format.
+        push_to_hub (bool): Flag to indicate if the output should be pushed to the model hub.
+        hub_model_id (Optional[str]): Model ID for the hub.
+        hub_private_repo (bool): Flag to indicate if the hub repository is private.
+        commit_message (str): Commit message for pushing to the hub.
+        to_megatron (bool): Flag to indicate export model to megatron format.
+        to_hf (bool): Flag to indicate export model to hugging face format.
+        tp (int): Tensor parallelism degree.
+        pp (int): Pipeline parallelism degree.
+    """
     output_dir: Optional[str] = None
 
     to_peft_format: bool = False

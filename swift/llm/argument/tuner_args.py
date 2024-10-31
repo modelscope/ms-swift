@@ -13,7 +13,83 @@ def adapters_can_be_merged():
 
 @dataclass
 class TunerArguments:
-    """This dataclass manages the training types"""
+    """
+    TunerArguments is a dataclass that holds configuration for various tuners.
+
+    Attributes:
+        tuner_backend (Literal): Backend to use for tuning. Default is 'peft'. Allowed values are 'peft', 'unsloth'.
+        train_type (str): Type of training to be performed. Default is 'lora'. Choices are defined by `get_supported_tuners()`.
+
+        target_modules (List[str]): List of target modules for tuning. Default is ['ALL'].
+        target_regex (Optional[str]): Regular expression to match target modules. Default is None.
+        modules_to_save (List[str]): List of modules to save. Default is an empty list.
+
+        lora_rank (int): Rank for LoRA. Default is 8.
+        lora_alpha (int): Alpha value for LoRA. Default is 32.
+        lora_dropout (float): Dropout rate for LoRA. Default is 0.05.
+        lora_bias_trainable (Literal): Specifies if LoRA bias is trainable. Default is 'none'. Allowed values are 'none', 'all'.
+        lora_dtype (Literal): Data type for LoRA. Default is 'AUTO'. Allowed values are 'fp16', 'bf16', 'fp32', 'AUTO'.
+        lora_lr_ratio (float): Learning rate ratio for LoRA. Default is None.
+        use_rslora (bool): Flag to indicate if RSLora is used. Default is False.
+        use_dora (bool): Flag to indicate if Dora is used. Default is False.
+        init_lora_weights (str): Initialization method for LoRA weights. Default is 'true'. Allowed values are 'gaussian', 'pissa', 'pissa_niter_[number of iters]', 'olora', 'loftq', 'true', 'false'.
+
+        fourier_n_frequency (int): Number of frequencies for FourierFT. Default is 2000.
+        fourier_scaling (float): Scaling factor for FourierFT. Default is 300.0.
+
+        boft_block_size (int): Block size for BOFT. Default is 4.
+        boft_block_num (int): Number of blocks for BOFT. Default is 0.
+        boft_n_butterfly_factor (int): Butterfly factor for BOFT. Default is 1.
+        boft_dropout (float): Dropout rate for BOFT. Default is 0.0.
+
+        vera_rank (int): Rank for Vera. Default is 256.
+        vera_projection_prng_key (int): PRNG key for Vera projection. Default is 0.
+        vera_dropout (float): Dropout rate for Vera. Default is 0.0.
+        vera_d_initial (float): Initial value for Vera D. Default is 0.1.
+
+        adapter_act (str): Activation function for adapter. Default is 'gelu'.
+        adapter_length (int): Length of the adapter. Default is 128.
+
+        use_galore (bool): Flag to indicate if Galore is used. Default is False.
+        galore_target_modules (Optional[List[str]]): List of target modules for Galore. Default is None.
+        galore_rank (int): Rank for Galore. Default is 128.
+        galore_update_proj_gap (int): Update projection gap for Galore. Default is 50.
+        galore_scale (float): Scaling factor for Galore. Default is 1.0.
+        galore_proj_type (str): Projection type for Galore. Default is 'std'.
+        galore_optim_per_parameter (bool): Flag to indicate if optimization is per parameter for Galore. Default is False.
+        galore_with_embedding (bool): Flag to indicate if embedding is used with Galore. Default is False.
+        galore_quantization (bool): Flag to indicate if use Q-Galore. Default is False.
+        galore_proj_quant (bool): Flag to indicate if projection quantization is used for Galore. Default is False.
+        galore_proj_bits (int): Number of bits for projection quantization. Default is 4.
+        galore_proj_group_size (int): Group size for projection quantization. Default is 256.
+        galore_cos_threshold (float): Cosine threshold for projection quantization. Default is 0.4.
+        galore_gamma_proj (int): Gamma for projection quantization. Default is 2.
+        galore_queue_size (int): Queue size for projection quantization. Default is 5.
+
+        adalora_target_r (int): Target rank for AdaLoRA. Default is 8.
+        adalora_init_r (int): Initial rank for AdaLoRA. Default is 12.
+        adalora_tinit (int): Initial T value for AdaLoRA. Default is 100.
+        adalora_tfinal (int): Final T value for AdaLoRA. Default is 1000.
+        adalora_delta_t (int): Delta T value for AdaLoRA. Default is 10.
+        adalora_beta1 (float): Beta1 value for AdaLoRA. Default is 0.85.
+        adalora_beta2 (float): Beta2 value for AdaLoRA. Default is 0.85.
+        adalora_orth_reg_weight (float): Orthogonal regularization weight for AdaLoRA. Default is 0.5.
+
+        llamapro_num_new_blocks (int): Number of new blocks for LLaMAPro. Default is 4.
+        llamapro_num_groups (Optional[int]): Number of groups for LLaMAPro. Default is None.
+
+        lisa_activated_layers (int): Number of activated layers for LISA. Default is 0.
+        lisa_step_interval (int): Step interval for LISA activation. Default is 20.
+
+        reft_layer_key (Optional[str]): Key identifier for ReFT layer. Default is None.
+        reft_layers (Optional[List[int]]): List of layers involved in ReFT. Default is None.
+        reft_rank (int): Rank parameter for ReFT. Default is 4.
+        reft_intervention_type (Literal): Type of intervention for ReFT. Default is 'LoreftIntervention'. Choices are defined by `get_supported_tuners()`.
+                                        'LobireftIntervention', 'DireftIntervention',
+        reft_args (Optional[str]): Additional arguments for ReFT. Default is None.
+
+        use_liger (bool): Flag to indicate if Liger-kernel is used. Default is False.
+    """
     tuner_backend: Literal['swift', 'peft', 'unsloth'] = 'peft'
     train_type: str = field(default='lora', metadata={'help': f'train_type choices: {list(get_supported_tuners())}'})
 
@@ -81,9 +157,6 @@ class TunerArguments:
     adalora_beta1: float = 0.85
     adalora_beta2: float = 0.85
     adalora_orth_reg_weight: float = 0.5
-
-    # ia3
-    ia3_feedforward_modules: List[str] = field(default_factory=list)
 
     # llamapro
     llamapro_num_new_blocks: int = 4

@@ -9,6 +9,31 @@ from .infer_args import InferArguments
 
 @dataclass
 class EvalArguments(InferArguments):
+    """
+    EvalArguments is a dataclass that extends InferArguments and is used to define
+    the arguments required for evaluating a model.
+
+    Attributes:
+        eval_dataset (List[str]): List of evaluation datasets. Default is an empty list.
+        eval_few_shot (Optional[int]): Number of few-shot examples for evaluation. Default is None.
+        eval_limit (Optional[str]): Limit number of each evaluation dataset. Default is None.
+        name (str): Name of the evaluation. Default is an empty string.
+        eval_url (Optional[str]): URL for evaluation, only useful when evaluating an OpenAI URL. Default is None.
+        eval_token (str): Token for evaluation an url. Default is 'EMPTY'.
+        eval_is_chat_model (Optional[bool]): Flag to indicate if the model is a chat model or a generate model. Default is None.
+        custom_eval_config (Optional[str]): Path to custom evaluation configuration. This is used when evaluating a custom dataset. Default is None.
+        eval_use_cache (bool): Flag to indicate if cache should be used. Default is False.
+        eval_output_dir (str): Directory to store evaluation outputs. Default is 'eval_outputs'.
+        eval_backend (Literal): Backend to use for evaluation. Default is 'OpenCompass'.
+        eval_batch_size (int): Batch size for evaluation. Default is 8.
+        deploy_timeout (int): Timeout for deployment. Default is 60.
+        do_sample (bool): Flag to indicate if sampling should be done. Default is False.
+        temperature (float): Temperature for sampling. Default is 0.
+        eval_nproc (int): Number of processes to use for evaluation. Default is 16. Reduce it when your evaluation timeout.
+
+    Methods:
+        __post_init__: Initializes the class and sets up the evaluation dataset and model type.
+    """
 
     eval_dataset: List[str] = field(default_factory=list)
     eval_few_shot: Optional[int] = None

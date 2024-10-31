@@ -18,6 +18,14 @@ class HubOperation:
 
     @classmethod
     def try_login(cls, token: Optional[str] = None) -> bool:
+        """Try to login to the hub
+
+        Args:
+            token: The hub token to use
+
+        Returns:
+            bool: Whether login is successful
+        """
         raise NotImplementedError
 
     @classmethod
@@ -103,6 +111,18 @@ class HubOperation:
 
 
 def create_repo(repo_id: str, *, token: Union[str, bool, None] = None, private: bool = False, **kwargs) -> RepoUrl:
+    """
+    Create a new repository on the hub.
+
+    Args:
+        repo_id: The ID of the repository to create.
+        token: The authentication token to use.
+        private: Whether the repository should be private.
+        **kwargs: Additional arguments.
+
+    Returns:
+        RepoUrl: The URL of the created repository.
+    """
     hub_model_id = MSHub.create_model_repo(repo_id, token, private)
     return RepoUrl(url=hub_model_id, )
 
