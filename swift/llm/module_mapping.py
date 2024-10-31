@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import List, Union

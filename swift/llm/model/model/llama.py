@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Any, Dict
 
 from transformers import AutoTokenizer, PretrainedConfig
@@ -21,7 +22,6 @@ def get_model_tokenizer_llama(model_dir: str,
 register_model(
     ModelMeta(
         LLMModelType.llama,
-        ['LlamaForCausalLM'],
         [
             # llama2
             ModelGroup(
@@ -35,31 +35,40 @@ register_model(
                     Model('modelscope/Llama-2-13b-chat-ms', 'meta-llama/Llama-2-13b-chat-hf'),
                     Model('modelscope/Llama-2-70b-chat-ms', 'meta-llama/Llama-2-70b-chat-hf'),
                 ],
-                TemplateType.llama,
                 ignore_file_pattern=[r'.+\.bin$']),
             # chinese-llama2
-            ModelGroup(
-                [
-                    # base
-                    Model('AI-ModelScope/chinese-llama-2-1.3b', 'hfl/chinese-llama-2-1.3b'),
-                    Model('AI-ModelScope/chinese-llama-2-7b', 'hfl/chinese-llama-2-7b'),
-                    Model('AI-ModelScope/chinese-llama-2-7b-16k', 'hfl/chinese-llama-2-7b-16k'),
-                    Model('AI-ModelScope/chinese-llama-2-7b-64k', 'hfl/chinese-llama-2-7b-64k'),
-                    Model('AI-ModelScope/chinese-llama-2-13b', 'hfl/chinese-llama-2-13b'),
-                    Model('AI-ModelScope/chinese-llama-2-13b-16k', 'hfl/chinese-llama-2-13b-16k'),
-                    # chat
-                    Model('AI-ModelScope/chinese-alpaca-2-1.3b', 'hfl/chinese-alpaca-2-1.3b'),
-                    Model('AI-ModelScope/chinese-alpaca-2-7b', 'hfl/chinese-alpaca-2-7b'),
-                    Model('AI-ModelScope/chinese-alpaca-2-7b-16k', 'hfl/chinese-alpaca-2-7b-16k'),
-                    Model('AI-ModelScope/chinese-alpaca-2-7b-64k', 'hfl/chinese-alpaca-2-7b-64k'),
-                    Model('AI-ModelScope/chinese-alpaca-2-13b', 'hfl/chinese-alpaca-2-13b'),
-                    Model('AI-ModelScope/chinese-alpaca-2-13b-16k', 'hfl/chinese-alpaca-2-13b-16k'),
-                ],
-                TemplateType.llama),
+            ModelGroup([
+                # base
+                Model('AI-ModelScope/chinese-llama-2-1.3b', 'hfl/chinese-llama-2-1.3b'),
+                Model('AI-ModelScope/chinese-llama-2-7b', 'hfl/chinese-llama-2-7b'),
+                Model('AI-ModelScope/chinese-llama-2-7b-16k', 'hfl/chinese-llama-2-7b-16k'),
+                Model('AI-ModelScope/chinese-llama-2-7b-64k', 'hfl/chinese-llama-2-7b-64k'),
+                Model('AI-ModelScope/chinese-llama-2-13b', 'hfl/chinese-llama-2-13b'),
+                Model('AI-ModelScope/chinese-llama-2-13b-16k', 'hfl/chinese-llama-2-13b-16k'),
+                # chat
+                Model('AI-ModelScope/chinese-alpaca-2-1.3b', 'hfl/chinese-alpaca-2-1.3b'),
+                Model('AI-ModelScope/chinese-alpaca-2-7b', 'hfl/chinese-alpaca-2-7b'),
+                Model('AI-ModelScope/chinese-alpaca-2-7b-16k', 'hfl/chinese-alpaca-2-7b-16k'),
+                Model('AI-ModelScope/chinese-alpaca-2-7b-64k', 'hfl/chinese-alpaca-2-7b-64k'),
+                Model('AI-ModelScope/chinese-alpaca-2-13b', 'hfl/chinese-alpaca-2-13b'),
+                Model('AI-ModelScope/chinese-alpaca-2-13b-16k', 'hfl/chinese-alpaca-2-13b-16k'),
+            ]),
             # base quant
             ModelGroup([
                 Model('AI-ModelScope/Llama-2-7b-AQLM-2Bit-1x16-hf', 'ISTA-DASLab/Llama-2-7b-AQLM-2Bit-1x16-hf'),
-            ], TemplateType.llama),
+            ]),
+        ],
+        TemplateType.llama,
+        get_model_tokenizer_llama,
+        support_flash_attn=True,
+        support_vllm=True,
+        support_lmdeploy=True,
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.llama3,
+        [
             # llama3
             ModelGroup(
                 [
@@ -129,25 +138,44 @@ register_model(
                     Model('LLM-Research/Meta-Llama-3.1-405B-Instruct-AWQ-INT4',
                           'hugging-quants/Meta-Llama-3.1-405B-Instruct-AWQ-INT4'),
                 ],
-                TemplateType.llama3,
                 requires=['transformers>=4.43']),
-            ModelGroup([
-                Model('ZhipuAI/LongWriter-llama3.1-8b', 'THUDM/LongWriter-llama3.1-8b'),
-            ],
-                       TemplateType.longwriter_llama3,
-                       requires=['transformers>=4.43']),
-            # llama3.2
+        ],
+        TemplateType.llama3,
+        get_model_tokenizer_with_flash_attn,
+        support_flash_attn=True,
+        support_vllm=True,
+        support_lmdeploy=True,
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.longwriter_llama3,
+        [ModelGroup([
+            Model('ZhipuAI/LongWriter-llama3.1-8b', 'THUDM/LongWriter-llama3.1-8b'),
+        ])],
+        TemplateType.longwriter_llama3,
+        get_model_tokenizer_with_flash_attn,
+        requires=['transformers>=4.43'],
+        support_flash_attn=True,
+        support_vllm=True,
+        support_lmdeploy=True,
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.llama3_2,
+        [
             ModelGroup([
                 Model('LLM-Research/Llama-3.2-1B', 'meta-llama/Llama-3.2-1B'),
                 Model('LLM-Research/Llama-3.2-3B', 'meta-llama/Llama-3.2-3B'),
                 Model('LLM-Research/Llama-3.2-1B-Instruct', 'meta-llama/Llama-3.2-1B-Instruct'),
                 Model('LLM-Research/Llama-3.2-3B-Instruct', 'meta-llama/Llama-3.2-3B-Instruct'),
-            ],
-                       TemplateType.llama3_2,
-                       ignore_file_pattern=[r'.+\.pth$'],
-                       requires=['transformers>=4.45'])
+            ])
         ],
-        get_model_tokenizer_llama,
+        TemplateType.llama3_2,
+        get_model_tokenizer_with_flash_attn,
+        ignore_file_pattern=[r'.+\.pth$'],
+        requires=['transformers>=4.45'],
         support_flash_attn=True,
         support_vllm=True,
         support_lmdeploy=True,
@@ -162,9 +190,7 @@ def get_model_tokenizer_yi(model_dir, *args, **kwargs):
 register_model(
     ModelMeta(
         LLMModelType.yi,
-        ['LlamaForCausalLM'],
-        # yi
-        [
+        [  # yi
             ModelGroup([
                 Model('01ai/Yi-6B', '01-ai/Yi-6B'),
                 Model('01ai/Yi-6B-200K', '01-ai/Yi-6B-200K'),
@@ -198,17 +224,28 @@ register_model(
                 Model('AI-ModelScope/Yi-1.5-9B-Chat-AWQ', 'modelscope/Yi-1.5-9B-Chat-AWQ'),
                 Model('AI-ModelScope/Yi-1.5-34B-Chat-GPTQ', 'modelscope/Yi-1.5-34B-Chat-GPTQ'),
                 Model('AI-ModelScope/Yi-1.5-34B-Chat-AWQ', 'modelscope/Yi-1.5-34B-Chat-AWQ'),
-            ], TemplateType.chatml),
-            # yi-coder
+            ]),
+        ],
+        TemplateType.chatml,
+        get_model_tokenizer_yi,
+        support_flash_attn=True,
+        support_vllm=True,
+        support_lmdeploy=True,
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.yi_coder,
+        [
             ModelGroup([
                 Model('01ai/Yi-Coder-1.5B', '01-ai/Yi-Coder-1.5B'),
                 Model('01ai/Yi-Coder-9B', '01-ai/Yi-Coder-9B'),
                 Model('01ai/Yi-Coder-1.5B-Chat', '01-ai/Yi-Coder-1.5B-Chat'),
                 Model('01ai/Yi-Coder-9B-Chat', '01-ai/Yi-Coder-9B-Chat'),
             ],
-                       TemplateType.yi_coder,
                        tags=['coding'])
         ],
+        TemplateType.yi_coder,
         get_model_tokenizer_yi,
         support_flash_attn=True,
         support_vllm=True,
@@ -224,18 +261,18 @@ def get_model_tokenizer_llama3_2_vision(*args, **kwargs):
 
 register_model(
     ModelMeta(
-        MLLMModelType.llama3_2_vision, ['MllamaForConditionalGeneration'], [
+        MLLMModelType.llama3_2_vision, [
             ModelGroup([
                 Model('LLM-Research/Llama-3.2-11B-Vision', 'meta-llama/Llama-3.2-11B-Vision'),
                 Model('LLM-Research/Llama-3.2-90B-Vision', 'meta-llama/Llama-3.2-90B-Vision'),
                 Model('LLM-Research/Llama-3.2-11B-Vision-Instruct', 'meta-llama/Llama-3.2-11B-Vision-Instruct'),
                 Model('LLM-Research/Llama-3.2-90B-Vision-Instruct', 'meta-llama/Llama-3.2-90B-Vision-Instruct'),
             ],
-                       TemplateType.llama3_2_vision,
-                       ignore_file_pattern=['*.pth'],
                        tags=['vision'])
         ],
+        TemplateType.llama3_2_vision,
         get_model_tokenizer_llama3_2_vision,
+        ignore_file_pattern=['*.pth'],
         requires=['transformers>=4.45'],
         is_multimodal=True,
         support_flash_attn=True,

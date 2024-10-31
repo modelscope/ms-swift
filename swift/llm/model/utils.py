@@ -15,14 +15,13 @@ from transformers import PretrainedConfig
 
 from swift.hub import HFHub, MSHub, default_hub
 from swift.utils import deep_getattr, get_logger, is_dist, is_dist_ta, safe_ddp_context
-from .model_meta import ModelMeta
 
 logger = get_logger()
 
 
 @dataclass
 class ModelInfo:
-    model_meta: ModelMeta
+    model_type: str
     model_dir: str
     torch_dtype: torch.dtype
     max_model_len: int

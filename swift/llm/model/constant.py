@@ -1,17 +1,31 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import List
+"""
+Classification criteria for model_type: same model architecture, tokenizer (get function), template.
+"""
 
 
 class LLMModelType:
     # dense
     qwen = 'qwen'
+    codefuse_qwen = 'codefuse_qwen'
+    modelscope_agent = 'modelscope_agent'
     qwen2 = 'qwen2'
+    qwen2_5 = 'qwen2_5'
 
     llama = 'llama'
+    llama3 = 'llama3'
+    longwriter_llama3 = 'longwriter_llama3'
+    llama3_2 = 'llama3_2'
     yi = 'yi'
+    yi_coder = 'yi_coder'
 
     reflection_llama3_1 = 'reflection_llama3_1'
 
     chatglm2 = 'chatglm2'
+    chatglm3 = 'chatglm3'
+    codefuse_codegeex2 = 'codefuse_codegeex2'
+    codegeex4 = 'codegeex4'
     glm4 = 'glm4'
 
     internlm = 'internlm'
@@ -21,7 +35,6 @@ class LLMModelType:
     longwriter_glm4 = 'longwriter_glm4'
 
     atom = 'atom'
-    codefuse_qwen = 'codefuse_qwen'
 
     # moe
     qwen2_moe = 'qwen2_moe'
@@ -36,7 +49,10 @@ class MLLMModelType:
 
     glm4v = 'glm4v'
     cogvlm = 'cogvlm'
+    cogagent_vqa = 'cogagent_vqa'
+    cogagent_chat = 'cogagent_chat'
     cogvlm2 = 'cogvlm2'
+    cogvlm2_video = 'cogvlm2_video'
 
     xcomposer2 = 'xcomposer2'
     xcomposer2_4khd = 'xcomposer2_4khd'
