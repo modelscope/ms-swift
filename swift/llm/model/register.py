@@ -2,6 +2,7 @@
 import inspect
 import itertools
 import os
+import re
 from dataclasses import dataclass, field
 from functools import partial, update_wrapper
 from types import MethodType
@@ -84,7 +85,7 @@ class ModelMeta:
 
                     if isinstance(value, str):
                         model_name = value.rsplit('/', 1)[-1]
-                        res.add(model_name)
+                        res.add(model_name.lower())
         return list(res)
 
     def check_requires(self):
@@ -289,49 +290,33 @@ def get_default_torch_dtype(torch_dtype: torch.dtype):
 
 def _get_model_name(model_id_or_path: str) -> str:
     # compat hf hub
-    match_ = re.search('/models--.+?--(.+?)/snapshots/', model_dir)
+    match_ = re.search('/models--.+?--(.+?)/snapshots/', model_id_or_path)
     if match_ is not None:
         model_name = match_.group(1)
     else:
-        model_name = model_dir.rsplit('/', 1)[-1]
-    return model_name
+        model_name = model_id_or_path.rsplit('/', 1)[-1]
+    return model_name.lower()
 
 
 _model_name_mapping = {}
 
 
-def get_arch_mapping() -> Dict[str, Dict[str, List[str]]]:
-    global ARCH_MAPPING
-    if ARCH_MAPPING is None:
-        # arch(str) -> Dict[model_type(str), List[model_name(str)]]
-        ARCH_MAPPING = {}
-        for model_type, model_info in MODEL_MAPPING.items():
-            model_meta = model_info['model_meta']
-            archs = model_meta.architectures
-            model_names = model_meta.get_model_names()
-            for arch in archs:
-                if arch not in ARCH_MAPPING:
-                    ARCH_MAPPING[arch] = {}
-                ARCH_MAPPING[arch][model_type] = model_names
-    return ARCH_MAPPING
-
-
 def get_model_name_mapping():
+    # model_name -> model_type
     global _model_name_mapping
     if _model_name_mapping is not None:
         return _model_name_mapping
     for model_type, model_meta in MODEL_MAPPING.items():
-        model_meta.get_model_names()
+        model_names = model_meta.get_model_names()
+        for model_name in model_names:
+            _model_name_mapping[model_name] = model_type
+    return _model_name_mapping
 
 
-def get_matched_model_meta(model_id_or_path: str):
+def get_matched_model_meta(model_id_or_path: str) -> Optional[str]:
     model_name = _get_model_name(model_id_or_path).lower()
-    model_type_dict_reversed = {}
-    for model_type, model_names in model_type_dict.items():
-        model_type_dict_reversed.update({model_name.lower(): model_type for model_name in model_names})
-    model_type = model_type_dict_reversed.get(model_name)
-
     model_name_mapping = get_model_name_mapping()
+    return model_name_mapping.get(model_name)
 
 
 def get_model_tokenizer(

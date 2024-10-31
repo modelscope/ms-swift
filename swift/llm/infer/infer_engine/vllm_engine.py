@@ -342,4 +342,17 @@ class VllmEngine(InferEngine):
         template: Optional[Template] = None,
         lora_request: Optional['LoRARequest'] = None,
     ) -> Union[ChatCompletionResponse, AsyncIterator[ChatCompletionStreamResponse]]:
-        return await super().infer_async(infer_request, request_config, template=template, lora_request=lora_request)
+        request_config = deepcopy(request_config or RequestConfig())
+        if template is None:
+            template = self.default_template
+
+        inputs = template.encode(infer_request)
+        assert len(inputs) >= 0
+        self.set_default_max_tokens(request_config, inputs)
+        generation_config = self._prepare_generation_config(request_config)
+        self._add_stop_words(generation_config, request_config, template.template_meta)
+        infer_args = (template, inputs, generation_config)
+        if request_config.stream:
+            return self._infer_stream_async(*infer_args, **kwargs)
+        else:
+            return await self._infer_full_async(*infer_args, **kwargs)
