@@ -506,6 +506,7 @@ class ModelType:
     mixtral_moe_7b_instruct = 'mixtral-moe-7b-instruct'
     mixtral_moe_7b_aqlm_2bit_1x16 = 'mixtral-moe-7b-aqlm-2bit-1x16'  # aqlm
     mixtral_moe_8x22b_v1 = 'mixtral-moe-8x22b-v1'
+    ministral_8b_instruct_2410 = 'ministral-8b-instruct-2410'
 
     pixtral_12b = 'pixtral-12b'
     # wizardlm
@@ -2877,6 +2878,16 @@ def get_model_tokenizer_glm4v(model_dir: str,
     support_vllm=True,
     tags=['moe'],
     hf_model_id='mistral-community/Mixtral-8x22B-v0.1')
+@register_model(
+    ModelType.ministral_8b_instruct_2410,
+    'AI-ModelScope/Ministral-8B-Instruct-2410',
+    LoRATM.llama,
+    TemplateType.mistral_nemo,
+    requires=['transformers>=4.46'],
+    ignore_file_pattern=['^consolidated'],
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='mistralai/Ministral-8B-Instruct-2410')
 @register_model(
     ModelType.mistral_large_instruct_2407,
     'LLM-Research/Mistral-Large-Instruct-2407',
