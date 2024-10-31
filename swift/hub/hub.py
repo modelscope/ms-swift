@@ -267,11 +267,9 @@ class MSHub(HubOperation):
             revision = 'master'
         logger.info(f'Downloading the model from ModelScope Hub, model_id: {model_id_or_path}')
         if not download_model:
-            if ignore_file_pattern is None:
-                ignore_file_pattern = []
-            ignore_file_pattern += [r'.+\.bin$', r'.+\.safetensors$']
+            kwargs['allow_patterns'] = ['*.json']
         from modelscope import snapshot_download
-        return snapshot_download(model_id_or_path, revision, ignore_file_pattern=ignore_file_pattern)
+        return snapshot_download(model_id_or_path, revision, ignore_file_pattern=ignore_file_pattern, **kwargs)
 
     @staticmethod
     def add_patterns_to_file(repo,
@@ -404,11 +402,9 @@ class HFHub(HubOperation):
             _snapshot_download.HF_HUB_ENABLE_HF_TRANSFER = True
         from huggingface_hub import snapshot_download
         if not download_model:
-            if ignore_file_pattern is None:
-                ignore_file_pattern = []
-            ignore_file_pattern += ['*.bin', '*.safetensors']
+            kwargs['allow_patterns'] = ['*.json']
         return snapshot_download(
-            model_id_or_path, repo_type='model', revision=revision, ignore_patterns=ignore_file_pattern)
+            model_id_or_path, repo_type='model', revision=revision, ignore_patterns=ignore_file_pattern, **kwargs)
 
 
 if use_hf_hub():

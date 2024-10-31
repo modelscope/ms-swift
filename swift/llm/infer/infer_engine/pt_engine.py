@@ -326,6 +326,7 @@ class PtEngine(InferEngine):
         template: Optional[Template] = None,
         lora_request: Optional[PtLoRARequest] = None,
     ) -> Union[ChatCompletionResponse, AsyncIterator[ChatCompletionStreamResponse]]:
+        # TODO:auto batch
         res_or_gen = self.infer([infer_request],
                                 request_config,
                                 template=template,

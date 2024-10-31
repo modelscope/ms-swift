@@ -1,4 +1,5 @@
 import inspect
+import itertools
 import os
 from dataclasses import dataclass, field
 from functools import partial, update_wrapper
@@ -24,78 +25,6 @@ ARCH_MAPPING: Optional[Dict[str, Dict[str, List[str]]]] = None
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]]
 logger = get_logger()
-
-
-@dataclass
-class Model:
-    ms_model_id: Optional[str] = None
-    hf_model_id: Optional[str] = None
-    model_path: Optional[str] = None
-
-    ms_revision: Optional[str] = None
-    hf_revision: Optional[str] = None
-
-
-@dataclass
-class ModelGroup:
-    models: List[Model]
-    template: str
-    # File patterns to ignore when downloading the model.
-    ignore_file_pattern: List[str] = field(default_factory=list)
-    tags: List[str] = field(default_factory=list)
-
-    # Higher priority. If set to None, the attributes of the DatasetMeta will be used.
-    requires: Optional[List[str]] = None
-    support_flash_attn: Optional[bool] = None
-    support_vllm: Optional[bool] = None
-    support_lmdeploy: Optional[bool] = None
-    support_megatron: Optional[bool] = None
-
-
-@dataclass
-class ModelMeta:
-    model_type: str
-    # Used to automatically infer the model_type from config.json.
-    architectures: List[str]
-    # Used to list the model_ids from huggingface/modelscope,
-    # which participate in the automatic inference of the model_type.
-    model_groups: List[ModelGroup]
-    get_function: GetModelTokenizerFunction
-    is_moe: bool = False
-    is_multimodal: bool = False
-
-    # Additional files that need to be saved for full parameter training/merge-lora.
-    additional_saved_files: List[str] = field(default_factory=list)
-    support_gradient_checkpointing: bool = True
-
-    # Usually specifies the version limits of transformers.
-    requires: List[str] = field(default_factory=list)
-    support_flash_attn: bool = False
-    support_vllm: bool = False
-    support_lmdeploy: bool = False
-    support_megatron: bool = False
-
-    def check_requires(self):
-        # TODO: error to warning
-        for require in self.requires:
-            require_version(require)
-
-    def check_flash_attn(self, attn_impl: Optional[str]) -> None:
-        if attn_impl is None:
-            return
-        if attn_impl == AttnImpl.flash_attn and not self.support_flash_attn:
-            logger.warning(f'attn_impl: {attn_impl}, but support_flash_attn: {self.support_flash_attn}')
-
-    def check_infer_backend(self, infer_backend: str) -> None:
-        if infer_backend == 'vllm' and not self.support_vllm:
-            logger.warning(f'infer_backend: {infer_backend}, but support_vllm: {self.support_vllm}')
-        elif infer_backend == 'lmdeploy' and not self.support_lmdeploy:
-            logger.warning(f'infer_backend: {infer_backend}, but support_lmdeploy: {self.support_lmdeploy}')
-
-    def check_gradient_checkpointing(self, gradient_checkpoint: bool) -> None:
-        if gradient_checkpoint and not self.support_gradient_checkpointing:
-            logger.warning(f'gradient_checkpoint: {gradient_checkpoint}, but support_gradient_checkpointing: '
-                           f'{self.support_gradient_checkpointing}')
 
 
 # [TODO:eos_token -> template]
@@ -307,15 +236,20 @@ def get_model_tokenizer(
         model_kwargs = {}
     if download_model is None:
         download_model = load_model
+    # download config.json
     model_dir = safe_snapshot_download(
-        model_id_or_path, revision=revision, download_model=download_model, use_hf=use_hf)
+                model_id_or_path, revision=revision, download_model=False, use_hf=use_hf)
+    model_info = HfConfigFactory.get_model_info(model_dir)
+
+    if download_model:
+        safe_snapshot_download(
+            model_id_or_path, revision=revision, download_model=download_model, use_hf=use_hf)
 
     if not use_torchacc() and device_map is None:
         device_map = get_default_device_map()
     model_kwargs['device_map'] = device_map
 
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    model_info = HfConfigFactory.get_model_info(model_config, model_dir)
     if model_type is None:
         model_type = model_info.model_type
         logger.info(f'Setting model_type: {model_type}')
@@ -360,19 +294,6 @@ def get_model_tokenizer(
     return model, tokenizer
 
 
-def _get_model_names(model_groups: List[ModelGroup]) -> List[str]:
-    res = set()
-    for model_group in model_groups:
-        for model in model_group.models:
-            for key in ['ms_model_id', 'hf_model_id', 'model_path']:
-                value = getattr(model, key)
-
-                if isinstance(value, str):
-                    model_name = value.rsplit('/', 1)[-1]
-                    res.add(model_name)
-    return list(res)
-
-
 def get_arch_mapping() -> Dict[str, Dict[str, List[str]]]:
     global ARCH_MAPPING
     if ARCH_MAPPING is None:
@@ -381,7 +302,7 @@ def get_arch_mapping() -> Dict[str, Dict[str, List[str]]]:
         for model_type, model_info in MODEL_MAPPING.items():
             model_meta = model_info['model_meta']
             archs = model_meta.architectures
-            model_names = _get_model_names(model_meta.model_groups)
+            model_names = model_meta.get_model_names()
             for arch in archs:
                 if arch not in ARCH_MAPPING:
                     ARCH_MAPPING[arch] = {}

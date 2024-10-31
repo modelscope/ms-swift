@@ -13,23 +13,20 @@ from modelscope.hub.utils.utils import get_cache_dir
 from packaging import version
 from transformers import PretrainedConfig
 
-from swift import get_logger
 from swift.hub import HFHub, MSHub, default_hub
-from swift.utils import deep_getattr, is_dist, is_dist_ta, safe_ddp_context
+from swift.utils import deep_getattr, get_logger, is_dist, is_dist_ta, safe_ddp_context
 
 logger = get_logger()
 
-
 @dataclass
 class ModelInfo:
-    model_type: str
+    model_meta: ModelMeta
     model_dir: str
     torch_dtype: torch.dtype
     max_model_len: int
     quant_method: Literal['gptq', 'awq', 'bnb', 'aqlm', None]
     quant_bits: int
     config: PretrainedConfig
-
 
 class HfConfigFactory:
     """This class is used to read config from config.json(maybe params.json also)"""
@@ -46,18 +43,14 @@ class HfConfigFactory:
         return torch_dtype
 
     @staticmethod
-    def get_model_info(config: PretrainedConfig, model_dir: str, model_type: Optional[str] = None) -> ModelInfo:
-        if model_type is None:
-            model_types = HfConfigFactory._get_matched_model_types(config, model_dir)
-            if len(model_types) > 1:
-                raise ValueError('Unable to obtain the accurate model_type based on the model architecture. '
-                                 f'Please explicitly provide the `model_type`. Available model_types: {model_types}')
-            model_type = model_types[0]
+    def get_model_info(model_dir: str) -> ModelInfo:
+        config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+        model_meta = HfConfigFactory._get_matched_model_meta(config, model_dir)
 
         quant_info = HfConfigFactory._get_quant_info(config) or {}
         torch_dtype = HfConfigFactory._get_torch_dtype(config, quant_info)
         max_model_len = HfConfigFactory.get_max_model_len(config)
-        res = ModelInfo(model_type, model_dir, torch_dtype, max_model_len, quant_info.get('quant_method'),
+        res = ModelInfo(model_meta, model_dir, torch_dtype, max_model_len, quant_info.get('quant_method'),
                         quant_info.get('quant_bits'), config)
         return res
 
@@ -157,6 +150,16 @@ class HfConfigFactory:
         return res or None
 
     @staticmethod
+    def _get_model_name(model_dir: str) -> str:
+        # compat hf hub
+        match_ = re.search('/models--.+?--(.+?)/snapshots/', model_dir)
+        if match_ is not None:
+            model_name = match_.group(1)
+        else:
+            model_name = model_dir.rsplit('/', 1)[-1]
+        return model_name
+
+    @staticmethod
     def _get_matched_model_types(config: PretrainedConfig, model_dir: str) -> List[str]:
         """Get possible model_type."""
         # get possible model_types based on the model architecture.
@@ -169,13 +172,7 @@ class HfConfigFactory:
         if len(model_type_list) == 1:
             return model_type_list
         # Filter again based on model_name.
-        # compat hf hub
-        match_ = re.search('/models--.+?--(.+?)/snapshots/', model_dir)
-        if match_ is not None:
-            model_name = match_.group(1)
-        else:
-            model_name = model_dir.rsplit('/', 1)[-1]
-        model_name = model_name.lower()
+        model_name = HfConfigFactory._get_model_name(model_dir).lower()
         model_type_dict_reversed = {}
         for model_type, model_names in model_type_dict.items():
             model_type_dict_reversed.update({model_name.lower(): model_type for model_name in model_names})

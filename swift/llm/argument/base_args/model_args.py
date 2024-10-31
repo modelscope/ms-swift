@@ -89,10 +89,6 @@ class ModelArguments:
                 raise ValueError(f'args.torch_dtype: {self.torch_dtype}')
 
     def _init_model_info(self, torch_dtype: Optional[torch.dtype]) -> torch.dtype:
-        _is_init = getattr(self, '_is_init', False)
-        assert not _is_init, f'_is_init: {_is_init}'
-        self._is_init = True
-
         from swift.llm import get_model_tokenizer, ModelInfo
         self.model_info: ModelInfo = get_model_tokenizer(
             self.model, torch_dtype, load_model=False, model_type=self.model_type,

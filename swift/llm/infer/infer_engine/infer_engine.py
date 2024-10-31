@@ -86,6 +86,7 @@ class InferEngine(BaseInferEngine):
 
         queue = Queue()
         new_tasks = [_run_infer(i, task, queue, stream) for i, task in enumerate(tasks)]
+        # TODO: check vllm
         thread = Thread(target=lambda: asyncio.run(_batch_run(new_tasks)))
         thread.start()
 

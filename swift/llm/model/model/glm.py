@@ -8,11 +8,11 @@ from transformers import AutoConfig, AutoTokenizer, PretrainedConfig, PreTrained
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
 
-from swift.llm import ModelMeta, TemplateType
+from swift.llm import TemplateType
 from swift.utils import get_dist_setting, get_logger
 from ..constant import LLMModelType, MLLMModelType
 from ..patcher import patch_output_to_input_device
-from ..register import Model, ModelGroup, get_model_tokenizer_from_local, register_model
+from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local, register_model
 from ..utils import AttnImpl
 
 logger = get_logger()
