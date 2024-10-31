@@ -1,9 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import re
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set, Tuple, Type, Union
 
 import torch
-from transformers import PreTrainedTokenizerBase, StoppingCriteria
+from transformers import PreTrainedTokenizerBase, StoppingCriteria, LogitsProcessor
 
 from swift.llm import History
 
@@ -16,6 +17,13 @@ class ContextType:
     RESPONSE = 'response'
     SUFFIX = 'suffix'
     OTHER = 'other'
+
+
+@dataclass
+class GenerationProperty:
+
+    logits_processors: Optional[List[LogitsProcessor]] = None
+    criterias: Optional[List[StoppingCriteria]] = None
 
 
 class StopWordsCriteria(StoppingCriteria):

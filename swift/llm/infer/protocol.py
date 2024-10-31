@@ -205,6 +205,13 @@ class ChatMessage:
 
 
 @dataclass
+class ImageObject:
+    b64_json: Optional[str] = None
+    revised_prompt: Optional[str] = None
+    url: Optional[str] = None
+
+
+@dataclass
 class ChatCompletionResponseChoice:
     index: int
     message: ChatMessage
@@ -238,6 +245,12 @@ class ChatCompletionResponse:
         id_ = f'cmpl{self.id[len("chatcmpl"):]}'
         return CompletionResponse(self.model, choices, deepcopy(self.usage), id_, created=self.created)
 
+
+@dataclass
+class ImagesResponse:
+    created: int
+
+    data: List[ImageObject]
 
 @dataclass
 class CompletionResponse:

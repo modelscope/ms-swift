@@ -92,6 +92,7 @@ class SwiftInfer(SwiftPipeline):
             kwargs.update({
                 'gpu_memory_utilization': args.gpu_memory_utilization,
                 'tensor_parallel_size': args.tensor_parallel_size,
+                'pipeline_parallel_size': args.pipeline_parallel_size,
                 'max_num_seqs': args.max_num_seqs,
                 'max_model_len': args.max_model_len,
                 'disable_custom_all_reduce': args.disable_custom_all_reduce,

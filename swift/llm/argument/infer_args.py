@@ -43,6 +43,7 @@ class VllmArguments:
     Args:
         gpu_memory_utilization (float): GPU memory utilization. Default is 0.9.
         tensor_parallel_size (int): Tensor parallelism size. Default is 1.
+        pipeline_parallel_size(int): Pipeline parallelism size. Default is 1.
         max_num_seqs (int): Maximum number of sequences. Default is 256.
         max_model_len (Optional[int]): Maximum model length. Default is None.
         disable_custom_all_reduce (bool): Flag to disable custom all-reduce. Default is True.
@@ -55,6 +56,7 @@ class VllmArguments:
     # vllm
     gpu_memory_utilization: float = 0.9
     tensor_parallel_size: int = 1
+    pipeline_parallel_size: int = 1
     max_num_seqs: int = 256
     max_model_len: Optional[int] = None
     disable_custom_all_reduce: bool = True  # Default values different from vllm
