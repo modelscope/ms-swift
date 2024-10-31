@@ -11,7 +11,7 @@ import transformers
 from datasets.utils.filelock import FileLock
 from modelscope.hub.utils.utils import get_cache_dir
 from packaging import version
-from transformers import PretrainedConfig
+from transformers import PretrainedConfig, AutoConfig
 
 from swift.hub import HFHub, MSHub, default_hub
 from swift.utils import deep_getattr, get_logger, is_dist, is_dist_ta, safe_ddp_context
@@ -45,14 +45,17 @@ class HfConfigFactory:
         return torch_dtype
 
     @staticmethod
-    def get_model_info(model_dir: str) -> ModelInfo:
+    def get_model_info(model_dir: str, model_type: Optional[str] = None) -> ModelInfo:
         config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-        model_meta = HfConfigFactory._get_matched_model_meta(config, model_dir)
 
         quant_info = HfConfigFactory._get_quant_info(config) or {}
         torch_dtype = HfConfigFactory._get_torch_dtype(config, quant_info)
         max_model_len = HfConfigFactory.get_max_model_len(config)
-        res = ModelInfo(model_meta, model_dir, torch_dtype, max_model_len, quant_info.get('quant_method'),
+
+        if model_type is None:
+            raise NotImplementedError
+            model_type = HfConfigFactory._get_matched_model_type(config)  # config.json
+        res = ModelInfo(model_type, model_dir, torch_dtype, max_model_len, quant_info.get('quant_method'),
                         quant_info.get('quant_bits'), config)
         return res
 
@@ -152,17 +155,7 @@ class HfConfigFactory:
         return res or None
 
     @staticmethod
-    def _get_model_name(model_dir: str) -> str:
-        # compat hf hub
-        match_ = re.search('/models--.+?--(.+?)/snapshots/', model_dir)
-        if match_ is not None:
-            model_name = match_.group(1)
-        else:
-            model_name = model_dir.rsplit('/', 1)[-1]
-        return model_name
-
-    @staticmethod
-    def _get_matched_model_types(config: PretrainedConfig, model_dir: str) -> List[str]:
+    def _get_matched_model_type(config: PretrainedConfig) -> Optional[str]:
         """Get possible model_type."""
         # get possible model_types based on the model architecture.
         from .register import get_arch_mapping
@@ -201,6 +194,10 @@ def safe_snapshot_download(model_id_or_path: str,
     Returns:
         model_dir
     """
+    if not download_model:
+        if ignore_file_pattern is None:
+            ignore_file_pattern = []
+        ignore_file_pattern += ['*.bin', '*.safetensors']
     if (is_dist() or is_dist_ta()) and not dist.is_initialized():
         # Distributed but uninitialized
         lock_dir = os.path.join(get_cache_dir(), 'lockers')
@@ -216,7 +213,7 @@ def safe_snapshot_download(model_id_or_path: str,
         else:
             if model_id_or_path[:1] in {'~', '/'}:  # startswith
                 raise ValueError(f"path: '{model_id_or_path}' not found")
-            model_dir = hub.download_model(model_id_or_path, revision, download_model, ignore_file_pattern, **kwargs)
+            model_dir = hub.download_model(model_id_or_path, revision, ignore_file_pattern, **kwargs)
 
         logger.info(f'Loading the model using model_dir: {model_dir}')
 

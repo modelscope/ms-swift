@@ -12,7 +12,7 @@ from lmdeploy.api import autoget_backend_config
 from lmdeploy.serve import async_engine
 from transformers import GenerationConfig, PreTrainedTokenizerBase
 
-from swift.llm import Template, TemplateMeta, get_model_meta
+from swift.llm import Template, TemplateMeta
 from swift.utils import get_logger, get_seed
 from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                         ChatCompletionStreamResponse, ChatMessage, DeltaMessage, RequestConfig, UsageInfo, random_uuid)
@@ -73,7 +73,7 @@ class LmdeployEngine(InferEngine):
         logger.info(f'backend_config: {backend_config}')
 
         pipeline_kwargs = {}
-        is_multimodal = get_model_meta(self.model_info.model_type)
+        is_multimodal = self.model_meta.is_multimodal
         if is_multimodal:
             vision_config = VisionConfig(max_batch_size=vision_batch_size)
             pipeline_kwargs['vision_config'] = vision_config
@@ -211,3 +211,25 @@ class LmdeployEngine(InferEngine):
                 logprobs=logprobs)
         ]
         return ChatCompletionResponse(model=self.model_dir, choices=choices, usage=usage_info)
+
+    @torch.inference_mode()
+    async def infer_async(self,
+                          infer_request: InferRequest,
+                          request_config: Optional[RequestConfig] = None,
+                          *,
+                          template: Optional[Template] = None,
+                          **kwargs) -> Union[ChatCompletionResponse, AsyncIterator[ChatCompletionStreamResponse]]:
+        request_config = deepcopy(request_config or RequestConfig())
+        if template is None:
+            template = self.default_template
+
+        inputs = template.encode(infer_request)
+        assert len(inputs) >= 0
+        self.set_default_max_tokens(request_config, inputs)
+        generation_config = self._prepare_generation_config(request_config)
+        self._add_stop_words(generation_config, request_config, template.template_meta)
+        infer_args = (template, inputs, generation_config)
+        if request_config.stream:
+            return self._infer_stream_async(*infer_args, **kwargs)
+        else:
+            return await self._infer_full_async(*infer_args, **kwargs)

@@ -2,7 +2,9 @@
 import inspect
 import itertools
 import os
-from dataclasses import dataclass, field
+import re
+from copy import deepcopy
+from dataclasses import asdict, dataclass, field
 from functools import partial, update_wrapper
 from types import MethodType
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
@@ -21,8 +23,6 @@ from swift.utils import get_dist_setting, get_logger, is_ddp_plus_mp, is_dist, i
 from .utils import AttnImpl, HfConfigFactory, safe_snapshot_download
 
 MODEL_MAPPING: Dict[str, Dict[str, Any]] = {}
-
-ARCH_MAPPING: Optional[Dict[str, Dict[str, List[str]]]] = None
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]]
 logger = get_logger()
@@ -77,37 +77,14 @@ class ModelMeta:
     support_lmdeploy: bool = False
     support_megatron: bool = False
 
-    def get_matched_model_groups(self, model_dir: str) -> List[ModelGroup]:
-        from .utils import HfConfigFactory
-        model_name = HfConfigFactory._get_model_name(model_dir).lower()
-        res = []
-        seen = set()
-        for model_group in self.model_groups:
-            id_ = id(model_group)
-            for model, key in itertools.product(model_group.models, ['ms_model_id', 'hf_model_id', 'model_path']):
-                value = getattr(model, key)
-                if value is None:
-                    continue
-                m_name = value.rsplit('/', 1)[-1].lower()
-                if m_name == model_name and id_ not in seen:
-                    seen.add(id_)
-                    res.append(model_group)
-                    break
-        if len(res) == 0:
-            return self.model_groups
-        return res
-
-    def get_model_names(self) -> List[str]:
-        res = set()
+    def get_matched_model_group(self, model_name: str) -> Optional[ModelGroup]:
         for model_group in self.model_groups:
             for model in model_group.models:
                 for key in ['ms_model_id', 'hf_model_id', 'model_path']:
                     value = getattr(model, key)
 
-                    if isinstance(value, str):
-                        model_name = value.rsplit('/', 1)[-1]
-                        res.add(model_name)
-        return list(res)
+                    if isinstance(value, str) and model_name == value.rsplit('/', 1)[-1].lower():
+                        return model_group
 
     def check_requires(self):
         # TODO: error to warning
@@ -134,7 +111,7 @@ class ModelMeta:
 
 
 # [TODO:eos_token -> template]
-def register_model(model_meta: ModelMeta, *, exist_ok: bool = False, **kwargs) -> None:
+def register_model(model_meta: ModelMeta, *, exist_ok: bool = False) -> None:
     """
     model_type: The unique ID for the model type. Models with the same model_type share
         the same architectures, template, get_function, etc.
@@ -146,8 +123,7 @@ def register_model(model_meta: ModelMeta, *, exist_ok: bool = False, **kwargs) -
     if not model_meta.is_multimodal:
         assert model_type not in MLLMModelType.__dict__
 
-    model_info = {'model_meta': model_meta, **kwargs}
-    MODEL_MAPPING[model_type] = model_info
+    MODEL_MAPPING[model_type] = model_meta
 
 
 def load_by_unsloth(model_dir: str,
@@ -310,6 +286,28 @@ def get_default_torch_dtype(torch_dtype: torch.dtype):
     return res
 
 
+def _get_model_name(model_id_or_path: str) -> str:
+    # compat hf hub
+    match_ = re.search('/models--.+?--(.+?)/snapshots/', model_id_or_path)
+    if match_ is not None:
+        model_name = match_.group(1)
+    else:
+        model_name = model_id_or_path.rsplit('/', 1)[-1]
+    return model_name.lower()
+
+
+def get_matched_model_meta(model_id_or_path: str) -> Optional[str]:
+    model_name = _get_model_name(model_id_or_path).lower()
+    for model_type, model_meta in MODEL_MAPPING.items():
+        model_group = model_meta.get_matched_model_group(model_name)
+        if model_group is not None:
+            model_meta = deepcopy(model_meta)
+            for k, v in asdict(model_group).items():
+                if v is not None and k in model_meta.__dict__:
+                    setattr(model_meta, k, v)
+            return model_meta
+
+
 def get_model_tokenizer(
         model_id_or_path: str,
         torch_dtype: Optional[torch.dtype] = None,
@@ -342,25 +340,33 @@ def get_model_tokenizer(
         model_kwargs = {}
     if download_model is None:
         download_model = load_model
-    # download config.json
-    model_dir = safe_snapshot_download(model_id_or_path, revision=revision, download_model=False, use_hf=use_hf)
-    model_info = HfConfigFactory.get_model_info(model_dir)
+    ignore_file_pattern = ['*.zip', '*.gguf', '*.pth', '*.pt', 'consolidated*']
+    model_meta = get_matched_model_meta(model_id_or_path)
+    if getattr(model_meta, 'ignore_file_pattern', None) is not None:
+        ignore_file_pattern += model_meta.ignore_file_pattern
 
-    if download_model:
-        safe_snapshot_download(model_id_or_path, revision=revision, download_model=download_model, use_hf=use_hf)
+    model_dir = safe_snapshot_download(
+        model_id_or_path,
+        revision=revision,
+        download_model=download_model,
+        use_hf=use_hf,
+        ignore_file_pattern=ignore_file_pattern)
 
     if not use_torchacc() and device_map is None:
         device_map = get_default_device_map()
     model_kwargs['device_map'] = device_map
 
-    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+    model_info = HfConfigFactory.get_model_info(model_dir, getattr(model_meta, 'model_type', None))
     if model_type is None:
         model_type = model_info.model_type
         logger.info(f'Setting model_type: {model_type}')
+    if model_meta is None:
+        model_meta = MODEL_MAPPING[model_type]
     if torch_dtype is None:
         torch_dtype = get_default_torch_dtype(model_info.torch_dtype)
         logger.info(f'Setting torch_dtype: {torch_dtype}')
     _check_torch_dtype(torch_dtype)
+    model_config = model_info.config
     model_config.torch_dtype = torch_dtype
     HfConfigFactory.compat_zero3(model_config)
     rope_scaling = kwargs.get('rope_scaling')
@@ -370,9 +376,8 @@ def get_model_tokenizer(
     if model_info.quant_method is not None:
         kwargs['quant_method'] = model_info.quant_method
         kwargs['quant_bits'] = model_info.quant_bits
-    kwargs.update({'is_training': is_training, 'model_type': model_type, 'attn_impl': attn_impl})
+    kwargs.update({'is_training': is_training, 'attn_impl': attn_impl})
 
-    model_meta = get_model_meta(model_type)
     model_meta.check_requires()
     model_meta.check_flash_attn(attn_impl)
 
@@ -396,23 +401,3 @@ def get_model_tokenizer(
         # fix llama2 warning
         fix_do_sample_warning(model.generation_config)
     return model, tokenizer
-
-
-def get_arch_mapping() -> Dict[str, Dict[str, List[str]]]:
-    global ARCH_MAPPING
-    if ARCH_MAPPING is None:
-        # arch(str) -> Dict[model_type(str), List[model_name(str)]]
-        ARCH_MAPPING = {}
-        for model_type, model_info in MODEL_MAPPING.items():
-            model_meta = model_info['model_meta']
-            archs = model_meta.architectures
-            model_names = model_meta.get_model_names()
-            for arch in archs:
-                if arch not in ARCH_MAPPING:
-                    ARCH_MAPPING[arch] = {}
-                ARCH_MAPPING[arch][model_type] = model_names
-    return ARCH_MAPPING
-
-
-def get_model_meta(model_type: str) -> ModelMeta:
-    return MODEL_MAPPING[model_type]['model_meta']

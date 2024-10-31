@@ -103,10 +103,7 @@ def _create_and_replace_hook_with_mm_check(self, *args, **kwargs):
     all_supported_names = ('linear', )
     all_supported_types = (torch.nn.Embedding, torch.nn.Conv2d, torch.nn.Conv3d, transformers.pytorch_utils.Conv1D)
 
-    from swift.llm import get_model_meta
-    from swift.llm import ModelMeta
-    model_meta: ModelMeta = get_model_meta(self.model.model_info.model_type)
-    is_multimodal = model_meta.is_multimodal
+    is_multimodal = self.model.model_meta.is_multimodal
 
     if is_multimodal and target is not None and (not any(
         [name in target.__class__.__name__.lower()

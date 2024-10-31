@@ -68,9 +68,9 @@ class InferEngine(BaseInferEngine):
         return stop
 
     @staticmethod
-    def __infer_stream(tasks,
-                       stream: bool = True,
-                       use_tqdm: bool = True) -> Iterator[List[Optional[ChatCompletionStreamResponse]]]:
+    def _batch_infer_stream(tasks,
+                            stream: bool = True,
+                            use_tqdm: bool = True) -> Iterator[List[Optional[ChatCompletionStreamResponse]]]:
 
         async def _run_infer(i, task, queue, stream: bool = False):
             # task with queue
@@ -142,13 +142,13 @@ class InferEngine(BaseInferEngine):
         if request_config.stream:
 
             def _gen_wrapper():
-                for res in self.__infer_stream(tasks, True, use_tqdm):
+                for res in self._batch_infer_stream(tasks, True, use_tqdm):
                     yield res
                 self._update_metrics(res, metrics)
 
             return _gen_wrapper()
         else:
-            for outputs in self.__infer_stream(tasks, False, use_tqdm):
+            for outputs in self._batch_infer_stream(tasks, False, use_tqdm):
                 pass
             return self._update_metrics(outputs, metrics)
 
@@ -163,28 +163,6 @@ class InferEngine(BaseInferEngine):
             return None
 
         return [ChatCompletionMessageToolCall(function=Function(name=action, arguments=action_input))]
-
-    @torch.inference_mode()
-    async def infer_async(self,
-                          infer_request: InferRequest,
-                          request_config: Optional[RequestConfig] = None,
-                          *,
-                          template: Optional[Template] = None,
-                          **kwargs) -> Union[ChatCompletionResponse, AsyncIterator[ChatCompletionStreamResponse]]:
-        request_config = deepcopy(request_config or RequestConfig())
-        if template is None:
-            template = self.default_template
-
-        inputs = template.encode(infer_request)
-        assert len(inputs) >= 0
-        self.set_default_max_tokens(request_config, inputs)
-        generation_config = self._prepare_generation_config(request_config)
-        self._add_stop_words(generation_config, request_config, template.template_meta)
-        infer_args = (template, inputs, generation_config)
-        if request_config.stream:
-            return self._infer_stream_async(*infer_args, **kwargs)
-        else:
-            return await self._infer_full_async(*infer_args, **kwargs)
 
     @staticmethod
     def _get_num_tokens(inputs: Dict[str, Any]) -> int:

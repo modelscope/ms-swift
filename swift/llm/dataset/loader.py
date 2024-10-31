@@ -79,40 +79,22 @@ class DatasetSyntax:
         return res
 
 
-class ToDatasetNameMapping:
-    # dataset_id/path -> dataset_name
-    def __init__(self):
-        self._init_mapping()
+_dataset_name_mapping = None
 
-    def _init_mapping(self) -> None:
-        dataset_name_mapping = {}
-        for dataset_name, v in DATASET_MAPPING.items():
-            dataset_meta: DatasetMeta = v['dataset_meta']
-            if dataset_meta.dataset_path is not None:
-                dataset_name_mapping[self._encode_key(dataset_meta.dataset_path, 'path')] = dataset_name
-            else:
-                if dataset_meta.ms_dataset_id is not None:
-                    k = self._encode_key(dataset_meta.ms_dataset_id, 'ms_repo')
-                    assert k not in dataset_name_mapping
-                    dataset_name_mapping[k] = dataset_name
-                if dataset_meta.hf_dataset_id is not None:
-                    k = self._encode_key(dataset_meta.hf_dataset_id, 'hf_repo')
-                    assert k not in dataset_name_mapping
-                    dataset_name_mapping[k] = dataset_name
-        self.mapping = dataset_name_mapping
 
-    def _encode_key(self, d_id_or_path: Union[str, List[str]], dataset_type: Literal['hf_repo', 'ms_repo', 'path']):
-        assert dataset_type != 'name'
-        if dataset_type == 'hf_repo':
-            return f'HF::{d_id_or_path}'
-        elif dataset_type == 'ms_repo':
-            return f'MS::{d_id_or_path}'
-        else:
-            return f'PATH::{d_id_or_path}'
-
-    def map_to_name(self, dataset_info: DatasetSyntax) -> Optional[str]:
-        key = self._encode_key(dataset_info.dataset, dataset_info.dataset_type)
-        return self.mapping.get(key)
+def get_dataset_name_mapping() -> Dict[str, str]:
+    global _dataset_name_mapping
+    if _dataset_name_mapping is not None:
+        return _dataset_name_mapping
+    _dataset_name_mapping = {}
+    for dataset_name, dataset_meta in DATASET_MAPPING.items():
+        if dataset_meta.dataset_path is not None:
+            _dataset_name_mapping[('path', dataset_meta.dataset_path)] = dataset_name
+        if dataset_meta.ms_dataset_id is not None:
+            _dataset_name_mapping[('ms', dataset_meta.ms_dataset_id)] = dataset_name
+        if dataset_meta.hf_dataset_id is not None:
+            _dataset_name_mapping[('hf', dataset_meta.hf_dataset_id)] = dataset_name
+    return _dataset_name_mapping
 
 
 class DatasetLoader:
@@ -376,7 +358,7 @@ class DatasetLoader:
     @staticmethod
     def _parse_datasets(datasets: List[str]) -> List[str]:
         # ms_dataset_id/hf_dataset_id/dataset_path -> dataset_name mapping
-        to_dataset_name_mapping = ToDatasetNameMapping()
+        dataset_name_mapping = get_dataset_name_mapping()
 
         # register_dataset
         res_datasets: List[str] = []  # dataset_names
@@ -388,7 +370,7 @@ class DatasetLoader:
                 res_datasets.append(dataset)
             else:
                 # dataset_path/dataset_id
-                dataset_name = to_dataset_name_mapping.map_to_name(d_info)
+                dataset_name = dataset_name_mapping.get((d_info.dataset_type, d_info.dataset))
                 if dataset_name is None:
                     # This dataset needs to be registered.
                     dataset_name = f'_{register_idx}'
@@ -448,7 +430,7 @@ def load_dataset(
         dataset_syntax = DatasetSyntax.parse(dataset)
         assert dataset_syntax.dataset_type == 'name'
         dataset_name = dataset_syntax.dataset
-        dataset_meta = DATASET_MAPPING[dataset_name]['dataset_meta']
+        dataset_meta = DATASET_MAPPING[dataset_name]
         load_function = dataset_meta.load_function
         train_dataset = load_function(dataset_syntax, dataset_meta, **load_kwargs)
         train_dataset, val_dataset = DatasetLoader.post_process(
