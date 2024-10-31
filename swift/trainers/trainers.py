@@ -159,6 +159,9 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
 
         loss_kwargs['labels'] = labels
         outputs = model(**inputs)
+        # fix transformers>=4.46
+        if outputs.loss is not None and 'num_items_in_batch' in kwargs:
+            outputs.loss = outputs.loss * (inputs['labels'] != -100).sum() / kwargs['num_items_in_batch']
         if loss_name is not None:
             loss_func = get_loss_func(loss_name)
             outputs['loss'] = loss_func(outputs, **loss_kwargs)
