@@ -11,7 +11,6 @@ from swift.llm import MODEL_MAPPING, TEMPLATE_MAPPING, ModelInfo, PtLoRARequest,
 from swift.utils import get_logger, is_lmdeploy_available, is_vllm_available
 from .base_args import BaseArguments, to_abspath
 from .merge_args import MergeArguments
-from .tuner_args import adapters_can_be_merged
 
 logger = get_logger()
 
@@ -89,8 +88,8 @@ class InferArguments(BaseArguments, MergeArguments, VllmArguments, LmdeployArgum
         _init_stream: Initializes the stream settings.
         __post_init__: Post-initialization method to set default values and initialize configurations.
     """
-    infer_backend: Literal['vllm', 'pt', 'lmdeploy'] = 'pt'
     ckpt_dir: Optional[str] = field(default=None, metadata={'help': '/path/to/your/vx-xxx/checkpoint-xxx'})
+    infer_backend: Literal['vllm', 'pt', 'lmdeploy'] = 'pt'
     max_batch_size: int = 16  # for pt engine
 
     # only for inference
@@ -138,6 +137,8 @@ class InferArguments(BaseArguments, MergeArguments, VllmArguments, LmdeployArgum
         self._init_result_dir()
         self._init_stream()
         self._init_eval_human()
+        if self.ckpt_dir is None:
+            self.train_type = 'full'
 
     def _init_eval_human(self):
         if len(self.dataset) == 0 and len(self.val_dataset) == 0:

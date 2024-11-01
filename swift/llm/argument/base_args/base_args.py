@@ -6,6 +6,7 @@ import json
 
 from swift.hub import default_hub
 from swift.utils import check_json_format, get_logger, is_master
+from ..tuner_args import TunerArguments, get_supported_tuners
 from .data_args import DataArguments
 from .generation_args import GenerationArguments
 from .model_args import ModelArguments
@@ -59,6 +60,14 @@ class BaseArguments(ModelArguments, TemplateArguments, QuantizeArguments, Genera
         GenerationArguments.__post_init__(self)
         if default_hub.try_login(self.hub_token):
             logger.info('hub login successful!')
+
+    @property
+    def supported_tuners(self):
+        return get_supported_tuners()
+
+    @property
+    def adapters_can_be_merged(self):
+        return TunerArguments.adapters_can_be_merged
 
     def _load_args(self) -> None:
         """Load specific attributes from sft_args.json"""

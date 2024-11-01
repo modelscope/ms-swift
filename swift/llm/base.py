@@ -2,20 +2,23 @@
 import os
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Callable, List, Optional, Type, TypeVar, Union
+from typing import Callable, Generic, List, Optional, Type, TypeVar, Union
 
+from swift.llm import BaseArguments
 from swift.utils import get_logger, parse_args, seed_everything
-from .argument import BaseArguments
 
 logger = get_logger()
 
 T_Args = TypeVar('T_Args', bound=BaseArguments)
 
 
-class SwiftPipeline(ABC):
-    args_class = None
+class SwiftPipeline(ABC, Generic[T_Args]):
+    args_class = BaseArguments
 
-    def parse_args(self, args: Union[List[str], T_Args, None] = None) -> T_Args:
+    def __init__(self, args: Union[List[str], T_Args, None] = None):
+        self.args = self._parse_args(args)
+
+    def _parse_args(self, args: Union[List[str], T_Args, None] = None) -> T_Args:
         if isinstance(args, BaseArguments):
             return args
         assert self.args_class is not None

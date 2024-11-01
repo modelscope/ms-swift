@@ -6,12 +6,12 @@ from swift.utils.import_utils import _LazyModule
 if TYPE_CHECKING:
     # Recommend using `xxx_main`
     from .infer import (VllmEngine, RequestConfig, InferStats, LmdeployEngine, PtEngine, infer_main, deploy_main,
-                        PtLoRARequest, InferClient)
+                        PtLoRARequest, InferClient, SwiftInfer, SwiftDeploy)
     from .export import export_main, merge_lora
     from .eval import eval_main
     from .train import sft_main, pt_main, rlhf_main
     from .argument import (EvalArguments, InferArguments, SftArguments, ExportArguments, DeployArguments, RLHFArguments,
-                           WebUIArguments, AppUIArguments)
+                           WebUIArguments, BaseArguments)
     from .template import (TEMPLATE_MAPPING, Template, Word, get_template, TemplateType, register_template,
                            TemplateInputs, Messages, TemplateMeta, get_template_meta, InferRequest)
     from .model import (MODEL_MAPPING, ModelType, get_model_tokenizer, safe_snapshot_download, HfConfigFactory,
@@ -30,14 +30,14 @@ else:
         'rlhf': ['rlhf_main'],
         'infer': [
             'deploy_main', 'VllmEngine', 'RequestConfig', 'InferStats', 'LmdeployEngine', 'PtEngine', 'infer_main',
-            'PtLoRARequest', 'InferClient'
+            'PtLoRARequest', 'InferClient', 'SwiftInfer', 'SwiftDeploy'
         ],
         'export': ['export_main', 'merge_lora'],
         'eval': ['eval_main'],
         'train': ['sft_main', 'pt_main', 'rlhf_main'],
         'argument': [
             'EvalArguments', 'InferArguments', 'SftArguments', 'ExportArguments', 'WebUIArguments', 'DeployArguments',
-            'RLHFArguments', 'AppUIArguments'
+            'RLHFArguments', 'BaseArguments'
         ],
         'template': [
             'TEMPLATE_MAPPING', 'Template', 'Word', 'get_template', 'TemplateType', 'register_template',

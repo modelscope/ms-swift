@@ -4,16 +4,16 @@ from typing import TYPE_CHECKING
 from swift.utils.import_utils import _LazyModule
 
 if TYPE_CHECKING:
-    from .infer import infer_main
-    from .deploy import deploy_main
+    from .infer import infer_main, SwiftInfer
+    from .deploy import deploy_main, SwiftDeploy
     from .protocol import RequestConfig
     from .infer_engine import (InferEngine, VllmEngine, LmdeployEngine, PtEngine, InferStats, PtLoRARequest,
                                InferClient)
 else:
     _extra_objects = {k: v for k, v in globals().items() if not k.startswith('_')}
     _import_structure = {
-        'deploy': ['deploy_main'],
-        'infer': ['infer_main'],
+        'infer': ['infer_main', 'SwiftInfer'],
+        'deploy': ['deploy_main', 'SwiftDeploy'],
         'protocol': ['RequestConfig'],
         'infer_engine':
         ['InferEngine', 'VllmEngine', 'LmdeployEngine', 'PtEngine', 'InferStats', 'PtLoRARequest', 'InferClient'],

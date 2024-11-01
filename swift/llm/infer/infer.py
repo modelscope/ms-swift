@@ -52,15 +52,12 @@ class InferCliState:
         }
 
 
-class SwiftInfer(SwiftPipeline):
-    args_class = InferArguments
+class SwiftInfer(SwiftPipeline[InferArguments]):
 
     def __init__(self, args: Union[List[str], InferArguments, None] = None) -> None:
-        self.args: InferArguments = self.parse_args(args)
-        if args.merge_lora:
-            merge_lora(args, device_map=args.merge_device_map)
-        self.infer_engine = self.get_infer_engine()
-        self.template = self._get_template(self.tokenizer)
+        super().__init__(args)
+        self.infer_engine = self.get_infer_engine(args)
+        self.template = self.get_template(args, self.tokenizer)
         self.random_state = np.random.RandomState(args.dataset_seed)
 
     def __getattr__(self, name: str):
@@ -69,8 +66,8 @@ class SwiftInfer(SwiftPipeline):
         except AttributeError:
             return getattr(self.infer_engine, name)
 
-    def get_infer_engine(self) -> InferEngine:
-        args = self.args
+    @staticmethod
+    def get_infer_engine(args) -> InferEngine:
         kwargs = {
             'model_id_or_path': args.model,
             'model_type': args.model_type,
@@ -113,8 +110,8 @@ class SwiftInfer(SwiftPipeline):
 
         return infer_engine_cls(**kwargs)
 
-    def _get_template(self, tokenizer) -> Template:
-        args = self.args
+    @staticmethod
+    def get_template(args, tokenizer) -> Template:
         template = get_template(
             args.template,
             tokenizer,

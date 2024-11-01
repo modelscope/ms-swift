@@ -22,8 +22,6 @@ from transformers.utils.versions import require_version
 from swift.utils import get_dist_setting, get_logger, is_ddp_plus_mp, is_dist, is_unsloth_available, use_torchacc
 from .utils import AttnImpl, HfConfigFactory, safe_snapshot_download
 
-MODEL_MAPPING: Dict[str, Dict[str, Any]] = {}
-
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]]
 logger = get_logger()
 
@@ -108,6 +106,9 @@ class ModelMeta:
         if gradient_checkpoint and not self.support_gradient_checkpointing:
             logger.warning(f'gradient_checkpoint: {gradient_checkpoint}, but support_gradient_checkpointing: '
                            f'{self.support_gradient_checkpointing}')
+
+
+MODEL_MAPPING: Dict[str, ModelMeta] = {}
 
 
 # [TODO:eos_token -> template]
@@ -390,6 +391,7 @@ def get_model_tokenizer(
     if model is not None:
         model.model_info = model_info
         model.model_meta = model_meta
+        model.model_dir = model_dir
         fix_gradient_checkpointing_warning(model_meta.is_moe)
         fix_transformers_upgrade(model)
 
