@@ -67,22 +67,23 @@ class SwiftInfer(SwiftPipeline[InferArguments]):
             return getattr(self.infer_engine, name)
 
     @staticmethod
-    def get_infer_engine(args) -> InferEngine:
-        kwargs = {
+    def get_infer_engine(args, **kwargs) -> InferEngine:
+        kwargs.update({
             'model_id_or_path': args.model,
             'model_type': args.model_type,
             'revision': args.model_revision,
             'torch_dtype': args.torch_dtype,
-        }
+        })
         if args.infer_backend == 'pt':
             from .infer_engine import PtEngine
             infer_engine_cls = PtEngine
             kwargs.update({
                 'attn_impl': args.attn_impl,
-                'device_map': args.device_map_config,
                 'quantization_config': args.quantization_config,
                 'max_batch_size': args.max_batch_size
             })
+            if 'device_map' not in kwargs:
+                kwargs['device_map'] = args.device_map_config
         elif args.infer_backend == 'vllm':
             from .infer_engine import VllmEngine
             infer_engine_cls = VllmEngine

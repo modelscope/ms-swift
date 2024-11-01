@@ -8,8 +8,8 @@ from transformers import PreTrainedModel, PreTrainedTokenizerBase
 from swift.llm import BaseArguments, SwiftInfer, Template
 
 
-def prepare_model_template(args: BaseArguments) -> Tuple[PreTrainedModel, Template]:
-    infer_engine = SwiftInfer.get_infer_engine(args)
+def prepare_model_template(args: BaseArguments, **kwargs) -> Tuple[PreTrainedModel, Template]:
+    infer_engine = SwiftInfer.get_infer_engine(args, **kwargs)
     template = SwiftInfer.get_template(args, infer_engine.tokenizer)
     return infer_engine.model, template
 

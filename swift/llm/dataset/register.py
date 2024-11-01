@@ -14,8 +14,6 @@ PreprocessFunc = Callable[..., DATASET_TYPE]
 LoadFunction = Callable[..., DATASET_TYPE]
 logger = get_logger()
 
-DATASET_MAPPING: Dict[str, Dict[str, Any]] = {}
-
 
 @dataclass
 class SubsetDataset:
@@ -73,6 +71,9 @@ class DatasetMeta:
         for i, subset in enumerate(self.subsets):
             if isinstance(subset, str):
                 self.subsets[i] = SubsetDataset(name=subset)
+
+
+DATASET_MAPPING: Dict[str, DatasetMeta] = {}
 
 
 def register_dataset(dataset_meta: DatasetMeta, *, exist_ok: bool = False) -> None:
