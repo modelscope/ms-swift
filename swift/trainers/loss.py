@@ -52,9 +52,12 @@ class LongCrossEntropy:
         self._norm_factor = 0
         self._smoothing = length_smooth
 
-    def __call__(self, outputs, labels) -> torch.Tensor:
+    def __call__(self, outputs, labels, num_items_in_batch=None) -> torch.Tensor:
         # moving average
         loss, masks = ce_loss_func(outputs, labels)
+        if num_items_in_batch is not None:
+            # The gradient accumulation equivalent to mini_batch for transformers >= 4.46 and fallback behavior.
+            return loss.sum() / num_items_in_batch
         self._s_length = self._s_length * self._smoothing + loss.shape[0]
         self._norm_factor = self._norm_factor * self._smoothing + 1
         loss = loss.sum() / (self._s_length / self._norm_factor)
@@ -65,14 +68,17 @@ register_loss_func(LossName.long_ce, LongCrossEntropy())
 
 
 @register_loss_func(LossName.loss_scale)
-def loss_scale_func(outputs, labels, loss_scale=None) -> torch.Tensor:
+def loss_scale_func(outputs, labels, loss_scale=None, num_items_in_batch=None) -> torch.Tensor:
     loss, masks = ce_loss_func(outputs, labels)
-    if loss_scale is None:
-        loss = loss.mean()
-    else:
+    if loss_scale is not None:
         shift_scale = loss_scale[..., 1:].to(masks.device)
         shift_scale = shift_scale[masks]
-        loss = (shift_scale * loss).mean()
+        loss = (shift_scale * loss)
+    if num_items_in_batch is None:
+        loss = loss.mean()
+    else:
+        # compat transformers>=4.46
+        loss = loss.sum() / num_items_in_batch
     return loss
 
 
