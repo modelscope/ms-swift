@@ -43,9 +43,9 @@ def test_infer(engine, template, infer_requests):
 def test_stream(engine, template, infer_requests):
     from swift.llm import InferStats, RequestConfig
     infer_stats = InferStats()
-    request_config = RequestConfig(temperature=0, stream=True)
+    request_config = RequestConfig(temperature=0, stream=True, logprobs=True)
 
-    gen = engine.infer(template, infer_requests, request_config=request_config, metrics=[infer_stats])
+    gen = engine.infer(infer_requests, template=template, request_config=request_config, metrics=[infer_stats])
 
     for response_list in gen:
         response = response_list[0]
@@ -64,6 +64,6 @@ def test_stream(engine, template, infer_requests):
 
 
 if __name__ == '__main__':
-    engine, template, infer_requests = _prepare(infer_backend='vllm')
-    test_infer(engine, template, infer_requests)
+    engine, template, infer_requests = _prepare(infer_backend='pt')
+    # test_infer(engine, template, infer_requests)
     test_stream(engine, template, infer_requests)
