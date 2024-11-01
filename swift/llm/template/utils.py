@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set, Tuple, Type, Union
 
 import torch
-from transformers import PreTrainedTokenizerBase, StoppingCriteria, LogitsProcessor
+from transformers import LogitsProcessor, PreTrainedTokenizerBase, StoppingCriteria
 
 from swift.llm import History
 

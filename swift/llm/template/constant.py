@@ -116,6 +116,8 @@ class MLLMTemplateType:
     paligemma = 'paligemma'
     phi3_vl = 'phi3_vl'
 
+    emu3_gen = 'emu3_gen'
+
 
 class TemplateType(LLMTemplateType, MLLMTemplateType):
 

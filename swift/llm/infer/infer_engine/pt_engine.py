@@ -1,12 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import inspect
-import json
 import time
 from copy import deepcopy
 from dataclasses import dataclass
 from threading import Thread
 from typing import Any, AsyncIterator, Dict, Iterator, List, Literal, Optional, Union
 
+import json
 import torch
 from PIL import Image
 from tqdm import tqdm
@@ -17,12 +17,11 @@ from swift.llm import Template, TemplateMeta, to_device
 from swift.plugin import Metric
 from swift.tuners import Swift
 from swift.utils import get_logger
+from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
+                        ChatCompletionStreamResponse, ChatMessage, DeltaMessage, ImageObject, ImagesResponse,
+                        InferRequest, MultiModalRequestMixin, RequestConfig, random_uuid)
 from .infer_engine import InferEngine
 from .utils import InferStreamer, LogitsStreamer, TokensIteratorStreamer
-from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
-                        ChatCompletionStreamResponse, ChatMessage, ImagesResponse, DeltaMessage, InferRequest,
-                        RequestConfig,
-                        random_uuid, MultiModalRequestMixin, ImageObject)
 
 logger = get_logger()
 
@@ -276,12 +275,13 @@ class PtEngine(InferEngine):
             Swift.from_pretrained(self.model, lora_request.lora_local_path, lora_request.lora_name, inference_mode=True)
         return [lora_request.lora_name]
 
-    def _infer_full(self,
-                    template: Template,
-                    inputs: Dict[str, Any],
-                    generation_config: GenerationConfig,
-                    *,
-                    lora_request: Optional[PtLoRARequest] = None) -> Union[List[ChatCompletionResponse], List[ImagesResponse]]:
+    def _infer_full(
+            self,
+            template: Template,
+            inputs: Dict[str, Any],
+            generation_config: GenerationConfig,
+            *,
+            lora_request: Optional[PtLoRARequest] = None) -> Union[List[ChatCompletionResponse], List[ImagesResponse]]:
         # bos_token TODO: encoder-decoder
         kwargs = {}
         if lora_request is not None:
@@ -325,12 +325,9 @@ class PtEngine(InferEngine):
                 ]
                 res.append(ChatCompletionResponse(model=self.model_dir, choices=choices, usage=usage_info))
             elif isinstance(response, Image.Image):
-                res.append(ImagesResponse(
-                    created=time.time(),
-                    data=[ImageObject(
-                        b64_json=MultiModalRequestMixin._to_base64(response)
-                    )]
-                ))
+                res.append(
+                    ImagesResponse(
+                        created=time.time(), data=[ImageObject(b64_json=MultiModalRequestMixin._to_base64(response))]))
 
         return res
 
@@ -367,7 +364,8 @@ class PtEngine(InferEngine):
         *,
         template: Optional[Template] = None,
         lora_request: Optional[PtLoRARequest] = None,
-    ) -> Union[List[ChatCompletionResponse], List[ImagesResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
+    ) -> Union[List[ChatCompletionResponse], List[ImagesResponse],
+               Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
         self.model.eval()
         request_config = deepcopy(request_config or RequestConfig())
         if template is None:
@@ -407,7 +405,8 @@ class PtEngine(InferEngine):
         template: Optional[Template] = None,
         use_tqdm: Optional[bool] = None,
         lora_request: Optional[PtLoRARequest] = None
-    ) -> Union[List[ChatCompletionResponse], List[ImagesResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
+    ) -> Union[List[ChatCompletionResponse], List[ImagesResponse],
+               Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
         if use_tqdm is None:
             use_tqdm = request_config is None or not request_config.stream
         prog_bar = tqdm(total=len(infer_requests), dynamic_ncols=True, disable=not use_tqdm)

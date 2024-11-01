@@ -20,7 +20,7 @@ from transformers.integrations import is_deepspeed_zero3_enabled
 
 from .agent import loss_scale_map, split_str_parts_by
 from .template_inputs import InferRequest, StdTemplateInputs, TemplateInputs
-from .utils import Context, ContextType, Prompt, Word, fetch_one, findall, GenerationProperty, StopWordsCriteria
+from .utils import Context, ContextType, GenerationProperty, Prompt, StopWordsCriteria, Word, fetch_one, findall
 from .vision_utils import load_batch, load_image, normalize_bbox, rescale_image
 
 logger = get_logger()
@@ -199,9 +199,7 @@ class Template:
         #     response = response[:-len_suffix]
 
     def prepare_for_generation(self, example, model) -> GenerationProperty:
-        return GenerationProperty(
-            criterias=StopWordsCriteria(self.tokenizer, model.generation_config.stop_words)
-        )
+        return GenerationProperty(criterias=StopWordsCriteria(self.tokenizer, model.generation_config.stop_words))
 
     def _preprocess_objects(self, inputs: StdTemplateInputs, objects: List[Dict[str, Any]]):
         # Load image into PIL format

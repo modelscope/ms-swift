@@ -252,6 +252,7 @@ class ImagesResponse:
 
     data: List[ImageObject]
 
+
 @dataclass
 class CompletionResponse:
     model: str
