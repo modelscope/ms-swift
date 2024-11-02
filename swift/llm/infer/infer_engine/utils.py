@@ -25,36 +25,6 @@ class InferTools:
 
         return False
 
-    @staticmethod
-    def _skip_stop_tokens(generate_ids: List[int], stop_tokens: List[int], is_finished: bool) -> List[int]:
-        len_tokens = len(stop_tokens)
-        if is_finished and generate_ids[-len_tokens:] == stop_tokens:
-            return generate_ids[:-len_tokens]
-        if not is_finished:
-            for i in range(len_tokens, 0, -1):
-                if generate_ids[-i:] == stop_tokens[:i]:
-                    return generate_ids[:-i]
-        return generate_ids
-
-    @staticmethod
-    def safe_decode(template: Template, generate_ids: List[int], is_finished: bool, **decode_kwargs) -> str:
-        # Do not print template_meta.suffix[-1] and eos_token.
-        tokenizer = template.tokenizer
-
-        if len(generate_ids) > 0 and generate_ids[-1] == tokenizer.eos_token_id:
-            generate_ids = generate_ids[:-1]
-        # skip suffix and eos_token
-        template_suffix = template.template_meta.suffix[-1]
-        if isinstance(template_suffix, str):
-            template_suffix = tokenizer.encode(template_suffix, add_special_tokens=False)
-        generate_ids = InferTools._skip_stop_tokens(generate_ids, template_suffix, is_finished)
-        return tokenizer.decode(generate_ids, **decode_kwargs)
-        # if not is_finished or is_finished and response[-len_suffix:] == template_suffix:
-        #     # To avoid response length being shorter than previous response length during streaming.
-        #     # TODO:check
-        #     # idx = max(len(response) - len_suffix, 0, self.print_idx)
-        #     response = response[:-len_suffix]
-
 
 class InferStreamer(InferTools):
 

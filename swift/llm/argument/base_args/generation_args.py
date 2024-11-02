@@ -12,7 +12,7 @@ class GenerationArguments:
     """
     GenerationArguments class is a dataclass that holds various arguments related to text generation.
 
-    Attributes:
+    Args:
         max_new_tokens (Optional[int]): Maximum number of new tokens to generate. Default is None (unlimited).
         do_sample (Optional[bool]): Flag to enable sampling during generation. Default is None.
         temperature (Optional[float]): Sampling temperature. Default is None.
@@ -21,10 +21,6 @@ class GenerationArguments:
         repetition_penalty (Optional[float]): Penalty for repeated tokens. Default is None.
         num_beams (int): Number of beams for beam search. Default is 1.
         stop_words (List[str]): List of stop words to end generation. Default is an empty list.
-
-    Methods:
-        _handle_do_sample: Adjusts arguments based on the do_sample flag.
-        __post_init__: Initializes the class and handles the do_sample flag.
     """
 
     # generation config

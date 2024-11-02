@@ -1,29 +1,27 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import inspect
 import os
 import sys
 from contextlib import contextmanager
-from functools import partial, update_wrapper, wraps
+from functools import wraps
 from types import MethodType
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
+from typing import Any, Dict, List, Optional, Type
 
 import torch
 import torch.utils.checkpoint
 import transformers
 from accelerate.utils import find_device
-from modelscope import (AutoConfig, AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, GenerationConfig,
-                        snapshot_download)
+from modelscope import AutoConfig, AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, snapshot_download
 from modelscope.hub.utils.utils import get_cache_dir
 from packaging import version
-from transformers import PretrainedConfig, PreTrainedModel, PreTrainedTokenizerBase
+from transformers import PretrainedConfig, PreTrainedTokenizerBase
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
 
 from swift import get_logger
 from swift.llm.template.template import TemplateType, get_env_args
 from swift.llm.utils import to_device
-from swift.utils import get_dist_setting, safe_ddp_context, subprocess_run, use_torchacc
-from ..patcher import patch_fixed_device, patch_output_clone, patch_output_to_input_device, patch_rope_scaling
+from swift.utils import get_dist_setting, safe_ddp_context, subprocess_run
+from ..patcher import patch_fixed_device, patch_output_clone, patch_output_to_input_device
 
 logger = get_logger()
 
@@ -1591,6 +1589,33 @@ def get_model_tokenizer_codellama(model_dir: str,
     tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True, use_fast=False, legacy=False)
     return get_model_tokenizer_with_flash_attn(
         model_dir, torch_dtype, model_kwargs, load_model, tokenizer=tokenizer, **kwargs)
+
+
+@register_model(
+    ModelType.emu3_gen,
+    'codefuse-ai/CodeFuse-CodeLlama-34B',
+    template=TemplateType.emu3_gen,
+    support_flash_attn=True,
+    support_vllm=False,
+    support_lmdeploy=False,
+    tags=['t2i'],
+    hf_model_id='BAAI/Emu3-Gen')
+def get_model_tokenizer_emu3_gen(model_dir: str,
+                                 torch_dtype: torch.dtype,
+                                 model_kwargs: Dict[str, Any],
+                                 load_model: bool = True,
+                                 **kwargs):
+    import sys
+    sys.path.append(model_dir)
+    from processing_emu3 import Emu3Processor
+    vq_hub = snapshot_download('BAAI/Emu3-VisionTokenizer')
+    from transformers import AutoModel, AutoImageProcessor
+    image_processor = AutoImageProcessor.from_pretrained(vq_hub, trust_remote_code=True)
+    image_tokenizer = AutoModel.from_pretrained(vq_hub, trust_remote_code=True).eval()
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
+    processor = Emu3Processor(image_processor, image_tokenizer, tokenizer)
+    tokenizer.processor = processor
+    return model, tokenizer
 
 
 @register_model(

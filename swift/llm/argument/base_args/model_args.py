@@ -17,7 +17,7 @@ class ModelArguments:
     """
     ModelArguments class is a dataclass that holds various arguments related to model configuration and usage.
 
-    Attributes:
+    Args:
         model (Optional[str]): Model identifier or path. Default is None.
         model_type (Optional[str]): Type of the model group. Default is None.
         model_revision (Optional[str]): Revision of the model. Default is None.
@@ -29,11 +29,6 @@ class ModelArguments:
         device_map_config (Optional[str]): Configuration for device mapping. Default is None.
         device_max_memory (List[str]): List of maximum memory for each CUDA device. Default is an empty list.
         local_repo_path (Optional[str]): Path to the local repository for model code. Default is None.
-
-    Methods:
-        parse_to_dict: Converts a JSON string or JSON file into a dictionary.
-        _init_model_kwargs: Prepares model keyword arguments and sets them to the environment.
-        _init_device_map_config: Prepares device map arguments.
     """
     model: Optional[str] = None  # model id or model path
     model_type: Optional[str] = field(

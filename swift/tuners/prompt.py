@@ -153,7 +153,7 @@ class PromptModule(nn.Module, ActivationMixin):
     'Visual Prompt Tuning' by Jia et al.(2022)
     See https://arxiv.org/abs/2203.12119
 
-    Attributes:
+    Args:
         dim: An integer indicating the embedding dimension.
         layer_num: An integer indicating number of layers.
         prompt_length: An integer indicating the length of vision prompt tuning.

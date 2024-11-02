@@ -137,7 +137,7 @@ class AdapterModule(nn.Module, ActivationMixin):
     'Parameter-Efficient Transfer Learning for NLP' by Houlsby et al.(2019)
     See http://arxiv.org/abs/1902.00751
 
-    Attributes:
+    Args:
         dim: An integer indicating the embedding dimension.
         adapter_length: An integer indicating the length of adapter tuning.
     """

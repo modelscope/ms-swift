@@ -10,7 +10,7 @@ class DeployArguments(InferArguments):
     DeployArguments is a dataclass that extends InferArguments and is used to define
     the arguments required for deploying a model.
 
-    Attributes:
+    Args:
         host (str): The host address to bind the server to. Default is '0.0.0.0'.
         port (int): The port number to bind the server to. Default is 8000.
         api_key (Optional[str]): The API key for authentication. Default is None.

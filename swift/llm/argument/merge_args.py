@@ -12,7 +12,7 @@ class MergeArguments:
     """
     MergeArguments is a dataclass that holds configuration for merging models.
 
-    Attributes:
+    Args:
         merge_lora (bool): Flag to indicate if LoRA merging is enabled. Default is False.
         use_merge_kit (bool): Flag to indicate merge with `mergekit`. Default is False.
         instruct_model_id_or_path (Optional[str]): Path or ID of the instruct model. Use when `use_merge_kit` is True.
