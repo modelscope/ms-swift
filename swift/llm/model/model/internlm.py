@@ -38,6 +38,7 @@ register_model(
         ],
         TemplateType.internlm,
         get_model_tokenizer_internlm_chat,
+        architectures=['InternLMForCausalLM'],
         support_vllm=True,
         support_lmdeploy=True))
 
@@ -98,9 +99,10 @@ register_model(
         TemplateType.internlm2,
         get_model_tokenizer_internlm2,
         requires=['transformers>=4.38'],
+        architectures=['InternLM2ForCausalLM'],
         support_flash_attn=True,
         support_vllm=True,
-        support_lmdeploy=True), )
+        support_lmdeploy=True))
 
 
 def get_model_tokenizer_internlm_xcomposer2(model_dir: str,

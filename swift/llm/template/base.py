@@ -3,7 +3,6 @@ import hashlib
 import inspect
 import os
 import re
-from contextlib import contextmanager
 from dataclasses import asdict
 from functools import partial, wraps
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
@@ -98,7 +97,6 @@ class Template:
         self.loss_scale = loss_scale
         self.max_pixels = max_pixels
         self.sequence_parallel_size = sequence_parallel_size
-        self.model_info = tokenizer.model_info
         self.tools_prompt = tools_prompt or template_meta.default_tools_prompt
         self.is_training = False
         self.infer_backend: Literal['pt', 'vllm', 'lmdeploy'] = 'pt'
@@ -145,9 +143,7 @@ class Template:
         Returns:
             return {'input_ids': List[int], 'labels': Optional[List[int]], ...}
         """
-        if isinstance(inputs, InferRequest):
-            inputs = asdict(inputs)
-        elif isinstance(inputs, TemplateInputs):
+        if isinstance(inputs, (InferRequest, TemplateInputs)):
             inputs = asdict(inputs)
 
         if isinstance(inputs, dict):

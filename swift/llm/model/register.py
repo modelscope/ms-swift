@@ -60,6 +60,7 @@ class ModelMeta:
     get_function: GetModelTokenizerFunction
 
     model_arch: Optional[str] = None
+    architectures: List[str] = field(default_factory=list)
     is_moe: bool = False
     is_multimodal: bool = False
     # Additional files that need to be saved for full parameter training/merge-lora.
