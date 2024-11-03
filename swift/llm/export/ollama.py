@@ -54,7 +54,6 @@ def export_to_ollama(args: ExportArguments):
             if isinstance(stop_word, list):
                 stop_word = template.tokenizer.decode(stop_word)
             f.write(f'PARAMETER stop "{stop_word}"\n')
-        generation_config = model.generation_config
         if args.temperature:
             f.write(f'PARAMETER temperature {args.temperature}\n')
         if args.top_k:

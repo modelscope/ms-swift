@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Any, Dict, List, Union
 
-from swift.llm import (ExportArguments, SwiftPipeline, merge_lora, quantize_model)
+from swift.llm import ExportArguments, SwiftPipeline, merge_lora, quantize_model, export_to_ollama
 from swift.utils import get_logger
 from swift.tuners import swift_to_peft_format
 from swift.hub import default_hub
@@ -21,7 +21,7 @@ class SwiftExport(SwiftPipeline[ExportArguments]):
         elif args.quant_method is not None:
             quantize_model(args)
         elif args.to_ollama:
-            pass
+            export_to_ollama(args)
         elif args.push_to_hub:
             ckpt_dir = args.ckpt_dir or args.model
             assert ckpt_dir is not None, 'You need to specify `ckpt_dir`.'

@@ -7,7 +7,7 @@ if TYPE_CHECKING:
     # Recommend using `xxx_main`
     from .infer import (VllmEngine, RequestConfig, InferStats, LmdeployEngine, PtEngine, infer_main, deploy_main,
                         PtLoRARequest, InferClient, SwiftInfer, SwiftDeploy)
-    from .export import export_main, merge_lora, quantize_model
+    from .export import export_main, merge_lora, quantize_model, export_to_ollama
     from .eval import eval_main
     from .train import sft_main, pt_main, rlhf_main
     from .argument import (EvalArguments, InferArguments, SftArguments, ExportArguments, DeployArguments, RLHFArguments,
@@ -31,7 +31,7 @@ else:
             'deploy_main', 'VllmEngine', 'RequestConfig', 'InferStats', 'LmdeployEngine', 'PtEngine', 'infer_main',
             'PtLoRARequest', 'InferClient', 'SwiftInfer', 'SwiftDeploy'
         ],
-        'export': ['export_main', 'merge_lora', 'quantize_model'],
+        'export': ['export_main', 'merge_lora', 'quantize_model', 'export_to_ollama'],
         'eval': ['eval_main'],
         'train': ['sft_main', 'pt_main', 'rlhf_main'],
         'argument': [
