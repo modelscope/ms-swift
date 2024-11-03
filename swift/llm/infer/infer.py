@@ -52,15 +52,12 @@ class InferCliState:
         }
 
 
-class SwiftInfer(SwiftPipeline):
-    args_class = InferArguments
+class SwiftInfer(SwiftPipeline[InferArguments]):
 
     def __init__(self, args: Union[List[str], InferArguments, None] = None) -> None:
-        self.args: InferArguments = self.parse_args(args)
-        if args.merge_lora:
-            merge_lora(args, device_map=args.merge_device_map)
-        self.infer_engine = self.get_infer_engine()
-        self.template = self._get_template(self.tokenizer)
+        super().__init__(args)
+        self.infer_engine = self.get_infer_engine(args)
+        self.template = self.get_template(args, self.tokenizer)
         self.random_state = np.random.RandomState(args.dataset_seed)
 
     def __getattr__(self, name: str):
@@ -69,23 +66,24 @@ class SwiftInfer(SwiftPipeline):
         except AttributeError:
             return getattr(self.infer_engine, name)
 
-    def get_infer_engine(self) -> InferEngine:
-        args = self.args
-        kwargs = {
+    @staticmethod
+    def get_infer_engine(args, **kwargs) -> InferEngine:
+        kwargs.update({
             'model_id_or_path': args.model,
             'model_type': args.model_type,
             'revision': args.model_revision,
             'torch_dtype': args.torch_dtype,
-        }
+        })
         if args.infer_backend == 'pt':
             from .infer_engine import PtEngine
             infer_engine_cls = PtEngine
             kwargs.update({
                 'attn_impl': args.attn_impl,
-                'device_map': args.device_map_config,
                 'quantization_config': args.quantization_config,
                 'max_batch_size': args.max_batch_size
             })
+            if 'device_map' not in kwargs:
+                kwargs['device_map'] = args.device_map_config
         elif args.infer_backend == 'vllm':
             from .infer_engine import VllmEngine
             infer_engine_cls = VllmEngine
@@ -114,8 +112,8 @@ class SwiftInfer(SwiftPipeline):
 
         return infer_engine_cls(**kwargs)
 
-    def _get_template(self, tokenizer) -> Template:
-        args = self.args
+    @staticmethod
+    def get_template(args, tokenizer) -> Template:
         template = get_template(
             args.template,
             tokenizer,

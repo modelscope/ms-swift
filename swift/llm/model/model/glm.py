@@ -4,7 +4,7 @@ from typing import Any, Dict, Type
 import torch
 import transformers
 from packaging import version
-from transformers import AutoConfig, AutoTokenizer, PretrainedConfig, PreTrainedTokenizerBase
+from transformers import AutoTokenizer, PretrainedConfig, PreTrainedTokenizerBase
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
 
@@ -69,6 +69,7 @@ register_model(
         ],
         TemplateType.chatglm2,
         get_model_tokenizer_chatglm,
+        architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
         requires=['transformers<4.42'],
         support_vllm=True,
     ))
@@ -84,6 +85,7 @@ register_model(
         ],
         TemplateType.codefuse,
         get_model_tokenizer_chatglm,
+        architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
         requires=['transformers<4.34'],
         support_vllm=True,
     ))
@@ -101,6 +103,7 @@ register_model(
         ],
         TemplateType.chatglm3,
         get_model_tokenizer_chatglm,
+        architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
         requires=['transformers<4.42'],
         support_vllm=True,
     ))
@@ -133,6 +136,7 @@ register_model(
         ],
         TemplateType.chatglm4,
         get_model_tokenizer_glm4,
+        architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
         requires=['transformers>=4.42'],
         support_vllm=True,
         support_flash_attn=True,
@@ -147,6 +151,7 @@ register_model(
         TemplateType.codegeex4,
         get_model_tokenizer_glm4,
         requires=['transformers<4.42'],
+        architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
         support_vllm=True,
         support_flash_attn=True,
         support_lmdeploy=True))
@@ -181,6 +186,7 @@ register_model(
         ])],
         TemplateType.glm4v,
         get_model_tokenizer_glm4v,
+        architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
         is_multimodal=True,
         requires=['transformers>=4.42']))
 
@@ -210,6 +216,7 @@ register_model(
         ],
         TemplateType.cogvlm,
         get_model_tokenizer_cogvlm,
+        architectures=['CogVLMForCausalLM'],
         is_multimodal=True,
         support_gradient_checkpointing=False,
         requires=['transformers<4.42'],
@@ -225,6 +232,7 @@ register_model(
         ],
         TemplateType.cogagent_chat,
         get_model_tokenizer_cogvlm,
+        architectures=['CogAgentForCausalLM'],
         is_multimodal=True,
         support_gradient_checkpointing=False,
         requires=['transformers<4.42'],
@@ -238,6 +246,7 @@ register_model(
         ])],
         TemplateType.cogagent_vqa,
         get_model_tokenizer_cogvlm,
+        architectures=['CogAgentForCausalLM'],
         is_multimodal=True,
         support_gradient_checkpointing=False,
         requires=['transformers<4.42'],
@@ -268,6 +277,7 @@ register_model(
         ],
         TemplateType.cogvlm,
         get_model_tokenizer_cogvlm2,
+        architectures=['CogVLMForCausalLM'],
         requires=['transformers<4.42'],
         is_multimodal=True,
         support_lmdeploy=True,
@@ -283,6 +293,7 @@ register_model(
         ],
         TemplateType.cogvlm2_video,
         get_model_tokenizer_cogvlm2,
+        architectures=['CogVLMVideoForCausalLM'],
         requires=['transformers>=4.42'],
         is_multimodal=True,
         support_gradient_checkpointing=False))

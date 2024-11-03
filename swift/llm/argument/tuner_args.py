@@ -7,10 +7,6 @@ def get_supported_tuners():
     return {'lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft', 'reft'}
 
 
-def adapters_can_be_merged():
-    return ['lora', 'longlora', 'llamapro', 'adalora']
-
-
 @dataclass
 class TunerArguments:
     """
@@ -184,3 +180,7 @@ class TunerArguments:
     @property
     def is_adapter(self) -> bool:
         return self.train_type not in {'full'}
+
+    @property
+    def adapters_can_be_merged(self):
+        return {'lora', 'longlora', 'llamapro', 'adalora'}

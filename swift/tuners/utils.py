@@ -422,7 +422,6 @@ def set_trainable(model, adapter_name):
 
 def swift_to_peft_format(ckpt_dir: str, output_dir: str) -> str:
     if 'default' in os.listdir(ckpt_dir):  # swift_backend
-        output_dir = f'{ckpt_dir}-peft'
         from swift import Swift
         Swift.save_to_peft_format(ckpt_dir, output_dir)
         ckpt_dir = output_dir

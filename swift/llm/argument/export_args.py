@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal, Optional
 
 import torch.distributed as dist
@@ -8,13 +8,12 @@ import torch.distributed as dist
 from swift.utils import get_logger, is_dist
 from .base_args import BaseArguments, to_abspath
 from .merge_args import MergeArguments
-from .tuner_args import adapters_can_be_merged
 
 logger = get_logger()
 
 
 @dataclass
-class ExportArguments(BaseArguments, MergeArguments):
+class ExportArguments(MergeArguments, BaseArguments):
     """
     ExportArguments is a dataclass that inherits from BaseArguments and MergeArguments.
 
@@ -37,14 +36,18 @@ class ExportArguments(BaseArguments, MergeArguments):
         tp (int): Tensor parallelism degree.
         pp (int): Pipeline parallelism degree.
     """
+    ckpt_dir: Optional[str] = field(default=None, metadata={'help': '/path/to/your/vx-xxx/checkpoint-xxx'})
     output_dir: Optional[str] = None
+    device_map: str = 'auto'  # e.g. 'cpu', 'auto'
+    safe_serialization: bool = True
+    max_shard_size: str = '5GB'
 
     to_peft_format: bool = False
     # awq/gptq
     quant_n_samples: int = 256
     quant_seqlen: int = 2048
-    quant_device_map: str = 'auto'  # e.g. 'cpu', 'auto'
     quant_batch_size: int = 1
+    group_size: int = 128
 
     # ollama
     to_ollama: bool = False
@@ -72,9 +75,10 @@ class ExportArguments(BaseArguments, MergeArguments):
                 raise ValueError(f'self.dataset: {self.dataset}, Please input the quant dataset.')
 
     def _init_output_dir(self):
-        if self.ckpt_dir is None:
+        ckpt_dir = self.ckpt_dir
+        if ckpt_dir is None:
             ckpt_dir = self.model_info.model_dir
-        ckpt_dir, ckpt_name = os.path.split(model_dir)
+        ckpt_dir, ckpt_name = os.path.split(ckpt_dir)
         if self.to_peft_format:
             suffix = 'peft'
         elif self.merge_lora:
@@ -87,12 +91,14 @@ class ExportArguments(BaseArguments, MergeArguments):
             suffix = f'tp{self.tp}-pp{self.pp}'
         elif self.to_hf:
             suffix = 'hf'
+        else:
+            raise ValueError(f'args: {self}')
         self.output_dir = os.path.join(ckpt_dir, f'{ckpt_name}-{suffix}')
 
         logger.info(f'Setting args.output_dir: {self.output_dir}')
 
         self.output_dir = to_abspath(self.output_dir)
-        assert not os.path.exists(self.output_dir), (f'args.output_dir: {self.output_dir} already exists.')
+        assert not os.path.exists(self.output_dir), f'args.output_dir: {self.output_dir} already exists.'
 
     def __post_init__(self):
         super().__post_init__()
@@ -100,9 +106,7 @@ class ExportArguments(BaseArguments, MergeArguments):
         if self.quant_bits > 0:
             self._init_quant()
         elif self.to_ollama:
-            assert self.train_type in ['full'] + adapters_can_be_merged()
-            if self.train_type != 'full':
-                self.merge_lora = True
+            assert self.train_type in ['full'] + self.adapters_can_be_merged
 
         elif self.to_megatron or self.to_hf:
             os.environ['RANK'] = '0'

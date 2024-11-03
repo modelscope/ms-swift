@@ -81,6 +81,7 @@ register_model(
         ],
         TemplateType.qwen,
         get_model_tokenizer_qwen,
+        architectures=['QWenLMHeadModel'],
         support_flash_attn=True,
         support_vllm=True,
         support_lmdeploy=True))
@@ -94,6 +95,7 @@ register_model(
         ],
         TemplateType.codefuse,
         get_model_tokenizer_qwen,
+        architectures=['QWenLMHeadModel'],
         support_flash_attn=True,
         support_vllm=True,
         support_lmdeploy=True))
@@ -107,6 +109,7 @@ register_model(
         ])],
         TemplateType.modelscope_agent,
         get_model_tokenizer_qwen,
+        architectures=['QWenLMHeadModel'],
         support_vllm=False,
         support_lmdeploy=False))
 
@@ -160,6 +163,7 @@ register_model(
         ],
         TemplateType.qwen_audio,
         get_model_tokenizer_qwen_audio,
+        architectures=['QWenLMHeadModel'],
         support_flash_attn=True,
         is_multimodal=True,
         additional_saved_files=['mel_filters.npz']))
@@ -238,6 +242,7 @@ register_model(
         ],
         TemplateType.qwen_vl,
         get_model_tokenizer_qwen_vl,
+        architectures=['QWenLMHeadModel'],
         support_flash_attn=True,
         support_vllm=True,
         support_lmdeploy=True,
@@ -345,6 +350,7 @@ register_model(
         ],
         TemplateType.qwen,
         get_model_tokenizer_with_flash_attn,
+        architectures=['Qwen2ForCausalLM'],
         requires=['transformers>=4.37'],
         support_flash_attn=True,
         support_vllm=True,
@@ -425,6 +431,7 @@ register_model(
         ],
         TemplateType.qwen2_5,
         get_model_tokenizer_with_flash_attn,
+        architectures=['Qwen2ForCausalLM'],
         requires=['transformers>=4.37'],
         support_flash_attn=True,
         support_vllm=True,
@@ -449,6 +456,7 @@ register_model(
         ],
         TemplateType.qwen,
         get_model_tokenizer_with_flash_attn,
+        architectures=['Qwen2MoeForCausalLM'],
         requires=['transformers>=4.40'],
         is_moe=True,
         support_flash_attn=True,
@@ -517,6 +525,7 @@ register_model(
         ],
         TemplateType.qwen2_vl,
         get_model_tokenizer_qwen2_vl,
+        architectures=['Qwen2VLForConditionalGeneration'],
         requires=['transformers>=4.45.dev.0'],  # pip install qwen_vl_utils
         is_multimodal=True,
         support_flash_attn=True,
@@ -541,6 +550,7 @@ register_model(
         ],
         TemplateType.qwen2_audio,
         get_model_tokenizer_qwen2_audio,
+        architectures=['Qwen2AudioForConditionalGeneration'],
         requires=['transformers>=4.45.dev.0'],
         is_multimodal=True,
         support_flash_attn=True))

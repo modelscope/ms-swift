@@ -101,6 +101,7 @@ def get_mllm_arch(model_type: str) -> Optional[MultiModelKeys]:
 
 
 def dynamic_vit_gradient_checkpointing(model, model_type: str) -> None:
+    # TODO: +llm
     mllm_arch = get_mllm_arch(model_type)
     if mllm_arch is None:
         return
