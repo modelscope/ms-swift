@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 from contextlib import contextmanager
 from types import MethodType
 from typing import Dict, List, Optional
@@ -155,11 +156,11 @@ class QuantEngine:
             module.__old_forward = __old_forward
 
     def get_block_name_to_quantize(self, model: nn.Module, model_type: str) -> Optional[str]:
-        mllm_arch = get_mllm_arch(model_type)
+        model_arch = model.model_meta.model_arch
         prefix = ''
-        if mllm_arch is not None:
-            assert len(mllm_arch.language_model) == 1, f'mllm_arch.language_model: {mllm_arch.language_model}'
-            prefix = mllm_arch.language_model[0]
+        if hasattr(model_arch, 'language_model'):
+            assert len(model_arch.language_model) == 1, f'mllm_arch.language_model: {model_arch.language_model}'
+            prefix = model_arch.language_model[0]
             model = deep_getattr(model, prefix)
 
         module_lists = []
@@ -192,4 +193,5 @@ class QuantEngine:
 
 
 def quantize_model(args: ExportArguments):
-    pass
+    QuantEngine(args).quantize()
+

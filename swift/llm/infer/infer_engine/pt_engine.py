@@ -58,6 +58,7 @@ class PtEngine(InferEngine):
             attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None,
             # TODO: async batch_size
             max_batch_size: int = 16,
+            load_model: bool = True,
             # model kwargs
             device_map: Optional[Union[str, Dict[str, Any]]] = None,
             quantization_config: Optional[Dict[str, Any]] = None,
@@ -71,7 +72,7 @@ class PtEngine(InferEngine):
         self._prepare_model_tokenizer(
             model_id_or_path,
             torch_dtype,
-            True,
+            load_model=load_model,
             model_type=model_type,
             use_hf=use_hf,
             revision=revision,

@@ -7,7 +7,7 @@ if TYPE_CHECKING:
     # Recommend using `xxx_main`
     from .infer import (VllmEngine, RequestConfig, InferStats, LmdeployEngine, PtEngine, infer_main, deploy_main,
                         PtLoRARequest, InferClient, SwiftInfer, SwiftDeploy)
-    from .export import export_main, merge_lora
+    from .export import export_main, merge_lora, quantize_model
     from .eval import eval_main
     from .train import sft_main, pt_main, rlhf_main
     from .argument import (EvalArguments, InferArguments, SftArguments, ExportArguments, DeployArguments, RLHFArguments,
@@ -22,7 +22,6 @@ if TYPE_CHECKING:
                           standard_keys, load_dataset, DATASET_TYPE, HfDataset, sample_dataset)
     from .utils import (deep_getattr, to_device, History, decode_base64, history_to_messages, messages_to_history,
                         safe_tokenizer_decode)
-    from .module_mapping import MODEL_KEYS_MAPPING, MultiModelKeys
     from .base import SwiftPipeline
 else:
     _extra_objects = {k: v for k, v in globals().items() if not k.startswith('_')}
@@ -32,7 +31,7 @@ else:
             'deploy_main', 'VllmEngine', 'RequestConfig', 'InferStats', 'LmdeployEngine', 'PtEngine', 'infer_main',
             'PtLoRARequest', 'InferClient', 'SwiftInfer', 'SwiftDeploy'
         ],
-        'export': ['export_main', 'merge_lora'],
+        'export': ['export_main', 'merge_lora', 'quantize_model'],
         'eval': ['eval_main'],
         'train': ['sft_main', 'pt_main', 'rlhf_main'],
         'argument': [
@@ -58,7 +57,6 @@ else:
             'deep_getattr', 'to_device', 'History', 'decode_base64', 'history_to_messages', 'messages_to_history',
             'safe_tokenizer_decode'
         ],
-        'module_mapping': ['MODEL_KEYS_MAPPING', 'MultiModelKeys'],
         'base': ['SwiftPipeline']
     }
 
