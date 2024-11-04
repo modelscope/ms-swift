@@ -51,14 +51,17 @@ def _get_dataset(*args, **kwargs):
     samples = []
     n_run = 0
     for data in dataset:
-        inputs = template.encode(data)[0]
-        input_ids = inputs['input_ids']
-        if input_ids is None or len(input_ids) == 0:
+        with torch.inference_mode():
+            inputs = template.encode(data)[0]
+        if len(inputs) == 0:
             continue
         if _args.is_multimodal and _args.quant_method == 'gptq':
             inputs.pop('labels', None)
             samples.append(inputs)
         else:
+            input_ids = inputs['input_ids']
+            if input_ids is None or len(input_ids) == 0:
+                continue
             samples += input_ids
         n_run += 1
         if n_run == n_samples:
