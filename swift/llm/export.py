@@ -157,6 +157,7 @@ def gptq_model_quantize(model, tokenizer, batch_size):
             dataset=','.join(_args.dataset),
             batch_size=batch_size,
             block_name_to_quantize=get_block_name_to_quantize(model, _args.model_type))
+        gptq_quantizer.serialization_keys.append('block_name_to_quantize')
         logger.info('Start quantizing the model...')
         logger.warning('The process of packing the model takes a long time and there is no progress bar. '
                        'Please be patient and wait...')
