@@ -612,6 +612,7 @@ class Template:
             as a forward hook, converting input_ids into inputs_embeds.
         """
         self.is_training = True
+        self.infer_backend = 'pt'
         if not is_multimodal:
             return
 
