@@ -9,7 +9,7 @@ from transformers import PreTrainedModel, PreTrainedTokenizerBase
 from swift.llm import BaseArguments, SwiftInfer, Template
 
 
-def prepare_model_template(args: BaseArguments, load_model: bool=False, **kwargs) -> Tuple[PreTrainedModel, Template]:
+def prepare_model_template(args: BaseArguments, load_model: bool = False, **kwargs) -> Tuple[PreTrainedModel, Template]:
     infer_engine = SwiftInfer.get_infer_engine(args, load_model=load_model, **kwargs)
     template = SwiftInfer.get_template(args, infer_engine.tokenizer)
     return infer_engine.model, template

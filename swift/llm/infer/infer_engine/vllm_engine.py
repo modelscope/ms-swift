@@ -1,16 +1,17 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import asyncio
 import inspect
 import os
+from contextlib import contextmanager
+from copy import deepcopy
 from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
 
 import torch
 import vllm
 from modelscope import GenerationConfig
-from copy import deepcopy
 from packaging import version
 from transformers import PreTrainedTokenizerBase
 from vllm import AsyncEngineArgs, AsyncLLMEngine, SamplingParams
-from contextlib import contextmanager
 
 from swift.llm import Template, TemplateMeta
 from swift.plugin import Metric
@@ -363,7 +364,6 @@ class VllmEngine(InferEngine):
         else:
             return await self._infer_full_async(*infer_args, **kwargs)
 
-
     @staticmethod
     @contextmanager
     def patch_remove_log():
@@ -371,33 +371,31 @@ class VllmEngine(InferEngine):
 
         log_task_completion = async_llm_engine._log_task_completion
 
-        def new_log_task_completion(task: asyncio.Task,
-                         error_callback: Callable[[Exception], None]) -> None:
+        def new_log_task_completion(task, error_callback) -> None:
             exception = None
             try:
                 return_value = task.result()
-                raise AssertionError(
-                    f"The engine background task should never finish without an "
-                    f"exception. {return_value}")
-            # except asyncio.exceptions.CancelledError:
+                raise AssertionError(f'The engine background task should never finish without an '
+                                     f'exception. {return_value}')
+            except asyncio.exceptions.CancelledError:
+                pass
             #     # We assume that if the task is cancelled, we are gracefully shutting
             #     # down. This should only happen on program exit.
             #     logger.info("Engine is gracefully shutting down.")
             except Exception as e:
                 exception = e
-                logger.error("Engine background task failed", exc_info=e)
+                logger.error('Engine background task failed', exc_info=e)
                 error_callback(exception)
-                raise AsyncEngineDeadError(
-                    "Task finished unexpectedly. This should never happen! "
-                    "Please open an issue on Github. See stack trace above for the "
-                    "actual cause.") from e
-            
+                raise AsyncEngineDeadError('Task finished unexpectedly. This should never happen! '
+                                           'Please open an issue on Github. See stack trace above for the '
+                                           'actual cause.') from e
+
         async_llm_engine._log_task_completion = new_log_task_completion
         yield
         async_llm_engine._log_task_completion = log_task_completion
 
-
-    def _batch_infer_stream(self, tasks,
+    def _batch_infer_stream(self,
+                            tasks,
                             stream: bool = True,
                             use_tqdm: bool = True) -> Iterator[List[Optional[ChatCompletionStreamResponse]]]:
         with self.patch_remove_log():

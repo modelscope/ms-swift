@@ -91,7 +91,9 @@ class MultiModelKeys(ModelKeys):
             if v is None:
                 setattr(self, key, [])
 
+
 MODEL_ARCH_MAPPING = {}
+
 
 def register_model_arch(model_arch: ModelKeys, *, exist_ok: bool = False) -> None:
     """

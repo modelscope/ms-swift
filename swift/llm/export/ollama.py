@@ -1,10 +1,11 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-
 from typing import List
-from swift.llm import Template, ExportArguments
+
+from swift.llm import ExportArguments, Template
 from swift.utils import get_logger
 from .utils import prepare_model_template
+
 logger = get_logger()
 
 
@@ -68,5 +69,3 @@ def export_to_ollama(args: ExportArguments):
     logger.info('In another terminal:')
     logger.info('> ollama create my-custom-model ' f'-f {os.path.join(args.output_dir, "Modelfile")}')
     logger.info('> ollama run my-custom-model')
-
-

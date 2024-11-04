@@ -194,4 +194,3 @@ class QuantEngine:
 
 def quantize_model(args: ExportArguments):
     QuantEngine(args).quantize()
-

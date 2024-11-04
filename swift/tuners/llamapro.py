@@ -6,7 +6,7 @@ from typing import Optional
 import torch
 from torch import nn
 
-from swift.llm import ModelKeys, MODEL_ARCH_MAPPING
+from swift.llm import MODEL_ARCH_MAPPING, ModelKeys
 from swift.utils.logger import get_logger
 from .utils import ActivationMixin, SwiftAdapter, SwiftConfig, SwiftOutput
 
