@@ -26,7 +26,7 @@ class ModelArguments:
         attn_impl (Literal): Attention implementation to use. Default is None.
         model_kwargs (Optional[str]): Additional keyword arguments for the model. Default is None.
         rope_scaling (Literal): Type of rope scaling to use. Default is None.
-        device_map_config (Optional[str]): Configuration for device mapping. Default is None.
+        device_map (Optional[str]): Configuration for device mapping. Default is None.
         device_max_memory (List[str]): List of maximum memory for each CUDA device. Default is an empty list.
         local_repo_path (Optional[str]): Path to the local repository for model code. Default is None.
     """
@@ -44,14 +44,14 @@ class ModelArguments:
     # extra
     model_kwargs: Optional[str] = None
     rope_scaling: Literal['linear', 'dynamic'] = None  # TODO:check
-    device_map_config: Optional[str] = None
+    device_map: Optional[str] = None
     device_max_memory: List[str] = field(default_factory=list)
     # When some model code needs to be downloaded from GitHub,
     # this parameter specifies the path to the locally downloaded repository.
     local_repo_path: Optional[str] = None
 
     @staticmethod
-    def parse_to_dict(value: Union[str, Dict, None]) -> Dict:
+    def parse_to_dict(value: Union[str, Dict, None], strict: bool = True) -> Union[str, Dict]:
         """Convert a JSON string or JSON file into a dict"""
         if value is None:
             value = {}
@@ -60,7 +60,11 @@ class ModelArguments:
                 with open(value, 'r') as f:
                     value = json.load(f)
             else:  # json str
-                value = json.loads(value)
+                try:
+                    value = json.loads(value)
+                except json.JSONDecodeError:
+                    if strict:
+                        raise
         return value
 
     def _init_model_kwargs(self):
@@ -70,15 +74,15 @@ class ModelArguments:
             k = k.upper()
             os.environ[k] = str(v)
 
-    def _init_device_map_config(self):
+    def _init_device_map(self):
         """Prepare device map args"""
-        self.device_map_config = self.parse_to_dict(self.device_map_config)
+        self.device_map: Union[str, Dict[str, Any]] = self.parse_to_dict(self.device_map, strict=False)
         # compat mp&ddp
         _, local_rank, _, local_world_size = get_dist_setting()
-        if local_world_size > 1 and isinstance(self.device_map_config, dict) and local_rank > 0:
-            for k, v in self.device_map_config.items():
+        if local_world_size > 1 and isinstance(self.device_map, dict) and local_rank > 0:
+            for k, v in self.device_map.items():
                 if isinstance(v, int):
-                    self.device_map_config[k] += local_rank
+                    self.device_map[k] += local_rank
 
     def _init_torch_dtype(self) -> None:
         """"If torch_dtype is None, find a proper dtype by the train_type/GPU"""
@@ -119,5 +123,5 @@ class ModelArguments:
         if self.use_hf:
             os.environ['USE_HF'] = '1'
         self._init_model_kwargs()
-        self._init_device_map_config()
+        self._init_device_map()
         self._init_torch_dtype()

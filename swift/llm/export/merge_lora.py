@@ -7,6 +7,7 @@ from swift.hub import default_hub
 from swift.llm import ExportArguments, ModelMeta, SwiftPipeline
 from swift.tuners import Swift
 from swift.utils import get_logger
+from .utils import prepare_pt_engine_template, save_checkpoint
 
 logger = get_logger()
 
@@ -32,7 +33,7 @@ def merge_lora(args: ExportArguments, replace_if_exists=False) -> None:
                 args.instruct_model_id_or_path = default_hub.download_model(
                     args.instruct_model_id_or_path, revision=args.instruct_model_revision)
             args.model_id_or_path = args.instruct_model_id_or_path
-        model, template = prepare_model_template(args)
+        model, template = prepare_pt_engine_template(args)
         logger.info('Merge LoRA...')
         Swift.merge_and_unload(model)
         model = model.model
@@ -49,8 +50,8 @@ def merge_lora(args: ExportArguments, replace_if_exists=False) -> None:
 
         if args.use_merge_kit:
             tempdir = tempfile.gettempdir()
-            mergekit_path = merged_lora_path + '-mergekit'
-            merge_yaml = args.merge_yaml.replace('{merged_model}', merged_lora_path).replace(
+            mergekit_path = args.output_dir + '-mergekit'
+            merge_yaml = args.merge_yaml.replace('{merged_model}', args.output_dir).replace(
                 '{instruct_model}', args.instruct_model_id_or_path).replace('{base_model}', base_model_id_or_path)
             try:
                 yamlfile = os.path.join(tempdir, 'mergekit.yaml')

@@ -38,7 +38,6 @@ class ExportArguments(MergeArguments, BaseArguments):
     """
     ckpt_dir: Optional[str] = field(default=None, metadata={'help': '/path/to/your/vx-xxx/checkpoint-xxx'})
     output_dir: Optional[str] = None
-    device_map: str = 'auto'  # e.g. 'cpu', 'auto'
     safe_serialization: bool = True
     max_shard_size: str = '5GB'
 
@@ -105,18 +104,6 @@ class ExportArguments(MergeArguments, BaseArguments):
         self._init_output_dir()
         if self.quant_bits > 0:
             self._init_quant()
-        elif self.to_ollama:
-            assert self.train_type in ['full'] + self.adapters_can_be_merged
-
-        elif self.to_megatron or self.to_hf:
-            os.environ['RANK'] = '0'
-            os.environ['LOCAL_RANK'] = '0'
-            os.environ['WORLD_SIZE'] = '1'
-            os.environ['LOCAL_WORLD_SIZE'] = '1'
-            os.environ['MASTER_ADDR'] = '127.0.0.1'
-            os.environ['MASTER_PORT'] = os.environ.get('MASTER_PORT', '29500')
-            assert is_dist(), 'Please start in distributed mode.'
-            dist.init_process_group(backend='nccl')
 
     def _init_torch_dtype(self) -> None:
         if self.quant_bits > 0 and self.torch_dtype is None:

@@ -2,9 +2,9 @@
 import os
 from typing import List
 
-from swift.llm import ExportArguments, Template
+from swift.llm import ExportArguments, RequestConfig, Template
 from swift.utils import get_logger
-from .utils import prepare_model_template
+from .utils import prepare_pt_engine_template
 
 logger = get_logger()
 
@@ -33,12 +33,11 @@ def export_to_ollama(args: ExportArguments):
     logger.info('If you have a gguf file, try to pass the file by :--gguf_file /xxx/xxx.gguf, '
                 'else SWIFT will use the original(merged) model dir')
     os.makedirs(args.output_dir, exist_ok=True)
-    model, template = prepare_model_template(args)
-    tokenizer = template.tokenizer
-    logger.info(f'Using model_dir: {model.model_dir}')
+    pt_engine, template = prepare_pt_engine_template(args)
+    logger.info(f'Using model_dir: {pt_engine.model_dir}')
     template_meta = template.template_meta
     with open(os.path.join(args.output_dir, 'Modelfile'), 'w') as f:
-        f.write(f'FROM {model.model_dir}\n')
+        f.write(f'FROM {pt_engine.model_dir}\n')
         f.write(f'TEMPLATE """{{{{ if .System }}}}'
                 f'{replace_and_concat(template, template_meta.system_prefix, "{{SYSTEM}}", "{{ .System }}")}'
                 f'{{{{ else }}}}{replace_and_concat(template, template_meta.prefix, "", "")}'
@@ -50,19 +49,19 @@ def export_to_ollama(args: ExportArguments):
         f.write(replace_and_concat(template, template_meta.suffix, '', '') + '"""\n')
         f.write(f'PARAMETER stop "{replace_and_concat(template, template_meta.suffix, "", "")}"\n')
 
-        stop_words = template_meta.stop_words + [template_meta.suffix[-1], tokenizer.eos_token]
-        for stop_word in args.stop_words:
-            if isinstance(stop_word, list):
-                stop_word = template.tokenizer.decode(stop_word)
+        request_config = RequestConfig(
+            temperature=args.temperature,
+            top_k=args.top_k,
+            top_p=args.top_p,
+            repetition_penalty=args.repetition_penalty)
+        generation_config = pt_engine._prepare_generation_config(request_config)
+        pt_engine._add_stop_words(generation_config, request_config, template.template_meta)
+        for stop_word in generation_config.stop_words:
             f.write(f'PARAMETER stop "{stop_word}"\n')
-        if args.temperature:
-            f.write(f'PARAMETER temperature {args.temperature}\n')
-        if args.top_k:
-            f.write(f'PARAMETER top_k {args.top_k}\n')
-        if args.top_p:
-            f.write(f'PARAMETER top_p {args.top_p}\n')
-        if args.repetition_penalty:
-            f.write(f'PARAMETER repeat_penalty {args.repetition_penalty}\n')
+        f.write(f'PARAMETER temperature {generation_config.temperature}\n')
+        f.write(f'PARAMETER top_k {generation_config.top_k}\n')
+        f.write(f'PARAMETER top_p {generation_config.top_p}\n')
+        f.write(f'PARAMETER repeat_penalty {generation_config.repetition_penalty}\n')
 
     logger.info('Save Modelfile done, you can start ollama by:')
     logger.info('> ollama serve')
