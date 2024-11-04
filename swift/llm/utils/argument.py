@@ -1811,6 +1811,13 @@ class RLHFArguments(SftArguments):
                 self.loss_type = 'sigmoid'  # else None
             elif self.rlhf_type in ['kto']:
                 self.loss_type = 'kto'
+        if self.rlhf_type == 'ppo':
+            self.response_length = self.max_new_tokens
+            logger.info(f'set max_new_tokens {self.max_new_tokens} in generation config during ppo,'
+                        'you can set by --max_new_tokens')
+            self.num_ppo_epochs = self.num_train_epochs
+            logger.info(
+                f'set num_ppo_epochs {self.num_train_epochs} in ppo training config, you can set by --num_train_epochs')
 
     def _check_ppo(self):
         if self.rlhf_type != 'ppo':
@@ -1819,14 +1826,6 @@ class RLHFArguments(SftArguments):
             raise ValueError('Streaming is currently not supported by PPO')
         if self.is_multimodal:
             raise ValueError('MLLM is currently not supported by PPO')
-
-        self.response_length = self.max_new_tokens
-        logger.info(
-            f'set max_new_tokens {self.max_new_tokens} in generation config during ppo, you can set by --max_new_tokens'
-        )
-        self.num_ppo_epochs = self.num_train_epochs
-        logger.info(
-            f'set num_ppo_epochs {self.num_train_epochs} in ppo training config, you can set by --num_train_epochs')
 
 
 @dataclass
