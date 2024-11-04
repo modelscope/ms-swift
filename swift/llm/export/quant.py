@@ -8,7 +8,7 @@ import torch.nn as nn
 
 from swift.llm import ExportArguments, deep_getattr, load_dataset
 from swift.utils import get_logger, get_model_info
-from .utils import prepare_model_template, save_checkpoint
+from .utils import prepare_pt_engine_template, save_checkpoint
 
 logger = get_logger()
 
@@ -21,7 +21,8 @@ class QuantEngine:
         if args.quant_method == 'awq':
             from awq import AutoAWQForCausalLM
             kwargs['automodel_class'] = AutoAWQForCausalLM
-        self.model, self.template = prepare_model_template(args, device_map=args.device_map)
+        pt_engine, self.template = prepare_pt_engine_template(args)
+        self.model = pt_engine.model
         self.tokenizer = self.template.tokenizer
 
     def quantize(self):
