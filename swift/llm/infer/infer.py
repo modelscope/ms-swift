@@ -9,7 +9,6 @@ import numpy as np
 from swift.llm import (HfDataset, InferArguments, InferRequest, Messages, SwiftPipeline, Template, get_template,
                        load_dataset, sample_dataset)
 from swift.utils import append_to_jsonl, get_logger
-from .infer_engine import InferEngine
 from .protocol import RequestConfig
 
 logger = get_logger()
@@ -67,7 +66,7 @@ class SwiftInfer(SwiftPipeline[InferArguments]):
             return getattr(self.infer_engine, name)
 
     @staticmethod
-    def get_infer_engine(args, **kwargs) -> InferEngine:
+    def get_infer_engine(args, **kwargs):
         kwargs.update({
             'model_id_or_path': args.model,
             'model_type': args.model_type,
@@ -80,10 +79,9 @@ class SwiftInfer(SwiftPipeline[InferArguments]):
             kwargs.update({
                 'attn_impl': args.attn_impl,
                 'quantization_config': args.quantization_config,
-                'max_batch_size': args.max_batch_size
+                'max_batch_size': args.max_batch_size,
+                'device_map': args.device_map
             })
-            if 'device_map' not in kwargs:
-                kwargs['device_map'] = args.device_map_config
         elif args.infer_backend == 'vllm':
             from .infer_engine import VllmEngine
             infer_engine_cls = VllmEngine

@@ -6,13 +6,15 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import json
 from transformers import PreTrainedModel, PreTrainedTokenizerBase
 
-from swift.llm import BaseArguments, SwiftInfer, Template
+from swift.llm import ExportArguments, PtEngine, SwiftInfer, Template
 
 
-def prepare_model_template(args: BaseArguments, load_model: bool = False, **kwargs) -> Tuple[PreTrainedModel, Template]:
-    infer_engine = SwiftInfer.get_infer_engine(args, load_model=load_model, **kwargs)
-    template = SwiftInfer.get_template(args, infer_engine.tokenizer)
-    return infer_engine.model, template
+def prepare_pt_engine_template(args: ExportArguments, load_model: bool = True) -> Tuple[PtEngine, Template]:
+    args.infer_backend = 'pt'
+    pt_engine: PtEngine = SwiftInfer.get_infer_engine(args, load_model=load_model)
+    delattr(args, 'infer_backend')
+    template = SwiftInfer.get_template(args, pt_engine.tokenizer)
+    return pt_engine, template
 
 
 def save_checkpoint(model: Optional[PreTrainedModel],

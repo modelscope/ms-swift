@@ -140,8 +140,8 @@ def prepare_train_model_template(args, msg: Optional[Dict[str, Any]] = None):
         model_kwargs = {'device_map': None}
     elif is_torch_npu_available():
         model_kwargs = {'device_map': args.local_rank if args.local_rank >= 0 else 0}
-    elif args.device_map_config is not None:
-        model_kwargs = {'device_map': args.device_map_config}
+    elif args.device_map is not None:
+        model_kwargs = {'device_map': args.device_map}
     else:
         model_kwargs = {'low_cpu_mem_usage': True}
         if is_dist() and not is_ddp_plus_mp():
