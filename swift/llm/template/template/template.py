@@ -276,7 +276,10 @@ class Emu3GenTemplate(Template):
     def prepare_for_output(self, output: str) -> str:
         return output
 
-    def prepare_for_generation(self, example, model) -> GenerationProperty:
+    def prepare_for_generation(self,
+                               generation_config,
+                               inputs: Optional[Dict[str, Any]] = None,
+                               model=None) -> GenerationProperty:
         from transformers import UnbatchedClassifierFreeGuidanceLogitsProcessor
         from transformers import PrefixConstrainedLogitsProcessor
         from transformers import LogitsProcessorList
@@ -289,8 +292,8 @@ class Emu3GenTemplate(Template):
             padding='longest',
         )
         negative_prompt = self.NEGATIVE_PROMPT
-        if 'negative_prompt' in example:
-            negative_prompt = example['negative_prompt']
+        if 'negative_prompt' in inputs:
+            negative_prompt = inputs['negative_prompt']
 
         classifier_free_guidance = 3.0
         h, w = self.tokenizer.processor.calculate_generate_size(
@@ -299,7 +302,7 @@ class Emu3GenTemplate(Template):
         # w = pos_inputs.image_size[:, 1]
         neg_inputs = self.tokenizer.processor(text=negative_prompt, **kwargs)
         constrained_fn = self.tokenizer.processor.build_prefix_constrained_fn(h, w)
-        logits_processors = LogitsProcessorList([
+        logits_processor = LogitsProcessorList([
             UnbatchedClassifierFreeGuidanceLogitsProcessor(
                 classifier_free_guidance,
                 model,
@@ -310,10 +313,9 @@ class Emu3GenTemplate(Template):
                 num_beams=1,
             ),
         ])
-
-        return GenerationProperty(
-            logits_processors=logits_processors,
-            criterias=StopWordsCriteria(self.tokenizer, model.generation_config.stop_words))
+        res = super().prepare_for_generation(generation_config, inputs, model)
+        res.logits_processor += logits_processor
+        return res
 
     def safe_decode(self, generate_ids: List[int], is_finished: bool, **decode_kwargs) -> Image.Image:
         mm_list = self.tokenizer.processor.decode(generate_ids)

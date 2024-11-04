@@ -6,6 +6,7 @@ import re
 import subprocess
 import sys
 import time
+from dataclasses import fields, is_dataclass
 from typing import Any, Callable, Dict, List, Literal, Mapping, Optional, Sequence, Set, Tuple, Type, TypeVar, Union
 
 import numpy as np
@@ -237,3 +238,9 @@ def get_env_args(args_name: str, type_func: Callable[[str], _T], default_value: 
         _log_set.add(log_info)
         logger.info(log_info)
     return value
+
+
+def dataclass_to_dict(instance: Any) -> Dict[str, Any]:
+    """shallow copy"""
+    assert is_dataclass(instance)
+    return {field.name: getattr(instance, field.name) for field in fields(instance)}

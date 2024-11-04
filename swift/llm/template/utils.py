@@ -1,10 +1,11 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set, Tuple, Type, Union
 
 import torch
-from transformers import LogitsProcessor, PreTrainedTokenizerBase, StoppingCriteria
+from transformers import (LogitsProcessor, LogitsProcessorList, PreTrainedTokenizerBase, StoppingCriteria,
+                          StoppingCriteriaList)
 
 from swift.llm import History
 
@@ -22,8 +23,14 @@ class ContextType:
 @dataclass
 class GenerationProperty:
 
-    logits_processors: Optional[List[LogitsProcessor]] = None
-    criterias: Optional[List[StoppingCriteria]] = None
+    logits_processor: List[LogitsProcessor] = field(default_factory=list)
+    stopping_criteria: List[StoppingCriteria] = field(default_factory=list)
+
+    def __post_init__(self):
+        if isinstance(self.logits_processor, (list, tuple)):
+            self.logits_processor = LogitsProcessorList(self.logits_processor)
+        if isinstance(self.stopping_criteria, (list, tuple)):
+            self.stopping_criteria = StoppingCriteriaList(self.stopping_criteria)
 
 
 class StopWordsCriteria(StoppingCriteria):

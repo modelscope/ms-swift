@@ -3,6 +3,7 @@ import hashlib
 import inspect
 import os
 import re
+from contextlib import contextmanager
 from dataclasses import asdict
 from functools import partial, wraps
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
@@ -17,6 +18,7 @@ from torch.nn.utils.rnn import pad_sequence
 from transformers import PreTrainedTokenizerBase
 from transformers.integrations import is_deepspeed_zero3_enabled
 
+from swift.utils import dataclass_to_dict
 from .agent import loss_scale_map, split_str_parts_by
 from .template_inputs import InferRequest, StdTemplateInputs, TemplateInputs
 from .utils import Context, ContextType, GenerationProperty, Prompt, StopWordsCriteria, Word, fetch_one, findall
@@ -100,6 +102,8 @@ class Template:
         self.tools_prompt = tools_prompt or template_meta.default_tools_prompt
         self.is_training = False
         self.infer_backend: Literal['pt', 'vllm', 'lmdeploy'] = 'pt'
+        self._handles = []
+        self._deepspeed_initialize = None
 
     def _preprocess_inputs(
         self,
@@ -145,7 +149,8 @@ class Template:
             return {'input_ids': List[int], 'labels': Optional[List[int]], ...}
         """
         if isinstance(inputs, (InferRequest, TemplateInputs)):
-            inputs = asdict(inputs)
+            # The safety is guaranteed in StdTemplateInputs.from_dict.
+            inputs = dataclass_to_dict(inputs)
 
         if isinstance(inputs, dict):
             inputs = StdTemplateInputs.from_dict(inputs, tools_prompt=self.tools_prompt)
@@ -161,6 +166,9 @@ class Template:
         else:
             self._check_inputs(inputs)
             res = self._encode(inputs, model=model)
+        for key in ['labels', 'loss_scale']:
+            if res.get(key) is None:
+                res.pop(key, None)
         return res
 
     def post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
@@ -195,8 +203,11 @@ class Template:
         #     # idx = max(len(response) - len_suffix, 0, self.print_idx)
         #     response = response[:-len_suffix]
 
-    def prepare_for_generation(self, example, model) -> GenerationProperty:
-        return GenerationProperty(criterias=StopWordsCriteria(self.tokenizer, model.generation_config.stop_words))
+    def prepare_for_generation(self,
+                               generation_config,
+                               inputs: Optional[Dict[str, Any]] = None,
+                               model=None) -> GenerationProperty:
+        return GenerationProperty(stopping_criteria=[StopWordsCriteria(self.tokenizer, generation_config.stop_words)])
 
     def _preprocess_objects(self, inputs: StdTemplateInputs, objects: List[Dict[str, Any]]):
         # Load image into PIL format
@@ -564,9 +575,12 @@ class Template:
             if loss_scale is not None:
                 loss_scale = loss_scale[-self.max_length:]
         res['input_ids'] = input_ids
-        if response is not None:
-            res['labels'] = labels
-            res['loss_scale'] = loss_scale
+        if response is None:
+            labels = None
+            loss_scale = None
+
+        res['labels'] = labels
+        res['loss_scale'] = loss_scale
         return res
 
     def _get_tokenizer_kwargs(self, context: str) -> Dict[str, Any]:
@@ -586,12 +600,16 @@ class Template:
     def post_process_generate_response(self, response: str, inputs: StdTemplateInputs) -> str:
         return response
 
-    def _pre_forward_hook(self, args, kwargs, model):
+    def pre_forward_hook(self, args, kwargs, model):
+        # inplace
         from swift.llm import to_device
         extra_inputs = []
         batched_data = kwargs.pop('_data')
         for data in batched_data:
-            extra_inputs.append(self.post_encode(model, data))
+            for key in ['input_ids', 'labels']:
+                if key in data:
+                    data[key] = torch.tensor(data[key])[None]
+            extra_inputs.append(self.post_encode(model, to_device(data, model.device)))
         kwargs.update(to_device(self.data_collator(extra_inputs, model=model), model.device))
         if 'inputs_embeds' in kwargs:
             kwargs.pop('input_ids', None)
@@ -608,41 +626,54 @@ class Template:
     def set_infer_backend(self, infer_backend: Literal['vllm', 'lmdeploy', 'pt']) -> None:
         self.is_training = False
         self.infer_backend = infer_backend
+        if infer_backend in {'vllm', 'lmdeploy'}:
+            self.remove_post_encode_hook()
 
-    def set_training_mode(self, trainer, *, is_multimodal: bool, models: List[nn.Module]) -> None:
+    def register_post_encode_hook(self, models: List[nn.Module]) -> None:
         """This function is important for multi-modal training, as it registers the post_encode method
             as a forward hook, converting input_ids into inputs_embeds.
         """
-        self.is_training = True
         self.infer_backend = 'pt'
-        if not is_multimodal:
+        if self._handles:
             return
-
         # TODO:torch>=2.0
-        trainer.data_collator = self._pre_data_collator
-        handles = []
         for model in models:
-            handle = model.register_forward_pre_hook(partial(self._pre_forward_hook, model=model), with_kwargs=True)
-            handles.append(handle)
+            handle = model.register_forward_pre_hook(partial(self.pre_forward_hook, model=model), with_kwargs=True)
+            self._handles.append(handle)
 
-        _deepspeed_initialize = None
         if is_deepspeed_zero3_enabled():
             import deepspeed
-            _deepspeed_initialize = deepspeed.initialize
+            self._deepspeed_initialize = deepspeed.initialize
 
-            @wraps(_deepspeed_initialize)
+            @wraps(self._deepspeed_initialize)
             def _initialize(*args, **kwargs):
-                res = _deepspeed_initialize(*args, **kwargs)
+                res = self._deepspeed_initialize(*args, **kwargs)
                 for model, handle in zip(models, handles):
                     model._forward_pre_hooks.move_to_end(handle.id)
                 return res
 
             deepspeed.initialize = _initialize
 
-    def _pre_data_collator(self, batch: List[Dict[str, Any]], *args, **kwargs) -> Dict[str, Any]:
+    def remove_post_encode_hook(self):
+        for handle in self._handles:
+            handle.remove()
+        self._handles = []
+
+        if self._deepspeed_initialize is not None:
+            import deepspeed
+            deepspeed.initialize = self._deepspeed_initialize
+        self._deepspeed_initialize = None
+
+    def pre_data_collator(self,
+                          batch: List[Dict[str, Any]],
+                          *,
+                          padding_side: Optional[str] = None,
+                          padding_to: Optional[int] = None,
+                          model: Optional[nn.Module] = None) -> Dict[str, Any]:
         """for multimodal LLM"""
-        new_batch = [{'labels': b['labels']} for b in batch]
-        res = self.data_collator(new_batch, *args, **kwargs)  # only labels
+        new_batch = [{'labels': b['batch'] for b in batch if b.get('labels') is not None}]
+        res = self.data_collator(
+            new_batch, padding_side=padding_side, padding_to=padding_to, model=model)  # only labels
         res['_data'] = batch
         return res
 

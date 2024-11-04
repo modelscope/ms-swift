@@ -2,7 +2,7 @@
 import inspect
 import time
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from threading import Thread
 from typing import Any, AsyncIterator, Dict, Iterator, List, Literal, Optional, Union
 
@@ -16,7 +16,7 @@ from transformers.utils import is_torch_npu_available
 from swift.llm import InferRequest, Template, TemplateMeta, to_device
 from swift.plugin import Metric
 from swift.tuners import Swift
-from swift.utils import get_logger
+from swift.utils import dataclass_to_dict, get_logger
 from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                         ChatCompletionStreamResponse, ChatMessage, DeltaMessage, ImageObject, ImagesResponse,
                         MultiModalRequestMixin, RequestConfig, random_uuid)
@@ -170,7 +170,7 @@ class PtEngine(InferEngine):
         if lora_request is not None:
             kwargs['adapter_names'] = self._get_adapter_names(lora_request)
         num_prompt_tokens = self._get_num_tokens(inputs)
-        generation_props = template.prepare_for_generation(inputs, self.model)
+        generation_property = template.prepare_for_generation(generation_config, inputs, self.model)
         if generation_config.num_beams != 1:
             error_msg = 'Streaming generation does not support beam search.'
             raise ValueError(error_msg)
@@ -182,19 +182,17 @@ class PtEngine(InferEngine):
                 torch.npu.set_device(self.model.device)
             self.model.generate(*args, **kwargs)
 
-        logits_processors = LogitsProcessorList(generation_props.logits_processors)
         logits_streamer = None
         if generation_config.output_logits:
             logits_streamer = LogitsStreamer()
-            logits_processors.append(logits_streamer)
-        kwargs['logits_processor'] = logits_processors
+            generation_property.logits_processor.append(logits_streamer)
 
         thread = Thread(
             target=_model_generate,
             kwargs={
                 'generation_config': generation_config,
-                'stopping_criteria': generation_props.criterias,
                 'streamer': streamer,
+                **dataclass_to_dict(generation_property),
                 **inputs,
                 **kwargs
             })
@@ -288,14 +286,10 @@ class PtEngine(InferEngine):
         if lora_request is not None:
             kwargs['adapter_names'] = self._get_adapter_names(lora_request)
         num_prompt_tokens = self._get_num_tokens(inputs)
-        generation_props = template.prepare_for_generation(inputs, self.model)
+        generation_property = template.prepare_for_generation(generation_config, inputs, self.model)
         output = dict(
             self.model.generate(
-                generation_config=generation_config,
-                stopping_criteria=generation_props.criterias,
-                **inputs,
-                logits_processor=generation_props.logits_processors,
-                **kwargs))
+                generation_config=generation_config, **dataclass_to_dict(generation_property), **inputs, **kwargs))
         batched_generate_ids = output['sequences']
         batched_generate_ids = template.get_generate_ids(batched_generate_ids, num_prompt_tokens)
         batched_logprobs = self.preprocess_logits(
@@ -375,11 +369,11 @@ class PtEngine(InferEngine):
         template.set_infer_backend('pt')
         batched_inputs = []
         for infer_request in infer_requests:
-            inputs = template.encode(infer_request)
+            inputs = template.encode(infer_request, model=self.model)
             batched_inputs.append(inputs)
-        inputs = to_device(
-            template.data_collator(batched_inputs, padding_side='left'),
-            next(self.model.parameters()).device)
+        if self.model.model_meta.is_multimodal:
+            inputs = template.pre_data_collator(batched_inputs, padding_side='left', model=self.model)
+        template.pre_forward_hook(None, inputs, model=self.model)
         self.set_default_max_tokens(request_config, inputs)
         generation_config = self._prepare_generation_config(request_config)
         self._add_stop_words(generation_config, request_config, template.template_meta)
@@ -412,20 +406,21 @@ class PtEngine(InferEngine):
             use_tqdm = request_config is None or not request_config.stream
         prog_bar = tqdm(total=len(infer_requests), dynamic_ncols=True, disable=not use_tqdm)
 
-        def _gen_wrapper() -> Iterator[List[Optional[ChatCompletionStreamResponse]]]:
-            i = 0
-            while i < len(infer_requests):
-                infer_requests_samples = infer_requests[i:i + self.max_batch_size]
-                gen = self._infer(
-                    infer_requests_samples, request_config, metrics, template=template, lora_request=lora_request)
-                for response in gen:
-                    res = [None] * len(infer_requests)
-                    res[i:i + self.max_batch_size] = response
-                    yield res
-                i += self.max_batch_size
-                prog_bar.update(len(infer_requests_samples))
-
         if request_config.stream:
+
+            def _gen_wrapper() -> Iterator[List[Optional[ChatCompletionStreamResponse]]]:
+                i = 0
+                while i < len(infer_requests):
+                    infer_requests_samples = infer_requests[i:i + self.max_batch_size]
+                    gen = self._infer(
+                        infer_requests_samples, request_config, metrics, template=template, lora_request=lora_request)
+                    for response in gen:
+                        res = [None] * len(infer_requests)
+                        res[i:i + self.max_batch_size] = response
+                        yield res
+                    i += self.max_batch_size
+                    prog_bar.update(len(infer_requests_samples))
+
             return _gen_wrapper()
         else:
             res = []

@@ -11,6 +11,7 @@ from dacite import from_dict
 from requests.exceptions import HTTPError
 
 from swift.plugin import Metric
+from swift.utils import dataclass_to_dict
 from ..protocol import (ChatCompletionRequest, ChatCompletionResponse, ChatCompletionStreamResponse, InferRequest,
                         ModelList, RequestConfig)
 from .infer_engine import InferEngine
@@ -92,7 +93,7 @@ class InferClient(InferEngine):
 
     @staticmethod
     def _prepare_request_data(model: str, infer_request: InferRequest, request_config: RequestConfig) -> Dict[str, Any]:
-        res = asdict(ChatCompletionRequest(model, **asdict(infer_request), **asdict(request_config)))
+        res = dataclass_to_dict(ChatCompletionRequest(model, **asdict(infer_request), **asdict(request_config)))
         # ignore empty
         empty_requset = ChatCompletionRequest('', [])
         for k in list(res.keys()):
