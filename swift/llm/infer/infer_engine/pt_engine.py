@@ -13,13 +13,13 @@ from tqdm import tqdm
 from transformers import GenerationConfig, LogitsProcessorList
 from transformers.utils import is_torch_npu_available
 
-from swift.llm import Template, TemplateMeta, to_device
+from swift.llm import InferRequest, Template, TemplateMeta, to_device
 from swift.plugin import Metric
 from swift.tuners import Swift
 from swift.utils import get_logger
 from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                         ChatCompletionStreamResponse, ChatMessage, DeltaMessage, ImageObject, ImagesResponse,
-                        InferRequest, MultiModalRequestMixin, RequestConfig, random_uuid)
+                        MultiModalRequestMixin, RequestConfig, random_uuid)
 from .infer_engine import InferEngine
 from .utils import InferStreamer, LogitsStreamer, TokensIteratorStreamer
 
@@ -372,10 +372,10 @@ class PtEngine(InferEngine):
         if template is None:
             template = self.default_template
 
+        template.set_infer_backend('pt')
         batched_inputs = []
         for infer_request in infer_requests:
             inputs = template.encode(infer_request)
-            assert len(inputs) >= 0
             batched_inputs.append(inputs)
         inputs = to_device(
             template.data_collator(batched_inputs, padding_side='left'),

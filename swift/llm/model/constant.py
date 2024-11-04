@@ -1,8 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+# Classification criteria for model_type: same model architecture, tokenizer (get function), template.
 from typing import List
-"""
-Classification criteria for model_type: same model architecture, tokenizer (get function), template.
-"""
 
 
 class LLMModelType:

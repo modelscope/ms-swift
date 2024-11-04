@@ -10,20 +10,25 @@ def _prepare(infer_backend: Literal['vllm', 'pt', 'lmdeploy']):
     from swift.llm import InferRequest, get_template
     if infer_backend == 'lmdeploy':
         from swift.llm import LmdeployEngine
-        engine = LmdeployEngine('qwen/Qwen2-7B-Instruct', torch.float32)
+        engine = LmdeployEngine('qwen/Qwen2-VL-7B-Instruct', torch.float32)
     elif infer_backend == 'pt':
         from swift.llm import PtEngine
-        engine = PtEngine('qwen/Qwen2-7B-Instruct')
+        engine = PtEngine('qwen/Qwen2-VL-7B-Instruct')
     elif infer_backend == 'vllm':
         from swift.llm import VllmEngine
-        engine = VllmEngine('qwen/Qwen2-7B-Instruct')
+        engine = VllmEngine('qwen/Qwen2-VL-7B-Instruct')
     template = get_template(engine.model_meta.template, engine.tokenizer)
     infer_requests = [
         # InferRequest([{'role': 'user', 'content': '晚上睡不着觉怎么办'}]) for i in range(100)
         InferRequest([{
             'role': 'user',
-            'content': 'hello! who are you'
-        }]) for i in range(100)
+            'content': [
+                {
+                    'type': 'image_url',
+                    'image_url': 'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png'
+                }
+            ]
+        }]) for i in range(1)
     ]
     return engine, template, infer_requests
 
@@ -66,5 +71,5 @@ def test_stream(engine, template, infer_requests):
 
 if __name__ == '__main__':
     engine, template, infer_requests = _prepare(infer_backend='vllm')
-    # test_infer(engine, template, infer_requests)
+    test_infer(engine, template, infer_requests)
     test_stream(engine, template, infer_requests)

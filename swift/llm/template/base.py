@@ -114,7 +114,8 @@ class Template:
         inputs.system = template_meta.check_system(system)
 
         images = inputs.images
-        if images and self.load_medias:
+        load_medias = True if self.infer_backend in {'vllm', 'lmdeploy'} else self.load_medias
+        if images and load_medias:
             images = load_batch(images, load_image)
             if max_pixels is not None:
                 assert self.grounding_type != 'real', 'not support'  # TODO:check
@@ -125,7 +126,7 @@ class Template:
 
         if inputs.is_multimodal:
             self._add_default_tags(inputs)
-    
+
         self._get_std_messages(inputs.messages)
         n_round = len(inputs.messages) // 2
         if n_round > 1 and not template_meta.support_multi_round:
@@ -203,7 +204,8 @@ class Template:
         images = load_batch(images, load_image)  # base64/local_path -> PIL.Image
         # Normalize grounding bboxes
         normalize_bbox(objects, images, to_type=self.grounding_type)
-        if not self.load_medias:  # fix pt & qwen-vl
+        load_medias = True if self.infer_backend in {'vllm', 'lmdeploy'} else self.load_medias
+        if not load_medias:  # fix pt & qwen-vl
             for i, image in enumerate(images):
                 images[i] = self._save_pil_image(image)
         inputs.images = images

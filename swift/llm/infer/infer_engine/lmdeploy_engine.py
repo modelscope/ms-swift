@@ -3,7 +3,8 @@ import inspect
 import os
 import time
 from contextlib import contextmanager
-from typing import Any, AsyncIterator, Dict, List, Optional
+from copy import deepcopy
+from typing import Any, AsyncIterator, Dict, List, Optional, Union
 
 import torch
 from lmdeploy import GenerationConfig as LmdeployGenerationConfig
@@ -12,7 +13,7 @@ from lmdeploy.api import autoget_backend_config
 from lmdeploy.serve import async_engine
 from transformers import GenerationConfig, PreTrainedTokenizerBase
 
-from swift.llm import Template, TemplateMeta
+from swift.llm import InferRequest, Template, TemplateMeta
 from swift.utils import get_logger, get_seed
 from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                         ChatCompletionStreamResponse, ChatMessage, DeltaMessage, RequestConfig, UsageInfo, random_uuid)
@@ -49,6 +50,7 @@ class LmdeployEngine(InferEngine):
             vision_batch_size=vision_batch_size,
             engine_kwargs=engine_kwargs)
 
+        self.config.torch_dtype = torch_dtype
         self._prepare_engine()
         self._prepare_default_template()
         self._load_generation_config()
@@ -112,11 +114,30 @@ class LmdeployEngine(InferEngine):
         else:
             self.generation_config = LmdeployGenerationConfig()
 
+    def _get_stop_token_ids(self, stop_words: List[Union[str, List[int], None]]) -> List[int]:
+        stop_token_ids: List[int] = []
+        for stop_word in stop_words:
+            if stop_word is None:
+                continue
+            if isinstance(stop_word, str):
+                stop_word = self.tokenizer.encode(stop_word, add_special_tokens=False)
+            if isinstance(stop_word, list):
+                if len(stop_word) != 1:
+                    continue
+                else:
+                    stop_token = stop_word[0]
+            elif isinstance(stop_word, int):
+                stop_token = stop_word
+            assert isinstance(stop_token, int)
+            if stop_token not in stop_token_ids:
+                stop_token_ids.append(stop_token)
+        return stop_token_ids
+
     def _add_stop_words(self, generation_config: LmdeployGenerationConfig, request_config: RequestConfig,
                         template_meta: TemplateMeta) -> None:
         stop_words = (request_config.stop or []) + (self.generation_config.stop_words or []) + template_meta.stop_words
         stop_words += [template_meta.suffix[-1], self.tokenizer.eos_token]
-        generation_config.stop_words = self._get_stop_words(stop_words)
+        generation_config.stop_token_ids = self._get_stop_token_ids(stop_words)
 
     def _prepare_generation_config(self, request_config: RequestConfig) -> LmdeployGenerationConfig:
         kwargs = {'max_new_tokens': request_config.max_tokens}
@@ -196,7 +217,7 @@ class LmdeployEngine(InferEngine):
                     session_id=session_id, **inputs, stream_output=False, gen_config=generation_config):
                 pass
 
-        response = template.safe_decode(template, output.token_ids, True)
+        response = template.safe_decode(output.token_ids, True)
         logprobs = self._get_logprobs(template.tokenizer, output.logprobs, output.token_ids, generation_config.logprobs)
 
         usage_info = self._get_usage_info(len(inputs['input_ids']), output.num_token)
@@ -223,8 +244,10 @@ class LmdeployEngine(InferEngine):
         if template is None:
             template = self.default_template
 
+        template.set_infer_backend('lmdeploy')
+        if request_config.seed is None:
+            request_config.seed = get_seed()
         inputs = template.encode(infer_request)
-        assert len(inputs) >= 0
         self.set_default_max_tokens(request_config, inputs)
         generation_config = self._prepare_generation_config(request_config)
         self._add_stop_words(generation_config, request_config, template.template_meta)

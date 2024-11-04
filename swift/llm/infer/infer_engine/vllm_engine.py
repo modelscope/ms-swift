@@ -13,12 +13,11 @@ from packaging import version
 from transformers import PreTrainedTokenizerBase
 from vllm import AsyncEngineArgs, AsyncLLMEngine, SamplingParams
 
-from swift.llm import Template, TemplateMeta
+from swift.llm import InferRequest, Template, TemplateMeta
 from swift.plugin import Metric
 from swift.utils import get_logger
 from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
-                        ChatCompletionStreamResponse, ChatMessage, DeltaMessage, InferRequest, RequestConfig, UsageInfo,
-                        random_uuid)
+                        ChatCompletionStreamResponse, ChatMessage, DeltaMessage, RequestConfig, UsageInfo, random_uuid)
 from .infer_engine import InferEngine
 from .patch import patch_auto_config, patch_auto_tokenizer
 from .utils import InferStreamer, InferTools
@@ -314,7 +313,7 @@ class VllmEngine(InferEngine):
         choices = []
         for output in result.outputs:
             output.token_ids = list(output.token_ids)
-            response = template.safe_decode(template, output.token_ids, True)
+            response = template.safe_decode(output.token_ids, True)
             logprobs = self._get_logprobs(template.tokenizer, output.logprobs, output.token_ids,
                                           generation_config.logprobs)
             toolcall = self._get_toolcall(response, True)
@@ -355,7 +354,6 @@ class VllmEngine(InferEngine):
 
         template.set_infer_backend('vllm')
         inputs = template.encode(infer_request)
-        assert len(inputs) >= 0
         self.set_default_max_tokens(request_config, inputs)
         generation_config = self._prepare_generation_config(request_config)
         self._add_stop_words(generation_config, request_config, template.template_meta)
@@ -363,7 +361,7 @@ class VllmEngine(InferEngine):
         if request_config.stream:
             return self._infer_stream_async(*infer_args, lora_request=lora_request)
         else:
-            return await self._infer_full_async(*infer_args, **kwargs)
+            return await self._infer_full_async(*infer_args, lora_request=lora_request)
 
     @staticmethod
     @contextmanager

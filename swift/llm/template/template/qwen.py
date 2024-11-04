@@ -5,13 +5,14 @@ from typing import Any, Dict, List, Literal, Optional
 
 import torch
 import torch.nn as nn
+
 from swift.utils import get_env_args, is_deepspeed_enabled
 from ..base import Template
 from ..constant import TemplateType
 from ..register import TemplateMeta, register_template
+from ..template_inputs import StdTemplateInputs
 from ..utils import Context, Prompt, findall
 from ..vision_utils import load_audio_qwen, load_batch, load_video_qwen2
-from ..template_inputs import StdTemplateInputs
 
 DEFAULT_SYSTEM = 'You are a helpful assistant.'
 
@@ -139,8 +140,7 @@ class Qwen2AudioTemplate(Template):
             return inputs
         processor = self.tokenizer.processor
         sampling_rate = processor.feature_extractor.sampling_rate
-        audios = load_batch(
-            template_inputs.audios, load_func=partial(load_audio_qwen, sampling_rate=sampling_rate))
+        audios = load_batch(template_inputs.audios, load_func=partial(load_audio_qwen, sampling_rate=sampling_rate))
         if audios:
             audio_inputs = processor.feature_extractor(
                 audios, sampling_rate=sampling_rate, return_attention_mask=True, return_tensors='pt')
@@ -213,7 +213,7 @@ class Qwen2VLTemplate(Template):
         else:
             return ['<ref-object>']
 
-    def replace_object(self, object_: Dict[str, Any], index: int, inputs: StdTemplateInputs) -> List[Context]:
+    def replace_box(self, object_: Dict[str, Any], index: int, inputs: StdTemplateInputs) -> List[Context]:
         if object_:
             if isinstance(object_['bbox'][0], list):
                 all_objects = ''
