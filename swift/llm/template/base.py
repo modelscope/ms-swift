@@ -113,12 +113,6 @@ class Template:
             system = self.default_system
         inputs.system = template_meta.check_system(system)
 
-        self._get_std_messages(inputs.messages)
-        n_round = len(inputs.messages) // 2
-        if n_round > 1 and not template_meta.support_multi_round:
-            raise ValueError(
-                f'The template does not support multi-round chat, template_type: {template_meta.template_type}')
-
         images = inputs.images
         if images and self.load_medias:
             images = load_batch(images, load_image)
@@ -131,6 +125,12 @@ class Template:
 
         if inputs.is_multimodal:
             self._add_default_tags(inputs)
+    
+        self._get_std_messages(inputs.messages)
+        n_round = len(inputs.messages) // 2
+        if n_round > 1 and not template_meta.support_multi_round:
+            raise ValueError(
+                f'The template does not support multi-round chat, template_type: {template_meta.template_type}')
 
     def encode(
         self,
