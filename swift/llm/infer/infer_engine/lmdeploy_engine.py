@@ -196,7 +196,7 @@ class LmdeployEngine(InferEngine):
                     session_id=session_id, **inputs, stream_output=False, gen_config=generation_config):
                 pass
 
-        response = InferTools.safe_decode(template, output.token_ids, True)
+        response = template.safe_decode(template, output.token_ids, True)
         logprobs = self._get_logprobs(template.tokenizer, output.logprobs, output.token_ids, generation_config.logprobs)
 
         usage_info = self._get_usage_info(len(inputs['input_ids']), output.num_token)

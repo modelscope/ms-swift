@@ -19,7 +19,6 @@ from transformers.integrations import is_deepspeed_zero3_enabled
 
 from .agent import loss_scale_map, split_str_parts_by
 from .template_inputs import InferRequest, StdTemplateInputs, TemplateInputs
-from .template_meta import TemplateMeta
 from .utils import Context, ContextType, GenerationProperty, Prompt, StopWordsCriteria, Word, fetch_one, findall
 from .vision_utils import load_batch, load_image, normalize_bbox, rescale_image
 
@@ -79,6 +78,7 @@ class Template:
             e.g. 512 * 512 (H*W)
         tools_prompt: The type of tools_prompt added in the system.
         """
+        from .template_meta import TemplateMeta
         if use_generate_template:
             template_meta = template_meta.to_generation_template_meta()
         # if default_system is None. not change self.default_system

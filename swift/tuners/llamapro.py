@@ -6,7 +6,7 @@ from typing import Optional
 import torch
 from torch import nn
 
-from swift.llm.module_mapping import MODEL_KEYS_MAPPING, ModelKeys
+from swift.llm import ModelKeys, MODEL_ARCH_MAPPING
 from swift.utils.logger import get_logger
 from .utils import ActivationMixin, SwiftAdapter, SwiftConfig, SwiftOutput
 
@@ -29,7 +29,7 @@ class LLaMAProConfig(SwiftConfig):
     """
     model_type: str = field(
         default=None, metadata={
-            'choices': list(MODEL_KEYS_MAPPING.keys()),
+            'choices': list(MODEL_ARCH_MAPPING.keys()),
         })
 
     num_new_blocks: int = None

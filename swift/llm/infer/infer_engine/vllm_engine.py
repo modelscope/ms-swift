@@ -6,9 +6,11 @@ from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
 import torch
 import vllm
 from modelscope import GenerationConfig
+from copy import deepcopy
 from packaging import version
 from transformers import PreTrainedTokenizerBase
 from vllm import AsyncEngineArgs, AsyncLLMEngine, SamplingParams
+from contextlib import contextmanager
 
 from swift.llm import Template, TemplateMeta
 from swift.plugin import Metric
@@ -42,6 +44,7 @@ class VllmEngine(InferEngine):
             # engine_kwargs
             gpu_memory_utilization: float = 0.9,
             tensor_parallel_size: int = 1,
+            pipeline_parallel_size: int = 1,
             max_model_len: Optional[int] = None,
             max_num_seqs: int = 256,
             disable_custom_all_reduce: bool = True,  # Default values different from vllm
@@ -58,6 +61,7 @@ class VllmEngine(InferEngine):
         self._prepare_engine_kwargs(
             gpu_memory_utilization=gpu_memory_utilization,
             tensor_parallel_size=tensor_parallel_size,
+            pipeline_parallel_size=pipeline_parallel_size,
             max_model_len=max_model_len,
             max_num_seqs=max_num_seqs,
             disable_custom_all_reduce=disable_custom_all_reduce,
@@ -82,6 +86,7 @@ class VllmEngine(InferEngine):
             self,
             gpu_memory_utilization: float = 0.9,
             tensor_parallel_size: int = 1,
+            pipeline_parallel_size: int = 1,
             max_model_len: Optional[int] = None,
             max_num_seqs: int = 256,
             disable_custom_all_reduce: bool = True,  # Default values different from vllm
@@ -116,6 +121,7 @@ class VllmEngine(InferEngine):
             dtype=dtype_mapping[model_info.torch_dtype],
             gpu_memory_utilization=gpu_memory_utilization,
             tensor_parallel_size=tensor_parallel_size,
+            pipeline_parallel_size=pipeline_parallel_size,
             max_model_len=max_model_len,
             max_num_seqs=max_num_seqs,
             disable_log_stats=disable_log_stats,
@@ -307,7 +313,7 @@ class VllmEngine(InferEngine):
         choices = []
         for output in result.outputs:
             output.token_ids = list(output.token_ids)
-            response = InferTools.safe_decode(template, output.token_ids, True)
+            response = template.safe_decode(template, output.token_ids, True)
             logprobs = self._get_logprobs(template.tokenizer, output.logprobs, output.token_ids,
                                           generation_config.logprobs)
             toolcall = self._get_toolcall(response, True)
@@ -353,6 +359,46 @@ class VllmEngine(InferEngine):
         self._add_stop_words(generation_config, request_config, template.template_meta)
         infer_args = (template, inputs, generation_config)
         if request_config.stream:
-            return self._infer_stream_async(*infer_args, **kwargs)
+            return self._infer_stream_async(*infer_args, lora_request=lora_request)
         else:
             return await self._infer_full_async(*infer_args, **kwargs)
+
+
+    @staticmethod
+    @contextmanager
+    def patch_remove_log():
+        from vllm.engine import async_llm_engine
+
+        log_task_completion = async_llm_engine._log_task_completion
+
+        def new_log_task_completion(task: asyncio.Task,
+                         error_callback: Callable[[Exception], None]) -> None:
+            exception = None
+            try:
+                return_value = task.result()
+                raise AssertionError(
+                    f"The engine background task should never finish without an "
+                    f"exception. {return_value}")
+            # except asyncio.exceptions.CancelledError:
+            #     # We assume that if the task is cancelled, we are gracefully shutting
+            #     # down. This should only happen on program exit.
+            #     logger.info("Engine is gracefully shutting down.")
+            except Exception as e:
+                exception = e
+                logger.error("Engine background task failed", exc_info=e)
+                error_callback(exception)
+                raise AsyncEngineDeadError(
+                    "Task finished unexpectedly. This should never happen! "
+                    "Please open an issue on Github. See stack trace above for the "
+                    "actual cause.") from e
+            
+        async_llm_engine._log_task_completion = new_log_task_completion
+        yield
+        async_llm_engine._log_task_completion = log_task_completion
+
+
+    def _batch_infer_stream(self, tasks,
+                            stream: bool = True,
+                            use_tqdm: bool = True) -> Iterator[List[Optional[ChatCompletionStreamResponse]]]:
+        with self.patch_remove_log():
+            yield from super()._batch_infer_stream(tasks, stream, use_tqdm)

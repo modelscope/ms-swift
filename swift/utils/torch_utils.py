@@ -202,6 +202,7 @@ def find_embedding(model: Module) -> List[str]:
 
 def find_all_linears(model: Module, quantization_bit: int, model_type: str, quant_method: str) -> List[str]:
     """ref: https://github.com/artidoro/qlora"""
+    # TODO: head check
     head_module_name = 'lm_head'
     from swift.llm import MODEL_KEYS_MAPPING
     if model_type in MODEL_KEYS_MAPPING:

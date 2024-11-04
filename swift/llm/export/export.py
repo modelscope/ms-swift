@@ -1,7 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Any, Dict, List, Union
 
-from swift.llm import ExportArguments, SwiftPipeline, merge_lora, quantize_model, export_to_ollama
+from swift.llm import ExportArguments, SwiftPipeline
+from .merge_lora import merge_lora
+from .quant import quantize_model
+from .ollama import export_to_ollama
 from swift.utils import get_logger
 from swift.tuners import swift_to_peft_format
 from swift.hub import default_hub

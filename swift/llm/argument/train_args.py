@@ -11,7 +11,7 @@ from transformers import Seq2SeqTrainingArguments
 from transformers.utils import is_torch_npu_available
 from transformers.utils.versions import require_version
 
-from swift.llm import MODEL_KEYS_MAPPING, MODEL_MAPPING
+from swift.llm import MODEL_ARCH_MAPPING, MODEL_MAPPING
 from swift.plugin import LOSS_MAPPING, extra_tuners
 from swift.trainers import TrainerFactory
 from swift.utils import (add_version_to_work_dir, get_dist_setting, get_logger, get_pai_tensorboard_dir, is_dist,

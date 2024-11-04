@@ -20,7 +20,7 @@ class ModelArch:
     phi3_small = 'phi3_small'
     # mllm
     qwen_audio = 'qwen_audio'
-    qwen_vl = 'qwen_audio'
+    qwen_vl = 'qwen_vl'
     qwen2_audio = 'qwen2_audio'
     qwen2_vl = 'qwen2_vl'
     glm4v = 'glm4v'
@@ -91,6 +91,7 @@ class MultiModelKeys(ModelKeys):
             if v is None:
                 setattr(self, key, [])
 
+MODEL_ARCH_MAPPING = {}
 
 def register_model_arch(model_arch: ModelKeys, *, exist_ok: bool = False) -> None:
     """
@@ -99,7 +100,7 @@ def register_model_arch(model_arch: ModelKeys, *, exist_ok: bool = False) -> Non
     """
     arch_name = model_arch.arch_name
     if not exist_ok and arch_name in MODEL_ARCH_MAPPING:
-        raise ValueError(f'The `{arch_name}` has already been registered in the MODEL_MAPPING.')
+        raise ValueError(f'The `{arch_name}` has already been registered in the MODEL_ARCH_MAPPING.')
 
     MODEL_ARCH_MAPPING[arch_name] = model_arch
 
@@ -345,7 +346,7 @@ register_model_arch(
 # TODO: check lm_head, ALL
 register_model_arch(
     MultiModelKeys(
-        ModelArch.qwen2_audio,
+        ModelArch.qwen_audio,
         language_model='transformer.h',
         vision_tower='transformer.audio',
     ))

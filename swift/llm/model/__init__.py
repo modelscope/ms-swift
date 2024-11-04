@@ -5,3 +5,4 @@ from .register import (MODEL_MAPPING, Model, ModelGroup, ModelMeta, fix_do_sampl
                        get_default_torch_dtype, get_model_tokenizer, get_model_tokenizer_from_local,
                        get_model_tokenizer_with_flash_attn)
 from .utils import HfConfigFactory, ModelInfo, safe_snapshot_download
+from .arch_mapping import ModelKeys, register_model_arch, MultiModelKeys, ModelArch, MODEL_ARCH_MAPPING

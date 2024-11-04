@@ -67,8 +67,8 @@ class InferEngine(BaseInferEngine):
                 stop.append(stop_word)
         return stop
 
-    @staticmethod
-    def _batch_infer_stream(tasks,
+
+    def _batch_infer_stream(self, tasks,
                             stream: bool = True,
                             use_tqdm: bool = True) -> Iterator[List[Optional[ChatCompletionStreamResponse]]]:
 

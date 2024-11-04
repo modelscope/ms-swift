@@ -1,7 +1,5 @@
 from peft import IA3Config, PeftModel, get_peft_model
-
-from swift.llm.module_mapping import MODEL_KEYS_MAPPING, ModelKeys
-from swift.utils.torch_utils import find_all_linears
+from swift.utils import find_all_linears
 
 
 class Tuner:
