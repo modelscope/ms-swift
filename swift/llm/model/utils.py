@@ -249,3 +249,63 @@ class AttnImpl:
             HfConfigFactory.set_config_attr(config, '_attn_implementation', attn_impl)
         else:
             HfConfigFactory.set_config_attr(config, '_flash_attn_2_enabled', use_flash_attn)
+
+
+def git_clone_github(github_url: str,
+                     local_repo_name: Optional[str] = None,
+                     branch: Optional[str] = None,
+                     commit_hash: Optional[str] = None) -> str:
+    git_cache_dir = os.path.join(get_cache_dir(), '_github')
+    os.makedirs(git_cache_dir, exist_ok=True)
+    if local_repo_name is None:
+        github_url = github_url.rstrip('/')
+        local_repo_name = github_url.rsplit('/', 1)[1]
+    local_repo_path = os.path.join(git_cache_dir, local_repo_name)
+    with safe_ddp_context():
+        if not os.path.exists(local_repo_path):
+            if not github_url.endswith('.git'):
+                github_url = f'{github_url}.git'
+            command = ['git', '-C', git_cache_dir, 'clone', github_url, local_repo_name]
+            command_str = f"git -C '{git_cache_dir}' clone '{github_url}' {local_repo_name}"
+            if branch is not None:
+                command += ['--branch', branch]
+                command_str += f' --branch {branch}'
+            logger.info(f'Run the command: `{command_str}`')
+            subprocess_run(command)
+
+            if commit_hash is not None:
+                git_cache_path = os.path.join(git_cache_dir, local_repo_name)
+                command = ['git', '-C', git_cache_path, 'reset', '--hard', commit_hash]
+                command_str = f"git -C '{git_cache_path}' reset '--hard' {commit_hash}"
+                logger.info(f'Run the command: `{command_str}`')
+                subprocess_run(command)
+
+        logger.info(f'local_repo_path: {local_repo_path}')
+    return local_repo_path
+
+
+def _use_submodel_func(model, submodel_name: str, func_list: List[str]) -> None:
+    submodel = getattr(model, submodel_name)
+
+    def _get_new_func(func_name: str):
+        _old_func = getattr(submodel.__class__, func_name)
+
+        @wraps(_old_func)
+        def _new_func(self, *args, **kwargs):
+            res = _old_func(submodel, *args, **kwargs)
+            if func_name == 'forward':
+                device = find_device(args)
+                if device is None:
+                    device = find_device(kwargs)
+                res.logits = to_device(res.logits, device)
+                res.loss = to_device(res.loss, device)
+            return res
+
+        return _new_func
+
+    for key in func_list:
+        setattr(model, key, MethodType(_get_new_func(key), model))
+        if key == 'generate' and model.device != submodel.device:
+            submodel.__class__.device = model.device
+        if key == 'forward' and 'generate' in func_list:
+            setattr(submodel, key, MethodType(_get_new_func(key), submodel))  # fix device_map

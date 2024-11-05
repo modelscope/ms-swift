@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+from types import MethodType
 from typing import Any, Dict, Type
 
 import torch

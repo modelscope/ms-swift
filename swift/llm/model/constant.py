@@ -32,10 +32,36 @@ class LLMModelType:
     longwriter_llama3_1 = 'longwriter_llama3_1'
     longwriter_glm4 = 'longwriter_glm4'
 
+    telechat = 'telechat'
+    telechat2 = 'telechat2'
+
+    yuan2 = 'yuan2'
+
     atom = 'atom'
+
+    grok = 'grok'
+
+    mamba = 'mamba'
+
+    polylm = 'polylm'
+
+    skywork = 'skywork'
+
+    codefuse_codellama = 'codefuse_codellama'
+
+    baichuan1 = 'baichuan1'
+    baichuan2 = 'baichuan2'
+    baichuan2_int4 = 'baichuan2_int4'
+
+    phi3_small = 'phi3_small'
+
+    deepseek = 'deepseek'
+    deepseek2_5 = 'deepseek2_5'
 
     # moe
     qwen2_moe = 'qwen2_moe'
+    minicpm_moe = 'minicpm_moe'
+    deepseek_moe = 'deepseek_moe'
 
 
 class MLLMModelType:
@@ -51,6 +77,7 @@ class MLLMModelType:
     cogagent_chat = 'cogagent_chat'
     cogvlm2 = 'cogvlm2'
     cogvlm2_video = 'cogvlm2_video'
+    cogvlm_chat = 'cogvlm_chat'
 
     xcomposer2 = 'xcomposer2'
     xcomposer2_4khd = 'xcomposer2_4khd'
@@ -65,6 +92,37 @@ class MLLMModelType:
     llava1_6_yi = 'llava1_6_yi'
     llava1_6_llama3_1 = 'llava1_6_llama3_1'
     llava_next = 'llava_next'
+    llava_llama = 'llava_llama'
+    llama3_llava_next_hf = 'llama3_llava_next_hf'
+    llama3_llava_next = 'llama3_llava_next'
+    llava_next_video = 'llava_next_video'
+    llava_next_video_yi = 'llava_next_video_yi'
+
+    # internvl
+    internvl = 'internvl'
+    internvl_mini = 'internvl_mini'
+    internvl2 = 'internvl2'
+    internvl2_phi3 = 'internvl2_phi3'
+
+    deepseek_vl = 'deepseek_vl'
+
+    minicpmv = 'minicpmv'
+    minicpmv2_6 = 'minicpmv2_6'
+    minicpmv2_5 = 'minicpmv2_5'
+
+    mplug3 = 'mplug3'
+    mplug2 = 'mplug2'
+    mplug2_1 = 'mplug2_1'
+
+    phi3_vl = 'phi3_vl'
+
+    florence = 'florence'
+
+    emu3_gen = 'emu3_gen'
+
+    idefics3 = 'idefics3'
+
+    yi_vl = 'yi_vl'
 
 
 class ModelType(LLMModelType, MLLMModelType):

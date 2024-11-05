@@ -1,15 +1,17 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+from functools import partial
 from typing import Any, Dict, Type
 
 import torch
 import transformers
-from modelscope import snapshot_download
+from modelscope import snapshot_download, AutoTokenizer, BitsAndBytesConfig
 from transformers import AutoConfig, PretrainedConfig
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.llm import TemplateType
+from .model import _use_submodel_func
 from ..constant import LLMModelType, MLLMModelType
-from ..patcher import patch_output_to_input_device
+from ..patcher import patch_output_to_input_device, patch_output_clone
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local, register_model
 
 
@@ -139,4 +141,195 @@ def get_model_tokenizer_internlm_xcomposer2(model_dir: str,
     return model, tokenizer
 
 
-# TODO:xcomposer
+def get_model_tokenizer_internvl(model_dir: str,
+                                 model_config: PretrainedConfig,
+                                 model_kwargs: Dict[str, Any],
+                                 load_model: bool = True,
+                                 **kwargs):
+    tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True, use_fast=False)
+    if kwargs.get('eos_token') is None and tokenizer.eos_token != '<|im_end|>':
+        try:
+            del tokenizer.__class__.eos_token_id
+        except AttributeError:
+            pass
+        tokenizer.eos_token = '<|im_end|>'
+
+    attn_type = AttentionType(kwargs.pop('use_flash_attn', None), kwargs.pop('attn_type', None))
+    model_config.llm_config.attn_implementation = attn_type.to_impl(attn_version=2)
+    model_quant_config = getattr(model_config, 'quantization_config', None)
+
+    use_bnb = False
+    if model_quant_config is not None:
+        use_bnb = model_quant_config.get('quant_method', None) == 'bitsandbytes'
+    quantization_config = model_kwargs.get('quantization_config', None)
+    if isinstance(quantization_config, BitsAndBytesConfig):
+        use_bnb = True
+
+    model, tokenizer = get_model_tokenizer_from_local(
+        model_dir, model_config, model_kwargs, load_model, tokenizer=tokenizer, **kwargs)
+
+    if use_bnb and kwargs.get('is_training'):
+        # patch: bnb backward shape mismatch bug
+        if model is not None and model.language_model is not None:
+            model.language_model.output.state.force_no_igemmlt = True
+
+    if model is not None:
+        func_list = ['generate', 'get_input_embeddings', 'gradient_checkpointing_enable', 'forward']
+        _use_submodel_func(model, 'language_model', func_list)
+        patch_output_clone(model.language_model.get_input_embeddings())
+
+    return model, tokenizer
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.internvl,
+        [
+            ModelGroup(
+                [
+                    Model('AI-ModelScope/InternVL-Chat-V1-5', 'OpenGVLab/InternVL-Chat-V1-5'),
+                    Model('AI-ModelScope/InternVL-Chat-V1-5-int8', 'OpenGVLab/InternVL-Chat-V1-5-int8'),
+                    Model('OpenGVLab/Mini-InternVL-Chat-2B-V1-5', 'OpenGVLab/Mini-InternVL-Chat-2B-V1-5'),
+                 ],
+                requires=['transformers>=4.35', 'timm'],
+                tags=['multi-modal', 'vision'],
+            ),
+        ],
+        TemplateType.internvl,
+        get_model_tokenizer_internvl,
+        architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
+        support_flash_attn=True,
+        support_lmdeploy=True,
+        support_vllm=True,
+    ))
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.internvl_mini,
+        [
+            ModelGroup(
+                [
+                    Model('OpenGVLab/Mini-InternVL-Chat-4B-V1-5', 'OpenGVLab/Mini-InternVL-Chat-4B-V1-5'),
+                ],
+                requires=['transformers>=4.35,<4.42', 'timm'],
+                tags=['multi-modal', 'vision'],
+            ),
+        ],
+        TemplateType.internvl_phi3,
+        get_model_tokenizer_internvl,
+        architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
+        support_flash_attn=True,
+        support_vllm=True,
+    ))
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.internvl2,
+        [
+            ModelGroup(
+                [
+                    Model('OpenGVLab/InternVL2-1B', 'OpenGVLab/InternVL2-1B'),
+                    Model('OpenGVLab/InternVL2-2B', 'OpenGVLab/InternVL2-2B'),
+                    Model('OpenGVLab/InternVL2-8B', 'OpenGVLab/InternVL2-8B'),
+                    Model('OpenGVLab/InternVL2-26B', 'OpenGVLab/InternVL2-26B'),
+                    Model('OpenGVLab/InternVL2-40B', 'OpenGVLab/InternVL2-40B'),
+                    Model('OpenGVLab/InternVL2-Llama3-76B', 'OpenGVLab/InternVL2-Llama3-76B'),
+                    Model('OpenGVLab/InternVL2-2B-AWQ', 'OpenGVLab/InternVL2-2B-AWQ'),
+                    Model('OpenGVLab/InternVL2-8B-AWQ', 'OpenGVLab/InternVL2-8B-AWQ'),
+                    Model('OpenGVLab/InternVL2-26B-AWQ', 'OpenGVLab/InternVL2-26B-AWQ'),
+                    Model('OpenGVLab/InternVL2-40B-AWQ', 'OpenGVLab/InternVL2-40B-AWQ'),
+                    Model('OpenGVLab/InternVL2-Llama3-76B-AWQ', 'OpenGVLab/InternVL2-Llama3-76B-AWQ'),
+                ],
+                requires=['transformers>=4.36', 'timm'],
+                tags=['multi-modal', 'vision', 'video'],
+                ignore_file_pattern=[r'.+\.zip$'],
+            ),
+        ],
+        TemplateType.internvl2,
+        get_model_tokenizer_internvl,
+        architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
+        support_flash_attn=True,
+        support_lmdeploy=True,
+        support_vllm=True,
+    ))
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.internvl2_phi3,
+        [
+            ModelGroup(
+                [
+                    Model('OpenGVLab/InternVL2-4B', 'OpenGVLab/InternVL2-4B'),
+                ],
+                requires=['transformers>=4.36,<4.42', 'timm'],
+                tags=['multi-modal', 'vision', 'video'],
+                ignore_file_pattern=[r'.+\.zip$'],
+            ),
+        ],
+        TemplateType.internvl2_phi3,
+        get_model_tokenizer_internvl,
+        architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
+        support_flash_attn=True,
+        support_lmdeploy=True,
+        support_vllm=True,
+    ))
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.xcomposer2_5,
+        [
+            ModelGroup(
+                [
+                    Model('Shanghai_AI_Laboratory/internlm-xcomposer2d5-7b', 'internlm/internlm-xcomposer2d5-7b'),
+                ],
+                tags=['multi-modal', 'vision'],
+            ),
+        ],
+        TemplateType.xcomposer2_5,
+        get_model_tokenizer_internvl,
+        architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
+        support_flash_attn=True,
+        support_lmdeploy=True,
+    ))
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.xcomposer2,
+        [
+            ModelGroup(
+                [
+                    Model('Shanghai_AI_Laboratory/internlm-xcomposer2-7b', 'internlm/internlm-xcomposer2-7b'),
+                ],
+                tags=['multi-modal', 'vision'],
+            ),
+        ],
+        TemplateType.xcomposer2,
+        get_model_tokenizer_internvl,
+        architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
+        support_flash_attn=True,
+        support_lmdeploy=True,
+    ))
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.xcomposer2,
+        [
+            ModelGroup(
+                [
+                    Model('Shanghai_AI_Laboratory/internlm-xcomposer2-4khd-7b', 'internlm/internlm-xcomposer2-4khd-7b'),
+                ],
+                tags=['multi-modal', 'vision'],
+            ),
+        ],
+        TemplateType.xcomposer2,
+        partial(get_model_tokenizer_internvl, version='v2-4khd'),
+        architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
+        support_flash_attn=True,
+        support_lmdeploy=True,
+    ))
