@@ -1,16 +1,16 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 import sys
-from typing import Dict, Any
+from typing import Any, Dict
 
 from modelscope import AutoTokenizer
 from transformers import PretrainedConfig
 
 from swift.llm import TemplateType
-from .. import LLMModelType, MLLMModelType
-from ..register import (register_model, get_model_tokenizer_with_flash_attn, Model, ModelGroup, ModelMeta)
-from ..utils import git_clone_github
 from swift.utils import get_logger
+from .. import LLMModelType, MLLMModelType
+from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
+from ..utils import git_clone_github
 
 logger = get_logger()
 
@@ -67,7 +67,10 @@ register_model(
                 [
                     Model('01ai/Yi-VL-34B', '01-ai/Yi-VL-34B'),
                     Model('01ai/Yi-VL-6B', '01-ai/Yi-VL-6B'),
-                ], requires=['transformers>=4.34'], tags=['multi-modal', 'vision'],),
+                ],
+                requires=['transformers>=4.34'],
+                tags=['multi-modal', 'vision'],
+            ),
         ],
         TemplateType.yi_vl,
         get_model_tokenizer_yi_vl,

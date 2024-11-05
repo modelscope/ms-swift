@@ -165,7 +165,6 @@ register_model(
         get_model_tokenizer_qwen_audio,
         architectures=['QWenLMHeadModel'],
         support_flash_attn=True,
-        is_multimodal=True,
         additional_saved_files=['mel_filters.npz']))
 
 
@@ -246,7 +245,6 @@ register_model(
         support_flash_attn=True,
         support_vllm=True,
         support_lmdeploy=True,
-        is_multimodal=True,
         additional_saved_files=['SimSun.ttf']))
 
 register_model(
@@ -527,7 +525,6 @@ register_model(
         get_model_tokenizer_qwen2_vl,
         architectures=['Qwen2VLForConditionalGeneration'],
         requires=['transformers>=4.45.dev.0'],  # pip install qwen_vl_utils
-        is_multimodal=True,
         support_flash_attn=True,
         support_vllm=True))
 
@@ -552,5 +549,4 @@ register_model(
         get_model_tokenizer_qwen2_audio,
         architectures=['Qwen2AudioForConditionalGeneration'],
         requires=['transformers>=4.45.dev.0'],
-        is_multimodal=True,
         support_flash_attn=True))

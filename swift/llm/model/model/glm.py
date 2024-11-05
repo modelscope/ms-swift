@@ -188,7 +188,6 @@ register_model(
         TemplateType.glm4v,
         get_model_tokenizer_glm4v,
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
-        is_multimodal=True,
         requires=['transformers>=4.42']))
 
 
@@ -218,7 +217,6 @@ register_model(
         TemplateType.cogvlm,
         get_model_tokenizer_cogvlm,
         architectures=['CogVLMForCausalLM'],
-        is_multimodal=True,
         support_gradient_checkpointing=False,
         requires=['transformers<4.42'],
     ))
@@ -234,7 +232,6 @@ register_model(
         TemplateType.cogagent_chat,
         get_model_tokenizer_cogvlm,
         architectures=['CogAgentForCausalLM'],
-        is_multimodal=True,
         support_gradient_checkpointing=False,
         requires=['transformers<4.42'],
     ))
@@ -248,7 +245,6 @@ register_model(
         TemplateType.cogagent_vqa,
         get_model_tokenizer_cogvlm,
         architectures=['CogAgentForCausalLM'],
-        is_multimodal=True,
         support_gradient_checkpointing=False,
         requires=['transformers<4.42'],
     ))
@@ -280,7 +276,6 @@ register_model(
         get_model_tokenizer_cogvlm2,
         architectures=['CogVLMForCausalLM'],
         requires=['transformers<4.42'],
-        is_multimodal=True,
         support_lmdeploy=True,
         support_gradient_checkpointing=False))
 
@@ -296,5 +291,4 @@ register_model(
         get_model_tokenizer_cogvlm2,
         architectures=['CogVLMVideoForCausalLM'],
         requires=['transformers>=4.42'],
-        is_multimodal=True,
         support_gradient_checkpointing=False))

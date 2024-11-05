@@ -106,7 +106,10 @@ def deep_getattr(obj, attr: str, default=None):
     for a in attrs:
         if obj is None:
             break
-        obj = getattr(obj, a, default)
+        if isinstance(obj, dict):
+            obj = obj.get(a, default)
+        else:
+            obj = getattr(obj, a, default)
     return obj
 
 

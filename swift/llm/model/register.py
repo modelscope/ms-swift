@@ -122,9 +122,8 @@ def register_model(model_meta: ModelMeta, *, exist_ok: bool = False) -> None:
     if not exist_ok and model_type in MODEL_MAPPING:
         raise ValueError(f'The `{model_type}` has already been registered in the MODEL_MAPPING.')
     from .constant import MLLMModelType
-    if not model_meta.is_multimodal:
-        assert model_type not in MLLMModelType.__dict__
-
+    if model_type in MLLMModelType.__dict__:
+        model_meta.is_multimodal = True
     MODEL_MAPPING[model_type] = model_meta
 
 

@@ -4,15 +4,15 @@ from typing import Any, Dict, Type
 
 import torch
 import transformers
-from modelscope import snapshot_download, AutoTokenizer, BitsAndBytesConfig
+from modelscope import AutoTokenizer, BitsAndBytesConfig, snapshot_download
 from transformers import AutoConfig, PretrainedConfig
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.llm import TemplateType
-from .model import _use_submodel_func
 from ..constant import LLMModelType, MLLMModelType
-from ..patcher import patch_output_to_input_device, patch_output_clone
+from ..patcher import patch_output_clone, patch_output_to_input_device
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local, register_model
+from ..utils import use_submodel_func
 
 
 def get_model_tokenizer_internlm_chat(model_dir: str,
@@ -175,7 +175,7 @@ def get_model_tokenizer_internvl(model_dir: str,
 
     if model is not None:
         func_list = ['generate', 'get_input_embeddings', 'gradient_checkpointing_enable', 'forward']
-        _use_submodel_func(model, 'language_model', func_list)
+        use_submodel_func(model, 'language_model', func_list)
         patch_output_clone(model.language_model.get_input_embeddings())
 
     return model, tokenizer
@@ -190,7 +190,7 @@ register_model(
                     Model('AI-ModelScope/InternVL-Chat-V1-5', 'OpenGVLab/InternVL-Chat-V1-5'),
                     Model('AI-ModelScope/InternVL-Chat-V1-5-int8', 'OpenGVLab/InternVL-Chat-V1-5-int8'),
                     Model('OpenGVLab/Mini-InternVL-Chat-2B-V1-5', 'OpenGVLab/Mini-InternVL-Chat-2B-V1-5'),
-                 ],
+                ],
                 requires=['transformers>=4.35', 'timm'],
                 tags=['multi-modal', 'vision'],
             ),
@@ -202,7 +202,6 @@ register_model(
         support_lmdeploy=True,
         support_vllm=True,
     ))
-
 
 register_model(
     ModelMeta(
@@ -222,7 +221,6 @@ register_model(
         support_flash_attn=True,
         support_vllm=True,
     ))
-
 
 register_model(
     ModelMeta(
@@ -255,7 +253,6 @@ register_model(
         support_vllm=True,
     ))
 
-
 register_model(
     ModelMeta(
         MLLMModelType.internvl2_phi3,
@@ -277,7 +274,6 @@ register_model(
         support_vllm=True,
     ))
 
-
 register_model(
     ModelMeta(
         MLLMModelType.xcomposer2_5,
@@ -295,7 +291,6 @@ register_model(
         support_flash_attn=True,
         support_lmdeploy=True,
     ))
-
 
 register_model(
     ModelMeta(
@@ -315,10 +310,9 @@ register_model(
         support_lmdeploy=True,
     ))
 
-
 register_model(
     ModelMeta(
-        MLLMModelType.xcomposer2,
+        MLLMModelType.xcomposer2_4khd,
         [
             ModelGroup(
                 [

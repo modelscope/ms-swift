@@ -1,18 +1,18 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from contextlib import contextmanager
-from functools import wraps, partial
+from functools import partial, wraps
 from types import MethodType
-from typing import Dict, Any, List
+from typing import Any, Dict, List
 
 from transformers import PretrainedConfig
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.llm import TemplateType
-from .deepseek import get_model_tokenizer_deepseek_moe
 from ..constant import LLMModelType, MLLMModelType
 from ..patcher import patch_fixed_device, patch_output_clone
-from ..register import (Model, ModelGroup, ModelMeta, register_model, get_model_tokenizer_with_flash_attn)
-from ..utils import _use_submodel_func
+from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
+from ..utils import ignore_check_imports, use_submodel_func
+from .deepseek import get_model_tokenizer_deepseek_moe
 
 register_model(
     ModelMeta(
@@ -21,7 +21,7 @@ register_model(
             ModelGroup(
                 [
                     Model('OpenBMB/MiniCPM-MoE-8x2B', 'openbmb/MiniCPM-MoE-8x2B'),
-                 ],
+                ],
                 requires=['transformers>=4.36.0'],
                 tags=['moe'],
             ),
@@ -66,7 +66,7 @@ def get_model_tokenizer_minicpm_v(model_dir: str,
         model.resampler.to(config.torch_dtype)  # fix float32
         _patch_minicpm_v_device_map(model)
         func_list = ['generate', 'get_input_embeddings', 'forward']
-        _use_submodel_func(model, 'llm', func_list)
+        use_submodel_func(model, 'llm', func_list)
         if hasattr(model, 'get_slice_image_placeholder'):
             tokenizer.get_slice_image_placeholder = MethodType(model.get_slice_image_placeholder, tokenizer)
             tokenizer.transform = MethodType(model.transform, tokenizer)
@@ -92,20 +92,6 @@ register_model(
         support_flash_attn=True,
         support_vllm=True,
     ))
-
-
-@contextmanager
-def ignore_check_imports():
-    import transformers.dynamic_module_utils as td
-
-    @wraps(td.check_imports)
-    def _check_imports(filename) -> List[str]:
-        return td.get_relative_imports(filename)
-
-    td._old_check_imports = td.check_imports
-    td.check_imports = _check_imports
-    yield
-    td.check_imports = td._old_check_imports
 
 
 def get_model_tokenizer_minicpm_v_2_x(model_dir: str,
@@ -147,7 +133,6 @@ register_model(
         support_flash_attn=True,
         support_vllm=True,
     ))
-
 
 register_model(
     ModelMeta(

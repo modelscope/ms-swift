@@ -2,6 +2,7 @@
 import hashlib
 import os
 import re
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any, Dict, List, Literal, Optional, Tuple, TypeVar, Union
 
@@ -27,14 +28,13 @@ class ModelInfo:
     max_model_len: int
     quant_method: Literal['gptq', 'awq', 'bnb', 'aqlm', None]
     quant_bits: int
-    config: PretrainedConfig
 
 
 class HfConfigFactory:
     """This class is used to read config from config.json(maybe params.json also)"""
 
     @staticmethod
-    def _get_torch_dtype(config: PretrainedConfig, quant_info: Dict[str, Any]) -> torch.dtype:
+    def _get_torch_dtype(config: Union[PretrainedConfig, Dict[str, Any]], quant_info: Dict[str, Any]) -> torch.dtype:
         for key in ['torch_dtype', 'params_dtype']:
             torch_dtype = HfConfigFactory.get_config_attr(config, key)
             if torch_dtype is not None:
@@ -46,32 +46,34 @@ class HfConfigFactory:
 
     @staticmethod
     def get_model_info(model_dir: str, model_type: Optional[str] = None) -> ModelInfo:
-        config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-
-        quant_info = HfConfigFactory._get_quant_info(config) or {}
-        torch_dtype = HfConfigFactory._get_torch_dtype(config, quant_info)
-        max_model_len = HfConfigFactory.get_max_model_len(config)
+        config_dict = PretrainedConfig.get_config_dict(model_dir)[0]
+        quant_info = HfConfigFactory._get_quant_info(config_dict) or {}
+        torch_dtype = HfConfigFactory._get_torch_dtype(config_dict, quant_info)
+        max_model_len = HfConfigFactory.get_max_model_len(config_dict)
 
         if model_type is None:
-            raise NotImplementedError
-            model_type = HfConfigFactory._get_matched_model_type(config)  # config.json
+            model_type = HfConfigFactory.get_matched_model_type(config_dict)  # config.json
         res = ModelInfo(model_type, model_dir, torch_dtype, max_model_len, quant_info.get('quant_method'),
-                        quant_info.get('quant_bits'), config)
+                        quant_info.get('quant_bits'))
         return res
 
     @staticmethod
-    def _get_config_attrs(config: PretrainedConfig, attr_name: str) -> List[Tuple[PretrainedConfig, Any]]:
+    def _get_config_attrs(config: Union[PretrainedConfig, Dict[str, Any]],
+                          attr_name: str) -> List[Tuple[PretrainedConfig, Any]]:
         res = []
         for key in [None, 'language_config', 'llm_config', 'text_config']:
             if key is not None:
-                config = getattr(config, key, None)
+                if isinstance(config, dict):
+                    config = config.get(key)
+                else:
+                    config = getattr(config, key, None)
             value = deep_getattr(config, attr_name, None)
             if value is not None:
                 res.append((config, value))
         return res
 
     @staticmethod
-    def get_config_attr(config, attr_name: str) -> Optional[Any]:
+    def get_config_attr(config: Union[PretrainedConfig, Dict[str, Any]], attr_name: str) -> Optional[Any]:
         """Get the value of the attribute named attr_name."""
         attrs = HfConfigFactory._get_config_attrs(config, attr_name)
         if len(attrs) == 0:
@@ -80,16 +82,19 @@ class HfConfigFactory:
             return attrs[0][1]
 
     @staticmethod
-    def set_config_attr(config, attr_name: str, value: Any) -> None:
+    def set_config_attr(config: Union[PretrainedConfig, Dict[str, Any]], attr_name: str, value: Any) -> None:
         """Set all the attr_name attributes to value."""
         attrs = HfConfigFactory._get_config_attrs(config, attr_name)
         if len(attrs) == 0:
             attrs.append((config, None))
         for config, _ in attrs:
-            setattr(config, attr_name, value)
+            if isinstance(config, dict):
+                config[attr_name] = value
+            else:
+                setattr(config, attr_name, value)
 
     @staticmethod
-    def get_max_model_len(config: PretrainedConfig) -> Optional[int]:
+    def get_max_model_len(config: Union[PretrainedConfig, Dict[str, Any]]) -> Optional[int]:
         """Get the max length supported by the model"""
         INF = int(1e9)
         max_model_len = INF
@@ -115,7 +120,7 @@ class HfConfigFactory:
         return max_model_len
 
     @staticmethod
-    def compat_zero3(config) -> None:
+    def compat_zero3(config: PretrainedConfig) -> None:
         value = HfConfigFactory.get_config_attr(config, 'hidden_size')
         config.hidden_size = value
 
@@ -128,9 +133,12 @@ class HfConfigFactory:
         return torch_dtype
 
     @staticmethod
-    def _get_quant_info(config: PretrainedConfig) -> Optional[Dict[str, Any]]:
+    def _get_quant_info(config: Union[PretrainedConfig, Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         """Get quant_method, quant_bits, dtype. not support hqq/eetq now, support awq/gptq/bnb/aqlm"""
-        quantization_config = getattr(config, 'quantization_config', None)
+        if isinstance(config, dict):
+            quantization_config = config.get('quantization_config')
+        else:
+            quantization_config = getattr(config, 'quantization_config', None)
         if quantization_config is None:
             return
         quantization_config = dict(quantization_config)
@@ -155,13 +163,17 @@ class HfConfigFactory:
         return res or None
 
     @staticmethod
-    def _get_matched_model_type(config: PretrainedConfig) -> Optional[str]:
+    def get_matched_model_type(config: Union[PretrainedConfig, Dict[str, Any]]) -> Optional[str]:
         """Get possible model_type."""
         # get possible model_types based on the model architecture.
+        if isinstance(config, dict):
+            arch = config['architectures'][0]
+        else:
+            arch = config.architectures[0]
+
         from .register import get_arch_mapping
         arch_mapping = get_arch_mapping()
 
-        arch = config.architectures[0]
         model_type_dict: Dict[str, List[str]] = arch_mapping[arch]
         model_type_list = list(model_type_dict.keys())
         if len(model_type_list) == 1:
@@ -284,7 +296,7 @@ def git_clone_github(github_url: str,
     return local_repo_path
 
 
-def _use_submodel_func(model, submodel_name: str, func_list: List[str]) -> None:
+def use_submodel_func(model, submodel_name: str, func_list: List[str]) -> None:
     submodel = getattr(model, submodel_name)
 
     def _get_new_func(func_name: str):
@@ -309,3 +321,17 @@ def _use_submodel_func(model, submodel_name: str, func_list: List[str]) -> None:
             submodel.__class__.device = model.device
         if key == 'forward' and 'generate' in func_list:
             setattr(submodel, key, MethodType(_get_new_func(key), submodel))  # fix device_map
+
+
+@contextmanager
+def ignore_check_imports():
+    import transformers.dynamic_module_utils as td
+
+    @wraps(td.check_imports)
+    def _check_imports(filename) -> List[str]:
+        return td.get_relative_imports(filename)
+
+    td._old_check_imports = td.check_imports
+    td.check_imports = _check_imports
+    yield
+    td.check_imports = td._old_check_imports

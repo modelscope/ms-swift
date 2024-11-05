@@ -6,8 +6,7 @@ from transformers import PretrainedConfig
 from swift.llm import TemplateType
 from swift.utils import get_logger
 from ..constant import LLMModelType
-from ..register import (Model, ModelGroup, ModelMeta, register_model,
-                        get_model_tokenizer_from_local)
+from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local, register_model
 
 logger = get_logger()
 
@@ -27,18 +26,17 @@ register_model(
         LLMModelType.mamba,
         [
             # llama2
-            ModelGroup(
-                [
-                    Model('AI-ModelScope/mamba-130m-hf', 'state-spaces/mamba-130m-hf'),
-                    Model('AI-ModelScope/mamba-370m-hf', 'state-spaces/mamba-370m-hf'),
-                    Model('AI-ModelScope/mamba-390m-hf', 'state-spaces/mamba-390m-hf'),
-                    Model('AI-ModelScope/mamba-790m-hf', 'state-spaces/mamba-790m-hf'),
-                    Model('AI-ModelScope/mamba-1.4b-hf', 'state-spaces/mamba-1.4b-hf'),
-                    Model('AI-ModelScope/mamba-2.8b-hf', 'state-spaces/mamba-2.8b-hf'),
-                ],
-                requires=['transformers>=4.39.0'],
-                tags=['multi-modal', 'vision'],
-                ignore_file_pattern=[r'.+\.bin$']),
+            ModelGroup([
+                Model('AI-ModelScope/mamba-130m-hf', 'state-spaces/mamba-130m-hf'),
+                Model('AI-ModelScope/mamba-370m-hf', 'state-spaces/mamba-370m-hf'),
+                Model('AI-ModelScope/mamba-390m-hf', 'state-spaces/mamba-390m-hf'),
+                Model('AI-ModelScope/mamba-790m-hf', 'state-spaces/mamba-790m-hf'),
+                Model('AI-ModelScope/mamba-1.4b-hf', 'state-spaces/mamba-1.4b-hf'),
+                Model('AI-ModelScope/mamba-2.8b-hf', 'state-spaces/mamba-2.8b-hf'),
+            ],
+                       requires=['transformers>=4.39.0'],
+                       tags=['multi-modal', 'vision'],
+                       ignore_file_pattern=[r'.+\.bin$']),
         ],
         TemplateType.default,
         get_model_tokenizer_mamba,

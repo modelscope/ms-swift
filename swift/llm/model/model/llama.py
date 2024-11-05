@@ -207,6 +207,5 @@ register_model(
         get_model_tokenizer_llama3_2_vision,
         requires=['transformers>=4.45'],
         architectures=['MllamaForConditionalGeneration'],
-        is_multimodal=True,
         support_flash_attn=True,
         support_vllm=True))

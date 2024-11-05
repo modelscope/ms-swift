@@ -4,16 +4,15 @@ import sys
 from functools import partial
 from typing import Any, Dict
 
-from modelscope import AutoModelForCausalLM, AutoConfig
+from modelscope import AutoConfig, AutoModelForCausalLM
 from transformers import AutoTokenizer, PretrainedConfig
 
 from swift.llm import TemplateType
-from .model import _use_submodel_func
-from .qwen import get_model_tokenizer_qwen
 from ..constant import LLMModelType, MLLMModelType
-from ..register import (Model, ModelGroup, ModelMeta, register_model, get_model_tokenizer_from_local,
-                        get_model_tokenizer_with_flash_attn)
-from ..utils import git_clone_github
+from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local,
+                        get_model_tokenizer_with_flash_attn, register_model)
+from ..utils import git_clone_github, use_submodel_func
+from .qwen import get_model_tokenizer_qwen
 
 
 def get_model_tokenizer_grok(model_dir: str,
@@ -31,8 +30,7 @@ def get_model_tokenizer_grok(model_dir: str,
         tokenizer.eos_token = eos_token
     model = None
     if load_model:
-        model = automodel_class.from_pretrained(
-            model_dir, config=model_config, trust_remote_code=True, **model_kwargs)
+        model = automodel_class.from_pretrained(model_dir, config=model_config, trust_remote_code=True, **model_kwargs)
     return model, tokenizer
 
 
@@ -67,7 +65,7 @@ def get_model_tokenizer_mplug_owl3(model_dir: str,
     processor = model.init_processor(tokenizer)
     tokenizer.processor = processor
     func_list = ['generate', 'forward']
-    _use_submodel_func(model, 'language_model', func_list)
+    use_submodel_func(model, 'language_model', func_list)
     return model, tokenizer
 
 
@@ -98,8 +96,7 @@ def get_model_tokenizer_polylm(model_dir: str,
                                load_model: bool = True,
                                **kwargs):
     tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True, use_fast=False, legacy=True)
-    return get_model_tokenizer_from_local(
-        model_dir, config, model_kwargs, load_model, tokenizer=tokenizer, **kwargs)
+    return get_model_tokenizer_from_local(model_dir, config, model_kwargs, load_model, tokenizer=tokenizer, **kwargs)
 
 
 register_model(
@@ -110,7 +107,7 @@ register_model(
                 [
                     # base
                     Model('damo/nlp_polylm_13b_text_generation', 'DAMO-NLP-MT/polylm-13b'),
-                ],),
+                ], ),
         ],
         TemplateType.default,
         get_model_tokenizer_polylm,
@@ -136,11 +133,10 @@ register_model(
     ModelMeta(
         LLMModelType.skywork,
         [
-            ModelGroup(
-                [
-                    Model('skywork/Skywork-13B-chat'),
-                    Model('skywork/Skywork-13B-base'),
-                ]),
+            ModelGroup([
+                Model('skywork/Skywork-13B-chat'),
+                Model('skywork/Skywork-13B-base'),
+            ]),
         ],
         TemplateType.skywork,
         get_skywork_model_tokenizer,
@@ -166,7 +162,8 @@ register_model(
                 [
                     Model('codefuse-ai/CodeFuse-CodeLlama-34B', 'codefuse-ai/CodeFuse-CodeLlama-34B'),
                 ],
-            tags=['coding'],),
+                tags=['coding'],
+            ),
         ],
         TemplateType.codefuse_codellama,
         get_model_tokenizer_codellama,
@@ -201,17 +198,15 @@ register_model(
     ModelMeta(
         LLMModelType.yuan2,
         [
-            ModelGroup(
-                [
-                    Model('YuanLLM/Yuan2.0-2B-hf', 'IEITYuan/Yuan2-2B-hf'),
-                    Model('YuanLLM/Yuan2.0-51B-hf', 'IEITYuan/Yuan2-51B-hf'),
-                    Model('YuanLLM/Yuan2.0-102B-hf', 'IEITYuan/Yuan2-102B-hf'),
-                    Model('YuanLLM/Yuan2-2B-Janus-hf', 'IEITYuan/Yuan2-2B-Janus-hf'),
-                ]),
-            ModelGroup(
-                [
-                    Model('YuanLLM/Yuan2-M32-hf', 'IEITYuan/Yuan2-M32-hf'),
-                ], tags=['moe']),
+            ModelGroup([
+                Model('YuanLLM/Yuan2.0-2B-hf', 'IEITYuan/Yuan2-2B-hf'),
+                Model('YuanLLM/Yuan2.0-51B-hf', 'IEITYuan/Yuan2-51B-hf'),
+                Model('YuanLLM/Yuan2.0-102B-hf', 'IEITYuan/Yuan2-102B-hf'),
+                Model('YuanLLM/Yuan2-2B-Janus-hf', 'IEITYuan/Yuan2-2B-Janus-hf'),
+            ]),
+            ModelGroup([
+                Model('YuanLLM/Yuan2-M32-hf', 'IEITYuan/Yuan2-M32-hf'),
+            ], tags=['moe']),
         ],
         TemplateType.yuan,
         get_model_tokenizer_codellama,
@@ -227,19 +222,18 @@ def get_model_tokenizer_orion(model_dir: str,
                               **kwargs):
     attn_type = AttentionImpl(kwargs.pop('use_flash_attn', None), kwargs.pop('attn_type', None))
     config._flash_attn_2_enabled = attn_type.to_bool()
-    return get_model_tokenizer_from_local(
-        model_dir, config, model_kwargs, load_model, **kwargs)
+    return get_model_tokenizer_from_local(model_dir, config, model_kwargs, load_model, **kwargs)
 
 
 register_model(
     ModelMeta(
         LLMModelType.yuan2,
         [
-            ModelGroup(
-                [
-                    Model('OrionStarAI/Orion-14B-Base', 'OrionStarAI/Orion-14B-Base'),
-                    Model('OrionStarAI/Orion-14B-Chat', 'OrionStarAI/Orion-14B-Chat'),
-                ], ignore_file_pattern=[r'.+\.gguf$']),
+            ModelGroup([
+                Model('OrionStarAI/Orion-14B-Base', 'OrionStarAI/Orion-14B-Base'),
+                Model('OrionStarAI/Orion-14B-Chat', 'OrionStarAI/Orion-14B-Chat'),
+            ],
+                       ignore_file_pattern=[r'.+\.gguf$']),
         ],
         TemplateType.orion,
         get_model_tokenizer_codellama,
@@ -261,10 +255,11 @@ register_model(
     ModelMeta(
         MLLMModelType.idefics3,
         [
-            ModelGroup(
-                [
-                    Model('AI-ModelScope/Idefics3-8B-Llama3', 'HuggingFaceM4/Idefics3-8B-Llama3'),
-                ], tags=['multi-modal', 'vision'], requires=['transformers>=4.45.0.dev0']),
+            ModelGroup([
+                Model('AI-ModelScope/Idefics3-8B-Llama3', 'HuggingFaceM4/Idefics3-8B-Llama3'),
+            ],
+                       tags=['multi-modal', 'vision'],
+                       requires=['transformers>=4.45.0.dev0']),
         ],
         TemplateType.idefics3,
         get_model_tokenizer_idefics,
@@ -293,8 +288,7 @@ def get_model_tokenizer_mplug_owl2(model_dir: str,
     if vocab_size is not None:
         model_config.vocab_size = vocab_size
     get_model_tokenizer_function = kwargs.pop('get_model_tokenizer_function')
-    model, tokenizer = get_model_tokenizer_function(
-        model_dir, config, model_kwargs, load_model, **kwargs)
+    model, tokenizer = get_model_tokenizer_function(model_dir, config, model_kwargs, load_model, **kwargs)
     logger.info('Please ignore the unimported warning.')
     processor = CLIPImageProcessor.from_pretrained(model_dir)
     tokenizer.processor = processor
@@ -305,10 +299,11 @@ register_model(
     ModelMeta(
         MLLMModelType.mplug2,
         [
-            ModelGroup(
-                [
-                    Model('iic/mPLUG-Owl2', 'MAGAer13/mplug-owl2-llama2-7b'),
-                ], tags=['multi-modal', 'vision'], requires=['transformers<4.35', 'icecream']),
+            ModelGroup([
+                Model('iic/mPLUG-Owl2', 'MAGAer13/mplug-owl2-llama2-7b'),
+            ],
+                       tags=['multi-modal', 'vision'],
+                       requires=['transformers<4.35', 'icecream']),
         ],
         TemplateType.mplug_owl2,
         partial(get_model_tokenizer_mplug_owl2, get_model_tokenizer_function=get_model_tokenizer_with_flash_attn),
@@ -316,18 +311,19 @@ register_model(
         architectures=['LlavaForConditionalGeneration'],
     ))
 
-
 register_model(
     ModelMeta(
         MLLMModelType.mplug2_1,
         [
-            ModelGroup(
-                [
-                    Model('iic/mPLUG-Owl2.1', 'Mizukiluke/mplug_owl_2_1'),
-                ], tags=['multi-modal', 'vision'], requires=['transformers<4.35', 'icecream']),
+            ModelGroup([
+                Model('iic/mPLUG-Owl2.1', 'Mizukiluke/mplug_owl_2_1'),
+            ],
+                       tags=['multi-modal', 'vision'],
+                       requires=['transformers<4.35', 'icecream']),
         ],
         TemplateType.mplug_owl2,
-        partial(get_model_tokenizer_mplug_owl2, vocab_size=151851, get_model_tokenizer_function=get_model_tokenizer_qwen),
+        partial(
+            get_model_tokenizer_mplug_owl2, vocab_size=151851, get_model_tokenizer_function=get_model_tokenizer_qwen),
         support_flash_attn=True,
         architectures=['LlavaForConditionalGeneration'],
     ))

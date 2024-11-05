@@ -49,7 +49,7 @@ class LLMModelType:
 
     codefuse_codellama = 'codefuse_codellama'
 
-    baichuan1 = 'baichuan1'
+    baichuan = 'baichuan'
     baichuan2 = 'baichuan2'
     baichuan2_int4 = 'baichuan2_int4'
 

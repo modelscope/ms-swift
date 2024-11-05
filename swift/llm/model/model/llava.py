@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 import sys
-from functools import wraps, partial
+from functools import partial, wraps
 from typing import Any, Dict
 
 from modelscope import AutoConfig
@@ -43,7 +43,8 @@ register_model(
             ModelGroup(
                 [
                     # base
-                    Model('AI-ModelScope/llava-llama-3-8b-v1_1-transformers', 'xtuner/llava-llama-3-8b-v1_1-transformers'),
+                    Model('AI-ModelScope/llava-llama-3-8b-v1_1-transformers',
+                          'xtuner/llava-llama-3-8b-v1_1-transformers'),
                 ],
                 requires=['transformers>=4.36'],
                 tags=['multi-modal', 'vision'],
@@ -92,13 +93,12 @@ register_model(
     ModelMeta(
         MLLMModelType.llava1_5,
         [
-            ModelGroup(
-                [
-                    Model('swift/llava-1.5-13b-hf', 'llava-hf/llava-1.5-13b-hf'),
-                    Model('swift/llava-1.5-7b-hf', 'llava-hf/llava-1.5-7b-hf'),
-                ],
-                requires=['transformers>=4.36'],
-                tags=['multi-modal', 'vision']),
+            ModelGroup([
+                Model('swift/llava-1.5-13b-hf', 'llava-hf/llava-1.5-13b-hf'),
+                Model('swift/llava-1.5-7b-hf', 'llava-hf/llava-1.5-7b-hf'),
+            ],
+                       requires=['transformers>=4.36'],
+                       tags=['multi-modal', 'vision']),
         ],
         TemplateType.llava1_5,
         get_model_tokenizer_llava_1_5,
@@ -122,8 +122,7 @@ register_model(
                 [
                     Model('AI-ModelScope/llava-onevision-qwen2-0.5b-ov-hf',
                           'llava-hf/llava-onevision-qwen2-0.5b-ov-hf'),
-                    Model('AI-ModelScope/llava-onevision-qwen2-7b-ov-hf',
-                          'llava-hf/llava-onevision-qwen2-7b-ov-hf'),
+                    Model('AI-ModelScope/llava-onevision-qwen2-7b-ov-hf', 'llava-hf/llava-onevision-qwen2-7b-ov-hf'),
                 ],
                 requires=['transformers>=4.45.0.dev0'],
                 tags=['multi-modal', 'vision', 'video'],
@@ -137,17 +136,14 @@ register_model(
         support_vllm=True,
     ))
 
-
 register_model(
     ModelMeta(
         MLLMModelType.llava_next,
         [
             ModelGroup(
                 [
-                    Model('AI-ModelScope/llava-next-72b-hf',
-                          'llava-hf/llava-next-72b-hf'),
-                    Model('AI-ModelScope/llava-next-110b-hf',
-                          'llava-hf/llava-next-110b-hf'),
+                    Model('AI-ModelScope/llava-next-72b-hf', 'llava-hf/llava-next-72b-hf'),
+                    Model('AI-ModelScope/llava-next-110b-hf', 'llava-hf/llava-next-110b-hf'),
                 ],
                 requires=['transformers>=4.39'],
                 tags=['multi-modal', 'vision'],
@@ -173,8 +169,7 @@ register_model(
         [
             ModelGroup(
                 [
-                    Model('swift/llama3-llava-next-8b-hf',
-                          'llava-hf/llama3-llava-next-8b-hf'),
+                    Model('swift/llama3-llava-next-8b-hf', 'llava-hf/llama3-llava-next-8b-hf'),
                 ],
                 requires=['transformers>=4.39'],
                 tags=['multi-modal', 'vision'],
@@ -187,17 +182,14 @@ register_model(
         support_vllm=True,
     ))
 
-
 register_model(
     ModelMeta(
         MLLMModelType.llava1_6_vicuna,
         [
             ModelGroup(
                 [
-                    Model('swift/llava-v1.6-vicuna-7b-hf',
-                          'llava-hf/llava-v1.6-vicuna-7b-hf'),
-                    Model('swift/llava-v1.6-vicuna-13b-hf',
-                          'llava-hf/llava-v1.6-vicuna-13b-hf'),
+                    Model('swift/llava-v1.6-vicuna-7b-hf', 'llava-hf/llava-v1.6-vicuna-7b-hf'),
+                    Model('swift/llava-v1.6-vicuna-13b-hf', 'llava-hf/llava-v1.6-vicuna-13b-hf'),
                 ],
                 requires=['transformers>=4.39'],
                 tags=['multi-modal', 'vision'],
@@ -210,17 +202,14 @@ register_model(
         support_vllm=True,
     ))
 
-
 register_model(
     ModelMeta(
         MLLMModelType.llava1_6_mistral,
         [
             ModelGroup(
                 [
-                    Model('swift/llava-v1.6-mistral-7b-hf',
-                          'llava-hf/llava-v1.6-mistral-7b-hf'),
-                    Model('swift/llava-v1.6-vicuna-13b-hf',
-                          'llava-hf/llava-v1.6-vicuna-13b-hf'),
+                    Model('swift/llava-v1.6-mistral-7b-hf', 'llava-hf/llava-v1.6-mistral-7b-hf'),
+                    Model('swift/llava-v1.6-vicuna-13b-hf', 'llava-hf/llava-v1.6-vicuna-13b-hf'),
                 ],
                 requires=['transformers>=4.39'],
                 tags=['multi-modal', 'vision'],
@@ -232,7 +221,6 @@ register_model(
         support_flash_attn=True,
         support_vllm=True,
     ))
-
 
 register_model(
     ModelMeta(
@@ -376,12 +364,7 @@ def get_model_tokenizer_llava(model_dir: str,
 
     model_config.mm_vision_tower = safe_snapshot_download('AI-ModelScope/clip-vit-large-patch14-336')
     model, tokenizer = get_model_tokenizer_with_flash_attn(
-        model_dir,
-        model_config,
-        model_kwargs,
-        load_model,
-        automodel_class=automodel_class,
-        **kwargs)
+        model_dir, model_config, model_kwargs, load_model, automodel_class=automodel_class, **kwargs)
 
     if model is not None:
         model.resize_token_embeddings(len(tokenizer))
@@ -413,7 +396,6 @@ register_model(
         architectures=['LlavaForConditionalGeneration'],
         support_flash_attn=True,
     ))
-
 
 register_model(
     ModelMeta(

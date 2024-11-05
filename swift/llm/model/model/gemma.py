@@ -5,7 +5,7 @@ from transformers import PretrainedConfig
 
 from swift.llm import TemplateType
 from ..constant import LLMModelType
-from ..register import (Model, ModelGroup, ModelMeta, register_model, get_model_tokenizer_from_local)
+from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local, register_model
 
 
 def get_model_tokenizer_paligemma_vision(model_dir: str,
@@ -26,16 +26,15 @@ register_model(
         LLMModelType.mamba,
         [
             # llama2
-            ModelGroup(
-                [
-                    Model('AI-ModelScope/paligemma-3b-pt-224', 'google/paligemma-3b-pt-224'),
-                    Model('AI-ModelScope/paligemma-3b-pt-448', 'google/paligemma-3b-pt-448'),
-                    Model('AI-ModelScope/paligemma-3b-pt-896', 'google/paligemma-3b-pt-896'),
-                    Model('AI-ModelScope/paligemma-3b-mix-448', 'google/paligemma-3b-mix-448'),
-                ],
-                requires=['transformers>=4.41'],
-                tags=['multi-modal', 'vision'],
-                ignore_file_pattern=[r'.+\.bin$']),
+            ModelGroup([
+                Model('AI-ModelScope/paligemma-3b-pt-224', 'google/paligemma-3b-pt-224'),
+                Model('AI-ModelScope/paligemma-3b-pt-448', 'google/paligemma-3b-pt-448'),
+                Model('AI-ModelScope/paligemma-3b-pt-896', 'google/paligemma-3b-pt-896'),
+                Model('AI-ModelScope/paligemma-3b-mix-448', 'google/paligemma-3b-mix-448'),
+            ],
+                       requires=['transformers>=4.41'],
+                       tags=['multi-modal', 'vision'],
+                       ignore_file_pattern=[r'.+\.bin$']),
         ],
         TemplateType.paligemma,
         get_model_tokenizer_paligemma_vision,

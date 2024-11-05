@@ -5,7 +5,7 @@ from transformers import PretrainedConfig
 
 from swift.llm import TemplateType
 from ..constant import MLLMModelType
-from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model)
+from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
 from ..utils import safe_snapshot_download
 
 
@@ -31,11 +31,9 @@ register_model(
     ModelMeta(
         MLLMModelType.emu3_gen,
         [
-            ModelGroup(
-                [
-                    Model('BAAI/Emu3-Gen', 'BAAI/Emu3-Gen'),
-                ],
-                tags=['multi-modal', 't2i']),
+            ModelGroup([
+                Model('BAAI/Emu3-Gen', 'BAAI/Emu3-Gen'),
+            ], tags=['multi-modal', 't2i']),
         ],
         TemplateType.emu3_gen,
         get_model_tokenizer_emu3_gen,

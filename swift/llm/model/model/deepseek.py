@@ -7,12 +7,11 @@ from modelscope import AutoConfig
 from transformers import PretrainedConfig
 
 from swift.llm import TemplateType
-from .model import _use_submodel_func
 from ..constant import LLMModelType, MLLMModelType
 from ..patcher import patch_output_clone, patch_output_to_input_device
-from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model,
-                        get_model_tokenizer_from_local)
-from ..utils import git_clone_github
+from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local,
+                        get_model_tokenizer_with_flash_attn, register_model)
+from ..utils import git_clone_github, use_submodel_func
 
 
 def get_model_tokenizer_deepseek_moe(model_dir: str,
@@ -53,7 +52,7 @@ register_model(
                 [
                     Model('deepseek-ai/deepseek-moe-16b-chat', 'deepseek-ai/deepseek-moe-16b-chat'),
                     Model('deepseek-ai/deepseek-moe-16b-base', 'deepseek-ai/deepseek-moe-16b-base'),
-                 ],
+                ],
                 tags=['moe'],
             ),
         ],
@@ -63,7 +62,6 @@ register_model(
         support_flash_attn=True,
         support_vllm=True,
     ))
-
 
 register_model(
     ModelMeta(
@@ -79,7 +77,7 @@ register_model(
                     Model('deepseek-ai/DeepSeek-V2-Lite-Chat', 'deepseek-ai/DeepSeek-V2-Lite-Chat'),
                     Model('deepseek-ai/DeepSeek-V2', 'deepseek-ai/DeepSeek-V2'),
                     Model('deepseek-ai/DeepSeek-V2-Chat', 'deepseek-ai/DeepSeek-V2-Chat'),
-                 ],
+                ],
                 requires=['transformers>=4.39.3'],
                 tags=['moe'],
             ),
@@ -91,7 +89,6 @@ register_model(
         support_vllm=True,
     ))
 
-
 register_model(
     ModelMeta(
         LLMModelType.deepseek2_5,
@@ -99,7 +96,7 @@ register_model(
             ModelGroup(
                 [
                     Model('deepseek-ai/DeepSeek-V2.5', 'deepseek-ai/DeepSeek-V2.5'),
-                 ],
+                ],
                 requires=['transformers>=4.39.3'],
                 tags=['moe'],
             ),
@@ -142,7 +139,7 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
         patch_output_clone(model.language_model.model.embed_tokens)
         patch_output_to_input_device(model.language_model.model.embed_tokens)
         func_list = ['generate', 'get_input_embeddings', 'gradient_checkpointing_enable', 'forward']
-        _use_submodel_func(model, 'language_model', func_list)
+        use_submodel_func(model, 'language_model', func_list)
         model.generation_config = model.language_model.generation_config
     return model, tokenizer
 
@@ -155,7 +152,7 @@ register_model(
                 [
                     Model('deepseek-ai/deepseek-vl-7b-chat', 'deepseek-ai/deepseek-vl-7b-chat'),
                     Model('deepseek-ai/deepseek-vl-1.3b-chat', 'deepseek-ai/deepseek-vl-1.3b-chat'),
-                 ],
+                ],
                 tags=['multi-modal', 'vision'],
             ),
         ],

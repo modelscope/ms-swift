@@ -2,13 +2,14 @@ from types import MethodType
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Any, Dict
 
-from torch import Tensor
-from transformers import PretrainedConfig, BitsAndBytesConfig
 import torch.functional as F
+from torch import Tensor
+from transformers import BitsAndBytesConfig, PretrainedConfig
+
 from swift.llm import TemplateType
-from ..constant import LLMModelType
-from ..register import (Model, ModelGroup, ModelMeta, register_model, get_model_tokenizer_from_local)
 from swift.utils import get_logger
+from ..constant import LLMModelType
+from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local, register_model
 
 logger = get_logger()
 
@@ -30,7 +31,7 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
 
 register_model(
     ModelMeta(
-        LLMModelType.baichuan1,
+        LLMModelType.baichuan,
         [
             # llama2
             ModelGroup(
@@ -95,14 +96,13 @@ register_model(
         LLMModelType.baichuan2,
         [
             # llama2
-            ModelGroup(
-                [
-                    Model('baichuan-inc/Baichuan2-13B-Chat', 'baichuan-inc/Baichuan2-13B-Chat'),
-                    Model('baichuan-inc/Baichuan2-13B-Base', 'baichuan-inc/Baichuan2-13B-Base'),
-                    Model('baichuan-inc/Baichuan2-7B-Chat', 'baichuan-inc/Baichuan2-7B-Chat'),
-                    Model('baichuan-inc/Baichuan2-7B-Base', 'baichuan-inc/Baichuan2-7B-Base'),
-                ],
-                ignore_file_pattern=[r'.+\.bin$']),
+            ModelGroup([
+                Model('baichuan-inc/Baichuan2-7B-Base', 'baichuan-inc/Baichuan2-7B-Base'),
+                Model('baichuan-inc/Baichuan2-7B-Chat', 'baichuan-inc/Baichuan2-7B-Chat'),
+                Model('baichuan-inc/Baichuan2-13B-Base', 'baichuan-inc/Baichuan2-13B-Base'),
+                Model('baichuan-inc/Baichuan2-13B-Chat', 'baichuan-inc/Baichuan2-13B-Chat'),
+            ],
+                       ignore_file_pattern=[r'.+\.bin$']),
         ],
         TemplateType.baichuan,
         get_model_tokenizer_baichuan2,
@@ -143,13 +143,12 @@ register_model(
         LLMModelType.baichuan2_int4,
         [
             # llama2
-            ModelGroup(
-                [
-                    Model('baichuan-inc/Baichuan2-13B-Chat-4bits', 'baichuan-inc/Baichuan2-13B-Chat-4bits'),
-                    Model('baichuan-inc/Baichuan2-7B-Chat-4bits', 'baichuan-inc/Baichuan2-7B-Chat-4bits'),
-                ],
-                ignore_file_pattern=[r'.+\.bin$'],
-                requires=['bitsandbytes<0.41.2', 'accelerate<0.26']),
+            ModelGroup([
+                Model('baichuan-inc/Baichuan2-7B-Chat-4bits', 'baichuan-inc/Baichuan2-7B-Chat-4bits'),
+                Model('baichuan-inc/Baichuan2-13B-Chat-4bits', 'baichuan-inc/Baichuan2-13B-Chat-4bits'),
+            ],
+                       ignore_file_pattern=[r'.+\.bin$'],
+                       requires=['bitsandbytes<0.41.2', 'accelerate<0.26']),
         ],
         TemplateType.baichuan,
         get_model_tokenizer_baichuan2,
