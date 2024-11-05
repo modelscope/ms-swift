@@ -9,6 +9,7 @@ from trl import CPOTrainer as HFCPOTrainer
 from swift.trainers import PushToMsHubMixin, RLHFTrainerMixin, SwiftMixin
 
 del HFCPOTrainer.__init__
+del HFCPOTrainer.get_batch_samples
 
 
 class CPOTrainer(RLHFTrainerMixin, PushToMsHubMixin, SwiftMixin, HFCPOTrainer):
