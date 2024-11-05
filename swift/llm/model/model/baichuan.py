@@ -1,0 +1,159 @@
+from types import MethodType
+# Copyright (c) Alibaba, Inc. and its affiliates.
+from typing import Any, Dict
+
+from torch import Tensor
+from transformers import PretrainedConfig, BitsAndBytesConfig
+import torch.functional as F
+from swift.llm import TemplateType
+from ..constant import LLMModelType
+from ..register import (Model, ModelGroup, ModelMeta, register_model, get_model_tokenizer_from_local)
+from swift.utils import get_logger
+
+logger = get_logger()
+
+
+def get_model_tokenizer_baichuan_13b(model_dir: str,
+                                     model_config: PretrainedConfig,
+                                     model_kwargs: Dict[str, Any],
+                                     load_model: bool = True,
+                                     **kwargs):
+    model, tokenizer = get_model_tokenizer_from_local(model_dir, model_config, model_kwargs, load_model, **kwargs)
+    # baichuan-13b does not implement the `get_input_embeddings` function
+    # fix gradient_checkpointing bug
+    try:
+        model.get_input_embeddings()
+    except NotImplementedError:
+        model.__class__.get_input_embeddings = lambda self: self.model.embed_tokens
+    return model, tokenizer
+
+
+register_model(
+    ModelMeta(
+        LLMModelType.baichuan1,
+        [
+            # llama2
+            ModelGroup(
+                [
+                    # base
+                    Model('baichuan-inc/Baichuan-13B-Base', 'baichuan-inc/Baichuan-13B-Base'),
+                ],
+                requires=['transformers<4.34'],
+                tags=['multi-modal', 'vision'],
+                ignore_file_pattern=[r'.+\.bin$']),
+        ],
+        TemplateType.default,
+        get_model_tokenizer_baichuan_13b,
+        architectures=['LlavaForConditionalGeneration'],
+        support_vllm=True,
+        support_lmdeploy=True,
+        support_flash_attn=False,
+    ))
+
+
+def patch_baichuan2_lm_head_forward(self, hidden_states: Tensor) -> Tensor:
+    # patch: baichuan2 lm_head (fp32 bug)
+    if self.training:
+        norm_weight = F.normalize(self.weight).to(self.weight.dtype)
+    elif self.first_flag:
+        self.first_flag = False
+        self.weight.data = F.normalize(self.weight).to(self.weight.dtype)
+        norm_weight = self.weight
+    else:
+        norm_weight = self.weight
+    return F.linear(hidden_states, norm_weight)
+
+
+def get_model_tokenizer_baichuan2(model_dir: str,
+                                  config: PretrainedConfig,
+                                  model_kwargs: Dict[str, Any],
+                                  load_model: bool = True,
+                                  model_config=None,
+                                  **kwargs):
+    if not hasattr(model_config, 'z_loss_weight'):
+        model_config.z_loss_weight = 0
+    # patch: baichuan2_13b configuration_baichuan.py bug
+    gradient_checkpointing = model_config.gradient_checkpointing
+    if isinstance(gradient_checkpointing, (tuple, list)):
+        model_config.gradient_checkpointing = gradient_checkpointing[0]
+    model, tokenizer = get_model_tokenizer_from_local(
+        model_dir, config, model_kwargs, load_model, model_config=model_config, **kwargs)
+    model_ori = model
+    if model is not None:
+        if not hasattr(model, 'lm_head'):  # fix awq
+            model = model.model
+        new_forward = MethodType(patch_baichuan2_lm_head_forward, model.lm_head)
+        if hasattr(model, '_old_forward'):  # device_map
+            model.lm_head._old_forward = new_forward
+        else:
+            model.lm_head.forward = new_forward
+    return model_ori, tokenizer
+
+
+register_model(
+    ModelMeta(
+        LLMModelType.baichuan2,
+        [
+            # llama2
+            ModelGroup(
+                [
+                    Model('baichuan-inc/Baichuan2-13B-Chat', 'baichuan-inc/Baichuan2-13B-Chat'),
+                    Model('baichuan-inc/Baichuan2-13B-Base', 'baichuan-inc/Baichuan2-13B-Base'),
+                    Model('baichuan-inc/Baichuan2-7B-Chat', 'baichuan-inc/Baichuan2-7B-Chat'),
+                    Model('baichuan-inc/Baichuan2-7B-Base', 'baichuan-inc/Baichuan2-7B-Base'),
+                ],
+                ignore_file_pattern=[r'.+\.bin$']),
+        ],
+        TemplateType.baichuan,
+        get_model_tokenizer_baichuan2,
+        architectures=['LlavaForConditionalGeneration'],
+        support_vllm=True,
+        support_lmdeploy=True,
+    ))
+
+
+def get_model_tokenizer_baichuan2_int4(model_dir: str,
+                                       config: PretrainedConfig,
+                                       model_kwargs: Dict[str, Any],
+                                       load_model: bool = True,
+                                       **kwargs):
+    logger.info('use `model_config.quantization_config`, ignore bnb arguments')
+    model_kwargs.pop('quantization_config', None)
+
+    # fix device_map bug
+    import accelerate
+    _old_infer_auto_device_map = accelerate.infer_auto_device_map
+    device_map = model_kwargs.get('device_map', None)
+    if device_map != 'auto':
+        accelerate.infer_auto_device_map = lambda *args, **kwargs: device_map
+    get_baichuan2_function = kwargs.pop('get_baichuan2_function', get_model_tokenizer_baichuan2)
+    model, tokenizer = get_baichuan2_function(model_dir, config, model_kwargs, load_model, **kwargs)
+    if device_map != 'auto':
+        accelerate.infer_auto_device_map = _old_infer_auto_device_map
+    if model is not None:
+        model.config.quantization_config = BitsAndBytesConfig(**model.config.quantization_config)
+        model.train()
+        model._is_quantized_training_enabled = True
+        model.is_loaded_in_4bit = True
+    return model, tokenizer
+
+
+register_model(
+    ModelMeta(
+        LLMModelType.baichuan2_int4,
+        [
+            # llama2
+            ModelGroup(
+                [
+                    Model('baichuan-inc/Baichuan2-13B-Chat-4bits', 'baichuan-inc/Baichuan2-13B-Chat-4bits'),
+                    Model('baichuan-inc/Baichuan2-7B-Chat-4bits', 'baichuan-inc/Baichuan2-7B-Chat-4bits'),
+                ],
+                ignore_file_pattern=[r'.+\.bin$'],
+                requires=['bitsandbytes<0.41.2', 'accelerate<0.26']),
+        ],
+        TemplateType.baichuan,
+        get_model_tokenizer_baichuan2,
+        architectures=['LlavaForConditionalGeneration'],
+        support_vllm=True,
+        support_lmdeploy=True,
+    ))
