@@ -10,7 +10,7 @@ def _prepare(infer_backend: Literal['vllm', 'pt', 'lmdeploy']):
     from swift.llm import InferRequest, get_template
     if infer_backend == 'lmdeploy':
         from swift.llm import LmdeployEngine
-        engine = LmdeployEngine('qwen/Qwen2-VL-7B-Instruct', torch.float32)
+        engine = LmdeployEngine('qwen/Qwen-VL-Chat', torch.float32)
     elif infer_backend == 'pt':
         from swift.llm import PtEngine
         engine = PtEngine('qwen/Qwen2-VL-7B-Instruct')
@@ -21,13 +21,12 @@ def _prepare(infer_backend: Literal['vllm', 'pt', 'lmdeploy']):
     infer_requests = [
         # InferRequest([{'role': 'user', 'content': '晚上睡不着觉怎么办'}]) for i in range(100)
         InferRequest([{
-            'role': 'user',
-            'content': [
-                {
-                    'type': 'image_url',
-                    'image_url': 'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png'
-                }
-            ]
+            'role':
+            'user',
+            'content': [{
+                'type': 'image_url',
+                'image_url': 'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png'
+            }]
         }]) for i in range(1)
     ]
     return engine, template, infer_requests
@@ -38,7 +37,8 @@ def test_infer(engine, template, infer_requests):
     request_config = RequestConfig(temperature=0)
     infer_stats = InferStats()
 
-    response_list = engine.infer(infer_requests, template=template, request_config=request_config, metrics=[infer_stats])
+    response_list = engine.infer(
+        infer_requests, template=template, request_config=request_config, metrics=[infer_stats])
 
     for response in response_list[:2]:
         print(response.choices[0].message.content)
@@ -70,6 +70,6 @@ def test_stream(engine, template, infer_requests):
 
 
 if __name__ == '__main__':
-    engine, template, infer_requests = _prepare(infer_backend='vllm')
+    engine, template, infer_requests = _prepare(infer_backend='pt')
     test_infer(engine, template, infer_requests)
     test_stream(engine, template, infer_requests)

@@ -25,7 +25,6 @@ class SubsetDataset:
     # Higher priority. If set to None, the attributes of the DatasetMeta will be used.
     split: Optional[List[str]] = None
     preprocess_func: Optional[PreprocessFunc] = None
-    remove_useless_columns: Optional[bool] = None
 
     # If the dataset_name does not specify subsets, this parameter determines whether the dataset is used.
     is_weak_subset: bool = False
@@ -36,7 +35,7 @@ class SubsetDataset:
 
     def set_default(self, dataset_meta: 'DatasetMeta') -> 'SubsetDataset':
         subset_dataset = deepcopy(self)
-        for k in ['split', 'preprocess_func', 'remove_useless_columns']:
+        for k in ['split', 'preprocess_func']:
             v = getattr(subset_dataset, k)
             if v is None:
                 setattr(subset_dataset, k, deepcopy(getattr(dataset_meta, k)))
@@ -57,7 +56,6 @@ class DatasetMeta:
     split: List[str] = field(default_factory=lambda: ['train'])
     # First perform column mapping, then proceed with the preprocess_func.
     preprocess_func: PreprocessFunc = field(default_factory=lambda: AutoPreprocessor())
-    remove_useless_columns: bool = True
     load_function: Optional[LoadFunction] = None
 
     tags: List[str] = field(default_factory=list)
@@ -106,11 +104,14 @@ def _preprocess_d_info(d_info: Dict[str, Any], *, base_dir: Optional[str] = None
     columns_mapping = None
     if 'columns' in d_info:
         columns_mapping = d_info.pop('columns')
+    remove_useless_columns = d_info.pop('remove_useless_columns', True)
 
     if 'messages' in d_info:
-        d_info['preprocess_func'] = MessagesPreprocessor(**d_info.pop('messages'), columns_mapping=columns_mapping)
+        d_info['preprocess_func'] = MessagesPreprocessor(
+            **d_info.pop('messages'), columns_mapping=columns_mapping, remove_useless_columns=remove_useless_columns)
     else:
-        d_info['preprocess_func'] = AutoPreprocessor(columns_mapping=columns_mapping)
+        d_info['preprocess_func'] = AutoPreprocessor(
+            columns_mapping=columns_mapping, remove_useless_columns=remove_useless_columns)
 
     if 'dataset_path' in d_info:
         dataset_path = d_info.pop('dataset_path')

@@ -19,6 +19,34 @@ from swift.utils import deep_getattr, get_logger, is_dist, is_dist_ta, safe_ddp_
 
 logger = get_logger()
 
+_T = TypeVar('_T')
+
+
+class AttnImpl:
+    flash_attn = 'flash_attn'
+    sdpa = 'sdpa'
+    eager = 'eager'
+
+    @staticmethod
+    def to_use_flash_attn(attn_impl: Optional[str], auto_value: _T = None) -> Union[bool, _T]:
+        if attn_impl is None:
+            return auto_value
+        return attn_impl == AttnImpl.flash_attn
+
+    @staticmethod
+    def update_attn_impl(config: PretrainedConfig, attn_impl: Optional[str], auto_value: _T = None) -> None:
+
+        use_flash_attn = AttnImpl.to_use_flash_attn(attn_impl, auto_value)
+        if use_flash_attn is None:
+            return
+        from swift.llm import HfConfigFactory
+        if version.parse(transformers.__version__) >= version.parse('4.36'):
+            if use_flash_attn:
+                attn_impl = 'flash_attention_2'
+            HfConfigFactory.set_config_attr(config, '_attn_implementation', attn_impl)
+        else:
+            HfConfigFactory.set_config_attr(config, '_flash_attn_2_enabled', use_flash_attn)
+
 
 @dataclass
 class ModelInfo:
@@ -29,12 +57,18 @@ class ModelInfo:
     quant_method: Literal['gptq', 'awq', 'bnb', 'aqlm', None]
     quant_bits: int
 
+    # extra
+    is_training: bool
+    attn_impl: AttnImpl
+    rope_scaling: Optional[Dict[str, Any]]
+    config: Optional[PretrainedConfig] = None
+
 
 class HfConfigFactory:
     """This class is used to read config from config.json(maybe params.json also)"""
 
     @staticmethod
-    def _get_torch_dtype(config: Union[PretrainedConfig, Dict[str, Any]], quant_info: Dict[str, Any]) -> torch.dtype:
+    def get_torch_dtype(config: Union[PretrainedConfig, Dict[str, Any]], quant_info: Dict[str, Any]) -> torch.dtype:
         for key in ['torch_dtype', 'params_dtype']:
             torch_dtype = HfConfigFactory.get_config_attr(config, key)
             if torch_dtype is not None:
@@ -43,19 +77,6 @@ class HfConfigFactory:
         if torch_dtype is None:
             torch_dtype = quant_info.get('torch_dtype')
         return torch_dtype
-
-    @staticmethod
-    def get_model_info(model_dir: str, model_type: Optional[str] = None) -> ModelInfo:
-        config_dict = PretrainedConfig.get_config_dict(model_dir)[0]
-        quant_info = HfConfigFactory._get_quant_info(config_dict) or {}
-        torch_dtype = HfConfigFactory._get_torch_dtype(config_dict, quant_info)
-        max_model_len = HfConfigFactory.get_max_model_len(config_dict)
-
-        if model_type is None:
-            model_type = HfConfigFactory.get_matched_model_type(config_dict)  # config.json
-        res = ModelInfo(model_type, model_dir, torch_dtype, max_model_len, quant_info.get('quant_method'),
-                        quant_info.get('quant_bits'))
-        return res
 
     @staticmethod
     def _get_config_attrs(config: Union[PretrainedConfig, Dict[str, Any]],
@@ -133,7 +154,7 @@ class HfConfigFactory:
         return torch_dtype
 
     @staticmethod
-    def _get_quant_info(config: Union[PretrainedConfig, Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    def get_quant_info(config: Union[PretrainedConfig, Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         """Get quant_method, quant_bits, dtype. not support hqq/eetq now, support awq/gptq/bnb/aqlm"""
         if isinstance(config, dict):
             quantization_config = config.get('quantization_config')
@@ -163,7 +184,19 @@ class HfConfigFactory:
         return res or None
 
     @staticmethod
-    def get_matched_model_type(config: Union[PretrainedConfig, Dict[str, Any]]) -> Optional[str]:
+    def _get_arch_mapping():
+        from .register import MODEL_MAPPING
+        res = {}
+        for model_type, model_meta in MODEL_MAPPING.items():
+            architectures = model_meta.architectures
+            for arch in architectures:
+                if arch not in res:
+                    res[arch] = []
+                res[arch].append(model_type)
+        return res
+
+    @staticmethod
+    def get_matched_model_types(config: Union[PretrainedConfig, Dict[str, Any]]) -> List[str]:
         """Get possible model_type."""
         # get possible model_types based on the model architecture.
         if isinstance(config, dict):
@@ -171,22 +204,8 @@ class HfConfigFactory:
         else:
             arch = config.architectures[0]
 
-        from .register import get_arch_mapping
-        arch_mapping = get_arch_mapping()
-
-        model_type_dict: Dict[str, List[str]] = arch_mapping[arch]
-        model_type_list = list(model_type_dict.keys())
-        if len(model_type_list) == 1:
-            return model_type_list
-        # Filter again based on model_name.
-        model_name = HfConfigFactory._get_model_name(model_dir).lower()
-        model_type_dict_reversed = {}
-        for model_type, model_names in model_type_dict.items():
-            model_type_dict_reversed.update({model_name.lower(): model_type for model_name in model_names})
-        model_type = model_type_dict_reversed.get(model_name)
-        if model_type is None:
-            return model_type_list
-        return [model_type]
+        arch_mapping = HfConfigFactory._get_arch_mapping()
+        return arch_mapping.get(arch) or []
 
 
 def safe_snapshot_download(model_id_or_path: str,
@@ -232,35 +251,6 @@ def safe_snapshot_download(model_id_or_path: str,
     model_dir = os.path.abspath(os.path.expanduser(model_dir))
     assert os.path.isdir(model_dir), f'model_dir: {model_dir}'
     return model_dir
-
-
-_T = TypeVar('_T')
-
-
-class AttnImpl:
-    flash_attn = 'flash_attn'
-    sdpa = 'sdpa'
-    eager = 'eager'
-
-    @staticmethod
-    def to_use_flash_attn(attn_impl: Optional[str], auto_value: _T = None) -> Union[bool, _T]:
-        if attn_impl is None:
-            return auto_value
-        return attn_impl == AttnImpl.flash_attn
-
-    @staticmethod
-    def update_attn_impl(config: PretrainedConfig, attn_impl: Optional[str], auto_value: _T = None) -> None:
-
-        use_flash_attn = AttnImpl.to_use_flash_attn(attn_impl, auto_value)
-        if use_flash_attn is None:
-            return
-        from swift.llm import HfConfigFactory
-        if version.parse(transformers.__version__) >= version.parse('4.36'):
-            if use_flash_attn:
-                attn_impl = 'flash_attention_2'
-            HfConfigFactory.set_config_attr(config, '_attn_implementation', attn_impl)
-        else:
-            HfConfigFactory.set_config_attr(config, '_flash_attn_2_enabled', use_flash_attn)
 
 
 def git_clone_github(github_url: str,

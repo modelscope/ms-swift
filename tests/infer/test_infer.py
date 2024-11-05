@@ -33,7 +33,8 @@ def test_infer(engine, template, infer_requests):
     request_config = RequestConfig(temperature=0)
     infer_stats = InferStats()
 
-    response_list = engine.infer(infer_requests, template=template, request_config=request_config, metrics=[infer_stats])
+    response_list = engine.infer(
+        infer_requests, template=template, request_config=request_config, metrics=[infer_stats])
 
     for response in response_list[:2]:
         print(response.choices[0].message.content)

@@ -20,7 +20,7 @@ from transformers.utils import is_torch_bf16_gpu_available, is_torch_cuda_availa
 from transformers.utils.versions import require_version
 
 from swift.utils import get_dist_setting, get_logger, is_ddp_plus_mp, is_dist, is_unsloth_available, use_torchacc
-from .utils import AttnImpl, HfConfigFactory, safe_snapshot_download
+from .utils import AttnImpl, HfConfigFactory, ModelInfo, safe_snapshot_download
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]]
 logger = get_logger()
@@ -145,18 +145,25 @@ def load_by_unsloth(model_dir: str,
 
 
 def get_model_tokenizer_from_local(model_dir: str,
-                                   model_config: PretrainedConfig,
+                                   model_info: ModelInfo,
                                    model_kwargs: Dict[str, Any],
                                    load_model: bool = True,
+                                   *,
                                    tokenizer=None,
-                                   automodel_class=AutoModelForCausalLM,
-                                   quant_method: Optional[str] = None,
-                                   quant_bits: Optional[int] = 0,
-                                   is_training: bool = False,
-                                   **kwargs):
+                                   model_config=None,
+                                   automodel_class=AutoModelForCausalLM):
     """Load the model and tokenizer from the local model_dir."""
 
-    torch_dtype = model_config.torch_dtype
+    if model_config is None:
+        model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+    model_info.config = model_config
+
+    torch_dtype = model_info.torch_dtype
+    model_config.torch_dtype = torch_dtype
+    HfConfigFactory.compat_zero3(model_config)
+    if model_info.rope_scaling is not None:
+        HfConfigFactory.set_config_attr(model_config, 'rope_scaling', model_info.rope_scaling)
+
     if tokenizer is None:
         tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
 
@@ -170,9 +177,6 @@ def get_model_tokenizer_from_local(model_dir: str,
             logger.info(f'model_kwargs: {model_kwargs}')
             model = automodel_class.from_pretrained(
                 model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
-        model.quant_method = quant_method  # TODO: check bnb
-        model.quant_bits = quant_bits
-        model.is_training = is_training
 
     return model, tokenizer
 
@@ -309,21 +313,43 @@ def get_matched_model_meta(model_id_or_path: str) -> Optional[str]:
             return model_meta
 
 
-def get_model_tokenizer(
-        model_id_or_path: str,
-        torch_dtype: Optional[torch.dtype] = None,
-        device_map: Union[str, Dict[str, Any], None] = None,
-        model_kwargs: Optional[Dict[str, Any]] = None,
-        load_model: bool = True,
-        *,
-        model_type: Optional[str] = None,
-        is_training: bool = False,
-        attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None,
-        use_hf: Optional[bool] = None,
-        revision: Optional[str] = None,
-        download_model: Optional[bool] = None,
-        **kwargs  #
-) -> Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]:
+def get_model_info(model_dir: str,
+                   model_type: Optional[str],
+                   is_training: bool,
+                   attn_impl: AttnImpl,
+                   rope_scaling: Optional[Dict[str, Any]] = None) -> ModelInfo:
+    config_dict = PretrainedConfig.get_config_dict(model_dir)[0]
+    quant_info = HfConfigFactory.get_quant_info(config_dict) or {}
+    torch_dtype = HfConfigFactory.get_torch_dtype(config_dict, quant_info)
+    max_model_len = HfConfigFactory.get_max_model_len(config_dict)
+
+    if model_type is None:
+        model_types = HfConfigFactory.get_matched_model_types(config_dict)  # config.json
+        if len(model_types) > 1:
+            raise ValueError('Please explicitly pass the model_type. For reference, '
+                             f'the available model_types: {model_types}.')
+        elif len(model_types) == 1:
+            model_type = model_types[0]
+
+    res = ModelInfo(model_type, model_dir, torch_dtype, max_model_len, quant_info.get('quant_method'),
+                    quant_info.get('quant_bits'), is_training, attn_impl, rope_scaling)
+    return res
+
+
+def get_model_tokenizer(model_id_or_path: str,
+                        torch_dtype: Optional[torch.dtype] = None,
+                        device_map: Union[str, Dict[str, Any], None] = None,
+                        model_kwargs: Optional[Dict[str, Any]] = None,
+                        load_model: bool = True,
+                        *,
+                        model_type: Optional[str] = None,
+                        is_training: bool = False,
+                        attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None,
+                        rope_scaling: Optional[Dict[str, Any]] = None,
+                        use_hf: Optional[bool] = None,
+                        revision: Optional[str] = None,
+                        download_model: Optional[bool] = None,
+                        **kwargs) -> Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]:
     """
     model_id_or_path: The path to the model or the model_id from modelscope/huggingface (controlled by `use_hf`).
     torch_dtype: If you pass `None`, it will retrieve the torch_dtype from the config.json file.
@@ -357,33 +383,30 @@ def get_model_tokenizer(
         device_map = get_default_device_map()
     model_kwargs['device_map'] = device_map
 
-    model_info = HfConfigFactory.get_model_info(model_dir, getattr(model_meta, 'model_type', None))
-    if model_type is None:
+    model_info = get_model_info(
+        model_dir,
+        getattr(model_meta, 'model_type', None),
+        is_training=is_training,
+        attn_impl=attn_impl,
+        rope_scaling=rope_scaling)
+    if model_type is None and model_info.model_type is not None:
         model_type = model_info.model_type
         logger.info(f'Setting model_type: {model_type}')
-    if model_meta is None:
+    if model_meta is None and model_type is not None:
         model_meta = MODEL_MAPPING[model_type]
+    if model_meta is None:
+        model_meta = ModelMeta('', [], '', get_model_tokenizer_from_local)
+        logger.info(f'Temporarily create model_meta: {model_meta}')
+
     if torch_dtype is None:
         torch_dtype = get_default_torch_dtype(model_info.torch_dtype)
         logger.info(f'Setting torch_dtype: {torch_dtype}')
     _check_torch_dtype(torch_dtype)
-    model_config = model_info.config
-    model_config.torch_dtype = torch_dtype
-    HfConfigFactory.compat_zero3(model_config)
-    rope_scaling = kwargs.get('rope_scaling')
-    if rope_scaling is not None:  # TODO: dict?
-        HfConfigFactory.set_config_attr(model_config, 'rope_scaling', rope_scaling)
-
-    if model_info.quant_method is not None:
-        kwargs['quant_method'] = model_info.quant_method
-        kwargs['quant_bits'] = model_info.quant_bits
-    kwargs.update({'is_training': is_training, 'attn_impl': attn_impl})
 
     model_meta.check_requires()
     model_meta.check_flash_attn(attn_impl)
-
     get_function = model_meta.get_function
-    model, tokenizer = get_function(model_dir, model_config, model_kwargs, load_model, **kwargs)
+    model, tokenizer = get_function(model_dir, model_info, model_kwargs, load_model, **kwargs)
 
     tokenizer.model_info = model_info
     tokenizer.model_meta = model_meta
