@@ -444,7 +444,7 @@ def load_dataset(
             streaming_buffer_size=streaming_buffer_size)
         if train_dataset is not None:
             train_datasets.append(train_dataset)
-        if val_datasets is not None:
+        if val_dataset is not None:
             val_datasets.append(val_dataset)
 
     train_datasets = DatasetLoader._concat_datasets(train_datasets, streaming)

@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import ast
+import multiprocessing
 from collections import Counter
 from functools import partial
 from typing import Any, Callable, Dict, List, Literal, Optional, Set, Union
@@ -34,20 +35,15 @@ class RowPreprocessor:
                  remove_useless_columns: bool = True) -> None:
         self.columns_mapping = columns_mapping or {}
         self.remove_useless_columns = remove_useless_columns
-
-    def _empty_row(self) -> Dict[str, Any]:
-        return {'messages': [{'role': '', 'content': ''}]}
+        self.shared_list = None
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         raise NotImplementedError
 
-    def _filter(self, row: Dict[str, Any]) -> bool:
-        return row['messages'] and row['messages'][0].get('role')
-
     def prepare_dataset(self, dataset: HfDataset) -> HfDataset:
         return dataset
 
-    def _row_map(self, row: Dict[str, Any], strict: bool) -> Dict[str, Any]:
+    def _row_map(self, row: Dict[str, Any], idx: int, *, strict: bool) -> Dict[str, Any]:
         try:
             row = self.preprocess(row)
         except Exception as e:
@@ -56,8 +52,9 @@ class RowPreprocessor:
                 raise
             logger.error(f'There are errors in the dataset, the data will be deleted. error: {e}')
         if row is None:
-            row = self._empty_row()
-        return row
+            self.shared_list.append(idx)
+
+        return row or {}
 
     def _safe_rename_columns(self, dataset: HfDataset) -> HfDataset:
         features = get_dataset_features(dataset)
@@ -84,10 +81,18 @@ class RowPreprocessor:
     ) -> DATASET_TYPE:
         dataset = self._safe_rename_columns(dataset)
         dataset = self.prepare_dataset(dataset)
+        if num_proc == 1:
+            # to remove
+            self.shared_list = []
+        else:
+            self.shared_list = multiprocessing.Manager().list()
         try:
             _row_map = partial(self._row_map, strict=strict)
-            dataset = dataset.map(_row_map, num_proc=num_proc, load_from_cache_file=load_from_cache_file)
-            dataset = dataset.filter(self._filter, num_proc=num_proc, load_from_cache_file=load_from_cache_file)
+            dataset = dataset.map(
+                _row_map, num_proc=num_proc, load_from_cache_file=load_from_cache_file, with_indices=True)
+            self.shared_list = set(self.shared_list)
+            self.shared_list = [i for i in range(len(dataset)) if i not in self.shared_list]
+            dataset = dataset.select(self.shared_list)
         except NotImplementedError:
             pass
         return self._remove_useless_columns(dataset)
