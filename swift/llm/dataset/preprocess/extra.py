@@ -238,14 +238,6 @@ class ExtraRowPreprocessor(RowPreprocessor, GroundingMixin):
         strict: bool = True,
         load_from_cache_file: bool = False,
     ) -> DATASET_TYPE:
-        """Preprocess a dataset.
-        Args:
-            dataset: The dataset to be mapped and filtered.
-            **kwargs:
-                Extra kwargs for mapping&filtering
-        Returns:
-            The processed dataset
-        """
         maybe_multi_modal_keys = ['image', 'images', 'audio', 'audios', 'video', 'videos']
         maybe_multi_modal = any([key in dataset.features for key in maybe_multi_modal_keys])
         self.prepare_downloading(dataset)
