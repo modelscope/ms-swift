@@ -4,7 +4,7 @@ import os
 import time
 from contextlib import contextmanager
 from copy import deepcopy
-from typing import Any, AsyncIterator, Dict, List, Optional, Union
+from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
 
 import torch
 from lmdeploy import GenerationConfig as LmdeployGenerationConfig
@@ -14,6 +14,7 @@ from lmdeploy.serve import async_engine
 from transformers import GenerationConfig, PreTrainedTokenizerBase
 
 from swift.llm import InferRequest, Template, TemplateMeta
+from swift.plugin import Metric
 from swift.utils import get_logger, get_seed
 from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                         ChatCompletionStreamResponse, ChatMessage, DeltaMessage, RequestConfig, UsageInfo, random_uuid)

@@ -12,17 +12,18 @@ from ..constant import LLMModelType, MLLMModelType
 from ..patcher import patch_fixed_device, patch_output_clone, patch_output_to_input_device
 from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local, get_model_tokenizer_multimodal,
                         get_model_tokenizer_with_flash_attn, register_model)
-from ..utils import AttnImpl
+from ..utils import AttnImpl, ModelInfo
 
 logger = get_logger()
 dtype_mapping = {torch.float16: 'fp16', torch.bfloat16: 'bf16', torch.float32: 'fp32'}
 
 
 def get_model_tokenizer_qwen(model_dir: str,
-                             model_config: PretrainedConfig,
+                             model_info: ModelInfo,
                              model_kwargs: Dict[str, Any],
                              load_model: bool = True,
                              **kwargs):
+    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     if model_config.torch_dtype is not None:
         k_true = dtype_mapping[model_config.torch_dtype]
         for k in dtype_mapping.values():
@@ -34,7 +35,8 @@ def get_model_tokenizer_qwen(model_dir: str,
         model_config.torch_dtype = None
     use_flash_attn = AttnImpl.to_use_flash_attn(kwargs.pop('attn_impl', None), 'auto')
     model_config.use_flash_attn = use_flash_attn
-    model, tokenizer = get_model_tokenizer_from_local(model_dir, model_config, model_kwargs, load_model, **kwargs)
+    kwargs['model_config'] = model_config
+    model, tokenizer = get_model_tokenizer_from_local(model_dir, model_info, model_kwargs, load_model, **kwargs)
     try:
         # fix mp+ddp bug
         model.transformer.registered_causal_mask = model.transformer.registered_causal_mask.cuda()
@@ -133,7 +135,7 @@ def fix_qwen_inplace_bug(model) -> None:
 
 
 def get_model_tokenizer_qwen_audio(model_dir: str,
-                                   model_config: PretrainedConfig,
+                                   model_info: ModelInfo,
                                    model_kwargs: Dict[str, Any],
                                    load_model: bool = True,
                                    **kwargs):
@@ -145,7 +147,7 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     tokenizer_cls._old_decode = tokenizer_cls._decode
     tokenizer_cls._decode = _qwen_vl_audio_decode
     kwargs['tokenizer'] = tokenizer_cls.from_pretrained(model_dir, trust_remote_code=True)
-    model, tokenizer = get_model_tokenizer_qwen(model_dir, model_config, model_kwargs, load_model, **kwargs)
+    model, tokenizer = get_model_tokenizer_qwen(model_dir, model_info, model_kwargs, load_model, **kwargs)
     if model is not None:
         fix_qwen_inplace_bug(model)
 
@@ -185,7 +187,7 @@ def _qwen_vl_visual_block_forward(
 
 
 def get_model_tokenizer_qwen_vl(model_dir: str,
-                                model_config: PretrainedConfig,
+                                model_info: ModelInfo,
                                 model_kwargs: Dict[str, Any],
                                 load_model: bool = True,
                                 **kwargs):
@@ -217,7 +219,7 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
         visual_block_cls.forward = _qwen_vl_visual_block_forward
 
     kwargs['tokenizer'] = tokenizer_cls.from_pretrained(model_dir, trust_remote_code=True)
-    model, tokenizer = get_model_tokenizer_qwen(model_dir, model_config, model_kwargs, load_model, **kwargs)
+    model, tokenizer = get_model_tokenizer_qwen(model_dir, model_info, model_kwargs, load_model, **kwargs)
     if model is not None:
         fix_qwen_inplace_bug(model)
         # fix device_map is 4
@@ -462,7 +464,7 @@ register_model(
 
 
 def get_model_tokenizer_qwen2_vl(model_dir: str,
-                                 model_config: PretrainedConfig,
+                                 model_info: ModelInfo,
                                  model_kwargs: Dict[str, Any],
                                  load_model: bool = True,
                                  **kwargs):
@@ -485,7 +487,7 @@ def get_model_tokenizer_qwen2_vl(model_dir: str,
 
     from transformers import Qwen2VLForConditionalGeneration
     kwargs['automodel_class'] = Qwen2VLForConditionalGeneration
-    model, tokenizer = get_model_tokenizer_multimodal(model_dir, model_config, model_kwargs, load_model, **kwargs)
+    model, tokenizer = get_model_tokenizer_multimodal(model_dir, model_info, model_kwargs, load_model, **kwargs)
     if model is not None:
         patch_output_clone(model.model.embed_tokens)
         patch_output_to_input_device(model.model.embed_tokens)

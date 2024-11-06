@@ -11,11 +11,11 @@ from ..constant import LLMModelType, MLLMModelType
 from ..patcher import patch_output_clone, patch_output_to_input_device
 from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local,
                         get_model_tokenizer_with_flash_attn, register_model)
-from ..utils import git_clone_github, use_submodel_func
+from ..utils import ModelInfo, git_clone_github, use_submodel_func
 
 
 def get_model_tokenizer_deepseek_moe(model_dir: str,
-                                     config: PretrainedConfig,
+                                     model_info: ModelInfo,
                                      model_kwargs: Dict[str, Any],
                                      load_model: bool = True,
                                      **kwargs):
@@ -34,7 +34,7 @@ def get_model_tokenizer_deepseek_moe(model_dir: str,
 
 
 def get_model_tokenizer_deepseek2(model_dir: str,
-                                  config: PretrainedConfig,
+                                  model_info: ModelInfo,
                                   model_kwargs: Dict[str, Any],
                                   load_model: bool = True,
                                   **kwargs):
@@ -110,7 +110,7 @@ register_model(
 
 
 def get_model_tokenizer_deepseek_vl(model_dir: str,
-                                    config: PretrainedConfig,
+                                    model_info: ModelInfo,
                                     model_kwargs: Dict[str, Any],
                                     load_model: bool = True,
                                     **kwargs):
@@ -128,12 +128,9 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     from deepseek_vl.models import VLChatProcessor
     processor = VLChatProcessor.from_pretrained(model_dir)
     tokenizer = processor.tokenizer
-    # flash_attn
-    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    attn_type = AttentionImpl(kwargs.pop('use_flash_attn', None), kwargs.pop('attn_type', None))
-    attn_type.update_config(model_config)
-    model, tokenizer = get_model_tokenizer_from_local(
-        model_dir, config, model_kwargs, load_model, model_config=model_config, tokenizer=tokenizer, **kwargs)
+
+    model, tokenizer = get_model_tokenizer_with_flash_attn(
+        model_dir, model_info, model_kwargs, load_model, tokenizer=tokenizer, **kwargs)
     tokenizer.processor = processor
     if load_model:
         patch_output_clone(model.language_model.model.embed_tokens)

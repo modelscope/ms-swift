@@ -7,16 +7,18 @@ from swift.llm import TemplateType
 from ..constant import LLMModelType, MLLMModelType
 from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,
                         get_model_tokenizer_with_flash_attn, register_model)
+from ..utils import ModelInfo
 
 
 def get_model_tokenizer_llama(model_dir: str,
-                              model_config: PretrainedConfig,
+                              model_info: ModelInfo,
                               model_kwargs: Dict[str, Any],
                               load_model: bool = True,
                               **kwargs):
-    if hasattr(model_config, 'pretraining_tp'):
-        model_config.pretraining_tp = 1
-    return get_model_tokenizer_with_flash_attn(model_dir, model_config, model_kwargs, load_model, **kwargs)
+    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+    model_config.pretraining_tp = 1
+    kwargs['model_config'] = model_config
+    return get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
 
 
 register_model(

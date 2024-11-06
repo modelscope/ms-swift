@@ -14,7 +14,7 @@ from swift.utils import get_dist_setting, get_logger
 from ..constant import LLMModelType, MLLMModelType
 from ..patcher import patch_output_to_input_device
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local, register_model
-from ..utils import AttnImpl
+from ..utils import AttnImpl, ModelInfo
 
 logger = get_logger()
 
@@ -26,7 +26,7 @@ def remove_property(tokenizer_cls: Type[PreTrainedTokenizerBase], tokenizer_conf
 
 
 def get_model_tokenizer_chatglm(model_dir: str,
-                                model_config: PretrainedConfig,
+                                model_info: ModelInfo,
                                 model_kwargs: Dict[str, Any],
                                 load_model: bool = True,
                                 **kwargs):
@@ -40,7 +40,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
         tokenizer_cls._auto_class = 'AutoTokenizer'
         remove_property(tokenizer_cls, tokenizer_config)
         kwargs['tokenizer'] = tokenizer_cls.from_pretrained(model_dir, trust_remote_code=True)
-    model, tokenizer = get_model_tokenizer_from_local(model_dir, model_config, model_kwargs, load_model, **kwargs)
+    model, tokenizer = get_model_tokenizer_from_local(model_dir, model_info, model_kwargs, load_model, **kwargs)
     if model is not None:
         from torch.nn import CrossEntropyLoss
         __old_forward = CrossEntropyLoss.forward
@@ -111,12 +111,14 @@ register_model(
 
 
 def get_model_tokenizer_glm4(model_dir: str,
-                             model_config: PretrainedConfig,
+                             model_info: ModelInfo,
                              model_kwargs: Dict[str, Any],
                              load_model: bool = True,
                              **kwargs):
+    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     AttnImpl.update_attn_impl(model_config, kwargs.get('attn_impl'))
-    model, tokenizer = get_model_tokenizer_chatglm(model_dir, model_config, model_kwargs, load_model, **kwargs)
+    kwargs['model_config'] = model_config
+    model, tokenizer = get_model_tokenizer_chatglm(model_dir, model_info, model_kwargs, load_model, **kwargs)
     if len(tokenizer.encode('<|user|>', add_special_tokens=False)) > 1:
         for k in tokenizer.special_tokens.keys():
             tokenizer.add_tokens(k)
@@ -159,11 +161,11 @@ register_model(
 
 
 def get_model_tokenizer_glm4v(model_dir: str,
-                              model_config: PretrainedConfig,
+                              model_info: ModelInfo,
                               model_kwargs: Dict[str, Any],
                               load_model: bool = True,
                               **kwargs):
-    model, tokenizer = get_model_tokenizer_glm4(model_dir, model_config, model_kwargs, load_model, **kwargs)
+    model, tokenizer = get_model_tokenizer_glm4(model_dir, model_info, model_kwargs, load_model, **kwargs)
     # fix merge-lora
     tokenizer.init_kwargs['image_size'] = 1120
     if load_model:
@@ -192,7 +194,7 @@ register_model(
 
 
 def get_model_tokenizer_cogvlm(model_dir: str,
-                               model_config: PretrainedConfig,
+                               model_info: ModelInfo,
                                model_kwargs: Dict[str, Any],
                                load_model: bool = True,
                                **kwargs):
@@ -201,7 +203,7 @@ def get_model_tokenizer_cogvlm(model_dir: str,
         logger.warning('CogAgent with FusedLayerNorm will cause an training loss of NAN, '
                        'to avoid this, please uninstall apex.')
     model, tokenizer = get_model_tokenizer_from_local(
-        model_dir, model_config, model_kwargs, load_model, tokenizer=tokenizer, **kwargs)
+        model_dir, model_info, model_kwargs, load_model, tokenizer=tokenizer, **kwargs)
     logger.info('Please ignore the unimported warning.')
     return model, tokenizer
 
