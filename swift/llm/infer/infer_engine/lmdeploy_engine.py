@@ -36,6 +36,7 @@ class LmdeployEngine(InferEngine):
             revision: Optional[str] = None,
             # engine_kwargs
             tp: int = 1,
+            session_len: Optional[int] = None,
             cache_max_entry_count: float = 0.8,
             quant_policy: int = 0,  # e.g. 4, 8
             vision_batch_size: int = 1,  # max_batch_size in VisionConfig
@@ -45,6 +46,7 @@ class LmdeployEngine(InferEngine):
             model_id_or_path, torch_dtype, False, model_type=model_type, use_hf=use_hf, revision=revision)
         self._prepare_engine_kwargs(
             tp=tp,
+            session_len=session_len,
             cache_max_entry_count=cache_max_entry_count,
             quant_policy=quant_policy,
             vision_batch_size=vision_batch_size,
@@ -57,6 +59,7 @@ class LmdeployEngine(InferEngine):
 
     def _prepare_engine_kwargs(self,
                                tp: int = 1,
+                               session_len: Optional[int] = None,
                                cache_max_entry_count: float = 0.8,
                                quant_policy: int = 0,
                                vision_batch_size: int = 1,
@@ -64,6 +67,7 @@ class LmdeployEngine(InferEngine):
         if engine_kwargs is None:
             engine_kwargs = {}
         engine_kwargs['tp'] = tp
+        engine_kwargs['session_len'] = session_len
         engine_kwargs['cache_max_entry_count'] = cache_max_entry_count
         engine_kwargs['quant_policy'] = quant_policy
 
@@ -158,21 +162,11 @@ class LmdeployEngine(InferEngine):
 
         return LmdeployGenerationConfig(**kwargs)
 
-    async def _add_request(self, template: Template, inputs: Dict[str, Any], session_id: int):
-
-        generator = await self.engine.get_generator(False, session_id)
-        images = inputs.pop('images', None) or []
-        if len(images) > 0:
-            inputs['images'] = await self.engine.vl_encoder.async_infer(images)
-            await template.prepare_lmdeploy_inputs(inputs)
-        return generator
-
     async def _infer_stream_async(
             self, template: Template, inputs: Dict[str, Any],
             generation_config: LmdeployGenerationConfig) -> AsyncIterator[ChatCompletionStreamResponse]:
         session_id = time.time_ns()
-        request_id = f'chatcmpl-{random_uuid()}'
-        generator = await self._add_request(template, inputs, session_id)
+        generator = await self.engine.get_generator(False, session_id)
 
         infer_streamer = InferStreamer(template)
         token_idx = 0
@@ -204,13 +198,12 @@ class LmdeployEngine(InferEngine):
                         finish_reason=finish_reason,
                         logprobs=logprobs)
                 ]
-                yield ChatCompletionStreamResponse(
-                    model=self.model_dir, choices=choices, usage=usage_info, id=request_id)
+                yield ChatCompletionStreamResponse(model=self.model_dir, choices=choices, usage=usage_info)
 
     async def _infer_full_async(self, template: Template, inputs: Dict[str, Any],
                                 generation_config: LmdeployGenerationConfig) -> ChatCompletionResponse:
         session_id = time.time_ns()
-        generator = await self._add_request(template, inputs, session_id)
+        generator = await self.engine.get_generator(False, session_id)
 
         async with self.engine.safe_run(session_id):
             async for output in generator.async_stream_infer(
@@ -247,8 +240,15 @@ class LmdeployEngine(InferEngine):
         template.set_infer_backend('lmdeploy')
         if request_config.seed is None:
             request_config.seed = get_seed()
+
         inputs = template.encode(infer_request)
-        self.set_default_max_tokens(request_config, inputs)
+        images = inputs.pop('images', None)
+        if images:
+            inputs['images'] = await self.engine.vl_encoder.async_infer(images)
+            await template.prepare_lmdeploy_inputs(inputs)
+
+        with self._patch_max_model_len():
+            self.set_default_max_tokens(request_config, inputs)
         generation_config = self._prepare_generation_config(request_config)
         self._add_stop_words(generation_config, request_config, template.template_meta)
         infer_args = (template, inputs, generation_config)
@@ -256,3 +256,12 @@ class LmdeployEngine(InferEngine):
             return self._infer_stream_async(*infer_args, **kwargs)
         else:
             return await self._infer_full_async(*infer_args, **kwargs)
+
+    @contextmanager
+    def _patch_max_model_len(self):
+        if self.model_info.max_model_len is None:
+            yield
+            return
+        self.model_info.max_model_len -= 1
+        yield
+        self.model_info.max_model_len += 1

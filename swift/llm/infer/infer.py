@@ -103,6 +103,7 @@ class SwiftInfer(SwiftPipeline[InferArguments]):
             infer_engine_cls = LmdeployEngine
             kwargs.update({
                 'tp': args.tp,
+                'session_len': args.session_len,
                 'cache_max_entry_count': args.cache_max_entry_count,
                 'quant_policy': args.quant_policy,
                 'vision_batch_size': args.vision_batch_size
