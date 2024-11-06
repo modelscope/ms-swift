@@ -426,7 +426,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
         yield 'data: [DONE]\n\n'
 
     if request.stream:
-        return StreamingResponse(_generate_stream())
+        return StreamingResponse(_generate_stream(), media_type='text/event-stream')
     else:
         return await _generate_full()
 
@@ -605,7 +605,7 @@ async def inference_lmdeploy_async(request: Union[ChatCompletionRequest, Complet
             yield 'data: [DONE]\n\n'
 
     if request.stream:
-        return StreamingResponse(_generate_stream())
+        return StreamingResponse(_generate_stream(), media_type='text/event-stream')
     else:
         return await _generate_full()
 
@@ -833,7 +833,7 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
         yield 'data: [DONE]\n\n'
 
     if request.stream:
-        return StreamingResponse(_generate_stream())
+        return StreamingResponse(_generate_stream(), media_type='text/event-stream')
     else:
         return await _generate_full()
 
