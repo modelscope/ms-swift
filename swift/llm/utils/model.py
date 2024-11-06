@@ -3041,6 +3041,8 @@ def get_model_tokenizer_mplug_owl3(model_dir: str,
                                    model_kwargs: Dict[str, Any],
                                    load_model: bool = True,
                                    **kwargs):
+    model_cls = get_class_from_dynamic_module('modeling_mplugowl3.mPLUGOwl3Model', model_dir)
+    model_cls._no_split_modules = ['SiglipEncoderLayer']
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
     processor = model.init_processor(tokenizer)
     tokenizer.processor = processor
