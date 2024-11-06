@@ -516,9 +516,7 @@ async def inference_lmdeploy_async(request: Union[ChatCompletionRequest, Complet
             prompt_tokens=num_prompt_tokens,
             completion_tokens=num_generated_tokens,
             total_tokens=num_prompt_tokens + num_generated_tokens)
-        finish_reason = None
-        if output.status.name == 'FINISH':
-            finish_reason = 'stop'
+        finish_reason = 'stop' if output.status.name == 'FINISH' else None
 
         if isinstance(request, ChatCompletionRequest):
             action, action_input = split_action_action_input(response)
