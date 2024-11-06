@@ -17,8 +17,7 @@ from transformers import PreTrainedTokenizerBase
 
 from swift.llm import safe_tokenizer_decode
 from swift.utils import get_logger, stat_array
-
-DATASET_TYPE = Union[HfDataset, HFIterableDataset]
+from .preprocess import DATASET_TYPE
 
 logger = get_logger()
 

@@ -12,9 +12,9 @@ from datasets import IterableDataset as HfIterableDataset
 from datasets import concatenate_datasets, interleave_datasets
 from tqdm import tqdm
 
-from ... import MediaResource
 from ..constant import LLMDatasetName, MLLMDatasetName
 from ..loader import DatasetLoader, DatasetSyntax
+from ..media import MediaResource
 from ..preprocess import (AlpacaPreprocessor, AutoPreprocessor, ClsPreprocessor, MessagesPreprocessor,
                           ResponsePreprocessor, RowPreprocessor, TextGenerationPreprocessor)
 from ..preprocess.extra import GroundingMixin
@@ -664,7 +664,7 @@ register_dataset(
 
 register_dataset(
     DatasetMeta(
-        MLLMDatasetName.refcoco_unofficial_caption,
+        MLLMDatasetName.refcocog_unofficial_caption,
         ms_dataset_id='swift/refcocog',
         hf_dataset_id='jxu124/refcocog',
         preprocess_func=RefCOCOCaptionPreprocessor(),
@@ -953,7 +953,7 @@ class GritPreprocessor(RowPreprocessor):
 
 register_dataset(
     DatasetMeta(
-        MLLMDatasetName.science_qa,
+        MLLMDatasetName.grit,
         ms_dataset_id='swift/GRIT',
         hf_dataset_id='zzliang/GRIT',
         split=['train'],

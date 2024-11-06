@@ -9,10 +9,10 @@ from datasets import Dataset as HfDataset
 from datasets import IterableDataset
 from tqdm import tqdm
 
-from ... import DATASET_TYPE, MediaResource
 from ..constant import LLMDatasetName
 from ..loader import DatasetLoader, DatasetSyntax
-from ..preprocess import (AlpacaPreprocessor, AutoPreprocessor, ClsPreprocessor, MessagesPreprocessor,
+from ..media import MediaResource
+from ..preprocess import (DATASET_TYPE, AlpacaPreprocessor, AutoPreprocessor, ClsPreprocessor, MessagesPreprocessor,
                           ResponsePreprocessor, RowPreprocessor, TextGenerationPreprocessor)
 from ..register import DatasetMeta, SubsetDataset, register_dataset
 
@@ -365,8 +365,8 @@ register_dataset(
         preprocess_func=MessagesPreprocessor(
             role_key='from',
             content_key='value',
+            remove_useless_columns=False,
         ),
-        remove_useless_columns=False,
         tags=['chat', 'agent', 'multi-round']))
 
 
@@ -599,20 +599,20 @@ class ShareAIDPOPreprocessor(RowPreprocessor):
 
 register_dataset(
     DatasetMeta(
-        LLMDatasetName.shareai_llama3_dpo_zh_en_emoji,
+        LLMDatasetName.shareai_llama3_dpo_emoji,
         ms_dataset_id='hjh0119/shareAI-Llama3-DPO-zh-en-emoji',
         preprocess_func=ShareAIDPOPreprocessor(),
         tags=['rlhf', 'dpo', 'pairwise']))
 
 register_dataset(
     DatasetMeta(
-        LLMDatasetName.shareai_llama3_dpo_zh_en_emoji,
+        LLMDatasetName.ultrafeedback_kto,
         ms_dataset_id='AI-ModelScope/ultrafeedback-binarized-preferences-cleaned-kto',
-        preprocess_func=ResponsePreprocessor(columns_mapping={
-            'prompt': 'query',
-            'completion': 'response'
-        }),
-        remove_useless_columns=False,
+        preprocess_func=ResponsePreprocessor(
+            columns_mapping={
+                'prompt': 'query',
+                'completion': 'response',
+            }, remove_useless_columns=False),
         tags=['rlhf', 'kto']))
 
 register_dataset(

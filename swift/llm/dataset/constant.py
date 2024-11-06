@@ -85,7 +85,7 @@ class LLMDatasetName:
     hh_rlhf_cn = 'hh_rlhf_cn'
     orpo_dpo_mix_40k = 'orpo_dpo_mix_40k'
     stack_exchange_paired = 'stack_exchange_paired'
-    shareai_llama3_dpo_zh_en_emoji = 'shareai_llama3_dpo_zh_en_emoji'
+    shareai_llama3_dpo_emoji = 'shareai_llama3_dpo_emoji'
     ultrafeedback_kto = 'ultrafeedback_kto'
 
     # for awq

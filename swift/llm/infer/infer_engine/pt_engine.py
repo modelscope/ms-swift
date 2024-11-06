@@ -373,7 +373,10 @@ class PtEngine(InferEngine):
             batched_inputs.append(inputs)
         if self.model.model_meta.is_multimodal:
             inputs = template.pre_data_collator(batched_inputs, padding_side='left', model=self.model)
-        template.pre_forward_hook(None, inputs, padding_side='left', model=self.model)
+            template.pre_forward_hook(None, inputs, padding_side='left', model=self.model)
+        else:
+            inputs = to_device(
+                template.data_collator(batched_inputs, padding_side='left', model=self.model), self.model.device)
         self.set_default_max_tokens(request_config, inputs)
         generation_config = self._prepare_generation_config(request_config)
         self._add_stop_words(generation_config, request_config, template.template_meta)

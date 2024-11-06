@@ -265,3 +265,17 @@ class LmdeployEngine(InferEngine):
         self.model_info.max_model_len -= 1
         yield
         self.model_info.max_model_len += 1
+
+    @torch.inference_mode()
+    def infer(
+        self,
+        infer_requests: List[InferRequest],
+        request_config: Optional[RequestConfig] = None,
+        metrics: Optional[List[Metric]] = None,
+        *,
+        template: Optional[Template] = None,
+        use_tqdm: Optional[bool] = None,
+    ) -> Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
+        if hasattr(self.engine, 'vl_encoder'):
+            self.engine.vl_encoder._loop_task = None
+        return super().infer(infer_requests, request_config, metrics, template=template, use_tqdm=use_tqdm)

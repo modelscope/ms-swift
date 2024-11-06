@@ -92,7 +92,7 @@ class SwiftDeploy(SwiftInfer):
                     yield f'data: {json.dumps(asdict(res), ensure_ascii=False)}\n\n'
                 yield 'data: [DONE]\n\n'
 
-            return StreamingResponse(_gen_wrapper())
+            return StreamingResponse(_gen_wrapper(), media_type='text/event-stream')
         else:
             return self._post_process(res_or_gen, return_cmpl_response)
 
