@@ -19,7 +19,10 @@ def _prepare(infer_backend: Literal['vllm', 'pt', 'lmdeploy']):
         engine = VllmEngine('qwen/Qwen2-VL-7B-Instruct')
     template = get_template(engine.model_meta.template, engine.tokenizer)
     infer_requests = [
-        # InferRequest([{'role': 'user', 'content': '晚上睡不着觉怎么办'}]) for i in range(100)
+        InferRequest([{
+            'role': 'user',
+            'content': '晚上睡不着觉怎么办'
+        }]),
         InferRequest([{
             'role':
             'user',
@@ -27,7 +30,7 @@ def _prepare(infer_backend: Literal['vllm', 'pt', 'lmdeploy']):
                 'type': 'image_url',
                 'image_url': 'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png'
             }]
-        }]) for i in range(1)
+        }])
     ]
     return engine, template, infer_requests
 
