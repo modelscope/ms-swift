@@ -51,14 +51,17 @@ def _get_dataset(*args, **kwargs):
     samples = []
     n_run = 0
     for data in dataset:
-        inputs = template.encode(data)[0]
-        input_ids = inputs['input_ids']
-        if input_ids is None or len(input_ids) == 0:
+        with torch.inference_mode():
+            inputs = template.encode(data)[0]
+        if len(inputs) == 0:
             continue
         if _args.is_multimodal and _args.quant_method == 'gptq':
             inputs.pop('labels', None)
             samples.append(inputs)
         else:
+            input_ids = inputs['input_ids']
+            if input_ids is None or len(input_ids) == 0:
+                continue
             samples += input_ids
         n_run += 1
         if n_run == n_samples:
@@ -154,6 +157,7 @@ def gptq_model_quantize(model, tokenizer, batch_size):
             dataset=','.join(_args.dataset),
             batch_size=batch_size,
             block_name_to_quantize=get_block_name_to_quantize(model, _args.model_type))
+        gptq_quantizer.serialization_keys.append('block_name_to_quantize')
         logger.info('Start quantizing the model...')
         logger.warning('The process of packing the model takes a long time and there is no progress bar. '
                        'Please be patient and wait...')

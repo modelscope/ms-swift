@@ -770,7 +770,6 @@ class RLHFTrainerMixin:
     def concatenated_forward(
         self, model: nn.Module, batch: Dict[str, Union[List, torch.LongTensor]]
     ) -> Tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
-
         model_kwargs = batch.copy()
         labels = model_kwargs.pop('labels', None)
         if self.is_encoder_decoder:
@@ -807,6 +806,15 @@ class RLHFTrainerMixin:
         if self.is_encoder_decoder:
             labels = labels.clone()  # fix trl bug
         return super().get_batch_logps(logits, labels, *args, **kwargs)
+
+    def compute_loss(self, model, inputs, return_outputs=None, num_items_in_batch=None):
+        res = super().compute_loss(model, inputs, return_outputs=return_outputs)
+        # compat transformers>=4.46.*
+        if num_items_in_batch is not None:
+            loss = res[0] if return_outputs else res
+            loss /= self.args.gradient_accumulation_steps
+            return (loss, res[1:]) if return_outputs else loss
+        return res
 
 
 # monkey patching

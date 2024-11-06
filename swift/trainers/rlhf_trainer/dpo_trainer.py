@@ -9,6 +9,7 @@ from trl import DPOTrainer as HFDPOTrainer
 from swift.trainers import PushToMsHubMixin, RLHFTrainerMixin, SwiftMixin
 
 del HFDPOTrainer.__init__
+del HFDPOTrainer.get_batch_samples
 
 
 class DPOTrainer(RLHFTrainerMixin, PushToMsHubMixin, SwiftMixin, HFDPOTrainer):

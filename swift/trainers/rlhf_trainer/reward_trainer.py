@@ -24,12 +24,11 @@ class RewardTrainer(RLHFTrainerMixin, PushToMsHubMixin, SwiftMixin, HFRewardTrai
         self.use_reward_data_collator = True  # disable warning
         super().__init__(model, *_args, **kwargs)
 
-    def compute_loss(
-        self,
-        model: Union[PreTrainedModel, nn.Module],
-        inputs: Dict[str, Union[torch.Tensor, Any]],
-        return_outputs=False,
-    ) -> Union[torch.Tensor, Tuple[torch.Tensor, Dict[str, torch.Tensor]]]:
+    def compute_loss(self,
+                     model: Union[PreTrainedModel, nn.Module],
+                     inputs: Dict[str, Union[torch.Tensor, Any]],
+                     return_outputs=False,
+                     num_items_in_batch=None) -> Union[torch.Tensor, Tuple[torch.Tensor, Dict[str, torch.Tensor]]]:
         model_kwargs = inputs.copy()
         labels = model_kwargs.pop('labels', None)
         if self.is_encoder_decoder:
@@ -43,6 +42,9 @@ class RewardTrainer(RLHFTrainerMixin, PushToMsHubMixin, SwiftMixin, HFRewardTrai
             dim=-1, index=(rejected_masks.sum(dim=-1, keepdim=True) - 1)).squeeze()
         loss = -torch.nn.functional.logsigmoid(chosen_scores.float() - rejected_scores.float()).mean().to(
             self.args.device)
+        # compat transformers>=4.46.*
+        if num_items_in_batch is not None:
+            loss /= self.args.gradient_accumulation_steps
         if return_outputs:
             return loss, {
                 'rewards_chosen': chosen_rewards,
