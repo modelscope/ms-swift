@@ -151,7 +151,8 @@ def get_model_tokenizer_from_local(model_dir: str,
                                    *,
                                    tokenizer=None,
                                    model_config=None,
-                                   automodel_class=AutoModelForCausalLM):
+                                   automodel_class=AutoModelForCausalLM,
+                                   **kwargs):
     """Load the model and tokenizer from the local model_dir."""
 
     if model_config is None:

@@ -600,7 +600,13 @@ class Template:
     def post_process_generate_response(self, response: str, inputs: StdTemplateInputs) -> str:
         return response
 
-    def pre_forward_hook(self, args, kwargs, model):
+    def pre_forward_hook(self,
+                         args,
+                         kwargs,
+                         *,
+                         padding_side: Optional[str] = None,
+                         padding_to: Optional[int] = None,
+                         model: Optional[nn.Module] = None) -> Dict[str, Any]:
         # inplace
         from swift.llm import to_device
         extra_inputs = []
@@ -610,7 +616,10 @@ class Template:
                 if key in data:
                     data[key] = torch.tensor(data[key])[None]
             extra_inputs.append(self.post_encode(model, to_device(data, model.device)))
-        kwargs.update(to_device(self.data_collator(extra_inputs, model=model), model.device))
+        kwargs.update(
+            to_device(
+                self.data_collator(extra_inputs, padding_side=padding_side, padding_to=padding_to, model=model),
+                model.device))
         if 'inputs_embeds' in kwargs:
             kwargs.pop('input_ids', None)
 

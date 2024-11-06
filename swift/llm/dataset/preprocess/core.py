@@ -90,9 +90,10 @@ class RowPreprocessor:
             _row_map = partial(self._row_map, strict=strict)
             dataset = dataset.map(
                 _row_map, num_proc=num_proc, load_from_cache_file=load_from_cache_file, with_indices=True)
-            self.shared_list = set(self.shared_list)
-            self.shared_list = [i for i in range(len(dataset)) if i not in self.shared_list]
-            dataset = dataset.select(self.shared_list)
+            if len(self.shared_list) > 0:
+                self.shared_list = set(self.shared_list)
+                self.shared_list = [i for i in range(len(dataset)) if i not in self.shared_list]
+                dataset = dataset.select(self.shared_list)
         except NotImplementedError:
             pass
         return self._remove_useless_columns(dataset)

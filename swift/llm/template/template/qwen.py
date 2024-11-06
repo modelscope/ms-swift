@@ -324,9 +324,5 @@ class Qwen2VLTemplate(Template):
             res['position_ids'] = position_ids.contiguous()
         return res
 
-    @staticmethod
-    def _get_generate_ids(generate_ids: List[int], input_token_len: int) -> List[int]:
-        return generate_ids
 
-
-register_template(QwenTemplateMeta(TemplateType.qwen2_vl, template_cls=Qwen2VLTemplate))
+register_template(QwenTemplateMeta(TemplateType.qwen2_vl, template_cls=Qwen2VLTemplate, skip_prompt=False))
