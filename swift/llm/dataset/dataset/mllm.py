@@ -1002,27 +1002,16 @@ register_dataset(
         hf_dataset_id='linxy/LaTeX_OCR',
         subsets=[
             SubsetDataset(
-                name='print',
-                subset=['full'],
+                name='full',
                 split=['validation', 'test'],  # There are some problems in the training dataset.
                 preprocess_func=LatexocrPreprocessor(columns_mapping={'image': 'images'}),
             ),
             SubsetDataset(
-                name='print',
-                subset=['synthetic_handwrite'],
+                name='synthetic_handwrite',
                 split=['train', 'validation', 'test'],
                 preprocess_func=LatexocrPreprocessor(columns_mapping={'image': 'images'}),
             )
         ],
-        tags=['chat', 'ocr', 'multi-modal', 'vision']))
-
-register_dataset(
-    DatasetMeta(
-        ms_dataset_id='AI-ModelScope/LaTeX_OCR',
-        hf_dataset_id='linxy/LaTeX_OCR',
-        subsets=['synthetic_handwrite'],
-        split=['train', 'validation', 'test'],
-        preprocess_func=LatexocrPreprocessor(columns_mapping={'image': 'images'}),
         tags=['chat', 'ocr', 'multi-modal', 'vision']))
 
 

@@ -77,24 +77,23 @@ def register_dataset(dataset_meta: DatasetMeta, *, exist_ok: bool = False) -> No
     """Register dataset to the dataset mapping
 
     Args:
-        dataset_name: The dataset code
         dataset_id_or_path: The ms dataset id or dataset file path
         subsets: The subsets of the dataset id
         preprocess_func: The preprocess function
         get_function: How to get this dataset, normally it's `get_dataset_from_repo`
         split: The dataset split
         hf_dataset_id: The hf dataset id
-        exist_ok: If the dataset_name exists, whether to raise an error or just override the record, default `False`
+        exist_ok: If the dataset_id exists, whether to raise an error or just override the record, default `False`
         is_local: If is a local dataset
     Returns:
         The dataset instance.
     """
     from .loader import DatasetLoader
-    dataset_name = dataset_meta.dataset_name
-    if not exist_ok and dataset_name in DATASET_MAPPING:
-        raise ValueError(f'The `{dataset_name}` has already been registered in the DATASET_MAPPING.')
+    dataset_id = dataset_meta.ms_dataset_id, dataset_meta.hf_dataset_id, dataset_meta.dataset_path
+    if not exist_ok and dataset_id in DATASET_MAPPING:
+        raise ValueError(f'The `{dataset_id}` has already been registered in the DATASET_MAPPING.')
 
-    DATASET_MAPPING[dataset_name] = dataset_meta
+    DATASET_MAPPING[dataset_id] = dataset_meta
 
 
 def _preprocess_d_info(d_info: Dict[str, Any], *, base_dir: Optional[str] = None) -> Dict[str, Any]:
@@ -149,7 +148,7 @@ def register_dataset_info(dataset_info: Union[str, Dict[str, Any], None] = None)
     """
     # dataset_info_path: path, json or None
     if dataset_info is None:
-        dataset_info = os.path.join(__file__, '..', '..', 'data', 'dataset_info.json')
+        dataset_info = os.path.join(os.path.dirname(__file__), 'data', 'dataset_info.json')
     assert isinstance(dataset_info, (str, dict))
     base_dir = None
     log_msg = None

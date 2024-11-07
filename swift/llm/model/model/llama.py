@@ -214,6 +214,7 @@ register_model(
         support_flash_attn=True,
         support_vllm=True))
 
+
 def get_model_tokenizer_omnli(model_dir: str,
                               model_info: ModelInfo,
                               model_kwargs: Dict[str, Any],
@@ -252,9 +253,13 @@ def get_model_tokenizer_omnli(model_dir: str,
 register_model(
     ModelMeta(
         MLLMModelType.llama3_2_vision, [
-            ModelGroup([
-                Model('ICTNLP/Llama-3.1-8B-Omni', 'ICTNLP/Llama-3.1-8B-Omni'),
-            ], tags=['multi-modal', 'audio'], requires=['whisper', 'openai-whisper'],)
+            ModelGroup(
+                [
+                    Model('ICTNLP/Llama-3.1-8B-Omni', 'ICTNLP/Llama-3.1-8B-Omni'),
+                ],
+                tags=['multi-modal', 'audio'],
+                requires=['whisper', 'openai-whisper'],
+            )
         ],
         TemplateType.llama3_1_omni,
         get_model_tokenizer_omnli,

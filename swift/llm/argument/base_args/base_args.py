@@ -18,7 +18,7 @@ logger = get_logger()
 
 
 @dataclass
-class BaseArguments(ModelArguments, TemplateArguments, QuantizeArguments, GenerationArguments, DataArguments):
+class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, TemplateArguments, ModelArguments):
     """
     BaseArguments class is a dataclass that inherits from multiple argument classes:
     ModelArguments, TemplateArguments, QuantizeArguments, GenerationArguments, and DataArguments.

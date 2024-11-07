@@ -6,7 +6,7 @@ from typing import Any, Dict
 from swift.llm import TemplateType
 from ..constant import LLMModelType, MLLMModelType
 from ..patcher import patch_output_clone, patch_output_to_input_device
-from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model)
+from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
 from ..utils import ModelInfo, git_clone_github, use_submodel_func
 
 
@@ -156,7 +156,6 @@ register_model(
         support_lmdeploy=True,
     ))
 
-
 register_model(
     ModelMeta(
         LLMModelType.deepseek_math,
@@ -180,14 +179,12 @@ register_model(
                 ],
                 tags=['coding'],
             ),
-            ModelGroup(
-                [
-                    Model('deepseek-ai/deepseek-llm-7b-base', 'deepseek-ai/deepseek-llm-7b-base'),
-                    Model('deepseek-ai/deepseek-llm-7b-chat', 'deepseek-ai/deepseek-llm-7b-chat'),
-                    Model('deepseek-ai/deepseek-llm-67b-base', 'deepseek-ai/deepseek-llm-67b-base'),
-                    Model('deepseek-ai/deepseek-llm-67b-chat', 'deepseek-ai/deepseek-llm-67b-chat'),
-                ],
-            ),
+            ModelGroup([
+                Model('deepseek-ai/deepseek-llm-7b-base', 'deepseek-ai/deepseek-llm-7b-base'),
+                Model('deepseek-ai/deepseek-llm-7b-chat', 'deepseek-ai/deepseek-llm-7b-chat'),
+                Model('deepseek-ai/deepseek-llm-67b-base', 'deepseek-ai/deepseek-llm-67b-base'),
+                Model('deepseek-ai/deepseek-llm-67b-chat', 'deepseek-ai/deepseek-llm-67b-chat'),
+            ], ),
         ],
         TemplateType.deepseek,
         get_model_tokenizer_with_flash_attn,

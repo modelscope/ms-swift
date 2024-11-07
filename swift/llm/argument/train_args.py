@@ -220,8 +220,8 @@ class TorchAccArguments:
 
 
 @dataclass
-class SftArguments(BaseArguments, Seq2SeqTrainingOverrideArguments, TunerArguments, MegatronArguments,
-                   TorchAccArguments):
+class SftArguments(MegatronArguments, TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideArguments,
+                   BaseArguments):
     """
     SftArguments class is a dataclass that holds various arguments related to training configuration and usage.
 

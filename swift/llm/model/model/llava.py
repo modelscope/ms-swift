@@ -416,7 +416,6 @@ register_model(
         support_flash_attn=True,
     ))
 
-
 register_model(
     ModelMeta(
         MLLMModelType.llama3_llava_next,

@@ -153,7 +153,6 @@ register_model(
         support_vllm=True,
     ))
 
-
 register_model(
     ModelMeta(
         LLMModelType.minicpm,
@@ -174,7 +173,6 @@ register_model(
         support_vllm=True,
     ))
 
-
 register_model(
     ModelMeta(
         LLMModelType.minicpm_chatml,
@@ -193,7 +191,6 @@ register_model(
         support_vllm=True,
     ))
 
-
 register_model(
     ModelMeta(
         LLMModelType.minicpm_chatml,
@@ -211,7 +208,6 @@ register_model(
         support_flash_attn=True,
         support_vllm=True,
     ))
-
 
 register_model(
     ModelMeta(

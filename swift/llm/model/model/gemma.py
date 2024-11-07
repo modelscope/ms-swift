@@ -1,10 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Any, Dict
 
-from swift.llm import TemplateType, ModelInfo
-from ..constant import MLLMModelType, LLMModelType
-from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local, register_model, \
-    get_model_tokenizer_with_flash_attn
+from swift.llm import ModelInfo, TemplateType
+from ..constant import LLMModelType, MLLMModelType
+from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local,
+                        get_model_tokenizer_with_flash_attn, register_model)
 
 
 def get_model_tokenizer_paligemma_vision(model_dir: str,
@@ -31,8 +31,8 @@ register_model(
                 Model('AI-ModelScope/paligemma-3b-pt-896', 'google/paligemma-3b-pt-896'),
                 Model('AI-ModelScope/paligemma-3b-mix-448', 'google/paligemma-3b-mix-448'),
             ],
-           requires=['transformers>=4.41'],
-           tags=['multi-modal', 'vision']),
+                       requires=['transformers>=4.41'],
+                       tags=['multi-modal', 'vision']),
         ],
         TemplateType.paligemma,
         get_model_tokenizer_paligemma_vision,
@@ -40,7 +40,6 @@ register_model(
         support_flash_attn=True,
         support_vllm=True,
     ))
-
 
 register_model(
     ModelMeta(

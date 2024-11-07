@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from torch import Tensor
 from transformers import BitsAndBytesConfig, PretrainedConfig
 
-from swift.llm import TemplateType, ModelInfo
+from swift.llm import ModelInfo, TemplateType
 from swift.utils import get_logger
 from ..constant import LLMModelType
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local, register_model
@@ -33,13 +33,12 @@ register_model(
     ModelMeta(
         LLMModelType.baichuan,
         [
-            ModelGroup(
-                [
-                    Model('baichuan-inc/baichuan-7B', 'baichuan-inc/Baichuan-7B'),
-                    Model('baichuan-inc/Baichuan-13B-Base', 'baichuan-inc/Baichuan-13B-Base'),
-                    Model('baichuan-inc/Baichuan-13B-Chat', 'baichuan-inc/Baichuan-13B-Chat'),
-                ],
-                requires=['transformers<4.34']),
+            ModelGroup([
+                Model('baichuan-inc/baichuan-7B', 'baichuan-inc/Baichuan-7B'),
+                Model('baichuan-inc/Baichuan-13B-Base', 'baichuan-inc/Baichuan-13B-Base'),
+                Model('baichuan-inc/Baichuan-13B-Chat', 'baichuan-inc/Baichuan-13B-Chat'),
+            ],
+                       requires=['transformers<4.34']),
         ],
         TemplateType.default,
         get_model_tokenizer_baichuan_13b,
@@ -142,7 +141,8 @@ register_model(
             ModelGroup([
                 Model('baichuan-inc/Baichuan2-7B-Chat-4bits', 'baichuan-inc/Baichuan2-7B-Chat-4bits'),
                 Model('baichuan-inc/Baichuan2-13B-Chat-4bits', 'baichuan-inc/Baichuan2-13B-Chat-4bits'),
-            ], requires=['bitsandbytes<0.41.2', 'accelerate<0.26']),
+            ],
+                       requires=['bitsandbytes<0.41.2', 'accelerate<0.26']),
         ],
         TemplateType.baichuan,
         get_model_tokenizer_baichuan2,

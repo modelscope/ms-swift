@@ -49,7 +49,7 @@ class DatasetSyntax:
     @classmethod
     def parse(cls, dataset: str) -> 'DatasetSyntax':
         """Parse the dataset from the command line"""
-        # HF::dataset_name:subset1/subset2/subset3#dataset_sample
+        # HF::dataset_id or dataset_path:subset1/subset2/subset3#dataset_sample
         use_hf, other = DatasetLoader._safe_split(dataset, '::', False)
         if os.path.isfile(other):
             part1, dataset_sample = other, None

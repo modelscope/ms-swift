@@ -6,18 +6,18 @@ from types import MethodType
 from typing import Any, Dict
 
 import torch
-from modelscope import AutoConfig, AutoModelForCausalLM, AutoModel
+from modelscope import AutoConfig, AutoModel, AutoModelForCausalLM
 from transformers import AutoTokenizer, PretrainedConfig
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.hub import hub
 from swift.llm import TemplateType
+from swift.utils import get_logger
 from ..constant import LLMModelType, MLLMModelType
 from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local,
                         get_model_tokenizer_with_flash_attn, register_model)
-from ..utils import git_clone_github, use_submodel_func, ModelInfo
+from ..utils import ModelInfo, git_clone_github, use_submodel_func
 from .qwen import get_model_tokenizer_qwen
-from swift.utils import get_logger
 
 logger = get_logger()
 
@@ -81,15 +81,14 @@ register_model(
         MLLMModelType.mplug,
         [
             # llama2
-            ModelGroup(
-                [
-                    Model('iic/mPLUG-Owl3-1B-241014', 'mPLUG/mPLUG-Owl3-1B-241014'),
-                    Model('iic/mPLUG-Owl3-2B-241014', 'mPLUG/mPLUG-Owl3-2B-241014'),
-                    Model('iic/mPLUG-Owl3-7B-240728', 'mPLUG/mPLUG-Owl3-7B-240728'),
-                ],
-                requires=['transformers>=4.36', 'icecream'],
-                tags=['multi-modal', 'vision', 'video'],
-                ignore_file_pattern=[r'.+\.bin$']),
+            ModelGroup([
+                Model('iic/mPLUG-Owl3-1B-241014', 'mPLUG/mPLUG-Owl3-1B-241014'),
+                Model('iic/mPLUG-Owl3-2B-241014', 'mPLUG/mPLUG-Owl3-2B-241014'),
+                Model('iic/mPLUG-Owl3-7B-240728', 'mPLUG/mPLUG-Owl3-7B-240728'),
+            ],
+                       requires=['transformers>=4.36', 'icecream'],
+                       tags=['multi-modal', 'vision', 'video'],
+                       ignore_file_pattern=[r'.+\.bin$']),
         ],
         TemplateType.mplug_owl3,
         get_model_tokenizer_mplug_owl3,
@@ -342,7 +341,8 @@ register_model(
         [
             ModelGroup([
                 Model('AI-ModelScope/WizardLM-2-8x22B', 'alpindale/WizardLM-2-8x22B'),
-            ],requires=['transformers>=4.36']),
+            ],
+                       requires=['transformers>=4.36']),
         ],
         TemplateType.wizardlm2,
         get_model_tokenizer_with_flash_attn,
@@ -351,14 +351,14 @@ register_model(
         architectures=['LlavaForConditionalGeneration'],
     ))
 
-
 register_model(
     ModelMeta(
         LLMModelType.wizardlm2_awq,
         [
             ModelGroup([
                 Model('AI-ModelScope/WizardLM-2-7B-AWQ', 'MaziyarPanahi/WizardLM-2-7B-AWQ'),
-            ],requires=['transformers>=4.34']),
+            ],
+                       requires=['transformers>=4.34']),
         ],
         TemplateType.wizardlm2_awq,
         get_model_tokenizer_with_flash_attn,
@@ -373,7 +373,9 @@ register_model(
         [
             ModelGroup([
                 Model('AI-ModelScope/NuminaMath-7B-TIR', 'AI-MO/NuminaMath-7B-TIR'),
-            ],requires=['transformers>=4.34'], tags=['math']),
+            ],
+                       requires=['transformers>=4.34'],
+                       tags=['math']),
         ],
         TemplateType.numina_math,
         get_model_tokenizer_with_flash_attn,
@@ -381,7 +383,6 @@ register_model(
         support_vllm=True,
         architectures=['LlavaForConditionalGeneration'],
     ))
-
 
 register_model(
     ModelMeta(
@@ -399,7 +400,6 @@ register_model(
         architectures=['LlavaForConditionalGeneration'],
     ))
 
-
 register_model(
     ModelMeta(
         LLMModelType.sus,
@@ -416,14 +416,16 @@ register_model(
         architectures=['LlavaForConditionalGeneration'],
     ))
 
-
 register_model(
     ModelMeta(
         LLMModelType.openbuddy_zephyr,
         [
-            ModelGroup([
-                Model('OpenBuddy/openbuddy-zephyr-7b-v14.1', 'OpenBuddy/openbuddy-zephyr-7b-v14.1'),
-            ], requires=['transformers>=4.34'], ),
+            ModelGroup(
+                [
+                    Model('OpenBuddy/openbuddy-zephyr-7b-v14.1', 'OpenBuddy/openbuddy-zephyr-7b-v14.1'),
+                ],
+                requires=['transformers>=4.34'],
+            ),
         ],
         TemplateType.openbuddy,
         get_model_tokenizer_with_flash_attn,
@@ -433,14 +435,14 @@ register_model(
         architectures=['LlavaForConditionalGeneration'],
     ))
 
-
 register_model(
     ModelMeta(
         LLMModelType.zephyr,
         [
             ModelGroup([
                 Model('modelscope/zephyr-7b-beta', 'HuggingFaceH4/zephyr-7b-beta'),
-            ], requires=['transformers>=4.34']),
+            ],
+                       requires=['transformers>=4.34']),
         ],
         TemplateType.zephyr,
         get_model_tokenizer_with_flash_attn,
@@ -449,7 +451,6 @@ register_model(
         support_lmdeploy=True,
         architectures=['LlavaForConditionalGeneration'],
     ))
-
 
 register_model(
     ModelMeta(
@@ -468,14 +469,17 @@ register_model(
         architectures=['LlavaForConditionalGeneration'],
     ))
 
-
 register_model(
     ModelMeta(
         LLMModelType.openbuddy_mixtral,
         [
-            ModelGroup([
-                Model('OpenBuddy/openbuddy-mixtral-7bx8-v18.1-32k', 'OpenBuddy/openbuddy-mixtral-7bx8-v18.1-32k'),
-            ], requires=['transformers>=4.36'], tags=['moe'],),
+            ModelGroup(
+                [
+                    Model('OpenBuddy/openbuddy-mixtral-7bx8-v18.1-32k', 'OpenBuddy/openbuddy-mixtral-7bx8-v18.1-32k'),
+                ],
+                requires=['transformers>=4.36'],
+                tags=['moe'],
+            ),
         ],
         TemplateType.openbuddy,
         get_model_tokenizer_with_flash_attn,
@@ -484,14 +488,14 @@ register_model(
         architectures=['LlavaForConditionalGeneration'],
     ))
 
-
 register_model(
     ModelMeta(
         LLMModelType.openbuddy_mistral,
         [
             ModelGroup([
                 Model('OpenBuddy/openbuddy-mistral-7b-v17.1-32k', 'OpenBuddy/openbuddy-mistral-7b-v17.1-32k'),
-            ], requires=['transformers>=4.34']),
+            ],
+                       requires=['transformers>=4.34']),
         ],
         TemplateType.openbuddy,
         get_model_tokenizer_with_flash_attn,
@@ -500,7 +504,6 @@ register_model(
         support_lmdeploy=True,
         architectures=['LlavaForConditionalGeneration'],
     ))
-
 
 register_model(
     ModelMeta(
@@ -518,7 +521,6 @@ register_model(
         architectures=['LlavaForConditionalGeneration'],
     ))
 
-
 register_model(
     ModelMeta(
         LLMModelType.openbuddy_llama,
@@ -534,7 +536,6 @@ register_model(
         support_lmdeploy=True,
         architectures=['LlavaForConditionalGeneration'],
     ))
-
 
 register_model(
     ModelMeta(
@@ -553,7 +554,6 @@ register_model(
         architectures=['LlavaForConditionalGeneration'],
     ))
 
-
 register_model(
     ModelMeta(
         LLMModelType.openbuddy_llama3,
@@ -564,7 +564,8 @@ register_model(
             ]),
             ModelGroup([
                 Model('OpenBuddy/openbuddy-llama3.1-8b-v22.1-131k', 'OpenBuddy/openbuddy-llama3.1-8b-v22.1-131k'),
-            ], requires=['transformers>=4.43']),
+            ],
+                       requires=['transformers>=4.43']),
         ],
         TemplateType.openbuddy2,
         get_model_tokenizer_with_flash_attn,
@@ -574,7 +575,6 @@ register_model(
         architectures=['LlavaForConditionalGeneration'],
     ))
 
-
 register_model(
     ModelMeta(
         LLMModelType.dbrx,
@@ -582,7 +582,9 @@ register_model(
             ModelGroup([
                 Model('AI-ModelScope/dbrx-base', 'databricks/dbrx-base'),
                 Model('AI-ModelScope/dbrx-instruct', 'databricks/dbrx-instruct'),
-            ], tags=['moe'], requires=['transformers>=4.36']),
+            ],
+                       tags=['moe'],
+                       requires=['transformers>=4.36']),
         ],
         TemplateType.dbrx,
         get_model_tokenizer_with_flash_attn,
@@ -591,7 +593,6 @@ register_model(
         architectures=['LlavaForConditionalGeneration'],
     ))
 
-
 register_model(
     ModelMeta(
         LLMModelType.ovis1_6,
@@ -599,7 +600,9 @@ register_model(
             ModelGroup([
                 Model('AIDC-AI/Ovis1.6-Gemma2-9B', 'AIDC-AI/Ovis1.6-Gemma2-9B'),
                 Model('AI-ModelScope/dbrx-instruct', 'databricks/dbrx-instruct'),
-            ], tags=['multi-modal', 'vision'], requires=['transformers>=4.42']),
+            ],
+                       tags=['multi-modal', 'vision'],
+                       requires=['transformers>=4.42']),
         ],
         TemplateType.ovis1_6,
         get_model_tokenizer_with_flash_attn,
@@ -607,14 +610,15 @@ register_model(
         architectures=['LlavaForConditionalGeneration'],
     ))
 
-
 register_model(
     ModelMeta(
         LLMModelType.nenotron,
         [
             ModelGroup([
                 Model('AI-ModelScope/Llama-3.1-Nemotron-70B-Instruct-HF', 'nvidia/Llama-3.1-Nemotron-70B-Instruct-HF'),
-            ], requires=['transformers>=4.43'], ignore_file_pattern=[r'.+\.pth$']),
+            ],
+                       requires=['transformers>=4.43'],
+                       ignore_file_pattern=[r'.+\.pth$']),
         ],
         TemplateType.llama3,
         get_model_tokenizer_with_flash_attn,
@@ -624,14 +628,14 @@ register_model(
         architectures=['LlavaForConditionalGeneration'],
     ))
 
-
 register_model(
     ModelMeta(
         LLMModelType.reflection,
         [
             ModelGroup([
                 Model('LLM-Research/Reflection-Llama-3.1-70B', 'mattshumer/Reflection-Llama-3.1-70B'),
-            ], requires=['transformers>=4.43']),
+            ],
+                       requires=['transformers>=4.43']),
         ],
         TemplateType.reflection,
         get_model_tokenizer_with_flash_attn,
@@ -639,7 +643,6 @@ register_model(
         support_vllm=True,
         architectures=['LlavaForConditionalGeneration'],
     ))
-
 
 register_model(
     ModelMeta(
@@ -656,7 +659,6 @@ register_model(
         support_vllm=True,
         architectures=['LlavaForConditionalGeneration'],
     ))
-
 
 register_model(
     ModelMeta(
@@ -695,7 +697,6 @@ register_model(
         architectures=['LlavaForConditionalGeneration'],
     ))
 
-
 register_model(
     ModelMeta(
         LLMModelType.bluelm,
@@ -705,13 +706,13 @@ register_model(
                 Model('vivo-ai/BlueLM-7B-Chat', 'vivo-ai/BlueLM-7B-Chat'),
                 Model('vivo-ai/BlueLM-7B-Base-32K', 'vivo-ai/BlueLM-7B-Base-32K'),
                 Model('vivo-ai/BlueLM-7B-Base', 'vivo-ai/BlueLM-7B-Base'),
-            ], tags=['multi-modal', 'audio']),
+            ],
+                       tags=['multi-modal', 'audio']),
         ],
         TemplateType.bluelm,
         get_model_tokenizer_with_flash_attn,
         architectures=['LlavaForConditionalGeneration'],
     ))
-
 
 register_model(
     ModelMeta(
@@ -726,7 +727,6 @@ register_model(
         support_vllm=True,
         architectures=['LlavaForConditionalGeneration'],
     ))
-
 
 register_model(
     ModelMeta(
@@ -749,7 +749,6 @@ register_model(
         architectures=['LlavaForConditionalGeneration'],
     ))
 
-
 register_model(
     ModelMeta(
         LLMModelType.xverse_moe,
@@ -763,7 +762,6 @@ register_model(
         architectures=['LlavaForConditionalGeneration'],
     ))
 
-
 register_model(
     ModelMeta(
         LLMModelType.c4ai,
@@ -771,7 +769,9 @@ register_model(
             ModelGroup([
                 Model('AI-ModelScope/c4ai-command-r-v01', 'CohereForAI/c4ai-command-r-v01'),
                 Model('AI-ModelScope/c4ai-command-r-plus', 'CohereForAI/c4ai-command-r-plus'),
-            ], tags=['moe'], requires=['transformers>=4.39']),
+            ],
+                       tags=['moe'],
+                       requires=['transformers>=4.39']),
         ],
         TemplateType.c4ai,
         get_model_tokenizer_with_flash_attn,
@@ -780,7 +780,6 @@ register_model(
         architectures=['LlavaForConditionalGeneration'],
     ))
 
-
 register_model(
     ModelMeta(
         LLMModelType.aya,
@@ -788,7 +787,9 @@ register_model(
             ModelGroup([
                 Model('AI-ModelScope/aya-expanse-8b', 'CohereForAI/aya-expanse-8b'),
                 Model('AI-ModelScope/aya-expanse-32b', 'CohereForAI/aya-expanse-32b'),
-            ], tags=['moe'], requires=['transformers>=4.44.0']),
+            ],
+                       tags=['moe'],
+                       requires=['transformers>=4.44.0']),
         ],
         TemplateType.aya,
         get_model_tokenizer_with_flash_attn,
@@ -815,7 +816,9 @@ register_model(
         [
             ModelGroup([
                 Model('AI-ModelScope/pixtral-12b', 'mistral-community/pixtral-12b'),
-            ], tags=['multi-modal', 'vision'], requires=['transformers>=4.45']),
+            ],
+                       tags=['multi-modal', 'vision'],
+                       requires=['transformers>=4.45']),
         ],
         TemplateType.pixtral,
         get_model_tokenizer_pixtral,
@@ -867,7 +870,9 @@ register_model(
         [
             ModelGroup([
                 Model('LLM-Research/MolmoE-1B-0924', 'allenai/MolmoE-1B-0924'),
-            ], tags=['multi-modal', 'vision'], requires=['transformers>=4.45']),
+            ],
+                       tags=['multi-modal', 'vision'],
+                       requires=['transformers>=4.45']),
         ],
         TemplateType.molmo,
         get_model_tokenizer_molmoe_1b,
@@ -914,7 +919,9 @@ register_model(
                 Model('LLM-Research/Molmo-7B-O-0924', 'allenai/Molmo-7B-O-0924'),
                 Model('LLM-Research/Molmo-7B-D-0924', 'allenai/Molmo-7B-D-0924'),
                 Model('LLM-Research/Molmo-72B-0924', 'allenai/Molmo-72B-0924'),
-            ], tags=['multi-modal', 'vision'], requires=['transformers>=4.45']),
+            ],
+                       tags=['multi-modal', 'vision'],
+                       requires=['transformers>=4.45']),
         ],
         TemplateType.molmo,
         get_model_tokenizer_molmo,
@@ -966,7 +973,9 @@ register_model(
         [
             ModelGroup([
                 Model('BAAI/Emu3-Chat', 'BAAI/Emu3-Chat'),
-            ], tags=['multi-modal', 'vision'], requires=['transformers>=4.44.0']),
+            ],
+                       tags=['multi-modal', 'vision'],
+                       requires=['transformers>=4.44.0']),
         ],
         TemplateType.emu3_chat,
         get_model_tokenizer_molmo,

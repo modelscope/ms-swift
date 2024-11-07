@@ -72,7 +72,7 @@ class VllmArguments:
 
 
 @dataclass
-class InferArguments(BaseArguments, MergeArguments, VllmArguments, LmdeployArguments):
+class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArguments):
     """
     InferArguments is a dataclass that extends BaseArguments, MergeArguments, VllmArguments, and LmdeployArguments.
     It is used to define the arguments required for model inference.
