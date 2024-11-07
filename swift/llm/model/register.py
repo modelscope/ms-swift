@@ -276,7 +276,7 @@ def _check_torch_dtype(torch_dtype: torch.dtype):
             logger.warning(f'torch_dtype: {torch_dtype}. The CPU does not support matrix multiplication with FP16.')
 
 
-def get_default_torch_dtype(torch_dtype: torch.dtype):
+def get_default_torch_dtype(torch_dtype: Optional[torch.dtype]):
     # torch_dtype: torch_dtype in config.json
     if is_torch_cuda_available() or is_torch_npu_available():
         if is_torch_bf16_gpu_available():
@@ -400,9 +400,10 @@ def get_model_tokenizer(model_id_or_path: str,
         logger.info(f'Temporarily create model_meta: {model_meta}')
 
     if torch_dtype is None:
-        torch_dtype = get_default_torch_dtype(model_info.torch_dtype)
+        torch_dtype = model_meta.torch_dtype or get_default_torch_dtype(model_info.torch_dtype)
         logger.info(f'Setting torch_dtype: {torch_dtype}')
     _check_torch_dtype(torch_dtype)
+    model_info.torch_dtype = torch_dtype
 
     model_meta.check_requires()
     model_meta.check_flash_attn(attn_impl)

@@ -68,7 +68,8 @@ class HfConfigFactory:
     """This class is used to read config from config.json(maybe params.json also)"""
 
     @staticmethod
-    def get_torch_dtype(config: Union[PretrainedConfig, Dict[str, Any]], quant_info: Dict[str, Any]) -> torch.dtype:
+    def get_torch_dtype(config: Union[PretrainedConfig, Dict[str, Any]], quant_info: Dict[str, Any]
+                        ) -> Optional[torch.dtype]:
         for key in ['torch_dtype', 'params_dtype']:
             torch_dtype = HfConfigFactory.get_config_attr(config, key)
             if torch_dtype is not None:
