@@ -218,7 +218,7 @@ def _prepare_lmdeploy_request(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine]
         concurrent.futures.wait(futures)
         inputs_list = [future.result() for future in futures]
     prog_bar.close()
-    
+
     new_inputs = []
     for i, (inputs, request) in enumerate(zip(inputs_list, request_list)):
         truncation_strategy = kwargs.pop('truncation_strategy', 'delete')
