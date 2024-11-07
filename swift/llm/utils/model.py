@@ -3845,7 +3845,7 @@ for model_size in ['0.5B', '1.5B', '3B', '7B', '14B', '32B', '72B']:
         get_model_tokenizer_qwen2_chat,
         support_flash_attn=True,
         support_vllm=True,
-        support_lmdeploy=True,
+        support_lmdeploy=model_size != '0.5B',
         function_kwargs={'is_awq': True},
         torch_dtype=torch.float16,
         requires=['transformers>=4.37', 'autoawq'],
