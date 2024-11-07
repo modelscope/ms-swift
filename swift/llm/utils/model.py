@@ -3922,7 +3922,7 @@ for model_size in ['1.5B', '7B']:
             get_model_tokenizer_qwen2_chat,
             support_flash_attn=True,
             support_vllm=True,
-            support_lmdeploy=True,
+            support_lmdeploy=quant_bits == 4,
             function_kwargs={'gptq_bits': quant_bits},
             torch_dtype=torch.float16,
             requires=['auto_gptq>=0.5', 'transformers>=4.37'],
