@@ -143,8 +143,8 @@ register_model(
         [
             ModelGroup(
                 [
-                    Model('deepseek-ai/deepseek-vl-7b-chat', 'deepseek-ai/deepseek-vl-7b-chat'),
                     Model('deepseek-ai/deepseek-vl-1.3b-chat', 'deepseek-ai/deepseek-vl-1.3b-chat'),
+                    Model('deepseek-ai/deepseek-vl-7b-chat', 'deepseek-ai/deepseek-vl-7b-chat'),
                 ],
                 tags=['multi-modal', 'vision'],
             ),
@@ -228,8 +228,7 @@ register_model(
                 tags=['multi-modal', 'vision'],
             ),
         ],
-        TemplateType.deepseek_janus,
+        TemplateType.janus,
         get_model_tokenizer_deepseek_janus,
-        architectures=['LlamaForCausalLM'],
         support_flash_attn=True,
     ))

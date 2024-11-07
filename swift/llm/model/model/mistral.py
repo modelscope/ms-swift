@@ -8,7 +8,6 @@ register_model(
     ModelMeta(
         LLMModelType.mistral,
         [
-            # llama2
             ModelGroup([
                 Model('AI-ModelScope/Mistral-7B-v0.1', 'mistralai/Mistral-7B-v0.1'),
                 Model('AI-ModelScope/Mistral-7B-v0.2-hf', 'alpindale/Mistral-7B-v0.2-hf'),
@@ -18,31 +17,18 @@ register_model(
             ],
                        ignore_file_pattern=['consolidated.safetensors'],
                        requires=['transformers>=4.34']),
-        ],
-        TemplateType.llama,
-        get_model_tokenizer_with_flash_attn,
-        architectures=['MambaForCausalLM'],
-        support_flash_attn=True,
-        support_vllm=True,
-        support_lmdeploy=True,
-    ))
-
-register_model(
-    ModelMeta(
-        LLMModelType.codestral,
-        [
-            # llama2
             ModelGroup([
                 Model('swift/Codestral-22B-v0.1', 'mistralai/Codestral-22B-v0.1'),
             ],
                        ignore_file_pattern=['consolidated.safetensors'],
                        requires=['transformers>=4.34']),
         ],
-        TemplateType.default,
+        TemplateType.llama,
         get_model_tokenizer_with_flash_attn,
-        architectures=['MambaForCausalLM'],
+        architectures=['MistralForCausalLM'],
         support_flash_attn=True,
         support_vllm=True,
+        support_lmdeploy=True,
     ))
 
 register_model(
@@ -63,9 +49,9 @@ register_model(
                        tags=['moe'],
                        requires=['transformers>=4.38', 'aqlm', 'torch>=2.2.0']),
         ],
-        TemplateType.default,
+        TemplateType.llama,
         get_model_tokenizer_with_flash_attn,
-        architectures=['MambaForCausalLM'],
+        architectures=['MixtralForCausalLM'],
         support_flash_attn=True,
         support_vllm=True,
     ))
@@ -74,7 +60,6 @@ register_model(
     ModelMeta(
         LLMModelType.nemo,
         [
-            # llama2
             ModelGroup([
                 Model('LLM-Research/Mistral-Large-Instruct-2407', 'mistralai/Mistral-Large-Instruct-2407'),
                 Model('AI-ModelScope/Mistral-Small-Instruct-2409', 'mistralai/Mistral-Small-Instruct-2409'),
@@ -82,12 +67,11 @@ register_model(
                 Model('AI-ModelScope/Mistral-Nemo-Instruct-2407', 'mistralai/Mistral-Nemo-Instruct-2407'),
             ],
                        ignore_file_pattern=['^consolidated'],
-                       tags=['moe'],
                        requires=['transformers>=4.43']),
         ],
         TemplateType.mistral_nemo,
         get_model_tokenizer_with_flash_attn,
-        architectures=['MambaForCausalLM'],
+        architectures=['MistralForCausalLM'],
         support_flash_attn=True,
         support_vllm=True,
     ))

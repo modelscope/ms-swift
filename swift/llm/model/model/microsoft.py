@@ -2,6 +2,7 @@
 from types import MethodType
 from typing import Any, Dict
 
+from modelscope import AutoConfig
 from transformers import PretrainedConfig
 
 from swift.llm import TemplateType
@@ -10,11 +11,11 @@ from ..constant import LLMModelType, MLLMModelType
 from ..patcher import patch_output_clone
 from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local,
                         get_model_tokenizer_with_flash_attn, register_model)
-from ..utils import ignore_check_imports, use_submodel_func
+from ..utils import ModelInfo, ignore_check_imports, use_submodel_func
 
 
 def get_model_tokenizer_phi3_vision(model_dir: str,
-                                    model_config: PretrainedConfig,
+                                    model_info: ModelInfo,
                                     model_kwargs: Dict[str, Any],
                                     load_model: bool = True,
                                     **kwargs):
@@ -25,7 +26,7 @@ def get_model_tokenizer_phi3_vision(model_dir: str,
         processor_kwargs['num_crops'] = get_env_args('num_crops', int, kwargs['num_crops'])
     from transformers import AutoProcessor
     processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True, **processor_kwargs)
-    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_config, model_kwargs, load_model, **kwargs)
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
     tokenizer.processor = processor
 
     if load_model:
@@ -38,25 +39,23 @@ register_model(
     ModelMeta(
         MLLMModelType.phi3_vl,
         [
-            # llama2
             ModelGroup([
                 Model('LLM-Research/Phi-3-vision-128k-instruct', 'microsoft/Phi-3-vision-128k-instruct'),
                 Model('LLM-Research/Phi-3.5-vision-instruct', 'microsoft/Phi-3.5-vision-instruct'),
             ],
                        requires=['transformers>=4.36'],
-                       tags=['multi-modal', 'vision'],
-                       ignore_file_pattern=[r'.+\.bin$']),
+                       tags=['multi-modal', 'vision']),
         ],
         TemplateType.phi3_vl,
         get_model_tokenizer_phi3_vision,
-        architectures=['MambaForCausalLM'],
+        architectures=['Phi3VForCausalLM'],
         support_flash_attn=True,
         support_vllm=True,
     ))
 
 
 def get_model_tokenizer_florence(model_dir: str,
-                                 model_config: PretrainedConfig,
+                                 model_info: ModelInfo,
                                  model_kwargs: Dict[str, Any],
                                  load_model: bool = True,
                                  **kwargs):
@@ -64,7 +63,7 @@ def get_model_tokenizer_florence(model_dir: str,
     processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
     with ignore_check_imports():
         model, tokenizer = get_model_tokenizer_with_flash_attn(
-            model_dir, model_config, model_kwargs, load_model, tokenizer=processor.tokenizer, **kwargs)
+            model_dir, model_info, model_kwargs, load_model, tokenizer=processor.tokenizer, **kwargs)
 
     tokenizer.processor = processor
     # model.vision_tower.enable_checkpoint = True
@@ -83,26 +82,21 @@ register_model(
                 Model('AI-ModelScope/Florence-2-large', 'microsoft/Florence-2-large'),
                 Model('AI-ModelScope/Florence-2-large-ft', 'microsoft/Florence-2-large-ft'),
             ],
-                       requires=['transformers>=4.36'],
-                       tags=['multi-modal', 'vision'],
-                       ignore_file_pattern=[r'.+\.bin$']),
+                       tags=['multi-modal', 'vision']),
         ],
-        TemplateType.phi3_vl,
-        get_model_tokenizer_phi3_vision,
-        architectures=['MambaForCausalLM'],
+        TemplateType.florence,
+        get_model_tokenizer_florence,
+        architectures=['Florence2ForConditionalGeneration'],
         support_flash_attn=True,
     ))
 
 
 def get_model_tokenizer_phi3_small(model_dir: str,
-                                   model_config: PretrainedConfig,
+                                   model_info: ModelInfo,
                                    model_kwargs: Dict[str, Any],
                                    load_model: bool = True,
                                    **kwargs):
-    attn_type = AttentionType(kwargs.pop('use_flash_attn', None), kwargs.pop('attn_type', 'sdpa'))
-    attn_type.update_config(model_config)
-    model, tokenizer = get_model_tokenizer_from_repo(
-        model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
 
     def rotary_emb(self, query_states, key_states, **kwargs):
         q_type = query_states.dtype
@@ -128,12 +122,11 @@ register_model(
                 Model('LLM-Research/Phi-3-small-128k-instruct', 'microsoft/Phi-3-small-128k-instruct'),
             ],
                        requires=['transformers>=4.36'],
-                       tags=['multi-modal', 'vision'],
                        ignore_file_pattern=[r'.+\.bin$']),
         ],
         TemplateType.phi3,
         get_model_tokenizer_phi3_small,
-        architectures=['MambaForCausalLM'],
+        architectures=['Phi3SmallForCausalLM'],
         support_flash_attn=True,
         support_gradient_checkpointing=False,
         support_vllm=True,
@@ -141,13 +134,11 @@ register_model(
 
 
 def get_model_tokenizer_phi(model_dir: str,
-                            config: PretrainedConfig,
+                            model_info: ModelInfo,
                             model_kwargs: Dict[str, Any],
                             load_model: bool = True,
                             **kwargs):
-    attn_type = AttentionImpl(kwargs.pop('use_flash_attn', None), kwargs.pop('attn_type', None))
-    config.flash_attn = attn_type.to_bool()
-    return get_model_tokenizer_from_local(model_dir, config, model_kwargs, load_model, **kwargs)
+    return get_model_tokenizer_from_local(model_dir, model_info, model_kwargs, load_model, **kwargs)
 
 
 register_model(
@@ -156,14 +147,11 @@ register_model(
         [
             ModelGroup([
                 Model('AI-ModelScope/phi-2', 'microsoft/phi-2'),
-            ],
-                       requires=['transformers>=4.36'],
-                       tags=['coding'],
-                       ignore_file_pattern=[r'.+\.bin$']),
+            ]),
         ],
         TemplateType.default,
-        get_model_tokenizer_phi3_small,
-        architectures=['MambaForCausalLM'],
+        get_model_tokenizer_phi,
+        architectures=['PhiForCausalLM'],
         support_flash_attn=True,
         support_vllm=True,
         support_gradient_checkpointing=False,
@@ -189,7 +177,7 @@ register_model(
         ],
         TemplateType.phi3,
         get_model_tokenizer_with_flash_attn,
-        architectures=['MambaForCausalLM'],
+        architectures=['Phi3ForCausalLM'],
         support_flash_attn=True,
         support_vllm=True,
     ))

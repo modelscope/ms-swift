@@ -10,7 +10,6 @@ from modelscope import AutoConfig, AutoModel, AutoModelForCausalLM
 from transformers import AutoTokenizer, PretrainedConfig
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
-from swift.hub import hub
 from swift.llm import TemplateType
 from swift.utils import get_logger
 from ..constant import LLMModelType, MLLMModelType
@@ -23,7 +22,7 @@ logger = get_logger()
 
 
 def get_model_tokenizer_grok(model_dir: str,
-                             model_config: PretrainedConfig,
+                             model_info: ModelInfo,
                              model_kwargs: Dict[str, Any],
                              load_model: bool = True,
                              tokenizer=None,
@@ -37,7 +36,7 @@ def get_model_tokenizer_grok(model_dir: str,
         tokenizer.eos_token = eos_token
     model = None
     if load_model:
-        model = automodel_class.from_pretrained(model_dir, config=model_config, trust_remote_code=True, **model_kwargs)
+        model = automodel_class.from_pretrained(model_dir, trust_remote_code=True, **model_kwargs)
     return model, tokenizer
 
 
@@ -45,30 +44,24 @@ register_model(
     ModelMeta(
         LLMModelType.grok,
         [
-            # llama2
-            ModelGroup(
-                [
-                    # base
-                    Model('colossalai/grok-1-pytorch', 'hpcai-tech/grok-1'),
-                ],
-                requires=['transformers>=4.36'],
-                tags=['multi-modal', 'vision'],
-                ignore_file_pattern=[r'.+\.bin$']),
+            ModelGroup([
+                Model('colossalai/grok-1-pytorch', 'hpcai-tech/grok-1'),
+            ], ),
         ],
         TemplateType.default,
         get_model_tokenizer_grok,
-        architectures=['LlavaForConditionalGeneration'],
+        architectures=['Grok1ModelForCausalLM'],
         support_vllm=False,
         support_flash_attn=False,
     ))
 
 
 def get_model_tokenizer_mplug_owl3(model_dir: str,
-                                   model_config: PretrainedConfig,
+                                   model_info: ModelInfo,
                                    model_kwargs: Dict[str, Any],
                                    load_model: bool = True,
                                    **kwargs):
-    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_config, model_kwargs, load_model, **kwargs)
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
     processor = model.init_processor(tokenizer)
     tokenizer.processor = processor
     func_list = ['generate', 'forward']
@@ -78,32 +71,31 @@ def get_model_tokenizer_mplug_owl3(model_dir: str,
 
 register_model(
     ModelMeta(
-        MLLMModelType.mplug,
+        MLLMModelType.mplug3,
         [
-            # llama2
             ModelGroup([
                 Model('iic/mPLUG-Owl3-1B-241014', 'mPLUG/mPLUG-Owl3-1B-241014'),
                 Model('iic/mPLUG-Owl3-2B-241014', 'mPLUG/mPLUG-Owl3-2B-241014'),
                 Model('iic/mPLUG-Owl3-7B-240728', 'mPLUG/mPLUG-Owl3-7B-240728'),
             ],
                        requires=['transformers>=4.36', 'icecream'],
-                       tags=['multi-modal', 'vision', 'video'],
-                       ignore_file_pattern=[r'.+\.bin$']),
+                       tags=['multi-modal', 'vision', 'video']),
         ],
         TemplateType.mplug_owl3,
         get_model_tokenizer_mplug_owl3,
-        architectures=['LlavaForConditionalGeneration'],
+        architectures=['mPLUGOwl3Model'],
         support_flash_attn=True,
     ))
 
 
 def get_model_tokenizer_polylm(model_dir: str,
-                               config: PretrainedConfig,
+                               model_info: ModelInfo,
                                model_kwargs: Dict[str, Any],
                                load_model: bool = True,
                                **kwargs):
     tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True, use_fast=False, legacy=True)
-    return get_model_tokenizer_from_local(model_dir, config, model_kwargs, load_model, tokenizer=tokenizer, **kwargs)
+    return get_model_tokenizer_from_local(
+        model_dir, model_info, model_kwargs, load_model, tokenizer=tokenizer, **kwargs)
 
 
 register_model(
@@ -118,17 +110,17 @@ register_model(
         ],
         TemplateType.default,
         get_model_tokenizer_polylm,
-        architectures=['LlavaForConditionalGeneration'],
+        architectures=['GPT2LMHeadModel'],
         support_flash_attn=True,
     ))
 
 
 def get_skywork_model_tokenizer(model_dir: str,
-                                config: PretrainedConfig,
+                                model_info: ModelInfo,
                                 model_kwargs: Dict[str, Any],
                                 load_model: bool = True,
                                 **kwargs):
-    model, tokenizer = get_model_tokenizer_from_local(model_dir, config, model_kwargs, load_model, **kwargs)
+    model, tokenizer = get_model_tokenizer_from_local(model_dir, model_info, model_kwargs, load_model, **kwargs)
     if 'chat' in model_dir:
         tokenizer.add_tokens('[USER]')
         tokenizer.add_tokens('[BOT]')
@@ -147,18 +139,18 @@ register_model(
         ],
         TemplateType.skywork,
         get_skywork_model_tokenizer,
-        architectures=['LlavaForConditionalGeneration'],
+        architectures=['SkyworkForCausalLM'],
     ))
 
 
 def get_model_tokenizer_codellama(model_dir: str,
-                                  config: PretrainedConfig,
+                                  model_info: ModelInfo,
                                   model_kwargs: Dict[str, Any],
                                   load_model: bool = True,
                                   **kwargs):
     tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True, use_fast=False, legacy=False)
     return get_model_tokenizer_with_flash_attn(
-        model_dir, config, model_kwargs, load_model, tokenizer=tokenizer, **kwargs)
+        model_dir, model_info, model_kwargs, load_model, tokenizer=tokenizer, **kwargs)
 
 
 register_model(
@@ -177,17 +169,15 @@ register_model(
         support_flash_attn=True,
         support_vllm=True,
         support_lmdeploy=True,
-        architectures=['LlavaForConditionalGeneration'],
+        architectures=['LlamaForCausalLM'],
     ))
 
 
 def get_model_tokenizer_yuan(model_dir: str,
-                             config: PretrainedConfig,
+                             model_info: ModelInfo,
                              model_kwargs: Dict[str, Any],
                              load_model: bool = True,
                              **kwargs):
-    attn_type = AttentionImpl(kwargs.pop('use_flash_attn', None), kwargs.pop('attn_type', None))
-    config.use_flash_attention = attn_type.to_bool()
     tokenizer = AutoTokenizer.from_pretrained(
         model_dir, add_eos_token=False, add_bos_token=False, eos_token='<eod>', legacy=True)
     addi_tokens = [
@@ -197,7 +187,7 @@ def get_model_tokenizer_yuan(model_dir: str,
     ]
     tokenizer.add_tokens(addi_tokens, special_tokens=True)
     model, tokenizer = get_model_tokenizer_from_local(
-        model_dir, config, model_kwargs, load_model, tokenizer=tokenizer, **kwargs)
+        model_dir, model_info, model_kwargs, load_model, tokenizer=tokenizer, **kwargs)
     return model, tokenizer
 
 
@@ -206,31 +196,20 @@ register_model(
         LLMModelType.yuan2,
         [
             ModelGroup([
-                Model('YuanLLM/Yuan2.0-2B-hf', 'IEITYuan/Yuan2-2B-hf'),
-                Model('YuanLLM/Yuan2.0-51B-hf', 'IEITYuan/Yuan2-51B-hf'),
-                Model('YuanLLM/Yuan2.0-102B-hf', 'IEITYuan/Yuan2-102B-hf'),
-                Model('YuanLLM/Yuan2-2B-Janus-hf', 'IEITYuan/Yuan2-2B-Janus-hf'),
+                Model('IEITYuan/Yuan2.0-2B-hf', 'IEITYuan/Yuan2-2B-hf'),
+                Model('IEITYuan/Yuan2.0-51B-hf', 'IEITYuan/Yuan2-51B-hf'),
+                Model('IEITYuan/Yuan2.0-102B-hf', 'IEITYuan/Yuan2-102B-hf'),
+                Model('IEITYuan/Yuan2-2B-Janus-hf', 'IEITYuan/Yuan2-2B-Janus-hf'),
             ]),
             ModelGroup([
-                Model('YuanLLM/Yuan2-M32-hf', 'IEITYuan/Yuan2-M32-hf'),
+                Model('IEITYuan/Yuan2-M32-hf', 'IEITYuan/Yuan2-M32-hf'),
             ], tags=['moe']),
         ],
         TemplateType.yuan,
-        get_model_tokenizer_codellama,
+        get_model_tokenizer_yuan,
         support_flash_attn=True,
-        architectures=['LlavaForConditionalGeneration'],
+        architectures=['YuanForCausalLM'],
     ))
-
-
-def get_model_tokenizer_orion(model_dir: str,
-                              config: PretrainedConfig,
-                              model_kwargs: Dict[str, Any],
-                              load_model: bool = True,
-                              **kwargs):
-    attn_type = AttentionImpl(kwargs.pop('use_flash_attn', None), kwargs.pop('attn_type', None))
-    config._flash_attn_2_enabled = attn_type.to_bool()
-    return get_model_tokenizer_from_local(model_dir, config, model_kwargs, load_model, **kwargs)
-
 
 register_model(
     ModelMeta(
@@ -243,9 +222,9 @@ register_model(
                        ignore_file_pattern=[r'.+\.gguf$']),
         ],
         TemplateType.orion,
-        get_model_tokenizer_codellama,
+        get_model_tokenizer_from_local,
         support_flash_attn=True,
-        architectures=['LlavaForConditionalGeneration'],
+        architectures=['OrionForCausalLM'],
     ))
 
 
@@ -271,12 +250,12 @@ register_model(
         TemplateType.idefics3,
         get_model_tokenizer_idefics,
         support_flash_attn=True,
-        architectures=['LlavaForConditionalGeneration'],
+        architectures=['Idefics3ForConditionalGeneration'],
     ))
 
 
 def get_model_tokenizer_mplug_owl2(model_dir: str,
-                                   config: PretrainedConfig,
+                                   model_info: ModelInfo,
                                    model_kwargs: Dict[str, Any],
                                    load_model: bool = True,
                                    **kwargs):
@@ -315,7 +294,6 @@ register_model(
         TemplateType.mplug_owl2,
         partial(get_model_tokenizer_mplug_owl2, get_model_tokenizer_function=get_model_tokenizer_with_flash_attn),
         support_flash_attn=True,
-        architectures=['LlavaForConditionalGeneration'],
     ))
 
 register_model(
@@ -332,7 +310,6 @@ register_model(
         partial(
             get_model_tokenizer_mplug_owl2, vocab_size=151851, get_model_tokenizer_function=get_model_tokenizer_qwen),
         support_flash_attn=True,
-        architectures=['LlavaForConditionalGeneration'],
     ))
 
 register_model(
@@ -348,7 +325,7 @@ register_model(
         get_model_tokenizer_with_flash_attn,
         support_flash_attn=True,
         support_vllm=True,
-        architectures=['LlavaForConditionalGeneration'],
+        architectures=['MixtralForCausalLM'],
     ))
 
 register_model(
@@ -364,7 +341,7 @@ register_model(
         get_model_tokenizer_with_flash_attn,
         support_flash_attn=True,
         support_vllm=True,
-        architectures=['LlavaForConditionalGeneration'],
+        architectures=['MistralForCausalLM'],
     ))
 
 register_model(
@@ -373,15 +350,13 @@ register_model(
         [
             ModelGroup([
                 Model('AI-ModelScope/NuminaMath-7B-TIR', 'AI-MO/NuminaMath-7B-TIR'),
-            ],
-                       requires=['transformers>=4.34'],
-                       tags=['math']),
+            ], tags=['math']),
         ],
         TemplateType.numina_math,
         get_model_tokenizer_with_flash_attn,
         support_flash_attn=True,
         support_vllm=True,
-        architectures=['LlavaForConditionalGeneration'],
+        architectures=['LlamaForCausalLM'],
     ))
 
 register_model(
@@ -397,7 +372,7 @@ register_model(
         support_flash_attn=True,
         support_vllm=True,
         support_lmdeploy=True,
-        architectures=['LlavaForConditionalGeneration'],
+        architectures=['LlamaForCausalLM'],
     ))
 
 register_model(
@@ -413,7 +388,7 @@ register_model(
         support_flash_attn=True,
         support_vllm=True,
         support_lmdeploy=True,
-        architectures=['LlavaForConditionalGeneration'],
+        architectures=['LlamaForCausalLM'],
     ))
 
 register_model(
@@ -432,7 +407,7 @@ register_model(
         support_flash_attn=True,
         support_vllm=True,
         support_lmdeploy=True,
-        architectures=['LlavaForConditionalGeneration'],
+        architectures=['MistralForCausalLM'],
     ))
 
 register_model(
@@ -449,7 +424,7 @@ register_model(
         support_flash_attn=True,
         support_vllm=True,
         support_lmdeploy=True,
-        architectures=['LlavaForConditionalGeneration'],
+        architectures=['MistralForCausalLM'],
     ))
 
 register_model(
@@ -466,7 +441,7 @@ register_model(
         support_flash_attn=True,
         support_vllm=True,
         support_lmdeploy=True,
-        architectures=['LlavaForConditionalGeneration'],
+        architectures=['LlamaForCausalLM'],
     ))
 
 register_model(
@@ -485,7 +460,7 @@ register_model(
         get_model_tokenizer_with_flash_attn,
         support_flash_attn=True,
         support_vllm=True,
-        architectures=['LlavaForConditionalGeneration'],
+        architectures=['MixtralForCausalLM'],
     ))
 
 register_model(
@@ -502,7 +477,7 @@ register_model(
         support_flash_attn=True,
         support_vllm=True,
         support_lmdeploy=True,
-        architectures=['LlavaForConditionalGeneration'],
+        architectures=['MistralForCausalLM'],
     ))
 
 register_model(
@@ -518,7 +493,7 @@ register_model(
         support_flash_attn=True,
         support_vllm=True,
         support_lmdeploy=True,
-        architectures=['LlavaForConditionalGeneration'],
+        architectures=['LlamaForCausalLM'],
     ))
 
 register_model(
@@ -534,7 +509,7 @@ register_model(
         support_flash_attn=True,
         support_vllm=True,
         support_lmdeploy=True,
-        architectures=['LlavaForConditionalGeneration'],
+        architectures=['LlamaForCausalLM'],
     ))
 
 register_model(
@@ -551,7 +526,7 @@ register_model(
         support_flash_attn=True,
         support_vllm=True,
         support_lmdeploy=True,
-        architectures=['LlavaForConditionalGeneration'],
+        architectures=['LlamaForCausalLM'],
     ))
 
 register_model(
@@ -572,7 +547,7 @@ register_model(
         support_flash_attn=True,
         support_vllm=True,
         support_lmdeploy=True,
-        architectures=['LlavaForConditionalGeneration'],
+        architectures=['LlamaForCausalLM'],
     ))
 
 register_model(
@@ -590,16 +565,15 @@ register_model(
         get_model_tokenizer_with_flash_attn,
         support_flash_attn=True,
         support_vllm=True,
-        architectures=['LlavaForConditionalGeneration'],
+        architectures=['DbrxForCausalLM'],
     ))
 
 register_model(
     ModelMeta(
-        LLMModelType.ovis1_6,
+        MLLMModelType.ovis1_6,
         [
             ModelGroup([
                 Model('AIDC-AI/Ovis1.6-Gemma2-9B', 'AIDC-AI/Ovis1.6-Gemma2-9B'),
-                Model('AI-ModelScope/dbrx-instruct', 'databricks/dbrx-instruct'),
             ],
                        tags=['multi-modal', 'vision'],
                        requires=['transformers>=4.42']),
@@ -607,7 +581,7 @@ register_model(
         TemplateType.ovis1_6,
         get_model_tokenizer_with_flash_attn,
         support_flash_attn=True,
-        architectures=['LlavaForConditionalGeneration'],
+        architectures=['Ovis'],
     ))
 
 register_model(
@@ -625,7 +599,7 @@ register_model(
         support_flash_attn=True,
         support_vllm=True,
         support_lmdeploy=True,
-        architectures=['LlavaForConditionalGeneration'],
+        architectures=['LlamaForCausalLM'],
     ))
 
 register_model(
@@ -641,7 +615,7 @@ register_model(
         get_model_tokenizer_with_flash_attn,
         support_flash_attn=True,
         support_vllm=True,
-        architectures=['LlavaForConditionalGeneration'],
+        architectures=['LlamaForCausalLM'],
     ))
 
 register_model(
@@ -657,7 +631,7 @@ register_model(
         get_model_tokenizer_with_flash_attn,
         support_flash_attn=True,
         support_vllm=True,
-        architectures=['LlavaForConditionalGeneration'],
+        architectures=['LlamaForCausalLM'],
     ))
 
 register_model(
@@ -672,7 +646,7 @@ register_model(
         get_model_tokenizer_with_flash_attn,
         support_flash_attn=True,
         support_vllm=True,
-        architectures=['LlavaForConditionalGeneration'],
+        architectures=['LlamaForCausalLM'],
     ))
 
 
@@ -685,7 +659,7 @@ def get_model_tokenizer_got_ocr2(*args, **kwargs):
 
 register_model(
     ModelMeta(
-        LLMModelType.got_ocr2,
+        MLLMModelType.got_ocr2,
         [
             ModelGroup([
                 Model('stepfun-ai/GOT-OCR2_0', 'stepfun-ai/GOT-OCR2_0'),
@@ -694,7 +668,7 @@ register_model(
         TemplateType.got_ocr2,
         get_model_tokenizer_with_flash_attn,
         support_flash_attn=True,
-        architectures=['LlavaForConditionalGeneration'],
+        architectures=['GOTQwenForCausalLM'],
     ))
 
 register_model(
@@ -706,12 +680,11 @@ register_model(
                 Model('vivo-ai/BlueLM-7B-Chat', 'vivo-ai/BlueLM-7B-Chat'),
                 Model('vivo-ai/BlueLM-7B-Base-32K', 'vivo-ai/BlueLM-7B-Base-32K'),
                 Model('vivo-ai/BlueLM-7B-Base', 'vivo-ai/BlueLM-7B-Base'),
-            ],
-                       tags=['multi-modal', 'audio']),
+            ]),
         ],
         TemplateType.bluelm,
         get_model_tokenizer_with_flash_attn,
-        architectures=['LlavaForConditionalGeneration'],
+        architectures=['BlueLMForCausalLM'],
     ))
 
 register_model(
@@ -725,7 +698,7 @@ register_model(
         TemplateType.default,
         get_model_tokenizer_with_flash_attn,
         support_vllm=True,
-        architectures=['LlavaForConditionalGeneration'],
+        architectures=['BloomForCausalLM'],
     ))
 
 register_model(
@@ -746,7 +719,7 @@ register_model(
         TemplateType.xverse,
         get_model_tokenizer_with_flash_attn,
         support_vllm=True,
-        architectures=['LlavaForConditionalGeneration'],
+        architectures=['XverseForCausalLM'],
     ))
 
 register_model(
@@ -759,7 +732,7 @@ register_model(
         ],
         TemplateType.xverse,
         get_model_tokenizer_with_flash_attn,
-        architectures=['LlavaForConditionalGeneration'],
+        architectures=['XverseForCausalLM'],
     ))
 
 register_model(
@@ -770,14 +743,13 @@ register_model(
                 Model('AI-ModelScope/c4ai-command-r-v01', 'CohereForAI/c4ai-command-r-v01'),
                 Model('AI-ModelScope/c4ai-command-r-plus', 'CohereForAI/c4ai-command-r-plus'),
             ],
-                       tags=['moe'],
                        requires=['transformers>=4.39']),
         ],
         TemplateType.c4ai,
         get_model_tokenizer_with_flash_attn,
         support_vllm=True,
         support_flash_attn=True,
-        architectures=['LlavaForConditionalGeneration'],
+        architectures=['CohereForCausalLM'],
     ))
 
 register_model(
@@ -788,14 +760,13 @@ register_model(
                 Model('AI-ModelScope/aya-expanse-8b', 'CohereForAI/aya-expanse-8b'),
                 Model('AI-ModelScope/aya-expanse-32b', 'CohereForAI/aya-expanse-32b'),
             ],
-                       tags=['moe'],
                        requires=['transformers>=4.44.0']),
         ],
         TemplateType.aya,
         get_model_tokenizer_with_flash_attn,
         support_vllm=True,
         support_flash_attn=True,
-        architectures=['LlavaForConditionalGeneration'],
+        architectures=['CohereForCausalLM'],
     ))
 
 
@@ -881,7 +852,7 @@ register_model(
         support_lmdeploy=False,
         support_gradient_checkpointing=False,
         torch_dtype=torch.float32,
-        architectures=['LlavaForConditionalGeneration'],
+        architectures=['MolmoForCausalLM'],
     ))
 
 
@@ -913,7 +884,7 @@ def get_model_tokenizer_molmo(model_dir: str,
 
 register_model(
     ModelMeta(
-        LLMModelType.molmoe,
+        LLMModelType.molmo,
         [
             ModelGroup([
                 Model('LLM-Research/Molmo-7B-O-0924', 'allenai/Molmo-7B-O-0924'),
@@ -929,57 +900,5 @@ register_model(
         support_vllm=False,
         support_lmdeploy=False,
         support_gradient_checkpointing=False,
-        architectures=['LlavaForConditionalGeneration'],
-    ))
-
-
-def get_model_tokenizer_emu3_chat(model_dir: str,
-                                  model_info: ModelInfo,
-                                  model_kwargs: Dict[str, Any],
-                                  load_model: bool = True,
-                                  **kwargs):
-    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    # flash attention
-    use_flash_attn = kwargs.pop('use_flash_attn', False)
-    if use_flash_attn:
-        model_config._attn_implementation = 'flash_attention_2'
-    elif use_flash_attn is False:
-        model_config._attn_implementation = 'eager'
-    model, tokenizer = get_model_tokenizer_from_local(model_dir, model_info, model_kwargs, load_model, **kwargs)
-
-    # download and load vision tokenizer
-    from transformers import AutoImageProcessor
-    vq_model = hub.default_hub.download_model('BAAI/Emu3-VisionTokenizer')
-    image_processor = AutoImageProcessor.from_pretrained(vq_model, trust_remote_code=True)
-    image_tokenizer = AutoModel.from_pretrained(vq_model, device_map=model_kwargs['device_map'], trust_remote_code=True)
-    image_tokenizer.requires_grad_(False)
-
-    # load processor
-    if 'local_repo_path' in kwargs:
-        local_repo_path = kwargs['local_repo_path']
-    else:
-        local_repo_path = git_clone_github('https://github.com/baaivision/Emu3.git')
-    sys.path.append(os.path.join(local_repo_path))
-    from emu3.mllm.processing_emu3 import Emu3Processor
-    processor = Emu3Processor(image_processor, image_tokenizer, tokenizer)
-    tokenizer.processor = processor
-
-    return model, tokenizer
-
-
-register_model(
-    ModelMeta(
-        LLMModelType.molmoe,
-        [
-            ModelGroup([
-                Model('BAAI/Emu3-Chat', 'BAAI/Emu3-Chat'),
-            ],
-                       tags=['multi-modal', 'vision'],
-                       requires=['transformers>=4.44.0']),
-        ],
-        TemplateType.emu3_chat,
-        get_model_tokenizer_molmo,
-        support_flash_attn=True,
-        support_gradient_checkpointing=True,
-        architectures=['LlavaForConditionalGeneration'],
+        architectures=['MolmoForCausalLM'],
     ))

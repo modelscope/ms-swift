@@ -5,6 +5,30 @@ from typing import List
 
 class LLMModelType:
     # dense
+    molmo = 'molmo'
+    molmoe_1b = 'molmoe_1b'
+    pixtral = 'pixtral'
+    aya = 'aya'
+    c4ai = 'c4ai'
+    xverse_moe = 'xverse_moe'
+    xverse = 'xverse'
+    seggpt = 'seggpt'
+    bluelm = 'bluelm'
+    mengzi3 = 'mengzi3'
+    reflection = 'reflection'
+    nenotron = 'nenotron'
+    dbrx = 'dbrx'
+    openbuddy_llama3 = 'openbuddy_llama3'
+    openbuddy_llama = 'openbuddy_llama'
+    openbuddy_llama2 = 'openbuddy_llama2'
+    openbuddy_mistral = 'openbuddy_mistral'
+    openbuddy_mixtral = 'openbuddy_mixtral'
+    ziya2 = 'ziya2'
+    zephyr = 'zephyr'
+    openbuddy_zephyr = 'openbuddy_zephyr'
+    sus = 'sus'
+    openbuddy_deepseek = 'openbuddy_deepseek'
+    numina = 'numina'
     qwen = 'qwen'
     codefuse_qwen = 'codefuse_qwen'
     modelscope_agent = 'modelscope_agent'
@@ -41,10 +65,10 @@ class LLMModelType:
 
     mistral = 'mistral'
     mixtral = 'mixtral'
-    codestral = 'codestral'
     nemo = 'nemo'
 
     gemma = 'gemma'
+    gemma2 = 'gemma2'
 
     yuan2 = 'yuan2'
 
@@ -82,6 +106,8 @@ class LLMModelType:
 
 
 class MLLMModelType:
+    got_ocr2 = 'got_ocr2'
+    ovis1_6 = 'ovis1_6'
     qwen_vl = 'qwen_vl'
     qwen_audio = 'qwen_audio'
     qwen2_vl = 'qwen2_vl'

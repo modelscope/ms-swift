@@ -14,11 +14,11 @@ from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_from_lo
 logger = get_logger()
 
 
-def get_model_tokenizer_baichuan_13b(model_dir: str,
-                                     model_config: PretrainedConfig,
-                                     model_kwargs: Dict[str, Any],
-                                     load_model: bool = True,
-                                     **kwargs):
+def get_model_tokenizer_baichuan(model_dir: str,
+                                 model_config: PretrainedConfig,
+                                 model_kwargs: Dict[str, Any],
+                                 load_model: bool = True,
+                                 **kwargs):
     model, tokenizer = get_model_tokenizer_from_local(model_dir, model_config, model_kwargs, load_model, **kwargs)
     # baichuan-13b does not implement the `get_input_embeddings` function
     # fix gradient_checkpointing bug
@@ -40,9 +40,9 @@ register_model(
             ],
                        requires=['transformers<4.34']),
         ],
-        TemplateType.default,
-        get_model_tokenizer_baichuan_13b,
-        architectures=['LlavaForConditionalGeneration'],
+        TemplateType.baichuan,
+        get_model_tokenizer_baichuan,
+        architectures=['BaiChuanForCausalLM'],
         support_vllm=True,
         support_lmdeploy=True,
     ))
@@ -91,7 +91,6 @@ register_model(
     ModelMeta(
         LLMModelType.baichuan2,
         [
-            # llama2
             ModelGroup([
                 Model('baichuan-inc/Baichuan2-7B-Base', 'baichuan-inc/Baichuan2-7B-Base'),
                 Model('baichuan-inc/Baichuan2-7B-Chat', 'baichuan-inc/Baichuan2-7B-Chat'),
@@ -137,7 +136,6 @@ register_model(
     ModelMeta(
         LLMModelType.baichuan2_int4,
         [
-            # llama2
             ModelGroup([
                 Model('baichuan-inc/Baichuan2-7B-Chat-4bits', 'baichuan-inc/Baichuan2-7B-Chat-4bits'),
                 Model('baichuan-inc/Baichuan2-13B-Chat-4bits', 'baichuan-inc/Baichuan2-13B-Chat-4bits'),
@@ -145,6 +143,6 @@ register_model(
                        requires=['bitsandbytes<0.41.2', 'accelerate<0.26']),
         ],
         TemplateType.baichuan,
-        get_model_tokenizer_baichuan2,
+        get_model_tokenizer_baichuan2_int4,
         architectures=['BaichuanForCausalLM'],
     ))

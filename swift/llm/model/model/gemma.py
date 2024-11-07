@@ -24,7 +24,6 @@ register_model(
     ModelMeta(
         MLLMModelType.paligemma,
         [
-            # llama2
             ModelGroup([
                 Model('AI-ModelScope/paligemma-3b-pt-224', 'google/paligemma-3b-pt-224'),
                 Model('AI-ModelScope/paligemma-3b-pt-448', 'google/paligemma-3b-pt-448'),
@@ -47,6 +46,28 @@ register_model(
         [
             ModelGroup(
                 [
+                    Model('AI-ModelScope/gemma-2b', 'google/gemma-2b'),
+                    Model('AI-ModelScope/gemma-2b-it', 'google/gemma-2b-it'),
+                    Model('AI-ModelScope/gemma-7b', 'google/gemma-7b'),
+                    Model('AI-ModelScope/gemma-7b-it', 'google/gemma-7b-it'),
+                ],
+                ignore_file_pattern=[r'.+\.gguf$'],
+                requires=['transformers>=4.38'],
+            ),
+        ],
+        TemplateType.gemma,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['GemmaForCausalLM'],
+        support_flash_attn=True,
+        support_vllm=True,
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.gemma2,
+        [
+            ModelGroup(
+                [
                     Model('LLM-Research/gemma-2-2b', 'google/gemma-2-2b'),
                     Model('LLM-Research/gemma-2-2b-it', 'google/gemma-2-2b-it'),
                     Model('LLM-Research/gemma-2-9b', 'google/gemma-2-9b'),
@@ -55,16 +76,6 @@ register_model(
                     Model('LLM-Research/gemma-2-27b-it', 'google/gemma-2-27b-it'),
                 ],
                 requires=['transformers>=4.42'],
-            ),
-            ModelGroup(
-                [
-                    Model('AI-ModelScope/gemma-2b', 'google/gemma-2b'),
-                    Model('AI-ModelScope/gemma-2b-it', 'google/gemma-2b-it'),
-                    Model('AI-ModelScope/gemma-7b', 'google/gemma-7b'),
-                    Model('AI-ModelScope/gemma-7b-it', 'google/gemma-7b-it'),
-                ],
-                ignore_file_pattern=[r'.+\.gguf$'],
-                requires=['transformers>=4.38'],
             ),
         ],
         TemplateType.gemma,
