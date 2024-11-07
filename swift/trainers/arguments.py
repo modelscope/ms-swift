@@ -2,7 +2,7 @@
 
 import os
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 import torch
 from transformers.training_args import TrainingArguments as HfTrainingArguments
@@ -77,7 +77,7 @@ try:
         pass
 
     @dataclass
-    class PPOConfig(SwiftArgumentsMixin, HfSeq2SeqTrainingArguments, HfPPOConfig):
+    class PPOConfig(SwiftArgumentsMixin, HfPPOConfig):
         pass
 
 except ImportError:

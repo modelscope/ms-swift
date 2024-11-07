@@ -1790,7 +1790,33 @@ class RLHFArguments(SftArguments):
         self._check_simpo()
         self._set_default()
         self.ref_model_free = self.rlhf_type in ['cpo', 'orpo', 'rm']
-        super().__post_init__()
+        from contextlib import nullcontext, contextmanager
+
+        @contextmanager
+        def ppocontext():
+            from transformers.integrations.deepspeed import HfTrainerDeepSpeedConfig
+            from transformers.utils import is_sagemaker_mp_enabled
+            if is_sagemaker_mp_enabled():
+                import smdistributed.modelparallel.torch as smp
+                smp.init()
+            old_trainer_config_process = HfTrainerDeepSpeedConfig.trainer_config_process
+
+            def trainer_config_process(self, args, auto_find_batch_size=False):
+                if args.world_size is None:
+                    if args.distributed_state is not None:
+                        return args.distributed_state.num_processes
+                    elif is_sagemaker_mp_enabled():
+                        return smp.dp_size() if not smp.state.cfg.prescaled_batch else smp.rdp_size()
+                    return 1
+                return old_trainer_config_process(self, args, auto_find_batch_size)
+
+            HfTrainerDeepSpeedConfig.trainer_config_process = trainer_config_process
+            yield
+            HfTrainerDeepSpeedConfig.trainer_config_process = old_trainer_config_process
+
+        context = nullcontext if self.rlhf_type != 'ppo' else ppocontext
+        with context():
+            super().__post_init__()
         self._check_ppo()
 
     def _check_simpo(self):
