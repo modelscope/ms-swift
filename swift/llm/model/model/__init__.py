@@ -1,4 +1,2 @@
-from . import deepseek, glm, internlm, llama, qwen
-
-# TODO
-# from . import model
+from . import (baai, baichuan, deepseek, gemma, glm, internlm, llama, llava, mamba, microsoft, minicpm, mistral, models,
+               qwen, telechat, yi)

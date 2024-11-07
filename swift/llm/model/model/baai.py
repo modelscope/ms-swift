@@ -7,7 +7,7 @@ from modelscope import AutoConfig, AutoModel
 from transformers import PretrainedConfig
 
 from swift.llm import TemplateType
-from ..constant import LLMModelType, MLLMModelType
+from ..constant import MLLMModelType
 from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local,
                         get_model_tokenizer_with_flash_attn, register_model)
 from ..utils import ModelInfo, git_clone_github, safe_snapshot_download
@@ -84,7 +84,7 @@ def get_model_tokenizer_emu3_chat(model_dir: str,
 
 register_model(
     ModelMeta(
-        LLMModelType.emu3_chat,
+        MLLMModelType.emu3_chat,
         [
             ModelGroup([
                 Model('BAAI/Emu3-Chat', 'BAAI/Emu3-Chat'),

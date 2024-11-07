@@ -106,6 +106,7 @@ class LLMModelType:
 
 
 class MLLMModelType:
+    emu3_chat = 'emu3_chat'
     got_ocr2 = 'got_ocr2'
     ovis1_6 = 'ovis1_6'
     qwen_vl = 'qwen_vl'
