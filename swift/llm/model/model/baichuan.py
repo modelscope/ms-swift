@@ -1,12 +1,12 @@
-from types import MethodType
 # Copyright (c) Alibaba, Inc. and its affiliates.
+from types import MethodType
 from typing import Any, Dict
 
-import torch.functional as F
+import torch.nn.functional as F
 from torch import Tensor
 from transformers import BitsAndBytesConfig, PretrainedConfig
 
-from swift.llm import TemplateType
+from swift.llm import TemplateType, ModelInfo
 from swift.utils import get_logger
 from ..constant import LLMModelType
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local, register_model
@@ -33,22 +33,19 @@ register_model(
     ModelMeta(
         LLMModelType.baichuan,
         [
-            # llama2
             ModelGroup(
                 [
-                    # base
+                    Model('baichuan-inc/baichuan-7B', 'baichuan-inc/Baichuan-7B'),
                     Model('baichuan-inc/Baichuan-13B-Base', 'baichuan-inc/Baichuan-13B-Base'),
+                    Model('baichuan-inc/Baichuan-13B-Chat', 'baichuan-inc/Baichuan-13B-Chat'),
                 ],
-                requires=['transformers<4.34'],
-                tags=['multi-modal', 'vision'],
-                ignore_file_pattern=[r'.+\.bin$']),
+                requires=['transformers<4.34']),
         ],
         TemplateType.default,
         get_model_tokenizer_baichuan_13b,
         architectures=['LlavaForConditionalGeneration'],
         support_vllm=True,
         support_lmdeploy=True,
-        support_flash_attn=False,
     ))
 
 
@@ -66,7 +63,7 @@ def patch_baichuan2_lm_head_forward(self, hidden_states: Tensor) -> Tensor:
 
 
 def get_model_tokenizer_baichuan2(model_dir: str,
-                                  config: PretrainedConfig,
+                                  model_info: ModelInfo,
                                   model_kwargs: Dict[str, Any],
                                   load_model: bool = True,
                                   model_config=None,
@@ -78,7 +75,7 @@ def get_model_tokenizer_baichuan2(model_dir: str,
     if isinstance(gradient_checkpointing, (tuple, list)):
         model_config.gradient_checkpointing = gradient_checkpointing[0]
     model, tokenizer = get_model_tokenizer_from_local(
-        model_dir, config, model_kwargs, load_model, model_config=model_config, **kwargs)
+        model_dir, model_info, model_kwargs, load_model, model_config=model_config, **kwargs)
     model_ori = model
     if model is not None:
         if not hasattr(model, 'lm_head'):  # fix awq
@@ -101,19 +98,18 @@ register_model(
                 Model('baichuan-inc/Baichuan2-7B-Chat', 'baichuan-inc/Baichuan2-7B-Chat'),
                 Model('baichuan-inc/Baichuan2-13B-Base', 'baichuan-inc/Baichuan2-13B-Base'),
                 Model('baichuan-inc/Baichuan2-13B-Chat', 'baichuan-inc/Baichuan2-13B-Chat'),
-            ],
-                       ignore_file_pattern=[r'.+\.bin$']),
+            ]),
         ],
         TemplateType.baichuan,
         get_model_tokenizer_baichuan2,
-        architectures=['LlavaForConditionalGeneration'],
+        architectures=['BaichuanForCausalLM'],
         support_vllm=True,
         support_lmdeploy=True,
     ))
 
 
 def get_model_tokenizer_baichuan2_int4(model_dir: str,
-                                       config: PretrainedConfig,
+                                       model_info: ModelInfo,
                                        model_kwargs: Dict[str, Any],
                                        load_model: bool = True,
                                        **kwargs):
@@ -127,7 +123,7 @@ def get_model_tokenizer_baichuan2_int4(model_dir: str,
     if device_map != 'auto':
         accelerate.infer_auto_device_map = lambda *args, **kwargs: device_map
     get_baichuan2_function = kwargs.pop('get_baichuan2_function', get_model_tokenizer_baichuan2)
-    model, tokenizer = get_baichuan2_function(model_dir, config, model_kwargs, load_model, **kwargs)
+    model, tokenizer = get_baichuan2_function(model_dir, model_info, model_kwargs, load_model, **kwargs)
     if device_map != 'auto':
         accelerate.infer_auto_device_map = _old_infer_auto_device_map
     if model is not None:
@@ -146,13 +142,9 @@ register_model(
             ModelGroup([
                 Model('baichuan-inc/Baichuan2-7B-Chat-4bits', 'baichuan-inc/Baichuan2-7B-Chat-4bits'),
                 Model('baichuan-inc/Baichuan2-13B-Chat-4bits', 'baichuan-inc/Baichuan2-13B-Chat-4bits'),
-            ],
-                       ignore_file_pattern=[r'.+\.bin$'],
-                       requires=['bitsandbytes<0.41.2', 'accelerate<0.26']),
+            ], requires=['bitsandbytes<0.41.2', 'accelerate<0.26']),
         ],
         TemplateType.baichuan,
         get_model_tokenizer_baichuan2,
-        architectures=['LlavaForConditionalGeneration'],
-        support_vllm=True,
-        support_lmdeploy=True,
+        architectures=['BaichuanForCausalLM'],
     ))

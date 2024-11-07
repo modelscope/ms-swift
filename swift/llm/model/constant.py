@@ -29,11 +29,22 @@ class LLMModelType:
     internlm = 'internlm'
     internlm2 = 'internlm2'
 
+    minicpm = 'minicpm'
+    minicpm_chatml = 'minicpm_chatml'
+    minicpm3 = 'minicpm3'
+
     longwriter_llama3_1 = 'longwriter_llama3_1'
     longwriter_glm4 = 'longwriter_glm4'
 
     telechat = 'telechat'
     telechat2 = 'telechat2'
+
+    mistral = 'mistral'
+    mixtral = 'mixtral'
+    codestral = 'codestral'
+    nemo = 'nemo'
+
+    gemma = 'gemma'
 
     yuan2 = 'yuan2'
 
@@ -47,16 +58,22 @@ class LLMModelType:
 
     skywork = 'skywork'
 
+    wizardlm2_moe = 'wizardlm2_moe'
+    wizardlm2_awq = 'wizardlm2_awq'
+
     codefuse_codellama = 'codefuse_codellama'
 
     baichuan = 'baichuan'
     baichuan2 = 'baichuan2'
     baichuan2_int4 = 'baichuan2_int4'
 
+    phi2 = 'phi2'
+    phi3 = 'phi3'
     phi3_small = 'phi3_small'
 
     deepseek = 'deepseek'
     deepseek2_5 = 'deepseek2_5'
+    deepseek_math = 'deepseek_math'
 
     # moe
     qwen2_moe = 'qwen2_moe'
@@ -123,6 +140,10 @@ class MLLMModelType:
     idefics3 = 'idefics3'
 
     yi_vl = 'yi_vl'
+
+    paligemma = 'paligemma'
+
+    janus = 'janus'
 
 
 class ModelType(LLMModelType, MLLMModelType):

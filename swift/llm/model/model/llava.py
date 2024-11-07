@@ -123,6 +123,7 @@ register_model(
                     Model('AI-ModelScope/llava-onevision-qwen2-0.5b-ov-hf',
                           'llava-hf/llava-onevision-qwen2-0.5b-ov-hf'),
                     Model('AI-ModelScope/llava-onevision-qwen2-7b-ov-hf', 'llava-hf/llava-onevision-qwen2-7b-ov-hf'),
+                    Model('AI-ModelScope/llava-onevision-qwen2-72b-ov-hf', 'llava-hf/llava-onevision-qwen2-72b-ov-hf'),
                 ],
                 requires=['transformers>=4.45.0.dev0'],
                 tags=['multi-modal', 'vision', 'video'],
@@ -209,7 +210,6 @@ register_model(
             ModelGroup(
                 [
                     Model('swift/llava-v1.6-mistral-7b-hf', 'llava-hf/llava-v1.6-mistral-7b-hf'),
-                    Model('swift/llava-v1.6-vicuna-13b-hf', 'llava-hf/llava-v1.6-vicuna-13b-hf'),
                 ],
                 requires=['transformers>=4.39'],
                 tags=['multi-modal', 'vision'],
@@ -412,6 +412,25 @@ register_model(
         ],
         TemplateType.llava_qwen,
         partial(get_model_tokenizer_llava, llm_model_type='next_qwen'),
+        architectures=['LlavaForConditionalGeneration'],
+        support_flash_attn=True,
+    ))
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.llama3_llava_next,
+        [
+            ModelGroup(
+                [
+                    Model('AI-ModelScope/llava-onevision-qwen2-72b-ov-hf', 'llava-hf/llava-onevision-qwen2-72b-ov-hf'),
+                ],
+                requires=['transformers>=4.45'],
+                tags=['multi-modal', 'vision', 'video'],
+            ),
+        ],
+        TemplateType.llava_onevision_qwen,
+        get_model_tokenizer_llava_onevision,
         architectures=['LlavaForConditionalGeneration'],
         support_flash_attn=True,
     ))

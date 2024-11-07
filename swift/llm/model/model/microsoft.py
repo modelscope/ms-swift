@@ -168,3 +168,26 @@ register_model(
         support_vllm=True,
         support_gradient_checkpointing=False,
     ))
+
+
+register_model(
+    ModelMeta(
+        LLMModelType.phi3,
+        [
+            ModelGroup([
+                Model('LLM-Research/Phi-3-mini-128k-instruct', 'microsoft/Phi-3-mini-128k-instruct'),
+                Model('LLM-Research/Phi-3-medium-4k-instruct', 'microsoft/Phi-3-medium-4k-instruct'),
+                Model('LLM-Research/Phi-3-medium-128k-instruct', 'microsoft/Phi-3-medium-128k-instruct'),
+                Model('LLM-Research/Phi-3-mini-4k-instruct', 'microsoft/Phi-3-mini-4k-instruct'),
+                Model('LLM-Research/Phi-3.5-mini-instruct', 'microsoft/Phi-3.5-mini-instruct'),
+            ], requires=['transformers>=4.36']),
+            ModelGroup([
+                Model('LLM-Research/Phi-3.5-MoE-instruct', 'microsoft/Phi-3.5-MoE-instruct'),
+            ], requires=['transformers>=4.36'], tags=['moe']),
+        ],
+        TemplateType.phi3,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['MambaForCausalLM'],
+        support_flash_attn=True,
+        support_vllm=True,
+    ))

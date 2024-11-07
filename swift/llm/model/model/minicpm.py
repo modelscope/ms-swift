@@ -152,3 +152,80 @@ register_model(
         support_flash_attn=True,
         support_vllm=True,
     ))
+
+
+register_model(
+    ModelMeta(
+        LLMModelType.minicpm,
+        [
+            ModelGroup(
+                [
+                    Model('OpenBMB/MiniCPM-2B-sft-fp32', 'openbmb/MiniCPM-2B-sft-fp32'),
+                    Model('OpenBMB/MiniCPM-2B-dpo-fp32', 'openbmb/MiniCPM-2B-dpo-fp32'),
+                    Model('OpenBMB/MiniCPM-1B-sft-bf16', 'openbmb/MiniCPM-1B-sft-bf16'),
+                ],
+                requires=['transformers>=4.36.0'],
+            ),
+        ],
+        TemplateType.minicpm,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['Gemma2ForCausalLM'],
+        support_flash_attn=True,
+        support_vllm=True,
+    ))
+
+
+register_model(
+    ModelMeta(
+        LLMModelType.minicpm_chatml,
+        [
+            ModelGroup(
+                [
+                    Model('OpenBMB/MiniCPM-2B-128k', 'openbmb/MiniCPM-2B-128k'),
+                ],
+                requires=['transformers>=4.36.0'],
+            ),
+        ],
+        TemplateType.chatml,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['Gemma2ForCausalLM'],
+        support_flash_attn=True,
+        support_vllm=True,
+    ))
+
+
+register_model(
+    ModelMeta(
+        LLMModelType.minicpm_chatml,
+        [
+            ModelGroup(
+                [
+                    Model('OpenBMB/MiniCPM-2B-128k', 'openbmb/MiniCPM-2B-128k'),
+                ],
+                requires=['transformers>=4.36.0'],
+            ),
+        ],
+        TemplateType.chatml,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['Gemma2ForCausalLM'],
+        support_flash_attn=True,
+        support_vllm=True,
+    ))
+
+
+register_model(
+    ModelMeta(
+        LLMModelType.minicpm3,
+        [
+            ModelGroup(
+                [
+                    Model('OpenBMB/MiniCPM3-4B', 'openbmb/MiniCPM3-4B'),
+                ],
+                requires=['transformers>=4.36.0'],
+            ),
+        ],
+        TemplateType.chatml,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['Gemma2ForCausalLM'],
+        support_flash_attn=True,
+    ))
