@@ -1,22 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import Any, Dict
-
-from transformers import PretrainedConfig
 
 from swift.llm import TemplateType
 from ..constant import LLMModelType
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local, register_model
-
-
-def get_model_tokenizer_telechat(model_dir: str,
-                                 config: PretrainedConfig,
-                                 model_kwargs: Dict[str, Any],
-                                 load_model: bool = True,
-                                 **kwargs):
-    attn_type = AttentionImpl(kwargs.pop('use_flash_attn', None), kwargs.pop('attn_type', None))
-    config.flash_attn = attn_type.to_bool()
-    return get_model_tokenizer_from_local(model_dir, config, model_kwargs, load_model, **kwargs)
-
 
 register_model(
     ModelMeta(
@@ -28,9 +14,9 @@ register_model(
             ]),
         ],
         TemplateType.telechat,
-        get_model_tokenizer_telechat,
+        get_model_tokenizer_from_local,
         support_flash_attn=True,
-        architectures=['LlavaForConditionalGeneration'],
+        architectures=['TelechatForCausalLM'],
     ))
 
 register_model(
@@ -46,7 +32,7 @@ register_model(
             ], requires=['auto_gptq>=0.5']),
         ],
         TemplateType.telechat_v2,
-        get_model_tokenizer_telechat,
+        get_model_tokenizer_from_local,
         support_flash_attn=True,
-        architectures=['LlavaForConditionalGeneration'],
+        architectures=['TelechatForCausalLM'],
     ))

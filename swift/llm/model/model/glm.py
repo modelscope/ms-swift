@@ -4,6 +4,7 @@ from typing import Any, Dict, Type
 
 import torch
 import transformers
+from modelscope import AutoConfig
 from packaging import version
 from transformers import AutoTokenizer, PretrainedConfig, PreTrainedTokenizerBase
 from transformers.dynamic_module_utils import get_class_from_dynamic_module

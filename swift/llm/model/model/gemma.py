@@ -1,10 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Any, Dict
 
-from swift.llm import TemplateType, ModelInfo
-from ..constant import MLLMModelType, LLMModelType
-from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local, register_model, \
-    get_model_tokenizer_with_flash_attn
+from swift.llm import ModelInfo, TemplateType
+from ..constant import LLMModelType, MLLMModelType
+from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local,
+                        get_model_tokenizer_with_flash_attn, register_model)
 
 
 def get_model_tokenizer_paligemma_vision(model_dir: str,
@@ -24,15 +24,14 @@ register_model(
     ModelMeta(
         MLLMModelType.paligemma,
         [
-            # llama2
             ModelGroup([
                 Model('AI-ModelScope/paligemma-3b-pt-224', 'google/paligemma-3b-pt-224'),
                 Model('AI-ModelScope/paligemma-3b-pt-448', 'google/paligemma-3b-pt-448'),
                 Model('AI-ModelScope/paligemma-3b-pt-896', 'google/paligemma-3b-pt-896'),
                 Model('AI-ModelScope/paligemma-3b-mix-448', 'google/paligemma-3b-mix-448'),
             ],
-           requires=['transformers>=4.41'],
-           tags=['multi-modal', 'vision']),
+                       requires=['transformers>=4.41'],
+                       tags=['multi-modal', 'vision']),
         ],
         TemplateType.paligemma,
         get_model_tokenizer_paligemma_vision,
@@ -41,10 +40,31 @@ register_model(
         support_vllm=True,
     ))
 
-
 register_model(
     ModelMeta(
         LLMModelType.gemma,
+        [
+            ModelGroup(
+                [
+                    Model('AI-ModelScope/gemma-2b', 'google/gemma-2b'),
+                    Model('AI-ModelScope/gemma-2b-it', 'google/gemma-2b-it'),
+                    Model('AI-ModelScope/gemma-7b', 'google/gemma-7b'),
+                    Model('AI-ModelScope/gemma-7b-it', 'google/gemma-7b-it'),
+                ],
+                ignore_file_pattern=[r'.+\.gguf$'],
+                requires=['transformers>=4.38'],
+            ),
+        ],
+        TemplateType.gemma,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['GemmaForCausalLM'],
+        support_flash_attn=True,
+        support_vllm=True,
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.gemma2,
         [
             ModelGroup(
                 [
@@ -56,16 +76,6 @@ register_model(
                     Model('LLM-Research/gemma-2-27b-it', 'google/gemma-2-27b-it'),
                 ],
                 requires=['transformers>=4.42'],
-            ),
-            ModelGroup(
-                [
-                    Model('AI-ModelScope/gemma-2b', 'google/gemma-2b'),
-                    Model('AI-ModelScope/gemma-2b-it', 'google/gemma-2b-it'),
-                    Model('AI-ModelScope/gemma-7b', 'google/gemma-7b'),
-                    Model('AI-ModelScope/gemma-7b-it', 'google/gemma-7b-it'),
-                ],
-                ignore_file_pattern=[r'.+\.gguf$'],
-                requires=['transformers>=4.38'],
             ),
         ],
         TemplateType.gemma,

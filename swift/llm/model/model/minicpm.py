@@ -1,8 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from contextlib import contextmanager
-from functools import partial, wraps
+from functools import partial
 from types import MethodType
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 from transformers import PretrainedConfig
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
@@ -11,7 +10,7 @@ from swift.llm import TemplateType
 from ..constant import LLMModelType, MLLMModelType
 from ..patcher import patch_fixed_device, patch_output_clone
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
-from ..utils import ignore_check_imports, use_submodel_func
+from ..utils import ModelInfo, ignore_check_imports, use_submodel_func
 from .deepseek import get_model_tokenizer_deepseek_moe
 
 register_model(
@@ -28,7 +27,7 @@ register_model(
         ],
         TemplateType.minicpm,
         get_model_tokenizer_deepseek_moe,
-        architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
+        architectures=['MiniCPMForCausalLM'],
         support_flash_attn=True,
         support_vllm=True,
     ))
@@ -57,13 +56,13 @@ def _patch_minicpm_v_device_map(model) -> None:
 
 
 def get_model_tokenizer_minicpm_v(model_dir: str,
-                                  config: PretrainedConfig,
+                                  model_info: ModelInfo,
                                   model_kwargs: Dict[str, Any],
                                   load_model: bool = True,
                                   **kwargs):
-    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, config, model_kwargs, load_model, **kwargs)
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
     if load_model:
-        model.resampler.to(config.torch_dtype)  # fix float32
+        model.resampler.to(model_info.torch_dtype)  # fix float32
         _patch_minicpm_v_device_map(model)
         func_list = ['generate', 'get_input_embeddings', 'forward']
         use_submodel_func(model, 'llm', func_list)
@@ -88,14 +87,13 @@ register_model(
         ],
         TemplateType.minicpmv,
         get_model_tokenizer_minicpm_v,
-        architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
+        architectures=['MiniCPMV'],
         support_flash_attn=True,
-        support_vllm=True,
     ))
 
 
 def get_model_tokenizer_minicpm_v_2_x(model_dir: str,
-                                      config: PretrainedConfig,
+                                      model_info: ModelInfo,
                                       model_kwargs: Dict[str, Any],
                                       load_model: bool = True,
                                       **kwargs):
@@ -106,7 +104,7 @@ def get_model_tokenizer_minicpm_v_2_x(model_dir: str,
         with ignore_check_imports():
             model_cls = get_class_from_dynamic_module('modeling_navit_siglip.SiglipVisionTransformer', model_dir)
             model_cls._no_split_modules = []
-    model, tokenizer = get_model_tokenizer_minicpm_v(model_dir, config, model_kwargs, load_model, **kwargs)
+    model, tokenizer = get_model_tokenizer_minicpm_v(model_dir, model_info, model_kwargs, load_model, **kwargs)
     tokenizer.processor = processor
     if load_model:
         embedding = model.get_input_embeddings()
@@ -124,12 +122,12 @@ register_model(
                     Model('OpenBMB/MiniCPM-V-2_6', 'openbmb/MiniCPM-V-2_6'),
                 ],
                 requires=['timm', 'transformers>=4.36'],
-                tags=['multi-modal', 'vision'],
+                tags=['multi-modal', 'vision', 'video'],
             ),
         ],
         TemplateType.minicpmv2_6,
         partial(get_model_tokenizer_minicpm_v_2_x, version='v2.6'),
-        architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
+        architectures=['MiniCPMV'],
         support_flash_attn=True,
         support_vllm=True,
     ))
@@ -148,32 +146,27 @@ register_model(
         ],
         TemplateType.minicpmv2_5,
         get_model_tokenizer_minicpm_v_2_x,
-        architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
+        architectures=['MiniCPMV'],
         support_flash_attn=True,
         support_vllm=True,
     ))
-
 
 register_model(
     ModelMeta(
         LLMModelType.minicpm,
         [
-            ModelGroup(
-                [
-                    Model('OpenBMB/MiniCPM-2B-sft-fp32', 'openbmb/MiniCPM-2B-sft-fp32'),
-                    Model('OpenBMB/MiniCPM-2B-dpo-fp32', 'openbmb/MiniCPM-2B-dpo-fp32'),
-                    Model('OpenBMB/MiniCPM-1B-sft-bf16', 'openbmb/MiniCPM-1B-sft-bf16'),
-                ],
-                requires=['transformers>=4.36.0'],
-            ),
+            ModelGroup([
+                Model('OpenBMB/MiniCPM-2B-sft-fp32', 'openbmb/MiniCPM-2B-sft-fp32'),
+                Model('OpenBMB/MiniCPM-2B-dpo-fp32', 'openbmb/MiniCPM-2B-dpo-fp32'),
+                Model('OpenBMB/MiniCPM-1B-sft-bf16', 'openbmb/MiniCPM-1B-sft-bf16'),
+            ], ),
         ],
         TemplateType.minicpm,
         get_model_tokenizer_with_flash_attn,
-        architectures=['Gemma2ForCausalLM'],
+        architectures=['MiniCPMForCausalLM'],
         support_flash_attn=True,
         support_vllm=True,
     ))
-
 
 register_model(
     ModelMeta(
@@ -188,30 +181,10 @@ register_model(
         ],
         TemplateType.chatml,
         get_model_tokenizer_with_flash_attn,
-        architectures=['Gemma2ForCausalLM'],
+        architectures=['MiniCPMForCausalLM'],
         support_flash_attn=True,
         support_vllm=True,
     ))
-
-
-register_model(
-    ModelMeta(
-        LLMModelType.minicpm_chatml,
-        [
-            ModelGroup(
-                [
-                    Model('OpenBMB/MiniCPM-2B-128k', 'openbmb/MiniCPM-2B-128k'),
-                ],
-                requires=['transformers>=4.36.0'],
-            ),
-        ],
-        TemplateType.chatml,
-        get_model_tokenizer_with_flash_attn,
-        architectures=['Gemma2ForCausalLM'],
-        support_flash_attn=True,
-        support_vllm=True,
-    ))
-
 
 register_model(
     ModelMeta(
@@ -226,6 +199,6 @@ register_model(
         ],
         TemplateType.chatml,
         get_model_tokenizer_with_flash_attn,
-        architectures=['Gemma2ForCausalLM'],
+        architectures=['MiniCPM3ForCausalLM'],
         support_flash_attn=True,
     ))

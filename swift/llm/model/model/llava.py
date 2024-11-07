@@ -5,17 +5,16 @@ from functools import partial, wraps
 from typing import Any, Dict
 
 from modelscope import AutoConfig
-from transformers import AutoTokenizer, PretrainedConfig
+from transformers import PretrainedConfig
 
 from swift.llm import TemplateType
-from ..constant import LLMModelType, MLLMModelType
-from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,
-                        get_model_tokenizer_with_flash_attn, register_model)
-from ..utils import git_clone_github, safe_snapshot_download
+from ..constant import MLLMModelType
+from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
+from ..utils import ModelInfo, git_clone_github, safe_snapshot_download
 
 
 def get_model_tokenizer_llava_llama(model_dir: str,
-                                    model_config: PretrainedConfig,
+                                    model_info: ModelInfo,
                                     model_kwargs: Dict[str, Any],
                                     load_model: bool = True,
                                     **kwargs):
@@ -25,7 +24,7 @@ def get_model_tokenizer_llava_llama(model_dir: str,
     processor = AutoProcessor.from_pretrained(model_dir)
     model, tokenizer = get_model_tokenizer_with_flash_attn(
         model_dir,
-        model_config,
+        model_info,
         model_kwargs,
         load_model,
         model_config=model_config,
@@ -39,16 +38,11 @@ register_model(
     ModelMeta(
         MLLMModelType.llava_llama,
         [
-            # llama2
-            ModelGroup(
-                [
-                    # base
-                    Model('AI-ModelScope/llava-llama-3-8b-v1_1-transformers',
-                          'xtuner/llava-llama-3-8b-v1_1-transformers'),
-                ],
-                requires=['transformers>=4.36'],
-                tags=['multi-modal', 'vision'],
-                ignore_file_pattern=[r'.+\.bin$']),
+            ModelGroup([
+                Model('AI-ModelScope/llava-llama-3-8b-v1_1-transformers', 'xtuner/llava-llama-3-8b-v1_1-transformers'),
+            ],
+                       requires=['transformers>=4.36'],
+                       tags=['multi-modal', 'vision']),
         ],
         TemplateType.llava_llama_instruct,
         get_model_tokenizer_llava_llama,
@@ -415,7 +409,6 @@ register_model(
         architectures=['LlavaForConditionalGeneration'],
         support_flash_attn=True,
     ))
-
 
 register_model(
     ModelMeta(
