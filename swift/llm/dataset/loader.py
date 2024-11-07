@@ -30,15 +30,13 @@ class DatasetSyntax:
     def __post_init__(self):
         if self.use_hf is None:
             self.use_hf = use_hf_hub()
-        if self.dataset in DATASET_MAPPING:
-            self.dataset_type = 'name'
-        elif os.path.isfile(self.dataset) or self.dataset.startswith('/'):
+        if os.path.isfile(self.dataset) or self.dataset.startswith('/'):
             self.dataset_type = 'path'
             assert os.path.isfile(self.dataset)
         elif self.use_hf:
-            self.dataset_type = 'hf_repo'
+            self.dataset_type = 'hf'
         else:
-            self.dataset_type = 'ms_repo'
+            self.dataset_type = 'ms'
 
     def get_raw(self):
         use_hf_mapping = {None: '', 1: 'HF::', 0: 'MS::'}
@@ -60,41 +58,39 @@ class DatasetSyntax:
         else:
             dataset, subsets = DatasetLoader._safe_split(part1, ':', True)
 
-        dataset_name = dataset.strip()
         if use_hf is not None:
             use_hf = {'ms': False, 'hf': True}[use_hf.strip().lower()]
         if subsets is not None:
             subsets = [subset.strip() for subset in subsets.split('/')]
         if dataset_sample is not None:
             dataset_sample = int(dataset_sample)
-        return cls(dataset_name, use_hf, subsets or [], dataset_sample)
+        return cls(dataset.strip(), use_hf, subsets or [], dataset_sample)
 
     def to_dict(self):
         # Convert to a format that can be parsed by register_dataset_info.
-        assert self.dataset_type != 'name'
         res = {}
-        mapping = {'path': 'dataset_path', 'hf_repo': 'hf_dataset_id', 'ms_repo': 'ms_dataset_id'}
+        mapping = {'path': 'dataset_path', 'hf': 'hf_dataset_id', 'ms': 'ms_dataset_id'}
         key = mapping[self.dataset_type]
         res[key] = self.dataset
         return res
 
 
-_dataset_name_mapping = None
+_dataset_meta_mapping = None
 
 
-def get_dataset_name_mapping() -> Dict[str, str]:
-    global _dataset_name_mapping
-    if _dataset_name_mapping is not None:
-        return _dataset_name_mapping
-    _dataset_name_mapping = {}
-    for dataset_name, dataset_meta in DATASET_MAPPING.items():
+def get_dataset_meta_mapping() -> Dict[str, str]:
+    global _dataset_meta_mapping
+    if _dataset_meta_mapping is not None:
+        return _dataset_meta_mapping
+    _dataset_meta_mapping = {}
+    for dataset_meta in DATASET_MAPPING.values():
         if dataset_meta.dataset_path is not None:
-            _dataset_name_mapping[('path', dataset_meta.dataset_path)] = dataset_name
+            _dataset_meta_mapping[('path', dataset_meta.dataset_path.lower())] = dataset_meta
         if dataset_meta.ms_dataset_id is not None:
-            _dataset_name_mapping[('ms', dataset_meta.ms_dataset_id)] = dataset_name
+            _dataset_meta_mapping[('ms', dataset_meta.ms_dataset_id.lower())] = dataset_meta
         if dataset_meta.hf_dataset_id is not None:
-            _dataset_name_mapping[('hf', dataset_meta.hf_dataset_id)] = dataset_name
-    return _dataset_name_mapping
+            _dataset_meta_mapping[('hf', dataset_meta.hf_dataset_id.lower())] = dataset_meta
+    return _dataset_meta_mapping
 
 
 class DatasetLoader:
@@ -313,7 +309,7 @@ class DatasetLoader:
                 revision = dataset_meta.ms_revision
                 dataset_str = dataset_str_f.format(hub='ModelScope', dataset_id=dataset_id)
             logger.info(dataset_str)
-            assert dataset_id is not None, (f'dataset_name: {dataset_syntax.dataset}, use_hf: {dataset_syntax.use_hf}, '
+            assert dataset_id is not None, (f'dataset: {dataset_syntax.dataset}, use_hf: {dataset_syntax.use_hf}, '
                                             f'dataset_id: {dataset_id}.')
             datasets = []
             for subset in subsets:
@@ -356,27 +352,22 @@ class DatasetLoader:
         return part
 
     @staticmethod
-    def _parse_datasets(datasets: List[str]) -> List[str]:
-        # ms_dataset_id/hf_dataset_id/dataset_path -> dataset_name mapping
-        dataset_name_mapping = get_dataset_name_mapping()
+    def parse_dataset(datasets: List[str]) -> List[Tuple[DatasetSyntax, DatasetMeta]]:
+        # ms_dataset_id/hf_dataset_id/dataset_path -> dataset_syntax, dataset_meta
+        dataset_meta_mapping = get_dataset_meta_mapping()
 
         # register_dataset
-        res_datasets: List[str] = []  # dataset_names
+        res_datasets: List[str] = []
         register_idx = 0
-        dataset_info = {}
+        dataset_info = []
         for dataset in datasets:
-            d_info = DatasetSyntax.parse(dataset)
-            if d_info.dataset_type == 'name':
-                res_datasets.append(dataset)
-            else:
-                # dataset_path/dataset_id
-                dataset_name = dataset_name_mapping.get((d_info.dataset_type, d_info.dataset))
-                if dataset_name is None:
-                    # This dataset needs to be registered.
-                    dataset_name = f'_{register_idx}'
-                    register_idx += 1
-                    dataset_info[dataset_name] = d_info.to_dict()
-                res_datasets.append(dataset.replace(d_info.dataset, dataset_name))
+            dataset_syntax = DatasetSyntax.parse(dataset)
+            dataset_meta = dataset_meta_mapping.get((dataset_syntax.dataset_type, dataset_syntax.dataset.lower()))
+            if dataset_meta is None:
+                # This dataset needs to be registered.
+                register_idx += 1
+                dataset_info.append(dataset_syntax.to_dict())
+            res_datasets.append((dataset_syntax, dataset_meta))
         register_dataset_info(dataset_info)
 
         return res_datasets
@@ -414,7 +405,6 @@ def load_dataset(
         datasets = [datasets]
     if isinstance(dataset_seed, int):
         dataset_seed = np.random.RandomState(dataset_seed)
-    datasets: List[str] = DatasetLoader._parse_datasets(datasets)  # to dataset_names and register
     train_datasets = []
     val_datasets = []
     load_kwargs = {
@@ -426,11 +416,7 @@ def load_dataset(
         'model_author': model_author,
         'streaming': streaming,
     }
-    for dataset in datasets:
-        dataset_syntax = DatasetSyntax.parse(dataset)
-        assert dataset_syntax.dataset_type == 'name'
-        dataset_name = dataset_syntax.dataset
-        dataset_meta = DATASET_MAPPING[dataset_name]
+    for dataset_syntax, dataset_meta in DatasetLoader.parse_dataset(datasets):
         load_function = dataset_meta.load_function
         train_dataset = load_function(dataset_syntax, dataset_meta, **load_kwargs)
         train_dataset, val_dataset = DatasetLoader.post_process(

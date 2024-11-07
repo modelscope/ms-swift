@@ -26,7 +26,7 @@ class SubsetDataset:
     split: Optional[List[str]] = None
     preprocess_func: Optional[PreprocessFunc] = None
 
-    # If the dataset_name does not specify subsets, this parameter determines whether the dataset is used.
+    # If the dataset does not specify subsets, this parameter determines whether the dataset is used.
     is_weak_subset: bool = False
 
     def __post_init__(self):
@@ -128,18 +128,17 @@ def _preprocess_d_info(d_info: Dict[str, Any], *, base_dir: Optional[str] = None
     return d_info
 
 
-def _register_d_info(dataset_name: str, d_info: Dict[str, Any], *, base_dir: Optional[str] = None) -> None:
+def _register_d_info(d_info: Dict[str, Any], *, base_dir: Optional[str] = None) -> None:
     """Register a single dataset to dataset mapping
 
     Args:
-        dataset_name: The dataset name
         d_info: The dataset info
     """
     d_info = _preprocess_d_info(d_info, base_dir=base_dir)
-    register_dataset(DatasetMeta(dataset_name, **d_info))
+    register_dataset(DatasetMeta(**d_info))
 
 
-def register_dataset_info(dataset_info: Union[str, Dict[str, Any], None] = None) -> None:
+def register_dataset_info(dataset_info: Union[str, List[str], None] = None) -> None:
     """Register dataset from the `dataset_info.json` or a custom dataset info file
     This is used to deal with the datasets defined in the json info file.
 
@@ -149,7 +148,7 @@ def register_dataset_info(dataset_info: Union[str, Dict[str, Any], None] = None)
     # dataset_info_path: path, json or None
     if dataset_info is None:
         dataset_info = os.path.join(os.path.dirname(__file__), 'data', 'dataset_info.json')
-    assert isinstance(dataset_info, (str, dict))
+    assert isinstance(dataset_info, (str, list))
     base_dir = None
     log_msg = None
     if isinstance(dataset_info, str):
@@ -163,8 +162,8 @@ def register_dataset_info(dataset_info: Union[str, Dict[str, Any], None] = None)
             dataset_info = json.loads(dataset_info)  # json
     if len(dataset_info) == 0:
         return
-    for dataset_name, d_info in dataset_info.items():
-        _register_d_info(dataset_name, d_info, base_dir=base_dir)
+    for d_info in dataset_info:
+        _register_d_info(d_info, base_dir=base_dir)
 
     if log_msg is None:
         log_msg = dataset_info if len(dataset_info) < 5 else list(dataset_info.keys())
