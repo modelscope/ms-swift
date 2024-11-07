@@ -10,7 +10,7 @@ def patch_auto_tokenizer(tokenizer: PreTrainedTokenizerBase):
     _old_from_pretrained = AutoTokenizer.from_pretrained
 
     @wraps(_old_from_pretrained)
-    def _from_pretrained(self, *args, **kwargs):
+    def _from_pretrained(*args, **kwargs):
         return tokenizer
 
     AutoTokenizer.from_pretrained = _from_pretrained
@@ -23,8 +23,8 @@ def patch_auto_config(config: PretrainedConfig):
     _old_from_pretrained = AutoConfig.from_pretrained
 
     @wraps(_old_from_pretrained)
-    def _from_pretrained(self, *args, **kwargs):
-        return config
+    def _from_pretrained(*args, **kwargs):
+        return (config, {}) if 'return_unused_kwargs' in kwargs else config
 
     AutoConfig.from_pretrained = _from_pretrained
     yield
