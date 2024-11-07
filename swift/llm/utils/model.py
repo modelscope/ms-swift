@@ -3396,6 +3396,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     function_kwargs={'gptq_bits': 4},
     torch_dtype=torch.float16,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
@@ -3407,6 +3408,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     function_kwargs={'gptq_bits': 8},
     torch_dtype=torch.float16,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
@@ -3418,6 +3420,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     function_kwargs={'gptq_bits': 4},
     torch_dtype=torch.float16,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
@@ -3429,6 +3432,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     function_kwargs={'gptq_bits': 8},
     torch_dtype=torch.float16,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
@@ -3440,6 +3444,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     function_kwargs={'gptq_bits': 4},
     torch_dtype=torch.float16,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
@@ -3451,6 +3456,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     function_kwargs={'gptq_bits': 8},
     torch_dtype=torch.float16,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
@@ -3462,6 +3468,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     function_kwargs={'gptq_bits': 4},
     torch_dtype=torch.float16,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
@@ -3473,6 +3480,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     function_kwargs={'gptq_bits': 8},
     torch_dtype=torch.float16,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
@@ -3484,7 +3492,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
-    support_lmdeploy=False,
+    support_lmdeploy=True,
     function_kwargs={'is_awq': True},
     torch_dtype=torch.float16,
     requires=['transformers>=4.37', 'autoawq'],
@@ -3827,6 +3835,7 @@ for model_size in ['0.5B', '1.5B', '3B', '7B', '14B', '32B', '72B']:
             get_model_tokenizer_qwen2_chat,
             support_flash_attn=True,
             support_vllm=True,
+            support_lmdeploy=True,
             function_kwargs={'gptq_bits': quant_bits},
             torch_dtype=torch.float16,
             requires=['auto_gptq>=0.5', 'transformers>=4.37'],
@@ -3840,6 +3849,7 @@ for model_size in ['0.5B', '1.5B', '3B', '7B', '14B', '32B', '72B']:
         get_model_tokenizer_qwen2_chat,
         support_flash_attn=True,
         support_vllm=True,
+        support_lmdeploy=True,
         function_kwargs={'is_awq': True},
         torch_dtype=torch.float16,
         requires=['transformers>=4.37', 'autoawq'],
@@ -4034,6 +4044,7 @@ for model_size in ['2B', '7B', '72B']:
     function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='Qwen/Qwen1.5-0.5B-Chat-GPTQ-Int4')
 @register_model(
     ModelType.qwen1half_0_5b_chat_int8,
@@ -4045,6 +4056,7 @@ for model_size in ['2B', '7B', '72B']:
     function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='Qwen/Qwen1.5-0.5B-Chat-GPTQ-Int8')
 @register_model(
     ModelType.qwen1half_1_8b_chat_int4,
@@ -4056,6 +4068,7 @@ for model_size in ['2B', '7B', '72B']:
     function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='Qwen/Qwen1.5-1.8B-Chat-GPTQ-Int4')
 @register_model(
     ModelType.qwen1half_1_8b_chat_int8,
@@ -4067,6 +4080,7 @@ for model_size in ['2B', '7B', '72B']:
     function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='Qwen/Qwen1.5-1.8B-Chat-GPTQ-Int8')
 @register_model(
     ModelType.qwen1half_4b_chat_int4,
@@ -4078,6 +4092,7 @@ for model_size in ['2B', '7B', '72B']:
     function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='Qwen/Qwen1.5-4B-Chat-GPTQ-Int4')
 @register_model(
     ModelType.qwen1half_4b_chat_int8,
@@ -4089,6 +4104,7 @@ for model_size in ['2B', '7B', '72B']:
     function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='Qwen/Qwen1.5-4B-Chat-GPTQ-Int8')
 @register_model(
     ModelType.qwen1half_7b_chat_int4,
@@ -4100,6 +4116,7 @@ for model_size in ['2B', '7B', '72B']:
     function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='Qwen/Qwen1.5-7B-Chat-GPTQ-Int4')
 @register_model(
     ModelType.qwen1half_7b_chat_int8,
@@ -4111,6 +4128,7 @@ for model_size in ['2B', '7B', '72B']:
     function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='Qwen/Qwen1.5-7B-Chat-GPTQ-Int8')
 @register_model(
     ModelType.qwen1half_14b_chat_int4,
@@ -4122,6 +4140,7 @@ for model_size in ['2B', '7B', '72B']:
     function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='Qwen/Qwen1.5-14B-Chat-GPTQ-Int4')
 @register_model(
     ModelType.qwen1half_14b_chat_int8,
@@ -4133,6 +4152,7 @@ for model_size in ['2B', '7B', '72B']:
     function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='Qwen/Qwen1.5-14B-Chat-GPTQ-Int8')
 @register_model(
     ModelType.qwen1half_32b_chat_int4,
@@ -4144,6 +4164,7 @@ for model_size in ['2B', '7B', '72B']:
     function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='Qwen/Qwen1.5-32B-Chat-GPTQ-Int4')
 @register_model(
     ModelType.qwen1half_72b_chat_int4,
@@ -4155,6 +4176,7 @@ for model_size in ['2B', '7B', '72B']:
     function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='Qwen/Qwen1.5-72B-Chat-GPTQ-Int4')
 @register_model(
     ModelType.qwen1half_110b_chat_int4,
@@ -4166,6 +4188,7 @@ for model_size in ['2B', '7B', '72B']:
     function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='Qwen/Qwen1.5-110B-Chat-GPTQ-Int4')
 @register_model(
     ModelType.qwen1half_72b_chat_int8,
@@ -4177,6 +4200,7 @@ for model_size in ['2B', '7B', '72B']:
     function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='Qwen/Qwen1.5-72B-Chat-GPTQ-Int8')
 @register_model(
     ModelType.qwen1half_moe_a2_7b_chat_int4,
