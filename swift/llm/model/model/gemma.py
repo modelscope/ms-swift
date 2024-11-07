@@ -1,29 +1,28 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Any, Dict
 
-from transformers import PretrainedConfig
-
-from swift.llm import TemplateType
-from ..constant import LLMModelType
-from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local, register_model
+from swift.llm import TemplateType, ModelInfo
+from ..constant import MLLMModelType, LLMModelType
+from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local, register_model, \
+    get_model_tokenizer_with_flash_attn
 
 
 def get_model_tokenizer_paligemma_vision(model_dir: str,
-                                         model_config: PretrainedConfig,
+                                         model_info: ModelInfo,
                                          model_kwargs: Dict[str, Any],
                                          load_model: bool = True,
                                          **kwargs):
     from transformers import AutoProcessor, PaliGemmaForConditionalGeneration
     processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
     model, tokenizer = get_model_tokenizer_from_local(
-        model_dir, model_config, model_kwargs, load_model, automodel_class=PaliGemmaForConditionalGeneration, **kwargs)
+        model_dir, model_info, model_kwargs, load_model, automodel_class=PaliGemmaForConditionalGeneration, **kwargs)
     tokenizer.processor = processor
     return model, tokenizer
 
 
 register_model(
     ModelMeta(
-        LLMModelType.mamba,
+        MLLMModelType.paligemma,
         [
             # llama2
             ModelGroup([
@@ -32,13 +31,46 @@ register_model(
                 Model('AI-ModelScope/paligemma-3b-pt-896', 'google/paligemma-3b-pt-896'),
                 Model('AI-ModelScope/paligemma-3b-mix-448', 'google/paligemma-3b-mix-448'),
             ],
-                       requires=['transformers>=4.41'],
-                       tags=['multi-modal', 'vision'],
-                       ignore_file_pattern=[r'.+\.bin$']),
+           requires=['transformers>=4.41'],
+           tags=['multi-modal', 'vision']),
         ],
         TemplateType.paligemma,
         get_model_tokenizer_paligemma_vision,
-        architectures=['MambaForCausalLM'],
+        architectures=['PaliGemmaForConditionalGeneration'],
+        support_flash_attn=True,
+        support_vllm=True,
+    ))
+
+
+register_model(
+    ModelMeta(
+        LLMModelType.gemma,
+        [
+            ModelGroup(
+                [
+                    Model('LLM-Research/gemma-2-2b', 'google/gemma-2-2b'),
+                    Model('LLM-Research/gemma-2-2b-it', 'google/gemma-2-2b-it'),
+                    Model('LLM-Research/gemma-2-9b', 'google/gemma-2-9b'),
+                    Model('LLM-Research/gemma-2-9b-it', 'google/gemma-2-9b-it'),
+                    Model('LLM-Research/gemma-2-27b', 'google/gemma-2-27b'),
+                    Model('LLM-Research/gemma-2-27b-it', 'google/gemma-2-27b-it'),
+                ],
+                requires=['transformers>=4.42'],
+            ),
+            ModelGroup(
+                [
+                    Model('AI-ModelScope/gemma-2b', 'google/gemma-2b'),
+                    Model('AI-ModelScope/gemma-2b-it', 'google/gemma-2b-it'),
+                    Model('AI-ModelScope/gemma-7b', 'google/gemma-7b'),
+                    Model('AI-ModelScope/gemma-7b-it', 'google/gemma-7b-it'),
+                ],
+                ignore_file_pattern=[r'.+\.gguf$'],
+                requires=['transformers>=4.38'],
+            ),
+        ],
+        TemplateType.gemma,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['Gemma2ForCausalLM'],
         support_flash_attn=True,
         support_vllm=True,
     ))

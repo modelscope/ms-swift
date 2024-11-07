@@ -3,23 +3,19 @@ import os
 import sys
 from typing import Any, Dict
 
-from modelscope import AutoConfig
-from transformers import PretrainedConfig
-
 from swift.llm import TemplateType
 from ..constant import LLMModelType, MLLMModelType
 from ..patcher import patch_output_clone, patch_output_to_input_device
-from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local,
-                        get_model_tokenizer_with_flash_attn, register_model)
-from ..utils import git_clone_github, use_submodel_func
+from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model)
+from ..utils import ModelInfo, git_clone_github, use_submodel_func
 
 
 def get_model_tokenizer_deepseek_moe(model_dir: str,
-                                     config: PretrainedConfig,
+                                     model_info: ModelInfo,
                                      model_kwargs: Dict[str, Any],
                                      load_model: bool = True,
                                      **kwargs):
-    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, config, model_kwargs, load_model, **kwargs)
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
     if model is not None:
         # fix dtype bug
         mlp_cls = model.model.layers[1].mlp.__class__
@@ -34,11 +30,11 @@ def get_model_tokenizer_deepseek_moe(model_dir: str,
 
 
 def get_model_tokenizer_deepseek2(model_dir: str,
-                                  config: PretrainedConfig,
+                                  model_info: ModelInfo,
                                   model_kwargs: Dict[str, Any],
                                   load_model: bool = True,
                                   **kwargs):
-    model, tokenizer = get_model_tokenizer_deepseek_moe(model_dir, config, model_kwargs, load_model, **kwargs)
+    model, tokenizer = get_model_tokenizer_deepseek_moe(model_dir, model_info, model_kwargs, load_model, **kwargs)
     if model is not None:
         model.generation_config.pad_token_id = model.generation_config.eos_token_id
     return model, tokenizer
@@ -58,7 +54,7 @@ register_model(
         ],
         TemplateType.deepseek,
         get_model_tokenizer_deepseek_moe,
-        architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
+        architectures=['DeepseekForCausalLM'],
         support_flash_attn=True,
         support_vllm=True,
     ))
@@ -84,7 +80,7 @@ register_model(
         ],
         TemplateType.deepseek,
         get_model_tokenizer_deepseek_moe,
-        architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
+        architectures=['DeepseekV2ForCausalLM'],
         support_flash_attn=True,
         support_vllm=True,
     ))
@@ -103,14 +99,14 @@ register_model(
         ],
         TemplateType.deepseek2_5,
         get_model_tokenizer_deepseek_moe,
-        architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
+        architectures=['DeepseekV2ForCausalLM'],
         support_flash_attn=True,
         support_vllm=True,
     ))
 
 
 def get_model_tokenizer_deepseek_vl(model_dir: str,
-                                    config: PretrainedConfig,
+                                    model_info: ModelInfo,
                                     model_kwargs: Dict[str, Any],
                                     load_model: bool = True,
                                     **kwargs):
@@ -128,12 +124,9 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     from deepseek_vl.models import VLChatProcessor
     processor = VLChatProcessor.from_pretrained(model_dir)
     tokenizer = processor.tokenizer
-    # flash_attn
-    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    attn_type = AttentionImpl(kwargs.pop('use_flash_attn', None), kwargs.pop('attn_type', None))
-    attn_type.update_config(model_config)
-    model, tokenizer = get_model_tokenizer_from_local(
-        model_dir, config, model_kwargs, load_model, model_config=model_config, tokenizer=tokenizer, **kwargs)
+
+    model, tokenizer = get_model_tokenizer_with_flash_attn(
+        model_dir, model_info, model_kwargs, load_model, tokenizer=tokenizer, **kwargs)
     tokenizer.processor = processor
     if load_model:
         patch_output_clone(model.language_model.model.embed_tokens)
@@ -158,7 +151,88 @@ register_model(
         ],
         TemplateType.deepseek_vl,
         get_model_tokenizer_deepseek_vl,
-        architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
+        architectures=['MultiModalityCausalLM'],
         support_flash_attn=True,
         support_lmdeploy=True,
+    ))
+
+
+register_model(
+    ModelMeta(
+        LLMModelType.deepseek_math,
+        [
+            ModelGroup(
+                [
+                    Model('deepseek-ai/deepseek-math-7b-base', 'deepseek-ai/deepseek-math-7b-base'),
+                    Model('deepseek-ai/deepseek-math-7b-instruct', 'deepseek-ai/deepseek-math-7b-instruct'),
+                    Model('deepseek-ai/deepseek-math-7b-rl', 'deepseek-ai/deepseek-math-7b-rl'),
+                ],
+                tags=['math'],
+            ),
+            ModelGroup(
+                [
+                    Model('deepseek-ai/deepseek-coder-1.3b-base', 'deepseek-ai/deepseek-coder-1.3b-base'),
+                    Model('deepseek-ai/deepseek-coder-1.3b-instruct', 'deepseek-ai/deepseek-coder-1.3b-instruct'),
+                    Model('deepseek-ai/deepseek-coder-6.7b-base', 'deepseek-ai/deepseek-coder-6.7b-base'),
+                    Model('deepseek-ai/deepseek-coder-6.7b-instruct', 'deepseek-ai/deepseek-coder-6.7b-instruct'),
+                    Model('deepseek-ai/deepseek-coder-33b-base', 'deepseek-ai/deepseek-coder-33b-base'),
+                    Model('deepseek-ai/deepseek-coder-33b-instruct', 'deepseek-ai/deepseek-coder-33b-instruct'),
+                ],
+                tags=['coding'],
+            ),
+            ModelGroup(
+                [
+                    Model('deepseek-ai/deepseek-llm-7b-base', 'deepseek-ai/deepseek-llm-7b-base'),
+                    Model('deepseek-ai/deepseek-llm-7b-chat', 'deepseek-ai/deepseek-llm-7b-chat'),
+                    Model('deepseek-ai/deepseek-llm-67b-base', 'deepseek-ai/deepseek-llm-67b-base'),
+                    Model('deepseek-ai/deepseek-llm-67b-chat', 'deepseek-ai/deepseek-llm-67b-chat'),
+                ],
+            ),
+        ],
+        TemplateType.deepseek,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['LlamaForCausalLM'],
+        support_flash_attn=True,
+        support_vllm=True,
+        support_lmdeploy=True,
+    ))
+
+
+def get_model_tokenizer_deepseek_janus(model_dir: str, *args, **kwargs):
+    if 'local_repo_path' in kwargs:
+        local_repo_path = kwargs['local_repo_path']
+    else:
+        local_repo_path = git_clone_github('https://github.com/deepseek-ai/Janus')
+    sys.path.append(os.path.join(local_repo_path))
+    from janus.models import MultiModalityCausalLM, VLChatProcessor
+    from janus.utils.io import load_pil_images
+
+    processor: VLChatProcessor = VLChatProcessor.from_pretrained(model_dir)
+    tokenizer = processor.tokenizer
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, *args, tokenizer=tokenizer, **kwargs)
+    tokenizer.processor = processor
+    if model:
+        model.language_model.model.embed_tokens.register_forward_hook(patch_output_clone)
+        model.language_model.model.embed_tokens.register_forward_hook(patch_output_to_input_device)
+        func_list = ['generate', 'get_input_embeddings', 'forward', 'gradient_checkpointing_enable']
+        use_submodel_func(model, 'language_model', func_list)
+        model.generation_config = model.language_model.generation_config
+    return model, tokenizer
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.janus,
+        [
+            ModelGroup(
+                [
+                    Model('deepseek-ai/Janus-1.3B', 'deepseek-ai/Janus-1.3B'),
+                ],
+                tags=['multi-modal', 'vision'],
+            ),
+        ],
+        TemplateType.deepseek_janus,
+        get_model_tokenizer_deepseek_janus,
+        architectures=['LlamaForCausalLM'],
+        support_flash_attn=True,
     ))

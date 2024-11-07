@@ -38,6 +38,7 @@ register_model(
         LLMModelType.telechat2,
         [
             ModelGroup([
+                Model('TeleAI/TeleChat2-115B', 'Tele-AI/TeleChat2-115B'),
                 Model('TeleAI/TeleChat-12B-v2', 'Tele-AI/TeleChat-12B-v2'),
             ]),
             ModelGroup([

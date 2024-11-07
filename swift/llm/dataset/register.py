@@ -44,7 +44,6 @@ class SubsetDataset:
 
 @dataclass
 class DatasetMeta:
-    dataset_name: str
     ms_dataset_id: Optional[str] = None
     hf_dataset_id: Optional[str] = None
     dataset_path: Optional[str] = None

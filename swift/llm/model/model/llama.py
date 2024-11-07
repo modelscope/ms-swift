@@ -1,22 +1,26 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import os
+import sys
 from typing import Any, Dict
 
-from transformers import AutoTokenizer, PretrainedConfig
+from modelscope import AutoConfig
 
 from swift.llm import TemplateType
 from ..constant import LLMModelType, MLLMModelType
 from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,
                         get_model_tokenizer_with_flash_attn, register_model)
+from ..utils import ModelInfo, git_clone_github
 
 
 def get_model_tokenizer_llama(model_dir: str,
-                              model_config: PretrainedConfig,
+                              model_info: ModelInfo,
                               model_kwargs: Dict[str, Any],
                               load_model: bool = True,
                               **kwargs):
-    if hasattr(model_config, 'pretraining_tp'):
-        model_config.pretraining_tp = 1
-    return get_model_tokenizer_with_flash_attn(model_dir, model_config, model_kwargs, load_model, **kwargs)
+    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+    model_config.pretraining_tp = 1
+    kwargs['model_config'] = model_config
+    return get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
 
 
 register_model(
@@ -209,3 +213,50 @@ register_model(
         architectures=['MllamaForConditionalGeneration'],
         support_flash_attn=True,
         support_vllm=True))
+
+def get_model_tokenizer_omnli(model_dir: str,
+                              model_info: ModelInfo,
+                              model_kwargs: Dict[str, Any],
+                              load_model: bool = True,
+                              **kwargs):
+    if 'local_repo_path' in kwargs:
+        local_repo_path = kwargs['local_repo_path']
+    else:
+        local_repo_path = git_clone_github('https://github.com/ictnlp/LLaMA-Omni')
+    local_repo_path = os.path.join(local_repo_path, 'LLaMA-Omni')
+    sys.path.append(os.path.join(local_repo_path))
+    from omni_speech.model import OmniSpeech2SLlamaForCausalLM, OmniSpeechLlamaForCausalLM
+    import whisper
+    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+    model_config.speech_encoder = os.path.join(model_dir, 'large-v3.pt')
+    if not os.path.exists(model_config.speech_encoder):
+        whisper.load_model('large-v3', download_root=model_dir)
+    if 'automodel_class' not in kwargs:
+        kwargs['automodel_class'] = OmniSpeech2SLlamaForCausalLM
+    kwargs['model_config'] = model_config
+    for key in ['forward', 'generate']:
+        try:
+            delattr(OmniSpeech2SLlamaForCausalLM, key)
+            delattr(OmniSpeechLlamaForCausalLM, key)
+        except AttributeError:
+            pass
+    # not support device_map='auto'
+    device_map = model_kwargs['device_map']
+    model_kwargs['device_map'] = None
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
+    if model:
+        model.to('cuda:0' if device_map == 'auto' else device_map)
+    return model, tokenizer
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.llama3_2_vision, [
+            ModelGroup([
+                Model('ICTNLP/Llama-3.1-8B-Omni', 'ICTNLP/Llama-3.1-8B-Omni'),
+            ], tags=['multi-modal', 'audio'], requires=['whisper', 'openai-whisper'],)
+        ],
+        TemplateType.llama3_1_omni,
+        get_model_tokenizer_omnli,
+        architectures=['OmniSpeech2SLlamaForCausalLM'],
+        support_flash_attn=True))

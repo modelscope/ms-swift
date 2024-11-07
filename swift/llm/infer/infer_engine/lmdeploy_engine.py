@@ -4,7 +4,7 @@ import os
 import time
 from contextlib import contextmanager
 from copy import deepcopy
-from typing import Any, AsyncIterator, Dict, List, Optional, Union
+from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
 
 import torch
 from lmdeploy import GenerationConfig as LmdeployGenerationConfig
@@ -14,6 +14,7 @@ from lmdeploy.serve import async_engine
 from transformers import GenerationConfig, PreTrainedTokenizerBase
 
 from swift.llm import InferRequest, Template, TemplateMeta
+from swift.plugin import Metric
 from swift.utils import get_logger, get_seed
 from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                         ChatCompletionStreamResponse, ChatMessage, DeltaMessage, RequestConfig, UsageInfo, random_uuid)
@@ -265,3 +266,17 @@ class LmdeployEngine(InferEngine):
         self.model_info.max_model_len -= 1
         yield
         self.model_info.max_model_len += 1
+
+    @torch.inference_mode()
+    def infer(
+        self,
+        infer_requests: List[InferRequest],
+        request_config: Optional[RequestConfig] = None,
+        metrics: Optional[List[Metric]] = None,
+        *,
+        template: Optional[Template] = None,
+        use_tqdm: Optional[bool] = None,
+    ) -> Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
+        if hasattr(self.engine, 'vl_encoder'):
+            self.engine.vl_encoder._loop_task = None
+        return super().infer(infer_requests, request_config, metrics, template=template, use_tqdm=use_tqdm)

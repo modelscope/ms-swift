@@ -1,19 +1,13 @@
 import ast
-import os
 import re
 from functools import partial
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Union
 
-import json
 from datasets import Dataset as HfDataset
 from datasets import IterableDataset
-from tqdm import tqdm
 
-from ... import DATASET_TYPE, MediaResource
-from ..constant import LLMDatasetName
-from ..loader import DatasetLoader, DatasetSyntax
-from ..preprocess import (AlpacaPreprocessor, AutoPreprocessor, ClsPreprocessor, MessagesPreprocessor,
-                          ResponsePreprocessor, RowPreprocessor, TextGenerationPreprocessor)
+from ..preprocess import (DATASET_TYPE, AlpacaPreprocessor, ClsPreprocessor, MessagesPreprocessor, ResponsePreprocessor,
+                          RowPreprocessor, TextGenerationPreprocessor)
 from ..register import DatasetMeta, SubsetDataset, register_dataset
 
 
@@ -25,7 +19,6 @@ def _concat_inst_inp_alpaca_zh(inst: str, inp: str) -> str:
 
 register_dataset(
     DatasetMeta(
-        LLMDatasetName.alpaca_zh,
         ms_dataset_id='AI-ModelScope/alpaca-gpt4-data-zh',
         hf_dataset_id='llm-wizard/alpaca-gpt4-data-zh',
         preprocess_func=AlpacaPreprocessor(concat_inst_input=_concat_inst_inp_alpaca_zh),
@@ -46,11 +39,10 @@ class LongAlpacaPreprocessor(AlpacaPreprocessor):
 
 register_dataset(
     DatasetMeta(
-        LLMDatasetName.long_alpaca_12k,
         ms_dataset_id='AI-ModelScope/LongAlpaca-12k',
         hf_dataset_id='Yukang/LongAlpaca-12k',
         preprocess_func=LongAlpacaPreprocessor(),
-        tags=['longlora', 'QA'],
+        tags=['long-sequence', 'QA'],
     ))
 
 
@@ -72,7 +64,6 @@ class RuozhibaPreprocessor(RowPreprocessor):
 
 register_dataset(
     DatasetMeta(
-        LLMDatasetName.ruozhiba,
         ms_dataset_id='AI-ModelScope/ruozhiba',
         subsets=['post-annual', 'title-good', 'title-norm'],
         preprocess_func=RuozhibaPreprocessor(),
@@ -96,7 +87,6 @@ def _repair_ms_bench(messages: str) -> Optional[List[Dict[str, str]]]:
 
 register_dataset(
     DatasetMeta(
-        LLMDatasetName.ms_bench,
         ms_dataset_id='iic/ms_bench',
         preprocess_func=MessagesPreprocessor(repair_messages=_repair_ms_bench),
         tags=['chat', 'general', 'multi-round', '🔥']))
@@ -116,7 +106,6 @@ def _repair_agent_messages(messages: List[Dict[str, str]], use_mini: bool) -> Op
 
 register_dataset(
     DatasetMeta(
-        LLMDatasetName.damo_agent_zh,
         ms_dataset_id='damo/MSAgent-Bench',
         subsets=[
             SubsetDataset(
@@ -135,7 +124,6 @@ Advertisements:"""
 
 register_dataset(
     DatasetMeta(
-        LLMDatasetName.advertise_gen_zh,
         ms_dataset_id='lvjianjin/AdvertiseGen',
         hf_dataset_id='shibing624/AdvertiseGen',
         preprocess_func=TextGenerationPreprocessor(
@@ -164,7 +152,6 @@ class FireflyPreprocessor(ResponsePreprocessor):
 
 register_dataset(
     DatasetMeta(
-        LLMDatasetName.firefly_zh,
         ms_dataset_id='AI-ModelScope/firefly-train-1.1M',
         hf_dataset_id='YeungNLP/firefly-train-1.1M',
         preprocess_func=FireflyPreprocessor(),
@@ -173,7 +160,6 @@ register_dataset(
 
 register_dataset(
     DatasetMeta(
-        LLMDatasetName.cmnli_zh,
         ms_dataset_id='modelscope/clue',
         hf_dataset_id='clue',
         subsets=['cmnli'],
@@ -185,7 +171,6 @@ register_dataset(
 
 register_dataset(
     DatasetMeta(
-        LLMDatasetName.jd_sentiment_zh,
         ms_dataset_id='DAMO_NLP/jd',
         preprocess_func=ClsPreprocessor(['negative', 'positive'], task='Sentiment Classification', is_pair_seq=False),
         tags=['text-generation', 'classification', '🔥']))
@@ -205,7 +190,6 @@ class SyntheticText2SqlPreprocessor(ResponsePreprocessor):
 
 register_dataset(
     DatasetMeta(
-        LLMDatasetName.synthetic_text_to_sql,
         ms_dataset_id='AI-ModelScope/synthetic_text_to_sql',
         hf_dataset_id='gretelai/synthetic_text_to_sql',
         preprocess_func=SyntheticText2SqlPreprocessor(),
@@ -221,10 +205,9 @@ def _repair_toolbench(conversations: List[Dict[str, str]]) -> List[Dict[str, str
 
 register_dataset(
     DatasetMeta(
-        LLMDatasetName.toolbench_for_alpha_umi,
         ms_dataset_id='shenweizhou/alpha-umi-toolbench-processed-v2',
         subsets=['backbone', 'caller', 'planner', 'summarizer'],
-        preprocess_func=MessagesPreprocessor(system_role='system', repair_messages=_repair_toolbench),
+        preprocess_func=MessagesPreprocessor(repair_messages=_repair_toolbench),
         tags=['chat', 'agent', '🔥'],
         huge_dataset=True))
 
@@ -238,15 +221,13 @@ class BlossomMathPreprocessor(ResponsePreprocessor):
 
 register_dataset(
     DatasetMeta(
-        LLMDatasetName.blossom_math_zh,
         ms_dataset_id='AI-ModelScope/blossom-math-v2',
         hf_dataset_id='Azure99/blossom-math-v2',
-        preprocess_func=MessagesPreprocessor(system_role='system', repair_messages=_repair_toolbench),
+        preprocess_func=BlossomMathPreprocessor(),
         tags=['chat', 'math', '🔥']))
 
 register_dataset(
     DatasetMeta(
-        LLMDatasetName.sql_create_context_en,
         ms_dataset_id='AI-ModelScope/sql-create-context',
         hf_dataset_id='b-mc2/sql-create-context',
         preprocess_func=AlpacaPreprocessor(columns_mapping={
@@ -274,14 +255,13 @@ class TigerBotLawPreprocessor(ResponsePreprocessor):
 
 register_dataset(
     DatasetMeta(
-        LLMDatasetName.tigerbot_law_zh,
         ms_dataset_id='AI-ModelScope/tigerbot-law-plugin',
         hf_dataset_id='TigerResearch/tigerbot-law-plugin',
         preprocess_func=TigerBotLawPreprocessor(),
         tags=['text-generation', 'law', 'pretrained']))
 
 
-class LeetcodePythonPreprocessor(RowPreprocessor):
+class LeetcodePythonPreprocessor(ResponsePreprocessor):
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         code_with_problem = row['code_with_problem']
@@ -296,7 +276,6 @@ class LeetcodePythonPreprocessor(RowPreprocessor):
 
 register_dataset(
     DatasetMeta(
-        LLMDatasetName.leetcode_python_en,
         ms_dataset_id='AI-ModelScope/leetcode-solutions-python',
         preprocess_func=LeetcodePythonPreprocessor(),
         tags=['chat', 'coding', '🔥']))
@@ -311,11 +290,9 @@ def _repair_conversations_agent_instruct(s: str) -> List[Dict[str, Any]]:
 
 register_dataset(
     DatasetMeta(
-        LLMDatasetName.agent_instruct_all_en,
         ms_dataset_id='huangjintao/AgentInstruct_copy',
         subsets=['alfworld', 'db', 'kg', 'mind2web', 'os', 'webshop'],
-        preprocess_func=MessagesPreprocessor(
-            user_role='human', assistant_role='gpt', repair_messages=_repair_conversations_agent_instruct),
+        preprocess_func=MessagesPreprocessor(repair_messages=_repair_conversations_agent_instruct),
         tags=['chat', 'agent', 'multi-round']))
 
 
@@ -353,20 +330,14 @@ class MultiRoleAgentPreprocessor(RowPreprocessor):
 
 register_dataset(
     DatasetMeta(
-        LLMDatasetName.ms_agent_multirole,
         ms_dataset_id='iic/MSAgent-MultiRole',
         preprocess_func=MultiRoleAgentPreprocessor(),
         tags=['chat', 'agent', 'multi-round', 'role-play', 'multi-agent']))
 
 register_dataset(
     DatasetMeta(
-        LLMDatasetName.toolbench,
         ms_dataset_id='swift/ToolBench',
-        preprocess_func=MessagesPreprocessor(
-            role_key='from',
-            content_key='value',
-        ),
-        remove_useless_columns=False,
+        preprocess_func=MessagesPreprocessor(remove_useless_columns=False, ),
         tags=['chat', 'agent', 'multi-round']))
 
 
@@ -404,7 +375,6 @@ Output:"""
 
 register_dataset(
     DatasetMeta(
-        LLMDatasetName.hc3_zh,
         ms_dataset_id='simpleai/HC3-Chinese',
         hf_dataset_id='Hello-SimpleAI/HC3-Chinese',
         subsets=['baike', 'open_qa', 'nlpcc_dbqa', 'finance', 'medicine', 'law', 'psychology'],
@@ -413,7 +383,6 @@ register_dataset(
 
 register_dataset(
     DatasetMeta(
-        LLMDatasetName.hc3_en,
         ms_dataset_id='simpleai/HC3',
         hf_dataset_id='Hello-SimpleAI/HC3',
         subsets=['finance', 'medicine'],
@@ -442,7 +411,6 @@ Question:"""
 
 register_dataset(
     DatasetMeta(
-        LLMDatasetName.dureader_robust_zh,
         ms_dataset_id='modelscope/DuReader_robust-QG',
         preprocess_func=DureaderPreprocessor(),
         split=['train', 'validation', 'test'],
@@ -488,7 +456,6 @@ class HHRLHFPreprocessor(RowPreprocessor):
 
 register_dataset(
     DatasetMeta(
-        LLMDatasetName.hh_rlhf,
         ms_dataset_id='AI-ModelScope/hh-rlhf',
         subsets=['harmless-base', 'helpful-base', 'helpful-online', 'helpful-rejection-sampled'],
         preprocess_func=HHRLHFPreprocessor(),
@@ -552,7 +519,6 @@ class HHRLHFCNPreprocessor(RowPreprocessor):
 
 register_dataset(
     DatasetMeta(
-        LLMDatasetName.hh_rlhf_cn,
         ms_dataset_id='AI-ModelScope/hh_rlhf_cn',
         subsets=['hh_rlhf', 'harmless_base_cn', 'harmless_base_en', 'helpful_base_cn', 'helpful_base_en'],
         preprocess_func=HHRLHFCNPreprocessor(),
@@ -572,7 +538,6 @@ def repair_conversations(s: Union[str, Any]) -> Any:
 
 register_dataset(
     DatasetMeta(
-        LLMDatasetName.lmsys_chat_1m,
         ms_dataset_id='AI-ModelScope/lmsys-chat-1m',
         hf_dataset_id='lmsys/lmsys-chat-1m',
         preprocess_func=MessagesPreprocessor(repair_messages=repair_conversations),
@@ -599,25 +564,22 @@ class ShareAIDPOPreprocessor(RowPreprocessor):
 
 register_dataset(
     DatasetMeta(
-        LLMDatasetName.shareai_llama3_dpo_zh_en_emoji,
         ms_dataset_id='hjh0119/shareAI-Llama3-DPO-zh-en-emoji',
         preprocess_func=ShareAIDPOPreprocessor(),
         tags=['rlhf', 'dpo', 'pairwise']))
 
 register_dataset(
     DatasetMeta(
-        LLMDatasetName.shareai_llama3_dpo_zh_en_emoji,
         ms_dataset_id='AI-ModelScope/ultrafeedback-binarized-preferences-cleaned-kto',
-        preprocess_func=ResponsePreprocessor(columns_mapping={
-            'prompt': 'query',
-            'completion': 'response'
-        }),
-        remove_useless_columns=False,
+        preprocess_func=ResponsePreprocessor(
+            columns_mapping={
+                'prompt': 'query',
+                'completion': 'response',
+            }, remove_useless_columns=False),
         tags=['rlhf', 'kto']))
 
 register_dataset(
     DatasetMeta(
-        LLMDatasetName.zhihu_kol_filtered,
         ms_dataset_id='OmniData/Zhihu-KOL-More-Than-100-Upvotes',
         hf_dataset_id='bzb2023/Zhihu-KOL-More-Than-100-Upvotes',
         preprocess_func=ResponsePreprocessor(columns_mapping={
@@ -628,7 +590,6 @@ register_dataset(
 
 register_dataset(
     DatasetMeta(
-        LLMDatasetName.zhihu_kol,
         ms_dataset_id='OmniData/Zhihu-KOL',
         hf_dataset_id='wangrui6/Zhihu-KOL',
         preprocess_func=ResponsePreprocessor(columns_mapping={
@@ -677,7 +638,6 @@ class GuanacoPreprocessor(RowPreprocessor):
 
 register_dataset(
     DatasetMeta(
-        LLMDatasetName.guanaco,
         ms_dataset_id='AI-ModelScope/GuanacoDataset',
         hf_dataset_id='JosephusCheung/GuanacoDataset',
         preprocess_func=GuanacoPreprocessor(),
@@ -709,7 +669,6 @@ class Dolly15kPreprocessor(RowPreprocessor):
 
 register_dataset(
     DatasetMeta(
-        LLMDatasetName.dolly_15k,
         ms_dataset_id='AI-ModelScope/databricks-dolly-15k',
         hf_dataset_id='databricks/databricks-dolly-15k',
         preprocess_func=Dolly15kPreprocessor(),
@@ -768,7 +727,6 @@ class OrpoDPOMix40kPreprocessor(RowPreprocessor):
 
 register_dataset(
     DatasetMeta(
-        LLMDatasetName.orpo_dpo_mix_40k,
         ms_dataset_id='AI-ModelScope/orpo-dpo-mix-40k',
         hf_dataset_id='mlabonne/orpo-dpo-mix-40k',
         preprocess_func=OrpoDPOMix40kPreprocessor(),
@@ -776,9 +734,8 @@ register_dataset(
 
 register_dataset(
     DatasetMeta(
-        LLMDatasetName.sharegpt,
         ms_dataset_id='swift/sharegpt',
         hf_dataset_id='mlabonne/orpo-dpo-mix-40k',
         subsets=['common-zh', 'computer-zh', 'unknow-zh', 'common-en', 'computer-en'],
-        preprocess_func=MessagesPreprocessor(user_role='human', assistant_role='assistant'),
+        preprocess_func=MessagesPreprocessor(),
         tags=['chat', 'general', 'multi-round']))
