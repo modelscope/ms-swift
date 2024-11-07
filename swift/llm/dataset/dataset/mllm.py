@@ -1,22 +1,15 @@
 import ast
-import itertools
 import os
-import re
-from functools import partial
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, Optional
 
 import json
 import numpy as np
 from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HfIterableDataset
-from datasets import concatenate_datasets, interleave_datasets
 from tqdm import tqdm
 
-from ..constant import LLMDatasetName, MLLMDatasetName
-from ..loader import DatasetLoader, DatasetSyntax
 from ..media import MediaResource
-from ..preprocess import (AlpacaPreprocessor, AutoPreprocessor, ClsPreprocessor, MessagesPreprocessor,
-                          ResponsePreprocessor, RowPreprocessor, TextGenerationPreprocessor)
+from ..preprocess import MessagesPreprocessor, ResponsePreprocessor, RowPreprocessor
 from ..preprocess.extra import GroundingMixin
 from ..register import DatasetMeta, SubsetDataset, register_dataset
 
@@ -30,11 +23,8 @@ class ShareGPT4oPreprocessor(RowPreprocessor):
         image = os.path.join(self.prefix_path, image)
         if not os.path.exists(image):
             return
-        row = MessagesPreprocessor(
-            user_role='human',
-            assistant_role='gpt',
-        ).preprocess(row)
-        row['image'] = [image]
+        row = MessagesPreprocessor().preprocess(row)
+        row['images'] = [image]
         return row
 
     def prepare_dataset(self, dataset):
@@ -47,7 +37,6 @@ class ShareGPT4oPreprocessor(RowPreprocessor):
 
 register_dataset(
     DatasetMeta(
-        MLLMDatasetName.sharegpt_4o_image,
         ms_dataset_id='AI-ModelScope/ShareGPT-4o',
         hf_dataset_id='OpenGVLab/ShareGPT-4o',
         preprocess_func=ShareGPT4oPreprocessor(),
@@ -66,7 +55,6 @@ class GPT4vDataset(ResponsePreprocessor):
 
 register_dataset(
     DatasetMeta(
-        MLLMDatasetName.gpt4v_dataset,
         ms_dataset_id='swift/gpt4v-dataset',
         hf_dataset_id='laion/gpt4v-dataset',
         preprocess_func=GPT4vDataset(columns_mapping={
@@ -80,10 +68,8 @@ register_dataset(
 
 register_dataset(
     DatasetMeta(
-        MLLMDatasetName.rlaif_v,
         ms_dataset_id='swift/RLAIF-V-Dataset',
         hf_dataset_id='openbmb/RLAIF-V-Dataset',
-        subsets=['default'],
         preprocess_func=ResponsePreprocessor(columns_mapping={
             'image': 'images',
             'question': 'query',
@@ -95,10 +81,6 @@ register_dataset(
 
 
 class SA1BPairedCaptionPreprocessor(RowPreprocessor):
-
-    column_mapping = {
-        'opensource_url': 'images',
-    }
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         prompt = ['图片中展示了什么', '讲述一下图片中内容', '告诉我里面有什么', '图片内容是啥']
@@ -117,13 +99,10 @@ class SA1BPairedCaptionPreprocessor(RowPreprocessor):
 
 register_dataset(
     DatasetMeta(
-        MLLMDatasetName.sa1b_paired_caption,
         ms_dataset_id='Tongyi-DataEngine/SA1B-Paired-Captions-Images',
         preprocess_func=SA1BPairedCaptionPreprocessor(columns_mapping={
             'opensource_url': 'images',
         }),
-        subsets=['default'],
-        split=['train'],
         tags=['zh', 'multi-modal', 'vqa'],
     ))
 
@@ -152,22 +131,16 @@ class SA1BDenseCaptionPreprocessor(RowPreprocessor):
 
 register_dataset(
     DatasetMeta(
-        MLLMDatasetName.sa1b_dense_caption,
         ms_dataset_id='Tongyi-DataEngine/SA1B-Dense-Caption',
         preprocess_func=SA1BDenseCaptionPreprocessor(columns_mapping={
             'url': 'images',
         }),
-        subsets=['default'],
-        split=['train'],
         tags=['zh', 'multi-modal', 'vqa'],
         huge_dataset=True,
     ))
 
 
 class COCO2014Preprocess(RowPreprocessor):
-
-    modals = ['image']
-    modal_keys = {'image': 'image'}
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         prompt = 'please describe the image.'
@@ -195,7 +168,6 @@ class COCO2014Preprocess(RowPreprocessor):
 
 register_dataset(
     DatasetMeta(
-        MLLMDatasetName.coco_en,
         ms_dataset_id='modelscope/coco_2014_caption',
         preprocess_func=COCO2014Preprocess(),
         subsets=['coco_2014_caption'],
@@ -218,12 +190,15 @@ class MantisPreprocessor(RowPreprocessor):
         url = (f'https://www.modelscope.cn/api/v1/datasets/swift/Mantis-Instruct/repo?Revision='
                f'master&FilePath={self.subset}/train_images.zip')  # noqa
         self.local_dir = MediaResource.download(url, f'mantis_{self.subset}')
-        return dataset
+        return super().prepare_dataset(dataset)
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         images = [os.path.join(self.local_dir, p['path']) for p in row['images']]
         if not all([os.path.exists(d) for d in images]):
             images = []
+
+        if not images:
+            return
         row['images'] = images
         return MessagesPreprocessor().preprocess(row)
 
@@ -242,7 +217,6 @@ for subset in mantis_subsets_name:
 
 register_dataset(
     DatasetMeta(
-        MLLMDatasetName.mantis_instruct,
         ms_dataset_id='swift/Mantis-Instruct',
         subsets=_mantis_subsets,
         tags=['chat', 'multi-modal', 'vision'],
@@ -255,11 +229,11 @@ class LLaVADataPreprocessor(MessagesPreprocessor):
         self.all_folders = {}
         for media_type in ['coco', 'gqa', 'ocr_vqa', 'textvqa', 'VG_100K', 'VG_100K_2']:
             self.all_folders[media_type] = MediaResource.download(media_type)
-        return dataset
+        return super().prepare_dataset(dataset)
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         if not row['images']:
-            return {}
+            return
         row = super().preprocess(row)
         images = [p['path'] for p in row['images']]
         new_images = []
@@ -280,18 +254,16 @@ class LLaVADataPreprocessor(MessagesPreprocessor):
         if all(os.path.exists(image) for image in new_images):
             row['images'] = new_images
         else:
-            row['images'] = []
+            return
         return row
 
 
 register_dataset(
     DatasetMeta(
-        MLLMDatasetName.llava_data_instruct,
         ms_dataset_id='swift/llava-data',
         hf_dataset_id='TIGER-Lab/llava-data',
         subsets=['llava_instruct'],
         preprocess_func=LLaVADataPreprocessor(),
-        split=['train'],
         tags=['sft', 'multi-modal', 'quality'],
     ))
 
@@ -320,7 +292,6 @@ class PixelProsePreprocessor(RowPreprocessor):
 
 register_dataset(
     DatasetMeta(
-        MLLMDatasetName.pixelprose,
         ms_dataset_id='swift/pixelprose',
         hf_dataset_id='tomg-group-umd/pixelprose',
         preprocess_func=PixelProsePreprocessor(),
@@ -351,7 +322,6 @@ class AIShell1Preprocessor(RowPreprocessor):
 
 register_dataset(
     DatasetMeta(
-        MLLMDatasetName.aishell1_zh,
         ms_dataset_id='speech_asr/speech_asr_aishell1_trainsets',
         preprocess_func=AIShell1Preprocessor(),
         split=['train', 'validation', 'test'],
@@ -365,7 +335,7 @@ class VideoChatGPTPreprocessor(RowPreprocessor):
         url = 'https://modelscope.cn/datasets/swift/VideoChatGPT/resolve/master/videos.zip'
         local_dir = MediaResource.download(url, 'video_chatgpt')
         self.local_dir = os.path.join(local_dir, 'Test_Videos')
-        return dataset
+        return super().prepare_dataset(dataset)
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         # only `.mp4`
@@ -386,7 +356,6 @@ class VideoChatGPTPreprocessor(RowPreprocessor):
 
 register_dataset(
     DatasetMeta(
-        MLLMDatasetName.video_chatgpt,
         ms_dataset_id='swift/VideoChatGPT',
         hf_dataset_id='lmms-lab/VideoChatGPT',
         subsets=['Generic', 'Temporal', 'Consistency'],
@@ -499,7 +468,6 @@ def preprocess_mind2web(dataset, **kwargs):
 
 register_dataset(
     DatasetMeta(
-        MLLMDatasetName.mind2web,
         ms_dataset_id='swift/Multimodal-Mind2Web',
         hf_dataset_id='osunlp/Multimodal-Mind2Web',
         preprocess_func=preprocess_mind2web,
@@ -507,7 +475,6 @@ register_dataset(
 
 register_dataset(
     DatasetMeta(
-        MLLMDatasetName.m3it,
         ms_dataset_id='AI-ModelScope/M3IT',
         subsets=[
             'coco', 'vqa-v2', 'shapes', 'shapes-rephrased', 'coco-goi-rephrased', 'snli-ve', 'snli-ve-rephrased',
@@ -531,8 +498,6 @@ register_dataset(
 
 class ShareGPT4VPreprocessor(RowPreprocessor):
 
-    modals = ['image']
-
     def prepare_dataset(self, dataset):
         split = ['ShareGPT4V', 'ShareGPT4V-PT'] if dataset.config_name is None else dataset.config_name
         IMAGE_DATASET_REQUIREMENTS = {
@@ -546,7 +511,7 @@ class ShareGPT4VPreprocessor(RowPreprocessor):
         for sp in split:
             for media_type in IMAGE_DATASET_REQUIREMENTS[sp]:
                 self.all_folders[media_type] = MediaResource.download(media_type)
-        return dataset
+        return super().prepare_dataset(dataset)
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         image = row['image']
@@ -571,16 +536,14 @@ class ShareGPT4VPreprocessor(RowPreprocessor):
         if os.path.exists(image):
             row['images'] = image
         else:
-            row['images'] = None
+            return
         return row
 
 
 register_dataset(
     DatasetMeta(
-        MLLMDatasetName.sharegpt4v,
         ms_dataset_id='AI-ModelScope/ShareGPT4V',
         preprocess_func=ShareGPT4VPreprocessor(),
-        split=['train'],
         huge_dataset=True,
         tags=['chat', 'multi-modal', 'vision']))
 
@@ -612,7 +575,6 @@ class TextCapsPreprocessor(RowPreprocessor):
 
 register_dataset(
     DatasetMeta(
-        MLLMDatasetName.text_caps,
         ms_dataset_id='swift/TextCaps',
         hf_dataset_id='HuggingFaceM4/TextCaps',
         preprocess_func=TextCapsPreprocessor(),
@@ -621,8 +583,12 @@ register_dataset(
         tags=['multi-modal', 'en', 'caption', 'quality']))
 
 
-class RefCOCOCaptionPreprocessor(ResponsePreprocessor, GroundingMixin):
+class RefCOCOPreprocessor(ResponsePreprocessor, GroundingMixin):
     task_type = 'caption'
+
+    def __init__(self, task_type, **kwargs):
+        self.task_type = task_type
+        super().__init__(**kwargs)
 
     def prepare_dataset(self, dataset):
         self.cache_dir = MediaResource.download(
@@ -655,48 +621,42 @@ class RefCOCOCaptionPreprocessor(ResponsePreprocessor, GroundingMixin):
 
 register_dataset(
     DatasetMeta(
-        MLLMDatasetName.refcoco_unofficial_caption,
         ms_dataset_id='swift/refcoco',
         hf_dataset_id='jxu124/refcoco',
-        preprocess_func=RefCOCOCaptionPreprocessor(),
-        split=['train', 'validation'],
-        tags=['multi-modal', 'en', 'caption']))
-
-register_dataset(
-    DatasetMeta(
-        MLLMDatasetName.refcocog_unofficial_caption,
-        ms_dataset_id='swift/refcocog',
-        hf_dataset_id='jxu124/refcocog',
-        preprocess_func=RefCOCOCaptionPreprocessor(),
-        split=['train', 'validation'],
-        tags=['multi-modal', 'en', 'caption']))
-
-
-class RefCOCOGroundingPreprocessor(RefCOCOCaptionPreprocessor):
-    task_type = 'grounding'
-
-
-register_dataset(
-    DatasetMeta(
-        MLLMDatasetName.refcoco_unofficial_grounding,
-        ms_dataset_id='swift/refcoco',
-        hf_dataset_id='jxu124/refcoco',
-        preprocess_func=RefCOCOGroundingPreprocessor(),
-        split=['train', 'validation'],
+        subsets=[
+            SubsetDataset(
+                name='caption',
+                preprocess_func=RefCOCOPreprocessor('caption'),
+                split=['train', 'validation'],
+            ),
+            SubsetDataset(
+                name='grounding',
+                preprocess_func=RefCOCOPreprocessor('grounding'),
+                split=['train', 'validation'],
+            )
+        ],
         tags=['multi-modal', 'en', 'grounding']))
 
 register_dataset(
     DatasetMeta(
-        MLLMDatasetName.refcocog_unofficial_grounding,
         ms_dataset_id='swift/refcocog',
         hf_dataset_id='jxu124/refcocog',
-        preprocess_func=RefCOCOGroundingPreprocessor(),
-        split=['train', 'validation'],
+        subsets=[
+            SubsetDataset(
+                name='caption',
+                preprocess_func=RefCOCOPreprocessor('caption'),
+                split=['train', 'validation'],
+            ),
+            SubsetDataset(
+                name='grounding',
+                preprocess_func=RefCOCOPreprocessor('grounding'),
+                split=['train', 'validation'],
+            )
+        ],
         tags=['multi-modal', 'en', 'grounding']))
 
 register_dataset(
     DatasetMeta(
-        MLLMDatasetName.lnqa,
         ms_dataset_id='swift/lnqa',
         hf_dataset_id='vikhyatk/lnqa',
         preprocess_func=MessagesPreprocessor(user_role='question', assistant_role='answer'),
@@ -707,13 +667,11 @@ register_dataset(
 
 class LLaVAInstructPreprocessor(RowPreprocessor):
 
-    modals = ['image']
-
     def prepare_dataset(self, dataset):
         self.all_folders = {}
         for media_type in ['coco', 'gqa', 'ocr_vqa', 'textvqa', 'VG_100K', 'VG_100K_2']:
             self.all_folders[media_type] = MediaResource.download(media_type)
-        return dataset
+        return super().prepare_dataset(dataset)
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         row.update(MessagesPreprocessor().preprocess(row))
@@ -740,7 +698,6 @@ class LLaVAInstructPreprocessor(RowPreprocessor):
 
 register_dataset(
     DatasetMeta(
-        MLLMDatasetName.llava_instruct_150k,
         ms_dataset_id='AI-ModelScope/LLaVA-Instruct-150K',
         ms_revision='d5db3806e395c60496630a206c336932e85a2d00',
         preprocess_func=LLaVAInstructPreprocessor(),
@@ -750,19 +707,20 @@ register_dataset(
 
 class LLaVAPretrainPreprocessor(RowPreprocessor):
 
-    def prepare_downloading(self, dataset):
+    def prepare_dataset(self, dataset):
         self.media_dir = MediaResource.download(
             ('https://www.modelscope.cn/api/v1/datasets/AI-ModelScope/LLaVA-Pretrain/repo?'
              'Revision=master&FilePath=images.zip'),
             # noqa
             'llava_pretrain')
+        return super().prepare_dataset(dataset)
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         row.update(MessagesPreprocessor().preprocess(row))
         if row['image']:
             file_path = os.path.join(self.media_dir, row['image'])
             if os.path.exists(file_path):
-                return {'image': file_path}
+                return {'images': file_path}
             else:
                 return
         else:
@@ -771,18 +729,15 @@ class LLaVAPretrainPreprocessor(RowPreprocessor):
 
 register_dataset(
     DatasetMeta(
-        MLLMDatasetName.llava_pretrain,
         ms_dataset_id='AI-ModelScope/LLaVA-Pretrain',
         ms_revision='e3a3f0bfaad05e90e46745152a32bf944e0f4a63',
         hf_dataset_id='liuhaotian/LLaVA-Pretrain',
         preprocess_func=LLaVAPretrainPreprocessor(),
-        split=['train'],
         huge_dataset=True,
         tags=['chat', 'multi-modal', 'quality']))
 
 register_dataset(
     DatasetMeta(
-        MLLMDatasetName.midefics,
         ms_dataset_id='swift/MideficsDataset',
         hf_dataset_id='WinterSchool/MideficsDataset',
         preprocess_func=MessagesPreprocessor(columns_mapping={'image': 'images'}),
@@ -807,17 +762,13 @@ class OkvqaPreprocessor(RowPreprocessor):
 
 register_dataset(
     DatasetMeta(
-        MLLMDatasetName.okvqa,
         ms_dataset_id='swift/OK-VQA_train',
         hf_dataset_id='Multimodal-Fatima/OK-VQA_train',
-        split=['train'],
         preprocess_func=OkvqaPreprocessor(columns_mapping={'image': 'images'}),
         tags=['multi-modal', 'en', 'vqa', 'quality']))
 
 
 class AOkvqaPreprocessor(RowPreprocessor):
-
-    column_mapping = {'image': 'images'}
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         query = row['question']
@@ -835,7 +786,6 @@ class AOkvqaPreprocessor(RowPreprocessor):
 
 register_dataset(
     DatasetMeta(
-        MLLMDatasetName.a_okvqa,
         ms_dataset_id='swift/A-OKVQA',
         hf_dataset_id='HuggingFaceM4/A-OKVQA',
         split=['train', 'validation'],
@@ -844,10 +794,6 @@ register_dataset(
 
 
 class OcrvqaPreprocessor(RowPreprocessor):
-
-    modals = ['image']
-    modal_keys = {'image': 'image'}
-    column_mapping = {'image': 'images'}
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         idx = np.random.choice(range(len(row['questions'])))
@@ -866,7 +812,6 @@ class OcrvqaPreprocessor(RowPreprocessor):
 
 register_dataset(
     DatasetMeta(
-        MLLMDatasetName.ocr_vqa,
         ms_dataset_id='swift/OCR-VQA',
         hf_dataset_id='howard-hou/OCR-VQA',
         split=['train', 'validation'],
@@ -886,7 +831,6 @@ class ScienceQAPreprocessor(RowPreprocessor):
 
 register_dataset(
     DatasetMeta(
-        MLLMDatasetName.science_qa,
         ms_dataset_id='swift/ScienceQA',
         hf_dataset_id='derek-thomas/ScienceQA',
         split=['train', 'validation'],
@@ -894,9 +838,11 @@ register_dataset(
         tags=['multi-modal', 'science', 'vqa', 'quality']))
 
 
-class GritPreprocessor(RowPreprocessor):
+class GritPreprocessor(RowPreprocessor, GroundingMixin):
 
-    modals = ['image']
+    def __init__(self, task_type, **kwargs):
+        self.task_type = task_type
+        super().__init__(**kwargs)
 
     @staticmethod
     def has_overlap(start_ends):
@@ -935,38 +881,51 @@ class GritPreprocessor(RowPreprocessor):
         if self.has_overlap(start_end_pairs) or not objects:
             return
 
-        response = self.replace_intervals_with_tags(caption, start_end_pairs)
+        if self.task_type in ('grounding', 'caption'):
+            query, response = self.construct_grounding_prompt()
+        else:
+            query = 'what is the proper caption of this image?'
+            response = caption
         return {
             'messages': [{
                 'role': 'user',
-                'content': 'what is the proper caption of this image?'
+                'content': query
             }, {
                 'role': 'assistant',
                 'content': response
             }],
-            'images':
-            images,
-            'objects':
-            json.dumps(objects or [], ensure_ascii=False)
+            'images': images,
+            'objects': objects
         }
 
 
 register_dataset(
     DatasetMeta(
-        MLLMDatasetName.grit,
         ms_dataset_id='swift/GRIT',
         hf_dataset_id='zzliang/GRIT',
-        split=['train'],
-        preprocess_func=GritPreprocessor(columns_mapping={'url': 'images'}),
+        subsets=[
+            SubsetDataset(
+                name='caption',
+                preprocess_func=GritPreprocessor('caption', columns_mapping={'url': 'images'}),
+            ),
+            SubsetDataset(
+                name='grounding',
+                preprocess_func=GritPreprocessor('grounding', columns_mapping={'url': 'images'}),
+            ),
+            SubsetDataset(
+                name='vqa',
+                preprocess_func=GritPreprocessor('vqa', columns_mapping={'url': 'images'}),
+            )
+        ],
         huge_dataset=True,
-        tags=['multi-modal', 'en', 'caption-grounding', 'quality']))
+        tags=['multi-modal', 'en', 'caption-grounding', 'vqa', 'quality']))
 
 
 class GQAPreprocessor(RowPreprocessor):
 
     def prepare_dataset(self, dataset):
         self.local_cache = MediaResource.download('gqa')
-        return dataset
+        return super().prepare_dataset(dataset)
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         if os.path.join(self.local_cache, 'images', row['imageId'] + '.jpg'):
@@ -987,10 +946,9 @@ class GQAPreprocessor(RowPreprocessor):
 
 register_dataset(
     DatasetMeta(
-        MLLMDatasetName.gqa,
         hf_dataset_id='lmms-lab/GQA',
         split=['train_all_instructions'],
-        preprocess_func=GritPreprocessor(),
+        preprocess_func=GQAPreprocessor(),
         huge_dataset=True,
         tags=['multi-modal', 'en', 'vqa', 'quality']))
 
@@ -1017,7 +975,6 @@ class LLaVAMixSFTPreprocessor(RowPreprocessor):
 
 register_dataset(
     DatasetMeta(
-        MLLMDatasetName.llava_instruct_mix,
         ms_dataset_id='swift/llava-instruct-mix-vsft',
         hf_dataset_id='HuggingFaceH4/llava-instruct-mix-vsft',
         split=['test'],
@@ -1026,10 +983,6 @@ register_dataset(
 
 
 class LatexocrPreprocessor(RowPreprocessor):
-
-    modals = ['image']
-    modal_keys = {'image': 'image'}
-    column_mapping = {'image': 'images'}
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         return {
@@ -1045,17 +998,26 @@ class LatexocrPreprocessor(RowPreprocessor):
 
 register_dataset(
     DatasetMeta(
-        MLLMDatasetName.latex_ocr_print,
         ms_dataset_id='AI-ModelScope/LaTeX_OCR',
         hf_dataset_id='linxy/LaTeX_OCR',
-        subsets=['full'],  # There are some problems in the training dataset.
-        split=['validation', 'test'],
-        preprocess_func=LatexocrPreprocessor(columns_mapping={'image': 'images'}),
+        subsets=[
+            SubsetDataset(
+                name='print',
+                subset=['full'],
+                split=['validation', 'test'],  # There are some problems in the training dataset.
+                preprocess_func=LatexocrPreprocessor(columns_mapping={'image': 'images'}),
+            ),
+            SubsetDataset(
+                name='print',
+                subset=['synthetic_handwrite'],
+                split=['train', 'validation', 'test'],
+                preprocess_func=LatexocrPreprocessor(columns_mapping={'image': 'images'}),
+            )
+        ],
         tags=['chat', 'ocr', 'multi-modal', 'vision']))
 
 register_dataset(
     DatasetMeta(
-        MLLMDatasetName.latex_ocr_handwrite,
         ms_dataset_id='AI-ModelScope/LaTeX_OCR',
         hf_dataset_id='linxy/LaTeX_OCR',
         subsets=['synthetic_handwrite'],
@@ -1082,7 +1044,6 @@ class CapchaImagesPreprocessor(RowPreprocessor):
 
 register_dataset(
     DatasetMeta(
-        MLLMDatasetName.capcha_images,
         ms_dataset_id='AI-ModelScope/captcha-images',
         split=['train', 'validation'],
         preprocess_func=CapchaImagesPreprocessor(columns_mapping={'image': 'images'}),
