@@ -5999,8 +5999,8 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
 
     kwargs['tokenizer'] = tokenizer_cls.from_pretrained(model_dir, trust_remote_code=True)
     model, tokenizer = get_qwen_function(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
-    device_type = next(model.parameters()).device.type
     if model is not None:
+        device_type = next(model.parameters()).device.type
         fix_qwen_inplace_bug(model)
         # fix device_map is 4
         if n_gpu // local_world_size >= 4:
