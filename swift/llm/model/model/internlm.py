@@ -12,7 +12,7 @@ from swift.llm import TemplateType
 from ..constant import LLMModelType, MLLMModelType
 from ..patcher import patch_output_clone, patch_output_to_input_device
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local, register_model
-from ..utils import use_submodel_func
+from ..utils import ModelInfo, use_submodel_func
 
 
 def get_model_tokenizer_internlm_chat(model_dir: str,

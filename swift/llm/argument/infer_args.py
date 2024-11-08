@@ -129,8 +129,9 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
 
     def __post_init__(self) -> None:
         BaseArguments.__post_init__(self)
-        MergeArguments.__post_init__(self)
+        LmdeployArguments.__post_init__(self)
         VllmArguments.__post_init__(self)
+        MergeArguments.__post_init__(self)
         self._parse_lora_modules()
 
         self._init_result_dir()

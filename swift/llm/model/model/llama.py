@@ -252,7 +252,7 @@ def get_model_tokenizer_omnli(model_dir: str,
 
 register_model(
     ModelMeta(
-        MLLMModelType.llama3_2_vision, [
+        MLLMModelType.llama3_1_omni, [
             ModelGroup(
                 [
                     Model('ICTNLP/Llama-3.1-8B-Omni', 'ICTNLP/Llama-3.1-8B-Omni'),

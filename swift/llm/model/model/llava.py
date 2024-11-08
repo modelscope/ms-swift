@@ -110,7 +110,7 @@ def get_model_tokenizer_llava_onevision(*args, **kwargs):
 
 register_model(
     ModelMeta(
-        MLLMModelType.llava1_5,
+        MLLMModelType.llava_onevision,
         [
             ModelGroup(
                 [
@@ -133,7 +133,7 @@ register_model(
 
 register_model(
     ModelMeta(
-        MLLMModelType.llava_next,
+        MLLMModelType.llava_next_hf,
         [
             ModelGroup(
                 [
@@ -393,7 +393,7 @@ register_model(
 
 register_model(
     ModelMeta(
-        MLLMModelType.llama3_llava_next,
+        MLLMModelType.llava_next,
         [
             ModelGroup(
                 [
@@ -406,24 +406,6 @@ register_model(
         ],
         TemplateType.llava_qwen,
         partial(get_model_tokenizer_llava, llm_model_type='next_qwen'),
-        architectures=['LlavaForConditionalGeneration'],
-        support_flash_attn=True,
-    ))
-
-register_model(
-    ModelMeta(
-        MLLMModelType.llama3_llava_next,
-        [
-            ModelGroup(
-                [
-                    Model('AI-ModelScope/llava-onevision-qwen2-72b-ov-hf', 'llava-hf/llava-onevision-qwen2-72b-ov-hf'),
-                ],
-                requires=['transformers>=4.45'],
-                tags=['multi-modal', 'vision', 'video'],
-            ),
-        ],
-        TemplateType.llava_onevision_qwen,
-        get_model_tokenizer_llava_onevision,
         architectures=['LlavaForConditionalGeneration'],
         support_flash_attn=True,
     ))

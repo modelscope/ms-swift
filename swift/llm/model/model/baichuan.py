@@ -6,10 +6,11 @@ import torch.nn.functional as F
 from torch import Tensor
 from transformers import BitsAndBytesConfig, PretrainedConfig
 
-from swift.llm import ModelInfo, TemplateType
+from swift.llm import TemplateType
 from swift.utils import get_logger
 from ..constant import LLMModelType
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local, register_model
+from ..utils import ModelInfo
 
 logger = get_logger()
 

@@ -48,7 +48,6 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
         if self.load_args:
             self._load_args()
 
-        self._save_args()
         ModelArguments.__post_init__(self)
         TemplateArguments.__post_init__(self)
         DataArguments.__post_init__(self)
@@ -95,7 +94,8 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
                 # TODO: check;  system=''
                 setattr(self, key, old_value)
 
-    def _save_args(self) -> None:
+    def save_args(self) -> None:
+        """TODO"""
         from swift.llm import InferArguments
         if isinstance(self, InferArguments):
             return

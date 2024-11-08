@@ -136,6 +136,8 @@ class MLLMModelType:
     llava1_6_yi = 'llava1_6_yi'
     llava1_6_llama3_1 = 'llava1_6_llama3_1'
     llava_next = 'llava_next'
+    llava_next_hf = 'llava_next_hf'
+    llava_onevision = 'llava_onevision'
     llava_llama = 'llava_llama'
     llama3_llava_next_hf = 'llama3_llava_next_hf'
     llama3_llava_next = 'llama3_llava_next'

@@ -100,7 +100,8 @@ class ExportArguments(MergeArguments, BaseArguments):
         assert not os.path.exists(self.output_dir), f'args.output_dir: {self.output_dir} already exists.'
 
     def __post_init__(self):
-        super().__post_init__()
+        MergeArguments.__post_init__(self)
+        BaseArguments.__post_init__(self)
         self._init_output_dir()
         if self.quant_bits > 0:
             self._init_quant()
