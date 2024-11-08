@@ -6,7 +6,7 @@ from typing import Dict, List, Optional
 import torch
 import torch.nn as nn
 
-from swift.llm import ExportArguments, deep_getattr, load_dataset
+from swift.llm import ExportArguments, deep_getattr, get_model_arch, load_dataset
 from swift.utils import get_logger, get_model_info
 from .utils import prepare_pt_engine_template, save_checkpoint
 
@@ -157,7 +157,7 @@ class QuantEngine:
             module.__old_forward = __old_forward
 
     def get_block_name_to_quantize(self, model: nn.Module, model_type: str) -> Optional[str]:
-        model_arch = model.model_meta.model_arch
+        model_arch = get_model_arch(model.model_meta.model_arch)
         prefix = ''
         if hasattr(model_arch, 'language_model'):
             assert len(model_arch.language_model) == 1, f'mllm_arch.language_model: {model_arch.language_model}'

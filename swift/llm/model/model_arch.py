@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from collections import OrderedDict
 from dataclasses import dataclass, field
-from typing import List, Union
+from typing import List, Optional, Union
 
 
 class ModelArch:
@@ -381,3 +381,7 @@ register_model_arch(
         aligner='model.connector',
         vision_tower='model.vision_model',
     ))
+
+
+def get_model_arch(arch_name: Optional[str]) -> Optional[ModelKeys]:
+    return MODEL_ARCH_MAPPING.get(arch_name)

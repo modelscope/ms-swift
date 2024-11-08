@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from .template import (TEMPLATE_MAPPING, Template, Word, get_template, TemplateType, register_template,
                            TemplateInputs, Messages, TemplateMeta, get_template_meta, InferRequest)
     from .model import (MODEL_MAPPING, ModelType, get_model_tokenizer, safe_snapshot_download, HfConfigFactory,
-                        ModelInfo, ModelMeta, ModelKeys, register_model_arch, MultiModelKeys, ModelArch,
+                        ModelInfo, ModelMeta, ModelKeys, register_model_arch, MultiModelKeys, ModelArch, get_model_arch,
                         MODEL_ARCH_MAPPING)
     from .dataset import (AlpacaPreprocessor, MessagesPreprocessor, AutoPreprocessor, DatasetName, DATASET_MAPPING,
                           MediaResource, register_dataset, register_dataset_info, dataset_map, stat_dataset, LLMDataset,
@@ -45,7 +45,7 @@ else:
         'model': [
             'MODEL_MAPPING', 'ModelType', 'get_model_tokenizer', 'safe_snapshot_download', 'HfConfigFactory',
             'ModelInfo', 'ModelMeta', 'ModelKeys', 'register_model_arch', 'MultiModelKeys', 'ModelArch',
-            'MODEL_ARCH_MAPPING'
+            'MODEL_ARCH_MAPPING', 'get_model_arch'
         ],
         'dataset': [
             'AlpacaPreprocessor', 'ClsPreprocessor', 'ComposePreprocessor', 'MessagesPreprocessor', 'DatasetName',
@@ -54,9 +54,8 @@ else:
             'print_example', 'sort_by_max_length', 'standard_keys', 'load_dataset', 'DATASET_TYPE', 'HfDataset',
             'sample_dataset'
         ],
-        'utils': [
-            'deep_getattr', 'to_device', 'History', 'decode_base64', 'history_to_messages', 'messages_to_history'
-        ],
+        'utils':
+        ['deep_getattr', 'to_device', 'History', 'decode_base64', 'history_to_messages', 'messages_to_history'],
         'base': ['SwiftPipeline']
     }
 

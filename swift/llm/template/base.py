@@ -582,6 +582,8 @@ class Template:
         if response is None:
             labels = None
             loss_scale = None
+        if self.loss_scale == 'default':
+            loss_scale = None
 
         res['labels'] = labels
         res['loss_scale'] = loss_scale

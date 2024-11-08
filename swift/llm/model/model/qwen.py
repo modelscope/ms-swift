@@ -9,6 +9,7 @@ from transformers.models.auto.tokenization_auto import get_tokenizer_config
 from swift.llm import TemplateType
 from swift.utils import get_dist_setting, get_logger
 from ..constant import LLMModelType, MLLMModelType
+from ..model_arch import ModelArch
 from ..patcher import patch_fixed_device, patch_output_clone, patch_output_to_input_device
 from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local, get_model_tokenizer_multimodal,
                         get_model_tokenizer_with_flash_attn, register_model)
@@ -165,6 +166,7 @@ register_model(
         ],
         TemplateType.qwen_audio,
         get_model_tokenizer_qwen_audio,
+        model_arch=ModelArch.qwen_audio,
         architectures=['QWenLMHeadModel'],
         support_flash_attn=True,
         additional_saved_files=['mel_filters.npz']))
@@ -243,6 +245,7 @@ register_model(
         ],
         TemplateType.qwen_vl,
         get_model_tokenizer_qwen_vl,
+        model_arch=ModelArch.qwen_vl,
         architectures=['QWenLMHeadModel'],
         support_flash_attn=True,
         support_vllm=True,
@@ -525,6 +528,7 @@ register_model(
         ],
         TemplateType.qwen2_vl,
         get_model_tokenizer_qwen2_vl,
+        model_arch=ModelArch.qwen2_vl,
         architectures=['Qwen2VLForConditionalGeneration'],
         requires=['transformers>=4.45.dev.0'],  # pip install qwen_vl_utils
         support_flash_attn=True,
@@ -549,6 +553,7 @@ register_model(
         ],
         TemplateType.qwen2_audio,
         get_model_tokenizer_qwen2_audio,
+        model_arch=ModelArch.qwen2_audio,
         architectures=['Qwen2AudioForConditionalGeneration'],
         requires=['transformers>=4.45.dev.0'],
         support_flash_attn=True))
