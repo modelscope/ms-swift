@@ -5987,8 +5987,9 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
     tokenizer_cls: Type[PreTrainedTokenizerBase] = get_class_from_dynamic_module(class_ref, model_dir)
     tokenizer_cls._auto_class = 'AutoTokenizer'
     tokenizer_cls.IMAGE_ST = ()  # fix no attr `self.IMAGE_ST` bug
-    tokenizer_cls._old_decode = tokenizer_cls._decode
-    tokenizer_cls._decode = _qwen_vl_audio_decode
+    if not hasattr(tokenizer_cls, '_old_decode'):
+        tokenizer_cls._old_decode = tokenizer_cls._decode
+        tokenizer_cls._decode = _qwen_vl_audio_decode
     # fix device_map is 4
     n_gpu = torch.cuda.device_count()
     local_world_size = get_dist_setting()[3]
@@ -6040,8 +6041,9 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     tokenizer_cls: Type[PreTrainedTokenizerBase] = get_class_from_dynamic_module(class_ref, model_dir)
     tokenizer_cls._auto_class = 'AutoTokenizer'
     tokenizer_cls.AUDIO_ST = ()  # fix no attr `self.AUDIO_ST` bug
-    tokenizer_cls._old_decode = tokenizer_cls._decode
-    tokenizer_cls._decode = _qwen_vl_audio_decode
+    if not hasattr(tokenizer_cls, '_old_decode'):
+        tokenizer_cls._old_decode = tokenizer_cls._decode
+        tokenizer_cls._decode = _qwen_vl_audio_decode
     kwargs['tokenizer'] = tokenizer_cls.from_pretrained(model_dir, trust_remote_code=True)
     model, tokenizer = get_qwen_function(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
     if model is not None:
