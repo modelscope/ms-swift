@@ -37,6 +37,11 @@ class InferRequest:
     tools: Optional[List[Tool]] = None
 
     def __post_init__(self):
+        for key in ['images', 'audios', 'videos']:
+            val = getattr(self, key)
+            if isinstance(val, str):
+                setattr(self, key, [val])
+
         self._remove_response()
 
     def _remove_response(self):
@@ -123,7 +128,11 @@ class StdTemplateInputs:
         media_kwargs = StdTemplateInputs.remove_messages_media(messages)
         for k in list(media_kwargs.keys()):
             mm_data = media_kwargs[k]
-            inputs_mm_data = (inputs.get(k) or []).copy()
+
+            inputs_mm_data = inputs.get(k)
+            if isinstance(inputs_mm_data, str):
+                inputs_mm_data = [inputs_mm_data]
+            inputs_mm_data = (inputs_mm_data or []).copy()
             if mm_data:
                 assert not inputs_mm_data, f'self.{k}: {inputs_mm_data}'
             else:

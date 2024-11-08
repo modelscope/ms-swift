@@ -36,7 +36,8 @@ class QuantizeArguments:
     bnb_4bit_use_double_quant: bool = True
 
     def _init_quantization_config(self) -> None:
-        if self.quant_method is None:
+        from ..export_args import ExportArguments
+        if isinstance(self, ExportArguments) or self.quant_method is None:
             self.quantization_config = None
             return
         assert self.quant_method in {'bnb', 'hqq', 'eetq'}
@@ -70,5 +71,4 @@ class QuantizeArguments:
             elif self.torch_dtype == torch.bfloat16:
                 self.bnb_4bit_compute_dtype = torch.bfloat16
         self.bnb_4bit_compute_dtype: torch.dtype = HfConfigFactory.to_torch_dtype(self.bnb_4bit_compute_dtype)
-        if not isinstance(self, ExportArguments):
-            self._init_quantization_config()
+        self._init_quantization_config()

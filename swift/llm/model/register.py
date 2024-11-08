@@ -351,6 +351,7 @@ def get_model_tokenizer(model_id_or_path: str,
                         use_hf: Optional[bool] = None,
                         revision: Optional[str] = None,
                         download_model: Optional[bool] = None,
+                        automodel_class=AutoModelForCausalLM,
                         **kwargs) -> Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]:
     """
     model_id_or_path: The path to the model or the model_id from modelscope/huggingface (controlled by `use_hf`).
@@ -409,6 +410,7 @@ def get_model_tokenizer(model_id_or_path: str,
     model_meta.check_requires()
     model_meta.check_flash_attn(attn_impl)
     get_function = model_meta.get_function
+    kwargs['automodel_class'] = automodel_class
     model, tokenizer = get_function(model_dir, model_info, model_kwargs, load_model, **kwargs)
 
     tokenizer.model_info = model_info

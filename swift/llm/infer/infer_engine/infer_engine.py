@@ -34,7 +34,8 @@ class InferEngine(BaseInferEngine):
             revision: Optional[str] = None,
             # model
             model_kwargs: Optional[Dict[str, Any]] = None,
-            attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None) -> None:
+            attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None,
+            **kwargs) -> None:
         model, tokenizer = get_model_tokenizer(
             model_id_or_path,
             torch_dtype,
@@ -44,7 +45,8 @@ class InferEngine(BaseInferEngine):
             use_hf=use_hf,
             revision=revision,
             model_kwargs=model_kwargs,
-            attn_impl=attn_impl)
+            attn_impl=attn_impl,
+            **kwargs)
         self.tokenizer = tokenizer
         self.model = model
         self.model_info = tokenizer.model_info

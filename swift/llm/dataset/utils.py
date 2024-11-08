@@ -15,7 +15,6 @@ from torch.utils.data import Dataset, IterableDataset
 from tqdm.auto import tqdm
 from transformers import PreTrainedTokenizerBase
 
-from swift.llm import safe_tokenizer_decode
 from swift.utils import get_logger, stat_array
 from .preprocess import DATASET_TYPE
 

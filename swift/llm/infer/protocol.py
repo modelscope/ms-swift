@@ -118,14 +118,14 @@ class MultiModalRequestMixin:
         img_base64: str = base64.b64encode(bytes_).decode('utf-8')
         return img_base64
 
-    def convert_to_base64(self):
+    def __post_init__(self):
         for key in ['images', 'audios', 'videos']:
             values = getattr(self, key)
+            if isinstance(values, str):
+                values = [values]
+                setattr(self, key, values)
             for i, val in enumerate(values):
                 values[i] = self._to_base64(val)
-
-    def __post_init__(self):
-        self.convert_to_base64()
 
 
 @dataclass

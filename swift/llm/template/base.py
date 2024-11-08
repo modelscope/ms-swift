@@ -91,6 +91,10 @@ class Template:
 
         template_meta.token_attr_to_id(tokenizer)
 
+        for i, token in enumerate(template_meta.placeholder_tokens):
+            if isinstance(token, str):
+                template_meta.placeholder_tokens[i] = tokenizer.convert_tokens_to_ids(token)
+
         self.template_meta: TemplateMeta = template_meta
         self.tokenizer = tokenizer
         self.use_generate_template = use_generate_template
@@ -836,3 +840,35 @@ class Template:
             padded_sequences.append(padded_seq)
 
         return torch.stack(padded_sequences)
+
+    def safe_tokenizer_decode(self, input_ids: List[int], **tokenizer_kwargs) -> str:
+        placeholder_tokens = self.template_meta.placeholder_tokens
+
+        def _is_special(token: int) -> bool:
+            if token < 0:
+                return True
+            return token in placeholder_tokens
+
+        if isinstance(input_ids, torch.Tensor):
+            input_ids = input_ids.tolist()
+        if len(input_ids) == 0:
+            return ''
+        result_str = ''
+        for i in range(len(input_ids)):
+            if i == 0:
+                if _is_special(input_ids[i]):
+                    s = 0
+                else:
+                    e = 0
+                continue
+            if _is_special(input_ids[i]) and not _is_special(input_ids[i - 1]):
+                s = i
+                result_str += self.tokenizer.decode(input_ids[e:s], **tokenizer_kwargs)
+            if not _is_special(input_ids[i]) and _is_special(input_ids[i - 1]):
+                e = i
+                result_str += f'[{input_ids[i - 1]} * {e - s}]'
+        if _is_special(input_ids[i]):
+            result_str += f'[{input_ids[i]} * {len(input_ids) - s}]'
+        else:
+            result_str += self.tokenizer.decode(input_ids[e:], **tokenizer_kwargs)
+        return result_str

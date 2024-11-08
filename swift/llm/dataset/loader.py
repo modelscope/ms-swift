@@ -359,16 +359,14 @@ class DatasetLoader:
         # register_dataset
         res_datasets: List[str] = []
         register_idx = 0
-        dataset_info = []
         for dataset in datasets:
             dataset_syntax = DatasetSyntax.parse(dataset)
             dataset_meta = dataset_meta_mapping.get((dataset_syntax.dataset_type, dataset_syntax.dataset.lower()))
             if dataset_meta is None:
                 # This dataset needs to be registered.
                 register_idx += 1
-                dataset_info.append(dataset_syntax.to_dict())
+                dataset_meta = register_dataset_info([dataset_syntax.to_dict()])[0]
             res_datasets.append((dataset_syntax, dataset_meta))
-        register_dataset_info(dataset_info)
 
         return res_datasets
 

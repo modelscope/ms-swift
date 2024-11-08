@@ -79,7 +79,7 @@ class SwiftInfer(SwiftPipeline[InferArguments]):
             kwargs.update({
                 'attn_impl': args.attn_impl,
                 'quantization_config': args.quantization_config,
-                'max_batch_size': args.max_batch_size,
+                'max_batch_size': getattr(args, 'max_batch_size', 16),
                 'device_map': args.device_map
             })
         elif args.infer_backend == 'vllm':

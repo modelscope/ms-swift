@@ -480,7 +480,6 @@ register_model(
         architectures=['MistralForCausalLM'],
     ))
 
-
 register_model(
     ModelMeta(
         LLMModelType.openbuddy_llama,

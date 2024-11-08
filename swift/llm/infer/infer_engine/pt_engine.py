@@ -62,7 +62,8 @@ class PtEngine(InferEngine):
             # model kwargs
             device_map: Optional[Union[str, Dict[str, Any]]] = None,
             quantization_config: Optional[Dict[str, Any]] = None,
-            model_kwargs: Optional[Dict[str, Any]] = None):
+            model_kwargs: Optional[Dict[str, Any]] = None,
+            **kwargs):
         if model_kwargs is None:
             model_kwargs = {}
         if device_map is not None:
@@ -77,7 +78,8 @@ class PtEngine(InferEngine):
             use_hf=use_hf,
             revision=revision,
             attn_impl=attn_impl,
-            model_kwargs=model_kwargs)
+            model_kwargs=model_kwargs,
+            **kwargs)
         self._prepare_default_template()
         self.max_batch_size = max_batch_size
         self.engine = self.model

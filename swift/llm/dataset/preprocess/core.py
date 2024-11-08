@@ -128,6 +128,7 @@ class ResponsePreprocessor(RowPreprocessor):
 
         for k, new_k in row_mapping.items():
             if counter[new_k] > 1:
+                # For example, if "response" and "answer" match, then no processing is done.
                 continue
             row[new_k] = row.pop(k)
 
@@ -233,8 +234,7 @@ class MessagesPreprocessor(RowPreprocessor):
 
     @staticmethod
     def check_message(user_message: Dict[str, str], assistant_message: Dict[str, str]) -> None:
-        assert (user_message['role'] in {'user', 'tool'}
-                and 'content' in user_message), f'user_message: {user_message}'
+        assert (user_message['role'] in {'user', 'tool'} and 'content' in user_message), f'user_message: {user_message}'
         assert (assistant_message['role'] in {'assistant'}
                 and 'content' in assistant_message), f'assistant_message: {assistant_message}'
 

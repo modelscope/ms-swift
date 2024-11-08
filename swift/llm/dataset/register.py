@@ -128,17 +128,19 @@ def _preprocess_d_info(d_info: Dict[str, Any], *, base_dir: Optional[str] = None
     return d_info
 
 
-def _register_d_info(d_info: Dict[str, Any], *, base_dir: Optional[str] = None) -> None:
+def _register_d_info(d_info: Dict[str, Any], *, base_dir: Optional[str] = None) -> DatasetMeta:
     """Register a single dataset to dataset mapping
 
     Args:
         d_info: The dataset info
     """
     d_info = _preprocess_d_info(d_info, base_dir=base_dir)
-    register_dataset(DatasetMeta(**d_info))
+    dataset_meta = DatasetMeta(**d_info)
+    register_dataset(dataset_meta)
+    return dataset_meta
 
 
-def register_dataset_info(dataset_info: Union[str, List[str], None] = None) -> None:
+def register_dataset_info(dataset_info: Union[str, List[str], None] = None) -> List[DatasetMeta]:
     """Register dataset from the `dataset_info.json` or a custom dataset info file
     This is used to deal with the datasets defined in the json info file.
 
@@ -162,9 +164,11 @@ def register_dataset_info(dataset_info: Union[str, List[str], None] = None) -> N
             dataset_info = json.loads(dataset_info)  # json
     if len(dataset_info) == 0:
         return
+    res = []
     for d_info in dataset_info:
-        _register_d_info(d_info, base_dir=base_dir)
+        res.append(_register_d_info(d_info, base_dir=base_dir))
 
     if log_msg is None:
         log_msg = dataset_info if len(dataset_info) < 5 else list(dataset_info.keys())
     logger.info(f'Successfully registered `{log_msg}`')
+    return res

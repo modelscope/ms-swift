@@ -325,4 +325,9 @@ class Qwen2VLTemplate(Template):
         return res
 
 
-register_template(QwenTemplateMeta(TemplateType.qwen2_vl, template_cls=Qwen2VLTemplate, skip_prompt=False))
+register_template(
+    QwenTemplateMeta(
+        TemplateType.qwen2_vl,
+        template_cls=Qwen2VLTemplate,
+        skip_prompt=False,
+        placeholder_tokens=['<|image_pad|>', '<|video_pad|>']))

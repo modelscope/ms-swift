@@ -9,9 +9,9 @@ from transformers import PreTrainedModel, PreTrainedTokenizerBase
 from swift.llm import ExportArguments, PtEngine, SwiftInfer, Template
 
 
-def prepare_pt_engine_template(args: ExportArguments, load_model: bool = True) -> Tuple[PtEngine, Template]:
+def prepare_pt_engine_template(args: ExportArguments, load_model: bool = True, **kwargs) -> Tuple[PtEngine, Template]:
     args.infer_backend = 'pt'
-    pt_engine: PtEngine = SwiftInfer.get_infer_engine(args, load_model=load_model)
+    pt_engine: PtEngine = SwiftInfer.get_infer_engine(args, load_model=load_model, **kwargs)
     delattr(args, 'infer_backend')
     template = SwiftInfer.get_template(args, pt_engine.tokenizer)
     return pt_engine, template

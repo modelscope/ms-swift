@@ -21,7 +21,7 @@ class QuantEngine:
         if args.quant_method == 'awq':
             from awq import AutoAWQForCausalLM
             kwargs['automodel_class'] = AutoAWQForCausalLM
-        pt_engine, self.template = prepare_pt_engine_template(args)
+        pt_engine, self.template = prepare_pt_engine_template(args, **kwargs)
         self.model = pt_engine.model
         self.tokenizer = self.template.tokenizer
 
@@ -51,7 +51,7 @@ class QuantEngine:
 
     def _prepare_dataset(self, examples: List[Dict[str, torch.LongTensor]], batch_size: int = 1, *args, **kwargs):
         examples = [
-            self.template.data_collator(examples[start:start + batch_size])
+            self.template.data_collator(examples[start:start + batch_size], model=self.model)
             for start in range(0, len(examples), batch_size)
         ]
         return examples

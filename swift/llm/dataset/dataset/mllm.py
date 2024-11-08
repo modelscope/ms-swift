@@ -140,25 +140,17 @@ register_dataset(
     ))
 
 
-class COCO2014Preprocess(RowPreprocessor):
+class COCO2014Preprocess(ResponsePreprocessor):
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
-        prompt = 'please describe the image.'
-        image_key = 'image'
-        response_key = 'caption'
-        if '&&' in row[response_key]:
-            row[response_key] = row[response_key].split('&&')[0]
+        caption = row['caption']
+        if '&&' in caption:
+            caption = caption.split('&&')[0]
+        row['query'] = 'please describe the image.'
+        row['response'] = caption
+        row['images'] = row['image']['path']
 
-        return {
-            'messages': [{
-                'role': 'user',
-                'content': prompt,
-            }, {
-                'query': 'assistant',
-                'content': row[response_key],
-            }],
-            'images': row[image_key]['path'],
-        }
+        return super().preprocess(row)
 
     def __call__(self, dataset, **kwargs):
         from datasets import Image
@@ -170,9 +162,11 @@ register_dataset(
     DatasetMeta(
         ms_dataset_id='modelscope/coco_2014_caption',
         preprocess_func=COCO2014Preprocess(),
-        subsets=['coco_2014_caption'],
-        split=['train', 'validation'],
-        tags=['chat', 'multi-modal', 'vision'],
+        subsets=[
+            SubsetDataset('train', 'coco_2014_caption', ['train']),
+            SubsetDataset('val', 'coco_2014_caption', ['validation']),
+        ],
+        tags=['chat', 'multi-modal', 'vision', '🔥'],
     ))
 
 
