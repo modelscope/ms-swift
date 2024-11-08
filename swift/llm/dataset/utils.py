@@ -257,7 +257,7 @@ MapFunc = Callable[[Dict[str, Any]], Tuple[Dict[str, Any], Dict[str, Any]]]
 
 
 def _single_map(d: Dict[str, Any], map_func: MapFunc) -> Optional[Dict[str, Any]]:
-    d = map_func(d)[0]
+    d = map_func(d)
     if len(d) == 0:
         return None
     return d

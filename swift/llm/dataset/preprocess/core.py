@@ -54,7 +54,7 @@ class RowPreprocessor:
         if row is None:
             self.shared_list.append(idx)
 
-        return row or {}
+        return row or {'messages': None}
 
     def _safe_rename_columns(self, dataset: HfDataset) -> HfDataset:
         features = get_dataset_features(dataset)
@@ -233,8 +233,7 @@ class MessagesPreprocessor(RowPreprocessor):
 
     @staticmethod
     def check_message(user_message: Dict[str, str], assistant_message: Dict[str, str]) -> None:
-        assert (user_message['role'] in {'user', 'tool'}
-                and 'content' in user_message), f'user_message: {user_message}'
+        assert (user_message['role'] in {'user', 'tool'} and 'content' in user_message), f'user_message: {user_message}'
         assert (assistant_message['role'] in {'assistant'}
                 and 'content' in assistant_message), f'assistant_message: {assistant_message}'
 
