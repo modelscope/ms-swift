@@ -66,6 +66,7 @@ class ModelMeta:
     # Additional files that need to be saved for full parameter training/merge-lora.
     additional_saved_files: List[str] = field(default_factory=list)
     support_gradient_checkpointing: bool = True
+    torch_dtype: Optional[torch.dtype] = None
 
     # File patterns to ignore when downloading the model.
     ignore_file_pattern: List[str] = field(default_factory=list)

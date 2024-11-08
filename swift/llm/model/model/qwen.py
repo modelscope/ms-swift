@@ -2,7 +2,7 @@
 from typing import Any, Dict, List, Optional, Type
 
 import torch
-from transformers import BitsAndBytesConfig, PretrainedConfig, PreTrainedTokenizerBase
+from transformers import BitsAndBytesConfig, PretrainedConfig, PreTrainedTokenizerBase, AutoConfig
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
 

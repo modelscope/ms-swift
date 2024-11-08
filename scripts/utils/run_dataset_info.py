@@ -44,7 +44,8 @@ def write_dataset_info() -> None:
         _, tokenizer = get_model_tokenizer(model_id, load_model=False)
         template = get_template(template_type, tokenizer)
         mapping[task_type] = template
-
+    all_keys = list(all_keys)
+    all_keys.sort(key=lambda k: k[0] or '')
     for key in all_keys:
         ms_id, hf_id, _ = key
         try:
@@ -59,7 +60,7 @@ def write_dataset_info() -> None:
                     hf_id = f'[{hf_id}](https://huggingface.co/datasets/{hf_id})'
                 else:
                     hf_id = '-'
-                r = f'|{ms_id}|{hf_id}|{subset.name}|{subset.subset}|{subset.split}'
+                r = f'|{ms_id}|{hf_id}|{subset.name}|{subset.subset}|{subset.split or "train"}'
                 if 'audio' in tags:
                     template = mapping['audio']
                 elif 'vision' in tags:
@@ -72,7 +73,7 @@ def write_dataset_info() -> None:
                     stat_str = 'Dataset is too huge, please click the original link to view the dataset stat.'
                 else:
                     train_dataset, val_dataset = load_dataset(
-                        ms_id,
+                        key[0],
                         split_dataset_ratio=0.0,
                         model_name=['小黄', 'Xiao Huang'],
                         model_author=['魔搭', 'ModelScope'])

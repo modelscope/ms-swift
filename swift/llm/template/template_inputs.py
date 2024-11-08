@@ -123,7 +123,7 @@ class StdTemplateInputs:
         media_kwargs = StdTemplateInputs.remove_messages_media(messages)
         for k in list(media_kwargs.keys()):
             mm_data = media_kwargs[k]
-            inputs_mm_data = inputs.get(k).copy() or []
+            inputs_mm_data = (inputs.get(k) or []).copy()
             if mm_data:
                 assert not inputs_mm_data, f'self.{k}: {inputs_mm_data}'
             else:

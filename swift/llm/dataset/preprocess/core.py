@@ -233,9 +233,9 @@ class MessagesPreprocessor(RowPreprocessor):
 
     @staticmethod
     def check_message(user_message: Dict[str, str], assistant_message: Dict[str, str]) -> None:
-        assert (len(user_message) == 2 and user_message['role'] in {'user', 'tool'}
+        assert (user_message['role'] in {'user', 'tool'}
                 and 'content' in user_message), f'user_message: {user_message}'
-        assert (len(assistant_message) == 2 and assistant_message['role'] in {'assistant'}
+        assert (assistant_message['role'] in {'assistant'}
                 and 'content' in assistant_message), f'assistant_message: {assistant_message}'
 
     def sharegpt_to_messages(self, messages: List[Dict[str, str]], system: Optional[str]) -> List[Dict[str, str]]:
