@@ -1,8 +1,18 @@
 import os
+from typing import Dict, List
 
 from swift.llm import DATASET_MAPPING, TemplateType, dataset_map, get_model_tokenizer, get_template
 from swift.llm.dataset.loader import load_dataset
 from swift.utils import stat_array
+
+
+def find_dataset_row(dataset: str, ignore_datasets: Dict[str, str]):
+    if not dataset:
+        return None
+    for ignore_dataset in ignore_datasets:
+        if dataset in ignore_dataset:
+            return ignore_datasets[ignore_dataset]
+    return None
 
 
 def write_dataset_info() -> None:
@@ -12,7 +22,7 @@ def write_dataset_info() -> None:
         if os.path.exists(fpath):
             with open(fpath, 'r', encoding='utf-8') as f:
                 text = f.read()
-            idx = text.find('| Dataset Name |')
+            idx = text.find('| MS Dataset ID |')
             pre_texts.append(text[:idx])
 
             text = text[idx:]
@@ -23,7 +33,7 @@ def write_dataset_info() -> None:
 
     res_text_list = []
 
-    res_text_list.append('| Dataset Name | HF Dataset ID | Subset name | Real Subset  |'
+    res_text_list.append('| MS Dataset ID | HF Dataset ID | Subset name | Real Subset  |'
                          ' Subset split | Dataset Size | Statistic (token) | Tags |')
     res_text_list.append('| ------------ | ------------- | ----------- |------------- |'
                          ' -------------| -------------| ----------------- | ---- |')
@@ -32,7 +42,8 @@ def write_dataset_info() -> None:
     else:
         text_list = []
 
-    # ignore_dataset = {text.split('|', 2)[1].lstrip('🔥 '): text for text in text_list}
+    hf_ignore_datasets = {text.split('|', 3)[2].lstrip('🔥 '): text for text in text_list}
+    ms_ignore_datasets = {text.split('|', 3)[1].lstrip('🔥 '): text for text in text_list}
     all_keys = set(DATASET_MAPPING.keys())
     mapping = {}
     _iter = zip(
@@ -48,10 +59,21 @@ def write_dataset_info() -> None:
     all_keys.sort(key=lambda k: k[0] or '')
     for key in all_keys:
         ms_id, hf_id, _ = key
+        print(f'Processing {ms_id or hf_id}')
+        ms_dataset = find_dataset_row(ms_id, ms_ignore_datasets)
+        hf_dataset = find_dataset_row(hf_id, hf_ignore_datasets)
+        dataset_info = DATASET_MAPPING[key]
+        tags = dataset_info.tags
+        tags_str = ', '.join(tags)
+        if len(tags_str) == 0:
+            tags_str = '-'
         try:
-            dataset_info = DATASET_MAPPING[key]
-            tags = dataset_info.tags
-            for subset in dataset_info.subsets:
+            r = (f'|{ms_id}|{hf_id}|{",".join([s.name for s in dataset_info.subsets])}|'
+                 f'{",".join([s.subset for s in dataset_info.subsets])}|'
+                 f'{",".join(dataset_info.split) or "train"}')
+            if ms_dataset or hf_dataset:
+                dataset_size, stat_str = (ms_dataset or hf_dataset).split('|')[6:8]
+            else:
                 if ms_id is not None:
                     ms_id = f'[{ms_id}](https://modelscope.cn/datasets/{ms_id}/summary)'
                 else:
@@ -60,7 +82,6 @@ def write_dataset_info() -> None:
                     hf_id = f'[{hf_id}](https://huggingface.co/datasets/{hf_id})'
                 else:
                     hf_id = '-'
-                r = f'|{ms_id}|{hf_id}|{subset.name}|{subset.subset}|{subset.split or "train"}'
                 if 'audio' in tags:
                     template = mapping['audio']
                 elif 'vision' in tags:
@@ -73,8 +94,10 @@ def write_dataset_info() -> None:
                     stat_str = 'Dataset is too huge, please click the original link to view the dataset stat.'
                 else:
                     train_dataset, val_dataset = load_dataset(
-                        key[0],
+                        key[0] + ':all',
                         split_dataset_ratio=0.0,
+                        strict=False,
+                        num_proc=12,
                         model_name=['小黄', 'Xiao Huang'],
                         model_author=['魔搭', 'ModelScope'])
                     dataset_size = len(train_dataset)
@@ -85,7 +108,7 @@ def write_dataset_info() -> None:
                     else:
                         num_proc = 4
 
-                    dataset = dataset_map(raw_dataset, template.encode, num_proc=num_proc)
+                    dataset = dataset_map(raw_dataset.select(range(5000)), template.encode, num_proc=num_proc)
 
                     _token_len = []
                     input_ids = dataset['input_ids']
@@ -94,21 +117,17 @@ def write_dataset_info() -> None:
                     stat = stat_array(_token_len)[0]
                     stat_str = f"{stat['mean']:.1f}±{stat['std']:.1f}, min={stat['min']}, max={stat['max']}"
 
-                tags_str = ', '.join(tags)
-                if len(tags_str) == 0:
-                    tags_str = '-'
-
-                res_text_list.append(f'{r}|{dataset_size}|{stat_str}|{tags_str}|')
+            res_text_list.append(f'{r}|{dataset_size}|{stat_str}|{tags_str}|')
         except Exception:
             import traceback
             print(traceback.format_exc())
             break
-
-    for idx in range(len(fpaths)):
-        text = '\n'.join(res_text_list)
-        text = pre_texts[idx] + text + '\n'
-        with open(fpaths[idx], 'w', encoding='utf-8') as f:
-            f.write(text)
+        finally:
+            for idx in range(len(fpaths)):
+                text = '\n'.join(res_text_list)
+                text = pre_texts[idx] + text + '\n'
+                with open(fpaths[idx], 'w', encoding='utf-8') as f:
+                    f.write(text)
     print(f'数据集总数: {len(all_keys)}, 子数据集总数: {len(res_text_list)}')
 
 

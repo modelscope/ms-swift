@@ -54,7 +54,7 @@ class RowPreprocessor:
         if row is None:
             self.shared_list.append(idx)
 
-        return row or {}
+        return row or {'messages': None}
 
     def _safe_rename_columns(self, dataset: HfDataset) -> HfDataset:
         features = get_dataset_features(dataset)

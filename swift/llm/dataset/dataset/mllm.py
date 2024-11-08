@@ -659,7 +659,7 @@ register_dataset(
         tags=['multi-modal', 'en', 'ocr-vqa', 'quality']))
 
 
-class LLaVAInstructPreprocessor(RowPreprocessor):
+class LLaVAInstructPreprocessor(MessagesPreprocessor):
 
     def prepare_dataset(self, dataset):
         self.all_folders = {}
@@ -668,8 +668,8 @@ class LLaVAInstructPreprocessor(RowPreprocessor):
         return super().prepare_dataset(dataset)
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
-        row.update(MessagesPreprocessor().preprocess(row))
-        image = row['image']
+        row = super().preprocess(row)
+        image = row['images']
         if 'coco/' in image:
             image = os.path.join(self.all_folders['coco'], image.replace('coco/', ''))
         elif 'gqa/' in image:
@@ -694,7 +694,7 @@ register_dataset(
     DatasetMeta(
         ms_dataset_id='AI-ModelScope/LLaVA-Instruct-150K',
         ms_revision='d5db3806e395c60496630a206c336932e85a2d00',
-        preprocess_func=LLaVAInstructPreprocessor(),
+        preprocess_func=LLaVAInstructPreprocessor(columns_mapping={'image': 'images'}),
         split=['train'],
         tags=['chat', 'multi-modal', 'vision']))
 
