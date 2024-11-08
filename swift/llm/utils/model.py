@@ -6788,7 +6788,7 @@ def get_model_tokenizer_llava_onevision(*args, **kwargs):
     hf_model_id='llava-hf/llava-v1.6-mistral-7b-hf')
 @register_model(
     ModelType.llava1_6_llama3_1_8b_instruct,
-    'swift/llava-llama3.1-8b',
+    'DaozeZhang/llava-llama3.1-8b',
     LoRATM.llava,
     TemplateType.llava_next_llama3,
     support_flash_attn=True,
