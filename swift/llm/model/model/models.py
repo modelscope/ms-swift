@@ -213,7 +213,7 @@ register_model(
 
 register_model(
     ModelMeta(
-        LLMModelType.yuan2,
+        LLMModelType.orion,
         [
             ModelGroup([
                 Model('OrionStarAI/Orion-14B-Base', 'OrionStarAI/Orion-14B-Base'),
@@ -480,21 +480,6 @@ register_model(
         architectures=['MistralForCausalLM'],
     ))
 
-register_model(
-    ModelMeta(
-        LLMModelType.openbuddy_llama2,
-        [
-            ModelGroup([
-                Model('OpenBuddy/openbuddy-llama2-70b-v10.1-bf16', 'OpenBuddy/openbuddy-llama2-70b-v10.1-bf16'),
-            ]),
-        ],
-        TemplateType.openbuddy,
-        get_model_tokenizer_with_flash_attn,
-        support_flash_attn=True,
-        support_vllm=True,
-        support_lmdeploy=True,
-        architectures=['LlamaForCausalLM'],
-    ))
 
 register_model(
     ModelMeta(

@@ -71,6 +71,7 @@ class LLMModelType:
     gemma2 = 'gemma2'
 
     yuan2 = 'yuan2'
+    orion = 'orion'
 
     atom = 'atom'
 

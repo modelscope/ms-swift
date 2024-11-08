@@ -59,6 +59,7 @@ class LLMTemplateType:
     orion = 'orion'
     modelscope_agent = 'modelscope_agent'
     mengzi = 'mengzi'
+    aya = 'aya'
 
 
 class MLLMTemplateType:
@@ -66,6 +67,7 @@ class MLLMTemplateType:
     qwen_audio = 'qwen_audio'
     qwen2_vl = 'qwen2_vl'
     qwen2_audio = 'qwen2_audio'
+    ovis1_6 = 'ovis1_6'
 
     llama3_1_omni = 'llama3_1_omni'
     llama3_2_vision = 'llama3_2_vision'
@@ -119,6 +121,7 @@ class MLLMTemplateType:
     emu3_chat = 'emu3_chat'
     emu3_gen = 'emu3_gen'
     janus = 'janus'
+    molmo = 'molmo'
 
 
 class TemplateType(LLMTemplateType, MLLMTemplateType):
