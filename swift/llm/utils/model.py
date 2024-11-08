@@ -184,8 +184,19 @@ class ModelType:
     # qwen2.5 coder
     qwen2_5_coder_1_5b = 'qwen2_5-coder-1_5b'
     qwen2_5_coder_1_5b_instruct = 'qwen2_5-coder-1_5b-instruct'
+    qwen2_5_coder_1_5b_instruct_gptq_int4 = 'qwen2_5-coder-1_5b-instruct-gptq-int4'
+    qwen2_5_coder_1_5b_instruct_gptq_int8 = 'qwen2_5-coder-1_5b-instruct-gptq-int8'
+    qwen2_5_coder_1_5b_instruct_awq = 'qwen2_5-coder-1_5b-instruct-awq'
     qwen2_5_coder_7b = 'qwen2_5-coder-7b'
     qwen2_5_coder_7b_instruct = 'qwen2_5-coder-7b-instruct'
+    qwen2_5_coder_7b_instruct_gptq_int4 = 'qwen2_5-coder-7b-instruct-gptq-int4'
+    qwen2_5_coder_7b_instruct_gptq_int8 = 'qwen2_5-coder-7b-instruct-gptq-int8'
+    qwen2_5_coder_7b_instruct_awq = 'qwen2_5-coder-7b-instruct-awq'
+
+    qwen2_5_coder_0_5b_instruct = 'qwen2_5-coder-0_5b-instruct'
+    qwen2_5_coder_3b_instruct = 'qwen2_5-coder-3b-instruct'
+    qwen2_5_coder_14b_instruct = 'qwen2_5-coder-14b-instruct'
+    qwen2_5_coder_32b_instruct = 'qwen2_5-coder-32b-instruct'
     # qwen-vl
     qwen_vl = 'qwen-vl'
     qwen_vl_chat = 'qwen-vl-chat'
@@ -3041,6 +3052,8 @@ def get_model_tokenizer_mplug_owl3(model_dir: str,
                                    model_kwargs: Dict[str, Any],
                                    load_model: bool = True,
                                    **kwargs):
+    model_cls = get_class_from_dynamic_module('modeling_mplugowl3.mPLUGOwl3Model', model_dir)
+    model_cls._no_split_modules = ['SiglipEncoderLayer']
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
     processor = model.init_processor(tokenizer)
     tokenizer.processor = processor
@@ -3394,6 +3407,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=False,
     function_kwargs={'gptq_bits': 4},
     torch_dtype=torch.float16,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
@@ -3416,6 +3430,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     function_kwargs={'gptq_bits': 4},
     torch_dtype=torch.float16,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
@@ -3438,6 +3453,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     function_kwargs={'gptq_bits': 4},
     torch_dtype=torch.float16,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
@@ -3460,6 +3476,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     function_kwargs={'gptq_bits': 4},
     torch_dtype=torch.float16,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
@@ -3825,6 +3842,7 @@ for model_size in ['0.5B', '1.5B', '3B', '7B', '14B', '32B', '72B']:
             get_model_tokenizer_qwen2_chat,
             support_flash_attn=True,
             support_vllm=True,
+            support_lmdeploy=quant_bits == 4 and model_size != '0.5B',
             function_kwargs={'gptq_bits': quant_bits},
             torch_dtype=torch.float16,
             requires=['auto_gptq>=0.5', 'transformers>=4.37'],
@@ -3838,6 +3856,7 @@ for model_size in ['0.5B', '1.5B', '3B', '7B', '14B', '32B', '72B']:
         get_model_tokenizer_qwen2_chat,
         support_flash_attn=True,
         support_vllm=True,
+        support_lmdeploy=model_size != '0.5B',
         function_kwargs={'is_awq': True},
         torch_dtype=torch.float16,
         requires=['transformers>=4.37', 'autoawq'],
@@ -3881,6 +3900,50 @@ for model_size in ['1.5B', '7B']:
         support_lmdeploy=True,
         requires=['transformers>=4.37'],
         hf_model_id=f'Qwen/Qwen2.5-Coder-{model_size}')
+    register_model(
+        f'qwen2_5-coder-{model_size_lower}-instruct',
+        f'qwen/Qwen2.5-Coder-{model_size}-Instruct',
+        LoRATM.llama,
+        TemplateType.qwen2_5,
+        get_model_tokenizer_qwen2_chat,
+        support_flash_attn=True,
+        support_vllm=True,
+        support_lmdeploy=True,
+        requires=['transformers>=4.37'],
+        hf_model_id=f'Qwen/Qwen2.5-Coder-{model_size}-Instruct')
+    for quant_bits in [4, 8]:
+        quant_type = f'GPTQ-Int{quant_bits}'
+        quant_type_lower = quant_type.lower()
+        register_model(
+            f'qwen2_5-coder-{model_size_lower}-instruct-{quant_type_lower}',
+            f'qwen/Qwen2.5-Coder-{model_size}-Instruct-{quant_type}',
+            LoRATM.llama,
+            TemplateType.qwen2_5,
+            get_model_tokenizer_qwen2_chat,
+            support_flash_attn=True,
+            support_vllm=True,
+            support_lmdeploy=quant_bits == 4,
+            function_kwargs={'gptq_bits': quant_bits},
+            torch_dtype=torch.float16,
+            requires=['auto_gptq>=0.5', 'transformers>=4.37'],
+            hf_model_id=f'Qwen/Qwen2.5-{model_size}-Instruct-{quant_type}')
+
+    register_model(
+        f'qwen2_5-coder-{model_size_lower}-instruct-awq',
+        f'qwen/Qwen2.5-Coder-{model_size}-Instruct-AWQ',
+        LoRATM.llama,
+        TemplateType.qwen2_5,
+        get_model_tokenizer_qwen2_chat,
+        support_flash_attn=True,
+        support_vllm=True,
+        support_lmdeploy=True,
+        function_kwargs={'is_awq': True},
+        torch_dtype=torch.float16,
+        requires=['transformers>=4.37', 'autoawq'],
+        hf_model_id=f'Qwen/Qwen2.5-{model_size}-Instruct-AWQ')
+
+for model_size in ['0.5B', '3B', '14B', '32B']:
+    model_size_lower = model_size.lower().replace('.', '_')
     register_model(
         f'qwen2_5-coder-{model_size_lower}-instruct',
         f'qwen/Qwen2.5-Coder-{model_size}-Instruct',
@@ -4032,6 +4095,7 @@ for model_size in ['2B', '7B', '72B']:
     function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=False,
     hf_model_id='Qwen/Qwen1.5-0.5B-Chat-GPTQ-Int4')
 @register_model(
     ModelType.qwen1half_0_5b_chat_int8,
@@ -4054,6 +4118,7 @@ for model_size in ['2B', '7B', '72B']:
     function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='Qwen/Qwen1.5-1.8B-Chat-GPTQ-Int4')
 @register_model(
     ModelType.qwen1half_1_8b_chat_int8,
@@ -4076,6 +4141,7 @@ for model_size in ['2B', '7B', '72B']:
     function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='Qwen/Qwen1.5-4B-Chat-GPTQ-Int4')
 @register_model(
     ModelType.qwen1half_4b_chat_int8,
@@ -4098,6 +4164,7 @@ for model_size in ['2B', '7B', '72B']:
     function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='Qwen/Qwen1.5-7B-Chat-GPTQ-Int4')
 @register_model(
     ModelType.qwen1half_7b_chat_int8,
@@ -4120,6 +4187,7 @@ for model_size in ['2B', '7B', '72B']:
     function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='Qwen/Qwen1.5-14B-Chat-GPTQ-Int4')
 @register_model(
     ModelType.qwen1half_14b_chat_int8,
@@ -4142,6 +4210,7 @@ for model_size in ['2B', '7B', '72B']:
     function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='Qwen/Qwen1.5-32B-Chat-GPTQ-Int4')
 @register_model(
     ModelType.qwen1half_72b_chat_int4,
@@ -4153,6 +4222,7 @@ for model_size in ['2B', '7B', '72B']:
     function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='Qwen/Qwen1.5-72B-Chat-GPTQ-Int4')
 @register_model(
     ModelType.qwen1half_110b_chat_int4,
@@ -4164,6 +4234,7 @@ for model_size in ['2B', '7B', '72B']:
     function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='Qwen/Qwen1.5-110B-Chat-GPTQ-Int4')
 @register_model(
     ModelType.qwen1half_72b_chat_int8,
@@ -5928,6 +5999,7 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
 
     kwargs['tokenizer'] = tokenizer_cls.from_pretrained(model_dir, trust_remote_code=True)
     model, tokenizer = get_qwen_function(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
+    device_type = next(model.parameters()).device.type
     if model is not None:
         fix_qwen_inplace_bug(model)
         # fix device_map is 4
@@ -5935,7 +6007,7 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
             model.transformer.visual.proj.data = model.transformer.visual.proj.to(
                 model.transformer.visual.ln_post.bias.device)
         # fix images cuda:1 bug
-        model.transformer.visual.register_forward_hook(get_device_hook(0))
+        model.transformer.visual.register_forward_hook(get_device_hook(f'{device_type}:0'))
     return model, tokenizer
 
 
@@ -6716,7 +6788,7 @@ def get_model_tokenizer_llava_onevision(*args, **kwargs):
     hf_model_id='llava-hf/llava-v1.6-mistral-7b-hf')
 @register_model(
     ModelType.llava1_6_llama3_1_8b_instruct,
-    'DaozeZhang/llava-llama3.1-8b',
+    'swift/llava-llama3.1-8b',
     LoRATM.llava,
     TemplateType.llava_next_llama3,
     support_flash_attn=True,

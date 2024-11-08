@@ -150,9 +150,9 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
         if loss_name is None and 'loss_scale' in inputs:
             loss_name = 'loss-scale'
 
-        loss_kwargs = {}
+        loss_kwargs = {'num_items_in_batch': num_items_in_batch}
         if loss_name == 'loss-scale':
-            loss_kwargs['loss_scale'] = inputs.pop('loss_scale')
+            loss_kwargs['loss_scale'] = inputs.pop('loss_scale', None)
 
         if loss_name is not None or self.label_smoother is not None and 'labels' in inputs:
             labels = inputs.pop('labels')
@@ -160,7 +160,7 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
         loss_kwargs['labels'] = labels
         outputs = model(**inputs)
         # fix https://github.com/huggingface/transformers/issues/34263
-        if outputs.loss is not None and num_items_in_batch is not None:
+        if 'labels' in inputs and num_items_in_batch is not None:
             outputs.loss = outputs.loss * (inputs['labels'][:, 1:] != -100).sum() / num_items_in_batch
         if loss_name is not None:
             loss_func = get_loss_func(loss_name)
