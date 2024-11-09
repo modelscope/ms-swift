@@ -244,9 +244,13 @@ class MessagesPreprocessor(RowPreprocessor):
 
     @staticmethod
     def check_message(user_message: Dict[str, str], assistant_message: Dict[str, str]) -> None:
-        assert (user_message['role'] in {'user', 'tool'} and 'content' in user_message), f'user_message: {user_message}'
-        assert (assistant_message['role'] in {'assistant'}
-                and 'content' in assistant_message), f'assistant_message: {assistant_message}'
+        try:
+            assert (user_message['role'] in {'user', 'tool'} and 'content' in user_message), f'user_message: {user_message}'
+            assert (assistant_message['role'] in {'assistant'}
+                    and 'content' in assistant_message), f'assistant_message: {assistant_message}'
+        except:
+            print()
+            raise
 
     def sharegpt_to_messages(self, messages: List[Dict[str, str]], system: Optional[str]) -> List[Dict[str, str]]:
         self._to_std_key(messages, 'user', self.user_roles)
@@ -292,7 +296,7 @@ class MessagesPreprocessor(RowPreprocessor):
         if self.inner_key is not None:
             messages = messages[self.inner_key]
         messages: Optional[List[Dict[str, str]]] = self.repair_messages(messages)
-        if not messages:
+        if not messages or isinstance(messages, str):
             return
         self._to_std_key(messages, 'role', self.role_keys)
         self._to_std_key(messages, 'content', self.content_keys)

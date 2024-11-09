@@ -59,7 +59,7 @@ class RuozhibaPreprocessor(RowPreprocessor):
         if match:
             title = match.group(1)
         if title:
-            return {'messages': {'role': 'assistant', 'content': title}}
+            return {'messages': [{'role': 'assistant', 'content': title}]}
 
 
 register_dataset(
@@ -249,7 +249,7 @@ class TigerBotLawPreprocessor(ResponsePreprocessor):
             chapter = row[f'chapter{i}']
             if chapter is not None:
                 cur_prompt += f'{chapter}'
-        cur_prompt += f'{row["content"]}'
+        cur_prompt += f'{row["response"]}'
         return super().preprocess({'response': cur_prompt})
 
 
@@ -259,6 +259,13 @@ register_dataset(
         hf_dataset_id='TigerResearch/tigerbot-law-plugin',
         preprocess_func=TigerBotLawPreprocessor(),
         tags=['text-generation', 'law', 'pretrained']))
+
+
+register_dataset(
+    DatasetMeta(
+        ms_dataset_id="codefuse-ai/CodeExercise-Python-27k",
+        preprocess_func=MessagesPreprocessor(columns_mapping={"chat_rounds": "messages"}),
+        tags=[["chat", "coding", "🔥"]]))
 
 
 class LeetcodePythonPreprocessor(ResponsePreprocessor):
@@ -686,7 +693,7 @@ class OrpoDPOMix40kPreprocessor(RowPreprocessor):
         query = None
         response = None
         rejected_response = None
-        if row['source'] != 'toxic-dpo-v0.2':
+        if row['source'] == 'toxic-dpo-v0.2':
             return
         try:
             for i, (chosen, rejected) in enumerate(zip(chosen_history, rejected_history)):
