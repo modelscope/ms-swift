@@ -32,11 +32,14 @@ class RowPreprocessor:
     def __init__(self,
                  *,
                  columns_mapping: Optional[Dict[str, str]] = None,
-                 remove_useless_columns: bool = True) -> None:
+                 remove_useless_columns: bool = True,
+                 **kwargs) -> None:
         self.columns_mapping = columns_mapping or {}
         self.remove_useless_columns = remove_useless_columns
         self.row_mapping = {}
         self.shared_list = None
+        self.traceback_limit = kwargs.get('traceback_limit', 10)
+        self.traceback_counter = 0
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         raise NotImplementedError
@@ -52,8 +55,10 @@ class RowPreprocessor:
             row = None
             if strict:
                 raise
-            import traceback
-            print(traceback.format_exc())
+            if self.traceback_limit is not None and self.traceback_counter < self.traceback_limit:
+                import traceback
+                print(traceback.format_exc())
+                self.traceback_counter += 1
             logger.error(f'There are errors in the dataset, the data will be deleted')
         if row is None:
             self.shared_list.append(idx)

@@ -216,7 +216,7 @@ class BlossomMathPreprocessor(ResponsePreprocessor):
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         output, answer = row['output'], row['answer']
-        return super().preprocess({'query': row['input'], 'response': f'{output}\n\nAnswer: {answer}'})
+        return super().preprocess({'query': row['query'], 'response': f'{output}\n\nAnswer: {answer}'})
 
 
 register_dataset(
@@ -454,13 +454,13 @@ class HHRLHFPreprocessor(RowPreprocessor):
         }
 
 
-register_dataset(
-    DatasetMeta(
-        ms_dataset_id='AI-ModelScope/hh-rlhf',
-        subsets=['harmless-base', 'helpful-base', 'helpful-online', 'helpful-rejection-sampled'],
-        preprocess_func=HHRLHFPreprocessor(),
-        split=['train', 'test'],
-        tags=['rlhf', 'dpo', 'pairwise']))
+# register_dataset(
+#     DatasetMeta(
+#         ms_dataset_id='AI-ModelScope/hh-rlhf',
+#         subsets=['harmless-base', 'helpful-base', 'helpful-online', 'helpful-rejection-sampled'],
+#         preprocess_func=HHRLHFPreprocessor(),
+#         split=['train'],
+#         tags=['rlhf', 'dpo', 'pairwise']))
 
 
 class HHRLHFCNPreprocessor(RowPreprocessor):
@@ -513,7 +513,9 @@ class HHRLHFCNPreprocessor(RowPreprocessor):
             return False
 
     def __call__(self, dataset, **kwargs):
-        dataset = dataset.filter(self.filter_valid_row, **kwargs)
+        filter_kwargs = kwargs.copy()
+        filter_kwargs.pop('strict', None)
+        dataset = dataset.filter(self.filter_valid_row, **filter_kwargs)
         return super(HHRLHFCNPreprocessor, self).__call__(dataset, **kwargs)
 
 

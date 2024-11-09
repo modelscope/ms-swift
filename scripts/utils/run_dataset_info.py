@@ -108,7 +108,7 @@ def write_dataset_info() -> None:
                     else:
                         num_proc = 1
 
-                    dataset = dataset_map(raw_dataset.select(range(5000)), template.encode, num_proc=num_proc)
+                    dataset = dataset_map(raw_dataset.select(range(min(5000, len(raw_dataset)))), template.encode, num_proc=num_proc)
 
                     _token_len = []
                     input_ids = dataset['input_ids']
