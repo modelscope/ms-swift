@@ -37,11 +37,15 @@ def test_pretrain():
     _test_dataset(['AI-ModelScope/ruozhiba:all'])
 
 
+def test_dataset_info():
+    _test_dataset(['codefuse-ai/CodeExercise-Python-27k'])
+
 if __name__ == '__main__':
     # test_alpaca()
     # test_coco()
     # test_llava_instruct()
     # test_ms_bench()
-    test_ms_agent()
-    test_dpo()
+    # test_ms_agent()
+    # test_dpo()
     # test_pretrain()
+    test_dataset_info()
