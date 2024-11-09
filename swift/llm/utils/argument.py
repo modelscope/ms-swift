@@ -1789,6 +1789,7 @@ class RLHFArguments(SftArguments):
     cliprange_value: float = 0.2
     gamma: float = 1.0
     lam: float = 0.95
+    num_sample_generations: int = 10
 
     def __post_init__(self):
         self._check_simpo()

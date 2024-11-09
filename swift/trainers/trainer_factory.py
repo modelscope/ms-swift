@@ -54,7 +54,7 @@ class TrainerFactory:
             'beta', 'label_smoothing', 'loss_type', 'rpo_alpha', 'cpo_alpha', 'simpo_gamma', 'desirable_weight',
             'undesirable_weight', 'num_ppo_epochs', 'response_length', 'local_rollout_forward_batch_size',
             'local_rollout_forward_batch_size', 'whiten_rewards', 'kl_coef', 'cliprange', 'vf_coef', 'cliprange_value',
-            'gamma', 'lam'
+            'gamma', 'lam', 'num_sample_generations'
         ]
         parameters = inspect.signature(training_args_cls.__init__).parameters
         for p_name in check_parameters:
