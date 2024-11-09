@@ -231,6 +231,9 @@ class ResponsePreprocessor(RowPreprocessor):
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         response = row.pop('response', None)
         if response is None:
+            row.pop('query', None)
+            row.pop('history', None)
+            row.pop('system', None)
             return
         history = row.pop('history', None) or []
         query = row.pop('query', None)
