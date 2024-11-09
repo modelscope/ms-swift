@@ -29,7 +29,7 @@ register_dataset(
 class LongAlpacaPreprocessor(AlpacaPreprocessor):
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        response = row['output']
+        response = row['response']
         prefix_prompt = 'Answer: '
         if response and response.startswith(prefix_prompt):
             response = response[len(prefix_prompt):].strip()

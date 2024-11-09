@@ -94,6 +94,12 @@ class StdTemplateInputs:
         self.video_idx = 0
         self.object_idx = 0
         self.box_idx = 0
+        if self.images and not isinstance(self.images, list):
+            self.images = [self.images]
+        if self.videos and not isinstance(self.videos, list):
+            self.videos = [self.videos]
+        if self.audios and not isinstance(self.audios, list):
+            self.audios = [self.audios]
 
     def copy(self):
         return self.__class__(

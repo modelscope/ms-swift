@@ -48,8 +48,8 @@ def write_dataset_info() -> None:
     mapping = {}
     _iter = zip(
         ['llm', 'vision', 'audio'],
-        ['qwen/Qwen-7B-Chat', 'qwen/Qwen-VL-Chat', 'qwen/Qwen-Audio-Chat'],
-        [TemplateType.qwen, TemplateType.qwen_vl, TemplateType.qwen_audio],
+        ['qwen/Qwen2-7B-Instruct', 'Qwen/Qwen2-VL-7B-Instruct', 'qwen/Qwen2-Audio-7B-Instruct'],
+        [TemplateType.qwen, TemplateType.qwen2_vl, TemplateType.qwen2_audio],
     )
     for task_type, model_id, template_type in _iter:
         _, tokenizer = get_model_tokenizer(model_id, load_model=False)
@@ -106,7 +106,7 @@ def write_dataset_info() -> None:
                     if len(raw_dataset) < 5000:
                         num_proc = 1
                     else:
-                        num_proc = 4
+                        num_proc = 1
 
                     dataset = dataset_map(raw_dataset.select(range(5000)), template.encode, num_proc=num_proc)
 

@@ -431,6 +431,8 @@ class Template:
         for media_type in ['image', 'audio', 'video']:
             media_key, media_tag = f'{media_type}s', f'<{media_type}>'
             medias = getattr(inputs, media_key)
+            if not isinstance(medias, list):
+                medias = [medias]
             if medias:
                 num_media_tags = len(re.findall(media_tag, total_content))
                 num_media = len(medias)

@@ -52,7 +52,9 @@ class RowPreprocessor:
             row = None
             if strict:
                 raise
-            logger.error(f'There are errors in the dataset, the data will be deleted. error: {e}')
+            import traceback
+            print(traceback.format_exc())
+            logger.error(f'There are errors in the dataset, the data will be deleted')
         if row is None:
             self.shared_list.append(idx)
 

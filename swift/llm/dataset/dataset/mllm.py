@@ -14,16 +14,16 @@ from ..preprocess.extra import GroundingMixin
 from ..register import DatasetMeta, SubsetDataset, register_dataset
 
 
-class ShareGPT4oPreprocessor(RowPreprocessor):
+class ShareGPT4oPreprocessor(MessagesPreprocessor):
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
-        image = row['image']
+        row = super().preprocess(row)
+        image = row['images']
         if not image:
             return
         image = os.path.join(self.prefix_path, image)
         if not os.path.exists(image):
             return
-        row = MessagesPreprocessor().preprocess(row)
         row['images'] = [image]
         return row
 
@@ -39,7 +39,7 @@ register_dataset(
     DatasetMeta(
         ms_dataset_id='AI-ModelScope/ShareGPT-4o',
         hf_dataset_id='OpenGVLab/ShareGPT-4o',
-        preprocess_func=ShareGPT4oPreprocessor(),
+        preprocess_func=ShareGPT4oPreprocessor(columns_mapping={'image': 'images'}),
         subsets=['image_caption'],
         split=['images'],
         tags=['vqa', 'multi-modal'],
@@ -995,13 +995,13 @@ register_dataset(
         hf_dataset_id='linxy/LaTeX_OCR',
         subsets=[
             SubsetDataset(
-                name='full',
-                split=['validation', 'test'],  # There are some problems in the training dataset.
+                name='default',
+                split=['train'],
                 preprocess_func=LatexocrPreprocessor(columns_mapping={'image': 'images'}),
             ),
             SubsetDataset(
                 name='synthetic_handwrite',
-                split=['train', 'validation', 'test'],
+                split=['train', 'validation'],
                 preprocess_func=LatexocrPreprocessor(columns_mapping={'image': 'images'}),
             )
         ],
