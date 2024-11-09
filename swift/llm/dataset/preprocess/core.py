@@ -97,9 +97,10 @@ class RowPreprocessor:
                 row[k] = v
         return row
 
-    def _safe_rename_columns(self, dataset: HfDataset) -> HfDataset:
+    @staticmethod
+    def safe_rename_columns(dataset: HfDataset, columns_mapping: Dict[str, Any]) -> HfDataset:
         features = get_dataset_features(dataset)
-        safe_columns_mapping = {k: v for k, v in self.columns_mapping.items() if k in features}
+        safe_columns_mapping = {k: v for k, v in columns_mapping.items() if k in features}
         if safe_columns_mapping:
             dataset = dataset.rename_columns(safe_columns_mapping)
         return dataset
@@ -185,7 +186,7 @@ class RowPreprocessor:
         strict: bool = True,
         load_from_cache_file: bool = False,
     ) -> DATASET_TYPE:
-        dataset = self._safe_rename_columns(dataset)
+        dataset = self.safe_rename_columns(dataset, self.columns_mapping)
         dataset = self.prepare_dataset(dataset)
         if num_proc == 1:
             # to remove
@@ -404,13 +405,10 @@ class AutoPreprocessor:
         features = get_dataset_features(dataset)
         for key in ['conversation', 'conversations', 'messages']:
             if key in features:
-                return MessagesPreprocessor(
-                    columns_mapping=self.columns_mapping, remove_useless_columns=self.remove_useless_columns)
+                return MessagesPreprocessor(remove_useless_columns=self.remove_useless_columns)
         if 'instruction' in features and 'input' in features:
-            return AlpacaPreprocessor(
-                columns_mapping=self.columns_mapping, remove_useless_columns=self.remove_useless_columns)
-        return ResponsePreprocessor(
-            columns_mapping=self.columns_mapping, remove_useless_columns=self.remove_useless_columns)
+            return AlpacaPreprocessor(remove_useless_columns=self.remove_useless_columns)
+        return ResponsePreprocessor(remove_useless_columns=self.remove_useless_columns)
 
     def __call__(
         self,
@@ -420,5 +418,6 @@ class AutoPreprocessor:
         strict: bool = True,
         load_from_cache_file: bool = False,
     ) -> DATASET_TYPE:
+        dataset = RowPreprocessor.safe_rename_columns(dataset, self.columns_mapping)
         preprocessor = self._get_preprocessor(dataset)
         return preprocessor(dataset, num_proc=num_proc, load_from_cache_file=load_from_cache_file, strict=strict)
