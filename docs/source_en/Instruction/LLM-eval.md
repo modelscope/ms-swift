@@ -68,7 +68,7 @@ Evaluation supports the use of vLLM for acceleration. Here we demonstrate the ev
 
 ```shell
 # Original model (approximately half an hour on a single A100)
-CUDA_VISIBLE_DEVCIES=0 swift eval --model_type qwen2-7b-instruct \
+CUDA_VISIBLE_DEVICES=0 swift eval --model_type qwen2-7b-instruct \
     --eval_dataset ARC_c --infer_backend vllm
 
 # After LoRA fine-tuning

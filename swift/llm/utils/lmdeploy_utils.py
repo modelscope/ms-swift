@@ -198,7 +198,6 @@ def _prepare_lmdeploy_request(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine]
         generation_config.random_seed = get_seed()
 
     resp_list: List[Optional[Dict[str, Any]]] = [None] * len(request_list)
-    generators = []
     is_multimodal = getattr(lmdeploy_engine, 'is_multimodal', False)
     max_workers = os.cpu_count()
     if not is_multimodal:
@@ -220,17 +219,17 @@ def _prepare_lmdeploy_request(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine]
         inputs_list = [future.result() for future in futures]
     prog_bar.close()
 
+    new_inputs = []
     for i, (inputs, request) in enumerate(zip(inputs_list, request_list)):
         truncation_strategy = kwargs.pop('truncation_strategy', 'delete')
         if len(inputs) == 0 and truncation_strategy == 'delete':
             # input_ids exceeds `max_length`. Please increase the value of `max_length`.
             resp_list[i] = {'response': '', 'history': request['history']}
             continue
-        generator = lmdeploy_engine.get_generator(False, i)
-        generators.append((i, inputs, generator))
+        new_inputs.append((i, inputs))
 
-    generation_info['num_samples'] = len(generators)
-    return resp_list, generators
+    generation_info['num_samples'] = len(new_inputs)
+    return resp_list, new_inputs
 
 
 @torch.inference_mode()
@@ -259,7 +258,7 @@ def inference_stream_lmdeploy(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine]
     else:
         generation_info.clear()
 
-    resp_list, generators = _prepare_lmdeploy_request(
+    resp_list, inputs_list = _prepare_lmdeploy_request(
         lmdeploy_engine,
         template,
         request_list,
@@ -272,30 +271,31 @@ def inference_stream_lmdeploy(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine]
     print_idx_list = [[0] for _ in range(len(request_list))]
     outputs = [None] * len(request_list)
     num_generated_tokens = [0] * len(request_list)
-    prog_bar = tqdm(total=len(generators), dynamic_ncols=True, disable=not use_tqdm)
+    prog_bar = tqdm(total=len(inputs_list), dynamic_ncols=True, disable=not use_tqdm)
     queue = Queue()
 
-    async def _inner_infer(i: int, inputs: Dict[str, Any], generator) -> None:
-        generator = await generator
+    async def _inner_infer(i: int, inputs: Dict[str, Any]) -> None:
+        session_id = time.time_ns()
+        generator = await lmdeploy_engine.get_generator(False, session_id)
         images = inputs.pop('images', None) or []
         if len(images) > 0:
             inputs['images'] = await lmdeploy_engine.vl_encoder.async_infer(images)
             await template.prepare_lmdeploy_inputs(inputs)
         generation_info['num_prompt_tokens'] += len(inputs['input_ids'])
-        async with lmdeploy_engine.safe_run(i):
+        async with lmdeploy_engine.safe_run(session_id):
             async for output in generator.async_stream_infer(
-                    session_id=i, **inputs, stream_output=True, gen_config=generation_config):
+                    session_id=session_id, **inputs, stream_output=True, gen_config=generation_config):
                 queue.put((i, output))
             queue.put((i, None))
 
     async def _batch_infer() -> None:
-        tasks = [_inner_infer(i, inputs, generator) for i, inputs, generator in generators]
+        tasks = [_inner_infer(i, inputs) for i, inputs in inputs_list]
         await asyncio.gather(*tasks)
 
     thread = Thread(target=lambda: asyncio.run(_batch_infer()))
     thread.start()
 
-    while n_finished < len(generators):
+    while n_finished < len(inputs_list):
         i, output = queue.get()
         is_finished = False
         if output is None:
@@ -387,7 +387,7 @@ def inference_lmdeploy(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine],
     request_list = deepcopy(request_list)
     generation_config = deepcopy(generation_config)
 
-    resp_list, generators = _prepare_lmdeploy_request(
+    resp_list, inputs_list = _prepare_lmdeploy_request(
         lmdeploy_engine,
         template,
         request_list,
@@ -399,18 +399,19 @@ def inference_lmdeploy(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine],
     tokenizer = template.tokenizer
     if use_tqdm:
         assert verbose is False
-    prog_bar = tqdm(total=len(generators), dynamic_ncols=True, disable=not use_tqdm)
+    prog_bar = tqdm(total=len(inputs_list), dynamic_ncols=True, disable=not use_tqdm)
 
-    async def _inner_infer(i: int, inputs: Dict[str, Any], generator) -> None:
-        generator = await generator
+    async def _inner_infer(i: int, inputs: Dict[str, Any]) -> None:
+        session_id = time.time_ns()
+        generator = await lmdeploy_engine.get_generator(False, session_id)
         images = inputs.pop('images', None) or []
         if len(images) > 0:
             inputs['images'] = await lmdeploy_engine.vl_encoder.async_infer(images)
             await template.prepare_lmdeploy_inputs(inputs)
         generation_info['num_prompt_tokens'] += len(inputs['input_ids'])
-        async with lmdeploy_engine.safe_run(i):
+        async with lmdeploy_engine.safe_run(session_id):
             async for output in generator.async_stream_infer(
-                    session_id=i, **inputs, stream_output=False, gen_config=generation_config):
+                    session_id=session_id, **inputs, stream_output=False, gen_config=generation_config):
                 pass
         request = request_list[i]
         input_ids = inputs['input_ids']
@@ -430,7 +431,7 @@ def inference_lmdeploy(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine],
         prog_bar.update()
 
     async def _batch_infer() -> None:
-        tasks = [_inner_infer(i, inputs, generator) for i, inputs, generator in generators]
+        tasks = [_inner_infer(i, inputs) for i, inputs in inputs_list]
         await asyncio.gather(*tasks)
 
     asyncio.run(_batch_infer())

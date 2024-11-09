@@ -15,6 +15,7 @@ from swift.utils import get_dist_setting, get_logger
 logger = get_logger()
 
 del HFKTOTrainer.__init__
+del HFKTOTrainer.get_batch_samples
 
 
 def _add_kl_dataset(dataset: LLMDataset, total_batch_size: int, seed: Optional[int] = None) -> None:

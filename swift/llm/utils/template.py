@@ -142,6 +142,7 @@ class TemplateType:
     dbrx = 'dbrx'
     mengzi = 'mengzi'
     c4ai = 'c4ai'
+    aya = 'aya'
     chatml = 'chatml'
     got_ocr2 = 'got_ocr2'
     ovis1_6 = 'ovis1_6'
@@ -3821,6 +3822,17 @@ register_template(
         ['<|END_OF_TURN_TOKEN|>'], ['<|END_OF_TURN_TOKEN|>'], C4AI_SYSTEM,
         ['<|START_OF_TURN_TOKEN|><|SYSTEM_TOKEN|>{{SYSTEM}}<|END_OF_TURN_TOKEN|']))
 
+AYA_SYSTEM = ('You are Aya, a brilliant, sophisticated, multilingual AI-assistant trained to assist human users by '
+              'providing thorough responses. You are able to interact and respond to questions in 23 languages and '
+              'you are powered by a multilingual model built by Cohere For AI.')
+register_template(
+    TemplateType.aya,
+    Template(
+        ['<BOS_TOKEN>'],
+        ['<|START_OF_TURN_TOKEN|><|USER_TOKEN|>{{QUERY}}<|END_OF_TURN_TOKEN|><|START_OF_TURN_TOKEN|><|CHATBOT_TOKEN|>'],
+        ['<|END_OF_TURN_TOKEN|>'], ['<|END_OF_TURN_TOKEN|>'], AYA_SYSTEM,
+        ['<|START_OF_TURN_TOKEN|><|SYSTEM_TOKEN|>{{SYSTEM}}<|END_OF_TURN_TOKEN|']))
+
 
 class mPlugOwl2Template(Template):
 
@@ -3902,9 +3914,9 @@ class mPlugOwl3Template(QwenTemplateMixin, Template):
         if images:
             image_inputs = processor.image_processor(images, cut_enable=cut_enable, return_tensors='pt')
             added_tokens_len = 0
-            cut_shapes = image_inputs['cut_shape'] or [None] * len(idx_list)
+            cut_shapes = image_inputs['cut_shape'] or [None] * 2 * len(idx_list)
             image_token_list = self.tokenizer.encode('<|image|>', add_special_tokens=False)
-            for idx, cut_shape in zip(idx_list, cut_shapes):
+            for idx, cut_shape in zip(idx_list, cut_shapes[::2]):
                 if cut_shape:
                     token_list = self._get_image_token_list(cut_shape)
                 else:

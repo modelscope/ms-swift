@@ -22,7 +22,6 @@ from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
 from transformers.utils import is_torch_bf16_gpu_available, strtobool
 from transformers.utils.versions import require_version
-from trl import AutoModelForCausalLMWithValueHead
 
 from swift import get_logger
 from swift.utils import get_dist_setting, safe_ddp_context, subprocess_run, use_torchacc
@@ -185,8 +184,19 @@ class ModelType:
     # qwen2.5 coder
     qwen2_5_coder_1_5b = 'qwen2_5-coder-1_5b'
     qwen2_5_coder_1_5b_instruct = 'qwen2_5-coder-1_5b-instruct'
+    qwen2_5_coder_1_5b_instruct_gptq_int4 = 'qwen2_5-coder-1_5b-instruct-gptq-int4'
+    qwen2_5_coder_1_5b_instruct_gptq_int8 = 'qwen2_5-coder-1_5b-instruct-gptq-int8'
+    qwen2_5_coder_1_5b_instruct_awq = 'qwen2_5-coder-1_5b-instruct-awq'
     qwen2_5_coder_7b = 'qwen2_5-coder-7b'
     qwen2_5_coder_7b_instruct = 'qwen2_5-coder-7b-instruct'
+    qwen2_5_coder_7b_instruct_gptq_int4 = 'qwen2_5-coder-7b-instruct-gptq-int4'
+    qwen2_5_coder_7b_instruct_gptq_int8 = 'qwen2_5-coder-7b-instruct-gptq-int8'
+    qwen2_5_coder_7b_instruct_awq = 'qwen2_5-coder-7b-instruct-awq'
+
+    qwen2_5_coder_0_5b_instruct = 'qwen2_5-coder-0_5b-instruct'
+    qwen2_5_coder_3b_instruct = 'qwen2_5-coder-3b-instruct'
+    qwen2_5_coder_14b_instruct = 'qwen2_5-coder-14b-instruct'
+    qwen2_5_coder_32b_instruct = 'qwen2_5-coder-32b-instruct'
     # qwen-vl
     qwen_vl = 'qwen-vl'
     qwen_vl_chat = 'qwen-vl-chat'
@@ -507,6 +517,7 @@ class ModelType:
     mixtral_moe_7b_instruct = 'mixtral-moe-7b-instruct'
     mixtral_moe_7b_aqlm_2bit_1x16 = 'mixtral-moe-7b-aqlm-2bit-1x16'  # aqlm
     mixtral_moe_8x22b_v1 = 'mixtral-moe-8x22b-v1'
+    ministral_8b_instruct_2410 = 'ministral-8b-instruct-2410'
 
     pixtral_12b = 'pixtral-12b'
     # wizardlm
@@ -625,6 +636,9 @@ class ModelType:
     # c4ai
     c4ai_command_r_v01 = 'c4ai-command-r-v01'
     c4ai_command_r_plus = 'c4ai-command-r-plus'
+    # aya
+    aya_expanse_8b = 'aya-expanse-8b'
+    aya_expanse_32b = 'aya-expanse-32b'
     # codestral
     codestral_22b = 'codestral-22b'
     # florence
@@ -951,6 +965,24 @@ def _check_gptq_model(bits: int, model_config, model_kwargs: Dict[str, Any]) -> 
     support_flash_attn=True,
     hf_model_id='CohereForAI/c4ai-command-r-plus')
 @register_model(
+    ModelType.aya_expanse_8b,
+    'AI-ModelScope/aya-expanse-8b',
+    LoRATM.llama,
+    TemplateType.aya,
+    requires=['transformers>=4.44.0'],
+    support_vllm=True,
+    support_flash_attn=True,
+    hf_model_id='CohereForAI/aya-expanse-8b')
+@register_model(
+    ModelType.aya_expanse_32b,
+    'AI-ModelScope/aya-expanse-32b',
+    LoRATM.llama,
+    TemplateType.aya,
+    requires=['transformers>=4.44.0'],
+    support_vllm=True,
+    support_flash_attn=True,
+    hf_model_id='CohereForAI/aya-expanse-32b')
+@register_model(
     ModelType.telechat2_115b,
     'TeleAI/TeleChat2-115B',
     LoRATM.telechat,
@@ -969,6 +1001,11 @@ def get_model_tokenizer_from_repo(model_dir: str,
     """load from an independent repository"""
     if model_config is None:
         model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+    # fix prediction_step (internvl2, ovis, ...)
+    if not hasattr(model_config, 'keys_to_ignore_at_inference'):
+        model_config.keys_to_ignore_at_inference = []
+    if 'past_key_values' not in model_config.keys_to_ignore_at_inference:
+        model_config.keys_to_ignore_at_inference.append('past_key_values')
     # multimodal
     llm_config = None
     for k in ['language_config', 'llm_config', 'text_config']:
@@ -1042,6 +1079,12 @@ def get_model_tokenizer_from_repo(model_dir: str,
             with context:
                 model = automodel_class.from_pretrained(
                     model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
+
+            # fix not save modeling_xxx.py (transformers 4.45)
+            # https://github.com/huggingface/transformers/issues/24737
+            has_remote_code = hasattr(model_config, 'auto_map') and automodel_class.__name__ in model_config.auto_map
+            if has_remote_code and model._auto_class is None:
+                model._auto_class = automodel_class.__name__
         model.is_gptq = is_gptq
         model.is_awq = is_awq
         model.is_aqlm = is_aqlm
@@ -1330,7 +1373,7 @@ def get_model_tokenizer_molmoe_1b(model_dir: str,
         forward_origin = model._old_forward
 
         def _forward(*args, **kwargs):
-            if 'append_last_valid_logits' in kwargs:
+            if kwargs.get('append_last_valid_logits') is not None:
                 kwargs['append_last_valid_logits'] = kwargs['append_last_valid_logits'].to(device)
             return forward_origin(*args, **kwargs)
 
@@ -1398,7 +1441,7 @@ def get_model_tokenizer_molmo(model_dir: str,
         forward_origin = model.model.forward
 
         def _forward(*args, **kwargs):
-            if 'append_last_valid_logits' in kwargs:
+            if kwargs.get('append_last_valid_logits') is not None:
                 kwargs['append_last_valid_logits'] = kwargs['append_last_valid_logits'].to(device)
             return forward_origin(*args, **kwargs)
 
@@ -1900,6 +1943,16 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_lmdeploy=True,
     requires=['transformers>=4.42'],
     hf_model_id='THUDM/glm-4-9b-chat-1m')
+@register_model(
+    ModelType.longwriter_glm4_9b,
+    'ZhipuAI/LongWriter-glm4-9b',
+    LoRATM.chatglm,
+    TemplateType.chatglm4,
+    support_flash_attn=True,
+    support_vllm=True,
+    support_lmdeploy=True,
+    requires=['transformers>=4.42'],
+    hf_model_id='THUDM/LongWriter-glm4-9b')
 def get_model_tokenizer_glm4(model_dir: str,
                              torch_dtype: torch.dtype,
                              model_kwargs: Dict[str, Any],
@@ -1911,24 +1964,11 @@ def get_model_tokenizer_glm4(model_dir: str,
         model_config._attn_implementation = 'flash_attention_2'
     elif use_flash_attn is False:
         model_config._attn_implementation = 'eager'
-    return get_model_tokenizer_chatglm(
+    model, tokenizer = get_model_tokenizer_chatglm(
         model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
-
-
-@register_model(
-    ModelType.longwriter_glm4_9b,
-    'ZhipuAI/LongWriter-glm4-9b',
-    LoRATM.chatglm,
-    TemplateType.chatglm4,
-    support_flash_attn=True,
-    support_vllm=True,
-    support_lmdeploy=True,
-    requires=['transformers>=4.42'],
-    hf_model_id='THUDM/LongWriter-glm4-9b')
-def get_model_tokenizer_longwriter_glm4(*args, **kwargs):
-    model, tokenizer = get_model_tokenizer_glm4(*args, **kwargs)
-    for k in tokenizer.special_tokens.keys():
-        tokenizer.add_tokens(k)
+    if len(tokenizer.encode('<|user|>', add_special_tokens=False)) > 1:
+        for k in tokenizer.special_tokens.keys():
+            tokenizer.add_tokens(k)
     return model, tokenizer
 
 
@@ -2850,6 +2890,16 @@ def get_model_tokenizer_glm4v(model_dir: str,
     tags=['moe'],
     hf_model_id='mistral-community/Mixtral-8x22B-v0.1')
 @register_model(
+    ModelType.ministral_8b_instruct_2410,
+    'AI-ModelScope/Ministral-8B-Instruct-2410',
+    LoRATM.llama,
+    TemplateType.mistral_nemo,
+    requires=['transformers>=4.46'],
+    ignore_file_pattern=['^consolidated'],
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='mistralai/Ministral-8B-Instruct-2410')
+@register_model(
     ModelType.mistral_large_instruct_2407,
     'LLM-Research/Mistral-Large-Instruct-2407',
     LoRATM.llama,
@@ -2952,7 +3002,6 @@ def get_model_tokenizer_ovis(*args, **kwargs):
         _use_submodel_func(model, 'llm', func_list)
         embedding = model.get_input_embeddings()
         embedding.register_forward_hook(_clone_hook)
-        model.config.keys_to_ignore_at_inference = ['past_key_values']  # fix prediction_step
     try:
         # fix device_map
         from transformers.cache_utils import HybridCache
@@ -3003,6 +3052,8 @@ def get_model_tokenizer_mplug_owl3(model_dir: str,
                                    model_kwargs: Dict[str, Any],
                                    load_model: bool = True,
                                    **kwargs):
+    model_cls = get_class_from_dynamic_module('modeling_mplugowl3.mPLUGOwl3Model', model_dir)
+    model_cls._no_split_modules = ['SiglipEncoderLayer']
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
     processor = model.init_processor(tokenizer)
     tokenizer.processor = processor
@@ -3356,6 +3407,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=False,
     function_kwargs={'gptq_bits': 4},
     torch_dtype=torch.float16,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
@@ -3378,6 +3430,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     function_kwargs={'gptq_bits': 4},
     torch_dtype=torch.float16,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
@@ -3400,6 +3453,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     function_kwargs={'gptq_bits': 4},
     torch_dtype=torch.float16,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
@@ -3422,6 +3476,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     function_kwargs={'gptq_bits': 4},
     torch_dtype=torch.float16,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
@@ -3787,6 +3842,7 @@ for model_size in ['0.5B', '1.5B', '3B', '7B', '14B', '32B', '72B']:
             get_model_tokenizer_qwen2_chat,
             support_flash_attn=True,
             support_vllm=True,
+            support_lmdeploy=quant_bits == 4 and model_size != '0.5B',
             function_kwargs={'gptq_bits': quant_bits},
             torch_dtype=torch.float16,
             requires=['auto_gptq>=0.5', 'transformers>=4.37'],
@@ -3800,6 +3856,7 @@ for model_size in ['0.5B', '1.5B', '3B', '7B', '14B', '32B', '72B']:
         get_model_tokenizer_qwen2_chat,
         support_flash_attn=True,
         support_vllm=True,
+        support_lmdeploy=model_size != '0.5B',
         function_kwargs={'is_awq': True},
         torch_dtype=torch.float16,
         requires=['transformers>=4.37', 'autoawq'],
@@ -3843,6 +3900,50 @@ for model_size in ['1.5B', '7B']:
         support_lmdeploy=True,
         requires=['transformers>=4.37'],
         hf_model_id=f'Qwen/Qwen2.5-Coder-{model_size}')
+    register_model(
+        f'qwen2_5-coder-{model_size_lower}-instruct',
+        f'qwen/Qwen2.5-Coder-{model_size}-Instruct',
+        LoRATM.llama,
+        TemplateType.qwen2_5,
+        get_model_tokenizer_qwen2_chat,
+        support_flash_attn=True,
+        support_vllm=True,
+        support_lmdeploy=True,
+        requires=['transformers>=4.37'],
+        hf_model_id=f'Qwen/Qwen2.5-Coder-{model_size}-Instruct')
+    for quant_bits in [4, 8]:
+        quant_type = f'GPTQ-Int{quant_bits}'
+        quant_type_lower = quant_type.lower()
+        register_model(
+            f'qwen2_5-coder-{model_size_lower}-instruct-{quant_type_lower}',
+            f'qwen/Qwen2.5-Coder-{model_size}-Instruct-{quant_type}',
+            LoRATM.llama,
+            TemplateType.qwen2_5,
+            get_model_tokenizer_qwen2_chat,
+            support_flash_attn=True,
+            support_vllm=True,
+            support_lmdeploy=quant_bits == 4,
+            function_kwargs={'gptq_bits': quant_bits},
+            torch_dtype=torch.float16,
+            requires=['auto_gptq>=0.5', 'transformers>=4.37'],
+            hf_model_id=f'Qwen/Qwen2.5-{model_size}-Instruct-{quant_type}')
+
+    register_model(
+        f'qwen2_5-coder-{model_size_lower}-instruct-awq',
+        f'qwen/Qwen2.5-Coder-{model_size}-Instruct-AWQ',
+        LoRATM.llama,
+        TemplateType.qwen2_5,
+        get_model_tokenizer_qwen2_chat,
+        support_flash_attn=True,
+        support_vllm=True,
+        support_lmdeploy=True,
+        function_kwargs={'is_awq': True},
+        torch_dtype=torch.float16,
+        requires=['transformers>=4.37', 'autoawq'],
+        hf_model_id=f'Qwen/Qwen2.5-{model_size}-Instruct-AWQ')
+
+for model_size in ['0.5B', '3B', '14B', '32B']:
+    model_size_lower = model_size.lower().replace('.', '_')
     register_model(
         f'qwen2_5-coder-{model_size_lower}-instruct',
         f'qwen/Qwen2.5-Coder-{model_size}-Instruct',
@@ -3994,6 +4095,7 @@ for model_size in ['2B', '7B', '72B']:
     function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=False,
     hf_model_id='Qwen/Qwen1.5-0.5B-Chat-GPTQ-Int4')
 @register_model(
     ModelType.qwen1half_0_5b_chat_int8,
@@ -4016,6 +4118,7 @@ for model_size in ['2B', '7B', '72B']:
     function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='Qwen/Qwen1.5-1.8B-Chat-GPTQ-Int4')
 @register_model(
     ModelType.qwen1half_1_8b_chat_int8,
@@ -4038,6 +4141,7 @@ for model_size in ['2B', '7B', '72B']:
     function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='Qwen/Qwen1.5-4B-Chat-GPTQ-Int4')
 @register_model(
     ModelType.qwen1half_4b_chat_int8,
@@ -4060,6 +4164,7 @@ for model_size in ['2B', '7B', '72B']:
     function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='Qwen/Qwen1.5-7B-Chat-GPTQ-Int4')
 @register_model(
     ModelType.qwen1half_7b_chat_int8,
@@ -4082,6 +4187,7 @@ for model_size in ['2B', '7B', '72B']:
     function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='Qwen/Qwen1.5-14B-Chat-GPTQ-Int4')
 @register_model(
     ModelType.qwen1half_14b_chat_int8,
@@ -4104,6 +4210,7 @@ for model_size in ['2B', '7B', '72B']:
     function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='Qwen/Qwen1.5-32B-Chat-GPTQ-Int4')
 @register_model(
     ModelType.qwen1half_72b_chat_int4,
@@ -4115,6 +4222,7 @@ for model_size in ['2B', '7B', '72B']:
     function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='Qwen/Qwen1.5-72B-Chat-GPTQ-Int4')
 @register_model(
     ModelType.qwen1half_110b_chat_int4,
@@ -4126,6 +4234,7 @@ for model_size in ['2B', '7B', '72B']:
     function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='Qwen/Qwen1.5-110B-Chat-GPTQ-Int4')
 @register_model(
     ModelType.qwen1half_72b_chat_int8,
@@ -5878,8 +5987,9 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
     tokenizer_cls: Type[PreTrainedTokenizerBase] = get_class_from_dynamic_module(class_ref, model_dir)
     tokenizer_cls._auto_class = 'AutoTokenizer'
     tokenizer_cls.IMAGE_ST = ()  # fix no attr `self.IMAGE_ST` bug
-    tokenizer_cls._old_decode = tokenizer_cls._decode
-    tokenizer_cls._decode = _qwen_vl_audio_decode
+    if not hasattr(tokenizer_cls, '_old_decode'):
+        tokenizer_cls._old_decode = tokenizer_cls._decode
+        tokenizer_cls._decode = _qwen_vl_audio_decode
     # fix device_map is 4
     n_gpu = torch.cuda.device_count()
     local_world_size = get_dist_setting()[3]
@@ -5891,13 +6001,14 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
     kwargs['tokenizer'] = tokenizer_cls.from_pretrained(model_dir, trust_remote_code=True)
     model, tokenizer = get_qwen_function(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
     if model is not None:
+        device_type = next(model.parameters()).device.type
         fix_qwen_inplace_bug(model)
         # fix device_map is 4
         if n_gpu // local_world_size >= 4:
             model.transformer.visual.proj.data = model.transformer.visual.proj.to(
                 model.transformer.visual.ln_post.bias.device)
         # fix images cuda:1 bug
-        model.transformer.visual.register_forward_hook(get_device_hook(0))
+        model.transformer.visual.register_forward_hook(get_device_hook(f'{device_type}:0'))
     return model, tokenizer
 
 
@@ -5930,8 +6041,9 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     tokenizer_cls: Type[PreTrainedTokenizerBase] = get_class_from_dynamic_module(class_ref, model_dir)
     tokenizer_cls._auto_class = 'AutoTokenizer'
     tokenizer_cls.AUDIO_ST = ()  # fix no attr `self.AUDIO_ST` bug
-    tokenizer_cls._old_decode = tokenizer_cls._decode
-    tokenizer_cls._decode = _qwen_vl_audio_decode
+    if not hasattr(tokenizer_cls, '_old_decode'):
+        tokenizer_cls._old_decode = tokenizer_cls._decode
+        tokenizer_cls._decode = _qwen_vl_audio_decode
     kwargs['tokenizer'] = tokenizer_cls.from_pretrained(model_dir, trust_remote_code=True)
     model, tokenizer = get_qwen_function(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
     if model is not None:
@@ -6678,7 +6790,7 @@ def get_model_tokenizer_llava_onevision(*args, **kwargs):
     hf_model_id='llava-hf/llava-v1.6-mistral-7b-hf')
 @register_model(
     ModelType.llava1_6_llama3_1_8b_instruct,
-    'DaozeZhang/llava-llama3.1-8b',
+    'swift/llava-llama3.1-8b',
     LoRATM.llava,
     TemplateType.llava_next_llama3,
     support_flash_attn=True,
@@ -7180,10 +7292,6 @@ def get_additional_saved_files(model_type: str) -> List[str]:
         'qwen-vl': ['SimSun.ttf'],
         'qwen-audio': ['mel_filters.npz'],
         'yi-vl': ['vit'],
-        'minicpm-v-v2_6-chat': ['modeling_navit_siglip.py'],
-        'molmoe': ['modeling_molmoe.py'],
-        'molmo': ['modeling_molmo.py'],
-        'emu3-chat': ['modeling_emu3.py']
     }
     for key, files_list in files_mapping.items():
         if key in model_type:
@@ -7202,7 +7310,8 @@ def get_default_lora_target_modules(model_type: str) -> Union[List[str], str, No
     return res
 
 
-def get_model_with_value_head(model) -> AutoModelForCausalLMWithValueHead:
+def get_model_with_value_head(model) -> 'AutoModelForCausalLMWithValueHead':
+    from trl import AutoModelForCausalLMWithValueHead
     lm_head_namings = ['lm_head', 'embed_out']
     if not any(hasattr(model, attribute) for attribute in lm_head_namings):
         setattr(model, 'lm_head', None)  # avoid ValueError
