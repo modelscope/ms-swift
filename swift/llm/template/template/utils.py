@@ -1,0 +1,26 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
+
+from ..register import TemplateMeta
+from ..utils import Prompt
+
+DEFAULT_SYSTEM = 'You are a helpful assistant.'
+
+
+@dataclass
+class ChatmlTemplateMeta(TemplateMeta):
+    prefix: Prompt = field(default_factory=list)
+    prompt: Prompt = field(default_factory=lambda: ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'])
+    chat_sep: Optional[Prompt] = field(default_factory=lambda: ['<|im_end|>\n'])
+    suffix: Prompt = field(default_factory=lambda: ['<|im_end|>'])
+    system_prefix: Optional[Prompt] = field(default_factory=lambda: ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n'])
+    auto_add_bos: bool = True
+
+
+@dataclass
+class EmptyTemplateMeta(TemplateMeta):
+    prefix: Prompt = field(default_factory=list)
+    prompt: Prompt = field(default_factory=list)
+    chat_sep: Optional[Prompt] = field(default_factory=list)
+    suffix: Prompt = field(default_factory=list)

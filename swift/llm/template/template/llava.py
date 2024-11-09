@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import torch
@@ -284,3 +285,19 @@ class LLavaLlamaTemplate(Llama3Template):
 
 
 register_template(LLavaLlamaTemplate(TemplateType.llava_llama_instruct), use_model=True, lazy_tokenize=True)
+
+
+class Llama3LlavaNextTemplate(Llama3TemplateMixin, LLavaTemplate):
+    system = 'You are a helpful language and vision assistant. ' \
+             'You are able to understand the visual content that the user provides, ' \
+             'and assist the user with a variety of tasks using natural language.'
+
+
+register_template(TemplateType.llama3_llava_next, Llama3LlavaNextTemplate(), use_model=True, lazy_tokenize=True)
+
+
+class LLavaQwenTemplate(QwenTemplateMixin, LLavaTemplate):
+    pass
+
+
+register_template(TemplateType.llava_qwen, LLavaQwenTemplate(), use_model=True, lazy_tokenize=True)

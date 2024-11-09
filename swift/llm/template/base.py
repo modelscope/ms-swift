@@ -52,6 +52,8 @@ class Template:
     special_keys = ['images', 'videos', 'audios', 'objects']
     grounding_type = 'norm_1000'
     image_placeholder = ['<image>']
+    video_placeholder = ['<video>']
+    audio_placeholder = ['<audio>']
     load_medias = True
 
     output_prompt_answer = False  # for encoder-decoder & kto
@@ -345,9 +347,9 @@ class Template:
                 return [[-100]]
             return self.image_placeholder
         elif media_type == 'video':
-            return ['<video>']
+            return self.video_placeholder
         elif media_type == 'audio':
-            return ['<audio>']
+            return self.audio_placeholder
 
     def replace_object(self, object_: Dict[str, Any], index: int, inputs: StdTemplateInputs) -> List[Context]:
         """Replace objects referenced by the bbox to contents or input_ids. This is useful in the grounding task.
