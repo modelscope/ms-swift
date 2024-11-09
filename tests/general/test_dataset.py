@@ -40,6 +40,7 @@ def test_pretrain():
 def test_dataset_info():
     _test_dataset(['codefuse-ai/CodeExercise-Python-27k'])
 
+
 if __name__ == '__main__':
     # test_alpaca()
     # test_coco()
