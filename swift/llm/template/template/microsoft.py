@@ -1,11 +1,15 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
+import json
+import torch
+
 from ..base import Template
-from ..constant import MLLMTemplateType
+from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
-from ..utils import Context, findall, gather_list
-from .utils import DEFAULT_SYSTEM
+from ..utils import Context, Prompt, findall, gather_list
+from ..vision_utils import load_image
 
 
 class FlorenceTemplate(Template):
@@ -13,7 +17,6 @@ class FlorenceTemplate(Template):
     output_prompt_answer = True
 
     def __init__(self):
-        super().__init__(['<s>'], ['{{QUERY}}</s>'], None, ['</s>'])
         self.task_prompts_without_inputs = {
             '<OCR>': 'What is the text in the image?',
             '<OCR_WITH_REGION>': 'What is the text in the image, with regions?',
@@ -94,28 +97,34 @@ class FlorenceTemplate(Template):
             self.tokenizer.processor.post_process_generation(
                 response, task=example['query'], image_size=(image.width, image.height)))
 
+        super().__init__()
+
 
 register_template(
-    TemplateType.florence,
-    FlorenceTemplate(),
-    use_model=True,
-    lazy_tokenize=True,
-    infer_media_type='dialogue',
-    stream=False)
+    TemplateMeta(
+        MLLMTemplateType.florence,
+        prefix=['<s>'],
+        prompt=['{{QUERY}}</s>'],
+        chat_sep=None,
+        suffix=['</s>'],
+        template_cls=FlorenceTemplate,
+        support_stream=False))
 
 
-class Phi3Template(Template):
+@dataclass
+class Phi3TemplateMeta(TemplateMeta):
+    prefix: Prompt = field(default_factory=list)
+    prompt: Prompt = field(default_factory=lambda: ['<|user|>\n{{QUERY}}<|end|>\n<|assistant|>\n'])
+    chat_sep: Optional[Prompt] = field(default_factory=lambda: ['<|end|>\n'])
+    suffix: Prompt = field(default_factory=lambda: ['<|end|>'])
+    system_prefix: Optional[Prompt] = field(default_factory=lambda: ['<|system|>\n{{SYSTEM}}<|end|>\n'])
+    auto_add_bos: bool = True
 
-    def __init__(self):
-        super().__init__([], ['<|user|>\n{{QUERY}}<|end|>\n<|assistant|>\n'], ['<|end|>\n'], ['<|end|>'],
-                         None, ['<|system|>\n{{SYSTEM}}<|end|>\n'],
-                         auto_add_bos=True)
+
+register_template(Phi3TemplateMeta(LLMTemplateType.phi3))
 
 
-register_template(TemplateType.phi3, Phi3Template())
-
-
-class Phi3VisionTemplate(Phi3Template):
+class Phi3VisionTemplate(Template):
     image_placeholder = ['<|image|><s>\n']  # <|image|>\n
 
     def replace_tag(self, media_type, index, example) -> List[Context]:
@@ -157,4 +166,4 @@ class Phi3VisionTemplate(Phi3Template):
         return inputs, {}
 
 
-register_template(TemplateType.phi3_vl, Phi3VisionTemplate(), lazy_tokenize=True)
+register_template(Phi3TemplateMeta(MLLMTemplateType.phi3_vl, template_cls=Phi3VisionTemplate))

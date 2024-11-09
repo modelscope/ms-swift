@@ -1,17 +1,20 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+from functools import partial
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
+import torch
+
+from swift.utils import get_env_args
 from ..base import Template
 from ..constant import MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..utils import Context, findall, gather_list
+from ..vision_utils import load_video_minicpmv_mplug_owl3, replace_video2image
+from .qwen import QwenTemplateMeta
 from .utils import DEFAULT_SYSTEM
 
 
 class mPlugOwl2Template(Template):
-
-    def __init__(self):
-        super().__init__(['{{SYSTEM}}'], ['USER: {{QUERY}}ASSISTANT:'], ['</s>'], [['eos_token_id']])
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
         assert media_type == 'image'
@@ -46,11 +49,19 @@ class mPlugOwl2Template(Template):
         return res
 
 
+super().__init__()
+
 register_template(
-    TemplateType.mplug_owl2, mPlugOwl2Template(), infer_media_type='round', use_model=True, lazy_tokenize=True)
+    TemplateMeta(
+        MLLMTemplateType.mplug_owl2,
+        prefix=['{{SYSTEM}}'],
+        prompt=['USER: {{QUERY}}ASSISTANT:'],
+        chat_sep=['</s>'],
+        template_cls=mPlugOwl2Template,
+    ))
 
 
-class mPlugOwl3Template(QwenTemplateMixin, Template):
+class mPlugOwl3Template(Template):
     system = None
 
     def _get_image_token_list(self, cut_shape):
@@ -72,7 +83,7 @@ class mPlugOwl3Template(QwenTemplateMixin, Template):
         if media_type == 'image':
             return [[-100], '\n']
         elif media_type == 'video':
-            return _replace_video2image(load_video, example, lambda i: [[-100]]) + ['\n']
+            return replace_video2image(load_video, example, lambda i: [[-100]]) + ['\n']
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super()._encode(example)
@@ -146,4 +157,4 @@ class mPlugOwl3Template(QwenTemplateMixin, Template):
         return res
 
 
-register_template(TemplateType.mplug_owl3, mPlugOwl3Template(), use_model=True, lazy_tokenize=True)
+register_template(QwenTemplateMeta(MLLMTemplateType.mplug_owl3, template_cls=mPlugOwl3Template, default_system=None))

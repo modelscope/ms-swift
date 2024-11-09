@@ -8,6 +8,7 @@ from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.llm import TemplateType
 from ..constant import LLMModelType, MLLMModelType
+from ..model_arch import ModelArch
 from ..patcher import patch_fixed_device, patch_output_clone
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
 from ..utils import ModelInfo, ignore_check_imports, use_submodel_func
@@ -33,7 +34,7 @@ register_model(
     ))
 
 
-def _patch_minicpm_v_device_map(model) -> None:
+def _patch_minicpmv_device_map(model) -> None:
     if not hasattr(model, 'hf_device_map') or len(model.hf_device_map.values()) == 1:
         return
 
@@ -55,15 +56,15 @@ def _patch_minicpm_v_device_map(model) -> None:
         patch_fixed_device(model.resampler, device)
 
 
-def get_model_tokenizer_minicpm_v(model_dir: str,
-                                  model_info: ModelInfo,
-                                  model_kwargs: Dict[str, Any],
-                                  load_model: bool = True,
-                                  **kwargs):
+def get_model_tokenizer_minicpmv(model_dir: str,
+                                 model_info: ModelInfo,
+                                 model_kwargs: Dict[str, Any],
+                                 load_model: bool = True,
+                                 **kwargs):
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
     if load_model:
         model.resampler.to(model_info.torch_dtype)  # fix float32
-        _patch_minicpm_v_device_map(model)
+        _patch_minicpmv_device_map(model)
         func_list = ['generate', 'get_input_embeddings', 'forward']
         use_submodel_func(model, 'llm', func_list)
         if hasattr(model, 'get_slice_image_placeholder'):
@@ -86,17 +87,17 @@ register_model(
             ),
         ],
         TemplateType.minicpmv,
-        get_model_tokenizer_minicpm_v,
+        get_model_tokenizer_minicpmv,
         architectures=['MiniCPMV'],
         support_flash_attn=True,
     ))
 
 
-def get_model_tokenizer_minicpm_v_2_x(model_dir: str,
-                                      model_info: ModelInfo,
-                                      model_kwargs: Dict[str, Any],
-                                      load_model: bool = True,
-                                      **kwargs):
+def get_model_tokenizer_minicpmv_2_x(model_dir: str,
+                                     model_info: ModelInfo,
+                                     model_kwargs: Dict[str, Any],
+                                     load_model: bool = True,
+                                     **kwargs):
     from transformers import AutoProcessor
     processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
     version = kwargs.get('version', 'v2.5')
@@ -104,7 +105,7 @@ def get_model_tokenizer_minicpm_v_2_x(model_dir: str,
         with ignore_check_imports():
             model_cls = get_class_from_dynamic_module('modeling_navit_siglip.SiglipVisionTransformer', model_dir)
             model_cls._no_split_modules = []
-    model, tokenizer = get_model_tokenizer_minicpm_v(model_dir, model_info, model_kwargs, load_model, **kwargs)
+    model, tokenizer = get_model_tokenizer_minicpmv(model_dir, model_info, model_kwargs, load_model, **kwargs)
     tokenizer.processor = processor
     if load_model:
         embedding = model.get_input_embeddings()
@@ -126,7 +127,7 @@ register_model(
             ),
         ],
         TemplateType.minicpmv2_6,
-        partial(get_model_tokenizer_minicpm_v_2_x, version='v2.6'),
+        partial(get_model_tokenizer_minicpmv_2_x, version='v2.6'),
         architectures=['MiniCPMV'],
         support_flash_attn=True,
         support_vllm=True,
@@ -145,7 +146,7 @@ register_model(
             ),
         ],
         TemplateType.minicpmv2_5,
-        get_model_tokenizer_minicpm_v_2_x,
+        get_model_tokenizer_minicpmv_2_x,
         architectures=['MiniCPMV'],
         support_flash_attn=True,
         support_vllm=True,

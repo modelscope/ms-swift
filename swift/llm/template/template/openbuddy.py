@@ -1,15 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
-from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
-
-import torch
-
-from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
-from ..utils import Context, Prompt
 
 OPENBUDDY_DEFAULT_SYSTEM = (
     'You are a helpful, respectful and honest INTP-T AI Assistant named Buddy. You are talking to a human User.\n'
@@ -31,7 +23,6 @@ register_template(
         prefix=[],
         prompt=['User: {{QUERY}}\nAssistant:'],
         chat_sep=['\n'],
-        suffix=[['eos_token_id']],
         default_system=OPENBUDDY_DEFAULT_SYSTEM,
         system_prefix=['{{SYSTEM}}\n\n'],
         auto_add_bos=True))

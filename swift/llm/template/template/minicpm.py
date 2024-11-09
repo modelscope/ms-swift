@@ -1,13 +1,30 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+from dataclasses import dataclass, field
+from functools import partial
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
+import torch
+
+from swift.utils import get_env_args
 from ..base import Template
-from ..constant import MLLMTemplateType
+from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
-from ..utils import Context, findall, gather_list
+from ..utils import Context, Prompt, findall, gather_list
+from ..vision_utils import load_video_minicpmv_mplug_owl3, replace_video2image
+from .llama import Llama3TemplateMeta
+from .qwen import QwenTemplateMeta
 from .utils import DEFAULT_SYSTEM
 
-register_template(TemplateType.minicpm, Template(['<s>{{SYSTEM}}'], ['<用户>{{QUERY}}<AI>'], [], ['</s>']))
+
+@dataclass
+class MinicpmTemplateMeta(TemplateMeta):
+    prefix: Prompt = field(default_factory=lambda: ['<s>{{SYSTEM}}'])
+    prompt: Prompt = field(default_factory=lambda: ['<用户>{{QUERY}}<AI>'])
+    chat_sep: Optional[Prompt] = field(default_factory=list)
+    suffix: Prompt = field(default_factory=lambda: ['</s>'])
+
+
+register_template(MinicpmTemplateMeta(LLMTemplateType.minicpm))
 
 
 def _remove_idx(arr: List[int], idx_list: List[int]) -> List[int]:
@@ -127,7 +144,17 @@ class MiniCPMVTemplate(Template):
         return generate_ids
 
 
-class MiniCPMV2_6Template(QwenTemplateMixin, MiniCPMVTemplate):
+register_template(MinicpmTemplateMeta(MLLMTemplateType.minicpmv, template_cls=MiniCPMVTemplate))
+
+
+class MiniCPMV2_5Template(MiniCPMVTemplate):
+    is_v2_5 = True
+
+
+register_template(Llama3TemplateMeta(MLLMTemplateType.minicpmv2_5, template_cls=MiniCPMV2_5Template))
+
+
+class MiniCPMV2_6Template(MiniCPMVTemplate):
 
     def check_example(self, example):
         pass
@@ -140,7 +167,7 @@ class MiniCPMV2_6Template(QwenTemplateMixin, MiniCPMVTemplate):
         if media_type == 'image':
             return image_context
         elif media_type == 'video':
-            return _replace_video2image(load_video, example, lambda i: image_context)
+            return replace_video2image(load_video, example, lambda i: image_context)
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = Template._encode(self, example)
@@ -210,19 +237,4 @@ class MiniCPMV2_6Template(QwenTemplateMixin, MiniCPMVTemplate):
         return inputs, {}
 
 
-register_template(TemplateType.minicpm_v_v2_6, MiniCPMV2_6Template(), use_model=True, lazy_tokenize=True)
-
-
-class MiniCPMV2_5Template(Llama3TemplateMixin, MiniCPMVTemplate):
-    is_v2_5 = True
-
-
-register_template(
-    TemplateType.minicpm_v_v2_5, MiniCPMV2_5Template(), use_model=True, lazy_tokenize=True, infer_media_type='dialogue')
-
-register_template(
-    TemplateType.minicpm_v,
-    MiniCPMVTemplate(['<s>{{SYSTEM}}'], ['<用户>{{QUERY}}<AI>'], [], ['</s>']),
-    use_model=True,
-    lazy_tokenize=True,
-    infer_media_type='dialogue')
+register_template(QwenTemplateMeta(MLLMTemplateType.minicpmv2_6, template_cls=MiniCPMV2_6Template))

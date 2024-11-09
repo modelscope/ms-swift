@@ -15,7 +15,6 @@ register_template(
         prefix=[['bos_token_id']],
         prompt=['User: {{QUERY}}\n\nAssistant:'],
         chat_sep=[['eos_token_id']],
-        suffix=[['eos_token_id']],
         system_prefix=[['bos_token_id'], '{{SYSTEM}}\n\n'],
     ))
 

@@ -11,6 +11,8 @@ import torch
 from packaging import version
 from PIL import Image, ImageDraw
 
+from .utils import Context
+
 # >>> internvl
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
@@ -268,7 +270,7 @@ def load_audio_qwen(audio_io: BytesIO, sampling_rate: int):
 
 
 def load_video_qwen2(video_path: str):
-    from swift.llm.template.template import get_env_args
+    from swift.utils import get_env_args
     import torchvision
     from torchvision import io, transforms
     from qwen_vl_utils.vision_process import (round_by_factor, FPS, FRAME_FACTOR, FPS_MIN_FRAMES, FPS_MAX_FRAMES,
@@ -395,6 +397,20 @@ def normalize_bbox(objects: List[Dict[str, Any]], images: List[Image.Image], to_
                 width, height = image.width, image.height
                 object_['bbox'] = [int(coord * dim) for coord, dim in zip(bbox, [width, height, width, height])]
             object_['bbox_type'] = to_type
+
+
+def replace_video2image(load_video_func, example, replace_tag: Callable) -> List[Context]:
+    context_list = []
+    video_index = example['video_index']
+    video = example['videos'][video_index]
+    images = example['images']
+    image_index = example['image_index']
+    new_images = load_video_func(video)
+    example['images'] = images[:image_index] + new_images + images[image_index:]
+    for i in range(len(new_images)):
+        context_list += replace_tag(i)
+    example['image_index'] += len(new_images)
+    return context_list
 
 
 if __name__ == '__main__':

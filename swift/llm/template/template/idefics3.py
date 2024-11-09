@@ -3,8 +3,7 @@ from typing import Any, Dict, List, Literal, Optional, Tuple
 from ..base import Template
 from ..constant import MLLMTemplateType
 from ..register import TemplateMeta, register_template
-from ..utils import Context, findall, gather_list
-from .utils import DEFAULT_SYSTEM
+from ..utils import Context, align_image_inputs, findall, gather_list
 
 
 class Idefics3Template(Template):
@@ -26,8 +25,12 @@ class Idefics3Template(Template):
 
 
 register_template(
-    TemplateType.idefics3,
-    Idefics3Template(['<|begin_of_text|>'], ['User:{{QUERY}}<end_of_utterance>\nAssistant:'], ['<end_of_utterance>\n'],
-                     ['<end_of_utterance>'], None, ['System:{{SYSTEM}}<end_of_utterance>\n']),
-    use_model=True,
-    lazy_tokenize=True)
+    TemplateMeta(
+        MLLMTemplateType.idefics3,
+        prefix=['<|begin_of_text|>'],
+        prompt=['User:{{QUERY}}<end_of_utterance>\nAssistant:'],
+        chat_sep=['<end_of_utterance>\n'],
+        suffix=['<end_of_utterance>'],
+        system_prefix=['System:{{SYSTEM}}<end_of_utterance>\n'],
+        template_cls=Idefics3Template,
+    ))

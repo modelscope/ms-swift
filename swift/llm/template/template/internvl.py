@@ -1,22 +1,21 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from functools import partial
+from typing import Any, Callable, Dict, List, Literal, Optional, Tuple
 
+import torch
+
+from swift.utils import get_env_args, is_deepspeed_enabled
 from ..base import Template
 from ..constant import MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..utils import Context, findall, gather_list
-from .utils import DEFAULT_SYSTEM
+from ..vision_utils import load_video_internvl, transform_image
+from .microsoft import Phi3TemplateMeta
+from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
 
 
 class InternvlTemplate(Template):
-    system = 'You are an AI assistant whose name is InternLM (书生·浦语).'
     num_image_token = 256
-
-    def __init__(self):
-        super().__init__([], ['<|im_start|>user\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>'],
-                         ['<|im_end|>'],
-                         self.system, ['<|im_start|>system\n{{SYSTEM}}<|im_end|>'],
-                         auto_add_bos=True)
 
     def replace_tag(self, media_type, index, example) -> List[Context]:
         if self._is_vllm:
@@ -75,23 +74,22 @@ class InternvlTemplate(Template):
         return generate_ids
 
 
-def _replace_video2image(load_video_func, example, replace_tag: Callable) -> List[Context]:
-    context_list = []
-    video_index = example['video_index']
-    video = example['videos'][video_index]
-    images = example['images']
-    image_index = example['image_index']
-    new_images = load_video_func(video)
-    example['images'] = images[:image_index] + new_images + images[image_index:]
-    for i in range(len(new_images)):
-        context_list += replace_tag(i)
-    example['image_index'] += len(new_images)
-    return context_list
+register_template(
+    ChatmlTemplateMeta(
+        MLLMTemplateType.internvl,
+        default_system='You are an AI assistant whose name is InternLM (书生·浦语).',
+        template_cls=InternvlTemplate,
+        auto_add_bos=True))
+register_template(
+    Phi3TemplateMeta(
+        MLLMTemplateType.internvl_phi3,
+        default_system='You are an AI assistant whose name is Phi-3.',
+        template_cls=InternvlTemplate,
+        auto_add_bos=True))
 
 
 class Internvl2Template(InternvlTemplate):
     video_segments = 8
-    system = '你是由上海人工智能实验室联合商汤科技开发的书生多模态大模型，英文名叫InternVL, 是一个有用无害的人工智能助手。'
 
     def replace_tag(self, media_type, index, example) -> List[Context]:
         image_context = super().replace_tag('image', index, example)
@@ -165,30 +163,16 @@ class Internvl2Template(InternvlTemplate):
         return inputs, {}
 
 
-class InternvlPhi3TemplateMixin:
-
-    def __init__(self):
-        Template.__init__(
-            self, [], ['<|user|>\n{{QUERY}}<|end|><|assistant|>\n'], ['<|end|>'], ['<|end|>'],
-            getattr(self, 'system', None), ['<|system|>\n{{SYSTEM}}<|end|>'],
-            auto_add_bos=True)
-        self.padding_side = 'left'
-
-
-class InternvlPhi3Template(InternvlPhi3TemplateMixin, InternvlTemplate):
-    system = 'You are an AI assistant whose name is Phi-3.'
-
-
-class Internvl2Phi3Template(InternvlPhi3TemplateMixin, Internvl2Template):
-    pass
-
+# TODO: self.padding_side = 'left'
 
 register_template(
-    TemplateType.internvl, InternvlTemplate(), use_model=True, lazy_tokenize=True, infer_media_type='dialogue')
+    ChatmlTemplateMeta(
+        MLLMTemplateType.internvl2,
+        default_system='你是由上海人工智能实验室联合商汤科技开发的书生多模态大模型，英文名叫InternVL, 是一个有用无害的人工智能助手。',
+        template_cls=Internvl2Template))
 
 register_template(
-    TemplateType.internvl_phi3, InternvlPhi3Template(), use_model=True, lazy_tokenize=True, infer_media_type='dialogue')
-
-register_template(TemplateType.internvl2, Internvl2Template(), use_model=True, lazy_tokenize=True)
-
-register_template(TemplateType.internvl2_phi3, Internvl2Phi3Template(), use_model=True, lazy_tokenize=True)
+    Phi3TemplateMeta(
+        MLLMTemplateType.internvl2_phi3,
+        default_system='You are an AI assistant whose name is Phi-3.',
+        template_cls=Internvl2Template))

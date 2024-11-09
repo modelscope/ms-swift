@@ -7,9 +7,10 @@ from transformers import PreTrainedTokenizerBase
 
 from swift.llm import history_to_messages
 from ..base import Template
-from ..constant import TemplateType
+from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..utils import Context, Prompt, Word, findall
+from ..vision_utils import load_batch, load_video_cogvlm2
 
 
 class GLMTemplate(Template):
@@ -25,8 +26,10 @@ class GLMTemplate(Template):
 
 register_template(
     TemplateMeta(
-        TemplateType.chatglm2, ['{{SYSTEM}}'], ['[Round {{ROUND1}}]\n\n问：{{QUERY}}\n\n答：'], ['\n\n'],
-        [['eos_token_id']],
+        LLMTemplateType.chatglm2,
+        prefix=['{{SYSTEM}}'],
+        prompt=['[Round {{ROUND1}}]\n\n问：{{QUERY}}\n\n答：'],
+        chat_sep=['\n\n'],
         template_cls=GLMTemplate))
 
 
@@ -91,24 +94,27 @@ class GLM4VTemplate(GLMTemplate):
 # not '<|assistant|>\n'
 register_template(
     GLM3TemplateMeta(
-        TemplateType.glm4v,
+        MLLMTemplateType.glm4v,
         prompt=['<|user|>\n{{QUERY}}<|assistant|>'],
         suffix=['<|endoftext|>'],
         template_cls=GLM4VTemplate))
 
-register_template(GLM3TemplateMeta(TemplateType.chatglm3))
+register_template(GLM3TemplateMeta(LLMTemplateType.chatglm3))
 
 register_template(
     GLM3TemplateMeta(
-        TemplateType.chatglm4, default_tools_prompt='glm4', tool_prompt=['<|observation|>\n{{QUERY}}<|assistant|>\n']))
+        LLMTemplateType.chatglm4,
+        default_tools_prompt='glm4',
+        tool_prompt=['<|observation|>\n{{QUERY}}<|assistant|>\n']))
 
 codegeex4_system = '你是一位智能编程助手，你叫CodeGeeX。你会为用户回答关于编程、代码、计算机方面的任何问题，并提供格式规范、可以执行、准确安全的代码，并在必要时提供详细的解释。'
 
-register_template(GLM3TemplateMeta(TemplateType.codegeex4, suffix=['<|endoftext|>'], default_system=codegeex4_system))
+register_template(
+    GLM3TemplateMeta(LLMTemplateType.codegeex4, suffix=['<|endoftext|>'], default_system=codegeex4_system))
 
 register_template(
     TemplateMeta(
-        TemplateType.longwriter_llama3, ['[INST]'], ['{{QUERY}}[/INST]'], ['[INST]'], ['<|end_of_text|>'],
+        LLMTemplateType.longwriter_llama3, ['[INST]'], ['{{QUERY}}[/INST]'], ['[INST]'], ['<|end_of_text|>'],
         system_prefix=['<<SYS>>\n{{SYSTEM}}\n<</SYS>>\n\n']))
 
 
@@ -158,25 +164,33 @@ class CogTemplate(Template):
 
 
 register_template(
-    TemplateType.cogagent_chat,
-    CogTemplate(['<s>'], [' [INST] {{QUERY}} [/INST] '], [], ['</s>']),
-    use_model=True,
-    infer_media_type='dialogue',
-    lazy_tokenize=True)
+    TemplateMeta(
+        MLLMTemplateType.cogagent_chat,
+        prefix=['<s>'],
+        prompt=[' [INST] {{QUERY}} [/INST] '],
+        chat_sep=[],
+        suffix=['</s>'],
+        template_cls=CogTemplate,
+    ))
 
 register_template(
-    TemplateType.cogagent_instruct,
-    CogTemplate(['<s>'], ['<EOI>Question: {{QUERY}} Answer:'], None, ['</s>']),
-    use_model=True,
-    infer_media_type='dialogue',
-    lazy_tokenize=True)
+    TemplateMeta(
+        MLLMTemplateType.cogagent_vqa,
+        prefix=['<s>'],
+        prompt=['<EOI>Question: {{QUERY}} Answer:'],
+        chat_sep=None,
+        suffix=['</s>'],
+        template_cls=CogTemplate))
 
-register_template(
-    TemplateType.cogvlm,
-    CogTemplate([['bos_token_id']], ['Question: {{QUERY}} Answer:'], ['\n'], [['eos_token_id']]),
-    use_model=True,
-    infer_media_type='dialogue',
-    lazy_tokenize=True)
+
+@dataclass
+class CogVLMTemplateMeta(TemplateMeta):
+    prefix: Prompt = field(default_factory=lambda: [['bos_token_id']])
+    prompt: Prompt = field(default_factory=lambda: ['Question: {{QUERY}} Answer:'])
+    chat_sep: Optional[Prompt] = field(default_factory=lambda: ['\n'])
+
+
+register_template(CogVLMTemplateMeta(MLLMTemplateType.cogvlm, template_cls=CogTemplate))
 
 
 class Cog2VideoTemplate(CogTemplate):
@@ -212,10 +226,7 @@ class Cog2VideoTemplate(CogTemplate):
         return inputs, {}
 
 
-register_template(
-    TemplateType.cogvlm2_video,
-    Cog2VideoTemplate([['bos_token_id']], ['Question: {{QUERY}} Answer:'], ['\n'], [['eos_token_id']]),
-    use_model=True,
-    infer_media_type='dialogue',
-    lazy_tokenize=True,
-    media_type='video')
+register_template(CogVLMTemplateMeta(
+    MLLMTemplateType.cogvlm2_video,
+    template_cls=Cog2VideoTemplate,
+))

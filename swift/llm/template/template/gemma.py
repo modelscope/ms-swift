@@ -1,22 +1,26 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
+import torch
+
+from swift.utils import upper_bound
 from ..base import Template
-from ..constant import MLLMTemplateType
+from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..utils import Context, findall, gather_list
 from .utils import DEFAULT_SYSTEM
 
-gemma_template = Template(['<bos>'], ['<start_of_turn>user\n{{QUERY}}<end_of_turn>\n<start_of_turn>model\n'],
-                          ['<end_of_turn>\n'], ['<end_of_turn>'], None,
-                          ['<bos><start_of_turn>system\n{{SYSTEM}}<end_of_turn>\n'])
-register_template(TemplateType.gemma, gemma_template)
+register_template(
+    TemplateMeta(
+        LLMTemplateType.gemma,
+        prefix=['<bos>'],
+        prompt=['<start_of_turn>user\n{{QUERY}}<end_of_turn>\n<start_of_turn>model\n'],
+        chat_sep=['<end_of_turn>\n'],
+        suffix=['<end_of_turn>'],
+        system_prefix=['<bos><start_of_turn>system\n{{SYSTEM}}<end_of_turn>\n']))
 
 
 class PaliGemmaTemplate(Template):
-
-    def __init__(self):
-        super().__init__([], ['{{QUERY}}\n'], None, ['<eos>'])
 
     def check_example(self, example):
         images = example.get('images') or []
@@ -57,4 +61,11 @@ class PaliGemmaTemplate(Template):
 
 
 register_template(
-    TemplateType.paligemma, PaliGemmaTemplate(), infer_media_type='dialogue', lazy_tokenize=True, is_generation=True)
+    TemplateMeta(
+        MLLMTemplateType.paligemma,
+        prefix=[],
+        prompt=['{{QUERY}}\n'],
+        chat_sep=None,
+        suffix=['<eos>'],
+        template_cls=PaliGemmaTemplate,
+    ))
