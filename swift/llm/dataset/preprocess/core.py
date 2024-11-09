@@ -35,6 +35,7 @@ class RowPreprocessor:
                  remove_useless_columns: bool = True) -> None:
         self.columns_mapping = columns_mapping or {}
         self.remove_useless_columns = remove_useless_columns
+        self.row_mapping = {}
         self.shared_list = None
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -45,6 +46,7 @@ class RowPreprocessor:
 
     def _row_map(self, row: Dict[str, Any], idx: int, *, strict: bool) -> Dict[str, Any]:
         try:
+            row = self.row_keys_map(row, self.row_mapping)
             row = self.preprocess(row)
         except Exception as e:
             row = None
@@ -70,6 +72,20 @@ class RowPreprocessor:
         if len(k_list) != len(features):
             dataset = dataset.select_columns(k_list)
         return dataset
+
+    @staticmethod
+    def row_keys_map(row: Dict[str, Any], row_mapping: Dict[str, str]) -> Dict[str, Any]:
+        # If there are multiple mappings to the same keys, then delete them.
+        row_mapping = {k: v for k, v in row_mapping.items() if k in row}
+        counter = Counter(row_mapping.values())
+
+        for k, new_k in row_mapping.items():
+            if counter[new_k] > 1:
+                # For example, if "response" and "answer" match, then no processing is done.
+                continue
+            row[new_k] = row.pop(k)
+
+        return row
 
     def __call__(
         self,
@@ -106,36 +122,20 @@ class ResponsePreprocessor(RowPreprocessor):
                  *,
                  columns_mapping: Optional[Dict[str, str]] = None,
                  remove_useless_columns: bool = True) -> None:
+        super().__init__(columns_mapping=columns_mapping, remove_useless_columns=remove_useless_columns)
         system_keys = ['system', 'system_prompt']
         query_keys = ['query', 'prompt', 'input', 'instruction', 'question']
         response_keys = [
             'response', 'answer', 'output', 'targets', 'target', 'answer_key', 'text', 'completion', 'content'
         ]
-        self.row_mapping = {}
         for key in system_keys:
             self.row_mapping[key] = 'system'
         for key in query_keys:
             self.row_mapping[key] = 'query'
         for key in response_keys:
             self.row_mapping[key] = 'response'
-        super().__init__(columns_mapping=columns_mapping, remove_useless_columns=remove_useless_columns)
-
-    @staticmethod
-    def row_keys_map(row: Dict[str, Any], row_mapping: Dict[str, str]) -> Dict[str, Any]:
-        # If there are multiple mappings to the same keys, then delete them.
-        row_mapping = {k: v for k, v in row_mapping.items() if k in row}
-        counter = Counter(row_mapping.values())
-
-        for k, new_k in row_mapping.items():
-            if counter[new_k] > 1:
-                # For example, if "response" and "answer" match, then no processing is done.
-                continue
-            row[new_k] = row.pop(k)
-
-        return row
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        row = self.row_keys_map(row, self.row_mapping)
         response = row.pop('response', None)
         if response is None:
             return
@@ -162,8 +162,8 @@ class AlpacaPreprocessor(ResponsePreprocessor):
         Args:
             concat_inst_input: The concat sep between instruction and input
         """
-        self.concat_inst_input = concat_inst_input
         super().__init__(columns_mapping=columns_mapping, remove_useless_columns=remove_useless_columns)
+        self.concat_inst_input = concat_inst_input
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         instruction = row.pop('instruction', None)
@@ -208,6 +208,7 @@ class MessagesPreprocessor(RowPreprocessor):
         inner_key: Optional[str] = None,
         remove_useless_columns: bool = True,
     ):
+        super().__init__(columns_mapping=columns_mapping, remove_useless_columns=remove_useless_columns)
         self.role_keys = ['role', 'from'] if role_key is None else [role_key]
         self.content_keys = ['content', 'value'] if content_key is None else [content_key]
         self.user_roles = ['user', 'human'] if user_role is None else [user_role]
@@ -217,14 +218,16 @@ class MessagesPreprocessor(RowPreprocessor):
         self.tool_role = tool_role
         self.repair_messages = repair_messages
         self.inner_key = inner_key
-        if columns_mapping is None:
-            columns_mapping = {
-                'conversation': 'messages',
-                'conversations': 'messages',
-                # sharegpt
-                self.system_role: 'system'
-            }
-        super().__init__(columns_mapping=columns_mapping, remove_useless_columns=remove_useless_columns)
+
+        message_keys = ['messages', 'conversation', 'conversations']
+        for key in message_keys:
+            self.row_mapping[key] = 'messages'
+        # sharegptq
+        system_keys = ['system', 'system_prompt']
+        if system_role not in system_keys:
+            system_keys.append(system_role)
+        for key in system_keys:
+            self.row_mapping[key] = 'system'
 
     @staticmethod
     def _is_sharegpt_format(message: Dict[str, str]) -> bool:

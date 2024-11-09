@@ -668,7 +668,6 @@ class LLaVAInstructPreprocessor(MessagesPreprocessor):
         return super().prepare_dataset(dataset)
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
-        row = super().preprocess(row)
         image = row['images']
         if 'coco/' in image:
             image = os.path.join(self.all_folders['coco'], image.replace('coco/', ''))
@@ -687,7 +686,7 @@ class LLaVAInstructPreprocessor(MessagesPreprocessor):
         else:
             return None
 
-        return row
+        return super().preprocess(row)
 
 
 register_dataset(
