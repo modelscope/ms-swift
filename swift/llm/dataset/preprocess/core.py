@@ -232,6 +232,9 @@ class ResponsePreprocessor(RowPreprocessor):
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         response = row.pop('response', None)
         if response is None:
+            row.pop('query', None)
+            row.pop('history', None)
+            row.pop('system', None)
             return
         history = row.pop('history', None) or []
         query = row.pop('query', None)
@@ -331,9 +334,13 @@ class MessagesPreprocessor(RowPreprocessor):
 
     @staticmethod
     def check_message(user_message: Dict[str, str], assistant_message: Dict[str, str]) -> None:
-        assert (user_message['role'] in {'user', 'tool'} and 'content' in user_message), f'user_message: {user_message}'
-        assert (assistant_message['role'] in {'assistant'}
-                and 'content' in assistant_message), f'assistant_message: {assistant_message}'
+        try:
+            assert (user_message['role'] in {'user', 'tool'} and 'content' in user_message), f'user_message: {user_message}'
+            assert (assistant_message['role'] in {'assistant'}
+                    and 'content' in assistant_message), f'assistant_message: {assistant_message}'
+        except:
+            print()
+            raise
 
     def sharegpt_to_messages(self, messages: List[Dict[str, str]], system: Optional[str]) -> List[Dict[str, str]]:
         self._to_std_key(messages, 'user', self.user_roles)
@@ -379,7 +386,7 @@ class MessagesPreprocessor(RowPreprocessor):
         if self.inner_key is not None:
             messages = messages[self.inner_key]
         messages: Optional[List[Dict[str, str]]] = self.repair_messages(messages)
-        if not messages:
+        if not messages or isinstance(messages, str):
             return
         self._to_std_key(messages, 'role', self.role_keys)
         self._to_std_key(messages, 'content', self.content_keys)

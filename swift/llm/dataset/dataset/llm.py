@@ -59,7 +59,7 @@ class RuozhibaPreprocessor(RowPreprocessor):
         if match:
             title = match.group(1)
         if title:
-            return {'messages': {'role': 'assistant', 'content': title}}
+            return {'messages': [{'role': 'assistant', 'content': title}]}
 
 
 register_dataset(
@@ -249,7 +249,7 @@ class TigerBotLawPreprocessor(ResponsePreprocessor):
             chapter = row[f'chapter{i}']
             if chapter is not None:
                 cur_prompt += f'{chapter}'
-        cur_prompt += f'{row["content"]}'
+        cur_prompt += f'{row["response"]}'
         return super().preprocess({'response': cur_prompt})
 
 
@@ -259,6 +259,13 @@ register_dataset(
         hf_dataset_id='TigerResearch/tigerbot-law-plugin',
         preprocess_func=TigerBotLawPreprocessor(),
         tags=['text-generation', 'law', 'pretrained']))
+
+
+register_dataset(
+    DatasetMeta(
+        ms_dataset_id="codefuse-ai/CodeExercise-Python-27k",
+        preprocess_func=MessagesPreprocessor(columns_mapping={"chat_rounds": "messages"}),
+        tags=["chat", "coding", "🔥"]))
 
 
 class LeetcodePythonPreprocessor(ResponsePreprocessor):
@@ -305,7 +312,7 @@ class MultiRoleAgentPreprocessor(RowPreprocessor):
         history_prompt = '\n\n【chat history】'
         conv_prompt = '\n {name}:{content}'
         query, response = '', conv[-1]['value']
-        system = conv[0]['value'] if conv[0]['from'] != 'user' else ''
+        system = conv[0]['value'] if conv[0]['from'] == 'system' else ''
         if conv[0]['from'] == 'user':
             query = conv[0]['value']
         elif 'next_speakers:' not in system:
@@ -313,6 +320,9 @@ class MultiRoleAgentPreprocessor(RowPreprocessor):
                 system += res_prompt
             system += history_prompt
             system += ''.join([conv_prompt.format(name=c['from'], content=c['value']) for c in conv[1:-1]])
+        
+        if not query or not response:
+            return
 
         return {
             'messages': [{
@@ -328,11 +338,11 @@ class MultiRoleAgentPreprocessor(RowPreprocessor):
         }
 
 
-register_dataset(
-    DatasetMeta(
-        ms_dataset_id='iic/MSAgent-MultiRole',
-        preprocess_func=MultiRoleAgentPreprocessor(),
-        tags=['chat', 'agent', 'multi-round', 'role-play', 'multi-agent']))
+# register_dataset(
+#     DatasetMeta(
+#         ms_dataset_id='iic/MSAgent-MultiRole',
+#         preprocess_func=MultiRoleAgentPreprocessor(),
+#         tags=['chat', 'agent', 'multi-round', 'role-play', 'multi-agent']))
 
 register_dataset(
     DatasetMeta(
@@ -341,7 +351,7 @@ register_dataset(
         tags=['chat', 'agent', 'multi-round']))
 
 
-def _preprocess_hc3(dataset: DATASET_TYPE) -> DATASET_TYPE:
+def _preprocess_hc3(dataset: DATASET_TYPE, **kwargs) -> DATASET_TYPE:
     prompt = """Classification Task: Are the following responses from a human or from ChatGPT?
 Question: {question}
 Answer: {answer}
@@ -354,23 +364,20 @@ Output:"""
                 question = example['question']
                 # TODO
                 for h in example['human_answers']:
-                    yield {'query': prompt.format(question=question, answer=h), 'response': 'Human'}
+                    yield {'messages': [{'role': 'user', 'content': prompt.format(question=question, answer=h)}, {'role': 'assistant', 'content': 'Human'}]}
                 for c in example['chatgpt_answers']:
-                    yield {'query': prompt.format(question=question, answer=c), 'response': 'ChatGPT'}
+                    yield {'messages': [{'role': 'user', 'content': prompt.format(question=question, answer=c)}, {'role': 'assistant', 'content': 'ChatGPT'}]}
 
         return IterableDataset.from_generator(generate_example, gen_kwargs={'dataset': dataset})
 
-    query = []
-    response = []
+    messages = []
     for d in dataset:
         question = d['question']
         for h in d['human_answers']:
-            query.append(prompt.format(question=question, answer=h))
-            response.append('Human')
+            messages.append({'messages': [{'role': 'user', 'content': prompt.format(question=question, answer=h)}, {'role': 'assistant', 'content': 'Human'}]})
         for c in d['chatgpt_answers']:
-            query.append(prompt.format(question=question, answer=c))
-            response.append('ChatGPT')
-    return HfDataset.from_dict({'query': query, 'response': response})
+            messages.append({'messages': [{'role': 'user', 'content': prompt.format(question=question, answer=c)}, {'role': 'assistant', 'content': 'ChatGPT'}]})
+    return HfDataset.from_list(messages)
 
 
 register_dataset(
@@ -399,13 +406,13 @@ Answer: {answer}
 Question:"""
         answer, context = row['text1'].split('[SEP]')
         return {
-            'messages': {{
+            'messages': [{
                 'role': 'user',
                 'content': prompt.format(context=context, answer=answer)
             }, {
                 'role': 'assistant',
                 'content': row['text2']
-            }}
+            }]
         }
 
 
@@ -686,7 +693,7 @@ class OrpoDPOMix40kPreprocessor(RowPreprocessor):
         query = None
         response = None
         rejected_response = None
-        if row['source'] != 'toxic-dpo-v0.2':
+        if row['source'] == 'toxic-dpo-v0.2':
             return
         try:
             for i, (chosen, rejected) in enumerate(zip(chosen_history, rejected_history)):
@@ -718,6 +725,9 @@ class OrpoDPOMix40kPreprocessor(RowPreprocessor):
         for h in history:
             messages.append({'role': 'user', 'content': h[0]})
             messages.append({'role': 'assistant', 'content': h[1]})
+        
+        if query is None or response is None:
+            return
 
         messages.append({'role': 'user', 'content': query})
         messages.append({'role': 'assistant', 'content': response})

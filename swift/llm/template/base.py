@@ -485,8 +485,8 @@ class Template:
 
     @staticmethod
     def _get_std_messages(messages):
-        if messages[0]['role'] == 'response':
-            messages.insert(0, {'role': 'query', 'content': ''})  # pretrain
+        if messages[0]['role'] == 'assistant':
+            messages.insert(0, {'role': 'user', 'content': ''})  # pretrain
         if len(messages) % 2 == 1:
             messages.append({'role': 'assistant', 'content': None})  # inference
 
@@ -510,7 +510,10 @@ class Template:
             response_role, response = response_message['role'], response_message['content']
             # TODO: Optimize the Template mechanism.
             assert query_role in {'user', 'tool'}
-            assert response_role in {'assistant'}
+            try:
+                assert response_role in {'assistant'}
+            except:
+                raise
             if query_role == 'tool':
                 prompt = template_meta.tool_prompt
             elif template_meta.is_post_system and i == n_round - 1:

@@ -364,7 +364,7 @@
     },
     {
         "ms_dataset_id": "AI-ModelScope/ms_agent_for_agentfabric",
-        "subsets": ["default", "addition"],
+        "subsets": ["default"],
         "tags": ["chat", "agent", "multi-round", "🔥"]
     },
     {
@@ -522,13 +522,6 @@
     {
         "ms_dataset_id": "iic/MSAgent-Pro",
         "tags": ["chat", "agent", "multi-round", "🔥"]
-    },
-    {
-        "ms_dataset_id": "codefuse-ai/CodeExercise-Python-27k",
-        "columns": {
-            "chat_rounds": "messages"
-        },
-        "tags": ["chat", "coding", "🔥"]
     },
     {
         "ms_dataset_id": "AI-ModelScope/sharegpt_gpt4",

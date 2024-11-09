@@ -91,7 +91,7 @@ class SA1BPairedCaptionPreprocessor(RowPreprocessor):
                 'role': 'user',
                 'content': query,
             }, {
-                'query': 'assistant',
+                'role': 'assistant',
                 'content': response,
             }]
         }
@@ -123,7 +123,7 @@ class SA1BDenseCaptionPreprocessor(RowPreprocessor):
                 'role': 'user',
                 'content': query,
             }, {
-                'query': 'assistant',
+                'role': 'assistant',
                 'content': response,
             }]
         }
