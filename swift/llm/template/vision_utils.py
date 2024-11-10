@@ -140,10 +140,7 @@ def load_file_decorator(func):
 @load_file_decorator
 def load_image(image: Union[Image.Image, BytesIO]) -> Image.Image:
     if isinstance(image, BytesIO):
-        try:
-            image = Image.open(image)
-        except Exception:
-            print()
+        image = Image.open(image)
     if image.mode != 'RGB':
         image = image.convert('RGB')
     return image

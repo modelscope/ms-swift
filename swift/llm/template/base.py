@@ -510,11 +510,7 @@ class Template:
             response_role, response = response_message['role'], response_message['content']
             # TODO: Optimize the Template mechanism.
             assert query_role in {'user', 'tool'}
-            # TODO
-            try:
-                assert response_role in {'assistant'}
-            except Exception:
-                raise
+            assert response_role in {'assistant'}
             if query_role == 'tool':
                 prompt = template_meta.tool_prompt
             elif template_meta.is_post_system and i == n_round - 1:

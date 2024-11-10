@@ -5,6 +5,10 @@ from typing import Any, Dict, List, Optional, Union
 import json
 from PIL import Image
 
+from swift.utils import get_logger
+
+logger = get_logger()
+
 Tool = Dict[str, Union[str, Dict]]
 Message = Dict[str, Union[str, List[Dict[str, Any]]]]
 Messages = List[Message]
@@ -126,7 +130,8 @@ class StdTemplateInputs:
             system = None
 
         if tools is not None:
-            assert system is None
+            if system is not None:
+                logger.warning_once('You have tools prompt but you also have a system field, which will be ignored')
             if isinstance(tools, str):
                 tools = json.loads(tools)
             system = get_tools_prompt(tools, tools_prompt)

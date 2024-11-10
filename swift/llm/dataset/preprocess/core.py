@@ -80,7 +80,6 @@ class RowPreprocessor:
             row = self.row_keys_map(row, self.row_mapping)
             row = self.preprocess(row)
         except Exception:
-            row = None
             if strict:
                 raise
             if self.traceback_limit is not None and self._traceback_counter < self.traceback_limit:
@@ -88,6 +87,7 @@ class RowPreprocessor:
                 print(traceback.format_exc())
                 self._traceback_counter += 1
             logger.error('There are errors in the dataset, the data will be deleted')
+            row = None
         if row is None:
             self.shared_list.append(idx)
             row = {}
@@ -241,6 +241,9 @@ class ResponsePreprocessor(RowPreprocessor):
             row.pop('history', None)
             row.pop('system', None)
             return
+        if isinstance(response, (list, tuple)):
+            # sometimes response is a list, pick one randomly
+            response = np.random.choice(response)
         history = row.pop('history', None) or []
         query = row.pop('query', None)
         system = row.pop('system', None)
@@ -339,15 +342,9 @@ class MessagesPreprocessor(RowPreprocessor):
 
     @staticmethod
     def check_message(user_message: Dict[str, str], assistant_message: Dict[str, str]) -> None:
-        try:
-            assert (user_message['role'] in {'user', 'tool'}
-                    and 'content' in user_message), f'user_message: {user_message}'
-            assert (assistant_message['role'] in {'assistant'}
-                    and 'content' in assistant_message), f'assistant_message: {assistant_message}'
-        except Exception:
-            # TODO
-            print()
-            raise
+        assert (user_message['role'] in {'user', 'tool'} and 'content' in user_message), f'user_message: {user_message}'
+        assert (assistant_message['role'] in {'assistant'} and 'content' in assistant_message
+                and assistant_message['content']), f'assistant_message: {assistant_message}'
 
     def sharegpt_to_messages(self, messages: List[Dict[str, str]], system: Optional[str]) -> List[Dict[str, str]]:
         self._to_std_key(messages, 'user', self.user_roles)
@@ -370,6 +367,8 @@ class MessagesPreprocessor(RowPreprocessor):
         if messages[0]['role'] == self.system_role:
             messages[0]['role'] = 'system'
             start_idx = 1
+        if start_idx == 1 and len(messages) % 2 == 0:
+            raise ValueError(f'The messages length is not even: {messages}')
         for user_message, assistant_message in zip(messages[start_idx::2], messages[start_idx + 1::2]):
             user_role = user_message['role']
             assistant_role = assistant_message['role']
@@ -412,7 +411,7 @@ class AutoPreprocessor:
                  *,
                  columns_mapping: Optional[Dict[str, str]] = None,
                  remove_useless_columns: bool = True) -> None:
-        self.columns_mapping = columns_mapping
+        self.columns_mapping = columns_mapping or {}
         self.remove_useless_columns = remove_useless_columns
 
     def _get_preprocessor(self, dataset: DATASET_TYPE) -> RowPreprocessor:

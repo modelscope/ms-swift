@@ -337,11 +337,11 @@ class MultiRoleAgentPreprocessor(RowPreprocessor):
         }
 
 
-# register_dataset(
-#     DatasetMeta(
-#         ms_dataset_id='iic/MSAgent-MultiRole',
-#         preprocess_func=MultiRoleAgentPreprocessor(),
-#         tags=['chat', 'agent', 'multi-round', 'role-play', 'multi-agent']))
+register_dataset(
+    DatasetMeta(
+        ms_dataset_id='iic/MSAgent-MultiRole',
+        preprocess_func=MultiRoleAgentPreprocessor(),
+        tags=['chat', 'agent', 'multi-round', 'role-play', 'multi-agent']))
 
 register_dataset(
     DatasetMeta(
@@ -361,7 +361,6 @@ Output:"""
         def generate_example(dataset):
             for example in dataset:
                 question = example['question']
-                # TODO
                 for h in example['human_answers']:
                     yield {
                         'messages': [{
@@ -492,13 +491,13 @@ class HHRLHFPreprocessor(RowPreprocessor):
         }
 
 
-# register_dataset(
-#     DatasetMeta(
-#         ms_dataset_id='AI-ModelScope/hh-rlhf',
-#         subsets=['harmless-base', 'helpful-base', 'helpful-online', 'helpful-rejection-sampled'],
-#         preprocess_func=HHRLHFPreprocessor(),
-#         split=['train'],
-#         tags=['rlhf', 'dpo', 'pairwise']))
+register_dataset(
+    DatasetMeta(
+        ms_dataset_id='AI-ModelScope/hh-rlhf',
+        subsets=['harmless-base', 'helpful-base', 'helpful-online', 'helpful-rejection-sampled'],
+        preprocess_func=HHRLHFPreprocessor(),
+        split=['train'],
+        tags=['rlhf', 'dpo', 'pairwise']))
 
 
 class HHRLHFCNPreprocessor(RowPreprocessor):
@@ -778,6 +777,6 @@ register_dataset(
 register_dataset(
     DatasetMeta(
         ms_dataset_id='swift/sharegpt',
-        subsets=['common-zh', 'computer-zh', 'unknow-zh', 'common-en', 'computer-en'],
+        subsets=['common-zh', 'unknow-zh', 'common-en'],
         preprocess_func=MessagesPreprocessor(),
         tags=['chat', 'general', 'multi-round']))

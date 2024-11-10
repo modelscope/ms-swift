@@ -168,8 +168,7 @@
         "ms_dataset_id": "swift/ChartQA",
         "hf_dataset_id": "HuggingFaceM4/ChartQA",
         "columns": {
-            "label": "response",
-            "modals": ["image"]
+            "label": "response"
         },
         "split": ["train"],
         "tags": ["en", "vqa", "quality"]
@@ -183,7 +182,8 @@
             "image": "images"
         },
         "split": ["train"],
-        "tags": ["en", "vqa", "quality"]
+        "tags": ["en", "vqa", "quality"],
+        "huge_dataset": true
     },
     {
         "ms_dataset_id": "swift/train_3.5M_CN",
