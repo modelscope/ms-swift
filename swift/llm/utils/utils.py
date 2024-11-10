@@ -277,19 +277,29 @@ def _single_map(d: Dict[str, Any], map_func: MapFunc) -> Optional[Dict[str, Any]
     return d
 
 
-def _map_mp_single(subset: HfDataset, map_func: MapFunc, queue: Queue, start_idx: int):
-    for i, d in enumerate(subset, start=start_idx):
-        queue.put((i, map_func(d)))  # idx, result
+def _map_mp_single(shard: HfDataset, map_func: MapFunc, queue: Queue, rank: int):
+    batch_size = 16
+    pre_i = 0
+    result = []
+    for i, d in enumerate(shard):
+        result.append(map_func(d))
+        if i == len(shard) - 1 or (i + 1) % batch_size == 0:
+            result = [res for res in result if res is not None]
+            queue.put((rank, result, i - pre_i))
+            result = []
+            pre_i = i
 
 
 def _map_mp_i(dataset: HfDataset, map_func: MapFunc, num_proc: int) -> Iterator[Tuple[int, Dict[str, Any]]]:
+    pre_environ = deepcopy(os.environ)
+    os.environ['TOKENIZERS_PARALLELISM'] = 'false'
     with multiprocess.Pool(num_proc) as pool, multiprocess.Manager() as manager:
+        os.environ = pre_environ
         queue = manager.Queue()
         async_results = []
-        split_idx = np.linspace(0, len(dataset), num_proc + 1, dtype=np.int32)
+        shard_list = [dataset.shard(num_proc, i) for i in range(num_proc)]
         for i in range(num_proc):
-            subset = dataset.select(range(split_idx[i], split_idx[i + 1]))
-            async_results.append(pool.apply_async(_map_mp_single, args=(subset, map_func, queue, split_idx[i])))
+            async_results.append(pool.apply_async(_map_mp_single, args=(shard_list[i], map_func, queue, i)))
         while True:
             try:
                 yield queue.get(timeout=0.05)
@@ -300,11 +310,16 @@ def _map_mp_i(dataset: HfDataset, map_func: MapFunc, num_proc: int) -> Iterator[
 
 def _map_mp(dataset: HfDataset, map_func: MapFunc, num_proc: int) -> List[Dict[str, Any]]:
     # Solving the unordered problem
-    data = [None] * len(dataset)
     num_proc = min(num_proc, len(dataset))
-    for d in tqdm(_map_mp_i(dataset, map_func, num_proc), total=len(dataset), desc=f'Map (num_proc={num_proc})'):
-        data[d[0]] = d[1]
-    return data
+    data_list = [[]] * num_proc
+    prog_bar = tqdm(total=len(dataset), desc=f'Map (num_proc={num_proc})', dynamic_ncols=True)
+    for d in _map_mp_i(dataset, map_func, num_proc):
+        data_list[d[0]] += d[1]
+        prog_bar.update(d[2])
+    res = []
+    for data in data_list:
+        res += data
+    return res
 
 
 def dataset_map(dataset: DATASET_TYPE,
