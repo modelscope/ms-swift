@@ -85,8 +85,8 @@ class RowPreprocessor:
             if self.traceback_limit is not None and self._traceback_counter < self.traceback_limit:
                 import traceback
                 print(traceback.format_exc())
+                logger.error('👆👆👆There are errors in the dataset, the data will be deleted')
                 self._traceback_counter += 1
-            logger.error('There are errors in the dataset, the data will be deleted')
             row = None
         if row is None:
             self.shared_list.append(idx)
@@ -201,17 +201,19 @@ class RowPreprocessor:
         try:
             _row_map = partial(self._row_map, strict=strict)
             with self._patch_arrow_writer(), self._shared_column_state(num_proc) as column_state:
-                dataset = dataset.map(
+                dataset_mapped = dataset.map(
                     _row_map, num_proc=num_proc, load_from_cache_file=load_from_cache_file, with_indices=True)
-                dataset = self._filter_columns(dataset, column_state)
+                dataset_mapped = self._filter_columns(dataset_mapped, column_state)
             if len(self.shared_list) > 0:
                 self.shared_list = set(self.shared_list)
-                self.shared_list = [i for i in range(len(dataset)) if i not in self.shared_list]
-                dataset = dataset.select(self.shared_list)
+                self.shared_list = [i for i in range(len(dataset_mapped)) if i not in self.shared_list]
+                dataset_mapped = dataset_mapped.select(self.shared_list)
         except NotImplementedError:
             pass
-
-        return self._remove_useless_columns(dataset)
+        
+        if hasattr(dataset, '__len__'):
+            logger.info(f'Dataset filtered, origin length: {len(dataset)}, filtered dataset length: {len(dataset_mapped)}')
+        return self._remove_useless_columns(dataset_mapped)
 
 
 class ResponsePreprocessor(RowPreprocessor):

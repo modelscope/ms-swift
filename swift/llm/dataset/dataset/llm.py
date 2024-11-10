@@ -491,13 +491,15 @@ class HHRLHFPreprocessor(RowPreprocessor):
         }
 
 
+# TODO meta file broken
 register_dataset(
     DatasetMeta(
         ms_dataset_id='AI-ModelScope/hh-rlhf',
-        subsets=['harmless-base', 'helpful-base', 'helpful-online', 'helpful-rejection-sampled'],
+        subsets=['helpful-base', 'helpful-online', 'helpful-rejection-sampled'],
         preprocess_func=HHRLHFPreprocessor(),
         split=['train'],
-        tags=['rlhf', 'dpo', 'pairwise']))
+        tags=['rlhf', 'dpo', 'pairwise'],
+        huge_dataset=True))
 
 
 class HHRLHFCNPreprocessor(RowPreprocessor):
