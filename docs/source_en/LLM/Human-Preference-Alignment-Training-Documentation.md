@@ -5,6 +5,8 @@ This document provides training scripts for various human preference alignment a
 - [Environment Setup](#environment-setup)
 - [Dataset](#dataset)
 - [DPO](#dpo)
+- [RM](#rm)
+- [PPO](#ppo)
 - [KTO](#kto)
 - [CPO](#cpo)
 - [ORPO](#orpo)
@@ -159,6 +161,7 @@ Hyperparameters
 - cliprange_value: Clip range in the PPO value loss function, default is 0.2
 - gamma: Discount factor for cumulative rewards, default is 1.0
 - lam: Lambda value for [GAE](https://arxiv.org/abs/1506.02438), default is 0.95
+- num_sample_generations: Number of debugging samples generations throughout training, default is 10
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 \
