@@ -10,8 +10,8 @@ from .media import MediaResource
 from .preprocess import (AlpacaPreprocessor, AutoPreprocessor, MessagesPreprocessor, ResponsePreprocessor,
                          RowPreprocessor)
 from .register import DATASET_MAPPING, register_dataset, register_dataset_info
-from .utils import (ConstantLengthDataset, HfDataset, LazyLLMDataset, LLMDataset, LLMIterableDataset,
-                    print_example, sample_dataset, sort_by_max_length, stat_dataset, EncodePreprocessor)
+from .utils import (ConstantLengthDataset, EncodePreprocessor, HfDataset, LazyLLMDataset, LLMDataset,
+                    LLMIterableDataset, print_example, sample_dataset, sort_by_max_length, stat_dataset)
 
 
 def _update_fingerprint_mac(*args, **kwargs):

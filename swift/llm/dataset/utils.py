@@ -11,8 +11,8 @@ import multiprocess
 import numpy as np
 import torch
 from datasets import Dataset as HfDataset
-from datasets.arrow_dataset import iflatmap_unordered
 from datasets import IterableDataset as HFIterableDataset
+from datasets.arrow_dataset import iflatmap_unordered
 from torch.utils.data import Dataset, IterableDataset
 from tqdm.auto import tqdm
 from transformers import PreTrainedTokenizerBase
@@ -280,15 +280,19 @@ class EncodePreprocessor:
         if data:
             return data
 
-    def _mp_map_unordered(self, dataset: HfDataset, num_proc: int
-    ) -> Iterator[Optional[Tuple[int, List[Dict[str, Any]]]]]:
-        def _map_mp_single(shards: HfDataset, queue: Queue, rank: int):
-            result = [None] * len(shards)
+    def _mp_map_unordered(self, dataset: HfDataset,
+                          num_proc: int) -> Iterator[Optional[Tuple[int, List[Dict[str, Any]]]]]:
+
+        def _map_mp_single(shards: HfDataset, queue: Queue, rank: int, batch_size: int = 1000) -> None:
+            pre_i = 0
+            result = []
             for i, data in enumerate(shards):
-                queue.put(None)  # idx, result
-                result[i] = self.single_map(data)
-            res = [data for data in result if data is not None]
-            queue.put((rank, res))  # result
+                result.append(self.single_map(data))
+                if i == len(shards) - 1 or i % batch_size == 0:
+                    result = [data for data in result if data is not None]
+                    queue.put((rank, result, i - pre_i))  # idx, result
+                    pre_i = i
+                    result = []
 
         prev_env = deepcopy(os.environ)
         os.environ['TOKENIZERS_PARALLELISM'] = 'false'
@@ -310,12 +314,11 @@ class EncodePreprocessor:
     def mp_map(self, dataset: HfDataset, num_proc: int) -> List[Dict[str, Any]]:
         # Solving the unordered problem
         num_proc = min(num_proc, len(dataset))
-        shard_results: List[List[Dict[str, Any]]] = [None] * num_proc
-        for output in tqdm(self._mp_map_unordered(dataset, num_proc), total=len(dataset)):
-            if output is None:
-                continue
-            else:
-                shard_results[output[0]] = output[1]
+        shard_results: List[List[Dict[str, Any]]] = [[]] * num_proc
+        prog_bar = tqdm(total=len(dataset), dynamic_ncols=True)
+        for output in self._mp_map_unordered(dataset, num_proc):
+            shard_results[output[0]] += output[1]
+            prog_bar.update(output[2])
         res = []
         for result in shard_results:
             res += result
