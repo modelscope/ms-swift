@@ -2,7 +2,7 @@
 
 import os
 from dataclasses import dataclass, field
-from typing import List, Literal, Optional
+from typing import List, Optional
 
 import torch
 from transformers.training_args import TrainingArguments as HfTrainingArguments
