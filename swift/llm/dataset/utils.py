@@ -2,6 +2,7 @@
 # Part of the implementation is borrowed from huggingface/transformers.
 import heapq
 import os
+from copy import deepcopy
 from functools import partial
 from queue import Empty, Queue
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
@@ -10,6 +11,7 @@ import multiprocess
 import numpy as np
 import torch
 from datasets import Dataset as HfDataset
+from datasets.arrow_dataset import iflatmap_unordered
 from datasets import IterableDataset as HFIterableDataset
 from torch.utils.data import Dataset, IterableDataset
 from tqdm.auto import tqdm
@@ -19,8 +21,6 @@ from swift.utils import get_logger, stat_array
 from .preprocess import DATASET_TYPE, RowPreprocessor
 
 logger = get_logger()
-
-os.environ['TOKENIZERS_PARALLELISM'] = 'true'
 
 
 def sample_dataset(dataset: HfDataset,
@@ -252,90 +252,74 @@ class LazyLLMDataset(Dataset):
         return len(self.dataset)
 
 
-MapFunc = Callable[[Dict[str, Any]], Tuple[Dict[str, Any], Dict[str, Any]]]
-
-
-def _single_map(d: Dict[str, Any], map_func: MapFunc) -> Optional[Dict[str, Any]]:
-    d = map_func(d)
-    if len(d) == 0:
-        return None
-    return d
-
-
-def _map_mp_single(subset: HfDataset, map_func: MapFunc, queue: Queue, start_idx: int):
-    for i, d in enumerate(subset, start=start_idx):
-        queue.put((i, map_func(d)))  # idx, result
-
-
-def _map_mp_i(dataset: HfDataset, map_func: MapFunc, num_proc: int) -> Iterator[Tuple[int, Dict[str, Any]]]:
-    with multiprocess.Pool(num_proc) as pool, multiprocess.Manager() as manager:
-        queue = manager.Queue()
-        async_results = []
-        split_idx = np.linspace(0, len(dataset), num_proc + 1, dtype=np.int32)
-        for i in range(num_proc):
-            subset = dataset.select(range(split_idx[i], split_idx[i + 1]))
-            async_results.append(pool.apply_async(_map_mp_single, args=(subset, map_func, queue, split_idx[i])))
-        while True:
-            try:
-                yield queue.get(timeout=0.05)
-            except Empty:
-                if all(async_result.ready() for async_result in async_results) and queue.empty():
-                    break
-
-
-def _map_mp(dataset: HfDataset, map_func: MapFunc, num_proc: int) -> List[Dict[str, Any]]:
-    # Solving the unordered problem
-    data = [None] * len(dataset)
-    num_proc = min(num_proc, len(dataset))
-    for d in tqdm(_map_mp_i(dataset, map_func, num_proc), total=len(dataset)):
-        data[d[0]] = d[1]
-    return data
-
-
-def dataset_map(dataset: DATASET_TYPE,
-                map_func: MapFunc,
-                num_proc: int = 1,
-                streaming: bool = False) -> Optional[Union[LLMDataset, DATASET_TYPE]]:
-    """Map and tokenize a dataset
-    This function is used because datasets.map has a critical type checking, which is annoying.
-
-    Args:
-        dataset: The dataset instance
-        map_func: The map(tokenize) function
-        num_proc: Num proc to use
-        streaming: In streaming mode
-
-    Returns:
-
-    """
-    if streaming:
-        return LLMIterableDataset(dataset.map(map_func))  # num_proc is not supported for IterableDataset
-
-    single_map = partial(_single_map, map_func=map_func)
-    if num_proc == 1:
-        data = []
-        for d in tqdm(dataset):
-            d = single_map(d)
-            data.append(d)
-    else:
-        assert num_proc > 1
-        data = _map_mp(dataset, single_map, num_proc)
-    data = [d for d in data if d is not None]
-    if len(data) == 0:
-        logger.warning('len(dataset): 0')
-        return None
-    return LLMDataset(data)
-
-
-class EncodePreprocessor(RowPreprocessor):
-    standard_keys = ['input_ids', 'labels', 'loss_scale']
+class EncodePreprocessor:
 
     def __init__(self, template: 'Template'):
-        super().__init__()
         self.template = template
 
-    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        return self.template.encode(dict(row))
+    def __call__(self, dataset: DATASET_TYPE, num_proc: int = 1):
+        if isinstance(dataset, HFIterableDataset):
+            return LLMIterableDataset(dataset.map(self.template.encode))
+        if num_proc == 1:
+            data_list = []
+            for data in tqdm(dataset):
+                data = self.single_map(data)
+                if data is not None:
+                    data_list.append(data)
+        else:
+            assert num_proc > 1
+            data_list = self.mp_map(dataset, num_proc)
+
+        if len(data_list) == 0:
+            logger.warning('len(dataset): 0')
+            return None
+        return LLMDataset(data_list)
+
+    def single_map(self, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        data = self.template.encode(data)
+        if data:
+            return data
+
+    def _mp_map_unordered(self, dataset: HfDataset, num_proc: int
+    ) -> Iterator[Optional[Tuple[int, List[Dict[str, Any]]]]]:
+        def _map_mp_single(shards: HfDataset, queue: Queue, rank: int):
+            result = [None] * len(shards)
+            for i, data in enumerate(shards):
+                queue.put(None)  # idx, result
+                result[i] = self.single_map(data)
+            res = [data for data in result if data is not None]
+            queue.put((rank, res))  # result
+
+        prev_env = deepcopy(os.environ)
+        os.environ['TOKENIZERS_PARALLELISM'] = 'false'
+
+        with multiprocess.Pool(num_proc) as pool, multiprocess.Manager() as manager:
+            os.environ = prev_env
+            queue = manager.Queue()
+            async_results = []
+            shards = [dataset.shard(num_shards=num_proc, index=rank, contiguous=True) for rank in range(num_proc)]
+            for i in range(num_proc):
+                async_results.append(pool.apply_async(_map_mp_single, args=(shards[i], queue, i)))
+            while True:
+                try:
+                    yield queue.get(timeout=0.05)
+                except Empty:
+                    if all(async_result.ready() for async_result in async_results) and queue.empty():
+                        break
+
+    def mp_map(self, dataset: HfDataset, num_proc: int) -> List[Dict[str, Any]]:
+        # Solving the unordered problem
+        num_proc = min(num_proc, len(dataset))
+        shard_results: List[List[Dict[str, Any]]] = [None] * num_proc
+        for output in tqdm(self._mp_map_unordered(dataset, num_proc), total=len(dataset)):
+            if output is None:
+                continue
+            else:
+                shard_results[output[0]] = output[1]
+        res = []
+        for result in shard_results:
+            res += result
+        return res
 
 
 def stat_dataset(llm_dataset: Dataset) -> str:
