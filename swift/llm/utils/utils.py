@@ -324,9 +324,8 @@ def _map_mp(dataset: HfDataset, map_func: MapFunc, num_proc: int) -> List[Dict[s
 
 def dataset_map(dataset: DATASET_TYPE,
                 map_func: MapFunc,
-                num_proc: int = 1,
-                streaming: bool = False) -> Optional[Union[LLMDataset, DATASET_TYPE]]:
-    if streaming:
+                num_proc: int = 1) -> Optional[Union[LLMDataset, DATASET_TYPE]]:
+    if isinstance(dataset, HfIterableDataset):
         return LLMIterableDataset(dataset.map(map_func))  # num_proc is not supported for IterableDataset
 
     single_map = partial(_single_map, map_func=map_func)

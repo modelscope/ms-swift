@@ -391,9 +391,9 @@ def prepare_dataset(args, template: Template, msg: Optional[Dict[str, Any]] = No
         else:
             td0, tkwargs0 = template.encode(train_dataset[0])
         print_example(td0, tokenizer, tkwargs0)
-        train_dataset = dataset_map(train_dataset, template.encode, args.preprocess_num_proc, streaming=args.streaming)
+        train_dataset = dataset_map(train_dataset, template.encode, args.preprocess_num_proc)
         if val_dataset is not None:
-            val_dataset = dataset_map(val_dataset, template.encode, args.preprocess_num_proc, streaming=args.streaming)
+            val_dataset = dataset_map(val_dataset, template.encode, args.preprocess_num_proc)
         template.model = model  # recover
         if args.test_oom_error:
             train_dataset = sort_by_max_length(train_dataset, 20000)
