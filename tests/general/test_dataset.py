@@ -3,8 +3,8 @@ from typing import List
 from swift.llm import load_dataset
 
 
-def _test_dataset(datasets: List[str]):
-    dataset = load_dataset(datasets, num_proc=2)
+def _test_dataset(datasets: List[str], num_proc: int = 1, strict: bool = True):
+    dataset = load_dataset(datasets, num_proc=num_proc, strict=strict)
     print(f'dataset[0]: {dataset[0]}')
     print(f'dataset[1]: {dataset[1]}')
 
@@ -18,11 +18,11 @@ def test_coco():
 
 
 def test_llava_instruct():
-    _test_dataset(['AI-ModelScope/LLaVA-Instruct-150K'])
+    _test_dataset(['AI-ModelScope/LLaVA-Instruct-150K'], num_proc=16)
 
 
 def test_ms_bench():
-    _test_dataset(['iic/ms_bench'])
+    _test_dataset(['iic/ms_bench'], strict=False)
 
 
 def test_ms_agent():
@@ -46,12 +46,12 @@ def test_aishell1():
 
 
 if __name__ == '__main__':
-    # test_alpaca()
-    # test_coco()
-    # test_llava_instruct()
-    # test_ms_bench()
-    # test_ms_agent()
-    # test_dpo()
-    # test_pretrain()
-    # test_dataset_info()
+    test_alpaca()
+    test_coco()
+    test_llava_instruct()
+    test_ms_bench()
+    test_ms_agent()
+    test_dpo()
+    test_pretrain()
+    test_dataset_info()
     test_aishell1()

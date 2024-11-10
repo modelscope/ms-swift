@@ -44,11 +44,8 @@ class RowPreprocessor:
         self.columns_mapping = columns_mapping or {}
         self.remove_useless_columns = remove_useless_columns
         self.row_mapping = {}
-        self.shared_list = None
         self.traceback_limit = kwargs.get('traceback_limit', 10)
         self._traceback_counter = 0
-        self._shared_shm_name = None
-        self._column_state = None
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         raise NotImplementedError
@@ -56,51 +53,44 @@ class RowPreprocessor:
     def prepare_dataset(self, dataset: HfDataset) -> HfDataset:
         return dataset
 
-    @property
-    def empty_row(self):
-        return {
-            'messages': [{
-                'role': '',
-                'content': ''
-            }],
-            'rejected_response': '',
-            'images': None,
-            'videos': None,
-            'audios': None,
-        }
+    def _row_map(self, batched_row: Dict[str, Any], *, strict: bool) -> Dict[str, Any]:
+        batched_row = self.row_keys_map(batched_row, self.row_mapping)
+        keys = list(batched_row.keys())
+        if len(keys) == 0:
+            return {}
+        res = {}
+        batch_size = len(batched_row[keys[0]])
+        num_samples = 0
+        for i in range(batch_size):
+            row = {key: batched_row[key][i] for key in keys}
 
-    def _row_map(self, row: Dict[str, Any], idx: int, *, strict: bool) -> Dict[str, Any]:
-        if self._shared_shm_name is not None:
-            shm = shared_memory.SharedMemory(name=self._shared_shm_name)
-            column_state = np.ndarray((len(self.standard_keys), ), dtype=np.bool_, buffer=shm.buf)
-        else:
-            column_state = self._column_state
+            try:
+                new_row = self.preprocess(row)
+                if new_row is None:
+                    row = None
+                else:
+                    row.update(new_row)
 
-        try:
-            row = self.row_keys_map(row, self.row_mapping)
-            row = self.preprocess(row)
-        except Exception:
-            if strict:
-                raise
-            if self.traceback_limit is not None and self._traceback_counter < self.traceback_limit:
-                import traceback
-                print(traceback.format_exc())
-                logger.error('👆👆👆There are errors in the dataset, the data will be deleted')
-                self._traceback_counter += 1
-            row = None
-        if row is None:
-            self.shared_list.append(idx)
-            row = {}
-        else:
-            for i, k in enumerate(self.standard_keys):
-                if k in row:
-                    column_state[i] = True
+            except Exception:
+                if strict:
+                    raise
+                if self.traceback_limit is not None and self._traceback_counter < self.traceback_limit:
+                    import traceback
+                    print(traceback.format_exc())
+                    logger.error('👆👆👆There are errors in the dataset, the data will be deleted')
+                    self._traceback_counter += 1
+                row = None
+            if row is None:
+                continue
 
-        for k, v in self.empty_row.items():
-            # fix: AI-ModelScope/orpo-dpo-mix-40k
-            if k not in row:
-                row[k] = v
-        return row
+            for k, v in row.items():
+                if k not in res:
+                    res[k] = [None] * num_samples
+                res[k].append(v)
+
+            num_samples += 1
+
+        return res
 
     @staticmethod
     def safe_rename_columns(dataset: HfDataset, columns_mapping: Dict[str, Any]) -> HfDataset:
@@ -131,36 +121,6 @@ class RowPreprocessor:
             row[new_k] = row.pop(k)
 
         return row
-
-    @contextmanager
-    def _shared_column_state(self, num_proc: int):
-        """Used to remove unnecessary columns, this function is compatible with multi-processing."""
-        if num_proc == 1:
-            self._column_state = np.zeros((len(self.standard_keys), ), dtype=np.bool_)
-            yield self._column_state
-            self._column_state = None
-            return
-        shm = shared_memory.SharedMemory(create=True, size=len(self.standard_keys))
-        self._shared_shm_name = shm.name
-        column_state = np.ndarray((len(self.standard_keys), ), dtype=np.bool_, buffer=shm.buf)
-        column_state[:] = False
-        try:
-            yield column_state
-        finally:
-            # clear resources
-            shm.close()
-            shm.unlink()
-            self._shared_shm_name = None
-
-    @classmethod
-    def _filter_columns(cls, dataset: HfDataset, column_state: np.ndarray) -> HfDataset:
-        features = get_dataset_features(dataset)
-        remove_keys = []
-        for i, k in enumerate(cls.standard_keys):
-            if k in features and not column_state[i]:
-                remove_keys.append(k)
-        dataset = dataset.remove_columns(remove_keys)
-        return dataset
 
     @staticmethod
     @contextmanager
@@ -193,27 +153,21 @@ class RowPreprocessor:
     ) -> DATASET_TYPE:
         dataset = self.safe_rename_columns(dataset, self.columns_mapping)
         dataset = self.prepare_dataset(dataset)
-        if num_proc == 1:
-            # to remove
-            self.shared_list = []
-        else:
-            self.shared_list = multiprocessing.Manager().list()
+        _row_map = partial(self._row_map, strict=strict)
+
         try:
-            _row_map = partial(self._row_map, strict=strict)
-            with self._patch_arrow_writer(), self._shared_column_state(num_proc) as column_state:
+            with self._patch_arrow_writer():
                 dataset_mapped = dataset.map(
-                    _row_map, num_proc=num_proc, load_from_cache_file=load_from_cache_file, with_indices=True)
-                dataset_mapped = self._filter_columns(dataset_mapped, column_state)
-            if len(self.shared_list) > 0:
-                self.shared_list = set(self.shared_list)
-                self.shared_list = [i for i in range(len(dataset_mapped)) if i not in self.shared_list]
-                dataset_mapped = dataset_mapped.select(self.shared_list)
+                    _row_map, num_proc=num_proc, load_from_cache_file=load_from_cache_file, batched=True)
         except NotImplementedError:
             pass
-        
+
         if hasattr(dataset, '__len__'):
-            logger.info(f'Dataset filtered, origin length: {len(dataset)}, filtered dataset length: {len(dataset_mapped)}')
-        return self._remove_useless_columns(dataset_mapped)
+            logger.info(
+                f'Dataset filtered, origin length: {len(dataset)}, filtered dataset length: {len(dataset_mapped)}')
+        if self.remove_useless_columns:
+            dataset_mapped = self._remove_useless_columns(dataset_mapped)
+        return dataset_mapped
 
 
 class ResponsePreprocessor(RowPreprocessor):

@@ -364,7 +364,7 @@
     },
     {
         "ms_dataset_id": "AI-ModelScope/ms_agent_for_agentfabric",
-        "subsets": ["default"],
+        "subsets": ["default", "addition"],
         "tags": ["chat", "agent", "multi-round", "🔥"]
     },
     {

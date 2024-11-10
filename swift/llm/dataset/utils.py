@@ -252,78 +252,17 @@ class LazyLLMDataset(Dataset):
         return len(self.dataset)
 
 
-class EncodePreprocessor:
+class EncodePreprocessor(RowPreprocessor):
 
     def __init__(self, template: 'Template'):
+        super().__init__(remove_useless_columns=False)
         self.template = template
 
-    def __call__(self, dataset: DATASET_TYPE, num_proc: int = 1):
-        if isinstance(dataset, HFIterableDataset):
-            return LLMIterableDataset(dataset.map(self.template.encode))
-        if num_proc == 1:
-            data_list = []
-            for data in tqdm(dataset):
-                data = self.single_map(data)
-                if data is not None:
-                    data_list.append(data)
-        else:
-            assert num_proc > 1
-            data_list = self.mp_map(dataset, num_proc)
-
-        if len(data_list) == 0:
-            logger.warning('len(dataset): 0')
-            return None
-        return LLMDataset(data_list)
-
-    def single_map(self, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        data = self.template.encode(data)
-        if data:
-            return data
-
-    def _mp_map_unordered(self, dataset: HfDataset,
-                          num_proc: int) -> Iterator[Optional[Tuple[int, List[Dict[str, Any]]]]]:
-
-        def _map_mp_single(shards: HfDataset, queue: Queue, rank: int, batch_size: int = 1000) -> None:
-            pre_i = 0
-            result = []
-            for i, data in enumerate(shards):
-                result.append(self.single_map(data))
-                if i == len(shards) - 1 or i % batch_size == 0:
-                    result = [data for data in result if data is not None]
-                    queue.put((rank, result, i - pre_i))  # idx, result
-                    pre_i = i
-                    result = []
-
-        prev_env = deepcopy(os.environ)
-        os.environ['TOKENIZERS_PARALLELISM'] = 'false'
-
-        with multiprocess.Pool(num_proc) as pool, multiprocess.Manager() as manager:
-            os.environ = prev_env
-            queue = manager.Queue()
-            async_results = []
-            shards = [dataset.shard(num_shards=num_proc, index=rank, contiguous=True) for rank in range(num_proc)]
-            for i in range(num_proc):
-                async_results.append(pool.apply_async(_map_mp_single, args=(shards[i], queue, i)))
-            while True:
-                try:
-                    yield queue.get(timeout=0.05)
-                except Empty:
-                    if all(async_result.ready() for async_result in async_results) and queue.empty():
-                        break
-
-    def mp_map(self, dataset: HfDataset, num_proc: int) -> List[Dict[str, Any]]:
-        # Solving the unordered problem
-        num_proc = min(num_proc, len(dataset))
-        shard_results: List[List[Dict[str, Any]]] = [[]] * num_proc
-        prog_bar = tqdm(total=len(dataset), dynamic_ncols=True)
-        for output in self._mp_map_unordered(dataset, num_proc):
-            shard_results[output[0]] += output[1]
-            prog_bar.update(output[2])
-        res = []
-        for result in shard_results:
-            res += result
+    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        res = self.template.encode(row)
+        if len(res) == 0:
+            res = None
         return res
-
 
 def stat_dataset(llm_dataset: Dataset) -> str:
     """Statistical analysis was performed on the dataset"""
