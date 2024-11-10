@@ -53,18 +53,18 @@ class GPT4vDataset(ResponsePreprocessor):
         return super().preprocess(row)
 
 
-register_dataset(
-    DatasetMeta(
-        ms_dataset_id='swift/gpt4v-dataset',
-        hf_dataset_id='laion/gpt4v-dataset',
-        preprocess_func=GPT4vDataset(columns_mapping={
-            'link': 'images',
-            'caption': 'response'
-        }),
-        subsets=['default'],
-        split=['train'],
-        tags=['en', 'caption', 'multi-modal', 'quality'],
-    ))
+# register_dataset(
+#     DatasetMeta(
+#         ms_dataset_id='swift/gpt4v-dataset',
+#         hf_dataset_id='laion/gpt4v-dataset',
+#         preprocess_func=GPT4vDataset(columns_mapping={
+#             'link': 'images',
+#             'caption': 'response'
+#         }),
+#         subsets=['default'],
+#         split=['train'],
+#         tags=['en', 'caption', 'multi-modal', 'quality'],
+#     ))
 
 register_dataset(
     DatasetMeta(
@@ -170,7 +170,7 @@ register_dataset(
     ))
 
 
-class MantisPreprocessor(RowPreprocessor):
+class MantisPreprocessor(MessagesPreprocessor):
 
     def __init__(self,
                  *,
@@ -194,7 +194,7 @@ class MantisPreprocessor(RowPreprocessor):
         if not images:
             return
         row['images'] = images
-        return MessagesPreprocessor().preprocess(row)
+        return super().preprocess(row)
 
 
 mantis_subsets_name = [
@@ -206,15 +206,15 @@ mantis_subsets_name = [
 _mantis_subsets = []
 for subset in mantis_subsets_name:
     _subset = SubsetDataset(
-        name=subset, split=['train', 'validation'], preprocess_func=MantisPreprocessor(subset=subset))
+        name=subset, split=['train'], preprocess_func=MantisPreprocessor(subset=subset))
     _mantis_subsets.append(_subset)
 
-register_dataset(
-    DatasetMeta(
-        ms_dataset_id='swift/Mantis-Instruct',
-        subsets=_mantis_subsets,
-        tags=['chat', 'multi-modal', 'vision'],
-    ))
+# register_dataset(
+#     DatasetMeta(
+#         ms_dataset_id='swift/Mantis-Instruct',
+#         subsets=_mantis_subsets,
+#         tags=['chat', 'multi-modal', 'vision'],
+#     ))
 
 
 class LLaVADataPreprocessor(MessagesPreprocessor):
@@ -248,7 +248,7 @@ class LLaVADataPreprocessor(MessagesPreprocessor):
         if all(os.path.exists(image) for image in new_images):
             row['images'] = new_images
         else:
-            return
+            return {'images': None}
         return row
 
 
@@ -334,17 +334,17 @@ class VideoChatGPTPreprocessor(RowPreprocessor):
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         # only `.mp4`
         mp4_set = [file[:-4] for file in os.listdir(self.local_dir) if file.endswith('mp4')]
-        if row['video_name'] not in mp4_set:
+        if row['videos'] not in mp4_set:
             return
         return {
             'messages': [{
                 'role': 'user',
-                'content': row['question'] or row['question_1'] or row['question_2']
+                'content': row.get('question') or row.get('question_1') or rowrow.get('question_2')
             }, {
                 'role': 'assistant',
                 'content': row['answer']
             }],
-            'videos': [os.path.join(self.local_dir, f"{row['video_name']}.mp4")],
+            'videos': os.path.join(self.local_dir, f"{row['videos']}.mp4"),
         }
 
 
@@ -353,7 +353,7 @@ register_dataset(
         ms_dataset_id='swift/VideoChatGPT',
         hf_dataset_id='lmms-lab/VideoChatGPT',
         subsets=['Generic', 'Temporal', 'Consistency'],
-        preprocess_func=VideoChatGPTPreprocessor(),
+        preprocess_func=VideoChatGPTPreprocessor(columns_mapping={'video_name': 'videos'}),
         split=['test'],
         tags=['chat', 'multi-modal', 'video', '🔥'],
     ))
@@ -460,12 +460,12 @@ def preprocess_mind2web(dataset, **kwargs):
     return HfDataset.from_list(conversations)
 
 
-register_dataset(
-    DatasetMeta(
-        ms_dataset_id='swift/Multimodal-Mind2Web',
-        hf_dataset_id='osunlp/Multimodal-Mind2Web',
-        preprocess_func=preprocess_mind2web,
-        tags=['agent', 'multi-modal']))
+# register_dataset(
+#     DatasetMeta(
+#         ms_dataset_id='swift/Multimodal-Mind2Web',
+#         hf_dataset_id='osunlp/Multimodal-Mind2Web',
+#         preprocess_func=preprocess_mind2web,
+#         tags=['agent', 'multi-modal']))
 
 register_dataset(
     DatasetMeta(
@@ -610,7 +610,7 @@ class RefCOCOPreprocessor(ResponsePreprocessor, GroundingMixin):
         res['query'], res['response'] = self.construct_grounding_prompt()
         res['images'] = [image_path]
         res['objects'] = objects
-        return res
+        return super().preprocess(res)
 
 
 register_dataset(
@@ -620,11 +620,13 @@ register_dataset(
         subsets=[
             SubsetDataset(
                 name='caption',
+                subset='default',
                 preprocess_func=RefCOCOPreprocessor('caption'),
                 split=['train', 'validation'],
             ),
             SubsetDataset(
                 name='grounding',
+                subset='default',
                 preprocess_func=RefCOCOPreprocessor('grounding'),
                 split=['train', 'validation'],
             )
@@ -638,11 +640,13 @@ register_dataset(
         subsets=[
             SubsetDataset(
                 name='caption',
+                subset='default',
                 preprocess_func=RefCOCOPreprocessor('caption'),
                 split=['train', 'validation'],
             ),
             SubsetDataset(
                 name='grounding',
+                subset='default',
                 preprocess_func=RefCOCOPreprocessor('grounding'),
                 split=['train', 'validation'],
             )
@@ -733,7 +737,7 @@ register_dataset(
     DatasetMeta(
         ms_dataset_id='swift/MideficsDataset',
         hf_dataset_id='WinterSchool/MideficsDataset',
-        preprocess_func=MessagesPreprocessor(columns_mapping={'image': 'images'}),
+        preprocess_func=MessagesPreprocessor(columns_mapping={'image': 'images'}, inner_key='data', user_role='question', assistant_role='answer'),
         tags=['medical', 'en', 'vqa']))
 
 

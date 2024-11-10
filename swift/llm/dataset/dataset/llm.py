@@ -747,6 +747,6 @@ register_dataset(
 register_dataset(
     DatasetMeta(
         ms_dataset_id='swift/sharegpt',
-        subsets=['common-zh', 'computer-zh', 'unknow-zh', 'common-en', 'computer-en'],
+        subsets=['common-zh', 'unknow-zh', 'common-en'],
         preprocess_func=MessagesPreprocessor(),
         tags=['chat', 'general', 'multi-round']))

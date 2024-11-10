@@ -507,8 +507,8 @@ class Template:
             query_role, query = query_message['role'], query_message['content']
             response_role, response = response_message['role'], response_message['content']
             # TODO: Optimize the Template mechanism.
-            assert query_role in {'user', 'tool'}
             try:
+                assert query_role in {'user', 'tool'}
                 assert response_role in {'assistant'}
             except:
                 raise
