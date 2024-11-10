@@ -53,18 +53,18 @@ class GPT4vDataset(ResponsePreprocessor):
         return super().preprocess(row)
 
 
-# register_dataset(
-#     DatasetMeta(
-#         ms_dataset_id='swift/gpt4v-dataset',
-#         hf_dataset_id='laion/gpt4v-dataset',
-#         preprocess_func=GPT4vDataset(columns_mapping={
-#             'link': 'images',
-#             'caption': 'response'
-#         }),
-#         subsets=['default'],
-#         split=['train'],
-#         tags=['en', 'caption', 'multi-modal', 'quality'],
-#     ))
+register_dataset(
+    DatasetMeta(
+        ms_dataset_id='swift/gpt4v-dataset',
+        hf_dataset_id='laion/gpt4v-dataset',
+        preprocess_func=GPT4vDataset(columns_mapping={
+            'link': 'images',
+            'caption': 'response'
+        }),
+        subsets=['default'],
+        split=['train'],
+        tags=['en', 'caption', 'multi-modal', 'quality'],
+    ))
 
 register_dataset(
     DatasetMeta(
@@ -205,16 +205,15 @@ mantis_subsets_name = [
 
 _mantis_subsets = []
 for subset in mantis_subsets_name:
-    _subset = SubsetDataset(
-        name=subset, split=['train'], preprocess_func=MantisPreprocessor(subset=subset))
+    _subset = SubsetDataset(name=subset, split=['train'], preprocess_func=MantisPreprocessor(subset=subset))
     _mantis_subsets.append(_subset)
 
-# register_dataset(
-#     DatasetMeta(
-#         ms_dataset_id='swift/Mantis-Instruct',
-#         subsets=_mantis_subsets,
-#         tags=['chat', 'multi-modal', 'vision'],
-#     ))
+register_dataset(
+    DatasetMeta(
+        ms_dataset_id='swift/Mantis-Instruct',
+        subsets=_mantis_subsets,
+        tags=['chat', 'multi-modal', 'vision'],
+    ))
 
 
 class LLaVADataPreprocessor(MessagesPreprocessor):
@@ -345,7 +344,8 @@ class VideoChatGPTPreprocessor(RowPreprocessor):
                 'role': 'assistant',
                 'content': row['answer']
             }],
-            'videos': os.path.join(self.local_dir, f"{row['videos']}.mp4"),
+            'videos':
+            os.path.join(self.local_dir, f"{row['videos']}.mp4"),
         }
 
 
@@ -461,12 +461,12 @@ def preprocess_mind2web(dataset, **kwargs):
     return HfDataset.from_list(conversations)
 
 
-# register_dataset(
-#     DatasetMeta(
-#         ms_dataset_id='swift/Multimodal-Mind2Web',
-#         hf_dataset_id='osunlp/Multimodal-Mind2Web',
-#         preprocess_func=preprocess_mind2web,
-#         tags=['agent', 'multi-modal']))
+register_dataset(
+    DatasetMeta(
+        ms_dataset_id='swift/Multimodal-Mind2Web',
+        hf_dataset_id='osunlp/Multimodal-Mind2Web',
+        preprocess_func=preprocess_mind2web,
+        tags=['agent', 'multi-modal']))
 
 register_dataset(
     DatasetMeta(
@@ -738,7 +738,8 @@ register_dataset(
     DatasetMeta(
         ms_dataset_id='swift/MideficsDataset',
         hf_dataset_id='WinterSchool/MideficsDataset',
-        preprocess_func=MessagesPreprocessor(columns_mapping={'image': 'images'}, inner_key='data', user_role='question', assistant_role='answer'),
+        preprocess_func=MessagesPreprocessor(
+            columns_mapping={'image': 'images'}, inner_key='data', user_role='question', assistant_role='answer'),
         tags=['medical', 'en', 'vqa']))
 
 

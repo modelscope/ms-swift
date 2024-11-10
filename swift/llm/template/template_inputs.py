@@ -4,8 +4,8 @@ from typing import Any, Dict, List, Optional, Union
 
 import json
 from PIL import Image
-from swift.utils import get_logger
 
+from swift.utils import get_logger
 
 logger = get_logger()
 
@@ -159,8 +159,6 @@ class StdTemplateInputs:
             content = message['content']
             if isinstance(content, str):
                 continue
-            if content is None:
-                print()
             # List[Dict[str, Any]]
             new_content = ''
             for item in content:

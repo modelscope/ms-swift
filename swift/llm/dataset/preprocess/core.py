@@ -339,13 +339,9 @@ class MessagesPreprocessor(RowPreprocessor):
 
     @staticmethod
     def check_message(user_message: Dict[str, str], assistant_message: Dict[str, str]) -> None:
-        try:
-            assert (user_message['role'] in {'user', 'tool'}
-                    and 'content' in user_message), f'user_message: {user_message}'
-            assert (assistant_message['role'] in {'assistant'}
-                    and 'content' in assistant_message and assistant_message['content']), f'assistant_message: {assistant_message}'
-        except:
-            raise
+        assert (user_message['role'] in {'user', 'tool'} and 'content' in user_message), f'user_message: {user_message}'
+        assert (assistant_message['role'] in {'assistant'} and 'content' in assistant_message
+                and assistant_message['content']), f'assistant_message: {assistant_message}'
 
     def sharegpt_to_messages(self, messages: List[Dict[str, str]], system: Optional[str]) -> List[Dict[str, str]]:
         self._to_std_key(messages, 'user', self.user_roles)
@@ -369,7 +365,7 @@ class MessagesPreprocessor(RowPreprocessor):
             messages[0]['role'] = 'system'
             start_idx = 1
         if start_idx == 1 and len(messages) % 2 == 0:
-            raise ValueError(f'The messages length is not even')
+            raise ValueError(f'The messages length is not even: {messages}')
         for user_message, assistant_message in zip(messages[start_idx::2], messages[start_idx + 1::2]):
             user_role = user_message['role']
             assistant_role = assistant_message['role']
