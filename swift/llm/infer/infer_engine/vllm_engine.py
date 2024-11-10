@@ -313,7 +313,7 @@ class VllmEngine(InferEngine):
         choices = []
         for output in result.outputs:
             output.token_ids = list(output.token_ids)
-            response = template.safe_decode(output.token_ids, True)
+            response = template.skip_stop_decode(output.token_ids, True)
             logprobs = self._get_logprobs(template.tokenizer, output.logprobs, output.token_ids,
                                           generation_config.logprobs)
             toolcall = self._get_toolcall(response, True)

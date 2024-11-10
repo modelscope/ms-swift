@@ -14,7 +14,7 @@ def test_alpaca():
 
 
 def test_coco():
-    _test_dataset(['modelscope/coco_2014_caption:val'])
+    _test_dataset(['modelscope/coco_2014_caption:validation'])
 
 
 def test_llava_instruct():
@@ -41,6 +41,10 @@ def test_dataset_info():
     _test_dataset(['codefuse-ai/CodeExercise-Python-27k'])
 
 
+def test_aishell1():
+    _test_dataset(['speech_asr/speech_asr_aishell1_trainsets:validation'])
+
+
 if __name__ == '__main__':
     # test_alpaca()
     # test_coco()
@@ -49,4 +53,5 @@ if __name__ == '__main__':
     # test_ms_agent()
     # test_dpo()
     # test_pretrain()
-    test_dataset_info()
+    # test_dataset_info()
+    test_aishell1()

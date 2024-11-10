@@ -191,7 +191,7 @@ class Template:
                     return generate_ids[:-i]
         return generate_ids
 
-    def safe_decode(self, generate_ids: List[int], is_finished: bool, **decode_kwargs) -> Any:
+    def skip_stop_decode(self, generate_ids: List[int], is_finished: bool, **decode_kwargs) -> Any:
         # Do not print template_meta.suffix[-1] and eos_token.
         tokenizer = self.tokenizer
 
@@ -851,7 +851,7 @@ class Template:
 
         return torch.stack(padded_sequences)
 
-    def safe_tokenizer_decode(self, input_ids: List[int], **tokenizer_kwargs) -> str:
+    def safe_decode(self, input_ids: List[int], **tokenizer_kwargs) -> str:
         placeholder_tokens = self.template_meta.placeholder_tokens
 
         def _is_special(token: int) -> bool:
