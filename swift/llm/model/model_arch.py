@@ -30,7 +30,7 @@ class ModelArch:
     internlm_xcomposer = 'internlm_xcomposer'
     internvl = 'internvl'
     deepseek_vl = 'deepseek_vl'
-    minicpm_v = 'minicpm_v'
+    minicpmv = 'minicpmv'
     phi3v = 'phi3v'
     cogvlm = 'cogvlm'
     florence = 'florence'
@@ -311,7 +311,7 @@ register_model_arch(
 
 register_model_arch(
     MultiModelKeys(
-        ModelArch.minicpm_v,
+        ModelArch.minicpmv,
         language_model='llm',
         aligner='resampler',
         vision_tower='vpm',

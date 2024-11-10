@@ -269,9 +269,10 @@ class DatasetLoader:
                     train_dataset, val_dataset = train_dataset.train_test_split(
                         test_size=val_sample, seed=get_seed(random_state),
                         load_from_cache_file=load_from_cache_file).values()
+                # TODO
                 try:
                     assert train_sample > 0
-                except:
+                except Exception:
                     raise
                 train_dataset = sample_dataset(train_dataset, train_sample, random_state)
         return train_dataset, val_dataset

@@ -146,3 +146,12 @@ def align_image_inputs(input_ids: List[int], labels: List[int], new_input_ids,
             j += 1
         i += 1
     return input_ids, labels
+
+
+def gather_list(batch: List[Dict[str, Any]], attr_name: str) -> Optional[List[Any]]:
+    # List[Tensor] ->  List[Tensor]
+    res = []
+    for b in batch:
+        if b.get(attr_name) is not None:
+            res += b.pop(attr_name)
+    return res

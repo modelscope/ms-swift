@@ -11,6 +11,8 @@ register_model(
             ModelGroup([
                 Model('TeleAI/TeleChat-7B', 'Tele-AI/telechat-7B'),
                 Model('TeleAI/TeleChat-12B', 'Tele-AI/TeleChat-12B'),
+                Model('TeleAI/TeleChat-12B-v2', 'Tele-AI/TeleChat-12B-v2'),
+                Model('swift/TeleChat-12B-V2-GPTQ-Int4'),
             ]),
         ],
         TemplateType.telechat,
@@ -25,13 +27,9 @@ register_model(
         [
             ModelGroup([
                 Model('TeleAI/TeleChat2-115B', 'Tele-AI/TeleChat2-115B'),
-                Model('TeleAI/TeleChat-12B-v2', 'Tele-AI/TeleChat-12B-v2'),
             ]),
-            ModelGroup([
-                Model('swift/TeleChat-12B-V2-GPTQ-Int4'),
-            ], requires=['auto_gptq>=0.5']),
         ],
-        TemplateType.telechat_v2,
+        TemplateType.telechat2,
         get_model_tokenizer_from_local,
         support_flash_attn=True,
         architectures=['TelechatForCausalLM'],

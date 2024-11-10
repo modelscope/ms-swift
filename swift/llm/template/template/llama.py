@@ -7,9 +7,9 @@ from typing import Any, Dict, List, Optional, Tuple
 import torch
 
 from ..base import Template
-from ..constant import TemplateType
+from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
-from ..utils import Context, Prompt, findall
+from ..utils import Context, Prompt
 
 # ref: https://github.com/facebookresearch/llama/blob/main/llama/generation.py
 LLAMA_DEFAULT_SYSTEM = (
@@ -23,7 +23,7 @@ LLAMA_DEFAULT_SYSTEM = (
 
 register_template(
     TemplateMeta(
-        TemplateType.llama, ['<s>[INST] '], ['{{QUERY}} [/INST]'], ['</s><s>[INST] '], ['</s>'],
+        LLMTemplateType.llama, ['<s>[INST] '], ['{{QUERY}} [/INST]'], ['</s><s>[INST] '], ['</s>'],
         default_system=LLAMA_DEFAULT_SYSTEM,
         system_prefix=['<s>[INST] <<SYS>>\n{{SYSTEM}}\n<</SYS>>\n\n']))
 
@@ -47,7 +47,7 @@ class Llama3TemplateMeta(TemplateMeta):
     default_tools_prompt: str = 'toolbench'
 
 
-register_template(Llama3TemplateMeta(TemplateType.llama3))
+register_template(Llama3TemplateMeta(LLMTemplateType.llama3))
 
 
 def _get_llama3_2_prefix() -> Prompt:
@@ -63,7 +63,7 @@ class Llama3_2TemplateMeta(Llama3TemplateMeta):
     system_prefix: Optional[Prompt] = None
 
 
-register_template(Llama3_2TemplateMeta(TemplateType.llama3_2))
+register_template(Llama3_2TemplateMeta(LLMTemplateType.llama3_2))
 
 
 class Llama3_2VisionTemplate(Template):
@@ -116,4 +116,64 @@ class Llama3_2VisionTemplate(Template):
         return res
 
 
-register_template(Llama3TemplateMeta(TemplateType.llama3_2_vision, template_cls=Llama3_2VisionTemplate))
+register_template(Llama3TemplateMeta(MLLMTemplateType.llama3_2_vision, template_cls=Llama3_2VisionTemplate))
+
+register_template(
+    Llama3TemplateMeta(
+        LLMTemplateType.reflection,
+        default_system=('You are a world-class AI system, capable of complex reasoning and reflection. '
+                        'Reason through the query inside <thinking> tags, and then provide your final '
+                        'response inside <output> tags. If you detect that you made a mistake in your reasoning '
+                        'at any point, correct yourself inside <reflection> tags.')))
+
+
+class Llama3_1OmniTemplate(Template):
+    audio_placeholder = [[-200]]
+
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        import whisper
+        inputs, _ = super()._encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
+        audios = example['audios']
+        input_ids = inputs['input_ids']
+        labels = inputs['labels']
+        inputs['_data'] = {'input_ids': torch.tensor(input_ids)[None]}
+        if labels is not None:
+            inputs['_data']['labels'] = torch.tensor(labels)[None]
+        if audios:
+            audios = load_batch(audios, whisper.load_audio)
+            n_mels = get_env_args('n_mels', int, 128)
+            for i, audio in enumerate(audios):
+                audio = whisper.pad_or_trim(audio)
+                audios[i] = whisper.log_mel_spectrogram(audio, n_mels=n_mels).permute(1, 0)
+            audios = torch.stack(audios)
+            inputs['_data'].update({'speech': audios, 'speech_lengths': torch.tensor([[audios.shape[1]]])})
+
+        return inputs, {}
+
+    def _post_encode(self, model, data: Any) -> Dict[str, Any]:
+        speech = data.get('speech')
+        input_ids = data['input_ids']
+        labels = data.get('labels')
+        if speech is not None:
+            speech_lengths = data['speech_lengths']
+            speech = speech.to(model.dtype)
+            inputs_embeds, labels = model.prepare_inputs_labels_for_speech_and_text(input_ids, None, None, None, labels,
+                                                                                    speech, speech_lengths)[4:]
+        else:
+            inputs_embeds = model.get_model().embed_tokens(input_ids)
+        res = {'inputs_embeds': inputs_embeds[0]}
+        if labels is not None:
+            res['labels'] = labels[0]
+        return res
+
+
+register_template(
+    Llama3TemplateMeta(
+        MLLMTemplateType.llama3_1_omni,
+        default_system=('You are a helpful language and speech assistant. '
+                        'You are able to understand the speech content that the user provides, '
+                        'and assist the user with a variety of tasks using natural language.'),
+        template_cls=Llama3_1OmniTemplate,
+    ))

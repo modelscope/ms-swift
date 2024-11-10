@@ -260,12 +260,11 @@ register_dataset(
         preprocess_func=TigerBotLawPreprocessor(),
         tags=['text-generation', 'law', 'pretrained']))
 
-
 register_dataset(
     DatasetMeta(
-        ms_dataset_id="codefuse-ai/CodeExercise-Python-27k",
-        preprocess_func=MessagesPreprocessor(columns_mapping={"chat_rounds": "messages"}),
-        tags=["chat", "coding", "🔥"]))
+        ms_dataset_id='codefuse-ai/CodeExercise-Python-27k',
+        preprocess_func=MessagesPreprocessor(columns_mapping={'chat_rounds': 'messages'}),
+        tags=['chat', 'coding', '🔥']))
 
 
 class LeetcodePythonPreprocessor(ResponsePreprocessor):
@@ -320,7 +319,7 @@ class MultiRoleAgentPreprocessor(RowPreprocessor):
                 system += res_prompt
             system += history_prompt
             system += ''.join([conv_prompt.format(name=c['from'], content=c['value']) for c in conv[1:-1]])
-        
+
         if not query or not response:
             return
 
@@ -364,9 +363,25 @@ Output:"""
                 question = example['question']
                 # TODO
                 for h in example['human_answers']:
-                    yield {'messages': [{'role': 'user', 'content': prompt.format(question=question, answer=h)}, {'role': 'assistant', 'content': 'Human'}]}
+                    yield {
+                        'messages': [{
+                            'role': 'user',
+                            'content': prompt.format(question=question, answer=h)
+                        }, {
+                            'role': 'assistant',
+                            'content': 'Human'
+                        }]
+                    }
                 for c in example['chatgpt_answers']:
-                    yield {'messages': [{'role': 'user', 'content': prompt.format(question=question, answer=c)}, {'role': 'assistant', 'content': 'ChatGPT'}]}
+                    yield {
+                        'messages': [{
+                            'role': 'user',
+                            'content': prompt.format(question=question, answer=c)
+                        }, {
+                            'role': 'assistant',
+                            'content': 'ChatGPT'
+                        }]
+                    }
 
         return IterableDataset.from_generator(generate_example, gen_kwargs={'dataset': dataset})
 
@@ -374,9 +389,25 @@ Output:"""
     for d in dataset:
         question = d['question']
         for h in d['human_answers']:
-            messages.append({'messages': [{'role': 'user', 'content': prompt.format(question=question, answer=h)}, {'role': 'assistant', 'content': 'Human'}]})
+            messages.append({
+                'messages': [{
+                    'role': 'user',
+                    'content': prompt.format(question=question, answer=h)
+                }, {
+                    'role': 'assistant',
+                    'content': 'Human'
+                }]
+            })
         for c in d['chatgpt_answers']:
-            messages.append({'messages': [{'role': 'user', 'content': prompt.format(question=question, answer=c)}, {'role': 'assistant', 'content': 'ChatGPT'}]})
+            messages.append({
+                'messages': [{
+                    'role': 'user',
+                    'content': prompt.format(question=question, answer=c)
+                }, {
+                    'role': 'assistant',
+                    'content': 'ChatGPT'
+                }]
+            })
     return HfDataset.from_list(messages)
 
 
@@ -725,7 +756,7 @@ class OrpoDPOMix40kPreprocessor(RowPreprocessor):
         for h in history:
             messages.append({'role': 'user', 'content': h[0]})
             messages.append({'role': 'assistant', 'content': h[1]})
-        
+
         if query is None or response is None:
             return
 

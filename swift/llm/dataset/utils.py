@@ -16,7 +16,7 @@ from tqdm.auto import tqdm
 from transformers import PreTrainedTokenizerBase
 
 from swift.utils import get_logger, stat_array
-from .preprocess import DATASET_TYPE
+from .preprocess import DATASET_TYPE, RowPreprocessor
 
 logger = get_logger()
 
@@ -325,6 +325,17 @@ def dataset_map(dataset: DATASET_TYPE,
         logger.warning('len(dataset): 0')
         return None
     return LLMDataset(data)
+
+
+class EncodePreprocessor(RowPreprocessor):
+    standard_keys = ['input_ids', 'labels', 'loss_scale']
+
+    def __init__(self, template: 'Template'):
+        super().__init__()
+        self.template = template
+
+    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        return self.template.encode(dict(row))
 
 
 def stat_dataset(llm_dataset: Dataset) -> str:

@@ -13,18 +13,7 @@ from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import Context, Prompt, findall
 from ..vision_utils import load_audio_qwen, load_batch, load_video_qwen2
-
-DEFAULT_SYSTEM = 'You are a helpful assistant.'
-
-
-@dataclass
-class ChatmlTemplateMeta(TemplateMeta):
-    prefix: Prompt = field(default_factory=list)
-    prompt: Prompt = field(default_factory=lambda: ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'])
-    chat_sep: Optional[Prompt] = field(default_factory=lambda: ['<|im_end|>\n'])
-    suffix: Prompt = field(default_factory=lambda: ['<|im_end|>'])
-    system_prefix: Optional[Prompt] = field(default_factory=lambda: ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n'])
-    auto_add_bos: bool = True
+from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
 
 
 @dataclass

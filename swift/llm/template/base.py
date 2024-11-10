@@ -52,6 +52,8 @@ class Template:
     special_keys = ['images', 'videos', 'audios', 'objects']
     grounding_type = 'norm_1000'
     image_placeholder = ['<image>']
+    video_placeholder = ['<video>']
+    audio_placeholder = ['<audio>']
     load_medias = True
 
     output_prompt_answer = False  # for encoder-decoder & kto
@@ -189,7 +191,7 @@ class Template:
                     return generate_ids[:-i]
         return generate_ids
 
-    def safe_decode(self, generate_ids: List[int], is_finished: bool, **decode_kwargs) -> Any:
+    def skip_stop_decode(self, generate_ids: List[int], is_finished: bool, **decode_kwargs) -> Any:
         # Do not print template_meta.suffix[-1] and eos_token.
         tokenizer = self.tokenizer
 
@@ -345,9 +347,9 @@ class Template:
                 return [[-100]]
             return self.image_placeholder
         elif media_type == 'video':
-            return ['<video>']
+            return self.video_placeholder
         elif media_type == 'audio':
-            return ['<audio>']
+            return self.audio_placeholder
 
     def replace_object(self, object_: Dict[str, Any], index: int, inputs: StdTemplateInputs) -> List[Context]:
         """Replace objects referenced by the bbox to contents or input_ids. This is useful in the grounding task.
@@ -510,7 +512,7 @@ class Template:
             try:
                 assert query_role in {'user', 'tool'}
                 assert response_role in {'assistant'}
-            except:
+            except Exception:
                 raise
             if query_role == 'tool':
                 prompt = template_meta.tool_prompt
@@ -848,7 +850,7 @@ class Template:
 
         return torch.stack(padded_sequences)
 
-    def safe_tokenizer_decode(self, input_ids: List[int], **tokenizer_kwargs) -> str:
+    def safe_decode(self, input_ids: List[int], **tokenizer_kwargs) -> str:
         placeholder_tokens = self.template_meta.placeholder_tokens
 
         def _is_special(token: int) -> bool:

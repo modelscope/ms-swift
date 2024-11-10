@@ -36,7 +36,7 @@ class TemplateMeta:
     prefix: Prompt
     prompt: Prompt
     chat_sep: Optional[Prompt]
-    suffix: Prompt
+    suffix: Prompt = field(default_factory=lambda: [['eos_token_id']])
     template_cls: Type[Template] = Template
     tool_prompt: Optional[Prompt] = None
     system_prefix: Optional[Prompt] = None
@@ -53,11 +53,10 @@ class TemplateMeta:
     def to_generation_template_meta(self) -> 'TemplateMeta':
         return TemplateMeta(
             self.template_type,
-            [],
-            ['{{QUERY}}'],
-            None,
-            [['eos_token_id']],
-            self.template_cls,
+            prefix=[],
+            prompt=['{{QUERY}}'],
+            chat_sep=None,
+            template_cls=self.template_cls,
             auto_add_bos=True,
             stop_words=deepcopy(self.stop_words),
             placeholder_tokens=deepcopy(self.placeholder_tokens),

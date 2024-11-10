@@ -34,6 +34,8 @@ standard_keys = ['messages', 'rejected_response', 'label', 'images', 'videos', '
 
 class RowPreprocessor:
 
+    standard_keys = standard_keys
+
     def __init__(self,
                  *,
                  columns_mapping: Optional[Dict[str, str]] = None,
@@ -67,7 +69,7 @@ class RowPreprocessor:
     def _row_map(self, row: Dict[str, Any], idx: int, *, strict: bool) -> Dict[str, Any]:
         if self._shared_shm_name is not None:
             shm = shared_memory.SharedMemory(name=self._shared_shm_name)
-            column_state = np.ndarray((len(standard_keys), ), dtype=np.bool_, buffer=shm.buf)
+            column_state = np.ndarray((len(self.standard_keys), ), dtype=np.bool_, buffer=shm.buf)
         else:
             column_state = self._column_state
 
@@ -87,7 +89,7 @@ class RowPreprocessor:
             self.shared_list.append(idx)
             row = {}
         else:
-            for i, k in enumerate(standard_keys):
+            for i, k in enumerate(self.standard_keys):
                 if k in row:
                     column_state[i] = True
 
@@ -105,10 +107,10 @@ class RowPreprocessor:
             dataset = dataset.rename_columns(safe_columns_mapping)
         return dataset
 
-    @staticmethod
-    def _remove_useless_columns(dataset: DATASET_TYPE) -> DATASET_TYPE:
+    @classmethod
+    def _remove_useless_columns(cls, dataset: DATASET_TYPE) -> DATASET_TYPE:
         features = get_dataset_features(dataset)
-        k_list = [k for k in features if k in standard_keys]
+        k_list = [k for k in features if k in cls.standard_keys]
         if len(k_list) != len(features):
             dataset = dataset.select_columns(k_list)
         return dataset
@@ -131,13 +133,13 @@ class RowPreprocessor:
     def _shared_column_state(self, num_proc: int):
         """Used to remove unnecessary columns, this function is compatible with multi-processing."""
         if num_proc == 1:
-            self._column_state = np.zeros((len(standard_keys), ), dtype=np.bool_)
+            self._column_state = np.zeros((len(self.standard_keys), ), dtype=np.bool_)
             yield self._column_state
             self._column_state = None
             return
-        shm = shared_memory.SharedMemory(create=True, size=len(standard_keys))
+        shm = shared_memory.SharedMemory(create=True, size=len(self.standard_keys))
         self._shared_shm_name = shm.name
-        column_state = np.ndarray((len(standard_keys), ), dtype=np.bool_, buffer=shm.buf)
+        column_state = np.ndarray((len(self.standard_keys), ), dtype=np.bool_, buffer=shm.buf)
         column_state[:] = False
         try:
             yield column_state
@@ -147,11 +149,11 @@ class RowPreprocessor:
             shm.unlink()
             self._shared_shm_name = None
 
-    @staticmethod
-    def _filter_columns(dataset: HfDataset, column_state: np.ndarray) -> HfDataset:
+    @classmethod
+    def _filter_columns(cls, dataset: HfDataset, column_state: np.ndarray) -> HfDataset:
         features = get_dataset_features(dataset)
         remove_keys = []
-        for i, k in enumerate(standard_keys):
+        for i, k in enumerate(cls.standard_keys):
             if k in features and not column_state[i]:
                 remove_keys.append(k)
         dataset = dataset.remove_columns(remove_keys)
@@ -338,7 +340,8 @@ class MessagesPreprocessor(RowPreprocessor):
     @staticmethod
     def check_message(user_message: Dict[str, str], assistant_message: Dict[str, str]) -> None:
         try:
-            assert (user_message['role'] in {'user', 'tool'} and 'content' in user_message), f'user_message: {user_message}'
+            assert (user_message['role'] in {'user', 'tool'}
+                    and 'content' in user_message), f'user_message: {user_message}'
             assert (assistant_message['role'] in {'assistant'}
                     and 'content' in assistant_message and assistant_message['content']), f'assistant_message: {assistant_message}'
         except:

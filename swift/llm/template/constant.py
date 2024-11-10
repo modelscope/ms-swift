@@ -33,7 +33,7 @@ class LLMTemplateType:
     openbuddy2 = 'openbuddy2'
     minicpm = 'minicpm'
     telechat = 'telechat'
-    telechat_v2 = 'telechat_v2'
+    telechat2 = 'telechat2'
 
     yi_coder = 'yi_coder'
     codefuse = 'codefuse'

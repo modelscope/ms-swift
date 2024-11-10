@@ -164,7 +164,7 @@ register_dataset(
         preprocess_func=COCO2014Preprocess(),
         subsets=[
             SubsetDataset('train', 'coco_2014_caption', ['train']),
-            SubsetDataset('val', 'coco_2014_caption', ['validation']),
+            SubsetDataset('validation', 'coco_2014_caption', ['validation']),
         ],
         tags=['chat', 'multi-modal', 'vision', '🔥'],
     ))
@@ -298,27 +298,28 @@ register_dataset(
 class AIShell1Preprocessor(RowPreprocessor):
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
-        prompt = '语音转文本'
-        audio_key = 'Audio:FILE'
-        response_key = 'Text:LABEL'
         return {
             'messages': [{
                 'role': 'user',
-                'content': prompt,
+                'content': '语音转文本',
             }, {
                 'role': 'assistant',
-                'content': row[response_key].replace(' ', '')
+                'content': row['Text:LABEL'].replace(' ', '')
             }],
             'audios':
-            row[audio_key],
+            row['Audio:FILE'],
         }
 
 
 register_dataset(
     DatasetMeta(
         ms_dataset_id='speech_asr/speech_asr_aishell1_trainsets',
+        subsets=[
+            SubsetDataset('train', subset='default', split=['train']),
+            SubsetDataset('validation', subset='default', split=['validation']),
+            SubsetDataset('test', subset='default', split=['test']),
+        ],
         preprocess_func=AIShell1Preprocessor(),
-        split=['train', 'validation', 'test'],
         tags=['chat', 'multi-modal', 'audio'],
     ))
 
