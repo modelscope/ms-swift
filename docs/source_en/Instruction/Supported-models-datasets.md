@@ -35,11 +35,11 @@ The table below introduces the datasets supported by SWIFT:
 | MS Dataset ID | HF Dataset ID | Subset name | Real Subset  | Subset split | Dataset Size | Statistic (token) | Tags |
 | ------------ | ------------- | ----------- |------------- | -------------| -------------| ----------------- | ---- |
 |None|HuggingFaceFW/fineweb|default|default|train|-|Dataset is too huge, please click the original link to view the dataset stat.|pretrain, quality|
-|None|lmms-lab/GQA|default|default|train_all_instructions|-|Dataset is too huge, please click the original link to view the dataset stat.|multi-modal, en, vqa, quality|
-|None|tiiuae/falcon-refinedweb|default|default|train|-|Dataset is too huge, please click the original link to view the dataset stat.|pretrain, quality|
-|None|HuggingFaceTB/cosmopedia|auto_math_text,khanacademy,openstax,stanford,stories,web_samples_v1,web_samples_v2,wikihow|auto_math_text,khanacademy,openstax,stanford,stories,web_samples_v1,web_samples_v2,wikihow|train|-|Dataset is too huge, please click the original link to view the dataset stat.|multi-domain, en, qa|
 |None|cerebras/SlimPajama-627B|default|default|train|-|Dataset is too huge, please click the original link to view the dataset stat.|pretrain, quality|
 |None|allenai/c4|default|default|train|-|Dataset is too huge, please click the original link to view the dataset stat.|pretrain, quality|
+|None|tiiuae/falcon-refinedweb|default|default|train|-|Dataset is too huge, please click the original link to view the dataset stat.|pretrain, quality|
+|None|HuggingFaceTB/cosmopedia|auto_math_text,khanacademy,openstax,stanford,stories,web_samples_v1,web_samples_v2,wikihow|auto_math_text,khanacademy,openstax,stanford,stories,web_samples_v1,web_samples_v2,wikihow|train|-|Dataset is too huge, please click the original link to view the dataset stat.|multi-domain, en, qa|
+|None|lmms-lab/GQA|default|default|train_all_instructions|-|Dataset is too huge, please click the original link to view the dataset stat.|multi-modal, en, vqa, quality|
 |AI-ModelScope/COIG-CQIA|None|chinese_traditional,coig_pc,exam,finance,douban,human_value,logi_qa,ruozhiba,segmentfault,wiki,wikihow,xhs,zhihu|chinese_traditional,coig_pc,exam,finance,douban,human_value,logi_qa,ruozhiba,segmentfault,wiki,wikihow,xhs,zhihu|train|44694|331.2±693.8, min=34, max=19288|general, 🔥|
 |AI-ModelScope/CodeAlpaca-20k|HuggingFaceH4/CodeAlpaca_20K|default|default|train|20022|99.3±57.6, min=30, max=857|code, en|
 |AI-ModelScope/DISC-Law-SFT|ShengbinYue/DISC-Law-SFT|default|default|train|166758|1799.0±474.9, min=769, max=3151|chat, law, 🔥|
@@ -73,13 +73,112 @@ The table below introduces the datasets supported by SWIFT:
 |AI-ModelScope/firefly-train-1.1M|YeungNLP/firefly-train-1.1M|default|default|train|1649399|204.3±365.3, min=28, max=9306|chat, general|
 |AI-ModelScope/generated_chat_0.4M|BelleGroup/generated_chat_0.4M|default|default|train|396004|272.7±51.1, min=78, max=579|chat, character-dialogue|
 |AI-ModelScope/guanaco_belle_merge_v1.0|Chinese-Vicuna/guanaco_belle_merge_v1.0|default|default|train|693987|133.8±93.5, min=30, max=1872|QA, zh|
-|AI-ModelScope/hh-rlhf|None|helpful-base,helpful-online,helpful-rejection-sampled|helpful-base,helpful-online,helpful-rejection-sampled|train|-|Dataset is too huge, please click the original link to view the dataset stat.|rlhf, dpo, pairwise|
 |AI-ModelScope/hh_rlhf_cn|None|hh_rlhf,harmless_base_cn,harmless_base_en,helpful_base_cn,helpful_base_en|hh_rlhf,harmless_base_cn,harmless_base_en,helpful_base_cn,helpful_base_en|train,test|362909|142.3±107.5, min=25, max=1571|rlhf, dpo, pairwise, 🔥|
 |AI-ModelScope/lawyer_llama_data|Skepsun/lawyer_llama_data|default|default|train|21476|224.4±83.9, min=69, max=832|chat, law|
 |AI-ModelScope/leetcode-solutions-python|None|default|default|train|2359|723.8±233.5, min=259, max=2117|chat, coding, 🔥|
-|AI-ModelScope/lmsys-chat-1m|lmsys/lmsys-chat-1m|default|default|train|163744|526.1±3269.8, min=22, max=219116|chat, em|
+|AI-ModelScope/lmsys-chat-1m|lmsys/lmsys-chat-1m|default|default|train|166211|545.8±3272.8, min=22, max=219116|chat, em|
 |AI-ModelScope/ms_agent_for_agentfabric|None|default|default|train|30000|615.7±198.7, min=251, max=2055|chat, agent, multi-round, 🔥|
 |AI-ModelScope/orpo-dpo-mix-40k|mlabonne/orpo-dpo-mix-40k|default|default|train|43666|938.1±694.2, min=36, max=8483|dpo, orpo, en, quality|
 |AI-ModelScope/pile|EleutherAI/pile|default|default|train|-|Dataset is too huge, please click the original link to view the dataset stat.|pretrain|
 |AI-ModelScope/ruozhiba|None|post-annual,title-good,title-norm|post-annual,title-good,title-norm|train|85658|40.0±18.3, min=22, max=559|pretrain, 🔥|
 |AI-ModelScope/school_math_0.25M|BelleGroup/school_math_0.25M|default|default|train|248481|158.8±73.4, min=39, max=980|chat, math, quality|
+|AI-ModelScope/sharegpt_gpt4|None|default,V3_format,zh_38K_format|default,V3_format,zh_38K_format|train|103329|3476.6±5959.0, min=33, max=115132|chat, multilingual, general, multi-round, gpt4, 🔥|
+|AI-ModelScope/sql-create-context|b-mc2/sql-create-context|default|default|train|78577|82.7±31.5, min=36, max=282|chat, sql, 🔥|
+|AI-ModelScope/stack-exchange-paired|lvwerra/stack-exchange-paired|default|default|train|-|Dataset is too huge, please click the original link to view the dataset stat.|hfrl, dpo, pairwise|
+|AI-ModelScope/starcoderdata|bigcode/starcoderdata|default|default|train|-|Dataset is too huge, please click the original link to view the dataset stat.|pretrain, quality|
+|AI-ModelScope/synthetic_text_to_sql|gretelai/synthetic_text_to_sql|default|default|train|100000|221.8±69.9, min=64, max=616|nl2sql, en|
+|AI-ModelScope/texttosqlv2_25000_v2|Clinton/texttosqlv2_25000_v2|default|default|train|25000|277.3±328.3, min=40, max=1971|chat, sql|
+|AI-ModelScope/the-stack|bigcode/the-stack|default|default|train|-|Dataset is too huge, please click the original link to view the dataset stat.|pretrain, quality|
+|AI-ModelScope/tigerbot-law-plugin|TigerResearch/tigerbot-law-plugin|default|default|train|55895|104.9±51.0, min=43, max=1087|text-generation, law, pretrained|
+|AI-ModelScope/train_0.5M_CN|BelleGroup/train_0.5M_CN|default|default|train|519255|128.4±87.4, min=31, max=936|common, zh, quality|
+|AI-ModelScope/train_1M_CN|BelleGroup/train_1M_CN|default|default|train|-|Dataset is too huge, please click the original link to view the dataset stat.|common, zh, quality|
+|AI-ModelScope/train_2M_CN|BelleGroup/train_2M_CN|default|default|train|-|Dataset is too huge, please click the original link to view the dataset stat.|common, zh, quality|
+|AI-ModelScope/tulu-v2-sft-mixture|allenai/tulu-v2-sft-mixture|default|default|train|326154|523.3±439.3, min=68, max=2549|chat, multilingual, general, multi-round|
+|AI-ModelScope/ultrafeedback-binarized-preferences-cleaned-kto|None|default|default|train|230720|471.5±274.3, min=27, max=2232|rlhf, kto|
+|AI-ModelScope/webnovel_cn|zxbsmk/webnovel_cn|default|default|train|50000|1455.2±12489.4, min=524, max=490480|chat, novel|
+|AI-ModelScope/wikipedia-cn-20230720-filtered|pleisto/wikipedia-cn-20230720-filtered|default|default|train|-|Dataset is too huge, please click the original link to view the dataset stat.|pretrain, quality|
+|AI-ModelScope/zhihu_rlhf_3k|liyucheng/zhihu_rlhf_3k|default|default|train|3460|594.5±365.9, min=31, max=1716|rlhf, dpo, zh|
+|DAMO_NLP/jd|None|default|default|train|45012|66.9±87.0, min=41, max=1699|text-generation, classification, 🔥|
+|OmniData/Zhihu-KOL|wangrui6/Zhihu-KOL|default|default|train|-|Dataset is too huge, please click the original link to view the dataset stat.|zhihu, qa|
+|OmniData/Zhihu-KOL-More-Than-100-Upvotes|bzb2023/Zhihu-KOL-More-Than-100-Upvotes|default|default|train|271261|1003.4±1826.1, min=28, max=52541|zhihu, qa|
+|TIGER-Lab/MATH-plus|TIGER-Lab/MATH-plus|train|train|train|893929|301.4±196.7, min=50, max=1162|qa, math, en, quality|
+|Tongyi-DataEngine/SA1B-Dense-Caption|None|default|default|train|-|Dataset is too huge, please click the original link to view the dataset stat.|zh, multi-modal, vqa|
+|Tongyi-DataEngine/SA1B-Paired-Captions-Images|None|default|default|train|7736284|106.4±18.5, min=48, max=193|zh, multi-modal, vqa|
+|YorickHe/CoT|None|default|default|train|74771|141.6±45.5, min=58, max=410|chat, general|
+|YorickHe/CoT_zh|None|default|default|train|74771|129.1±53.2, min=51, max=401|chat, general|
+|ZhipuAI/LongWriter-6k|THUDM/LongWriter-6k|default|default|train|6000|5009.0±2932.8, min=117, max=30354|long, chat, sft, 🔥|
+|codefuse-ai/CodeExercise-Python-27k|None|default|default|train|27224|337.3±154.2, min=90, max=2826|chat, coding, 🔥|
+|codefuse-ai/Evol-instruction-66k|None|default|default|train|66862|440.1±208.4, min=46, max=2661|chat, coding, 🔥|
+|damo/MSAgent-Bench|None|default,mini|default,default|train|638149|859.2±460.1, min=38, max=3479|chat, agent, multi-round|
+|damo/nlp_polylm_multialpaca_sft|None|ar,de,es,fr,id,ja,ko,pt,ru,th,vi|ar,de,es,fr,id,ja,ko,pt,ru,th,vi|train|131867|101.6±42.5, min=30, max=1029|chat, general, multilingual|
+|damo/zh_cls_fudan-news|None|default|default|train|4959|3234.4±2547.5, min=91, max=19548|chat, classification|
+|damo/zh_ner-JAVE|None|default|default|train|1266|118.3±45.5, min=44, max=223|chat, ner|
+|hjh0119/shareAI-Llama3-DPO-zh-en-emoji|None|default|default|train|2449|334.0±162.8, min=36, max=1801|rlhf, dpo, pairwise|
+|huangjintao/AgentInstruct_copy|None|alfworld,db,kg,mind2web,os,webshop|alfworld,db,kg,mind2web,os,webshop|train|1866|1144.3±635.5, min=206, max=6412|chat, agent, multi-round|
+|iic/100PoisonMpts|None|default|default|train|906|150.6±80.8, min=39, max=656|poison-management, zh|
+|iic/MSAgent-Pro|None|default|default|train|21910|1978.1±747.9, min=339, max=8064|chat, agent, multi-round, 🔥|
+|iic/ms_agent|None|default|default|train|30000|645.8±218.0, min=199, max=2070|chat, agent, multi-round, 🔥|
+|iic/ms_bench|None|default|default|train|316820|353.4±424.5, min=29, max=2924|chat, general, multi-round, 🔥|
+|lvjianjin/AdvertiseGen|shibing624/AdvertiseGen|default|default|train|97484|130.9±21.9, min=73, max=232|text-generation, 🔥|
+|mapjack/openwebtext_dataset|None|default|default|train|-|Dataset is too huge, please click the original link to view the dataset stat.|pretrain, zh, quality|
+|modelscope/DuReader_robust-QG|None|default|default|train,validation,test|17899|242.0±143.1, min=75, max=1416|text-generation, 🔥|
+|modelscope/chinese-poetry-collection|None|default|default|test|1710|58.1±8.1, min=31, max=71|text-generation, poetry|
+|modelscope/clue|clue|cmnli|cmnli|train|391783|81.6±16.0, min=54, max=157|text-generation, classification|
+|modelscope/coco_2014_caption|None|train,val|coco_2014_caption,coco_2014_caption|train|454617|389.6±68.4, min=70, max=587|chat, multi-modal, vision, 🔥|
+|shenweizhou/alpha-umi-toolbench-processed-v2|None|backbone,caller,planner,summarizer|backbone,caller,planner,summarizer|train|-|Dataset is too huge, please click the original link to view the dataset stat.|chat, agent, 🔥|
+|simpleai/HC3|Hello-SimpleAI/HC3|finance,medicine|finance,medicine|train|11021|296.0±153.3, min=65, max=2267|text-generation, classification, 🔥|
+|simpleai/HC3-Chinese|Hello-SimpleAI/HC3-Chinese|baike,open_qa,nlpcc_dbqa,finance,medicine,law,psychology|baike,open_qa,nlpcc_dbqa,finance,medicine,law,psychology|train|39781|179.9±70.2, min=90, max=1070|text-generation, classification, 🔥|
+|speech_asr/speech_asr_aishell1_trainsets|None|default|default|train,validation,test|141600|40.8±3.3, min=33, max=53|chat, multi-modal, audio|
+|swift/A-OKVQA|HuggingFaceM4/A-OKVQA|default|default|train,validation|18201|43.5±7.9, min=27, max=94|multi-modal, en, vqa, quality|
+|swift/ChartQA|HuggingFaceM4/ChartQA|default|default|train|28299|36.8±6.5, min=26, max=74|en, vqa, quality|
+|swift/GRIT|zzliang/GRIT|caption,grounding,vqa|caption,grounding,vqa|train|-|Dataset is too huge, please click the original link to view the dataset stat.|multi-modal, en, caption-grounding, vqa, quality|
+|swift/GenQA|tomg-group-umd/GenQA|default|default|code,dialog,general,math,mmlu,multiple_choice,writing,academic,task|-|Dataset is too huge, please click the original link to view the dataset stat.|qa, quality, multi-task|
+|swift/Infinity-Instruct|BAAI/Infinity-Instruct|default|default|train|-|Dataset is too huge, please click the original link to view the dataset stat.|qa, quality, multi-task|
+|swift/MideficsDataset|WinterSchool/MideficsDataset|default|default|train|3800|201.3±70.2, min=60, max=454|medical, en, vqa|
+|swift/OCR-VQA|howard-hou/OCR-VQA|default|default|train,validation|186753|32.3±5.8, min=27, max=80|multi-modal, en, ocr-vqa|
+|swift/OK-VQA_train|Multimodal-Fatima/OK-VQA_train|default|default|train|9009|31.7±3.4, min=25, max=56|multi-modal, en, vqa, quality|
+|swift/OpenHermes-2.5|teknium/OpenHermes-2.5|default|default|train|-|Dataset is too huge, please click the original link to view the dataset stat.|cot, en, quality|
+|swift/RLAIF-V-Dataset|openbmb/RLAIF-V-Dataset|default|default|train|83132|99.6±54.8, min=30, max=362|rlhf, dpo, multi-modal, en|
+|swift/RedPajama-Data-1T|togethercomputer/RedPajama-Data-1T|default|default|train|-|Dataset is too huge, please click the original link to view the dataset stat.|pretrain, quality|
+|swift/RedPajama-Data-V2|togethercomputer/RedPajama-Data-V2|default|default|train|-|Dataset is too huge, please click the original link to view the dataset stat.|pretrain, quality|
+|swift/ScienceQA|derek-thomas/ScienceQA|default|default|train,validation|16967|101.7±55.8, min=32, max=620|multi-modal, science, vqa, quality|
+|swift/SlimOrca|Open-Orca/SlimOrca|default|default|train|517982|405.5±442.1, min=47, max=8312|quality, en|
+|swift/TextCaps|HuggingFaceM4/TextCaps|default|default|train,validation|-|Dataset is too huge, please click the original link to view the dataset stat.|multi-modal, en, caption, quality|
+|swift/ToolBench|None|default|default|train|124345|2251.7±1039.8, min=641, max=9451|chat, agent, multi-round|
+|swift/VQAv2|HuggingFaceM4/VQAv2|default|default|train|-|Dataset is too huge, please click the original link to view the dataset stat.|en, vqa, quality|
+|swift/VideoChatGPT|lmms-lab/VideoChatGPT|Generic,Temporal,Consistency|Generic,Temporal,Consistency|test|3206|87.4±48.3, min=31, max=398|chat, multi-modal, video, 🔥|
+|swift/WebInstructSub|TIGER-Lab/WebInstructSub|default|default|train|-|Dataset is too huge, please click the original link to view the dataset stat.|qa, en, math, quality, multi-domain, science|
+|swift/aya_collection|CohereForAI/aya_collection|aya_dataset|aya_dataset|train|202364|474.6±1539.1, min=25, max=71312|multi-lingual, qa|
+|swift/chinese-c4|shjwudp/chinese-c4|default|default|train|-|Dataset is too huge, please click the original link to view the dataset stat.|pretrain, zh, quality|
+|swift/cinepile|tomg-group-umd/cinepile|default|default|train|-|Dataset is too huge, please click the original link to view the dataset stat.|vqa, en, youtube, video|
+|swift/classical_chinese_translate|None|default|default|train|6655|349.3±77.1, min=61, max=815|chat, play-ground|
+|swift/cosmopedia-100k|HuggingFaceTB/cosmopedia-100k|default|default|train|100000|1037.0±254.8, min=339, max=2818|multi-domain, en, qa|
+|swift/dolma|allenai/dolma|v1_7|v1_7|train|-|Dataset is too huge, please click the original link to view the dataset stat.|pretrain, quality|
+|swift/dolphin|cognitivecomputations/dolphin|flan1m-alpaca-uncensored,flan5m-alpaca-uncensored|flan1m-alpaca-uncensored,flan5m-alpaca-uncensored|train|-|Dataset is too huge, please click the original link to view the dataset stat.|en|
+|swift/github-code|codeparrot/github-code|default|default|train|-|Dataset is too huge, please click the original link to view the dataset stat.|pretrain, quality|
+|swift/llava-data|TIGER-Lab/llava-data|llava_instruct|llava_instruct|train|624255|369.7±143.0, min=40, max=905|sft, multi-modal, quality|
+|swift/llava-instruct-mix-vsft|HuggingFaceH4/llava-instruct-mix-vsft|default|default|test|13640|178.8±119.8, min=34, max=951|multi-modal, en, vqa, quality|
+|swift/llava-med-zh-instruct-60k|BUAADreamer/llava-med-zh-instruct-60k|default|default|train|56649|207.9±67.7, min=42, max=594|zh, medical, vqa, multi-modal|
+|swift/lnqa|vikhyatk/lnqa|default|default|train,validation|-|Dataset is too huge, please click the original link to view the dataset stat.|multi-modal, en, ocr-vqa, quality|
+|swift/longwriter-6k-filtered|None|default|default|train|666|4108.9±2636.9, min=1190, max=17050|long, chat, sft, 🔥|
+|swift/medical_zh|None|en,zh|en,zh|train,val,test|2068589|256.4±87.3, min=39, max=1167|chat, medical|
+|swift/moondream2-coyo-5M-captions|isidentical/moondream2-coyo-5M-captions|default|default|train|-|Dataset is too huge, please click the original link to view the dataset stat.|caption, pretrain, quality|
+|swift/no_robots|HuggingFaceH4/no_robots|default|default|train|9485|300.0±246.2, min=40, max=6739|multi-task, quality, human-annotated|
+|swift/orca_dpo_pairs|Intel/orca_dpo_pairs|default|default|train|12859|364.9±248.2, min=36, max=2010|rlhf, quality|
+|swift/path-vqa|flaviagiammarino/path-vqa|default|default|train|19654|34.2±6.8, min=28, max=85|multi-modal, vqa, medical|
+|swift/pile-val-backup|mit-han-lab/pile-val-backup|default|default|validation|214661|1831.4±11087.5, min=21, max=516620|text-generation, awq|
+|swift/pixelprose|tomg-group-umd/pixelprose|default|default|train,cc12m,commonpool,redcaps|-|Dataset is too huge, please click the original link to view the dataset stat.|caption, multi-modal, vision|
+|swift/refcoco|jxu124/refcoco|caption,grounding|default,default|train|92430|45.4±3.0, min=37, max=63|multi-modal, en, grounding|
+|swift/refcocog|jxu124/refcocog|caption,grounding|default,default|train|89598|50.3±4.6, min=39, max=91|multi-modal, en, grounding|
+|swift/self-cognition|modelscope/self-cognition|default|default|train|108|58.9±20.3, min=32, max=131|chat, self-cognition, 🔥|
+|swift/sharegpt|None|common-zh,unknow-zh,common-en|common-zh,unknow-zh,common-en|train|194063|820.5±366.1, min=25, max=2221|chat, general, multi-round|
+|swift/swift-sft-mixture|None|sharegpt,firefly,codefuse,metamathqa|sharegpt,firefly,codefuse,metamathqa|train|-|Dataset is too huge, please click the original link to view the dataset stat.|chat, sft, general, 🔥|
+|swift/tagengo-gpt4|lightblue/tagengo-gpt4|default|default|train|76437|468.1±276.8, min=28, max=1726|chat, multi-lingual, quality|
+|swift/train_3.5M_CN|BelleGroup/train_3.5M_CN|default|default|train|-|Dataset is too huge, please click the original link to view the dataset stat.|common, zh, quality|
+|swift/ultrachat_200k|HuggingFaceH4/ultrachat_200k|default|default|train_sft|207843|1188.0±571.1, min=170, max=4068|chat, en, quality|
+|swift/wikipedia|wikipedia|default|default|train|-|Dataset is too huge, please click the original link to view the dataset stat.|pretrain, quality|
+|wyj123456/GPT4all|None|default|default|train|806199|97.3±20.9, min=62, max=414|chat, general|
+|wyj123456/code_alpaca_en|sahil2801/CodeAlpaca-20k|default|default|train|20022|99.3±57.6, min=30, max=857|chat, coding|
+|wyj123456/finance_en|ssbuild/alpaca_finance_en|default|default|train|68912|264.5±207.1, min=30, max=2268|chat, financial|
+|wyj123456/instinwild|None|default,subset|default,subset|train|103695|125.1±43.7, min=35, max=801|chat, general|
+|wyj123456/instruct|None|default|default|train|888970|271.0±333.6, min=34, max=3967|chat, general|
