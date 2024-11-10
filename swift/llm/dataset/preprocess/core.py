@@ -64,6 +64,9 @@ class RowPreprocessor:
                 'content': ''
             }],
             'rejected_response': '',
+            'images': None,
+            'videos': None,
+            'audios': None,
         }
 
     def _row_map(self, row: Dict[str, Any], idx: int, *, strict: bool) -> Dict[str, Any]:
