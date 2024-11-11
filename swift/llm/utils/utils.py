@@ -278,7 +278,7 @@ def _single_map(d: Dict[str, Any], map_func: MapFunc) -> Optional[Dict[str, Any]
 
 
 def _map_mp_single(shard: HfDataset, map_func: MapFunc, queue: Queue, rank: int):
-    batch_size = 16
+    batch_size = 64
     pre_i = 0
     result = []
     for i, d in enumerate(shard):
@@ -334,11 +334,11 @@ def dataset_map(dataset: DATASET_TYPE,
         data = []
         for d in tqdm(dataset, desc='Map'):
             d = single_map(d)
-            data.append(d)
+            if d is not None:
+                data.append(d)
     else:
         assert num_proc > 1
         data = _map_mp(dataset, single_map, num_proc)
-    data = [d for d in data if d is not None]
     if len(data) == 0:
         logger.warning('len(dataset): 0')
         return None
