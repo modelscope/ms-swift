@@ -254,12 +254,13 @@ class LazyLLMDataset(Dataset):
 
 class EncodePreprocessor(RowPreprocessor):
 
-    def __init__(self, template: 'Template'):
+    def __init__(self, template: 'Template', *, model=None):
         super().__init__(remove_useless_columns=False)
+        self.model = None
         self.template = template
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        res = self.template.encode(row)
+        res = self.template.encode(row, model=self.model)
         if len(res) == 0:
             res = None
         return res
