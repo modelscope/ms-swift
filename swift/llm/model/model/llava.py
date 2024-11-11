@@ -22,21 +22,17 @@ def get_model_tokenizer_llava_llama(model_dir: str,
 
     model_config = LlavaConfig.from_pretrained(model_dir)  # check
     processor = AutoProcessor.from_pretrained(model_dir)
+    if 'automodel_class' not in kwargs:
+        kwargs['automodel_class'] = LlavaForConditionalGeneration
     model, tokenizer = get_model_tokenizer_with_flash_attn(
-        model_dir,
-        model_info,
-        model_kwargs,
-        load_model,
-        model_config=model_config,
-        automodel_class=LlavaForConditionalGeneration,
-        **kwargs)
+        model_dir, model_info, model_kwargs, load_model, model_config=model_config, **kwargs)
     tokenizer.processor = processor
     return model, tokenizer
 
 
 register_model(
     ModelMeta(
-        MLLMModelType.llava_llama,
+        MLLMModelType.llava_llama3_hf,
         [
             ModelGroup([
                 Model('AI-ModelScope/llava-llama-3-8b-v1_1-transformers', 'xtuner/llava-llama-3-8b-v1_1-transformers'),
@@ -44,7 +40,7 @@ register_model(
                        requires=['transformers>=4.36'],
                        tags=['multi-modal', 'vision']),
         ],
-        TemplateType.llava_llama_instruct,
+        TemplateType.llava_llama3_hf,
         get_model_tokenizer_llava_llama,
         architectures=['LlavaForConditionalGeneration'],
         support_flash_attn=True,
@@ -79,13 +75,14 @@ def get_model_tokenizer_llava_hf(model_dir: str, *args, **kwargs):
 
 def get_model_tokenizer_llava_1_5(*args, **kwargs):
     from transformers import LlavaForConditionalGeneration
-    kwargs['automodel_class'] = LlavaForConditionalGeneration
+    if 'automodel_class' not in kwargs:
+        kwargs['automodel_class'] = LlavaForConditionalGeneration
     return get_model_tokenizer_llava_hf(*args, **kwargs)
 
 
 register_model(
     ModelMeta(
-        MLLMModelType.llava1_5,
+        MLLMModelType.llava1_5_hf,
         [
             ModelGroup([
                 Model('swift/llava-1.5-13b-hf', 'llava-hf/llava-1.5-13b-hf'),
@@ -94,7 +91,7 @@ register_model(
                        requires=['transformers>=4.36'],
                        tags=['multi-modal', 'vision']),
         ],
-        TemplateType.llava1_5,
+        TemplateType.llava1_5_hf,
         get_model_tokenizer_llava_1_5,
         architectures=['LlavaForConditionalGeneration'],
         support_flash_attn=True,
@@ -104,13 +101,14 @@ register_model(
 
 def get_model_tokenizer_llava_onevision(*args, **kwargs):
     from transformers import LlavaOnevisionForConditionalGeneration
-    kwargs['automodel_class'] = LlavaOnevisionForConditionalGeneration
+    if 'automodel_class' not in kwargs:
+        kwargs['automodel_class'] = LlavaOnevisionForConditionalGeneration
     return get_model_tokenizer_llava_hf(*args, **kwargs)
 
 
 register_model(
     ModelMeta(
-        MLLMModelType.llava_onevision,
+        MLLMModelType.llava_onevision_hf,
         [
             ModelGroup(
                 [
@@ -119,12 +117,12 @@ register_model(
                     Model('AI-ModelScope/llava-onevision-qwen2-7b-ov-hf', 'llava-hf/llava-onevision-qwen2-7b-ov-hf'),
                     Model('AI-ModelScope/llava-onevision-qwen2-72b-ov-hf', 'llava-hf/llava-onevision-qwen2-72b-ov-hf'),
                 ],
-                requires=['transformers>=4.45.0.dev0'],
+                requires=['transformers>=4.45'],
                 tags=['multi-modal', 'vision', 'video'],
                 ignore_file_pattern=['onnx'],
             ),
         ],
-        TemplateType.llava_onevision_qwen,
+        TemplateType.llava_onevision_hf,
         get_model_tokenizer_llava_onevision,
         architectures=['LlavaForConditionalGeneration'],
         support_flash_attn=True,
@@ -133,7 +131,7 @@ register_model(
 
 register_model(
     ModelMeta(
-        MLLMModelType.llava_next_hf,
+        MLLMModelType.llava_next_qwen_hf,
         [
             ModelGroup(
                 [
@@ -144,7 +142,7 @@ register_model(
                 tags=['multi-modal', 'vision'],
             ),
         ],
-        TemplateType.llava_qwen_hf,
+        TemplateType.llava_next_qwen_hf,
         get_model_tokenizer_llava_onevision,
         architectures=['LlavaForConditionalGeneration'],
         support_flash_attn=True,
@@ -154,7 +152,8 @@ register_model(
 
 def get_model_tokenizer_llava_next(*args, **kwargs):
     from transformers import LlavaNextForConditionalGeneration
-    kwargs['automodel_class'] = LlavaNextForConditionalGeneration
+    if 'automodel_class' not in kwargs:
+        kwargs['automodel_class'] = LlavaNextForConditionalGeneration
     return get_model_tokenizer_llava_hf(*args, **kwargs)
 
 
@@ -179,7 +178,7 @@ register_model(
 
 register_model(
     ModelMeta(
-        MLLMModelType.llava1_6_vicuna,
+        MLLMModelType.llava1_6_vicuna_hf,
         [
             ModelGroup(
                 [
@@ -190,7 +189,7 @@ register_model(
                 tags=['multi-modal', 'vision'],
             ),
         ],
-        TemplateType.llava_vicuna,
+        TemplateType.llava1_6_vicuna_hf,
         get_model_tokenizer_llava_next,
         architectures=['LlavaForConditionalGeneration'],
         support_flash_attn=True,
@@ -199,7 +198,7 @@ register_model(
 
 register_model(
     ModelMeta(
-        MLLMModelType.llava1_6_mistral,
+        MLLMModelType.llava1_6_mistral_hf,
         [
             ModelGroup(
                 [
@@ -209,7 +208,7 @@ register_model(
                 tags=['multi-modal', 'vision'],
             ),
         ],
-        TemplateType.llava_mistral,
+        TemplateType.llava1_6_mistral_hf,
         get_model_tokenizer_llava_next,
         architectures=['LlavaForConditionalGeneration'],
         support_flash_attn=True,
@@ -218,7 +217,7 @@ register_model(
 
 register_model(
     ModelMeta(
-        MLLMModelType.llava1_6_llama3_1,
+        MLLMModelType.llava_llama3_1_hf,
         [
             ModelGroup(
                 [
@@ -228,7 +227,7 @@ register_model(
                 tags=['multi-modal', 'vision'],
             ),
         ],
-        TemplateType.llava_next_llama3,
+        TemplateType.llava_llama3_1_hf,
         get_model_tokenizer_llava_next,
         architectures=['LlavaForConditionalGeneration'],
         support_flash_attn=True,
@@ -245,7 +244,7 @@ def get_model_tokenizer_llava_next_yi(*args, **kwargs):
 
 register_model(
     ModelMeta(
-        MLLMModelType.llava1_6_yi,
+        MLLMModelType.llava1_6_yi_hf,
         [
             ModelGroup(
                 [
@@ -255,7 +254,7 @@ register_model(
                 tags=['multi-modal', 'vision'],
             ),
         ],
-        TemplateType.llava_yi,
+        TemplateType.llava1_6_yi_hf,
         get_model_tokenizer_llava_next_yi,
         architectures=['LlavaForConditionalGeneration'],
         support_flash_attn=True,
@@ -265,13 +264,14 @@ register_model(
 
 def get_model_tokenizer_llava_next_video(*args, **kwargs):
     from transformers import LlavaNextVideoForConditionalGeneration
-    kwargs['automodel_class'] = LlavaNextVideoForConditionalGeneration
+    if 'automodel_class' not in kwargs:
+        kwargs['automodel_class'] = LlavaNextVideoForConditionalGeneration
     return get_model_tokenizer_llava_hf(*args, **kwargs)
 
 
 register_model(
     ModelMeta(
-        MLLMModelType.llava_next_video,
+        MLLMModelType.llava_next_video_hf,
         [
             ModelGroup(
                 [
@@ -283,7 +283,7 @@ register_model(
                 tags=['multi-modal', 'video'],
             ),
         ],
-        TemplateType.llava_next_video,
+        TemplateType.llava_next_video_hf,
         get_model_tokenizer_llava_next_video,
         architectures=['LlavaForConditionalGeneration'],
         support_flash_attn=True,
@@ -300,7 +300,7 @@ def get_model_tokenizer_llava_next_video_yi(*args, **kwargs):
 
 register_model(
     ModelMeta(
-        MLLMModelType.llava_next_video_yi,
+        MLLMModelType.llava_next_video_yi_hf,
         [
             ModelGroup(
                 [
@@ -310,7 +310,7 @@ register_model(
                 tags=['multi-modal', 'video'],
             ),
         ],
-        TemplateType.llava_next_video_yi,
+        TemplateType.llava_next_video_hf,
         get_model_tokenizer_llava_next_video_yi,
         architectures=['LlavaForConditionalGeneration'],
         support_flash_attn=True,
@@ -318,7 +318,7 @@ register_model(
 
 
 def get_model_tokenizer_llava(model_dir: str,
-                              config: PretrainedConfig,
+                              model_info: ModelInfo,
                               model_kwargs: Dict[str, Any],
                               load_model: bool = True,
                               **kwargs):
@@ -357,8 +357,9 @@ def get_model_tokenizer_llava(model_dir: str,
         model_config = AutoConfig.from_pretrained(model_dir)
 
     model_config.mm_vision_tower = safe_snapshot_download('AI-ModelScope/clip-vit-large-patch14-336')
+    model_kwargs['model_config'] = model_config
     model, tokenizer = get_model_tokenizer_with_flash_attn(
-        model_dir, model_config, model_kwargs, load_model, automodel_class=automodel_class, **kwargs)
+        model_dir, model_info, model_kwargs, load_model, automodel_class=automodel_class, **kwargs)
 
     if model is not None:
         model.resize_token_embeddings(len(tokenizer))
@@ -393,7 +394,43 @@ register_model(
 
 register_model(
     ModelMeta(
-        MLLMModelType.llava_next,
+        MLLMModelType.llava1_6_mistral,
+        [
+            ModelGroup(
+                [
+                    Model('AI-ModelScope/llava-v1.6-mistral-7b', 'liuhaotian/llava-v1.6-mistral-7b'),
+                ],
+                tags=['vision'],
+            ),
+        ],
+        TemplateType.llava1_6_mistral,
+        partial(get_model_tokenizer_llava, llm_model_type='mistral'),
+        requires=['transformers>=4.34'],
+        architectures=['LlavaForConditionalGeneration'],
+        support_flash_attn=True,
+    ))
+
+register_model(
+    ModelMeta(
+        MLLMModelType.llava1_6_yi,
+        [
+            ModelGroup(
+                [
+                    Model('AI-ModelScope/llava-v1.6-34b', 'liuhaotian/llava-v1.6-34b'),
+                ],
+                tags=['vision'],
+            ),
+        ],
+        TemplateType.llava1_6_yi,
+        partial(get_model_tokenizer_llava, llm_model_type='llama'),
+        requires=['transformers>=4.34'],
+        architectures=['LlavaForConditionalGeneration'],
+        support_flash_attn=True,
+    ))
+
+register_model(
+    ModelMeta(
+        MLLMModelType.llava_next_qwen,
         [
             ModelGroup(
                 [
@@ -404,7 +441,7 @@ register_model(
                 tags=['multi-modal', 'vision'],
             ),
         ],
-        TemplateType.llava_qwen,
+        TemplateType.llava_next_qwen,
         partial(get_model_tokenizer_llava, llm_model_type='next_qwen'),
         architectures=['LlavaForConditionalGeneration'],
         support_flash_attn=True,

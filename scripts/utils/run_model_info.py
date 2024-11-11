@@ -7,10 +7,10 @@ def get_model_info_table():
     fpaths = ['docs/source/Instruction/支持的模型和数据集.md', 'docs/source_en/Instruction/Supported-models-datasets.md']
     end_words = [['### 多模态大模型', '## 数据集'], ['### MLLM', '## Datasets']]
     result = [
-        '| Model ID | HF Model ID | Model Type | Architectures | Default Template(for sft) |  |'
+        '| Model ID | HF Model ID | Model Type | Architectures | Default Template(for sft) | '
         'Requires | Tags |\n'
-        '| -------- | ----------- | ----------- | ------------------------- |'
-        ' ------------------ | ------------ | ---------------- | ---------------- | -------- | ---- |\n'
+        '| -------- | ----------- | -----------| ------------  | ------------------------- | '
+        '-------- | ---- |\n'
     ] * 2
     res_llm: List[Any] = []
     res_mllm: List[Any] = []
@@ -35,10 +35,10 @@ def get_model_info_table():
                      f'|{hf_model_id}|'
                      f'{model_type}|{model_meta.architectures}|{template}|'
                      f'{requires}|{group.tags}|\n')
-        if model_meta.is_multimodal:
-            res_mllm.append(r)
-        else:
-            res_llm.append(r)
+                if model_meta.is_multimodal:
+                    res_mllm.append(r)
+                else:
+                    res_llm.append(r)
     print(f'LLM总数: {len(res_llm)}, MLLM总数: {len(res_mllm)}')
     text = ['', '']  # llm, mllm
     for i, res in enumerate([res_llm, res_mllm]):
@@ -49,8 +49,8 @@ def get_model_info_table():
     for i, fpath in enumerate(fpaths):
         with open(fpath, 'r') as f:
             text = f.read()
-        llm_start_idx = text.find('| Model Type |')
-        mllm_start_idx = text[llm_start_idx + 1:].find('| Model Type |') + llm_start_idx + 1
+        llm_start_idx = text.find('| Model ID |')
+        mllm_start_idx = text[llm_start_idx + 1:].find('| Model ID |') + llm_start_idx + 1
         llm_end_idx = text.find(end_words[i][0])
         mllm_end_idx = text.find(end_words[i][1])
         output = text[:llm_start_idx] + result[0] + '\n\n' + text[llm_end_idx:mllm_start_idx] + result[

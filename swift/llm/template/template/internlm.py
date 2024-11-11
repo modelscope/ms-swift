@@ -1,11 +1,16 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
+import torch
+from transformers.dynamic_module_utils import get_class_from_dynamic_module
+
+from swift.utils import get_env_args
 from ..base import Template
-from ..constant import MLLMTemplateType
+from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
-from ..utils import Context, findall, gather_list
-from .utils import DEFAULT_SYSTEM
+from ..utils import Context, Prompt, findall, gather_list
+from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
 
 INTERNLM_SYSTEM = (
     'You are an AI assistant whose name is InternLM (书生·浦语).\n'
@@ -15,36 +20,21 @@ INTERNLM_SYSTEM = (
     'by the user such as English and 中文.')
 
 register_template(
-    TemplateType.internlm,
-    Template(['<s>'], ['<|User|>:{{QUERY}}\n<|Bot|>:'], ['<eoa>\n'], ['<eoa>'], INTERNLM_SYSTEM,
-             ['<s><|System|>:{{SYSTEM}}\n']))
+    TemplateMeta(
+        LLMTemplateType.internlm,
+        prefix=['<s>'],
+        prompt=['<|User|>:{{QUERY}}\n<|Bot|>:'],
+        chat_sep=['<eoa>\n'],
+        suffix=['<eoa>'],
+        default_system=INTERNLM_SYSTEM,
+        system_prefix=['<s><|System|>:{{SYSTEM}}\n']))
 
-
-class Internlm2Template(ChatmlTemplate):
-    system = INTERNLM_SYSTEM
-
-
-register_template(TemplateType.internlm2, Internlm2Template())
+register_template(ChatmlTemplateMeta(LLMTemplateType.internlm2, default_system=INTERNLM_SYSTEM))
 
 
 class InternLMXComposer2Template(Template):
-    INTERNLM_XCOMPOSER_SYSTEM = (
-        'You are an AI assistant whose name is InternLM-XComposer (浦语·灵笔).\n'
-        '- InternLM-XComposer (浦语·灵笔) is a conversational language model that is developed by '
-        'Shanghai AI Laboratory (上海人工智能实验室). '
-        'It is designed to be helpful, honest, and harmless.\n'
-        '- InternLM-XComposer (浦语·灵笔) can understand and communicate fluently in the language chosen '
-        'by the user such as English and 中文.')
     image_placeholder = ['</s>']
-
-    def __init__(self, version):
-        prefix = ['<s>']
-        prompt = ['[UNUSED_TOKEN_146]user\n{{QUERY}}[UNUSED_TOKEN_145]\n[UNUSED_TOKEN_146]assistant\n']
-        chat_sep = ['[UNUSED_TOKEN_145]\n']
-        suffix = ['[UNUSED_TOKEN_145]']
-        system_prefix = ['<s>[UNUSED_TOKEN_146]system\n{{SYSTEM}}[UNUSED_TOKEN_145]\n']
-        super().__init__(prefix, prompt, chat_sep, suffix, self.INTERNLM_XCOMPOSER_SYSTEM, system_prefix)
-        self.version = version
+    version = 'v2'
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super()._encode(example)
@@ -126,35 +116,56 @@ class InternLMXComposer2Template(Template):
             res['im_mask'] = im_mask
         return res
 
-    @staticmethod
-    def _get_generate_ids(generate_ids: List[int], input_token_len: int) -> List[int]:
-        return generate_ids
+
+@dataclass
+class Xcomposer2TemplateMeta(TemplateMeta):
+    prefix: Prompt = field(default_factory=lambda: ['<s>'])
+    prompt: Prompt = field(
+        default_factory=lambda: ['[UNUSED_TOKEN_146]user\n{{QUERY}}[UNUSED_TOKEN_145]\n[UNUSED_TOKEN_146]assistant\n'])
+    chat_sep: Optional[Prompt] = field(default_factory=lambda: ['[UNUSED_TOKEN_145]\n'])
+    suffix: Prompt = field(default_factory=lambda: ['[UNUSED_TOKEN_145]'])
+    system_prefix: Optional[Prompt] = field(
+        default_factory=lambda: ['<s>[UNUSED_TOKEN_146]system\n{{SYSTEM}}[UNUSED_TOKEN_145]\n'])
+    skip_prompt: bool = False
 
 
 register_template(
-    TemplateType.internlm_xcomposer2, InternLMXComposer2Template(version='v2'), use_model=True, lazy_tokenize=True)
+    Xcomposer2TemplateMeta(
+        MLLMTemplateType.xcomposer2,
+        template_cls=InternLMXComposer2Template,
+        default_system=('You are an AI assistant whose name is InternLM-XComposer (浦语·灵笔).\n'
+                        '- InternLM-XComposer (浦语·灵笔) is a conversational language model that is developed by '
+                        'Shanghai AI Laboratory (上海人工智能实验室). '
+                        'It is designed to be helpful, honest, and harmless.\n'
+                        '- InternLM-XComposer (浦语·灵笔) can understand and communicate fluently in the language chosen '
+                        'by the user such as English and 中文.'),
+    ))
 
 
 class InternLMXComposer2_5Template(InternLMXComposer2Template):
-    INTERNLM_XCOMPOSER_SYSTEM = (
-        'You are an AI assistant whose name is InternLM-XComposer (浦语·灵笔).\n'
-        '- InternLM-XComposer (浦语·灵笔) is a multi-modality conversational language model '
-        'that is developed by Shanghai AI Laboratory (上海人工智能实验室). '
-        'It is designed to be helpful, honest, and harmless.\n'
-        '- InternLM-XComposer (浦语·灵笔) can understand and communicate fluently in the language chosen '
-        'by the user such as English and 中文.\n'
-        '- InternLM-XComposer (浦语·灵笔) is capable of comprehending and articulating responses effectively '
-        'based on the provided image.')
+    system = ('You are an AI assistant whose name is InternLM-XComposer (浦语·灵笔).\n'
+              '- InternLM-XComposer (浦语·灵笔) is a multi-modality conversational language model '
+              'that is developed by Shanghai AI Laboratory (上海人工智能实验室). '
+              'It is designed to be helpful, honest, and harmless.\n'
+              '- InternLM-XComposer (浦语·灵笔) can understand and communicate fluently in the language chosen '
+              'by the user such as English and 中文.\n'
+              '- InternLM-XComposer (浦语·灵笔) is capable of comprehending and articulating responses effectively '
+              'based on the provided image.')
+    version = 'v2.5'
+
+
+class InternLMXComposer2_4khdTemplate(InternLMXComposer2Template):
+    version = 'v2-4khd'
 
 
 register_template(
-    TemplateType.internlm_xcomposer2_5,
-    InternLMXComposer2_5Template(version='v2.5'),
-    use_model=True,
-    lazy_tokenize=True)
+    Xcomposer2TemplateMeta(
+        MLLMTemplateType.xcomposer2_5,
+        template_cls=InternLMXComposer2_5Template,
+        default_system=InternLMXComposer2_5Template.system))
 
 register_template(
-    TemplateType.internlm_xcomposer2_4khd,
-    InternLMXComposer2_5Template(version='v2-4khd'),
-    use_model=True,
-    lazy_tokenize=True)
+    Xcomposer2TemplateMeta(
+        MLLMTemplateType.xcomposer2_4khd,
+        template_cls=InternLMXComposer2_4khdTemplate,
+        default_system=InternLMXComposer2_5Template.system))

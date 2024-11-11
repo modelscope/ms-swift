@@ -36,6 +36,13 @@ class ModelArch:
     florence = 'florence'
     idefics3 = 'idefics3'
     mplug_owl3 = 'mplug_owl3'
+    llama3_1_omni = 'llama3_1_omni'
+    got_ocr2 = 'got_ocr2'
+    llava3_2_vision = 'llava3_2_vision'
+    ovis1_6 = 'ovis1_6'
+    molmo = 'molmo'
+    janus = 'janus'
+    emu3_chat = 'emu3_chat'
 
 
 @dataclass
@@ -381,6 +388,54 @@ register_model_arch(
         aligner='model.connector',
         vision_tower='model.vision_model',
     ))
+
+register_model_arch(
+    MultiModelKeys(
+        ModelArch.llama3_1_omni,
+        language_model='model.layers',
+        aligner='model.speech_projector',
+        vision_tower='model.speech_encoder',
+        generator='speech_generator',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        ModelArch.got_ocr2,
+        language_model='model.layers',
+        aligner='model.mm_projector_vary',
+        vision_tower='model.vision_tower_high',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        ModelArch.llava3_2_vision,
+        language_model='language_model',
+        aligner='multi_modal_projector',
+        vision_tower='vision_model',
+    ))
+
+register_model_arch(MultiModelKeys(
+    ModelArch.ovis1_6,
+    language_model='llm',
+    vision_tower='visual_tokenizer',
+))
+
+register_model_arch(
+    MultiModelKeys(
+        ModelArch.molmo,
+        language_model='model.transformer',
+        vision_tower='model.vision_backbone',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        ModelArch.janus,
+        language_model='language_model',
+        vision_tower='vision_model',
+        aligner='aligner',
+        generator=['gen_vision_model', 'gen_aligner', 'gen_head', 'gen_embed']))
+
+register_model_arch(MultiModelKeys(ModelArch.emu3_chat, language_model='model'))
 
 
 def get_model_arch(arch_name: Optional[str]) -> Optional[ModelKeys]:

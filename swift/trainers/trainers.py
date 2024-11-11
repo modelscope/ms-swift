@@ -12,17 +12,18 @@ from transformers.modeling_utils import unwrap_model
 from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
 from transformers.utils import is_peft_available
 
-from swift.plugin.loss import get_loss_func
 from swift.torchacc_utils import patch_clip_grad_norm, ta_trim_graph
 from swift.utils import use_torchacc
+from .loss import get_loss_func
 from .mixin import SwiftMixin
+from .push_to_ms import PushToMsHubMixin
 
 
-class Trainer(SwiftMixin, HfTrainer):
+class Trainer(PushToMsHubMixin, SwiftMixin, HfTrainer):
     pass
 
 
-class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
+class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -140,26 +141,29 @@ class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
 
         return loss, generated_tokens, labels
 
-    def compute_loss(self, model, inputs, return_outputs=None):
+    def compute_loss(self, model, inputs, return_outputs=None, num_items_in_batch=None):
         if not hasattr(self, '_custom_metrics'):
             self._custom_metrics = {}
 
         labels = None
-        loss_type = self.args.loss_type
-        if loss_type is None and 'loss_scale' in inputs:
-            loss_type = 'loss-scale'
+        loss_name = self.args.loss_name
+        if loss_name is None and 'loss_scale' in inputs:
+            loss_name = 'loss-scale'
 
-        loss_kwargs = {}
-        if loss_type == 'loss-scale':
-            loss_kwargs['loss_scale'] = inputs.pop('loss_scale')
+        loss_kwargs = {'num_items_in_batch': num_items_in_batch}
+        if loss_name == 'loss-scale':
+            loss_kwargs['loss_scale'] = inputs.pop('loss_scale', None)
 
-        if loss_type is not None or self.label_smoother is not None and 'labels' in inputs:
+        if loss_name is not None or self.label_smoother is not None and 'labels' in inputs:
             labels = inputs.pop('labels')
 
         loss_kwargs['labels'] = labels
         outputs = model(**inputs)
-        if loss_type is not None:
-            loss_func = get_loss_func(loss_type)
+        # fix https://github.com/huggingface/transformers/issues/34263
+        if 'labels' in inputs and num_items_in_batch is not None:
+            outputs.loss = outputs.loss * (inputs['labels'][:, 1:] != -100).sum() / num_items_in_batch
+        if loss_name is not None:
+            loss_func = get_loss_func(loss_name)
             outputs['loss'] = loss_func(outputs, **loss_kwargs)
 
         # Save past state if it exists
@@ -167,7 +171,7 @@ class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
         if self.args.past_index >= 0:
             self._past = outputs[self.args.past_index]
 
-        if labels is not None and loss_type is None:
+        if labels is not None and loss_name is None:
             unwrapped_model = unwrap_model(model)
             if is_peft_available() and isinstance(unwrapped_model, PeftModel):
                 model_name = unwrapped_model.base_model.model._get_name()

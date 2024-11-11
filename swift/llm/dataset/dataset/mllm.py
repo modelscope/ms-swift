@@ -53,18 +53,18 @@ class GPT4vDataset(ResponsePreprocessor):
         return super().preprocess(row)
 
 
-register_dataset(
-    DatasetMeta(
-        ms_dataset_id='swift/gpt4v-dataset',
-        hf_dataset_id='laion/gpt4v-dataset',
-        preprocess_func=GPT4vDataset(columns_mapping={
-            'link': 'images',
-            'caption': 'response'
-        }),
-        subsets=['default'],
-        split=['train'],
-        tags=['en', 'caption', 'multi-modal', 'quality'],
-    ))
+# register_dataset(
+#     DatasetMeta(
+#         ms_dataset_id='swift/gpt4v-dataset',
+#         hf_dataset_id='laion/gpt4v-dataset',
+#         preprocess_func=GPT4vDataset(columns_mapping={
+#             'link': 'images',
+#             'caption': 'response'
+#         }),
+#         subsets=['default'],
+#         split=['train'],
+#         tags=['en', 'caption', 'multi-modal', 'quality'],
+#     ))
 
 register_dataset(
     DatasetMeta(
@@ -108,7 +108,6 @@ register_dataset(
 
 
 class SA1BDenseCaptionPreprocessor(RowPreprocessor):
-
     column_mapping = {
         'url': 'images',
     }
@@ -339,7 +338,7 @@ class VideoChatGPTPreprocessor(RowPreprocessor):
         return {
             'messages': [{
                 'role': 'user',
-                'content': row.get('question') or row.get('question_1') or rowrow.get('question_2')
+                'content': row.get('question') or row.get('question_1') or row.get('question_2')
             }, {
                 'role': 'assistant',
                 'content': row['answer']
@@ -348,6 +347,202 @@ class VideoChatGPTPreprocessor(RowPreprocessor):
             os.path.join(self.local_dir, f"{row['videos']}.mp4"),
         }
 
+
+class EmoSchemaPreprocessor(ResponsePreprocessor):
+
+    def prepare_dataset(self, dataset: HfDataset) -> HfDataset:
+        for i in range(1, 6):
+            url = f'https://modelscope.cn/datasets/AI-ModelScope/egoschema/resolve/master/videos_chunked_0{i}.zip'
+            local_dir = MediaResource.download(url, 'egoschema')
+
+        self.local_dir = os.path.join(local_dir, 'videos')
+        self.mp4_set = [file[:-4] for file in os.listdir(self.local_dir) if file.endswith('mp4')]
+        return super().prepare_dataset(dataset)
+
+    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        transfer_to_option = {
+            '0': 'A',
+            '1': 'B',
+            '2': 'C',
+            '3': 'D',
+            '4': 'E',
+        }
+        if row['video_idx'] not in self.mp4_set:
+            return None
+
+        row = {
+            'query': row['query'] + '\n' + str(row['option']),
+            'response': transfer_to_option[row['response']],
+            'videos': [os.path.join(self.local_dir, f"{row['video_idx']}.mp4")],
+        }
+        return super().preprocess(row)
+
+
+register_dataset(
+    DatasetMeta(
+        ms_dataset_id='AI-ModelScope/egoschema',
+        hf_dataset_id='lmms-lab/egoschema',
+        subsets=['Subset'],
+        split=['test'],
+        preprocess_func=EmoSchemaPreprocessor(),
+        tags=['chat', 'multi-modal', 'video'],
+    ))
+
+
+def _generate_url_list(_url, _range):
+    lst = []
+    for i in range(1, (_range + 1)):
+        lst.append(_url.replace('{}', str(i)))
+    return lst
+
+
+class LLaVAVideo178KPreprocessor(MessagesPreprocessor):
+
+    def __init__(self,
+                 *,
+                 subset: str,
+                 columns_mapping: Optional[Dict[str, str]] = None,
+                 remove_useless_columns: bool = True) -> None:
+        self.subset = subset
+        super().__init__(columns_mapping=columns_mapping, remove_useless_columns=remove_useless_columns)
+
+    video_resources = {
+        '0_30_s_academic_v0_1':
+        _generate_url_list(
+            'https://www.modelscope.cn/datasets/lmms-lab/LLaVA-Video-178K/resolve/master/'
+            '0_30_s_academic_v0_1/0_30_s_academic_v0_1_videos_{}.tar.gz',
+            8,
+        ),
+        '0_30_s_youtube_v0_1':
+        _generate_url_list(
+            'https://www.modelscope.cn/datasets/lmms-lab/LLaVA-Video-178K/resolve/master/'
+            '0_30_s_youtube_v0_1/0_30_s_youtube_v0_1_videos_{}.tar.gz',
+            19,
+        ),
+        '1_2_m_academic_v0_1':
+        _generate_url_list(
+            'https://www.modelscope.cn/datasets/lmms-lab/LLaVA-Video-178K/resolve/master/'
+            '1_2_m_academic_v0_1/1_2_m_academic_v0_1_videos_{}.tar.gz',
+            14,
+        ),
+        '1_2_m_youtube_v0_1':
+        _generate_url_list(
+            'https://www.modelscope.cn/datasets/lmms-lab/LLaVA-Video-178K/resolve/master/'
+            '1_2_m_youtube_v0_1/1_2_m_youtube_v0_1_videos_{}.tar.gz',
+            50,
+        ),
+        '2_3_m_academic_v0_1':
+        _generate_url_list(
+            'https://www.modelscope.cn/datasets/lmms-lab/LLaVA-Video-178K/resolve/master/'
+            '2_3_m_academic_v0_1/2_3_m_academic_v0_1_videos_{}.tar.gz',
+            18,
+        ),
+        '2_3_m_youtube_v0_1':
+        _generate_url_list(
+            'https://www.modelscope.cn/datasets/lmms-lab/LLaVA-Video-178K/resolve/master/'
+            '2_3_m_youtube_v0_1/2_3_m_youtube_v0_1_videos_{}.tar.gz',
+            98,
+        ),
+        '30_60_s_academic_v0_1':
+        _generate_url_list(
+            'https://www.modelscope.cn/datasets/lmms-lab/LLaVA-Video-178K/resolve/master/'
+            '30_60_s_academic_v0_1/30_60_s_academic_v0_1_videos_{}.tar.gz',
+            10,
+        ),
+        '30_60_s_youtube_v0_1':
+        _generate_url_list(
+            'https://www.modelscope.cn/datasets/lmms-lab/LLaVA-Video-178K/resolve/master/'
+            '30_60_s_youtube_v0_1/30_60_s_youtube_v0_1_videos_{}.tar.gz',
+            13,
+        ),
+    }
+
+    def prepare_dataset(self, dataset: HfDataset) -> HfDataset:
+        urls = self.video_resources[self.subset]
+        self.local_dir = MediaResource.download(urls, f'llava_video_178k_{self.subset}', file_type='sharded')
+        return super().prepare_dataset(dataset)
+
+    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        file_path = os.path.join(self.local_dir, f"{row['video']}")
+        if not os.path.exists(file_path):
+            return None
+        return super().preprocess({
+            'id': row['id'],
+            'conversations': row['conversations'],
+            'data_source': row['data_source'],
+            'videos': [file_path],
+        })
+
+
+llava_video_subsets = []
+for subset in [
+        '0_30_s_academic_v0_1',
+        '0_30_s_youtube_v0_1',
+        '1_2_m_academic_v0_1',
+        '1_2_m_youtube_v0_1',
+        '2_3_m_academic_v0_1',
+        '2_3_m_youtube_v0_1',
+        '30_60_s_academic_v0_1',
+        '30_60_s_youtube_v0_1',
+]:
+    subset = SubsetDataset(
+        name=subset,
+        split=['caption', 'open_ended', 'multi_choice'],
+        preprocess_func=LLaVAVideo178KPreprocessor(subset=subset, columns_mapping={'video': 'videos'}),
+    )
+    llava_video_subsets.append(subset)
+
+register_dataset(
+    DatasetMeta(
+        ms_dataset_id='lmms-lab/LLaVA-Video-178K',
+        hf_dataset_id='lmms-lab/LLaVA-Video-178K',
+        subsets=llava_video_subsets,
+        tags=['chat', 'multi-modal', 'video']))
+
+
+class MovieChat1KPreprocessor(ResponsePreprocessor):
+
+    def prepare_dataset(self, dataset: HfDataset) -> HfDataset:
+        mp4_set = [f'{i}.mp4' for i in range(1, 10)] + \
+                  [f'{i}.mp4' for i in range(201, 240)] + \
+                  [f'AWA-{i}.mp4' for i in range(1, 10)] + \
+                  [f'AWB-{i}.mp4' for i in range(1, 16)] + \
+                  [f'AWC-{i}.mp4' for i in range(1, 11)] + \
+                  [f'AWD-{i}.mp4' for i in range(1, 8)] + \
+                  [f'AWE-{i}.mp4' for i in range(1, 7)] + \
+                  [f'AWG-{i}.mp4' for i in range(1, 12)] + \
+                  [f'AWH-{i}.mp4' for i in range(1, 8)] + \
+                  [f'BWA-{i}.mp4' for i in range(1, 7)] + \
+                  [f'BWB-{i}.mp4' for i in range(1, 7)] + \
+                  [f'BWD-{i}.mp4' for i in range(1, 6)] + \
+                  [f'BWE-{i}.mp4' for i in range(1, 6)] + \
+                  [f'BWG-{i}.mp4' for i in range(1, 6)] + \
+                  [f'BWH-{i}.mp4' for i in range(1, 6)] + \
+                  [f'TFS-{i}.mp4' for i in range(1, 13)] + \
+                  [f'UWA-{i}.mp4' for i in range(1, 5)] + ['UWA-6.mp4']
+        for file in mp4_set:
+            url = f'https://modelscope.cn/datasets/AI-ModelScope/MovieChat-1K-test/resolve/master/videos/{file}'
+            self.local_dir = MediaResource.download(url, 'moviechat_1k_test', file_type='file')
+        return super().prepare_dataset(dataset)
+
+    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        file_path = os.path.join(self.local_dir, f"{row['info']['video_path']}")
+        if not os.path.exists(file_path):
+            return None
+        return super().preprocess({
+            'query': row['global'][0]['question'],
+            'response': row['global'][0]['answer'],
+            'videos': file_path,
+        })
+
+
+register_dataset(
+    DatasetMeta(
+        ms_dataset_id='AI-ModelScope/MovieChat-1K-test',
+        hf_dataset_id='Enxin/MovieChat-1K-test',
+        preprocess_func=MovieChat1KPreprocessor(),
+        split=['train'],
+        tags=['chat', 'multi-modal', 'video']))
 
 register_dataset(
     DatasetMeta(

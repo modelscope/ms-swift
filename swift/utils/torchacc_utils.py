@@ -2,6 +2,7 @@
 import os
 import sys
 import types
+from collections import OrderedDict
 from typing import List, Optional, Tuple
 
 import safetensors
@@ -187,7 +188,7 @@ def save_ta_ddp_checkpoint(self_model, tokenizer, args, output_dir: Optional[str
 
     model = self_model
 
-    if xm.is_master_ordinal():
+    if xm.is_master_ordinal(local=False):
         os.makedirs(output_dir, exist_ok=True)
         torch.save(args, os.path.join(output_dir, 'training_args.bin'))
 
@@ -276,6 +277,8 @@ def save_ta_fsdp_checkpoint(self_model, tokenizer, args, output_dir):
                 torch.save(full_state_dict, os.path.join(output_dir, 'pytorch_model.bin'))
 
     xm.rendezvous('ckpt_consolidation')
+    # delete the sharded checkpoint.
+    os.remove(ckpt_path)
 
 
 def ta_trim_graph():
@@ -589,14 +592,20 @@ def patch_baichuan_model(model):
 
 def patch_qwen2_model(model):
 
+    def update_causal_mask(self, *args, **kwargs):
+        # attention_mask is not supported in TorchAcc.
+        return None
+
     def qwen2_attn_forward(
         self,
         hidden_states,
         attention_mask=None,
         position_ids=None,
         past_key_value=None,
-        output_attentions: bool = False,
-        use_cache: bool = False,
+        output_attentions=False,
+        use_cache=False,
+        cache_position=None,
+        position_embeddings=None,
         **kwargs,
     ):
 
@@ -622,9 +631,16 @@ def patch_qwen2_model(model):
         # Because the input can be padded, the absolute sequence length depends on the max position id.
         # rotary_seq_len = max(kv_seq_len, position_ids[:, -1].max().item()) + 1
         rotary_seq_len = kv_seq_len + 1
-        cos, sin = self.rotary_emb(value_states, seq_len=rotary_seq_len)
 
-        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
+        if version.parse(transformers.__version__) >= version.parse('4.45'):
+            if position_embeddings is None:
+                cos, sin = self.rotary_emb(value_states, position_ids)
+            else:
+                cos, sin = position_embeddings
+            query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
+        else:
+            cos, sin = self.rotary_emb(value_states, seq_len=rotary_seq_len)
+            query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
 
         dropout_rate = 0.0 if not self.training else self.attention_dropout
 
@@ -780,7 +796,10 @@ def patch_qwen2_model(model):
     for layer in model.model.layers:
         layer.self_attn.forward = types.MethodType(qwen2_attn_forward, layer.self_attn)
 
-    model.model.forward = types.MethodType(qwen2_forward, model.model)
+    if version.parse(transformers.__version__) >= version.parse('4.43'):
+        model.model._update_causal_mask = types.MethodType(update_causal_mask, model.model)
+    else:
+        model.model.forward = types.MethodType(qwen2_forward, model.model)
     return model
 
 

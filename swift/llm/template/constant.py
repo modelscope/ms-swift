@@ -72,20 +72,23 @@ class MLLMTemplateType:
     llama3_1_omni = 'llama3_1_omni'
     llama3_2_vision = 'llama3_2_vision'
 
-    llava1_5 = 'llava1_5'
-    llava_mistral = 'llava_mistral'
-    llava_vicuna = 'llava_vicuna'
-    llava_yi = 'llava_yi'
+    llava1_5_hf = 'llava1_5_hf'
+    llava1_6_mistral_hf = 'llava1_6_mistral_hf'
+    llava1_6_vicuna_hf = 'llava1_6_vicuna_hf'
+    llava1_6_yi_hf = 'llava1_6_yi_hf'
     llama3_llava_next_hf = 'llama3_llava_next_hf'
-    llava_qwen_hf = 'llama_qwen_hf'
-    llava_onevision_qwen = 'llava_onevision_qwen'
-    llava_next_video = 'llava_next_video'
-    llava_next_video_yi = 'llava_next_video_yi'
+    llava_next_qwen_hf = 'llava_next_qwen_hf'
+    llava_onevision_hf = 'llava_onevision_hf'
+    llava_next_video_hf = 'llava_next_video_hf'
 
-    llava_next_llama3 = 'llava_next_llama3'  # DaozeZhang
-    llava_llama_instruct = 'llava_llama_instruct'  # xtuner
-    llama3_llava_next = 'llama3_llava_next'  # lmms-lab
-    llava_qwen = 'llava_qwen'  # lmms-lab
+    llava_llama3_1_hf = 'llava_llama3_1_hf'  # DaozeZhang
+    llava_llama3_hf = 'llava_llama3_hf'  # xtuner
+    # lmms-lab
+    llava1_6_mistral = 'llava1_6_mistral'
+    llava1_6_yi = 'llava1_6_yi'
+    llava_next_qwen = 'llava_next_qwen'
+    llama3_llava_next = 'llama3_llava_next'
+
     yi_vl = 'yi_vl'
 
     internvl = 'internvl'

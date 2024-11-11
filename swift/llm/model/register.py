@@ -158,6 +158,11 @@ def get_model_tokenizer_from_local(model_dir: str,
 
     if model_config is None:
         model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+    # fix prediction_step (internvl2, ovis, ...)
+    if not hasattr(model_config, 'keys_to_ignore_at_inference'):
+        model_config.keys_to_ignore_at_inference = []
+    if 'past_key_values' not in model_config.keys_to_ignore_at_inference:
+        model_config.keys_to_ignore_at_inference.append('past_key_values')
     model_info.config = model_config
 
     torch_dtype = model_info.torch_dtype
@@ -180,16 +185,81 @@ def get_model_tokenizer_from_local(model_dir: str,
             model = automodel_class.from_pretrained(
                 model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
 
+    # fix not save modeling_xxx.py (transformers 4.45)
+    # https://github.com/huggingface/transformers/issues/24737
+    has_remote_code = hasattr(model_config, 'auto_map') and automodel_class.__name__ in model_config.auto_map
+    if has_remote_code and model._auto_class is None:
+        model._auto_class = automodel_class.__name__
     return model, tokenizer
 
 
+def get_model_with_value_head(model) -> 'AutoModelForCausalLMWithValueHead':
+    from trl import AutoModelForCausalLMWithValueHead
+    lm_head_namings = ['lm_head', 'embed_out']
+    if not any(hasattr(model, attribute) for attribute in lm_head_namings):
+        setattr(model, 'lm_head', None)  # avoid ValueError
+
+    model = AutoModelForCausalLMWithValueHead.from_pretrained(model)
+
+    def patch_valuehead_model(model):
+        attr_list = [
+            'get_input_embeddings', 'vis_processor', 'extract_feature', 'get_rope_index', 'model', 'vision_tower',
+            'img2emb', '_encode_image', '_merge_input_ids_with_image_features', 'prepare_inputs_embeds',
+            'build_conversation_input_ids', 'config', 'get_slice_image_placeholder', 'transform', 'get_vllm_embedding',
+            'forward_image', 'dtype', 'base_model_prefix', 'device', 'visual'
+        ]
+        for attr in attr_list:
+            if hasattr(model.pretrained_model, attr) and not hasattr(model, attr):
+                setattr(model, attr, getattr(model.pretrained_model, attr))
+
+        # PPO compatible
+        if not hasattr(model, 'score'):
+            setattr(model, 'score', model.v_head)
+        if model.base_model_prefix == '' and hasattr(model.pretrained_model, 'language_model'):
+            model.base_model_prefix = model.pretrained_model.language_model.base_model_prefix
+
+        base_model_prefix = model.pretrained_model.base_model_prefix
+        if hasattr(model.pretrained_model, base_model_prefix):
+            setattr(model, base_model_prefix, getattr(model.pretrained_model, base_model_prefix))
+
+    patch_valuehead_model(model)
+
+    # try to load local vhead weights
+    vhead_params = None
+    try:
+        from safetensors import safe_open
+        vhead_file = os.path.join(model.pretrained_model.model_dir, 'value_head.safetensors')
+        with safe_open(vhead_file, framework='pt', device='cpu') as f:
+            vhead_params = {key: f.get_tensor(key) for key in f.keys()}
+    except Exception:
+        pass
+
+    try:
+        vhead_file = os.path.join(model.pretrained_model.model_dir, 'value_head.bin')
+        vhead_params = torch.load(vhead_file, map_location='cpu')
+    except Exception:
+        pass
+
+    if vhead_params is not None:
+        model.load_state_dict(vhead_params, strict=False)
+        logger.info(f'Loading value head weights from {vhead_file}')
+    else:
+        logger.info('The local value head weight file was not detected.'
+                    'Ignore it if this is during the reward modeling phase,')
+    return model
+
+
 def get_model_tokenizer_with_flash_attn(model_dir: str,
-                                        model_config: PretrainedConfig,
+                                        model_info: ModelInfo,
                                         model_kwargs: Dict[str, Any],
                                         load_model: bool = True,
                                         **kwargs):
+    model_config = kwargs.get('model_config')
+    if model_config is None:
+        model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     AttnImpl.update_attn_impl(model_config, kwargs.get('attn_impl'))
-    return get_model_tokenizer_from_local(model_dir, model_config, model_kwargs, load_model, **kwargs)
+    kwargs['model_config'] = model_config
+    return get_model_tokenizer_from_local(model_dir, model_info, model_kwargs, load_model, **kwargs)
 
 
 def get_model_tokenizer_multimodal(model_dir: str, *args, **kwargs):
@@ -303,7 +373,7 @@ def _get_model_name(model_id_or_path: str) -> str:
     return model_name.lower()
 
 
-def get_matched_model_meta(model_id_or_path: str) -> Optional[str]:
+def get_matched_model_meta(model_id_or_path: str) -> Optional[ModelMeta]:
     model_name = _get_model_name(model_id_or_path).lower()
     for model_type, model_meta in MODEL_MAPPING.items():
         model_group = model_meta.get_matched_model_group(model_name)

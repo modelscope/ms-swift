@@ -19,7 +19,6 @@ import torch
 import torch.nn as nn
 import transformers
 from datasets import Dataset as HfDataset
-from modelscope import check_local_model_is_latest
 from packaging import version
 from peft import PeftModel
 from torch.nn import Module
@@ -32,16 +31,21 @@ from transformers.trainer_utils import EvalPrediction
 from transformers.training_args import TrainingArguments
 from transformers.utils import is_sagemaker_mp_enabled, is_torch_npu_available
 
+from swift.hub.check_model import check_local_model_is_latest
 from swift.torchacc_utils import (save_ta_ddp_checkpoint, save_ta_fsdp_checkpoint, ta_eval_dataloader,
                                   ta_load_optimizer_and_scheduler, ta_save_optimizer_and_scheduler, ta_test_dataloader,
                                   ta_train_dataloader, ta_trim_graph)
 from swift.tuners import SwiftModel
 from swift.utils import check_json_format, get_logger, use_torchacc
 from swift.utils.constants import Invoke
-from ..plugin.tuner import Tuner, extra_tuners
 from .callback import DefaultFlowCallbackNew, PrinterCallbackNew, ProgressCallbackNew
 from .optimizers.galore import create_optimizer_and_scheduler
 from .utils import can_return_loss, find_labels, get_function, is_instance_of_ms_model
+
+try:
+    from trl import AutoModelForCausalLMWithValueHead
+except (ImportError, RuntimeError):
+    AutoModelForCausalLMWithValueHead = None
 
 logger = get_logger()
 
@@ -99,7 +103,7 @@ class SwiftMixin:
             optimizers=optimizers,
             preprocess_logits_for_metrics=preprocess_logits_for_metrics,
             **kwargs)
-        if not self.label_names:
+        if not hasattr(self, 'label_names') or not self.label_names:
             self.label_names = ['labels']
         if is_quantized and use_swift:
             model._hf_peft_config_loaded = _hf_peft_config_loaded
@@ -136,7 +140,7 @@ class SwiftMixin:
         if not hasattr(self, 'sft_args'):
             return
         sft_args = self.sft_args
-        if sft_args.train_type == 'full':
+        if sft_args.sft_type == 'full':
             return
         configuration_path = os.path.join(output_dir, 'configuration.json')
         new_cfg = {}
@@ -231,11 +235,49 @@ class SwiftMixin:
         if not use_torchacc():
             return super()._save_tpu(output_dir)
 
+        import torch_xla.core.xla_model as xm
+
+        # Compatible with swift and peft
         output_dir = output_dir if output_dir is not None else self.args.output_dir
+
+        if xm.is_master_ordinal(local=False):
+            os.makedirs(output_dir, exist_ok=True)
+            # configuration.json
+            model_dir = getattr(self.model, 'model_dir', None)
+            if model_dir is not None:
+                src_path = os.path.join(model_dir, 'configuration.json')
+                dst_path = os.path.join(output_dir, 'configuration.json')
+                if os.path.exists(src_path):
+                    shutil.copy(src_path, dst_path)
+            else:
+                self._create_configuration_file(self.model, output_dir)
+            self._add_adapter_cfg(output_dir)
+            self._save_sft_args(output_dir)
+            # generation_config
+            generation_config = getattr(self.args, 'generation_config', None)
+            if generation_config is not None:
+                generation_config.save_pretrained(output_dir)
+
+        # model
         if self.sft_args.fsdp_num > 1:
             save_ta_fsdp_checkpoint(self.model, self.tokenizer, self.args, output_dir)
         else:
             save_ta_ddp_checkpoint(self.model, self.tokenizer, self.args, output_dir)
+        sft_args = getattr(self, 'sft_args', None)
+
+        # additional files
+        if xm.is_master_ordinal(local=False):
+            if sft_args is not None and sft_args.sft_type == 'full':
+                additional_files = getattr(self.args, 'additional_saved_files',
+                                           None) or [] + ['preprocessor_config.json']
+                if model_dir is not None:
+                    for file in additional_files:
+                        src_path = os.path.join(model_dir, file)
+                        dst_path = os.path.join(output_dir, file)
+                        if os.path.isfile(src_path):
+                            shutil.copy(src_path, dst_path)
+                        elif os.path.isdir(src_path):
+                            shutil.copytree(src_path, dst_path)
 
     def _save(self, output_dir: Optional[str] = None, state_dict=None):
         """Compatible with swift and peft"""
@@ -258,14 +300,13 @@ class SwiftMixin:
         if generation_config is not None:
             generation_config.save_pretrained(output_dir)
         # model
+
         supported_classes = (SwiftModel, PreTrainedModel, PeftModel)
+        if AutoModelForCausalLMWithValueHead is not None:
+            supported_classes = supported_classes + (AutoModelForCausalLMWithValueHead, )
         save_safetensors = self.args.save_safetensors
 
-        sft_args = getattr(self, 'sft_args', None)
-        if sft_args and sft_args.train_type in extra_tuners:
-            tuner: Tuner = extra_tuners[sft_args.train_type]
-            tuner.save_pretrained(self.model, output_dir)
-        elif not isinstance(self.model, supported_classes):
+        if not isinstance(self.model, supported_classes):
             if state_dict is None:
                 state_dict = self.model.state_dict()
 
@@ -281,18 +322,36 @@ class SwiftMixin:
         elif is_instance_of_ms_model(self.model):
             PreTrainedModel.save_pretrained(
                 self.model, output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
+        elif AutoModelForCausalLMWithValueHead is not None and isinstance(self.model,
+                                                                          AutoModelForCausalLMWithValueHead):
+            # save reward model
+            state_dict = self.model.state_dict()
+            decoder_state_dict, v_head_state_dict = {}, {}
+            for name, param in state_dict.items():
+                if name.startswith('v_head.'):
+                    v_head_state_dict[name] = param
+                else:
+                    decoder_state_dict[name.replace('pretrained_model.', '', 1)] = param
+            self.model.pretrained_model.save_pretrained(
+                output_dir, state_dict=decoder_state_dict or None, safe_serialization=save_safetensors)
+            if save_safetensors:
+                from safetensors.torch import save_file
+                save_file(
+                    v_head_state_dict, os.path.join(output_dir, 'value_head.safetensors'), metadata={'format': 'pt'})
+            else:
+                torch.save(v_head_state_dict, os.path.join(output_dir, 'value_head.bin'))
         else:
             self.model.save_pretrained(output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
+        sft_args = getattr(self, 'sft_args', None)
         # tokenizer
-        if self.tokenizer is not None and sft_args is not None and sft_args.train_type == 'full':
+        if self.tokenizer is not None and sft_args is not None and sft_args.sft_type == 'full':
             if hasattr(self.tokenizer, 'processor'):
                 self.tokenizer.processor.save_pretrained(output_dir)
             self.tokenizer.save_pretrained(output_dir)
         # training_args.bin
         torch.save(self.args, os.path.join(output_dir, 'training_args.bin'))
         # additional files
-        if sft_args is not None and sft_args.train_type == 'full':
-            # TODO:additional_saved_files
+        if sft_args is not None and sft_args.sft_type == 'full':
             additional_files = getattr(self.args, 'additional_saved_files', None) or [] + ['preprocessor_config.json']
             if model_dir is not None:
                 for file in additional_files:
@@ -504,6 +563,58 @@ class SwiftMixin:
             self.log(logs)
         super()._maybe_log_save_evaluate(tr_loss, *args, **kwargs)
 
+    def create_optimizer_and_scheduler(self, num_training_steps: int):
+        if hasattr(self.args, 'galore_config'):
+            optimizer, lr_scheduler = create_optimizer_and_scheduler(
+                self.model,
+                self.args,
+                self.args.galore_config,
+                num_training_steps,
+                lr=self.args.learning_rate,
+                weight_decay=self.args.weight_decay)
+            self.optimizer = optimizer
+            self.lr_scheduler = lr_scheduler
+        else:
+            self.create_optimizer()
+            self.create_scheduler(num_training_steps=num_training_steps, optimizer=self.optimizer)
+
+    def create_optimizer(self):
+        opt_model = self.model
+
+        if self.optimizer is None:
+            if version.parse(transformers.__version__) < version.parse('4.34.0'):
+                logger.warning(f'If you are using lora+, please remember using transformers>=4.34.0, '
+                               f'but now is {transformers.__version__}')
+                return super().create_optimizer()
+
+            optimizer_grouped_parameters = None
+            if hasattr(self.model, 'create_optimizer_param_groups'):
+                # Lora+ parameter groups
+                optimizer_grouped_parameters = self.model.create_optimizer_param_groups(
+                    lr=self.args.learning_rate, weight_decay=self.args.weight_decay)
+
+            if optimizer_grouped_parameters is None:
+                # Default parameter groups
+                decay_parameters = self.get_decay_parameter_names(opt_model)
+                optimizer_grouped_parameters = [
+                    {
+                        'params':
+                        [p for n, p in opt_model.named_parameters() if (n in decay_parameters and p.requires_grad)],
+                        'weight_decay':
+                        self.args.weight_decay,
+                    },
+                    {
+                        'params':
+                        [p for n, p in opt_model.named_parameters() if (n not in decay_parameters and p.requires_grad)],
+                        'weight_decay':
+                        0.0,
+                    },
+                ]
+
+            optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(self.args)
+            self.optimizer = optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs)
+        return self.optimizer
+
     def get_train_dataloader(self):
         if self.sequence_parallel_size > 1:
             from swift.trainers.xtuner import get_xtuner_train_dataloader
@@ -590,15 +701,16 @@ class ModelWrapper(nn.Module):
     @contextmanager
     def _save_load_context(cls, trainer):
         # fix zero3 & save/load model
-        _model = trainer.deepspeed
-        _new_model = _model._model
-        _model.__dict__['module'] = _new_model
-        _model._modules['module'] = _new_model
+        deepspeed_model = trainer.deepspeed
+        _new_model = deepspeed_model._model
+        _old_model = deepspeed_model.__dict__['module']
+        deepspeed_model.__dict__['module'] = _new_model
+        deepspeed_model._modules['module'] = _new_model
         trainer.model = _new_model
         yield
-        _model.__dict__['module'] = _model
-        _model._modules['module'] = _model
-        trainer.model = _model
+        deepspeed_model.__dict__['module'] = _old_model
+        deepspeed_model._modules['module'] = _old_model
+        trainer.model = deepspeed_model
 
 
 class RLHFTrainerMixin:
@@ -624,8 +736,8 @@ class RLHFTrainerMixin:
         self.ref_model = ref_model
         self._stored_metrics = defaultdict(lambda: defaultdict(list))
         args = kwargs['args']
-        self.beta = args.beta
-        if args.disable_dropout:
+        self.beta = getattr(args, 'beta', 0.0)
+        if getattr(args, 'disable_dropout', False):
             disable_dropout_in_model(model)
             if self.ref_model is not None:
                 disable_dropout_in_model(self.ref_model)
@@ -633,7 +745,7 @@ class RLHFTrainerMixin:
         self.is_encoder_decoder = kwargs['is_encoder_decoder']
         self.aux_loss_enabled = getattr(model.config, 'output_router_logits', False)
         self._peft_has_been_casted_to_bf16 = False
-        self.generate_during_eval = args.generate_during_eval
+        self.generate_during_eval = getattr(args, 'generate_during_eval', False)
         self.is_multimodal = False
         if self.is_encoder_decoder:
             self.decoder_start_token_id = self.get_model_config_attr(model.config, 'decoder_start_token_id')
@@ -658,7 +770,6 @@ class RLHFTrainerMixin:
     def concatenated_forward(
         self, model: nn.Module, batch: Dict[str, Union[List, torch.LongTensor]]
     ) -> Tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
-
         model_kwargs = batch.copy()
         labels = model_kwargs.pop('labels', None)
         if self.is_encoder_decoder:
@@ -695,6 +806,15 @@ class RLHFTrainerMixin:
         if self.is_encoder_decoder:
             labels = labels.clone()  # fix trl bug
         return super().get_batch_logps(logits, labels, *args, **kwargs)
+
+    def compute_loss(self, model, inputs, return_outputs=None, num_items_in_batch=None):
+        res = super().compute_loss(model, inputs, return_outputs=return_outputs)
+        # compat transformers>=4.46.*
+        if num_items_in_batch is not None:
+            loss = res[0] if return_outputs else res
+            loss /= self.args.gradient_accumulation_steps
+            return (loss, res[1:]) if return_outputs else loss
+        return res
 
 
 # monkey patching
