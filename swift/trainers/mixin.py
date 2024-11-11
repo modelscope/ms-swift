@@ -383,6 +383,7 @@ class SwiftMixin:
                 self.deepspeed._zero3_consolidated_16bit_state_dict = MethodType(_zero3_consolidated_16bit_state_dict,
                                                                                  self.deepspeed)
         if version.parse(transformers.__version__) >= version.parse('4.36') or not self.args.save_only_model:
+            # fix transformers==4.47
             kwargs = {}
             parameters = inspect.signature(super()._save_checkpoint).parameters
             if 'metrics' in parameters:
