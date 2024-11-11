@@ -4853,7 +4853,7 @@ def get_model_tokenizer_internvl(model_dir: str,
                                  load_model: bool = True,
                                  **kwargs):
     tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True, use_fast=False)
-    if kwargs.get('eos_token') is None and tokenizer.eos_token != '<|im_end|>':
+    if kwargs.get('eos_token') is None and tokenizer.decode(tokenizer.eos_token_id).strip() != '<|im_end|>':
         try:
             del tokenizer.__class__.eos_token_id
         except AttributeError:
