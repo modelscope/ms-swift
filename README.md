@@ -55,6 +55,9 @@ You can contact us and communicate with us by adding our group:
 <img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
 ## 🎉 News
+- 2024.10.24: Support for training and deploying aya-expanse series models. Experience it using `swift infer --model_type aya-expanse-32b`.
+- 2024.10.22: Support for training and deploying emu3-chat. Experience it using `swift infer --model_type emu3-chat`.
+- 2024.10.22: Support for training and deploying molmo series models. Experience it using `swift infer --model_type molmo-7b-d`.
 - 2024.10.09: Support for reward modeling for LLM and MLLM, as well as PPO training for LLM. Refer to the [documentation](docs/source_en/LLM/Human-Preference-Alignment-Training-Documentation.md).
 - 2024.10.09: Support for training and deploying ovis1.6-gemma2 series models. Experience it using `swift infer --model_type ovis1_6-gemma2-9b`.
 - 2024.09.26: Support for training and deploying llama3.2-vision series models. Experience it using `swift infer --model_type llama3_2-11b-vision-instruct`.
@@ -613,6 +616,7 @@ The complete list of supported models and datasets can be found at [Supported Mo
 | dbrx                                                                                            | [databricks](https://github.com/databricks/dbrx)                                                                                               | English            | 132B                                      | base model<br>chat model                                          |
 | mengzi3                                                                                         | [Langboat](https://github.com/Langboat/Mengzi3)                                                                                                | Chinese<br>English | 13B                                       | base model                                                        |
 | c4ai-command-r                                                                                  | [c4ai](https://cohere.com/command)                                                                                                             | Multilingual       | 35B-104B                                  | chat model                                                        |
+| aya-expanse                                                                                  | [aya](https://cohere.com/research/aya)                                                                                                             | Multilingual       | 8B-32B                                  | chat model                                                        |
 | WizardLM2                                                                                       | [WizardLM2 series models](https://github.com/nlpxucan/WizardLM)                                                                                | English            | 7B-8x22B<br>including quantized versions  | chat model<br>MoE model                                           |
 | Atom                                                                                            | [Atom](https://github.com/LlamaFamily/Llama-Chinese)                                                                                           | Chinese            | 7B                                        | base model<br>chat model                                          |
 | Chinese-LLaMA-Alpaca-2                                                                          | [Chinese-LLaMA-Alpaca-2](https://github.com/ymcui/Chinese-LLaMA-Alpaca-2)                                                                      | Chinese            | 1.3B-13B                                  | base model<br>chat model<br>long text model                       |
@@ -629,13 +633,13 @@ The complete list of supported models and datasets can be found at [Supported Mo
 | Llama3.2-Vision              | [Llama3.2](https://huggingface.co/collections/meta-llama/llama-32-66f448ffc8c32f949b04c8cf)                | English       | 11B-90B      | base model<br>chat model       |
 | YI-VL                                                      | [01AI's YI series vision models](https://github.com/01-ai)                             | Chinese<br>English | 6B-34B                                | chat model               |
 | XComposer2<br>XComposer2.5                                 | [Pujiang AI Lab InternLM vision model](https://github.com/InternLM/InternLM-XComposer) | Chinese<br>English | 7B                                    | chat model               |
-| DeepSeek-VL                                                | [DeepSeek series vision models](https://github.com/deepseek-ai)                        | Chinese<br>English | 1.3B-7B                               | chat model               |
+| DeepSeek-VL<br>Deepseek-Janus                                      | [DeepSeek series vision models](https://github.com/deepseek-ai)                        | Chinese<br>English | 1.3B-7B                               | chat model               |
 | MiniCPM-V<br>MiniCPM-V-2<br>MiniCPM-V-2.5<br>MiniCPM-V-2.6 | [OpenBmB MiniCPM vision model](https://github.com/OpenBMB/MiniCPM)                     | Chinese<br>English | 3B-9B                                 | chat model               |
 | CogVLM<br>CogAgent<br>CogVLM2<br>CogVLM2-Video<br>GLM4V    | [Zhipu ChatGLM visual QA and Agent model](https://github.com/THUDM/)                   | Chinese<br>English | 9B-19B                                | chat model               |
 | Llava-HF                                                   | [Llava-HF series models](https://huggingface.co/llava-hf)                          | English       | 0.5B-110B           | chat model           |
 | Llava1.5<br>Llava1.6                                       | [Llava series models](https://github.com/haotian-liu/LLaVA)                            | English            | 7B-34B                                | chat model               |
 | Llava-Next<br>Llava-Next-Video                             | [Llava-Next series models](https://github.com/LLaVA-VL/LLaVA-NeXT)                     | Chinese<br>English | 7B-110B                               | chat model               |
-| mPLUG-Owl2<br>mPLUG-Owl2.1<br>mPLUG-Owl3                | [mPLUG-Owl series models](https://github.com/X-PLUG/mPLUG-Owl)                         | English            | 11B                                   | chat model               |
+| mPLUG-Owl2<br>mPLUG-Owl2.1<br>mPLUG-Owl3                | [mPLUG-Owl series models](https://github.com/X-PLUG/mPLUG-Owl)                         | English            | 1B-11B                                   | chat model               |
 | InternVL<br>Mini-InternVL<br>InternVL2                     | [InternVL](https://github.com/OpenGVLab/InternVL)                                      | Chinese<br>English | 1B-40B<br>including quantized version | chat model               |
 | Llava-llama3                                               | [xtuner](https://huggingface.co/xtuner/llava-llama-3-8b-v1_1-transformers)             | English            | 8B                                    | chat model               |
 | Phi3-Vision                                                | Microsoft                                                                              | English            | 4B                                    | chat model               |
@@ -645,7 +649,8 @@ The complete list of supported models and datasets can be found at [Supported Mo
 | Pixtral                                | [mistralai](https://huggingface.co/mistralai)                     | English       | 12B      | chat model       |
 | Llama3.1-Omni              | [LLaMA-Omni](https://github.com/ictnlp/LLaMA-Omni)                | English       | 8B      | chat model       |
 | Ovis              | [Ovis](https://github.com/AIDC-AI/Ovis)                | English       | 9B      | chat model       |
-
+| Molmo              | [Molmo series models](https://huggingface.co/collections/allenai/molmo-66f379e6fe3b8ef090a8ca19)                | English       | 1B-72B      | chat model       |
+| Emu3-Chat              | [Emu3-Chat](https://huggingface.co/BAAI/Emu3-Chat)                | English       | 8B      | chat model       |
 
 #### Diffusion Models
 
@@ -656,7 +661,7 @@ The complete list of supported models and datasets can be found at [Supported Mo
 
 ### Supported Open Source Datasets
 
-| Dataset Type        | Training Task   | Documentation                                                                                                                                                                                                                                |
+| Dataset Type        | Training Task   | Dataset                                                                                                                                                                                                                                |
 |---------------------|:----------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | General             | Fine-tuning     | 🔥ruozhiba, 🔥ms-bench, 🔥alpaca-en(gpt4), 🔥alpaca-zh(gpt4), multi-alpaca, instinwild, cot-en, cot-zh, firefly-zh, instruct-en, gpt4all-en, sharegpt, tulu-v2-sft-mixture, wikipedia-zh, open-orca, sharegpt-gpt4, deepctrl-sft, coig-cqia. |
 | Agent               | Fine-tuning     | 🔥ms-agent, 🔥ms-agent-for-agentfabric, ms-agent-multirole, 🔥toolbench-for-alpha-umi, damo-agent-zh, damo-agent-zh-mini, agent-instruct-all-en.                                                                                             |

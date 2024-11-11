@@ -142,9 +142,13 @@ class TemplateType:
     dbrx = 'dbrx'
     mengzi = 'mengzi'
     c4ai = 'c4ai'
+    aya = 'aya'
     chatml = 'chatml'
     got_ocr2 = 'got_ocr2'
     ovis1_6 = 'ovis1_6'
+    molmo = 'molmo'
+    deepseek_janus = 'deepseek-janus'
+    emu3_chat = 'emu3-chat'
     # compatibility. (Deprecated)
     default_generation_bos = 'default-generation-bos'
     yi = 'yi'
@@ -1133,6 +1137,8 @@ class Template:
         tokenizer = self.tokenizer
         if hasattr(generate_ids, 'tolist'):
             generate_ids = generate_ids.tolist()
+        elif isinstance(generate_ids, tuple):
+            generate_ids = list(generate_ids)
         # avoid printing template.suffix[-1])
         if isinstance(self.suffix[-1], list) and (not is_finished or is_finished
                                                   and generate_ids[-len(self.suffix[-1]):] == self.suffix[-1]):
@@ -1523,7 +1529,7 @@ register_template(
 
 def _process_image_qwen(image):
     from qwen_vl_utils.vision_process import IMAGE_FACTOR, MIN_PIXELS, MAX_PIXELS, smart_resize
-    size_factor = get_env_args('size_factor', int, IMAGE_FACTOR)
+    size_factor = get_env_args('image_factor', int, IMAGE_FACTOR, ['size_factor'])
     # resize
     resized_height = get_env_args('resized_height', int, None)
     resized_width = get_env_args('resized_width', int, None)
@@ -1678,6 +1684,10 @@ class _Qwen2VLTemplateMixin:
                                                         res.get('video_grid_thw'), res['attention_mask'])
             res['position_ids'] = position_ids.contiguous()
         return res
+
+    @staticmethod
+    def _get_generate_ids(generate_ids: List[int], input_token_len: int) -> List[int]:
+        return generate_ids
 
 
 class Qwen2VLTemplate(_Qwen2VLTemplateMixin, QwenTemplate):
@@ -2170,16 +2180,27 @@ _T = TypeVar('_T')
 _log_set = set()  # log once
 
 
-def get_env_args(args_name: str, type_func: Callable[[str], _T], default_value: Optional[_T]) -> Optional[_T]:
-    args_name_upper = args_name.upper()
-    value = os.getenv(args_name_upper)
-    if value is None:
+def get_env_args(args_name: str,
+                 type_func: Callable[[str], _T],
+                 default_value: Optional[_T],
+                 compat_args_names: Optional[List[str]] = None) -> Optional[_T]:
+    # compat_args_names: compatibility
+    if compat_args_names is None:
+        compat_args_names = []
+    args_name_list = [args_name] + compat_args_names
+    for args_name in args_name_list:
+        args_name_upper = args_name.upper()
+        value = os.getenv(args_name_upper)
+        if value is not None:
+            value = type_func(value)
+            log_info = f'Using environment variable `{args_name_upper}`, Setting {args_name}: {value}.'
+            break
+    else:
+        args_name = args_name_list[0]
+        args_name_upper = args_name.upper()
         value = default_value
         log_info = (f'Setting {args_name}: {default_value}. '
                     f'You can adjust this hyperparameter through the environment variable: `{args_name_upper}`.')
-    else:
-        value = type_func(value)
-        log_info = f'Using environment variable `{args_name_upper}`, Setting {args_name}: {value}.'
     if log_info not in _log_set:
         _log_set.add(log_info)
         logger.info(log_info)
@@ -2991,6 +3012,222 @@ class LLavaLlamaTemplate(Llama3Template):
 register_template(TemplateType.llava_llama_instruct, LLavaLlamaTemplate(), use_model=True, lazy_tokenize=True)
 
 
+class MolmoTemplate(Template):
+    system = None
+    image_placeholder = ['<|image|>']
+    DEFAULT_IMAGE_PATCH_TOKEN = '<im_patch>'
+    DEFAULT_IM_START_TOKEN = '<im_start>'
+    DEFAULT_IM_END_TOKEN = '<im_end>'
+    DEFAULT_IM_COL_TOKEN = '<im_col>'
+
+    def __init__(self):
+        Template.__init__(self, [], [' User: {{QUERY}} Assistant:'], ['<|endoftext|>'], ['<|endoftext|>'], self.system)
+        self.processor_kwargs = {
+            'images_kwargs': {
+                'max_crops': 12,
+                'overlap_margins': [4, 4],
+                'base_image_input_size': [336, 336],
+                'image_token_length_w': 12,
+                'image_token_length_h': 12,
+                'image_patch_size': 14,
+                'image_padding_mask': True,
+            },
+            'text_kwargs': {
+                'style': 'long_caption',
+                'system_prompt': 'none',
+                'message_format': 'role',
+                'always_start_with_space': True,
+                'sequence_length': 1536,
+                'padding': False,
+            }
+        }
+
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super()._encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
+        # image
+        raw_image = example.get('images', None)
+        res = {}
+        labels = inputs['labels']
+        if raw_image:
+            image_id = self.tokenizer.convert_tokens_to_ids(self.image_placeholder)
+            idx_list = _findall(inputs['input_ids'], image_id)
+            res = self._process_images(raw_image, inputs['input_ids'], idx_list, labels)
+            import numpy as np
+            if 'image_input_idx' in res:
+                # Shift patch mapping up by one since we added BOS
+                image_input_idx = res['image_input_idx']
+                res['image_input_idx'] = np.where(image_input_idx < 0, image_input_idx, image_input_idx + 1)
+            inputs['input_ids'] = res.pop('input_ids').tolist()
+            if labels:
+                inputs['labels'] = [-100] + res.pop('labels')  # add one label for BOS
+
+            for k, v in res.items():
+                res[k] = torch.from_numpy(v).unsqueeze(0)
+        bos = self.tokenizer.bos_token_id or self.tokenizer.eos_token_id
+        inputs['input_ids'] = [bos] + inputs['input_ids']
+        res.update({'input_ids': inputs['input_ids']})
+        # prepare meta inputs
+        inputs.update(self.prepare_meta_inputs(res))
+
+        return inputs, {}
+
+    def _process_images(self, images: List, tokens: List, idx_list: List = None, labels: List = None) -> torch.Tensor:
+        from PIL import ImageOps
+        from PIL.Image import Image
+        import numpy as np
+        if images is not None:
+            image_arrays = []
+            for image in images:
+                if isinstance(image, Image):
+                    image = image.convert('RGB')
+                    image_arrays.append(np.array(image))
+                else:
+                    assert len(image.shape) == 3 and image.shape[-1] == 3
+                    image_arrays.append(image.astype(np.uint8))
+            images = image_arrays
+            # For now only support inserting images at the start
+        if idx_list is None:
+            idx_list = [-1] * len(images)
+        image_patch_token_id = self.tokenizer.processor.special_token_ids[self.DEFAULT_IMAGE_PATCH_TOKEN]
+        image_col_token_id = self.tokenizer.processor.special_token_ids[self.DEFAULT_IM_COL_TOKEN]
+        image_start_token_id = self.tokenizer.processor.special_token_ids[self.DEFAULT_IM_START_TOKEN]
+        image_end_token_id = self.tokenizer.processor.special_token_ids[self.DEFAULT_IM_END_TOKEN]
+        sequence_length = self.processor_kwargs['text_kwargs']['sequence_length']
+        res = self.tokenizer.processor.image_processor.multimodal_preprocess(
+            images=images,
+            image_idx=idx_list,
+            tokens=np.asarray(tokens).astype(np.int32),
+            sequence_length=sequence_length,
+            image_patch_token_id=image_patch_token_id,
+            image_col_token_id=image_col_token_id,
+            image_start_token_id=image_start_token_id,
+            image_end_token_id=image_end_token_id,
+            **self.processor_kwargs['images_kwargs'])
+        if labels is not None:
+            new_labels = []
+            cur_idx = 0
+            for input_id in res['input_ids']:
+                if input_id in (image_start_token_id, image_end_token_id, image_col_token_id, image_patch_token_id):
+                    new_labels.append(-100)
+                    if tokens[cur_idx] == self.tokenizer.convert_tokens_to_ids(self.image_placeholder)[0]:
+                        cur_idx += 1
+                else:
+                    new_labels.append(labels[cur_idx])
+                    cur_idx += 1
+            res['labels'] = new_labels
+        return res
+
+    def prepare_meta_inputs(self, data: Any) -> Dict[str, Any]:
+
+        # prepare batch inputs
+        input_ids = torch.tensor(data['input_ids']).unsqueeze(0)
+        generation_config = self.model.generation_config
+
+        batch_size, seq_len = input_ids.shape
+        attention_mask = None
+        max_new_tokens = generation_config.max_new_tokens
+        assert max_new_tokens is not None
+        mask_len = seq_len + max_new_tokens if self.model.config.use_position_ids else seq_len
+        position_ids: Optional[torch.Tensor] = None
+        append_last_valid_logits: Optional[torch.Tensor] = None
+        if self.model.config.use_position_ids and attention_mask is None:
+            attention_mask = input_ids != -1
+            position_ids = torch.clamp(torch.cumsum(attention_mask.to(torch.int32), dim=-1) - 1, min=0)
+            append_last_valid_logits = attention_mask.long().sum(dim=-1) - 1
+            attention_mask = torch.cat(
+                [attention_mask, attention_mask.new_ones((batch_size, max_new_tokens))],
+                dim=1,
+            )
+        if attention_mask is not None:
+            assert attention_mask.shape == (batch_size, mask_len)
+        if self._is_training:
+            # no batch_size before data_collator
+            attention_mask = attention_mask.squeeze(0)
+            position_ids = position_ids.squeeze(0)
+        data.update({
+            'attention_mask': attention_mask,
+            'position_ids': position_ids,
+            'append_last_valid_logits': append_last_valid_logits,
+        })
+        if 'images' in data:
+            data['images'] = data['images'].to(self.model.dtype)
+        return data
+
+    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super().data_collator(batch, padding_to)
+        # prepare batch attention_mask
+        attention_mask = res['attention_mask']
+        generation_config = self.model.generation_config
+        max_new_tokens = generation_config.max_new_tokens
+        batch_size, seq_len = attention_mask.shape
+        attention_mask = torch.cat(
+            [attention_mask, attention_mask.new_ones((batch_size, max_new_tokens))],
+            dim=1,
+        )
+        # prepare batchfy inputs
+        keys = ['images', 'image_input_idx', 'image_masks', 'append_last_valid_logits']
+        for key in keys:
+            batch_input = [b[key] for b in batch if b.get(key) is not None]
+            res[key] = torch.concat(batch_input)
+
+        return res
+
+
+register_template(TemplateType.molmo, MolmoTemplate(), lazy_tokenize=True, use_model=True)
+
+
+class Emu3ChatTemplate(Template):
+    system = 'You are a helpful assistant.'
+    image_placeholder = ['<|image token|>']
+
+    def __init__(self):
+        Template.__init__(self, [['bos_token_id'], '{{SYSTEM}}'], [' User: {{QUERY}}. Assistant:'], [['eos_token_id']],
+                          [['eos_token_id']], self.system)
+
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super()._encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
+        # image
+        raw_image = example.get('images', None)
+        if raw_image:
+            inputs['_data'] = {'raw_image': raw_image, 'input_ids': inputs['input_ids'], 'labels': inputs['labels']}
+
+        return inputs, {}
+
+    def _post_encode(self, model, data: Any) -> Dict[str, Any]:
+        raw_images = data['raw_image']
+        input_ids = data['input_ids']
+        labels = data['labels']
+        image_tokens = self.tokenizer.processor.tokenize_image(raw_images)
+        image_prompts = []
+        idxs = _findall(input_ids, self.tokenizer.encode(self.image_placeholder))
+        # Create image prompts
+        for i in range(len(raw_images)):
+            h, w = image_tokens[i].shape
+            imgstr = self.tokenizer.processor.to_imgstr(image_tokens[i])
+            image_prompt = (
+                self.tokenizer.boi_token + self.tokenizer.processor.prefix_template.format(H=h, W=w)
+                + self.tokenizer.img_token + imgstr + self.tokenizer.eol_token + self.tokenizer.eof_token
+                + self.tokenizer.eoi_token)
+            image_prompts.append(self.tokenizer.encode(image_prompt))
+        added_tokens_len = 0
+        # Insert image tokens into input_ids
+        for idx, img_tokens in zip(idxs, image_prompts):
+            input_ids = input_ids[:idx + added_tokens_len] + img_tokens + input_ids[idx + added_tokens_len + 1:]
+            if labels is not None:
+                labels = labels[:idx + added_tokens_len] + [-100] * len(img_tokens) + labels[idx + added_tokens_len
+                                                                                             + 1:]
+            added_tokens_len += len(img_tokens) - 1
+
+        return {'input_ids': input_ids, 'labels': labels}
+
+
+register_template(TemplateType.emu3_chat, Emu3ChatTemplate(), lazy_tokenize=True, use_model=True)
+
+
 class PaliGemmaTemplate(Template):
 
     def __init__(self):
@@ -3138,6 +3375,8 @@ class DeepseekVLTemplate(Template):
                          ['<｜end▁of▁sentence｜>'], ['<｜end▁of▁sentence｜>'], self.DEEPSEEK_VL_SYSTEM)
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        is_janus = getattr(self, 'is_janus', False)
+
         inputs, _ = super()._encode(example)
         if len(inputs) == 0:
             return inputs, {}
@@ -3151,15 +3390,22 @@ class DeepseekVLTemplate(Template):
             new_input_ids += input_ids[lo:hi]
             if labels is not None:
                 new_labels += labels[lo:hi]
-            new_input_ids += [processor.image_id] * processor.num_image_tokens
-            new_labels += [-100] * processor.num_image_tokens
+            image_tokens = [processor.image_id] * processor.num_image_tokens
+            if is_janus:
+                image_tokens = [processor.image_start_id] + image_tokens + [processor.image_end_id]
+            new_input_ids += image_tokens
+            new_labels += [-100] * len(image_tokens)
             lo = hi + 1
         new_input_ids += input_ids[lo:]
         if labels is not None:
             new_labels += labels[lo:]
         else:
             new_labels = None
-        from deepseek_vl.models.processing_vlm import VLChatProcessorOutput
+        if is_janus:
+            from janus.models.processing_vlm import VLChatProcessorOutput
+        else:
+            from deepseek_vl.models.processing_vlm import VLChatProcessorOutput
+
         images_outputs = processor.image_processor(images, return_tensors='pt')
         output = VLChatProcessorOutput(
             sft_format=None,
@@ -3181,6 +3427,14 @@ class DeepseekVLTemplate(Template):
 
 
 register_template(TemplateType.deepseek_vl, DeepseekVLTemplate(), use_model=True, lazy_tokenize=True)
+
+
+class DeepseekJanus(DeepseekVLTemplate):
+    is_janus = True
+    image_placeholder = ['<image_placeholder>\n']
+
+
+register_template(TemplateType.deepseek_janus, DeepseekJanus(), use_model=True, lazy_tokenize=True)
 
 register_template(
     TemplateType.zephyr,
@@ -3568,6 +3822,17 @@ register_template(
         ['<|END_OF_TURN_TOKEN|>'], ['<|END_OF_TURN_TOKEN|>'], C4AI_SYSTEM,
         ['<|START_OF_TURN_TOKEN|><|SYSTEM_TOKEN|>{{SYSTEM}}<|END_OF_TURN_TOKEN|']))
 
+AYA_SYSTEM = ('You are Aya, a brilliant, sophisticated, multilingual AI-assistant trained to assist human users by '
+              'providing thorough responses. You are able to interact and respond to questions in 23 languages and '
+              'you are powered by a multilingual model built by Cohere For AI.')
+register_template(
+    TemplateType.aya,
+    Template(
+        ['<BOS_TOKEN>'],
+        ['<|START_OF_TURN_TOKEN|><|USER_TOKEN|>{{QUERY}}<|END_OF_TURN_TOKEN|><|START_OF_TURN_TOKEN|><|CHATBOT_TOKEN|>'],
+        ['<|END_OF_TURN_TOKEN|>'], ['<|END_OF_TURN_TOKEN|>'], AYA_SYSTEM,
+        ['<|START_OF_TURN_TOKEN|><|SYSTEM_TOKEN|>{{SYSTEM}}<|END_OF_TURN_TOKEN|']))
+
 
 class mPlugOwl2Template(Template):
 
@@ -3618,11 +3883,10 @@ class mPlugOwl3Template(QwenTemplateMixin, Template):
         processor = self.tokenizer.processor
         text = processor.image_processor.cut_prompt_template(img_token='<|image|>', h=cut_shape[0], w=cut_shape[1])
         text_list = text.split('<|image|>')
-        if text_list[-1] == '':
-            text_list.pop()
         res_text_list = []
-        for text in text_list:
+        for text in text_list[:-1]:
             res_text_list += [text, '<|image|>']
+        res_text_list += text_list[-1]
         token_list = self._encode_context_list(res_text_list)[0]
         return token_list
 
@@ -3650,9 +3914,9 @@ class mPlugOwl3Template(QwenTemplateMixin, Template):
         if images:
             image_inputs = processor.image_processor(images, cut_enable=cut_enable, return_tensors='pt')
             added_tokens_len = 0
-            cut_shapes = image_inputs['cut_shape'] or [None] * len(idx_list)
+            cut_shapes = image_inputs['cut_shape'] or [None] * 2 * len(idx_list)
             image_token_list = self.tokenizer.encode('<|image|>', add_special_tokens=False)
-            for idx, cut_shape in zip(idx_list, cut_shapes):
+            for idx, cut_shape in zip(idx_list, cut_shapes[::2]):
                 if cut_shape:
                     token_list = self._get_image_token_list(cut_shape)
                 else:

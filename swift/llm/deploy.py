@@ -420,13 +420,13 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
                     choices.append(choice)
                 response = CompletionStreamResponse(
                     model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
-            yield f'data:{json.dumps(asdict(response), ensure_ascii=False)}\n\n'
+            yield f'data: {json.dumps(asdict(response), ensure_ascii=False)}\n\n'
         if _args.log_interval > 0:
             _update_stats(response)
-        yield 'data:[DONE]\n\n'
+        yield 'data: [DONE]\n\n'
 
     if request.stream:
-        return StreamingResponse(_generate_stream())
+        return StreamingResponse(_generate_stream(), media_type='text/event-stream')
     else:
         return await _generate_full()
 
@@ -516,9 +516,7 @@ async def inference_lmdeploy_async(request: Union[ChatCompletionRequest, Complet
             prompt_tokens=num_prompt_tokens,
             completion_tokens=num_generated_tokens,
             total_tokens=num_prompt_tokens + num_generated_tokens)
-        finish_reason = None
-        if output.status.name == 'FINISH':
-            finish_reason = 'stop'
+        finish_reason = 'stop' if output.status.name == 'FINISH' else None
 
         if isinstance(request, ChatCompletionRequest):
             action, action_input = split_action_action_input(response)
@@ -554,31 +552,25 @@ async def inference_lmdeploy_async(request: Union[ChatCompletionRequest, Complet
         async with llm_engine.safe_run(session_id):
             async_iter = generator.async_stream_infer(
                 session_id=session_id, **inputs, stream_output=True, gen_config=generation_config).__aiter__()
-            is_finished = False
             response = None
-            while not is_finished:
-                try:
-                    output = await async_iter.__anext__()
-                except StopAsyncIteration:
-                    is_finished = True
+            async for output in async_iter:
                 num_generated_tokens = len(output.token_ids)
                 usage_info = UsageInfo(
                     prompt_tokens=num_prompt_tokens,
                     completion_tokens=num_generated_tokens,
                     total_tokens=num_prompt_tokens + num_generated_tokens,
                 )
+                is_finished = output.status.name == 'FINISH'
                 delta_text = template.generate_ids_to_response(
                     output.token_ids, is_finished, return_delta=True, print_idx=print_idx)
 
-                finish_reason = None
-                if output.status.name == 'FINISH':
-                    finish_reason = 'stop'
-                if not delta_text and finish_reason != 'stop':
+                if not delta_text and not is_finished:
                     continue
+                finish_reason = 'stop' if is_finished else None
                 total_response += delta_text
                 if isinstance(request, ChatCompletionRequest):
                     toolcall = None
-                    if finish_reason == 'stop':
+                    if is_finished:
                         action, action_input = split_action_action_input(total_response)
                         if action is not None:
                             toolcall = [
@@ -599,13 +591,13 @@ async def inference_lmdeploy_async(request: Union[ChatCompletionRequest, Complet
                     choices = [CompletionResponseStreamChoice(index=0, text=delta_text, finish_reason=finish_reason)]
                     response = CompletionStreamResponse(
                         model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
-                yield f'data:{json.dumps(asdict(response), ensure_ascii=False)}\n\n'
+                yield f'data: {json.dumps(asdict(response), ensure_ascii=False)}\n\n'
             if _args.log_interval > 0:
                 _update_stats(response)
-            yield 'data:[DONE]\n\n'
+            yield 'data: [DONE]\n\n'
 
     if request.stream:
-        return StreamingResponse(_generate_stream())
+        return StreamingResponse(_generate_stream(), media_type='text/event-stream')
     else:
         return await _generate_full()
 
@@ -827,13 +819,13 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
                 choices = [CompletionResponseStreamChoice(index=0, text=delta_text, finish_reason=None)]
                 resp = CompletionStreamResponse(
                     model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
-            yield f'data:{json.dumps(asdict(resp), ensure_ascii=False)}\n\n'
+            yield f'data: {json.dumps(asdict(resp), ensure_ascii=False)}\n\n'
         if _args.log_interval > 0:
             _update_stats(resp)
-        yield 'data:[DONE]\n\n'
+        yield 'data: [DONE]\n\n'
 
     if request.stream:
-        return StreamingResponse(_generate_stream())
+        return StreamingResponse(_generate_stream(), media_type='text/event-stream')
     else:
         return await _generate_full()
 

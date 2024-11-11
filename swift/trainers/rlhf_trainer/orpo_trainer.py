@@ -9,6 +9,7 @@ from trl import ORPOTrainer as HFORPOTrainer
 from swift.trainers import PushToMsHubMixin, RLHFTrainerMixin, SwiftMixin
 
 del HFORPOTrainer.__init__
+del HFORPOTrainer.get_batch_samples
 
 
 class ORPOTrainer(RLHFTrainerMixin, PushToMsHubMixin, SwiftMixin, HFORPOTrainer):

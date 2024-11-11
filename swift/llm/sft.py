@@ -320,8 +320,7 @@ def prepare_model_template_train(args, msg: Optional[Dict[str, Any]] = None):
     template._is_training = True
     if args.streaming:
         template.encode = partial(template.encode, streaming=args.streaming)
-    args.system = template.default_system
-    logger.info(f'system: {args.system}')
+    logger.info(f'system: {template.default_system}')
     logger.info(f'args.lazy_tokenize: {args.lazy_tokenize}')
 
     if not isinstance(args, RLHFArguments):
@@ -386,11 +385,15 @@ def prepare_dataset(args, template: Template, msg: Optional[Dict[str, Any]] = No
                                    f'Setting args.preprocess_num_proc to: {args.preprocess_num_proc}')
                 else:
                     template.model = None
-        td0, tkwargs0 = template.encode(train_dataset[0])
+        if args.streaming:
+            td0 = template.encode(next(iter(train_dataset)))
+            tkwargs0 = {}
+        else:
+            td0, tkwargs0 = template.encode(train_dataset[0])
         print_example(td0, tokenizer, tkwargs0)
-        train_dataset = dataset_map(train_dataset, template.encode, args.preprocess_num_proc, streaming=args.streaming)
+        train_dataset = dataset_map(train_dataset, template.encode, args.preprocess_num_proc)
         if val_dataset is not None:
-            val_dataset = dataset_map(val_dataset, template.encode, args.preprocess_num_proc, streaming=args.streaming)
+            val_dataset = dataset_map(val_dataset, template.encode, args.preprocess_num_proc)
         template.model = model  # recover
         if args.test_oom_error:
             train_dataset = sort_by_max_length(train_dataset, 20000)
@@ -488,6 +491,7 @@ def trainer_train(
                 json.dump(check_json_format(args_obj.__dict__), f, ensure_ascii=False, indent=2)
     logging_path = os.path.join(args.output_dir, 'logging.jsonl')
     logger.info(f'The logging file will be saved in: {logging_path}')
+    trainer.model_accepts_loss_kwargs = True  # fix transformers>=4.46.2
     with template.training_context():
         trainer.train(training_args.resume_from_checkpoint)
     last_model_checkpoint = getattr(trainer.state, 'last_model_checkpoint', None)
