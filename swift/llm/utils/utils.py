@@ -267,6 +267,44 @@ class LazyLLMDataset(Dataset):
         return len(self.dataset)
 
 
+class LLMIterableDataset(HfIterableDataset):
+
+    def __init__(self, dataset: HfIterableDataset, max_retries=10):
+        super().__init__(
+            dataset._ex_iterable,
+            dataset._info,
+            dataset._split,
+            dataset._formatting,
+            dataset._shuffling,
+            dataset._distributed,
+            dataset._token_per_repo_id,
+        )
+        self.dataset = dataset
+        self.max_retries = max_retries
+        from .dataset import standard_keys
+        dataset._ex_iterable.remove_columns = standard_keys & next(iter(dataset)).keys()
+
+    def __iter__(self):
+        iterator = iter(self.dataset)
+        while True:
+            retries = 0
+            while retries < self.max_retries:
+                try:
+                    value = next(iterator)
+                    if value:
+                        yield value
+                        break
+                    else:
+                        raise ValueError
+                except StopIteration:
+                    iterator = iter(self.dataset)
+                    break
+                except Exception as e:
+                    retries += 1
+                    if retries >= self.max_retries:
+                        raise e
+
+
 MapFunc = Callable[[Dict[str, Any]], Tuple[Dict[str, Any], Dict[str, Any]]]
 
 
@@ -277,19 +315,30 @@ def _single_map(d: Dict[str, Any], map_func: MapFunc) -> Optional[Dict[str, Any]
     return d
 
 
-def _map_mp_single(subset: HfDataset, map_func: MapFunc, queue: Queue, start_idx: int):
-    for i, d in enumerate(subset, start=start_idx):
-        queue.put((i, map_func(d)))  # idx, result
+def _map_mp_single(shard: HfDataset, map_func: MapFunc, queue: Queue, rank: int):
+    batch_size = 64
+    pre_i = 0
+    result = []
+    for i, d in enumerate(shard):
+        output = map_func(d)
+        if output is not None:
+            result.append(output)
+        if i == len(shard) - 1 or (i + 1) % batch_size == 0:
+            queue.put((rank, result, i - pre_i))
+            pre_i = i
+            result = []
 
 
 def _map_mp_i(dataset: HfDataset, map_func: MapFunc, num_proc: int) -> Iterator[Tuple[int, Dict[str, Any]]]:
+    pre_environ = deepcopy(os.environ)
+    os.environ['TOKENIZERS_PARALLELISM'] = 'false'
     with multiprocess.Pool(num_proc) as pool, multiprocess.Manager() as manager:
+        os.environ = pre_environ
         queue = manager.Queue()
         async_results = []
-        split_idx = np.linspace(0, len(dataset), num_proc + 1, dtype=np.int32)
+        shard_list = [dataset.shard(num_proc, i) for i in range(num_proc)]
         for i in range(num_proc):
-            subset = dataset.select(range(split_idx[i], split_idx[i + 1]))
-            async_results.append(pool.apply_async(_map_mp_single, args=(subset, map_func, queue, split_idx[i])))
+            async_results.append(pool.apply_async(_map_mp_single, args=(shard_list[i], map_func, queue, i)))
         while True:
             try:
                 yield queue.get(timeout=0.05)
@@ -300,18 +349,21 @@ def _map_mp_i(dataset: HfDataset, map_func: MapFunc, num_proc: int) -> Iterator[
 
 def _map_mp(dataset: HfDataset, map_func: MapFunc, num_proc: int) -> List[Dict[str, Any]]:
     # Solving the unordered problem
-    data = [None] * len(dataset)
     num_proc = min(num_proc, len(dataset))
-    for d in tqdm(_map_mp_i(dataset, map_func, num_proc), total=len(dataset), desc=f'Map (num_proc={num_proc})'):
-        data[d[0]] = d[1]
-    return data
+    data_list = [[]] * num_proc
+    prog_bar = tqdm(total=len(dataset), desc=f'Map (num_proc={num_proc})', dynamic_ncols=True)
+    for d in _map_mp_i(dataset, map_func, num_proc):
+        data_list[d[0]] += d[1]
+        prog_bar.update(d[2])
+    res = []
+    for data in data_list:
+        res += data
+    return res
 
 
-def dataset_map(dataset: DATASET_TYPE,
-                map_func: MapFunc,
-                num_proc: int = 1,
-                streaming: bool = False) -> Optional[Union[LLMDataset, DATASET_TYPE]]:
-    if streaming:
+def dataset_map(dataset: DATASET_TYPE, map_func: MapFunc, num_proc: int = 1) -> Union[LLMDataset, LLMIterableDataset]:
+    """This solution will be deprecated in ms-swift3.0."""
+    if isinstance(dataset, HfIterableDataset):
         return LLMIterableDataset(dataset.map(map_func))  # num_proc is not supported for IterableDataset
 
     single_map = partial(_single_map, map_func=map_func)
@@ -319,11 +371,11 @@ def dataset_map(dataset: DATASET_TYPE,
         data = []
         for d in tqdm(dataset, desc='Map'):
             d = single_map(d)
-            data.append(d)
+            if d is not None:
+                data.append(d)
     else:
         assert num_proc > 1
         data = _map_mp(dataset, single_map, num_proc)
-    data = [d for d in data if d is not None]
     if len(data) == 0:
         logger.warning('len(dataset): 0')
         return None
@@ -1047,44 +1099,6 @@ def get_time_info(log_history: List[Dict[str, Any]], n_train_samples: Optional[i
     except Exception:
         pass
     return time_info
-
-
-class LLMIterableDataset(HfIterableDataset):
-
-    def __init__(self, dataset: HfIterableDataset, max_retries=10):
-        super().__init__(
-            dataset._ex_iterable,
-            dataset._info,
-            dataset._split,
-            dataset._formatting,
-            dataset._shuffling,
-            dataset._distributed,
-            dataset._token_per_repo_id,
-        )
-        self.dataset = dataset
-        self.max_retries = max_retries
-        from .dataset import standard_keys
-        dataset._ex_iterable.remove_columns = standard_keys & next(iter(dataset)).keys()
-
-    def __iter__(self):
-        iterator = iter(self.dataset)
-        while True:
-            retries = 0
-            while retries < self.max_retries:
-                try:
-                    value = next(iterator)
-                    if value:
-                        yield value
-                        break
-                    else:
-                        raise ValueError
-                except StopIteration:
-                    iterator = iter(self.dataset)
-                    break
-                except Exception as e:
-                    retries += 1
-                    if retries >= self.max_retries:
-                        raise e
 
 
 def get_max_model_len(config: PretrainedConfig, ignore_rope_scaling=False) -> Optional[int]:
