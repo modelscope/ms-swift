@@ -55,8 +55,9 @@ You can contact us and communicate with us by adding our group:
 <img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
 ## 🎉 News
-- 2024.10.24: Support for training and deploying aya-expanse series models. Experience it using `swift infer --model_type aya-expanse-32b`.
-- 2024.10.22: Support for training and deploying emu3-chat. Experience it using `swift infer --model_type emu3-chat`.
+- 2024.11.12: Supports training and deployment of the qwen2.5-coder series models: 0.5b, 3b, 14b, and 32b. Use `swift infer --model_type qwen2_5-coder-3b-instruct` to experience it.
+- 2024.10.26: Support for training and deploying aya-expanse series models. Experience it using `swift infer --model_type aya-expanse-32b`.
+- 2024.10.23: Support for training and deploying emu3-chat. Experience it using `swift infer --model_type emu3-chat`.
 - 2024.10.22: Support for training and deploying molmo series models. Experience it using `swift infer --model_type molmo-7b-d`.
 - 2024.10.09: Support for reward modeling for LLM and MLLM, as well as PPO training for LLM. Refer to the [documentation](docs/source_en/LLM/Human-Preference-Alignment-Training-Documentation.md).
 - 2024.10.09: Support for training and deploying ovis1.6-gemma2 series models. Experience it using `swift infer --model_type ovis1_6-gemma2-9b`.
