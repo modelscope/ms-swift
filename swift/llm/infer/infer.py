@@ -125,12 +125,13 @@ class SwiftInfer(SwiftPipeline[InferArguments]):
         return template
 
     def run(self) -> List[Dict[str, Any]]:
-        if self.args.eval_human:
+        args = self.args
+        if args.eval_human:
             result = self.infer_cli()
         else:
             result = self.infer_dataset()
-        if self.result_path is not None:
-            logger.info(f'The inference results have been saved to result_path: `{self.result_path}`.')
+        if args.result_path is not None:
+            logger.info(f'The inference results have been saved to result_path: `{args.result_path}`.')
         return result
 
     @staticmethod

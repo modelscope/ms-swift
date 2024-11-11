@@ -1,4 +1,6 @@
-from swift.llm import TemplateInputs, get_model_tokenizer, get_template, load_dataset
+from datasets import Dataset
+
+from swift.llm import EncodePreprocessor, TemplateInputs, get_model_tokenizer, get_template, load_dataset
 
 
 def test_template():
@@ -47,24 +49,26 @@ def test_mllm():
 def _test_dataset_map(model_id: str, dataset_id: str):
     _, tokenizer = get_model_tokenizer(model_id, load_model=False)
     template = get_template(tokenizer.model_meta.template, tokenizer)
-    dataset = load_dataset([dataset_id])[0]
-    from swift.llm.dataset.utils import EncodePreprocessor
+    dataset = load_dataset([dataset_id], num_proc=2)[0]
 
-    new_dataset = EncodePreprocessor(template)(dataset)
+    # 1: 1500
+    # 16: 10766.36 examples/s
+    new_dataset = EncodePreprocessor(template)(dataset, num_proc=4)
+    print(f'new_dataset: {new_dataset}')
     print(template.safe_decode(new_dataset[0]['input_ids']))
     print(template.safe_decode(new_dataset[1]['input_ids']))
 
 
 def test_llm_dataset_map():
-    _test_dataset_map('qwen/Qwen2-7B-Instruct', 'AI-ModelScope/alpaca-gpt4-data-zh#1000')
+    _test_dataset_map('qwen/Qwen2-7B-Instruct', 'AI-ModelScope/alpaca-gpt4-data-zh')
 
 
 def test_mllm_dataset_map():
-    _test_dataset_map('qwen/Qwen2-VL-7B-Instruct', 'modelscope/coco_2014_caption:validation')
+    _test_dataset_map('qwen/Qwen2-VL-7B-Instruct', 'modelscope/coco_2014_caption:validation#100')
 
 
 if __name__ == '__main__':
     # test_template()
     # test_mllm()
-    test_llm_dataset_map()
+    # test_llm_dataset_map()
     test_mllm_dataset_map()
