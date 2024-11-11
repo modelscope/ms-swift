@@ -143,6 +143,8 @@ class LmdeployGenerationConfig(_LmdeployGenerationConfig):
     def __post_init__(self):
         if self.stop_words is None:
             self.stop_words = []
+        if hasattr(self, 'stop_token_ids'):  # compat lmdeploy==0.6
+            self.stop_token_ids = self.stop_words
         self._temperature = self.temperature
 
         super().__post_init__()
