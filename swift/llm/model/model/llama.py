@@ -109,6 +109,8 @@ register_model(
                     # chat
                     Model('LLM-Research/Meta-Llama-3.1-8B-Instruct', 'meta-llama/Meta-Llama-3.1-8B-Instruct'),
                     Model('LLM-Research/Meta-Llama-3.1-70B-Instruct', 'meta-llama/Meta-Llama-3.1-70B-Instruct'),
+                    Model('AI-ModelScope/Llama-3.1-Nemotron-70B-Instruct-HF',
+                          'nvidia/Llama-3.1-Nemotron-70B-Instruct-HF'),
                     Model('LLM-Research/Meta-Llama-3.1-405B-Instruct', 'meta-llama/Meta-Llama-3.1-405B-Instruct'),
                     # fp8
                     Model('LLM-Research/Meta-Llama-3.1-70B-Instruct-FP8', 'meta-llama/Meta-Llama-3.1-70B-Instruct-FP8'),

@@ -22,14 +22,10 @@ def get_model_tokenizer_llava_llama(model_dir: str,
 
     model_config = LlavaConfig.from_pretrained(model_dir)  # check
     processor = AutoProcessor.from_pretrained(model_dir)
+    if 'automodel_class' not in kwargs:
+        kwargs['automodel_class'] = LlavaForConditionalGeneration
     model, tokenizer = get_model_tokenizer_with_flash_attn(
-        model_dir,
-        model_info,
-        model_kwargs,
-        load_model,
-        model_config=model_config,
-        automodel_class=LlavaForConditionalGeneration,
-        **kwargs)
+        model_dir, model_info, model_kwargs, load_model, model_config=model_config, **kwargs)
     tokenizer.processor = processor
     return model, tokenizer
 
@@ -79,7 +75,8 @@ def get_model_tokenizer_llava_hf(model_dir: str, *args, **kwargs):
 
 def get_model_tokenizer_llava_1_5(*args, **kwargs):
     from transformers import LlavaForConditionalGeneration
-    kwargs['automodel_class'] = LlavaForConditionalGeneration
+    if 'automodel_class' not in kwargs:
+        kwargs['automodel_class'] = LlavaForConditionalGeneration
     return get_model_tokenizer_llava_hf(*args, **kwargs)
 
 
@@ -104,7 +101,8 @@ register_model(
 
 def get_model_tokenizer_llava_onevision(*args, **kwargs):
     from transformers import LlavaOnevisionForConditionalGeneration
-    kwargs['automodel_class'] = LlavaOnevisionForConditionalGeneration
+    if 'automodel_class' not in kwargs:
+        kwargs['automodel_class'] = LlavaOnevisionForConditionalGeneration
     return get_model_tokenizer_llava_hf(*args, **kwargs)
 
 
@@ -119,7 +117,7 @@ register_model(
                     Model('AI-ModelScope/llava-onevision-qwen2-7b-ov-hf', 'llava-hf/llava-onevision-qwen2-7b-ov-hf'),
                     Model('AI-ModelScope/llava-onevision-qwen2-72b-ov-hf', 'llava-hf/llava-onevision-qwen2-72b-ov-hf'),
                 ],
-                requires=['transformers>=4.45.0.dev0'],
+                requires=['transformers>=4.45'],
                 tags=['multi-modal', 'vision', 'video'],
                 ignore_file_pattern=['onnx'],
             ),
@@ -154,7 +152,8 @@ register_model(
 
 def get_model_tokenizer_llava_next(*args, **kwargs):
     from transformers import LlavaNextForConditionalGeneration
-    kwargs['automodel_class'] = LlavaNextForConditionalGeneration
+    if 'automodel_class' not in kwargs:
+        kwargs['automodel_class'] = LlavaNextForConditionalGeneration
     return get_model_tokenizer_llava_hf(*args, **kwargs)
 
 
@@ -265,7 +264,8 @@ register_model(
 
 def get_model_tokenizer_llava_next_video(*args, **kwargs):
     from transformers import LlavaNextVideoForConditionalGeneration
-    kwargs['automodel_class'] = LlavaNextVideoForConditionalGeneration
+    if 'automodel_class' not in kwargs:
+        kwargs['automodel_class'] = LlavaNextVideoForConditionalGeneration
     return get_model_tokenizer_llava_hf(*args, **kwargs)
 
 

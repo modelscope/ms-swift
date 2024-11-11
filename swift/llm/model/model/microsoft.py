@@ -66,8 +66,9 @@ def get_model_tokenizer_florence(model_dir: str,
             model_dir, model_info, model_kwargs, load_model, tokenizer=processor.tokenizer, **kwargs)
 
     tokenizer.processor = processor
-    # model.vision_tower.enable_checkpoint = True
-    use_submodel_func(model, 'language_model', ['generate', 'forward'])
+    if model is not None:
+        # model.vision_tower.enable_checkpoint = True
+        use_submodel_func(model, 'language_model', ['generate', 'forward'])
     return model, tokenizer
 
 

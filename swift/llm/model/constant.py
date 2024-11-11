@@ -65,7 +65,7 @@ class LLMModelType:
 
     mistral = 'mistral'
     mixtral = 'mixtral'
-    nemo = 'nemo'
+    mistral_nemo = 'mistral_nemo'
 
     gemma = 'gemma'
     gemma2 = 'gemma2'

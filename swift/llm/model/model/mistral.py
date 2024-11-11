@@ -58,7 +58,7 @@ register_model(
 
 register_model(
     ModelMeta(
-        LLMModelType.nemo,
+        LLMModelType.mistral_nemo,
         [
             ModelGroup([
                 Model('LLM-Research/Mistral-Large-Instruct-2407', 'mistralai/Mistral-Large-Instruct-2407'),
@@ -68,6 +68,11 @@ register_model(
             ],
                        ignore_file_pattern=['^consolidated'],
                        requires=['transformers>=4.43']),
+            ModelGroup([
+                Model('AI-ModelScope/Ministral-8B-Instruct-2410', 'mistralai/Ministral-8B-Instruct-2410'),
+            ],
+                       ignore_file_pattern=['^consolidated'],
+                       requires=['transformers>=4.46']),
         ],
         TemplateType.mistral_nemo,
         get_model_tokenizer_with_flash_attn,

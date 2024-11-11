@@ -1,7 +1,7 @@
 import hashlib
 import os
 import shutil
-from typing import Optional
+from typing import List, Literal, Optional, Union
 
 from modelscope.hub.utils.utils import get_cache_dir
 
@@ -30,39 +30,57 @@ class MediaResource:
         return f'{MediaResource.URL_PREFIX}{media_type}.{extension}'
 
     @staticmethod
-    def download(media_type_or_url: str, local_alias: Optional[str] = None):
+    def download(media_type_or_url: Union[str, List[str]],
+                 local_alias: Optional[str] = None,
+                 file_type: Literal['compressed', 'file', 'sharded'] = 'compressed'):
         """Download and extract a resource from a http link.
 
         Args:
-            media_type_or_url: `str`, Either belongs to the `media_type_urls` listed in the class field, or a
-                remote url to download and extract. Be aware that, this media type or url
-                needs to contain a zip or tar file.
+            media_type_or_url: `str` or List or `str`, Either belongs to the `media_type_urls`
+                listed in the class field, or a remote url to download and extract.
+                Be aware that, this media type or url needs to contain a zip or tar file.
             local_alias: `Options[str]`, The local alias name for the `media_type_or_url`. If the first arg is a
-            media_type listed in this class, local_alias can leave None. else please pass in a name for the url.
-            The local dir contains the extracted files will be: {cache_dir}/{local_alias}
+                media_type listed in this class, local_alias can leave None. else please pass in a name for the url.
+                The local dir contains the extracted files will be: {cache_dir}/{local_alias}
+            file_type: The file type, if is a compressed file, un-compressed the file,
+                if is an original file, only download it, if is a sharded file, download all files and extract.
 
         Returns:
             The local dir contains the extracted files.
         """
         from swift.utils.torch_utils import safe_ddp_context
         from datasets.utils.filelock import FileLock
-        file_path = hashlib.md5(media_type_or_url.encode('utf-8')).hexdigest() + '.lock'
+        media_file = media_type_or_url if isinstance(media_type_or_url, str) else media_type_or_url[0]
+        file_path = hashlib.md5(media_file.encode('utf-8')).hexdigest() + '.lock'
         file_path = os.path.join(MediaResource.lock_dir, file_path)
         os.makedirs(MediaResource.lock_dir, exist_ok=True)
         with safe_ddp_context():
             with FileLock(file_path):
-                return MediaResource._safe_download(media_type=media_type_or_url, media_name=local_alias)
+                return MediaResource._safe_download(
+                    media_type=media_type_or_url, media_name=local_alias, file_type=file_type)
 
     @staticmethod
-    def _safe_download(media_type, media_name=None):
+    def _safe_download(media_type: Union[str, List[str]],
+                       media_name: Optional[str] = None,
+                       file_type: Literal['compressed', 'file', 'sharded'] = 'compressed'):
         media_name = media_name or media_type
+        assert isinstance(media_name, str), f'{media_name} is not a str'
         if media_type in MediaResource.media_type_urls:
             media_type = MediaResource.get_url(media_type)
 
         from datasets.download.download_manager import DownloadManager, DownloadConfig
         final_folder = os.path.join(MediaResource.cache_dir, media_name)
-        if os.path.exists(final_folder):
-            return final_folder
+
+        if file_type == 'file':
+            filename = media_type.split('/')[-1]
+            final_path = os.path.join(final_folder, filename)
+            if os.path.exists(final_path):  # if the download thing is a file but not folder,
+                return final_folder  # check whether the file exists
+            if not os.path.exists(final_folder):
+                os.makedirs(final_folder)  # and make sure final_folder exists to contain it
+        else:
+            if os.path.exists(final_folder):
+                return final_folder
 
         logger.info('# #################Resource downloading#################')
         logger.info('Downloading necessary resources...')
@@ -71,9 +89,23 @@ class MediaResource:
         logger.info('If the downloading fails or lasts a long time, '
                     'you can manually download the resources and extracting to the local dir.')
         logger.info('Now begin.')
-        local_dirs = DownloadManager(download_config=DownloadConfig(
-            cache_dir=MediaResource.cache_dir)).download_and_extract(media_type)
-        shutil.move(str(local_dirs), final_folder)
+        if file_type == 'file':
+            filename = media_type.split('/')[-1]
+            final_path = os.path.join(final_folder, filename)
+            local_dirs = DownloadManager(download_config=DownloadConfig(
+                cache_dir=MediaResource.cache_dir)).download(media_type)
+            shutil.move(str(local_dirs), final_path)
+        elif file_type == 'compressed':
+            local_dirs = DownloadManager(download_config=DownloadConfig(
+                cache_dir=MediaResource.cache_dir)).download_and_extract(media_type)
+            shutil.move(str(local_dirs), final_folder)
+        else:
+            for media_url in media_type:
+                local_dirs = DownloadManager(download_config=DownloadConfig(
+                    cache_dir=MediaResource.cache_dir)).download(media_url)
+            local_dirs = DownloadManager(download_config=DownloadConfig(
+                cache_dir=MediaResource.cache_dir)).extract(local_dirs)
+            shutil.move(str(local_dirs), final_folder)
         logger.info('# #################Resource downloading finished#################')
         return final_folder
 

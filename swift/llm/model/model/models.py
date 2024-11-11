@@ -3,7 +3,7 @@ import os
 import sys
 from functools import partial
 from types import MethodType
-from typing import Any, Dict
+from typing import Any, Dict, Tuple
 
 import torch
 from modelscope import AutoConfig, AutoModel, AutoModelForCausalLM
@@ -13,6 +13,7 @@ from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from swift.llm import TemplateType
 from swift.utils import get_logger
 from ..constant import LLMModelType, MLLMModelType
+from ..patcher import patch_output_clone
 from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local,
                         get_model_tokenizer_with_flash_attn, register_model)
 from ..utils import ModelInfo, git_clone_github, use_submodel_func
@@ -61,11 +62,14 @@ def get_model_tokenizer_mplug_owl3(model_dir: str,
                                    model_kwargs: Dict[str, Any],
                                    load_model: bool = True,
                                    **kwargs):
+    model_cls = get_class_from_dynamic_module('modeling_mplugowl3.mPLUGOwl3Model', model_dir)
+    model_cls._no_split_modules = ['SiglipEncoderLayer']
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
     processor = model.init_processor(tokenizer)
     tokenizer.processor = processor
-    func_list = ['generate', 'forward']
-    use_submodel_func(model, 'language_model', func_list)
+    if model is not None:
+        func_list = ['generate', 'forward']
+        use_submodel_func(model, 'language_model', func_list)
     return model, tokenizer
 
 
@@ -231,7 +235,8 @@ register_model(
 def get_model_tokenizer_idefics(model_dir: str, *args, **kwargs):
     from transformers import AutoProcessor, AutoModelForVision2Seq
     processor = AutoProcessor.from_pretrained(model_dir)
-    kwargs['automodel_class'] = AutoModelForVision2Seq
+    if 'automodel_class' not in kwargs:
+        kwargs['automodel_class'] = AutoModelForVision2Seq
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
     tokenizer.processor = processor
     return model, tokenizer
@@ -245,7 +250,7 @@ register_model(
                 Model('AI-ModelScope/Idefics3-8B-Llama3', 'HuggingFaceM4/Idefics3-8B-Llama3'),
             ],
                        tags=['multi-modal', 'vision'],
-                       requires=['transformers>=4.45.0.dev0']),
+                       requires=['transformers>=4.45']),
         ],
         TemplateType.idefics3,
         get_model_tokenizer_idefics,
@@ -274,7 +279,7 @@ def get_model_tokenizer_mplug_owl2(model_dir: str,
     if vocab_size is not None:
         model_config.vocab_size = vocab_size
     get_model_tokenizer_function = kwargs.pop('get_model_tokenizer_function')
-    model, tokenizer = get_model_tokenizer_function(model_dir, config, model_kwargs, load_model, **kwargs)
+    model, tokenizer = get_model_tokenizer_function(model_dir, model_info, model_kwargs, load_model, **kwargs)
     logger.info('Please ignore the unimported warning.')
     processor = CLIPImageProcessor.from_pretrained(model_dir)
     tokenizer.processor = processor
@@ -552,6 +557,33 @@ register_model(
         architectures=['DbrxForCausalLM'],
     ))
 
+
+def get_model_tokenizer_ovis(*args, **kwargs):
+    model, tokenizer = get_model_tokenizer_with_flash_attn(*args, **kwargs)
+    if model is not None:
+        model.generation_config.cache_implementation = None
+        func_list = ['generate', 'forward', 'get_input_embeddings']
+        use_submodel_func(model, 'llm', func_list)
+        embedding = model.get_input_embeddings()
+        embedding.register_forward_hook(patch_output_clone)
+    try:
+        # fix device_map
+        from transformers.cache_utils import HybridCache
+
+        def update(self, key_states: torch.Tensor, value_states: torch.Tensor, layer_idx: int, *args,
+                   **kwargs) -> Tuple[torch.Tensor]:
+            self.key_cache[layer_idx] = self.key_cache[layer_idx].to(key_states.device)
+            self.value_cache[layer_idx] = self.value_cache[layer_idx].to(value_states.device)
+            return self._update_origin(key_states, value_states, layer_idx, *args, **kwargs)
+
+        if not hasattr(HybridCache, '_update_origin'):
+            HybridCache._update_origin = HybridCache.update
+            HybridCache.update = update
+    except ImportError:
+        pass
+    return model, tokenizer
+
+
 register_model(
     ModelMeta(
         MLLMModelType.ovis1_6,
@@ -563,7 +595,7 @@ register_model(
                        requires=['transformers>=4.42']),
         ],
         TemplateType.ovis1_6,
-        get_model_tokenizer_with_flash_attn,
+        get_model_tokenizer_ovis,
         support_flash_attn=True,
         architectures=['Ovis'],
     ))
