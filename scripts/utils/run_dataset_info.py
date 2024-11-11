@@ -1,7 +1,7 @@
 import os
 from typing import Dict, List
 
-from swift.llm import DATASET_MAPPING, TemplateType, dataset_map, get_model_tokenizer, get_template
+from swift.llm import DATASET_MAPPING, TemplateType, get_model_tokenizer, get_template
 from swift.llm.dataset.loader import load_dataset
 from swift.utils import stat_array
 
@@ -68,20 +68,20 @@ def write_dataset_info() -> None:
         if len(tags_str) == 0:
             tags_str = '-'
         try:
+            if ms_id is not None:
+                ms_id = f'[{ms_id}](https://modelscope.cn/datasets/{ms_id}/summary)'
+            else:
+                ms_id = '-'
+            if hf_id is not None:
+                hf_id = f'[{hf_id}](https://huggingface.co/datasets/{hf_id})'
+            else:
+                hf_id = '-'
             r = (f'|{ms_id}|{hf_id}|{",".join([s.name for s in dataset_info.subsets])}|'
                  f'{",".join([s.subset for s in dataset_info.subsets])}|'
                  f'{",".join(dataset_info.split) or "train"}')
             if ms_dataset or hf_dataset:
                 dataset_size, stat_str = (ms_dataset or hf_dataset).split('|')[6:8]
             else:
-                if ms_id is not None:
-                    ms_id = f'[{ms_id}](https://modelscope.cn/datasets/{ms_id}/summary)'
-                else:
-                    ms_id = '-'
-                if hf_id is not None:
-                    hf_id = f'[{hf_id}](https://huggingface.co/datasets/{hf_id})'
-                else:
-                    hf_id = '-'
                 if 'audio' in tags:
                     template = mapping['audio']
                 elif 'vision' in tags:

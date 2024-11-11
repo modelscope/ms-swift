@@ -49,8 +49,8 @@ def get_model_info_table():
     for i, fpath in enumerate(fpaths):
         with open(fpath, 'r') as f:
             text = f.read()
-        llm_start_idx = text.find('| Model Type |')
-        mllm_start_idx = text[llm_start_idx + 1:].find('| Model Type |') + llm_start_idx + 1
+        llm_start_idx = text.find('| Model ID |')
+        mllm_start_idx = text[llm_start_idx + 1:].find('| Model ID |') + llm_start_idx + 1
         llm_end_idx = text.find(end_words[i][0])
         mllm_end_idx = text.find(end_words[i][1])
         output = text[:llm_start_idx] + result[0] + '\n\n' + text[llm_end_idx:mllm_start_idx] + result[
