@@ -7330,7 +7330,7 @@ def get_model_with_value_head(model) -> 'AutoModelForCausalLMWithValueHead':
             'get_input_embeddings', 'vis_processor', 'extract_feature', 'get_rope_index', 'model', 'vision_tower',
             'img2emb', '_encode_image', '_merge_input_ids_with_image_features', 'prepare_inputs_embeds',
             'build_conversation_input_ids', 'config', 'get_slice_image_placeholder', 'transform', 'get_vllm_embedding',
-            'forward_image', 'dtype', 'base_model_prefix', 'device'
+            'forward_image', 'dtype', 'base_model_prefix', 'device', 'visual'
         ]
         for attr in attr_list:
             if hasattr(model.pretrained_model, attr) and not hasattr(model, attr):
@@ -7341,6 +7341,10 @@ def get_model_with_value_head(model) -> 'AutoModelForCausalLMWithValueHead':
             setattr(model, 'score', model.v_head)
         if model.base_model_prefix == '' and hasattr(model.pretrained_model, 'language_model'):
             model.base_model_prefix = model.pretrained_model.language_model.base_model_prefix
+
+        base_model_prefix = model.pretrained_model.base_model_prefix
+        if hasattr(model.pretrained_model, base_model_prefix):
+            setattr(model, base_model_prefix, getattr(model.pretrained_model, base_model_prefix))
 
     patch_valuehead_model(model)
 
