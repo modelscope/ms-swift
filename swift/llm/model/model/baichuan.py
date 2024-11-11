@@ -68,6 +68,8 @@ def get_model_tokenizer_baichuan2(model_dir: str,
                                   load_model: bool = True,
                                   model_config=None,
                                   **kwargs):
+    if model_config is None:
+        model_config = AutoConfig.from_pretrained(model_dir)
     if not hasattr(model_config, 'z_loss_weight'):
         model_config.z_loss_weight = 0
     # patch: baichuan2_13b configuration_baichuan.py bug

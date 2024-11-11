@@ -65,7 +65,7 @@ class MediaResource:
                        file_type: Literal['compressed', 'file', 'sharded'] = 'compressed'):
         media_name = media_name or media_type
         assert isinstance(media_name, str), f'{media_name} is not a str'
-        if media_type in MediaResource.media_type_urls:
+        if isinstance(media_type, str) and media_type in MediaResource.media_type_urls:
             media_type = MediaResource.get_url(media_type)
 
         from datasets.download.download_manager import DownloadManager, DownloadConfig

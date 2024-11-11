@@ -463,14 +463,12 @@ class LLaVAVideo178KPreprocessor(MessagesPreprocessor):
         return super().prepare_dataset(dataset)
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        file_path = os.path.join(self.local_dir, f"{row['video']}")
+        file_path = os.path.join(self.local_dir, f"{row['videos']}")
         if not os.path.exists(file_path):
             return None
         return super().preprocess({
-            'id': row['id'],
-            'conversations': row['conversations'],
-            'data_source': row['data_source'],
-            'videos': [file_path],
+            'messages': row['messages'],
+            'videos': file_path
         })
 
 
