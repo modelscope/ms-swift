@@ -131,19 +131,23 @@ class MLLMModelType:
     llama3_1_omni = 'llama3_1_omni'
     idefics3_llama3 = 'idefics3_llama3'
 
-    llava1_5 = 'llava1_5'
-    llava1_6_mistral = 'llava1_6_mistral'
-    llava1_6_vicuna = 'llava1_6_vicuna'
-    llava1_6_yi = 'llava1_6_yi'
-    llava1_6_llama3_1 = 'llava1_6_llama3_1'
-    llava_next = 'llava_next'
-    llava_next_hf = 'llava_next_hf'
-    llava_onevision = 'llava_onevision'
-    llava_llama = 'llava_llama'
+    llava1_5_hf = 'llava1_5_hf'
+    llava1_6_mistral_hf = 'llava1_6_mistral_hf'
+    llava1_6_vicuna_hf = 'llava1_6_vicuna_hf'
+    llava1_6_yi_hf = 'llava1_6_yi_hf'
     llama3_llava_next_hf = 'llama3_llava_next_hf'
+    llava_next_qwen_hf = 'llava_next_qwen_hf'
+    llava_next_video_hf = 'llava_next_video_hf'
+    llava_next_video_yi_hf = 'llava_next_video_yi_hf'
+    llava_onevision_hf = 'llava_onevision_hf'
+
+    llava_llama3_1_hf = 'llava_llama3_1_hf'  # DaozeZhang
+    llava_llama3_hf = 'llava_llama3_hf'  # xtuner
+
+    llava1_6_mistral = 'llava1_6_mistral'
+    llava1_6_yi = 'llava1_6_yi'
+    llava_next_qwen = 'llava_next_qwen'
     llama3_llava_next = 'llama3_llava_next'
-    llava_next_video = 'llava_next_video'
-    llava_next_video_yi = 'llava_next_video_yi'
 
     # internvl
     internvl = 'internvl'

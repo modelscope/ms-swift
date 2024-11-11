@@ -184,12 +184,16 @@ def get_model_tokenizer_from_local(model_dir: str,
 
 
 def get_model_tokenizer_with_flash_attn(model_dir: str,
-                                        model_config: PretrainedConfig,
+                                        model_info: ModelInfo,
                                         model_kwargs: Dict[str, Any],
                                         load_model: bool = True,
                                         **kwargs):
+    model_config = kwargs['model_config']
+    if model_config is None:
+        model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     AttnImpl.update_attn_impl(model_config, kwargs.get('attn_impl'))
-    return get_model_tokenizer_from_local(model_dir, model_config, model_kwargs, load_model, **kwargs)
+    kwargs['model_config'] = model_config
+    return get_model_tokenizer_from_local(model_dir, model_info, model_kwargs, load_model, **kwargs)
 
 
 def get_model_tokenizer_multimodal(model_dir: str, *args, **kwargs):
@@ -303,7 +307,7 @@ def _get_model_name(model_id_or_path: str) -> str:
     return model_name.lower()
 
 
-def get_matched_model_meta(model_id_or_path: str) -> Optional[str]:
+def get_matched_model_meta(model_id_or_path: str) -> Optional[ModelMeta]:
     model_name = _get_model_name(model_id_or_path).lower()
     for model_type, model_meta in MODEL_MAPPING.items():
         model_group = model_meta.get_matched_model_group(model_name)

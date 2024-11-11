@@ -9,7 +9,7 @@ from ..base import Template
 from ..constant import MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..utils import Context, findall, gather_list
-from ..vision_utils import load_video_internvl, transform_image
+from ..vision_utils import load_video_internvl, replace_video2image, transform_image
 from .microsoft import Phi3TemplateMeta
 from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
 
@@ -98,7 +98,7 @@ class Internvl2Template(InternvlTemplate):
         elif media_type == 'video':
             video_segments = get_env_args('video_segments', int, self.video_segments)
             load_video = partial(load_video_internvl, num_segments=video_segments)
-            return _replace_video2image(load_video, example, lambda i: [f'Frame{i + 1}: '] + image_context)
+            return replace_video2image(load_video, example, lambda i: [f'Frame{i + 1}: '] + image_context)
 
     def replace_object(self, index: int, example: Dict[str, Any]) -> List[Context]:
         objects = example.get('objects')
