@@ -1,5 +1,6 @@
 
 # Qwen2-VL Best Practice
+The best practices for qwen2-vl-72b-instruct can be found [here](https://github.com/modelscope/ms-swift/issues/2064).
 
 ## Table of Contents
 - [Environment Setup](#environment-setup)
@@ -13,15 +14,14 @@ git clone https://github.com/modelscope/swift.git
 cd swift
 pip install -e .[llm]
 
-# Please pay attention to this ISSUE: https://github.com/QwenLM/Qwen2-VL/issues/12
-# pip install torch>=2.4
 pip install git+https://github.com/huggingface/transformers.git
 pip install pyav qwen_vl_utils
 ```
 
-Model:
+Model: (Supports base/instruct/gptq-int4/gptq-int8/awq fine-tuning)
 - qwen2-vl-2b-instruct: [https://modelscope.cn/models/qwen/Qwen2-VL-2B-Instruct](https://modelscope.cn/models/qwen/Qwen2-VL-2B-Instruct)
 - qwen2-vl-7b-instruct: [https://modelscope.cn/models/qwen/Qwen2-VL-7B-Instruct](https://modelscope.cn/models/qwen/Qwen2-VL-7B-Instruct)
+- qwen2-vl-72b-instruct: [https://modelscope.cn/models/qwen/Qwen2-VL-72B-Instruct](https://modelscope.cn/models/qwen/Qwen2-VL-72B-Instruct)
 
 ## Inference
 

@@ -114,7 +114,7 @@
 - `--test_oom_error`: Used to detect whether training will cause OOM, default is `False`. If set to True, will sort the training set in descending order by max_length, easy for OOM testing. This parameter is generally used for testing, use carefully.
 - `--disable_tqdm`: Whether to disable tqdm, useful when launching script with `nohup`. Default is `False`, i.e. enable tqdm.
 - `--🔥lazy_tokenize`: If set to False, preprocess all text before `trainer.train()`. If set to True, delay encoding text, reducing preprocessing wait and memory usage, useful when processing large datasets. Default is `None`, i.e. we intelligently choose based on template type, usually set to False for LLM models, set to True for multimodal models (to avoid excessive memory usage from loading images and audio).
-- `--🔥preprocess_num_proc`: Use multiprocessing when preprocessing dataset (tokenizing text). Default is `1`. Same as `lazy_tokenize` command line argument, used to solve slow preprocessing issue. But this strategy cannot reduce memory usage, so if dataset is huge, `lazy_tokenize` is recommended. Recommended values: 4, 8. Note: When using qwen-audio, this parameter will be forced to 1, because qwen-audio's preprocessing function uses torch's multiprocessing, which will cause compatibility issues.
+- `--🔥preprocess_num_proc`: Use multiprocessing when preprocessing dataset (tokenizing text). Default is `1`. Same as `lazy_tokenize` command line argument, used to solve slow preprocessing issue. But this strategy cannot reduce memory usage, so if dataset is huge, `lazy_tokenize` is recommended. Recommended values: 4, 8.
 - `--🔥use_flash_attn`: Whether to use flash attn, default is `None`. Installation steps for flash_attn can be found at [https://github.com/Dao-AILab/flash-attention](https://github.com/Dao-AILab/flash-attention). Models supporting flash_attn can be found in [LLM Supported Models](Supported-models-datasets.md).
 - `--ignore_args_error`: Whether to ignore Error thrown by command line parameter errors, default is `False`. Set to True if need to copy code to notebook to run.
 - `--🔥check_model_is_latest`: Check if model is latest, default is `True`. Set this to `False` if you need to train offline.
@@ -280,17 +280,36 @@ PT parameters inherit from the SFT parameters with some modifications to the def
 ## RLHF Parameters
 RLHF parameters are an extension of the sft parameters, with the addition of the following options:
 - `--🔥rlhf_type`: Choose the alignment algorithm, with options such as 'dpo', 'orpo', 'simpo', 'kto', 'cpo', default is 'dpo'. For training scripts with  different algorithms, please refer to [document](../LLM/Human-Preference-Alignment-Training-Documentation.md)
-- `--🔥ref_model_type`: Select reference model, same as the model_type parameter, default is None, consistent with the training model. For `cpo`, `simpo`, and `orpo` algorithms, this selection is not required.
-
-- `--🔥ref_model_id_or_path`: Local cache path for the reference model, default is `None`.
+- `--ref_model_type`: Select reference model, same as the model_type parameter, default is None, consistent with the training model. For `cpo`, `simpo`, and `orpo` algorithms, this selection is not required. Typically, no setup is needed.
+- `--ref_model_id_or_path`: Local cache path for the reference model, default is `None`.
+- `--ref_model_revision`: Model revision for the reference model, default is `None`.
 - `--beta`: KL regularization term coefficient, default is `None`, meaning that for the simpo algorithm, the default is `2`., and for other algorithms, it is `0.1`. For detail please check[document](../LLM/Human-Preference-Alignment-Training-Documentation.md)
 - `--label_smoothing`: Whether to use DPO smoothing, the default value is `0`, normally set between 0 and 0.5.
 - `--loss_type`: Type of loss, default is `None`. If it's dpo or cpo, it is `'sigmoid'`, and if it's simpo, it is `'simpo'`.
-- `--rpo_alpha`: Controls the weight of sft_loss added in DPO, default is `1.` The final loss is `KL_loss + rpo_alpha * sft_loss`.
+
+### DPO Parameters
+- `--🔥rpo_alpha`: Controls the weight of sft_loss added in DPO, default is `1.` The final loss is `KL_loss + rpo_alpha * sft_loss`.
+
+### CPO/SimPO Parameters
 - `cpo_alpha`: Coefficient for nll loss in CPO/SimPO loss, default is `1.`.
 - `--simpo_gamma`: The reward margin term in the SimPO algorithm, the paper recommends setting it to 0.5-1.5, the default is `1.`.
+
+### KTO Parameters
 - `--desirable_weight`: The loss weight for desirable responses $\lambda_D$ in the KTO algorithm, default is `1.`.
 - `--undesirable_weight`: The loss weight for undesirable responses $\lambda_U$ in the KTO paper, default is `1.`. Let $n_d$ and $n_u$ represent the number of desirable and undesirable examples in the dataset, respectively. The paper recommends controlling $\frac{\lambda_D n_D}{\lambda_Un_U} \in [1,\frac{4}{3}]$.
+
+### PPO Parameters
+- `--reward_model_id_or_path` : The local cache path for the reward model, which must include the weights of value_head (`value_head.safetensors` or `value_head.bin`).
+- `--reward_model_type`: Select reward model, same as the model_type parameter, default is None, consistent with the training model.
+- `--reward_model_revision`: Model revision for the reference model, default is `None`.
+- `--local_rollout_forward_batch_size`: Per rank no grad forward pass in the rollout phase, default is 64
+- `--whiten_rewards`: Whether to whiten the rewards, default is False
+- `--kl_coef`: KL coefficient, default is 0.05
+- `--cliprange`: Clip range in the PPO policy loss funtion, default is 0.2
+- `--vf_coef`: Coefficient for the value loss function, default is 0.1
+- `--cliprange_value`: Clip range in the PPO value loss function, default is 0.2
+- `--gamma`: Discount factor for cumulative rewards, default is 1.0
+- `--lam`: Lambda value for [GAE](https://arxiv.org/abs/1506.02438), default is 0.95
 
 ## infer merge-lora Parameters
 
@@ -329,7 +348,7 @@ RLHF parameters are an extension of the sft parameters, with the addition of the
 - `--bnb_4bit_quant_type`: Default is `'nf4'`.  See `sft command line arguments` for parameter details. If `quantization_bit` is set to 0, this parameter has no effect.
 - `--bnb_4bit_use_double_quant`: Default is `True`.  See `sft command line arguments` for parameter details. If `quantization_bit` is set to 0, this parameter has no effect.
 - `--bnb_4bit_quant_storage`: Default value `None`.See `sft command line arguments` for parameter details. If `quantization_bit` is set to 0, this parameter has no effect.
-- `--🔥max_new_tokens`: Maximum number of new tokens to generate, default is `2048`.
+- `--🔥max_new_tokens`: Maximum number of new tokens to generate, default is `2048`. If using deployment, please control the maximum number of generated tokens by passing `max_tokens` in the client.
 - `--🔥do_sample`: Reference document: [https://huggingface.co/docs/transformers/main_classes/text_generation](https://huggingface.co/docs/transformers/main_classes/text_generation). Default is `None`, inheriting the model's generation_config.
 - `--temperature`: Default is `None`, inheriting the model's generation_config. This parameter only takes effect when `do_sample` is set to True. This parameter will be used as default value in deployment parameters.
 - `--top_k`: Default is `None`, inheriting the model's generation_config. This parameter only takes effect when `do_sample` is set to True. This parameter will be used as default value in deployment parameters.
@@ -359,6 +378,7 @@ Reference document: [https://docs.vllm.ai/en/latest/models/engine_args.html](htt
 - `--🔥max_model_len`: Override model's max_model__len, default is `None`. This parameter only takes effect when using vllm.
 - `--disable_custom_all_reduce`: Whether to disable the custom all-reduce kernel and fallback to NCCL. The default is `True`, which is different from the default value of vLLM.
 - `--enforce_eager`: vllm uses the PyTorch eager mode or builds the CUDA graph. Default is `False`. Setting to True can save memory, but it may affect efficiency.
+- `--limit_mm_per_prompt`: Control vllm to use multiple images. Default is `None`. For example, pass `--limit_mm_per_prompt '{"image": 10, "video": 5}'`.
 - `--vllm_enable_lora`: Default `False`. Whether to support vllm with lora.
 - `--vllm_max_lora_rank`: Default `16`.  Lora rank in vLLM.
 - `--lora_modules`: Introduced.
@@ -383,7 +403,7 @@ export parameters inherit from infer parameters, with the following added parame
 - `--quant_n_samples`: Quantization parameter, default is `256`. When set to `--quant_method awq`, if OOM occurs during quantization, you can moderately reduce `--quant_n_samples` and `--quant_seqlen`. `--quant_method gptq` generally does not encounter quantization OOM.
 - `--quant_seqlen`: Quantization parameter, default is `2048`.
 - `--quant_batch_size`: Calibrating batch_size，Default `1`.
-- `--quant_device_map`: Default is `'cpu'`, to save memory. You can specify 'cuda:0', 'auto', 'cpu', etc., representing the device to load model during quantization. This parameter is independent of the actual device that performs the quantization, such as AWQ and GPTQ which will carry out quantization on cuda:0.
+- `--quant_device_map`: Default is `None`, to save memory. You can specify 'cuda:0', 'auto', 'cpu', etc., representing the device to load model during quantization.
 - `quant_output_dir`: Default is `None`, the default quant_output_dir will be printed in the command line.
 - `--push_to_hub`: Default is `False`. Whether to push the final `ckpt_dir` to ModelScope Hub. If you specify `merge_lora`, full parameters will be pushed; if you also specify `quant_bits`, quantized model will be pushed.
 - `--hub_model_id`: Default is `None`. Model_id to push to on ModelScope Hub. If `push_to_hub` is set to True, this parameter must be set.
@@ -412,7 +432,7 @@ The eval parameters inherit from the infer parameters, and additionally include 
 - `--eval_output_dir`: Output path for evaluation results, default is `eval_outputs` in the current folder.
 - `--eval_batch_size`: Input batch size for evaluation, default is 8.
 - `--eval_nproc`: Concurrent number, a bigger value means a faster evaluation and more cost of GPU memory, default 16. This only takes effects when running multi-modal evaluations.
-- `--deploy_timeout`: The timeout duration for waiting for model deployment before evaluation, default is 60, which means one minute.
+- `--deploy_timeout`: The timeout duration for waiting for model deployment before evaluation, default is `1800`, which means 30 minutes.
 
 ## app-ui Parameters
 
@@ -437,6 +457,6 @@ deploy parameters inherit from infer parameters, with the following added parame
 ## web-ui Parameters
 
 - `--🔥host`: Default `'127.0.0.1'`. To make it accessible on the local network, you can set it to '0.0.0.0'.
-- `--port`: Default `None`.
+- `--port`: Default `7860`.
 - `--lang`: Default `'zh'`.
 - `--share`: Default `False`.

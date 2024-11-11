@@ -38,7 +38,6 @@ MASTER_PORT=29500 \
 swift rlhf \
     --rlhf_type dpo \
     --model_type  yi-6b-chat \
-    --ref_model_type  yi-6b-chat \
     --model_revision  master \
     --sft_type  lora \
     --tuner_backend  swift \

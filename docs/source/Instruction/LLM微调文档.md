@@ -59,12 +59,12 @@ sft_args = SftArguments(
     dataset=[f'{DatasetName.blossom_math_zh}#2000'],
     output_dir='output')
 result = sft_main(sft_args)
-best_model_checkpoint = result['best_model_checkpoint']
-print(f'best_model_checkpoint: {best_model_checkpoint}')
+last_model_checkpoint = result['last_model_checkpoint']
+print(f'last_model_checkpoint: {last_model_checkpoint}')
 torch.cuda.empty_cache()
 
 infer_args = InferArguments(
-    ckpt_dir=best_model_checkpoint,
+    ckpt_dir=last_model_checkpoint,
     load_dataset_config=True)
 # merge_lora(infer_args, device_map='cpu')
 result = infer_main(infer_args)
@@ -204,11 +204,9 @@ import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 from swift.llm import (
-    get_model_tokenizer, get_template, ModelType, get_default_template_type, TransformersFramework, InferArguments
+    get_model_tokenizer, get_template, inference, ModelType, get_default_template_type
 )
 from swift.tuners import Swift
-
-infer_framework = TransformersFramework()
 
 ckpt_dir = 'vx-xxx/checkpoint-100'
 model_type = ModelType.qwen_7b_chat

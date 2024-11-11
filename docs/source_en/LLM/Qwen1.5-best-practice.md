@@ -196,8 +196,8 @@ sft_args = SftArguments(
     model_name=['小黄', 'Xiao Huang'],
     model_author=['魔搭', 'ModelScope'])
 output = sft_main(sft_args)
-best_model_checkpoint = output['best_model_checkpoint']
-print(f'best_model_checkpoint: {best_model_checkpoint}')
+last_model_checkpoint = output['last_model_checkpoint']
+print(f'last_model_checkpoint: {last_model_checkpoint}')
 ```
 
 If you want to train on a 3090 machine, you can **reduce max_length** to 1024, use model parallelism, or use deepspeed-zero3.

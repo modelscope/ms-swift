@@ -109,6 +109,7 @@ venv.bak/
 
 .vscode
 .idea
+.run
 
 # custom
 *.pkl
@@ -130,6 +131,10 @@ output/
 *.out
 benchmarks/
 eval_outputs/
+transformers/
+vlmeval/
+my_model/
+/data
 
 # Pytorch
 *.pth
