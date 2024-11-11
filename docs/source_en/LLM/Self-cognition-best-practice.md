@@ -122,8 +122,8 @@ sft_args = SftArguments(
     model_name=['小黄', 'Xiao Huang'],
     model_author=['魔搭', 'ModelScope'])
 output = sft_main(sft_args)
-best_model_checkpoint = output['best_model_checkpoint']
-print(f'best_model_checkpoint: {best_model_checkpoint}')
+last_model_checkpoint = output['last_model_checkpoint']
+print(f'last_model_checkpoint: {last_model_checkpoint}')
 
 """Out[0]
 [INFO:swift] The logging file will be saved in: /xxx/output/qwen2-7b-instruct/v2-20240607-101038/logging.jsonl
@@ -160,7 +160,7 @@ Train: 100%|██████████████████████�
 [INFO:swift] best_model_checkpoint: /xxx/output/qwen2-7b-instruct/v2-20240607-101038/checkpoint-93
 [INFO:swift] images_dir: /xxx/output/qwen2-7b-instruct/v2-20240607-101038/images
 [INFO:swift] End time of running main: 2024-06-07 10:18:41.386561
-best_model_checkpoint: /xxx/output/qwen2-7b-instruct/v2-20240607-101038/checkpoint-93
+last_model_checkpoint: /xxx/output/qwen2-7b-instruct/v2-20240607-101038/checkpoint-93
 """
 ```
 
@@ -200,7 +200,7 @@ swift sft \
 ```
 
 ## Inference After Fine-Tuning
-You need to set the value of `best_model_checkpoint`, which will be printed out at the end of the sft.
+You need to set the value of `last_model_checkpoint`, which will be printed out at the end of the sft.
 
 Using Python:
 ```python
@@ -209,8 +209,8 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 from swift.llm import InferArguments, merge_lora, infer_main
 
-best_model_checkpoint = 'qwen2-7b-instruct/vx-xxx/checkpoint-xxx'
-infer_args = InferArguments(ckpt_dir=best_model_checkpoint)
+last_model_checkpoint = 'qwen2-7b-instruct/vx-xxx/checkpoint-xxx'
+infer_args = InferArguments(ckpt_dir=last_model_checkpoint)
 merge_lora(infer_args, device_map='cpu')
 result = infer_main(infer_args)
 
@@ -271,8 +271,8 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 from swift.llm import AppUIArguments, merge_lora, app_ui_main
 
-best_model_checkpoint = 'qwen2-7b-instruct/vx-xxx/checkpoint-xxx'
-app_ui_args = AppUIArguments(ckpt_dir=best_model_checkpoint)
+last_model_checkpoint = 'qwen2-7b-instruct/vx-xxx/checkpoint-xxx'
+app_ui_args = AppUIArguments(ckpt_dir=last_model_checkpoint)
 merge_lora(app_ui_args, device_map='cpu')
 result = app_ui_main(app_ui_args)
 ```
