@@ -1,6 +1,6 @@
 from typing import Any, List
 
-from swift.llm import MODEL_MAPPING
+from swift.llm import MODEL_MAPPING, get_model_tokenizer
 
 
 def get_model_info_table():
