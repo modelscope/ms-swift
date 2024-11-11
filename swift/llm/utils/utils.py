@@ -322,11 +322,9 @@ def _map_mp(dataset: HfDataset, map_func: MapFunc, num_proc: int) -> List[Dict[s
     return res
 
 
-def dataset_map(dataset: DATASET_TYPE,
-                map_func: MapFunc,
-                num_proc: int = 1,
-                streaming: bool = False) -> Optional[Union[LLMDataset, DATASET_TYPE]]:
-    if streaming:
+def dataset_map(dataset: DATASET_TYPE, map_func: MapFunc, num_proc: int = 1) -> Union[LLMDataset, LLMIterableDataset]:
+    """This solution will be deprecated in ms-swift3.0."""
+    if isinstance(dataset, HfIterableDataset):
         return LLMIterableDataset(dataset.map(map_func))  # num_proc is not supported for IterableDataset
 
     single_map = partial(_single_map, map_func=map_func)
