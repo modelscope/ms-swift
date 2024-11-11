@@ -522,16 +522,17 @@ class MovieChat1KPreprocessor(ResponsePreprocessor):
         for file in mp4_set:
             url = f'https://modelscope.cn/datasets/AI-ModelScope/MovieChat-1K-test/resolve/master/videos/{file}'
             self.local_dir = MediaResource.download(url, 'moviechat_1k_test', file_type='file')
+        return super().prepare_dataset(dataset)
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        file_path = os.path.join(self.local_dir, f"{row['videos']}")
+        file_path = os.path.join(self.local_dir, f"{row['info']['video_path']}")
         if not os.path.exists(file_path):
             return None
-        return {
-            'query': row['question'],
-            'response': row['answer'],
+        return super().preprocess({
+            'query': row['global'][0]['question'],
+            'response': row['global'][0]['answer'],
             'videos': file_path,
-        }
+        })
 
 
 register_dataset(
@@ -539,7 +540,7 @@ register_dataset(
         ms_dataset_id='AI-ModelScope/MovieChat-1K-test',
         hf_dataset_id='Enxin/MovieChat-1K-test',
         preprocess_func=MovieChat1KPreprocessor(),
-        split=['test'],
+        split=['train'],
         tags=['chat', 'multi-modal', 'video']))
 
 register_dataset(
