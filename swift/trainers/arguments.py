@@ -17,6 +17,13 @@ from swift.utils import is_dist, use_torchacc
 class SwiftArgumentsMixin:
     # ckpt only save model
     save_only_model: bool = False
+    acc_strategy: str = field(default='token', metadata={'choices': ['token', 'sentence']})
+    loss_name: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
+    additional_saved_files: Optional[List[str]] = None
+    # torchacc
+    train_sampler_random: bool = True
+    metric_warmup_step: Optional[float] = 0
+    train_dataset_sample: Optional[int] = -1
 
     def __post_init__(self):
         if is_dist() and self.ddp_backend == 'nccl' and torch.cuda.is_available() and is_accelerate_available():
@@ -27,6 +34,8 @@ class SwiftArgumentsMixin:
                     os.environ['NCCL_IB_DISABLE'] = '1'
             except ImportError:
                 pass
+        if self.additional_saved_files is None:
+            self.additional_saved_files = []
         super().__post_init__()
 
 
@@ -37,12 +46,6 @@ class TrainingArguments(SwiftArgumentsMixin, HfTrainingArguments):
 
 @dataclass
 class Seq2SeqTrainingArguments(SwiftArgumentsMixin, HfSeq2SeqTrainingArguments):
-    loss_type: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
-    acc_strategy: str = field(default='token', metadata={'choices': ['token', 'sentence']})
-    # torchacc
-    train_sampler_random: bool = True
-    metric_warmup_step: Optional[float] = 0
-    train_dataset_sample: Optional[int] = -1
 
     @property
     def place_model_on_device(self):
@@ -51,7 +54,7 @@ class Seq2SeqTrainingArguments(SwiftArgumentsMixin, HfSeq2SeqTrainingArguments):
 
 try:
     from trl import (DPOConfig as HfDPOConfig, CPOConfig as HfCPOConfig, ORPOConfig as HfORPOConfig, KTOConfig as
-                     HfKTOConfig)
+                     HfKTOConfig, RewardConfig as HfRewardConfig, PPOv2Config as HfPPOConfig)
 
     @dataclass
     class DPOConfig(SwiftArgumentsMixin, HfDPOConfig):
@@ -69,8 +72,18 @@ try:
     class KTOConfig(SwiftArgumentsMixin, HfKTOConfig):
         pass
 
-except ImportError:
+    @dataclass
+    class RewardConfig(SwiftArgumentsMixin, HfRewardConfig):
+        pass
+
+    @dataclass
+    class PPOConfig(SwiftArgumentsMixin, HfPPOConfig):
+        pass
+
+except (ImportError, RuntimeError):
     DPOConfig = None
     CPOConfig = None
     ORPOConfig = None
     KTOConfig = None
+    RewardConfig = None
+    PPOConfig = None
