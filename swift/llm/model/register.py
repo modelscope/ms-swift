@@ -254,7 +254,7 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
                                         model_kwargs: Dict[str, Any],
                                         load_model: bool = True,
                                         **kwargs):
-    model_config = kwargs['model_config']
+    model_config = kwargs.get('model_config')
     if model_config is None:
         model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     AttnImpl.update_attn_impl(model_config, kwargs.get('attn_impl'))
