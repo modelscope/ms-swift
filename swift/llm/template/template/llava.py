@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import torch
@@ -6,12 +7,13 @@ import transformers
 from packaging import version
 
 from ..base import Template
-from ..constant import TemplateType
-from ..register import register_template
-from ..utils import Context, findall
-from ..vision_utils import load_video_llava
+from ..constant import MLLMTemplateType
+from ..register import TemplateMeta, register_template
+from ..utils import Context, Prompt, findall
+from ..vision_utils import load_batch, load_video_llava
 from .llama import Llama3TemplateMeta
 from .qwen import QwenTemplateMeta
+from .utils import ChatmlTemplateMeta
 
 
 class LlavaHfTemplate(Template):
@@ -39,29 +41,18 @@ class LlavaHfTemplate(Template):
         return inputs, {}
 
 
-class Llava1_6Llama3Template(LlavaHfTemplate):
-    default_system = 'You are a helpful language and vision assistant. ' \
-                     'You are able to understand the visual content that the user provides, ' \
-                     'and assist the user with a variety of tasks using natural language.'
-
-    def __init__(self, template_type: str):
-        super().__init__(template_type, ['<|begin_of_text|>'], [
-            '<|start_header_id|>user<|end_header_id|>\n\n{{QUERY}}<|eot_id|>'
-            '<|start_header_id|>assistant<|end_header_id|>\n\n'
-        ], ['<|eot_id|>'], ['<|eot_id|>'], None,
-                         ['<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{{SYSTEM}}<|eot_id|>'])
-
-    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, _ = super()._encode(example)
-        if len(inputs['pixel_values'].shape) == 5:  # (1, num_patch, 3, H/W, W/H)
-            inputs['pixel_values'] = torch.squeeze(inputs['pixel_values'], dim=0)  # (num_patch, 3, H/W, W/H)
-        return inputs, {}
+register_template(
+    TemplateMeta(
+        MLLMTemplateType.llava1_5_hf,
+        prefix=['<s>'],
+        prompt=['USER: {{QUERY}}\nASSISTANT:'],
+        chat_sep=['</s>'],
+        suffix=['</s>'],
+        template_cls=LlavaHfTemplate,
+    ))
 
 
-register_template(Llava1_6Llama3Template(TemplateType.llava_next_llama3), use_model=True, lazy_tokenize=True)
-
-
-class LlavaVideoTemplate(Template):
+class LlavaVideoHfTemplate(Template):
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
 
@@ -95,35 +86,158 @@ class LlavaVideoTemplate(Template):
 
 
 register_template(
-    LlavaVideoTemplate(TemplateType.llava_next_video, ['<s>{{SYSTEM}} '], ['USER: {{QUERY}} ASSISTANT:'], [' '],
-                       ['</s>']),
-    use_model=True,
-    lazy_tokenize=True)
+    TemplateMeta(
+        MLLMTemplateType.llava_next_video_hf,
+        prefix=['{{SYSTEM}} '],
+        prompt=['USER: {{QUERY}} ASSISTANT:'],
+        chat_sep=[' '],
+        suffix=[['eos_token_id']],
+        template_cls=LlavaVideoHfTemplate,
+        auto_add_bos=True,
+    ))
+
+
+class Llava1_6HfTemplate(LlavaHfTemplate):
+
+    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
+        for b in batch:
+            pixel_values = b.get('pixel_values')
+            if pixel_values is not None:
+                b['pixel_values'] = pixel_values.squeeze(0)  # 5d -> 4d
+        res = super().data_collator(batch, padding_to)
+        return res
+
+
+@dataclass
+class LlavaMistralTemplateMeta(TemplateMeta):
+    prefix: Prompt = field(default_factory=lambda: ['<s>[INST] '])
+    prompt: Prompt = field(default_factory=lambda: ['{{QUERY}} [/INST]'])
+    chat_sep: Optional[Prompt] = field(default_factory=lambda: ['</s>'])
+    suffix: Prompt = field(default_factory=lambda: ['</s>'])
+    system_prefix: Optional[Prompt] = field(default_factory=lambda: ['<<SYS>>\n{{system}}\n<</SYS>>\n\n'])
+
+
+register_template(LlavaMistralTemplateMeta(MLLMTemplateType.llava1_6_mistral_hf, template_cls=Llava1_6HfTemplate))
 
 register_template(
-    LlavaVideoTemplate(TemplateType.llava_next_video_yi, ['{{SYSTEM}} '], ['USER: {{QUERY}} ASSISTANT:'], [' '],
-                       ['<|im_end|>']),
-    use_model=True,
-    infer_media_type='round',
-    lazy_tokenize=True)
+    TemplateMeta(
+        MLLMTemplateType.llava1_6_vicuna_hf,
+        prefix=['<s>'],
+        prompt=['USER: {{QUERY}} ASSISTANT:'],
+        chat_sep=['</s>'],
+        suffix=['</s>'],
+        default_system=('A chat between a curious human and an artificial intelligence assistant. '
+                        "The assistant gives helpful, detailed, and polite answers to the human's questions."),
+        system_prefix=['<s>{{SYSTEM}} '],
+        template_cls=Llava1_6HfTemplate))
 
 
-class Llava1_5Template(LlavaHfTemplate):
+class LLava1_6YiHfTemplate(Llava1_6HfTemplate):
 
-    def __init__(self, template_type: str):
-        super().__init__(template_type, ['<s>'], ['USER: {{QUERY}}\nASSISTANT:'], ['</s>'], ['</s>'])
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
+        if self._is_vllm:
+            return [[64000], '\n']
+        else:
+            return super().replace_tag(media_type, index, example)
 
 
-register_template(Llava1_5Template(TemplateType.llava1_5), use_model=True, lazy_tokenize=True)
+register_template(ChatmlTemplateMeta(
+    MLLMTemplateType.llava1_6_yi_hf,
+    template_cls=LLava1_6YiHfTemplate,
+))
+
+register_template(Llama3TemplateMeta(
+    MLLMTemplateType.llama3_llava_next_hf,
+    template_cls=Llava1_6HfTemplate,
+))
+
+register_template(QwenTemplateMeta(MLLMTemplateType.llava_next_qwen_hf, template_cls=Llava1_6HfTemplate))
+
+
+class LlavaOneVisionHfTemplate(Llava1_6HfTemplate):
+
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = Template._encode(self, example)
+        if len(inputs) == 0:
+            return inputs, {}
+        images = example.get('images')
+        input_ids = inputs['input_ids']
+        labels = inputs['labels']
+        idx_list = findall(input_ids, 151646)  # <image>
+        processor = self.tokenizer.processor
+        if images:
+            image_processor = processor.image_processor
+            image_inputs = image_processor(images, return_tensors='pt').to(self.model.dtype)
+            height, width = image_inputs['pixel_values'][0].shape[-2:]
+            added_tokens_len = 0
+            for idx, pixel_v, image_size in zip(idx_list, image_inputs['pixel_values'], image_inputs['image_sizes']):
+                orig_height, orig_width = image_size
+                num_image_tokens = processor._get_number_of_features(orig_height, orig_width, height, width)
+                input_ids = input_ids[:added_tokens_len
+                                      + idx] + [151646] * num_image_tokens + input_ids[added_tokens_len + idx + 1:]
+                if labels is not None:
+                    labels = labels[:added_tokens_len + idx] + [-100] * num_image_tokens + labels[added_tokens_len + idx
+                                                                                                  + 1:]
+                added_tokens_len += num_image_tokens - 1
+            inputs['input_ids'] = input_ids
+            inputs['labels'] = labels
+            inputs['pixel_values'] = image_inputs['pixel_values']
+            if 'image_sizes' in image_inputs:
+                inputs['image_sizes'] = image_inputs['image_sizes']
+        return inputs, {}
+
+
+register_template(
+    QwenTemplateMeta(
+        MLLMTemplateType.llava_onevision_hf,
+        default_system=None,
+        template_cls=LlavaOneVisionHfTemplate,
+    ))
+
+
+class LlavaLlama3_1HfTemplate(LlavaHfTemplate):
+    # DaozeZhang
+    system = ('You are a helpful language and vision assistant. '
+              'You are able to understand the visual content that the user provides, '
+              'and assist the user with a variety of tasks using natural language.')
+
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super()._encode(example)
+        if len(inputs['pixel_values'].shape) == 5:  # (1, num_patch, 3, H/W, W/H)
+            inputs['pixel_values'] = torch.squeeze(inputs['pixel_values'], dim=0)  # (num_patch, 3, H/W, W/H)
+        return inputs, {}
+
+
+register_template(
+    Llama3TemplateMeta(
+        MLLMTemplateType.llava_llama3_1_hf,
+        default_system=LlavaLlama3_1HfTemplate.system,
+        template_cls=LlavaLlama3_1HfTemplate,
+    ))
+
+
+class LLavaLlama3HfTemplate(Template):
+    # xtuner
+    image_placeholder = ['<image>\n']
+
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super()._encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
+        raw_image = example.get('images')
+        if raw_image:
+            pixel_values = self.tokenizer.processor.image_processor(raw_image, return_tensors='pt')['pixel_values']
+            inputs['pixel_values'] = pixel_values.to(self.model.dtype)
+        return inputs, {}
+
+
+register_template(Llama3TemplateMeta(
+    MLLMTemplateType.llava_llama3_hf,
+    template_cls=LLavaLlama3HfTemplate,
+))
 
 
 class LLavaTemplate(Template):
-
-    def __init__(self):
-        # This template follows: https://github.com/haotian-liu/LLaVA/blob/main/llava/conversation.py#L350
-        super().__init__(['<s>[INST] '], ['{{QUERY}} [/INST]'],
-                         None, ['</s>'],
-                         system_prefix=['<<SYS>>\n{{system}}\n<</SYS>>\n\n'])
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
         assert media_type == 'image'
@@ -159,145 +273,20 @@ class LLavaTemplate(Template):
                        for h in has_images]), 'Llava does not support mix-batch nlp dataset and multi-modal dataset'
         return res
 
-    @staticmethod
-    def _get_generate_ids(generate_ids: List[int], input_token_len: int) -> List[int]:
-        return generate_ids
 
+register_template(
+    LlavaMistralTemplateMeta(MLLMTemplateType.llava1_6_mistral, template_cls=LLavaTemplate, skip_prompt=False))
 
-class Llava1_6Template(LlavaHfTemplate):
+register_template(ChatmlTemplateMeta(MLLMTemplateType.llava1_6_yi, template_cls=LLavaTemplate, skip_prompt=False))
 
-    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
-        for b in batch:
-            pixel_values = b.get('pixel_values')
-            if pixel_values is not None:
-                b['pixel_values'] = pixel_values.squeeze(0)  # 5d -> 4d
-        res = super().data_collator(batch, padding_to)
-        return res
+register_template(
+    Llama3TemplateMeta(
+        MLLMTemplateType.llama3_llava_next,
+        template_cls=LLavaTemplate,
+        default_system=('You are a helpful language and vision assistant. '
+                        'You are able to understand the visual content that the user provides, '
+                        'and assist the user with a variety of tasks using natural language.'),
+        skip_prompt=False,
+    ))
 
-
-class Llava1_6MistralTemplate(Llava1_6Template):
-
-    def __init__(self, template_type: str):
-        super().__init__(
-            template_type, ['<s>[INST] '], ['{{QUERY}} [/INST]'], ['</s>'], ['</s>'],
-            system_prefix=['<<SYS>>\n{{system}}\n<</SYS>>\n\n'])
-
-
-class Llava1_6VicunaTemplate(Llava1_6Template):
-    system = ('A chat between a curious human and an artificial intelligence assistant. '
-              "The assistant gives helpful, detailed, and polite answers to the human's questions.")
-
-    def __init__(self, template_type: str):
-        super().__init__(
-            template_type, ['<s>'], ['USER: {{QUERY}} ASSISTANT:'], ['</s>'], ['</s>'],
-            self.system,
-            system_prefix=['<s>{{SYSTEM}} '])
-
-
-register_template(Llava1_6MistralTemplate(TemplateType.llava_mistral), use_model=True, lazy_tokenize=True)
-
-register_template(Llava1_6VicunaTemplate(TemplateType.llava_vicuna), use_model=True, lazy_tokenize=True)
-
-
-class LLava1_6YiTemplate(Llava1_6Template):
-
-    def __init__(self, template_type: str):
-        super().__init__(
-            template_type, [], ['<|im_start|>user\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>'],
-            ['<|im_end|>'],
-            system_prefix=['<|im_start|>system\n{{SYSTEM}}<|im_end|>'])
-
-    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
-        if self._is_vllm:
-            return [[64000], '\n']
-        else:
-            return super().replace_tag(media_type, index, example)
-
-
-register_template(LLava1_6YiTemplate(TemplateType.llava_yi), use_model=True, lazy_tokenize=True)
-
-
-class Llama3LlavaNextHfTemplate(Llama3TemplateMixin, Llava1_6Template):
-    pass
-
-
-register_template(Llama3LlavaNextHfTemplate(TemplateType.llama3_llava_next_hf), use_model=True, lazy_tokenize=True)
-
-
-class LlavaQwenHfTemplate(QwenTemplateMixin, Llava1_6Template):
-    pass
-
-
-register_template(LlavaQwenHfTemplate(TemplateType.llava_qwen_hf), use_model=True, lazy_tokenize=True)
-
-
-class LlavaOneVisonTemplate(QwenTemplateMixin, Llava1_6Template):
-    system = None
-
-    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, _ = Template._encode(self, example)
-        if len(inputs) == 0:
-            return inputs, {}
-        images = example.get('images')
-        input_ids = inputs['input_ids']
-        labels = inputs['labels']
-        idx_list = findall(input_ids, 151646)  # <image>
-        processor = self.tokenizer.processor
-        if images:
-            image_processor = processor.image_processor
-            image_inputs = image_processor(images, return_tensors='pt').to(self.model.dtype)
-            height, width = image_inputs['pixel_values'][0].shape[-2:]
-            added_tokens_len = 0
-            for idx, pixel_v, image_size in zip(idx_list, image_inputs['pixel_values'], image_inputs['image_sizes']):
-                orig_height, orig_width = image_size
-                num_image_tokens = processor._get_number_of_features(orig_height, orig_width, height, width)
-                input_ids = input_ids[:added_tokens_len
-                                      + idx] + [151646] * num_image_tokens + input_ids[added_tokens_len + idx + 1:]
-                if labels is not None:
-                    labels = labels[:added_tokens_len + idx] + [-100] * num_image_tokens + labels[added_tokens_len + idx
-                                                                                                  + 1:]
-                added_tokens_len += num_image_tokens - 1
-            inputs['input_ids'] = input_ids
-            inputs['labels'] = labels
-            inputs['pixel_values'] = image_inputs['pixel_values']
-            if 'image_sizes' in image_inputs:
-                inputs['image_sizes'] = image_inputs['image_sizes']
-        return inputs, {}
-
-
-register_template(LlavaOneVisonTemplate(TemplateType.llava_onevision_qwen), use_model=True, lazy_tokenize=True)
-
-
-class LLavaLlamaTemplate(Llama3Template):
-
-    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example):
-        return ['<image>\n']
-
-    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, _ = super()._encode(example)
-        if len(inputs) == 0:
-            return inputs, {}
-        raw_image = example.get('images')
-        if raw_image:
-            pixel_values = self.tokenizer.processor.image_processor(raw_image, return_tensors='pt')['pixel_values']
-            inputs['pixel_values'] = pixel_values.to(self.model.dtype)
-        return inputs, {}
-
-
-register_template(LLavaLlamaTemplate(TemplateType.llava_llama_instruct), use_model=True, lazy_tokenize=True)
-
-
-class Llama3LlavaNextTemplate(Llama3TemplateMixin, LLavaTemplate):
-    system = 'You are a helpful language and vision assistant. ' \
-             'You are able to understand the visual content that the user provides, ' \
-             'and assist the user with a variety of tasks using natural language.'
-
-
-register_template(TemplateType.llama3_llava_next, Llama3LlavaNextTemplate(), use_model=True, lazy_tokenize=True)
-
-
-class LLavaQwenTemplate(QwenTemplateMixin, LLavaTemplate):
-    pass
-
-
-register_template(TemplateType.llava_qwen, LLavaQwenTemplate(), use_model=True, lazy_tokenize=True)
+register_template(QwenTemplateMeta(MLLMTemplateType.llava_next_qwen, template_cls=LLavaTemplate, skip_prompt=False))

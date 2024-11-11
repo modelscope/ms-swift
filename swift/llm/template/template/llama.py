@@ -6,10 +6,12 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 
+from swift.utils import get_env_args
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..utils import Context, Prompt
+from ..vision_utils import load_batch
 
 # ref: https://github.com/facebookresearch/llama/blob/main/llama/generation.py
 LLAMA_DEFAULT_SYSTEM = (
