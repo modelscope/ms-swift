@@ -53,18 +53,18 @@ class GPT4vDataset(ResponsePreprocessor):
         return super().preprocess(row)
 
 
-register_dataset(
-    DatasetMeta(
-        ms_dataset_id='swift/gpt4v-dataset',
-        hf_dataset_id='laion/gpt4v-dataset',
-        preprocess_func=GPT4vDataset(columns_mapping={
-            'link': 'images',
-            'caption': 'response'
-        }),
-        subsets=['default'],
-        split=['train'],
-        tags=['en', 'caption', 'multi-modal', 'quality'],
-    ))
+# register_dataset(
+#     DatasetMeta(
+#         ms_dataset_id='swift/gpt4v-dataset',
+#         hf_dataset_id='laion/gpt4v-dataset',
+#         preprocess_func=GPT4vDataset(columns_mapping={
+#             'link': 'images',
+#             'caption': 'response'
+#         }),
+#         subsets=['default'],
+#         split=['train'],
+#         tags=['en', 'caption', 'multi-modal', 'quality'],
+#     ))
 
 register_dataset(
     DatasetMeta(

@@ -210,9 +210,10 @@ class RowPreprocessor:
                 dataset_mapped = dataset_mapped.select(self.shared_list)
         except NotImplementedError:
             pass
-        
+
         if hasattr(dataset, '__len__'):
-            logger.info(f'Dataset filtered, origin length: {len(dataset)}, filtered dataset length: {len(dataset_mapped)}')
+            logger.info(
+                f'Dataset filtered, origin length: {len(dataset)}, filtered dataset length: {len(dataset_mapped)}')
         return self._remove_useless_columns(dataset_mapped)
 
 

@@ -35,10 +35,10 @@ def get_model_info_table():
                      f'|{hf_model_id}|'
                      f'{model_type}|{model_meta.architectures}|{template}|'
                      f'{requires}|{group.tags}|\n')
-        if model_meta.is_multimodal:
-            res_mllm.append(r)
-        else:
-            res_llm.append(r)
+                if model_meta.is_multimodal:
+                    res_mllm.append(r)
+                else:
+                    res_llm.append(r)
     print(f'LLM总数: {len(res_llm)}, MLLM总数: {len(res_mllm)}')
     text = ['', '']  # llm, mllm
     for i, res in enumerate([res_llm, res_mllm]):
