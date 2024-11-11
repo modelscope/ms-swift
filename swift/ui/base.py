@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 import typing
 from dataclasses import fields
@@ -96,6 +97,7 @@ class BaseUI:
     cache_dir = os.path.join(get_cache_dir(), 'swift-web-ui')
     os.makedirs(cache_dir, exist_ok=True)
     visible = True
+    quote = '\'' if sys.platform != 'win32' else '"'
 
     @classmethod
     def build_ui(cls, base_tab: Type['BaseUI']):
