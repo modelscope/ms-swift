@@ -357,6 +357,7 @@ class EmoSchemaPreprocessor(ResponsePreprocessor):
 
         self.local_dir = os.path.join(local_dir, 'videos')
         self.mp4_set = [file[:-4] for file in os.listdir(self.local_dir) if file.endswith('mp4')]
+        return super().prepare_dataset(dataset)
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         transfer_to_option = {
@@ -370,8 +371,8 @@ class EmoSchemaPreprocessor(ResponsePreprocessor):
             return None
 
         row = {
-            'query': row['question'] + '\n' + str(row['option']),
-            'response': transfer_to_option[row['answer']],
+            'query': row['query'] + '\n' + str(row['option']),
+            'response': transfer_to_option[row['response']],
             'videos': [os.path.join(self.local_dir, f"{row['video_idx']}.mp4")],
         }
         return super().preprocess(row)
