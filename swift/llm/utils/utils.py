@@ -267,6 +267,44 @@ class LazyLLMDataset(Dataset):
         return len(self.dataset)
 
 
+class LLMIterableDataset(HfIterableDataset):
+
+    def __init__(self, dataset: HfIterableDataset, max_retries=10):
+        super().__init__(
+            dataset._ex_iterable,
+            dataset._info,
+            dataset._split,
+            dataset._formatting,
+            dataset._shuffling,
+            dataset._distributed,
+            dataset._token_per_repo_id,
+        )
+        self.dataset = dataset
+        self.max_retries = max_retries
+        from .dataset import standard_keys
+        dataset._ex_iterable.remove_columns = standard_keys & next(iter(dataset)).keys()
+
+    def __iter__(self):
+        iterator = iter(self.dataset)
+        while True:
+            retries = 0
+            while retries < self.max_retries:
+                try:
+                    value = next(iterator)
+                    if value:
+                        yield value
+                        break
+                    else:
+                        raise ValueError
+                except StopIteration:
+                    iterator = iter(self.dataset)
+                    break
+                except Exception as e:
+                    retries += 1
+                    if retries >= self.max_retries:
+                        raise e
+
+
 MapFunc = Callable[[Dict[str, Any]], Tuple[Dict[str, Any], Dict[str, Any]]]
 
 
@@ -282,12 +320,13 @@ def _map_mp_single(shard: HfDataset, map_func: MapFunc, queue: Queue, rank: int)
     pre_i = 0
     result = []
     for i, d in enumerate(shard):
-        result.append(map_func(d))
+        output = map_func(d)
+        if output is not None:
+            result.append(output)
         if i == len(shard) - 1 or (i + 1) % batch_size == 0:
-            result = [res for res in result if res is not None]
             queue.put((rank, result, i - pre_i))
-            result = []
             pre_i = i
+            result = []
 
 
 def _map_mp_i(dataset: HfDataset, map_func: MapFunc, num_proc: int) -> Iterator[Tuple[int, Dict[str, Any]]]:
@@ -1060,44 +1099,6 @@ def get_time_info(log_history: List[Dict[str, Any]], n_train_samples: Optional[i
     except Exception:
         pass
     return time_info
-
-
-class LLMIterableDataset(HfIterableDataset):
-
-    def __init__(self, dataset: HfIterableDataset, max_retries=10):
-        super().__init__(
-            dataset._ex_iterable,
-            dataset._info,
-            dataset._split,
-            dataset._formatting,
-            dataset._shuffling,
-            dataset._distributed,
-            dataset._token_per_repo_id,
-        )
-        self.dataset = dataset
-        self.max_retries = max_retries
-        from .dataset import standard_keys
-        dataset._ex_iterable.remove_columns = standard_keys & next(iter(dataset)).keys()
-
-    def __iter__(self):
-        iterator = iter(self.dataset)
-        while True:
-            retries = 0
-            while retries < self.max_retries:
-                try:
-                    value = next(iterator)
-                    if value:
-                        yield value
-                        break
-                    else:
-                        raise ValueError
-                except StopIteration:
-                    iterator = iter(self.dataset)
-                    break
-                except Exception as e:
-                    retries += 1
-                    if retries >= self.max_retries:
-                        raise e
 
 
 def get_max_model_len(config: PretrainedConfig, ignore_rope_scaling=False) -> Optional[int]:
