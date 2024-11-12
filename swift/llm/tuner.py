@@ -1,24 +1,24 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import json
 import os
 import types
 from typing import List
 
-import json
 import numpy as np
 import torch
 import transformers
 from packaging import version
 from transformers import TrainerCallback
 
+from swift.llm import MODEL_ARCH_MAPPING
 from swift.llm.argument.train_args import SftArguments
 from swift.plugin.callback import extra_callbacks
 from swift.plugin.optimizer import optimizers_map
 from swift.plugin.tuner import Tuner, extra_tuners
-from swift.tuners import (AdaLoraConfig, AdapterConfig, BOFTConfig, IA3Config, LLaMAProConfig, LongLoRAModelType,
+from swift.tuners import (AdaLoraConfig, AdapterConfig, BOFTConfig, LLaMAProConfig, LongLoRAModelType,
                           LoraConfig, LoRAConfig, ReftConfig, Swift, VeraConfig)
 from swift.utils import activate_model_parameters, freeze_model_parameters, get_logger, use_torchacc
 from swift.utils.torch_utils import find_all_linears, find_embedding
-from .module_mapping import MODEL_KEYS_MAPPING
 
 logger = get_logger()
 
@@ -29,17 +29,13 @@ def handle_target_modules(model, args: SftArguments) -> None:
         model: The input model
         args: The SftArguments
     """
-
-    if args.train_type == 'ia3':
-        assert len(args.ia3_feedforward_modules) > 0, ('Setting ia3_target_modules to `ALL` '
-                                                       'need to pass MLP linear names to `ia3_feedforward_modules`')
     target_modules: List[str] = args.target_modules
     if 'EMBEDDING' in target_modules:
         target_modules.remove('EMBEDDING')
         target_modules += find_embedding(model)
     if 'ALL' in target_modules:
         target_modules.remove('ALL')
-        target_modules += find_all_linears(model, args.quantization_bit, args.model_type, args.quant_method)
+        target_modules += find_all_linears(model, args.quant_bits, args.model_type, args.quant_method)
     args.target_modules = target_modules
     if not args.target_regex:
         logger.info(f'target_modules: {args.target_modules}')
@@ -160,7 +156,6 @@ def prepare_modules(model, args: SftArguments):
         # Apply liger
         apply_liger(args.model_type)
 
-    group_type = args.get_model_group()
     # Preparing LoRA
     if args.is_adapter:
         if args.resume_from_checkpoint is None:
@@ -231,25 +226,15 @@ def prepare_modules(model, args: SftArguments):
                 )
                 model = Swift.prepare_model(model, adalora_config)
                 logger.info(f'adalora_config: {adalora_config}')
-            elif args.train_type == 'ia3':
-                ia3_config = IA3Config(
-                    task_type='CAUSAL_LM',
-                    target_modules=args.target_modules,
-                    feedforward_modules=args.ia3_feedforward_modules or [],
-                    modules_to_save=args.modules_to_save,
-                )
-                model = Swift.prepare_model(model, ia3_config)
-                logger.info(f'ia3_config: {ia3_config}')
             elif args.train_type == 'llamapro':
                 llamapro_config = LLaMAProConfig(
-                    model_type=group_type,
+                    model_type=model.model_meta.model_arch,
                     num_new_blocks=args.llamapro_num_new_blocks,
                     num_groups=args.llamapro_num_groups)
                 model = Swift.prepare_model(model, llamapro_config)
                 logger.info(f'llamapro_config: {llamapro_config}')
             elif args.train_type == 'adapter':
-                assert group_type in MODEL_KEYS_MAPPING
-                mlp_key = MODEL_KEYS_MAPPING[group_type].mlp
+                mlp_key = MODEL_ARCH_MAPPING[model.model_meta.model_arch].mlp
                 mlp_key = mlp_key.split('.{}.')[1]
                 adapter_config = AdapterConfig(
                     dim=model.config.hidden_size,
@@ -294,7 +279,7 @@ def prepare_modules(model, args: SftArguments):
                 logger.info(f'fourier_config: {fourier_config}')
             elif args.train_type == 'reft':
                 reft_config = ReftConfig(
-                    model_type=group_type,
+                    model_type=model.model_meta.model_arch,
                     layer_key=args.reft_layer_key,
                     r=args.reft_rank,
                     layers=args.reft_layers,

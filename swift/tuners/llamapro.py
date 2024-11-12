@@ -129,6 +129,7 @@ class LLaMAPro(SwiftAdapter):
 
     @classmethod
     def get_model_key_mapping(cls, model_type, config) -> ModelKeys:
+
         model_key_mapping = SwiftAdapter.get_model_key_mapping(model_type, config)
         assert model_key_mapping.o_proj is not None and model_key_mapping.down_proj is not None, \
             'LLaMAPro only support models with o_proj and down_proj components.'
