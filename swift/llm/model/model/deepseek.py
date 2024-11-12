@@ -3,7 +3,8 @@ import os
 import sys
 from typing import Any, Dict
 
-from swift.llm import ModelArch, TemplateType
+from ..model_arch import ModelArch
+from swift.llm import TemplateType
 from ..constant import LLMModelType, MLLMModelType
 from ..patcher import patch_output_clone, patch_output_to_input_device
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model

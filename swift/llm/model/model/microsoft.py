@@ -2,7 +2,8 @@
 from types import MethodType
 from typing import Any, Dict
 
-from swift.llm import ModelArch, TemplateType
+from ..model_arch import ModelArch
+from swift.llm import TemplateType
 from swift.utils import get_env_args
 from ..constant import LLMModelType, MLLMModelType
 from ..patcher import patch_output_clone

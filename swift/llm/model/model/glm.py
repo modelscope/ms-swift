@@ -9,7 +9,8 @@ from transformers import AutoTokenizer, PreTrainedTokenizerBase
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
 
-from swift.llm import ModelArch, TemplateType
+from ..model_arch import ModelArch
+from swift.llm import TemplateType
 from swift.utils import get_dist_setting, get_logger
 from ..constant import LLMModelType, MLLMModelType
 from ..patcher import patch_output_to_input_device

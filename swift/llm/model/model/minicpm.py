@@ -6,9 +6,9 @@ from typing import Any, Dict
 from transformers import PretrainedConfig
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
+from ..model_arch import ModelArch
 from swift.llm import TemplateType
 from ..constant import LLMModelType, MLLMModelType
-from ..model_arch import ModelArch
 from ..patcher import patch_fixed_device, patch_output_clone
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
 from ..utils import ModelInfo, ignore_check_imports, use_submodel_func

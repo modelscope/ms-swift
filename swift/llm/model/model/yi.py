@@ -7,6 +7,7 @@ from modelscope import AutoTokenizer
 from transformers import PretrainedConfig
 
 from swift.llm import TemplateType
+from ..model_arch import ModelArch
 from swift.utils import get_logger
 from ..constant import LLMModelType, MLLMModelType
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
@@ -74,7 +75,7 @@ register_model(
         ],
         TemplateType.yi_vl,
         get_model_tokenizer_yi_vl,
-        support_flash_attn=True,
+        model_arch=ModelArch.llava_llama,
         architectures=['LlavaForConditionalGeneration'],
     ))
 
@@ -126,9 +127,7 @@ register_model(
         TemplateType.chatml,
         get_model_tokenizer_yi,
         architectures=['LlamaForCausalLM'],
-        support_flash_attn=True,
-        support_vllm=True,
-        support_lmdeploy=True,
+        model_arch=ModelArch.llama,
     ))
 
 register_model(
@@ -146,7 +145,5 @@ register_model(
         TemplateType.yi_coder,
         get_model_tokenizer_yi,
         architectures=['LlamaForCausalLM'],
-        support_flash_attn=True,
-        support_vllm=True,
-        support_lmdeploy=True,
+        model_arch=ModelArch.llama,
     ))

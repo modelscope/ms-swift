@@ -10,7 +10,8 @@ from modelscope import AutoConfig, AutoModel, AutoModelForCausalLM
 from transformers import AutoTokenizer
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
-from swift.llm import ModelArch, TemplateType
+from ..model_arch import ModelArch
+from swift.llm import TemplateType
 from swift.utils import get_logger
 from ..constant import LLMModelType, MLLMModelType
 from ..patcher import patch_output_clone
