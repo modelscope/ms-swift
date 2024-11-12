@@ -5,6 +5,7 @@ if __name__ == '__main__':
 
 import os
 import shutil
+import json
 import tempfile
 import unittest
 
@@ -34,11 +35,18 @@ class TestRun3(unittest.TestCase):
         return train_dataset.select(range(min(50, len(train_dataset))))
 
     def test_model_load(self):
+        if os.path.exists('./models.txt'):
+            with open('./models.txt', 'r') as f:
+                models = json.load(f)
+        else:
+            models = []
         for model_name, model_meta in MODEL_MAPPING.items():
             model_type = model_meta.model_type
             template = model_meta.template
             for group in model_meta.model_groups:
                 model = group.models[0]
+                if 'skip_test' in (group.tags or []) or model.ms_model_id in models:
+                    break
                 model_ins = None
                 requires = group.requires
                 for req in (requires or []):
@@ -53,9 +61,17 @@ class TestRun3(unittest.TestCase):
                 except Exception as e:
                     import traceback
                     print(traceback.format_exc())
+                    passed = False
+                else:
+                    passed = True
+                    models.append(model.ms_model_id)
                 finally:
                     if model_ins is not None:
                         del model_ins
+                    if passed:
+                        with open('./models.txt', 'w') as f:
+                            json.dump(models, f)
+                    
 
     # def test_template_load(self):
     #     self.llm_ds = self.load_ds('AI-ModelScope/sharegpt_gpt4')

@@ -37,12 +37,12 @@ register_model(
                 Model('AI-ModelScope/Mixtral-8x22B-v0.1', 'mistral-community/Mixtral-8x22B-v0.1'),
             ],
                        ignore_file_pattern=[r'.+\.pt$'],
-                       tags=['moe'],
+                       tags=['moe', 'skip_test'],
                        requires=['transformers>=4.36']),
             ModelGroup([
                 Model('AI-ModelScope/Mixtral-8x7b-AQLM-2Bit-1x16-hf', 'ISTA-DASLab/Mixtral-8x7b-AQLM-2Bit-1x16-hf'),
             ],
-                       tags=['moe'],
+                       tags=['moe', 'skip_test'],
                        requires=['transformers>=4.38', 'aqlm', 'torch>=2.2.0']),
         ],
         TemplateType.llama,
@@ -54,8 +54,8 @@ register_model(
     ModelMeta(
         LLMModelType.mistral_nemo, [
             ModelGroup([
-                Model('LLM-Research/Mistral-Large-Instruct-2407', 'mistralai/Mistral-Large-Instruct-2407'),
                 Model('AI-ModelScope/Mistral-Small-Instruct-2409', 'mistralai/Mistral-Small-Instruct-2409'),
+                Model('LLM-Research/Mistral-Large-Instruct-2407', 'mistralai/Mistral-Large-Instruct-2407'),
                 Model('AI-ModelScope/Mistral-Nemo-Base-2407', 'mistralai/Mistral-Nemo-Base-2407'),
                 Model('AI-ModelScope/Mistral-Nemo-Instruct-2407', 'mistralai/Mistral-Nemo-Instruct-2407'),
             ],

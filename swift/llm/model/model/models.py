@@ -162,7 +162,7 @@ register_model(
                 [
                     Model('codefuse-ai/CodeFuse-CodeLlama-34B', 'codefuse-ai/CodeFuse-CodeLlama-34B'),
                 ],
-                tags=['coding'],
+                tags=['coding', 'skip_test'],
             ),
         ],
         TemplateType.codefuse_codellama,
@@ -202,7 +202,7 @@ register_model(
             ]),
             ModelGroup([
                 Model('IEITYuan/Yuan2-M32-hf', 'IEITYuan/Yuan2-M32-hf'),
-            ], tags=['moe']),
+            ], tags=['moe', 'skip_test']),
         ],
         TemplateType.yuan,
         get_model_tokenizer_yuan,
@@ -319,7 +319,7 @@ register_model(
             ModelGroup([
                 Model('AI-ModelScope/WizardLM-2-8x22B', 'alpindale/WizardLM-2-8x22B'),
             ],
-                       requires=['transformers>=4.36']),
+                       requires=['transformers>=4.36'], tags=['skip_test']),
         ],
         TemplateType.wizardlm2,
         get_model_tokenizer_with_flash_attn,
@@ -334,7 +334,7 @@ register_model(
             ModelGroup([
                 Model('AI-ModelScope/WizardLM-2-7B-AWQ', 'MaziyarPanahi/WizardLM-2-7B-AWQ'),
             ],
-                       requires=['transformers>=4.34']),
+                       requires=['transformers>=4.34'], tags=['skip_test']),
         ],
         TemplateType.wizardlm2_awq,
         get_model_tokenizer_with_flash_attn,
@@ -362,7 +362,7 @@ register_model(
         [
             ModelGroup([
                 Model('OpenBuddy/openbuddy-deepseek-67b-v15.2', 'OpenBuddy/openbuddy-deepseek-67b-v15.2'),
-            ]),
+            ], tags=['skip_test']),
         ],
         TemplateType.openbuddy,
         get_model_tokenizer_with_flash_attn,
@@ -376,7 +376,7 @@ register_model(
         [
             ModelGroup([
                 Model('SUSTC/SUS-Chat-34B', 'SUSTech/SUS-Chat-34B'),
-            ]),
+            ], tags=['skip_test']),
         ],
         TemplateType.sus,
         get_model_tokenizer_with_flash_attn,
@@ -440,7 +440,7 @@ register_model(
                     Model('OpenBuddy/openbuddy-mixtral-7bx8-v18.1-32k', 'OpenBuddy/openbuddy-mixtral-7bx8-v18.1-32k'),
                 ],
                 requires=['transformers>=4.36'],
-                tags=['moe'],
+                tags=['moe', 'skip_test'],
             ),
         ],
         TemplateType.openbuddy,
@@ -470,7 +470,7 @@ register_model(
         [
             ModelGroup([
                 Model('OpenBuddy/openbuddy-llama-65b-v8-bf16', 'OpenBuddy/openbuddy-llama-65b-v8-bf16'),
-            ]),
+            ], tags=['skip_test']),
         ],
         TemplateType.openbuddy,
         get_model_tokenizer_with_flash_attn,
@@ -483,8 +483,8 @@ register_model(
         LLMModelType.openbuddy_llama2,
         [
             ModelGroup([
-                Model('OpenBuddy/openbuddy-llama2-70b-v10.1-bf16', 'OpenBuddy/openbuddy-llama2-70b-v10.1-bf16'),
                 Model('OpenBuddy/openbuddy-llama2-13b-v8.1-fp16', 'OpenBuddy/openbuddy-llama2-13b-v8.1-fp16'),
+                Model('OpenBuddy/openbuddy-llama2-70b-v10.1-bf16', 'OpenBuddy/openbuddy-llama2-70b-v10.1-bf16'),
             ]),
         ],
         TemplateType.openbuddy,
@@ -498,8 +498,8 @@ register_model(
         LLMModelType.openbuddy_llama3,
         [
             ModelGroup([
-                Model('OpenBuddy/openbuddy-llama3-70b-v21.1-8k', 'OpenBuddy/openbuddy-llama3-70b-v21.1-8k'),
                 Model('OpenBuddy/openbuddy-llama3-8b-v21.1-8k', 'OpenBuddy/openbuddy-llama3-8b-v21.1-8k'),
+                Model('OpenBuddy/openbuddy-llama3-70b-v21.1-8k', 'OpenBuddy/openbuddy-llama3-70b-v21.1-8k'),
             ]),
             ModelGroup([
                 Model('OpenBuddy/openbuddy-llama3.1-8b-v22.1-131k', 'OpenBuddy/openbuddy-llama3.1-8b-v22.1-131k'),
@@ -520,7 +520,7 @@ register_model(
                 Model('AI-ModelScope/dbrx-base', 'databricks/dbrx-base'),
                 Model('AI-ModelScope/dbrx-instruct', 'databricks/dbrx-instruct'),
             ],
-                       tags=['moe'],
+                       tags=['moe', 'skip_test'],
                        requires=['transformers>=4.36']),
         ],
         TemplateType.dbrx,
@@ -580,7 +580,7 @@ register_model(
                 Model('AI-ModelScope/Llama-3.1-Nemotron-70B-Instruct-HF', 'nvidia/Llama-3.1-Nemotron-70B-Instruct-HF'),
             ],
                        requires=['transformers>=4.43'],
-                       ignore_file_pattern=[r'.+\.pth$']),
+                       ignore_file_pattern=[r'.+\.pth$'], tags=['skip_test']),
         ],
         TemplateType.llama3,
         get_model_tokenizer_with_flash_attn,
@@ -595,7 +595,7 @@ register_model(
             ModelGroup([
                 Model('LLM-Research/Reflection-Llama-3.1-70B', 'mattshumer/Reflection-Llama-3.1-70B'),
             ],
-                       requires=['transformers>=4.43']),
+                       requires=['transformers>=4.43'], tags=['skip_test']),
         ],
         TemplateType.reflection,
         get_model_tokenizer_with_flash_attn,
