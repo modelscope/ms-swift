@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
 import torch
 import torch.nn as nn
-from transformers import GenerationConfig, PreTrainedTokenizerBase
+from transformers import GenerationConfig
 
 from swift.utils import deep_getattr, get_logger, upper_bound
 

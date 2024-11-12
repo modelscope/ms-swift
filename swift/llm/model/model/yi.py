@@ -11,7 +11,7 @@ from ..model_arch import ModelArch
 from swift.utils import get_logger
 from ..constant import LLMModelType, MLLMModelType
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
-from ..utils import git_clone_github
+from ..utils import git_clone_github, ModelInfo
 
 logger = get_logger()
 
@@ -22,7 +22,7 @@ def get_model_tokenizer_yi1_5(model_dir, *args, **kwargs):
 
 
 def get_model_tokenizer_yi_vl(model_dir: str,
-                              config: PretrainedConfig,
+                              model_info: ModelInfo,
                               model_kwargs: Dict[str, Any],
                               load_model: bool = True,
                               **kwargs):
@@ -41,7 +41,7 @@ def get_model_tokenizer_yi_vl(model_dir: str,
     key_info['model_path'] = model_dir
     model, tokenizer = get_model_tokenizer_with_flash_attn(
         model_dir,
-        model_config,
+        model_info,
         model_kwargs,
         load_model,
         model_config=model_config,

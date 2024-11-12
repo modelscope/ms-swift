@@ -20,7 +20,7 @@ from peft.utils import CONFIG_NAME
 from peft.utils import ModulesToSaveWrapper as _ModulesToSaveWrapper
 from peft.utils import _get_submodules
 
-from swift.llm import ModelKeys
+from swift.llm import ModelKeys, MODEL_ARCH_MAPPING
 from swift.utils.constants import BIN_EXTENSIONS
 from swift.utils.logger import get_logger
 
@@ -333,8 +333,9 @@ class SwiftAdapter:
 
     @classmethod
     def get_model_key_mapping(cls, model_type, config) -> ModelKeys:
-        if model_type in MODEL_KEYS_MAPPING.keys():
-            model_key_mapping = MODEL_KEYS_MAPPING[model_type]
+
+        if model_type in MODEL_ARCH_MAPPING.keys():
+            model_key_mapping = MODEL_ARCH_MAPPING[model_type]
         else:
             model_key_mapping = config.model_key_mapping
 

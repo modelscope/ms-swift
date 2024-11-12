@@ -4,7 +4,6 @@ import sys
 from typing import Any, Dict
 
 from modelscope import AutoConfig, AutoModel
-from transformers import PretrainedConfig
 
 from ..model_arch import ModelArch
 from swift.llm import TemplateType
