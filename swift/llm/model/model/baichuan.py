@@ -41,7 +41,7 @@ register_model(
                 Model('baichuan-inc/Baichuan-13B-Base', 'baichuan-inc/Baichuan-13B-Base'),
                 Model('baichuan-inc/Baichuan-13B-Chat', 'baichuan-inc/Baichuan-13B-Chat'),
             ],
-                       requires=['transformers<4.34']),
+                       requires=['transformers<4.33.3']),
         ],
         TemplateType.baichuan,
         get_model_tokenizer_baichuan,
@@ -70,13 +70,14 @@ def get_model_tokenizer_baichuan2(model_dir: str,
                                   model_config=None,
                                   **kwargs):
     if model_config is None:
-        model_config = AutoConfig.from_pretrained(model_dir)
+        model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     if not hasattr(model_config, 'z_loss_weight'):
         model_config.z_loss_weight = 0
     # patch: baichuan2_13b configuration_baichuan.py bug
-    gradient_checkpointing = model_config.gradient_checkpointing
-    if isinstance(gradient_checkpointing, (tuple, list)):
-        model_config.gradient_checkpointing = gradient_checkpointing[0]
+    if hasattr(model_config, 'gradient_checkpointing'):
+        gradient_checkpointing = model_config.gradient_checkpointing
+        if isinstance(gradient_checkpointing, (tuple, list)):
+            model_config.gradient_checkpointing = gradient_checkpointing[0]
     model, tokenizer = get_model_tokenizer_with_flash_attn(
         model_dir, model_info, model_kwargs, load_model, model_config=model_config, **kwargs)
     model_ori = model

@@ -1,1 +1,19 @@
-from . import llama, qwen
+from . import llama
+from . import qwen
+from . import deepseek
+from . import emu3
+from . import gemma
+from . import glm
+from . import got_ocr
+from . import idefics3
+from . import internlm
+from . import internvl
+from . import llava
+# from . import llm
+from . import microsoft
+from . import minicpm
+from . import mplug
+from . import openbuddy
+from . import pixtral
+from . import rlhf
+from . import yi

@@ -142,7 +142,7 @@ def get_model_tokenizer_internvl(model_dir: str,
                                  **kwargs):
     model_config = kwargs.get('model_config')
     if not model_config:
-        model_config = AutoConfig.from_pretrained(model_dir)
+        model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True, use_fast=False)
     if kwargs.get('eos_token') is None and tokenizer.eos_token != '<|im_end|>':
         try:

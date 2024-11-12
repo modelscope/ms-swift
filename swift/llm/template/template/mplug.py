@@ -49,8 +49,6 @@ class mPlugOwl2Template(Template):
         return res
 
 
-super().__init__()
-
 register_template(
     TemplateMeta(
         MLLMTemplateType.mplug_owl2,

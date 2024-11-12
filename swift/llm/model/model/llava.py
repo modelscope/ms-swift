@@ -323,7 +323,7 @@ def get_model_tokenizer_llava(model_dir: str,
     else:  # qwen
         from llava.model import LlavaQwenForCausalLM
         automodel_class = LlavaQwenForCausalLM
-        model_config = AutoConfig.from_pretrained(model_dir)
+        model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
 
     model_config.mm_vision_tower = safe_snapshot_download('AI-ModelScope/clip-vit-large-patch14-336')
     model_kwargs['model_config'] = model_config
