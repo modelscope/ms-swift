@@ -15,6 +15,7 @@ def get_model_tokenizer_paligemma_vision(model_dir: str,
                                          **kwargs):
     from transformers import AutoProcessor, PaliGemmaForConditionalGeneration
     processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
+    kwargs.pop('automodel_class', None)
     model, tokenizer = get_model_tokenizer_with_flash_attn(
         model_dir, model_info, model_kwargs, load_model, automodel_class=PaliGemmaForConditionalGeneration, **kwargs)
     tokenizer.processor = processor

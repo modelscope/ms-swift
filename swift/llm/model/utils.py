@@ -4,17 +4,21 @@ import os
 import re
 from contextlib import contextmanager
 from dataclasses import dataclass
+from functools import wraps
+from types import MethodType
 from typing import Any, Dict, List, Literal, Optional, Tuple, TypeVar, Union
 
 import torch
 import torch.distributed as dist
 import transformers
+from accelerate.utils import find_device
 from datasets.utils.filelock import FileLock
 from modelscope.hub.utils.utils import get_cache_dir
 from packaging import version
 from transformers import AutoConfig, PretrainedConfig
 
 from swift.hub import HFHub, MSHub, default_hub
+from swift.llm import to_device
 from swift.utils import deep_getattr, get_logger, is_dist, is_dist_ta, safe_ddp_context, subprocess_run
 
 logger = get_logger()

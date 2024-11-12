@@ -64,7 +64,7 @@ register_model(
             ]),
             ModelGroup(
                 [Model('ZhipuAI/codegeex2-6b', 'THUDM/codegeex2-6b')],
-                requires=['transformers<4.34'],
+                requires=['transformers<4.42'],
                 tags=['coding'],
             ),
         ],
@@ -85,7 +85,7 @@ register_model(
         TemplateType.codefuse,
         get_model_tokenizer_chatglm,
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
-        requires=['transformers<4.34'],
+        requires=['transformers==4.33.0'],
         model_arch=ModelArch.chatglm))
 
 register_model(

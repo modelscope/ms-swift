@@ -1,8 +1,3 @@
-if __name__ == '__main__':
-    import os
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1'
-    os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
-
 import os
 import shutil
 import json
@@ -43,20 +38,22 @@ class TestRun3(unittest.TestCase):
         for model_name, model_meta in MODEL_MAPPING.items():
             model_type = model_meta.model_type
             template = model_meta.template
+            meta_requires = model_meta.requires or []
             for group in model_meta.model_groups:
                 model = group.models[0]
                 if 'skip_test' in (group.tags or []) or model.ms_model_id in models:
                     break
                 model_ins = None
-                requires = group.requires
-                for req in (requires or []):
+                requires = meta_requires + (group.requires or [])
+                for req in requires:
                     os.system(f'pip install "{req}"')
-                if not any(['transformers' in req for req in (requires or [])]):
+                if not any(['transformers' in req for req in requires]):
                     os.system(f'pip install transformers==4.45.1')
-                if not any(['accelerate' in req for req in (requires or [])]):
+                if not any(['accelerate' in req for req in requires]):
                     os.system(f'pip install accelerate==1.1.1')
                 try:
-                    print(f'Test model: {model.ms_model_id}')
+                    import transformers
+                    print(f'Test model: {model.ms_model_id} with transformers version: {transformers.__version__}')
                     model_ins, tokenizer = get_model_tokenizer(model.ms_model_id)
                 except Exception as e:
                     import traceback
