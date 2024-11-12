@@ -5,7 +5,7 @@ from typing import Any, Dict
 
 from modelscope import AutoConfig
 
-from swift.llm import TemplateType
+from swift.llm import ModelArch, TemplateType
 from ..constant import LLMModelType, MLLMModelType
 from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,
                         get_model_tokenizer_with_flash_attn, register_model)
@@ -65,9 +65,7 @@ register_model(
         TemplateType.llama,
         get_model_tokenizer_llama,
         architectures=['LlamaForCausalLM'],
-        support_flash_attn=True,
-        support_vllm=True,
-        support_lmdeploy=True,
+        model_arch=ModelArch.llama,
     ))
 
 register_model(
@@ -150,9 +148,7 @@ register_model(
         TemplateType.llama3,
         get_model_tokenizer_with_flash_attn,
         architectures=['LlamaForCausalLM'],
-        support_flash_attn=True,
-        support_vllm=True,
-        support_lmdeploy=True,
+        model_arch=ModelArch.llama,
     ))
 
 register_model(
@@ -165,9 +161,7 @@ register_model(
         get_model_tokenizer_with_flash_attn,
         architectures=['LlamaForCausalLM'],
         requires=['transformers>=4.43'],
-        support_flash_attn=True,
-        support_vllm=True,
-        support_lmdeploy=True,
+        model_arch=ModelArch.llama,
     ))
 
 register_model(
@@ -186,9 +180,7 @@ register_model(
         architectures=['LlamaForCausalLM'],
         ignore_file_pattern=[r'.+\.pth$'],
         requires=['transformers>=4.45'],
-        support_flash_attn=True,
-        support_vllm=True,
-        support_lmdeploy=True,
+        model_arch=ModelArch.llama,
     ))
 
 
@@ -200,7 +192,8 @@ def get_model_tokenizer_llama3_2_vision(*args, **kwargs):
 
 register_model(
     ModelMeta(
-        MLLMModelType.llama3_2_vision, [
+        MLLMModelType.llama3_2_vision,
+        [
             ModelGroup([
                 Model('LLM-Research/Llama-3.2-11B-Vision', 'meta-llama/Llama-3.2-11B-Vision'),
                 Model('LLM-Research/Llama-3.2-90B-Vision', 'meta-llama/Llama-3.2-90B-Vision'),
@@ -213,8 +206,8 @@ register_model(
         get_model_tokenizer_llama3_2_vision,
         requires=['transformers>=4.45'],
         architectures=['MllamaForConditionalGeneration'],
-        support_flash_attn=True,
-        support_vllm=True))
+        model_arch=ModelArch.llava3_2_vision,
+    ))
 
 
 def get_model_tokenizer_omnli(model_dir: str,
@@ -254,7 +247,8 @@ def get_model_tokenizer_omnli(model_dir: str,
 
 register_model(
     ModelMeta(
-        MLLMModelType.llama3_1_omni, [
+        MLLMModelType.llama3_1_omni,
+        [
             ModelGroup(
                 [
                     Model('ICTNLP/Llama-3.1-8B-Omni', 'ICTNLP/Llama-3.1-8B-Omni'),
@@ -266,4 +260,5 @@ register_model(
         TemplateType.llama3_1_omni,
         get_model_tokenizer_omnli,
         architectures=['OmniSpeech2SLlamaForCausalLM'],
-        support_flash_attn=True))
+        model_arch=ModelArch.llama3_1_omni,
+    ))

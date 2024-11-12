@@ -1,8 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
-from swift.llm import TemplateType
+from swift.llm import ModelArch, TemplateType
 from ..constant import LLMModelType
-from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local, register_model
+from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
 
 register_model(
     ModelMeta(
@@ -16,8 +16,8 @@ register_model(
             ]),
         ],
         TemplateType.telechat,
-        get_model_tokenizer_from_local,
-        support_flash_attn=True,
+        get_model_tokenizer_with_flash_attn,
+        model_arch=ModelArch.telechat,
         architectures=['TelechatForCausalLM'],
     ))
 
@@ -30,7 +30,7 @@ register_model(
             ]),
         ],
         TemplateType.telechat2,
-        get_model_tokenizer_from_local,
-        support_flash_attn=True,
+        get_model_tokenizer_with_flash_attn,
+        model_arch=ModelArch.telechat,
         architectures=['TelechatForCausalLM'],
     ))

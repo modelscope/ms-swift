@@ -18,6 +18,8 @@ class ModelArch:
     phi2 = 'phi2'
     phi3 = 'phi3'
     phi3_small = 'phi3_small'
+    telechat = 'telechat'
+    dbrx = 'dbrx'
     # mllm
     qwen_audio = 'qwen_audio'
     qwen_vl = 'qwen_vl'
@@ -75,6 +77,8 @@ class ModelKeys:
     qa_proj: str = None
 
     qb_proj: str = None
+
+    kv_proj: str = None
 
     kva_proj: str = None
 
@@ -141,6 +145,7 @@ register_model_arch(
         embedding='model.tok_embeddings',
         output='output',
     ))
+
 register_model_arch(
     ModelKeys(
         ModelArch.chatglm,
@@ -152,6 +157,20 @@ register_model_arch(
         qkv_proj='transformer.encoder.layers.{}.self_attention.query_key_value',
         embedding='transformer.embedding',
         output='transformer.output_layer'))
+
+register_model_arch(
+    ModelKeys(
+        ModelArch.telechat,
+        module_list='transformer.h',
+        mlp='transformer.h.{}.self_attention.mlp',
+        down_proj='transformer.h.{}.mlp.down_proj',
+        attention='transformer.h.{}.self_attention',
+        o_proj='transformer.h.{}.self_attention.dense',
+        q_proj='transformer.h.{}.self_attention.query',
+        kv_proj='transformer.h.{}.self_attention.key_value',
+        embedding='transformer.word_embeddings',
+        output='lm_head'))
+
 register_model_arch(
     ModelKeys(
         ModelArch.baichuan,
@@ -215,6 +234,18 @@ register_model_arch(
         attention='transformer.h.{}.attn',
         o_proj='transformer.h.{}.attn.c_proj',
         qkv_proj='transformer.h.{}.attn.c_attn',
+        embedding='transformer.wte',
+        output='lm_head',
+    ))
+
+register_model_arch(
+    ModelKeys(
+        ModelArch.dbrx,
+        module_list='transformer.blocks',
+        mlp='transformer.blocks.{}.ffn',
+        attention='transformer.blocks.{}.norm_attn_norm.attn',
+        o_proj='transformer.blocks.{}.norm_attn_norm.attn.out_proj',
+        qkv_proj='transformer.blocks.{}.norm_attn_norm.attn.Wqkv',
         embedding='transformer.wte',
         output='lm_head',
     ))

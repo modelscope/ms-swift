@@ -7,15 +7,14 @@ from typing import Any, Dict, Tuple
 
 import torch
 from modelscope import AutoConfig, AutoModel, AutoModelForCausalLM
-from transformers import AutoTokenizer, PretrainedConfig
+from transformers import AutoTokenizer
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
-from swift.llm import TemplateType
+from swift.llm import ModelArch, TemplateType
 from swift.utils import get_logger
 from ..constant import LLMModelType, MLLMModelType
 from ..patcher import patch_output_clone
-from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local,
-                        get_model_tokenizer_with_flash_attn, register_model)
+from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
 from ..utils import ModelInfo, git_clone_github, use_submodel_func
 from .qwen import get_model_tokenizer_qwen
 
@@ -43,8 +42,7 @@ def get_model_tokenizer_grok(model_dir: str,
 
 register_model(
     ModelMeta(
-        LLMModelType.grok,
-        [
+        LLMModelType.grok, [
             ModelGroup([
                 Model('colossalai/grok-1-pytorch', 'hpcai-tech/grok-1'),
             ], ),
@@ -52,8 +50,8 @@ register_model(
         TemplateType.default,
         get_model_tokenizer_grok,
         architectures=['Grok1ModelForCausalLM'],
-        support_vllm=False,
-        support_flash_attn=False,
+        model_arch=ModelArch.llama
+        # TODO
     ))
 
 
@@ -75,8 +73,7 @@ def get_model_tokenizer_mplug_owl3(model_dir: str,
 
 register_model(
     ModelMeta(
-        MLLMModelType.mplug3,
-        [
+        MLLMModelType.mplug3, [
             ModelGroup([
                 Model('iic/mPLUG-Owl3-1B-241014', 'mPLUG/mPLUG-Owl3-1B-241014'),
                 Model('iic/mPLUG-Owl3-2B-241014', 'mPLUG/mPLUG-Owl3-2B-241014'),
@@ -88,8 +85,7 @@ register_model(
         TemplateType.mplug_owl3,
         get_model_tokenizer_mplug_owl3,
         architectures=['mPLUGOwl3Model'],
-        support_flash_attn=True,
-    ))
+        model_arch=ModelArch.mplug_owl3))
 
 
 def get_model_tokenizer_polylm(model_dir: str,
@@ -98,7 +94,7 @@ def get_model_tokenizer_polylm(model_dir: str,
                                load_model: bool = True,
                                **kwargs):
     tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True, use_fast=False, legacy=True)
-    return get_model_tokenizer_from_local(
+    return get_model_tokenizer_with_flash_attn(
         model_dir, model_info, model_kwargs, load_model, tokenizer=tokenizer, **kwargs)
 
 
@@ -115,8 +111,7 @@ register_model(
         TemplateType.default,
         get_model_tokenizer_polylm,
         architectures=['GPT2LMHeadModel'],
-        support_flash_attn=True,
-    ))
+        model_arch=ModelArch.qwen))
 
 
 def get_skywork_model_tokenizer(model_dir: str,
@@ -124,7 +119,7 @@ def get_skywork_model_tokenizer(model_dir: str,
                                 model_kwargs: Dict[str, Any],
                                 load_model: bool = True,
                                 **kwargs):
-    model, tokenizer = get_model_tokenizer_from_local(model_dir, model_info, model_kwargs, load_model, **kwargs)
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
     if 'chat' in model_dir:
         tokenizer.add_tokens('[USER]')
         tokenizer.add_tokens('[BOT]')
@@ -144,6 +139,7 @@ register_model(
         TemplateType.skywork,
         get_skywork_model_tokenizer,
         architectures=['SkyworkForCausalLM'],
+        model_arch=ModelArch.llama,
     ))
 
 
@@ -170,9 +166,7 @@ register_model(
         ],
         TemplateType.codefuse_codellama,
         get_model_tokenizer_codellama,
-        support_flash_attn=True,
-        support_vllm=True,
-        support_lmdeploy=True,
+        model_arch=ModelArch.llama,
         architectures=['LlamaForCausalLM'],
     ))
 
@@ -190,7 +184,7 @@ def get_model_tokenizer_yuan(model_dir: str,
         '<empty_output>'
     ]
     tokenizer.add_tokens(addi_tokens, special_tokens=True)
-    model, tokenizer = get_model_tokenizer_from_local(
+    model, tokenizer = get_model_tokenizer_with_flash_attn(
         model_dir, model_info, model_kwargs, load_model, tokenizer=tokenizer, **kwargs)
     return model, tokenizer
 
@@ -211,7 +205,7 @@ register_model(
         ],
         TemplateType.yuan,
         get_model_tokenizer_yuan,
-        support_flash_attn=True,
+        model_arch=ModelArch.yuan,
         architectures=['YuanForCausalLM'],
     ))
 
@@ -226,8 +220,8 @@ register_model(
                        ignore_file_pattern=[r'.+\.gguf$']),
         ],
         TemplateType.orion,
-        get_model_tokenizer_from_local,
-        support_flash_attn=True,
+        get_model_tokenizer_with_flash_attn,
+        model_arch=ModelArch.llama,
         architectures=['OrionForCausalLM'],
     ))
 
@@ -254,7 +248,7 @@ register_model(
         ],
         TemplateType.idefics3,
         get_model_tokenizer_idefics,
-        support_flash_attn=True,
+        model_arch=ModelArch.idefics3,
         architectures=['Idefics3ForConditionalGeneration'],
     ))
 
@@ -298,7 +292,7 @@ register_model(
         ],
         TemplateType.mplug_owl2,
         partial(get_model_tokenizer_mplug_owl2, get_model_tokenizer_function=get_model_tokenizer_with_flash_attn),
-        support_flash_attn=True,
+        model_arch=None,
     ))
 
 register_model(
@@ -314,7 +308,7 @@ register_model(
         TemplateType.mplug_owl2,
         partial(
             get_model_tokenizer_mplug_owl2, vocab_size=151851, get_model_tokenizer_function=get_model_tokenizer_qwen),
-        support_flash_attn=True,
+        model_arch=None,
     ))
 
 register_model(
@@ -328,8 +322,7 @@ register_model(
         ],
         TemplateType.wizardlm2,
         get_model_tokenizer_with_flash_attn,
-        support_flash_attn=True,
-        support_vllm=True,
+        model_arch=ModelArch.llama,
         architectures=['MixtralForCausalLM'],
     ))
 
@@ -344,8 +337,7 @@ register_model(
         ],
         TemplateType.wizardlm2_awq,
         get_model_tokenizer_with_flash_attn,
-        support_flash_attn=True,
-        support_vllm=True,
+        model_arch=ModelArch.llama,
         architectures=['MistralForCausalLM'],
     ))
 
@@ -359,8 +351,7 @@ register_model(
         ],
         TemplateType.numina_math,
         get_model_tokenizer_with_flash_attn,
-        support_flash_attn=True,
-        support_vllm=True,
+        model_arch=ModelArch.llama,
         architectures=['LlamaForCausalLM'],
     ))
 
@@ -374,9 +365,7 @@ register_model(
         ],
         TemplateType.openbuddy,
         get_model_tokenizer_with_flash_attn,
-        support_flash_attn=True,
-        support_vllm=True,
-        support_lmdeploy=True,
+        model_arch=ModelArch.llama,
         architectures=['LlamaForCausalLM'],
     ))
 
@@ -390,9 +379,7 @@ register_model(
         ],
         TemplateType.sus,
         get_model_tokenizer_with_flash_attn,
-        support_flash_attn=True,
-        support_vllm=True,
-        support_lmdeploy=True,
+        model_arch=ModelArch.llama,
         architectures=['LlamaForCausalLM'],
     ))
 
@@ -409,9 +396,7 @@ register_model(
         ],
         TemplateType.openbuddy,
         get_model_tokenizer_with_flash_attn,
-        support_flash_attn=True,
-        support_vllm=True,
-        support_lmdeploy=True,
+        model_arch=ModelArch.llama,
         architectures=['MistralForCausalLM'],
     ))
 
@@ -426,9 +411,7 @@ register_model(
         ],
         TemplateType.zephyr,
         get_model_tokenizer_with_flash_attn,
-        support_flash_attn=True,
-        support_vllm=True,
-        support_lmdeploy=True,
+        model_arch=ModelArch.llama,
         architectures=['MistralForCausalLM'],
     ))
 
@@ -443,9 +426,7 @@ register_model(
         ],
         TemplateType.ziya,
         get_model_tokenizer_with_flash_attn,
-        support_flash_attn=True,
-        support_vllm=True,
-        support_lmdeploy=True,
+        model_arch=ModelArch.llama,
         architectures=['LlamaForCausalLM'],
     ))
 
@@ -463,8 +444,7 @@ register_model(
         ],
         TemplateType.openbuddy,
         get_model_tokenizer_with_flash_attn,
-        support_flash_attn=True,
-        support_vllm=True,
+        model_arch=ModelArch.llama,
         architectures=['MixtralForCausalLM'],
     ))
 
@@ -479,9 +459,7 @@ register_model(
         ],
         TemplateType.openbuddy,
         get_model_tokenizer_with_flash_attn,
-        support_flash_attn=True,
-        support_vllm=True,
-        support_lmdeploy=True,
+        model_arch=ModelArch.llama,
         architectures=['MistralForCausalLM'],
     ))
 
@@ -495,9 +473,7 @@ register_model(
         ],
         TemplateType.openbuddy,
         get_model_tokenizer_with_flash_attn,
-        support_flash_attn=True,
-        support_vllm=True,
-        support_lmdeploy=True,
+        model_arch=ModelArch.llama,
         architectures=['LlamaForCausalLM'],
     ))
 
@@ -512,9 +488,7 @@ register_model(
         ],
         TemplateType.openbuddy,
         get_model_tokenizer_with_flash_attn,
-        support_flash_attn=True,
-        support_vllm=True,
-        support_lmdeploy=True,
+        model_arch=ModelArch.llama,
         architectures=['LlamaForCausalLM'],
     ))
 
@@ -533,9 +507,7 @@ register_model(
         ],
         TemplateType.openbuddy2,
         get_model_tokenizer_with_flash_attn,
-        support_flash_attn=True,
-        support_vllm=True,
-        support_lmdeploy=True,
+        model_arch=ModelArch.llama,
         architectures=['LlamaForCausalLM'],
     ))
 
@@ -552,8 +524,7 @@ register_model(
         ],
         TemplateType.dbrx,
         get_model_tokenizer_with_flash_attn,
-        support_flash_attn=True,
-        support_vllm=True,
+        model_arch=ModelArch.dbrx,
         architectures=['DbrxForCausalLM'],
     ))
 
@@ -596,7 +567,7 @@ register_model(
         ],
         TemplateType.ovis1_6,
         get_model_tokenizer_ovis,
-        support_flash_attn=True,
+        model_arch=ModelArch.ovis1_6,
         architectures=['Ovis'],
     ))
 
@@ -612,9 +583,7 @@ register_model(
         ],
         TemplateType.llama3,
         get_model_tokenizer_with_flash_attn,
-        support_flash_attn=True,
-        support_vllm=True,
-        support_lmdeploy=True,
+        model_arch=ModelArch.llama,
         architectures=['LlamaForCausalLM'],
     ))
 
@@ -629,8 +598,7 @@ register_model(
         ],
         TemplateType.reflection,
         get_model_tokenizer_with_flash_attn,
-        support_flash_attn=True,
-        support_vllm=True,
+        model_arch=ModelArch.llama,
         architectures=['LlamaForCausalLM'],
     ))
 
@@ -645,8 +613,7 @@ register_model(
         ],
         TemplateType.atom,
         get_model_tokenizer_with_flash_attn,
-        support_flash_attn=True,
-        support_vllm=True,
+        model_arch=ModelArch.llama,
         architectures=['LlamaForCausalLM'],
     ))
 
@@ -660,8 +627,7 @@ register_model(
         ],
         TemplateType.mengzi,
         get_model_tokenizer_with_flash_attn,
-        support_flash_attn=True,
-        support_vllm=True,
+        model_arch=ModelArch.llama,
         architectures=['LlamaForCausalLM'],
     ))
 
@@ -683,7 +649,7 @@ register_model(
         ],
         TemplateType.got_ocr2,
         get_model_tokenizer_with_flash_attn,
-        support_flash_attn=True,
+        model_arch=ModelArch.got_ocr2,
         architectures=['GOTQwenForCausalLM'],
     ))
 
@@ -700,6 +666,7 @@ register_model(
         ],
         TemplateType.bluelm,
         get_model_tokenizer_with_flash_attn,
+        model_arch=ModelArch.got_ocr2,
         architectures=['BlueLMForCausalLM'],
     ))
 
@@ -713,7 +680,7 @@ register_model(
         ],
         TemplateType.default,
         get_model_tokenizer_with_flash_attn,
-        support_vllm=True,
+        model_arch=None,
         architectures=['BloomForCausalLM'],
     ))
 
@@ -734,7 +701,7 @@ register_model(
         ],
         TemplateType.xverse,
         get_model_tokenizer_with_flash_attn,
-        support_vllm=True,
+        model_arch=ModelArch.llama,
         architectures=['XverseForCausalLM'],
     ))
 
@@ -748,6 +715,7 @@ register_model(
         ],
         TemplateType.xverse,
         get_model_tokenizer_with_flash_attn,
+        model_arch=ModelArch.llama,
         architectures=['XverseForCausalLM'],
     ))
 
@@ -763,8 +731,7 @@ register_model(
         ],
         TemplateType.c4ai,
         get_model_tokenizer_with_flash_attn,
-        support_vllm=True,
-        support_flash_attn=True,
+        model_arch=ModelArch.llama,
         architectures=['CohereForCausalLM'],
     ))
 
@@ -780,8 +747,7 @@ register_model(
         ],
         TemplateType.aya,
         get_model_tokenizer_with_flash_attn,
-        support_vllm=True,
-        support_flash_attn=True,
+        model_arch=ModelArch.llama,
         architectures=['CohereForCausalLM'],
     ))
 
@@ -792,7 +758,7 @@ def get_model_tokenizer_pixtral(model_dir: str, *args, **kwargs):
     if 'automodel_class' not in kwargs:
         kwargs['automodel_class'] = LlavaForConditionalGeneration
     kwargs['tokenizer'] = processor.tokenizer
-    model, tokenizer = get_model_tokenizer_from_local(model_dir, *args, **kwargs)
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
     tokenizer.processor = processor
     return model, tokenizer
 
@@ -809,6 +775,7 @@ register_model(
         ],
         TemplateType.pixtral,
         get_model_tokenizer_pixtral,
+        model_arch=ModelArch.llava,
         architectures=['LlavaForConditionalGeneration'],
     ))
 
@@ -820,7 +787,7 @@ def get_model_tokenizer_molmoe_1b(model_dir: str,
                                   **kwargs):
     from transformers import AutoProcessor
     processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
-    model, tokenizer = get_model_tokenizer_from_local(model_dir, model_info, model_kwargs, load_model, **kwargs)
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
     tokenizer.processor = processor
 
     # fix bug for molmoe-1b
@@ -863,9 +830,7 @@ register_model(
         ],
         TemplateType.molmo,
         get_model_tokenizer_molmoe_1b,
-        support_flash_attn=True,
-        support_vllm=False,
-        support_lmdeploy=False,
+        model_arch=ModelArch.molmo,
         support_gradient_checkpointing=False,
         torch_dtype=torch.float32,
         architectures=['MolmoForCausalLM'],
@@ -881,7 +846,7 @@ def get_model_tokenizer_molmo(model_dir: str,
     processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
     model_cls = get_class_from_dynamic_module('modeling_molmo.MolmoForCausalLM', model_dir)
     model_cls._no_split_modules = ['MolmoSequentialBlock']
-    model, tokenizer = get_model_tokenizer_from_local(model_dir, model_info, model_kwargs, load_model, **kwargs)
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
     tokenizer.processor = processor
     if model:
         device = next(model.model.transformer.ff_out.parameters()).device
@@ -912,9 +877,7 @@ register_model(
         ],
         TemplateType.molmo,
         get_model_tokenizer_molmo,
-        support_flash_attn=True,
-        support_vllm=False,
-        support_lmdeploy=False,
+        model_arch=ModelArch.molmo,
         support_gradient_checkpointing=False,
         architectures=['MolmoForCausalLM'],
     ))

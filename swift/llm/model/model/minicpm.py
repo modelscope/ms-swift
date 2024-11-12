@@ -16,8 +16,7 @@ from .deepseek import get_model_tokenizer_deepseek_moe
 
 register_model(
     ModelMeta(
-        LLMModelType.minicpm_moe,
-        [
+        LLMModelType.minicpm_moe, [
             ModelGroup(
                 [
                     Model('OpenBMB/MiniCPM-MoE-8x2B', 'openbmb/MiniCPM-MoE-8x2B'),
@@ -29,9 +28,7 @@ register_model(
         TemplateType.minicpm,
         get_model_tokenizer_deepseek_moe,
         architectures=['MiniCPMForCausalLM'],
-        support_flash_attn=True,
-        support_vllm=True,
-    ))
+        model_arch=ModelArch.llama))
 
 
 def _patch_minicpmv_device_map(model) -> None:
@@ -75,8 +72,7 @@ def get_model_tokenizer_minicpmv(model_dir: str,
 
 register_model(
     ModelMeta(
-        MLLMModelType.minicpmv,
-        [
+        MLLMModelType.minicpmv, [
             ModelGroup(
                 [
                     Model('OpenBMB/MiniCPM-V', 'openbmb/MiniCPM-V'),
@@ -89,8 +85,7 @@ register_model(
         TemplateType.minicpmv,
         get_model_tokenizer_minicpmv,
         architectures=['MiniCPMV'],
-        support_flash_attn=True,
-    ))
+        model_arch=ModelArch.minicpmv))
 
 
 def get_model_tokenizer_minicpmv_2_x(model_dir: str,
@@ -116,8 +111,7 @@ def get_model_tokenizer_minicpmv_2_x(model_dir: str,
 
 register_model(
     ModelMeta(
-        MLLMModelType.minicpmv2_6,
-        [
+        MLLMModelType.minicpmv2_6, [
             ModelGroup(
                 [
                     Model('OpenBMB/MiniCPM-V-2_6', 'openbmb/MiniCPM-V-2_6'),
@@ -129,14 +123,11 @@ register_model(
         TemplateType.minicpmv2_6,
         partial(get_model_tokenizer_minicpmv_2_x, version='v2.6'),
         architectures=['MiniCPMV'],
-        support_flash_attn=True,
-        support_vllm=True,
-    ))
+        model_arch=ModelArch.minicpmv))
 
 register_model(
     ModelMeta(
-        MLLMModelType.minicpmv2_5,
-        [
+        MLLMModelType.minicpmv2_5, [
             ModelGroup(
                 [
                     Model('OpenBMB/MiniCPM-Llama3-V-2_5', 'openbmb/MiniCPM-Llama3-V-2_5'),
@@ -148,14 +139,11 @@ register_model(
         TemplateType.minicpmv2_5,
         get_model_tokenizer_minicpmv_2_x,
         architectures=['MiniCPMV'],
-        support_flash_attn=True,
-        support_vllm=True,
-    ))
+        model_arch=ModelArch.minicpmv))
 
 register_model(
     ModelMeta(
-        LLMModelType.minicpm,
-        [
+        LLMModelType.minicpm, [
             ModelGroup([
                 Model('OpenBMB/MiniCPM-2B-sft-fp32', 'openbmb/MiniCPM-2B-sft-fp32'),
                 Model('OpenBMB/MiniCPM-2B-dpo-fp32', 'openbmb/MiniCPM-2B-dpo-fp32'),
@@ -165,14 +153,11 @@ register_model(
         TemplateType.minicpm,
         get_model_tokenizer_with_flash_attn,
         architectures=['MiniCPMForCausalLM'],
-        support_flash_attn=True,
-        support_vllm=True,
-    ))
+        model_arch=ModelArch.llama))
 
 register_model(
     ModelMeta(
-        LLMModelType.minicpm_chatml,
-        [
+        LLMModelType.minicpm_chatml, [
             ModelGroup(
                 [
                     Model('OpenBMB/MiniCPM-2B-128k', 'openbmb/MiniCPM-2B-128k'),
@@ -183,14 +168,11 @@ register_model(
         TemplateType.chatml,
         get_model_tokenizer_with_flash_attn,
         architectures=['MiniCPMForCausalLM'],
-        support_flash_attn=True,
-        support_vllm=True,
-    ))
+        model_arch=ModelArch.llama))
 
 register_model(
     ModelMeta(
-        LLMModelType.minicpm3,
-        [
+        LLMModelType.minicpm3, [
             ModelGroup(
                 [
                     Model('OpenBMB/MiniCPM3-4B', 'openbmb/MiniCPM3-4B'),
@@ -201,5 +183,4 @@ register_model(
         TemplateType.chatml,
         get_model_tokenizer_with_flash_attn,
         architectures=['MiniCPM3ForCausalLM'],
-        support_flash_attn=True,
-    ))
+        model_arch=ModelArch.deepseek_v2))

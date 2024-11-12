@@ -466,10 +466,7 @@ class LLaVAVideo178KPreprocessor(MessagesPreprocessor):
         file_path = os.path.join(self.local_dir, f"{row['videos']}")
         if not os.path.exists(file_path):
             return None
-        return super().preprocess({
-            'messages': row['messages'],
-            'videos': file_path
-        })
+        return super().preprocess({'messages': row['messages'], 'videos': file_path})
 
 
 llava_video_subsets = []

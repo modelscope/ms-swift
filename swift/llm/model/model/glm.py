@@ -1,20 +1,19 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from types import MethodType
 from typing import Any, Dict, Type
 
 import torch
 import transformers
 from modelscope import AutoConfig
 from packaging import version
-from transformers import AutoTokenizer, PretrainedConfig, PreTrainedTokenizerBase
+from transformers import AutoTokenizer, PreTrainedTokenizerBase
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
 
-from swift.llm import TemplateType
+from swift.llm import ModelArch, TemplateType
 from swift.utils import get_dist_setting, get_logger
 from ..constant import LLMModelType, MLLMModelType
 from ..patcher import patch_output_to_input_device
-from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local, register_model
+from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
 from ..utils import AttnImpl, ModelInfo
 
 logger = get_logger()
@@ -41,7 +40,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
         tokenizer_cls._auto_class = 'AutoTokenizer'
         remove_property(tokenizer_cls, tokenizer_config)
         kwargs['tokenizer'] = tokenizer_cls.from_pretrained(model_dir, trust_remote_code=True)
-    model, tokenizer = get_model_tokenizer_from_local(model_dir, model_info, model_kwargs, load_model, **kwargs)
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
     if model is not None:
         from torch.nn import CrossEntropyLoss
         __old_forward = CrossEntropyLoss.forward
@@ -57,8 +56,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
 
 register_model(
     ModelMeta(
-        LLMModelType.chatglm2,
-        [
+        LLMModelType.chatglm2, [
             ModelGroup([
                 Model('ZhipuAI/chatglm2-6b', 'THUDM/chatglm2-6b'),
                 Model('ZhipuAI/chatglm2-6b-32k', 'THUDM/chatglm2-6b-32k')
@@ -73,13 +71,11 @@ register_model(
         get_model_tokenizer_chatglm,
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
         requires=['transformers<4.42'],
-        support_vllm=True,
-    ))
+        model_arch=ModelArch.chatglm))
 
 register_model(
     ModelMeta(
-        LLMModelType.codefuse_codegeex2,
-        [
+        LLMModelType.codefuse_codegeex2, [
             ModelGroup(
                 [Model('codefuse-ai/CodeFuse-CodeGeeX2-6B', 'codefuse-ai/CodeFuse-CodeGeeX2-6B')],
                 tags=['coding'],
@@ -89,13 +85,11 @@ register_model(
         get_model_tokenizer_chatglm,
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
         requires=['transformers<4.34'],
-        support_vllm=True,
-    ))
+        model_arch=ModelArch.chatglm))
 
 register_model(
     ModelMeta(
-        LLMModelType.chatglm3,
-        [
+        LLMModelType.chatglm3, [
             ModelGroup([
                 Model('ZhipuAI/chatglm3-6b-base', 'THUDM/chatglm3-6b-base'),
                 Model('ZhipuAI/chatglm3-6b', 'THUDM/chatglm3-6b'),
@@ -107,8 +101,7 @@ register_model(
         get_model_tokenizer_chatglm,
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
         requires=['transformers<4.42'],
-        support_vllm=True,
-    ))
+        model_arch=ModelArch.chatglm))
 
 
 def get_model_tokenizer_glm4(model_dir: str,
@@ -142,9 +135,7 @@ register_model(
         get_model_tokenizer_glm4,
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
         requires=['transformers>=4.42'],
-        support_vllm=True,
-        support_flash_attn=True,
-        support_lmdeploy=True))
+        model_arch=ModelArch.chatglm))
 
 register_model(
     ModelMeta(
@@ -156,9 +147,7 @@ register_model(
         get_model_tokenizer_glm4,
         requires=['transformers<4.42'],
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
-        support_vllm=True,
-        support_flash_attn=True,
-        support_lmdeploy=True))
+        model_arch=ModelArch.chatglm))
 
 
 def get_model_tokenizer_glm4v(model_dir: str,
@@ -191,7 +180,8 @@ register_model(
         TemplateType.glm4v,
         get_model_tokenizer_glm4v,
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
-        requires=['transformers>=4.42']))
+        requires=['transformers>=4.42'],
+        model_arch=ModelArch.glm4v))
 
 
 def get_model_tokenizer_cogvlm(model_dir: str,
@@ -203,7 +193,7 @@ def get_model_tokenizer_cogvlm(model_dir: str,
     if load_model:
         logger.warning('CogAgent with FusedLayerNorm will cause an training loss of NAN, '
                        'to avoid this, please uninstall apex.')
-    model, tokenizer = get_model_tokenizer_from_local(
+    model, tokenizer = get_model_tokenizer_with_flash_attn(
         model_dir, model_info, model_kwargs, load_model, tokenizer=tokenizer, **kwargs)
     logger.info('Please ignore the unimported warning.')
     return model, tokenizer
@@ -211,8 +201,7 @@ def get_model_tokenizer_cogvlm(model_dir: str,
 
 register_model(
     ModelMeta(
-        MLLMModelType.cogvlm,
-        [
+        MLLMModelType.cogvlm, [
             ModelGroup([
                 Model('ZhipuAI/cogvlm-chat', 'THUDM/cogvlm-chat-hf'),
             ]),
@@ -222,12 +211,11 @@ register_model(
         architectures=['CogVLMForCausalLM'],
         support_gradient_checkpointing=False,
         requires=['transformers<4.42'],
-    ))
+        model_arch=ModelArch.cogvlm))
 
 register_model(
     ModelMeta(
-        MLLMModelType.cogagent_chat,
-        [
+        MLLMModelType.cogagent_chat, [
             ModelGroup([
                 Model('ZhipuAI/cogagent-chat', 'THUDM/cogagent-chat-hf'),
             ]),
@@ -237,12 +225,11 @@ register_model(
         architectures=['CogAgentForCausalLM'],
         support_gradient_checkpointing=False,
         requires=['transformers<4.42'],
-    ))
+        model_arch=ModelArch.cogvlm))
 
 register_model(
     ModelMeta(
-        MLLMModelType.cogagent_vqa,
-        [ModelGroup([
+        MLLMModelType.cogagent_vqa, [ModelGroup([
             Model('ZhipuAI/cogagent-vqa', 'THUDM/cogagent-vqa-hf'),
         ])],
         TemplateType.cogagent_vqa,
@@ -250,11 +237,11 @@ register_model(
         architectures=['CogAgentForCausalLM'],
         support_gradient_checkpointing=False,
         requires=['transformers<4.42'],
-    ))
+        model_arch=ModelArch.cogvlm))
 
 
 def get_model_tokenizer_cogvlm2(*args, **kwargs):
-    model, tokenizer = get_model_tokenizer_from_local(*args, **kwargs)
+    model, tokenizer = get_model_tokenizer_with_flash_attn(*args, **kwargs)
     if model is not None:
         # fix device map 4
         for layer in model.model.vision.transformer.layers:
@@ -279,7 +266,7 @@ register_model(
         get_model_tokenizer_cogvlm2,
         architectures=['CogVLMForCausalLM'],
         requires=['transformers<4.42'],
-        support_lmdeploy=True,
+        model_arch=ModelArch.cogvlm,
         support_gradient_checkpointing=False))
 
 register_model(
@@ -294,4 +281,5 @@ register_model(
         get_model_tokenizer_cogvlm2,
         architectures=['CogVLMVideoForCausalLM'],
         requires=['transformers>=4.42'],
-        support_gradient_checkpointing=False))
+        support_gradient_checkpointing=False,
+        model_arch=ModelArch.cogvlm))

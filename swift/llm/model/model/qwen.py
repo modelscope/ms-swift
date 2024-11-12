@@ -2,7 +2,7 @@
 from typing import Any, Dict, List, Optional, Type
 
 import torch
-from transformers import AutoConfig, BitsAndBytesConfig, PretrainedConfig, PreTrainedTokenizerBase
+from transformers import AutoConfig, BitsAndBytesConfig, PreTrainedTokenizerBase
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
 
@@ -11,7 +11,7 @@ from swift.utils import get_dist_setting, get_logger
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
 from ..patcher import patch_fixed_device, patch_output_clone, patch_output_to_input_device
-from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local, get_model_tokenizer_multimodal,
+from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,
                         get_model_tokenizer_with_flash_attn, register_model)
 from ..utils import AttnImpl, ModelInfo
 
@@ -37,7 +37,7 @@ def get_model_tokenizer_qwen(model_dir: str,
     use_flash_attn = AttnImpl.to_use_flash_attn(kwargs.pop('attn_impl', None), 'auto')
     model_config.use_flash_attn = use_flash_attn
     kwargs['model_config'] = model_config
-    model, tokenizer = get_model_tokenizer_from_local(model_dir, model_info, model_kwargs, load_model, **kwargs)
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
     try:
         # fix mp+ddp bug
         model.transformer.registered_causal_mask = model.transformer.registered_causal_mask.cuda()
@@ -85,9 +85,7 @@ register_model(
         TemplateType.qwen,
         get_model_tokenizer_qwen,
         architectures=['QWenLMHeadModel'],
-        support_flash_attn=True,
-        support_vllm=True,
-        support_lmdeploy=True))
+        model_arch=ModelArch.qwen))
 
 register_model(
     ModelMeta(
@@ -99,9 +97,7 @@ register_model(
         TemplateType.codefuse,
         get_model_tokenizer_qwen,
         architectures=['QWenLMHeadModel'],
-        support_flash_attn=True,
-        support_vllm=True,
-        support_lmdeploy=True))
+        model_arch=ModelArch.qwen))
 
 register_model(
     ModelMeta(
@@ -113,8 +109,7 @@ register_model(
         TemplateType.modelscope_agent,
         get_model_tokenizer_qwen,
         architectures=['QWenLMHeadModel'],
-        support_vllm=False,
-        support_lmdeploy=False))
+        model_arch=ModelArch.qwen))
 
 
 def _qwen_vl_audio_decode(self, *args, skip_special_tokens=False, **kwargs) -> str:
@@ -169,7 +164,6 @@ register_model(
         get_model_tokenizer_qwen_audio,
         model_arch=ModelArch.qwen_audio,
         architectures=['QWenLMHeadModel'],
-        support_flash_attn=True,
         additional_saved_files=['mel_filters.npz']))
 
 
@@ -250,9 +244,6 @@ register_model(
         get_model_tokenizer_qwen_vl,
         model_arch=ModelArch.qwen_vl,
         architectures=['QWenLMHeadModel'],
-        support_flash_attn=True,
-        support_vllm=True,
-        support_lmdeploy=True,
         additional_saved_files=['SimSun.ttf']))
 
 register_model(
@@ -358,10 +349,7 @@ register_model(
         get_model_tokenizer_with_flash_attn,
         architectures=['Qwen2ForCausalLM'],
         requires=['transformers>=4.37'],
-        support_flash_attn=True,
-        support_vllm=True,
-        support_lmdeploy=True,
-        support_megatron=True))
+        model_arch=ModelArch.llama))
 
 register_model(
     ModelMeta(
@@ -467,10 +455,7 @@ register_model(
         get_model_tokenizer_with_flash_attn,
         architectures=['Qwen2ForCausalLM'],
         requires=['transformers>=4.37'],
-        support_flash_attn=True,
-        support_vllm=True,
-        support_lmdeploy=True,
-        support_megatron=True))
+        model_arch=ModelArch.llama))
 
 register_model(
     ModelMeta(
@@ -493,8 +478,7 @@ register_model(
         architectures=['Qwen2MoeForCausalLM'],
         requires=['transformers>=4.40'],
         is_moe=True,
-        support_flash_attn=True,
-        support_vllm=True))
+        model_arch=ModelArch.llama))
 
 
 def get_model_tokenizer_qwen2_vl(model_dir: str,
@@ -563,8 +547,7 @@ register_model(
         model_arch=ModelArch.qwen2_vl,
         architectures=['Qwen2VLForConditionalGeneration'],
         requires=['transformers>=4.45'],  # pip install qwen_vl_utils
-        support_flash_attn=True,
-        support_vllm=True))
+    ))
 
 
 def get_model_tokenizer_qwen2_audio(*args, **kwargs):
@@ -587,5 +570,4 @@ register_model(
         get_model_tokenizer_qwen2_audio,
         model_arch=ModelArch.qwen2_audio,
         architectures=['Qwen2AudioForConditionalGeneration'],
-        requires=['transformers>=4.45'],
-        support_flash_attn=True))
+        requires=['transformers>=4.45']))

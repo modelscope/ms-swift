@@ -59,7 +59,7 @@ class ModelMeta:
     template: str
     get_function: GetModelTokenizerFunction
 
-    model_arch: Optional[str] = None
+    model_arch: Optional[str]
     architectures: List[str] = field(default_factory=list)
     is_moe: bool = False
     is_multimodal: bool = False
@@ -72,10 +72,6 @@ class ModelMeta:
     ignore_file_pattern: List[str] = field(default_factory=list)
     # Usually specifies the version limits of transformers.
     requires: List[str] = field(default_factory=list)
-    support_flash_attn: bool = False
-    support_vllm: bool = False
-    support_lmdeploy: bool = False
-    support_megatron: bool = False
 
     def get_matched_model_group(self, model_name: str) -> Optional[ModelGroup]:
         for model_group in self.model_groups:

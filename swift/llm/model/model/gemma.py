@@ -1,10 +1,9 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Any, Dict
 
-from swift.llm import TemplateType
+from swift.llm import ModelArch, TemplateType
 from ..constant import LLMModelType, MLLMModelType
-from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local,
-                        get_model_tokenizer_with_flash_attn, register_model)
+from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
 from ..utils import ModelInfo
 
 
@@ -15,7 +14,7 @@ def get_model_tokenizer_paligemma_vision(model_dir: str,
                                          **kwargs):
     from transformers import AutoProcessor, PaliGemmaForConditionalGeneration
     processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
-    model, tokenizer = get_model_tokenizer_from_local(
+    model, tokenizer = get_model_tokenizer_with_flash_attn(
         model_dir, model_info, model_kwargs, load_model, automodel_class=PaliGemmaForConditionalGeneration, **kwargs)
     tokenizer.processor = processor
     return model, tokenizer
@@ -23,8 +22,7 @@ def get_model_tokenizer_paligemma_vision(model_dir: str,
 
 register_model(
     ModelMeta(
-        MLLMModelType.paligemma,
-        [
+        MLLMModelType.paligemma, [
             ModelGroup([
                 Model('AI-ModelScope/paligemma-3b-pt-224', 'google/paligemma-3b-pt-224'),
                 Model('AI-ModelScope/paligemma-3b-pt-448', 'google/paligemma-3b-pt-448'),
@@ -37,14 +35,11 @@ register_model(
         TemplateType.paligemma,
         get_model_tokenizer_paligemma_vision,
         architectures=['PaliGemmaForConditionalGeneration'],
-        support_flash_attn=True,
-        support_vllm=True,
-    ))
+        model_arch=ModelArch.llava))
 
 register_model(
     ModelMeta(
-        LLMModelType.gemma,
-        [
+        LLMModelType.gemma, [
             ModelGroup(
                 [
                     Model('AI-ModelScope/gemma-2b', 'google/gemma-2b'),
@@ -59,14 +54,11 @@ register_model(
         TemplateType.gemma,
         get_model_tokenizer_with_flash_attn,
         architectures=['GemmaForCausalLM'],
-        support_flash_attn=True,
-        support_vllm=True,
-    ))
+        model_arch=ModelArch.llama))
 
 register_model(
     ModelMeta(
-        LLMModelType.gemma2,
-        [
+        LLMModelType.gemma2, [
             ModelGroup(
                 [
                     Model('LLM-Research/gemma-2-2b', 'google/gemma-2-2b'),
@@ -82,6 +74,4 @@ register_model(
         TemplateType.gemma,
         get_model_tokenizer_with_flash_attn,
         architectures=['Gemma2ForCausalLM'],
-        support_flash_attn=True,
-        support_vllm=True,
-    ))
+        model_arch=ModelArch.llama))

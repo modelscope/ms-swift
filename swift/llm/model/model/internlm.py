@@ -1,26 +1,24 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from functools import partial
-from typing import Any, Dict, Type
+from typing import Any, Dict
 
-import torch
-import transformers
-from modelscope import AutoTokenizer, BitsAndBytesConfig, snapshot_download
-from transformers import AutoConfig, PretrainedConfig
+from modelscope import AutoConfig, AutoTokenizer, BitsAndBytesConfig, snapshot_download
+from transformers import PretrainedConfig
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
-from swift.llm import TemplateType
+from swift.llm import ModelArch, TemplateType
 from ..constant import LLMModelType, MLLMModelType
 from ..patcher import patch_output_clone, patch_output_to_input_device
-from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local, register_model
+from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
 from ..utils import ModelInfo, use_submodel_func
 
 
 def get_model_tokenizer_internlm_chat(model_dir: str,
-                                      model_config: PretrainedConfig,
+                                      model_info: ModelInfo,
                                       model_kwargs: Dict[str, Any],
                                       load_model: bool = True,
                                       **kwargs):
-    model, tokenizer = get_model_tokenizer_from_local(model_dir, model_config, model_kwargs, load_model, **kwargs)
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
     if getattr(tokenizer.__class__.eos_token_id, 'fset', None) is None:
         del tokenizer.__class__.eos_token_id
     tokenizer.eos_token = '<eoa>'
@@ -29,7 +27,8 @@ def get_model_tokenizer_internlm_chat(model_dir: str,
 
 register_model(
     ModelMeta(
-        LLMModelType.internlm, [
+        LLMModelType.internlm,
+        [
             ModelGroup([
                 Model('Shanghai_AI_Laboratory/internlm-7b', 'internlm/internlm-7b'),
                 Model('Shanghai_AI_Laboratory/internlm-chat-7b', 'internlm/internlm-chat-7b'),
@@ -41,21 +40,17 @@ register_model(
         TemplateType.internlm,
         get_model_tokenizer_internlm_chat,
         architectures=['InternLMForCausalLM'],
-        support_vllm=True,
-        support_lmdeploy=True))
+        model_arch=ModelArch.llama,
+    ))
 
 
 def get_model_tokenizer_internlm2(model_dir: str,
-                                  model_config: PretrainedConfig,
+                                  model_info: ModelInfo,
                                   model_kwargs: Dict[str, Any],
                                   load_model: bool = True,
                                   **kwargs):
-    use_flash_attn = kwargs.pop('use_flash_attn', False)
-    if use_flash_attn:
-        model_config.attn_implementation = 'flash_attention_2'
-
     eos_token = kwargs.pop('eos_token', None)
-    model, tokenizer = get_model_tokenizer_from_local(model_dir, model_config, model_kwargs, load_model, **kwargs)
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
     if eos_token is not None:
         if getattr(tokenizer.__class__.eos_token_id, 'fset', None) is None:
             del tokenizer.__class__.eos_token_id
@@ -66,7 +61,8 @@ def get_model_tokenizer_internlm2(model_dir: str,
 
 register_model(
     ModelMeta(
-        LLMModelType.internlm2, [
+        LLMModelType.internlm2,
+        [
             ModelGroup([
                 Model('Shanghai_AI_Laboratory/internlm2-1_8b', 'internlm/internlm2-1_8b'),
                 Model('Shanghai_AI_Laboratory/internlm2-chat-1_8b', 'internlm/internlm2-chat-1_8b'),
@@ -102,13 +98,12 @@ register_model(
         get_model_tokenizer_internlm2,
         requires=['transformers>=4.38'],
         architectures=['InternLM2ForCausalLM'],
-        support_flash_attn=True,
-        support_vllm=True,
-        support_lmdeploy=True))
+        model_arch=ModelArch.internlm2,
+    ))
 
 
 def get_model_tokenizer_internlm_xcomposer2(model_dir: str,
-                                            model_config: PretrainedConfig,
+                                            model_info: ModelInfo,
                                             model_kwargs: Dict[str, Any],
                                             load_model: bool = True,
                                             **kwargs):
@@ -125,10 +120,8 @@ def get_model_tokenizer_internlm_xcomposer2(model_dir: str,
 
         CLIPVisionTower = get_class_from_dynamic_module('build_mlp.CLIPVisionTower', model_dir)
         CLIPVisionTower.load_model = load_model
-    elif version == 'v2':
-        model_config._flash_attn_2_enabled = use_flash_attn
 
-    model, tokenizer = get_model_tokenizer_internlm2(model_dir, model_config, model_kwargs, load_model, **kwargs)
+    model, tokenizer = get_model_tokenizer_internlm2(model_dir, model_info, model_kwargs, load_model, **kwargs)
     if model is not None:
         if version == 'v2' and use_flash_attn:
             # fix AttributeError: no attribute 'attention_dropout'
@@ -142,10 +135,13 @@ def get_model_tokenizer_internlm_xcomposer2(model_dir: str,
 
 
 def get_model_tokenizer_internvl(model_dir: str,
-                                 model_config: PretrainedConfig,
+                                 model_info: ModelInfo,
                                  model_kwargs: Dict[str, Any],
                                  load_model: bool = True,
                                  **kwargs):
+    model_config = kwargs.get('model_config')
+    if not model_config:
+        model_config = AutoConfig.from_pretrained(model_dir)
     tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True, use_fast=False)
     if kwargs.get('eos_token') is None and tokenizer.eos_token != '<|im_end|>':
         try:
@@ -154,8 +150,6 @@ def get_model_tokenizer_internvl(model_dir: str,
             pass
         tokenizer.eos_token = '<|im_end|>'
 
-    attn_type = AttentionType(kwargs.pop('use_flash_attn', None), kwargs.pop('attn_type', None))
-    model_config.llm_config.attn_implementation = attn_type.to_impl(attn_version=2)
     model_quant_config = getattr(model_config, 'quantization_config', None)
 
     use_bnb = False
@@ -165,8 +159,8 @@ def get_model_tokenizer_internvl(model_dir: str,
     if isinstance(quantization_config, BitsAndBytesConfig):
         use_bnb = True
 
-    model, tokenizer = get_model_tokenizer_from_local(
-        model_dir, model_config, model_kwargs, load_model, tokenizer=tokenizer, **kwargs)
+    model, tokenizer = get_model_tokenizer_with_flash_attn(
+        model_dir, model_info, model_kwargs, load_model, tokenizer=tokenizer, **kwargs)
 
     if use_bnb and kwargs.get('is_training'):
         # patch: bnb backward shape mismatch bug
@@ -198,9 +192,7 @@ register_model(
         TemplateType.internvl,
         get_model_tokenizer_internvl,
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
-        support_flash_attn=True,
-        support_lmdeploy=True,
-        support_vllm=True,
+        model_arch=ModelArch.internvl,
     ))
 
 register_model(
@@ -218,8 +210,7 @@ register_model(
         TemplateType.internvl_phi3,
         get_model_tokenizer_internvl,
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
-        support_flash_attn=True,
-        support_vllm=True,
+        model_arch=ModelArch.internvl,
     ))
 
 register_model(
@@ -248,9 +239,7 @@ register_model(
         TemplateType.internvl2,
         get_model_tokenizer_internvl,
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
-        support_flash_attn=True,
-        support_lmdeploy=True,
-        support_vllm=True,
+        model_arch=ModelArch.internvl,
     ))
 
 register_model(
@@ -269,15 +258,12 @@ register_model(
         TemplateType.internvl2_phi3,
         get_model_tokenizer_internvl,
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
-        support_flash_attn=True,
-        support_lmdeploy=True,
-        support_vllm=True,
+        model_arch=ModelArch.internvl,
     ))
 
 register_model(
     ModelMeta(
-        MLLMModelType.xcomposer2_5,
-        [
+        MLLMModelType.xcomposer2_5, [
             ModelGroup(
                 [
                     Model('Shanghai_AI_Laboratory/internlm-xcomposer2d5-7b', 'internlm/internlm-xcomposer2d5-7b'),
@@ -288,14 +274,11 @@ register_model(
         TemplateType.xcomposer2_5,
         get_model_tokenizer_internvl,
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
-        support_flash_attn=True,
-        support_lmdeploy=True,
-    ))
+        model_arch=ModelArch.internlm_xcomposer))
 
 register_model(
     ModelMeta(
-        MLLMModelType.xcomposer2,
-        [
+        MLLMModelType.xcomposer2, [
             ModelGroup(
                 [
                     Model('Shanghai_AI_Laboratory/internlm-xcomposer2-7b', 'internlm/internlm-xcomposer2-7b'),
@@ -306,14 +289,11 @@ register_model(
         TemplateType.xcomposer2,
         get_model_tokenizer_internvl,
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
-        support_flash_attn=True,
-        support_lmdeploy=True,
-    ))
+        model_arch=ModelArch.internlm_xcomposer))
 
 register_model(
     ModelMeta(
-        MLLMModelType.xcomposer2_4khd,
-        [
+        MLLMModelType.xcomposer2_4khd, [
             ModelGroup(
                 [
                     Model('Shanghai_AI_Laboratory/internlm-xcomposer2-4khd-7b', 'internlm/internlm-xcomposer2-4khd-7b'),
@@ -324,6 +304,4 @@ register_model(
         TemplateType.xcomposer2,
         partial(get_model_tokenizer_internvl, version='v2-4khd'),
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
-        support_flash_attn=True,
-        support_lmdeploy=True,
-    ))
+        model_arch=ModelArch.internlm_xcomposer))

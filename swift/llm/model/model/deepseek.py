@@ -3,7 +3,7 @@ import os
 import sys
 from typing import Any, Dict
 
-from swift.llm import TemplateType
+from swift.llm import ModelArch, TemplateType
 from ..constant import LLMModelType, MLLMModelType
 from ..patcher import patch_output_clone, patch_output_to_input_device
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
@@ -55,8 +55,7 @@ register_model(
         TemplateType.deepseek,
         get_model_tokenizer_deepseek_moe,
         architectures=['DeepseekForCausalLM'],
-        support_flash_attn=True,
-        support_vllm=True,
+        model_arch=ModelArch.llama,
     ))
 
 register_model(
@@ -81,8 +80,7 @@ register_model(
         TemplateType.deepseek,
         get_model_tokenizer_deepseek_moe,
         architectures=['DeepseekV2ForCausalLM'],
-        support_flash_attn=True,
-        support_vllm=True,
+        model_arch=ModelArch.deepseek_v2,
     ))
 
 register_model(
@@ -100,8 +98,7 @@ register_model(
         TemplateType.deepseek2_5,
         get_model_tokenizer_deepseek_moe,
         architectures=['DeepseekV2ForCausalLM'],
-        support_flash_attn=True,
-        support_vllm=True,
+        model_arch=ModelArch.deepseek_v2,
     ))
 
 
@@ -139,8 +136,7 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
 
 register_model(
     ModelMeta(
-        MLLMModelType.deepseek_vl,
-        [
+        MLLMModelType.deepseek_vl, [
             ModelGroup(
                 [
                     Model('deepseek-ai/deepseek-vl-1.3b-chat', 'deepseek-ai/deepseek-vl-1.3b-chat'),
@@ -152,14 +148,11 @@ register_model(
         TemplateType.deepseek_vl,
         get_model_tokenizer_deepseek_vl,
         architectures=['MultiModalityCausalLM'],
-        support_flash_attn=True,
-        support_lmdeploy=True,
-    ))
+        model_arch=ModelArch.deepseek_vl))
 
 register_model(
     ModelMeta(
-        LLMModelType.deepseek_math,
-        [
+        LLMModelType.deepseek_math, [
             ModelGroup(
                 [
                     Model('deepseek-ai/deepseek-math-7b-base', 'deepseek-ai/deepseek-math-7b-base'),
@@ -189,10 +182,7 @@ register_model(
         TemplateType.deepseek,
         get_model_tokenizer_with_flash_attn,
         architectures=['LlamaForCausalLM'],
-        support_flash_attn=True,
-        support_vllm=True,
-        support_lmdeploy=True,
-    ))
+        model_arch=ModelArch.llama))
 
 
 def get_model_tokenizer_deepseek_janus(model_dir: str, *args, **kwargs):
@@ -219,8 +209,7 @@ def get_model_tokenizer_deepseek_janus(model_dir: str, *args, **kwargs):
 
 register_model(
     ModelMeta(
-        MLLMModelType.janus,
-        [
+        MLLMModelType.janus, [
             ModelGroup(
                 [
                     Model('deepseek-ai/Janus-1.3B', 'deepseek-ai/Janus-1.3B'),
@@ -230,5 +219,4 @@ register_model(
         ],
         TemplateType.janus,
         get_model_tokenizer_deepseek_janus,
-        support_flash_attn=True,
-    ))
+        model_arch=ModelArch.janus))

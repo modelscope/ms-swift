@@ -1,13 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
-from swift.llm import TemplateType
+from swift.llm import ModelArch, TemplateType
 from ..constant import LLMModelType
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
 
 register_model(
     ModelMeta(
-        LLMModelType.mistral,
-        [
+        LLMModelType.mistral, [
             ModelGroup([
                 Model('AI-ModelScope/Mistral-7B-v0.1', 'mistralai/Mistral-7B-v0.1'),
                 Model('AI-ModelScope/Mistral-7B-v0.2-hf', 'alpindale/Mistral-7B-v0.2-hf'),
@@ -26,15 +25,11 @@ register_model(
         TemplateType.llama,
         get_model_tokenizer_with_flash_attn,
         architectures=['MistralForCausalLM'],
-        support_flash_attn=True,
-        support_vllm=True,
-        support_lmdeploy=True,
-    ))
+        model_arch=ModelArch.llama))
 
 register_model(
     ModelMeta(
-        LLMModelType.mixtral,
-        [
+        LLMModelType.mixtral, [
             ModelGroup([
                 Model('AI-ModelScope/Mixtral-8x7B-v0.1', 'mistralai/Mixtral-8x7B-v0.1'),
                 Model('AI-ModelScope/Mixtral-8x7B-Instruct-v0.1', 'mistralai/Mixtral-8x7B-Instruct-v0.1'),
@@ -52,14 +47,11 @@ register_model(
         TemplateType.llama,
         get_model_tokenizer_with_flash_attn,
         architectures=['MixtralForCausalLM'],
-        support_flash_attn=True,
-        support_vllm=True,
-    ))
+        model_arch=ModelArch.llama))
 
 register_model(
     ModelMeta(
-        LLMModelType.mistral_nemo,
-        [
+        LLMModelType.mistral_nemo, [
             ModelGroup([
                 Model('LLM-Research/Mistral-Large-Instruct-2407', 'mistralai/Mistral-Large-Instruct-2407'),
                 Model('AI-ModelScope/Mistral-Small-Instruct-2409', 'mistralai/Mistral-Small-Instruct-2409'),
@@ -77,6 +69,4 @@ register_model(
         TemplateType.mistral_nemo,
         get_model_tokenizer_with_flash_attn,
         architectures=['MistralForCausalLM'],
-        support_flash_attn=True,
-        support_vllm=True,
-    ))
+        model_arch=ModelArch.llama))

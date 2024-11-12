@@ -7,7 +7,7 @@ from typing import Any, Dict
 from modelscope import AutoConfig
 from transformers import PretrainedConfig
 
-from swift.llm import TemplateType
+from swift.llm import ModelArch, TemplateType
 from ..constant import MLLMModelType
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
 from ..utils import ModelInfo, git_clone_github, safe_snapshot_download
@@ -32,8 +32,7 @@ def get_model_tokenizer_llava_llama(model_dir: str,
 
 register_model(
     ModelMeta(
-        MLLMModelType.llava_llama3_hf,
-        [
+        MLLMModelType.llava_llama3_hf, [
             ModelGroup([
                 Model('AI-ModelScope/llava-llama-3-8b-v1_1-transformers', 'xtuner/llava-llama-3-8b-v1_1-transformers'),
             ],
@@ -43,10 +42,7 @@ register_model(
         TemplateType.llava_llama3_hf,
         get_model_tokenizer_llava_llama,
         architectures=['LlavaForConditionalGeneration'],
-        support_flash_attn=True,
-        support_vllm=True,
-        support_lmdeploy=True,
-    ))
+        model_arch=ModelArch.llava))
 
 
 def _patch_llava(model):
@@ -82,8 +78,7 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
 
 register_model(
     ModelMeta(
-        MLLMModelType.llava1_5_hf,
-        [
+        MLLMModelType.llava1_5_hf, [
             ModelGroup([
                 Model('swift/llava-1.5-13b-hf', 'llava-hf/llava-1.5-13b-hf'),
                 Model('swift/llava-1.5-7b-hf', 'llava-hf/llava-1.5-7b-hf'),
@@ -94,9 +89,7 @@ register_model(
         TemplateType.llava1_5_hf,
         get_model_tokenizer_llava_1_5,
         architectures=['LlavaForConditionalGeneration'],
-        support_flash_attn=True,
-        support_vllm=True,
-    ))
+        model_arch=ModelArch.llava))
 
 
 def get_model_tokenizer_llava_onevision(*args, **kwargs):
@@ -108,8 +101,7 @@ def get_model_tokenizer_llava_onevision(*args, **kwargs):
 
 register_model(
     ModelMeta(
-        MLLMModelType.llava_onevision_hf,
-        [
+        MLLMModelType.llava_onevision_hf, [
             ModelGroup(
                 [
                     Model('AI-ModelScope/llava-onevision-qwen2-0.5b-ov-hf',
@@ -125,14 +117,11 @@ register_model(
         TemplateType.llava_onevision_hf,
         get_model_tokenizer_llava_onevision,
         architectures=['LlavaForConditionalGeneration'],
-        support_flash_attn=True,
-        support_vllm=True,
-    ))
+        model_arch=ModelArch.llava))
 
 register_model(
     ModelMeta(
-        MLLMModelType.llava_next_qwen_hf,
-        [
+        MLLMModelType.llava_next_qwen_hf, [
             ModelGroup(
                 [
                     Model('AI-ModelScope/llava-next-72b-hf', 'llava-hf/llava-next-72b-hf'),
@@ -145,9 +134,7 @@ register_model(
         TemplateType.llava_next_qwen_hf,
         get_model_tokenizer_llava_onevision,
         architectures=['LlavaForConditionalGeneration'],
-        support_flash_attn=True,
-        support_vllm=True,
-    ))
+        model_arch=ModelArch.llava))
 
 
 def get_model_tokenizer_llava_next(*args, **kwargs):
@@ -159,8 +146,7 @@ def get_model_tokenizer_llava_next(*args, **kwargs):
 
 register_model(
     ModelMeta(
-        MLLMModelType.llama3_llava_next_hf,
-        [
+        MLLMModelType.llama3_llava_next_hf, [
             ModelGroup(
                 [
                     Model('swift/llama3-llava-next-8b-hf', 'llava-hf/llama3-llava-next-8b-hf'),
@@ -172,14 +158,11 @@ register_model(
         TemplateType.llama3_llava_next_hf,
         get_model_tokenizer_llava_next,
         architectures=['LlavaForConditionalGeneration'],
-        support_flash_attn=True,
-        support_vllm=True,
-    ))
+        model_arch=ModelArch.llava))
 
 register_model(
     ModelMeta(
-        MLLMModelType.llava1_6_vicuna_hf,
-        [
+        MLLMModelType.llava1_6_vicuna_hf, [
             ModelGroup(
                 [
                     Model('swift/llava-v1.6-vicuna-7b-hf', 'llava-hf/llava-v1.6-vicuna-7b-hf'),
@@ -192,14 +175,11 @@ register_model(
         TemplateType.llava1_6_vicuna_hf,
         get_model_tokenizer_llava_next,
         architectures=['LlavaForConditionalGeneration'],
-        support_flash_attn=True,
-        support_vllm=True,
-    ))
+        model_arch=ModelArch.llava))
 
 register_model(
     ModelMeta(
-        MLLMModelType.llava1_6_mistral_hf,
-        [
+        MLLMModelType.llava1_6_mistral_hf, [
             ModelGroup(
                 [
                     Model('swift/llava-v1.6-mistral-7b-hf', 'llava-hf/llava-v1.6-mistral-7b-hf'),
@@ -211,14 +191,11 @@ register_model(
         TemplateType.llava1_6_mistral_hf,
         get_model_tokenizer_llava_next,
         architectures=['LlavaForConditionalGeneration'],
-        support_flash_attn=True,
-        support_vllm=True,
-    ))
+        model_arch=ModelArch.llava))
 
 register_model(
     ModelMeta(
-        MLLMModelType.llava_llama3_1_hf,
-        [
+        MLLMModelType.llava_llama3_1_hf, [
             ModelGroup(
                 [
                     Model('DaozeZhang/llava-llama3.1-8b'),
@@ -230,9 +207,7 @@ register_model(
         TemplateType.llava_llama3_1_hf,
         get_model_tokenizer_llava_next,
         architectures=['LlavaForConditionalGeneration'],
-        support_flash_attn=True,
-        support_vllm=False,
-    ))
+        model_arch=ModelArch.llava))
 
 
 def get_model_tokenizer_llava_next_yi(*args, **kwargs):
@@ -244,8 +219,7 @@ def get_model_tokenizer_llava_next_yi(*args, **kwargs):
 
 register_model(
     ModelMeta(
-        MLLMModelType.llava1_6_yi_hf,
-        [
+        MLLMModelType.llava1_6_yi_hf, [
             ModelGroup(
                 [
                     Model('swift/llava-v1.6-34b-hf', 'llava-hf/llava-v1.6-34b-hf'),
@@ -257,9 +231,7 @@ register_model(
         TemplateType.llava1_6_yi_hf,
         get_model_tokenizer_llava_next_yi,
         architectures=['LlavaForConditionalGeneration'],
-        support_flash_attn=True,
-        support_vllm=True,
-    ))
+        model_arch=ModelArch.llava))
 
 
 def get_model_tokenizer_llava_next_video(*args, **kwargs):
@@ -271,8 +243,7 @@ def get_model_tokenizer_llava_next_video(*args, **kwargs):
 
 register_model(
     ModelMeta(
-        MLLMModelType.llava_next_video_hf,
-        [
+        MLLMModelType.llava_next_video_hf, [
             ModelGroup(
                 [
                     Model('swift/LLaVA-NeXT-Video-7B-DPO-hf', 'llava-hf/LLaVA-NeXT-Video-7B-DPO-hf'),
@@ -286,8 +257,7 @@ register_model(
         TemplateType.llava_next_video_hf,
         get_model_tokenizer_llava_next_video,
         architectures=['LlavaForConditionalGeneration'],
-        support_flash_attn=True,
-    ))
+        model_arch=ModelArch.llava_next_video))
 
 
 def get_model_tokenizer_llava_next_video_yi(*args, **kwargs):
@@ -300,8 +270,7 @@ def get_model_tokenizer_llava_next_video_yi(*args, **kwargs):
 
 register_model(
     ModelMeta(
-        MLLMModelType.llava_next_video_yi_hf,
-        [
+        MLLMModelType.llava_next_video_yi_hf, [
             ModelGroup(
                 [
                     Model('swift/LLaVA-NeXT-Video-34B-hf', 'llava-hf/LLaVA-NeXT-Video-34B-hf'),
@@ -313,8 +282,7 @@ register_model(
         TemplateType.llava_next_video_hf,
         get_model_tokenizer_llava_next_video_yi,
         architectures=['LlavaForConditionalGeneration'],
-        support_flash_attn=True,
-    ))
+        model_arch=ModelArch.llava_next_video))
 
 
 def get_model_tokenizer_llava(model_dir: str,
@@ -376,8 +344,7 @@ def get_model_tokenizer_llava(model_dir: str,
 
 register_model(
     ModelMeta(
-        MLLMModelType.llama3_llava_next,
-        [
+        MLLMModelType.llama3_llava_next, [
             ModelGroup(
                 [
                     Model('AI-Modelscope/llama3-llava-next-8b', 'lmms-lab/llama3-llava-next-8b'),
@@ -389,13 +356,11 @@ register_model(
         TemplateType.llama3_llava_next,
         partial(get_model_tokenizer_llava, llm_model_type='next_llama'),
         architectures=['LlavaForConditionalGeneration'],
-        support_flash_attn=True,
-    ))
+        model_arch=ModelArch.llava_llama))
 
 register_model(
     ModelMeta(
-        MLLMModelType.llava1_6_mistral,
-        [
+        MLLMModelType.llava1_6_mistral, [
             ModelGroup(
                 [
                     Model('AI-ModelScope/llava-v1.6-mistral-7b', 'liuhaotian/llava-v1.6-mistral-7b'),
@@ -407,13 +372,11 @@ register_model(
         partial(get_model_tokenizer_llava, llm_model_type='mistral'),
         requires=['transformers>=4.34'],
         architectures=['LlavaForConditionalGeneration'],
-        support_flash_attn=True,
-    ))
+        model_arch=ModelArch.llava))
 
 register_model(
     ModelMeta(
-        MLLMModelType.llava1_6_yi,
-        [
+        MLLMModelType.llava1_6_yi, [
             ModelGroup(
                 [
                     Model('AI-ModelScope/llava-v1.6-34b', 'liuhaotian/llava-v1.6-34b'),
@@ -425,13 +388,11 @@ register_model(
         partial(get_model_tokenizer_llava, llm_model_type='llama'),
         requires=['transformers>=4.34'],
         architectures=['LlavaForConditionalGeneration'],
-        support_flash_attn=True,
-    ))
+        model_arch=ModelArch.llava))
 
 register_model(
     ModelMeta(
-        MLLMModelType.llava_next_qwen,
-        [
+        MLLMModelType.llava_next_qwen, [
             ModelGroup(
                 [
                     Model('AI-Modelscope/llava-next-72b', 'lmms-lab/llava-next-72b'),
@@ -444,5 +405,4 @@ register_model(
         TemplateType.llava_next_qwen,
         partial(get_model_tokenizer_llava, llm_model_type='next_qwen'),
         architectures=['LlavaForConditionalGeneration'],
-        support_flash_attn=True,
-    ))
+        model_arch=ModelArch.llava))

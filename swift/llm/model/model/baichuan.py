@@ -3,13 +3,14 @@ from types import MethodType
 from typing import Any, Dict
 
 import torch.nn.functional as F
+from modelscope import AutoConfig
 from torch import Tensor
 from transformers import BitsAndBytesConfig, PretrainedConfig
 
-from swift.llm import TemplateType
+from swift.llm import ModelArch, TemplateType
 from swift.utils import get_logger
 from ..constant import LLMModelType
-from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local, register_model
+from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
 from ..utils import ModelInfo
 
 logger = get_logger()
@@ -20,7 +21,7 @@ def get_model_tokenizer_baichuan(model_dir: str,
                                  model_kwargs: Dict[str, Any],
                                  load_model: bool = True,
                                  **kwargs):
-    model, tokenizer = get_model_tokenizer_from_local(model_dir, model_config, model_kwargs, load_model, **kwargs)
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_config, model_kwargs, load_model, **kwargs)
     # baichuan-13b does not implement the `get_input_embeddings` function
     # fix gradient_checkpointing bug
     try:
@@ -44,8 +45,7 @@ register_model(
         TemplateType.baichuan,
         get_model_tokenizer_baichuan,
         architectures=['BaiChuanForCausalLM'],
-        support_vllm=True,
-        support_lmdeploy=True,
+        model_arch=ModelArch.baichuan,
     ))
 
 
@@ -76,7 +76,7 @@ def get_model_tokenizer_baichuan2(model_dir: str,
     gradient_checkpointing = model_config.gradient_checkpointing
     if isinstance(gradient_checkpointing, (tuple, list)):
         model_config.gradient_checkpointing = gradient_checkpointing[0]
-    model, tokenizer = get_model_tokenizer_from_local(
+    model, tokenizer = get_model_tokenizer_with_flash_attn(
         model_dir, model_info, model_kwargs, load_model, model_config=model_config, **kwargs)
     model_ori = model
     if model is not None:
@@ -104,8 +104,7 @@ register_model(
         TemplateType.baichuan,
         get_model_tokenizer_baichuan2,
         architectures=['BaichuanForCausalLM'],
-        support_vllm=True,
-        support_lmdeploy=True,
+        model_arch=ModelArch.baichuan,
     ))
 
 
@@ -148,4 +147,5 @@ register_model(
         TemplateType.baichuan,
         get_model_tokenizer_baichuan2_int4,
         architectures=['BaichuanForCausalLM'],
+        model_arch=ModelArch.baichuan,
     ))

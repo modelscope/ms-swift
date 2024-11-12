@@ -1,7 +1,7 @@
 import os
 from typing import Dict, List
-from swift.llm import EncodePreprocessor
-from swift.llm import DATASET_MAPPING, TemplateType, get_model_tokenizer, get_template
+
+from swift.llm import DATASET_MAPPING, EncodePreprocessor, TemplateType, get_model_tokenizer, get_template
 from swift.llm.dataset.loader import load_dataset
 from swift.utils import stat_array
 
@@ -108,7 +108,8 @@ def write_dataset_info() -> None:
                     else:
                         num_proc = 4
 
-                    dataset = EncodePreprocessor(template)(raw_dataset.select(range(min(5000, len(raw_dataset)))), num_proc=num_proc)
+                    dataset = EncodePreprocessor(template)(
+                        raw_dataset.select(range(min(5000, len(raw_dataset)))), num_proc=num_proc)
 
                     _token_len = []
                     input_ids = dataset['input_ids']

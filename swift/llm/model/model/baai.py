@@ -6,15 +6,14 @@ from typing import Any, Dict
 from modelscope import AutoConfig, AutoModel
 from transformers import PretrainedConfig
 
-from swift.llm import TemplateType
+from swift.llm import ModelArch, TemplateType
 from ..constant import MLLMModelType
-from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local,
-                        get_model_tokenizer_with_flash_attn, register_model)
+from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
 from ..utils import ModelInfo, git_clone_github, safe_snapshot_download
 
 
 def get_model_tokenizer_emu3_gen(model_dir: str,
-                                 config: PretrainedConfig,
+                                 model_info: ModelInfo,
                                  model_kwargs: Dict[str, Any],
                                  load_model: bool = True,
                                  **kwargs):
@@ -25,7 +24,7 @@ def get_model_tokenizer_emu3_gen(model_dir: str,
     from transformers import AutoModel, AutoImageProcessor
     image_processor = AutoImageProcessor.from_pretrained(vq_hub, trust_remote_code=True)
     image_tokenizer = AutoModel.from_pretrained(vq_hub, trust_remote_code=True).eval()
-    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, config, model_kwargs, load_model, **kwargs)
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
     processor = Emu3Processor(image_processor, image_tokenizer, tokenizer)
     tokenizer.processor = processor
     return model, tokenizer
@@ -42,9 +41,7 @@ register_model(
         TemplateType.emu3_gen,
         get_model_tokenizer_emu3_gen,
         architectures=['LlavaForConditionalGeneration'],
-        support_flash_attn=True,
-        support_vllm=False,
-        support_lmdeploy=False,
+        model_arch=ModelArch.emu3_chat,
     ))
 
 
@@ -60,7 +57,7 @@ def get_model_tokenizer_emu3_chat(model_dir: str,
         model_config._attn_implementation = 'flash_attention_2'
     elif use_flash_attn is False:
         model_config._attn_implementation = 'eager'
-    model, tokenizer = get_model_tokenizer_from_local(model_dir, model_info, model_kwargs, load_model, **kwargs)
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
 
     # download and load vision tokenizer
     from transformers import AutoImageProcessor
@@ -94,7 +91,7 @@ register_model(
         ],
         TemplateType.emu3_chat,
         get_model_tokenizer_emu3_chat,
-        support_flash_attn=True,
         support_gradient_checkpointing=True,
         architectures=['LlavaForConditionalGeneration'],
+        model_arch=ModelArch.emu3_chat,
     ))

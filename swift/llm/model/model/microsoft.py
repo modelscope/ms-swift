@@ -2,15 +2,11 @@
 from types import MethodType
 from typing import Any, Dict
 
-from modelscope import AutoConfig
-from transformers import PretrainedConfig
-
-from swift.llm import TemplateType
+from swift.llm import ModelArch, TemplateType
 from swift.utils import get_env_args
 from ..constant import LLMModelType, MLLMModelType
 from ..patcher import patch_output_clone
-from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local,
-                        get_model_tokenizer_with_flash_attn, register_model)
+from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
 from ..utils import ModelInfo, ignore_check_imports, use_submodel_func
 
 
@@ -37,8 +33,7 @@ def get_model_tokenizer_phi3_vision(model_dir: str,
 
 register_model(
     ModelMeta(
-        MLLMModelType.phi3_vl,
-        [
+        MLLMModelType.phi3_vl, [
             ModelGroup([
                 Model('LLM-Research/Phi-3-vision-128k-instruct', 'microsoft/Phi-3-vision-128k-instruct'),
                 Model('LLM-Research/Phi-3.5-vision-instruct', 'microsoft/Phi-3.5-vision-instruct'),
@@ -49,9 +44,7 @@ register_model(
         TemplateType.phi3_vl,
         get_model_tokenizer_phi3_vision,
         architectures=['Phi3VForCausalLM'],
-        support_flash_attn=True,
-        support_vllm=True,
-    ))
+        model_arch=ModelArch.phi3v))
 
 
 def get_model_tokenizer_florence(model_dir: str,
@@ -88,8 +81,7 @@ register_model(
         TemplateType.florence,
         get_model_tokenizer_florence,
         architectures=['Florence2ForConditionalGeneration'],
-        support_flash_attn=True,
-    ))
+        model_arch=ModelArch.florence))
 
 
 def get_model_tokenizer_phi3_small(model_dir: str,
@@ -116,8 +108,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
 
 register_model(
     ModelMeta(
-        LLMModelType.phi3_small,
-        [
+        LLMModelType.phi3_small, [
             ModelGroup([
                 Model('LLM-Research/Phi-3-small-8k-instruct', 'microsoft/Phi-3-small-8k-instruct'),
                 Model('LLM-Research/Phi-3-small-128k-instruct', 'microsoft/Phi-3-small-128k-instruct'),
@@ -128,10 +119,8 @@ register_model(
         TemplateType.phi3,
         get_model_tokenizer_phi3_small,
         architectures=['Phi3SmallForCausalLM'],
-        support_flash_attn=True,
         support_gradient_checkpointing=False,
-        support_vllm=True,
-    ))
+        model_arch=ModelArch.phi3_small))
 
 
 def get_model_tokenizer_phi(model_dir: str,
@@ -139,7 +128,7 @@ def get_model_tokenizer_phi(model_dir: str,
                             model_kwargs: Dict[str, Any],
                             load_model: bool = True,
                             **kwargs):
-    return get_model_tokenizer_from_local(model_dir, model_info, model_kwargs, load_model, **kwargs)
+    return get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
 
 
 register_model(
@@ -153,8 +142,7 @@ register_model(
         TemplateType.default,
         get_model_tokenizer_phi,
         architectures=['PhiForCausalLM'],
-        support_flash_attn=True,
-        support_vllm=True,
+        model_arch=ModelArch.phi2,
         support_gradient_checkpointing=False,
     ))
 
@@ -179,6 +167,5 @@ register_model(
         TemplateType.phi3,
         get_model_tokenizer_with_flash_attn,
         architectures=['Phi3ForCausalLM'],
-        support_flash_attn=True,
-        support_vllm=True,
+        model_arch=ModelArch.phi3,
     ))

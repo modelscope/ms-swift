@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Any, Dict
 
-from swift.llm import TemplateType
+from swift.llm import ModelArch, TemplateType
 from swift.utils import get_logger
 from ..constant import LLMModelType
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local, register_model
@@ -37,5 +37,4 @@ register_model(
         TemplateType.default,
         get_model_tokenizer_mamba,
         architectures=['MambaForCausalLM'],
-        support_vllm=False,
     ))

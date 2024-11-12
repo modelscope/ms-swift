@@ -15,8 +15,7 @@ from packaging import version
 from transformers import AutoConfig, PretrainedConfig
 
 from swift.hub import HFHub, MSHub, default_hub
-from swift.utils import deep_getattr, get_logger, is_dist, is_dist_ta, safe_ddp_context
-from swift.utils import subprocess_run
+from swift.utils import deep_getattr, get_logger, is_dist, is_dist_ta, safe_ddp_context, subprocess_run
 
 logger = get_logger()
 
