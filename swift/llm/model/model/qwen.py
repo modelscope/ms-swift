@@ -504,8 +504,7 @@ def get_model_tokenizer_qwen2_vl(model_dir: str,
         pass
 
     from transformers import Qwen2VLForConditionalGeneration
-    if 'automodel_class' not in kwargs:
-        kwargs['automodel_class'] = Qwen2VLForConditionalGeneration
+    kwargs['automodel_class'] = Qwen2VLForConditionalGeneration
     model, tokenizer = get_model_tokenizer_multimodal(model_dir, model_info, model_kwargs, load_model, **kwargs)
     if model is not None:
         patch_output_clone(model.model.embed_tokens)

@@ -22,7 +22,7 @@ class TestRun3(unittest.TestCase):
 
     def load_ds(self, ds):
         train_dataset, val_dataset = load_dataset(
-                ds + ':all',
+                ds,
                 split_dataset_ratio=0.0,
                 strict=False,
                 num_proc=1,
@@ -66,47 +66,46 @@ class TestRun3(unittest.TestCase):
                             json.dump(models, f)
                     
 
-    # def test_template_load(self):
-    #     if os.path.exists('./templates.txt'):
-    #         with open('./templates.txt', 'r') as f:
-    #             templates = json.load(f)
-    #     else:
-    #         templates = []
-    #     self.llm_ds = self.load_ds('AI-ModelScope/sharegpt_gpt4')
-    #     self.img_ds = self.load_ds('swift/OK-VQA_train')
-    #     self.audio_ds = self.load_ds('speech_asr/speech_asr_aishell1_trainsets')
-    #     for model_name, model_meta in MODEL_MAPPING.items():
-    #         model_type = model_meta.model_type
-    #         template = model_meta.template
-    #         requires = model_meta.requires
-    #         # for req in (requires or []):
-    #         #     os.system(f'pip install {req}')
-    #         for group in model_meta.model_groups:
-    #             model = group.models[0]
-    #             if template in templates:
-    #                 break
-    #             try:
-    #                 _, tokenizer = get_model_tokenizer(model.ms_model_id, load_model=False)
-    #                 template_ins = get_template(template, tokenizer)
-    #                 if 'audio' in template_ins.__class__.__name__.lower():
-    #                     EncodePreprocessor(template_ins)(self.audio_ds)
-    #                 elif 'vl' in template_ins.__class__.__name__.lower():
-    #                     EncodePreprocessor(template_ins)(self.img_ds)
-    #                 else:
-    #                     EncodePreprocessor(template_ins)(self.llm_ds)
+    def test_template_load(self):
+        if os.path.exists('./templates.txt'):
+            with open('./templates.txt', 'r') as f:
+                templates = json.load(f)
+        else:
+            templates = []
+        self.llm_ds = self.load_ds('AI-ModelScope/sharegpt_gpt4:default')
+        self.img_ds = self.load_ds('swift/OK-VQA_train')
+        self.audio_ds = self.load_ds('speech_asr/speech_asr_aishell1_trainsets:validation')
+        for model_name, model_meta in MODEL_MAPPING.items():
+            model_type = model_meta.model_type
+            template = model_meta.template
+            requires = model_meta.requires
+            # for req in (requires or []):
+            #     os.system(f'pip install {req}')
+            for group in model_meta.model_groups:
+                model = group.models[0]
+                if template in templates:
+                    break
+                try:
+                    _, tokenizer = get_model_tokenizer(model.ms_model_id, load_model=False)
+                    template_ins = get_template(template, tokenizer)
+                    if 'audio' in template_ins.__class__.__name__.lower():
+                        EncodePreprocessor(template_ins)(self.audio_ds)
+                    elif 'vl' in template_ins.__class__.__name__.lower():
+                        EncodePreprocessor(template_ins)(self.img_ds)
+                    else:
+                        EncodePreprocessor(template_ins)(self.llm_ds)
                     
-    #             except Exception as e:
-    #                 import traceback
-    #                 print(traceback.format_exc())
-    #             except Exception as e:
-    #                 passed = False
-    #             else:
-    #                 passed = True
-    #                 templates.append(template)
-    #             finally:
-    #                 if passed:
-    #                     with open('./templates.txt', 'w') as f:
-    #                         json.dump(templates, f)
+                except Exception as e:
+                    import traceback
+                    print(traceback.format_exc())
+                    passed = False
+                else:
+                    passed = True
+                    templates.append(template)
+                finally:
+                    if passed:
+                        with open('./templates.txt', 'w') as f:
+                            json.dump(templates, f)
 
 
 if __name__ == '__main__':

@@ -576,8 +576,7 @@ register_model(
 
 
 def get_model_tokenizer_got_ocr2(*args, **kwargs):
-    if 'automodel_class' not in kwargs:
-        kwargs['automodel_class'] = AutoModel
+    kwargs['automodel_class'] = AutoModel
     model, tokenizer = get_model_tokenizer_with_flash_attn(*args, **kwargs)
     return model, tokenizer
 
@@ -591,7 +590,7 @@ register_model(
             ], tags=['multi-modal', 'audio']),
         ],
         TemplateType.got_ocr2,
-        get_model_tokenizer_with_flash_attn,
+        get_model_tokenizer_got_ocr2,
         model_arch=ModelArch.got_ocr2,
         architectures=['GOTQwenForCausalLM'],
     ))
@@ -640,7 +639,7 @@ register_model(
                 Model('xverse/XVERSE-65B-2', 'xverse/XVERSE-65B-2'),
                 Model('xverse/XVERSE-65B-Chat', 'xverse/XVERSE-65B-Chat'),
                 Model('xverse/XVERSE-13B-256K', 'xverse/XVERSE-13B-256K', ms_revision='v1.0.0'),
-            ]),
+            ], requires=['transformers==4.38.2']),
         ],
         TemplateType.xverse,
         get_model_tokenizer_with_flash_attn,
@@ -654,7 +653,7 @@ register_model(
         [
             ModelGroup([
                 Model('xverse/XVERSE-MoE-A4.2B', 'xverse/XVERSE-MoE-A4.2B'),
-            ], tags=['moe']),
+            ], tags=['moe', 'skip_test'], requires=['transformers==4.38.2']),
         ],
         TemplateType.xverse,
         get_model_tokenizer_with_flash_attn,
