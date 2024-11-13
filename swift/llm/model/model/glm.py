@@ -5,7 +5,8 @@ import torch
 import transformers
 from modelscope import AutoConfig
 from packaging import version
-from transformers import AutoTokenizer, PreTrainedTokenizerBase
+from modelscope import AutoTokenizer
+from transformers import PreTrainedTokenizerBase
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
 
@@ -135,7 +136,7 @@ register_model(
         TemplateType.chatglm4,
         get_model_tokenizer_glm4,
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
-        requires=['transformers>=4.42'],
+        requires=['transformers==4.43.0'],
         model_arch=ModelArch.chatglm))
 
 register_model(
@@ -181,7 +182,7 @@ register_model(
         TemplateType.glm4v,
         get_model_tokenizer_glm4v,
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
-        requires=['transformers>=4.42'],
+        requires=['transformers==4.43.0'],
         model_arch=ModelArch.glm4v))
 
 

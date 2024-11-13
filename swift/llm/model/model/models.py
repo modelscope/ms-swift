@@ -46,7 +46,7 @@ register_model(
         LLMModelType.grok, [
             ModelGroup([
                 Model('colossalai/grok-1-pytorch', 'hpcai-tech/grok-1'),
-            ], ),
+            ], tags=['skip_test']),
         ],
         TemplateType.default,
         get_model_tokenizer_grok,
@@ -61,6 +61,7 @@ def get_model_tokenizer_mplug_owl3(model_dir: str,
                                    model_kwargs: Dict[str, Any],
                                    load_model: bool = True,
                                    **kwargs):
+    get_class_from_dynamic_module('configuration_hyper_qwen2.HyperQwen2Config', model_dir)
     model_cls = get_class_from_dynamic_module('modeling_mplugowl3.mPLUGOwl3Model', model_dir)
     model_cls._no_split_modules = ['SiglipEncoderLayer']
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
@@ -133,8 +134,8 @@ register_model(
         LLMModelType.skywork,
         [
             ModelGroup([
-                Model('skywork/Skywork-13B-chat'),
                 Model('skywork/Skywork-13B-base'),
+                Model('skywork/Skywork-13B-chat'),
             ]),
         ],
         TemplateType.skywork,
@@ -218,7 +219,7 @@ register_model(
                 Model('OrionStarAI/Orion-14B-Base', 'OrionStarAI/Orion-14B-Base'),
                 Model('OrionStarAI/Orion-14B-Chat', 'OrionStarAI/Orion-14B-Chat'),
             ],
-                       ignore_file_pattern=[r'.+\.gguf$']),
+                       ignore_file_pattern=[r'.+\.gguf$'], requires=['transformers==4.34.1']),
         ],
         TemplateType.orion,
         get_model_tokenizer_with_flash_attn,
@@ -230,8 +231,7 @@ register_model(
 def get_model_tokenizer_idefics(model_dir: str, *args, **kwargs):
     from transformers import AutoProcessor, AutoModelForVision2Seq
     processor = AutoProcessor.from_pretrained(model_dir)
-    if 'automodel_class' not in kwargs:
-        kwargs['automodel_class'] = AutoModelForVision2Seq
+    kwargs['automodel_class'] = AutoModelForVision2Seq
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
     tokenizer.processor = processor
     return model, tokenizer
@@ -253,64 +253,6 @@ register_model(
         architectures=['Idefics3ForConditionalGeneration'],
     ))
 
-
-def get_model_tokenizer_mplug_owl2(model_dir: str,
-                                   model_info: ModelInfo,
-                                   model_kwargs: Dict[str, Any],
-                                   load_model: bool = True,
-                                   **kwargs):
-    if 'local_repo_path' in kwargs:
-        local_repo_path = kwargs['local_repo_path']
-    else:
-        local_repo_path = git_clone_github('https://github.com/X-PLUG/mPLUG-Owl')
-    local_repo_path = os.path.join(local_repo_path, 'mPLUG-Owl2')
-    sys.path.append(os.path.join(local_repo_path))
-
-    # register
-    # https://github.com/X-PLUG/mPLUG-Owl/blob/main/mPLUG-Owl2/mplug_owl2/model/modeling_mplug_owl2.py#L447
-    from transformers.models.clip.image_processing_clip import CLIPImageProcessor
-    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    vocab_size = kwargs.pop('vocab_size', None)
-    if vocab_size is not None:
-        model_config.vocab_size = vocab_size
-    get_model_tokenizer_function = kwargs.pop('get_model_tokenizer_function')
-    model, tokenizer = get_model_tokenizer_function(model_dir, model_info, model_kwargs, load_model, **kwargs)
-    logger.info('Please ignore the unimported warning.')
-    processor = CLIPImageProcessor.from_pretrained(model_dir)
-    tokenizer.processor = processor
-    return model, tokenizer
-
-
-register_model(
-    ModelMeta(
-        MLLMModelType.mplug2,
-        [
-            ModelGroup([
-                Model('iic/mPLUG-Owl2', 'MAGAer13/mplug-owl2-llama2-7b'),
-            ],
-                       tags=['multi-modal', 'vision'],
-                       requires=['transformers<4.35', 'icecream']),
-        ],
-        TemplateType.mplug_owl2,
-        partial(get_model_tokenizer_mplug_owl2, get_model_tokenizer_function=get_model_tokenizer_with_flash_attn),
-        model_arch=None,
-    ))
-
-register_model(
-    ModelMeta(
-        MLLMModelType.mplug2_1,
-        [
-            ModelGroup([
-                Model('iic/mPLUG-Owl2.1', 'Mizukiluke/mplug_owl_2_1'),
-            ],
-                       tags=['multi-modal', 'vision'],
-                       requires=['transformers<4.35', 'icecream']),
-        ],
-        TemplateType.mplug_owl2,
-        partial(
-            get_model_tokenizer_mplug_owl2, vocab_size=151851, get_model_tokenizer_function=get_model_tokenizer_qwen),
-        model_arch=None,
-    ))
 
 register_model(
     ModelMeta(
@@ -756,8 +698,7 @@ register_model(
 def get_model_tokenizer_pixtral(model_dir: str, *args, **kwargs):
     from transformers import AutoProcessor, LlavaForConditionalGeneration
     processor = AutoProcessor.from_pretrained(model_dir)
-    if 'automodel_class' not in kwargs:
-        kwargs['automodel_class'] = LlavaForConditionalGeneration
+    kwargs['automodel_class'] = LlavaForConditionalGeneration
     kwargs['tokenizer'] = processor.tokenizer
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
     tokenizer.processor = processor

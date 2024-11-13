@@ -56,6 +56,7 @@ def get_model_tokenizer_florence(model_dir: str,
     from transformers import AutoProcessor
     processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
     with ignore_check_imports():
+        model_kwargs['device_map'] = 'cuda:0'
         model, tokenizer = get_model_tokenizer_with_flash_attn(
             model_dir, model_info, model_kwargs, load_model, tokenizer=processor.tokenizer, **kwargs)
 

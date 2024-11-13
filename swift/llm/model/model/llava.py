@@ -23,8 +23,7 @@ def get_model_tokenizer_llava_llama(model_dir: str,
 
     model_config = LlavaConfig.from_pretrained(model_dir)  # check
     processor = AutoProcessor.from_pretrained(model_dir)
-    if 'automodel_class' not in kwargs:
-        kwargs['automodel_class'] = LlavaForConditionalGeneration
+    kwargs['automodel_class'] = LlavaForConditionalGeneration
     model, tokenizer = get_model_tokenizer_with_flash_attn(
         model_dir, model_info, model_kwargs, load_model, model_config=model_config, **kwargs)
     tokenizer.processor = processor
@@ -64,7 +63,9 @@ def _patch_llava(model):
 
 def get_model_tokenizer_llava_hf(model_dir: str, *args, **kwargs):
     from transformers import AutoProcessor
+    from transformers import LlavaForConditionalGeneration
     processor = AutoProcessor.from_pretrained(model_dir)
+    kwargs['automodel_class'] = LlavaForConditionalGeneration
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
     tokenizer.processor = processor
     return model, tokenizer
@@ -81,8 +82,8 @@ register_model(
     ModelMeta(
         MLLMModelType.llava1_5_hf, [
             ModelGroup([
-                Model('swift/llava-1.5-13b-hf', 'llava-hf/llava-1.5-13b-hf'),
                 Model('swift/llava-1.5-7b-hf', 'llava-hf/llava-1.5-7b-hf'),
+                Model('swift/llava-1.5-13b-hf', 'llava-hf/llava-1.5-13b-hf'),
             ],
                        requires=['transformers>=4.36'],
                        tags=['multi-modal', 'vision']),
@@ -199,7 +200,7 @@ register_model(
         MLLMModelType.llava_llama3_1_hf, [
             ModelGroup(
                 [
-                    Model('DaozeZhang/llava-llama3.1-8b'),
+                    Model('swift/llava-llama3.1-8b'),
                 ],
                 requires=['transformers>=4.41'],
                 tags=['multi-modal', 'vision'],
@@ -326,7 +327,8 @@ def get_model_tokenizer_llava(model_dir: str,
         model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
 
     model_config.mm_vision_tower = safe_snapshot_download('AI-ModelScope/clip-vit-large-patch14-336')
-    model_kwargs['model_config'] = model_config
+    kwargs['model_config'] = model_config
+    kwargs.pop('automodel_class', None)
     model, tokenizer = get_model_tokenizer_with_flash_attn(
         model_dir, model_info, model_kwargs, load_model, automodel_class=automodel_class, **kwargs)
 

@@ -148,7 +148,11 @@ class HfConfigFactory:
     @staticmethod
     def compat_zero3(config: PretrainedConfig) -> None:
         value = HfConfigFactory.get_config_attr(config, 'hidden_size')
-        config.hidden_size = value
+        try:
+            # AttributeError: can't set attribute 'hidden_size'
+            config.hidden_size = value
+        except AttributeError:
+            pass
 
     @staticmethod
     def to_torch_dtype(torch_dtype: Union[str, torch.dtype, None]) -> Optional[torch.dtype]:

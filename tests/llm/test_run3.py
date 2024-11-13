@@ -3,7 +3,8 @@ import shutil
 import json
 import tempfile
 import unittest
-
+from multiprocessing import Process
+from functools import partial
 import torch
 from swift.llm import get_model_tokenizer
 from swift.llm import EncodePreprocessor, load_dataset, MODEL_MAPPING, get_template
@@ -43,34 +44,34 @@ class TestRun3(unittest.TestCase):
                 model = group.models[0]
                 if 'skip_test' in (group.tags or []) or model.ms_model_id in models:
                     break
-                model_ins = None
                 requires = meta_requires + (group.requires or [])
                 for req in requires:
                     os.system(f'pip install "{req}"')
                 if not any(['transformers' in req for req in requires]):
-                    os.system(f'pip install transformers==4.45.1')
+                    os.system(f'pip install transformers -U')
                 if not any(['accelerate' in req for req in requires]):
-                    os.system(f'pip install accelerate==1.1.1')
+                    os.system(f'pip install accelerate -U')
                 try:
-                    import transformers
-                    print(f'Test model: {model.ms_model_id} with transformers version: {transformers.__version__}')
-                    model_ins, tokenizer = get_model_tokenizer(model.ms_model_id)
+                    cmd = f'PYTHONPATH=. python tests/llm/load_model.py --ms_model_id {model.ms_model_id}'
+                    if os.system(cmd) != 0:
+                        raise RuntimeError()
                 except Exception as e:
-                    import traceback
-                    print(traceback.format_exc())
                     passed = False
                 else:
                     passed = True
                     models.append(model.ms_model_id)
                 finally:
-                    if model_ins is not None:
-                        del model_ins
                     if passed:
                         with open('./models.txt', 'w') as f:
                             json.dump(models, f)
                     
 
     # def test_template_load(self):
+    #     if os.path.exists('./templates.txt'):
+    #         with open('./templates.txt', 'r') as f:
+    #             templates = json.load(f)
+    #     else:
+    #         templates = []
     #     self.llm_ds = self.load_ds('AI-ModelScope/sharegpt_gpt4')
     #     self.img_ds = self.load_ds('swift/OK-VQA_train')
     #     self.audio_ds = self.load_ds('speech_asr/speech_asr_aishell1_trainsets')
@@ -78,24 +79,34 @@ class TestRun3(unittest.TestCase):
     #         model_type = model_meta.model_type
     #         template = model_meta.template
     #         requires = model_meta.requires
-    #         for req in (requires or []):
-    #             os.system(f'pip install {req}')
+    #         # for req in (requires or []):
+    #         #     os.system(f'pip install {req}')
     #         for group in model_meta.model_groups:
     #             model = group.models[0]
-    #             model_ins = None
+    #             if template in templates:
+    #                 break
     #             try:
-    #                 model_ins, tokenizer = get_model_tokenizer(model.ms_model_id, load_model=False)
-    #                 template = get_template(template, tokenizer)
-    #                 if 'audio' in template.__class__.__name__.lower():
-    #                     EncodePreprocessor(template)(self.audio_ds)
-    #                 elif 'vl' in template.__class__.__name__.lower():
-    #                     EncodePreprocessor(template)(self.img_ds)
+    #                 _, tokenizer = get_model_tokenizer(model.ms_model_id, load_model=False)
+    #                 template_ins = get_template(template, tokenizer)
+    #                 if 'audio' in template_ins.__class__.__name__.lower():
+    #                     EncodePreprocessor(template_ins)(self.audio_ds)
+    #                 elif 'vl' in template_ins.__class__.__name__.lower():
+    #                     EncodePreprocessor(template_ins)(self.img_ds)
     #                 else:
-    #                     EncodePreprocessor(template)(self.llm_ds)
+    #                     EncodePreprocessor(template_ins)(self.llm_ds)
                     
     #             except Exception as e:
     #                 import traceback
     #                 print(traceback.format_exc())
+    #             except Exception as e:
+    #                 passed = False
+    #             else:
+    #                 passed = True
+    #                 templates.append(template)
+    #             finally:
+    #                 if passed:
+    #                     with open('./templates.txt', 'w') as f:
+    #                         json.dump(templates, f)
 
 
 if __name__ == '__main__':

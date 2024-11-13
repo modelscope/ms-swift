@@ -273,7 +273,7 @@ register_model(
             ),
         ],
         TemplateType.xcomposer2_5,
-        get_model_tokenizer_internvl,
+        get_model_tokenizer_internlm_xcomposer2,
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
         model_arch=ModelArch.internlm_xcomposer))
 
@@ -288,7 +288,7 @@ register_model(
             ),
         ],
         TemplateType.xcomposer2,
-        get_model_tokenizer_internvl,
+        get_model_tokenizer_internlm_xcomposer2,
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
         model_arch=ModelArch.internlm_xcomposer))
 
@@ -303,6 +303,6 @@ register_model(
             ),
         ],
         TemplateType.xcomposer2,
-        partial(get_model_tokenizer_internvl, version='v2-4khd'),
+        partial(get_model_tokenizer_internlm_xcomposer2, version='v2-4khd'),
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
         model_arch=ModelArch.internlm_xcomposer))
