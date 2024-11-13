@@ -60,6 +60,23 @@ class MediaResource:
                     media_type=media_type_or_url, media_name=local_alias, file_type=file_type)
 
     @staticmethod
+    def move_directory_contents(src_dir, dst_dir):
+        if not os.path.exists(dst_dir):
+            os.makedirs(dst_dir)
+
+        for dirpath, dirnames, filenames in os.walk(src_dir):
+            relative_path = os.path.relpath(dirpath, src_dir)
+            target_dir = os.path.join(dst_dir, relative_path)
+
+            if not os.path.exists(target_dir):
+                os.makedirs(target_dir)
+
+            for file in filenames:
+                src_file = os.path.join(dirpath, file)
+                dst_file = os.path.join(target_dir, file)
+                shutil.move(src_file, dst_file)
+
+    @staticmethod
     def _safe_download(media_type: Union[str, List[str]],
                        media_name: Optional[str] = None,
                        file_type: Literal['compressed', 'file', 'sharded'] = 'compressed'):
@@ -102,10 +119,8 @@ class MediaResource:
         else:
             for media_url in media_type:
                 local_dirs = DownloadManager(download_config=DownloadConfig(
-                    cache_dir=MediaResource.cache_dir)).download(media_url)
-            local_dirs = DownloadManager(download_config=DownloadConfig(
-                cache_dir=MediaResource.cache_dir)).extract(local_dirs)
-            shutil.move(str(local_dirs), final_folder)
+                    cache_dir=MediaResource.cache_dir)).download_and_extract(media_url)
+                MediaResource.move_directory_contents(str(local_dirs), final_folder)
         logger.info('# #################Resource downloading finished#################')
         return final_folder
 
