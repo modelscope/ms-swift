@@ -200,21 +200,26 @@ def find_embedding(model: Module) -> List[str]:
     return _find_layers(model, torch.nn.Embedding)
 
 
-def find_all_linears(model: Module, quantization_bit: int, model_type: str, quant_method: str) -> List[str]:
+def find_all_linears(model: Module) -> List[str]:
     """ref: https://github.com/artidoro/qlora"""
     # TODO: head check
-    head_module_name = 'lm_head'
-    from swift.llm import MODEL_KEYS_MAPPING
-    if model_type in MODEL_KEYS_MAPPING:
-        output = MODEL_KEYS_MAPPING[model_type].output
+    from swift.llm import get_model_arch
+    model_info = model.model_info
+    model_arch = get_model_arch(model.model_meta.model_arch)
+    if model_arch:
+        output = model_arch.output or 'lm_head'
         idx = output.rfind('.')
-        head_module_name = output[idx + 1:]
+        lm_head_name = output[idx + 1:]
+    else:
+        lm_head_name = 'lm_head'
+
+    quant_method = model_info.quant_method
+    quant_bits = model_info.quant_bits
     if quant_method == 'bnb':
-        if quantization_bit == 4:
-            from bitsandbytes.nn import Linear4bit
+        from bitsandbytes.nn import Linear4bit, Linear8bitLt
+        if quant_bits == 4:
             linear_cls = [Linear4bit]
-        elif quantization_bit == 8:
-            from bitsandbytes.nn import Linear8bitLt
+        elif quant_bits == 8:
             linear_cls = [Linear8bitLt]
     elif quant_method == 'hqq':
         from hqq.core.quantize import HQQLinear
@@ -222,23 +227,19 @@ def find_all_linears(model: Module, quantization_bit: int, model_type: str, quan
     elif quant_method == 'eetq':
         from eetq import EetqLinear
         linear_cls = [EetqLinear]
-    else:
-        linear_cls = [Linear]
-    if 'int4' in model_type or 'int8' in model_type:
+    elif quant_method == 'gptq':
         from peft.utils import get_auto_gptq_quant_linear, get_quantization_config
         gptq_quantization_config = get_quantization_config(model, 'gptq')
         AutoGPTQQuantLinear = get_auto_gptq_quant_linear(gptq_quantization_config)
-        if AutoGPTQQuantLinear is None:
-            from bitsandbytes.nn import Linear4bit
-            linear_cls = [Linear4bit]
-        else:
-            linear_cls = [AutoGPTQQuantLinear]
-    if 'awq' in model_type:
+        linear_cls = [AutoGPTQQuantLinear]
+    elif quant_method == 'awq':
         from awq.modules.linear import WQLinear_GEMM
-        linear_cls.append(WQLinear_GEMM)
-    if 'aqlm' in model_type:
+        linear_cls = [WQLinear_GEMM]
+    elif quant_method == 'aqlm':
         from aqlm import QuantizedLinear
-        linear_cls.append(QuantizedLinear)
+        linear_cls = [QuantizedLinear]
+    else:
+        linear_cls = [Linear]
 
     # The content of target_module_names cannot exist in inner_nodes.
     # O(n^2logn), n represents the number of nodes, n<1000.
@@ -248,7 +249,7 @@ def find_all_linears(model: Module, quantization_bit: int, model_type: str, quan
             inner_nodes.add(name)
     target_module_names = set()
     for name, module in model.named_modules():
-        if isinstance(module, tuple(linear_cls)) and head_module_name not in name:
+        if isinstance(module, tuple(linear_cls)) and lm_head_name not in name:
             module_name_list = name.split('.')
             module_name = module_name_list.pop()
             for inner_node in inner_nodes:

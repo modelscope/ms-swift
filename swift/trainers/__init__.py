@@ -10,6 +10,8 @@ if TYPE_CHECKING:
     from .trainers import Seq2SeqTrainer, Trainer
     from .mixin import SwiftMixin, RLHFTrainerMixin
     from .loss import LossType, LOSS_MAPPING
+    from .utils import (EvaluationStrategy, FSDPOption, HPSearchBackend, HubStrategy, IntervalStrategy, SchedulerType,
+                        ShardedDDPOption, TrainerCallback)
 else:
     _import_structure = {
         'arguments':

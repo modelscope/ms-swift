@@ -1,6 +1,11 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from dataclasses import dataclass, field
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Union
+
+from transformers.utils import strtobool
+
+from swift.tuners import LoRAConfig
+from swift.utils import find_all_linears
 
 
 def get_supported_tuners():
@@ -93,7 +98,7 @@ class TunerArguments:
     train_type: str = field(default='lora', metadata={'help': f'train_type choices: {list(get_supported_tuners())}'})
 
     # tuners
-    target_modules: List[str] = field(default_factory=lambda: ['ALL'])
+    target_modules: List[str] = field(default_factory=lambda: ['all-linear'])
     target_regex: Optional[str] = None
     # e.g. ['wte', 'ln_1', 'ln_2', 'ln_f', 'lm_head']
     modules_to_save: List[str] = field(default_factory=list)
@@ -102,9 +107,9 @@ class TunerArguments:
     lora_rank: int = 8
     lora_alpha: int = 32
     lora_dropout: float = 0.05
-    lora_bias_trainable: Literal['none', 'all'] = 'none'
-    lora_dtype: Literal['fp16', 'bf16', 'fp32', 'AUTO'] = 'AUTO'
-    lora_lr_ratio: float = None
+    lora_bias: Literal['none', 'all'] = 'none'
+    lora_dtype: Literal['float16', 'bfloat16', 'float32', None] = None
+    lorap_lr_ratio: Optional[float] = None
     use_rslora: bool = False
     use_dora: bool = False
     # Literal['gaussian', 'pissa', 'pissa_niter_[number of iters]', 'olora', 'loftq', 'true', 'false']
@@ -184,3 +189,22 @@ class TunerArguments:
     @property
     def adapters_can_be_merged(self):
         return {'lora', 'longlora', 'llamapro', 'adalora'}
+
+    def __post_init__(self):
+        if self.init_lora_weights.lower() in {'true', 'false'}:
+            self.init_lora_weights = bool(strtobool(self.init_lora_weights))
+
+    def handle_target_modules(self, model) -> Union[str, List[str]]:
+        """Replace EMBEDDING and ALL to actual modules
+        Args:
+            model: The input model
+            args: The SftArguments
+        """
+        if self.target_regex:
+            return self.target_regex
+
+        target_modules = self.target_modules.copy()
+        if 'all-linear' in target_modules:
+            target_modules.remove('all-linear')
+            target_modules += find_all_linears(model)
+        return target_modules

@@ -41,8 +41,9 @@ class SwiftSft(SwiftPipeline[SftArguments]):
             self.model.config.use_cache = False  # fix transformers==4.36
             logger.info('Setting model.config.use_cache: False')
             self.model.enable_input_require_grads()
-        model_arch = get_model_arch(self.model.model_meta.model_arch)
-        if model_arch:
+        model_meta = self.model.model_meta
+        model_arch = get_model_arch(model_meta.model_arch)
+        if model_meta.is_multimodal and model_arch:
             for vision_tower_name in model_arch.vision_tower:
                 vision_tower = deep_getattr(self.model, vision_tower_name)
                 if args.vit_gradient_checkpointing:
@@ -56,8 +57,8 @@ class SwiftSft(SwiftPipeline[SftArguments]):
 
     def _prepare_generation_config(self):
         args = self.args
-        request_config = args.get_request_config(args.stream)
-        self.model.generation_config = prepare_generation_config(self.model.generation_config, request_config)
+        self.model.generation_config = prepare_generation_config(self.model.generation_config,
+                                                                 args.get_request_config(False))
         logger.info(f'model.generation_config: {self.model.generation_config}')
 
     def _prepare_model_tokenizer(self):
@@ -85,7 +86,7 @@ class SwiftSft(SwiftPipeline[SftArguments]):
 
         logger.info(f'model_config: {self.model.config}')
 
-    def _prepare_template(self) -> Template:
+    def _prepare_template(self) -> None:
         args = self.args
         template = get_template(
             args.template,
@@ -100,10 +101,8 @@ class SwiftSft(SwiftPipeline[SftArguments]):
         )
         logger.info(f'default_system: {template.default_system}')
         self.template = template
-        return template
 
     def _prepare_dataset(self):
-        args = self.args
         args = self.args
         dataset_kwargs = {
             'dataset_seed': args.dataset_seed,
@@ -121,16 +120,11 @@ class SwiftSft(SwiftPipeline[SftArguments]):
         if len(args.val_dataset) > 0:
             # Loading val dataset
             _, val_dataset = load_dataset(args.val_dataset, 1.0, **dataset_kwargs)
-            args.dataset_test_ratio = 0
-        train_dataset, val_dataset = load_dataset(args.dataset, args.dataset_test_ratio, **dataset_kwargs)
+            args.split_dataset_ratio = 0
+        train_dataset, val_dataset = load_dataset(args.dataset, args.split_dataset_ratio, **dataset_kwargs)
         logger.info(f'train_dataset: {train_dataset}')
         logger.info(f'val_dataset: {val_dataset}')
 
-        if val_dataset is None:
-            training_args = args.training_args
-            training_args.evaluation_strategy = IntervalStrategy.NO
-            training_args.eval_strategy = IntervalStrategy.NO
-            training_args.do_eval = False
         return train_dataset, val_dataset
 
     def run(self):

@@ -385,10 +385,12 @@ def get_matched_model_meta(model_id_or_path: str) -> Optional[ModelMeta]:
 
 def get_model_info(model_dir: str,
                    model_type: Optional[str],
-                   is_training: bool,
+                   quantization_config,
                    attn_impl: AttnImpl,
                    rope_scaling: Optional[Dict[str, Any]] = None) -> ModelInfo:
     config_dict = PretrainedConfig.get_config_dict(model_dir)[0]
+    if quantization_config is None:
+        config_dict['quantization_config'] = quantization_config
     quant_info = HfConfigFactory.get_quant_info(config_dict) or {}
     torch_dtype = HfConfigFactory.get_torch_dtype(config_dict, quant_info)
     max_model_len = HfConfigFactory.get_max_model_len(config_dict)
@@ -402,24 +404,24 @@ def get_model_info(model_dir: str,
             model_type = model_types[0]
 
     res = ModelInfo(model_type, model_dir, torch_dtype, max_model_len, quant_info.get('quant_method'),
-                    quant_info.get('quant_bits'), is_training, attn_impl, rope_scaling)
+                    quant_info.get('quant_bits'), attn_impl, rope_scaling)
     return res
 
 
 def get_model_tokenizer(model_id_or_path: str,
                         torch_dtype: Optional[torch.dtype] = None,
                         device_map: Union[str, Dict[str, Any], None] = None,
-                        model_kwargs: Optional[Dict[str, Any]] = None,
                         load_model: bool = True,
                         *,
+                        quantization_config=None,
                         model_type: Optional[str] = None,
-                        is_training: bool = False,
                         attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None,
                         rope_scaling: Optional[Dict[str, Any]] = None,
                         use_hf: Optional[bool] = None,
                         revision: Optional[str] = None,
                         download_model: Optional[bool] = None,
                         automodel_class=AutoModelForCausalLM,
+                        model_kwargs: Optional[Dict[str, Any]] = None,
                         **kwargs) -> Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]:
     """
     model_id_or_path: The path to the model or the model_id from modelscope/huggingface (controlled by `use_hf`).
@@ -453,11 +455,12 @@ def get_model_tokenizer(model_id_or_path: str,
     if not use_torchacc() and device_map is None:
         device_map = get_default_device_map()
     model_kwargs['device_map'] = device_map
+    model_kwargs['quantization_config'] = quantization_config
 
     model_info = get_model_info(
         model_dir,
         getattr(model_meta, 'model_type', None),
-        is_training=is_training,
+        quantization_config=quantization_config,
         attn_impl=attn_impl,
         rope_scaling=rope_scaling)
     if model_type is None and model_info.model_type is not None:

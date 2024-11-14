@@ -94,12 +94,16 @@ def dynamic_gradient_checkpointing(model) -> None:
     from .model import ModelMeta, get_model_arch
     model_meta: ModelMeta = model.model_meta
     model_arch = get_model_arch(model_meta.model_arch)
-    tower_names = model_arch.language_model
     if model_meta.is_multimodal:
-        tower_names += model_arch.vision_tower
+        tower_names = model_arch.language_model + model_arch.vision_tower
+    else:
+        tower_names = [None]
 
     for tower_name in tower_names:
-        model_tower = deep_getattr(model, tower_name)
+        if tower_name is None:
+            model_tower = model
+        else:
+            model_tower = deep_getattr(model, tower_name)
         module_list = find_module_list(model_tower)
         if module_list is None:
             continue

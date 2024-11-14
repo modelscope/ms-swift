@@ -13,7 +13,7 @@ from transformers.utils.versions import require_version
 
 from swift.llm import MODEL_ARCH_MAPPING, MODEL_MAPPING
 from swift.plugin import LOSS_MAPPING, extra_tuners
-from swift.trainers import TrainerFactory
+from swift.trainers import IntervalStrategy, TrainerFactory
 from swift.utils import (add_version_to_work_dir, get_dist_setting, get_logger, get_pai_tensorboard_dir, is_dist,
                          is_liger_available, is_local_master, is_mp, is_pai_training_job, use_torchacc)
 from .base_args import BaseArguments, to_abspath
@@ -55,8 +55,12 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
             else:
                 self.learning_rate = 1e-4
         self.lr_scheduler_kwargs = self.parse_to_dict(self.lr_scheduler_kwargs)
+
         if len(self.val_dataset) == 0 and self.split_dataset_ratio:
-            self.eval_strategy = 'no'
+            self.evaluation_strategy = IntervalStrategy.NO
+            self.eval_strategy = IntervalStrategy.NO
+            self.do_eval = False
+            self.eval_steps = None
         elif self.eval_steps is None:
             self.eval_steps = self.save_steps
 
@@ -178,8 +182,9 @@ class SftArguments(MegatronArguments, TorchAccArguments, TunerArguments, Seq2Seq
     def __post_init__(self) -> None:
         BaseArguments.__post_init__(self)
         Seq2SeqTrainingOverrideArguments.__post_init__(self)
-        MegatronArguments.__post_init__(self)
+        TunerArguments.__post_init__(self)
         TorchAccArguments.__post_init__(self)
+        MegatronArguments.__post_init__(self)
         self._handle_pai_compat()
         self.prepare_deepspeed()
         if self.resume_from_checkpoint:

@@ -62,7 +62,6 @@ class ModelInfo:
     quant_bits: int
 
     # extra
-    is_training: bool
     attn_impl: AttnImpl
     rope_scaling: Optional[Dict[str, Any]]
     config: Optional[PretrainedConfig] = None

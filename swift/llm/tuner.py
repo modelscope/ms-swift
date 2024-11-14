@@ -16,28 +16,9 @@ from swift.plugin.optimizer import optimizers_map
 from swift.plugin.tuner import Tuner, extra_tuners
 from swift.tuners import (AdaLoraConfig, AdapterConfig, BOFTConfig, IA3Config, LLaMAProConfig, LongLoRAModelType,
                           LoraConfig, LoRAConfig, ReftConfig, Swift, VeraConfig)
-from swift.utils import (activate_model_parameters, find_all_linears, find_embedding, freeze_model_parameters,
-                         get_logger, use_torchacc)
+from swift.utils import activate_model_parameters, freeze_model_parameters, get_logger, use_torchacc
 
 logger = get_logger()
-
-
-def handle_target_modules(model, args: SftArguments) -> None:
-    """Replace EMBEDDING and ALL to actual modules
-    Args:
-        model: The input model
-        args: The SftArguments
-    """
-    target_modules: List[str] = args.target_modules
-    if 'EMBEDDING' in target_modules:
-        target_modules.remove('EMBEDDING')
-        target_modules += find_embedding(model)
-    if 'ALL' in target_modules:
-        target_modules.remove('ALL')
-        target_modules += find_all_linears(model, args.quant_bits, args.model_type, args.quant_method)
-    args.target_modules = target_modules
-    if not args.target_regex:
-        logger.info(f'target_modules: {args.target_modules}')
 
 
 def handle_vera_target_modules(model: torch.nn.Module, config: VeraConfig):
@@ -155,34 +136,24 @@ def prepare_tuner(model, args: SftArguments):
         # Apply liger
         apply_liger(args.model_type)
 
-    # Preparing LoRA
     if args.is_adapter:
+        model.requires_grad_(False)
         if args.resume_from_checkpoint is None:
-            handle_target_modules(model, args)
-            if args.init_lora_weights and args.init_lora_weights.lower() in ('true', 'false'):
-                args.init_lora_weights = args.init_lora_weights.lower() in ('true', 'True')
-            if args.target_regex:
-                logger.info(f'Value of target_modules: `{args.target_modules}` will have no effect '
-                            f'because target_regex value: `{args.target_regex}` exists.')
+            target_modules = args.handle_target_modules(model)
             lora_kwargs = {
                 'r': args.lora_rank,
-                'target_modules': args.target_regex or args.target_modules,
+                'target_modules': target_modules,
                 'lora_alpha': args.lora_alpha,
                 'lora_dropout': args.lora_dropout,
-                'bias': args.lora_bias_trainable,
+                'bias': args.lora_bias,
                 'modules_to_save': args.modules_to_save,
                 'use_rslora': args.use_rslora,
                 'use_dora': args.use_dora,
-                'lorap_lr_ratio': args.lora_lr_ratio,
+                'lorap_lr_ratio': args.lorap_lr_ratio,
                 'init_lora_weights': args.init_lora_weights,
             }
 
             if args.train_type in ('lora', 'longlora'):
-                # Fix the name of the layer in xcomposer that contains Plora.
-                if any(['lora_' in n for n, p in model.named_parameters()]):
-                    model.requires_grad_(False)
-                if args.lora_dtype == 'AUTO':
-                    args.lora_dtype = None
                 if args.tuner_backend == 'swift':
                     lora_config = LoRAConfig(lora_dtype=args.lora_dtype, **lora_kwargs)
                     model = Swift.prepare_model(model, lora_config)
@@ -315,7 +286,6 @@ def prepare_tuner(model, args: SftArguments):
         model = tuner.prepare_model(model, args)
         model.is_tuner_plugin = True
     elif args.train_type == 'full':
-        model.train()
         model.requires_grad_(True)
 
         freeze_model_parameters(model, args.freeze_parameters_ratio, args.freeze_parameters)
@@ -355,7 +325,7 @@ def prepare_tuner(model, args: SftArguments):
         dispatch_module_xtuner(model)
 
     optimizer_callback = optimizers_map['default']
-    if args.lora_lr_ratio:
+    if args.lorap_lr_ratio:
         optimizer_callback = optimizers_map['lorap']
     if args.use_galore:
         if args.galore_target_modules is None:

@@ -42,7 +42,7 @@ def test_memory_time(train_args: TrainArguments) -> Dict[str, Dict[str, Any]]:
         train_dataset_sample = -1
     for i in range(train_args.run_time):
         sft_args = SftArguments(
-            dataset_test_ratio=0,
+            split_dataset_ratio=0,
             dataset=DatasetName.cls_fudan_news_zh,
             train_dataset_sample=train_dataset_sample,
             save_strategy='no',

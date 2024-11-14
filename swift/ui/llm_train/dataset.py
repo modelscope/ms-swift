@@ -32,7 +32,7 @@ class Dataset(BaseUI):
                 'en': 'Set the max length input to the model',
             }
         },
-        'dataset_test_ratio': {
+        'split_dataset_ratio': {
             'label': {
                 'zh': '验证集拆分比例',
                 'en': 'Split ratio of eval dataset'
@@ -92,7 +92,7 @@ class Dataset(BaseUI):
                     allow_custom_value=True)
                 gr.Textbox(elem_id='custom_dataset_info', is_list=False, scale=20)
             with gr.Row():
-                gr.Slider(elem_id='dataset_test_ratio', minimum=0.0, maximum=1.0, step=0.05, scale=20)
+                gr.Slider(elem_id='split_dataset_ratio', minimum=0.0, maximum=1.0, step=0.05, scale=20)
                 gr.Slider(elem_id='max_length', minimum=32, maximum=32768, step=1, scale=20)
                 gr.Textbox(elem_id='train_dataset_sample', scale=20)
                 gr.Textbox(elem_id='val_dataset_sample', scale=20)
