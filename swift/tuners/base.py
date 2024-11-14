@@ -359,29 +359,6 @@ class SwiftModel(nn.Module):
                 continue
             state_dict = cls.load_state_file(sub_folder)
             if state_dict is not None:
-                model_is_qlora = len([
-                    k for k in self.state_dict().keys()
-                    if k.endswith(f'.lora_A.{_adapter}.weight') or k.endswith(f'.lora_B.{_adapter}.weight')
-                ])
-                if not model_is_qlora:
-                    # model is lora, state_dict: qlora->lora
-                    state_dict = {
-                        k[:-len(f'.{_name}.weight') if k.endswith(f'.lora_A.{_name}.weight') or k.
-                          endswith(f'.lora_B.{_name}.weight') else None]: v
-                        for k, v in state_dict.items()
-                    }
-                if any(['loramodule' in key for key in state_dict]):
-                    # Compatible with old checkpoints before ms-swift:1.5.0
-                    state_dict = {
-                        key.replace(f'loramodule_{_name}.lora_A', 'lora_A') if f'loramodule_{_name}.lora_A.{_name}'
-                        in key else key.replace(f'loramodule_{_name}.lora_A', f'lora_A.{_name}.weight'): value
-                        for key, value in state_dict.items()
-                    }
-                    state_dict = {
-                        key.replace(f'loramodule_{_name}.lora_B', 'lora_B') if f'loramodule_{_name}.lora_B.{_name}'
-                        in key else key.replace(f'loramodule_{_name}.lora_B', f'lora_B.{_name}.weight'): value
-                        for key, value in state_dict.items()
-                    }
                 if isinstance(adapter_name, dict):
                     # TODO this logic is fragile! replace `_name` may cause other parts replaced
                     state_dict = {key.replace(_name, adapter_name[_name]): value for key, value in state_dict.items()}
