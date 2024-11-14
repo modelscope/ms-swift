@@ -5,9 +5,9 @@ from typing import Any, Dict
 
 from modelscope import AutoConfig, AutoModel
 
-from ..model_arch import ModelArch
 from swift.llm import TemplateType
 from ..constant import MLLMModelType
+from ..model_arch import ModelArch
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
 from ..utils import ModelInfo, git_clone_github, safe_snapshot_download
 

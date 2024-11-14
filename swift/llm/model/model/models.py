@@ -10,10 +10,10 @@ from modelscope import AutoConfig, AutoModel, AutoModelForCausalLM
 from transformers import AutoTokenizer
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
-from ..model_arch import ModelArch
 from swift.llm import TemplateType
 from swift.utils import get_logger
 from ..constant import LLMModelType, MLLMModelType
+from ..model_arch import ModelArch
 from ..patcher import patch_output_clone
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
 from ..utils import ModelInfo, git_clone_github, use_submodel_func
@@ -219,7 +219,8 @@ register_model(
                 Model('OrionStarAI/Orion-14B-Base', 'OrionStarAI/Orion-14B-Base'),
                 Model('OrionStarAI/Orion-14B-Chat', 'OrionStarAI/Orion-14B-Chat'),
             ],
-                       ignore_file_pattern=[r'.+\.gguf$'], requires=['transformers==4.34.1']),
+                       ignore_file_pattern=[r'.+\.gguf$'],
+                       requires=['transformers==4.34.1']),
         ],
         TemplateType.orion,
         get_model_tokenizer_with_flash_attn,
@@ -253,7 +254,6 @@ register_model(
         architectures=['Idefics3ForConditionalGeneration'],
     ))
 
-
 register_model(
     ModelMeta(
         LLMModelType.wizardlm2_moe,
@@ -261,7 +261,8 @@ register_model(
             ModelGroup([
                 Model('AI-ModelScope/WizardLM-2-8x22B', 'alpindale/WizardLM-2-8x22B'),
             ],
-                       requires=['transformers>=4.36'], tags=['skip_test']),
+                       requires=['transformers>=4.36'],
+                       tags=['skip_test']),
         ],
         TemplateType.wizardlm2,
         get_model_tokenizer_with_flash_attn,
@@ -276,7 +277,8 @@ register_model(
             ModelGroup([
                 Model('AI-ModelScope/WizardLM-2-7B-AWQ', 'MaziyarPanahi/WizardLM-2-7B-AWQ'),
             ],
-                       requires=['transformers>=4.34'], tags=['skip_test']),
+                       requires=['transformers>=4.34'],
+                       tags=['skip_test']),
         ],
         TemplateType.wizardlm2_awq,
         get_model_tokenizer_with_flash_attn,
@@ -304,7 +306,8 @@ register_model(
         [
             ModelGroup([
                 Model('OpenBuddy/openbuddy-deepseek-67b-v15.2', 'OpenBuddy/openbuddy-deepseek-67b-v15.2'),
-            ], tags=['skip_test']),
+            ],
+                       tags=['skip_test']),
         ],
         TemplateType.openbuddy,
         get_model_tokenizer_with_flash_attn,
@@ -412,7 +415,8 @@ register_model(
         [
             ModelGroup([
                 Model('OpenBuddy/openbuddy-llama-65b-v8-bf16', 'OpenBuddy/openbuddy-llama-65b-v8-bf16'),
-            ], tags=['skip_test']),
+            ],
+                       tags=['skip_test']),
         ],
         TemplateType.openbuddy,
         get_model_tokenizer_with_flash_attn,
@@ -522,7 +526,8 @@ register_model(
                 Model('AI-ModelScope/Llama-3.1-Nemotron-70B-Instruct-HF', 'nvidia/Llama-3.1-Nemotron-70B-Instruct-HF'),
             ],
                        requires=['transformers>=4.43'],
-                       ignore_file_pattern=[r'.+\.pth$'], tags=['skip_test']),
+                       ignore_file_pattern=[r'.+\.pth$'],
+                       tags=['skip_test']),
         ],
         TemplateType.llama3,
         get_model_tokenizer_with_flash_attn,
@@ -537,7 +542,8 @@ register_model(
             ModelGroup([
                 Model('LLM-Research/Reflection-Llama-3.1-70B', 'mattshumer/Reflection-Llama-3.1-70B'),
             ],
-                       requires=['transformers>=4.43'], tags=['skip_test']),
+                       requires=['transformers>=4.43'],
+                       tags=['skip_test']),
         ],
         TemplateType.reflection,
         get_model_tokenizer_with_flash_attn,
@@ -639,7 +645,8 @@ register_model(
                 Model('xverse/XVERSE-65B-2', 'xverse/XVERSE-65B-2'),
                 Model('xverse/XVERSE-65B-Chat', 'xverse/XVERSE-65B-Chat'),
                 Model('xverse/XVERSE-13B-256K', 'xverse/XVERSE-13B-256K', ms_revision='v1.0.0'),
-            ], requires=['transformers==4.38.2']),
+            ],
+                       requires=['transformers==4.38.2']),
         ],
         TemplateType.xverse,
         get_model_tokenizer_with_flash_attn,
@@ -653,7 +660,9 @@ register_model(
         [
             ModelGroup([
                 Model('xverse/XVERSE-MoE-A4.2B', 'xverse/XVERSE-MoE-A4.2B'),
-            ], tags=['moe', 'skip_test'], requires=['transformers==4.38.2']),
+            ],
+                       tags=['moe', 'skip_test'],
+                       requires=['transformers==4.38.2']),
         ],
         TemplateType.xverse,
         get_model_tokenizer_with_flash_attn,

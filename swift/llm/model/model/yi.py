@@ -7,11 +7,11 @@ from modelscope import AutoTokenizer
 from transformers import PretrainedConfig
 
 from swift.llm import TemplateType
-from ..model_arch import ModelArch
 from swift.utils import get_logger
 from ..constant import LLMModelType, MLLMModelType
+from ..model_arch import ModelArch
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
-from ..utils import git_clone_github, ModelInfo
+from ..utils import ModelInfo, git_clone_github
 
 logger = get_logger()
 

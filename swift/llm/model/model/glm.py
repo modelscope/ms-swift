@@ -3,17 +3,16 @@ from typing import Any, Dict, Type
 
 import torch
 import transformers
-from modelscope import AutoConfig
+from modelscope import AutoConfig, AutoTokenizer
 from packaging import version
-from modelscope import AutoTokenizer
 from transformers import PreTrainedTokenizerBase
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
 
-from ..model_arch import ModelArch
 from swift.llm import TemplateType
 from swift.utils import get_dist_setting, get_logger
 from ..constant import LLMModelType, MLLMModelType
+from ..model_arch import ModelArch
 from ..patcher import patch_output_to_input_device
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
 from ..utils import AttnImpl, ModelInfo

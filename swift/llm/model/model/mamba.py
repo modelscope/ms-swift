@@ -1,10 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Any, Dict
 
-from ..model_arch import ModelArch
 from swift.llm import TemplateType
 from swift.utils import get_logger
 from ..constant import LLMModelType
+from ..model_arch import ModelArch
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local, register_model
 from ..utils import ModelInfo
 

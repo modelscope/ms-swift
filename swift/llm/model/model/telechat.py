@@ -1,8 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
-from ..model_arch import ModelArch
 from swift.llm import TemplateType
 from ..constant import LLMModelType
+from ..model_arch import ModelArch
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
 
 register_model(

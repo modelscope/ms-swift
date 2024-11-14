@@ -7,10 +7,10 @@ from modelscope import AutoConfig
 from torch import Tensor
 from transformers import BitsAndBytesConfig, PretrainedConfig
 
-from ..model_arch import ModelArch
 from swift.llm import TemplateType
 from swift.utils import get_logger
 from ..constant import LLMModelType
+from ..model_arch import ModelArch
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
 from ..utils import ModelInfo
 
