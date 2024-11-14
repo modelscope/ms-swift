@@ -43,14 +43,10 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
     ignore_args_error: bool = False  # True: notebook compatibility
 
     def __post_init__(self):
-        if self.load_args:
-            self._load_args()
-
         ModelArguments.__post_init__(self)
         TemplateArguments.__post_init__(self)
         DataArguments.__post_init__(self)
         QuantizeArguments.__post_init__(self)
-        GenerationArguments.__post_init__(self)
         if default_hub.try_login(self.hub_token):
             logger.info('hub login successful!')
 
@@ -62,7 +58,7 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
     def adapters_can_be_merged(self):
         return TunerArguments.adapters_can_be_merged
 
-    def _load_args(self) -> None:
+    def load_args(self, checkpoint_dir: str) -> None:
         """Load specific attributes from sft_args.json"""
         from swift.llm import SftArguments, ExportArguments, InferArguments
         if isinstance(self, SftArguments):

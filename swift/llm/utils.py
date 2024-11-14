@@ -6,8 +6,6 @@ import torch.nn as nn
 from transformers import GenerationConfig, PreTrainedTokenizerBase
 
 from swift.utils import deep_getattr, get_logger, upper_bound
-from .model import ModelMeta, get_model_arch
-
 
 logger = get_logger()
 
@@ -93,6 +91,7 @@ def _add_gradient_checkpointing(module_list):
 
 
 def dynamic_gradient_checkpointing(model) -> None:
+    from .model import ModelMeta, get_model_arch
     model_meta: ModelMeta = model.model_meta
     model_arch = get_model_arch(model_meta.model_arch)
     tower_names = model_arch.language_model

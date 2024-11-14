@@ -26,142 +26,44 @@ logger = get_logger()
 class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
     """Override the default value in `Seq2SeqTrainingArguments`"""
 
-    output_dir: str = 'output'
+    output_dir: Optional[str] = None
     gradient_checkpointing: Optional[bool] = None
 
     per_device_train_batch_size: int = 1
-    per_device_eval_batch_size: Optional[int] = None
+    per_device_eval_batch_size: int = 1
     logging_steps: int = 5
-    adam_beta2: float = 0.95
     learning_rate: Optional[float] = None
-    dataloader_num_workers: Optional[int] = None
     weight_decay: float = 0.1
     lr_scheduler_type: str = 'cosine'
     lr_scheduler_kwargs: Optional[str] = None  # json
-    warmup_ratio: float = 0.05
     report_to: List[str] = field(default_factory=lambda: ['tensorboard'])
-    eval_strategy: Literal['steps', 'epoch', 'no'] = 'steps'
 
-    def __post_init__(self: 'SftArguments'):
-        # not use super().__post_init__(), please see init_training_args
-        self.prepare_dataloader()
-        self.prepare_gradient_checkpointing()
-        if self.per_device_eval_batch_size is None:
-            self.per_device_eval_batch_size = (1 if self.predict_with_generate else self.per_device_train_batch_size)
-        if self.eval_steps is None:
-            self.eval_steps = self.save_steps
+    def _init_output_dir(self):
+        if self.output_dir is None:
+            pass
+        model_dir = self.model_info.model_dir
+        model_name = os.path.basename(model_dir)
+        self.output_dir = f'output/{model_name}'
+
+    def __post_init__(self):
+        self._init_output_dir()
+        self._init_gradient_checkpointing()
+
         if self.learning_rate is None:
             if self.train_type == 'full':
                 self.learning_rate = 1e-5
             else:
                 self.learning_rate = 1e-4
-        self.parse_to_dict('lr_scheduler_kwargs')
+        self.lr_scheduler_kwargs = self.parse_to_dict(self.lr_scheduler_kwargs)
         if len(self.val_dataset) == 0 and self.split_dataset_ratio:
             self.eval_strategy = 'no'
+        elif self.eval_steps is None:
+            self.eval_steps = self.save_steps
 
-    def prepare_dataloader(self: 'SftArguments'):
-        """Prepare dataloader arguments"""
-        if self.dataloader_num_workers is None:
-            if platform.system() == 'Windows':
-                self.dataloader_num_workers = 0
-            else:
-                self.dataloader_num_workers = 1
-            logger.info(f'Setting args.dataloader_num_workers: {self.dataloader_num_workers}')
-
-    def prepare_gradient_checkpointing(self: 'SftArguments'):
+    def _init_gradient_checkpointing(self):
         """Prepare gradient checkpointing arguments"""
-        model_info = MODEL_MAPPING.get(self.model_type, {})
-        support_gradient_checkpointing = model_info.get('support_gradient_checkpointing', True)
         if self.gradient_checkpointing is None:
-            self.gradient_checkpointing = support_gradient_checkpointing
-        elif not support_gradient_checkpointing and self.gradient_checkpointing:
-            logger.warning(f'{self.model_type} not support gradient_checkpointing.')
-
-    def init_hf(self: 'SftArguments') -> None:
-        """Init transformers if you are using transformers models"""
-        training_args_cls, kwargs = TrainerFactory.get_training_args(self.train_stage, self)
-
-        parameters = inspect.signature(training_args_cls.__init__).parameters
-        for k in [
-                'lr_scheduler_kwargs', 'include_num_input_tokens_seen', 'auto_find_batch_size', 'neftune_noise_alpha'
-        ]:
-            if k in parameters:
-                kwargs[k] = getattr(self, k)
-        if 'eval_strategy' in parameters:
-            kwargs['eval_strategy'] = self.eval_strategy
-        else:
-            kwargs['evaluation_strategy'] = self.eval_strategy
-
-        if 'accelerator_config' in parameters:
-            kwargs['accelerator_config'] = {'dispatch_batches': False}
-
-        training_args = training_args_cls(
-            output_dir=self.output_dir,
-            logging_dir=self.logging_dir,
-            per_device_train_batch_size=self.per_device_train_batch_size,
-            per_device_eval_batch_size=self.eval_batch_size,
-            gradient_accumulation_steps=self.gradient_accumulation_steps,
-            learning_rate=self.learning_rate,
-            weight_decay=self.weight_decay,
-            max_grad_norm=self.max_grad_norm,
-            num_train_epochs=self.num_train_epochs,
-            max_steps=self.max_steps,
-            lr_scheduler_type=self.lr_scheduler_type,
-            warmup_ratio=self.warmup_ratio,
-            warmup_steps=self.warmup_steps,
-            logging_steps=self.logging_steps,
-            save_strategy=self.save_strategy,
-            save_steps=self.save_steps,
-            save_total_limit=self.save_total_limit,
-            remove_unused_columns=False,
-            bf16=self.bf16,
-            fp16=self.fp16,
-            eval_steps=self.eval_steps,
-            dataloader_num_workers=self.dataloader_num_workers,
-            dataloader_pin_memory=self.dataloader_pin_memory,
-            metric_for_best_model='rouge-l' if self.predict_with_generate else 'loss',
-            greater_is_better=self.predict_with_generate,
-            full_determinism=self.full_determinism,
-            optim=self.optim,
-            adam_beta1=self.adam_beta1,
-            adam_beta2=self.adam_beta2,
-            adam_epsilon=self.adam_epsilon,
-            hub_model_id=self.hub_model_id,
-            hub_private_repo=self.hub_private_repo,
-            hub_strategy=self.hub_strategy,
-            hub_token=self.hub_token,
-            push_to_hub=self.push_to_hub,
-            resume_from_checkpoint=self.resume_from_checkpoint,
-            ignore_data_skip=self.ignore_data_skip,
-            ddp_backend=self.ddp_backend,
-            gradient_checkpointing=self.gradient_checkpointing,
-            local_rank=self.local_rank,
-            save_only_model=self.save_only_model,
-            train_sampler_random=not self.test_oom_error,
-            report_to=self.report_to,
-            deepspeed=self.deepspeed,
-            disable_tqdm=self.disable_tqdm,
-            save_on_each_node=self.save_on_each_node,
-            acc_strategy=self.acc_strategy,
-            save_safetensors=self.save_safetensors,
-            logging_first_step=True,
-            metric_warmup_step=self.metric_warmup_step,
-            fsdp=self.fsdp,
-            fsdp_config=self.fsdp_config,
-            dataloader_drop_last=self.dataloader_drop_last,
-            seed=self.seed,
-            data_seed=self.dataset_seed,
-            loss_type=self.loss_type,
-            ddp_timeout=self.ddp_timeout,
-            **kwargs)
-        # not use training_args post_init
-        for key in ['ddp_find_unused_parameters', 'ddp_broadcast_buffers']:
-            value = getattr(self, key)
-            if value is None and is_dist():
-                value = not self.gradient_checkpointing
-            setattr(training_args, key, value)
-
-        self.training_args = training_args
+            self.gradient_checkpointing = self.model_meta.support_gradient_checkpointing
 
 
 @dataclass
@@ -232,7 +134,7 @@ class SftArguments(MegatronArguments, TorchAccArguments, TunerArguments, Seq2Seq
         freeze_parameters (List[str]): List of parameters to freeze. Default is an empty list.
         freeze_parameters_ratio (float): Ratio of parameters to freeze. Default is 0.
         additional_trainable_parameters (List[str]): List of additional trainable parameters. Default is an empty list.
-        add_output_dir_suffix (bool): Flag to indicate if output directory suffix should be added. Default is True.
+        add_version (bool): Flag to indicate if output directory suffix should be added. Default is True.
         resume_from_checkpoint (Optional[str]): Path to resume from checkpoint. Default is None.
         resume_only_model (bool): Flag to indicate if only the model should be resumed when resume-training.
             Default is False.
@@ -253,7 +155,7 @@ class SftArguments(MegatronArguments, TorchAccArguments, TunerArguments, Seq2Seq
     additional_trainable_parameters: List[str] = field(default_factory=list)
 
     vit_gradient_checkpointing: bool = True
-    add_output_dir_suffix: bool = True
+    add_version: bool = True
     resume_from_checkpoint: Optional[str] = None
     resume_only_model: bool = False
     check_model_is_latest: bool = True
@@ -281,7 +183,7 @@ class SftArguments(MegatronArguments, TorchAccArguments, TunerArguments, Seq2Seq
         self._handle_pai_compat()
         self.prepare_deepspeed()
         if self.resume_from_checkpoint:
-            self.load_from_ckpt_dir()
+            self.load_args(self.resume_from_checkpoint)
             if self.train_type == 'full':
                 self.model_id_or_path = self.resume_from_checkpoint
 
@@ -290,25 +192,21 @@ class SftArguments(MegatronArguments, TorchAccArguments, TunerArguments, Seq2Seq
         if len(self.dataset) == 0:
             raise ValueError(f'self.dataset: {self.dataset}, Please input the training dataset.')
 
-        self.prepare_train_type()
         self.prepare_liger()
-
         self._init_streaming_args()
         if self.lazy_tokenize is None and not self.streaming:
-            self.lazy_tokenize = self.is_multimodal
+            self.lazy_tokenize = self.model_meta.is_multimodal
             logger.info(f'Setting args.lazy_tokenize: {self.lazy_tokenize}')
         self.init_train_stage()
         if self.train_backend == 'hf':
-            self.init_hf()
+            self.training_args = TrainerFactory.get_training_args(self)
         else:
             self.init_megatron()
-
-        self._init_output_dir()
-
+        self._add_version()
 
     def prepare_deepspeed(self):
         """Prepare deepspeed settings"""
-        ds_config_folder = os.path.abspath(os.path.join(__file__, '..', '..', 'ds_config'))
+        ds_config_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'ds_config'))
         deepspeed_mapping = {
             'default-zero2': 'zero2.json',
             'default-zero3': 'zero3.json',
@@ -370,8 +268,8 @@ class SftArguments(MegatronArguments, TorchAccArguments, TunerArguments, Seq2Seq
         if self.logging_dir is None and pai_tensorboard_dir is not None:
             self.logging_dir = pai_tensorboard_dir
             logger.info(f'Setting args.logging_dir: {self.logging_dir}')
-        self.add_output_dir_suffix = False
-        logger.info(f'Setting args.add_output_dir_suffix: {self.add_output_dir_suffix}')
+        self.add_version = False
+        logger.info(f'Setting args.add_version: {self.add_version}')
 
     def _init_streaming_args(self) -> None:
         """Streaming mode does not support some specific arguments"""
@@ -402,26 +300,24 @@ class SftArguments(MegatronArguments, TorchAccArguments, TunerArguments, Seq2Seq
             logger.warning('Set dataloader_num_workers to 0 in streaming mode')
             self.dataloader_num_workers = 0
 
-    def _init_output_dir(self):
+    def _add_version(self):
         """Prepare the output folder"""
-        if self.add_output_dir_suffix is None:
-            self.add_output_dir_suffix = True
-        if self.add_output_dir_suffix:
+        if self.add_version:
             self.output_dir = add_version_to_work_dir(self.output_dir)
             logger.info(f'output_dir: {self.output_dir}')
-            assert not os.path.exists(self.output_dir), (f'args.output_dir: {self.output_dir} already exists.')
-            if self.train_backend == 'hf':
-                self.training_args.output_dir = self.output_dir
-                self.training_args.run_name = self.output_dir
+            assert not os.path.exists(self.output_dir), f'args.output_dir: {self.output_dir} already exists.'
+
         if self.logging_dir is None:
             self.logging_dir = f'{self.output_dir}/runs'
 
         self.output_dir = to_abspath(self.output_dir)
         self.logging_dir = to_abspath(self.logging_dir)
-
         if is_local_master():
             os.makedirs(self.output_dir, exist_ok=True)
+
         if self.train_backend == 'hf':
+            self.training_args.output_dir = self.output_dir
+            self.training_args.run_name = self.output_dir
             self.training_args.logging_dir = self.logging_dir
 
 

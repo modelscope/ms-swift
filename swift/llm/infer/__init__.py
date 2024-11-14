@@ -15,9 +15,10 @@ else:
         'infer': ['infer_main', 'SwiftInfer'],
         'deploy': ['deploy_main', 'SwiftDeploy'],
         'protocol': ['RequestConfig'],
-        'infer_engine':
-        ['InferEngine', 'VllmEngine', 'LmdeployEngine', 'PtEngine', 'InferStats', 'PtLoRARequest', 'InferClient',
-         'prepare_generation_config'],
+        'infer_engine': [
+            'InferEngine', 'VllmEngine', 'LmdeployEngine', 'PtEngine', 'InferStats', 'PtLoRARequest', 'InferClient',
+            'prepare_generation_config'
+        ],
     }
 
     import sys

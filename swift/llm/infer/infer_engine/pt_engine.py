@@ -86,8 +86,7 @@ class PtEngine(InferEngine):
         self.generation_config = self.model.generation_config
         self._lora_request_pool = {}
 
-    def _prepare_generation_config(self,
-                                   request_config: RequestConfig) -> _GenerationConfig:
+    def _prepare_generation_config(self, request_config: RequestConfig) -> _GenerationConfig:
         generation_config = prepare_generation_config(self.generation_config, request_config)
         return _GenerationConfig(**generation_config.to_dict())
 

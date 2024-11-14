@@ -5,10 +5,11 @@ from queue import Queue
 from typing import List, Literal
 
 import torch
-from transformers import LogitsProcessor, PreTrainedTokenizerBase, StoppingCriteria, GenerationConfig
+from transformers import GenerationConfig, LogitsProcessor, PreTrainedTokenizerBase, StoppingCriteria
 from transformers.generation.streamers import BaseStreamer
 
 from swift.llm import Template, Word
+from swift.llm.model.register import fix_do_sample_warning
 from swift.plugin import Metric
 from ..protocol import RequestConfig
 
@@ -201,4 +202,6 @@ def prepare_generation_config(model_generation_config: GenerationConfig,
         kwargs['output_logits'] = True
     generation_config = GenerationConfig(**kwargs)
     generation_config.top_logprobs = request_config.top_logprobs
-    return _set_generation_config_default_value(model_generation_config, generation_config)
+    generation_config = _set_generation_config_default_value(model_generation_config, generation_config)
+    fix_do_sample_warning(generation_config)
+    return generation_config

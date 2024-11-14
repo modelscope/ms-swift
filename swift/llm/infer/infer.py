@@ -202,7 +202,6 @@ class SwiftInfer(SwiftPipeline[InferArguments]):
             return
         return query
 
-
     def infer_single(self, infer_request: InferRequest, request_config: RequestConfig) -> Tuple[str, Messages]:
         messages = infer_request.messages
         res_or_gen = self.infer([infer_request], request_config, template=self.template, use_tqdm=False)

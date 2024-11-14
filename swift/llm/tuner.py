@@ -16,10 +16,8 @@ from swift.plugin.optimizer import optimizers_map
 from swift.plugin.tuner import Tuner, extra_tuners
 from swift.tuners import (AdaLoraConfig, AdapterConfig, BOFTConfig, IA3Config, LLaMAProConfig, LongLoRAModelType,
                           LoraConfig, LoRAConfig, ReftConfig, Swift, VeraConfig)
-from swift.utils import (
-    activate_model_parameters, freeze_model_parameters, get_logger, use_torchacc, 
-    find_all_linears, find_embedding
-)
+from swift.utils import (activate_model_parameters, find_all_linears, find_embedding, freeze_model_parameters,
+                         get_logger, use_torchacc)
 
 logger = get_logger()
 
