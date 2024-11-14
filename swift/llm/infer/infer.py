@@ -202,20 +202,6 @@ class SwiftInfer(SwiftPipeline[InferArguments]):
             return
         return query
 
-    def _prepare_request_config(self) -> RequestConfig:
-        args = self.args
-        temperature = args.temperature
-        if not args.do_sample:
-            temperature = 0
-        return RequestConfig(
-            max_tokens=args.max_new_tokens,
-            temperature=temperature,
-            top_p=args.top_p,
-            top_k=args.top_k,
-            num_beams=args.num_beams,
-            stop=args.stop_words,
-            stream=args.stream,
-            repetition_penalty=args.repetition_penalty)
 
     def infer_single(self, infer_request: InferRequest, request_config: RequestConfig) -> Tuple[str, Messages]:
         messages = infer_request.messages
@@ -236,7 +222,7 @@ class SwiftInfer(SwiftPipeline[InferArguments]):
     def infer_cli(self) -> List[Dict[str, Any]]:
         args = self.args
         template = self.template
-        request_config = self._prepare_request_config()
+        request_config = args.get_request_config()
 
         logger.info('Input `exit` or `quit` to exit the conversation.')
         logger.info('Input `multi-line` to switch to multi-line input mode.')
@@ -292,7 +278,7 @@ class SwiftInfer(SwiftPipeline[InferArguments]):
 
     def infer_dataset(self) -> List[Dict[str, Any]]:
         args = self.args
-        request_config = self._prepare_request_config()
+        request_config = args.get_request_config(args.stream)
         logger.info(f'request_config: {request_config}')
 
         val_dataset = self._prepare_val_dataset()

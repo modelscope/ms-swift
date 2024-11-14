@@ -3,9 +3,11 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
 import torch
 import torch.nn as nn
-from transformers import GenerationConfig
+from transformers import GenerationConfig, PreTrainedTokenizerBase
 
 from swift.utils import deep_getattr, get_logger, upper_bound
+from .model import ModelMeta, get_model_arch
+
 
 logger = get_logger()
 
@@ -63,9 +65,9 @@ def set_generation_config(model: nn.Module, generation_config: GenerationConfig)
     model.generation_config = generation_config
 
 
-def _find_module_list(vision_tower) -> Optional[nn.ModuleList]:
+def find_module_list(model) -> Optional[nn.ModuleList]:
     module_lists = []
-    for m in vision_tower.modules():
+    for m in model.modules():
         if hasattr(m, 'gradient_checkpointing'):
             return
         if isinstance(m, nn.ModuleList) and len(m) >= 10:
@@ -90,27 +92,20 @@ def _add_gradient_checkpointing(module_list):
         module.__old_forward = __old_forward
 
 
-def get_mllm_arch(model_type: str):
-    from swift.llm import MODEL_MAPPING
-    model_info = MODEL_MAPPING[model_type]
-    lora_target_modules = model_info.get('lora_target_modules')  # model_group
-    if not isinstance(lora_target_modules, str):
-        return None
-    return MODEL_KEYS_MAPPING[lora_target_modules]
+def dynamic_gradient_checkpointing(model) -> None:
+    model_meta: ModelMeta = model.model_meta
+    model_arch = get_model_arch(model_meta.model_arch)
+    tower_names = model_arch.language_model
+    if model_meta.is_multimodal:
+        tower_names += model_arch.vision_tower
 
-
-def dynamic_vit_gradient_checkpointing(model, model_type: str) -> None:
-    # TODO: +llm
-    mllm_arch = get_mllm_arch(model_type)
-    if mllm_arch is None:
-        return
-    for vision_tower_name in mllm_arch.vision_tower:
-        vision_tower = deep_getattr(model, vision_tower_name)
-        module_list = _find_module_list(vision_tower)
+    for tower_name in tower_names:
+        model_tower = deep_getattr(model, tower_name)
+        module_list = find_module_list(model_tower)
         if module_list is None:
             continue
         _add_gradient_checkpointing(module_list)
-        logger.info(f'Automatically add gradient_checkpointing to {vision_tower.__class__}.')
+        logger.info(f'Automatically add gradient_checkpointing to {model_tower.__class__}.')
 
 
 def history_to_messages(history: History,

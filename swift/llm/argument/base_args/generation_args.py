@@ -48,3 +48,19 @@ class GenerationArguments:
 
     def __post_init__(self):
         self._handle_do_sample()
+
+    def get_request_config(self, stream: bool = False):
+        from swift.llm import RequestConfig
+        temperature = self.temperature
+        if not self.do_sample:
+            temperature = 0
+
+        return RequestConfig(
+            max_tokens=self.max_new_tokens,
+            temperature=temperature,
+            top_p=self.top_p,
+            top_k=self.top_k,
+            num_beams=self.num_beams,
+            stop=self.stop_words,
+            stream=stream,
+            repetition_penalty=self.repetition_penalty)

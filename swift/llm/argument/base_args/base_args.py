@@ -29,7 +29,6 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
         load_dataset_config (bool): Flag to determine if dataset configuration should be loaded. Default is False.
         save_safetensors (bool): Flag to determine if save to safetensors. Default is True.
         hub_token (Optional[str]): SDK token for authentication. Default is None.
-        gpu_memory_fraction (Optional[float]): Fraction of GPU memory to be used. Default is None.
         ignore_args_error (bool): Flag to ignore argument errors for notebook compatibility. Default is False.
     """
     seed: int = 42
@@ -41,7 +40,6 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
         default=None, metadata={'help': 'SDK token can be found in https://modelscope.cn/my/myaccesstoken'})
 
     # extra
-    gpu_memory_fraction: Optional[float] = None
     ignore_args_error: bool = False  # True: notebook compatibility
 
     def __post_init__(self):

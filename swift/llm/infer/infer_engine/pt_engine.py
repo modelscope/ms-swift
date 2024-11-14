@@ -21,7 +21,7 @@ from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, Ch
                         ChatCompletionStreamResponse, ChatMessage, DeltaMessage, ImageObject, ImagesResponse,
                         MultiModalRequestMixin, RequestConfig, random_uuid)
 from .infer_engine import InferEngine
-from .utils import InferStreamer, LogitsStreamer, TokensIteratorStreamer
+from .utils import InferStreamer, LogitsStreamer, TokensIteratorStreamer, prepare_generation_config
 
 logger = get_logger()
 
@@ -86,42 +86,10 @@ class PtEngine(InferEngine):
         self.generation_config = self.model.generation_config
         self._lora_request_pool = {}
 
-    def _prepare_generation_config(self, request_config: RequestConfig) -> GenerationConfig:
-        kwargs = {'max_new_tokens': request_config.max_tokens}
-        # not use: 'n', 'best_of', 'frequency_penalty', 'presence_penalty'
-        for key in ['length_penalty']:
-            kwargs[key] = getattr(request_config, key)
-        for key in ['temperature', 'top_k', 'top_p', 'repetition_penalty', 'num_beams']:
-            new_value = getattr(request_config, key)
-            if new_value is None:
-                kwargs[key] = getattr(self.generation_config, key)
-            else:
-                kwargs[key] = new_value
-
-        if not self.generation_config.do_sample:
-            kwargs['temperature'] = 0
-        if kwargs['temperature'] == 0:
-            kwargs['do_sample'] = False
-            kwargs['temperature'] = 1
-            kwargs['top_p'] = 1
-            kwargs['top_k'] = 50
-        else:
-            kwargs['do_sample'] = True
-        kwargs['return_dict_in_generate'] = True
-        if request_config.logprobs:
-            kwargs['output_logits'] = True
-        generation_config = _GenerationConfig(**kwargs)
-        generation_config.top_logprobs = request_config.top_logprobs
-        return self._set_generation_config_default_value(generation_config)
-
-    def _set_generation_config_default_value(self, generation_config: GenerationConfig) -> GenerationConfig:
-        for k, v in self.generation_config.to_dict().items():
-            new_v = getattr(generation_config, k, None)
-            if k in ['max_length']:
-                continue
-            if k in ['no_repeat_ngram_size'] or v is not None and new_v is None:
-                setattr(generation_config, k, v)
-        return generation_config
+    def _prepare_generation_config(self,
+                                   request_config: RequestConfig) -> _GenerationConfig:
+        generation_config = prepare_generation_config(self.generation_config, request_config)
+        return _GenerationConfig(**generation_config.to_dict())
 
     def _add_stop_words(self, generation_config: GenerationConfig, request_config: RequestConfig,
                         template_meta: TemplateMeta) -> None:

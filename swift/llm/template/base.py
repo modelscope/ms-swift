@@ -106,7 +106,6 @@ class Template:
         self.max_pixels = max_pixels
         self.sequence_parallel_size = sequence_parallel_size
         self.tools_prompt = tools_prompt or template_meta.default_tools_prompt
-        self.is_training = False
         self.infer_backend: Literal['pt', 'vllm', 'lmdeploy'] = 'pt'
         self._handles = []
         self._deepspeed_initialize = None
@@ -643,7 +642,6 @@ class Template:
         return args, kwargs
 
     def set_infer_backend(self, infer_backend: Literal['vllm', 'lmdeploy', 'pt']) -> None:
-        self.is_training = False
         self.infer_backend = infer_backend
         if infer_backend in {'vllm', 'lmdeploy'}:
             self.remove_post_encode_hook()

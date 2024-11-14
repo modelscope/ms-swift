@@ -57,7 +57,7 @@ def get_n_params_grads(model) -> Tuple[List[int], List[int]]:
     return n_params, n_grads
 
 
-def get_model_info(model: Module, name: Optional[str] = None) -> str:
+def get_model_parameter_info(model: Module, name: Optional[str] = None) -> str:
     n_params, n_grads = get_n_params_grads(model)
     n_params = sum(n_params)
     n_grads = sum(n_grads)

@@ -10,15 +10,16 @@ import transformers
 from packaging import version
 from transformers import TrainerCallback
 
-from swift.llm import MODEL_ARCH_MAPPING
-from swift.llm.argument.train_args import SftArguments
+from swift.llm import SftArguments, get_model_arch
 from swift.plugin.callback import extra_callbacks
 from swift.plugin.optimizer import optimizers_map
 from swift.plugin.tuner import Tuner, extra_tuners
-from swift.tuners import (AdaLoraConfig, AdapterConfig, BOFTConfig, LLaMAProConfig, LongLoRAModelType, LoraConfig,
-                          LoRAConfig, ReftConfig, Swift, VeraConfig)
-from swift.utils import activate_model_parameters, freeze_model_parameters, get_logger, use_torchacc
-from swift.utils.torch_utils import find_all_linears, find_embedding
+from swift.tuners import (AdaLoraConfig, AdapterConfig, BOFTConfig, IA3Config, LLaMAProConfig, LongLoRAModelType,
+                          LoraConfig, LoRAConfig, ReftConfig, Swift, VeraConfig)
+from swift.utils import (
+    activate_model_parameters, freeze_model_parameters, get_logger, use_torchacc, 
+    find_all_linears, find_embedding
+)
 
 logger = get_logger()
 
@@ -151,7 +152,7 @@ class DynamicLayerActivationCallback(TrainerCallback):
                 param.requires_grad = True
 
 
-def prepare_modules(model, args: SftArguments):
+def prepare_tuner(model, args: SftArguments):
     if args.use_liger:
         # Apply liger
         apply_liger(args.model_type)
@@ -234,7 +235,8 @@ def prepare_modules(model, args: SftArguments):
                 model = Swift.prepare_model(model, llamapro_config)
                 logger.info(f'llamapro_config: {llamapro_config}')
             elif args.train_type == 'adapter':
-                mlp_key = MODEL_ARCH_MAPPING[model.model_meta.model_arch].mlp
+                model_arch = get_model_arch(model.model_meta.model_arch)
+                mlp_key = model_arch.mlp
                 mlp_key = mlp_key.split('.{}.')[1]
                 adapter_config = AdapterConfig(
                     dim=model.config.hidden_size,

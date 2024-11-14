@@ -5,11 +5,12 @@ from queue import Queue
 from typing import List, Literal
 
 import torch
-from transformers import LogitsProcessor, PreTrainedTokenizerBase, StoppingCriteria
+from transformers import LogitsProcessor, PreTrainedTokenizerBase, StoppingCriteria, GenerationConfig
 from transformers.generation.streamers import BaseStreamer
 
 from swift.llm import Template, Word
 from swift.plugin import Metric
+from ..protocol import RequestConfig
 
 
 class InferTools:
@@ -160,3 +161,44 @@ class StopWordsCriteria(StoppingCriteria):
             else:
                 is_finished[i] = False
         return is_finished
+
+
+def _set_generation_config_default_value(model_generation_config: GenerationConfig,
+                                         generation_config: GenerationConfig) -> GenerationConfig:
+    for k, v in model_generation_config.to_dict().items():
+        new_v = getattr(generation_config, k, None)
+        if k in ['max_length']:
+            continue
+        if k in ['no_repeat_ngram_size'] or v is not None and new_v is None:
+            setattr(generation_config, k, v)
+    return generation_config
+
+
+def prepare_generation_config(model_generation_config: GenerationConfig,
+                              request_config: RequestConfig) -> GenerationConfig:
+    kwargs = {'max_new_tokens': request_config.max_tokens}
+    # not use: 'n', 'best_of', 'frequency_penalty', 'presence_penalty'
+    for key in ['length_penalty']:
+        kwargs[key] = getattr(request_config, key)
+    for key in ['temperature', 'top_k', 'top_p', 'repetition_penalty', 'num_beams']:
+        new_value = getattr(request_config, key)
+        if new_value is None:
+            kwargs[key] = getattr(model_generation_config, key)
+        else:
+            kwargs[key] = new_value
+
+    if not model_generation_config.do_sample:
+        kwargs['temperature'] = 0
+    if kwargs['temperature'] == 0:
+        kwargs['do_sample'] = False
+        kwargs['temperature'] = 1
+        kwargs['top_p'] = 1
+        kwargs['top_k'] = 50
+    else:
+        kwargs['do_sample'] = True
+    kwargs['return_dict_in_generate'] = True
+    if request_config.logprobs:
+        kwargs['output_logits'] = True
+    generation_config = GenerationConfig(**kwargs)
+    generation_config.top_logprobs = request_config.top_logprobs
+    return _set_generation_config_default_value(model_generation_config, generation_config)

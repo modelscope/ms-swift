@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from .infer_client import InferClient
     from .infer_engine import InferEngine
     from .base import BaseInferEngine
-    from .utils import InferStats
+    from .utils import InferStats, prepare_generation_config
 else:
     _extra_objects = {k: v for k, v in globals().items() if not k.startswith('_')}
     _import_structure = {
@@ -20,7 +20,7 @@ else:
         'infer_client': ['InferClient'],
         'infer_engine': ['InferEngine'],
         'base': ['BaseInferEngine'],
-        'utils': ['InferStats'],
+        'utils': ['InferStats', 'prepare_generation_config'],
     }
 
     import sys
