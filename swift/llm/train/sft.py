@@ -1,11 +1,14 @@
+from functools import partial
 from typing import Any, Dict, List, Union
 
 from transformers import IntervalStrategy
 
-from swift.utils import get_logger, get_model_parameter_info
-from swift.trainers import TrainerFactory
 from swift.plugin.callback import extra_callbacks
 from swift.plugin.optimizer import optimizers_map
+from swift.trainers import TrainerFactory
+from swift.utils import (append_to_jsonl, check_json_format, compute_acc_metrics, compute_nlg_metrics, get_dist_setting,
+                         get_logger, get_model_parameter_info, is_ddp_plus_mp, is_dist, is_master, plot_images,
+                         preprocess_logits_for_acc, seed_everything, show_layers, use_torchacc)
 from ..argument import SftArguments
 from ..base import SwiftPipeline
 from ..dataset import EncodePreprocessor, load_dataset, stat_dataset
@@ -29,6 +32,7 @@ class SwiftSft(SwiftPipeline[SftArguments]):
         self._prepare_generation_config()
         self._prepare_template()
         self._prepare_gradient_checkpointing()
+        self._prepare_callbacks()
 
         self.model = prepare_tuner(self.model, args)
         logger.info(self.model)
@@ -128,16 +132,43 @@ class SwiftSft(SwiftPipeline[SftArguments]):
 
     def run(self):
         args = self.args
+        template = self.template
+
         train_dataset, val_dataset = self._prepare_dataset()
         train_dataset, val_dataset = self._encode_dataset(train_dataset, val_dataset)
 
-        optimizer = self._prepare_optimizer(train_dataset)
-        callbacks = self._prepare_callbacks()
+        padding_to = args.max_length if args.train_type == 'longlora' else None
+        data_collator = partial(template.data_collator, padding_to=padding_to, model=self.model)
+        optimizers = self._prepare_optimizers(train_dataset)
+
+        if args.predict_with_generate:
+            compute_metrics = partial(compute_nlg_metrics, tokenizer=tokenizer)
+            preprocess_logits_for_metrics = None
+        else:
+            compute_metrics = partial(
+                compute_acc_metrics,
+                acc_strategy=args.acc_strategy,
+                is_encoder_decoder=self.model.config.is_encoder_decoder)
+            compute_metrics = compute_metrics
+            preprocess_logits_for_metrics = preprocess_logits_for_acc
 
         trainer_cls = TrainerFactory.get_trainer_cls(args)
+        trainer_cls(
+            model=self.model,
+            args=self.args.training_args,
+            data_collator=data_collator,
+            train_dataset=train_dataset,
+            eval_dataset=val_dataset,
+            compute_metrics=compute_metrics,
+            preprocess_logits_for_metrics=preprocess_logits_for_metrics,
+            callbacks=self.callbacks,
+            optimizers=optimizers,
+            sequence_parallel_size=args.sequence_parallel_size,
+            tokenizer=self.tokenizer,
+            check_model=args.check_model,
+        )
 
-
-    def _prepare_optimizer(self, train_dataset):
+    def _prepare_optimizers(self, train_dataset):
         args = self.args
         optimizer_callback = optimizers_map['default']
         if args.lorap_lr_ratio:
@@ -165,9 +196,8 @@ class SwiftSft(SwiftPipeline[SftArguments]):
 
         if args.is_adapter and args.tuner_backend == 'swift':
             callbacks.append(TrainerAdapterCallback(args))
-        callbacks.extend(extra_callbacks or [])
-        return callbacks
-
+        callbacks += extra_callbacks
+        self.callbacks = callbacks
 
     def _encode_dataset(self, train_dataset, val_dataset):
         template = self.template

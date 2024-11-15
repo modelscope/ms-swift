@@ -72,7 +72,7 @@ def compute_acc_metrics(eval_prediction: EvalPrediction,
     return {'acc': acc}
 
 
-def preprocess_logits_for_metrics(logits: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+def preprocess_logits_for_acc(logits: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
     if isinstance(logits, (list, tuple)):
         logits = logits[0]
     preds = logits.argmax(dim=-1)

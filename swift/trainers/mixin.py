@@ -31,13 +31,12 @@ from transformers.trainer_utils import EvalPrediction
 from transformers.training_args import TrainingArguments
 from transformers.utils import is_sagemaker_mp_enabled, is_torch_npu_available
 
-from swift.hub.check_model import check_local_model_is_latest
-from swift.torchacc_utils import (save_ta_ddp_checkpoint, save_ta_fsdp_checkpoint, ta_eval_dataloader,
-                                  ta_load_optimizer_and_scheduler, ta_save_optimizer_and_scheduler, ta_test_dataloader,
-                                  ta_train_dataloader, ta_trim_graph)
 from swift.tuners import SwiftModel
 from swift.utils import check_json_format, get_logger, use_torchacc
 from swift.utils.constants import Invoke
+from swift.utils.torchacc_utils import (save_ta_ddp_checkpoint, save_ta_fsdp_checkpoint, ta_eval_dataloader,
+                                        ta_load_optimizer_and_scheduler, ta_save_optimizer_and_scheduler,
+                                        ta_test_dataloader, ta_train_dataloader, ta_trim_graph)
 from .callback import DefaultFlowCallbackNew, PrinterCallbackNew, ProgressCallbackNew
 from .optimizers.galore import create_optimizer_and_scheduler
 from .utils import can_return_loss, find_labels, get_function, is_instance_of_ms_model
@@ -64,32 +63,21 @@ class SwiftMixin:
                  callbacks: Optional[List[TrainerCallback]] = None,
                  optimizers: Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR] = (None, None),
                  preprocess_logits_for_metrics: Optional[Callable[[torch.Tensor, torch.Tensor], torch.Tensor]] = None,
-                 **kwargs) -> None:
-        check_model = kwargs.pop('check_model', True)
-        if check_model and hasattr(model, 'model_dir'):
-            check_local_model_is_latest(
-                model.model_dir,
-                user_agent={
-                    Invoke.KEY: Invoke.LOCAL_TRAINER,
-                    Invoke.THIRD_PARTY: kwargs.pop(Invoke.THIRD_PARTY, Invoke.SWIFT),
-                })
+                 *,
+                 check_model: bool = True,
+                 sequence_parallel_size: int = 1) -> None:
+        # if check_model and hasattr(model, 'model_dir'):
+        #     check_local_model_is_latest(
+        #         model.model_dir,
+        #         user_agent={
+        #             Invoke.KEY: Invoke.LOCAL_TRAINER,
+        #             Invoke.THIRD_PARTY: kwargs.pop(Invoke.THIRD_PARTY, Invoke.SWIFT),
+        #         })
 
-        # Compatible with transformers>=4.34
-        from swift.tuners import SwiftModel
-        is_quantized = getattr(model, 'is_quantized', False)
-        _hf_peft_config_loaded = getattr(model, '_hf_peft_config_loaded', False)
-        use_swift = isinstance(model, SwiftModel)
-        if is_quantized and use_swift:
-            model._hf_peft_config_loaded = True
-        self.is_encoder_decoder = kwargs.pop('is_encoder_decoder', False)
-
-        self.sequence_parallel_size = kwargs.pop('sequence_parallel_size', 1)
-        if self.sequence_parallel_size > 1:
+        if sequence_parallel_size > 1:
             from swift.trainers.xtuner import init_sequence_parallel_xtuner
             init_sequence_parallel_xtuner(self.sequence_parallel_size)
-        if not hasattr(self, 'perf'):
-            self.perf = {}
-        # mro
+
         super().__init__(
             model=model,
             args=args,
@@ -101,68 +89,12 @@ class SwiftMixin:
             compute_metrics=compute_metrics,
             callbacks=callbacks,
             optimizers=optimizers,
-            preprocess_logits_for_metrics=preprocess_logits_for_metrics,
-            **kwargs)
-        if not hasattr(self, 'label_names') or not self.label_names:
-            self.label_names = ['labels']
-        if is_quantized and use_swift:
-            model._hf_peft_config_loaded = _hf_peft_config_loaded
+            preprocess_logits_for_metrics=preprocess_logits_for_metrics)
 
         if get_function(model.__class__.forward) is not get_function(model.forward):
-            self.label_names = find_labels(model)
+            self.label_names = find_labels(model) or ['labels']
             self.can_return_loss = can_return_loss(model)
-        self.max_memory = 0.0
         self.start_time = time.time()
-        self._resume_from_checkpoint = None
-        self._resume_only_model = False
-        # performance
-        self.perf: Dict[str, Any] = {'memory': {}}
-        if hasattr(self.model, 'get_trainable_parameters'):
-            self.perf['model'] = self.model.get_trainable_parameters()
-
-    @staticmethod
-    def _create_configuration_file(model: Module, output_dir: str) -> None:
-        cfg = getattr(model, 'cfg', None) or {}
-        configuration_path = os.path.join(output_dir, 'configuration.json')
-        new_cfg = {}
-        if os.path.exists(configuration_path):
-            with open(configuration_path, 'r', encoding='utf-8') as f:
-                new_cfg = json.load(f)
-
-        if 'framework' not in new_cfg:
-            new_cfg['framework'] = cfg.get('framework', 'pytorch')
-        if 'task' not in new_cfg:
-            new_cfg['task'] = cfg.get('task', 'text-generation')
-        with open(configuration_path, 'w', encoding='utf-8') as f:
-            json.dump(new_cfg, f, ensure_ascii=False, indent=4)
-
-    def _add_adapter_cfg(self, output_dir: str) -> None:
-        if not hasattr(self, 'sft_args'):
-            return
-        sft_args = self.sft_args
-        if sft_args.sft_type == 'full':
-            return
-        configuration_path = os.path.join(output_dir, 'configuration.json')
-        new_cfg = {}
-        if os.path.exists(configuration_path):
-            with open(configuration_path, 'r', encoding='utf-8') as f:
-                new_cfg = json.load(f)
-
-        need_to_save = [
-            'model_id_or_path', 'model_revision', 'sft_type', 'tuner_backend', 'template_type', 'dtype', 'system'
-        ]
-        quantization_bit = sft_args.quantization_bit
-        if quantization_bit > 0:
-            need_to_save += [
-                'quant_method', 'quantization_bit', 'bnb_4bit_comp_dtype', 'bnb_4bit_quant_type',
-                'bnb_4bit_use_double_quant'
-            ]
-        adapter_cfg = {}
-        for k in need_to_save:
-            adapter_cfg[k] = getattr(sft_args, k)
-        new_cfg['adapter_cfg'] = adapter_cfg
-        with open(configuration_path, 'w', encoding='utf-8') as f:
-            json.dump(new_cfg, f, ensure_ascii=False, indent=4)
 
     def _save_sft_args(self, output_dir: str) -> None:
         sft_args = getattr(self, 'sft_args', None)
@@ -251,7 +183,6 @@ class SwiftMixin:
                     shutil.copy(src_path, dst_path)
             else:
                 self._create_configuration_file(self.model, output_dir)
-            self._add_adapter_cfg(output_dir)
             self._save_sft_args(output_dir)
             # generation_config
             generation_config = getattr(self.args, 'generation_config', None)
@@ -487,8 +418,6 @@ class SwiftMixin:
         self._save_initial_model(self.args.output_dir)
         res = super().train(resume_from_checkpoint, *args, **kwargs)
         self._resume_from_checkpoint = None
-        if self.max_memory != 0:
-            self.perf['memory']['cuda'] = f'{self.max_memory:.2f}GiB'
         return res
 
     def _load_best_model(self):
@@ -517,11 +446,7 @@ class SwiftMixin:
             mems = [torch.cuda.max_memory_reserved(device=device) for device in range(torch.cuda.device_count())]
         else:
             mems = [torch.cuda.max_memory_reserved(device=device)]
-        mem = sum([float(mem) / 1024 / 1024 / 1024 for mem in mems])
-        if self.max_memory < mem:
-            self.max_memory = mem
-        if torch.cuda.is_available():
-            torch.cuda.reset_peak_memory_stats()
+        mem = sum(mems) / 1024**3
         return mem
 
     def _maybe_log_save_evaluate(self, tr_loss, *args, **kwargs):

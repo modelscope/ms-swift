@@ -12,28 +12,20 @@ from transformers.modeling_utils import unwrap_model
 from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
 from transformers.utils import is_peft_available
 
-from swift.torchacc_utils import patch_clip_grad_norm, ta_trim_graph
+from swift.plugin.loss import get_loss_func
 from swift.utils import use_torchacc
-from .loss import get_loss_func
+from swift.utils.torchacc_utils import patch_clip_grad_norm, ta_trim_graph
 from .mixin import SwiftMixin
-from .push_to_ms import PushToMsHubMixin
 
 
-class Trainer(PushToMsHubMixin, SwiftMixin, HfTrainer):
+class Trainer(SwiftMixin, HfTrainer):
     pass
 
 
-class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
+class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # performance
-        if not hasattr(self, 'perf'):
-            self.perf = {}
-        self.perf.update({
-            'gen_time': 0.,
-            'gen_len': 0,
-        })
         self._acc = torch.tensor(0.).to(self.args.device)
         if use_torchacc():
             patch_clip_grad_norm(self.accelerator)
@@ -106,8 +98,6 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
 
         generated_tokens = generated_tokens[:, generation_inputs.shape[1]:]
         gen_len = len(generated_tokens[0])
-        self.perf['gen_time'] = self.perf['gen_time'] + gen_time
-        self.perf['gen_len'] = self.perf['gen_len'] + gen_len
 
         # in case the batch is shorter than max length, the output should be padded
         if gen_kwargs.get('max_length') is not None and generated_tokens.shape[-1] < gen_kwargs['max_length']:

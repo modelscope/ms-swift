@@ -39,3 +39,6 @@ class TemplateArguments:
     def __post_init__(self):
         if self.template is None:
             self.template = self.model_meta.template
+
+        if self.max_length is None:
+            self.max_length = self.model_info.max_model_len

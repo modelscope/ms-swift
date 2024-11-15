@@ -11,8 +11,6 @@ from packaging import version
 from transformers import TrainerCallback
 
 from swift.llm import SftArguments, get_model_arch
-from swift.plugin.callback import extra_callbacks
-from swift.plugin.optimizer import optimizers_map
 from swift.plugin.tuner import Tuner, extra_tuners
 from swift.tuners import (AdaLoraConfig, AdapterConfig, BOFTConfig, IA3Config, LLaMAProConfig, LongLoRAModelType,
                           LoraConfig, LoRAConfig, ReftConfig, Swift, VeraConfig)
@@ -324,27 +322,4 @@ def prepare_tuner(model, args: SftArguments):
         from swift.trainers.xtuner import dispatch_module_xtuner
         dispatch_module_xtuner(model)
 
-    optimizer_callback = optimizers_map['default']
-    if args.lorap_lr_ratio:
-        optimizer_callback = optimizers_map['lorap']
-    if args.use_galore:
-        if args.galore_target_modules is None:
-            args.galore_target_modules = find_all_linears(model, 0, args.model_type, args.quant_method)
-        if args.galore_with_embedding:
-            args.galore_target_modules += find_embedding(model)
-        optimizer_callback = optimizers_map['galore']
-
-    callbacks = []
-    if args.lisa_activated_layers > 0:
-        assert args.train_type == 'full', 'LISA only supports full parameter training.'
-        lisa_callback = DynamicLayerActivationCallback(
-            n_layers=args.lisa_activated_layers,  # Number of layers to activate
-            step_interval=args.lisa_step_interval,  # Step interval to update active layers
-            model=model)
-        lisa_callback.switch_active_layers()  # Make trainable parameters printing a correct value
-        callbacks.append(lisa_callback)
-
-    if args.is_adapter and args.tuner_backend == 'swift':
-        callbacks.append(TrainerAdapterCallback(args))
-    callbacks.extend(extra_callbacks or [])
-    return model, callbacks, optimizer_callback
+    return model

@@ -142,7 +142,7 @@ class SftArguments(MegatronArguments, TorchAccArguments, TunerArguments, Seq2Seq
         resume_from_checkpoint (Optional[str]): Path to resume from checkpoint. Default is None.
         resume_only_model (bool): Flag to indicate if only the model should be resumed when resume-training.
             Default is False.
-        check_model_is_latest (bool): Flag to check if the model is the latest. Default is True.
+        check_model (bool): Flag to check if the model is the latest. Default is True.
             Turn this to False if you network is unstable.
         loss_type (Optional[str]): Type of loss function. Default is None.
         packing (bool): Flag to indicate if packing is used. Default is False.
@@ -160,7 +160,7 @@ class SftArguments(MegatronArguments, TorchAccArguments, TunerArguments, Seq2Seq
     add_version: bool = True
     resume_from_checkpoint: Optional[str] = None
     resume_only_model: bool = False
-    check_model_is_latest: bool = True
+    check_model: bool = True
     loss_type: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
 
     # dataset
