@@ -469,6 +469,14 @@ def trainer_train(
     if args.train_type == 'ppo':
         trainer_kwargs['reward_model'] = reward_model
         trainer_kwargs['value_model'] = value_model
+    if args.use_channel_loss:
+        channel_dataset_dict = {}
+        for sample in val_dataset:
+            channel = sample['channel']
+            if channel not in channel_dataset_dict:
+                channel_dataset_dict[channel] = []
+            channel_dataset_dict[channel].append(sample)
+        val_dataset = channel_dataset_dict
     trainer = trainer_cls(
         model=model,
         args=training_args,

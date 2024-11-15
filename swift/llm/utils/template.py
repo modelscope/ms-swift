@@ -610,6 +610,7 @@ class Template:
                 inputs[key] = example.get(key)
         if inputs.get('labels') is None:
             inputs.pop('loss_scale', None)
+        inputs['channel'] = example.get('channel', '')
         return inputs, tokenizer_kwargs
 
     def _concat_context_list(

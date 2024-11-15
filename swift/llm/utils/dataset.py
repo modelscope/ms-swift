@@ -66,7 +66,7 @@ for func_name in ['map', 'filter']:
 
 standard_keys = {
     'query', 'query_role', 'response', 'rejected_response', 'system', 'history', 'history_roles', 'images', 'objects',
-    'videos', 'audios', 'tools', 'label'
+    'videos', 'audios', 'tools', 'label', 'channel'
 }
 
 
