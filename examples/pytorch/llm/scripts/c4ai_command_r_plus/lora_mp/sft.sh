@@ -1,7 +1,6 @@
 # Experimental environment: 4 * A100
 # 4 * 60GB GPU memory
 # Note: you have to install latest version of the transformers library.
-# pip install git+https://github.com/huggingface/transformers
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift sft \
     --model_type c4ai-command-r-plus \

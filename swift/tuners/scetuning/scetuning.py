@@ -176,7 +176,7 @@ class SCETuning(SwiftAdapter):
             if len(hint_module_ins_list) > 0:
                 setattr(t_module, 'hint', hint_module_ins_list[tuner_id])
 
-        def state_dict_callback(state_dict, adapter_name):
+        def state_dict_callback(state_dict, adapter_name, **kwargs):
             state_dict_new = {key: value for key, value in state_dict.items() if f'scetuner_{adapter_name}' in key}
             return state_dict_new
 

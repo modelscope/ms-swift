@@ -14,7 +14,6 @@ git clone https://github.com/modelscope/swift.git
 cd swift
 pip install -e .[llm]
 
-pip install git+https://github.com/huggingface/transformers.git
 pip install pyav qwen_vl_utils
 ```
 

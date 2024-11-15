@@ -182,21 +182,42 @@ class ModelType:
     qwen2_5_math_7b_instruct = 'qwen2_5-math-7b-instruct'
     qwen2_5_math_72b_instruct = 'qwen2_5-math-72b-instruct'
     # qwen2.5 coder
+    qwen2_5_coder_0_5b = 'qwen2_5-coder-0_5b'
+    qwen2_5_coder_0_5b_instruct = 'qwen2_5-coder-0_5b-instruct'
+    qwen2_5_coder_0_5b_instruct_gptq_int4 = 'qwen2_5-coder-0_5b-instruct-gptq-int4'
+    qwen2_5_coder_0_5b_instruct_gptq_int8 = 'qwen2_5-coder-0_5b-instruct-gptq-int8'
+    qwen2_5_coder_0_5b_instruct_awq = 'qwen2_5-coder-0_5b-instruct-awq'
+
     qwen2_5_coder_1_5b = 'qwen2_5-coder-1_5b'
     qwen2_5_coder_1_5b_instruct = 'qwen2_5-coder-1_5b-instruct'
     qwen2_5_coder_1_5b_instruct_gptq_int4 = 'qwen2_5-coder-1_5b-instruct-gptq-int4'
     qwen2_5_coder_1_5b_instruct_gptq_int8 = 'qwen2_5-coder-1_5b-instruct-gptq-int8'
     qwen2_5_coder_1_5b_instruct_awq = 'qwen2_5-coder-1_5b-instruct-awq'
+
+    qwen2_5_coder_3b = 'qwen2_5-coder-3b'
+    qwen2_5_coder_3b_instruct = 'qwen2_5-coder-3b-instruct'
+    qwen2_5_coder_3b_instruct_gptq_int4 = 'qwen2_5-coder-3b-instruct-gptq-int4'
+    qwen2_5_coder_3b_instruct_gptq_int8 = 'qwen2_5-coder-3b-instruct-gptq-int8'
+    qwen2_5_coder_3b_instruct_awq = 'qwen2_5-coder-3b-instruct-awq'
+
     qwen2_5_coder_7b = 'qwen2_5-coder-7b'
     qwen2_5_coder_7b_instruct = 'qwen2_5-coder-7b-instruct'
     qwen2_5_coder_7b_instruct_gptq_int4 = 'qwen2_5-coder-7b-instruct-gptq-int4'
     qwen2_5_coder_7b_instruct_gptq_int8 = 'qwen2_5-coder-7b-instruct-gptq-int8'
     qwen2_5_coder_7b_instruct_awq = 'qwen2_5-coder-7b-instruct-awq'
 
-    qwen2_5_coder_0_5b_instruct = 'qwen2_5-coder-0_5b-instruct'
-    qwen2_5_coder_3b_instruct = 'qwen2_5-coder-3b-instruct'
+    qwen2_5_coder_14b = 'qwen2_5-coder-14b'
     qwen2_5_coder_14b_instruct = 'qwen2_5-coder-14b-instruct'
+    qwen2_5_coder_14b_instruct_gptq_int4 = 'qwen2_5-coder-14b-instruct-gptq-int4'
+    qwen2_5_coder_14b_instruct_gptq_int8 = 'qwen2_5-coder-14b-instruct-gptq-int8'
+    qwen2_5_coder_14b_instruct_awq = 'qwen2_5-coder-14b-instruct-awq'
+
+    qwen2_5_coder_32b = 'qwen2_5-coder-32b'
     qwen2_5_coder_32b_instruct = 'qwen2_5-coder-32b-instruct'
+    qwen2_5_coder_32b_instruct_gptq_int4 = 'qwen2_5-coder-32b-instruct-gptq-int4'
+    qwen2_5_coder_32b_instruct_gptq_int8 = 'qwen2_5-coder-32b-instruct-gptq-int8'
+    qwen2_5_coder_32b_instruct_awq = 'qwen2_5-coder-32b-instruct-awq'
+
     # qwen-vl
     qwen_vl = 'qwen-vl'
     qwen_vl_chat = 'qwen-vl-chat'
@@ -3887,7 +3908,7 @@ for model_size in ['1.5B', '7B', '72B']:
         requires=['transformers>=4.37'],
         hf_model_id=f'Qwen/Qwen2.5-Math-{model_size}-Instruct')
 
-for model_size in ['1.5B', '7B']:
+for model_size in ['0.5B', '1.5B', '3B', '7B', '14B', '32B']:
     model_size_lower = model_size.lower().replace('.', '_')
     register_model(
         f'qwen2_5-coder-{model_size_lower}',
@@ -3941,20 +3962,6 @@ for model_size in ['1.5B', '7B']:
         torch_dtype=torch.float16,
         requires=['transformers>=4.37', 'autoawq'],
         hf_model_id=f'Qwen/Qwen2.5-{model_size}-Instruct-AWQ')
-
-for model_size in ['0.5B', '3B', '14B', '32B']:
-    model_size_lower = model_size.lower().replace('.', '_')
-    register_model(
-        f'qwen2_5-coder-{model_size_lower}-instruct',
-        f'qwen/Qwen2.5-Coder-{model_size}-Instruct',
-        LoRATM.llama,
-        TemplateType.qwen2_5,
-        get_model_tokenizer_qwen2_chat,
-        support_flash_attn=True,
-        support_vllm=True,
-        support_lmdeploy=True,
-        requires=['transformers>=4.37'],
-        hf_model_id=f'Qwen/Qwen2.5-Coder-{model_size}-Instruct')
 
 
 @register_model(
@@ -4846,7 +4853,7 @@ def get_model_tokenizer_internvl(model_dir: str,
                                  load_model: bool = True,
                                  **kwargs):
     tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True, use_fast=False)
-    if kwargs.get('eos_token') is None and tokenizer.eos_token != '<|im_end|>':
+    if kwargs.get('eos_token') is None and tokenizer.decode(tokenizer.eos_token_id).strip() != '<|im_end|>':
         try:
             del tokenizer.__class__.eos_token_id
         except AttributeError:
@@ -7323,7 +7330,7 @@ def get_model_with_value_head(model) -> 'AutoModelForCausalLMWithValueHead':
             'get_input_embeddings', 'vis_processor', 'extract_feature', 'get_rope_index', 'model', 'vision_tower',
             'img2emb', '_encode_image', '_merge_input_ids_with_image_features', 'prepare_inputs_embeds',
             'build_conversation_input_ids', 'config', 'get_slice_image_placeholder', 'transform', 'get_vllm_embedding',
-            'forward_image', 'dtype', 'base_model_prefix', 'device'
+            'forward_image', 'dtype', 'base_model_prefix', 'device', 'visual'
         ]
         for attr in attr_list:
             if hasattr(model.pretrained_model, attr) and not hasattr(model, attr):
@@ -7334,6 +7341,10 @@ def get_model_with_value_head(model) -> 'AutoModelForCausalLMWithValueHead':
             setattr(model, 'score', model.v_head)
         if model.base_model_prefix == '' and hasattr(model.pretrained_model, 'language_model'):
             model.base_model_prefix = model.pretrained_model.language_model.base_model_prefix
+
+        base_model_prefix = model.pretrained_model.base_model_prefix
+        if hasattr(model.pretrained_model, base_model_prefix):
+            setattr(model, base_model_prefix, getattr(model.pretrained_model, base_model_prefix))
 
     patch_valuehead_model(model)
 
