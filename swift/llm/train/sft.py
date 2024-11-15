@@ -5,7 +5,7 @@ from transformers import IntervalStrategy
 from swift.utils import get_logger, get_model_parameter_info
 from ..argument import SftArguments
 from ..base import SwiftPipeline
-from ..dataset import load_dataset
+from ..dataset import EncodePreprocessor, load_dataset, stat_dataset
 from ..infer import RequestConfig, prepare_generation_config
 from ..model import ModelInfo, ModelMeta, get_model_arch, get_model_tokenizer
 from ..template import Template, get_template
@@ -125,11 +125,46 @@ class SwiftSft(SwiftPipeline[SftArguments]):
 
     def run(self):
         args = self.args
-        self._prepare_dataset()
-        self._print_one_sample()
+        train_dataset, val_dataset = self._prepare_dataset()
+        train_dataset, val_dataset = self._encode_dataset(train_dataset, val_dataset)
 
-    def _print_one_sample(self):
-        pass
+    def _encode_dataset(self, train_dataset, val_dataset):
+        template = self.template
+        args = self.args
+        if args.packing:
+            from swift.llm.utils.utils import ConstantLengthDataset
+            train_dataset = ConstantLengthDataset.get_packed_dataset(
+                template, train_dataset, args.max_length, lazy_tokenize=args.lazy_tokenize)
+            if val_dataset is not None:
+                val_dataset = ConstantLengthDataset.get_packed_dataset(
+                    template, val_dataset, args.max_length, lazy_tokenize=args.lazy_tokenize)
+            if not args.lazy_tokenize:
+                template.print_inputs(train_dataset[0], template, {})
+                self.train_msg['train_dataset'] = stat_dataset(train_dataset)
+                if val_dataset is not None:
+                    self.train_msg['val_dataset'] = stat_dataset(val_dataset)
+        elif not args.lazy_tokenize:
+            inputs = template.encode(next(iter(train_dataset)) if args.streaming else train_dataset[0])
+            template.print_inputs(inputs)
+            model = None if args.num_proc > 1 else self.model
+            train_dataset = EncodePreprocessor(
+                template, model=model)(
+                    train_dataset, num_proc=args.num_proc, load_from_cache_file=args.load_from_cache_file)
+            if val_dataset is not None:
+                val_dataset = EncodePreprocessor(
+                    template, model=model)(
+                        val_dataset, num_proc=args.num_proc, load_from_cache_file=args.load_from_cache_file)
+
+            if not args.streaming:
+                self.train_msg['train_dataset'] = stat_dataset(train_dataset)
+                if val_dataset is not None:
+                    self.train_msg['val_dataset'] = stat_dataset(val_dataset)
+        else:
+            inputs = template.encode(train_dataset[0])
+            template.print_inputs(inputs)
+            train_dataset = LazyLLMDataset(train_dataset, template.encode)
+            if val_dataset is not None:
+                val_dataset = LazyLLMDataset(val_dataset, template.encode)
 
 
 def sft_main(args: Union[List[str], SftArguments, None] = None) -> List[Dict[str, Any]]:

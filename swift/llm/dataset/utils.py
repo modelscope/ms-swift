@@ -290,23 +290,6 @@ def _get_token_len(llm_dataset):
     return token_len
 
 
-def print_example(example: Dict[str, Any],
-                  tokenizer: PreTrainedTokenizerBase,
-                  tokenizer_kwargs: Optional[Dict[str, Any]] = None) -> None:
-    """Print example"""
-    if tokenizer_kwargs is None:
-        tokenizer_kwargs = {}
-    for key in ['input', 'chosen_input', 'rejected_input', 'labels', 'chosen_labels', 'rejected_labels']:
-        val = example.get(key)  # fix val is a tensor
-        if val is None:
-            val = example.get(f'{key}_ids')
-        if val is not None:
-            key_upper = key.upper()
-            logger.info(f'[{key_upper}_IDS] {val}')
-            val_str = safe_tokenizer_decode(tokenizer, val, **tokenizer_kwargs)
-            logger.info(f'[{key_upper}] {val_str}')
-
-
 def sort_by_max_length(llm_dataset: LLMDataset, num_dataset: int) -> LLMDataset:
     """Sort dataset by max length, this is always used in OOM testing scenario"""
     logger.info('sort by max length...')

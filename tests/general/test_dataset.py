@@ -45,13 +45,18 @@ def test_aishell1():
     _test_dataset(['speech_asr/speech_asr_aishell1_trainsets:validation'])
 
 
+def test_messages():
+    _test_dataset(['swift/tagengo-gpt4'], strict=False)
+
+
 if __name__ == '__main__':
-    test_alpaca()
-    test_coco()
-    test_llava_instruct()
-    test_ms_bench()
-    test_ms_agent()
-    test_dpo()
-    test_pretrain()
-    test_dataset_info()
-    test_aishell1()
+    # test_alpaca()
+    # test_coco()
+    # test_llava_instruct()
+    # test_ms_bench()
+    # test_ms_agent()
+    # test_dpo()
+    # test_pretrain()
+    # test_dataset_info()
+    # test_aishell1()
+    test_messages()

@@ -148,8 +148,6 @@ class SftArguments(MegatronArguments, TorchAccArguments, TunerArguments, Seq2Seq
         packing (bool): Flag to indicate if packing is used. Default is False.
         lazy_tokenize (Optional[bool]): Flag to indicate if lazy tokenization is used. Default is None.
         acc_strategy (Literal): Strategy for accuracy calculation. Default is 'token'.
-        test_oom_error (bool): Set this to True if you sequence is long.
-            This will put the longest sequence to the first batch.
     """
     freeze_vit: bool = True
     freeze_aligner: bool = True
@@ -171,13 +169,6 @@ class SftArguments(MegatronArguments, TorchAccArguments, TunerArguments, Seq2Seq
 
     # extra
     acc_strategy: Literal['token', 'sentence'] = 'token'
-    test_oom_error: bool = field(
-        default=False,
-        metadata={
-            'help':
-            'If set to True, the train_dataset will be sorted in descending order based on max_length, '
-            'enabling faster detection of OOM (Out of Memory) errors.'
-        })
 
     def __post_init__(self) -> None:
         BaseArguments.__post_init__(self)
@@ -286,10 +277,6 @@ class SftArguments(MegatronArguments, TorchAccArguments, TunerArguments, Seq2Seq
         if self.packing:
             self.packing = False
             logger.warning('Packing is not supported for streaming dataset, set to False')
-
-        if self.test_oom_error:
-            self.test_oom_error = False
-            logger.warning('test_oom_error is not supported for streaming dataset, set to False')
 
         if self.lazy_tokenize:
             self.lazy_tokenize = False

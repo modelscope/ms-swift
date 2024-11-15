@@ -165,7 +165,7 @@ class RowPreprocessor:
         except NotImplementedError:
             pass
 
-        if hasattr(dataset, '__len__'):
+        if hasattr(dataset, '__len__') and len(dataset) != len(dataset_mapped):
             logger.info(
                 f'Dataset filtered, origin length: {len(dataset)}, filtered dataset length: {len(dataset_mapped)}')
         if self.remove_useless_columns:

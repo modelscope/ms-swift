@@ -793,6 +793,19 @@ class Template:
                 res[key] = value
         return res
 
+    def print_inputs(self, inputs: Dict[str, Any], tokenizer_kwargs: Optional[Dict[str, Any]] = None) -> None:
+        if tokenizer_kwargs is None:
+            tokenizer_kwargs = {}
+        for key in ['input', 'chosen_input', 'rejected_input', 'labels', 'chosen_labels', 'rejected_labels']:
+            val = inputs.get(key)  # fix val is a tensor
+            if val is None:
+                val = inputs.get(f'{key}_ids')
+            if val is not None:
+                key_upper = key.upper()
+                logger.info(f'[{key_upper}_IDS] {val}')
+                val_str = self.safe_decode(val, **tokenizer_kwargs)
+                logger.info(f'[{key_upper}] {val_str}')
+
     async def prepare_lmdeploy_inputs(self, inputs: Dict[str, Any]) -> None:
         images = inputs.pop('images', None) or []
         if len(images) == 0:
