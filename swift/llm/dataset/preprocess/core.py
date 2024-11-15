@@ -58,7 +58,7 @@ class RowPreprocessor:
         keys = list(batched_row.keys())
         if len(keys) == 0:
             return {}
-        res = {k: [] for k in batched_row.keys()}
+        res = {}
         batch_size = len(batched_row[keys[0]])
         num_samples = 0
         for i in range(batch_size):
@@ -89,6 +89,9 @@ class RowPreprocessor:
                 res[k].append(v)
 
             num_samples += 1
+
+        if len(res) == 0:
+            res.update({k: [] for k in keys})
 
         return res
 

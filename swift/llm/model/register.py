@@ -455,7 +455,8 @@ def get_model_tokenizer(model_id_or_path: str,
     if not use_torchacc() and device_map is None:
         device_map = get_default_device_map()
     model_kwargs['device_map'] = device_map
-    model_kwargs['quantization_config'] = quantization_config
+    if quantization_config:
+        model_kwargs['quantization_config'] = quantization_config
 
     model_info = get_model_info(
         model_dir,

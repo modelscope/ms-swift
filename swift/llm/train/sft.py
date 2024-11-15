@@ -63,9 +63,6 @@ class SwiftSft(SwiftPipeline[SftArguments]):
 
     def _prepare_model_tokenizer(self):
         args = self.args
-        model_kwargs = {}
-        if args.quantization_config:
-            model_kwargs['quantization_config'] = quantization_config
 
         model, tokenizer = get_model_tokenizer(
             args.model,
@@ -73,11 +70,10 @@ class SwiftSft(SwiftPipeline[SftArguments]):
             args.device_map,
             model_type=args.model_type,
             revision=args.model_revision,
-            model_kwargs=model_kwargs,
+            quantization_config=args.quantization_config,
             attn_impl=args.attn_impl,
             rope_scaling=args.rope_scaling,
-            use_unsloth=args.tuner_backend == 'unsloth',
-            is_training=True)
+            use_unsloth=args.tuner_backend == 'unsloth')
 
         self.model = model
         self.tokenizer = tokenizer
