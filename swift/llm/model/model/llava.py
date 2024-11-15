@@ -73,8 +73,7 @@ def get_model_tokenizer_llava_hf(model_dir: str, *args, **kwargs):
 
 def get_model_tokenizer_llava_1_5(*args, **kwargs):
     from transformers import LlavaForConditionalGeneration
-    if 'automodel_class' not in kwargs:
-        kwargs['automodel_class'] = LlavaForConditionalGeneration
+    kwargs['automodel_class'] = LlavaForConditionalGeneration
     return get_model_tokenizer_llava_hf(*args, **kwargs)
 
 
@@ -96,8 +95,7 @@ register_model(
 
 def get_model_tokenizer_llava_onevision(*args, **kwargs):
     from transformers import LlavaOnevisionForConditionalGeneration
-    if 'automodel_class' not in kwargs:
-        kwargs['automodel_class'] = LlavaOnevisionForConditionalGeneration
+    kwargs['automodel_class'] = LlavaOnevisionForConditionalGeneration
     return get_model_tokenizer_llava_hf(*args, **kwargs)
 
 
@@ -141,8 +139,7 @@ register_model(
 
 def get_model_tokenizer_llava_next(*args, **kwargs):
     from transformers import LlavaNextForConditionalGeneration
-    if 'automodel_class' not in kwargs:
-        kwargs['automodel_class'] = LlavaNextForConditionalGeneration
+    kwargs['automodel_class'] = LlavaNextForConditionalGeneration
     return get_model_tokenizer_llava_hf(*args, **kwargs)
 
 
@@ -238,8 +235,7 @@ register_model(
 
 def get_model_tokenizer_llava_next_video(*args, **kwargs):
     from transformers import LlavaNextVideoForConditionalGeneration
-    if 'automodel_class' not in kwargs:
-        kwargs['automodel_class'] = LlavaNextVideoForConditionalGeneration
+    kwargs['automodel_class'] = LlavaNextVideoForConditionalGeneration
     return get_model_tokenizer_llava_hf(*args, **kwargs)
 
 
@@ -258,7 +254,7 @@ register_model(
         ],
         TemplateType.llava_next_video_hf,
         get_model_tokenizer_llava_next_video,
-        architectures=['LlavaForConditionalGeneration'],
+        architectures=['LlavaNextVideoForConditionalGeneration'],
         model_arch=ModelArch.llava_next_video))
 
 
@@ -283,7 +279,7 @@ register_model(
         ],
         TemplateType.llava_next_video_hf,
         get_model_tokenizer_llava_next_video_yi,
-        architectures=['LlavaForConditionalGeneration'],
+        architectures=['LlavaNextVideoForConditionalGeneration'],
         model_arch=ModelArch.llava_next_video))
 
 
@@ -374,8 +370,8 @@ register_model(
         TemplateType.llava1_6_mistral,
         partial(get_model_tokenizer_llava, llm_model_type='mistral'),
         requires=['transformers>=4.34'],
-        architectures=['LlavaForConditionalGeneration'],
-        model_arch=ModelArch.llava))
+        architectures=['LlavaMistralForCausalLM'],
+        model_arch=ModelArch.llava_mistral))
 
 register_model(
     ModelMeta(

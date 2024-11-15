@@ -207,7 +207,7 @@ register_model(
         ],
         TemplateType.yuan,
         get_model_tokenizer_yuan,
-        model_arch=ModelArch.yuan,
+        model_arch=ModelArch.llama,
         architectures=['YuanForCausalLM'],
     ))
 
@@ -614,7 +614,7 @@ register_model(
         ],
         TemplateType.bluelm,
         get_model_tokenizer_with_flash_attn,
-        model_arch=ModelArch.got_ocr2,
+        model_arch=ModelArch.bluelm,
         architectures=['BlueLMForCausalLM'],
     ))
 

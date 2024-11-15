@@ -227,8 +227,7 @@ def get_model_tokenizer_omnli(model_dir: str,
     model_config.speech_encoder = os.path.join(model_dir, 'large-v3.pt')
     if not os.path.exists(model_config.speech_encoder):
         whisper.load_model('large-v3', download_root=model_dir)
-    if 'automodel_class' not in kwargs:
-        kwargs['automodel_class'] = OmniSpeech2SLlamaForCausalLM
+    kwargs['automodel_class'] = OmniSpeech2SLlamaForCausalLM
     kwargs['model_config'] = model_config
     for key in ['forward', 'generate']:
         try:

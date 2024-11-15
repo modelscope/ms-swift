@@ -29,6 +29,7 @@ class ModelArch:
     llava_next_video = 'llava_next_video'
     llava_llama = 'llava_llama'
     llava = 'llava'
+    llava_mistral = 'llava_mistral'
     internlm_xcomposer = 'internlm_xcomposer'
     internvl = 'internvl'
     deepseek_vl = 'deepseek_vl'
@@ -162,7 +163,7 @@ register_model_arch(
     ModelKeys(
         ModelArch.telechat,
         module_list='transformer.h',
-        mlp='transformer.h.{}.self_attention.mlp',
+        mlp='transformer.h.{}.mlp',
         down_proj='transformer.h.{}.mlp.down_proj',
         attention='transformer.h.{}.self_attention',
         o_proj='transformer.h.{}.self_attention.dense',
@@ -215,13 +216,15 @@ register_model_arch(
 register_model_arch(
     ModelKeys(
         ModelArch.phi2,
-        module_list='transformer.h',
-        mlp='transformer.h.{}.mlp',
-        down_proj='transformer.h.{}.mlp.c_proj',
-        attention='transformer.h.{}.mixer',
-        o_proj='transformer.h.{}.mixer.out_proj',
-        qkv_proj='transformer.h.{}.mixer.Wqkv',
-        embedding='transformer.embd',
+        module_list='model.layers',
+        mlp='model.layers.{}.mlp',
+        down_proj='model.layers.{}.mlp.fc2',
+        attention='model.layers.{}.self_attn',
+        o_proj='model.layers.{}.self_attn.dense',
+        q_proj='model.layers.{}.self_attn.q_proj',
+        k_proj='model.layers.{}.self_attn.k_proj',
+        v_proj='model.layers.{}.self_attn.v_proj',
+        embedding='model.embed_tokens',
         output='lm_head',
     ))
 
@@ -302,6 +305,14 @@ register_model_arch(
 
 register_model_arch(
     MultiModelKeys(
+        ModelArch.llava_mistral,
+        language_model='model.layers',
+        aligner='model.mm_projector',
+        vision_tower='model.vision_tower',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
         ModelArch.llava_next_video,
         language_model='language_model',
         aligner=['multi_modal_projector', 'vision_resampler'],
@@ -373,7 +384,6 @@ register_model_arch(
     MultiModelKeys(
         ModelArch.florence,
         language_model='language_model',
-        aligner='image_projection',
         vision_tower='vision_tower',
     ))
 
