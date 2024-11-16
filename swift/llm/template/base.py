@@ -653,7 +653,7 @@ class Template:
             return
         # TODO:torch>=2.0
         for model in models:
-            handle = model.register_forward_pre_hook(partial(self.pre_forward_hook, model=model), with_kwargs=True)
+            handle = model.register_forward_pre_hook(self.pre_forward_hook, with_kwargs=True)
             self._handles.append(handle)
 
         if is_deepspeed_zero3_enabled():

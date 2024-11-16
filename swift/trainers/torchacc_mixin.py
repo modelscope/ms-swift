@@ -1,12 +1,24 @@
 from swift.utils.torchacc_utils import (save_ta_ddp_checkpoint, save_ta_fsdp_checkpoint, ta_eval_dataloader,
                                         ta_load_optimizer_and_scheduler, ta_save_optimizer_and_scheduler,
                                         ta_test_dataloader, ta_train_dataloader, ta_trim_graph)
+from swift.utils import use_torchacc
+
 from .mixin import Seq2SeqTrainer
 
 
-class TorchAccTrainer(Seq2SeqTrainer):
+class TorchAccMixin:
+
+    def __init__(self, *args, **kwargs):
+        if not use_torchacc():
+            super().__init__(*args, **kwargs)
+
+        patch_clip_grad_norm(self.accelerator)
+
 
     def get_train_dataloader(self):
+        if not use_torchacc():
+            return super().get_train_dataloader()
+        
         if trainer.is_datasets_available():
             import datasets
 
@@ -25,6 +37,10 @@ class TorchAccTrainer(Seq2SeqTrainer):
                                    self._train_batch_size)
 
     def get_eval_dataloader(self, eval_dataset=None):
+
+        if not use_torchacc():
+            return super().get_eval_dataloader(eval_dataset)
+
         if trainer.is_datasets_available():
             import datasets
 
@@ -41,6 +57,10 @@ class TorchAccTrainer(Seq2SeqTrainer):
         return ta_eval_dataloader(eval_dataset, data_collator, self._get_eval_sampler(eval_dataset), self.args)
 
     def get_test_dataloader(self, test_dataset):
+
+        if not use_torchacc():
+            return super().get_test_dataloader(test_dataset)
+
         if trainer.is_datasets_available():
             import datasets
 
@@ -54,6 +74,10 @@ class TorchAccTrainer(Seq2SeqTrainer):
         return ta_test_dataloader(test_dataset, data_collator, self._get_eval_sampler(test_dataset), self.args)
 
     def _save_tpu(self, output_dir: Optional[str] = None):
+
+        if not use_torchacc():
+            return super()._save_tpu(output_dir)
+
         import torch_xla.core.xla_model as xm
 
         # Compatible with swift and peft
@@ -98,30 +122,32 @@ class TorchAccTrainer(Seq2SeqTrainer):
                             shutil.copytree(src_path, dst_path)
 
     def _load_optimizer_and_scheduler(self, checkpoint):
-        if not self.sft_args.fsdp_num > 1:
-            return super()._load_optimizer_and_scheduler(checkpoint)
+
+        if not use_torchacc() or self.sft_args.fsdp_num == 1:
+            return super()._load_optimizer_and_scheduler(output_dir)
 
         self.optimizer, self.lr_scheduler = ta_load_optimizer_and_scheduler(self.optimizer, self.lr_scheduler,
                                                                             checkpoint, self.args.device)
 
     def _save_optimizer_and_scheduler(self, output_dir):
-        if not self.sft_args.fsdp_num > 1:
+        if not use_torchacc() or not self.sft_args.fsdp_num == 1:
             return super()._save_optimizer_and_scheduler(output_dir)
 
         return ta_save_optimizer_and_scheduler(self.optimizer, self.lr_scheduler, output_dir)
 
     def _maybe_log_save_evaluate(self, tr_loss, *args, **kwargs):
-        if self.control.should_log:
+        if use_torchacc() and self.control.should_log:
             ta_trim_graph()
         super()._maybe_log_save_evaluate(tr_loss, *args, **kwargs)
 
     def _load_from_checkpoint(self, resume_from_checkpoint: str, model=None) -> None:
-        if model is None:
-            model = self.model
-        # Loading checkpoint of TorchAcc has been done in tuner.py when
-        # sft_type is 'full'.
-        if self.sft_args.fsdp_num > 1:
-            model = model._get_underlay_model().module.module
-        if isinstance(model, PreTrainedModel):
-            return
+        if use_torchacc():
+            if model is None:
+                model = self.model
+            # Loading checkpoint of TorchAcc has been done in tuner.py when
+            # sft_type is 'full'.
+            if self.sft_args.fsdp_num > 1:
+                model = model._get_underlay_model().module.module
+            if isinstance(model, PreTrainedModel):
+                return
         return super()._load_from_checkpoint(resume_from_checkpoint, model)

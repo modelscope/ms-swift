@@ -13,7 +13,6 @@ from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_N
 from transformers.utils import is_peft_available
 
 from swift.plugin.loss import get_loss_func
-from swift.utils import use_torchacc
 from swift.utils.torchacc_utils import patch_clip_grad_norm, ta_trim_graph
 from .mixin import SwiftMixin
 
@@ -27,8 +26,6 @@ class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._acc = torch.tensor(0.).to(self.args.device)
-        if use_torchacc():
-            patch_clip_grad_norm(self.accelerator)
 
     def prediction_step(
         self,
@@ -176,7 +173,7 @@ class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
         if labels is None:
             labels = inputs['labels']
 
-        if self.sequence_parallel_size > 1:
+        if self.args.sequence_parallel_size > 1:
             from swift.trainers.xtuner import reduce_xtuner_sequence_parallel_loss
             loss = reduce_xtuner_sequence_parallel_loss(loss, labels)
 
@@ -212,3 +209,9 @@ class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
                     self._custom_metrics['acc'] = self._acc
                 self._custom_metrics['acc'] = self._custom_metrics['acc'] + acc / self.args.gradient_accumulation_steps
         return (loss, outputs) if return_outputs else loss
+
+
+# monkey patching
+trainer.DEFAULT_PROGRESS_CALLBACK = ProgressCallbackNew
+trainer.DEFAULT_CALLBACKS = [DefaultFlowCallbackNew]
+trainer.PrinterCallback = PrinterCallbackNew

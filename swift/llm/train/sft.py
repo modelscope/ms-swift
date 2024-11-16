@@ -165,7 +165,8 @@ class SwiftSft(SwiftPipeline[SftArguments]):
             optimizers=optimizers,
             tokenizer=self.tokenizer,
         )
-        template.register_post_encode_hook([self.model])
+        if self.model.model_meta.is_multimodal:
+            template.register_post_encode_hook([self.model])
         trainer.train(args.training_args.resume_from_checkpoint)
 
     def _prepare_optimizers(self, train_dataset):
