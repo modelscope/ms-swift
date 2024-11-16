@@ -81,6 +81,8 @@ def _create_and_replace_hook(self, peft_config, adapter_name, target, *args, **k
     all_supported_names = ('linear', )
     all_supported_types = (torch.nn.Embedding, torch.nn.Conv2d, transformers.pytorch_utils.Conv1D)
     target_modules = getattr(peft_config, 'target_modules', None)
+    if target is None:
+        return
 
     if isinstance(target_modules, str) and not any(
         [name in target.__class__.__name__.lower()
