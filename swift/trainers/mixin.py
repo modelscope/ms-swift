@@ -5,8 +5,6 @@ import os
 import re
 import shutil
 import time
-from collections import defaultdict
-from contextlib import contextmanager, nullcontext
 from copy import copy
 from pathlib import Path
 from types import MethodType
@@ -16,7 +14,6 @@ import json
 import numpy as np
 import safetensors
 import torch
-import torch.nn as nn
 import transformers
 from datasets import Dataset as HfDataset
 from packaging import version
@@ -33,8 +30,6 @@ from transformers.utils import is_sagemaker_mp_enabled, is_torch_npu_available
 
 from swift.tuners import SwiftModel
 from swift.utils import check_json_format, get_logger, is_ddp_plus_mp
-from swift.utils.constants import Invoke
-from .callback import DefaultFlowCallbackNew, PrinterCallbackNew, ProgressCallbackNew
 from .optimizers.galore import create_optimizer_and_scheduler
 from .utils import can_return_loss, find_labels, get_function, is_instance_of_ms_model
 
@@ -91,15 +86,6 @@ class SwiftMixin:
             self.label_names = find_labels(model) or ['labels']
             self.can_return_loss = can_return_loss(model)
         self.start_time = time.time()
-
-    def _save_sft_args(self, output_dir: str) -> None:
-        sft_args = getattr(self, 'sft_args', None)
-        if sft_args is None:
-            return
-        fpath = os.path.join(output_dir, 'sft_args.json')
-        with open(fpath, 'w', encoding='utf-8') as f:
-            json.dump(check_json_format(self.sft_args.__dict__), f, ensure_ascii=False, indent=2)
-        return
 
     def _save_initial_model(self, output_dir):
         model = unwrap_model(self.model)
@@ -426,4 +412,3 @@ class SwiftMixin:
         else:
             from swift.trainers.xtuner import get_xtuner_train_dataloader
             return get_xtuner_train_dataloader(self)
-

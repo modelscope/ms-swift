@@ -1,9 +1,14 @@
-from swift.utils.torchacc_utils import (save_ta_ddp_checkpoint, save_ta_fsdp_checkpoint, ta_eval_dataloader,
-                                        ta_load_optimizer_and_scheduler, ta_save_optimizer_and_scheduler,
-                                        ta_test_dataloader, ta_train_dataloader, ta_trim_graph)
-from swift.utils import use_torchacc
+import os
+import shutil
+from typing import Optional
 
-from .mixin import Seq2SeqTrainer
+from transformers import PreTrainedModel, is_datasets_available
+
+from swift.utils import use_torchacc
+from swift.utils.torchacc_utils import (patch_clip_grad_norm, save_ta_ddp_checkpoint, save_ta_fsdp_checkpoint,
+                                        ta_eval_dataloader, ta_load_optimizer_and_scheduler,
+                                        ta_save_optimizer_and_scheduler, ta_test_dataloader, ta_train_dataloader,
+                                        ta_trim_graph)
 
 
 class TorchAccMixin:
@@ -14,12 +19,11 @@ class TorchAccMixin:
 
         patch_clip_grad_norm(self.accelerator)
 
-
     def get_train_dataloader(self):
         if not use_torchacc():
             return super().get_train_dataloader()
-        
-        if trainer.is_datasets_available():
+
+        if is_datasets_available():
             import datasets
 
         if self.train_dataset is None:
@@ -28,7 +32,7 @@ class TorchAccMixin:
         train_dataset = self.train_dataset
         data_collator = self.data_collator
 
-        if trainer.is_datasets_available() and isinstance(train_dataset, datasets.Dataset):
+        if is_datasets_available() and isinstance(train_dataset, datasets.Dataset):
             train_dataset = self._remove_unused_columns(train_dataset, description='training')
         else:
             data_collator = self._get_collator_with_removed_columns(data_collator, description='training')
@@ -41,7 +45,7 @@ class TorchAccMixin:
         if not use_torchacc():
             return super().get_eval_dataloader(eval_dataset)
 
-        if trainer.is_datasets_available():
+        if is_datasets_available():
             import datasets
 
         if eval_dataset is None and self.eval_dataset is None:
@@ -49,7 +53,7 @@ class TorchAccMixin:
         eval_dataset = eval_dataset if eval_dataset is not None else self.eval_dataset
         data_collator = self.data_collator
 
-        if trainer.is_datasets_available() and isinstance(eval_dataset, datasets.Dataset):
+        if is_datasets_available() and isinstance(eval_dataset, datasets.Dataset):
             eval_dataset = self._remove_unused_columns(eval_dataset, description='evaluation')
         else:
             data_collator = self._get_collator_with_removed_columns(data_collator, description='evaluation')
@@ -61,12 +65,12 @@ class TorchAccMixin:
         if not use_torchacc():
             return super().get_test_dataloader(test_dataset)
 
-        if trainer.is_datasets_available():
+        if is_datasets_available():
             import datasets
 
         data_collator = self.data_collator
 
-        if trainer.is_datasets_available() and isinstance(test_dataset, datasets.Dataset):
+        if is_datasets_available() and isinstance(test_dataset, datasets.Dataset):
             test_dataset = self._remove_unused_columns(test_dataset, description='test')
         else:
             data_collator = self._get_collator_with_removed_columns(data_collator, description='test')
@@ -124,7 +128,7 @@ class TorchAccMixin:
     def _load_optimizer_and_scheduler(self, checkpoint):
 
         if not use_torchacc() or self.sft_args.fsdp_num == 1:
-            return super()._load_optimizer_and_scheduler(output_dir)
+            return super()._load_optimizer_and_scheduler(checkpoint)
 
         self.optimizer, self.lr_scheduler = ta_load_optimizer_and_scheduler(self.optimizer, self.lr_scheduler,
                                                                             checkpoint, self.args.device)

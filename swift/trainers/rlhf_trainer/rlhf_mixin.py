@@ -1,42 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-# Part of the implementation is borrowed from huggingface/transformers.
-import inspect
-import os
-import re
-import shutil
-import time
 from collections import defaultdict
 from contextlib import contextmanager, nullcontext
-from copy import copy
-from pathlib import Path
-from types import MethodType
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
-import json
-import numpy as np
-import safetensors
 import torch
 import torch.nn as nn
-import transformers
-from datasets import Dataset as HfDataset
-from packaging import version
-from peft import PeftModel
-from torch.nn import Module
-from transformers import PreTrainedModel, PreTrainedTokenizerBase, trainer
-from transformers.data.data_collator import DataCollator
+from transformers import PreTrainedModel
 from transformers.integrations import is_deepspeed_zero3_enabled
-from transformers.modeling_utils import unwrap_model
-from transformers.trainer import PREFIX_CHECKPOINT_DIR, TRAINER_STATE_NAME, Trainer, TrainerCallback
-from transformers.trainer_utils import EvalPrediction
-from transformers.training_args import TrainingArguments
-from transformers.utils import is_sagemaker_mp_enabled, is_torch_npu_available
-
-from swift.tuners import SwiftModel
-from swift.utils import check_json_format, get_logger, is_ddp_plus_mp
-from swift.utils.constants import Invoke
-from .callback import DefaultFlowCallbackNew, PrinterCallbackNew, ProgressCallbackNew
-from .optimizers.galore import create_optimizer_and_scheduler
-from .utils import can_return_loss, find_labels, get_function, is_instance_of_ms_model
 
 try:
     from trl import AutoModelForCausalLMWithValueHead
@@ -184,6 +154,3 @@ class RLHFTrainerMixin:
             loss /= self.args.gradient_accumulation_steps
             return (loss, res[1:]) if return_outputs else loss
         return res
-
-
-
