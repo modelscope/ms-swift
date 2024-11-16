@@ -32,11 +32,8 @@ from transformers.training_args import TrainingArguments
 from transformers.utils import is_sagemaker_mp_enabled, is_torch_npu_available
 
 from swift.tuners import SwiftModel
-from swift.utils import check_json_format, get_logger, use_torchacc
+from swift.utils import check_json_format, get_logger, is_ddp_plus_mp
 from swift.utils.constants import Invoke
-from swift.utils.torchacc_utils import (save_ta_ddp_checkpoint, save_ta_fsdp_checkpoint, ta_eval_dataloader,
-                                        ta_load_optimizer_and_scheduler, ta_save_optimizer_and_scheduler,
-                                        ta_test_dataloader, ta_train_dataloader, ta_trim_graph)
 from .callback import DefaultFlowCallbackNew, PrinterCallbackNew, ProgressCallbackNew
 from .optimizers.galore import create_optimizer_and_scheduler
 from .utils import can_return_loss, find_labels, get_function, is_instance_of_ms_model
@@ -104,12 +101,6 @@ class SwiftMixin:
             json.dump(check_json_format(self.sft_args.__dict__), f, ensure_ascii=False, indent=2)
         return
 
-    def _save_optimizer_and_scheduler(self, output_dir):
-        if not (use_torchacc() and self.sft_args.fsdp_num > 1):
-            return super()._save_optimizer_and_scheduler(output_dir)
-
-        ta_save_optimizer_and_scheduler(self.optimizer, self.lr_scheduler, output_dir)
-
     def _save_initial_model(self, output_dir):
         model = unwrap_model(self.model)
         if isinstance(model, PeftModel):
@@ -135,32 +126,15 @@ class SwiftMixin:
                 model.peft_config['default'] = config
 
     def _load_optimizer_and_scheduler(self, checkpoint):
-        if not (use_torchacc() and self.sft_args.fsdp_num > 1):
-            if self._resume_only_model:
-                checkpoint = self._resume_from_checkpoint
-                if checkpoint is not None and (is_sagemaker_mp_enabled() or self.is_fsdp_enabled):
-                    self._load_from_checkpoint(checkpoint, self.model_wrapped)
-                return
-            else:
-                # Check if saved optimizer or scheduler states exist
-                super()._load_optimizer_and_scheduler(checkpoint)
-                try:
-                    # fix mp+ddp adamw
-                    for v in self.optimizer.state.values():
-                        if 'step' in v:
-                            # not on the same device
-                            device_set = set([t.device for t in v.values()]) - {v['step'].device, torch.device('cpu')}
-                            if len(device_set) >= 1:
-                                v['step'] = v['step'].to('cpu')
-                except Exception:
-                    pass
-                return
-
-        if checkpoint is None or self.args.save_only_model:
-            return
-
-        self.optimizer, self.lr_scheduler = ta_load_optimizer_and_scheduler(self.optimizer, self.lr_scheduler,
-                                                                            checkpoint, self.args.device)
+        super()._load_optimizer_and_scheduler(checkpoint)
+        if is_ddp_plus_mp():
+            # fix mp+ddp adamw
+            for v in self.optimizer.state.values():
+                if 'step' in v:
+                    # not on the same device
+                    device_set = set([t.device for t in v.values()]) - {v['step'].device, torch.device('cpu')}
+                    if len(device_set) >= 1:
+                        v['step'] = v['step'].to('cpu')
 
     def _save(self, output_dir: Optional[str] = None, state_dict=None):
         """Compatible with swift and peft"""
@@ -317,13 +291,6 @@ class SwiftMixin:
     def _load_from_checkpoint(self, resume_from_checkpoint: str, model=None) -> None:
         if model is None:
             model = self.model
-        if use_torchacc():
-            # Loading checkpoint of TorchAcc has been done in tuner.py when
-            # sft_type is 'full'.
-            if self.sft_args.fsdp_num > 1:
-                model = model._get_underlay_model().module.module
-            if isinstance(model, PreTrainedModel):
-                return
         elif isinstance(model, SwiftModel) or is_deepspeed_zero3_enabled() and isinstance(model, PreTrainedModel):
             return
         else:
@@ -391,8 +358,6 @@ class SwiftMixin:
 
     def _maybe_log_save_evaluate(self, tr_loss, *args, **kwargs):
         if self.control.should_log:
-            if use_torchacc():
-                ta_trim_graph()
             self.control.should_log = False
             logs: Dict[str, float] = {}
             metrics_log = {'loss': tr_loss}  # loss first
@@ -443,48 +408,24 @@ class SwiftMixin:
             super().create_optimizer_and_scheduler(num_training_steps=num_training_steps)
 
     def create_optimizer(self):
-        opt_model = self.model
 
-        if self.optimizer is None:
-            if version.parse(transformers.__version__) < version.parse('4.34.0'):
-                logger.warning(f'If you are using lora+, please remember using transformers>=4.34.0, '
-                               f'but now is {transformers.__version__}')
-                return super().create_optimizer()
+        if self.optimizer is None and hasattr(self.model, 'create_optimizer_param_groups'):
+            # Lora+ parameter groups
+            optimizer_grouped_parameters = self.model.create_optimizer_param_groups(
+                lr=self.args.learning_rate, weight_decay=self.args.weight_decay)
+            if optimizer_grouped_parameters is not None:
+                optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(self.args)
+                self.optimizer = optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs)
+                return self.optimizer
 
-            optimizer_grouped_parameters = None
-            if hasattr(self.model, 'create_optimizer_param_groups'):
-                # Lora+ parameter groups
-                optimizer_grouped_parameters = self.model.create_optimizer_param_groups(
-                    lr=self.args.learning_rate, weight_decay=self.args.weight_decay)
-
-            if optimizer_grouped_parameters is None:
-                # Default parameter groups
-                decay_parameters = self.get_decay_parameter_names(opt_model)
-                optimizer_grouped_parameters = [
-                    {
-                        'params':
-                        [p for n, p in opt_model.named_parameters() if (n in decay_parameters and p.requires_grad)],
-                        'weight_decay':
-                        self.args.weight_decay,
-                    },
-                    {
-                        'params':
-                        [p for n, p in opt_model.named_parameters() if (n not in decay_parameters and p.requires_grad)],
-                        'weight_decay':
-                        0.0,
-                    },
-                ]
-
-            optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(self.args)
-            self.optimizer = optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs)
-        return self.optimizer
+        return super().create_optimizer()
 
     def get_train_dataloader(self):
-        if self.args.sequence_parallel_size > 1:
+        if self.args.sequence_parallel_size == 1:
+            return super().get_train_dataloader()
+        else:
             from swift.trainers.xtuner import get_xtuner_train_dataloader
             return get_xtuner_train_dataloader(self)
-        else:
-            return super().get_train_dataloader()
 
 
 class ModelWrapper(nn.Module):

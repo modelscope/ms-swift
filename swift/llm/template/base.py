@@ -610,12 +610,12 @@ class Template:
         return response
 
     def pre_forward_hook(self,
+                         model: nn.Module,
                          args,
                          kwargs,
                          *,
                          padding_side: Optional[str] = None,
-                         padding_to: Optional[int] = None,
-                         model: Optional[nn.Module] = None) -> Dict[str, Any]:
+                         padding_to: Optional[int] = None) -> Dict[str, Any]:
         # inplace
         from swift.llm import to_device
         extra_inputs = []

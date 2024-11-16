@@ -342,7 +342,7 @@ class PtEngine(InferEngine):
             batched_inputs.append(inputs)
         if self.model.model_meta.is_multimodal:
             inputs = template.pre_data_collator(batched_inputs, padding_side='left', model=self.model)
-            template.pre_forward_hook(None, inputs, padding_side='left', model=self.model)
+            template.pre_forward_hook(self.model, None, inputs, padding_side='left')
         else:
             inputs = to_device(
                 template.data_collator(batched_inputs, padding_side='left', model=self.model), self.model.device)
