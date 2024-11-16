@@ -16,9 +16,12 @@ def get_model_and_tokenizer(ms_model_id, model_arch=None):
             model_arch: ModelKeys = MODEL_ARCH_MAPPING[model_arch]
             for f in fields(model_arch):
                 value = getattr(model_arch, f.name)
-                if value is not None:
-                    value = value.replace('{}', '[0]')
-                    model_ins.get_submodule(value)
+                if value is not None and f.name != 'arch_name':
+                    if isinstance(value, str):
+                        value = [value]
+                    for v in value:
+                        v = v.replace('{}', '0')
+                        model_ins.get_submodule(v)
     except Exception:
         import traceback
         print(traceback.format_exc())

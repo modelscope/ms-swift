@@ -315,7 +315,7 @@ register_model_arch(
     MultiModelKeys(
         ModelArch.llava_next_video,
         language_model='language_model',
-        aligner=['multi_modal_projector', 'vision_resampler'],
+        aligner=['multi_modal_projector'],
         vision_tower='vision_tower'))
 
 register_model_arch(
