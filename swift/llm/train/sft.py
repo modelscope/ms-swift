@@ -153,7 +153,7 @@ class SwiftSft(SwiftPipeline[SftArguments]):
             preprocess_logits_for_metrics = preprocess_logits_for_acc
 
         trainer_cls = TrainerFactory.get_trainer_cls(args)
-        trainer_cls(
+        trainer = trainer_cls(
             model=self.model,
             args=self.args.training_args,
             data_collator=data_collator,
@@ -163,10 +163,10 @@ class SwiftSft(SwiftPipeline[SftArguments]):
             preprocess_logits_for_metrics=preprocess_logits_for_metrics,
             callbacks=self.callbacks,
             optimizers=optimizers,
-            sequence_parallel_size=args.sequence_parallel_size,
             tokenizer=self.tokenizer,
-            check_model=args.check_model,
         )
+        template.register_post_encode_hook([self.model])
+        trainer.train(args.training_args.resume_from_checkpoint)
 
     def _prepare_optimizers(self, train_dataset):
         args = self.args

@@ -20,8 +20,11 @@ class SwiftArgumentsMixin:
     acc_strategy: str = field(default='token', metadata={'choices': ['token', 'sentence']})
     loss_name: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
     additional_saved_files: Optional[List[str]] = None
-    # torchacc
+    sequence_parallel_size: int = 1
+    check_model: bool = True
     train_sampler_random: bool = True
+
+    # torchacc
     metric_warmup_step: Optional[float] = 0
     train_dataset_sample: Optional[int] = -1
 

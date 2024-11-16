@@ -380,12 +380,11 @@ register_model_arch(MultiModelKeys(
     vision_tower='model.vision',
 ))
 
-register_model_arch(
-    MultiModelKeys(
-        ModelArch.florence,
-        language_model='language_model',
-        vision_tower='vision_tower',
-    ))
+register_model_arch(MultiModelKeys(
+    ModelArch.florence,
+    language_model='language_model',
+    vision_tower='vision_tower',
+))
 
 register_model_arch(
     MultiModelKeys(

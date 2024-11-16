@@ -643,8 +643,6 @@ class Template:
 
     def set_infer_backend(self, infer_backend: Literal['vllm', 'lmdeploy', 'pt']) -> None:
         self.infer_backend = infer_backend
-        if infer_backend in {'vllm', 'lmdeploy'}:
-            self.remove_post_encode_hook()
 
     def register_post_encode_hook(self, models: List[nn.Module]) -> None:
         """This function is important for multi-modal training, as it registers the post_encode method

@@ -97,7 +97,6 @@ class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
             generation_inputs = generate_inputs[self.model.main_input_name]
 
         generated_tokens = generated_tokens[:, generation_inputs.shape[1]:]
-        gen_len = len(generated_tokens[0])
 
         # in case the batch is shorter than max length, the output should be padded
         if gen_kwargs.get('max_length') is not None and generated_tokens.shape[-1] < gen_kwargs['max_length']:

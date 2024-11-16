@@ -51,21 +51,20 @@ logger = get_logger()
 
 class SwiftMixin:
 
-    def __init__(self,
-                 model: Union[PreTrainedModel, Module] = None,
-                 args: TrainingArguments = None,
-                 data_collator: Optional[DataCollator] = None,
-                 train_dataset: Optional[HfDataset] = None,
-                 eval_dataset: Optional[Union[HfDataset, Dict[str, HfDataset]]] = None,
-                 tokenizer: Optional[PreTrainedTokenizerBase] = None,
-                 model_init: Optional[Callable[[], PreTrainedModel]] = None,
-                 compute_metrics: Optional[Callable[[EvalPrediction], Dict]] = None,
-                 callbacks: Optional[List[TrainerCallback]] = None,
-                 optimizers: Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR] = (None, None),
-                 preprocess_logits_for_metrics: Optional[Callable[[torch.Tensor, torch.Tensor], torch.Tensor]] = None,
-                 *,
-                 check_model: bool = True,
-                 sequence_parallel_size: int = 1) -> None:
+    def __init__(
+            self,
+            model: Union[PreTrainedModel, Module] = None,
+            args: TrainingArguments = None,
+            data_collator: Optional[DataCollator] = None,
+            train_dataset: Optional[HfDataset] = None,
+            eval_dataset: Optional[Union[HfDataset, Dict[str, HfDataset]]] = None,
+            tokenizer: Optional[PreTrainedTokenizerBase] = None,
+            model_init: Optional[Callable[[], PreTrainedModel]] = None,
+            compute_metrics: Optional[Callable[[EvalPrediction], Dict]] = None,
+            callbacks: Optional[List[TrainerCallback]] = None,
+            optimizers: Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR] = (None, None),
+            preprocess_logits_for_metrics: Optional[Callable[[torch.Tensor, torch.Tensor],
+                                                             torch.Tensor]] = None) -> None:
         # if check_model and hasattr(model, 'model_dir'):
         #     check_local_model_is_latest(
         #         model.model_dir,
@@ -74,9 +73,9 @@ class SwiftMixin:
         #             Invoke.THIRD_PARTY: kwargs.pop(Invoke.THIRD_PARTY, Invoke.SWIFT),
         #         })
 
-        if sequence_parallel_size > 1:
+        if args.sequence_parallel_size > 1:
             from swift.trainers.xtuner import init_sequence_parallel_xtuner
-            init_sequence_parallel_xtuner(self.sequence_parallel_size)
+            init_sequence_parallel_xtuner(args.sequence_parallel_size)
 
         super().__init__(
             model=model,
@@ -162,53 +161,6 @@ class SwiftMixin:
 
         self.optimizer, self.lr_scheduler = ta_load_optimizer_and_scheduler(self.optimizer, self.lr_scheduler,
                                                                             checkpoint, self.args.device)
-
-    def _save_tpu(self, output_dir: Optional[str] = None):
-        if not use_torchacc():
-            return super()._save_tpu(output_dir)
-
-        import torch_xla.core.xla_model as xm
-
-        # Compatible with swift and peft
-        output_dir = output_dir if output_dir is not None else self.args.output_dir
-
-        if xm.is_master_ordinal(local=False):
-            os.makedirs(output_dir, exist_ok=True)
-            # configuration.json
-            model_dir = getattr(self.model, 'model_dir', None)
-            if model_dir is not None:
-                src_path = os.path.join(model_dir, 'configuration.json')
-                dst_path = os.path.join(output_dir, 'configuration.json')
-                if os.path.exists(src_path):
-                    shutil.copy(src_path, dst_path)
-            else:
-                self._create_configuration_file(self.model, output_dir)
-            self._save_sft_args(output_dir)
-            # generation_config
-            generation_config = getattr(self.args, 'generation_config', None)
-            if generation_config is not None:
-                generation_config.save_pretrained(output_dir)
-
-        # model
-        if self.sft_args.fsdp_num > 1:
-            save_ta_fsdp_checkpoint(self.model, self.tokenizer, self.args, output_dir)
-        else:
-            save_ta_ddp_checkpoint(self.model, self.tokenizer, self.args, output_dir)
-        sft_args = getattr(self, 'sft_args', None)
-
-        # additional files
-        if xm.is_master_ordinal(local=False):
-            if sft_args is not None and sft_args.sft_type == 'full':
-                additional_files = getattr(self.args, 'additional_saved_files',
-                                           None) or [] + ['preprocessor_config.json']
-                if model_dir is not None:
-                    for file in additional_files:
-                        src_path = os.path.join(model_dir, file)
-                        dst_path = os.path.join(output_dir, file)
-                        if os.path.isfile(src_path):
-                            shutil.copy(src_path, dst_path)
-                        elif os.path.isdir(src_path):
-                            shutil.copytree(src_path, dst_path)
 
     def _save(self, output_dir: Optional[str] = None, state_dict=None):
         """Compatible with swift and peft"""
@@ -357,8 +309,7 @@ class SwiftMixin:
             self._rotate_checkpoints(use_mtime=True, output_dir=run_dir)
 
     def _get_train_sampler(self) -> Optional[torch.utils.data.Sampler]:
-        train_sampler_random = self.args.train_sampler_random
-        if train_sampler_random:
+        if self.args.train_sampler_random:
             return super()._get_train_sampler()
         else:
             return self._get_eval_sampler(self.train_dataset)
@@ -406,19 +357,8 @@ class SwiftMixin:
         return checkpoints_sorted
 
     def train(self, resume_from_checkpoint: Optional[Union[str, bool]] = None, *args, **kwargs) -> torch.Tensor:
-        sft_args = getattr(self, 'sft_args', None)
-        self._resume_only_model = getattr(sft_args, 'resume_only_model', False)
-        if self._resume_only_model:
-            # Control the behavior of "resume_from_checkpoint" by swift.
-            self._resume_from_checkpoint = resume_from_checkpoint
-            resume_from_checkpoint = None
-        if self._resume_from_checkpoint is not None and not is_sagemaker_mp_enabled() and not self.is_fsdp_enabled:
-            self._load_from_checkpoint(self._resume_from_checkpoint)
-
         self._save_initial_model(self.args.output_dir)
-        res = super().train(resume_from_checkpoint, *args, **kwargs)
-        self._resume_from_checkpoint = None
-        return res
+        return super().train(resume_from_checkpoint, *args, **kwargs)
 
     def _load_best_model(self):
         # Compatible with transformers>=4.35 (deepspeed)
@@ -500,8 +440,7 @@ class SwiftMixin:
             self.optimizer = optimizer
             self.lr_scheduler = lr_scheduler
         else:
-            self.create_optimizer()
-            self.create_scheduler(num_training_steps=num_training_steps, optimizer=self.optimizer)
+            super().create_optimizer_and_scheduler(num_training_steps=num_training_steps)
 
     def create_optimizer(self):
         opt_model = self.model
@@ -541,63 +480,11 @@ class SwiftMixin:
         return self.optimizer
 
     def get_train_dataloader(self):
-        if self.sequence_parallel_size > 1:
+        if self.args.sequence_parallel_size > 1:
             from swift.trainers.xtuner import get_xtuner_train_dataloader
             return get_xtuner_train_dataloader(self)
-        elif use_torchacc():
-            if trainer.is_datasets_available():
-                import datasets
-
-            if self.train_dataset is None:
-                raise ValueError('Trainer: training requires a train_dataset.')
-
-            train_dataset = self.train_dataset
-            data_collator = self.data_collator
-
-            if trainer.is_datasets_available() and isinstance(train_dataset, datasets.Dataset):
-                train_dataset = self._remove_unused_columns(train_dataset, description='training')
-            else:
-                data_collator = self._get_collator_with_removed_columns(data_collator, description='training')
-
-            return ta_train_dataloader(train_dataset, data_collator, self._get_train_sampler(), self.args,
-                                       self._train_batch_size)
         else:
             return super().get_train_dataloader()
-
-    def get_eval_dataloader(self, eval_dataset=None):
-        if not use_torchacc():
-            return super().get_eval_dataloader(eval_dataset)
-        else:
-            if trainer.is_datasets_available():
-                import datasets
-
-            if eval_dataset is None and self.eval_dataset is None:
-                raise ValueError('Trainer: evaluation requires an eval_dataset.')
-            eval_dataset = eval_dataset if eval_dataset is not None else self.eval_dataset
-            data_collator = self.data_collator
-
-            if trainer.is_datasets_available() and isinstance(eval_dataset, datasets.Dataset):
-                eval_dataset = self._remove_unused_columns(eval_dataset, description='evaluation')
-            else:
-                data_collator = self._get_collator_with_removed_columns(data_collator, description='evaluation')
-
-            return ta_eval_dataloader(eval_dataset, data_collator, self._get_eval_sampler(eval_dataset), self.args)
-
-    def get_test_dataloader(self, test_dataset):
-        if not use_torchacc():
-            return super().get_test_dataloader(test_dataset)
-        else:
-            if trainer.is_datasets_available():
-                import datasets
-
-            data_collator = self.data_collator
-
-            if trainer.is_datasets_available() and isinstance(test_dataset, datasets.Dataset):
-                test_dataset = self._remove_unused_columns(test_dataset, description='test')
-            else:
-                data_collator = self._get_collator_with_removed_columns(data_collator, description='test')
-
-            return ta_test_dataloader(test_dataset, data_collator, self._get_eval_sampler(test_dataset), self.args)
 
 
 class ModelWrapper(nn.Module):
