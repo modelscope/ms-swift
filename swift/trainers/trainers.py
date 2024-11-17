@@ -8,11 +8,10 @@ from torch import nn
 from transformers import Seq2SeqTrainer as HfSeq2SeqTrainer
 from transformers import Trainer as HfTrainer
 from transformers.integrations import is_deepspeed_zero3_enabled
-from transformers.modeling_utils import unwrap_model
 from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
 from transformers.utils import is_peft_available
 
-from swift.plugin import get_loss_func
+from swift.plugin import MeanMetric, get_loss_func
 from swift.utils import use_torchacc
 from swift.utils.torchacc_utils import ta_trim_graph
 from .mixin import SwiftMixin
@@ -26,7 +25,7 @@ class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._acc = torch.tensor(0.).to(self.args.device)
+        self._custom_metrics = {'acc': MeanMetric()}
 
     def prediction_step(
         self,
@@ -129,84 +128,82 @@ class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
         return loss, generated_tokens, labels
 
     def compute_loss(self, model, inputs, return_outputs=None, num_items_in_batch=None):
-        if not hasattr(self, '_custom_metrics'):
-            self._custom_metrics = {}
+        loss_kwargs = {}
+        labels = inputs.get('labels')
+        if self.compute_loss_func is None:
+            if num_items_in_batch is not None:
+                if isinstance(num_items_in_batch, torch.Tensor):
+                    num_items_in_batch = num_items_in_batch.item()
+                loss_kwargs = {'num_items_in_batch': num_items_in_batch}
+            loss = super().compute_loss(model, inputs, return_outputs, **loss_kwargs)
+            outputs = None
+            if return_outputs:
+                loss, outputs = loss
 
-        labels = None
-        loss_name = self.args.loss_name
-        if loss_name is None and 'loss_scale' in inputs:
-            loss_name = 'loss-scale'
-
-        loss_kwargs = {'num_items_in_batch': num_items_in_batch}
-        if loss_name == 'loss-scale':
-            loss_kwargs['loss_scale'] = inputs.pop('loss_scale', None)
-
-        if loss_name is not None or self.label_smoother is not None and 'labels' in inputs:
-            labels = inputs.pop('labels')
-
-        loss_kwargs['labels'] = labels
-        outputs = model(**inputs)
-        # fix https://github.com/huggingface/transformers/issues/34263
-        if 'labels' in inputs and num_items_in_batch is not None:
-            outputs.loss = outputs.loss * (inputs['labels'][:, 1:] != -100).sum() / num_items_in_batch
-        if loss_name is not None:
-            loss_func = get_loss_func(loss_name)
-            outputs['loss'] = loss_func(outputs, **loss_kwargs)
-
-        # Save past state if it exists
-        # TODO: this needs to be fixed and made cleaner later.
-        if self.args.past_index >= 0:
-            self._past = outputs[self.args.past_index]
-
-        if labels is not None and loss_name is None:
-            unwrapped_model = unwrap_model(model)
-            if is_peft_available() and isinstance(unwrapped_model, PeftModel):
-                model_name = unwrapped_model.base_model.model._get_name()
-            else:
-                model_name = unwrapped_model._get_name()
-            if model_name in MODEL_FOR_CAUSAL_LM_MAPPING_NAMES.values():
-                loss = self.label_smoother(outputs, labels, shift_labels=True)
-            else:
-                loss = self.label_smoother(outputs, labels)
         else:
-            loss = outputs['loss'] if isinstance(outputs, dict) else outputs[0]
+            loss_scale = inputs.pop('loss_scale', None)
+            if loss_scale is not None:
+                loss_kwargs['loss_scale'] = loss_scale
 
-        if labels is None:
-            labels = inputs['labels']
+            inputs.pop('labels', None)
+            outputs = model(**inputs)
+            # Save past state if it exists
+            # TODO: this needs to be fixed and made cleaner later.
+            if self.args.past_index >= 0:
+                self._past = outputs[self.args.past_index]
+
+            if labels is not None:
+                unwrapped_model = self.accelerator.unwrap_model(model)
+                if is_peft_available() and isinstance(unwrapped_model, PeftModel):
+                    model_name = unwrapped_model.base_model.model._get_name()
+                else:
+                    model_name = unwrapped_model._get_name()
+                # User-defined compute_loss function
+                if self.compute_loss_func is not None:
+                    loss = self.compute_loss_func(outputs, labels, num_items_in_batch=num_items_in_batch, **loss_kwargs)
+                elif model_name in MODEL_FOR_CAUSAL_LM_MAPPING_NAMES.values():
+                    loss = self.label_smoother(outputs, labels, shift_labels=True)
+                else:
+                    loss = self.label_smoother(outputs, labels)
+            else:
+                if isinstance(outputs, dict) and 'loss' not in outputs:
+                    raise ValueError(
+                        'The model did not return a loss from the inputs, only the following keys: '
+                        f"{','.join(outputs.keys())}. For reference, the inputs it received are {','.join(inputs.keys())}."
+                    )
+                # We don't use .loss here since the model may return tuples instead of ModelOutput.
+                loss = outputs['loss'] if isinstance(outputs, dict) else outputs[0]
 
         if self.args.sequence_parallel_size > 1:
             from swift.trainers.xtuner import reduce_xtuner_sequence_parallel_loss
             loss = reduce_xtuner_sequence_parallel_loss(loss, labels)
 
-        if self.is_encoder_decoder:
-            preds = outputs.logits.argmax(dim=2)[..., :] if outputs.logits is not None else None
+        self._compute_token_acc(outputs, labels)
+        return (loss, outputs) if return_outputs else loss
+
+    def _compute_token_acc(self, outputs, labels) -> None:
+        if self.args.is_encoder_decoder:
+            preds = outputs.logits.argmax(dim=2)[..., :]
             labels = labels[..., :]
         else:
-            preds = outputs.logits.argmax(dim=2)[..., :-1] if outputs.logits is not None else None
+            preds = outputs.logits.argmax(dim=2)[..., :-1]
             labels = labels[..., 1:]
 
         masks = labels != -100
-        acc_strategy = getattr(self.args, 'acc_strategy', 'token')
-        acc: Optional[torch.Tensor] = None
-        sft_args = getattr(self, 'sft_args', None)
-        acc_steps = 1 if sft_args is None else sft_args.acc_steps
-        if self.state.global_step % acc_steps == 0 and preds is not None:
+        acc_strategy = self.args.acc_strategy
+        acc_steps = self.args.acc_steps
+        if self.state.global_step % acc_steps == 0:
             if preds.shape != labels.shape:
                 pass
             elif acc_strategy == 'sentence':
                 acc_list = []
                 for i, m in enumerate(masks):
                     acc_list.append(torch.all(preds[i, m] == labels[i, m]).to(torch.int64).item())
-                acc = torch.tensor(acc_list, device=preds.device).float().mean()
             else:
                 if use_torchacc():
                     ta_trim_graph()
                     preds = preds.to('cpu')
                     masks = masks.to('cpu')
                     labels = labels.to('cpu')
-                acc = (torch.masked_select(preds, masks) == torch.masked_select(labels, masks)).float().mean()
-            if model.training and acc is not None:
-                if 'acc' not in self._custom_metrics:
-                    self._custom_metrics['acc'] = self._acc
-                self._custom_metrics['acc'] = self._custom_metrics['acc'] + acc / self.args.gradient_accumulation_steps
-        return (loss, outputs) if return_outputs else loss
+                acc_list = (preds[masks] == labels[masks]).float()
+            self._custom_metrics['acc'].update(acc_list)

@@ -11,9 +11,9 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from swift.llm import TEMPLATE_MAPPING, DeployArguments, Template, merge_lora
+from swift.plugin import InferStats
 from swift.utils import get_logger
 from .infer import SwiftInfer
-from .infer_engine import InferStats
 from .protocol import ChatCompletionRequest, CompletionRequest, Model, ModelList
 
 logger = get_logger()
