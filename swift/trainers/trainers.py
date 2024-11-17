@@ -25,7 +25,7 @@ class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._custom_metrics = {'acc': MeanMetric()}
+        self._custom_metrics['acc'] = MeanMetric()
 
     def prediction_step(
         self,
@@ -135,11 +135,7 @@ class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
                 if isinstance(num_items_in_batch, torch.Tensor):
                     num_items_in_batch = num_items_in_batch.item()
                 loss_kwargs = {'num_items_in_batch': num_items_in_batch}
-            loss = super().compute_loss(model, inputs, return_outputs, **loss_kwargs)
-            outputs = None
-            if return_outputs:
-                loss, outputs = loss
-
+            loss, outputs = super().compute_loss(model, inputs, True, **loss_kwargs)
         else:
             loss_scale = inputs.pop('loss_scale', None)
             if loss_scale is not None:

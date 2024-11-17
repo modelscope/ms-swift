@@ -30,6 +30,7 @@ from transformers.utils import is_sagemaker_mp_enabled, is_torch_npu_available
 from swift.tuners import SwiftModel
 from swift.utils import check_json_format, get_logger, is_ddp_plus_mp
 from .optimizers.galore import create_optimizer_and_scheduler
+from .torchacc_mixin import TorchAccMixin
 from .utils import can_return_loss, find_labels, get_function, is_instance_of_ms_model
 
 try:
@@ -40,7 +41,7 @@ except (ImportError, RuntimeError):
 logger = get_logger()
 
 
-class SwiftMixin:
+class SwiftMixin(TorchAccMixin):
 
     def __init__(
             self,
@@ -64,6 +65,7 @@ class SwiftMixin:
         #             Invoke.KEY: Invoke.LOCAL_TRAINER,
         #             Invoke.THIRD_PARTY: kwargs.pop(Invoke.THIRD_PARTY, Invoke.SWIFT),
         #         })
+        self._custom_metrics = {}
         self.compute_loss_func = compute_loss_func
         if args.sequence_parallel_size > 1:
             from swift.trainers.xtuner import init_sequence_parallel_xtuner
@@ -88,20 +90,22 @@ class SwiftMixin:
         self.start_time = time.time()
 
     def _save_initial_model(self, output_dir):
+        # pissa/olora
         model = unwrap_model(self.model)
         if isinstance(model, PeftModel):
-            config = model.peft_config.get('default', {})
-            init_lora_weights = getattr(config, 'init_lora_weights', '')
+            config = model.peft_config.get('default')
+            init_lora_weights = getattr(config, 'init_lora_weights', None)
             if isinstance(init_lora_weights, str) and ('pissa' in init_lora_weights or 'olora' in init_lora_weights):
                 config.init_lora_weights = True
                 model.save_pretrained(os.path.join(output_dir, 'initial_model'))
                 config.init_lora_weights = init_lora_weights
 
     def _save_converted_model(self, output_dir):
+        # pissa/olora
         model = unwrap_model(self.model)
         if isinstance(model, PeftModel):
-            config = model.peft_config.get('default', {})
-            init_lora_weights = getattr(config, 'init_lora_weights', '')
+            config = model.peft_config.get('default')
+            init_lora_weights = getattr(config, 'init_lora_weights', None)
             if isinstance(init_lora_weights, str) and ('pissa' in init_lora_weights or 'olora' in init_lora_weights):
                 config = copy(config)
                 os.makedirs(os.path.join(output_dir, 'converted'), exist_ok=True)
@@ -343,37 +347,37 @@ class SwiftMixin:
         return mem
 
     def _maybe_log_save_evaluate(self, tr_loss, *args, **kwargs):
-        if self.control.should_log:
+        if self.control.should_log and self.state.global_step > self._globalstep_last_logged:
             self.control.should_log = False
-            logs: Dict[str, float] = {}
-            metrics_log = {'loss': tr_loss}  # loss first
-            if hasattr(self, '_custom_metrics'):
-                metrics_log.update(self._custom_metrics)
-                self._custom_metrics = {}
-            for k, v in metrics_log.items():
-                # all_gather + mean() to get average loss over all processes
-                v_scalar = self._nested_gather(v).mean().item()
-                if k == 'loss':
-                    self._total_loss_scalar += v_scalar
-                logs[k] = round(v_scalar / (self.state.global_step - self._globalstep_last_logged), 8)
-                if k == 'acc' and self._globalstep_last_logged > 0:
-                    sft_args = getattr(self, 'sft_args', None)
-                    acc_steps = 1 if sft_args is None else sft_args.acc_steps
-                    logs[k] *= acc_steps
+
+            # all_gather + mean() to get average loss over all processes
+            tr_loss_scalar = self._nested_gather(tr_loss).mean().item()
+            loss = tr_loss_scalar / (self.state.global_step - self._globalstep_last_logged)
+            logs: Dict[str, float] = {'loss': loss}  # loss first
+
+            for k, metric in self._custom_metrics.items():
+                value = metric.compute()
+                if len(value) == 1:
+                    val = list(value.values())[0]
+                    logs[k] = val
+                else:
+                    for k_suffix, val in value.items():
+                        new_k = f'{k}_{k_suffix}'
+                        logs[new_k] = val
+                metric.reset()
+
             if version.parse(transformers.__version__) >= version.parse('4.38'):
                 grad_norm = args[0]
-                if isinstance(grad_norm, torch.Tensor):
-                    grad_norm = grad_norm.item()
                 if grad_norm is not None:
-                    logs['grad_norm'] = grad_norm
+                    logs['grad_norm'] = grad_norm.item() if isinstance(grad_norm, torch.Tensor) else grad_norm
             logs['learning_rate'] = self._get_learning_rate()
             if not is_torch_npu_available():
                 logs['memory(GiB)'] = round(self.get_max_cuda_memory(), 2)
-            import time
-            time_now = time.time()
-            elapse_time = time_now - self.start_time
+
+            elapse_time = time.time() - self.start_time
             logs['train_speed(iter/s)'] = round(self.state.global_step / elapse_time, 6)
             tr_loss -= tr_loss
+            self._total_loss_scalar += tr_loss_scalar
             self._globalstep_last_logged = self.state.global_step
             self.store_flos()
             self.log(logs)

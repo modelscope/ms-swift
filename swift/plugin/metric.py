@@ -86,5 +86,5 @@ class MeanMetric(Metric):
 
     def compute(self):
         return {
-            'value': self.state / self.count,
+            'value': self.state / self.count if self.count > 0 else 0,
         }

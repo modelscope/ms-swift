@@ -1,9 +1,10 @@
+import os
 from functools import partial
 from typing import Any, Dict, List, Union
 
 from transformers import IntervalStrategy
 
-from swift.plugin import extra_callbacks, optimizers_map
+from swift.plugin import extra_callbacks, get_loss_func, optimizers_map
 from swift.trainers import TrainerFactory
 from swift.utils import (append_to_jsonl, check_json_format, compute_acc_metrics, compute_nlg_metrics, get_dist_setting,
                          get_logger, get_model_parameter_info, is_ddp_plus_mp, is_dist, is_master, plot_images,
@@ -104,7 +105,7 @@ class SwiftSft(SwiftPipeline[SftArguments]):
         logger.info(f'default_system: {template.default_system}')
         self.template = template
 
-    def _prepare_dataset(self):
+    def _get_dataset(self):
         args = self.args
         dataset_kwargs = {
             'dataset_seed': args.dataset_seed,
@@ -129,19 +130,15 @@ class SwiftSft(SwiftPipeline[SftArguments]):
 
         return train_dataset, val_dataset
 
-    def get_compute_loss(self):
+    def _get_compute_loss(self):
         args = self.args
         loss_type = args.loss_type
         if loss_type is None and args.loss_scale != 'default':
             loss_type = 'loss-scale'
+        return get_loss_func(loss_type)
 
-    def run(self):
+    def _get_data_collator(self, template: Template):
         args = self.args
-        template = self.template
-
-        train_dataset, val_dataset = self._prepare_dataset()
-        train_dataset, val_dataset = self._encode_dataset(train_dataset, val_dataset)
-
         padding_to = args.max_length if args.train_type == 'longlora' else None
         is_multimodal = self.model.model_meta.is_multimodal
         if is_multimodal:
@@ -149,8 +146,18 @@ class SwiftSft(SwiftPipeline[SftArguments]):
             template.register_post_encode_hook([self.model])
         else:
             data_collator = template.data_collator
-        data_collator = partial(data_collator, padding_to=padding_to, model=self.model)
-        optimizers = self._prepare_optimizers(train_dataset)
+        return partial(data_collator, padding_to=padding_to, model=self.model)
+
+    def run(self):
+        args = self.args
+        template = self.template
+
+        train_dataset, val_dataset = self._get_dataset()
+        train_dataset, val_dataset = self._encode_dataset(train_dataset, val_dataset)
+
+        data_collator = self._get_data_collator(template)
+
+        optimizers = self._get_optimizers(train_dataset)
 
         if args.predict_with_generate:
             compute_metrics = partial(compute_nlg_metrics, tokenizer=tokenizer)
@@ -163,7 +170,7 @@ class SwiftSft(SwiftPipeline[SftArguments]):
             compute_metrics = compute_metrics
             preprocess_logits_for_metrics = preprocess_logits_for_acc
 
-        compute_loss_func = self.get_compute_loss()
+        compute_loss_func = self._get_compute_loss()
 
         trainer_cls = TrainerFactory.get_trainer_cls(args)
         trainer = trainer_cls(
@@ -173,14 +180,22 @@ class SwiftSft(SwiftPipeline[SftArguments]):
             train_dataset=train_dataset,
             eval_dataset=val_dataset,
             compute_metrics=compute_metrics,
+            compute_loss_func=compute_loss_func,
             preprocess_logits_for_metrics=preprocess_logits_for_metrics,
             callbacks=self.callbacks,
             optimizers=optimizers,
             tokenizer=self.tokenizer,
         )
+        self.train(trainer)
+
+    def train(self, trainer):
+        args = self.args
+        logging_path = os.path.join(args.output_dir, 'logging.jsonl')
+        logger.info(f'The logging file will be saved in: {logging_path}')
+        trainer.model_accepts_loss_kwargs = True  # fix transformers>=4.46.2
         trainer.train(args.training_args.resume_from_checkpoint)
 
-    def _prepare_optimizers(self, train_dataset):
+    def _get_optimizers(self, train_dataset):
         args = self.args
         optimizer_callback = optimizers_map['default']
         if args.lorap_lr_ratio:

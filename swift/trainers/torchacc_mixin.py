@@ -14,10 +14,9 @@ from swift.utils.torchacc_utils import (patch_clip_grad_norm, save_ta_ddp_checkp
 class TorchAccMixin:
 
     def __init__(self, *args, **kwargs):
-        if not use_torchacc():
-            super().__init__(*args, **kwargs)
-
-        patch_clip_grad_norm(self.accelerator)
+        if use_torchacc():
+            patch_clip_grad_norm(self.accelerator)
+        super().__init__(*args, **kwargs)
 
     def get_train_dataloader(self):
         if not use_torchacc():
