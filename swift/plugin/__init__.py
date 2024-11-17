@@ -1,3 +1,3 @@
-from .loss import LOSS_MAPPING
-from .metric import Metric
+from .loss import get_loss_func
+from .metric import InferStats, MeanMetric, Metric
 from .tuner import extra_tuners

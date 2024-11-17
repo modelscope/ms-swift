@@ -75,33 +75,6 @@ class InferStreamer(InferTools):
         return self._get_response(response, is_finished)
 
 
-class InferStats(Metric):
-
-    def __init__(self):
-        super().__init__()
-        self.add_state('start_runtime', default_factory=lambda: time.perf_counter())
-        self.add_state('num_prompt_tokens', default_factory=dict)
-        self.add_state('num_generated_tokens', default_factory=dict)
-
-    def update(self, output):
-        id_ = output.id
-        self.num_prompt_tokens[id_] = output.usage.prompt_tokens
-        self.num_generated_tokens[id_] = output.usage.completion_tokens
-
-    def compute(self):
-        runtime = time.perf_counter() - self.start_runtime
-        num_samples = len(self.num_generated_tokens)
-        num_generated_tokens = sum(self.num_generated_tokens.values())
-        return {
-            'num_prompt_tokens': sum(self.num_prompt_tokens.values()),
-            'num_generated_tokens': num_generated_tokens,
-            'num_samples': num_samples,
-            'runtime': runtime,
-            'samples/s': num_samples / runtime,
-            'tokens/s': num_generated_tokens / runtime,
-        }
-
-
 class StreamerMixin:
 
     def __init__(self):

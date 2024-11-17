@@ -27,6 +27,7 @@ class SwiftArgumentsMixin:
     # torchacc
     metric_warmup_step: Optional[float] = 0
     train_dataset_sample: Optional[int] = -1
+    acc_steps: int = 1
 
     def __post_init__(self):
         if is_dist() and self.ddp_backend == 'nccl' and torch.cuda.is_available() and is_accelerate_available():
@@ -41,6 +42,10 @@ class SwiftArgumentsMixin:
             self.additional_saved_files = []
         super().__post_init__()
 
+    @property
+    def place_model_on_device(self):
+        return False if use_torchacc() else super().place_model_on_device
+
 
 @dataclass
 class TrainingArguments(SwiftArgumentsMixin, HfTrainingArguments):
@@ -49,10 +54,7 @@ class TrainingArguments(SwiftArgumentsMixin, HfTrainingArguments):
 
 @dataclass
 class Seq2SeqTrainingArguments(SwiftArgumentsMixin, HfSeq2SeqTrainingArguments):
-
-    @property
-    def place_model_on_device(self):
-        return False if use_torchacc() else super().place_model_on_device
+    pass
 
 
 try:
