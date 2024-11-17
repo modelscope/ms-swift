@@ -1,3 +1,5 @@
-from .loss import LOSS_MAPPING
+from .callback import extra_callbacks
+from .loss import LOSS_MAPPING, get_loss_func
 from .metric import Metric
-from .tuner import extra_tuners
+from .optimizer import optimizers_map
+from .tuner import Tuner, extra_tuners

@@ -51,6 +51,7 @@ class SwiftMixin:
             eval_dataset: Optional[Union[HfDataset, Dict[str, HfDataset]]] = None,
             tokenizer: Optional[PreTrainedTokenizerBase] = None,
             model_init: Optional[Callable[[], PreTrainedModel]] = None,
+            compute_loss_func: Optional[Callable] = None,
             compute_metrics: Optional[Callable[[EvalPrediction], Dict]] = None,
             callbacks: Optional[List[TrainerCallback]] = None,
             optimizers: Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR] = (None, None),
@@ -63,7 +64,7 @@ class SwiftMixin:
         #             Invoke.KEY: Invoke.LOCAL_TRAINER,
         #             Invoke.THIRD_PARTY: kwargs.pop(Invoke.THIRD_PARTY, Invoke.SWIFT),
         #         })
-
+        self.compute_loss_func = compute_loss_func
         if args.sequence_parallel_size > 1:
             from swift.trainers.xtuner import init_sequence_parallel_xtuner
             init_sequence_parallel_xtuner(args.sequence_parallel_size)

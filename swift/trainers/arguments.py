@@ -9,7 +9,7 @@ from transformers.training_args import TrainingArguments as HfTrainingArguments
 from transformers.training_args_seq2seq import Seq2SeqTrainingArguments as HfSeq2SeqTrainingArguments
 from transformers.utils import is_accelerate_available
 
-from swift.plugin.loss import LOSS_MAPPING
+from swift.plugin import LOSS_MAPPING
 from swift.utils import is_dist, use_torchacc
 
 
@@ -18,11 +18,12 @@ class SwiftArgumentsMixin:
     # ckpt only save model
     save_only_model: bool = False
     acc_strategy: str = field(default='token', metadata={'choices': ['token', 'sentence']})
-    loss_name: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
+    loss_type: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
     additional_saved_files: Optional[List[str]] = None
     sequence_parallel_size: int = 1
     check_model: bool = True
     train_sampler_random: bool = True
+    is_encoder_decoder: bool = False
 
     # torchacc
     metric_warmup_step: Optional[float] = 0

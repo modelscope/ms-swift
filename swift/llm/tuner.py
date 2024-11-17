@@ -11,7 +11,7 @@ from packaging import version
 from transformers import TrainerCallback
 
 from swift.llm import SftArguments, get_model_arch
-from swift.plugin.tuner import Tuner, extra_tuners
+from swift.plugin import Tuner, extra_tuners
 from swift.tuners import (AdaLoraConfig, AdapterConfig, BOFTConfig, IA3Config, LLaMAProConfig, LongLoRAModelType,
                           LoraConfig, LoRAConfig, ReftConfig, Swift, VeraConfig)
 from swift.utils import activate_model_parameters, freeze_model_parameters, get_logger, use_torchacc
