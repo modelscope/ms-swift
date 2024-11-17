@@ -210,67 +210,31 @@ class SwiftMixin(TorchAccMixin):
                         shutil.copytree(src_path, dst_path)
         self._save_converted_model(output_dir)
 
-    def _save_checkpoint(self, model, trial, metrics=None):
-        self.state.last_model_checkpoint = os.path.join(self.args.output_dir, f'checkpoint-{self.state.global_step}')
+    def _fix_zero3_gather_all_parameters(self) -> None:
         if is_deepspeed_zero3_enabled() and not hasattr(self.deepspeed, '_zero3_consolidated_16bit_state_dict_origin'):
             parameters = inspect.signature(self.deepspeed._zero3_consolidated_16bit_state_dict).parameters
             if 'exclude_frozen_parameters' in parameters:
 
-                def _zero3_consolidated_16bit_state_dict(_model, exclude_frozen_parameters=False):
-                    unwrapped = unwrap_model(_model)
+                def _zero3_consolidated_16bit_state_dict(model, exclude_frozen_parameters=False):
+                    unwrapped = unwrap_model(model)
                     exclude_frozen_parameters = False
                     if isinstance(unwrapped, SwiftModel) and unwrapped.has_additional_modules:
                         exclude_frozen_parameters = True
                     if isinstance(unwrapped, PeftModel):
                         exclude_frozen_parameters = True
-                    return _model._zero3_consolidated_16bit_state_dict_origin(exclude_frozen_parameters)
+                    return model._zero3_consolidated_16bit_state_dict_origin(exclude_frozen_parameters)
 
                 self.deepspeed._zero3_consolidated_16bit_state_dict_origin = (
                     self.deepspeed._zero3_consolidated_16bit_state_dict)
                 self.deepspeed._zero3_consolidated_16bit_state_dict = MethodType(_zero3_consolidated_16bit_state_dict,
                                                                                  self.deepspeed)
-        if version.parse(transformers.__version__) >= version.parse('4.36') or not self.args.save_only_model:
-            result = super()._save_checkpoint(model, trial, metrics)
-        else:
-            result = self._save_only_model(model, trial, metrics)
+
+    def _save_checkpoint(self, model, trial, metrics=None):
+        self.state.last_model_checkpoint = os.path.join(self.args.output_dir, f'checkpoint-{self.state.global_step}')
+        self._fix_zero3_gather_all_parameters()
+        result = super()._save_checkpoint(model, trial, metrics)
         logger.info(f'Saving model checkpoint to {self.state.last_model_checkpoint}')
         return result
-
-    def _save_only_model(self, model, trial, metrics=None):
-        # Save model checkpoint
-        checkpoint_folder = f'{PREFIX_CHECKPOINT_DIR}-{self.state.global_step}'
-
-        if self.hp_search_backend is None and trial is None:
-            self.store_flos()
-
-        run_dir = self._get_output_dir(trial=trial)
-        output_dir = os.path.join(run_dir, checkpoint_folder)
-        self.save_model(output_dir, _internal_call=True)
-
-        # Determine the new best metric / best model checkpoint
-        if metrics is not None and self.args.metric_for_best_model is not None:
-            metric_to_check = self.args.metric_for_best_model
-            if not metric_to_check.startswith('eval_'):
-                metric_to_check = f'eval_{metric_to_check}'
-            metric_value = metrics[metric_to_check]
-
-            operator = np.greater if self.args.greater_is_better else np.less
-            if (self.state.best_metric is None or self.state.best_model_checkpoint is None
-                    or operator(metric_value, self.state.best_metric)):
-                self.state.best_metric = metric_value
-                self.state.best_model_checkpoint = output_dir
-
-        # Save the Trainer state
-        if self.args.should_save:
-            self.state.save_to_json(os.path.join(output_dir, TRAINER_STATE_NAME))
-
-        # push to hub
-        if self.args.push_to_hub:
-            self._push_from_checkpoint(output_dir)
-
-        # Maybe delete some older checkpoints.
-        if self.args.should_save:
-            self._rotate_checkpoints(use_mtime=True, output_dir=run_dir)
 
     def _get_train_sampler(self) -> Optional[torch.utils.data.Sampler]:
         if self.args.train_sampler_random:

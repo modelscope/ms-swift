@@ -258,7 +258,9 @@ class Qwen2VLTemplate(Template):
         return inputs
 
     def post_encode(self, model, data: Any) -> Dict[str, Any]:
-        input_ids = data['input_ids']
+        if not model.training:
+            return data
+        input_ids = data['input_ids'][None]
         _model = model.model
         if not hasattr(_model, 'embed_tokens'):
             _model = _model.model  # LoRA
@@ -293,7 +295,12 @@ class Qwen2VLTemplate(Template):
                 video_mask = (input_ids == model.config.video_token_id).unsqueeze(-1).expand_as(inputs_embeds)
                 video_embeds = video_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
                 inputs_embeds = inputs_embeds.masked_scatter(video_mask, video_embeds)
-        return {'inputs_embeds': inputs_embeds[0]}
+        res = {'inputs_embeds': inputs_embeds[0]}
+        for key in ['input_ids', 'image_grid_thw', 'video_grid_thw']:
+            value = data.get(key, None)
+            if value is not None:
+                res[key] = value
+        return res
 
     def data_collator(self,
                       batch: List[Dict[str, Any]],
@@ -302,14 +309,14 @@ class Qwen2VLTemplate(Template):
                       padding_to: Optional[int] = None,
                       model: Optional[nn.Module] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_side=padding_side, padding_to=padding_to, model=model)
-        for media_type in ['image', 'video']:
-            grid_thw = [b[f'{media_type}_grid_thw'] for b in batch if b.get(f'{media_type}_grid_thw') is not None]
-            if grid_thw:
-                res[f'{media_type}_grid_thw'] = torch.concat(grid_thw)
         if 'input_ids' in res:
+            args = [res['input_ids']]
+            for media_type in ['image', 'video']:
+                grid_thw = [b[f'{media_type}_grid_thw'] for b in batch if b.get(f'{media_type}_grid_thw') is not None]
+                grid_thw = torch.concat(grid_thw) if grid_thw else None
+                args.append(grid_thw)
             # fix https://github.com/huggingface/transformers/pull/33487
-            position_ids, _ = model.get_rope_index(res['input_ids'], res.get('image_grid_thw'),
-                                                   res.get('video_grid_thw'), res['attention_mask'])
+            position_ids, _ = model.get_rope_index(*args, res['attention_mask'])
             res['position_ids'] = position_ids.contiguous()
         return res
 

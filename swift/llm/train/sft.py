@@ -11,7 +11,7 @@ from swift.utils import (append_to_jsonl, check_json_format, compute_acc_metrics
                          preprocess_logits_for_acc, seed_everything, show_layers, use_torchacc)
 from ..argument import SftArguments
 from ..base import SwiftPipeline
-from ..dataset import EncodePreprocessor, load_dataset, stat_dataset
+from ..dataset import EncodePreprocessor, LazyLLMDataset, load_dataset, stat_dataset
 from ..infer import RequestConfig, prepare_generation_config
 from ..model import ModelInfo, ModelMeta, get_model_arch, get_model_tokenizer
 from ..template import Template, get_template

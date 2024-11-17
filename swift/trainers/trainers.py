@@ -129,50 +129,55 @@ class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
 
     def compute_loss(self, model, inputs, return_outputs=None, num_items_in_batch=None):
         loss_kwargs = {}
-        labels = inputs.get('labels')
-        if self.compute_loss_func is None:
-            if num_items_in_batch is not None:
-                if isinstance(num_items_in_batch, torch.Tensor):
-                    num_items_in_batch = num_items_in_batch.item()
-                loss_kwargs = {'num_items_in_batch': num_items_in_batch}
-            loss, outputs = super().compute_loss(model, inputs, True, **loss_kwargs)
+        if (self.label_smoother is not None or self.compute_loss_func is not None) and 'labels' in inputs:
+            labels = inputs.pop('labels')
         else:
-            loss_scale = inputs.pop('loss_scale', None)
-            if loss_scale is not None:
-                loss_kwargs['loss_scale'] = loss_scale
+            labels = None
 
-            inputs.pop('labels', None)
-            outputs = model(**inputs)
-            # Save past state if it exists
-            # TODO: this needs to be fixed and made cleaner later.
-            if self.args.past_index >= 0:
-                self._past = outputs[self.args.past_index]
+        loss_scale = inputs.pop('loss_scale', None)
+        if loss_scale is not None:
+            loss_kwargs['loss_scale'] = loss_scale
 
-            if labels is not None:
-                unwrapped_model = self.accelerator.unwrap_model(model)
-                if is_peft_available() and isinstance(unwrapped_model, PeftModel):
-                    model_name = unwrapped_model.base_model.model._get_name()
-                else:
-                    model_name = unwrapped_model._get_name()
-                # User-defined compute_loss function
-                if self.compute_loss_func is not None:
-                    loss = self.compute_loss_func(outputs, labels, num_items_in_batch=num_items_in_batch, **loss_kwargs)
-                elif model_name in MODEL_FOR_CAUSAL_LM_MAPPING_NAMES.values():
-                    loss = self.label_smoother(outputs, labels, shift_labels=True)
-                else:
-                    loss = self.label_smoother(outputs, labels)
+        outputs = model(**inputs)
+        # Save past state if it exists
+        # TODO: this needs to be fixed and made cleaner later.
+        if self.args.past_index >= 0:
+            self._past = outputs[self.args.past_index]
+
+        if labels is not None:
+            unwrapped_model = self.accelerator.unwrap_model(model)
+            if is_peft_available() and isinstance(unwrapped_model, PeftModel):
+                model_name = unwrapped_model.base_model.model._get_name()
             else:
-                if isinstance(outputs, dict) and 'loss' not in outputs:
-                    raise ValueError(
-                        'The model did not return a loss from the inputs, only the following keys: '
-                        f"{','.join(outputs.keys())}. For reference, the inputs it received are {','.join(inputs.keys())}."
-                    )
-                # We don't use .loss here since the model may return tuples instead of ModelOutput.
-                loss = outputs['loss'] if isinstance(outputs, dict) else outputs[0]
+                model_name = unwrapped_model._get_name()
+            # User-defined compute_loss function
+            if self.compute_loss_func is not None:
+                loss = self.compute_loss_func(outputs, labels, num_items_in_batch=num_items_in_batch, **loss_kwargs)
+            elif model_name in MODEL_FOR_CAUSAL_LM_MAPPING_NAMES.values():
+                loss = self.label_smoother(outputs, labels, shift_labels=True)
+            else:
+                loss = self.label_smoother(outputs, labels)
+        else:
+            labels = inputs['labels']
+            # fix https://github.com/huggingface/transformers/issues/34263
+            if num_items_in_batch is not None:
+                if getattr(self.args, 'average_tokens_across_devices', False):
+                    outputs.loss *= self.accelerator.num_processes
+                outputs.loss = outputs.loss * (labels[:, 1:] != -100).sum() / num_items_in_batch
+
+            if isinstance(outputs, dict) and 'loss' not in outputs:
+                raise ValueError(
+                    'The model did not return a loss from the inputs, only the following keys: '
+                    f"{','.join(outputs.keys())}. For reference, the inputs it received are {','.join(inputs.keys())}.")
+            # We don't use .loss here since the model may return tuples instead of ModelOutput.
+            loss = outputs['loss'] if isinstance(outputs, dict) else outputs[0]
 
         if self.args.sequence_parallel_size > 1:
             from swift.trainers.xtuner import reduce_xtuner_sequence_parallel_loss
             loss = reduce_xtuner_sequence_parallel_loss(loss, labels)
+
+        if getattr(self.args, 'average_tokens_across_devices', False):
+            loss *= self.accelerator.num_processes
 
         self._compute_token_acc(outputs, labels)
         return (loss, outputs) if return_outputs else loss

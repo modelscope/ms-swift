@@ -16,10 +16,7 @@ from swift.utils import is_dist, use_torchacc
 @dataclass
 class SwiftArgumentsMixin:
     # ckpt only save model
-    save_only_model: bool = False
     acc_strategy: str = field(default='token', metadata={'choices': ['token', 'sentence']})
-    loss_type: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
-    additional_saved_files: Optional[List[str]] = None
     sequence_parallel_size: int = 1
     check_model: bool = True
     train_sampler_random: bool = True
@@ -39,8 +36,6 @@ class SwiftArgumentsMixin:
                     os.environ['NCCL_IB_DISABLE'] = '1'
             except ImportError:
                 pass
-        if self.additional_saved_files is None:
-            self.additional_saved_files = []
         super().__post_init__()
 
     @property

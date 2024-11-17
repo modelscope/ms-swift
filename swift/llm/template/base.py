@@ -174,6 +174,9 @@ class Template:
         for key in ['labels', 'loss_scale']:
             if res.get(key) is None:
                 res.pop(key, None)
+        for k, v in res.items():
+            if isinstance(v, (list, tuple)):
+                res[k] = torch.tensor(v)
         return res
 
     def post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
@@ -621,16 +624,12 @@ class Template:
         extra_inputs = []
         batched_data = kwargs.pop('_data')
         for data in batched_data:
-            for key in ['input_ids', 'labels']:
-                if key in data:
-                    data[key] = torch.tensor(data[key])[None]
             extra_inputs.append(self.post_encode(model, to_device(data, model.device)))
-        kwargs.update(
-            to_device(
-                self.data_collator(extra_inputs, padding_side=padding_side, padding_to=padding_to, model=model),
-                model.device))
-        if 'inputs_embeds' in kwargs:
-            kwargs.pop('input_ids', None)
+        new_kwargs = self.data_collator(extra_inputs, padding_side=padding_side, padding_to=padding_to, model=model)
+        new_kwargs.pop('labels', None)
+        if 'inputs_embeds' in new_kwargs:
+            new_kwargs.pop('input_ids', None)
+        kwargs.update(to_device(new_kwargs, model.device))
 
         if isinstance(model, PeftModel):
             parameters = inspect.signature(model.base_model.model.forward).parameters
@@ -686,7 +685,7 @@ class Template:
                           padding_to: Optional[int] = None,
                           model: Optional[nn.Module] = None) -> Dict[str, Any]:
         """for multimodal LLM"""
-        new_batch = [{'labels': b['batch'] for b in batch if b.get('labels') is not None}]
+        new_batch = [{'labels': b['labels']} for b in batch if b.get('labels') is not None]
         res = self.data_collator(
             new_batch, padding_side=padding_side, padding_to=padding_to, model=model)  # only labels
         res['_data'] = batch
@@ -718,14 +717,17 @@ class Template:
             res['attention_mask'] = [
                 torch.ones((inputs_embeds[i].shape[0]), dtype=torch.int64) for i in range(len(inputs_embeds))
             ]
-        elif 'input_ids' in batch[0]:
-            input_ids = [torch.tensor(b['input_ids']) for b in batch]
+        if 'input_ids' in batch[0]:
+            input_ids = [b['input_ids'] for b in batch]
             res['input_ids'] = input_ids
-            res['attention_mask'] = [torch.ones(len(input_ids[i]), dtype=torch.int64) for i in range(len(input_ids))]
+            if 'attention_mask' not in res:
+                res['attention_mask'] = [
+                    torch.ones(len(input_ids[i]), dtype=torch.int64) for i in range(len(input_ids))
+                ]
 
         for key in ['labels', 'loss_scale', 'position_ids']:
             if key in batch[0]:
-                res[key] = [torch.tensor(b[key]) for b in batch]
+                res[key] = [b[key] for b in batch]
 
         if padding_to is not None:
             assert 'input_ids' in res
@@ -800,7 +802,7 @@ class Template:
                 val = inputs.get(f'{key}_ids')
             if val is not None:
                 key_upper = key.upper()
-                logger.info(f'[{key_upper}_IDS] {val}')
+                logger.info(f'[{key_upper}_IDS] {val.tolist()}')
                 val_str = self.safe_decode(val, **tokenizer_kwargs)
                 logger.info(f'[{key_upper}] {val_str}')
 
