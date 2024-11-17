@@ -56,12 +56,13 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
                 self.learning_rate = 1e-4
         self.lr_scheduler_kwargs = self.parse_to_dict(self.lr_scheduler_kwargs)
 
-        if len(self.val_dataset) == 0 and self.split_dataset_ratio:
+        if len(self.val_dataset) == 0 and self.split_dataset_ratio == 0:
             self.evaluation_strategy = IntervalStrategy.NO
             self.eval_strategy = IntervalStrategy.NO
-            self.do_eval = False
             self.eval_steps = None
         elif self.eval_steps is None:
+            self.evaluation_strategy = self.save_strategy
+            self.eval_strategy = self.save_strategy
             self.eval_steps = self.save_steps
 
     def _init_gradient_checkpointing(self):

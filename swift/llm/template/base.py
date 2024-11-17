@@ -106,7 +106,7 @@ class Template:
         self.max_pixels = max_pixels
         self.sequence_parallel_size = sequence_parallel_size
         self.tools_prompt = tools_prompt or template_meta.default_tools_prompt
-        self.infer_backend: Literal['pt', 'vllm', 'lmdeploy'] = 'pt'
+        self.mode: Literal['pt', 'vllm', 'lmdeploy', 'train'] = 'pt'
         self._handles = []
         self._deepspeed_initialize = None
 
@@ -123,7 +123,7 @@ class Template:
         inputs.system = template_meta.check_system(system)
 
         images = inputs.images
-        load_medias = True if self.infer_backend in {'vllm', 'lmdeploy'} else self.load_medias
+        load_medias = True if self.mode in {'vllm', 'lmdeploy'} else self.load_medias
         if images and load_medias:
             images = load_batch(images, load_image)
             if max_pixels is not None:
@@ -164,7 +164,7 @@ class Template:
 
         assert isinstance(inputs, StdTemplateInputs)
         self._preprocess_inputs(inputs)
-        if self.infer_backend in {'vllm', 'lmdeploy'}:
+        if self.mode in {'vllm', 'lmdeploy'}:
             res = Template._encode(self, inputs, model=model)
             if inputs.images:
                 res['images'] = inputs.images
@@ -223,7 +223,7 @@ class Template:
         images = load_batch(images, load_image)  # base64/local_path -> PIL.Image
         # Normalize grounding bboxes
         normalize_bbox(objects, images, to_type=self.grounding_type)
-        load_medias = True if self.infer_backend in {'vllm', 'lmdeploy'} else self.load_medias
+        load_medias = True if self.mode in {'vllm', 'lmdeploy'} else self.load_medias
         if not load_medias:  # fix pt & qwen-vl
             for i, image in enumerate(images):
                 images[i] = self._save_pil_image(image)
@@ -345,7 +345,7 @@ class Template:
             The content or input_ids after replacement.
         """
         if media_type == 'image':
-            if self.infer_backend == 'lmdeploy':
+            if self.mode == 'lmdeploy':
                 return [[-100]]
             return self.image_placeholder
         elif media_type == 'video':
@@ -640,14 +640,14 @@ class Template:
             kwargs.pop('position_ids', None)
         return args, kwargs
 
-    def set_infer_backend(self, infer_backend: Literal['vllm', 'lmdeploy', 'pt']) -> None:
-        self.infer_backend = infer_backend
+    def set_template_mode(self, mode: Literal['vllm', 'lmdeploy', 'pt', 'train']) -> None:
+        self.mode = mode
 
     def register_post_encode_hook(self, models: List[nn.Module]) -> None:
         """This function is important for multi-modal training, as it registers the post_encode method
             as a forward hook, converting input_ids into inputs_embeds.
         """
-        self.infer_backend = 'pt'
+        self.mode = 'train'
         if self._handles:
             return
         # TODO:torch>=2.0

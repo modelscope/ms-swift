@@ -352,7 +352,7 @@ class VllmEngine(InferEngine):
         if template is None:
             template = self.default_template
 
-        template.set_infer_backend('vllm')
+        template.set_mode('vllm')
         inputs = template.encode(infer_request)
         self.set_default_max_tokens(request_config, inputs)
         generation_config = self._prepare_generation_config(request_config)

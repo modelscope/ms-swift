@@ -186,14 +186,44 @@ class SwiftSft(SwiftPipeline[SftArguments]):
             optimizers=optimizers,
             tokenizer=self.tokenizer,
         )
-        self.train(trainer)
+        return self.train(trainer)
+
+    def _save_trainer_state(self, trainer):
+        training_args = trainer.args
+        state = trainer.state
+
+        logger.info(f'last_model_checkpoint: {state.last_model_checkpoint}')
+        logger.info(f'best_model_checkpoint: {state.best_model_checkpoint}')
+
+        # Visualization
+        if is_master() and not use_torchacc():
+            if 'tensorboard' in training_args.report_to:
+                images_dir = os.path.join(training_args.output_dir, 'images')
+                logger.info(f'images_dir: {images_dir}')
+                plot_images(images_dir, training_args.logging_dir, ['train/loss'], 0.9)
+            if training_args.push_to_hub:
+                trainer.push_to_hub()
+
+        self.train_msg.update({
+            'last_model_checkpoint': state.last_model_checkpoint,
+            'best_model_checkpoint': state.best_model_checkpoint,
+            'best_metric': state.best_metric,
+            'global_step': state.global_step,
+            'log_history': state.log_history,
+            'memory': trainer.max_memory,
+        })
+        if is_master():
+            jsonl_path = os.path.join(training_args.output_dir, 'logging.jsonl')
+            append_to_jsonl(jsonl_path, self.train_msg)
+        return self.train_msg
 
     def train(self, trainer):
-        args = self.args
-        logging_path = os.path.join(args.output_dir, 'logging.jsonl')
+        logging_path = os.path.join(trainer.args.output_dir, 'logging.jsonl')
         logger.info(f'The logging file will be saved in: {logging_path}')
         trainer.model_accepts_loss_kwargs = True  # fix transformers>=4.46.2
-        trainer.train(args.training_args.resume_from_checkpoint)
+        trainer.train(trainer.args.resume_from_checkpoint)
+
+        return self._save_trainer_state(trainer)
 
     def _get_optimizers(self, train_dataset):
         args = self.args

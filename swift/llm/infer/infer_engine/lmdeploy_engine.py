@@ -238,7 +238,7 @@ class LmdeployEngine(InferEngine):
         if template is None:
             template = self.default_template
 
-        template.set_infer_backend('lmdeploy')
+        template.set_mode('lmdeploy')
         if request_config.seed is None:
             request_config.seed = get_seed()
 

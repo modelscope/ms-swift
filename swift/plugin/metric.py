@@ -1,6 +1,7 @@
 import time
 from abc import ABC, abstractmethod
 
+import numpy as np
 import torch
 
 
@@ -72,7 +73,7 @@ class MeanMetric(Metric):
         self.add_state('count', default=0)
 
     def update(self, state: torch.Tensor):
-        if isinstance(state, torch.Tensor):
+        if isinstance(state, (torch.Tensor, np.ndarray)):
             state = state.tolist()
 
         if isinstance(state, (list, tuple)):

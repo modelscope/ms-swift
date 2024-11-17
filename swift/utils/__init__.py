@@ -6,7 +6,7 @@ from .import_utils import (is_liger_available, is_lmdeploy_available, is_megatro
                            is_unsloth_available, is_vllm_available, is_xtuner_available)
 from .io_utils import append_to_jsonl, download_ms_file, read_from_jsonl, write_to_jsonl
 from .logger import get_logger
-from .metric import compute_acc_metrics, compute_nlg_metrics, preprocess_logits_for_acc
+from .metric import compute_acc, compute_acc_metrics, compute_nlg_metrics, preprocess_logits_for_acc
 from .np_utils import get_seed, stat_array, transform_jsonl_to_df
 from .tb_utils import TB_COLOR, TB_COLOR_SMOOTH, plot_images, read_tensorboard_file, tensorboard_smoothing
 from .torch_utils import (activate_model_parameters, broadcast_string, find_all_linears, find_embedding,

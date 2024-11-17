@@ -335,7 +335,7 @@ class PtEngine(InferEngine):
         if template is None:
             template = self.default_template
 
-        template.set_infer_backend('pt')
+        template.set_mode('pt')
         batched_inputs = []
         for infer_request in infer_requests:
             inputs = template.encode(infer_request, model=self.model)

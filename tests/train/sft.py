@@ -17,11 +17,12 @@ def test_llm():
 
 def test_mllm():
     from swift.llm import sft_main, SftArguments
-    sft_main(
+    result = sft_main(
         SftArguments(
             model='qwen/Qwen2-VL-7B-Instruct',
-            dataset=['modelscope/coco_2014_caption:validation#100', 'AI-ModelScope/alpaca-gpt4-data-en#200'],
+            dataset=['modelscope/coco_2014_caption:validation#20', 'AI-ModelScope/alpaca-gpt4-data-en#20'],
             **kwargs))
+    print()
 
 
 if __name__ == '__main__':

@@ -21,22 +21,6 @@ from .torch_utils import broadcast_string, is_dist, is_dist_ta, is_local_master
 logger = get_logger()
 
 
-def get_time_info(log_history: List[Dict[str, Any]], n_train_samples: Optional[int]) -> Optional[Dict[str, Any]]:
-    time_info = None
-    try:
-        last_log_history = log_history[-1]
-        train_runtime = last_log_history['train_runtime']
-        train_samples_per_second = n_train_samples / train_runtime
-        time_info = {
-            'train_runtime': train_runtime,
-            'n_train_samples': n_train_samples,
-            'train_samples_per_second': train_samples_per_second,
-        }
-    except Exception:
-        pass
-    return time_info
-
-
 def check_json_format(obj: Any, token_safe: bool = True) -> Any:
     if obj is None or isinstance(obj, (int, float, str, complex)):  # bool is a subclass of int
         return obj

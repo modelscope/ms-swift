@@ -12,7 +12,7 @@ from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_N
 from transformers.utils import is_peft_available
 
 from swift.plugin import MeanMetric, get_loss_func
-from swift.utils import use_torchacc
+from swift.utils import compute_acc, use_torchacc
 from swift.utils.torchacc_utils import ta_trim_graph
 from .mixin import SwiftMixin
 
@@ -183,28 +183,16 @@ class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
         return (loss, outputs) if return_outputs else loss
 
     def _compute_token_acc(self, outputs, labels) -> None:
-        if self.args.is_encoder_decoder:
-            preds = outputs.logits.argmax(dim=2)[..., :]
-            labels = labels[..., :]
-        else:
-            preds = outputs.logits.argmax(dim=2)[..., :-1]
-            labels = labels[..., 1:]
-
-        masks = labels != -100
-        acc_strategy = self.args.acc_strategy
         acc_steps = self.args.acc_steps
         if self.state.global_step % acc_steps == 0:
-            if preds.shape != labels.shape:
-                pass
-            elif acc_strategy == 'sentence':
-                acc_list = []
-                for i, m in enumerate(masks):
-                    acc_list.append(torch.all(preds[i, m] == labels[i, m]).to(torch.int64).item())
-            else:
-                if use_torchacc():
-                    ta_trim_graph()
-                    preds = preds.to('cpu')
-                    masks = masks.to('cpu')
-                    labels = labels.to('cpu')
-                acc_list = (preds[masks] == labels[masks]).float()
+            if use_torchacc():
+                ta_trim_graph()
+                preds = preds.to('cpu')
+                masks = masks.to('cpu')
+                labels = labels.to('cpu')
+            acc_list = compute_acc(
+                outputs.logits.argmax(dim=2),
+                labels,
+                acc_strategy=self.args.acc_strategy,
+                is_encoder_decoder=self.args.is_encoder_decoder)
             self._custom_metrics['acc'].update(acc_list)

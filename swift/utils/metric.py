@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
-from typing import Dict, Literal
+from typing import Dict, List, Literal, Optional
 
 import numpy as np
 import torch
@@ -50,26 +50,48 @@ def compute_nlg_metrics(prediction, tokenizer):
     return score_dict
 
 
-def compute_acc_metrics(eval_prediction: EvalPrediction,
-                        acc_strategy: Literal['token', 'sentence'] = 'token',
-                        is_encoder_decoder: bool = False) -> Dict[str, torch.Tensor]:
+def compute_acc(preds,
+                labels,
+                *,
+                acc_strategy: Literal['token', 'sentence'] = 'token',
+                is_encoder_decoder: bool = False) -> Optional[List[float]]:
+
+    if isinstance(preds, torch.Tensor):
+        preds = preds.cpu().numpy()
+        labels = labels.cpu().numpy()
+
     if is_encoder_decoder:
-        labels = eval_prediction.label_ids[..., :]
-        predictions = eval_prediction.predictions[..., :]
+        labels = labels[..., :]
+        preds = preds[..., :]
     else:
-        labels = eval_prediction.label_ids[..., 1:]
-        predictions = eval_prediction.predictions[..., :-1]
-    if predictions.shape != labels.shape:
-        return {}
+        labels = labels[..., 1:]
+        preds = preds[..., :-1]
+    if preds.shape != labels.shape:
+        return None
+
     masks = labels != -100
     if acc_strategy == 'sentence':
         acc_list = []
         for i, m in enumerate(masks):
-            acc_list.append(np.all(predictions[i, m] == labels[i, m]))
-        acc = np.mean(np.array(acc_list))
+            acc_list.append(np.all(preds[i, m] == labels[i, m]))
     else:
-        acc = np.mean((predictions[masks] == labels[masks]).astype(np.float64))
-    return {'acc': acc}
+        acc_list = (preds[masks] == labels[masks]).tolist()
+    return acc_list
+
+
+def compute_acc_metrics(eval_prediction: EvalPrediction,
+                        *,
+                        acc_strategy: Literal['token', 'sentence'] = 'token',
+                        is_encoder_decoder: bool = False) -> Dict[str, torch.Tensor]:
+
+    acc_list = compute_acc(
+        eval_prediction.predictions,
+        eval_prediction.label_ids,
+        acc_strategy=acc_strategy,
+        is_encoder_decoder=is_encoder_decoder)
+    if acc_list is None:
+        return {}
+    return {'acc': sum(acc_list) / len(acc_list)}
 
 
 def preprocess_logits_for_acc(logits: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:

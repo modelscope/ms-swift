@@ -67,6 +67,7 @@ class SwiftMixin(TorchAccMixin):
         #         })
         self._custom_metrics = {}
         self.compute_loss_func = compute_loss_func
+        self.max_memory = 0
         if args.sequence_parallel_size > 1:
             from swift.trainers.xtuner import init_sequence_parallel_xtuner
             init_sequence_parallel_xtuner(args.sequence_parallel_size)
@@ -226,6 +227,7 @@ class SwiftMixin(TorchAccMixin):
         else:
             mems = [torch.cuda.max_memory_reserved(device=device)]
         mem = sum(mems) / 1024**3
+        self.max_memory = max(self.max_memory, mem)
         return mem
 
     def _maybe_log_save_evaluate(self, tr_loss, *args, **kwargs):
