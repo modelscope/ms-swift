@@ -8,9 +8,8 @@ import time
 from copy import copy
 from pathlib import Path
 from types import MethodType
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
-import json
 import numpy as np
 import safetensors
 import torch
@@ -19,7 +18,7 @@ from datasets import Dataset as HfDataset
 from packaging import version
 from peft import PeftModel
 from torch.nn import Module
-from transformers import PreTrainedModel, PreTrainedTokenizerBase, trainer
+from transformers import PreTrainedModel, PreTrainedTokenizerBase
 from transformers.data.data_collator import DataCollator
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.modeling_utils import unwrap_model

@@ -6,6 +6,7 @@ from transformers.trainer_utils import (EvaluationStrategy, FSDPOption, HPSearch
                                         SchedulerType)
 
 from swift.utils.import_utils import _LazyModule
+from . import callback
 
 try:
     # https://github.com/huggingface/transformers/pull/25702

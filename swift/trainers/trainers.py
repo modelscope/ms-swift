@@ -13,7 +13,8 @@ from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_N
 from transformers.utils import is_peft_available
 
 from swift.plugin.loss import get_loss_func
-from swift.utils.torchacc_utils import patch_clip_grad_norm, ta_trim_graph
+from swift.utils import use_torchacc
+from swift.utils.torchacc_utils import ta_trim_graph
 from .mixin import SwiftMixin
 
 
@@ -209,9 +210,3 @@ class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
                     self._custom_metrics['acc'] = self._acc
                 self._custom_metrics['acc'] = self._custom_metrics['acc'] + acc / self.args.gradient_accumulation_steps
         return (loss, outputs) if return_outputs else loss
-
-
-# monkey patching
-trainer.DEFAULT_PROGRESS_CALLBACK = ProgressCallbackNew
-trainer.DEFAULT_CALLBACKS = [DefaultFlowCallbackNew]
-trainer.PrinterCallback = PrinterCallbackNew

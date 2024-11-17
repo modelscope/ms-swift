@@ -3,6 +3,7 @@ import os
 import time
 
 from tqdm.auto import tqdm
+from transformers import trainer
 from transformers.trainer_callback import (DefaultFlowCallback, ProgressCallback, TrainerCallback, TrainerControl,
                                            TrainerState)
 from transformers.trainer_utils import IntervalStrategy, has_length, speed_metrics
@@ -97,3 +98,9 @@ class PrinterCallbackNew(TrainerCallback):
         _ = logs.pop('total_flos', None)
         if state.is_world_process_zero:
             print(logs, flush=True)
+
+
+# monkey patching
+trainer.DEFAULT_PROGRESS_CALLBACK = ProgressCallbackNew
+trainer.DEFAULT_CALLBACKS = [DefaultFlowCallbackNew]
+trainer.PrinterCallback = PrinterCallbackNew
