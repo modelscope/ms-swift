@@ -131,23 +131,7 @@ class SwiftMixin(TorchAccMixin):
         # If we are executing this function, we are the process zero, so we don't check for that.
         output_dir = output_dir if output_dir is not None else self.args.output_dir
         os.makedirs(output_dir, exist_ok=True)
-        # configuration.json
-        model_dir = getattr(self.model, 'model_dir', None)
-        if model_dir is not None:
-            src_path = os.path.join(model_dir, 'configuration.json')
-            dst_path = os.path.join(output_dir, 'configuration.json')
-            if os.path.exists(src_path):
-                shutil.copy(src_path, dst_path)
-        else:
-            self._create_configuration_file(self.model, output_dir)
-        self._add_adapter_cfg(output_dir)
-        self._save_sft_args(output_dir)
-        # generation_config
-        generation_config = getattr(self.args, 'generation_config', None)
-        if generation_config is not None:
-            generation_config.save_pretrained(output_dir)
         # model
-
         supported_classes = (SwiftModel, PreTrainedModel, PeftModel)
         if AutoModelForCausalLMWithValueHead is not None:
             supported_classes = supported_classes + (AutoModelForCausalLMWithValueHead, )
@@ -166,11 +150,7 @@ class SwiftMixin(TorchAccMixin):
                     safetensors.torch.save_file(state_dict, os.path.join(output_dir, 'model.safetensors'))
                 else:
                     torch.save(state_dict, os.path.join(output_dir, 'pytorch_model.bin'))
-        elif is_instance_of_ms_model(self.model):
-            PreTrainedModel.save_pretrained(
-                self.model, output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
-        elif AutoModelForCausalLMWithValueHead is not None and isinstance(self.model,
-                                                                          AutoModelForCausalLMWithValueHead):
+        elif AutoModelForCausalLMWithValueHead and isinstance(self.model, AutoModelForCausalLMWithValueHead):
             # save reward model
             state_dict = self.model.state_dict()
             decoder_state_dict, v_head_state_dict = {}, {}
@@ -187,28 +167,28 @@ class SwiftMixin(TorchAccMixin):
                     v_head_state_dict, os.path.join(output_dir, 'value_head.safetensors'), metadata={'format': 'pt'})
             else:
                 torch.save(v_head_state_dict, os.path.join(output_dir, 'value_head.bin'))
+        elif is_instance_of_ms_model(self.model):
+            PreTrainedModel.save_pretrained(
+                self.model, output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
         else:
             self.model.save_pretrained(output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
-        sft_args = getattr(self, 'sft_args', None)
-        # tokenizer
-        if self.tokenizer is not None and sft_args is not None and sft_args.sft_type == 'full':
-            if hasattr(self.tokenizer, 'processor'):
-                self.tokenizer.processor.save_pretrained(output_dir)
-            self.tokenizer.save_pretrained(output_dir)
         # training_args.bin
         torch.save(self.args, os.path.join(output_dir, 'training_args.bin'))
-        # additional files
-        if sft_args is not None and sft_args.sft_type == 'full':
-            additional_files = getattr(self.args, 'additional_saved_files', None) or [] + ['preprocessor_config.json']
-            if model_dir is not None:
-                for file in additional_files:
-                    src_path = os.path.join(model_dir, file)
-                    dst_path = os.path.join(output_dir, file)
-                    if os.path.isfile(src_path):
-                        shutil.copy(src_path, dst_path)
-                    elif os.path.isdir(src_path):
-                        shutil.copytree(src_path, dst_path)
+
         self._save_converted_model(output_dir)
+
+        is_adapter = isinstance(self.model, (SwiftModel, PeftModel))
+        # tokenizer
+        if not is_adapter:
+            from swift.llm import save_pretrained
+            additional_saved_files = self.model.model_meta.aadditional_saved_filesdditional_saved_files if hasattr(
+                self.model, 'model_meta') else []
+            save_pretrained(
+                None,
+                self.tokenizer,
+                output_dir,
+                model_dir=self.model.model_dir,
+                additional_saved_files=additional_saved_files)
 
     def _fix_zero3_gather_all_parameters(self) -> None:
         if is_deepspeed_zero3_enabled() and not hasattr(self.deepspeed, '_zero3_consolidated_16bit_state_dict_origin'):
@@ -236,71 +216,9 @@ class SwiftMixin(TorchAccMixin):
         logger.info(f'Saving model checkpoint to {self.state.last_model_checkpoint}')
         return result
 
-    def _get_train_sampler(self) -> Optional[torch.utils.data.Sampler]:
-        if self.args.train_sampler_random:
-            return super()._get_train_sampler()
-        else:
-            return self._get_eval_sampler(self.train_dataset)
-
-    def _load_from_checkpoint(self, resume_from_checkpoint: str, model=None) -> None:
-        if model is None:
-            model = self.model
-        elif isinstance(model, SwiftModel) or is_deepspeed_zero3_enabled() and isinstance(model, PreTrainedModel):
-            return
-        else:
-            # Avoid throwing exceptions
-            return super()._load_from_checkpoint(resume_from_checkpoint, model)
-
-    def _sorted_checkpoints(self,
-                            output_dir=None,
-                            checkpoint_prefix=PREFIX_CHECKPOINT_DIR,
-                            use_mtime=False) -> List[str]:
-        ordering_and_checkpoint_path = []
-
-        glob_checkpoints = [str(x) for x in Path(output_dir).glob(f'{checkpoint_prefix}-*') if os.path.isdir(x)]
-
-        for path in glob_checkpoints:
-            if use_mtime:
-                ordering_and_checkpoint_path.append((os.path.getmtime(path), path))
-            else:
-                regex_match = re.match(f'.*{checkpoint_prefix}-([0-9]+)', path)
-                if regex_match is not None and regex_match.groups() is not None:
-                    ordering_and_checkpoint_path.append((int(regex_match.groups()[0]), path))
-
-        checkpoints_sorted = sorted(ordering_and_checkpoint_path)
-        checkpoints_sorted = [checkpoint[1] for checkpoint in checkpoints_sorted]
-        # Make sure we don't delete the best model.
-        if (self.state.best_model_checkpoint is not None
-                and str(Path(self.state.best_model_checkpoint)) in checkpoints_sorted):
-            best_model_index = checkpoints_sorted.index(str(Path(self.state.best_model_checkpoint)))
-            for i in range(best_model_index, len(checkpoints_sorted) - 2):
-                checkpoints_sorted[i], checkpoints_sorted[i + 1] = checkpoints_sorted[i + 1], checkpoints_sorted[i]
-        return checkpoints_sorted
-
     def train(self, resume_from_checkpoint: Optional[Union[str, bool]] = None, *args, **kwargs) -> torch.Tensor:
         self._save_initial_model(self.args.output_dir)
         return super().train(resume_from_checkpoint, *args, **kwargs)
-
-    def _load_best_model(self):
-        # Compatible with transformers>=4.35 (deepspeed)
-        try:
-            model = self.model
-            if isinstance(model, SwiftModel):
-                logger.info(
-                    f'Loading best model from {self.state.best_model_checkpoint} (score: {self.state.best_metric}).')
-                adapters = model.adapters
-                for adapter_name in adapters.keys():
-                    sub_folder = os.path.join(self.state.best_model_checkpoint, adapter_name)
-                    state_dict = SwiftModel.load_state_file(sub_folder, device='cpu')
-                    if state_dict is not None:
-                        self.model.load_state_dict(state_dict, strict=False, adapter_name=adapter_name)
-                state_dict = SwiftModel.load_state_file(self.state.best_model_checkpoint, device='cpu')
-                if state_dict is not None:
-                    self.model.load_state_dict(state_dict, strict=False, adapter_name='default')
-            else:
-                super()._load_best_model()
-        except ValueError as e:
-            logger.warning(e)
 
     def get_max_cuda_memory(self, device: Optional[Union[torch.device, int]] = None) -> float:
         if device is None:
@@ -373,6 +291,12 @@ class SwiftMixin(TorchAccMixin):
                 return self.optimizer
 
         return super().create_optimizer()
+
+    def _get_train_sampler(self) -> Optional[torch.utils.data.Sampler]:
+        if self.args.train_sampler_random:
+            return super()._get_train_sampler()
+        else:
+            return self._get_eval_sampler(self.train_dataset)
 
     def get_train_dataloader(self):
         if self.args.sequence_parallel_size == 1:

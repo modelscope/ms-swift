@@ -34,7 +34,8 @@ class QuantEngine:
             gptq_quantizer = self.gptq_model_quantize()
             gptq_quantizer.save(self.model, args.output_dir)
         elif args.quant_method == 'bnb':
-            self.model.save_pretrained(args.output_dir)
+            self.model.save_pretrained(
+                args.output_dir, safe_serialization=args.safe_serialization, max_shard_size=args.max_shard_size)
         else:
             raise ValueError(f'args.quant_method: {args.quant_method}')
 
@@ -44,8 +45,7 @@ class QuantEngine:
             None,
             self.tokenizer,
             args.output_dir,
-            safe_serialization=args.safe_serialization,
-            max_shard_size=args.max_shard_size,
+            model_dir=self.model.model_dir,
             additional_saved_files=self.model.model_meta.additional_saved_files)
         logger.info(f'Successfully quantized the model and saved in {args.output_dir}.')
 

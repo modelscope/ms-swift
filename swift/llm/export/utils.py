@@ -23,15 +23,21 @@ def save_checkpoint(model: Optional[PreTrainedModel],
                     *,
                     safe_serialization: bool = True,
                     max_shard_size: Union[int, str] = '5GB',
+                    model_dir: Optional[str] = None,
                     additional_saved_files: Optional[List[str]] = None) -> None:
     if model is not None:
         model.save_pretrained(output_dir, safe_serialization=safe_serialization, max_shard_size=max_shard_size)
+    if model_dir is None:
+        model_dir = model.model_dir
     if hasattr(tokenizer, 'processor'):
         tokenizer.processor.save_pretrained(output_dir)
     tokenizer.save_pretrained(output_dir)
 
-    for src_file in additional_saved_files:
-        src_path: str = os.path.join(model.model_dir, src_file)
+    if additional_saved_files is None:
+        additional_saved_files = []
+
+    for src_file in additional_saved_files + ['preprocessor_config.json']:
+        src_path: str = os.path.join(model_dir, src_file)
         tgt_path = os.path.join(output_dir, src_file)
         if os.path.isfile(src_path):
             shutil.copy(src_path, tgt_path)

@@ -34,7 +34,6 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
     seed: int = 42
     load_args: bool = True
     load_dataset_config: bool = False
-    save_safetensors: bool = True
     # None: use env var `MODELSCOPE_API_TOKEN`
     hub_token: Optional[str] = field(
         default=None, metadata={'help': 'SDK token can be found in https://modelscope.cn/my/myaccesstoken'})
