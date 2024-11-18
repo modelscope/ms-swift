@@ -184,15 +184,10 @@ class SwiftMixin(TorchAccMixin):
         is_adapter = isinstance(self.model, (SwiftModel, PeftModel))
         # tokenizer
         if not is_adapter:
-            from swift.llm import save_pretrained
-            additional_saved_files = self.model.model_meta.aadditional_saved_filesdditional_saved_files if hasattr(
-                self.model, 'model_meta') else []
-            save_pretrained(
-                None,
-                self.tokenizer,
-                output_dir,
-                model_dir=self.model.model_dir,
-                additional_saved_files=additional_saved_files)
+            from swift.llm import save_checkpoint
+            additional_saved_files = self.model.model_meta.additional_saved_files if hasattr(self.model,
+                                                                                             'model_meta') else []
+            save_checkpoint(None, self.tokenizer, output_dir, additional_saved_files=additional_saved_files)
 
     def _fix_zero3_gather_all_parameters(self) -> None:
         if is_deepspeed_zero3_enabled() and not hasattr(self.deepspeed, '_zero3_consolidated_16bit_state_dict_origin'):

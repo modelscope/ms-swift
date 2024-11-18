@@ -67,7 +67,7 @@ class Template:
             max_length: Optional[int] = None,
             *,
             use_generate_template: bool = False,
-            truncation_strategy: Literal['delete', 'truncation_left'] = 'truncation_left',
+            truncation_strategy: Literal['delete', 'left'] = 'left',
             max_pixels: Optional[int] = None,
             tools_prompt: Optional[str] = None,
             # only for train

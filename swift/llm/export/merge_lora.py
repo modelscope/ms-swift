@@ -48,6 +48,7 @@ def merge_lora(args: ExportArguments, replace_if_exists=False, device_map=None) 
             template.tokenizer,
             output_dir,
             safe_serialization=args.safe_serialization,
+            model_dirs=[args.ckpt_dir],
             max_shard_size=args.max_shard_size,
             additional_saved_files=model.model_meta.additional_saved_files)
         logger.info(f'Successfully merged LoRA and saved in {output_dir}.')

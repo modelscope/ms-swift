@@ -8,6 +8,7 @@ import numpy as np
 
 from swift.llm import (HfDataset, InferArguments, InferRequest, Messages, SwiftPipeline, Template, get_template,
                        load_dataset, sample_dataset)
+from swift.tuners import Swift
 from swift.utils import append_to_jsonl, get_logger
 from .protocol import RequestConfig
 
@@ -59,6 +60,8 @@ class SwiftInfer(SwiftPipeline[InferArguments]):
         if args.merge_lora:
             merge_lora(args, device_map='cpu')
         self.infer_engine = self.get_infer_engine(args)
+        if args.ckpt_dir and args.weight_type == 'lora':
+            self.infer_engine.model = Swift.from_pretrained(self.infer_engine.model, args.ckpt_dir, inference_mode=True)
         self.template = self.get_template(args, self.tokenizer)
         self.random_state = np.random.RandomState(args.dataset_seed)
 
@@ -205,8 +208,7 @@ class SwiftInfer(SwiftPipeline[InferArguments]):
             return
         return query
 
-    def infer_single(self, infer_request: InferRequest, request_config: RequestConfig) -> Tuple[str, Messages]:
-        messages = infer_request.messages
+    def infer_single(self, infer_request: InferRequest, request_config: RequestConfig) -> str:
         res_or_gen = self.infer([infer_request], request_config, template=self.template, use_tqdm=False)
         if request_config.stream:
             response = ''
@@ -218,8 +220,7 @@ class SwiftInfer(SwiftPipeline[InferArguments]):
         else:
             response = res_or_gen[0].choices[0].message.content
             print(response)
-        messages.append({'role': 'assistant', 'content': response})
-        return response, messages
+        return response
 
     def infer_cli(self) -> List[Dict[str, Any]]:
         args = self.args
@@ -249,10 +250,9 @@ class SwiftInfer(SwiftPipeline[InferArguments]):
             infer_state.add_query(query)
             self._input_mm_data(infer_state)
             data = infer_state.to_dict()
-            response, messages = self.infer_single(InferRequest(**data), request_config)
+            response = self.infer_single(InferRequest(**data), request_config)
             infer_state.add_response(response)
-
-            data['messages'] = messages
+            data['response'] = response
             result_list.append(data)
             if args.result_path is not None:
                 append_to_jsonl(args.result_path, data, strict=False)
@@ -288,20 +288,15 @@ class SwiftInfer(SwiftPipeline[InferArguments]):
         result_list = []
         if request_config.stream:
             for data in val_dataset:
-                response, messages = self.infer_single(InferRequest(**data), request_config)
-                data['messages'] = messages
+                data['response'] = self.infer_single(InferRequest(**data), request_config)
                 result_list.append(data)
                 if args.result_path is not None:
                     append_to_jsonl(args.result_path, data)
         else:
-            infer_requests = []
-            for data in val_dataset:
-                infer_request = InferRequest(**data)
-                infer_requests.append(infer_request)
+            infer_requests = [InferRequest(**data) for data in val_dataset]
             resp_list = self.infer(infer_requests, request_config, template=self.template, use_tqdm=True)
             for data, resp in zip(val_dataset, resp_list):
-                response = resp.choices[0].message.content
-                data['messages'].append({'role': 'assistant', 'content': response})
+                data['response'] = resp.choices[0].message.content
                 result_list.append(data)
             if args.result_path is not None:
                 append_to_jsonl(args.result_path, result_list)
