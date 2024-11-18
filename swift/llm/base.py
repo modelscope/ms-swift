@@ -9,17 +9,15 @@ from swift.utils import get_logger, parse_args, seed_everything
 
 logger = get_logger()
 
-T_Args = TypeVar('T_Args', bound=BaseArguments)
 
-
-class SwiftPipeline(ABC, Generic[T_Args]):
+class SwiftPipeline(ABC):
     args_class = BaseArguments
 
-    def __init__(self, args: Union[List[str], T_Args, None] = None):
+    def __init__(self, args: Union[List[str], args_class, None] = None):
         self.args = self._parse_args(args)
 
-    def _parse_args(self, args: Union[List[str], T_Args, None] = None) -> T_Args:
-        if isinstance(args, BaseArguments):
+    def _parse_args(self, args: Union[List[str], args_class, None] = None) -> args_class:
+        if isinstance(args, self.args_class):
             return args
         assert self.args_class is not None
         args, remaining_argv = parse_args(self.args_class, args)

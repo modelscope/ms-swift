@@ -12,8 +12,9 @@ from .quant import quantize_model
 logger = get_logger()
 
 
-class SwiftExport(SwiftPipeline[ExportArguments]):
+class SwiftExport(SwiftPipeline):
     args_class = ExportArguments
+    args: args_class
 
     def run(self):
         args = self.args

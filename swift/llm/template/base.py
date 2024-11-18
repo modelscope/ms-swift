@@ -641,14 +641,13 @@ class Template:
             kwargs.pop('position_ids', None)
         return args, kwargs
 
-    def set_mode(self, mode: Literal['vllm', 'lmdeploy', 'pt', 'train']) -> None:
+    def set_mode(self, mode: Literal['vllm', 'lmdeploy', 'pt', 'train', 'rlhf']) -> None:
         self.mode = mode
 
     def register_post_encode_hook(self, models: List[nn.Module]) -> None:
         """This function is important for multi-modal training, as it registers the post_encode method
             as a forward hook, converting input_ids into inputs_embeds.
         """
-        self.mode = 'train'
         if self._handles:
             return
         # TODO:torch>=2.0

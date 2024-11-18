@@ -4,8 +4,9 @@ from ..argument import RLHFArguments
 from .sft import SwiftSft
 
 
-class SwiftRLHF(SwiftSft[RLHFArguments]):
+class SwiftRLHF(SwiftSft):
     args_class = RLHFArguments
+    args: args_class
 
     def _prepare_model_tokenizer(self):
         args = self.args
@@ -21,7 +22,14 @@ class SwiftRLHF(SwiftSft[RLHFArguments]):
         models = [self.model]
         if self.ref_model:
             models.append(self.ref_model)
+        template.set_mode('rlhf')
         template.register_post_encode_hook(models)
+
+    def _get_trainer_kwargs(self):
+        trainer_kwargs = {}
+        if self.ref_model:
+            trainer_kwargs['ref_model'] = self.ref_model
+        return trainer_kwargs
 
 
 def rlhf_main(args: Union[List[str], RLHFArguments, None] = None) -> List[Dict[str, Any]]:
