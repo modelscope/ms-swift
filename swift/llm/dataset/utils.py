@@ -256,7 +256,7 @@ class EncodePreprocessor(RowPreprocessor):
 
     def __init__(self, template: 'Template', *, model=None):
         super().__init__(remove_useless_columns=False)
-        self.model = None
+        self.model = model
         self.template = template
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:

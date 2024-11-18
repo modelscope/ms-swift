@@ -28,42 +28,42 @@ class TestRun3(unittest.TestCase):
             model_author=['魔搭', 'ModelScope'])
         return train_dataset.select(range(min(50, len(train_dataset))))
 
-    def test_model_load(self):
-        if os.path.exists('./models.txt'):
-            with open('./models.txt', 'r') as f:
-                models = json.load(f)
-        else:
-            models = []
-        for model_name, model_meta in MODEL_MAPPING.items():
-            meta_requires = model_meta.requires or []
-            for group in model_meta.model_groups:
-                model = group.models[0]
-                if 'skip_test' in (group.tags or []) or model.ms_model_id in models:
-                    break
-                requires = meta_requires + (group.requires or [])
-                for req in requires:
-                    os.system(f'pip install "{req}"')
-                if not any(['transformers' in req for req in requires]):
-                    os.system('pip install transformers -U')
-                if not any(['accelerate' in req for req in requires]):
-                    os.system('pip install accelerate -U')
-                try:
-                    model_arch_args = ''
-                    if model_meta.model_arch:
-                        model_arch_args = f'--model_arch {model_meta.model_arch}'
-                    cmd = ('PYTHONPATH=. python tests/llm/load_model.py '
-                           f'--ms_model_id {model.ms_model_id} {model_arch_args}')
-                    if os.system(cmd) != 0:
-                        raise RuntimeError()
-                except Exception:
-                    passed = False
-                else:
-                    passed = True
-                    models.append(model.ms_model_id)
-                finally:
-                    if passed:
-                        with open('./models.txt', 'w') as f:
-                            json.dump(models, f)
+    # def test_model_load(self):
+    #     if os.path.exists('./models.txt'):
+    #         with open('./models.txt', 'r') as f:
+    #             models = json.load(f)
+    #     else:
+    #         models = []
+    #     for model_name, model_meta in MODEL_MAPPING.items():
+    #         meta_requires = model_meta.requires or []
+    #         for group in model_meta.model_groups:
+    #             model = group.models[0]
+    #             if 'skip_test' in (group.tags or []) or model.ms_model_id in models:
+    #                 break
+    #             requires = meta_requires + (group.requires or [])
+    #             for req in requires:
+    #                 os.system(f'pip install "{req}"')
+    #             if not any(['transformers' in req for req in requires]):
+    #                 os.system('pip install transformers -U')
+    #             if not any(['accelerate' in req for req in requires]):
+    #                 os.system('pip install accelerate -U')
+    #             try:
+    #                 model_arch_args = ''
+    #                 if model_meta.model_arch:
+    #                     model_arch_args = f'--model_arch {model_meta.model_arch}'
+    #                 cmd = ('PYTHONPATH=. python tests/llm/load_model.py '
+    #                        f'--ms_model_id {model.ms_model_id} {model_arch_args}')
+    #                 if os.system(cmd) != 0:
+    #                     raise RuntimeError()
+    #             except Exception:
+    #                 passed = False
+    #             else:
+    #                 passed = True
+    #                 models.append(model.ms_model_id)
+    #             finally:
+    #                 if passed:
+    #                     with open('./models.txt', 'w') as f:
+    #                         json.dump(models, f)
 
     def test_template_load(self):
         if os.path.exists('./templates.txt'):
@@ -81,14 +81,16 @@ class TestRun3(unittest.TestCase):
                 if template in templates:
                     break
                 try:
-                    _, tokenizer = get_model_tokenizer(model.ms_model_id, load_model=False)
+                    model_ins, tokenizer = get_model_tokenizer(model.ms_model_id, load_model=True)
                     template_ins = get_template(template, tokenizer)
                     if 'audio' in template_ins.__class__.__name__.lower():
-                        EncodePreprocessor(template_ins)(self.audio_ds)
+                        output = EncodePreprocessor(template_ins, model=model_ins)(self.audio_ds)
                     elif 'vl' in template_ins.__class__.__name__.lower():
-                        EncodePreprocessor(template_ins)(self.img_ds)
+                        output = EncodePreprocessor(template_ins, model=model_ins)(self.img_ds)
                     else:
-                        EncodePreprocessor(template_ins)(self.llm_ds)
+                        output = EncodePreprocessor(template_ins, model=model_ins)(self.llm_ds)
+                    print(output)
+                    self.assertTrue(output['input_ids'] is not None)
 
                 except Exception as e:
                     import traceback

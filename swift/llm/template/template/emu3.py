@@ -25,8 +25,8 @@ class Emu3GenTemplate(Template):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.bov = self.processor.encode(self.processor.visual_template[0].format(token_id=0))[0]
-        self.eov = self.processor.encode(self.processor.visual_template[0].format(token_id=self.COOKBOOK_SIZE
+        self.bov = self.processor.tokenizer.encode(self.processor.visual_template[0].format(token_id=0))[0]
+        self.eov = self.processor.tokenizer.encode(self.processor.visual_template[0].format(token_id=self.COOKBOOK_SIZE
                                                                                             - 1))[0]
         self.config = kwargs.get('config')
 
@@ -36,7 +36,7 @@ class Emu3GenTemplate(Template):
         kwargs = dict(
             mode='U' if self.mode == 'train' else 'G',
             ratio='1:1',
-            image_area=self.config.image_area,
+            image_area=model.config.image_area,
             return_tensors='pt',
             padding='longest',
         )
