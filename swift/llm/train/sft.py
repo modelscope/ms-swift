@@ -28,10 +28,7 @@ class SwiftSft(SwiftPipeline[SftArguments]):
         super().__init__(args)
         self.train_msg = {}
         self._prepare_model_tokenizer()
-
-        self._prepare_generation_config()
         self._prepare_template()
-        self._prepare_gradient_checkpointing()
         self._prepare_callbacks()
 
         self.model = prepare_tuner(self.model, args)
@@ -68,26 +65,29 @@ class SwiftSft(SwiftPipeline[SftArguments]):
                                                                  args.get_request_config(False))
         logger.info(f'model.generation_config: {self.model.generation_config}')
 
-    def _prepare_model_tokenizer(self):
-        args = self.args
-
-        model, tokenizer = get_model_tokenizer(
-            args.model,
+    def _get_model_tokenizer(model, model_type, model_revision):
+        return get_model_tokenizer(
+            model,
             args.torch_dtype,
             args.device_map,
-            model_type=args.model_type,
-            revision=args.model_revision,
+            model_type=model_type,
+            revision=model_revision,
             quantization_config=args.quantization_config,
             attn_impl=args.attn_impl,
             rope_scaling=args.rope_scaling,
             use_unsloth=args.tuner_backend == 'unsloth')
 
-        self.model = model
-        self.tokenizer = tokenizer
+    def _prepare_model_tokenizer(self):
+        args = self.args
+        self.model, self.tokenizer = self._get_model_tokenizer(args.model, args.model_type, args.model_revision)
+
         if hasattr(self.model, 'hf_device_map'):
             logger.info(f'model.hf_device_map: {self.model.hf_device_map}')
 
         logger.info(f'model_config: {self.model.config}')
+
+        self._prepare_generation_config()
+        self._prepare_gradient_checkpointing()
 
     def _prepare_template(self) -> None:
         args = self.args
@@ -137,25 +137,28 @@ class SwiftSft(SwiftPipeline[SftArguments]):
             loss_type = 'loss-scale'
         return get_loss_func(loss_type)
 
-    def _get_data_collator(self, template: Template):
+    def _get_data_collator(self):
         args = self.args
+        template = self.template
         padding_to = args.max_length if args.train_type == 'longlora' else None
         is_multimodal = self.model.model_meta.is_multimodal
         if is_multimodal:
             data_collator = template.pre_data_collator
-            template.register_post_encode_hook([self.model])
+            self._register_post_encode_hook()
         else:
             data_collator = template.data_collator
         return partial(data_collator, padding_to=padding_to, model=self.model)
 
+    def _register_post_encode_hook(self):
+        template.register_post_encode_hook([self.model])
+
     def run(self):
         args = self.args
-        template = self.template
 
         train_dataset, val_dataset = self._get_dataset()
         train_dataset, val_dataset = self._encode_dataset(train_dataset, val_dataset)
 
-        data_collator = self._get_data_collator(template)
+        data_collator = self._get_data_collator()
 
         optimizers = self._get_optimizers(train_dataset)
 

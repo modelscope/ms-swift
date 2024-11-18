@@ -7,12 +7,12 @@ from torch import nn
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.utils import get_env_args
-from .utils import ChatmlTemplateMeta
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import Prompt
+from .utils import ChatmlTemplateMeta
 
 INTERNLM_SYSTEM = (
     'You are an AI assistant whose name is InternLM (书生·浦语).\n'

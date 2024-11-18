@@ -68,7 +68,10 @@ class LlavaVideoHfTemplate(Template):
             example['videos'][index] = load_video_llava(example['videos'][index])
             return ['<video>\n']
 
-    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def _encode(self,
+                inputs: StdTemplateInputs,
+                *,
+                model: Optional[nn.Module] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super()._encode(inputs)
         if len(inputs) == 0:
             return inputs, {}

@@ -57,7 +57,10 @@ class GLM4VTemplate(GLMTemplate):
         assert media_type == 'image'
         return [[-100]]
 
-    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def _encode(self,
+                inputs: StdTemplateInputs,
+                *,
+                model: Optional[nn.Module] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super()._encode(inputs)
         if len(inputs) == 0:
             return inputs, {}
@@ -130,7 +133,10 @@ class CogTemplate(Template):
                     inputs: StdTemplateInputs) -> List[Context]:
         return []
 
-    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def _encode(self,
+                inputs: StdTemplateInputs,
+                *,
+                model: Optional[nn.Module] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super()._encode(inputs)
         if len(inputs) == 0:
             return inputs, {}
@@ -206,7 +212,10 @@ class Cog2VideoTemplate(CogTemplate):
         videos = example.get('videos') or []
         assert len(videos) <= 1
 
-    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def _encode(self,
+                inputs: StdTemplateInputs,
+                *,
+                model: Optional[nn.Module] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super(CogTemplate, self)._encode(inputs)
         if len(inputs) == 0:
             return inputs, {}
@@ -214,11 +223,7 @@ class Cog2VideoTemplate(CogTemplate):
         video = load_batch(videos_path, load_video_cogvlm2)
         inputs.pop('loss_scale', None)
         inputs2 = model.build_conversation_input_ids(
-            self.processor,
-            query=inputs.query,
-            history=inputs.history,
-            images=video,
-            template_version='chat')
+            self.processor, query=inputs.query, history=inputs.history, images=video, template_version='chat')
         video_token_len = inputs2['token_type_ids'].sum().item()
         input_ids = inputs['input_ids']
         labels = inputs['labels']

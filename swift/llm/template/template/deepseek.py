@@ -35,7 +35,10 @@ register_template(
 class DeepseekVLTemplate(Template):
     image_placeholder = ['<image_placeholder>']
 
-    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def _encode(self,
+                inputs: StdTemplateInputs,
+                *,
+                model: Optional[nn.Module] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super()._encode(inputs)
         if len(inputs) == 0:
             return inputs, {}

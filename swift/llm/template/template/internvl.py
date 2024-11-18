@@ -1,19 +1,19 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from functools import partial
-from typing import Any, Dict, List, Tuple, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import torch
 from torch import nn
 
 from swift.utils import get_env_args, is_deepspeed_enabled
-from .microsoft import Phi3TemplateMeta
-from .utils import ChatmlTemplateMeta
 from ..base import Template
 from ..constant import MLLMTemplateType
 from ..register import register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import Context, findall
 from ..vision_utils import load_video_internvl, replace_video2image, transform_image
+from .microsoft import Phi3TemplateMeta
+from .utils import ChatmlTemplateMeta
 
 
 class InternvlTemplate(Template):
@@ -127,7 +127,10 @@ class Internvl2Template(InternvlTemplate):
         else:
             return ['<bbox>']
 
-    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def _encode(self,
+                inputs: StdTemplateInputs,
+                *,
+                model: Optional[nn.Module] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super(InternvlTemplate, self)._encode(inputs)
         if len(inputs) == 0:
             return inputs, {}

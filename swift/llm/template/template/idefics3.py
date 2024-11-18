@@ -1,16 +1,20 @@
 from typing import Any, Dict, Optional, Tuple
 
+import torch.nn as nn
+
 from ..base import Template
 from ..constant import MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
-import torch.nn as nn
 from ..utils import align_image_inputs
 
 
 class Idefics3Template(Template):
 
-    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def _encode(self,
+                inputs: StdTemplateInputs,
+                *,
+                model: Optional[nn.Module] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super()._encode(inputs)
         if len(inputs) == 0:
             return inputs, {}
