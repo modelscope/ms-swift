@@ -26,7 +26,7 @@ def get_template(
         max_length: Optional[int] = None,
         *,
         use_generate_template: bool = False,
-        truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
+        truncation_strategy: Literal['delete', 'left'] = 'delete',
         max_pixels: Optional[int] = None,  # h * w
         tools_prompt: str = 'react_en',
         # train

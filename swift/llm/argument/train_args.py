@@ -172,6 +172,10 @@ class SftArguments(MegatronArguments, TorchAccArguments, TunerArguments, Seq2Seq
     acc_strategy: Literal['token', 'sentence'] = 'token'
 
     def __post_init__(self) -> None:
+        if self.resume_from_checkpoint:
+            self.load_args_from_ckpt(self.resume_from_checkpoint)
+            if self.train_type == 'full':
+                self.model_id_or_path = self.resume_from_checkpoint
         BaseArguments.__post_init__(self)
         Seq2SeqTrainingOverrideArguments.__post_init__(self)
         TunerArguments.__post_init__(self)
@@ -179,10 +183,6 @@ class SftArguments(MegatronArguments, TorchAccArguments, TunerArguments, Seq2Seq
         MegatronArguments.__post_init__(self)
         self._handle_pai_compat()
         self.prepare_deepspeed()
-        if self.resume_from_checkpoint:
-            self.load_args(self.resume_from_checkpoint)
-            if self.train_type == 'full':
-                self.model_id_or_path = self.resume_from_checkpoint
 
         self.rank, self.local_rank, self.global_world_size, self.local_world_size = get_dist_setting()
 
@@ -200,6 +200,7 @@ class SftArguments(MegatronArguments, TorchAccArguments, TunerArguments, Seq2Seq
         else:
             self.init_megatron()
         self._add_version()
+        self.save_args()
 
     def prepare_deepspeed(self):
         """Prepare deepspeed settings"""

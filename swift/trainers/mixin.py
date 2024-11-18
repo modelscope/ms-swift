@@ -175,21 +175,19 @@ class SwiftMixin(TorchAccMixin):
             self.model.save_pretrained(output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
         # training_args.bin
         torch.save(self.args, os.path.join(output_dir, 'training_args.bin'))
-
         self._save_converted_model(output_dir)
+        # args.json
+        args_path = os.path.join(os.path.dirname(output_dir), 'args.json')
+        if os.path.exists(args_path):
+            shutil.copy(args_path, os.path.join(output_dir, 'args.json'))
 
         is_adapter = isinstance(self.model, (SwiftModel, PeftModel))
         # tokenizer
         if not is_adapter:
-            from swift.llm import save_pretrained
-            additional_saved_files = self.model.model_meta.aadditional_saved_filesdditional_saved_files if hasattr(
-                self.model, 'model_meta') else []
-            save_pretrained(
-                None,
-                self.tokenizer,
-                output_dir,
-                model_dir=self.model.model_dir,
-                additional_saved_files=additional_saved_files)
+            from swift.llm import save_checkpoint
+            additional_saved_files = self.model.model_meta.additional_saved_files if hasattr(self.model,
+                                                                                             'model_meta') else []
+            save_checkpoint(None, self.tokenizer, output_dir, additional_saved_files=additional_saved_files)
 
     def _fix_zero3_gather_all_parameters(self) -> None:
         if is_deepspeed_zero3_enabled() and not hasattr(self.deepspeed, '_zero3_consolidated_16bit_state_dict_origin'):

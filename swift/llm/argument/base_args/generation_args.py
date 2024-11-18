@@ -35,10 +35,6 @@ class GenerationArguments:
 
     stop_words: List[str] = field(default_factory=list)
 
-    def _handle_do_sample(self) -> None:
-        """Change the arguments because the training/pt infer/lmdeploy infer/vllm infer
-        need different arguments when do_sample=False"""
-
     def get_request_config(self, stream: bool = False):
         from swift.llm import RequestConfig
         temperature = self.temperature

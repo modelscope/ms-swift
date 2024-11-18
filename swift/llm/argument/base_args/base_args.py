@@ -57,8 +57,8 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
     def adapters_can_be_merged(self):
         return TunerArguments.adapters_can_be_merged
 
-    def load_args(self, checkpoint_dir: str) -> None:
-        """Load specific attributes from sft_args.json"""
+    def load_args_from_ckpt(self, checkpoint_dir: str) -> None:
+        """Load specific attributes from args.json"""
         from swift.llm import SftArguments, ExportArguments, InferArguments
         if isinstance(self, SftArguments):
             self.resume_from_checkpoint = to_abspath(self.resume_from_checkpoint, True)
@@ -76,26 +76,24 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
         with open(args_path, 'r', encoding='utf-8') as f:
             old_args = json.load(f)
         # read settings
-        all_keys = list(f.name for f in fields(self.__class__)) + ['train_type']
+        all_keys = list(f.name for f in fields(self.__class__))
         data_keys = list(f.name for f in fields(DataArguments))
         for key in all_keys:
             if not self.load_dataset_config and key in data_keys:
                 continue
-            value = getattr(self, key)
-            old_value = old_args.get(key)  # value in checkpoint
-            if old_value and not value:
-                # TODO: check;  system=''
+            old_value = old_args.get(key)
+            if old_value is None:
+                continue
+            value = getattr(self, key, None)
+            if value is None or isinstance(value, (list, tuple)) and len(value) == 0:
                 setattr(self, key, old_value)
 
     def save_args(self) -> None:
-        """TODO"""
         from swift.llm import InferArguments
         if isinstance(self, InferArguments):
             return
-        # TODO:check
-        self.args_type = self.__class__.__name__
         if is_master():
             fpath = os.path.join(self.output_dir, 'args.json')
-            logger.info(f'The {args.__class__.__name__} will be saved in: {fpath}')
+            logger.info(f'The {self.__class__.__name__} will be saved in: {fpath}')
             with open(fpath, 'w', encoding='utf-8') as f:
-                json.dump(check_json_format(args.__dict__), f, ensure_ascii=False, indent=2)
+                json.dump(check_json_format(self.__dict__), f, ensure_ascii=False, indent=2)

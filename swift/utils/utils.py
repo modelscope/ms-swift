@@ -10,6 +10,7 @@ from dataclasses import fields, is_dataclass
 from typing import Any, Callable, Dict, List, Literal, Mapping, Optional, Sequence, Set, Tuple, Type, TypeVar, Union
 
 import numpy as np
+import torch
 import torch.distributed as dist
 from transformers import HfArgumentParser, enable_full_determinism, set_seed
 from transformers.trainer import TrainingArguments
@@ -24,6 +25,8 @@ logger = get_logger()
 def check_json_format(obj: Any, token_safe: bool = True) -> Any:
     if obj is None or isinstance(obj, (int, float, str, complex)):  # bool is a subclass of int
         return obj
+    if isinstance(obj, torch.dtype):
+        return str(obj)[len('torch.'):]
 
     if isinstance(obj, Sequence):
         res = []

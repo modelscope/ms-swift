@@ -17,7 +17,7 @@ class TemplateArguments:
         template (Optional[str]): Template identifier. Default is None, meaning use the template of the model_type.
         system (Optional[str]): Override the default system in the template. Default is None.
         max_length (Optional[int]): Maximum length for the template. Default is None.
-        truncation_strategy (Literal): Strategy for truncating the template. Default is 'truncation_left'.
+        truncation_strategy (Literal): Strategy for truncating the template. Default is 'left'.
         tools_prompt (str): Override the default tools prompt in the template. Default is 'react_en'.
         max_pixels (Optional[int]): Maximum number of pixels for the template. Default is None.
         loss_scale (str): Loss scale for training. Default is 'default',
@@ -29,7 +29,7 @@ class TemplateArguments:
     system: Optional[str] = None  # Override the default_system in the template.
     max_length: Optional[int] = None
 
-    truncation_strategy: Literal['delete', 'truncation_left'] = 'truncation_left'
+    truncation_strategy: Literal['delete', 'left'] = 'left'
     tools_prompt: str = 'react_en'  # Override the default_tools_prompt in the template.
     max_pixels: Optional[int] = None
     # train
