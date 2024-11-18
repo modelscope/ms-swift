@@ -201,6 +201,7 @@ class RowPreprocessor:
         dataset = self.safe_rename_columns(dataset, self.columns_mapping)
         dataset = self.prepare_dataset(dataset)
         _row_map = partial(self._row_map, strict=strict)
+
         dataset = self._cast_mm_data(dataset, False)
         with self._patch_arrow_writer():
             try:
@@ -209,6 +210,7 @@ class RowPreprocessor:
             except NotImplementedError:
                 pass
         dataset_mapped = self._cast_mm_data(dataset_mapped, True)
+
         if hasattr(dataset, '__len__') and len(dataset) != len(dataset_mapped):
             logger.info(
                 f'Dataset filtered, origin length: {len(dataset)}, filtered dataset length: {len(dataset_mapped)}')

@@ -37,13 +37,10 @@ class PaliGemmaTemplate(Template):
             self.prompt = ['{{QUERY}}\n']
             return ['<image>' * self.processor.image_seq_length + '<bos>']
 
-    def _encode(self,
-                inputs: StdTemplateInputs,
-                *,
-                model: Optional[nn.Module] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, _ = super()._encode(inputs)
+    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
+        inputs = super()._encode(inputs)
         if len(inputs) == 0:
-            return inputs, {}
+            return inputs
         raw_image = inputs.images
         processor = self.processor
         if inputs['labels'] is not None:
@@ -55,7 +52,7 @@ class PaliGemmaTemplate(Template):
         if raw_image:
             model_inputs = processor(text=inputs.query, images=raw_image[0], return_tensors='pt')
             inputs['pixel_values'] = model_inputs['pixel_values']
-        return inputs, {}
+        return inputs
 
     def data_collator(self,
                       batch: List[Dict[str, Any]],

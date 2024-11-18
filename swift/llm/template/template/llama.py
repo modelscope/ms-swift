@@ -77,15 +77,12 @@ class Llama3_2VisionTemplate(Template):
         assert media_type == 'image'
         return ['<|image|>']
 
-    def _encode(self,
-                inputs: StdTemplateInputs,
-                *,
-                model: Optional[nn.Module] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
         from transformers.models.mllama.processing_mllama import (get_cross_attention_token_mask,
                                                                   convert_sparse_cross_attention_mask_to_dense)
-        inputs, _ = super()._encode(inputs)
+        inputs = super()._encode(inputs)
         if len(inputs) == 0:
-            return inputs, {}
+            return inputs
         images = inputs.images
         if images:
             input_ids = inputs['input_ids']
@@ -103,7 +100,7 @@ class Llama3_2VisionTemplate(Template):
             )
             inputs['cross_attention_mask'] = torch.tensor(cross_attention_mask)
 
-        return inputs, {}
+        return inputs
 
     def data_collator(self,
                       batch: List[Dict[str, Any]],
@@ -139,14 +136,11 @@ register_template(
 class Llama3_1OmniTemplate(Template):
     audio_placeholder = [[-200]]
 
-    def _encode(self,
-                inputs: StdTemplateInputs,
-                *,
-                model: Optional[nn.Module] = None) -> (Tuple)[Dict[str, Any], Dict[str, Any]]:
+    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
         import whisper
-        inputs, _ = super()._encode(inputs)
+        inputs = super()._encode(inputs)
         if len(inputs) == 0:
-            return inputs, {}
+            return inputs
         audios = inputs.audios
         input_ids = inputs['input_ids']
         labels = inputs['labels']
@@ -162,7 +156,7 @@ class Llama3_1OmniTemplate(Template):
             audios = torch.stack(audios)
             inputs['_data'].update({'speech': audios, 'speech_lengths': torch.tensor([[audios.shape[1]]])})
 
-        return inputs, {}
+        return inputs
 
     def post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
         speech = inputs.get('speech')

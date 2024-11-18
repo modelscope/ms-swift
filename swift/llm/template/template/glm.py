@@ -57,13 +57,10 @@ class GLM4VTemplate(GLMTemplate):
         assert media_type == 'image'
         return [[-100]]
 
-    def _encode(self,
-                inputs: StdTemplateInputs,
-                *,
-                model: Optional[nn.Module] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, _ = super()._encode(inputs)
+    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
+        inputs = super()._encode(inputs)
         if len(inputs) == 0:
-            return inputs, {}
+            return inputs
         input_ids = inputs['input_ids']
         labels = inputs['labels']
         idx_list = findall(input_ids, -100)
@@ -81,7 +78,7 @@ class GLM4VTemplate(GLMTemplate):
             inputs['images'] = inputs2['images']
         inputs['input_ids'] = input_ids
         inputs['labels'] = labels
-        return inputs, {}
+        return inputs
 
     def data_collator(self,
                       batch: List[Dict[str, Any]],
@@ -133,13 +130,10 @@ class CogTemplate(Template):
                     inputs: StdTemplateInputs) -> List[Context]:
         return []
 
-    def _encode(self,
-                inputs: StdTemplateInputs,
-                *,
-                model: Optional[nn.Module] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, _ = super()._encode(inputs)
+    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
+        inputs = super()._encode(inputs)
         if len(inputs) == 0:
-            return inputs, {}
+            return inputs
         image = inputs.images or []
         inputs.pop('loss_scale', None)
         inputs2 = model.build_conversation_input_ids(
@@ -157,7 +151,7 @@ class CogTemplate(Template):
             if 'cross_images' in inputs2:
                 # is cogagent
                 inputs['cross_images'] = [[cross_img.to(dtype=dtype)] for cross_img in inputs2['cross_images']]
-        return inputs, {}
+        return inputs
 
     def data_collator(self,
                       batch: List[Dict[str, Any]],
@@ -212,13 +206,10 @@ class Cog2VideoTemplate(CogTemplate):
         videos = example.get('videos') or []
         assert len(videos) <= 1
 
-    def _encode(self,
-                inputs: StdTemplateInputs,
-                *,
-                model: Optional[nn.Module] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
         inputs, _ = super(CogTemplate, self)._encode(inputs)
         if len(inputs) == 0:
-            return inputs, {}
+            return inputs
         videos_path = inputs.videos or []
         video = load_batch(videos_path, load_video_cogvlm2)
         inputs.pop('loss_scale', None)
@@ -234,7 +225,7 @@ class Cog2VideoTemplate(CogTemplate):
         if len(video) > 0:
             dtype = model.dtype
             inputs['images'] = [[img.to(dtype=dtype)] for img in inputs2['images']]
-        return inputs, {}
+        return inputs
 
 
 register_template(CogVLMTemplateMeta(

@@ -42,9 +42,9 @@ class mPlugOwl3Template(Template):
             return replace_video2image(load_video, inputs, lambda i: [[-100]]) + ['\n']
 
     def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
-        inputs, _ = super()._encode(inputs)
+        inputs = super()._encode(inputs)
         if len(inputs) == 0:
-            return inputs, {}
+            return inputs
         images = inputs.images
         videos = inputs.videos
         cut_enable = not videos
@@ -78,7 +78,7 @@ class mPlugOwl3Template(Template):
             })
         inputs['_data']['input_ids'] = input_ids
         inputs['labels'] = labels
-        return inputs, {}
+        return inputs
 
     def post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
         if 'pixel_values' in inputs:

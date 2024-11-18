@@ -71,9 +71,6 @@ class TestRun3(unittest.TestCase):
                 templates = json.load(f)
         else:
             templates = []
-        self.llm_ds = self.load_ds('AI-ModelScope/sharegpt_gpt4:default')
-        self.img_ds = self.load_ds('swift/OK-VQA_train')
-        self.audio_ds = self.load_ds('speech_asr/speech_asr_aishell1_trainsets:validation')
         for model_name, model_meta in MODEL_MAPPING.items():
             template = model_meta.template
             for group in model_meta.model_groups:
@@ -81,18 +78,11 @@ class TestRun3(unittest.TestCase):
                 if template in templates:
                     break
                 try:
-                    model_ins, tokenizer = get_model_tokenizer(model.ms_model_id, load_model=True)
-                    template_ins = get_template(template, tokenizer)
-                    if 'audio' in template_ins.__class__.__name__.lower():
-                        output = EncodePreprocessor(template_ins, model=model_ins)(self.audio_ds)
-                    elif 'vl' in template_ins.__class__.__name__.lower():
-                        output = EncodePreprocessor(template_ins, model=model_ins)(self.img_ds)
-                    else:
-                        output = EncodePreprocessor(template_ins, model=model_ins)(self.llm_ds)
-                    print(output)
-                    self.assertTrue(output['input_ids'] is not None)
-
-                except Exception as e:
+                    cmd = ('PYTHONPATH=. python tests/llm/load_template.py '
+                           f'--ms_model_id {model.ms_model_id} --template {template}')
+                    if os.system(cmd) != 0:
+                        raise RuntimeError()
+                except Exception:
                     import traceback
                     print(traceback.format_exc())
                     passed = False

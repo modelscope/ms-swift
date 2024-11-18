@@ -67,10 +67,10 @@ class FlorenceTemplate(Template):
             if inputs.messages[i]['user'] == 'user':
                 inputs.messages[i]['content'] = new_query
                 break
-        inputs, _ = super()._encode(inputs)
+        inputs = super()._encode(inputs)
         input_ids = inputs['prompt_input_ids']
         if len(inputs) == 0:
-            return inputs, {}
+            return inputs
         images = inputs.images or []
         labels = inputs['answer_labels']
         if labels is not None:
@@ -84,7 +84,7 @@ class FlorenceTemplate(Template):
                 'pixel_values': pixel_values,
             }
         }
-        return inputs, {}
+        return inputs
 
     def post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
         inputs_embeds = model.get_input_embeddings()(inputs['input_ids'])
@@ -137,9 +137,9 @@ class Phi3VisionTemplate(Template):
 
     def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
         images = inputs.images or []
-        inputs, _ = super()._encode(inputs)
+        inputs = super()._encode(inputs)
         if len(inputs) == 0:
-            return inputs, {}
+            return inputs
         input_ids = inputs['input_ids']
         labels = inputs['labels']
         idx_list = findall(input_ids, 32044)  # '<|image|>'
@@ -165,7 +165,7 @@ class Phi3VisionTemplate(Template):
 
         inputs['input_ids'] = input_ids
         inputs['labels'] = labels
-        return inputs, {}
+        return inputs
 
 
 register_template(Phi3TemplateMeta(MLLMTemplateType.phi3_vl, template_cls=Phi3VisionTemplate))

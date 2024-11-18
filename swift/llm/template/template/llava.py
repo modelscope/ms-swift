@@ -31,9 +31,9 @@ class LlavaHfTemplate(Template):
         return ['<image>\n']
 
     def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
-        inputs, _ = super()._encode(inputs)
+        inputs = super()._encode(inputs)
         if len(inputs) == 0:
-            return inputs, {}
+            return inputs
         images = inputs.images
         if images:
             image_processor = self.processor.image_processor
@@ -41,7 +41,7 @@ class LlavaHfTemplate(Template):
             inputs['pixel_values'] = image_inputs['pixel_values']
             if 'image_sizes' in image_inputs:
                 inputs['image_sizes'] = image_inputs['image_sizes']
-        return inputs, {}
+        return inputs
 
 
 register_template(
@@ -68,13 +68,10 @@ class LlavaVideoHfTemplate(Template):
             example['videos'][index] = load_video_llava(example['videos'][index])
             return ['<video>\n']
 
-    def _encode(self,
-                inputs: StdTemplateInputs,
-                *,
-                model: Optional[nn.Module] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, _ = super()._encode(inputs)
+    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
+        inputs = super()._encode(inputs)
         if len(inputs) == 0:
-            return inputs, {}
+            return inputs
         images = inputs.images or []
         videos_path = inputs.videos or []
         if len(videos_path) > 0:
@@ -87,7 +84,7 @@ class LlavaVideoHfTemplate(Template):
             image_inputs = image_processor(images, return_tensors='pt').to(model.dtype)
             inputs['pixel_values'] = image_inputs['pixel_values']
             inputs['image_sizes'] = image_inputs['image_sizes']
-        return inputs, {}
+        return inputs
 
 
 register_template(
@@ -167,9 +164,9 @@ register_template(QwenTemplateMeta(MLLMTemplateType.llava_next_qwen_hf, template
 class LlavaOneVisionHfTemplate(Llava1_6HfTemplate):
 
     def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
-        inputs, _ = Template._encode(self, inputs)
+        inputs = Template._encode(self, inputs)
         if len(inputs) == 0:
-            return inputs, {}
+            return inputs
         images = inputs.images
         input_ids = inputs['input_ids']
         labels = inputs['labels']
@@ -194,7 +191,7 @@ class LlavaOneVisionHfTemplate(Llava1_6HfTemplate):
             inputs['pixel_values'] = image_inputs['pixel_values']
             if 'image_sizes' in image_inputs:
                 inputs['image_sizes'] = image_inputs['image_sizes']
-        return inputs, {}
+        return inputs
 
 
 register_template(
@@ -212,10 +209,10 @@ class LlavaLlama3_1HfTemplate(LlavaHfTemplate):
               'and assist the user with a variety of tasks using natural language.')
 
     def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
-        inputs, _ = super()._encode(inputs)
+        inputs = super()._encode(inputs)
         if len(inputs['pixel_values'].shape) == 5:  # (1, num_patch, 3, H/W, W/H)
             inputs['pixel_values'] = torch.squeeze(inputs['pixel_values'], dim=0)  # (num_patch, 3, H/W, W/H)
-        return inputs, {}
+        return inputs
 
 
 register_template(
@@ -231,14 +228,14 @@ class LLavaLlama3HfTemplate(Template):
     image_placeholder = ['<image>\n']
 
     def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
-        inputs, _ = super()._encode(inputs)
+        inputs = super()._encode(inputs)
         if len(inputs) == 0:
-            return inputs, {}
+            return inputs
         raw_image = inputs.images
         if raw_image:
             pixel_values = self.processor.image_processor(raw_image, return_tensors='pt')['pixel_values']
             inputs['pixel_values'] = pixel_values.to(model.dtype)
-        return inputs, {}
+        return inputs
 
 
 register_template(Llama3TemplateMeta(
@@ -254,9 +251,9 @@ class LLavaTemplate(Template):
         return [[-200], '\n']
 
     def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
-        inputs, _ = super()._encode(inputs)
+        inputs = super()._encode(inputs)
         if len(inputs) == 0:
-            return inputs, {}
+            return inputs
         images = inputs.images or []
         image_sizes = [x.size for x in images]
         from llava.mm_utils import process_images
@@ -268,7 +265,7 @@ class LLavaTemplate(Template):
             images_tensor = process_images(images, image_processor, model.config)
             inputs['images'] = images_tensor.to(model.dtype).squeeze(0)
             inputs['image_sizes'] = image_sizes
-        return inputs, {}
+        return inputs
 
     def data_collator(self,
                       batch: List[Dict[str, Any]],

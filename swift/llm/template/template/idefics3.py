@@ -11,13 +11,10 @@ from ..utils import align_image_inputs
 
 class Idefics3Template(Template):
 
-    def _encode(self,
-                inputs: StdTemplateInputs,
-                *,
-                model: Optional[nn.Module] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, _ = super()._encode(inputs)
+    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
+        inputs = super()._encode(inputs)
         if len(inputs) == 0:
-            return inputs, {}
+            return inputs
         images = inputs.images or []
         processor = self.processor
         prompt = self.processor.decode(inputs['input_ids'])
@@ -27,7 +24,7 @@ class Idefics3Template(Template):
             inputs['input_ids'], inputs['labels'] = align_image_inputs(inputs['input_ids'], inputs['labels'],
                                                                        image_inputs['input_ids'][0], image_token)
             inputs['pixel_values'] = image_inputs['pixel_values']
-        return inputs, {}
+        return inputs
 
 
 register_template(

@@ -26,9 +26,9 @@ class YiVLTemplate(Template):
     image_placeholder = [[-200], '\n']
 
     def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
-        inputs, _ = super()._encode(inputs)
+        inputs = super()._encode(inputs)
         if len(inputs) == 0:
-            return inputs, {}
+            return inputs
         inputs.pop('loss_scale', None)
         from llava.mm_utils import expand2square
         model = model.model
@@ -43,7 +43,7 @@ class YiVLTemplate(Template):
         if images:
             image_tensor = image_processor.preprocess(images, return_tensors='pt')['pixel_values']
             inputs['images'] = image_tensor.to(model.dtype)
-        return inputs, {}
+        return inputs
 
     def data_collator(self,
                       batch: List[Dict[str, Any]],

@@ -30,10 +30,7 @@ class Emu3GenTemplate(Template):
                                                                                             - 1))[0]
         self.config = kwargs.get('config')
 
-    def _encode(self,
-                inputs: StdTemplateInputs,
-                *,
-                model: Optional[nn.Module] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
         query = inputs.query
 
         kwargs = dict(
@@ -54,7 +51,7 @@ class Emu3GenTemplate(Template):
         inputs['labels'] = labels
         for k, v in inputs.items():
             inputs[k] = v.squeeze(0)
-        return inputs, {}
+        return inputs
 
     def prepare_for_output(self, output: str) -> str:
         return output
