@@ -83,9 +83,9 @@ class MiniCPMVTemplate(Template):
         await super().prepare_lmdeploy_inputs(inputs)
 
     def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
-        inputs, _ = super()._encode(inputs)
+        inputs = super()._encode(inputs)
         if len(inputs) == 0:
-            return inputs, {}
+            return inputs
         images = inputs.images
         input_ids = inputs['input_ids']
         labels = inputs['labels']
@@ -136,7 +136,7 @@ class MiniCPMVTemplate(Template):
                 'tgt_sizes': tgt_sizes
             }
         }
-        return inputs, {}
+        return inputs
 
     def post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
         inputs_embeds, _ = model.get_vllm_embedding(inputs)
@@ -171,7 +171,7 @@ class MiniCPMV2_6Template(MiniCPMVTemplate):
     def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
         inputs, _ = Template._encode(self, inputs)
         if len(inputs) == 0:
-            return inputs, {}
+            return inputs
         images = inputs.images
         use_video = bool(inputs.videos)
         is_plain_text = not images and not use_video
@@ -232,7 +232,7 @@ class MiniCPMV2_6Template(MiniCPMVTemplate):
                 'tgt_sizes': image_inputs['tgt_sizes']
             }
         }
-        return inputs, {}
+        return inputs
 
 
 register_template(QwenTemplateMeta(MLLMTemplateType.minicpmv2_6, template_cls=MiniCPMV2_6Template))

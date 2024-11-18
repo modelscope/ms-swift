@@ -26,6 +26,7 @@ def get_model_tokenizer_emu3_gen(model_dir: str,
     image_tokenizer = AutoModel.from_pretrained(vq_hub, trust_remote_code=True).eval()
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
     processor = Emu3Processor(image_processor, image_tokenizer, tokenizer)
+    processor.vision_tokenizer.to('cuda:0')
     return model, processor
 
 
@@ -64,6 +65,7 @@ def get_model_tokenizer_emu3_chat(model_dir: str,
     image_processor = AutoImageProcessor.from_pretrained(vq_model, trust_remote_code=True)
     image_tokenizer = AutoModel.from_pretrained(vq_model, device_map=model_kwargs['device_map'], trust_remote_code=True)
     image_tokenizer.requires_grad_(False)
+    image_tokenizer.to('cuda:0')
 
     # load processor
     if 'local_repo_path' in kwargs:

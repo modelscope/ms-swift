@@ -15,9 +15,9 @@ class PixtralTemplate(Template):
     image_placeholder = ['[IMG]']
 
     def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
-        inputs, _ = super()._encode(inputs)
+        inputs = super()._encode(inputs)
         if len(inputs) == 0:
-            return inputs, {}
+            return inputs
         processor = self.processor
         images = inputs.images
         input_ids = inputs['input_ids']
@@ -46,7 +46,7 @@ class PixtralTemplate(Template):
             inputs['input_ids'] = input_ids
             inputs['labels'] = labels
 
-        return inputs, {}
+        return inputs
 
     def data_collator(self,
                       batch: List[Dict[str, Any]],

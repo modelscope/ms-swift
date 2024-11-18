@@ -35,13 +35,10 @@ register_template(
 class DeepseekVLTemplate(Template):
     image_placeholder = ['<image_placeholder>']
 
-    def _encode(self,
-                inputs: StdTemplateInputs,
-                *,
-                model: Optional[nn.Module] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, _ = super()._encode(inputs)
+    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
+        inputs = super()._encode(inputs)
         if len(inputs) == 0:
-            return inputs, {}
+            return inputs
         images = inputs.images
         processor = self.processor
         input_ids, labels = inputs['input_ids'], inputs['labels']
@@ -70,7 +67,7 @@ class DeepseekVLTemplate(Template):
         batched_output = dict(processor.batchify([output]))
         batched_output['pixel_values'] = batched_output['pixel_values'].to(dtype=self.model.dtype)
         inputs = {'input_ids': new_input_ids, 'labels': new_labels, '_data': batched_output}
-        return inputs, {}
+        return inputs
 
     def post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
         inputs_embeds = model.prepare_inputs_embeds(**inputs)[0]

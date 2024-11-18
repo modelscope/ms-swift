@@ -158,12 +158,12 @@ class RowPreprocessor:
         dataset = self.prepare_dataset(dataset)
         _row_map = partial(self._row_map, strict=strict)
 
-        try:
-            with self._patch_arrow_writer():
+        with self._patch_arrow_writer():
+            try:
                 dataset_mapped = dataset.map(
                     _row_map, num_proc=num_proc, load_from_cache_file=load_from_cache_file, batched=True)
-        except NotImplementedError:
-            pass
+            except NotImplementedError:
+                pass
 
         if hasattr(dataset, '__len__') and len(dataset) != len(dataset_mapped):
             logger.info(

@@ -28,9 +28,9 @@ class InternvlTemplate(Template):
         return image_context
 
     def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
-        inputs, _ = super()._encode(inputs)
+        inputs = super()._encode(inputs)
         if len(inputs) == 0:
-            return inputs, {}
+            return inputs
         input_ids = inputs['input_ids']
         idx_list = findall(input_ids, -100)
         pixel_values = None
@@ -53,7 +53,7 @@ class InternvlTemplate(Template):
             inputs['labels'] = labels
         inputs['_data'] = {'input_ids': torch.tensor(input_ids), 'pixel_values': pixel_values}
         inputs.pop('loss_scale', None)
-        return inputs, {}
+        return inputs
 
     def post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
         embedding = model.get_input_embeddings()
@@ -133,7 +133,7 @@ class Internvl2Template(InternvlTemplate):
                 model: Optional[nn.Module] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super(InternvlTemplate, self)._encode(inputs)
         if len(inputs) == 0:
-            return inputs, {}
+            return inputs
         input_ids = inputs['input_ids']
         idx_list = findall(input_ids, -100)
         labels = inputs.labels
@@ -163,7 +163,7 @@ class Internvl2Template(InternvlTemplate):
         inputs['labels'] = labels
         inputs['_data'] = {'input_ids': torch.tensor(input_ids), 'pixel_values': pixel_values}
         inputs.pop('loss_scale', None)
-        return inputs, {}
+        return inputs
 
 
 # TODO: self.padding_side = 'left'

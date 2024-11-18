@@ -42,20 +42,17 @@ class GOT_OCR2Template(Template):
         assert media_type == 'image'
         return ['<img>' + '<imgpad>' * 256 + '</img>\n']
 
-    def _encode(self,
-                inputs: StdTemplateInputs,
-                *,
-                model: Optional[nn.Module] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
         inputs, tokenizer_kwargs = super()._encode(inputs)
         if len(inputs) == 0:
-            return inputs, {}
+            return inputs
         images = inputs.images
         image_processor_high = GOTImageEvalProcessor(image_size=1024)
         for i, image in enumerate(images):
             images[i] = image_processor_high(image)[None].to(model.dtype)
         if images:
             inputs['images'] = images
-        return inputs, {}
+        return inputs
 
     def data_collator(self,
                       batch: List[Dict[str, Any]],
