@@ -6,12 +6,12 @@ import torch
 import torch.nn as nn
 from PIL import Image
 
-from .utils import EmptyTemplateMeta
 from ..base import Template
 from ..constant import MLLMTemplateType
 from ..register import register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import GenerationProperty
+from .utils import EmptyTemplateMeta
 
 
 class Emu3GenTemplate(Template):
@@ -26,11 +26,13 @@ class Emu3GenTemplate(Template):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.bov = self.processor.encode(self.processor.visual_template[0].format(token_id=0))[0]
-        self.eov = self.processor.encode(self.processor.visual_template[0].format(token_id=self.COOKBOOK_SIZE
-                                                                                            - 1))[0]
+        self.eov = self.processor.encode(self.processor.visual_template[0].format(token_id=self.COOKBOOK_SIZE - 1))[0]
         self.config = kwargs.get('config')
 
-    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def _encode(self,
+                inputs: StdTemplateInputs,
+                *,
+                model: Optional[nn.Module] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         query = inputs.query
 
         kwargs = dict(
@@ -76,8 +78,8 @@ class Emu3GenTemplate(Template):
             negative_prompt = inputs['negative_prompt']
 
         classifier_free_guidance = 3.0
-        h, w = self.processor.calculate_generate_size(
-            '1:1', self.config.image_area, self.processor.vision_tokenizer.spatial_scale_factor)
+        h, w = self.processor.calculate_generate_size('1:1', self.config.image_area,
+                                                      self.processor.vision_tokenizer.spatial_scale_factor)
         # h = pos_inputs.image_size[:, 0]
         # w = pos_inputs.image_size[:, 1]
         neg_inputs = self.processor(text=negative_prompt, **kwargs)

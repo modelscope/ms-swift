@@ -1,13 +1,14 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
-from .qwen import QwenTemplateMeta
+import torch.nn as nn
+
 from ..base import Template
 from ..constant import MLLMTemplateType
-import torch.nn as nn
 from ..register import register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import Context, gather_list
+from .qwen import QwenTemplateMeta
 
 
 class GOTImageEvalProcessor:
@@ -41,7 +42,10 @@ class GOT_OCR2Template(Template):
         assert media_type == 'image'
         return ['<img>' + '<imgpad>' * 256 + '</img>\n']
 
-    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def _encode(self,
+                inputs: StdTemplateInputs,
+                *,
+                model: Optional[nn.Module] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, tokenizer_kwargs = super()._encode(inputs)
         if len(inputs) == 0:
             return inputs, {}

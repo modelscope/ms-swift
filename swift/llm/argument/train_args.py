@@ -344,9 +344,9 @@ class RLHFArguments(SftArguments):
         undesirable_weight (float): Weight for undesirable outcomes in KTO. Default is 1.0.
     """
     rlhf_type: Literal['dpo', 'orpo', 'simpo', 'kto', 'cpo'] = 'dpo'
+    ref_model: Optional[str] = None
     ref_model_type: Optional[str] = field(
         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
-    ref_model_id_or_path: Optional[str] = None
     ref_model_revision: Optional[str] = None
 
     beta: Optional[float] = None
@@ -368,10 +368,15 @@ class RLHFArguments(SftArguments):
     undesirable_weight: float = 1.0
 
     def __post_init__(self):
+        super().__post_init__()
         self._prepare_simpo()
         self._set_default()
-        self.ref_model_free = self.rlhf_type in ['cpo', 'orpo']
-        super().__post_init__()
+        if not self.rlhf_type in ['cpo', 'orpo'] and (self.train_type == 'full' or self.rlhf_type == 'ppo'):
+            self.ref_model = self.ref_model or self.model
+            self.ref_model_type = self.ref_model_type or self.model_type
+            self.ref_model_revision = self.ref_model_revision or self.model_revision
+        else:
+            assert self.ref_model is None
 
     def init_train_stage(self):
         self.train_stage = self.rlhf_type

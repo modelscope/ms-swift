@@ -1,14 +1,14 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import Any, Dict, List, Optional, Tuple, Literal
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import torch
+import torch.nn as nn
 
 from swift.utils import upper_bound
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
-import torch.nn as nn
 from ..utils import Context
 
 register_template(
@@ -37,7 +37,10 @@ class PaliGemmaTemplate(Template):
             self.prompt = ['{{QUERY}}\n']
             return ['<image>' * self.processor.image_seq_length + '<bos>']
 
-    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def _encode(self,
+                inputs: StdTemplateInputs,
+                *,
+                model: Optional[nn.Module] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super()._encode(inputs)
         if len(inputs) == 0:
             return inputs, {}

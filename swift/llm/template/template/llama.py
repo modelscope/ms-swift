@@ -2,11 +2,11 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple, Literal
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import torch
-
 import torch.nn as nn
+
 from swift.utils import get_env_args
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
@@ -77,7 +77,10 @@ class Llama3_2VisionTemplate(Template):
         assert media_type == 'image'
         return ['<|image|>']
 
-    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def _encode(self,
+                inputs: StdTemplateInputs,
+                *,
+                model: Optional[nn.Module] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         from transformers.models.mllama.processing_mllama import (get_cross_attention_token_mask,
                                                                   convert_sparse_cross_attention_mask_to_dense)
         inputs, _ = super()._encode(inputs)
@@ -118,8 +121,7 @@ class Llama3_2VisionTemplate(Template):
             b['cross_attention_mask'][0] for b in batch if b.get('cross_attention_mask') is not None
         ]
         if cross_attention_mask:
-            res['cross_attention_mask'] = self._pad_sequence(cross_attention_mask,
-                                                             0, padding_side=padding_side)
+            res['cross_attention_mask'] = self._pad_sequence(cross_attention_mask, 0, padding_side=padding_side)
         return res
 
 
@@ -137,8 +139,10 @@ register_template(
 class Llama3_1OmniTemplate(Template):
     audio_placeholder = [[-200]]
 
-    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> (
-            Tuple)[Dict[str, Any], Dict[str, Any]]:
+    def _encode(self,
+                inputs: StdTemplateInputs,
+                *,
+                model: Optional[nn.Module] = None) -> (Tuple)[Dict[str, Any], Dict[str, Any]]:
         import whisper
         inputs, _ = super()._encode(inputs)
         if len(inputs) == 0:

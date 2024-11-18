@@ -3,11 +3,11 @@ from typing import Any, Dict, List, Optional, Tuple
 import torch
 from torch import nn
 
-from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
+from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
 
 register_template(ChatmlTemplateMeta(
     LLMTemplateType.yi_coder,

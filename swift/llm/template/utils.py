@@ -4,8 +4,8 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set, Tuple, Type, Union
 
 import torch
-from transformers import (LogitsProcessor, LogitsProcessorList, PreTrainedTokenizerBase, StoppingCriteria,
-                          StoppingCriteriaList, BaseImageProcessor, FeatureExtractionMixin, ProcessorMixin)
+from transformers import (BaseImageProcessor, FeatureExtractionMixin, LogitsProcessor, LogitsProcessorList,
+                          PreTrainedTokenizerBase, ProcessorMixin, StoppingCriteria, StoppingCriteriaList)
 
 from swift.llm import History
 
