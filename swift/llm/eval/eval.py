@@ -7,8 +7,9 @@ from ..argument import EvalArguments
 from ..base import SwiftPipeline
 
 
-class SwiftEval(SwiftPipeline[EvalArguments]):
+class SwiftEval(SwiftPipeline):
     args_class = EvalArguments
+    args: args_class
 
     def run(self):
         args = self.args

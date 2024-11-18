@@ -19,8 +19,9 @@ from .protocol import ChatCompletionRequest, CompletionRequest, Model, ModelList
 logger = get_logger()
 
 
-class SwiftDeploy(SwiftInfer[DeployArguments]):
+class SwiftDeploy(SwiftInfer):
     args_class = DeployArguments
+    args: args_class
 
     def _register_app(self):
         self.app.get('/v1/models')(self.get_available_models)

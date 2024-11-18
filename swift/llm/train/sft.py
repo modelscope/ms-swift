@@ -21,8 +21,9 @@ from ..utils import deep_getattr, dynamic_gradient_checkpointing
 logger = get_logger()
 
 
-class SwiftSft(SwiftPipeline[SftArguments]):
+class SwiftSft(SwiftPipeline):
     args_class = SftArguments
+    args: args_class
 
     def __init__(self, args: Union[List[str], SftArguments, None] = None) -> None:
         super().__init__(args)
@@ -150,6 +151,7 @@ class SwiftSft(SwiftPipeline[SftArguments]):
         return partial(data_collator, padding_to=padding_to, model=self.model)
 
     def _register_post_encode_hook(self):
+        template.set_mode('train')
         template.register_post_encode_hook([self.model])
 
     def run(self):
@@ -188,8 +190,12 @@ class SwiftSft(SwiftPipeline[SftArguments]):
             callbacks=self.callbacks,
             optimizers=optimizers,
             tokenizer=self.tokenizer,
+            **self._get_trainer_kwargs(),
         )
         return self.train(trainer)
+
+    def _get_trainer_kwargs(self):
+        return {}
 
     def _save_trainer_state(self, trainer):
         training_args = trainer.args

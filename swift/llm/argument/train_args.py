@@ -371,7 +371,7 @@ class RLHFArguments(SftArguments):
         super().__post_init__()
         self._prepare_simpo()
         self._set_default()
-        if not self.rlhf_type in ['cpo', 'orpo'] and (self.train_type == 'full' or self.rlhf_type == 'ppo'):
+        if self.rlhf_type not in ['cpo', 'orpo'] and (self.train_type == 'full' or self.rlhf_type == 'ppo'):
             self.ref_model = self.ref_model or self.model
             self.ref_model_type = self.ref_model_type or self.model_type
             self.ref_model_revision = self.ref_model_revision or self.model_revision

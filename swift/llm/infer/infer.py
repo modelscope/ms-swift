@@ -52,7 +52,9 @@ class InferCliState:
         }
 
 
-class SwiftInfer(SwiftPipeline[InferArguments]):
+class SwiftInfer(SwiftPipeline):
+    args_class = InferArguments
+    args: args_class
 
     def __init__(self, args: Union[List[str], InferArguments, None] = None) -> None:
         from swift.llm import merge_lora
