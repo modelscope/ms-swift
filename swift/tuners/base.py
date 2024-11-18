@@ -231,7 +231,9 @@ class SwiftModel(nn.Module):
         try:
             return super().__getattr__(name)  # defer to nn.Module's logic
         except AttributeError:
-            return getattr(self.base_model, name)
+            if 'base_model' in self.__dict__:
+                return getattr(self.base_model, name)
+            raise
 
     @staticmethod
     def load_state_file(path, device: Optional[str] = None):

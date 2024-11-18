@@ -146,7 +146,6 @@ class COCO2014Preprocess(ResponsePreprocessor):
             caption = caption.split('&&')[0]
         row['query'] = 'please describe the image.'
         row['response'] = caption
-        row['images'] = row['image']['path']
 
         return super().preprocess(row)
 
@@ -154,7 +153,7 @@ class COCO2014Preprocess(ResponsePreprocessor):
 register_dataset(
     DatasetMeta(
         ms_dataset_id='modelscope/coco_2014_caption',
-        preprocess_func=COCO2014Preprocess(),
+        preprocess_func=COCO2014Preprocess(columns_mapping={'image': 'images'}),
         subsets=[
             SubsetDataset('train', 'coco_2014_caption', ['train']),
             SubsetDataset('validation', 'coco_2014_caption', ['validation']),

@@ -253,6 +253,7 @@ class LazyLLMDataset(Dataset):
 
 
 class EncodePreprocessor(RowPreprocessor):
+    cast_mm_data = False
 
     def __init__(self, template: 'Template'):
         super().__init__(remove_useless_columns=False)

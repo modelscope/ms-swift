@@ -35,6 +35,7 @@ standard_keys = ['messages', 'rejected_response', 'label', 'images', 'videos', '
 class RowPreprocessor:
 
     standard_keys = standard_keys
+    cast_mm_data = True
 
     def __init__(self,
                  *,
@@ -107,7 +108,7 @@ class RowPreprocessor:
                 if row is None:
                     output = None
                 else:
-                    output = {key: batched_row_origin[key] for key in keys_origin}
+                    output = {key: batched_row_origin[key][i] for key in keys_origin}
                     self.check_rejected_response(row)
                     self.check_messages(row)
                     output.update(row)
@@ -185,8 +186,9 @@ class RowPreprocessor:
         ArrowWriter.__init__ = ArrowWriter.__origin_init__
         del ArrowWriter.__origin_init__
 
-    @staticmethod
-    def _cast_mm_data(dataset, decode: bool):
+    def _cast_mm_data(self, dataset, decode: bool):
+        if not self.cast_mm_data:
+            return dataset
         features = get_dataset_features(dataset)
         for key in ['images', 'videos', 'audios']:
             if key in features and isinstance(features[key], Image) and features[key].decode != decode:

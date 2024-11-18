@@ -83,7 +83,9 @@ class Reft(SwiftAdapter):
             try:
                 return super(ReftModel, self).__getattr__(name)
             except AttributeError:
-                return getattr(self.model, name)
+                if 'model' in self.__dict__:
+                    return getattr(self.model, name)
+                raise
 
         ReftModel.__getattr__ = __getattr__
 

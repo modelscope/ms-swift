@@ -29,7 +29,9 @@ class ModelWrapper(nn.Module):
         try:
             return super().__getattr__(name)  # defer to nn.Module's logic
         except AttributeError:
-            return getattr(self._model, name)
+            if '_model' in self.__dict__:
+                return getattr(self._model, name)
+            raise
 
     def load_state_dict(self, *args, **kwargs):
         return self._model.load_state_dict(*args, **kwargs)

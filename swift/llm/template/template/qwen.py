@@ -123,7 +123,7 @@ class Qwen2AudioTemplate(Template):
             return [f'Audio {index + 1}: <|audio_bos|><|AUDIO|><|audio_eos|>\n']
 
     def _encode(self, template_inputs: StdTemplateInputs) -> Dict[str, Any]:
-        inputs = super()._encode(template_inputs, model=model)
+        inputs = super()._encode(template_inputs)
         if len(inputs) == 0:
             return inputs
         processor = self.processor
@@ -220,7 +220,7 @@ class Qwen2VLTemplate(Template):
             return ['<bbox>']
 
     def _encode(self, template_inputs: StdTemplateInputs) -> Dict[str, Any]:
-        inputs = super()._encode(template_inputs, model=model)
+        inputs = super()._encode(template_inputs)
         if len(inputs) == 0:
             return inputs
         processor = self.processor

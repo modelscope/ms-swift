@@ -337,7 +337,10 @@ class Template:
         return res, loss_scale_res
 
     def _tokenize(self, context, **tokenizer_kwargs):
-        return self.processor(
+        tokenizer = self.processor
+        if hasattr(tokenizer, 'tokenizer'):
+            tokenizer = tokenizer.tokenizer
+        return tokenizer(
             context, return_attention_mask=False, add_special_tokens=False, **tokenizer_kwargs)['input_ids']
 
     def _check_inputs(self, inputs: StdTemplateInputs) -> None:

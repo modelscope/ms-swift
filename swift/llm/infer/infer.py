@@ -69,9 +69,11 @@ class SwiftInfer(SwiftPipeline):
 
     def __getattr__(self, name: str):
         try:
-            return super().__getattr__(name)  # TODO:check
+            return super().__getattr__(name)
         except AttributeError:
-            return getattr(self.infer_engine, name)
+            if 'infer_engine' in self.__dict__:
+                return getattr(self.infer_engine, name)
+            raise
 
     @staticmethod
     def get_infer_engine(args, **kwargs):

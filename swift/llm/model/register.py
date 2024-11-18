@@ -261,9 +261,9 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
 def get_model_tokenizer_multimodal(model_dir: str, *args, **kwargs):
     from transformers import AutoProcessor
     processor = AutoProcessor.from_pretrained(model_dir)
-    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
-    tokenizer.processor = processor
-    return model, tokenizer
+    kwargs['tokenizer'] = processor.tokenizer
+    model, _ = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
+    return model, processor
 
 
 def fix_transformers_upgrade(module: PreTrainedModel) -> None:
@@ -409,6 +409,24 @@ def get_model_info(model_dir: str,
     return res
 
 
+def patch_processor(processor):
+    if hasattr(processor, 'convert_tokens_to_ids'):
+        return
+
+    tokenizer = processor.tokenizer
+
+    def __getattr__(self, name: str):
+        try:
+            return super(processor.__class__, self).__getattr__(name)
+        except AttributeError:
+            if 'tokenizer' in self.__dict__:
+                return getattr(self.tokenizer, name)
+            raise
+
+    processor.__class__.__getattr__ = __getattr__
+    processor.__class__._patch = True
+
+
 def get_model_tokenizer(model_id_or_path: str,
                         torch_dtype: Optional[torch.dtype] = None,
                         device_map: Union[str, Dict[str, Any], None] = None,
@@ -486,6 +504,8 @@ def get_model_tokenizer(model_id_or_path: str,
     kwargs['automodel_class'] = automodel_class
     model, tokenizer = get_function(model_dir, model_info, model_kwargs, load_model, **kwargs)
 
+    if hasattr(tokenizer, 'tokenizer'):
+        patch_processor(tokenizer)
     tokenizer.model_info = model_info
     tokenizer.model_meta = model_meta
 
