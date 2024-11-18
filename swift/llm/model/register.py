@@ -372,6 +372,7 @@ def _get_model_name(model_id_or_path: str) -> str:
 
 
 def get_matched_model_meta(model_id_or_path: str) -> Optional[ModelMeta]:
+    assert isinstance(model_id_or_path, str), f'model_id_or_path: {model_id_or_path}'
     model_name = _get_model_name(model_id_or_path).lower()
     for model_type, model_meta in MODEL_MAPPING.items():
         model_group = model_meta.get_matched_model_group(model_name)

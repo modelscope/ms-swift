@@ -184,15 +184,12 @@ class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
 
     def _compute_token_acc(self, outputs, labels) -> None:
         acc_steps = self.args.acc_steps
+        preds = outputs.logits.argmax(dim=2)
         if self.state.global_step % acc_steps == 0:
             if use_torchacc():
                 ta_trim_graph()
                 preds = preds.to('cpu')
-                masks = masks.to('cpu')
                 labels = labels.to('cpu')
             acc_list = compute_acc(
-                outputs.logits.argmax(dim=2),
-                labels,
-                acc_strategy=self.args.acc_strategy,
-                is_encoder_decoder=self.args.is_encoder_decoder)
+                preds, labels, acc_strategy=self.args.acc_strategy, is_encoder_decoder=self.args.is_encoder_decoder)
             self._custom_metrics['acc'].update(acc_list)

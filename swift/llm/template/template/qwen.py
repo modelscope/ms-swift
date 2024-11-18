@@ -309,21 +309,20 @@ class Qwen2VLTemplate(Template):
                       padding_to: Optional[int] = None,
                       model: Optional[nn.Module] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_side=padding_side, padding_to=padding_to, model=model)
-        if 'input_ids' in res:
-            args = [res['input_ids']]
-            for media_type in ['image', 'video']:
-                grid_thw = [b[f'{media_type}_grid_thw'] for b in batch if b.get(f'{media_type}_grid_thw') is not None]
-                grid_thw = torch.concat(grid_thw) if grid_thw else None
-                args.append(grid_thw)
+        for media_type in ['image', 'video']:
+            grid_thw = [b[f'{media_type}_grid_thw'] for b in batch if b.get(f'{media_type}_grid_thw') is not None]
+            if grid_thw:
+                res[f'{media_type}_grid_thw'] = torch.concat(grid_thw)
+        if 'input_ids' in res and self.mode == 'train':
+            image_grid_thw = res.pop('image_grid_thw', None)
+            video_grid_thw = res.pop('video_grid_thw', None)
             # fix https://github.com/huggingface/transformers/pull/33487
-            position_ids, _ = model.get_rope_index(*args, res['attention_mask'])
+            position_ids, _ = model.get_rope_index(res['input_ids'], image_grid_thw, video_grid_thw,
+                                                   res['attention_mask'])
             res['position_ids'] = position_ids.contiguous()
         return res
 
 
 register_template(
     QwenTemplateMeta(
-        TemplateType.qwen2_vl,
-        template_cls=Qwen2VLTemplate,
-        skip_prompt=False,
-        placeholder_tokens=['<|image_pad|>', '<|video_pad|>']))
+        TemplateType.qwen2_vl, template_cls=Qwen2VLTemplate, placeholder_tokens=['<|image_pad|>', '<|video_pad|>']))
