@@ -31,12 +31,15 @@ class SwiftSft(SwiftPipeline):
         self._prepare_model_tokenizer()
         self._prepare_template()
         self._prepare_callbacks()
-
+        self._set_mode()
         self.model = prepare_tuner(self.model, args)
         logger.info(self.model)
         model_parameter_info = get_model_parameter_info(self.model)
         self.train_msg['model_parameter_info'] = model_parameter_info
         logger.info(f'model_parameter_info: {model_parameter_info}')
+
+    def _set_mode(self):
+        self.template.set_mode('train')
 
     def _prepare_gradient_checkpointing(self):
         args = self.args
@@ -152,7 +155,6 @@ class SwiftSft(SwiftPipeline):
         return partial(data_collator, padding_to=padding_to, model=self.model)
 
     def _register_post_encode_hook(self):
-        template.set_mode('train')
         template.register_post_encode_hook([self.model])
 
     def run(self):

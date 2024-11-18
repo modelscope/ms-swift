@@ -158,7 +158,7 @@ class Llama3_1OmniTemplate(Template):
 
         return inputs
 
-    def post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
         speech = inputs.get('speech')
         input_ids = inputs['input_ids']
         labels = inputs.get('labels')

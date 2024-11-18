@@ -256,7 +256,7 @@ class Qwen2VLTemplate(Template):
         inputs['labels'] = labels
         return inputs
 
-    def post_encode(self, model, data: Any) -> Dict[str, Any]:
+    def _post_encode(self, model, data: Any) -> Dict[str, Any]:
         if self.mode != 'train':
             return data
         input_ids = data['input_ids'][None]

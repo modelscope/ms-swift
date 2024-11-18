@@ -136,8 +136,9 @@ class CogTemplate(Template):
             return inputs
         image = inputs.images or []
         inputs.pop('loss_scale', None)
+        history_inputs = inputs.to_history()
         inputs2 = model.build_conversation_input_ids(
-            self.processor, query=inputs.query, history=inputs.history, images=image)
+            self.processor, query=history_inputs['query'], history=history_inputs['history'], images=image)
         image_token_len = inputs2['token_type_ids'].sum().item()
         input_ids = inputs['input_ids']
         labels = inputs['labels']
@@ -213,8 +214,13 @@ class Cog2VideoTemplate(CogTemplate):
         videos_path = inputs.videos or []
         video = load_batch(videos_path, load_video_cogvlm2)
         inputs.pop('loss_scale', None)
+        history_inputs = inputs.to_history()
         inputs2 = model.build_conversation_input_ids(
-            self.processor, query=inputs.query, history=inputs.history, images=video, template_version='chat')
+            self.processor,
+            query=history_inputs['query'],
+            history=history_inputs['history'],
+            images=video,
+            template_version='chat')
         video_token_len = inputs2['token_type_ids'].sum().item()
         input_ids = inputs['input_ids']
         labels = inputs['labels']

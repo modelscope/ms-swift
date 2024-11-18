@@ -31,7 +31,7 @@ class Emu3GenTemplate(Template):
         self.config = kwargs.get('config')
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        query = inputs.query
+        query = inputs.to_history()['query']
 
         kwargs = dict(
             mode='U' if self.mode == 'train' else 'G',

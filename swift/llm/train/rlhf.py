@@ -18,12 +18,14 @@ class SwiftRLHF(SwiftSft):
 
         super()._prepare_model_tokenizer()
 
+    def _set_mode(self):
+        self.template.set_mode('rlhf')
+
     def _register_post_encode_hook(self):
         models = [self.model]
         if self.ref_model:
             models.append(self.ref_model)
-        template.set_mode('rlhf')
-        template.register_post_encode_hook(models)
+        self.template.register_post_encode_hook(models)
 
     def _get_trainer_kwargs(self):
         trainer_kwargs = {}

@@ -6,6 +6,7 @@ import json
 from PIL import Image
 
 from swift.utils import get_logger
+from ..utils import messages_to_history
 
 logger = get_logger()
 
@@ -76,14 +77,15 @@ class TemplateInputs(InferRequest):
 
     def copy(self):
         infer_request = super().copy()
-        return self.__class__(infer_request.messages, infer_request.images, infer_request.audios, infer_request.videos,
-                              infer_request.tools, deepcopy(self.objects))
+        return self.__class__(infer_request.messages, self.rejected_response, infer_request.images,
+                              infer_request.audios, infer_request.videos, infer_request.tools, deepcopy(self.objects))
 
 
 @dataclass
 class StdTemplateInputs:
     # only user/tool/assistant
     messages: List[Dict[str, str]]
+    rejected_response: Optional[str] = None
     # None: use default system; '': not use system
     system: Optional[str] = None
 
@@ -110,30 +112,10 @@ class StdTemplateInputs:
             deepcopy(self.messages), self.system, self.images.copy(), self.audios.copy(), self.videos.copy(),
             self.objects.copy())
 
-    @property
-    def history(self):
+    def to_history(self):
         if not self.messages:
             return None
-        from swift.llm import messages_to_history
         return messages_to_history(self.messages)
-
-    @property
-    def query(self):
-        if not self.messages:
-            return None
-        ms = [m for m in self.messages if m['role'] == 'user']
-        if not ms:
-            return None
-        return ms[-1]['content']
-
-    @property
-    def response(self):
-        if not self.messages:
-            return None
-        ms = [m for m in self.messages if m['role'] == 'assistant']
-        if not ms:
-            return None
-        return ms[-1]['content']
 
     @property
     def is_multimodal(self):
@@ -143,6 +125,7 @@ class StdTemplateInputs:
     def from_dict(cls, inputs: Dict[str, Any], *, tools_prompt: str = 'react_en') -> 'StdTemplateInputs':
         from .agent import get_tools_prompt
         messages = deepcopy(inputs['messages'])
+        rejected_response = inputs.get('rejected_response')
         tools = deepcopy(inputs.get('tools'))
         objects = deepcopy(inputs.get('objects') or [])
 
@@ -175,7 +158,7 @@ class StdTemplateInputs:
                 media_kwargs[k] = inputs_mm_data
 
         StdTemplateInputs.messages_join_observation(messages)
-        return cls(messages, system, **media_kwargs, objects=objects)
+        return cls(messages, rejected_response, system, **media_kwargs, objects=objects)
 
     @staticmethod
     def remove_messages_media(messages: Messages) -> Dict[str, Any]:

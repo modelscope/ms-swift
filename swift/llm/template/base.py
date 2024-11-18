@@ -143,6 +143,21 @@ class Template:
             raise ValueError(
                 f'The template does not support multi-round chat, template_type: {template_meta.template_type}')
 
+    def _rlhf_encode(self, inputs):
+        chosen_inputs, rejected_inputs = inputs, inputs.copy()
+        rejected_inputs['messages'][-1]['content'] = chosen_inputs['rejected_response']
+        self._check_inputs(chosen_inputs)
+        self._check_inputs(rejected_inputs)
+        chosen_inputs = self._encode(chosen_inputs)
+        rejected_inputs = self._encode(rejected_inputs)
+        if len(chosen_inputs) == 0 or len(rejected_inputs) == 0:
+            return {}
+        for suffix, res in zip(['inputs', 'tokenizer_kwargs'], [inputs, tokenizer_kwargs]):
+            for prefix in ['chosen', 'rejected']:
+                data = locals()[f'{prefix}_{suffix}']
+                for k, v in data.items():
+                    res[f'{prefix}_{k}'] = v
+
     def encode(
         self,
         inputs: Union[TemplateInputs, Dict[str, Any], StdTemplateInputs, InferRequest],
@@ -167,15 +182,18 @@ class Template:
             res = Template._encode(self, inputs)
             if inputs.images:
                 res['images'] = inputs.images
-        else:
+        elif self.mode in {'pt', 'train'}:
             self._check_inputs(inputs)
             res = self._encode(inputs)
+        else:
+            self._rlhf_encode(inputs)
+
         for key in ['labels', 'loss_scale']:
             if res.get(key) is None:
                 res.pop(key, None)
         return res
 
-    def post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
         return {}
 
     @staticmethod
@@ -623,7 +641,7 @@ class Template:
             for k, v in data.items():
                 if k in {'input_ids', 'labels', 'loss_scale'} and isinstance(v, (list, tuple)):
                     data[k] = torch.tensor(v)
-            extra_inputs.append(self.post_encode(model, to_device(data, model.device)))
+            extra_inputs.append(self._post_encode(model, to_device(data, model.device)))
         new_kwargs = self.data_collator(extra_inputs, padding_side=padding_side, padding_to=padding_to, model=model)
         new_kwargs.pop('labels', None)
         if 'inputs_embeds' in new_kwargs:

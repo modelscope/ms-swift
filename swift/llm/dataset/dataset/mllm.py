@@ -912,20 +912,11 @@ register_dataset(
         tags=['medical', 'en', 'vqa']))
 
 
-class OkvqaPreprocessor(RowPreprocessor):
+class OkvqaPreprocessor(ResponsePreprocessor):
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
-        query = row['question']
-        response = np.random.choice(row['answers'])
-        return {
-            'messages': [{
-                'role': 'user',
-                'content': query
-            }, {
-                'role': 'assistant',
-                'content': response
-            }],
-        }
+        row['response'] = np.random.choice(row['answers'])
+        return super().preprocess(row)
 
 
 register_dataset(

@@ -62,7 +62,7 @@ class FlorenceTemplate(Template):
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         processor = self.processor
-        new_query = processor._construct_prompts([inputs.query])[0]
+        new_query = processor._construct_prompts([inputs.to_history()['query']])[0]
         for i in reversed(range(len(inputs.messages))):
             if inputs.messages[i]['user'] == 'user':
                 inputs.messages[i]['content'] = new_query
@@ -86,7 +86,7 @@ class FlorenceTemplate(Template):
         }
         return inputs
 
-    def post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
         inputs_embeds = model.get_input_embeddings()(inputs['input_ids'])
         image_features = model._encode_image(inputs['pixel_values'])
         inputs_embeds, _ = model._merge_input_ids_with_image_features(image_features, inputs_embeds)

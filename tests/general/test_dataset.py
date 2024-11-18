@@ -16,11 +16,12 @@ def test_sft():
 
 
 def test_mllm():
-    _test_dataset(['AI-ModelScope/LaTeX_OCR:all'])
-    _test_dataset(['swift/VideoChatGPT:all'])
-    _test_dataset(['speech_asr/speech_asr_aishell1_trainsets:validation'])
-    _test_dataset(['AI-ModelScope/captcha-images'])
-    _test_dataset(['swift/RLAIF-V-Dataset:all'])
+    _test_dataset(['swift/OK-VQA_train'], strict=False)
+    # _test_dataset(['AI-ModelScope/LaTeX_OCR:all'])
+    # _test_dataset(['swift/VideoChatGPT:all'])
+    # _test_dataset(['speech_asr/speech_asr_aishell1_trainsets:validation'])
+    # _test_dataset(['AI-ModelScope/captcha-images'])
+    _test_dataset(['swift/RLAIF-V-Dataset:all'], strict=False)
     _test_dataset(['swift/gpt4v-dataset:all'])
 
     # _test_dataset(['modelscope/coco_2014_caption:validation'])

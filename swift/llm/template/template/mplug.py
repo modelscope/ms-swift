@@ -80,7 +80,7 @@ class mPlugOwl3Template(Template):
         inputs['labels'] = labels
         return inputs
 
-    def post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
         if 'pixel_values' in inputs:
             pixel_values = inputs.pop('pixel_values')
             inputs['image_embeds'] = model.forward_image(pixel_values)

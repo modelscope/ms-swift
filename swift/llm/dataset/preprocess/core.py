@@ -88,24 +88,29 @@ class RowPreprocessor:
         return dataset
 
     def _row_map(self, batched_row: Dict[str, Any], *, strict: bool) -> Dict[str, Any]:
-        batched_row = self.row_keys_map(batched_row, self.row_mapping)
+        batched_row_origin = dict(batched_row)
+        keys_origin = list(batched_row_origin.keys())
+        batch_size = len(batched_row_origin[keys_origin[0]])
+
+        batched_row = batched_row_origin.copy()
+        self.row_keys_map(batched_row, self.row_mapping)
         keys = list(batched_row.keys())
         if len(keys) == 0:
             return {}
         res = {}
-        batch_size = len(batched_row[keys[0]])
         num_samples = 0
         for i in range(batch_size):
             row = {key: batched_row[key][i] for key in keys}
 
             try:
-                new_row = self.preprocess(row.copy())
-                if new_row is None:
-                    row = None
+                row = self.preprocess(row)
+                if row is None:
+                    output = None
                 else:
-                    self.check_rejected_response(new_row)
-                    self.check_messages(new_row)
-                    row.update(new_row)
+                    output = {key: batched_row_origin[key] for key in keys_origin}
+                    self.check_rejected_response(row)
+                    self.check_messages(row)
+                    output.update(row)
             except Exception:
                 if strict:
                     logger.warning('To avoid errors, you can pass `strict=False`.')
@@ -115,11 +120,11 @@ class RowPreprocessor:
                     print(traceback.format_exc())
                     logger.error('👆👆👆There are errors in the dataset, the data will be deleted')
                     self._traceback_counter += 1
-                row = None
-            if row is None:
+                output = None
+            if output is None:
                 continue
 
-            for k, v in row.items():
+            for k, v in output.items():
                 if k not in res:
                     res[k] = [None] * num_samples
                 res[k].append(v)
@@ -127,7 +132,7 @@ class RowPreprocessor:
             num_samples += 1
 
         if len(res) == 0:
-            res.update({k: [] for k in keys})
+            res.update({k: [] for k in keys_origin})
 
         return res
 
@@ -148,7 +153,7 @@ class RowPreprocessor:
         return dataset
 
     @staticmethod
-    def row_keys_map(row: Dict[str, Any], row_mapping: Dict[str, str]) -> Dict[str, Any]:
+    def row_keys_map(row: Dict[str, Any], row_mapping: Dict[str, str]) -> None:
         # If there are multiple mappings to the same keys, then delete them.
         row_mapping = {k: v for k, v in row_mapping.items() if k in row}
         counter = Counter(row_mapping.values())
@@ -158,8 +163,6 @@ class RowPreprocessor:
                 # For example, if "response" and "answer" match, then no processing is done.
                 continue
             row[new_k] = row.pop(k)
-
-        return row
 
     @staticmethod
     @contextmanager

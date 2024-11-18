@@ -61,7 +61,7 @@ class InternLMXComposer2Template(Template):
         inputs['_data'] = {'input_ids': inputs['input_ids'], 'labels': inputs['labels'], 'images': images}
         return inputs
 
-    def post_encode(self, model, data: Any) -> Dict[str, Any]:
+    def _post_encode(self, model, data: Any) -> Dict[str, Any]:
         input_ids = data['input_ids']
         labels = data['labels']
         images = data['images']

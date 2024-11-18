@@ -69,7 +69,7 @@ class DeepseekVLTemplate(Template):
         inputs = {'input_ids': new_input_ids, 'labels': new_labels, '_data': batched_output}
         return inputs
 
-    def post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
         inputs_embeds = model.prepare_inputs_embeds(**inputs)[0]
         return {'inputs_embeds': inputs_embeds}
 
