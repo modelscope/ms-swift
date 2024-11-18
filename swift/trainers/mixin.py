@@ -175,8 +175,11 @@ class SwiftMixin(TorchAccMixin):
             self.model.save_pretrained(output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
         # training_args.bin
         torch.save(self.args, os.path.join(output_dir, 'training_args.bin'))
-
         self._save_converted_model(output_dir)
+        # args.json
+        args_path = os.path.join(os.path.dirname(output_dir), 'args.json')
+        if os.path.exists(args_path):
+            shutil.copy(args_path, os.path.join(output_dir, 'args.json'))
 
         is_adapter = isinstance(self.model, (SwiftModel, PeftModel))
         # tokenizer

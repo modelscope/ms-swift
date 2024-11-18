@@ -128,6 +128,8 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
             logger.info('Setting args.stream: False')
 
     def __post_init__(self) -> None:
+        if self.ckpt_dir and self.load_args:
+            self.load_args_from_ckpt(self.ckpt_dir)
         BaseArguments.__post_init__(self)
         VllmArguments.__post_init__(self)
         MergeArguments.__post_init__(self)

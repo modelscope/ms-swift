@@ -11,7 +11,7 @@ from ..base import Template
 from ..constant import TemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
-from ..utils import Context, Prompt, findall
+from ..utils import Context, Prompt, fetch_one, findall
 from ..vision_utils import load_audio_qwen, load_batch, load_video_qwen2
 from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
 
@@ -35,11 +35,10 @@ register_template(Qwen2_5TemplateMeta(TemplateType.qwen2_5))
 class QwenVLTemplate(Template):
     load_medias = False
 
-    def check_inputs(self, inputs: StdTemplateInputs):
-        if self.infer_backend in {'lmdeploy', 'vllm'}:
+    def _check_inputs(self, inputs: StdTemplateInputs):
+        if self.mode in {'lmdeploy', 'vllm'}:
             return
         images = inputs.images
-        from ..utils import fetch_one
         assert not images or isinstance(fetch_one(images), str), 'QwenVL only supports datasets with images paths!'
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
