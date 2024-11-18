@@ -213,7 +213,9 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
                 acc = torch.tensor(acc_list, device=preds.device).float().mean()
             else:
                 if use_torchacc():
-                    ta_trim_graph()
+                    # Only enabled during evaluation/test
+                    if not model.training:
+                        ta_trim_graph()
                     preds = preds.to('cpu')
                     masks = masks.to('cpu')
                     labels = labels.to('cpu')
