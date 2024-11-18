@@ -1,13 +1,14 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import torch
+import torch.nn as nn
 
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
-from ..utils import Context, findall, gather_list
-from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
+from ..template_inputs import StdTemplateInputs
+from ..utils import findall
 
 register_template(
     TemplateMeta(
@@ -34,12 +35,12 @@ register_template(
 class DeepseekVLTemplate(Template):
     image_placeholder = ['<image_placeholder>']
 
-    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, _ = super()._encode(example)
+    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super()._encode(inputs)
         if len(inputs) == 0:
             return inputs, {}
-        images = example.get('images')
-        processor = self.tokenizer.processor
+        images = inputs.images
+        processor = self.processor
         input_ids, labels = inputs['input_ids'], inputs['labels']
         idx_list = findall(input_ids, processor.image_id)  # '<image_placeholder>'
         new_input_ids, new_labels = [], []
@@ -68,8 +69,8 @@ class DeepseekVLTemplate(Template):
         inputs = {'input_ids': new_input_ids, 'labels': new_labels, '_data': batched_output}
         return inputs, {}
 
-    def _post_encode(self, model, data: Any) -> Dict[str, Any]:
-        inputs_embeds = model.prepare_inputs_embeds(**data)[0]
+    def post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        inputs_embeds = model.prepare_inputs_embeds(**inputs)[0]
         return {'inputs_embeds': inputs_embeds}
 
 

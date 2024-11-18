@@ -4,10 +4,12 @@ from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import json
 import torch
+from torch import nn
 
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
+from ..template_inputs import StdTemplateInputs
 from ..utils import Context, Prompt, findall, gather_list
 from ..vision_utils import load_image
 
@@ -16,7 +18,7 @@ class FlorenceTemplate(Template):
     loss_scale = 'last_round'
     output_prompt_answer = True
 
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
         self.task_prompts_without_inputs = {
             '<OCR>': 'What is the text in the image?',
             '<OCR_WITH_REGION>': 'What is the text in the image, with regions?',
@@ -36,16 +38,18 @@ class FlorenceTemplate(Template):
             '<REGION_TO_DESCRIPTION>': 'What does the region {input} describe?',
             '<REGION_TO_OCR>': 'What text is in the region {input}?',
         }
+        super().__init__(*args, **kwargs)
 
-    def check_example(self, example):
-        images = example.get('images') or []
+    def _check_inputs(self, inputs: StdTemplateInputs):
+        images = inputs.images or []
         assert len(images) == 1, 'Florence series models only supports input with a single image.'
 
-    def add_default_tags(self, example: Dict[str, Any]) -> None:
+    @staticmethod
+    def _add_default_tags(inputs: StdTemplateInputs) -> None:
         return
 
-    def replace_box(self, index: int, example: Dict[str, Any]) -> List[Context]:
-        object_ = example['objects'][index]
+    def replace_box(self, object_: Dict[str, Any], index: int, inputs: StdTemplateInputs) -> List[Context]:
+        object_ = inputs.objects[index]
         if isinstance(object_['bbox'][0], list):
             all_objects = ''
             for sub_object in object_['bbox']:
@@ -56,19 +60,22 @@ class FlorenceTemplate(Template):
             x1, y1, x2, y2 = object_['bbox']
             return [f'<loc_{x1}><loc_{y1}><loc_{x2}><loc_{y2}>']
 
-    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        query = example['query']
-        processor = self.tokenizer.processor
-        example['query'] = processor._construct_prompts([query])[0]
-        inputs, _ = super()._encode(example)
+    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
+        processor = self.processor
+        new_query = processor._construct_prompts([inputs.query])[0]
+        for i in reversed(range(len(inputs.messages))):
+            if inputs.messages[i]['user'] == 'user':
+                inputs.messages[i]['content'] = new_query
+                break
+        inputs, _ = super()._encode(inputs)
         input_ids = inputs['prompt_input_ids']
         if len(inputs) == 0:
             return inputs, {}
-        images = example.get('images') or []
+        images = inputs.images or []
         labels = inputs['answer_labels']
         if labels is not None:
             labels = [0] + labels
-        pixel_values = processor.image_processor(images, return_tensors='pt')['pixel_values'].to(self.model.dtype)
+        pixel_values = processor.image_processor(images, return_tensors='pt')['pixel_values'].to(model.dtype)
         inputs = {
             'input_ids': input_ids,
             'labels': labels,
@@ -79,25 +86,19 @@ class FlorenceTemplate(Template):
         }
         return inputs, {}
 
-    def _post_encode(self, model, data: Any) -> Dict[str, Any]:
-        inputs_embeds = model.get_input_embeddings()(data['input_ids'])
-        image_features = model._encode_image(data['pixel_values'])
+    def post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        inputs_embeds = model.get_input_embeddings()(inputs['input_ids'])
+        image_features = model._encode_image(inputs['pixel_values'])
         inputs_embeds, _ = model._merge_input_ids_with_image_features(image_features, inputs_embeds)
         return {'inputs_embeds': inputs_embeds[0]}
-
-    @staticmethod
-    def _get_generate_ids(generate_ids: List[int], input_token_len: int) -> List[int]:
-        return generate_ids
 
     def post_process_generate_response(self, response, example):
         if isinstance(example['images'], list):
             example['images'] = example['images'][0]
         image = load_image(example['images'])
         return json.dumps(
-            self.tokenizer.processor.post_process_generation(
+            self.processor.post_process_generation(
                 response, task=example['query'], image_size=(image.width, image.height)))
-
-        super().__init__()
 
 
 register_template(
@@ -127,15 +128,16 @@ register_template(Phi3TemplateMeta(LLMTemplateType.phi3))
 class Phi3VisionTemplate(Template):
     image_placeholder = ['<|image|><s>\n']  # <|image|>\n
 
-    def replace_tag(self, media_type, index, example) -> List[Context]:
-        if self._is_vllm:
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    inputs: StdTemplateInputs) -> List[Context]:
+        if self.mode == 'vllm':
             return [f'<|image_{index + 1}|>\n']  # <|image_1|>\n
         else:
-            return super().replace_tag(media_type, index, example)
+            return super().replace_tag(media_type, index, inputs)
 
-    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        images = example.get('images') or []
-        inputs, _ = super()._encode(example)
+    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
+        images = inputs.images or []
+        inputs, _ = super()._encode(inputs)
         if len(inputs) == 0:
             return inputs, {}
         input_ids = inputs['input_ids']
@@ -143,7 +145,7 @@ class Phi3VisionTemplate(Template):
         idx_list = findall(input_ids, 32044)  # '<|image|>'
 
         if len(images) > 0:
-            processor = self.tokenizer.processor
+            processor = self.processor
             inputs.update(processor.image_processor(images, return_tensors='pt'))
             assert len(idx_list) == len(images), f'len(idx_list): {len(idx_list)}, len(images): {len(images)}'
             res_input_ids = []

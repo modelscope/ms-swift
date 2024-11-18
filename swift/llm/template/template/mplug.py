@@ -3,67 +3,24 @@ from functools import partial
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import torch
+from torch import nn
 
 from swift.utils import get_env_args
 from ..base import Template
 from ..constant import MLLMTemplateType
 from ..register import TemplateMeta, register_template
+from ..template_inputs import StdTemplateInputs
 from ..utils import Context, findall, gather_list
 from ..vision_utils import load_video_minicpmv_mplug_owl3, replace_video2image
 from .qwen import QwenTemplateMeta
 from .utils import DEFAULT_SYSTEM
 
 
-class mPlugOwl2Template(Template):
-
-    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
-        assert media_type == 'image'
-        return [[-200]]
-
-    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        from mplug_owl2.mm_utils import process_images
-        processor = self.tokenizer.processor
-        images = example.get('images') or []
-        for i, image in enumerate(images):
-            # ref: https://modelscope.cn/models/iic/mPLUG-Owl2.1
-            max_edge = max(image.size)
-            image = image.resize((max_edge, max_edge))
-            images[i] = image
-        inputs, _ = super()._encode(example)
-        if len(inputs) == 0:
-            return inputs, {}
-        input_ids = inputs['input_ids']
-        labels = inputs['labels']
-        if images:
-            images = process_images(images, processor)
-            images = images.to(self.model.dtype)
-            return {'input_ids': input_ids, 'labels': labels, 'images': images}, {}
-        else:
-            return {'input_ids': input_ids, 'labels': labels}, {}
-
-    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
-        res = super().data_collator(batch, padding_to)
-        images = [b['images'] for b in batch if 'images' in b]
-        if images:
-            res['images'] = torch.concat(images)
-        return res
-
-
-register_template(
-    TemplateMeta(
-        MLLMTemplateType.mplug_owl2,
-        prefix=['{{SYSTEM}}'],
-        prompt=['USER: {{QUERY}}ASSISTANT:'],
-        chat_sep=['</s>'],
-        template_cls=mPlugOwl2Template,
-    ))
-
-
 class mPlugOwl3Template(Template):
     system = None
 
     def _get_image_token_list(self, cut_shape):
-        processor = self.tokenizer.processor
+        processor = self.processor
         text = processor.image_processor.cut_prompt_template(img_token='<|image|>', h=cut_shape[0], w=cut_shape[1])
         text_list = text.split('<|image|>')
         if text_list[-1] == '':
@@ -74,32 +31,33 @@ class mPlugOwl3Template(Template):
         token_list = self._encode_context_list(res_text_list)[0]
         return token_list
 
-    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    inputs: StdTemplateInputs) -> List[Context]:
         assert media_type in {'image', 'video'}
         max_num_frames = get_env_args('max_num_frames', int, 16)
         load_video = partial(load_video_minicpmv_mplug_owl3, max_num_frames=max_num_frames)
         if media_type == 'image':
             return [[-100], '\n']
         elif media_type == 'video':
-            return replace_video2image(load_video, example, lambda i: [[-100]]) + ['\n']
+            return replace_video2image(load_video, inputs, lambda i: [[-100]]) + ['\n']
 
-    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, _ = super()._encode(example)
+    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
+        inputs, _ = super()._encode(inputs)
         if len(inputs) == 0:
             return inputs, {}
-        images = example['images']
-        videos = example['videos']
+        images = inputs.images
+        videos = inputs.videos
         cut_enable = not videos
         input_ids = inputs['input_ids']
         labels = inputs['labels']
         idx_list = findall(input_ids, -100)
-        processor = self.tokenizer.processor
+        processor = self.processor
         inputs = {'_data': {}}
         if images:
             image_inputs = processor.image_processor(images, cut_enable=cut_enable, return_tensors='pt')
             added_tokens_len = 0
             cut_shapes = image_inputs['cut_shape'] or [None] * len(idx_list)
-            image_token_list = self.tokenizer.encode('<|image|>', add_special_tokens=False)
+            image_token_list = self.processor.encode('<|image|>', add_special_tokens=False)
             for idx, cut_shape in zip(idx_list, cut_shapes):
                 if cut_shape:
                     token_list = self._get_image_token_list(cut_shape)
@@ -122,14 +80,19 @@ class mPlugOwl3Template(Template):
         inputs['labels'] = labels
         return inputs, {}
 
-    def _post_encode(self, model, data: Any) -> Dict[str, Any]:
-        if 'pixel_values' in data:
-            pixel_values = data.pop('pixel_values')
-            data['image_embeds'] = model.forward_image(pixel_values)
-        return data
+    def post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        if 'pixel_values' in inputs:
+            pixel_values = inputs.pop('pixel_values')
+            inputs['image_embeds'] = model.forward_image(pixel_values)
+        return inputs
 
-    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
-        res = super().data_collator(batch, padding_to)
+    def data_collator(self,
+                      batch: List[Dict[str, Any]],
+                      *,
+                      padding_side: Optional[str] = None,
+                      padding_to: Optional[int] = None,
+                      model: Optional[nn.Module] = None) -> Dict[str, Any]:
+        res = super().data_collator(batch, padding_to=padding_to, padding_side=padding_side)
         image_embeds = [b['image_embeds'] for b in batch if 'image_embeds' in b]
         if image_embeds:
             res['image_embeds'] = torch.concat(image_embeds)

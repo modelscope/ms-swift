@@ -5,11 +5,12 @@ from typing import Any, Dict, List, Optional, Set, Tuple, Type, Union
 
 import torch
 from transformers import (LogitsProcessor, LogitsProcessorList, PreTrainedTokenizerBase, StoppingCriteria,
-                          StoppingCriteriaList)
+                          StoppingCriteriaList, BaseImageProcessor, FeatureExtractionMixin, ProcessorMixin)
 
 from swift.llm import History
 
 Prompt = List[Union[str, List[int], List[str]]]
+Processor = Union[PreTrainedTokenizerBase, BaseImageProcessor, FeatureExtractionMixin, ProcessorMixin]
 Word = Union[str, List[int]]
 Context = Word
 

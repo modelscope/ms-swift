@@ -1,16 +1,18 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import torch
+from torch import nn
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.utils import get_env_args
+from .utils import ChatmlTemplateMeta
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
-from ..utils import Context, Prompt, findall, gather_list
-from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
+from ..template_inputs import StdTemplateInputs
+from ..utils import Prompt
 
 INTERNLM_SYSTEM = (
     'You are an AI assistant whose name is InternLM (书生·浦语).\n'
@@ -36,30 +38,30 @@ class InternLMXComposer2Template(Template):
     image_placeholder = ['</s>']
     version = 'v2'
 
-    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, _ = super()._encode(example)
+    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
+        inputs, _ = super()._encode(inputs)
         if len(inputs) == 0:
             return inputs, {}
-        dtype = self.model.dtype
-        images = example.get('images') or []
+        dtype = model.dtype
+        images = inputs.images or []
 
         if self.version == 'v2.5':
             hd_num = 24
             if len(images) > 1:
                 hd_num = 6
             hd_num = get_env_args('hd_num', int, hd_num)
-            Image_transform = get_class_from_dynamic_module('ixc_utils.Image_transform', self.tokenizer.model_dir)
+            Image_transform = get_class_from_dynamic_module('ixc_utils.Image_transform', model.model_dir)
             images = [Image_transform(image, hd_num=hd_num) for image in images]
         elif self.version == 'v2-4khd':
             hd_num = 55
             hd_num = get_env_args('hd_num', int, hd_num)
-            HD_transform = get_class_from_dynamic_module('ixc_utils.HD_transform', self.tokenizer.model_dir)
+            HD_transform = get_class_from_dynamic_module('ixc_utils.HD_transform', model.model_dir)
             images = [HD_transform(image, hd_num=hd_num) for image in images]
-        images = [self.model.vis_processor(image).to(dtype) for image in images]
+        images = [model.vis_processor(image).to(dtype) for image in images]
         inputs['_data'] = {'input_ids': inputs['input_ids'], 'labels': inputs['labels'], 'images': images}
         return inputs, {}
 
-    def _post_encode(self, model, data: Any) -> Dict[str, Any]:
+    def post_encode(self, model, data: Any) -> Dict[str, Any]:
         input_ids = data['input_ids']
         labels = data['labels']
         images = data['images']
@@ -108,11 +110,16 @@ class InternLMXComposer2Template(Template):
         wrap_im_mask = torch.tensor(wrap_im_mask, dtype=torch.bool, device=device)[None]
         return {'inputs_embeds': res_inputs_embeds, 'im_mask': wrap_im_mask, 'labels': res_labels}
 
-    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
-        res = super().data_collator(batch, padding_to)
+    def data_collator(self,
+                      batch: List[Dict[str, Any]],
+                      *,
+                      padding_side: Optional[str] = None,
+                      padding_to: Optional[int] = None,
+                      model: Optional[nn.Module] = None) -> Dict[str, Any]:
+        res = super().data_collator(batch, padding_to=padding_to, padding_side=padding_side)
         if 'im_mask' in batch[0]:
             im_mask = [b['im_mask'][0] for b in batch]
-            im_mask = self.pad_sequence(im_mask, 0, self.padding_side)
+            im_mask = self._pad_sequence(im_mask, 0, padding_side=padding_side)
             res['im_mask'] = im_mask
         return res
 

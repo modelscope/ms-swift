@@ -44,11 +44,11 @@ class QwenVLTemplate(Template):
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         assert media_type == 'image'
-        if self.infer_backend == 'lmdeploy':
+        if self.mode == 'lmdeploy':
             return [f'Picture {index + 1}: ', [-100], '\n']
         else:
             image = inputs.images[index]
-            if self.infer_backend == 'vllm':
+            if self.mode == 'vllm':
                 return [f'Picture {index + 1}: <img></img>\n']
             else:
                 assert isinstance(image, str)
@@ -84,7 +84,7 @@ class QwenAudioTemplate(Template):
         return [f'Audio {index + 1}:<audio>{audio}</audio>\n']
 
     def _get_tokenizer_kwargs(self, context: str) -> Dict[str, Any]:
-        return {'audio_info': self.tokenizer.process_audio(context)}
+        return {'audio_info': self.processor.process_audio(context)}
 
     def _concat_tokenizer_kwargs(self, tokenizer_kwargs: Dict[str, Any], curr_tokenizer_kwargs: Dict[str, Any]) -> None:
         audio_info = curr_tokenizer_kwargs.get('audio_info')
@@ -126,7 +126,7 @@ class Qwen2AudioTemplate(Template):
         inputs = super()._encode(template_inputs, model=model)
         if len(inputs) == 0:
             return inputs
-        processor = self.tokenizer.processor
+        processor = self.processor
         sampling_rate = processor.feature_extractor.sampling_rate
         audios = load_batch(template_inputs.audios, load_func=partial(load_audio_qwen, sampling_rate=sampling_rate))
         if audios:
@@ -223,7 +223,7 @@ class Qwen2VLTemplate(Template):
         inputs = super()._encode(template_inputs, model=model)
         if len(inputs) == 0:
             return inputs
-        processor = self.tokenizer.processor
+        processor = self.processor
         input_ids = inputs['input_ids']
         labels = inputs['labels']
         images = template_inputs.images
@@ -270,7 +270,7 @@ class Qwen2VLTemplate(Template):
             if is_deepspeed_enabled():
                 from PIL import Image
                 images = [Image.new('RGB', (32, 32), (0, 0, 0))]
-                processor = self.tokenizer.processor
+                processor = self.processor
                 media_inputs = processor.image_processor(images=images, videos=None, return_tensors='pt')
                 device = input_ids.device
                 pixel_values = media_inputs['pixel_values'].to(device)
