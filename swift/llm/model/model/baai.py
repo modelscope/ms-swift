@@ -26,8 +26,7 @@ def get_model_tokenizer_emu3_gen(model_dir: str,
     image_tokenizer = AutoModel.from_pretrained(vq_hub, trust_remote_code=True).eval()
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
     processor = Emu3Processor(image_processor, image_tokenizer, tokenizer)
-    tokenizer.processor = processor
-    return model, tokenizer
+    return model, processor
 
 
 register_model(
