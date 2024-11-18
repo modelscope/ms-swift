@@ -53,18 +53,17 @@ class GPT4vDataset(ResponsePreprocessor):
         return super().preprocess(row)
 
 
-# register_dataset(
-#     DatasetMeta(
-#         ms_dataset_id='swift/gpt4v-dataset',
-#         hf_dataset_id='laion/gpt4v-dataset',
-#         preprocess_func=GPT4vDataset(columns_mapping={
-#             'link': 'images',
-#             'caption': 'response'
-#         }),
-#         subsets=['default'],
-#         split=['train'],
-#         tags=['en', 'caption', 'multi-modal', 'quality'],
-#     ))
+register_dataset(
+    DatasetMeta(
+        ms_dataset_id='swift/gpt4v-dataset',
+        hf_dataset_id='laion/gpt4v-dataset',
+        preprocess_func=GPT4vDataset(columns_mapping={
+            'link': 'images',
+            'caption': 'response'
+        }),
+        split=['train'],
+        tags=['en', 'caption', 'multi-modal', 'quality'],
+    ))
 
 register_dataset(
     DatasetMeta(
@@ -151,11 +150,6 @@ class COCO2014Preprocess(ResponsePreprocessor):
 
         return super().preprocess(row)
 
-    def __call__(self, dataset, **kwargs):
-        from datasets import Image
-        dataset = dataset.cast_column('image', Image(decode=False))
-        return super().__call__(dataset, **kwargs)
-
 
 register_dataset(
     DatasetMeta(
@@ -204,7 +198,7 @@ mantis_subsets_name = [
 
 _mantis_subsets = []
 for subset in mantis_subsets_name:
-    _subset = SubsetDataset(name=subset, split=['train'], preprocess_func=MantisPreprocessor(subset=subset))
+    _subset = SubsetDataset(subset=subset, split=['train'], preprocess_func=MantisPreprocessor(subset=subset))
     _mantis_subsets.append(_subset)
 
 register_dataset(
@@ -293,59 +287,25 @@ register_dataset(
     ))
 
 
-class AIShell1Preprocessor(RowPreprocessor):
+class AIShell1Preprocessor(ResponsePreprocessor):
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
-        return {
-            'messages': [{
-                'role': 'user',
-                'content': '语音转文本',
-            }, {
-                'role': 'assistant',
-                'content': row['Text:LABEL'].replace(' ', '')
-            }],
-            'audios':
-            row['Audio:FILE'],
-        }
+        row['query'] = '语音转文本'
+        row['response'] = row['Text:LABEL'].replace(' ', '')
+        return super().preprocess(row)
 
 
 register_dataset(
     DatasetMeta(
         ms_dataset_id='speech_asr/speech_asr_aishell1_trainsets',
         subsets=[
-            SubsetDataset('train', subset='default', split=['train']),
-            SubsetDataset('validation', subset='default', split=['validation']),
-            SubsetDataset('test', subset='default', split=['test']),
+            SubsetDataset('train', split=['train']),
+            SubsetDataset('validation', split=['validation']),
+            SubsetDataset('test', split=['test']),
         ],
-        preprocess_func=AIShell1Preprocessor(),
+        preprocess_func=AIShell1Preprocessor(columns_mapping={'Audio:FILE': 'audios'}),
         tags=['chat', 'multi-modal', 'audio'],
     ))
-
-
-class VideoChatGPTPreprocessor(RowPreprocessor):
-
-    def prepare_dataset(self, dataset: HfDataset) -> HfDataset:
-        url = 'https://modelscope.cn/datasets/swift/VideoChatGPT/resolve/master/videos.zip'
-        local_dir = MediaResource.download(url, 'video_chatgpt')
-        self.local_dir = os.path.join(local_dir, 'Test_Videos')
-        return super().prepare_dataset(dataset)
-
-    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
-        # only `.mp4`
-        mp4_set = [file[:-4] for file in os.listdir(self.local_dir) if file.endswith('mp4')]
-        if row['videos'] not in mp4_set:
-            return
-        return {
-            'messages': [{
-                'role': 'user',
-                'content': row.get('question') or row.get('question_1') or row.get('question_2')
-            }, {
-                'role': 'assistant',
-                'content': row['answer']
-            }],
-            'videos':
-            os.path.join(self.local_dir, f"{row['videos']}.mp4"),
-        }
 
 
 class EmoSchemaPreprocessor(ResponsePreprocessor):
@@ -481,7 +441,7 @@ for subset in [
         '30_60_s_youtube_v0_1',
 ]:
     subset = SubsetDataset(
-        name=subset,
+        subset=subset,
         split=['caption', 'open_ended', 'multi_choice'],
         preprocess_func=LLaVAVideo178KPreprocessor(subset=subset, columns_mapping={'video': 'videos'}),
     )
@@ -539,12 +499,35 @@ register_dataset(
         split=['train'],
         tags=['chat', 'multi-modal', 'video']))
 
+
+class VideoChatGPTPreprocessor(ResponsePreprocessor):
+
+    def prepare_dataset(self, dataset: HfDataset) -> HfDataset:
+        url = 'https://modelscope.cn/datasets/swift/VideoChatGPT/resolve/master/videos.zip'
+        local_dir = MediaResource.download(url, 'video_chatgpt')
+        self.local_dir = os.path.join(local_dir, 'Test_Videos')
+        return super().prepare_dataset(dataset)
+
+    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        # only `.mp4`
+        mp4_set = [file[:-4] for file in os.listdir(self.local_dir) if file.endswith('mp4')]
+        if row['video_name'] not in mp4_set:
+            return
+        row['videos'] = os.path.join(self.local_dir, f"{row['video_name']}.mp4")
+        for key in ['query', 'question_1', 'question_2']:
+            query = row.get(key)
+            if query is None or query == 'None':
+                continue
+            row['query'] = query
+            return super().preprocess(row)
+
+
 register_dataset(
     DatasetMeta(
         ms_dataset_id='swift/VideoChatGPT',
         hf_dataset_id='lmms-lab/VideoChatGPT',
         subsets=['Generic', 'Temporal', 'Consistency'],
-        preprocess_func=VideoChatGPTPreprocessor(columns_mapping={'video_name': 'videos'}),
+        preprocess_func=VideoChatGPTPreprocessor(),
         split=['test'],
         tags=['chat', 'multi-modal', 'video', '🔥'],
     ))
@@ -811,13 +794,11 @@ register_dataset(
         subsets=[
             SubsetDataset(
                 name='caption',
-                subset='default',
                 preprocess_func=RefCOCOPreprocessor('caption'),
                 split=['train', 'validation'],
             ),
             SubsetDataset(
                 name='grounding',
-                subset='default',
                 preprocess_func=RefCOCOPreprocessor('grounding'),
                 split=['train', 'validation'],
             )
@@ -831,13 +812,11 @@ register_dataset(
         subsets=[
             SubsetDataset(
                 name='caption',
-                subset='default',
                 preprocess_func=RefCOCOPreprocessor('caption'),
                 split=['train', 'validation'],
             ),
             SubsetDataset(
                 name='grounding',
-                subset='default',
                 preprocess_func=RefCOCOPreprocessor('grounding'),
                 split=['train', 'validation'],
             )
@@ -1094,15 +1073,15 @@ register_dataset(
         hf_dataset_id='zzliang/GRIT',
         subsets=[
             SubsetDataset(
-                name='caption',
+                subset='caption',
                 preprocess_func=GritPreprocessor('caption', columns_mapping={'url': 'images'}),
             ),
             SubsetDataset(
-                name='grounding',
+                subset='grounding',
                 preprocess_func=GritPreprocessor('grounding', columns_mapping={'url': 'images'}),
             ),
             SubsetDataset(
-                name='vqa',
+                subset='vqa',
                 preprocess_func=GritPreprocessor('vqa', columns_mapping={'url': 'images'}),
             )
         ],
@@ -1171,18 +1150,11 @@ register_dataset(
         tags=['multi-modal', 'en', 'vqa', 'quality']))
 
 
-class LatexocrPreprocessor(RowPreprocessor):
+class LatexocrPreprocessor(ResponsePreprocessor):
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
-        return {
-            'messages': [{
-                'role': 'user',
-                'content': 'Using LaTeX to perform OCR on the image.'
-            }, {
-                'role': 'assistant',
-                'content': row['text']
-            }]
-        }
+        row['query'] = 'Using LaTeX to perform OCR on the image.'
+        return super().preprocess(row)
 
 
 register_dataset(
@@ -1191,33 +1163,29 @@ register_dataset(
         hf_dataset_id='linxy/LaTeX_OCR',
         subsets=[
             SubsetDataset(
-                name='default',
                 split=['train'],
-                preprocess_func=LatexocrPreprocessor(columns_mapping={'image': 'images'}),
+                preprocess_func=LatexocrPreprocessor(columns_mapping={
+                    'image': 'images',
+                    'text': 'response'
+                }),
             ),
             SubsetDataset(
-                name='synthetic_handwrite',
+                subset='synthetic_handwrite',
                 split=['train', 'validation'],
-                preprocess_func=LatexocrPreprocessor(columns_mapping={'image': 'images'}),
+                preprocess_func=LatexocrPreprocessor(columns_mapping={
+                    'image': 'images',
+                    'text': 'response'
+                }),
             )
         ],
         tags=['chat', 'ocr', 'multi-modal', 'vision']))
 
 
-class CapchaImagesPreprocessor(RowPreprocessor):
+class CapchaImagesPreprocessor(ResponsePreprocessor):
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
-        query = 'recognize the content.'
-        response_key = 'solution'
-        return {
-            'messages': [{
-                'role': 'user',
-                'content': query
-            }, {
-                'role': 'assistant',
-                'content': row[response_key]
-            }],
-        }
+        row['query'] = 'recognize the content.'
+        return super().preprocess(row)
 
 
 register_dataset(

@@ -9,7 +9,7 @@ from typing import Any, Callable, Dict, List, Literal, Optional, Set, Union
 
 import numpy as np
 from datasets import Dataset as HfDataset
-from datasets import Features
+from datasets import Features, Image
 from datasets import IterableDataset as HfIterableDataset
 from datasets import Value
 
@@ -21,12 +21,12 @@ DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 logger = get_logger()
 
 
-def get_dataset_features(dataset: DATASET_TYPE) -> Set[str]:
+def get_dataset_features(dataset: DATASET_TYPE) -> Dict[str, Any]:
     if isinstance(dataset, HfIterableDataset) and dataset.features is None:
-        features = next(iter(dataset)).keys()
+        features = next(iter(dataset))
     else:
-        features = dataset.features.keys()
-    return set(features)
+        features = dataset.features
+    return features
 
 
 standard_keys = ['messages', 'rejected_response', 'label', 'images', 'videos', 'audios', 'tools', 'objects']
@@ -47,6 +47,40 @@ class RowPreprocessor:
         self.traceback_limit = kwargs.get('traceback_limit', 10)
         self._traceback_counter = 0
 
+    @staticmethod
+    def check_messages(row: Dict[str, Any]) -> None:
+        if 'messages' not in row:
+            return
+        messages = row['messages']
+        for user_message, assistant_message in zip(messages[::2], messages[1::2]):
+            assert (user_message['role'] in {'user', 'tool'} and 'content' in user_message
+                    and user_message['content'] is not None), f'user_message: {user_message}'
+            assert (assistant_message['role'] in {'assistant'} and 'content' in assistant_message
+                    and assistant_message['content']), f'assistant_message: {assistant_message}'
+
+    @staticmethod
+    def check_rejected_response(row: Dict[str, Any]) -> None:
+        if 'rejected_messages' in row:
+            chosen_messages = row['messages']
+            rejected_messages = row['rejected_messages']
+            messages = []
+            rejected_response = None
+            for chosen_user, chosen_assistant, rejected_user, rejected_assistant in zip(
+                    chosen_messages[::2], chosen_messages[1::2], rejected_messages[::2], rejected_messages[1::2]):
+                assert chosen_user == rejected_user
+                messages.append(chosen_user)
+                messages.append(chosen_assistant)
+                if chosen_assistant != rejected_assistant:
+                    rejected_response = rejected_assistant['content']
+            row['messages'] = messages
+            row['rejected_response'] = rejected_response
+
+        if 'rejected_response' in row:
+            messages = row['messages']
+            rejected_response = row['rejected_response']
+            assert rejected_response is not None and rejected_response != messages[-1][
+                'content'], f'rejected_response: {rejected_response}'
+
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         raise NotImplementedError
 
@@ -65,14 +99,16 @@ class RowPreprocessor:
             row = {key: batched_row[key][i] for key in keys}
 
             try:
-                new_row = self.preprocess(row)
+                new_row = self.preprocess(row.copy())
                 if new_row is None:
                     row = None
                 else:
+                    self.check_rejected_response(new_row)
+                    self.check_messages(new_row)
                     row.update(new_row)
-
             except Exception:
                 if strict:
+                    logger.warning('To avoid errors, you can pass `strict=False`.')
                     raise
                 if self.traceback_limit is not None and self._traceback_counter < self.traceback_limit:
                     import traceback
@@ -97,7 +133,7 @@ class RowPreprocessor:
 
     @staticmethod
     def safe_rename_columns(dataset: HfDataset, columns_mapping: Dict[str, Any]) -> HfDataset:
-        features = get_dataset_features(dataset)
+        features = get_dataset_features(dataset).keys()
         safe_columns_mapping = {k: v for k, v in columns_mapping.items() if k in features}
         if safe_columns_mapping:
             dataset = dataset.rename_columns(safe_columns_mapping)
@@ -105,7 +141,7 @@ class RowPreprocessor:
 
     @classmethod
     def _remove_useless_columns(cls, dataset: DATASET_TYPE) -> DATASET_TYPE:
-        features = get_dataset_features(dataset)
+        features = get_dataset_features(dataset).keys()
         k_list = [k for k in features if k in cls.standard_keys]
         if len(k_list) != len(features):
             dataset = dataset.select_columns(k_list)
@@ -146,6 +182,14 @@ class RowPreprocessor:
         ArrowWriter.__init__ = ArrowWriter.__origin_init__
         del ArrowWriter.__origin_init__
 
+    @staticmethod
+    def _cast_mm_data(dataset, decode: bool):
+        features = get_dataset_features(dataset)
+        for key in ['images', 'videos', 'audios']:
+            if key in features and isinstance(features[key], Image) and features[key].decode != decode:
+                dataset = dataset.cast_column(key, Image(decode=decode))
+        return dataset
+
     def __call__(
         self,
         dataset: DATASET_TYPE,
@@ -157,14 +201,14 @@ class RowPreprocessor:
         dataset = self.safe_rename_columns(dataset, self.columns_mapping)
         dataset = self.prepare_dataset(dataset)
         _row_map = partial(self._row_map, strict=strict)
-
-        try:
-            with self._patch_arrow_writer():
+        dataset = self._cast_mm_data(dataset, False)
+        with self._patch_arrow_writer():
+            try:
                 dataset_mapped = dataset.map(
                     _row_map, num_proc=num_proc, load_from_cache_file=load_from_cache_file, batched=True)
-        except NotImplementedError:
-            pass
-
+            except NotImplementedError:
+                pass
+        dataset_mapped = self._cast_mm_data(dataset_mapped, True)
         if hasattr(dataset, '__len__') and len(dataset) != len(dataset_mapped):
             logger.info(
                 f'Dataset filtered, origin length: {len(dataset)}, filtered dataset length: {len(dataset_mapped)}')
@@ -183,9 +227,8 @@ class ResponsePreprocessor(RowPreprocessor):
         super().__init__(columns_mapping=columns_mapping, remove_useless_columns=remove_useless_columns)
         system_keys = ['system', 'system_prompt']
         query_keys = ['query', 'prompt', 'input', 'instruction', 'question']
-        response_keys = [
-            'response', 'answer', 'output', 'targets', 'target', 'answer_key', 'text', 'completion', 'content'
-        ]
+        response_keys = ['response', 'answer', 'output', 'targets', 'target', 'answer_key', 'solution'
+                         ] + ['text', 'completion', 'content']
         for key in system_keys:
             self.row_mapping[key] = 'system'
         for key in query_keys:
@@ -299,12 +342,6 @@ class MessagesPreprocessor(RowPreprocessor):
             return False
         return True
 
-    @staticmethod
-    def check_message(user_message: Dict[str, str], assistant_message: Dict[str, str]) -> None:
-        assert (user_message['role'] in {'user', 'tool'} and 'content' in user_message), f'user_message: {user_message}'
-        assert (assistant_message['role'] in {'assistant'} and 'content' in assistant_message
-                and assistant_message['content']), f'assistant_message: {assistant_message}'
-
     def sharegpt_to_messages(self, messages: List[Dict[str, str]], system: Optional[str]) -> List[Dict[str, str]]:
         self._to_std_key(messages, 'user', self.user_roles)
         self._to_std_key(messages, 'assistant', self.assistant_roles)
@@ -337,7 +374,6 @@ class MessagesPreprocessor(RowPreprocessor):
                 user_message['role'] = 'tool'
             if assistant_role in self.assistant_roles:
                 assistant_message['role'] = 'assistant'
-            self.check_message(user_message, assistant_message)
 
     @staticmethod
     def _to_std_key(messages: List[Dict[str, str]], std_key: str, optional_keys: List[str]) -> None:
@@ -347,6 +383,9 @@ class MessagesPreprocessor(RowPreprocessor):
                     message[std_key] = message.pop(key)
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        if 'rejected_messages' in row:
+            row['rejected_messages'] = MessagesPreprocessor.preprocess(
+                self, {'messages': row['rejected_messages']})['messages']
         messages = row['messages']
         if self.inner_key is not None:
             messages = messages[self.inner_key]
@@ -374,7 +413,7 @@ class AutoPreprocessor:
         self.remove_useless_columns = remove_useless_columns
 
     def _get_preprocessor(self, dataset: DATASET_TYPE) -> RowPreprocessor:
-        features = get_dataset_features(dataset)
+        features = get_dataset_features(dataset).keys()
         for key in ['conversation', 'conversations', 'messages']:
             if key in features:
                 return MessagesPreprocessor(remove_useless_columns=self.remove_useless_columns)

@@ -10,7 +10,11 @@ kwargs = {
 def test_llm():
     from swift.llm import rlhf_main, RLHFArguments, infer_main, InferArguments
     rlhf_main(
-        RLHFArguments(rlhf_type='dpo', model='qwen/Qwen2-7B-Instruct', dataset=['AI-ModelScope/hh-rlhf#100'], **kwargs))
+        RLHFArguments(
+            rlhf_type='dpo',
+            model='qwen/Qwen2-7B-Instruct',
+            dataset=['hjh0119/shareAI-Llama3-DPO-zh-en-emoji:zh#100'],
+            **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
     infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True, merge_lora=True))
 

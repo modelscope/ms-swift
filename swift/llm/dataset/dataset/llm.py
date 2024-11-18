@@ -112,7 +112,6 @@ register_dataset(
                 preprocess_func=MessagesPreprocessor(repair_messages=partial(_repair_agent_messages, use_mini=False))),
             SubsetDataset(
                 name='mini',
-                subset='default',
                 preprocess_func=MessagesPreprocessor(repair_messages=partial(_repair_agent_messages, use_mini=True)),
                 is_weak_subset=True)
         ],
@@ -456,6 +455,14 @@ register_dataset(
 
 class HHRLHFPreprocessor(RowPreprocessor):
 
+    @staticmethod
+    def _to_messages(data):
+        messages = []
+        for query, response in zip(data[::2], data[1::2]):
+            messages.append({'role': 'user', 'content': query})
+            messages.append({'role': 'assistant', 'content': response})
+        return messages
+
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         chosen = row['chosen'].strip()
         rejected = row['rejected'].strip()
@@ -465,30 +472,9 @@ class HHRLHFPreprocessor(RowPreprocessor):
             assert parts_rejected[0].startswith('Human:')
             parts_chosen[0] = parts_chosen[0][6:].strip()
             parts_rejected[0] = parts_rejected[0][6:].strip()
-        history = []
-        idx, s1, s2 = None, None, None
-        for idx, (s1, s2) in enumerate(zip(parts_chosen, parts_rejected)):
-            if s1 == s2:
-                if idx % 2 == 0:
-                    history.append([s1, None])
-                else:
-                    history[-1][-1] = s1
-            else:
-                break
-
-        if idx % 2 == 0:
-            return
-
-        messages = []
-        for h in history:
-            messages.append({'role': 'user', 'content': h[0]})
-            messages.append({'role': 'assistant', 'content': h[1]})
-
-        messages[-1]['content'] = s1
-        return {
-            'messages': messages,
-            'rejected_response': s2,
-        }
+        row['messages'] = self._to_messages(parts_chosen)
+        row['rejected_messages'] = self._to_messages(parts_rejected)
+        return row
 
 
 # TODO meta file broken
@@ -498,73 +484,25 @@ register_dataset(
         subsets=['helpful-base', 'helpful-online', 'helpful-rejection-sampled'],
         preprocess_func=HHRLHFPreprocessor(),
         split=['train'],
-        tags=['rlhf', 'dpo', 'pairwise'],
+        tags=['rlhf', 'dpo'],
         huge_dataset=True))
 
 
-class HHRLHFCNPreprocessor(RowPreprocessor):
+class HHRLHFCNPreprocessor(MessagesPreprocessor):
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
-        history = []
-        try:
-            if isinstance(row['context'], str):
-                row['context'] = ast.literal_eval(row['context'])
-            if isinstance(row['chosen'], str):
-                row['chosen'] = ast.literal_eval(row['chosen'])
-            if isinstance(row['rejected'], str):
-                row['rejected'] = ast.literal_eval(row['rejected'])
-            for idx, h in enumerate(row['context']):
-                if idx % 2 == 0 and h['role'] != 'human':
-                    raise ValueError()
-                if idx % 2 != 0 and h['role'] != 'assistant':
-                    raise ValueError()
-                if idx % 2 == 0:
-                    history.append([h['text'], None])
-                else:
-                    history[-1][-1] = h['text']
-
-            if history[-1][-1] is not None:
-                raise ValueError()
-        except:  # noqa
-            return
-        else:
-            messages = []
-            for h in history:
-                messages.append({'role': 'user', 'content': h[0]})
-                messages.append({'role': 'assistant', 'content': h[1]})
-
-            messages[-1]['content'] = row['chosen']['text']
-            return {
-                'messages': messages,
-                'rejected_response': row['rejected']['text'],
-            }
-
-    def filter_valid_row(self, row):
-        try:
-            if isinstance(row['context'], str):
-                row['context'] = ast.literal_eval(row['context'])
-            if isinstance(row['chosen'], str):
-                row['chosen'] = ast.literal_eval(row['chosen'])
-            if isinstance(row['rejected'], str):
-                row['rejected'] = ast.literal_eval(row['rejected'])
-            return True
-        except:  # noqa
-            return False
-
-    def __call__(self, dataset, **kwargs):
-        filter_kwargs = kwargs.copy()
-        filter_kwargs.pop('strict', None)
-        dataset = dataset.filter(self.filter_valid_row, **filter_kwargs)
-        return super(HHRLHFCNPreprocessor, self).__call__(dataset, **kwargs)
+        row['messages'].append(row.pop('chosen'))
+        row['rejected_response'] = row['rejected']['text']
+        return super().preprocess(row)
 
 
 register_dataset(
     DatasetMeta(
         ms_dataset_id='AI-ModelScope/hh_rlhf_cn',
         subsets=['hh_rlhf', 'harmless_base_cn', 'harmless_base_en', 'helpful_base_cn', 'helpful_base_en'],
-        preprocess_func=HHRLHFCNPreprocessor(),
+        preprocess_func=HHRLHFCNPreprocessor(columns_mapping={'context': 'messages'}, content_key='text'),
         split=['train', 'test'],
-        tags=['rlhf', 'dpo', 'pairwise', '🔥']))
+        tags=['rlhf', 'dpo', '🔥']))
 
 
 def repair_conversations(s: Union[str, Any]) -> Any:
@@ -584,30 +522,24 @@ register_dataset(
         preprocess_func=MessagesPreprocessor(repair_messages=repair_conversations),
         tags=['chat', 'em']))
 
-
-class ShareAIDPOPreprocessor(RowPreprocessor):
-
-    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
-        return {
-            'messages': [
-                {
-                    'role': 'user',
-                    'content': row['question']
-                },
-                {
-                    'role': 'assistant',
-                    'content': row['answer_zh']
-                },
-            ],
-            'rejected_response': row['answer_en'],
-        }
-
-
 register_dataset(
     DatasetMeta(
         ms_dataset_id='hjh0119/shareAI-Llama3-DPO-zh-en-emoji',
-        preprocess_func=ShareAIDPOPreprocessor(),
-        tags=['rlhf', 'dpo', 'pairwise']))
+        subsets=[
+            SubsetDataset(
+                'zh',
+                preprocess_func=ResponsePreprocessor(columns_mapping={
+                    'answer_zh': 'response',
+                    'answer_en': 'rejected_response'
+                })),
+            SubsetDataset(
+                'en',
+                preprocess_func=ResponsePreprocessor(columns_mapping={
+                    'answer_en': 'response',
+                    'answer_zh': 'rejected_response'
+                }))
+        ],
+        tags=['rlhf', 'dpo']))
 
 register_dataset(
     DatasetMeta(
@@ -716,64 +648,22 @@ register_dataset(
         tags=['multi-task', 'en', 'quality']))
 
 
-class OrpoDPOMix40kPreprocessor(RowPreprocessor):
+class OrpoDPOMix40kPreprocessor(MessagesPreprocessor):
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
-        chosen_history = row['chosen']
-        rejected_history = row['rejected']
-        history = []
-        query = None
-        response = None
-        rejected_response = None
         if row['source'] == 'toxic-dpo-v0.2':
             return
-        try:
-            for i, (chosen, rejected) in enumerate(zip(chosen_history, rejected_history)):
-                role = chosen['role']
-                content = chosen['content']
-                rejected_role = rejected['role']
-                rejected_content = rejected['content']
-                assert role == rejected_role
-                if i % 2 == 0:
-                    assert role == 'user'
-                else:
-                    assert role == 'assistant'
-
-                if content != rejected_content:
-                    assert role == 'assistant'
-                    response = content
-                    rejected_response = rejected_content
-                    query = history.pop(-1)[0]
-                else:
-                    if role == 'user':
-                        history.append([content, None])
-                    else:
-                        history[-1][-1] = content
-
-        except (AssertionError, IndexError):
-            return
-
-        messages = []
-        for h in history:
-            messages.append({'role': 'user', 'content': h[0]})
-            messages.append({'role': 'assistant', 'content': h[1]})
-
-        if query is None or response is None:
-            return
-
-        messages.append({'role': 'user', 'content': query})
-        messages.append({'role': 'assistant', 'content': response})
-        return {
-            'messages': messages,
-            'rejected_response': rejected_response,
-        }
+        return super().preprocess(row)
 
 
 register_dataset(
     DatasetMeta(
         ms_dataset_id='AI-ModelScope/orpo-dpo-mix-40k',
         hf_dataset_id='mlabonne/orpo-dpo-mix-40k',
-        preprocess_func=OrpoDPOMix40kPreprocessor(),
+        preprocess_func=OrpoDPOMix40kPreprocessor(columns_mapping={
+            'chosen': 'messages',
+            'rejected': 'rejected_messages'
+        }),
         tags=['dpo', 'orpo', 'en', 'quality']))
 
 register_dataset(

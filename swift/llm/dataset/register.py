@@ -18,9 +18,9 @@ logger = get_logger()
 @dataclass
 class SubsetDataset:
     # `Name` is used for matching subsets of the dataset, and `subset` refers to the subset_name on the hub.
-    name: str = 'default'
+    name: Optional[str] = None
     # If set to None, then subset is set to subset_name.
-    subset: Optional[str] = None
+    subset: str = 'default'
 
     # Higher priority. If set to None, the attributes of the DatasetMeta will be used.
     split: Optional[List[str]] = None
@@ -30,8 +30,8 @@ class SubsetDataset:
     is_weak_subset: bool = False
 
     def __post_init__(self):
-        if self.subset is None:
-            self.subset = self.name
+        if self.name is None:
+            self.name = self.subset
 
     def set_default(self, dataset_meta: 'DatasetMeta') -> 'SubsetDataset':
         subset_dataset = deepcopy(self)
@@ -67,7 +67,7 @@ class DatasetMeta:
             self.load_function = DatasetLoader.load
         for i, subset in enumerate(self.subsets):
             if isinstance(subset, str):
-                self.subsets[i] = SubsetDataset(name=subset)
+                self.subsets[i] = SubsetDataset(subset=subset)
 
 
 DATASET_MAPPING: Dict[str, DatasetMeta] = {}

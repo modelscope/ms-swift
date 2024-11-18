@@ -26,7 +26,8 @@ class Emu3GenTemplate(Template):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.bov = self.processor.tokenizer.encode(self.processor.visual_template[0].format(token_id=0))[0]
-        self.eov = self.processor.tokenizer.encode(self.processor.visual_template[0].format(token_id=self.COOKBOOK_SIZE - 1))[0]
+        self.eov = self.processor.tokenizer.encode(self.processor.visual_template[0].format(token_id=self.COOKBOOK_SIZE
+                                                                                            - 1))[0]
         self.config = kwargs.get('config')
 
     def _encode(self,
