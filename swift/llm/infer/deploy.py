@@ -19,7 +19,7 @@ from .protocol import ChatCompletionRequest, CompletionRequest, Model, ModelList
 logger = get_logger()
 
 
-class SwiftDeploy(SwiftInfer):
+class SwiftDeploy(SwiftInfer[DeployArguments]):
     args_class = DeployArguments
 
     def _register_app(self):

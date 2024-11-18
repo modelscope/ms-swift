@@ -106,7 +106,7 @@ class Template:
         self.max_pixels = max_pixels
         self.sequence_parallel_size = sequence_parallel_size
         self.tools_prompt = tools_prompt or template_meta.default_tools_prompt
-        self.mode: Literal['pt', 'vllm', 'lmdeploy', 'train'] = 'pt'
+        self.mode: Literal['pt', 'vllm', 'lmdeploy', 'train', 'rlhf'] = 'pt'
         self._handles = []
         self._deepspeed_initialize = None
 

@@ -317,7 +317,6 @@ class SftArguments(MegatronArguments, TorchAccArguments, TunerArguments, Seq2Seq
 
 @dataclass
 class PtArguments(SftArguments):
-    lazy_tokenize: Optional[bool] = True
 
     def init_train_stage(self):
         self.train_stage = 'pt'
