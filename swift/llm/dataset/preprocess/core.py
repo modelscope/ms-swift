@@ -89,15 +89,13 @@ class RowPreprocessor:
         return dataset
 
     def _row_map(self, batched_row: Dict[str, Any], *, strict: bool) -> Dict[str, Any]:
-        batched_row_origin = dict(batched_row)
-        keys_origin = list(batched_row_origin.keys())
-        batch_size = len(batched_row_origin[keys_origin[0]])
-
-        batched_row = batched_row_origin.copy()
+        batched_row = dict(batched_row)
         self.row_keys_map(batched_row, self.row_mapping)
         keys = list(batched_row.keys())
         if len(keys) == 0:
             return {}
+
+        batch_size = len(batched_row[keys[0]])
         res = {}
         num_samples = 0
         for i in range(batch_size):
@@ -105,13 +103,9 @@ class RowPreprocessor:
 
             try:
                 row = self.preprocess(row)
-                if row is None:
-                    output = None
-                else:
-                    output = {key: batched_row_origin[key][i] for key in keys_origin}
+                if row is not None:
                     self.check_rejected_response(row)
                     self.check_messages(row)
-                    output.update(row)
             except Exception:
                 if strict:
                     logger.warning('To avoid errors, you can pass `strict=False`.')
@@ -121,19 +115,16 @@ class RowPreprocessor:
                     print(traceback.format_exc())
                     logger.error('👆👆👆There are errors in the dataset, the data will be deleted')
                     self._traceback_counter += 1
-                output = None
-            if output is None:
+                row = None
+            if row is None:
                 continue
 
-            for k, v in output.items():
+            for k, v in row.items():
                 if k not in res:
                     res[k] = [None] * num_samples
                 res[k].append(v)
 
             num_samples += 1
-
-        if len(res) == 0:
-            res.update({k: [] for k in keys_origin})
 
         return res
 
@@ -211,7 +202,11 @@ class RowPreprocessor:
         with self._patch_arrow_writer():
             try:
                 dataset_mapped = dataset.map(
-                    _row_map, num_proc=num_proc, load_from_cache_file=load_from_cache_file, batched=True)
+                    _row_map,
+                    num_proc=num_proc,
+                    load_from_cache_file=load_from_cache_file,
+                    batched=True,
+                    remove_columns=list(get_dataset_features(dataset).keys()))
             except NotImplementedError:
                 pass
         dataset_mapped = self._cast_mm_data(dataset_mapped, True)

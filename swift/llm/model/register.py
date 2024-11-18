@@ -410,10 +410,8 @@ def get_model_info(model_dir: str,
 
 
 def patch_processor(processor):
-    if hasattr(processor, 'convert_tokens_to_ids'):
+    if hasattr(processor, '_patch'):
         return
-
-    tokenizer = processor.tokenizer
 
     def __getattr__(self, name: str):
         try:
