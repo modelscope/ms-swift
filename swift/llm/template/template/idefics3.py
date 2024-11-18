@@ -1,20 +1,22 @@
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from ..base import Template
 from ..constant import MLLMTemplateType
 from ..register import TemplateMeta, register_template
-from ..utils import Context, align_image_inputs, findall, gather_list
+from ..template_inputs import StdTemplateInputs
+import torch.nn as nn
+from ..utils import align_image_inputs
 
 
 class Idefics3Template(Template):
 
-    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, _ = super()._encode(example)
+    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super()._encode(inputs)
         if len(inputs) == 0:
             return inputs, {}
-        images = example.get('images') or []
-        processor = self.tokenizer.processor
-        prompt = self.tokenizer.decode(inputs['input_ids'])
+        images = inputs.images or []
+        processor = self.processor
+        prompt = self.processor.decode(inputs['input_ids'])
         if images:
             image_inputs = processor(text=prompt, images=images, return_tensors='pt', add_special_tokens=False)
             image_token = 128257  # <image>

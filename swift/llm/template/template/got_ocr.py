@@ -1,11 +1,13 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
+from .qwen import QwenTemplateMeta
 from ..base import Template
 from ..constant import MLLMTemplateType
-from ..register import TemplateMeta, register_template
+import torch.nn as nn
+from ..register import register_template
+from ..template_inputs import StdTemplateInputs
 from ..utils import Context, gather_list
-from .qwen import QwenTemplateMeta
 
 
 class GOTImageEvalProcessor:
@@ -33,26 +35,31 @@ class GOTImageEvalProcessor:
 class GOT_OCR2Template(Template):
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
-                    example: Dict[str, Any]) -> List[Context]:
+                    inputs: StdTemplateInputs) -> List[Context]:
         # OCR:
         # OCR with format:
         assert media_type == 'image'
         return ['<img>' + '<imgpad>' * 256 + '</img>\n']
 
-    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, tokenizer_kwargs = super()._encode(example)
+    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, tokenizer_kwargs = super()._encode(inputs)
         if len(inputs) == 0:
             return inputs, {}
-        images = example['images']
+        images = inputs.images
         image_processor_high = GOTImageEvalProcessor(image_size=1024)
         for i, image in enumerate(images):
-            images[i] = image_processor_high(image)[None].to(self.model.dtype)
+            images[i] = image_processor_high(image)[None].to(model.dtype)
         if images:
             inputs['images'] = images
         return inputs, {}
 
-    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
-        res = super().data_collator(batch, padding_to)
+    def data_collator(self,
+                      batch: List[Dict[str, Any]],
+                      *,
+                      padding_side: Optional[str] = None,
+                      padding_to: Optional[int] = None,
+                      model: Optional[nn.Module] = None) -> Dict[str, Any]:
+        res = super().data_collator(batch, padding_to=padding_to, padding_side=padding_side)
         images = gather_list(batch, 'images')
         if images:
             res['images'] = images

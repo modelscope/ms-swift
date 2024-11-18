@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Literal
 
 import torch
 
@@ -7,8 +7,9 @@ from swift.utils import upper_bound
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
-from ..utils import Context, findall, gather_list
-from .utils import DEFAULT_SYSTEM
+from ..template_inputs import StdTemplateInputs
+import torch.nn as nn
+from ..utils import Context
 
 register_template(
     TemplateMeta(
@@ -22,25 +23,26 @@ register_template(
 
 class PaliGemmaTemplate(Template):
 
-    def check_example(self, example):
-        images = example.get('images') or []
+    def _check_inputs(self, inputs: StdTemplateInputs):
+        images = inputs.images or []
         assert len(images) <= 1
 
-    def replace_tag(self, media_type, index, example) -> List[Context]:
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    inputs: StdTemplateInputs) -> List[Context]:
         assert media_type == 'image'
-        if self._is_vllm:
+        if self.mode == 'vllm':
             self.prompt = ['{{QUERY}}']
             return []
         else:
             self.prompt = ['{{QUERY}}\n']
-            return ['<image>' * self.tokenizer.processor.image_seq_length + '<bos>']
+            return ['<image>' * self.processor.image_seq_length + '<bos>']
 
-    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, _ = super()._encode(example)
+    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super()._encode(inputs)
         if len(inputs) == 0:
             return inputs, {}
-        raw_image = example.get('images')
-        processor = self.tokenizer.processor
+        raw_image = inputs.images
+        processor = self.processor
         if inputs['labels'] is not None:
             n = upper_bound(0, len(inputs['labels']), lambda idx: inputs['labels'][idx] == -100)
             n2 = len(inputs['labels']) - n
@@ -48,14 +50,19 @@ class PaliGemmaTemplate(Template):
         else:
             inputs['token_type_ids'] = [0] * len(inputs['input_ids'])
         if raw_image:
-            model_inputs = processor(text=example['query'], images=raw_image[0], return_tensors='pt')
+            model_inputs = processor(text=inputs.query, images=raw_image[0], return_tensors='pt')
             inputs['pixel_values'] = model_inputs['pixel_values']
         return inputs, {}
 
-    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
-        res = super().data_collator(batch, padding_to)
+    def data_collator(self,
+                      batch: List[Dict[str, Any]],
+                      *,
+                      padding_side: Optional[str] = None,
+                      padding_to: Optional[int] = None,
+                      model: Optional[nn.Module] = None) -> Dict[str, Any]:
+        res = super().data_collator(batch, padding_side=padding_side, padding_to=padding_to)
         token_type_ids = [torch.tensor(b['token_type_ids']) for b in batch]
-        token_type_ids = self.pad_sequence(token_type_ids, 0, self.padding_side)
+        token_type_ids = self._pad_sequence(token_type_ids, 0, padding_side=padding_side)
         res['token_type_ids'] = token_type_ids
         return res
 

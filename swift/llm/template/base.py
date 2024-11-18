@@ -21,7 +21,8 @@ from transformers.integrations import is_deepspeed_zero3_enabled
 from swift.utils import dataclass_to_dict
 from .agent import loss_scale_map, split_str_parts_by
 from .template_inputs import InferRequest, StdTemplateInputs, TemplateInputs
-from .utils import Context, ContextType, GenerationProperty, Prompt, StopWordsCriteria, Word, fetch_one, findall
+from .utils import Context, ContextType, GenerationProperty, Prompt, StopWordsCriteria, Word, fetch_one, findall, \
+    Processor
 from .vision_utils import load_batch, load_image, normalize_bbox, rescale_image
 
 logger = get_logger()
@@ -44,7 +45,7 @@ class Template:
         stop_words: A list of stop words, where each stop word can consist of multiple tokens.
         placeholder_tokens: A list of placeholder tokens, where each placeholder token can only be a single token.
         auto_add_bos: By default, the bos_token is not added. The auto_add_bos option will determine
-            whether to add it based on `tokenizer.encode('')`.
+            whether to add it based on `processor.encode('')`.
 
     """
 
@@ -61,7 +62,7 @@ class Template:
 
     def __init__(
             self,
-            tokenizer: PreTrainedTokenizerBase,
+            processor: Processor,
             template_meta: 'TemplateMeta',
             default_system: Optional[str] = None,
             max_length: Optional[int] = None,
@@ -91,14 +92,14 @@ class Template:
         else:
             self.default_system = template_meta.default_system
 
-        template_meta.token_attr_to_id(tokenizer)
+        template_meta.token_attr_to_id(processor)
 
         for i, token in enumerate(template_meta.placeholder_tokens):
             if isinstance(token, str):
-                template_meta.placeholder_tokens[i] = tokenizer.convert_tokens_to_ids(token)
+                template_meta.placeholder_tokens[i] = processor.convert_tokens_to_ids(token)
 
         self.template_meta: TemplateMeta = template_meta
-        self.tokenizer = tokenizer
+        self.processor = processor
         self.use_generate_template = use_generate_template
         self.max_length = max_length
         self.truncation_strategy = truncation_strategy
@@ -195,16 +196,16 @@ class Template:
 
     def skip_stop_decode(self, generate_ids: List[int], is_finished: bool, **decode_kwargs) -> Any:
         # Do not print template_meta.suffix[-1] and eos_token.
-        tokenizer = self.tokenizer
+        processor = self.processor
 
-        if len(generate_ids) > 0 and generate_ids[-1] == tokenizer.eos_token_id:
+        if len(generate_ids) > 0 and generate_ids[-1] == processor.eos_token_id:
             generate_ids = generate_ids[:-1]
         # skip suffix and eos_token
         template_suffix = self.template_meta.suffix[-1]
         if isinstance(template_suffix, str):
-            template_suffix = tokenizer.encode(template_suffix, add_special_tokens=False)
+            template_suffix = processor.encode(template_suffix, add_special_tokens=False)
         generate_ids = self._skip_stop_tokens(generate_ids, template_suffix, is_finished)
-        return tokenizer.decode(generate_ids, **decode_kwargs)
+        return processor.decode(generate_ids, **decode_kwargs)
         # if not is_finished or is_finished and response[-len_suffix:] == template_suffix:
         #     # To avoid response length being shorter than previous response length during streaming.
         #     # TODO:check
@@ -215,7 +216,7 @@ class Template:
                                generation_config,
                                inputs: Optional[Dict[str, Any]] = None,
                                model=None) -> GenerationProperty:
-        return GenerationProperty(stopping_criteria=[StopWordsCriteria(self.tokenizer, generation_config.stop_words)])
+        return GenerationProperty(stopping_criteria=[StopWordsCriteria(self.processor, generation_config.stop_words)])
 
     def _preprocess_objects(self, inputs: StdTemplateInputs, objects: List[Dict[str, Any]]):
         # Load image into PIL format
@@ -323,7 +324,7 @@ class Template:
         return res, loss_scale_res
 
     def _tokenize(self, context, **tokenizer_kwargs):
-        return self.tokenizer(
+        return self.processor(
             context, return_attention_mask=False, add_special_tokens=False, **tokenizer_kwargs)['input_ids']
 
     def _check_inputs(self, inputs: StdTemplateInputs) -> None:
@@ -498,8 +499,8 @@ class Template:
         res_context_types: List[ContextType] = []
         template_meta = self.template_meta
         if template_meta.auto_add_bos:
-            bos_token_id = self.tokenizer.bos_token_id
-            if isinstance(bos_token_id, int) and bos_token_id in self.tokenizer.encode(''):
+            bos_token_id = self.processor.bos_token_id
+            if isinstance(bos_token_id, int) and bos_token_id in self.processor.encode(''):
                 res_context_list.append([bos_token_id])
                 res_context_types.append(ContextType.OTHER)
 
@@ -704,8 +705,8 @@ class Template:
                 will be padded to the `longest`
         """
         from swift.utils import get_dist_setting, use_torchacc
-        tokenizer = self.tokenizer
-        assert tokenizer.pad_token_id is not None
+        processor = self.processor
+        assert processor.pad_token_id is not None
         if padding_side is None:
             padding_side = self.padding_side
         padding_right = padding_side == 'right'
@@ -734,12 +735,12 @@ class Template:
             padding_len = padding_to - res['input_ids'][0].shape[-1]
             if padding_len > 0:
                 for key, value in zip(['input_ids', 'attention_mask', 'labels', 'loss_scale', 'position_ids'],
-                                      [tokenizer.pad_token_id, 0, -100, 0., -1]):
+                                      [processor.pad_token_id, 0, -100, 0., -1]):
                     if key in res:
                         res[key][0] = F.pad(res[key][0], (0, padding_len) if padding_right else (padding_len, 0),
                                             'constant', value)
         for key, value in zip(['input_ids', 'inputs_embeds', 'attention_mask', 'labels', 'loss_scale', 'position_ids'],
-                              [tokenizer.pad_token_id, 0., 0, -100, 0., -1]):
+                              [processor.pad_token_id, 0., 0, -100, 0., -1]):
             if key in res:
                 res[key] = self._pad_sequence(res[key], value, padding_side)
 
@@ -771,7 +772,7 @@ class Template:
                 labels,
                 loss_scale,
                 self.max_length,
-                self.tokenizer,
+                self.processor,
                 rank,
                 world_size,
                 padding_right=padding_right)
@@ -784,7 +785,7 @@ class Template:
                 from swift.trainers.xtuner import pad_and_split_for_sequence_parallel
                 input_ids, labels, position_ids, attention_mask, loss_scale = \
                     pad_and_split_for_sequence_parallel(
-                        tokenizer, input_ids, labels, position_ids, attention_mask, loss_scale)
+                        processor, input_ids, labels, position_ids, attention_mask, loss_scale)
             res['position_ids'] = position_ids
         _local_var = locals()
         for key in ['input_ids', 'attention_mask', 'labels', 'loss_scale']:
@@ -880,12 +881,12 @@ class Template:
                 continue
             if _is_special(input_ids[i]) and not _is_special(input_ids[i - 1]):
                 s = i
-                result_str += self.tokenizer.decode(input_ids[e:s], **tokenizer_kwargs)
+                result_str += self.processor.decode(input_ids[e:s], **tokenizer_kwargs)
             if not _is_special(input_ids[i]) and _is_special(input_ids[i - 1]):
                 e = i
                 result_str += f'[{input_ids[i - 1]} * {e - s}]'
         if _is_special(input_ids[i]):
             result_str += f'[{input_ids[i]} * {len(input_ids) - s}]'
         else:
-            result_str += self.tokenizer.decode(input_ids[e:], **tokenizer_kwargs)
+            result_str += self.processor.decode(input_ids[e:], **tokenizer_kwargs)
         return result_str

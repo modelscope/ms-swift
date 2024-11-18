@@ -1,15 +1,17 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import torch
+import torch.nn as nn
 from PIL import Image
 
+from .utils import EmptyTemplateMeta
 from ..base import Template
-from ..constant import LLMTemplateType, MLLMTemplateType
-from ..register import TemplateMeta, register_template
-from ..utils import Context, GenerationProperty, findall, gather_list
-from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta, EmptyTemplateMeta
+from ..constant import MLLMTemplateType
+from ..register import register_template
+from ..template_inputs import StdTemplateInputs
+from ..utils import GenerationProperty
 
 
 class Emu3GenTemplate(Template):
@@ -23,16 +25,16 @@ class Emu3GenTemplate(Template):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.bov = self.tokenizer.encode(self.tokenizer.processor.visual_template[0].format(token_id=0))[0]
-        self.eov = self.tokenizer.encode(self.tokenizer.processor.visual_template[0].format(token_id=self.COOKBOOK_SIZE
+        self.bov = self.processor.encode(self.processor.visual_template[0].format(token_id=0))[0]
+        self.eov = self.processor.encode(self.processor.visual_template[0].format(token_id=self.COOKBOOK_SIZE
                                                                                             - 1))[0]
         self.config = kwargs.get('config')
 
-    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        query = example['query']
+    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        query = inputs.query
 
         kwargs = dict(
-            mode='U' if self._is_training else 'G',
+            mode='U' if self.mode == 'train' else 'G',
             ratio='1:1',
             image_area=self.config.image_area,
             return_tensors='pt',
@@ -40,8 +42,8 @@ class Emu3GenTemplate(Template):
         )
 
         # image
-        raw_image = example.get('images', None)
-        inputs = self.tokenizer.processor(query, raw_image, **kwargs)
+        raw_image = inputs.images
+        inputs = self.processor(query, raw_image, **kwargs)
         labels = inputs['input_ids']
         if self.APPLY_LOSS_ON_ONLY_VISION:
             labels = torch.where(torch.logical_and(labels >= self.bov, labels <= self.eov), labels, -100)
@@ -74,12 +76,12 @@ class Emu3GenTemplate(Template):
             negative_prompt = inputs['negative_prompt']
 
         classifier_free_guidance = 3.0
-        h, w = self.tokenizer.processor.calculate_generate_size(
-            '1:1', self.config.image_area, self.tokenizer.processor.vision_tokenizer.spatial_scale_factor)
+        h, w = self.processor.calculate_generate_size(
+            '1:1', self.config.image_area, self.processor.vision_tokenizer.spatial_scale_factor)
         # h = pos_inputs.image_size[:, 0]
         # w = pos_inputs.image_size[:, 1]
-        neg_inputs = self.tokenizer.processor(text=negative_prompt, **kwargs)
-        constrained_fn = self.tokenizer.processor.build_prefix_constrained_fn(h, w)
+        neg_inputs = self.processor(text=negative_prompt, **kwargs)
+        constrained_fn = self.processor.build_prefix_constrained_fn(h, w)
         logits_processor = LogitsProcessorList([
             UnbatchedClassifierFreeGuidanceLogitsProcessor(
                 classifier_free_guidance,
@@ -95,8 +97,8 @@ class Emu3GenTemplate(Template):
         res.logits_processor += logits_processor
         return res
 
-    def safe_decode(self, generate_ids: List[int], is_finished: bool, **decode_kwargs) -> Image.Image:
-        mm_list = self.tokenizer.processor.decode(generate_ids)
+    def safe_decode(self, input_ids: List[int], **tokenizer_kwargs) -> Image.Image:
+        mm_list = self.processor.decode(input_ids)
         for idx, im in enumerate(mm_list):
             if not isinstance(im, Image.Image):
                 continue
@@ -104,18 +106,18 @@ class Emu3GenTemplate(Template):
 
     def format_image_prompt(self, image_tokens):
         h, w = image_tokens.shape
-        imgstr = self.tokenizer.processor.to_imgstr(image_tokens)
+        imgstr = self.processor.to_imgstr(image_tokens)
 
         image_prompt = (
-            self.tokenizer.boi_token + f'{h}*{w}' + self.tokenizer.img_token + imgstr + self.tokenizer.eol_token
-            + self.tokenizer.eof_token + self.tokenizer.eoi_token)
+            self.processor.boi_token + f'{h}*{w}' + self.processor.img_token + imgstr + self.processor.eol_token
+            + self.processor.eof_token + self.processor.eoi_token)
 
         return image_prompt
 
     def smart_resize(self, image):
         w, h = image.size
         current_area = h * w
-        target_ratio = (self.tokenizer.config.image_area / current_area)**0.5
+        target_ratio = (self.processor.config.image_area / current_area)**0.5
 
         th = int(round(h * target_ratio))
         tw = int(round(w * target_ratio))

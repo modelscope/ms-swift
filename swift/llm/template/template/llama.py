@@ -2,14 +2,16 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Literal
 
 import torch
 
+import torch.nn as nn
 from swift.utils import get_env_args
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
+from ..template_inputs import StdTemplateInputs
 from ..utils import Context, Prompt
 from ..vision_utils import load_batch
 
@@ -70,20 +72,21 @@ register_template(Llama3_2TemplateMeta(LLMTemplateType.llama3_2))
 
 class Llama3_2VisionTemplate(Template):
 
-    def replace_tag(self, media_type, index, example) -> List[Context]:
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    inputs: StdTemplateInputs) -> List[Context]:
         assert media_type == 'image'
         return ['<|image|>']
 
-    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         from transformers.models.mllama.processing_mllama import (get_cross_attention_token_mask,
                                                                   convert_sparse_cross_attention_mask_to_dense)
-        inputs, _ = super()._encode(example)
+        inputs, _ = super()._encode(inputs)
         if len(inputs) == 0:
             return inputs, {}
-        images = example['images']
+        images = inputs.images
         if images:
             input_ids = inputs['input_ids']
-            processor = self.tokenizer.processor
+            processor = self.processor
             image_features = processor.image_processor(images, return_tensors='pt')
             num_tiles = image_features.pop('num_tiles')
             inputs.update(image_features)
@@ -103,7 +106,8 @@ class Llama3_2VisionTemplate(Template):
                       batch: List[Dict[str, Any]],
                       *,
                       padding_side: Optional[str] = None,
-                      padding_to: Optional[int] = None) -> Dict[str, Any]:
+                      padding_to: Optional[int] = None,
+                      model: Optional[nn.Module] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_side=padding_side, padding_to=padding_to)
         for key in ['aspect_ratio_ids', 'aspect_ratio_mask']:
             value = [b[key] for b in batch if b.get(key) is not None]
@@ -114,7 +118,8 @@ class Llama3_2VisionTemplate(Template):
             b['cross_attention_mask'][0] for b in batch if b.get('cross_attention_mask') is not None
         ]
         if cross_attention_mask:
-            res['cross_attention_mask'] = self.pad_sequence(cross_attention_mask, 0, self.padding_side)
+            res['cross_attention_mask'] = self._pad_sequence(cross_attention_mask,
+                                                             0, padding_side=padding_side)
         return res
 
 
@@ -132,12 +137,13 @@ register_template(
 class Llama3_1OmniTemplate(Template):
     audio_placeholder = [[-200]]
 
-    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> (
+            Tuple)[Dict[str, Any], Dict[str, Any]]:
         import whisper
-        inputs, _ = super()._encode(example)
+        inputs, _ = super()._encode(inputs)
         if len(inputs) == 0:
             return inputs, {}
-        audios = example['audios']
+        audios = inputs.audios
         input_ids = inputs['input_ids']
         labels = inputs['labels']
         inputs['_data'] = {'input_ids': torch.tensor(input_ids)[None]}
@@ -154,12 +160,12 @@ class Llama3_1OmniTemplate(Template):
 
         return inputs, {}
 
-    def _post_encode(self, model, data: Any) -> Dict[str, Any]:
-        speech = data.get('speech')
-        input_ids = data['input_ids']
-        labels = data.get('labels')
+    def post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        speech = inputs.get('speech')
+        input_ids = inputs['input_ids']
+        labels = inputs.get('labels')
         if speech is not None:
-            speech_lengths = data['speech_lengths']
+            speech_lengths = inputs['speech_lengths']
             speech = speech.to(model.dtype)
             inputs_embeds, labels = model.prepare_inputs_labels_for_speech_and_text(input_ids, None, None, None, labels,
                                                                                     speech, speech_lengths)[4:]

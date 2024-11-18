@@ -1,9 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
+from torch import nn
+
 from ..base import Template
 from ..constant import MLLMTemplateType
 from ..register import TemplateMeta, register_template
+from ..template_inputs import StdTemplateInputs
 from ..utils import Context, findall, gather_list
 from .utils import DEFAULT_SYSTEM
 
@@ -11,12 +14,12 @@ from .utils import DEFAULT_SYSTEM
 class PixtralTemplate(Template):
     image_placeholder = ['[IMG]']
 
-    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, _ = super()._encode(example)
+    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
+        inputs, _ = super()._encode(inputs)
         if len(inputs) == 0:
             return inputs, {}
-        processor = self.tokenizer.processor
-        images = example['images']
+        processor = self.processor
+        images = inputs.images
         input_ids = inputs['input_ids']
         labels = inputs['labels']
         idx_list = findall(input_ids, 10)
@@ -34,7 +37,7 @@ class PixtralTemplate(Template):
                 replace_tokens += [processor.image_token * num_width_tokens + processor.image_end_token]
                 # Flatten list
                 replace_str = ''.join(replace_tokens)
-                img_tokens: List[int] = self.tokenizer.encode(replace_str, add_special_tokens=False)
+                img_tokens: List[int] = self.processor.encode(replace_str, add_special_tokens=False)
                 input_ids = input_ids[:idx + added_tokens_len] + img_tokens + input_ids[idx + added_tokens_len + 1:]
                 if labels is not None:
                     labels = labels[:idx + added_tokens_len] + [-100] * len(img_tokens) + labels[idx + added_tokens_len
@@ -45,9 +48,14 @@ class PixtralTemplate(Template):
 
         return inputs, {}
 
-    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
+    def data_collator(self,
+                      batch: List[Dict[str, Any]],
+                      *,
+                      padding_side: Optional[str] = None,
+                      padding_to: Optional[int] = None,
+                      model: Optional[nn.Module] = None) -> Dict[str, Any]:
         pixel_values = gather_list(batch, 'pixel_values')
-        res = super().data_collator(batch, padding_to)
+        res = super().data_collator(batch, padding_to=padding_to)
         if pixel_values:
             res['pixel_values'] = pixel_values
         return res

@@ -1,12 +1,13 @@
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import torch
+from torch import nn
 
+from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
-from ..utils import Context, findall, gather_list
-from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
+from ..template_inputs import StdTemplateInputs
 
 register_template(ChatmlTemplateMeta(
     LLMTemplateType.yi_coder,
@@ -24,17 +25,17 @@ yi_vl_default_system = (
 class YiVLTemplate(Template):
     image_placeholder = [[-200], '\n']
 
-    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, _ = super()._encode(example)
+    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
+        inputs, _ = super()._encode(inputs)
         if len(inputs) == 0:
             return inputs, {}
         inputs.pop('loss_scale', None)
         from llava.mm_utils import expand2square
-        model = self.model.model
+        model = model.model
         if not hasattr(model, 'vision_tower'):
             model = model.model
         image_processor = model.vision_tower.image_processor
-        images = example.get('images') or []
+        images = inputs.images or []
         for i, image in enumerate(images):
             background_color = tuple(int(x * 255) for x in image_processor.image_mean)
             image = expand2square(image, background_color)
@@ -44,8 +45,13 @@ class YiVLTemplate(Template):
             inputs['images'] = image_tensor.to(model.dtype)
         return inputs, {}
 
-    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
-        res = super().data_collator(batch, padding_to)
+    def data_collator(self,
+                      batch: List[Dict[str, Any]],
+                      *,
+                      padding_side: Optional[str] = None,
+                      padding_to: Optional[int] = None,
+                      model: Optional[nn.Module] = None) -> Dict[str, Any]:
+        res = super().data_collator(batch, padding_to=padding_to, padding_side=padding_side)
         images = [b['images'] for b in batch if 'images' in b]
         if images:
             res['images'] = torch.concat(images)

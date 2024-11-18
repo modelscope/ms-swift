@@ -111,6 +111,31 @@ class StdTemplateInputs:
             self.objects.copy())
 
     @property
+    def history(self):
+        if not self.messages:
+            return None
+        from swift.llm import messages_to_history
+        return messages_to_history(self.messages)
+
+    @property
+    def query(self):
+        if not self.messages:
+            return None
+        ms = [m for m in self.messages if m['role'] == 'user']
+        if not ms:
+            return None
+        return ms[-1]['content']
+
+    @property
+    def response(self):
+        if not self.messages:
+            return None
+        ms = [m for m in self.messages if m['role'] == 'assistant']
+        if not ms:
+            return None
+        return ms[-1]['content']
+
+    @property
     def is_multimodal(self):
         return bool(self.images or self.audios or self.videos or self.objects)
 
