@@ -77,7 +77,7 @@ class Llama3_2VisionTemplate(Template):
         assert media_type == 'image'
         return ['<|image|>']
 
-    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         from transformers.models.mllama.processing_mllama import (get_cross_attention_token_mask,
                                                                   convert_sparse_cross_attention_mask_to_dense)
         inputs = super()._encode(inputs)
@@ -136,7 +136,7 @@ register_template(
 class Llama3_1OmniTemplate(Template):
     audio_placeholder = [[-200]]
 
-    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         import whisper
         inputs = super()._encode(inputs)
         if len(inputs) == 0:

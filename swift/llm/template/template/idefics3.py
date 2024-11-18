@@ -11,7 +11,7 @@ from ..utils import align_image_inputs
 
 class Idefics3Template(Template):
 
-    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         inputs = super()._encode(inputs)
         if len(inputs) == 0:
             return inputs

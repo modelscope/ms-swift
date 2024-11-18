@@ -82,7 +82,7 @@ class MiniCPMVTemplate(Template):
         inputs['images'] = features
         await super().prepare_lmdeploy_inputs(inputs)
 
-    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         inputs = super()._encode(inputs)
         if len(inputs) == 0:
             return inputs
@@ -168,7 +168,7 @@ class MiniCPMV2_6Template(MiniCPMVTemplate):
         elif media_type == 'video':
             return replace_video2image(load_video, example, lambda i: image_context)
 
-    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         inputs, _ = Template._encode(self, inputs)
         if len(inputs) == 0:
             return inputs

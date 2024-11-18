@@ -14,7 +14,7 @@ from .utils import DEFAULT_SYSTEM
 class PixtralTemplate(Template):
     image_placeholder = ['[IMG]']
 
-    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         inputs = super()._encode(inputs)
         if len(inputs) == 0:
             return inputs

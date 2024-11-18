@@ -25,7 +25,7 @@ yi_vl_default_system = (
 class YiVLTemplate(Template):
     image_placeholder = [[-200], '\n']
 
-    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         inputs = super()._encode(inputs)
         if len(inputs) == 0:
             return inputs

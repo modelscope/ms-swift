@@ -146,8 +146,6 @@ class Template:
     def encode(
         self,
         inputs: Union[TemplateInputs, Dict[str, Any], StdTemplateInputs, InferRequest],
-        *,
-        model=None,
     ) -> Dict[str, Any]:
         """The entrance method of Template!
 
@@ -166,12 +164,12 @@ class Template:
         assert isinstance(inputs, StdTemplateInputs)
         self._preprocess_inputs(inputs)
         if self.mode in {'vllm', 'lmdeploy'}:
-            res = Template._encode(self, inputs, model=model)
+            res = Template._encode(self, inputs)
             if inputs.images:
                 res['images'] = inputs.images
         else:
             self._check_inputs(inputs)
-            res = self._encode(inputs, model=model)
+            res = self._encode(inputs)
         for key in ['labels', 'loss_scale']:
             if res.get(key) is None:
                 res.pop(key, None)
@@ -490,7 +488,7 @@ class Template:
         if len(messages) % 2 == 1:
             messages.append({'role': 'assistant', 'content': None})  # inference
 
-    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
 
         res_context_list: List[Context] = []
         res_context_types: List[ContextType] = []

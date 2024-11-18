@@ -42,7 +42,7 @@ class GOT_OCR2Template(Template):
         assert media_type == 'image'
         return ['<img>' + '<imgpad>' * 256 + '</img>\n']
 
-    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         inputs, tokenizer_kwargs = super()._encode(inputs)
         if len(inputs) == 0:
             return inputs

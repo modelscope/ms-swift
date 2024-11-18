@@ -284,14 +284,11 @@ class SwiftSft(SwiftPipeline):
         elif not args.lazy_tokenize:
             inputs = template.encode(next(iter(train_dataset)) if args.streaming else train_dataset[0])
             template.print_inputs(inputs)
-            model = None if args.num_proc > 1 else self.model
-            train_dataset = EncodePreprocessor(
-                template, model=model)(
-                    train_dataset, num_proc=args.num_proc, load_from_cache_file=args.load_from_cache_file)
+            train_dataset = EncodePreprocessor(template)(
+                train_dataset, num_proc=args.num_proc, load_from_cache_file=args.load_from_cache_file)
             if val_dataset is not None:
-                val_dataset = EncodePreprocessor(
-                    template, model=model)(
-                        val_dataset, num_proc=args.num_proc, load_from_cache_file=args.load_from_cache_file)
+                val_dataset = EncodePreprocessor(template)(
+                    val_dataset, num_proc=args.num_proc, load_from_cache_file=args.load_from_cache_file)
 
             if not args.streaming:
                 self.train_msg['train_dataset'] = stat_dataset(train_dataset)

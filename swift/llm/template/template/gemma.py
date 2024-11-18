@@ -37,7 +37,7 @@ class PaliGemmaTemplate(Template):
             self.prompt = ['{{QUERY}}\n']
             return ['<image>' * self.processor.image_seq_length + '<bos>']
 
-    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         inputs = super()._encode(inputs)
         if len(inputs) == 0:
             return inputs

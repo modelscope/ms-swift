@@ -103,7 +103,7 @@ register_template(
         prefix=['{{SYSTEM}}'],
         prompt=['### Human: {{QUERY}}\n\n### Assistant: '],
         chat_sep=['<|endoftext|>'],
-        system_prefix=['<|endoftext|>']))
+        suffix=['<|endoftext|>']))
 
 register_template(
     TemplateMeta(
@@ -111,14 +111,15 @@ register_template(
         prefix=['<s>{{SYSTEM}}'],
         prompt=['Human: {{QUERY}}\n\nAssistant: </s>'],
         chat_sep=['</s>'],
-        system_prefix=['</s>']))
+        suffix=['</s>']))
+
 register_template(
     TemplateMeta(
         LLMTemplateType.telechat, prefix=[], prompt=['<_user>{{QUERY}}<_bot>'], chat_sep=['<_end>'], suffix=['<_end>']))
 
 register_template(
     TemplateMeta(
-        LLMTemplateType.telechat,
+        LLMTemplateType.telechat2,
         prefix=['<_start>'],
         prompt=[[4], '{{QUERY}}', [5]],
         chat_sep=['<_end>'],

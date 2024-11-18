@@ -30,7 +30,7 @@ class LlavaHfTemplate(Template):
         assert media_type == 'image'
         return ['<image>\n']
 
-    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         inputs = super()._encode(inputs)
         if len(inputs) == 0:
             return inputs
@@ -68,7 +68,7 @@ class LlavaVideoHfTemplate(Template):
             example['videos'][index] = load_video_llava(example['videos'][index])
             return ['<video>\n']
 
-    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         inputs = super()._encode(inputs)
         if len(inputs) == 0:
             return inputs
@@ -163,7 +163,7 @@ register_template(QwenTemplateMeta(MLLMTemplateType.llava_next_qwen_hf, template
 
 class LlavaOneVisionHfTemplate(Llava1_6HfTemplate):
 
-    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         inputs = Template._encode(self, inputs)
         if len(inputs) == 0:
             return inputs
@@ -208,7 +208,7 @@ class LlavaLlama3_1HfTemplate(LlavaHfTemplate):
               'You are able to understand the visual content that the user provides, '
               'and assist the user with a variety of tasks using natural language.')
 
-    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         inputs = super()._encode(inputs)
         if len(inputs['pixel_values'].shape) == 5:  # (1, num_patch, 3, H/W, W/H)
             inputs['pixel_values'] = torch.squeeze(inputs['pixel_values'], dim=0)  # (num_patch, 3, H/W, W/H)
@@ -227,7 +227,7 @@ class LLavaLlama3HfTemplate(Template):
     # xtuner
     image_placeholder = ['<image>\n']
 
-    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         inputs = super()._encode(inputs)
         if len(inputs) == 0:
             return inputs
@@ -250,7 +250,7 @@ class LLavaTemplate(Template):
         assert media_type == 'image'
         return [[-200], '\n']
 
-    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         inputs = super()._encode(inputs)
         if len(inputs) == 0:
             return inputs

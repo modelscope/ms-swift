@@ -57,7 +57,7 @@ class GLM4VTemplate(GLMTemplate):
         assert media_type == 'image'
         return [[-100]]
 
-    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         inputs = super()._encode(inputs)
         if len(inputs) == 0:
             return inputs
@@ -130,7 +130,7 @@ class CogTemplate(Template):
                     inputs: StdTemplateInputs) -> List[Context]:
         return []
 
-    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         inputs = super()._encode(inputs)
         if len(inputs) == 0:
             return inputs
@@ -206,7 +206,7 @@ class Cog2VideoTemplate(CogTemplate):
         videos = example.get('videos') or []
         assert len(videos) <= 1
 
-    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         inputs, _ = super(CogTemplate, self)._encode(inputs)
         if len(inputs) == 0:
             return inputs

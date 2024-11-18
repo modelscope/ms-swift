@@ -60,7 +60,7 @@ class FlorenceTemplate(Template):
             x1, y1, x2, y2 = object_['bbox']
             return [f'<loc_{x1}><loc_{y1}><loc_{x2}><loc_{y2}>']
 
-    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         processor = self.processor
         new_query = processor._construct_prompts([inputs.query])[0]
         for i in reversed(range(len(inputs.messages))):
@@ -135,7 +135,7 @@ class Phi3VisionTemplate(Template):
         else:
             return super().replace_tag(media_type, index, inputs)
 
-    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         images = inputs.images or []
         inputs = super()._encode(inputs)
         if len(inputs) == 0:

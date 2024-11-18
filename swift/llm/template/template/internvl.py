@@ -27,7 +27,7 @@ class InternvlTemplate(Template):
             image_context = ['<img>', [-100], '</img>\n']
         return image_context
 
-    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         inputs = super()._encode(inputs)
         if len(inputs) == 0:
             return inputs
