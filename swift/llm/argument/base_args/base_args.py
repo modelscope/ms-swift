@@ -76,15 +76,16 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
         with open(args_path, 'r', encoding='utf-8') as f:
             old_args = json.load(f)
         # read settings
-        all_keys = list(f.name for f in fields(self.__class__)) + ['train_type']
+        all_keys = list(f.name for f in fields(self.__class__))
         data_keys = list(f.name for f in fields(DataArguments))
-        covered_keys = ['system']
         for key in all_keys:
             if not self.load_dataset_config and key in data_keys:
                 continue
+            old_value = old_args.get(key)
+            if old_value is None:
+                continue
             value = getattr(self, key, None)
-            old_value = old_args.get(key)  # value in checkpoint
-            if key in covered_keys or old_value and not value:
+            if value is None or isinstance(value, (list, tuple)) and len(value) == 0:
                 setattr(self, key, old_value)
 
     def save_args(self) -> None:

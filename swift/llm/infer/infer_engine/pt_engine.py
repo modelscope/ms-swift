@@ -57,19 +57,13 @@ class PtEngine(InferEngine):
             revision: Optional[str] = None,
             attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None,
             # TODO: async batch_size
-            max_batch_size: int = 16,
+            max_batch_size: int = 1,
             load_model: bool = True,
             # model kwargs
             device_map: Optional[Union[str, Dict[str, Any]]] = None,
             quantization_config: Optional[Dict[str, Any]] = None,
             model_kwargs: Optional[Dict[str, Any]] = None,
             **kwargs):
-        if model_kwargs is None:
-            model_kwargs = {}
-        if device_map is not None:
-            model_kwargs['device_map'] = device_map
-        if quantization_config is not None:
-            model_kwargs['quantization_config'] = quantization_config
         self._prepare_model_tokenizer(
             model_id_or_path,
             torch_dtype,
@@ -77,6 +71,8 @@ class PtEngine(InferEngine):
             model_type=model_type,
             use_hf=use_hf,
             revision=revision,
+            device_map=device_map,
+            quantization_config=quantization_config,
             attn_impl=attn_impl,
             model_kwargs=model_kwargs,
             **kwargs)

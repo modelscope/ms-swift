@@ -81,7 +81,7 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
         infer_backend (Literal): Backend to use for inference. Default is 'pt'.
             Allowed values are 'vllm', 'pt', 'lmdeploy'.
         ckpt_dir (Optional[str]): Directory to the checkpoint. Default is None.
-        max_batch_size (int): Maximum batch size for the pt engine. Default is 16.
+        max_batch_size (int): Maximum batch size for the pt engine. Default is 1.
         val_dataset_sample (Optional[int]): Sample size for validation dataset. Default is None.
         result_dir (Optional[str]): Directory to store inference results. Default is None.
         save_result (bool): Flag to indicate if results should be saved. Default is True.
@@ -89,7 +89,7 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
     """
     ckpt_dir: Optional[str] = field(default=None, metadata={'help': '/path/to/your/vx-xxx/checkpoint-xxx'})
     infer_backend: Literal['vllm', 'pt', 'lmdeploy'] = 'pt'
-    max_batch_size: int = 16  # for pt engine
+    max_batch_size: int = 1  # for pt engine
 
     # only for inference
     val_dataset_sample: Optional[int] = None
@@ -127,9 +127,16 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
             self.stream = False
             logger.info('Setting args.stream: False')
 
+    def _init_weight_type(self):
+        if self.ckpt_dir is not None and os.path.exists(os.path.join(self.ckpt_dir, 'adapter_config.json')):
+            self.weight_type = 'adapter'
+        else:
+            self.weight_type = 'full'
+
     def __post_init__(self) -> None:
         if self.ckpt_dir and self.load_args:
             self.load_args_from_ckpt(self.ckpt_dir)
+        self._init_weight_type()
         BaseArguments.__post_init__(self)
         VllmArguments.__post_init__(self)
         MergeArguments.__post_init__(self)

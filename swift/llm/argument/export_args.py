@@ -38,8 +38,6 @@ class ExportArguments(MergeArguments, BaseArguments):
     """
     ckpt_dir: Optional[str] = field(default=None, metadata={'help': '/path/to/your/vx-xxx/checkpoint-xxx'})
     output_dir: Optional[str] = None
-    safe_serialization: bool = True
-    max_shard_size: str = '5GB'
 
     to_peft_format: bool = False
     # awq/gptq

@@ -174,9 +174,6 @@ class Template:
         for key in ['labels', 'loss_scale']:
             if res.get(key) is None:
                 res.pop(key, None)
-        for k, v in res.items():
-            if isinstance(v, (list, tuple)):
-                res[k] = torch.tensor(v)
         return res
 
     def post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
@@ -624,6 +621,9 @@ class Template:
         extra_inputs = []
         batched_data = kwargs.pop('_data')
         for data in batched_data:
+            for k, v in data.items():
+                if k in {'input_ids', 'labels', 'loss_scale'} and isinstance(v, (list, tuple)):
+                    data[k] = torch.tensor(v)
             extra_inputs.append(self.post_encode(model, to_device(data, model.device)))
         new_kwargs = self.data_collator(extra_inputs, padding_side=padding_side, padding_to=padding_to, model=model)
         new_kwargs.pop('labels', None)
@@ -710,7 +710,6 @@ class Template:
             padding_side = self.padding_side
         padding_right = padding_side == 'right'
         res = {}
-
         if 'inputs_embeds' in batch[0]:
             inputs_embeds = [b['inputs_embeds'] for b in batch]
             res['inputs_embeds'] = inputs_embeds
@@ -741,6 +740,9 @@ class Template:
         for key, value in zip(['input_ids', 'inputs_embeds', 'attention_mask', 'labels', 'loss_scale', 'position_ids'],
                               [tokenizer.pad_token_id, 0., 0, -100, 0., -1]):
             if key in res:
+                for i, val in enumerate(res[key]):
+                    if isinstance(val, (list, tuple)):
+                        res[key][i] = torch.tensor(val)
                 res[key] = self._pad_sequence(res[key], value, padding_side)
 
         # multimodal
@@ -802,7 +804,7 @@ class Template:
                 val = inputs.get(f'{key}_ids')
             if val is not None:
                 key_upper = key.upper()
-                logger.info(f'[{key_upper}_IDS] {val.tolist()}')
+                logger.info(f'[{key_upper}_IDS] {val}')
                 val_str = self.safe_decode(val, **tokenizer_kwargs)
                 logger.info(f'[{key_upper}] {val_str}')
 

@@ -54,7 +54,10 @@ class InferCliState:
 class SwiftInfer(SwiftPipeline[InferArguments]):
 
     def __init__(self, args: Union[List[str], InferArguments, None] = None) -> None:
+        from swift.llm import merge_lora
         super().__init__(args)
+        if args.merge_lora:
+            merge_lora(args, device_map='cpu')
         self.infer_engine = self.get_infer_engine(args)
         self.template = self.get_template(args, self.tokenizer)
         self.random_state = np.random.RandomState(args.dataset_seed)
@@ -79,7 +82,7 @@ class SwiftInfer(SwiftPipeline[InferArguments]):
             kwargs.update({
                 'attn_impl': args.attn_impl,
                 'quantization_config': args.quantization_config,
-                'max_batch_size': getattr(args, 'max_batch_size', 16),
+                'max_batch_size': getattr(args, 'max_batch_size', 1),
                 'device_map': args.device_map
             })
         elif args.infer_backend == 'vllm':

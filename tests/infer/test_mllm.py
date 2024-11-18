@@ -36,7 +36,8 @@ def _prepare(infer_backend: Literal['vllm', 'pt', 'lmdeploy']):
 
 
 def test_infer(engine, template, infer_requests):
-    from swift.llm import InferStats, RequestConfig
+    from swift.llm import RequestConfig
+    from swift.plugin import InferStats
     request_config = RequestConfig(temperature=0)
     infer_stats = InferStats()
 
@@ -49,7 +50,8 @@ def test_infer(engine, template, infer_requests):
 
 
 def test_stream(engine, template, infer_requests):
-    from swift.llm import InferStats, RequestConfig
+    from swift.llm import RequestConfig
+    from swift.plugin import InferStats
     infer_stats = InferStats()
     request_config = RequestConfig(temperature=0, stream=True, logprobs=True)
 

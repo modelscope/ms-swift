@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 
 from swift.llm import ExportArguments, deep_getattr, get_model_arch, load_dataset
-from swift.utils import get_logger, get_model_info
+from swift.utils import get_logger, get_model_parameter_info
 from .utils import prepare_pt_engine_template, save_checkpoint
 
 logger = get_logger()
@@ -39,7 +39,7 @@ class QuantEngine:
         else:
             raise ValueError(f'args.quant_method: {args.quant_method}')
 
-        logger.info(get_model_info(self.model))
+        logger.info(get_model_parameter_info(self.model))
         logger.info(f'model: {self.model}')
         save_checkpoint(
             None,

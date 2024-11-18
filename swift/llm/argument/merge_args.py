@@ -19,6 +19,8 @@ class MergeArguments:
         instruct_model_revision (Optional[str]): Revision of the instruct model. Use when `use_merge_kit` is True.
     """
     merge_lora: bool = False
+    safe_serialization: bool = True
+    max_shard_size: str = '5GB'
 
     use_merge_kit: bool = False
     instruct_model_id_or_path: Optional[str] = None

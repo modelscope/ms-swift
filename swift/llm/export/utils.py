@@ -36,7 +36,7 @@ def save_checkpoint(model: Optional[PreTrainedModel],
     if additional_saved_files is None:
         additional_saved_files = []
 
-    for src_file in additional_saved_files + ['preprocessor_config.json']:
+    for src_file in additional_saved_files + ['preprocessor_config.json', 'args.json']:
         src_path: str = os.path.join(model_dir, src_file)
         tgt_path = os.path.join(output_dir, src_file)
         if os.path.isfile(src_path):
