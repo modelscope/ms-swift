@@ -128,7 +128,7 @@ class RowPreprocessor:
                 res[k].append(v)
 
             num_samples += 1
-        
+
         if len(res) == 0:
             res['messages'] = []
 

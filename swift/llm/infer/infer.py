@@ -273,7 +273,7 @@ class SwiftInfer(SwiftPipeline):
             'download_mode': args.download_mode,
             'model_name': args.model_name,
             'model_author': args.model_author,
-            'strict': False
+            'strict': args.strict
         }
         if len(args.val_dataset) > 0:
             _, val_dataset = load_dataset(args.val_dataset, 1.0, **dataset_kwargs)

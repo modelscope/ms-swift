@@ -74,7 +74,7 @@ class QuantEngine:
             download_mode=args.download_mode,
             model_name=args.model_name,
             model_author=args.model_author,
-            strict=False)[0]
+            strict=args.strict)[0]
         logger.info(f'quant_dataset: {dataset}')
         dataset = dataset.shuffle()
 

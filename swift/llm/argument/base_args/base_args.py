@@ -32,6 +32,7 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
         ignore_args_error (bool): Flag to ignore argument errors for notebook compatibility. Default is False.
     """
     seed: int = 42
+    strict: bool = False
     load_args: bool = True
     load_dataset_config: bool = False
     # None: use env var `MODELSCOPE_API_TOKEN`

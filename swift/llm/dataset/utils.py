@@ -197,33 +197,51 @@ class LazyLLMDataset(Dataset):
 
     def __init__(self,
                  dataset: HfDataset,
-                 encode_func: Callable[[Dict[str, Any]], Union[Tuple[Dict[str, Any], Dict[str, Any]], Dict[str, Any]]],
+                 encode_func: Callable[[Dict[str, Any]], Dict[str, Any]],
                  *,
-                 try_fetch_time: int = 20) -> None:
+                 n_try_fetch: int = 10,
+                 strict: bool = False,
+                 random_state: Union[np.random.RandomState, int, None] = None,
+                 traceback_limit: int = 10) -> None:
         self.dataset = dataset
         self.encode_func = encode_func
-        self.try_fetch_time = min(try_fetch_time, len(self.dataset))
-        assert self.try_fetch_time >= 1
+
+        n_try_fetch = 1 if strict else min(n_try_fetch, len(self.dataset))
+        assert n_try_fetch >= 1
+        self.n_try_fetch = n_try_fetch
+
+        if not isinstance(random_state, np.random.RandomState):
+            random_state = np.random.RandomState(random_state)
+        self.random_state = random_state
+
+        self.traceback_limit = traceback_limit
+        self._traceback_counter = 0
+        self._idx = 0
+        self._idx_list = self.random_state.permutation(len(self.dataset)).tolist()
 
     def __getitem__(self, idx: int) -> Dict[str, Any]:
-        res = self._try_fetch(idx)
-        if res is not None:
-            return res
-        raise ValueError('Please check if the max_length is appropriate.')
-
-    def _try_fetch(self, first_idx: int) -> Optional[Dict[str, Any]]:
-        idx = np.random.permutation(len(self))[:self.try_fetch_time - 1]
-        for i in [first_idx] + idx.tolist():
+        for i in range(self.n_try_fetch):
+            if i == 0:
+                i = idx
+            else:
+                i = self._idx_list[self._idx]
+                self._idx = (self._idx + 1) % len(self.dataset)
             data = self.dataset[i]
             try:
                 res = self.encode_func(data)
-                if isinstance(res, (tuple, list)) and len(res) == 2:
-                    res = res[0]
-            except Exception as e:
-                logger.error(f'Error occurs in lazy tokenize: {e}')
+            except Exception:
+                if i == len(idx_list) - 1:
+                    logger.warning('To avoid errors, you can pass `strict=False`.')
+                    raise
+                if self.traceback_limit is not None and self._traceback_counter < self.traceback_limit:
+                    import traceback
+                    print(traceback.format_exc())
+                    logger.error('👆👆👆There are errors in the template.encode, '
+                                 'and another piece of data will be randomly selected.')
+                    self._traceback_counter += 1
                 continue
-            if len(res) > 0:
-                return res
+            assert res is not None
+            return res
 
     def __len__(self) -> int:
         return len(self.dataset)

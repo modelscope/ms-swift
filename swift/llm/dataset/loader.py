@@ -392,12 +392,10 @@ def init_self_cognition_preprocessor(
     # zh, en
     for key in ['model_name', 'model_author']:
         val = locals()[key]
-        if val is not None:
-            if isinstance(val, str):
-                val = [val]
-            assert val[0] is not None
-            if len(val) == 1 or val[1] is None:
-                val = (val[0], val[0])
+        if isinstance(val, str):
+            val = [val]
+        if (val is not None or val[0] is not None) and (len(val) == 1 or val[1] is None):
+            val = (val[0], val[0])
         setattr(SelfCognitionPreprocessor, key[len('model_'):], val)
 
 

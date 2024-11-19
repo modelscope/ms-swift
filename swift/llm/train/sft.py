@@ -123,7 +123,7 @@ class SwiftSft(SwiftPipeline):
             'streaming': args.streaming,
             'streaming_val_size': args.streaming_val_size,
             'streaming_buffer_size': args.streaming_buffer_size,
-            'strict': False
+            'strict': args.strict
         }
 
         if len(args.val_dataset) > 0:
@@ -282,9 +282,11 @@ class SwiftSft(SwiftPipeline):
         args = self.args
 
         if args.lazy_tokenize:
-            train_dataset = LazyLLMDataset(train_dataset, template.encode)
+            train_dataset = LazyLLMDataset(
+                train_dataset, template.encode, strict=args.strict, random_state=args.data_seed)
             if val_dataset is not None:
-                val_dataset = LazyLLMDataset(val_dataset, template.encode)
+                val_dataset = LazyLLMDataset(
+                    val_dataset, template.encode, strict=args.strict, random_state=args.data_seed)
         elif args.packing:
             train_dataset = ConstantLengthDataset.get_packed_dataset(
                 template, train_dataset, args.max_length, lazy_tokenize=args.lazy_tokenize)
