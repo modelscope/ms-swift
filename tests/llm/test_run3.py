@@ -136,7 +136,8 @@ class TestRun3(unittest.TestCase):
                         input_ids_new = json.load(f)
                     with open('old_input_ids.txt', 'r') as f:
                         input_ids_old = json.load(f)
-                    self.assertTrue(np.allclose(input_ids_new, input_ids_old))
+                    print('new:', input_ids_new, 'old:', input_ids_old)
+                    self.assertTrue(np.allclose(input_ids_new['input_ids'], input_ids_old['input_ids']))
                 except Exception:
                     import traceback
                     print(traceback.format_exc())
