@@ -37,5 +37,5 @@ class SwiftExport(SwiftPipeline):
                 commit_message=args.commit_message)
 
 
-def export_main(args: Union[List[str], ExportArguments, None] = None) -> List[Dict[str, Any]]:
+def export_main(args: Union[List[str], ExportArguments, None] = None):
     return SwiftExport(args).main()

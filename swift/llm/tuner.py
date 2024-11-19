@@ -10,7 +10,7 @@ import transformers
 from packaging import version
 from transformers import TrainerCallback
 
-from swift.llm import SftArguments, get_model_arch
+from swift.llm import TrainArguments, get_model_arch
 from swift.plugin import Tuner, extra_tuners
 from swift.tuners import (AdaLoraConfig, AdapterConfig, BOFTConfig, IA3Config, LLaMAProConfig, LongLoRAModelType,
                           LoraConfig, LoRAConfig, ReftConfig, Swift, VeraConfig)
@@ -129,7 +129,7 @@ class DynamicLayerActivationCallback(TrainerCallback):
                 param.requires_grad = True
 
 
-def prepare_tuner(model, args: SftArguments):
+def prepare_tuner(model, args: TrainArguments):
     if args.use_liger:
         # Apply liger
         apply_liger(args.model_type)

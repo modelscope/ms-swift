@@ -87,8 +87,8 @@ class ModelArguments:
 
     def _init_torch_dtype(self) -> None:
         """"If torch_dtype is None, find a proper dtype by the train_type/GPU"""
-        from swift.llm import SftArguments
-        if self.torch_dtype is None and isinstance(self, SftArguments):
+        from swift.llm import TrainArguments
+        if self.torch_dtype is None and isinstance(self, TrainArguments):
             # Compatible with --fp16/--bf16
             for key in ['fp16', 'bf16']:
                 value = getattr(self, key)
@@ -101,7 +101,7 @@ class ModelArguments:
         self.torch_dtype: Optional[torch.dtype] = HfConfigFactory.to_torch_dtype(self.torch_dtype)
         self.torch_dtype: torch.dtype = self._init_model_info(self.torch_dtype)
         # Mixed Precision Training
-        if isinstance(self, SftArguments):
+        if isinstance(self, TrainArguments):
             if self.torch_dtype in {torch.float16, torch.float32}:
                 self.fp16, self.bf16 = True, False
             elif self.torch_dtype == torch.bfloat16:

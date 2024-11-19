@@ -4,6 +4,6 @@ from .eval_args import EvalArguments
 from .export_args import ExportArguments
 from .infer_args import InferArguments
 from .rlhf_args import RLHFArguments
-from .train_args import PtArguments, SftArguments
+from .train_args import TrainArguments
 from .tuner_args import TunerArguments
 from .webui_args import WebUIArguments

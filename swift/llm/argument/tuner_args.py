@@ -198,7 +198,7 @@ class TunerArguments:
         """Replace EMBEDDING and ALL to actual modules
         Args:
             model: The input model
-            args: The SftArguments
+            args: The TrainArguments
         """
         if self.target_regex:
             return self.target_regex

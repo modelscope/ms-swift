@@ -40,8 +40,8 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
     logging_first_step: bool = True
 
     def _init_output_dir(self):
-        if self.output_dir is None:
-            pass
+        if self.output_dir is not None:
+            return
         model_dir = self.model_info.model_dir
         model_name = os.path.basename(model_dir)
         self.output_dir = f'output/{model_name}'
@@ -92,7 +92,7 @@ class MegatronArguments:
     min_lr: Optional[float] = None
     sequence_parallel: bool = False
 
-    def __post_init__(self: 'SftArguments'):
+    def __post_init__(self):
         if self.train_backend != 'megatron':
             return
 
@@ -104,7 +104,7 @@ class MegatronArguments:
             self.resume_from_checkpoint = f'{self.model_type}-tp{self.tp}-pp{self.pp}'
         self.model_id_or_path = self.resume_from_checkpoint
 
-    def init_megatron(self: 'SftArguments'):
+    def init_megatron(self):
         """Init megatron if you are using megatron to pt"""
         assert is_dist(), 'Please start in distributed mode.'
         dist.init_process_group(backend=self.ddp_backend)
@@ -128,10 +128,10 @@ class TorchAccArguments:
 
 
 @dataclass
-class SftArguments(MegatronArguments, TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideArguments,
-                   BaseArguments):
+class TrainArguments(MegatronArguments, TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideArguments,
+                     BaseArguments):
     """
-    SftArguments class is a dataclass that holds various arguments related to training configuration and usage.
+    TrainArguments class is a dataclass that holds various arguments related to training configuration and usage.
 
     Args:
         freeze_vit (bool): Flag to indicate if ViT should be frozen. Default is True.
@@ -310,8 +310,3 @@ class SftArguments(MegatronArguments, TorchAccArguments, TunerArguments, Seq2Seq
             self.training_args.output_dir = self.output_dir
             self.training_args.run_name = self.output_dir
             self.training_args.logging_dir = self.logging_dir
-
-
-@dataclass
-class PtArguments(SftArguments):
-    pass

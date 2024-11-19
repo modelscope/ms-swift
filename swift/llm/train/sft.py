@@ -10,7 +10,7 @@ from swift.trainers import TrainerFactory
 from swift.utils import (append_to_jsonl, check_json_format, compute_acc_metrics, compute_nlg_metrics, get_dist_setting,
                          get_logger, get_model_parameter_info, is_ddp_plus_mp, is_dist, is_master, plot_images,
                          preprocess_logits_for_acc, seed_everything, show_layers, stat_array, use_torchacc)
-from ..argument import SftArguments
+from ..argument import TrainArguments
 from ..base import SwiftPipeline
 from ..dataset import ConstantLengthDataset, EncodePreprocessor, GetLengthPreprocessor, LazyLLMDataset, load_dataset
 from ..infer import RequestConfig, prepare_generation_config
@@ -23,10 +23,10 @@ logger = get_logger()
 
 
 class SwiftSft(SwiftPipeline):
-    args_class = SftArguments
+    args_class = TrainArguments
     args: args_class
 
-    def __init__(self, args: Union[List[str], SftArguments, None] = None) -> None:
+    def __init__(self, args: Union[List[str], TrainArguments, None] = None) -> None:
         super().__init__(args)
         self.train_msg = {}
         self._prepare_model_tokenizer()
@@ -310,5 +310,5 @@ class SwiftSft(SwiftPipeline):
         return train_dataset, val_dataset
 
 
-def sft_main(args: Union[List[str], SftArguments, None] = None) -> List[Dict[str, Any]]:
+def sft_main(args: Union[List[str], TrainArguments, None] = None):
     return SwiftSft(args).main()

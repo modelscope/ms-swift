@@ -40,5 +40,5 @@ class SwiftRLHF(SwiftSft):
         return trainer_kwargs
 
 
-def rlhf_main(args: Union[List[str], RLHFArguments, None] = None) -> List[Dict[str, Any]]:
+def rlhf_main(args: Union[List[str], RLHFArguments, None] = None):
     return SwiftRLHF(args).main()

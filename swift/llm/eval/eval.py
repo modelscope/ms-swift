@@ -15,5 +15,5 @@ class SwiftEval(SwiftPipeline):
         args = self.args
 
 
-def eval_main(args: Union[List[str], EvalArguments, None] = None) -> List[Dict[str, Any]]:
+def eval_main(args: Union[List[str], EvalArguments, None] = None):
     return SwiftEval(args).main()

@@ -308,5 +308,5 @@ class SwiftInfer(SwiftPipeline):
         return result_list
 
 
-def infer_main(args: Union[List[str], InferArguments, None] = None) -> List[Dict[str, Any]]:
+def infer_main(args: Union[List[str], InferArguments, None] = None):
     return SwiftInfer(args).main()

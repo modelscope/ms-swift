@@ -2,11 +2,11 @@ from dataclasses import dataclass, field
 from typing import Literal, Optional
 
 from swift.llm import MODEL_MAPPING
-from .train_args import SftArguments
+from .train_args import TrainArguments
 
 
 @dataclass
-class RLHFArguments(SftArguments):
+class RLHFArguments(TrainArguments):
     """
     RLHFArguments is a dataclass that holds arguments specific to the Reinforcement
         Learning with Human Feedback (RLHF) training backend.

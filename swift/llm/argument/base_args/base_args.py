@@ -60,8 +60,8 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
 
     def load_args_from_ckpt(self, checkpoint_dir: str) -> None:
         """Load specific attributes from args.json"""
-        from swift.llm import SftArguments, ExportArguments, InferArguments
-        if isinstance(self, SftArguments):
+        from swift.llm import TrainArguments
+        if isinstance(self, TrainArguments):
             self.resume_from_checkpoint = to_abspath(self.resume_from_checkpoint, True)
             ckpt_dir = self.resume_from_checkpoint
         else:
