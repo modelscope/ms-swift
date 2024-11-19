@@ -111,7 +111,7 @@ class Llava1_6HfTemplate(LlavaHfTemplate):
             pixel_values = b.get('pixel_values')
             if pixel_values is not None:
                 b['pixel_values'] = pixel_values.squeeze(0)  # 5d -> 4d
-        res = super().data_collator(batch, padding_to=padding_to)
+        res = super()._data_collator(batch, padding_to=padding_to)
         return res
 
 
@@ -273,7 +273,7 @@ class LLavaTemplate(Template):
                        padding_side: Optional[str] = None,
                        padding_to: Optional[int] = None,
                        model: Optional[nn.Module] = None) -> Dict[str, Any]:
-        res = super().data_collator(batch, padding_to=padding_to)
+        res = super()._data_collator(batch, padding_to=padding_to)
         images = [b['images'] for b in batch if 'images' in b]
         if images:
             res['images'] = images

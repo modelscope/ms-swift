@@ -86,7 +86,7 @@ class GLM4VTemplate(GLMTemplate):
                        padding_side: Optional[str] = None,
                        padding_to: Optional[int] = None,
                        model: Optional[nn.Module] = None) -> Dict[str, Any]:
-        res = super().data_collator(batch, padding_side=padding_side, padding_to=padding_to)
+        res = super()._data_collator(batch, padding_side=padding_side, padding_to=padding_to)
         images = [b['images'] for b in batch if 'images' in b]
         if images:
             res['images'] = torch.concat(images)
@@ -160,7 +160,7 @@ class CogTemplate(Template):
                        padding_side: Optional[str] = None,
                        padding_to: Optional[int] = None,
                        model: Optional[nn.Module] = None) -> Dict[str, Any]:
-        res = super().data_collator(batch, padding_side=padding_side, padding_to=padding_to)
+        res = super()._data_collator(batch, padding_side=padding_side, padding_to=padding_to)
         keys = ['images', 'cross_images']
         for key in keys:
             if key in batch[0]:

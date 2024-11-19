@@ -33,9 +33,6 @@ class SwiftRLHF(SwiftSft):
             trainer_kwargs['ref_model'] = self.ref_model
         return trainer_kwargs
 
-    def _get_compute_loss(self):
-        return None
-
 
 def rlhf_main(args: Union[List[str], RLHFArguments, None] = None) -> List[Dict[str, Any]]:
     return SwiftRLHF(args).main()

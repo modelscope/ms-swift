@@ -715,7 +715,10 @@ class Template:
                           padding_to: Optional[int] = None,
                           model: Optional[nn.Module] = None) -> Dict[str, Any]:
         """for multimodal LLM"""
-        new_batch = [{'labels': b['labels']} if b.get('labels') is not None else {} for b in batch]
+        new_batch = []
+        for b in batch:
+            new_batch.append({k: v for k, v in b.items() if k.endswith('labels')})
+
         res = self.data_collator(
             new_batch, padding_side=padding_side, padding_to=padding_to, model=model)  # only labels
         res['_data'] = batch

@@ -1,3 +1,7 @@
+import os
+
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
 kwargs = {
     'per_device_train_batch_size': 2,
     'save_steps': 5,
@@ -28,5 +32,5 @@ def test_mllm():
 
 
 if __name__ == '__main__':
-    test_llm()
-    # test_mllm()
+    # test_llm()
+    test_mllm()

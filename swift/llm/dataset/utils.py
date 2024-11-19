@@ -249,5 +249,5 @@ class GetLengthPreprocessor(RowPreprocessor):
         return super().__init__(remove_useless_columns=False)
 
     def preprocess(self, row):
-        length = sum([max(row[k]) for k in row.keys() if k.endswith('input_ids')])
+        length = max([len(row[k]) for k in row.keys() if k.endswith('input_ids')])
         return {'length': length}

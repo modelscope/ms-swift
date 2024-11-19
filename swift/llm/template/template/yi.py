@@ -51,7 +51,7 @@ class YiVLTemplate(Template):
                        padding_side: Optional[str] = None,
                        padding_to: Optional[int] = None,
                        model: Optional[nn.Module] = None) -> Dict[str, Any]:
-        res = super().data_collator(batch, padding_to=padding_to, padding_side=padding_side)
+        res = super()._data_collator(batch, padding_to=padding_to, padding_side=padding_side)
         images = [b['images'] for b in batch if 'images' in b]
         if images:
             res['images'] = torch.concat(images)

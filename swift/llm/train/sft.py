@@ -168,6 +168,21 @@ class SwiftSft(SwiftPipeline):
 
         optimizers = self._get_optimizers(train_dataset)
 
+        trainer_cls = TrainerFactory.get_trainer_cls(args)
+        trainer = trainer_cls(
+            model=self.model,
+            args=self.args.training_args,
+            data_collator=data_collator,
+            train_dataset=train_dataset,
+            eval_dataset=val_dataset,
+            callbacks=self.callbacks,
+            optimizers=optimizers,
+            tokenizer=self.tokenizer,
+            **self._get_trainer_kwargs(),
+        )
+        return self.train(trainer)
+
+    def _get_trainer_kwargs(self):
         if args.predict_with_generate:
             compute_metrics = partial(compute_nlg_metrics, tokenizer=tokenizer)
             preprocess_logits_for_metrics = None
@@ -179,27 +194,11 @@ class SwiftSft(SwiftPipeline):
             compute_metrics = compute_metrics
             preprocess_logits_for_metrics = preprocess_logits_for_acc
 
-        compute_loss_func = self._get_compute_loss()
-
-        trainer_cls = TrainerFactory.get_trainer_cls(args)
-        trainer = trainer_cls(
-            model=self.model,
-            args=self.args.training_args,
-            data_collator=data_collator,
-            train_dataset=train_dataset,
-            eval_dataset=val_dataset,
-            compute_metrics=compute_metrics,
-            compute_loss_func=compute_loss_func,
-            preprocess_logits_for_metrics=preprocess_logits_for_metrics,
-            callbacks=self.callbacks,
-            optimizers=optimizers,
-            tokenizer=self.tokenizer,
-            **self._get_trainer_kwargs(),
-        )
-        return self.train(trainer)
-
-    def _get_trainer_kwargs(self):
-        return {}
+        return {
+            'compute_metrics': compute_metrics,
+            'preprocess_logits_for_metrics': preprocess_logits_for_metrics,
+            'compute_loss_func': self._get_compute_loss()
+        }
 
     def _save_trainer_state(self, trainer):
         training_args = trainer.args
@@ -298,9 +297,9 @@ class SwiftSft(SwiftPipeline):
                 val_dataset = EncodePreprocessor(template)(
                     val_dataset, num_proc=args.num_proc, load_from_cache_file=args.load_from_cache_file)
 
-        inputs = next(iter(train_dataset)) if args.streaming else train_dataset[0]
+        inputs = train_dataset[0] if isinstance(train_dataset, HfDataset) else next(iter(train_dataset))
         template.print_inputs(inputs)
-        if not (args.lazy_tokenize and args.streaming):
+        if isinstance(train_dataset, HfDataset):
             self.train_msg['train_dataset'] = self._stat_dataset(train_dataset)
             if val_dataset is not None:
                 self.train_msg['val_dataset'] = self._stat_dataset(val_dataset)

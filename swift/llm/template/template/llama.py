@@ -108,7 +108,7 @@ class Llama3_2VisionTemplate(Template):
                        padding_side: Optional[str] = None,
                        padding_to: Optional[int] = None,
                        model: Optional[nn.Module] = None) -> Dict[str, Any]:
-        res = super().data_collator(batch, padding_side=padding_side, padding_to=padding_to)
+        res = super()._data_collator(batch, padding_side=padding_side, padding_to=padding_to)
         for key in ['aspect_ratio_ids', 'aspect_ratio_mask']:
             value = [b[key] for b in batch if b.get(key) is not None]
             if value:
