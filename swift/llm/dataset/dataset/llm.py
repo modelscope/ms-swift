@@ -342,11 +342,7 @@ register_dataset(
         preprocess_func=MultiRoleAgentPreprocessor(),
         tags=['chat', 'agent', 'multi-round', 'role-play', 'multi-agent']))
 
-register_dataset(
-    DatasetMeta(
-        ms_dataset_id='swift/ToolBench',
-        preprocess_func=MessagesPreprocessor(remove_useless_columns=False, ),
-        tags=['chat', 'agent', 'multi-round']))
+register_dataset(DatasetMeta(ms_dataset_id='swift/ToolBench', tags=['chat', 'agent', 'multi-round']))
 
 
 def _preprocess_hc3(dataset: DATASET_TYPE, **kwargs) -> DATASET_TYPE:
@@ -542,35 +538,18 @@ register_dataset(
         tags=['rlhf', 'dpo']))
 
 register_dataset(
-    DatasetMeta(
-        ms_dataset_id='AI-ModelScope/ultrafeedback-binarized-preferences-cleaned-kto',
-        preprocess_func=ResponsePreprocessor(
-            columns_mapping={
-                'prompt': 'query',
-                'completion': 'response',
-            }, remove_useless_columns=False),
-        tags=['rlhf', 'kto']))
+    DatasetMeta(ms_dataset_id='AI-ModelScope/ultrafeedback-binarized-preferences-cleaned-kto', tags=['rlhf', 'kto']))
 
 register_dataset(
     DatasetMeta(
         ms_dataset_id='OmniData/Zhihu-KOL-More-Than-100-Upvotes',
         hf_dataset_id='bzb2023/Zhihu-KOL-More-Than-100-Upvotes',
-        preprocess_func=ResponsePreprocessor(columns_mapping={
-            'INSTRUCTION': 'query',
-            'RESPONSE': 'response'
-        }),
         tags=['zhihu', 'qa']))
 
 register_dataset(
     DatasetMeta(
-        ms_dataset_id='OmniData/Zhihu-KOL',
-        hf_dataset_id='wangrui6/Zhihu-KOL',
-        preprocess_func=ResponsePreprocessor(columns_mapping={
-            'INSTRUCTION': 'query',
-            'RESPONSE': 'response'
-        }),
-        huge_dataset=True,
-        tags=['zhihu', 'qa']))
+        ms_dataset_id='OmniData/Zhihu-KOL', hf_dataset_id='wangrui6/Zhihu-KOL', huge_dataset=True, tags=['zhihu',
+                                                                                                         'qa']))
 
 
 class GuanacoPreprocessor(RowPreprocessor):
@@ -670,5 +649,4 @@ register_dataset(
     DatasetMeta(
         ms_dataset_id='swift/sharegpt',
         subsets=['common-zh', 'unknow-zh', 'common-en'],
-        preprocess_func=MessagesPreprocessor(),
         tags=['chat', 'general', 'multi-round']))

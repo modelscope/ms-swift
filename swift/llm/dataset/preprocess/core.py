@@ -53,6 +53,9 @@ class RowPreprocessor:
         if 'messages' not in row:
             return
         messages = row['messages']
+        assert len(messages) > 0, f'messages: {messages}'
+        if messages[0]['role'] == 'system':
+            messages = messages[1:]
         for user_message, assistant_message in zip(messages[::2], messages[1::2]):
             assert (user_message['role'] in {'user', 'tool'} and 'content' in user_message
                     and user_message['content'] is not None), f'user_message: {user_message}'
@@ -147,7 +150,8 @@ class RowPreprocessor:
     @staticmethod
     def row_keys_map(row: Dict[str, Any], row_mapping: Dict[str, str]) -> None:
         # If there are multiple mappings to the same keys, then delete them.
-        row_mapping = {k: v for k, v in row_mapping.items() if k in row}
+        row_keys = {k.lower(): k for k in row.keys()}
+        row_mapping = {row_keys[k]: v for k, v in row_mapping.items() if k in row_keys}
         counter = Counter(row_mapping.values())
 
         for k, new_k in row_mapping.items():

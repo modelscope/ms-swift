@@ -663,7 +663,7 @@ register_dataset(
         tags=['chat', 'multi-modal', 'vision']))
 
 
-class ShareGPT4VPreprocessor(RowPreprocessor):
+class ShareGPT4VPreprocessor(MessagesPreprocessor):
 
     def prepare_dataset(self, dataset):
         split = ['ShareGPT4V', 'ShareGPT4V-PT'] if dataset.config_name is None else dataset.config_name
@@ -682,7 +682,7 @@ class ShareGPT4VPreprocessor(RowPreprocessor):
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         image = row['image']
-        row.update(MessagesPreprocessor().preprocess(row))
+        row.update(super().preprocess(row))
         if 'coco/' in image:
             image = os.path.join(self.all_folders['coco'], image.replace('coco/', ''))
         elif 'sam/' in image:
@@ -710,6 +710,7 @@ class ShareGPT4VPreprocessor(RowPreprocessor):
 register_dataset(
     DatasetMeta(
         ms_dataset_id='AI-ModelScope/ShareGPT4V',
+        subsets=['ShareGPT4V', 'ShareGPT4V-PT'],
         preprocess_func=ShareGPT4VPreprocessor(),
         huge_dataset=True,
         tags=['chat', 'multi-modal', 'vision']))
@@ -871,7 +872,7 @@ register_dataset(
         tags=['chat', 'multi-modal', 'vision']))
 
 
-class LLaVAPretrainPreprocessor(RowPreprocessor):
+class LLaVAPretrainPreprocessor(MessagesPreprocessor):
 
     def prepare_dataset(self, dataset):
         self.media_dir = MediaResource.download(
@@ -882,7 +883,7 @@ class LLaVAPretrainPreprocessor(RowPreprocessor):
         return super().prepare_dataset(dataset)
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
-        row.update(MessagesPreprocessor().preprocess(row))
+        row.update(super().preprocess(row))
         if row['image']:
             file_path = os.path.join(self.media_dir, row['image'])
             if os.path.exists(file_path):
