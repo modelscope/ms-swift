@@ -4,13 +4,17 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set, Tuple, Type, Union
 
 import torch
-from transformers import (BaseImageProcessor, FeatureExtractionMixin, LogitsProcessor, LogitsProcessorList,
+from transformers import (FeatureExtractionMixin, LogitsProcessor, LogitsProcessorList,
                           PreTrainedTokenizerBase, ProcessorMixin, StoppingCriteria, StoppingCriteriaList)
 
 from swift.llm import History
 
 Prompt = List[Union[str, List[int], List[str]]]
-Processor = Union[PreTrainedTokenizerBase, BaseImageProcessor, FeatureExtractionMixin, ProcessorMixin]
+try:
+    from transformers import BaseImageProcessor
+    Processor = Union[PreTrainedTokenizerBase, BaseImageProcessor, FeatureExtractionMixin, ProcessorMixin]
+except ImportError:
+    Processor = Union[PreTrainedTokenizerBase, FeatureExtractionMixin, ProcessorMixin]
 Word = Union[str, List[int]]
 Context = Word
 
