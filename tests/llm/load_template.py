@@ -1,10 +1,6 @@
 import argparse
-from dataclasses import fields
 
-import torch
-
-from swift.llm import (MODEL_ARCH_MAPPING, MODEL_MAPPING, EncodePreprocessor, ModelKeys, get_model_tokenizer,
-                       get_template, load_dataset)
+from swift.llm import EncodePreprocessor, get_model_tokenizer, get_template, load_dataset
 
 
 def load_ds(ds):
@@ -20,6 +16,7 @@ def load_ds(ds):
 
 def load_and_tokenize(ms_model_id, template):
     try:
+        vl_fields = ['vl', 'video', 'minicpm_v', 'gen', 'llava']
         load_model = False
         if 'gen' in template or 'audio' in template or 'vl' in template:
             load_model = True
@@ -27,11 +24,8 @@ def load_and_tokenize(ms_model_id, template):
         template_ins = get_template(template, tokenizer)
         template_ins.set_mode('train')
         if 'audio' in template_ins.__class__.__name__.lower():
-            output = EncodePreprocessor(
-                template_ins, model=model_ins)(
-                    load_ds('speech_asr/speech_asr_aishell1_trainsets:validation'))
-        elif 'vl' in template_ins.__class__.__name__.lower() or 'gen' in template_ins.__class__.__name__.lower(
-        ) or 'video' in template_ins.__class__.__name__.lower():
+            output = EncodePreprocessor(template_ins)(load_ds('speech_asr/speech_asr_aishell1_trainsets:validation'))
+        elif any([vl in template_ins.__class__.__name__.lower() for vl in vl_fields]):
             for row in load_ds('swift/OK-VQA_train'):
                 output = template_ins.encode(row)
                 # output = EncodePreprocessor(template_ins)(load_ds('swift/OK-VQA_train'))

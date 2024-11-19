@@ -100,10 +100,11 @@ def get_model_tokenizer_phi3_small(model_dir: str,
         key_states = key_states.to(k_type)
         return query_states, key_states
 
-    for i in range(32):
-        re = model.model.layers[i].self_attn.rotary_emb
-        re.rotory_emb_origin = re.forward
-        re.forward = MethodType(rotary_emb, re)
+    if model is not None:
+        for i in range(32):
+            re = model.model.layers[i].self_attn.rotary_emb
+            re.rotory_emb_origin = re.forward
+            re.forward = MethodType(rotary_emb, re)
     return model, tokenizer
 
 
