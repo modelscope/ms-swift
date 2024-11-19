@@ -12,19 +12,19 @@ from ..utils import align_image_inputs
 class Idefics3Template(Template):
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        inputs = super()._encode(inputs)
-        if len(inputs) == 0:
-            return inputs
+        encoded = super()._encode(inputs)
+        if len(encoded) == 0:
+            return encoded
         images = inputs.images or []
         processor = self.processor
-        prompt = self.processor.decode(inputs['input_ids'])
+        prompt = self.processor.decode(encoded['input_ids'])
         if images:
             image_inputs = processor(text=prompt, images=images, return_tensors='pt', add_special_tokens=False)
             image_token = 128257  # <image>
-            inputs['input_ids'], inputs['labels'] = align_image_inputs(inputs['input_ids'], inputs['labels'],
+            encoded['input_ids'], encoded['labels'] = align_image_inputs(encoded['input_ids'], encoded['labels'],
                                                                        image_inputs['input_ids'][0], image_token)
-            inputs['pixel_values'] = image_inputs['pixel_values']
-        return inputs
+            encoded['pixel_values'] = image_inputs['pixel_values']
+        return encoded
 
 
 register_template(

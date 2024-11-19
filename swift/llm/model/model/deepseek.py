@@ -125,14 +125,13 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
 
     model, tokenizer = get_model_tokenizer_with_flash_attn(
         model_dir, model_info, model_kwargs, load_model, tokenizer=tokenizer, **kwargs)
-    tokenizer.processor = processor
     if load_model:
         patch_output_clone(model.language_model.model.embed_tokens)
         patch_output_to_input_device(model.language_model.model.embed_tokens)
         func_list = ['generate', 'get_input_embeddings', 'gradient_checkpointing_enable', 'forward']
         use_submodel_func(model, 'language_model', func_list)
         model.generation_config = model.language_model.generation_config
-    return model, tokenizer
+    return model, processor
 
 
 register_model(

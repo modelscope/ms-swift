@@ -58,27 +58,27 @@ class GLM4VTemplate(GLMTemplate):
         return [[-100]]
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        inputs = super()._encode(inputs)
-        if len(inputs) == 0:
-            return inputs
-        input_ids = inputs['input_ids']
-        labels = inputs['labels']
+        encoded = super()._encode(inputs)
+        if len(encoded) == 0:
+            return encoded
+        input_ids = encoded['input_ids']
+        labels = encoded['labels']
         idx_list = findall(input_ids, -100)
         if idx_list:
             idx = idx_list[0]
-            image = inputs.images[0]
+            image = encoded.images[0]
             placeholder = '<|begin_of_image|><|endoftext|><|end_of_image|>'
             placeholder_id = self.processor.encode(placeholder, add_special_tokens=False)
             input_ids = (input_ids[:idx] + placeholder_id + input_ids[idx + 1:])
             if labels is not None:
                 labels = (labels[:idx] + [-100] * len(placeholder_id) + labels[idx + 1:])
-            messages = inputs.messages
+            messages = encoded.messages
             messages[0]['image'] = image
             inputs2: Dict[str, Any] = self.processor.apply_chat_template(messages, return_dict=True)
-            inputs['images'] = inputs2['images']
-        inputs['input_ids'] = input_ids
-        inputs['labels'] = labels
-        return inputs
+            encoded['images'] = inputs2['images']
+        encoded['input_ids'] = input_ids
+        encoded['labels'] = labels
+        return encoded
 
     def _data_collator(self,
                        batch: List[Dict[str, Any]],
@@ -131,28 +131,28 @@ class CogTemplate(Template):
         return []
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        inputs = super()._encode(inputs)
-        if len(inputs) == 0:
-            return inputs
+        encoded = super()._encode(inputs)
+        if len(encoded) == 0:
+            return encoded
         image = inputs.images or []
-        inputs.pop('loss_scale', None)
-        history_inputs = inputs.to_history()
+        encoded.pop('loss_scale', None)
+        history_inputs = encoded.to_history()
         inputs2 = model.build_conversation_input_ids(
             self.processor, query=history_inputs['query'], history=history_inputs['history'], images=image)
         image_token_len = inputs2['token_type_ids'].sum().item()
-        input_ids = inputs['input_ids']
-        labels = inputs['labels']
-        inputs['token_type_ids'] = [0] + [1] * image_token_len + [0] * len(input_ids[1:])
-        inputs['input_ids'] = input_ids[:1] + [self.processor.pad_token_id] * image_token_len + input_ids[1:]
+        input_ids = encoded['input_ids']
+        labels = encoded['labels']
+        encoded['token_type_ids'] = [0] + [1] * image_token_len + [0] * len(input_ids[1:])
+        encoded['input_ids'] = input_ids[:1] + [self.processor.pad_token_id] * image_token_len + input_ids[1:]
         if labels is not None:
-            inputs['labels'] = labels[:1] + [-100] * image_token_len + labels[1:]
+            encoded['labels'] = labels[:1] + [-100] * image_token_len + labels[1:]
         if len(image) > 0:
             dtype = model.dtype
-            inputs['images'] = [[img.to(dtype=dtype)] for img in inputs2['images']]
+            encoded['images'] = [[img.to(dtype=dtype)] for img in inputs2['images']]
             if 'cross_images' in inputs2:
                 # is cogagent
-                inputs['cross_images'] = [[cross_img.to(dtype=dtype)] for cross_img in inputs2['cross_images']]
-        return inputs
+                encoded['cross_images'] = [[cross_img.to(dtype=dtype)] for cross_img in inputs2['cross_images']]
+        return encoded
 
     def _data_collator(self,
                        batch: List[Dict[str, Any]],
@@ -208,13 +208,13 @@ class Cog2VideoTemplate(CogTemplate):
         assert len(videos) <= 1
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        inputs, _ = super(CogTemplate, self)._encode(inputs)
-        if len(inputs) == 0:
-            return inputs
+        encoded = super(CogTemplate, self)._encode(inputs)
+        if len(encoded) == 0:
+            return encoded
         videos_path = inputs.videos or []
         video = load_batch(videos_path, load_video_cogvlm2)
-        inputs.pop('loss_scale', None)
-        history_inputs = inputs.to_history()
+        encoded.pop('loss_scale', None)
+        history_inputs = encoded.to_history()
         inputs2 = model.build_conversation_input_ids(
             self.processor,
             query=history_inputs['query'],
@@ -222,16 +222,16 @@ class Cog2VideoTemplate(CogTemplate):
             images=video,
             template_version='chat')
         video_token_len = inputs2['token_type_ids'].sum().item()
-        input_ids = inputs['input_ids']
-        labels = inputs['labels']
-        inputs['token_type_ids'] = [0] + [1] * video_token_len + [0] * len(input_ids[1:])
-        inputs['input_ids'] = input_ids[:1] + [self.processor.pad_token_id] * video_token_len + input_ids[1:]
+        input_ids = encoded['input_ids']
+        labels = encoded['labels']
+        encoded['token_type_ids'] = [0] + [1] * video_token_len + [0] * len(input_ids[1:])
+        encoded['input_ids'] = input_ids[:1] + [self.processor.pad_token_id] * video_token_len + input_ids[1:]
         if labels is not None:
-            inputs['labels'] = labels[:1] + [-100] * video_token_len + labels[1:]
+            encoded['labels'] = labels[:1] + [-100] * video_token_len + labels[1:]
         if len(video) > 0:
             dtype = model.dtype
-            inputs['images'] = [[img.to(dtype=dtype)] for img in inputs2['images']]
-        return inputs
+            encoded['images'] = [[img.to(dtype=dtype)] for img in inputs2['images']]
+        return encoded
 
 
 register_template(CogVLMTemplateMeta(

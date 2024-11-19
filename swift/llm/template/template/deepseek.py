@@ -36,12 +36,12 @@ class DeepseekVLTemplate(Template):
     image_placeholder = ['<image_placeholder>']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        inputs = super()._encode(inputs)
-        if len(inputs) == 0:
-            return inputs
+        encoded = super()._encode(inputs)
+        if len(encoded) == 0:
+            return encoded
         images = inputs.images
         processor = self.processor
-        input_ids, labels = inputs['input_ids'], inputs['labels']
+        input_ids, labels = encoded['input_ids'], encoded['labels']
         idx_list = findall(input_ids, processor.image_id)  # '<image_placeholder>'
         new_input_ids, new_labels = [], []
         lo = 0
@@ -65,11 +65,12 @@ class DeepseekVLTemplate(Template):
             pixel_values=images_outputs.pixel_values,
             num_image_tokens=torch.tensor([processor.num_image_tokens] * len(idx_list)))
         batched_output = dict(processor.batchify([output]))
-        batched_output['pixel_values'] = batched_output['pixel_values'].to(dtype=self.model.dtype)
-        inputs = {'input_ids': new_input_ids, 'labels': new_labels, '_data': batched_output}
-        return inputs
+        # batched_output['pixel_values'] = batched_output['pixel_values'].to(dtype=model.dtype)
+        encoded = {'input_ids': new_input_ids, 'labels': new_labels, '_data': batched_output}
+        return encoded
 
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        inputs['pixel_values'] = pixel_values['pixel_values'].to(dtype=model.dtype)
         inputs_embeds = model.prepare_inputs_embeds(**inputs)[0]
         return {'inputs_embeds': inputs_embeds}
 
