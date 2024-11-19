@@ -554,11 +554,6 @@
         "tags": ["chat", "medical"]
     },
     {
-        "ms_dataset_id": "swift/self-cognition",
-        "hf_dataset_id": "modelscope/self-cognition",
-        "tags": ["chat", "self-cognition", "🔥"]
-    },
-    {
         "ms_dataset_id": "swift/swift-sft-mixture",
         "subsets": ["sharegpt", "firefly", "codefuse", "metamathqa"],
         "tags": ["chat", "sft", "general", "🔥"],

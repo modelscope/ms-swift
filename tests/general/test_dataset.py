@@ -55,7 +55,8 @@ def test_pretrain():
 
 
 def test_dataset_info():
-    _test_dataset(['codefuse-ai/CodeExercise-Python-27k'])
+    _test_dataset(['swift/self-cognition#500'], model_name='xiao huang', model_author='swift')
+    # _test_dataset(['codefuse-ai/CodeExercise-Python-27k'])
 
 
 if __name__ == '__main__':
@@ -63,6 +64,6 @@ if __name__ == '__main__':
     # test_agent()
     # test_dpo()
     # test_kto()
-    test_mllm()
+    # test_mllm()
     # test_pretrain()
-    # test_dataset_info()
+    test_dataset_info()

@@ -296,9 +296,6 @@ class DatasetLoader:
         strict: bool = True,
         load_from_cache_file: bool = False,
         download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists',
-        # self-cognition
-        model_name: Union[Tuple[str, str], List[str], None] = None,
-        model_author: Union[Tuple[str, str], List[str], None] = None,
         # streaming
         streaming: bool = False,
     ) -> HfDataset:
@@ -387,6 +384,23 @@ class DatasetLoader:
         return res_datasets
 
 
+def init_self_cognition_preprocessor(
+    model_name: Union[Tuple[str, str], List[str], None] = None,
+    model_author: Union[Tuple[str, str], List[str], None] = None,
+) -> None:
+    from .dataset.llm import SelfCognitionPreprocessor
+    # zh, en
+    for key in ['model_name', 'model_author']:
+        val = locals()[key]
+        if val is not None:
+            if isinstance(val, str):
+                val = [val]
+            assert val[0] is not None
+            if len(val) == 1 or val[1] is None:
+                val = (val[0], val[0])
+        setattr(SelfCognitionPreprocessor, key[len('model_'):], val)
+
+
 def load_dataset(
         datasets: List[str],
         split_dataset_ratio: float = 0.,
@@ -397,7 +411,7 @@ def load_dataset(
         load_from_cache_file: bool = False,
         download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists',
         # self-cognition
-        model_name: Union[Tuple[str, str], List[str], None] = None,
+        model_name: Union[Tuple[str, str], List[str], None] = None,  # zh, en
         model_author: Union[Tuple[str, str], List[str], None] = None,
         # streaming
         streaming: bool = False,
@@ -409,12 +423,13 @@ def load_dataset(
         datasets: The dataset name list
         split_dataset_ratio: The dataset split ratio
         seed: The dataset random seed
-        model_name: Model name in self-cognition task
+        model_name: Model name in self-cognition task.
         model_author: Model author in self-cognition task
         streaming: Streaming mode or not
     Returns:
         The train dataset and val dataset
     """
+    init_self_cognition_preprocessor(model_name, model_author)
     if isinstance(datasets, str):
         datasets = [datasets]
     if not isinstance(seed, np.random.RandomState):
@@ -426,8 +441,6 @@ def load_dataset(
         'strict': strict,
         'load_from_cache_file': load_from_cache_file,
         'download_mode': download_mode,
-        'model_name': model_name,
-        'model_author': model_author,
         'streaming': streaming,
     }
     for dataset_syntax, dataset_meta in DatasetLoader.parse_dataset(datasets):

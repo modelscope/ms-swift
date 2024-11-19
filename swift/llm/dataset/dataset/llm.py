@@ -1,7 +1,7 @@
 import ast
 import re
 from functools import partial
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from datasets import Dataset as HfDataset
 from datasets import IterableDataset
@@ -650,3 +650,26 @@ register_dataset(
         ms_dataset_id='swift/sharegpt',
         subsets=['common-zh', 'unknow-zh', 'common-en'],
         tags=['chat', 'general', 'multi-round']))
+
+
+class SelfCognitionPreprocessor(ResponsePreprocessor):
+    name: Optional[Tuple[str, str]] = None
+    author: Optional[Tuple[str, str]] = None
+
+    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        for key in ['name', 'author']:
+            val = getattr(self, key)
+            if val is None:
+                continue
+            val = val[0] if row['tag'] == 'zh' else val[1]
+            row['query'] = row['query'].replace(f'{{{{{key.upper()}}}}}', val)
+            row['response'] = row['response'].replace(f'{{{{{key.upper()}}}}}', val)
+        return super().preprocess(row)
+
+
+register_dataset(
+    DatasetMeta(
+        ms_dataset_id='swift/self-cognition',
+        hf_dataset_id='modelscope/self-cognition',
+        preprocess_func=SelfCognitionPreprocessor(),
+        tags=['chat', 'self-cognition', '🔥']))
