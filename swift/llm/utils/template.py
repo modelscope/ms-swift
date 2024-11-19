@@ -1627,18 +1627,20 @@ class _Qwen2VLTemplateMixin:
                                                                                                + 1:]
                     added_tokens_len += token_len - 1
                 data.update(media_inputs)
-
-        inputs['input_ids'] = input_ids
+        # The architecture will be optimized in ms-swift3.0
+        data['input_ids'] = input_ids
         inputs['labels'] = labels
-        data['input_ids'] = torch.tensor(input_ids)[None]
         inputs['_data'] = data
+        inputs.update(data)
         return inputs, {}
 
     def _post_encode(self, model, data: Any) -> Dict[str, Any]:
+        if not self._is_training:
+            return data
         _model = model.model
         if not hasattr(_model, 'embed_tokens'):
             _model = _model.model  # LoRA
-        input_ids = data['input_ids']
+        input_ids = torch.tensor(data['input_ids'], device=model.device)[None]
         pixel_values = data.get('pixel_values')
         pixel_values_videos = data.get('pixel_values_videos')
         inputs_embeds = _model.embed_tokens(input_ids)
@@ -1684,10 +1686,6 @@ class _Qwen2VLTemplateMixin:
                                                         res.get('video_grid_thw'), res['attention_mask'])
             res['position_ids'] = position_ids.contiguous()
         return res
-
-    @staticmethod
-    def _get_generate_ids(generate_ids: List[int], input_token_len: int) -> List[int]:
-        return generate_ids
 
 
 class Qwen2VLTemplate(_Qwen2VLTemplateMixin, QwenTemplate):

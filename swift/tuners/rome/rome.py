@@ -76,7 +76,7 @@ class Rome(SwiftAdapter):
             hparams = ROMEHyperParams.from_name(config.model_type)
             modified_keys = apply_rome_to_model(model, config.tokenizer, config.knowledge, hparams, config.batch_first)
 
-        def state_dict_callback(state_dict, adapter_name):
+        def state_dict_callback(state_dict, adapter_name, **kwargs):
             return {key: value for key, value in state_dict.items() if key in modified_keys}
 
         def mark_trainable_callback(model):
