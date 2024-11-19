@@ -101,12 +101,12 @@ register_template(
 
 class Llava1_6HfTemplate(LlavaHfTemplate):
 
-    def data_collator(self,
-                      batch: List[Dict[str, Any]],
-                      *,
-                      padding_side: Optional[str] = None,
-                      padding_to: Optional[int] = None,
-                      model: Optional[nn.Module] = None) -> Dict[str, Any]:
+    def _data_collator(self,
+                       batch: List[Dict[str, Any]],
+                       *,
+                       padding_side: Optional[str] = None,
+                       padding_to: Optional[int] = None,
+                       model: Optional[nn.Module] = None) -> Dict[str, Any]:
         for b in batch:
             pixel_values = b.get('pixel_values')
             if pixel_values is not None:
@@ -267,12 +267,12 @@ class LLavaTemplate(Template):
             inputs['image_sizes'] = image_sizes
         return inputs
 
-    def data_collator(self,
-                      batch: List[Dict[str, Any]],
-                      *,
-                      padding_side: Optional[str] = None,
-                      padding_to: Optional[int] = None,
-                      model: Optional[nn.Module] = None) -> Dict[str, Any]:
+    def _data_collator(self,
+                       batch: List[Dict[str, Any]],
+                       *,
+                       padding_side: Optional[str] = None,
+                       padding_to: Optional[int] = None,
+                       model: Optional[nn.Module] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to=padding_to)
         images = [b['images'] for b in batch if 'images' in b]
         if images:

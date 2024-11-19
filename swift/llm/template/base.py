@@ -107,7 +107,7 @@ class Template:
         self.max_pixels = max_pixels
         self.sequence_parallel_size = sequence_parallel_size
         self.tools_prompt = tools_prompt or template_meta.default_tools_prompt
-        self.mode: Literal['pt', 'vllm', 'lmdeploy', 'train', 'rlhf'] = 'pt'
+        self.mode: Literal['pt', 'vllm', 'lmdeploy', 'train', 'rlhf', 'kto'] = 'pt'
         self._handles = []
         self._deepspeed_initialize = None
 
@@ -145,18 +145,26 @@ class Template:
 
     def _rlhf_encode(self, inputs):
         chosen_inputs, rejected_inputs = inputs, inputs.copy()
-        rejected_inputs['messages'][-1]['content'] = chosen_inputs['rejected_response']
+        rejected_inputs.messages[-1]['content'] = chosen_inputs.rejected_response
         self._check_inputs(chosen_inputs)
         self._check_inputs(rejected_inputs)
         chosen_inputs = self._encode(chosen_inputs)
         rejected_inputs = self._encode(rejected_inputs)
         if len(chosen_inputs) == 0 or len(rejected_inputs) == 0:
             return {}
-        for suffix, res in zip(['inputs', 'tokenizer_kwargs'], [inputs, tokenizer_kwargs]):
-            for prefix in ['chosen', 'rejected']:
-                data = locals()[f'{prefix}_{suffix}']
-                for k, v in data.items():
-                    res[f'{prefix}_{k}'] = v
+
+        encoded = {}
+        for prefix in ['chosen', 'rejected']:
+            data = locals()[f'{prefix}_inputs']
+            for k, v in data.items():
+                encoded[f'{prefix}_{k}'] = v
+        return encoded
+
+    def _kto_encode(self, inputs):
+        encoded = self._encode(inputs)
+        if len(encoded) > 0:
+            encoded['label'] = inputs['label']
+        return encoded
 
     def encode(
         self,
@@ -179,19 +187,21 @@ class Template:
         assert isinstance(inputs, StdTemplateInputs)
         self._preprocess_inputs(inputs)
         if self.mode in {'vllm', 'lmdeploy'}:
-            res = Template._encode(self, inputs)
+            encoded = Template._encode(self, inputs)
             if inputs.images:
-                res['images'] = inputs.images
+                encoded['images'] = inputs.images
         elif self.mode in {'pt', 'train'}:
             self._check_inputs(inputs)
-            res = self._encode(inputs)
-        else:
-            self._rlhf_encode(inputs)
+            encoded = self._encode(inputs)
+        elif self.mode == 'rlhf':
+            encoded = self._rlhf_encode(inputs)
+        elif self.mode == 'kto':
+            encoded = self._kto_encode(inputs)
 
-        for key in ['labels', 'loss_scale']:
-            if res.get(key) is None:
-                res.pop(key, None)
-        return res
+        for key in list(encoded.keys()):
+            if encoded[key] is None:
+                encoded.pop(key)
+        return encoded
 
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
         return {}
@@ -562,7 +572,7 @@ class Template:
             res_context_types += [extra_context_type] * len(extra_context_list)
         loss_scale_list = loss_scale_map[self.loss_scale](res_context_types, inputs.messages)
 
-        res = {}
+        encoded = {}
         if self.output_prompt_answer:
             # tokenizer_kwargs: use prompt (qwen-audio)
             answer_len = len(extra_context_list) + bool(response is not None)
@@ -574,14 +584,14 @@ class Template:
                                                                                   loss_scale_list[_slice], inputs)
                 input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(
                     _res_context_list, _loss_scale_list)
-                res[f'{key}_input_ids'], res[f'{key}_labels'] = input_ids, labels
+                encoded[f'{key}_input_ids'], encoded[f'{key}_labels'] = input_ids, labels
                 if self.loss_scale != 'default':
-                    res[f'{key}_loss_scale'] = loss_scale
-            input_ids = res['prompt_input_ids'] + res['answer_input_ids']
-            labels = res['prompt_labels'] + res['answer_labels']
+                    encoded[f'{key}_loss_scale'] = loss_scale
+            input_ids = encoded['prompt_input_ids'] + encoded['answer_input_ids']
+            labels = encoded['prompt_labels'] + encoded['answer_labels']
             if response is None:
-                assert len(res['answer_labels']) == 0
-                res['answer_labels'] = None
+                assert len(encoded['answer_labels']) == 0
+                encoded['answer_labels'] = None
         else:
             res_context_list, loss_scale_list = self._simplify_context_list(res_context_list, loss_scale_list, inputs)
             input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(
@@ -589,7 +599,7 @@ class Template:
             self._use_dynamic_eos(labels, self._encode_context_list(template_meta.suffix)[0])
 
         if tokenizer_kwargs:
-            res['tokenizer_kwargs'] = tokenizer_kwargs
+            encoded['tokenizer_kwargs'] = tokenizer_kwargs
 
         if self.max_length is not None:
             if self.truncation_strategy == 'delete' and len(input_ids) > self.max_length:
@@ -601,16 +611,16 @@ class Template:
                 labels = labels[-self.max_length:]
             if loss_scale is not None:
                 loss_scale = loss_scale[-self.max_length:]
-        res['input_ids'] = input_ids
+        encoded['input_ids'] = input_ids
         if response is None:
             labels = None
             loss_scale = None
         if self.loss_scale == 'default':
             loss_scale = None
 
-        res['labels'] = labels
-        res['loss_scale'] = loss_scale
-        return res
+        encoded['labels'] = labels
+        encoded['loss_scale'] = loss_scale
+        return encoded
 
     def _get_tokenizer_kwargs(self, context: str) -> Dict[str, Any]:
         """return: curr_tokenizer_kwargs"""
@@ -660,7 +670,7 @@ class Template:
             kwargs.pop('position_ids', None)
         return args, kwargs
 
-    def set_mode(self, mode: Literal['vllm', 'lmdeploy', 'pt', 'train', 'rlhf']) -> None:
+    def set_mode(self, mode: Literal['vllm', 'lmdeploy', 'pt', 'train', 'rlhf', 'kto']) -> None:
         self.mode = mode
 
     def register_post_encode_hook(self, models: List[nn.Module]) -> None:
@@ -716,6 +726,55 @@ class Template:
                       padding_side: Optional[str] = None,
                       padding_to: Optional[int] = None,
                       model: Optional[nn.Module] = None) -> Dict[str, Any]:
+        if self.mode == 'rlhf':
+            self._rlhf_data_collator(batch, padding_side=padding_side, padding_to=padding_to, model=model)
+        elif self.mode == 'kto':
+            self._kto_data_collator(batch, padding_side=padding_side, padding_to=padding_to, model=model)
+        else:
+            self._data_collator(batch, padding_side=padding_side, padding_to=padding_to, model=model)
+
+    def _rlhf_data_collator(self,
+                            batch: List[Dict[str, Any]],
+                            *,
+                            padding_side: Optional[str] = None,
+                            padding_to: Optional[int] = None,
+                            model: Optional[nn.Module] = None) -> Dict[str, Any]:
+        new_batch = []
+        for prefix in ['chosen_', 'rejected_']:
+            for inputs in batch:
+                new_inputs = {}
+                for k, v in inputs.items():
+                    if k.startswith(prefix):
+                        new_k = k[len(prefix):]
+                        new_inputs[new_k] = inputs[k]
+                if len(new_inputs) > 0:
+                    new_batch.append(new_inputs)
+        assert len(new_batch) in {0, len(batch) * 2}, f'new_batch: {new_batch}'
+        return self._data_collator(new_batch or batch, padding_side=padding_side, padding_to=padding_to, model=model)
+
+    def _kto_data_collator(self,
+                           batch: List[Dict[str, Any]],
+                           *,
+                           padding_side: Optional[str] = None,
+                           padding_to: Optional[int] = None,
+                           model: Optional[nn.Module] = None) -> Dict[str, Any]:
+        res = {}
+        for prefix in ['', 'KL_']:
+            new_batch = []
+            for b in batch:
+                new_batch.append({'input_ids': b[f'{prefix}input_ids'], 'labels': b[f'{prefix}labels']})
+            for k, v in self._data_collator(
+                    new_batch, padding_side=padding_side, padding_to=padding_to, model=model).items():
+                res[f'{prefix}completion_{k}'] = v
+        res['label'] = [b['label'] for b in batch]
+        return res
+
+    def _data_collator(self,
+                       batch: List[Dict[str, Any]],
+                       *,
+                       padding_side: Optional[str] = None,
+                       padding_to: Optional[int] = None,
+                       model: Optional[nn.Module] = None) -> Dict[str, Any]:
         """
         Args:
             batch(`List[Dict[str, Any]]`): The input data in batch

@@ -56,7 +56,11 @@ class InferRequest:
 
     def copy(self):
         return self.__class__(
-            deepcopy(self.messages), self.images.copy(), self.audios.copy(), self.videos.copy(), deepcopy(self.tools))
+            messages=deepcopy(self.messages),
+            images=self.images.copy(),
+            audios=self.audios.copy(),
+            videos=self.videos.copy(),
+            tools=deepcopy(self.tools))
 
 
 @dataclass
@@ -64,7 +68,8 @@ class TemplateInputs(InferRequest):
     """
     objects: Used for grounding tasks in a general format.
     """
-
+    rejected_response: Optional[str] = None
+    label: Optional[bool] = None
     objects: Union[str, None, List[Dict[str, Any]]] = None  # List[Dict[str, Any]]
 
     def __post_init__(self):
@@ -76,18 +81,22 @@ class TemplateInputs(InferRequest):
             self.objects = []
 
     def copy(self):
-        infer_request = super().copy()
-        return self.__class__(infer_request.messages, self.rejected_response, infer_request.images,
-                              infer_request.audios, infer_request.videos, infer_request.tools, deepcopy(self.objects))
+        res = super().copy()
+        res.rejected_response = self.rejected_response
+        res.label = self.label
+        res.objects = deepcopy(self.objects)
+        return res
 
 
 @dataclass
 class StdTemplateInputs:
     # only user/tool/assistant
     messages: List[Dict[str, str]]
-    rejected_response: Optional[str] = None
     # None: use default system; '': not use system
     system: Optional[str] = None
+
+    rejected_response: Optional[str] = None
+    label: Optional[bool] = None
 
     images: List[Union[str, Image.Image]] = field(default_factory=list)
     audios: List[str] = field(default_factory=list)
@@ -109,8 +118,14 @@ class StdTemplateInputs:
 
     def copy(self):
         return self.__class__(
-            deepcopy(self.messages), self.system, self.images.copy(), self.audios.copy(), self.videos.copy(),
-            self.objects.copy())
+            messages=deepcopy(self.messages),
+            system=self.system,
+            rejected_response=self.rejected_response,
+            label=self.label,
+            images=self.images.copy(),
+            audios=self.audios.copy(),
+            videos=self.videos.copy(),
+            objects=self.objects.copy())
 
     def to_history(self):
         if not self.messages:

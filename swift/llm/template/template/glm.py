@@ -80,12 +80,12 @@ class GLM4VTemplate(GLMTemplate):
         inputs['labels'] = labels
         return inputs
 
-    def data_collator(self,
-                      batch: List[Dict[str, Any]],
-                      *,
-                      padding_side: Optional[str] = None,
-                      padding_to: Optional[int] = None,
-                      model: Optional[nn.Module] = None) -> Dict[str, Any]:
+    def _data_collator(self,
+                       batch: List[Dict[str, Any]],
+                       *,
+                       padding_side: Optional[str] = None,
+                       padding_to: Optional[int] = None,
+                       model: Optional[nn.Module] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_side=padding_side, padding_to=padding_to)
         images = [b['images'] for b in batch if 'images' in b]
         if images:
@@ -154,12 +154,12 @@ class CogTemplate(Template):
                 inputs['cross_images'] = [[cross_img.to(dtype=dtype)] for cross_img in inputs2['cross_images']]
         return inputs
 
-    def data_collator(self,
-                      batch: List[Dict[str, Any]],
-                      *,
-                      padding_side: Optional[str] = None,
-                      padding_to: Optional[int] = None,
-                      model: Optional[nn.Module] = None) -> Dict[str, Any]:
+    def _data_collator(self,
+                       batch: List[Dict[str, Any]],
+                       *,
+                       padding_side: Optional[str] = None,
+                       padding_to: Optional[int] = None,
+                       model: Optional[nn.Module] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_side=padding_side, padding_to=padding_to)
         keys = ['images', 'cross_images']
         for key in keys:

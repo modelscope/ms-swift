@@ -19,8 +19,8 @@ if TYPE_CHECKING:
                         MODEL_ARCH_MAPPING)
     from .dataset import (AlpacaPreprocessor, MessagesPreprocessor, AutoPreprocessor, DatasetName, DATASET_MAPPING,
                           MediaResource, register_dataset, register_dataset_info, EncodePreprocessor, stat_dataset,
-                          LLMDataset, LLMIterableDataset, LazyLLMDataset, ConstantLengthDataset, print_inputs,
-                          sort_by_max_length, standard_keys, load_dataset, DATASET_TYPE, HfDataset, sample_dataset)
+                          LLMIterableDataset, LazyLLMDataset, ConstantLengthDataset, print_inputs, standard_keys,
+                          load_dataset, DATASET_TYPE, HfDataset, sample_dataset)
     from .utils import deep_getattr, to_device, History, decode_base64, history_to_messages, messages_to_history
     from .base import SwiftPipeline
 else:
@@ -50,9 +50,8 @@ else:
         'dataset': [
             'AlpacaPreprocessor', 'ClsPreprocessor', 'ComposePreprocessor', 'MessagesPreprocessor', 'DatasetName',
             'DATASET_MAPPING', 'MediaResource', 'register_dataset', 'register_dataset_info', 'EncodePreprocessor',
-            'stat_dataset', 'LLMDataset', 'LLMIterableDataset', 'LazyLLMDataset', 'ConstantLengthDataset',
-            'print_inputs', 'sort_by_max_length', 'standard_keys', 'load_dataset', 'DATASET_TYPE', 'HfDataset',
-            'sample_dataset'
+            'stat_dataset', 'LLMIterableDataset', 'LazyLLMDataset', 'ConstantLengthDataset', 'print_inputs',
+            'standard_keys', 'load_dataset', 'DATASET_TYPE', 'HfDataset', 'sample_dataset'
         ],
         'utils':
         ['deep_getattr', 'to_device', 'History', 'decode_base64', 'history_to_messages', 'messages_to_history'],

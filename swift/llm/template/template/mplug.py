@@ -86,12 +86,12 @@ class mPlugOwl3Template(Template):
             inputs['image_embeds'] = model.forward_image(pixel_values)
         return inputs
 
-    def data_collator(self,
-                      batch: List[Dict[str, Any]],
-                      *,
-                      padding_side: Optional[str] = None,
-                      padding_to: Optional[int] = None,
-                      model: Optional[nn.Module] = None) -> Dict[str, Any]:
+    def _data_collator(self,
+                       batch: List[Dict[str, Any]],
+                       *,
+                       padding_side: Optional[str] = None,
+                       padding_to: Optional[int] = None,
+                       model: Optional[nn.Module] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to=padding_to, padding_side=padding_side)
         image_embeds = [b['image_embeds'] for b in batch if 'image_embeds' in b]
         if image_embeds:

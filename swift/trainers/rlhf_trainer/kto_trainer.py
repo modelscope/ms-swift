@@ -4,11 +4,11 @@ from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 import torch.nn as nn
+from datasets import Dataset as HfDataset
 from peft import PeftModel
 from transformers import PreTrainedModel
 from trl import KTOTrainer as HFKTOTrainer
 
-from swift.llm import LLMDataset
 from swift.trainers import PushToMsHubMixin, RLHFTrainerMixin, SwiftMixin
 from swift.utils import get_dist_setting, get_logger
 
@@ -18,7 +18,7 @@ del HFKTOTrainer.__init__
 del HFKTOTrainer.get_batch_samples
 
 
-def _add_kl_dataset(dataset: LLMDataset, total_batch_size: int, seed: Optional[int] = None) -> None:
+def _add_kl_dataset(dataset: HfDataset, total_batch_size: int, seed: Optional[int] = None) -> None:
     # Shift one position to the right in each batch.
     raw_dataset: List[Dict[str, Any]] = dataset.data
     random_state = np.random.RandomState(seed)

@@ -52,29 +52,6 @@ def sample_dataset(dataset: HfDataset,
     return dataset
 
 
-class LLMDataset(Dataset):
-    """This class wraps the Dataset class, to offer the ability of custom dataset tokenizing"""
-
-    def __init__(self, data: List[Dict[str, Any]]) -> None:
-        self.data = data
-
-    def __getitem__(self, idx: Union[int, str]) -> Dict[str, Any]:
-        if isinstance(idx, int):
-            data = self.data[idx]
-            return data
-        elif isinstance(idx, str):
-            return [d[idx] for d in self.data]
-        else:
-            raise ValueError(f'idx: {idx}')
-
-    def select(self, idx_list: List[int]) -> 'LLMDataset':
-        data = [self.data[i] for i in idx_list]
-        return self.__class__(data)
-
-    def __len__(self) -> int:
-        return len(self.data)
-
-
 class LLMIterableDataset(HFIterableDataset):
     """This class offers abilities of deal with IterableDataset, and skip the bad samples"""
 
@@ -266,33 +243,17 @@ class EncodePreprocessor(RowPreprocessor):
         return res
 
 
-def stat_dataset(llm_dataset: Dataset) -> str:
+def stat_dataset(dataset: HfDataset) -> str:
     """Statistical analysis was performed on the dataset"""
-    token_len = _get_token_len(llm_dataset)
+    token_len = _get_token_len(dataset)
     _, stat_str = stat_array(token_len)
     logger.info(f'Dataset Token Length: {stat_str}')
     return stat_str
 
 
-def _get_token_len(llm_dataset):
+def _get_token_len(dataset: HfDataset):
     token_len = []
-    if isinstance(llm_dataset, HfDataset):  # compat hf_dataset
-        input_ids = llm_dataset['input_ids']
-        for ii in input_ids:
-            token_len.append(len(ii))
-    else:
-        for d in llm_dataset:  # LLMDataset
-            _len = 0
-            for k, v in d.items():
-                if k == 'input_ids' or k.endswith('_input_ids'):  # sft, rlhf
-                    _len += len(v)
-            token_len.append(_len)
+    input_ids = dataset['input_ids']
+    for ii in input_ids:
+        token_len.append(len(ii))
     return token_len
-
-
-def sort_by_max_length(llm_dataset: LLMDataset, num_dataset: int) -> LLMDataset:
-    """Sort dataset by max length, this is always used in OOM testing scenario"""
-    logger.info('sort by max length...')
-    token_len = _get_token_len(llm_dataset)
-    idx = heapq.nlargest(num_dataset, range(len(token_len)), key=lambda i: token_len[i])
-    return llm_dataset.select(idx)
