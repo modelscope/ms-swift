@@ -4,6 +4,7 @@ import tempfile
 import unittest
 
 import json
+import numpy as np
 
 from swift.llm import MODEL_MAPPING, EncodePreprocessor, get_model_tokenizer, get_template, load_dataset
 
@@ -65,7 +66,44 @@ class TestRun3(unittest.TestCase):
     #                     with open('./models.txt', 'w') as f:
     #                         json.dump(models, f)
 
-    def test_template_load(self):
+    # def test_template_load(self):
+    #     if os.path.exists('./templates.txt'):
+    #         with open('./templates.txt', 'r') as f:
+    #             templates = json.load(f)
+    #     else:
+    #         templates = []
+    #     for model_name, model_meta in MODEL_MAPPING.items():
+    #         template = model_meta.template
+    #         meta_requires = model_meta.requires or []
+    #         for group in model_meta.model_groups:
+    #             model = group.models[0]
+    #             if 'skip_test' in (group.tags or []) or template in templates:
+    #                 break
+    #             requires = meta_requires + (group.requires or [])
+    #             for req in requires:
+    #                 os.system(f'pip install "{req}"')
+    #             if not any(['transformers' in req for req in requires]):
+    #                 os.system('pip install transformers -U')
+    #             if not any(['accelerate' in req for req in requires]):
+    #                 os.system('pip install accelerate -U')
+    #             try:
+    #                 cmd = ('PYTHONPATH=. python tests/llm/load_template.py '
+    #                        f'--ms_model_id {model.ms_model_id} --template {template}')
+    #                 if os.system(cmd) != 0:
+    #                     raise RuntimeError()
+    #             except Exception:
+    #                 import traceback
+    #                 print(traceback.format_exc())
+    #                 passed = False
+    #             else:
+    #                 passed = True
+    #                 templates.append(template)
+    #             finally:
+    #                 if passed:
+    #                     with open('./templates.txt', 'w') as f:
+    #                         json.dump(templates, f)
+
+    def test_template_compare(self):
         if os.path.exists('./templates.txt'):
             with open('./templates.txt', 'r') as f:
                 templates = json.load(f)
@@ -90,6 +128,15 @@ class TestRun3(unittest.TestCase):
                            f'--ms_model_id {model.ms_model_id} --template {template}')
                     if os.system(cmd) != 0:
                         raise RuntimeError()
+                    cmd = ('PYTHONPATH=/mnt/workspace/yzhao/tastelikefeet/swift python tests/llm/load_template.py '
+                           f'--ms_model_id {model.ms_model_id} --template {template} --new 0')
+                    if os.system(cmd) != 0:
+                        raise RuntimeError()
+                    with open('new_input_ids.txt', 'r') as f:
+                        input_ids_new = json.load(f)
+                    with open('old_input_ids.txt', 'r') as f:
+                        input_ids_old = json.load(f)
+                    self.assertTrue(np.allclose(input_ids_new, input_ids_old))
                 except Exception:
                     import traceback
                     print(traceback.format_exc())
@@ -101,6 +148,10 @@ class TestRun3(unittest.TestCase):
                     if passed:
                         with open('./templates.txt', 'w') as f:
                             json.dump(templates, f)
+                    if os.path.exists('new_input_ids.txt'):
+                        os.remove('new_input_ids.txt')
+                    if os.path.exists('old_input_ids.txt'):
+                        os.remove('old_input_ids.txt')
 
 
 if __name__ == '__main__':
