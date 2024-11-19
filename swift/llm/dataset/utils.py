@@ -243,17 +243,11 @@ class EncodePreprocessor(RowPreprocessor):
         return res
 
 
-def stat_dataset(dataset: HfDataset) -> str:
-    """Statistical analysis was performed on the dataset"""
-    token_len = _get_token_len(dataset)
-    _, stat_str = stat_array(token_len)
-    logger.info(f'Dataset Token Length: {stat_str}')
-    return stat_str
+class GetLengthPreprocessor(RowPreprocessor):
 
+    def __init__(self):
+        return super().__init__(remove_useless_columns=False)
 
-def _get_token_len(dataset: HfDataset):
-    token_len = []
-    input_ids = dataset['input_ids']
-    for ii in input_ids:
-        token_len.append(len(ii))
-    return token_len
+    def preprocess(self, row):
+        length = sum([max(row[k]) for k in row.keys() if k.endswith('input_ids')])
+        return {'length': length}

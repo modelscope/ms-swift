@@ -100,7 +100,7 @@ class TemplateMeta:
         self.support_multi_round = self.chat_sep is not None
         if self.tool_prompt is None:
             self.tool_prompt = self.prompt  # default as user
-            
+
     @staticmethod
     def _token_attr_to_id(tokenizer: PreTrainedTokenizerBase, value: Optional[Prompt]) -> Optional[Prompt]:
         """Turn `eos_token_id` to token id

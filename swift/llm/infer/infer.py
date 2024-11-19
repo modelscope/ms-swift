@@ -5,9 +5,10 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import numpy as np
+from datasets import Dataset as HfDataset
 
-from swift.llm import (HfDataset, InferArguments, InferRequest, Messages, SwiftPipeline, Template, get_template,
-                       load_dataset, sample_dataset)
+from swift.llm import (InferArguments, InferRequest, Messages, SwiftPipeline, Template, get_template, load_dataset,
+                       sample_dataset)
 from swift.tuners import Swift
 from swift.utils import append_to_jsonl, get_logger
 from .protocol import RequestConfig

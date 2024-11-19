@@ -16,8 +16,9 @@ except ImportError:
 
 if TYPE_CHECKING:
     from .arguments import (Seq2SeqTrainingArguments, TrainingArguments, DPOConfig, CPOConfig, KTOConfig, ORPOConfig,
-                            PPOConfig)
-    from .rlhf_trainer import CPOTrainer, DPOTrainer, KTOTrainer, ORPOTrainer, RLHFTrainerMixin, PPOTrainer
+                            PPOConfig, RewardConfig)
+    from .rlhf_trainer import (CPOTrainer, DPOTrainer, KTOTrainer, ORPOTrainer, RLHFTrainerMixin, PPOTrainer,
+                               RewardTrainer)
     from .trainer_factory import TrainerFactory
     from .trainers import Seq2SeqTrainer, Trainer
     from .mixin import SwiftMixin
@@ -27,9 +28,10 @@ else:
     _import_structure = {
         'arguments': [
             'Seq2SeqTrainingArguments', 'TrainingArguments', 'DPOConfig', 'CPOConfig', 'KTOConfig', 'ORPOConfig',
-            'PPOConfig'
+            'PPOConfig', 'RewardConfig'
         ],
-        'rlhf_trainer': ['CPOTrainer', 'DPOTrainer', 'KTOTrainer', 'ORPOTrainer', 'RLHFTrainerMixin', 'PPOTrainer'],
+        'rlhf_trainer':
+        ['CPOTrainer', 'DPOTrainer', 'KTOTrainer', 'ORPOTrainer', 'RLHFTrainerMixin', 'PPOTrainer', 'RewardTrainer'],
         'trainer_factory': ['TrainerFactory'],
         'trainers': ['Seq2SeqTrainer', 'Trainer'],
         'mixin': ['SwiftMixin'],

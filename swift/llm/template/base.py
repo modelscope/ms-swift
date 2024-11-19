@@ -145,17 +145,18 @@ class Template:
 
     def _rlhf_encode(self, inputs):
         chosen_inputs, rejected_inputs = inputs, inputs.copy()
+        assert chosen_inputs.rejected_response is not None
         rejected_inputs.messages[-1]['content'] = chosen_inputs.rejected_response
         self._check_inputs(chosen_inputs)
         self._check_inputs(rejected_inputs)
-        chosen_inputs = self._encode(chosen_inputs)
-        rejected_inputs = self._encode(rejected_inputs)
-        if len(chosen_inputs) == 0 or len(rejected_inputs) == 0:
+        chosen_encoded = self._encode(chosen_inputs)
+        rejected_encoded = self._encode(rejected_inputs)
+        if len(chosen_encoded) == 0 or len(rejected_encoded) == 0:
             return {}
 
         encoded = {}
         for prefix in ['chosen', 'rejected']:
-            data = locals()[f'{prefix}_inputs']
+            data = locals()[f'{prefix}_encoded']
             for k, v in data.items():
                 encoded[f'{prefix}_{k}'] = v
         return encoded
@@ -727,11 +728,11 @@ class Template:
                       padding_to: Optional[int] = None,
                       model: Optional[nn.Module] = None) -> Dict[str, Any]:
         if self.mode == 'rlhf':
-            self._rlhf_data_collator(batch, padding_side=padding_side, padding_to=padding_to, model=model)
+            return self._rlhf_data_collator(batch, padding_side=padding_side, padding_to=padding_to, model=model)
         elif self.mode == 'kto':
-            self._kto_data_collator(batch, padding_side=padding_side, padding_to=padding_to, model=model)
-        else:
-            self._data_collator(batch, padding_side=padding_side, padding_to=padding_to, model=model)
+            return self._kto_data_collator(batch, padding_side=padding_side, padding_to=padding_to, model=model)
+        elif self.mode == 'train':
+            return self._data_collator(batch, padding_side=padding_side, padding_to=padding_to, model=model)
 
     def _rlhf_data_collator(self,
                             batch: List[Dict[str, Any]],
@@ -749,8 +750,8 @@ class Template:
                         new_inputs[new_k] = inputs[k]
                 if len(new_inputs) > 0:
                     new_batch.append(new_inputs)
-        assert len(new_batch) in {0, len(batch) * 2}, f'new_batch: {new_batch}'
-        return self._data_collator(new_batch or batch, padding_side=padding_side, padding_to=padding_to, model=model)
+        assert len(new_batch) == len(batch) * 2, f'new_batch: {new_batch}'
+        return self._data_collator(new_batch, padding_side=padding_side, padding_to=padding_to, model=model)
 
     def _kto_data_collator(self,
                            batch: List[Dict[str, Any]],
@@ -878,7 +879,7 @@ class Template:
     def print_inputs(self, inputs: Dict[str, Any], tokenizer_kwargs: Optional[Dict[str, Any]] = None) -> None:
         if tokenizer_kwargs is None:
             tokenizer_kwargs = {}
-        for key in ['input', 'chosen_input', 'rejected_input', 'labels', 'chosen_labels', 'rejected_labels']:
+        for key in ['input', 'labels', 'chosen_input', 'chosen_labels', 'rejected_input', 'rejected_labels']:
             val = inputs.get(key)  # fix val is a tensor
             if val is None:
                 val = inputs.get(f'{key}_ids')

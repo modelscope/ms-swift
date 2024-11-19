@@ -22,7 +22,7 @@ class Idefics3Template(Template):
             image_inputs = processor(text=prompt, images=images, return_tensors='pt', add_special_tokens=False)
             image_token = 128257  # <image>
             encoded['input_ids'], encoded['labels'] = align_image_inputs(encoded['input_ids'], encoded['labels'],
-                                                                       image_inputs['input_ids'][0], image_token)
+                                                                         image_inputs['input_ids'][0], image_token)
             encoded['pixel_values'] = image_inputs['pixel_values']
         return encoded
 

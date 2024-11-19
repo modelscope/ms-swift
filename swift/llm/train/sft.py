@@ -2,16 +2,17 @@ import os
 from functools import partial
 from typing import Any, Dict, List, Union
 
+from datasets import Dataset as HfDataset
 from transformers import IntervalStrategy
 
 from swift.plugin import extra_callbacks, get_loss_func, optimizers_map
 from swift.trainers import TrainerFactory
 from swift.utils import (append_to_jsonl, check_json_format, compute_acc_metrics, compute_nlg_metrics, get_dist_setting,
                          get_logger, get_model_parameter_info, is_ddp_plus_mp, is_dist, is_master, plot_images,
-                         preprocess_logits_for_acc, seed_everything, show_layers, use_torchacc)
+                         preprocess_logits_for_acc, seed_everything, show_layers, stat_array, use_torchacc)
 from ..argument import SftArguments
 from ..base import SwiftPipeline
-from ..dataset import EncodePreprocessor, LazyLLMDataset, load_dataset, stat_dataset
+from ..dataset import ConstantLengthDataset, EncodePreprocessor, GetLengthPreprocessor, LazyLLMDataset, load_dataset
 from ..infer import RequestConfig, prepare_generation_config
 from ..model import ModelInfo, ModelMeta, get_model_arch, get_model_tokenizer
 from ..template import Template, get_template
@@ -268,40 +269,42 @@ class SwiftSft(SwiftPipeline):
         callbacks += extra_callbacks
         self.callbacks = callbacks
 
+    def _stat_dataset(self, dataset: HfDataset):
+        args = self.args
+        dataset = GetLengthPreprocessor()(
+            dataset, num_proc=args.num_proc, load_from_cache_file=args.load_from_cache_file)
+        _, stat_str = stat_array(dataset['length'])
+        logger.info(f'Dataset Token Length: {stat_str}')
+        return stat_str
+
     def _encode_dataset(self, train_dataset, val_dataset):
         template = self.template
         args = self.args
-        if args.packing:
-            from swift.llm.utils.utils import ConstantLengthDataset
+
+        if args.lazy_tokenize:
+            train_dataset = LazyLLMDataset(train_dataset, template.encode)
+            if val_dataset is not None:
+                val_dataset = LazyLLMDataset(val_dataset, template.encode)
+        elif args.packing:
             train_dataset = ConstantLengthDataset.get_packed_dataset(
                 template, train_dataset, args.max_length, lazy_tokenize=args.lazy_tokenize)
             if val_dataset is not None:
                 val_dataset = ConstantLengthDataset.get_packed_dataset(
                     template, val_dataset, args.max_length, lazy_tokenize=args.lazy_tokenize)
-            if not args.lazy_tokenize:
-                template.print_inputs(train_dataset[0], template, {})
-                self.train_msg['train_dataset'] = stat_dataset(train_dataset)
-                if val_dataset is not None:
-                    self.train_msg['val_dataset'] = stat_dataset(val_dataset)
-        elif not args.lazy_tokenize:
-            inputs = template.encode(next(iter(train_dataset)) if args.streaming else train_dataset[0])
-            template.print_inputs(inputs)
+        else:
             train_dataset = EncodePreprocessor(template)(
                 train_dataset, num_proc=args.num_proc, load_from_cache_file=args.load_from_cache_file)
             if val_dataset is not None:
                 val_dataset = EncodePreprocessor(template)(
                     val_dataset, num_proc=args.num_proc, load_from_cache_file=args.load_from_cache_file)
 
-            if not args.streaming:
-                self.train_msg['train_dataset'] = stat_dataset(train_dataset)
-                if val_dataset is not None:
-                    self.train_msg['val_dataset'] = stat_dataset(val_dataset)
-        else:
-            inputs = template.encode(train_dataset[0])
-            template.print_inputs(inputs)
-            train_dataset = LazyLLMDataset(train_dataset, template.encode)
+        inputs = next(iter(train_dataset)) if args.streaming else train_dataset[0]
+        template.print_inputs(inputs)
+        if not (args.lazy_tokenize and args.streaming):
+            self.train_msg['train_dataset'] = self._stat_dataset(train_dataset)
             if val_dataset is not None:
-                val_dataset = LazyLLMDataset(val_dataset, template.encode)
+                self.train_msg['val_dataset'] = self._stat_dataset(val_dataset)
+
         return train_dataset, val_dataset
 
 

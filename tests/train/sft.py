@@ -2,7 +2,6 @@ kwargs = {
     'per_device_train_batch_size': 2,
     'save_steps': 5,
     'gradient_accumulation_steps': 4,
-    'logging_first_step': True,
     'metric_for_best_model': 'loss'
 }
 

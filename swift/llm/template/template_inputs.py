@@ -139,8 +139,11 @@ class StdTemplateInputs:
     @classmethod
     def from_dict(cls, inputs: Dict[str, Any], *, tools_prompt: str = 'react_en') -> 'StdTemplateInputs':
         from .agent import get_tools_prompt
+        kwargs = {}
+        for key in ['rejected_response', 'label']:
+            if key in inputs:
+                kwargs[key] = inputs[key]
         messages = deepcopy(inputs['messages'])
-        rejected_response = inputs.get('rejected_response')
         tools = deepcopy(inputs.get('tools'))
         objects = deepcopy(inputs.get('objects') or [])
 
@@ -173,7 +176,7 @@ class StdTemplateInputs:
                 media_kwargs[k] = inputs_mm_data
 
         StdTemplateInputs.messages_join_observation(messages)
-        return cls(messages, rejected_response, system, **media_kwargs, objects=objects)
+        return cls(messages=messages, system=system, objects=objects, **kwargs, **media_kwargs)
 
     @staticmethod
     def remove_messages_media(messages: Messages) -> Dict[str, Any]:

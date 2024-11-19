@@ -9,8 +9,9 @@ from peft import PeftModel
 from transformers import PreTrainedModel
 from trl import KTOTrainer as HFKTOTrainer
 
-from swift.trainers import PushToMsHubMixin, RLHFTrainerMixin, SwiftMixin
 from swift.utils import get_dist_setting, get_logger
+from ..mixin import SwiftMixin
+from .rlhf_mixin import RLHFTrainerMixin
 
 logger = get_logger()
 
@@ -43,7 +44,7 @@ def _add_kl_dataset(dataset: HfDataset, total_batch_size: int, seed: Optional[in
         i += total_batch_size
 
 
-class KTOTrainer(RLHFTrainerMixin, PushToMsHubMixin, SwiftMixin, HFKTOTrainer):
+class KTOTrainer(RLHFTrainerMixin, SwiftMixin, HFKTOTrainer):
 
     def __init__(self,
                  model: Optional[Union[PreTrainedModel, nn.Module, str]] = None,

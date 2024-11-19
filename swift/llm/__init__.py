@@ -18,7 +18,7 @@ if TYPE_CHECKING:
                         ModelInfo, ModelMeta, ModelKeys, register_model_arch, MultiModelKeys, ModelArch, get_model_arch,
                         MODEL_ARCH_MAPPING)
     from .dataset import (AlpacaPreprocessor, MessagesPreprocessor, AutoPreprocessor, DatasetName, DATASET_MAPPING,
-                          MediaResource, register_dataset, register_dataset_info, EncodePreprocessor, stat_dataset,
+                          MediaResource, register_dataset, register_dataset_info, EncodePreprocessor,
                           LLMIterableDataset, LazyLLMDataset, ConstantLengthDataset, print_inputs, standard_keys,
                           load_dataset, DATASET_TYPE, HfDataset, sample_dataset)
     from .utils import deep_getattr, to_device, History, decode_base64, history_to_messages, messages_to_history
@@ -50,8 +50,8 @@ else:
         'dataset': [
             'AlpacaPreprocessor', 'ClsPreprocessor', 'ComposePreprocessor', 'MessagesPreprocessor', 'DatasetName',
             'DATASET_MAPPING', 'MediaResource', 'register_dataset', 'register_dataset_info', 'EncodePreprocessor',
-            'stat_dataset', 'LLMIterableDataset', 'LazyLLMDataset', 'ConstantLengthDataset', 'print_inputs',
-            'standard_keys', 'load_dataset', 'DATASET_TYPE', 'HfDataset', 'sample_dataset'
+            'LLMIterableDataset', 'LazyLLMDataset', 'ConstantLengthDataset', 'print_inputs', 'standard_keys',
+            'load_dataset', 'DATASET_TYPE', 'HfDataset', 'sample_dataset'
         ],
         'utils':
         ['deep_getattr', 'to_device', 'History', 'decode_base64', 'history_to_messages', 'messages_to_history'],
