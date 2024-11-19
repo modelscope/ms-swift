@@ -73,10 +73,18 @@ class TestRun3(unittest.TestCase):
             templates = []
         for model_name, model_meta in MODEL_MAPPING.items():
             template = model_meta.template
+            meta_requires = model_meta.requires or []
             for group in model_meta.model_groups:
                 model = group.models[0]
-                if template in templates:
+                if 'skip_test' in (group.tags or []) or template in templates:
                     break
+                requires = meta_requires + (group.requires or [])
+                for req in requires:
+                    os.system(f'pip install "{req}"')
+                if not any(['transformers' in req for req in requires]):
+                    os.system('pip install transformers -U')
+                if not any(['accelerate' in req for req in requires]):
+                    os.system('pip install accelerate -U')
                 try:
                     cmd = ('PYTHONPATH=. python tests/llm/load_template.py '
                            f'--ms_model_id {model.ms_model_id} --template {template}')

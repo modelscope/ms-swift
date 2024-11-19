@@ -26,7 +26,8 @@ def get_model_tokenizer_baichuan(model_dir: str,
     # baichuan-13b does not implement the `get_input_embeddings` function
     # fix gradient_checkpointing bug
     try:
-        model.get_input_embeddings()
+        if model is not None:
+            model.get_input_embeddings()
     except NotImplementedError:
         model.__class__.get_input_embeddings = lambda self: self.model.embed_tokens
     return model, tokenizer
