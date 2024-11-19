@@ -911,44 +911,25 @@ register_dataset(
             columns_mapping={'image': 'images'}, inner_key='data', user_role='question', assistant_role='answer'),
         tags=['medical', 'en', 'vqa']))
 
-
-class OkvqaPreprocessor(ResponsePreprocessor):
-
-    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
-        row['response'] = np.random.choice(row['answers'])
-        return super().preprocess(row)
-
-
 register_dataset(
     DatasetMeta(
         ms_dataset_id='swift/OK-VQA_train',
         hf_dataset_id='Multimodal-Fatima/OK-VQA_train',
-        preprocess_func=OkvqaPreprocessor(columns_mapping={'image': 'images'}),
+        preprocess_func=ResponsePreprocessor(columns_mapping={
+            'image': 'images',
+            'answers': 'response'
+        }),
         tags=['multi-modal', 'en', 'vqa', 'quality']))
-
-
-class AOkvqaPreprocessor(RowPreprocessor):
-
-    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
-        query = row['question']
-        response = np.random.choice(row['rationales'])
-        return {
-            'messages': [{
-                'role': 'user',
-                'content': query
-            }, {
-                'role': 'assistant',
-                'content': response
-            }],
-        }
-
 
 register_dataset(
     DatasetMeta(
         ms_dataset_id='swift/A-OKVQA',
         hf_dataset_id='HuggingFaceM4/A-OKVQA',
         split=['train', 'validation'],
-        preprocess_func=AOkvqaPreprocessor(columns_mapping={'image': 'images'}),
+        preprocess_func=ResponsePreprocessor(columns_mapping={
+            'image': 'images',
+            'rationales': 'response'
+        }),
         tags=['multi-modal', 'en', 'vqa', 'quality']))
 
 

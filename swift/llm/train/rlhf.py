@@ -19,7 +19,8 @@ class SwiftRLHF(SwiftSft):
         super()._prepare_model_tokenizer()
 
     def _set_mode(self):
-        self.template.set_mode('rlhf')
+        mode = 'kto' if self.args.rlhf_type == 'kto' else 'rlhf'
+        self.template.set_mode(mode)
 
     def _register_post_encode_hook(self):
         models = [self.model]

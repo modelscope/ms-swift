@@ -41,12 +41,18 @@ class RowPreprocessor:
                  *,
                  columns_mapping: Optional[Dict[str, str]] = None,
                  remove_useless_columns: bool = True,
-                 **kwargs) -> None:
+                 dataset_sample: Optional[int] = None,
+                 random_state: Union[np.random.RandomState, int, None] = None,
+                 traceback_limit: int = 10) -> None:
         self.columns_mapping = columns_mapping or {}
         self.remove_useless_columns = remove_useless_columns
         self.row_mapping = {}
-        self.traceback_limit = kwargs.get('traceback_limit', 10)
+        self.traceback_limit = traceback_limit
         self._traceback_counter = 0
+        self.dataset_sample = dataset_sample
+        if not isinstance(random_state, np.random.RandomState):
+            random_state = np.random.RandomState(random_state)
+        self.random_state = random_state
 
     @staticmethod
     def check_messages(row: Dict[str, Any]) -> None:
@@ -198,6 +204,9 @@ class RowPreprocessor:
         strict: bool = True,
         load_from_cache_file: bool = False,
     ) -> DATASET_TYPE:
+        from ..utils import sample_dataset
+        if self.dataset_sample is not None:
+            dataset = sample_dataset(dataset, self.dataset_sample, self.random_state)
         dataset = self.safe_rename_columns(dataset, self.columns_mapping)
         dataset = self.prepare_dataset(dataset)
         _row_map = partial(self._row_map, strict=strict)
@@ -229,8 +238,9 @@ class ResponsePreprocessor(RowPreprocessor):
     def __init__(self,
                  *,
                  columns_mapping: Optional[Dict[str, str]] = None,
-                 remove_useless_columns: bool = True) -> None:
-        super().__init__(columns_mapping=columns_mapping, remove_useless_columns=remove_useless_columns)
+                 remove_useless_columns: bool = True,
+                 **kwargs) -> None:
+        super().__init__(columns_mapping=columns_mapping, remove_useless_columns=remove_useless_columns, **kwargs)
         system_keys = ['system', 'system_prompt']
         query_keys = ['query', 'prompt', 'input', 'instruction', 'question']
         response_keys = ['response', 'answer', 'output', 'targets', 'target', 'answer_key', 'solution'
@@ -251,7 +261,7 @@ class ResponsePreprocessor(RowPreprocessor):
             return
         if isinstance(response, (list, tuple)):
             # sometimes response is a list, pick one randomly
-            response = np.random.choice(response)
+            response = self.random_state.choice(response)
         history = row.pop('history', None) or []
         query = row.pop('query', None)
         system = row.pop('system', None)
@@ -269,13 +279,14 @@ class AlpacaPreprocessor(ResponsePreprocessor):
                  *,
                  concat_inst_input: Union[Callable[[str, str], str]] = '\n',
                  columns_mapping: Optional[Dict[str, str]] = None,
-                 remove_useless_columns: bool = True) -> None:
+                 remove_useless_columns: bool = True,
+                 **kwargs) -> None:
         """Alpaca format preprocessor
 
         Args:
             concat_inst_input: The concat sep between instruction and input
         """
-        super().__init__(columns_mapping=columns_mapping, remove_useless_columns=remove_useless_columns)
+        super().__init__(columns_mapping=columns_mapping, remove_useless_columns=remove_useless_columns, **kwargs)
         self.concat_inst_input = concat_inst_input
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -305,23 +316,23 @@ def default_repair_messages(s: Union[str, Any]) -> Any:
 class MessagesPreprocessor(RowPreprocessor):
 
     def __init__(
-        self,
-        *,
-        # If set to None, automatic matching will be performed.
-        role_key: Optional[str] = None,  # 'role', 'from'
-        content_key: Optional[str] = None,  # 'content', 'value'
-        user_role: Optional[str] = None,  # 'user', 'human'
-        assistant_role: Optional[str] = None,  # 'assistant', 'gpt', 'bot'
-        system_role: str = 'system',
-        tool_role: str = 'tool',
-        # 'conversation', 'conversations' -> 'messages'
-        columns_mapping: Optional[Dict[str, str]] = None,
-        repair_messages: Callable[[Union[str, List[Dict[str, str]]]],
-                                  Optional[List[Dict[str, str]]]] = default_repair_messages,
-        inner_key: Optional[str] = None,
-        remove_useless_columns: bool = True,
-    ):
-        super().__init__(columns_mapping=columns_mapping, remove_useless_columns=remove_useless_columns)
+            self,
+            *,
+            # If set to None, automatic matching will be performed.
+            role_key: Optional[str] = None,  # 'role', 'from'
+            content_key: Optional[str] = None,  # 'content', 'value'
+            user_role: Optional[str] = None,  # 'user', 'human'
+            assistant_role: Optional[str] = None,  # 'assistant', 'gpt', 'bot'
+            system_role: str = 'system',
+            tool_role: str = 'tool',
+            # 'conversation', 'conversations' -> 'messages'
+            columns_mapping: Optional[Dict[str, str]] = None,
+            repair_messages: Callable[[Union[str, List[Dict[str, str]]]],
+                                      Optional[List[Dict[str, str]]]] = default_repair_messages,
+            inner_key: Optional[str] = None,
+            remove_useless_columns: bool = True,
+            **kwargs):
+        super().__init__(columns_mapping=columns_mapping, remove_useless_columns=remove_useless_columns, **kwargs)
         self.role_keys = ['role', 'from'] if role_key is None else [role_key]
         self.content_keys = ['content', 'value'] if content_key is None else [content_key]
         self.user_roles = ['user', 'human'] if user_role is None else [user_role]
@@ -414,18 +425,20 @@ class AutoPreprocessor:
     def __init__(self,
                  *,
                  columns_mapping: Optional[Dict[str, str]] = None,
-                 remove_useless_columns: bool = True) -> None:
+                 remove_useless_columns: bool = True,
+                 **kwargs) -> None:
         self.columns_mapping = columns_mapping or {}
-        self.remove_useless_columns = remove_useless_columns
+        kwargs['remove_useless_columns'] = remove_useless_columns
+        self.kwargs = kwargs
 
     def _get_preprocessor(self, dataset: DATASET_TYPE) -> RowPreprocessor:
         features = get_dataset_features(dataset).keys()
         for key in ['conversation', 'conversations', 'messages']:
             if key in features:
-                return MessagesPreprocessor(remove_useless_columns=self.remove_useless_columns)
+                return MessagesPreprocessor(**self.kwargs)
         if 'instruction' in features and 'input' in features:
-            return AlpacaPreprocessor(remove_useless_columns=self.remove_useless_columns)
-        return ResponsePreprocessor(remove_useless_columns=self.remove_useless_columns)
+            return AlpacaPreprocessor(**self.kwargs)
+        return ResponsePreprocessor(**self.kwargs)
 
     def __call__(
         self,

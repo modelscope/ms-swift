@@ -378,7 +378,7 @@ class DatasetLoader:
 def load_dataset(
         datasets: List[str],
         split_dataset_ratio: float = 0.,
-        dataset_seed: Union[int, np.random.RandomState] = 42,
+        dataset_seed: Union[int, np.random.RandomState, None] = None,
         *,
         num_proc: int = 1,
         strict: bool = True,
@@ -405,7 +405,7 @@ def load_dataset(
     """
     if isinstance(datasets, str):
         datasets = [datasets]
-    if isinstance(dataset_seed, int):
+    if not isinstance(dataset_seed, np.random.RandomState):
         dataset_seed = np.random.RandomState(dataset_seed)
     train_datasets = []
     val_datasets = []
