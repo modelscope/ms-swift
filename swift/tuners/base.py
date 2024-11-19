@@ -226,13 +226,13 @@ class SwiftModel(nn.Module):
             state_dicts = new_state_dict
         return state_dicts
 
-    def __getattr__(self, name: str):
+    def __getattr__(self, key: str):
         """Forward missing attributes to the wrapped module."""
         try:
-            return super().__getattr__(name)  # defer to nn.Module's logic
+            return super().__getattr__(key)
         except AttributeError:
             if 'base_model' in self.__dict__:
-                return getattr(self.base_model, name)
+                return getattr(self.base_model, key)
             raise
 
     @staticmethod

@@ -32,14 +32,14 @@ class SwiftSft(SwiftPipeline):
         self._prepare_model_tokenizer()
         self._prepare_template()
         self._prepare_callbacks()
-        self._set_mode()
+        self._prepare_train()
         self.model = prepare_tuner(self.model, args)
         logger.info(self.model)
         model_parameter_info = get_model_parameter_info(self.model)
         self.train_msg['model_parameter_info'] = model_parameter_info
         logger.info(f'model_parameter_info: {model_parameter_info}')
 
-    def _set_mode(self):
+    def _prepare_train(self):
         self.template.set_mode('train')
 
     def _prepare_gradient_checkpointing(self):

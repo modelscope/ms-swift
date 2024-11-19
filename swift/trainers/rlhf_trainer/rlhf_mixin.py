@@ -24,13 +24,13 @@ class ModelWrapper(nn.Module):
     def forward(self, *args, **kwargs):
         return self._model(*args, **kwargs)
 
-    def __getattr__(self, name: str):
+    def __getattr__(self, key: str):
         """Forward missing attributes to the wrapped module."""
         try:
-            return super().__getattr__(name)  # defer to nn.Module's logic
+            return super().__getattr__(key)
         except AttributeError:
             if '_model' in self.__dict__:
-                return getattr(self._model, name)
+                return getattr(self._model, key)
             raise
 
     def load_state_dict(self, *args, **kwargs):
@@ -87,7 +87,6 @@ class RLHFTrainerMixin:
         self.aux_loss_enabled = getattr(model.config, 'output_router_logits', False)
         self._peft_has_been_casted_to_bf16 = False
         self.generate_during_eval = getattr(args, 'generate_during_eval', False)
-        self.is_multimodal = False
         if self.is_encoder_decoder:
             self.decoder_start_token_id = self.get_model_config_attr(model.config, 'decoder_start_token_id')
             self.pad_token_id = self.get_model_config_attr(model.config, 'pad_token_id')

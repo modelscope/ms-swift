@@ -413,12 +413,12 @@ def patch_processor(processor):
     if hasattr(processor, '_patch'):
         return
 
-    def __getattr__(self, name: str):
+    def __getattr__(self, key: str):
         try:
-            return super(processor.__class__, self).__getattr__(name)
+            return super(processor.__class__, self).__getattr__(key)
         except AttributeError:
             if 'tokenizer' in self.__dict__:
-                return getattr(self.tokenizer, name)
+                return getattr(self.tokenizer, key)
             raise
 
     processor.__class__.__getattr__ = __getattr__

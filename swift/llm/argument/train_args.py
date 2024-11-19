@@ -195,7 +195,6 @@ class SftArguments(MegatronArguments, TorchAccArguments, TunerArguments, Seq2Seq
         if self.lazy_tokenize is None and not self.streaming:
             self.lazy_tokenize = self.model_meta.is_multimodal
             logger.info(f'Setting args.lazy_tokenize: {self.lazy_tokenize}')
-        self.init_train_stage()
         if self.train_backend == 'hf':
             self.training_args = TrainerFactory.get_training_args(self)
         else:
@@ -254,9 +253,6 @@ class SftArguments(MegatronArguments, TorchAccArguments, TunerArguments, Seq2Seq
             if self.loss_scale != 'default':
                 logger.warn('use_liger is not compatible with `loss_scale`, setting to default...')
                 self.loss_scale = 'default'
-
-    def init_train_stage(self):
-        self.train_stage = 'sft'
 
     def _handle_pai_compat(self) -> None:
         if not is_pai_training_job():
@@ -318,6 +314,4 @@ class SftArguments(MegatronArguments, TorchAccArguments, TunerArguments, Seq2Seq
 
 @dataclass
 class PtArguments(SftArguments):
-
-    def init_train_stage(self):
-        self.train_stage = 'pt'
+    pass

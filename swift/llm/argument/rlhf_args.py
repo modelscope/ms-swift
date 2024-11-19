@@ -62,9 +62,6 @@ class RLHFArguments(SftArguments):
         else:
             assert self.ref_model is None
 
-    def init_train_stage(self):
-        self.train_stage = self.rlhf_type
-
     def _prepare_simpo(self):
         if self.rlhf_type != 'simpo':
             return

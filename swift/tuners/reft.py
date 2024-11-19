@@ -79,12 +79,12 @@ class Reft(SwiftAdapter):
             'NodireftIntervention': NodireftIntervention,
         }
 
-        def __getattr__(self, name: str):
+        def __getattr__(self, key: str):
             try:
-                return super(ReftModel, self).__getattr__(name)
+                return super(ReftModel, self).__getattr__(key)
             except AttributeError:
                 if 'model' in self.__dict__:
-                    return getattr(self.model, name)
+                    return getattr(self.model, key)
                 raise
 
         ReftModel.__getattr__ = __getattr__

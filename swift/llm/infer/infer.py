@@ -68,12 +68,12 @@ class SwiftInfer(SwiftPipeline):
         self.template = self.get_template(args, self.tokenizer)
         self.random_state = np.random.RandomState(args.data_seed)
 
-    def __getattr__(self, name: str):
+    def __getattr__(self, key: str):
         try:
-            return super().__getattr__(name)
+            return super().__getattr__(key)
         except AttributeError:
             if 'infer_engine' in self.__dict__:
-                return getattr(self.infer_engine, name)
+                return getattr(self.infer_engine, key)
             raise
 
     @staticmethod
