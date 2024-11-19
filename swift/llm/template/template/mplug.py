@@ -42,17 +42,17 @@ class mPlugOwl3Template(Template):
             return replace_video2image(load_video, inputs, lambda i: [[-100]]) + ['\n']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        inputs = super()._encode(inputs)
-        if len(inputs) == 0:
-            return inputs
+        encoded = super()._encode(inputs)
+        if len(encoded) == 0:
+            return encoded
         images = inputs.images
         videos = inputs.videos
         cut_enable = not videos
-        input_ids = inputs['input_ids']
-        labels = inputs['labels']
+        input_ids = encoded['input_ids']
+        labels = encoded['labels']
         idx_list = findall(input_ids, -100)
         processor = self.processor
-        inputs = {'_data': {}}
+        encoded = {'_data': {}}
         if images:
             image_inputs = processor.image_processor(images, cut_enable=cut_enable, return_tensors='pt')
             added_tokens_len = 0
@@ -72,13 +72,13 @@ class mPlugOwl3Template(Template):
             _range = torch.arange(len(input_ids))[:, None]
             matrix = (_range > image_token_idx).sum(dim=1)
             media_offset = torch.stack([torch.zeros(matrix.shape[0], dtype=torch.long), matrix], dim=-1)[None]
-            inputs['_data'].update({
+            encoded['_data'].update({
                 'pixel_values': image_inputs['pixel_values'],
                 'media_offset': media_offset,
             })
-        inputs['_data']['input_ids'] = input_ids
-        inputs['labels'] = labels
-        return inputs
+        encoded['_data']['input_ids'] = input_ids
+        encoded['labels'] = labels
+        return encoded
 
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
         if 'pixel_values' in inputs:

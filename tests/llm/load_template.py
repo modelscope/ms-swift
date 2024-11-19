@@ -36,7 +36,10 @@ def load_and_tokenize(ms_model_id, template):
                     _, output = template_ins.pre_forward_hook(model_ins, None, inputs, padding_side='left')
         else:
             output = EncodePreprocessor(template_ins)(load_ds('AI-ModelScope/sharegpt_gpt4:default'))
-        assert output.get('input_ids') is not None or output.get('inputs_embeds') is not None
+        if isinstance(output, dict):
+            assert output.get('input_ids') is not None or output.get('inputs_embeds') is not None
+        else:
+            assert output[0].get('input_ids') is not None or output[0].get('inputs_embeds') is not None
     except Exception:
         import traceback
         print(traceback.format_exc())

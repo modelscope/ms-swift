@@ -123,9 +123,9 @@ class Qwen2AudioTemplate(Template):
             return [f'Audio {index + 1}: <|audio_bos|><|AUDIO|><|audio_eos|>\n']
 
     def _encode(self, template_inputs: StdTemplateInputs) -> Dict[str, Any]:
-        inputs = super()._encode(template_inputs)
-        if len(inputs) == 0:
-            return inputs
+        encoded = super()._encode(template_inputs)
+        if len(encoded) == 0:
+            return encoded
         processor = self.processor
         sampling_rate = processor.feature_extractor.sampling_rate
         audios = load_batch(template_inputs.audios, load_func=partial(load_audio_qwen, sampling_rate=sampling_rate))
@@ -133,8 +133,8 @@ class Qwen2AudioTemplate(Template):
             audio_inputs = processor.feature_extractor(
                 audios, sampling_rate=sampling_rate, return_attention_mask=True, return_tensors='pt')
             audio_inputs['feature_attention_mask'] = audio_inputs.pop('attention_mask')
-            inputs.update(audio_inputs)
-        return inputs
+            encoded.update(audio_inputs)
+        return encoded
 
     def data_collator(self,
                       batch: List[Dict[str, Any]],
@@ -220,12 +220,12 @@ class Qwen2VLTemplate(Template):
             return ['<bbox>']
 
     def _encode(self, template_inputs: StdTemplateInputs) -> Dict[str, Any]:
-        inputs = super()._encode(template_inputs)
-        if len(inputs) == 0:
-            return inputs
+        encoded = super()._encode(template_inputs)
+        if len(encoded) == 0:
+            return encoded
         processor = self.processor
-        input_ids = inputs['input_ids']
-        labels = inputs['labels']
+        input_ids = encoded['input_ids']
+        labels = encoded['labels']
         images = template_inputs.images
         videos = template_inputs.videos
         for media_type in ['images', 'videos']:
@@ -250,11 +250,11 @@ class Qwen2VLTemplate(Template):
                         labels = labels[:idx + added_tokens_len] + [-100] * token_len + labels[added_tokens_len + idx
                                                                                                + 1:]
                     added_tokens_len += token_len - 1
-                inputs.update(media_inputs)
+                encoded.update(media_inputs)
 
-        inputs['input_ids'] = input_ids
-        inputs['labels'] = labels
-        return inputs
+        encoded['input_ids'] = input_ids
+        encoded['labels'] = labels
+        return encoded
 
     def _post_encode(self, model, data: Any) -> Dict[str, Any]:
         if self.mode != 'train':

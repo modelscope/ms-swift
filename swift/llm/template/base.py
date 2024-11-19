@@ -338,7 +338,7 @@ class Template:
 
     def _tokenize(self, context, **tokenizer_kwargs):
         tokenizer = self.processor
-        if hasattr(tokenizer, 'tokenizer'):
+        if not isinstance(tokenizer, PreTrainedTokenizerBase) and hasattr(tokenizer, 'tokenizer'):
             tokenizer = tokenizer.tokenizer
         return tokenizer(
             context, return_attention_mask=False, add_special_tokens=False, **tokenizer_kwargs)['input_ids']
@@ -723,8 +723,10 @@ class Template:
                 will be padded to the `longest`
         """
         from swift.utils import get_dist_setting, use_torchacc
-        processor = self.processor
-        assert processor.pad_token_id is not None
+        tokenizer = self.processor
+        if not isinstance(tokenizer, PreTrainedTokenizerBase) and hasattr(tokenizer, 'tokenizer'):
+            tokenizer = tokenizer.tokenizer
+        assert tokenizer.pad_token_id is not None
         if padding_side is None:
             padding_side = self.padding_side
         padding_right = padding_side == 'right'
@@ -752,12 +754,12 @@ class Template:
             padding_len = padding_to - res['input_ids'][0].shape[-1]
             if padding_len > 0:
                 for key, value in zip(['input_ids', 'attention_mask', 'labels', 'loss_scale', 'position_ids'],
-                                      [processor.pad_token_id, 0, -100, 0., -1]):
+                                      [tokenizer.pad_token_id, 0, -100, 0., -1]):
                     if key in res:
                         res[key][0] = F.pad(res[key][0], (0, padding_len) if padding_right else (padding_len, 0),
                                             'constant', value)
         for key, value in zip(['input_ids', 'inputs_embeds', 'attention_mask', 'labels', 'loss_scale', 'position_ids'],
-                              [processor.pad_token_id, 0., 0, -100, 0., -1]):
+                              [tokenizer.pad_token_id, 0., 0, -100, 0., -1]):
             if key in res:
                 for i, val in enumerate(res[key]):
                     if isinstance(val, (list, tuple)):
@@ -792,7 +794,7 @@ class Template:
                 labels,
                 loss_scale,
                 self.max_length,
-                self.processor,
+                tokenizer,
                 rank,
                 world_size,
                 padding_right=padding_right)
@@ -805,7 +807,7 @@ class Template:
                 from swift.trainers.xtuner import pad_and_split_for_sequence_parallel
                 input_ids, labels, position_ids, attention_mask, loss_scale = \
                     pad_and_split_for_sequence_parallel(
-                        processor, input_ids, labels, position_ids, attention_mask, loss_scale)
+                        tokenizer, input_ids, labels, position_ids, attention_mask, loss_scale)
             res['position_ids'] = position_ids
         _local_var = locals()
         for key in ['input_ids', 'attention_mask', 'labels', 'loss_scale']:

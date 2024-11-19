@@ -83,12 +83,12 @@ class MiniCPMVTemplate(Template):
         await super().prepare_lmdeploy_inputs(inputs)
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        inputs = super()._encode(inputs)
-        if len(inputs) == 0:
-            return inputs
+        encoded = super()._encode(inputs)
+        if len(encoded) == 0:
+            return encoded
         images = inputs.images
-        input_ids = inputs['input_ids']
-        labels = inputs['labels']
+        input_ids = encoded['input_ids']
+        labels = encoded['labels']
         idx_list = findall(input_ids, -100)
         idx = idx_list[0]
         config = model.config
@@ -126,7 +126,7 @@ class MiniCPMVTemplate(Template):
                 labels = (labels[:idx] + [-100] * len(placeholder_id) + labels[idx + 1:])
             image_bound = [torch.tensor([[idx, idx + config.query_num]])]
             pixel_values = [[model.transform(images[0])]]
-        inputs = {
+        encoded = {
             'input_ids': input_ids,
             'labels': labels,
             '_data': {
@@ -136,7 +136,7 @@ class MiniCPMVTemplate(Template):
                 'tgt_sizes': tgt_sizes
             }
         }
-        return inputs
+        return encoded
 
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
         inputs_embeds, _ = model.get_vllm_embedding(inputs)
@@ -169,9 +169,9 @@ class MiniCPMV2_6Template(MiniCPMVTemplate):
             return replace_video2image(load_video, example, lambda i: image_context)
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        inputs, _ = Template._encode(self, inputs)
-        if len(inputs) == 0:
-            return inputs
+        encoded = Template._encode(self, inputs)
+        if len(encoded) == 0:
+            return encoded
         images = inputs.images
         use_video = bool(inputs.videos)
         is_plain_text = not images and not use_video
@@ -183,8 +183,8 @@ class MiniCPMV2_6Template(MiniCPMVTemplate):
             max_slice_nums = 1  # or 2
 
         max_slice_nums = get_env_args('max_slice_nums', int, max_slice_nums)
-        input_ids = inputs['input_ids']
-        labels = inputs['labels']
+        input_ids = encoded['input_ids']
+        labels = encoded['labels']
         idx_list = findall(input_ids, -100)
         idx_list.insert(0, -1)
 
@@ -222,7 +222,7 @@ class MiniCPMV2_6Template(MiniCPMVTemplate):
         else:
             image_bound = [[]]
 
-        inputs = {
+        encoded = {
             'input_ids': input_ids,
             'labels': labels,
             '_data': {
@@ -232,7 +232,7 @@ class MiniCPMV2_6Template(MiniCPMVTemplate):
                 'tgt_sizes': image_inputs['tgt_sizes']
             }
         }
-        return inputs
+        return encoded
 
 
 register_template(QwenTemplateMeta(MLLMTemplateType.minicpmv2_6, template_cls=MiniCPMV2_6Template))

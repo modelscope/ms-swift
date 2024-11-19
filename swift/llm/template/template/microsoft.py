@@ -67,16 +67,16 @@ class FlorenceTemplate(Template):
             if inputs.messages[i]['user'] == 'user':
                 inputs.messages[i]['content'] = new_query
                 break
-        inputs = super()._encode(inputs)
-        input_ids = inputs['prompt_input_ids']
-        if len(inputs) == 0:
-            return inputs
+        encoded = super()._encode(inputs)
+        input_ids = encoded['prompt_input_ids']
+        if len(encoded) == 0:
+            return encoded
         images = inputs.images or []
-        labels = inputs['answer_labels']
+        labels = encoded['answer_labels']
         if labels is not None:
             labels = [0] + labels
         pixel_values = processor.image_processor(images, return_tensors='pt')['pixel_values'].to(model.dtype)
-        inputs = {
+        encoded = {
             'input_ids': input_ids,
             'labels': labels,
             '_data': {
@@ -84,7 +84,7 @@ class FlorenceTemplate(Template):
                 'pixel_values': pixel_values,
             }
         }
-        return inputs
+        return encoded
 
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
         inputs_embeds = model.get_input_embeddings()(inputs['input_ids'])
@@ -137,20 +137,20 @@ class Phi3VisionTemplate(Template):
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         images = inputs.images or []
-        inputs = super()._encode(inputs)
-        if len(inputs) == 0:
-            return inputs
-        input_ids = inputs['input_ids']
-        labels = inputs['labels']
+        encoded = super()._encode(inputs)
+        if len(encoded) == 0:
+            return encoded
+        input_ids = encoded['input_ids']
+        labels = encoded['labels']
         idx_list = findall(input_ids, 32044)  # '<|image|>'
 
         if len(images) > 0:
             processor = self.processor
-            inputs.update(processor.image_processor(images, return_tensors='pt'))
+            encoded.update(processor.image_processor(images, return_tensors='pt'))
             assert len(idx_list) == len(images), f'len(idx_list): {len(idx_list)}, len(images): {len(images)}'
             res_input_ids = []
             res_labels = []
-            num_img_tokens = inputs.pop('num_img_tokens').tolist()
+            num_img_tokens = encoded.pop('num_img_tokens').tolist()
             idx_list.insert(0, -1)
             for i in range(len(idx_list) - 1):
                 image_token_id = -i - 1
@@ -163,9 +163,9 @@ class Phi3VisionTemplate(Template):
                 res_labels += labels[idx_list[-1] + 1:]
                 labels = res_labels
 
-        inputs['input_ids'] = input_ids
-        inputs['labels'] = labels
-        return inputs
+        encoded['input_ids'] = input_ids
+        encoded['labels'] = labels
+        return encoded
 
 
 register_template(Phi3TemplateMeta(MLLMTemplateType.phi3_vl, template_cls=Phi3VisionTemplate))

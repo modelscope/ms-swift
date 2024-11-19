@@ -38,21 +38,21 @@ class PaliGemmaTemplate(Template):
             return ['<image>' * self.processor.image_seq_length + '<bos>']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        inputs = super()._encode(inputs)
-        if len(inputs) == 0:
-            return inputs
+        encoded = super()._encode(inputs)
+        if len(encoded) == 0:
+            return encoded
         raw_image = inputs.images
         processor = self.processor
-        if inputs['labels'] is not None:
-            n = upper_bound(0, len(inputs['labels']), lambda idx: inputs['labels'][idx] == -100)
-            n2 = len(inputs['labels']) - n
-            inputs['token_type_ids'] = [0] * n + [1] * n2
+        if encoded['labels'] is not None:
+            n = upper_bound(0, len(encoded['labels']), lambda idx: encoded['labels'][idx] == -100)
+            n2 = len(encoded['labels']) - n
+            encoded['token_type_ids'] = [0] * n + [1] * n2
         else:
-            inputs['token_type_ids'] = [0] * len(inputs['input_ids'])
+            encoded['token_type_ids'] = [0] * len(encoded['input_ids'])
         if raw_image:
-            model_inputs = processor(text=inputs.to_history()['query'], images=raw_image[0], return_tensors='pt')
-            inputs['pixel_values'] = model_inputs['pixel_values']
-        return inputs
+            model_inputs = processor(text=encoded.to_history()['query'], images=raw_image[0], return_tensors='pt')
+            encoded['pixel_values'] = model_inputs['pixel_values']
+        return encoded
 
     def data_collator(self,
                       batch: List[Dict[str, Any]],

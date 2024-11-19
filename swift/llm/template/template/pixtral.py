@@ -15,17 +15,17 @@ class PixtralTemplate(Template):
     image_placeholder = ['[IMG]']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        inputs = super()._encode(inputs)
-        if len(inputs) == 0:
-            return inputs
+        encoded = super()._encode(inputs)
+        if len(encoded) == 0:
+            return encoded
         processor = self.processor
         images = inputs.images
-        input_ids = inputs['input_ids']
-        labels = inputs['labels']
+        input_ids = encoded['input_ids']
+        labels = encoded['labels']
         idx_list = findall(input_ids, 10)
         if idx_list:
             image_inputs = processor.image_processor(images, patch_size=processor.patch_size, return_tensors='pt')
-            inputs['pixel_values'] = image_inputs['pixel_values'][0]
+            encoded['pixel_values'] = image_inputs['pixel_values'][0]
             image_sizes = image_inputs['image_sizes'][0]
             added_tokens_len = 0
             for idx, image_size in zip(idx_list, image_sizes):
@@ -43,10 +43,10 @@ class PixtralTemplate(Template):
                     labels = labels[:idx + added_tokens_len] + [-100] * len(img_tokens) + labels[idx + added_tokens_len
                                                                                                  + 1:]
                 added_tokens_len += len(img_tokens) - 1
-            inputs['input_ids'] = input_ids
-            inputs['labels'] = labels
+            encoded['input_ids'] = input_ids
+            encoded['labels'] = labels
 
-        return inputs
+        return encoded
 
     def data_collator(self,
                       batch: List[Dict[str, Any]],

@@ -43,15 +43,15 @@ class Emu3GenTemplate(Template):
 
         # image
         raw_image = inputs.images
-        inputs = self.processor(query, raw_image, **kwargs)
-        labels = inputs['input_ids']
+        encoded = self.processor(query, raw_image, **kwargs)
+        labels = encoded['input_ids']
         if self.APPLY_LOSS_ON_ONLY_VISION:
             labels = torch.where(torch.logical_and(labels >= self.bov, labels <= self.eov), labels, -100)
 
-        inputs['labels'] = labels
-        for k, v in inputs.items():
-            inputs[k] = v.squeeze(0)
-        return inputs
+        encoded['labels'] = labels
+        for k, v in encoded.items():
+            encoded[k] = v.squeeze(0)
+        return encoded
 
     def prepare_for_output(self, output: str) -> str:
         return output

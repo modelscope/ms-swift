@@ -80,16 +80,16 @@ class Llama3_2VisionTemplate(Template):
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         from transformers.models.mllama.processing_mllama import (get_cross_attention_token_mask,
                                                                   convert_sparse_cross_attention_mask_to_dense)
-        inputs = super()._encode(inputs)
-        if len(inputs) == 0:
-            return inputs
+        encoded = super()._encode(inputs)
+        if len(encoded) == 0:
+            return encoded
         images = inputs.images
         if images:
-            input_ids = inputs['input_ids']
+            input_ids = encoded['input_ids']
             processor = self.processor
             image_features = processor.image_processor(images, return_tensors='pt')
             num_tiles = image_features.pop('num_tiles')
-            inputs.update(image_features)
+            encoded.update(image_features)
 
             cross_attention_token_mask = [get_cross_attention_token_mask(input_ids, processor.image_token_id)]
             cross_attention_mask = convert_sparse_cross_attention_mask_to_dense(
@@ -98,9 +98,9 @@ class Llama3_2VisionTemplate(Template):
                 max_num_tiles=processor.image_processor.max_image_tiles,
                 length=len(input_ids),
             )
-            inputs['cross_attention_mask'] = torch.tensor(cross_attention_mask)
+            encoded['cross_attention_mask'] = torch.tensor(cross_attention_mask)
 
-        return inputs
+        return encoded
 
     def data_collator(self,
                       batch: List[Dict[str, Any]],
@@ -138,15 +138,15 @@ class Llama3_1OmniTemplate(Template):
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         import whisper
-        inputs = super()._encode(inputs)
-        if len(inputs) == 0:
-            return inputs
+        encoded = super()._encode(inputs)
+        if len(encoded) == 0:
+            return encoded
         audios = inputs.audios
-        input_ids = inputs['input_ids']
-        labels = inputs['labels']
-        inputs['_data'] = {'input_ids': torch.tensor(input_ids)[None]}
+        input_ids = encoded['input_ids']
+        labels = encoded['labels']
+        encoded['_data'] = {'input_ids': torch.tensor(input_ids)[None]}
         if labels is not None:
-            inputs['_data']['labels'] = torch.tensor(labels)[None]
+            encoded['_data']['labels'] = torch.tensor(labels)[None]
         if audios:
             audios = load_batch(audios, whisper.load_audio)
             n_mels = get_env_args('n_mels', int, 128)
@@ -154,9 +154,9 @@ class Llama3_1OmniTemplate(Template):
                 audio = whisper.pad_or_trim(audio)
                 audios[i] = whisper.log_mel_spectrogram(audio, n_mels=n_mels).permute(1, 0)
             audios = torch.stack(audios)
-            inputs['_data'].update({'speech': audios, 'speech_lengths': torch.tensor([[audios.shape[1]]])})
+            encoded['_data'].update({'speech': audios, 'speech_lengths': torch.tensor([[audios.shape[1]]])})
 
-        return inputs
+        return encoded
 
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
         speech = inputs.get('speech')
