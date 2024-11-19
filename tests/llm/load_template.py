@@ -16,7 +16,7 @@ def load_ds(ds):
 
 def load_and_tokenize(ms_model_id, template):
     try:
-        vl_fields = ['vl', 'video', 'minicpm_v', 'gen', 'llava']
+        vl_fields = ['vl', 'video', 'minicpmv', 'gen', 'llava', 'vision']
         load_model = False
         if 'gen' in template or 'audio' in template or 'vl' in template:
             load_model = True
