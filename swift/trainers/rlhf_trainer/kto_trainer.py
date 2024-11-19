@@ -37,7 +37,7 @@ def _add_kl_dataset(dataset: LLMDataset, total_batch_size: int, seed: Optional[i
                 'labels': data['labels'],
                 'KL_input_ids': kl_input_ids,
                 'KL_labels': kl_labels,
-                'label': kl_data['label']
+                'label': data['label']
             })
         raw_dataset[i:i + total_batch_size] = new_dataset_group
         i += total_batch_size
