@@ -68,8 +68,8 @@ class QuantEngine:
         dataset = load_dataset(
             data,
             0,
-            args.dataset_seed,
-            num_proc=args.num_proc,
+            args.data_seed,
+            num_proc=args.dataset_num_proc,
             load_from_cache_file=args.load_from_cache_file,
             download_mode=args.download_mode,
             model_name=args.model_name,

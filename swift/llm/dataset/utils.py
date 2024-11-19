@@ -56,6 +56,7 @@ class LLMIterableDataset(HFIterableDataset):
     """This class offers abilities of deal with IterableDataset, and skip the bad samples"""
 
     def __init__(self, dataset: HFIterableDataset, max_retries=10):
+        from .loader import standard_keys
         super().__init__(
             dataset._ex_iterable,
             dataset._info,
@@ -67,7 +68,6 @@ class LLMIterableDataset(HFIterableDataset):
         )
         self.dataset = dataset
         self.max_retries = max_retries
-        from swift.llm.dataset.dataset import standard_keys
         dataset._ex_iterable.remove_columns = standard_keys & next(iter(dataset)).keys()
 
     def __iter__(self):
@@ -233,7 +233,7 @@ class EncodePreprocessor(RowPreprocessor):
     cast_mm_data = False
 
     def __init__(self, template: 'Template'):
-        super().__init__(remove_useless_columns=False)
+        super().__init__()
         self.template = template
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -246,7 +246,7 @@ class EncodePreprocessor(RowPreprocessor):
 class GetLengthPreprocessor(RowPreprocessor):
 
     def __init__(self):
-        return super().__init__(remove_useless_columns=False)
+        return super().__init__()
 
     def preprocess(self, row):
         length = max([len(row[k]) for k in row.keys() if k.endswith('input_ids')])

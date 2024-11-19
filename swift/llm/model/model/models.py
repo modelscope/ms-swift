@@ -735,8 +735,8 @@ def get_model_tokenizer_molmoe_1b(model_dir: str,
                                   **kwargs):
     from transformers import AutoProcessor
     processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
-    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs,
-                                                           load_model, tokenizer=processor.tokenizer, **kwargs)
+    model, tokenizer = get_model_tokenizer_with_flash_attn(
+        model_dir, model_info, model_kwargs, load_model, tokenizer=processor.tokenizer, **kwargs)
 
     # fix bug for molmoe-1b
     def to_dict(self, *args, **kwargs):
@@ -794,8 +794,8 @@ def get_model_tokenizer_molmo(model_dir: str,
     processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
     model_cls = get_class_from_dynamic_module('modeling_molmo.MolmoForCausalLM', model_dir)
     model_cls._no_split_modules = ['MolmoSequentialBlock']
-    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs,
-                                                           load_model, tokenizer=processor.tokenizer, **kwargs)
+    model, tokenizer = get_model_tokenizer_with_flash_attn(
+        model_dir, model_info, model_kwargs, load_model, tokenizer=processor.tokenizer, **kwargs)
     if model:
         device = next(model.model.transformer.ff_out.parameters()).device
         forward_origin = model.model.forward

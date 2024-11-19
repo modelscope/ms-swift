@@ -164,13 +164,9 @@ register_dataset(
 
 class MantisPreprocessor(MessagesPreprocessor):
 
-    def __init__(self,
-                 *,
-                 subset: str,
-                 columns_mapping: Optional[Dict[str, str]] = None,
-                 remove_useless_columns: bool = True) -> None:
+    def __init__(self, *, subset: str, columns_mapping: Optional[Dict[str, str]] = None) -> None:
         self.subset = subset
-        super().__init__(columns_mapping=columns_mapping, remove_useless_columns=remove_useless_columns)
+        super().__init__(columns_mapping=columns_mapping)
 
     def prepare_dataset(self, dataset: HfDataset) -> HfDataset:
         url = (f'https://www.modelscope.cn/api/v1/datasets/swift/Mantis-Instruct/repo?Revision='
@@ -357,13 +353,9 @@ def _generate_url_list(_url, _range):
 
 class LLaVAVideo178KPreprocessor(MessagesPreprocessor):
 
-    def __init__(self,
-                 *,
-                 subset: str,
-                 columns_mapping: Optional[Dict[str, str]] = None,
-                 remove_useless_columns: bool = True) -> None:
+    def __init__(self, *, subset: str, columns_mapping: Optional[Dict[str, str]] = None) -> None:
         self.subset = subset
-        super().__init__(columns_mapping=columns_mapping, remove_useless_columns=remove_useless_columns)
+        super().__init__(columns_mapping=columns_mapping)
 
     video_resources = {
         '0_30_s_academic_v0_1':

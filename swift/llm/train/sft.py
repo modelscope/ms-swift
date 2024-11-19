@@ -114,8 +114,8 @@ class SwiftSft(SwiftPipeline):
     def _get_dataset(self):
         args = self.args
         dataset_kwargs = {
-            'dataset_seed': args.dataset_seed,
-            'num_proc': args.num_proc,
+            'seed': args.data_seed,
+            'num_proc': args.dataset_num_proc,
             'load_from_cache_file': args.load_from_cache_file,
             'download_mode': args.download_mode,
             'model_name': args.model_name,
@@ -271,7 +271,7 @@ class SwiftSft(SwiftPipeline):
     def _stat_dataset(self, dataset: HfDataset):
         args = self.args
         dataset = GetLengthPreprocessor()(
-            dataset, num_proc=args.num_proc, load_from_cache_file=args.load_from_cache_file)
+            dataset, num_proc=args.dataset_num_proc, load_from_cache_file=args.load_from_cache_file)
         _, stat_str = stat_array(dataset['length'])
         logger.info(f'Dataset Token Length: {stat_str}')
         return stat_str
@@ -292,10 +292,10 @@ class SwiftSft(SwiftPipeline):
                     template, val_dataset, args.max_length, lazy_tokenize=args.lazy_tokenize)
         else:
             train_dataset = EncodePreprocessor(template)(
-                train_dataset, num_proc=args.num_proc, load_from_cache_file=args.load_from_cache_file)
+                train_dataset, num_proc=args.dataset_num_proc, load_from_cache_file=args.load_from_cache_file)
             if val_dataset is not None:
                 val_dataset = EncodePreprocessor(template)(
-                    val_dataset, num_proc=args.num_proc, load_from_cache_file=args.load_from_cache_file)
+                    val_dataset, num_proc=args.dataset_num_proc, load_from_cache_file=args.load_from_cache_file)
 
         inputs = train_dataset[0] if isinstance(train_dataset, HfDataset) else next(iter(train_dataset))
         template.print_inputs(inputs)

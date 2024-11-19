@@ -17,8 +17,12 @@ def get_model_tokenizer_paligemma_vision(model_dir: str,
     processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
     kwargs.pop('automodel_class', None)
     model, tokenizer = get_model_tokenizer_with_flash_attn(
-        model_dir, model_info, model_kwargs, load_model,
-        automodel_class=PaliGemmaForConditionalGeneration, tokenizer=processor.tokenizer,
+        model_dir,
+        model_info,
+        model_kwargs,
+        load_model,
+        automodel_class=PaliGemmaForConditionalGeneration,
+        tokenizer=processor.tokenizer,
         **kwargs)
     return model, processor
 

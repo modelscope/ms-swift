@@ -20,8 +20,8 @@ class DataArguments:
         dataset (List[str]): List of dataset identifiers or paths.
         val_dataset (List[str]): List of validation dataset identifiers or paths.
         split_dataset_ratio (float): Ratio to split the dataset for validation if val_dataset is empty. Default is 0.01.
-        dataset_seed (Optional[int]): Seed for dataset shuffling. Default is None.
-        num_proc (int): Number of processes to use for data loading and preprocessing. Default is 1.
+        data_seed (Optional[int]): Seed for dataset shuffling. Default is None.
+        dataset_num_proc (int): Number of processes to use for data loading and preprocessing. Default is 1.
         load_from_cache_file (bool): Flag to load dataset from cache file. Default is False.
         download_mode (Literal): Mode for downloading datasets. Default is 'reuse_dataset_if_exists'.
         model_name (List[str]): List containing Chinese and English names of the model. Default is [None, None].
@@ -39,9 +39,9 @@ class DataArguments:
     val_dataset: List[str] = field(
         default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     split_dataset_ratio: float = 0.01  # If val_dataset is empty, use a split from the dataset as the validation set.
-    dataset_seed: Optional[int] = None
+    data_seed: Optional[int] = None
 
-    num_proc: int = 1
+    dataset_num_proc: int = 1
     load_from_cache_file: bool = False
     download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists'
     # Chinese name and English name
@@ -71,8 +71,8 @@ class DataArguments:
         register_dataset_info(self.custom_dataset_info)
 
     def __post_init__(self):
-        if self.dataset_seed is None:
-            self.dataset_seed = self.seed
+        if self.data_seed is None:
+            self.data_seed = self.seed
         if len(self.val_dataset) > 0:
             self.split_dataset_ratio = 0.
             logger.info(f'Using val_dataset, setting split_dataset_ratio: {self.split_dataset_ratio}')
