@@ -16,7 +16,7 @@ def test_llm():
         RLHFArguments(
             rlhf_type='kto',
             model='qwen/Qwen2-7B-Instruct',
-            dataset=['hjh0119/shareAI-Llama3-DPO-zh-en-emoji:zh#100'],
+            dataset=['AI-ModelScope/ultrafeedback-binarized-preferences-cleaned-kto#100'],
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
     infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True, merge_lora=True))
@@ -26,11 +26,14 @@ def test_mllm():
     from swift.llm import rlhf_main, RLHFArguments, infer_main, InferArguments
     result = rlhf_main(
         RLHFArguments(
-            rlhf_type='kto', model='qwen/Qwen2-VL-7B-Instruct', dataset=['swift/RLAIF-V-Dataset#100'], **kwargs))
+            rlhf_type='kto',
+            model='qwen/Qwen2-VL-7B-Instruct',
+            dataset=['AI-ModelScope/ultrafeedback-binarized-preferences-cleaned-kto#100'],
+            **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
     infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True, merge_lora=True))
 
 
 if __name__ == '__main__':
-    # test_llm()
-    test_mllm()
+    test_llm()
+    # test_mllm()
