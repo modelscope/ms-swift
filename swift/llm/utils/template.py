@@ -1687,10 +1687,6 @@ class _Qwen2VLTemplateMixin:
             res['position_ids'] = position_ids.contiguous()
         return res
 
-    @staticmethod
-    def _get_generate_ids(generate_ids: List[int], input_token_len: int) -> List[int]:
-        return generate_ids
-
 
 class Qwen2VLTemplate(_Qwen2VLTemplateMixin, QwenTemplate):
     pass
