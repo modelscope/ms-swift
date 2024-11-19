@@ -40,7 +40,7 @@ class InternvlTemplate(Template):
             input_size = get_env_args('input_size', int, 448)
             max_num = get_env_args('max_num', int, 12)
             pixel_values_images = [transform_image(image, input_size, max_num) for image in images]
-            pixel_values = torch.cat(pixel_values_images, dim=0).to(model.dtype)
+            pixel_values = torch.cat(pixel_values_images, dim=0)
             image_bs = pixel_values.shape[0]
 
             idx, idx2 = idx_list[0], idx_list[-1]  # remove [-100, -100]
@@ -60,7 +60,7 @@ class InternvlTemplate(Template):
         device = embedding.weight.device
         input_ids = inputs['input_ids']
         inputs_embeds = embedding(input_ids[None])[0].to(device=device)
-        pixel_values = inputs['pixel_values']
+        pixel_values = inputs['pixel_values'].to(model.dtype)
         if pixel_values is not None:
             pixel_values = pixel_values.to(device=device)
             vit_embeds = model.extract_feature(pixel_values).to(device=device)
@@ -136,7 +136,7 @@ class Internvl2Template(InternvlTemplate):
             return encoded
         input_ids = encoded['input_ids']
         idx_list = findall(input_ids, -100)
-        labels = inputs.labels
+        labels = encoded['labels']
         images = inputs.images
         if images:
             has_video = bool(inputs.videos)

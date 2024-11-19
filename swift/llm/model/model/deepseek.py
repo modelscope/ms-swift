@@ -197,14 +197,13 @@ def get_model_tokenizer_deepseek_janus(model_dir: str, *args, **kwargs):
     processor: VLChatProcessor = VLChatProcessor.from_pretrained(model_dir)
     tokenizer = processor.tokenizer
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, *args, tokenizer=tokenizer, **kwargs)
-    tokenizer.processor = processor
     if model:
         model.language_model.model.embed_tokens.register_forward_hook(patch_output_clone)
         model.language_model.model.embed_tokens.register_forward_hook(patch_output_to_input_device)
         func_list = ['generate', 'get_input_embeddings', 'forward', 'gradient_checkpointing_enable']
         use_submodel_func(model, 'language_model', func_list)
         model.generation_config = model.language_model.generation_config
-    return model, tokenizer
+    return model, processor
 
 
 register_model(

@@ -66,11 +66,10 @@ def get_model_tokenizer_mplug_owl3(model_dir: str,
     model_cls._no_split_modules = ['SiglipEncoderLayer']
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
     processor = model.init_processor(tokenizer)
-    tokenizer.processor = processor
     if model is not None:
         func_list = ['generate', 'forward']
         use_submodel_func(model, 'language_model', func_list)
-    return model, tokenizer
+    return model, processor
 
 
 register_model(
@@ -709,8 +708,7 @@ def get_model_tokenizer_pixtral(model_dir: str, *args, **kwargs):
     kwargs['automodel_class'] = LlavaForConditionalGeneration
     kwargs['tokenizer'] = processor.tokenizer
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
-    tokenizer.processor = processor
-    return model, tokenizer
+    return model, processor
 
 
 register_model(
@@ -737,8 +735,8 @@ def get_model_tokenizer_molmoe_1b(model_dir: str,
                                   **kwargs):
     from transformers import AutoProcessor
     processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
-    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
-    tokenizer.processor = processor
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs,
+                                                           load_model, tokenizer=processor.tokenizer, **kwargs)
 
     # fix bug for molmoe-1b
     def to_dict(self, *args, **kwargs):
@@ -765,7 +763,7 @@ def get_model_tokenizer_molmoe_1b(model_dir: str,
         model._old_forward = _forward
         model.forward_origin = forward_origin
 
-    return model, tokenizer
+    return model, processor
 
 
 register_model(
@@ -796,8 +794,8 @@ def get_model_tokenizer_molmo(model_dir: str,
     processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
     model_cls = get_class_from_dynamic_module('modeling_molmo.MolmoForCausalLM', model_dir)
     model_cls._no_split_modules = ['MolmoSequentialBlock']
-    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
-    tokenizer.processor = processor
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs,
+                                                           load_model, tokenizer=processor.tokenizer, **kwargs)
     if model:
         device = next(model.model.transformer.ff_out.parameters()).device
         forward_origin = model.model.forward
@@ -810,7 +808,7 @@ def get_model_tokenizer_molmo(model_dir: str,
         model.model.forward = _forward
         model.model.forward_origin = forward_origin
 
-    return model, tokenizer
+    return model, processor
 
 
 register_model(

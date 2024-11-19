@@ -75,9 +75,8 @@ def get_model_tokenizer_emu3_chat(model_dir: str,
     sys.path.append(os.path.join(local_repo_path))
     from emu3.mllm.processing_emu3 import Emu3Processor
     processor = Emu3Processor(image_processor, image_tokenizer, tokenizer)
-    tokenizer.processor = processor
 
-    return model, tokenizer
+    return model, processor
 
 
 register_model(

@@ -23,13 +23,13 @@ def get_model_tokenizer_phi3_vision(model_dir: str,
         processor_kwargs['num_crops'] = get_env_args('num_crops', int, kwargs['num_crops'])
     from transformers import AutoProcessor
     processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True, **processor_kwargs)
-    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
-    tokenizer.processor = processor
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs,
+                                                           load_model, tokenizer=processor.tokenizer, **kwargs)
 
     if load_model:
         patch_output_clone(model.model.vision_embed_tokens.wte)
 
-    return model, tokenizer
+    return model, processor
 
 
 register_model(
@@ -60,11 +60,10 @@ def get_model_tokenizer_florence(model_dir: str,
         model, tokenizer = get_model_tokenizer_with_flash_attn(
             model_dir, model_info, model_kwargs, load_model, tokenizer=processor.tokenizer, **kwargs)
 
-    tokenizer.processor = processor
     if model is not None:
         # model.vision_tower.enable_checkpoint = True
         use_submodel_func(model, 'language_model', ['generate', 'forward'])
-    return model, tokenizer
+    return model, processor
 
 
 register_model(

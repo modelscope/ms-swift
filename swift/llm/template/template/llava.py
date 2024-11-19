@@ -37,6 +37,7 @@ class LlavaHfTemplate(Template):
         images = inputs.images
         if images:
             image_processor = self.processor.image_processor
+            # TODO post_encode
             image_inputs = image_processor(images, return_tensors='pt').to(model.dtype)
             encoded['pixel_values'] = image_inputs['pixel_values']
             if 'image_sizes' in image_inputs:
@@ -75,6 +76,7 @@ class LlavaVideoHfTemplate(Template):
         images = inputs.images or []
         videos_path = inputs.videos or []
         if len(videos_path) > 0:
+            # TODO post_encode
             videos = load_batch(videos_path, load_video_llava)
             video_processor = self.processor.video_processor
             video_inputs = video_processor(videos, return_tensors='pt').to(model.dtype)
@@ -173,6 +175,7 @@ class LlavaOneVisionHfTemplate(Llava1_6HfTemplate):
         idx_list = findall(input_ids, 151646)  # <image>
         processor = self.processor
         if images:
+            # TODO post_encode
             image_processor = processor.image_processor
             image_inputs = image_processor(images, return_tensors='pt').to(model.dtype)
             height, width = image_inputs['pixel_values'][0].shape[-2:]
@@ -233,6 +236,7 @@ class LLavaLlama3HfTemplate(Template):
             return encoded
         raw_image = inputs.images
         if raw_image:
+            # TODO post_encode
             pixel_values = self.processor.image_processor(raw_image, return_tensors='pt')['pixel_values']
             encoded['pixel_values'] = pixel_values.to(model.dtype)
         return encoded
@@ -257,6 +261,7 @@ class LLavaTemplate(Template):
         images = inputs.images or []
         image_sizes = [x.size for x in images]
         from llava.mm_utils import process_images
+        # TODO post_encode
         model = model.model
         if not hasattr(model, 'vision_tower'):
             model = model.model

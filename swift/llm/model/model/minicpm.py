@@ -100,13 +100,13 @@ def get_model_tokenizer_minicpmv_2_x(model_dir: str,
         with ignore_check_imports():
             model_cls = get_class_from_dynamic_module('modeling_navit_siglip.SiglipVisionTransformer', model_dir)
             model_cls._no_split_modules = []
-    model, tokenizer = get_model_tokenizer_minicpmv(model_dir, model_info, model_kwargs, load_model, **kwargs)
-    tokenizer.processor = processor
+    model, tokenizer = get_model_tokenizer_minicpmv(model_dir, model_info, model_kwargs, load_model,
+                                                    tokenizer=processor.tokenizer, **kwargs)
     if load_model:
         embedding = model.get_input_embeddings()
         patch_output_clone(embedding)
 
-    return model, tokenizer
+    return model, processor
 
 
 register_model(

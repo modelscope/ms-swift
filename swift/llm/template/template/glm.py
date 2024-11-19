@@ -136,7 +136,8 @@ class CogTemplate(Template):
             return encoded
         image = inputs.images or []
         encoded.pop('loss_scale', None)
-        history_inputs = encoded.to_history()
+        history_inputs = inputs.to_history()
+        # TODO post_encode
         inputs2 = model.build_conversation_input_ids(
             self.processor, query=history_inputs['query'], history=history_inputs['history'], images=image)
         image_token_len = inputs2['token_type_ids'].sum().item()
@@ -214,7 +215,8 @@ class Cog2VideoTemplate(CogTemplate):
         videos_path = inputs.videos or []
         video = load_batch(videos_path, load_video_cogvlm2)
         encoded.pop('loss_scale', None)
-        history_inputs = encoded.to_history()
+        history_inputs = inputs.to_history()
+        # TODO post_encode
         inputs2 = model.build_conversation_input_ids(
             self.processor,
             query=history_inputs['query'],
