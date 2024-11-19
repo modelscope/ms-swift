@@ -25,8 +25,13 @@ def get_model_tokenizer_llava_llama(model_dir: str,
     processor = AutoProcessor.from_pretrained(model_dir)
     kwargs['automodel_class'] = LlavaForConditionalGeneration
     model, tokenizer = get_model_tokenizer_with_flash_attn(
-        model_dir, model_info, model_kwargs, load_model, model_config=model_config,
-        tokenizer=processor.tokenizer, **kwargs)
+        model_dir,
+        model_info,
+        model_kwargs,
+        load_model,
+        model_config=model_config,
+        tokenizer=processor.tokenizer,
+        **kwargs)
     return model, processor
 
 

@@ -23,8 +23,8 @@ def get_model_tokenizer_phi3_vision(model_dir: str,
         processor_kwargs['num_crops'] = get_env_args('num_crops', int, kwargs['num_crops'])
     from transformers import AutoProcessor
     processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True, **processor_kwargs)
-    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs,
-                                                           load_model, tokenizer=processor.tokenizer, **kwargs)
+    model, tokenizer = get_model_tokenizer_with_flash_attn(
+        model_dir, model_info, model_kwargs, load_model, tokenizer=processor.tokenizer, **kwargs)
 
     if load_model:
         patch_output_clone(model.model.vision_embed_tokens.wte)
@@ -100,10 +100,11 @@ def get_model_tokenizer_phi3_small(model_dir: str,
         key_states = key_states.to(k_type)
         return query_states, key_states
 
-    for i in range(32):
-        re = model.model.layers[i].self_attn.rotary_emb
-        re.rotory_emb_origin = re.forward
-        re.forward = MethodType(rotary_emb, re)
+    if model is not None:
+        for i in range(32):
+            re = model.model.layers[i].self_attn.rotary_emb
+            re.rotory_emb_origin = re.forward
+            re.forward = MethodType(rotary_emb, re)
     return model, tokenizer
 
 
