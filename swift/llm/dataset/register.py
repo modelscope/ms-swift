@@ -102,14 +102,11 @@ def _preprocess_d_info(d_info: Dict[str, Any], *, base_dir: Optional[str] = None
     columns_mapping = None
     if 'columns' in d_info:
         columns_mapping = d_info.pop('columns')
-    remove_useless_columns = d_info.pop('remove_useless_columns', True)
 
     if 'messages' in d_info:
-        d_info['preprocess_func'] = MessagesPreprocessor(
-            **d_info.pop('messages'), columns_mapping=columns_mapping, remove_useless_columns=remove_useless_columns)
+        d_info['preprocess_func'] = MessagesPreprocessor(**d_info.pop('messages'), columns_mapping=columns_mapping)
     else:
-        d_info['preprocess_func'] = AutoPreprocessor(
-            columns_mapping=columns_mapping, remove_useless_columns=remove_useless_columns)
+        d_info['preprocess_func'] = AutoPreprocessor(columns_mapping=columns_mapping)
 
     if 'dataset_path' in d_info:
         dataset_path = d_info.pop('dataset_path')

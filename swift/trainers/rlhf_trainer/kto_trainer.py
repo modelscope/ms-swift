@@ -9,6 +9,7 @@ from peft import PeftModel
 from transformers import PreTrainedModel
 from trl import KTOTrainer as HFKTOTrainer
 
+from swift.llm import RowPreprocessor
 from swift.utils import get_dist_setting, get_logger
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
@@ -19,29 +20,34 @@ del HFKTOTrainer.__init__
 del HFKTOTrainer.get_batch_samples
 
 
-def _add_kl_dataset(dataset: HfDataset, total_batch_size: int, seed: Optional[int] = None) -> None:
-    # Shift one position to the right in each batch.
-    raw_dataset: List[Dict[str, Any]] = dataset.data
-    random_state = np.random.RandomState(seed)
-    random_state.shuffle(raw_dataset)
+class KTOPreprocessor(RowPreprocessor):
 
-    i = 0
-    while i < len(raw_dataset):
-        new_dataset_group = []
-        dataset_group = raw_dataset[i:i + total_batch_size]
-        kl_dataset_group = [dataset_group[-1]] + dataset_group[:-1]
-        for data, kl_data in zip(dataset_group, kl_dataset_group):
-            kl_input_ids = data['prompt_input_ids'] + kl_data['answer_input_ids']
-            kl_labels = data['prompt_labels'] + kl_data['answer_labels']
-            new_dataset_group.append({
-                'input_ids': data['input_ids'],
-                'labels': data['labels'],
-                'KL_input_ids': kl_input_ids,
-                'KL_labels': kl_labels,
-                'label': kl_data['label']
-            })
-        raw_dataset[i:i + total_batch_size] = new_dataset_group
-        i += total_batch_size
+    def batched_preprocess(self, batched_row: Dict[str, Any], *, strict: bool) -> Dict[str, Any]:
+        batched_row = dict(batched_row)
+        answer_input_ids = batched_row['answer_input_ids']
+        answer_labels = batched_row['answer_labels']
+        batch_size = len(answer_input_ids)
+        kl_answer_input_ids = [answer_input_ids[-1]] + answer_input_ids[:-1]
+        kl_answer_labels = [answer_labels[-1]] + answer_labels[:-1]
+
+        kl_input_ids = []
+        kl_labels = []
+        for i in range(batch_size):
+            kl_input_ids.append(batched_row['prompt_input_ids'][i] + kl_answer_input_ids[i])
+            kl_labels.append(batched_row['prompt_labels'][i] + kl_answer_labels[i])
+        return {
+            'input_ids': batched_row['input_ids'],
+            'labels': batched_row['labels'],
+            'KL_input_ids': kl_input_ids,
+            'KL_labels': kl_labels,
+            'label': batched_row['label']
+        }
+
+
+def get_kl_dataset(dataset: HfDataset, total_batch_size: int, num_proc: int, seed: Optional[int] = None) -> HfDataset:
+    # Shift one position to the right in each batch.
+    dataset = dataset.shuffle(seed)
+    return KTOPreprocessor()(dataset, batch_size=total_batch_size, num_proc=num_proc)
 
 
 class KTOTrainer(RLHFTrainerMixin, SwiftMixin, HFKTOTrainer):
@@ -75,8 +81,8 @@ class KTOTrainer(RLHFTrainerMixin, SwiftMixin, HFKTOTrainer):
             if total_batch_size <= 1:
                 raise ValueError('Batch size is 1 (too small). KTO will not work properly because the KL term '
                                  'will be equivalent to the implied reward.')
-            _add_kl_dataset(train_dataset, total_batch_size, args.data_seed)
-            _add_kl_dataset(eval_dataset, total_batch_size, args.data_seed)
+            train_dataset = get_kl_dataset(train_dataset, total_batch_size, args.dataset_num_proc, args.data_seed)
+            eval_dataset = get_kl_dataset(eval_dataset, total_batch_size, args.dataset_num_proc, args.data_seed)
         label = train_dataset['label']
         num_desirable = max(sum(label), 1)
         num_undesirable = max(len(label) - num_desirable, 1)  # "label" is binary

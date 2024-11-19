@@ -26,7 +26,8 @@ def check_json_format(obj: Any, token_safe: bool = True) -> Any:
     if obj is None or isinstance(obj, (int, float, str, complex)):  # bool is a subclass of int
         return obj
     if isinstance(obj, torch.dtype):
-        return str(obj)[len('torch.'):]
+        obj = str(obj)
+        return obj[len('torch.'):] if obj.startswith('torch.') else obj
 
     if isinstance(obj, Sequence):
         res = []

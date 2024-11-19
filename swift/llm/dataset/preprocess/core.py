@@ -29,23 +29,17 @@ def get_dataset_features(dataset: DATASET_TYPE) -> Dict[str, Any]:
     return features
 
 
-standard_keys = ['messages', 'rejected_response', 'label', 'images', 'videos', 'audios', 'tools', 'objects']
-
-
 class RowPreprocessor:
 
-    standard_keys = standard_keys
     cast_mm_data = True
 
     def __init__(self,
                  *,
                  columns_mapping: Optional[Dict[str, str]] = None,
-                 remove_useless_columns: bool = True,
                  dataset_sample: Optional[int] = None,
                  random_state: Union[np.random.RandomState, int, None] = None,
                  traceback_limit: int = 10) -> None:
         self.columns_mapping = columns_mapping or {}
-        self.remove_useless_columns = remove_useless_columns
         self.row_mapping = {}
         self.traceback_limit = traceback_limit
         self._traceback_counter = 0
@@ -97,7 +91,7 @@ class RowPreprocessor:
     def prepare_dataset(self, dataset: HfDataset) -> HfDataset:
         return dataset
 
-    def _row_map(self, batched_row: Dict[str, Any], *, strict: bool) -> Dict[str, Any]:
+    def batched_preprocess(self, batched_row: Dict[str, Any], *, strict: bool) -> Dict[str, Any]:
         batched_row = dict(batched_row)
         self.row_keys_map(batched_row, self.row_mapping)
         keys = list(batched_row.keys())
@@ -143,14 +137,6 @@ class RowPreprocessor:
         safe_columns_mapping = {k: v for k, v in columns_mapping.items() if k in features}
         if safe_columns_mapping:
             dataset = dataset.rename_columns(safe_columns_mapping)
-        return dataset
-
-    @classmethod
-    def _remove_useless_columns(cls, dataset: DATASET_TYPE) -> DATASET_TYPE:
-        features = get_dataset_features(dataset).keys()
-        k_list = [k for k in features if k in cls.standard_keys]
-        if len(k_list) != len(features):
-            dataset = dataset.select_columns(k_list)
         return dataset
 
     @staticmethod
@@ -203,22 +189,24 @@ class RowPreprocessor:
         num_proc: int = 1,
         strict: bool = True,
         load_from_cache_file: bool = False,
+        batch_size: Optional[int] = 1000,
     ) -> DATASET_TYPE:
         from ..utils import sample_dataset
         if self.dataset_sample is not None:
             dataset = sample_dataset(dataset, self.dataset_sample, self.random_state)
         dataset = self.safe_rename_columns(dataset, self.columns_mapping)
         dataset = self.prepare_dataset(dataset)
-        _row_map = partial(self._row_map, strict=strict)
 
         dataset = self._cast_mm_data(dataset, False)
         with self._patch_arrow_writer():
             try:
                 dataset_mapped = dataset.map(
-                    _row_map,
+                    self.batched_preprocess,
                     num_proc=num_proc,
                     load_from_cache_file=load_from_cache_file,
                     batched=True,
+                    batch_size=batch_size,
+                    fn_kwargs={'strict': strict},
                     remove_columns=list(get_dataset_features(dataset).keys()))
             except NotImplementedError:
                 pass
@@ -227,20 +215,14 @@ class RowPreprocessor:
         if hasattr(dataset, '__len__') and len(dataset) != len(dataset_mapped):
             logger.info(
                 f'Dataset filtered, origin length: {len(dataset)}, filtered dataset length: {len(dataset_mapped)}')
-        if self.remove_useless_columns:
-            dataset_mapped = self._remove_useless_columns(dataset_mapped)
         return dataset_mapped
 
 
 class ResponsePreprocessor(RowPreprocessor):
     """Dataset compatible with older versions of ms-swift"""
 
-    def __init__(self,
-                 *,
-                 columns_mapping: Optional[Dict[str, str]] = None,
-                 remove_useless_columns: bool = True,
-                 **kwargs) -> None:
-        super().__init__(columns_mapping=columns_mapping, remove_useless_columns=remove_useless_columns, **kwargs)
+    def __init__(self, *, columns_mapping: Optional[Dict[str, str]] = None, **kwargs) -> None:
+        super().__init__(columns_mapping=columns_mapping, **kwargs)
         system_keys = ['system', 'system_prompt']
         query_keys = ['query', 'prompt', 'input', 'instruction', 'question']
         response_keys = ['response', 'answer', 'output', 'targets', 'target', 'answer_key', 'solution'
@@ -279,14 +261,13 @@ class AlpacaPreprocessor(ResponsePreprocessor):
                  *,
                  concat_inst_input: Union[Callable[[str, str], str]] = '\n',
                  columns_mapping: Optional[Dict[str, str]] = None,
-                 remove_useless_columns: bool = True,
                  **kwargs) -> None:
         """Alpaca format preprocessor
 
         Args:
             concat_inst_input: The concat sep between instruction and input
         """
-        super().__init__(columns_mapping=columns_mapping, remove_useless_columns=remove_useless_columns, **kwargs)
+        super().__init__(columns_mapping=columns_mapping, **kwargs)
         self.concat_inst_input = concat_inst_input
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -330,9 +311,8 @@ class MessagesPreprocessor(RowPreprocessor):
             repair_messages: Callable[[Union[str, List[Dict[str, str]]]],
                                       Optional[List[Dict[str, str]]]] = default_repair_messages,
             inner_key: Optional[str] = None,
-            remove_useless_columns: bool = True,
             **kwargs):
-        super().__init__(columns_mapping=columns_mapping, remove_useless_columns=remove_useless_columns, **kwargs)
+        super().__init__(columns_mapping=columns_mapping, **kwargs)
         self.role_keys = ['role', 'from'] if role_key is None else [role_key]
         self.content_keys = ['content', 'value'] if content_key is None else [content_key]
         self.user_roles = ['user', 'human'] if user_role is None else [user_role]
@@ -422,13 +402,8 @@ class MessagesPreprocessor(RowPreprocessor):
 
 class AutoPreprocessor:
 
-    def __init__(self,
-                 *,
-                 columns_mapping: Optional[Dict[str, str]] = None,
-                 remove_useless_columns: bool = True,
-                 **kwargs) -> None:
+    def __init__(self, *, columns_mapping: Optional[Dict[str, str]] = None, **kwargs) -> None:
         self.columns_mapping = columns_mapping or {}
-        kwargs['remove_useless_columns'] = remove_useless_columns
         self.kwargs = kwargs
 
     def _get_preprocessor(self, dataset: DATASET_TYPE) -> RowPreprocessor:

@@ -164,7 +164,7 @@ class Template:
     def _kto_encode(self, inputs):
         encoded = self._encode(inputs)
         if len(encoded) > 0:
-            encoded['label'] = inputs['label']
+            encoded['label'] = inputs.label
         return encoded
 
     def encode(
@@ -672,6 +672,13 @@ class Template:
         return args, kwargs
 
     def set_mode(self, mode: Literal['vllm', 'lmdeploy', 'pt', 'train', 'rlhf', 'kto']) -> None:
+        if mode == 'kto':
+            self.output_prompt_answer = True
+        else:
+            try:
+                del self.output_prompt_answer
+            except AttributeError:
+                pass
         self.mode = mode
 
     def register_post_encode_hook(self, models: List[nn.Module]) -> None:

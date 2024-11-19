@@ -66,7 +66,7 @@ class SwiftInfer(SwiftPipeline):
         if args.ckpt_dir and args.weight_type == 'lora':
             self.infer_engine.model = Swift.from_pretrained(self.infer_engine.model, args.ckpt_dir, inference_mode=True)
         self.template = self.get_template(args, self.tokenizer)
-        self.random_state = np.random.RandomState(args.dataset_seed)
+        self.random_state = np.random.RandomState(args.data_seed)
 
     def __getattr__(self, name: str):
         try:
@@ -267,8 +267,8 @@ class SwiftInfer(SwiftPipeline):
     def _prepare_val_dataset(self) -> HfDataset:
         args = self.args
         dataset_kwargs = {
-            'dataset_seed': args.dataset_seed,
-            'num_proc': args.num_proc,
+            'seed': args.data_seed,
+            'num_proc': args.dataset_num_proc,
             'load_from_cache_file': args.load_from_cache_file,
             'download_mode': args.download_mode,
             'model_name': args.model_name,

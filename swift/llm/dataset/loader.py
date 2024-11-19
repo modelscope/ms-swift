@@ -14,10 +14,13 @@ from modelscope.utils.config_ds import MS_CACHE_HOME
 
 from swift.hub import HFHub, MSHub
 from swift.utils import download_ms_file, get_logger, get_seed, safe_ddp_context, use_hf_hub
+from .preprocess import get_dataset_features
 from .register import DATASET_MAPPING, DATASET_TYPE, DatasetMeta, SubsetDataset, register_dataset_info
 from .utils import sample_dataset
 
 logger = get_logger()
+
+standard_keys = ['messages', 'rejected_response', 'label', 'images', 'videos', 'audios', 'tools', 'objects']
 
 
 @dataclass
@@ -277,6 +280,13 @@ class DatasetLoader:
                 train_dataset = sample_dataset(train_dataset, train_sample, random_state)
         return train_dataset, val_dataset
 
+    def _remove_useless_columns(dataset: DATASET_TYPE) -> DATASET_TYPE:
+        features = get_dataset_features(dataset).keys()
+        k_list = [k for k in features if k in standard_keys]
+        if len(k_list) != len(features):
+            dataset = dataset.select_columns(k_list)
+        return dataset
+
     @staticmethod
     def load(
         dataset_syntax: Optional[DatasetSyntax] = None,
@@ -317,17 +327,19 @@ class DatasetLoader:
                                             f'dataset_id: {dataset_id}.')
             datasets = []
             for subset in subsets:
-                datasets.append(
-                    DatasetLoader._load_repo_dataset(
-                        dataset_id,
-                        subset,
-                        dataset_syntax.use_hf,
-                        num_proc=num_proc,
-                        strict=strict,
-                        load_from_cache_file=load_from_cache_file,
-                        revision=revision,
-                        streaming=streaming,
-                        download_mode=download_mode))
+                dataset = DatasetLoader._load_repo_dataset(
+                    dataset_id,
+                    subset,
+                    dataset_syntax.use_hf,
+                    num_proc=num_proc,
+                    strict=strict,
+                    load_from_cache_file=load_from_cache_file,
+                    revision=revision,
+                    streaming=streaming,
+                    download_mode=download_mode)
+                dataset = DatasetLoader._remove_useless_columns(dataset)
+                datasets.append(dataset)
+
             dataset = DatasetLoader._concat_datasets(datasets, streaming)
         return dataset
 
@@ -378,7 +390,7 @@ class DatasetLoader:
 def load_dataset(
         datasets: List[str],
         split_dataset_ratio: float = 0.,
-        dataset_seed: Union[int, np.random.RandomState, None] = None,
+        seed: Union[int, np.random.RandomState, None] = None,
         *,
         num_proc: int = 1,
         strict: bool = True,
@@ -396,7 +408,7 @@ def load_dataset(
     Args:
         datasets: The dataset name list
         split_dataset_ratio: The dataset split ratio
-        dataset_seed: The dataset random seed
+        seed: The dataset random seed
         model_name: Model name in self-cognition task
         model_author: Model author in self-cognition task
         streaming: Streaming mode or not
@@ -405,8 +417,8 @@ def load_dataset(
     """
     if isinstance(datasets, str):
         datasets = [datasets]
-    if not isinstance(dataset_seed, np.random.RandomState):
-        dataset_seed = np.random.RandomState(dataset_seed)
+    if not isinstance(seed, np.random.RandomState):
+        seed = np.random.RandomState(seed)
     train_datasets = []
     val_datasets = []
     load_kwargs = {
@@ -425,7 +437,7 @@ def load_dataset(
             train_dataset,
             dataset_syntax.dataset_sample,
             split_dataset_ratio,
-            dataset_seed,
+            seed,
             streaming,
             load_from_cache_file=load_from_cache_file,
             streaming_val_size=streaming_val_size,

@@ -556,7 +556,6 @@
     {
         "ms_dataset_id": "swift/self-cognition",
         "hf_dataset_id": "modelscope/self-cognition",
-        "remove_useless_columns": false,
         "tags": ["chat", "self-cognition", "🔥"]
     },
     {
