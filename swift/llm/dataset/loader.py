@@ -14,6 +14,7 @@ from modelscope.utils.config_ds import MS_CACHE_HOME
 
 from swift.hub import HFHub, MSHub
 from swift.utils import download_ms_file, get_logger, get_seed, safe_ddp_context, use_hf_hub
+from .preprocess import get_dataset_features
 from .register import DATASET_MAPPING, DATASET_TYPE, DatasetMeta, SubsetDataset, register_dataset_info
 from .utils import sample_dataset
 
@@ -336,7 +337,7 @@ class DatasetLoader:
                     revision=revision,
                     streaming=streaming,
                     download_mode=download_mode)
-                dataset = self._remove_useless_columns(dataset)
+                dataset = DatasetLoader._remove_useless_columns(dataset)
                 datasets.append(dataset)
 
             dataset = DatasetLoader._concat_datasets(datasets, streaming)

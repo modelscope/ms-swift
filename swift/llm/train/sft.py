@@ -183,6 +183,7 @@ class SwiftSft(SwiftPipeline):
         return self.train(trainer)
 
     def _get_trainer_kwargs(self):
+        args = self.args
         if args.predict_with_generate:
             compute_metrics = partial(compute_nlg_metrics, tokenizer=tokenizer)
             preprocess_logits_for_metrics = None
