@@ -1,7 +1,9 @@
+from typing import Any, Dict, Optional
 
-from typing import Dict, Any, Optional
 from datasets import Dataset as HfDataset
+
 from .preprocessor import RowPreprocessor
+
 
 class KTOPreprocessor(RowPreprocessor):
 
@@ -21,7 +23,10 @@ class KTOPreprocessor(RowPreprocessor):
         return batched_row
 
 
-def get_kl_dataset(dataset: Optional[HfDataset], total_batch_size: int, num_proc: int, seed: Optional[int] = None) -> Optional[HfDataset]:
+def get_kl_dataset(dataset: Optional[HfDataset],
+                   total_batch_size: int,
+                   num_proc: int,
+                   seed: Optional[int] = None) -> Optional[HfDataset]:
     # Shift one position to the right in each batch.
     if dataset is None:
         return

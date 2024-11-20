@@ -122,10 +122,10 @@ class PushToHubHelper:
 
     @staticmethod
     def _add_patterns_to_file(repo,
-                             file_name: str,
-                             patterns: List[str],
-                             commit_message: Optional[str] = None,
-                             ignore_push_error=False) -> None:
+                              file_name: str,
+                              patterns: List[str],
+                              commit_message: Optional[str] = None,
+                              ignore_push_error=False) -> None:
         if isinstance(patterns, str):
             patterns = [patterns]
         if commit_message is None:

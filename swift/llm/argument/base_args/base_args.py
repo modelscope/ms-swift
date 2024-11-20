@@ -59,6 +59,7 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
         return TunerArguments.adapters_can_be_merged
 
     def load_args_from_ckpt(self, checkpoint_dir: str) -> None:
+        # TODO
         """Load specific attributes from args.json"""
         from swift.llm import TrainArguments
         if isinstance(self, TrainArguments):

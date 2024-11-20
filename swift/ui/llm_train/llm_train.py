@@ -223,9 +223,8 @@ class LLMTrain(BaseUI):
                 Dataset.build_ui(base_tab)
                 with gr.Accordion(elem_id='train_param', open=True):
                     with gr.Row():
-                        gr.Dropdown(
-                            elem_id='train_type', choices=['pretrain/sft', 'rlhf'], value='pretrain/sft', scale=3)
-                        gr.Dropdown(elem_id='sft_type', scale=2)
+                        gr.Dropdown(elem_id='train_stage', choices=['pretrain', 'sft', 'rlhf'], value='sft', scale=3)
+                        gr.Dropdown(elem_id='train_type', scale=2)
                         gr.Dropdown(elem_id='tuner_backend', scale=2)
                         gr.Textbox(elem_id='sequence_parallel_size', scale=3)
                     with gr.Row():
@@ -259,13 +258,9 @@ class LLMTrain(BaseUI):
                 Save.build_ui(base_tab)
                 Advanced.build_ui(base_tab)
 
-                cls.element('sft_type').change(
-                    Hyper.update_lr, inputs=[base_tab.element('sft_type')], outputs=[cls.element('learning_rate')])
+                cls.element('train_type').change(
+                    Hyper.update_lr, inputs=[base_tab.element('train_type')], outputs=[cls.element('learning_rate')])
 
-                cls.element('train_record').change(
-                    partial(cls.update_all_settings, base_tab=base_tab),
-                    inputs=[cls.element('model_type'), cls.element('train_record')],
-                    outputs=[value for value in cls.elements().values() if not isinstance(value, (Tab, Accordion))])
                 if cls.is_studio:
                     submit.click(
                         cls.update_runtime, [],
@@ -303,30 +298,15 @@ class LLMTrain(BaseUI):
         return gr.update(open=True), gr.update(visible=True)
 
     @classmethod
-    def update_all_settings(cls, model_type, train_record, base_tab):
-        if not train_record:
-            return [gr.update()] * len(base_tab.elements())
-        cache = cls.load_cache(model_type, train_record)
-        updates = []
-        for key, value in base_tab.elements().items():
-            if isinstance(value, (Tab, Accordion)):
-                continue
-            if (key in cache and isinstance(value, (Textbox, Dropdown, Slider, Checkbox)) and key != 'train_record'):
-                updates.append(gr.update(value=cache[key]))
-            else:
-                updates.append(gr.update())
-        return updates
-
-    @classmethod
     def train(cls, *args):
-        ignore_elements = ('model_type', 'logging_dir', 'more_params', 'train_type')
+        ignore_elements = ('logging_dir', 'more_params', 'train_stage')
         default_args = cls.get_default_value_from_dataclass(RLHFArguments)
         kwargs = {}
         kwargs_is_list = {}
         other_kwargs = {}
         more_params = {}
         more_params_cmd = ''
-        keys = [key for key, value in cls.elements().items() if not isinstance(value, (Tab, Accordion))]
+        keys = cls.get_element_keys()
         model_type = None
         do_rlhf = False
         for key, value in zip(keys, args):
@@ -348,14 +328,8 @@ class LLMTrain(BaseUI):
                 except (JSONDecodeError or TypeError):
                     more_params_cmd = value
 
-            if key == 'model_type':
-                model_type = value
-
-            if key == 'train_type':
+            if key == 'train_stage':
                 do_rlhf = value == 'rlhf'
-
-        if os.path.exists(kwargs['model_id_or_path']):
-            kwargs['model_type'] = model_type
 
         kwargs.update(more_params)
         if 'dataset' not in kwargs and 'custom_train_dataset_path' not in kwargs:

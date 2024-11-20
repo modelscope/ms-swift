@@ -2,7 +2,8 @@ from typing import Type
 
 import gradio as gr
 
-from swift.llm import MODEL_MAPPING, ModelType
+from swift.llm import MODEL_MAPPING, TEMPLATE_MAPPING, ModelType
+from swift.llm.model.register import get_matched_model_meta
 from swift.ui.base import BaseUI
 
 
@@ -91,7 +92,7 @@ class RLHF(BaseUI):
                         elem_id='ref_model_type',
                         choices=ModelType.get_model_name_list() + cls.get_custom_name_list(),
                         scale=20)
-                    ref_model_id_or_path = gr.Textbox(elem_id='ref_model_id_or_path', lines=1, scale=20)
+                    ref_model = gr.Textbox(elem_id='ref_model', lines=1, scale=20)
                     model_state = gr.State({})
                 with gr.Row():
                     loss_type = gr.Dropdown(elem_id='loss_type')
@@ -101,19 +102,22 @@ class RLHF(BaseUI):
                     gr.Slider(elem_id='desirable_weight', minimum=0., maximum=2.0, step=0.1, scale=20)
                     gr.Slider(elem_id='undesirable_weight', minimum=0., maximum=2.0, step=0.1, scale=20)
 
-            def update_input_model(choice, model_state=None):
-                if choice is None:
+            def update_input_model(model, model_state=None):
+                if model is None:
                     return None
-                if model_state and choice in model_state:
-                    model_id_or_path = model_state[choice]
+                model_meta = get_matched_model_meta(model)
+                if model_state and model in model_state:
+                    model_type = model_state[model]
+                elif model_meta:
+                    model_type = model_meta.model_type if model_meta else None
                 else:
-                    model_id_or_path = MODEL_MAPPING[choice]['model_id_or_path']
-                return model_id_or_path
+                    model_type = None
+                return model_type
 
-            def update_model_id_or_path(model_type, model_id_or_path, model_state):
-                if model_type is None or isinstance(model_type, list):
+            def update_model_id_or_path(model, model_type, model_state):
+                if model is None or isinstance(model, list):
                     return model_state
-                model_state[model_type] = model_id_or_path
+                model_state[model] = model_type
                 return model_state
 
             def update_value(rlhf_type):
@@ -133,10 +137,7 @@ class RLHF(BaseUI):
 
             rlhf_type.change(update_value, inputs=[rlhf_type], outputs=[beta, loss_type])
 
-            ref_model_type.change(
-                update_input_model, inputs=[ref_model_type, model_state], outputs=[ref_model_id_or_path])
+            ref_model.change(update_input_model, inputs=[ref_model, model_state], outputs=[ref_model_type])
 
-            ref_model_id_or_path.change(
-                update_model_id_or_path,
-                inputs=[ref_model_type, ref_model_id_or_path, model_state],
-                outputs=[model_state])
+            ref_model.change(
+                update_model_id_or_path, inputs=[ref_model, ref_model_type, model_state], outputs=[model_state])

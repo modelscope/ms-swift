@@ -116,7 +116,7 @@ class Hyper(BaseUI):
                     gr.Slider(elem_id='batch_size', minimum=1, maximum=256, step=2, scale=20)
                     gr.Textbox(elem_id='learning_rate', value='1e-4', lines=1, scale=20)
                     gr.Textbox(elem_id='num_train_epochs', lines=1, scale=20)
-                    gr.Checkbox(elem_id='use_flash_attn', scale=20)
+                    gr.Dropdown(elem_id='attn_impl', scale=20, value='flash_attn')
                     gr.Slider(elem_id='gradient_accumulation_steps', minimum=1, maximum=256, step=2, value=16, scale=20)
                 with gr.Row():
                     gr.Textbox(elem_id='eval_steps', lines=1, value='500', scale=20)

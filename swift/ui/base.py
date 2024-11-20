@@ -7,11 +7,13 @@ from datetime import datetime
 from functools import wraps
 from typing import Any, Dict, List, OrderedDict, Type
 
+import gradio as gr
 import json
 from gradio import Accordion, Audio, Button, Checkbox, Dropdown, File, Image, Slider, Tab, TabItem, Textbox, Video
 from modelscope.hub.utils.utils import get_cache_dir
 
-from swift.llm import MODEL_MAPPING, ModelType
+from swift.llm import MODEL_MAPPING, TEMPLATE_MAPPING, BaseArguments, ModelType
+from swift.llm.model.register import get_matched_model_meta
 
 all_langs = ['zh', 'en']
 builder: Type['BaseUI'] = None
@@ -111,6 +113,13 @@ class BaseUI:
         cls.do_build_ui(base_tab)
         builder = old_builder
         base_builder = old_base_builder
+        if cls is base_tab:
+            for ui in cls.sub_ui:
+                ui.after_build_ui(base_tab)
+
+    @classmethod
+    def after_build_ui(cls, base_tab: Type['BaseUI']):
+        pass
 
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
@@ -138,12 +147,13 @@ class BaseUI:
         return sorted(files, reverse=True)
 
     @classmethod
-    def load_cache(cls, key, timestamp):
+    def load_cache(cls, key, timestamp) -> BaseArguments:
         dt_object = datetime.strptime(timestamp, '%Y/%m/%d %H:%M:%S')
         timestamp = int(dt_object.timestamp())
         filename = key + '-' + str(timestamp)
         with open(os.path.join(cls.cache_dir, filename), 'r') as f:
-            return json.load(f)
+            ckpt_dir = f.read()
+            return BaseArguments.load_args_from_ckpt(ckpt_dir)
 
     @classmethod
     def clear_cache(cls, key):
@@ -199,6 +209,19 @@ class BaseUI:
         return elements
 
     @classmethod
+    def valid_elements(cls):
+        elements = cls.elements()
+        return {key: value for key, value in elements if isinstance(value, (Textbox, Dropdown, Slider, Checkbox))}
+
+    @classmethod
+    def element_keys(cls):
+        return list(cls.elements().keys())
+
+    @classmethod
+    def valid_element_keys(cls):
+        return [key for key, value in cls.elements().items() if isinstance(value, (Textbox, Dropdown, Slider, Checkbox))]
+
+    @classmethod
     def element(cls, elem_id):
         """Get element by elem_id"""
         elements = cls.elements()
@@ -245,3 +268,51 @@ class BaseUI:
     @staticmethod
     def get_custom_name_list():
         return list(set(MODEL_MAPPING.keys()) - set(ModelType.get_model_name_list()))
+
+    @classmethod
+    def update_input_model(cls, model, has_record=True):
+        keys = cls.valid_element_keys()
+
+        if os.path.exists(model):
+            local_path = os.path.join(model, 'sft_args.json')
+            if not os.path.exists(local_path):
+                return [gr.update()] * (len(keys) + int(has_record))
+
+            args: BaseArguments = BaseArguments.load_args_from_ckpt(local_path)
+            values = []
+            for key in keys:
+                arg_value = getattr(args, key, None)
+                if arg_value:
+                    values.append(gr.update(value=arg_value))
+                else:
+                    values.append(gr.update())
+            return [gr.update(choices=[])] * int(has_record) + values
+        else:
+            values = []
+            model_meta = get_matched_model_meta(model)
+            for key in keys:
+                if key in ('template', 'model_type'):
+                    values.append(gr.update(value=getattr(model_meta, key)))
+                elif key == 'system':
+                    values.append(gr.update(value=TEMPLATE_MAPPING[model_meta.template].default_system))
+                else:
+                    values.append(gr.update())
+        if has_record:
+            return [gr.update(choices=cls.list_cache(model))] + values
+        else:
+            return values
+
+    @classmethod
+    def update_all_settings(cls, model_type, train_record, base_tab):
+        if not train_record:
+            return [gr.update()] * len(base_tab.elements())
+        cache = cls.load_cache(model_type, train_record)
+        updates = []
+        for key, value in base_tab.valid_elements().items():
+            if isinstance(value, (Tab, Accordion)):
+                continue
+            if key in cache and key != 'train_record':
+                updates.append(gr.update(value=cache[key]))
+            else:
+                updates.append(gr.update())
+        return updates
