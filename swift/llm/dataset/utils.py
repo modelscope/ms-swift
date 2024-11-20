@@ -18,7 +18,7 @@ from tqdm.auto import tqdm
 from transformers import PreTrainedTokenizerBase
 
 from swift.utils import get_logger, stat_array
-from .preprocess import DATASET_TYPE, RowPreprocessor
+from .preprocessor import DATASET_TYPE, RowPreprocessor
 
 logger = get_logger()
 

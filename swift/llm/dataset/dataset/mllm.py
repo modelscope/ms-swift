@@ -9,8 +9,7 @@ from datasets import IterableDataset as HfIterableDataset
 from tqdm import tqdm
 
 from ..media import MediaResource
-from ..preprocess import MessagesPreprocessor, ResponsePreprocessor, RowPreprocessor
-from ..preprocess.extra import GroundingMixin
+from ..preprocessor import GroundingMixin, MessagesPreprocessor, ResponsePreprocessor, RowPreprocessor
 from ..register import DatasetMeta, SubsetDataset, register_dataset
 
 

@@ -40,10 +40,6 @@ class FlorenceTemplate(Template):
         }
         super().__init__(*args, **kwargs)
 
-    def _check_inputs(self, inputs: StdTemplateInputs):
-        images = inputs.images or []
-        assert len(images) == 1, 'Florence series models only supports input with a single image.'
-
     @staticmethod
     def _add_default_tags(inputs: StdTemplateInputs) -> None:
         return

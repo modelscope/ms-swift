@@ -37,7 +37,7 @@ class LossScale:
         i = 0
         n_round = len(messages) // 2
         for context_type in context_types:
-            is_last_round = i - 1 == n_round
+            is_last_round = i + 1 == n_round
             if context_type == ContextType.RESPONSE:
                 query, response = messages[2 * i]['content'], messages[2 * i + 1]['content']
                 res.append(self.get_loss_scale(context_type, is_last_round, query=query, response=response))

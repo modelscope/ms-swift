@@ -6,8 +6,8 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from datasets import Dataset as HfDataset
 from datasets import IterableDataset
 
-from ..preprocess import (DATASET_TYPE, AlpacaPreprocessor, ClsPreprocessor, MessagesPreprocessor, ResponsePreprocessor,
-                          RowPreprocessor, TextGenerationPreprocessor)
+from ..preprocessor import (DATASET_TYPE, AlpacaPreprocessor, ClsPreprocessor, MessagesPreprocessor,
+                            ResponsePreprocessor, RowPreprocessor, TextGenerationPreprocessor)
 from ..register import DatasetMeta, SubsetDataset, register_dataset
 
 

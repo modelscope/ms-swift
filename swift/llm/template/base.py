@@ -147,8 +147,6 @@ class Template:
         chosen_inputs, rejected_inputs = inputs, inputs.copy()
         assert chosen_inputs.rejected_response is not None
         rejected_inputs.messages[-1]['content'] = chosen_inputs.rejected_response
-        self._check_inputs(chosen_inputs)
-        self._check_inputs(rejected_inputs)
         chosen_encoded = self._encode(chosen_inputs)
         rejected_encoded = self._encode(rejected_inputs)
         if len(chosen_encoded) == 0 or len(rejected_encoded) == 0:
@@ -162,10 +160,16 @@ class Template:
         return encoded
 
     def _kto_encode(self, inputs):
-        encoded = self._encode(inputs)
-        if len(encoded) > 0:
-            encoded['label'] = inputs.label
-        return encoded
+        encoded = self._rlhf_encode(inputs)
+        if len(encoded) == 0:
+            return {}
+        return {
+            'input_ids': encoded['chosen_input_ids'],
+            'labels': encoded['chosen_labels'],
+            'KL_input_ids': encoded['chosen_prompt_input_ids'] + encoded['rejected_answer_input_ids'],
+            'KL_labels': encoded['chosen_prompt_labels'] + encoded['rejected_answer_labels'],
+            'label': inputs.label
+        }
 
     def encode(
         self,
@@ -192,13 +196,11 @@ class Template:
             if inputs.images:
                 encoded['images'] = inputs.images
         elif self.mode in {'pt', 'train'}:
-            self._check_inputs(inputs)
             encoded = self._encode(inputs)
         elif self.mode == 'rlhf':
             encoded = self._rlhf_encode(inputs)
         elif self.mode == 'kto':
             encoded = self._kto_encode(inputs)
-
         for key in list(encoded.keys()):
             if encoded[key] is None:
                 encoded.pop(key)
@@ -353,10 +355,6 @@ class Template:
             tokenizer = tokenizer.tokenizer
         return tokenizer(
             context, return_attention_mask=False, add_special_tokens=False, **tokenizer_kwargs)['input_ids']
-
-    def _check_inputs(self, inputs: StdTemplateInputs) -> None:
-        """Check inputs valid"""
-        pass
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -612,15 +610,18 @@ class Template:
                 labels = labels[-self.max_length:]
             if loss_scale is not None:
                 loss_scale = loss_scale[-self.max_length:]
-        encoded['input_ids'] = input_ids
-        if response is None:
-            labels = None
-            loss_scale = None
-        if self.loss_scale == 'default':
-            loss_scale = None
 
+        encoded['input_ids'] = input_ids
         encoded['labels'] = labels
         encoded['loss_scale'] = loss_scale
+        if response is None:
+            for k in list(encoded.keys()):
+                if k.endswith('labels'):
+                    encoded[k] = None
+        if response is None or self.loss_scale in {'default', 'all', 'last_round'}:
+            for k in list(encoded.keys()):
+                if k.endswith('loss_scale'):
+                    encoded[k] = None
         return encoded
 
     def _get_tokenizer_kwargs(self, context: str) -> Dict[str, Any]:
