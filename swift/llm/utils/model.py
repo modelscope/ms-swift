@@ -541,6 +541,7 @@ class ModelType:
     ministral_8b_instruct_2410 = 'ministral-8b-instruct-2410'
 
     pixtral_12b = 'pixtral-12b'
+    pixtral_large_instruct = 'pixtral-large-instruct'
     # wizardlm
     wizardlm2_7b_awq = 'wizardlm2-7b-awq'
     wizardlm2_8x22b = 'wizardlm2-8x22b'
@@ -1124,6 +1125,16 @@ def _output_device_map_hook(module, input, output):
     return output.to(input[0].device)
 
 
+@register_model(
+    ModelType.pixtral_large_instruct,
+    'AI-ModelScope/Pixtral-Large-Instruct-2411',
+    LoRATM.llava,
+    TemplateType.pixtral_large,
+    # torch_dtype=torch.float16,  # Please do not use bf16.
+    requires=['transformers>=4.45'],
+    placeholder_tokens=['[IMG]'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='mistralai/Pixtral-Large-Instruct-2411')
 @register_model(
     ModelType.pixtral_12b,
     'AI-ModelScope/pixtral-12b',
