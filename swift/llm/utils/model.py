@@ -1130,7 +1130,6 @@ def _output_device_map_hook(module, input, output):
     'AI-ModelScope/Pixtral-Large-Instruct-2411',
     LoRATM.llava,
     TemplateType.pixtral_large,
-    # torch_dtype=torch.float16,  # Please do not use bf16.
     requires=['transformers>=4.45'],
     placeholder_tokens=['[IMG]'],
     tags=['multi-modal', 'vision'],
