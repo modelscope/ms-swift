@@ -121,7 +121,6 @@ register_model(
         TemplateType.phi3,
         get_model_tokenizer_phi3_small,
         architectures=['Phi3SmallForCausalLM'],
-        support_gradient_checkpointing=False,
         model_arch=ModelArch.phi3_small))
 
 
@@ -145,7 +144,6 @@ register_model(
         get_model_tokenizer_phi,
         architectures=['PhiForCausalLM'],
         model_arch=ModelArch.phi2,
-        support_gradient_checkpointing=False,
     ))
 
 register_model(

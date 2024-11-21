@@ -61,7 +61,6 @@ class ModelMeta:
     is_multimodal: bool = False
     # Additional files that need to be saved for full parameter training/merge-lora.
     additional_saved_files: List[str] = field(default_factory=list)
-    support_gradient_checkpointing: bool = True
     torch_dtype: Optional[torch.dtype] = None
 
     # File patterns to ignore when downloading the model.
@@ -83,23 +82,11 @@ class ModelMeta:
         for require in self.requires:
             require_version(require)
 
-    def check_flash_attn(self, attn_impl: Optional[str]) -> None:
-        from .utils import AttnImpl
-        if attn_impl is None:
-            return
-        if attn_impl == AttnImpl.flash_attn and not self.support_flash_attn:
-            logger.warning(f'attn_impl: {attn_impl}, but support_flash_attn: {self.support_flash_attn}')
-
     def check_infer_backend(self, infer_backend: str) -> None:
         if infer_backend == 'vllm' and not self.support_vllm:
             logger.warning(f'infer_backend: {infer_backend}, but support_vllm: {self.support_vllm}')
         elif infer_backend == 'lmdeploy' and not self.support_lmdeploy:
             logger.warning(f'infer_backend: {infer_backend}, but support_lmdeploy: {self.support_lmdeploy}')
-
-    def check_gradient_checkpointing(self, gradient_checkpoint: bool) -> None:
-        if gradient_checkpoint and not self.support_gradient_checkpointing:
-            logger.warning(f'gradient_checkpoint: {gradient_checkpoint}, but support_gradient_checkpointing: '
-                           f'{self.support_gradient_checkpointing}')
 
 
 MODEL_MAPPING: Dict[str, ModelMeta] = {}
@@ -494,7 +481,6 @@ def get_model_tokenizer(model_id_or_path: str,
     model_info.torch_dtype = torch_dtype
 
     model_meta.check_requires()
-    model_meta.check_flash_attn(attn_impl)
     get_function = model_meta.get_function
     kwargs['automodel_class'] = automodel_class
     model, tokenizer = get_function(model_dir, model_info, model_kwargs, load_model, **kwargs)
