@@ -26,7 +26,7 @@ logger = get_logger()
 class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
     """Override the default value in `Seq2SeqTrainingArguments`"""
     output_dir: Optional[str] = None
-    gradient_checkpointing: Optional[bool] = None
+    gradient_checkpointing: bool = True
 
     per_device_train_batch_size: int = 1
     per_device_eval_batch_size: int = 1
@@ -65,11 +65,6 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
             self.evaluation_strategy = self.save_strategy
             self.eval_strategy = self.save_strategy
             self.eval_steps = self.save_steps
-
-    def _init_gradient_checkpointing(self):
-        """Prepare gradient checkpointing arguments"""
-        if self.gradient_checkpointing is None:
-            self.gradient_checkpointing = self.model_meta.support_gradient_checkpointing
 
 
 @dataclass

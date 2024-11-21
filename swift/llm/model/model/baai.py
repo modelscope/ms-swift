@@ -91,7 +91,6 @@ register_model(
         ],
         TemplateType.emu3_chat,
         get_model_tokenizer_emu3_chat,
-        support_gradient_checkpointing=True,
         architectures=['LlavaForConditionalGeneration'],
         model_arch=ModelArch.emu3_chat,
     ))

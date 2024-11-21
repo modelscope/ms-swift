@@ -779,7 +779,6 @@ register_model(
         TemplateType.molmo,
         get_model_tokenizer_molmoe_1b,
         model_arch=ModelArch.molmo,
-        support_gradient_checkpointing=False,
         torch_dtype=torch.float32,
         architectures=['MolmoForCausalLM'],
     ))
@@ -826,6 +825,5 @@ register_model(
         TemplateType.molmo,
         get_model_tokenizer_molmo,
         model_arch=ModelArch.molmo,
-        support_gradient_checkpointing=False,
         architectures=['MolmoForCausalLM'],
     ))
