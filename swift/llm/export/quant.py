@@ -135,9 +135,11 @@ class QuantEngine(ProcessorMixin):
         _prepare_dataset_origin = quantizer.prepare_dataset
         quantizer.get_dataset = self._get_quant_dataset
         quantizer.prepare_dataset = self._prepare_dataset
-        yield
-        quantizer.get_dataset = _get_dataset_origin
-        quantizer.prepare_dataset = _prepare_dataset_origin
+        try:
+            yield
+        finally:
+            quantizer.get_dataset = _get_dataset_origin
+            quantizer.prepare_dataset = _prepare_dataset_origin
 
     def _patch_model_forward(self, module_list):
 

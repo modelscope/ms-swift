@@ -76,9 +76,11 @@ class KTOTrainer(RLHFTrainerMixin, SwiftMixin, HFKTOTrainer):
             if '_data' in batch:
                 handle = model.register_forward_pre_hook(_add_data_hook, with_kwargs=True, prepend=True)
 
-            yield
-            if handle:
-                handle.remove()
+            try:
+                yield
+            finally:
+                if handle:
+                    handle.remove()
 
         with _patch_model_call():
             return super().forward(model, batch)

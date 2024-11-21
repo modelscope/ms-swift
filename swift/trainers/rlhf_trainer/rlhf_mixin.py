@@ -48,10 +48,12 @@ class ModelWrapper(nn.Module):
         deepspeed_model.__dict__['module'] = _new_model
         deepspeed_model._modules['module'] = _new_model
         trainer.model = _new_model
-        yield
-        deepspeed_model.__dict__['module'] = _old_model
-        deepspeed_model._modules['module'] = _old_model
-        trainer.model = deepspeed_model
+        try:
+            yield
+        finally:
+            deepspeed_model.__dict__['module'] = _old_model
+            deepspeed_model._modules['module'] = _old_model
+            trainer.model = deepspeed_model
 
 
 class RLHFTrainerMixin:
@@ -135,9 +137,11 @@ class RLHFTrainerMixin:
             _old_model_call = model.__class__.__call__
             self.concatenated_inputs = lambda *args, **kwargs: model_kwargs
             model.__class__.__call__ = lambda *args, **kwargs: outputs
-            yield
-            self.concatenated_inputs = _old_concatenated_inputs
-            model.__class__.__call__ = _old_model_call
+            try:
+                yield
+            finally:
+                self.concatenated_inputs = _old_concatenated_inputs
+                model.__class__.__call__ = _old_model_call
 
         with _patch_concatenated_forward():
             return super().concatenated_forward(model, model_kwargs)

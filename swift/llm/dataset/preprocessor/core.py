@@ -172,9 +172,11 @@ class RowPreprocessor:
 
         ArrowWriter.__origin_init__ = ArrowWriter.__init__
         ArrowWriter.__init__ = _new_init
-        yield
-        ArrowWriter.__init__ = ArrowWriter.__origin_init__
-        del ArrowWriter.__origin_init__
+        try:
+            yield
+        finally:
+            ArrowWriter.__init__ = ArrowWriter.__origin_init__
+            del ArrowWriter.__origin_init__
 
     def _cast_mm_data(self, dataset, decode: bool):
         if not self.cast_mm_data:

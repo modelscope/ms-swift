@@ -331,5 +331,7 @@ def ignore_check_imports():
 
     td._old_check_imports = td.check_imports
     td.check_imports = _check_imports
-    yield
-    td.check_imports = td._old_check_imports
+    try:
+        yield
+    finally:
+        td.check_imports = td._old_check_imports

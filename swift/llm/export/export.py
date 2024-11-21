@@ -1,7 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Any, Dict, List, Union
 
-from swift.hub import default_hub
 from swift.llm import ExportArguments, SwiftPipeline
 from swift.tuners import swift_to_peft_format
 from swift.utils import get_logger
@@ -29,7 +28,7 @@ class SwiftExport(SwiftPipeline):
         elif args.push_to_hub:
             ckpt_dir = args.ckpt_dir or args.model
             assert ckpt_dir is not None, 'You need to specify `ckpt_dir`.'
-            default_hub.push_to_hub(
+            args.hub.push_to_hub(
                 args.hub_model_id,
                 ckpt_dir,
                 token=args.hub_token,
