@@ -24,6 +24,7 @@ from transformers.trainer import Trainer, TrainerCallback
 from transformers.trainer_utils import EvalPrediction
 from transformers.utils import is_torch_npu_available
 
+from swift.llm import Processor, ProcessorMixin
 from swift.tuners import SwiftModel
 from swift.utils import get_logger, is_ddp_plus_mp
 from .arguments import TrainingArguments
@@ -41,7 +42,7 @@ logger = get_logger()
 PushToHubHelper.patch()
 
 
-class SwiftMixin(TorchAccMixin):
+class SwiftMixin(TorchAccMixin, ProcessorMixin):
 
     def __init__(
             self,
@@ -50,7 +51,7 @@ class SwiftMixin(TorchAccMixin):
             data_collator: Optional[DataCollator] = None,
             train_dataset: Optional[HfDataset] = None,
             eval_dataset: Optional[Union[HfDataset, Dict[str, HfDataset]]] = None,
-            tokenizer: Optional[PreTrainedTokenizerBase] = None,
+            processor: Optional[Processor] = None,
             model_init: Optional[Callable[[], PreTrainedModel]] = None,
             compute_loss_func: Optional[Callable] = None,
             compute_metrics: Optional[Callable[[EvalPrediction], Dict]] = None,
@@ -65,6 +66,7 @@ class SwiftMixin(TorchAccMixin):
                     'third_party': 'swift',
                 })
         self._custom_metrics = {}
+        self.processor = processor
         self.compute_loss_func = compute_loss_func
         self.max_memory = 0
         if args.sequence_parallel_size > 1:
@@ -77,7 +79,7 @@ class SwiftMixin(TorchAccMixin):
             data_collator=data_collator,
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
-            tokenizer=tokenizer,
+            tokenizer=self.tokenizer,
             model_init=model_init,
             compute_metrics=compute_metrics,
             callbacks=callbacks,
@@ -186,7 +188,7 @@ class SwiftMixin(TorchAccMixin):
             from swift.llm import save_checkpoint
             additional_saved_files = self.model.model_meta.additional_saved_files if hasattr(self.model,
                                                                                              'model_meta') else []
-            save_checkpoint(None, self.tokenizer, output_dir, additional_saved_files=additional_saved_files)
+            save_checkpoint(None, self.processor, output_dir, additional_saved_files=additional_saved_files)
 
     def _fix_zero3_gather_all_parameters(self) -> None:
         if is_deepspeed_zero3_enabled() and not hasattr(self.deepspeed, '_zero3_consolidated_16bit_state_dict_origin'):

@@ -10,7 +10,7 @@ import torch
 from tqdm import tqdm
 from transformers import PreTrainedTokenizerBase
 
-from swift.llm import InferRequest, Template, get_model_tokenizer, get_template
+from swift.llm import InferRequest, ProcessorMixin, Template, get_model_tokenizer, get_template
 from swift.llm.template import split_action_action_input
 from swift.plugin import Metric
 from swift.utils import get_logger
@@ -21,7 +21,7 @@ from .base import BaseInferEngine
 logger = get_logger()
 
 
-class InferEngine(BaseInferEngine):
+class InferEngine(BaseInferEngine, ProcessorMixin):
 
     def _prepare_model_tokenizer(
             self,
@@ -38,7 +38,7 @@ class InferEngine(BaseInferEngine):
             attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None,
             model_kwargs: Optional[Dict[str, Any]] = None,
             **kwargs) -> None:
-        model, tokenizer = get_model_tokenizer(
+        model, processor = get_model_tokenizer(
             model_id_or_path,
             torch_dtype,
             load_model=load_model,
@@ -51,7 +51,7 @@ class InferEngine(BaseInferEngine):
             attn_impl=attn_impl,
             model_kwargs=model_kwargs,
             **kwargs)
-        self.tokenizer = tokenizer
+        self.processor = processor
         self.model = model
         self.model_info = tokenizer.model_info
         self.model_meta = tokenizer.model_meta
@@ -59,7 +59,7 @@ class InferEngine(BaseInferEngine):
         self.config = self.model_info.config
 
     def _prepare_default_template(self):
-        self.default_template = get_template(self.model_meta.template, self.tokenizer)
+        self.default_template = get_template(self.model_meta.template, self.processor)
 
     def _get_stop_words(self, stop_words: List[Union[str, List[int], None]]) -> List[str]:
         stop: List[str] = []

@@ -88,7 +88,7 @@ class SwiftSft(SwiftPipeline):
 
     def _prepare_model_tokenizer(self):
         args = self.args
-        self.model, self.tokenizer = self._get_model_tokenizer(args.model, args.model_type, args.model_revision)
+        self.model, self.processor = self._get_model_tokenizer(args.model, args.model_type, args.model_revision)
 
         if hasattr(self.model, 'hf_device_map'):
             logger.info(f'model.hf_device_map: {self.model.hf_device_map}')
@@ -102,7 +102,7 @@ class SwiftSft(SwiftPipeline):
         args = self.args
         template = get_template(
             args.template,
-            self.tokenizer,
+            self.processor,
             args.system,
             args.max_length,
             truncation_strategy=args.truncation_strategy,
@@ -175,7 +175,7 @@ class SwiftSft(SwiftPipeline):
             eval_dataset=val_dataset,
             callbacks=self.callbacks,
             optimizers=optimizers,
-            tokenizer=self.tokenizer,
+            processor=self.processor,
             **self._get_trainer_kwargs(),
         )
         return self.train(trainer)

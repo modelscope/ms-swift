@@ -4,20 +4,21 @@ import shutil
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import json
-from transformers import PreTrainedModel, PreTrainedTokenizerBase
-from swift.llm import ExportArguments, PtEngine, SwiftInfer, Template, Processor
+from transformers import PreTrainedModel
+
+from swift.llm import ExportArguments, Processor, PtEngine, SwiftInfer, Template
 
 
 def prepare_pt_engine_template(args: ExportArguments, load_model: bool = True, **kwargs) -> Tuple[PtEngine, Template]:
     args.infer_backend = 'pt'
     pt_engine: PtEngine = SwiftInfer.get_infer_engine(args, load_model=load_model, **kwargs)
     delattr(args, 'infer_backend')
-    template = SwiftInfer.get_template(args, pt_engine.tokenizer)
+    template = SwiftInfer.get_template(args, pt_engine.processor)
     return pt_engine, template
 
 
 def save_checkpoint(model: Optional[PreTrainedModel],
-                    tokenizer: Processor,
+                    processor: Processor,
                     output_dir: str,
                     *,
                     safe_serialization: bool = True,
@@ -30,7 +31,7 @@ def save_checkpoint(model: Optional[PreTrainedModel],
         model_dirs = []
     if model.model_dir not in model_dirs:
         model_dirs.append(model.model_dir)
-    tokenizer.save_pretrained(output_dir)
+    processor.save_pretrained(output_dir)
 
     if additional_saved_files is None:
         additional_saved_files = []

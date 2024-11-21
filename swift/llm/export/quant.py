@@ -6,14 +6,14 @@ from typing import Dict, List, Optional
 import torch
 import torch.nn as nn
 
-from swift.llm import ExportArguments, deep_getattr, get_model_arch, load_dataset
+from swift.llm import ExportArguments, ProcessorMixin, deep_getattr, get_model_arch, load_dataset
 from swift.utils import get_logger, get_model_parameter_info
 from .utils import prepare_pt_engine_template, save_checkpoint
 
 logger = get_logger()
 
 
-class QuantEngine:
+class QuantEngine(ProcessorMixin):
 
     def __init__(self, args: ExportArguments):
         self.args = args
@@ -23,7 +23,7 @@ class QuantEngine:
             kwargs['automodel_class'] = AutoAWQForCausalLM
         pt_engine, self.template = prepare_pt_engine_template(args, **kwargs)
         self.model = pt_engine.model
-        self.tokenizer = self.template.tokenizer
+        self.processor = self.template.processor
 
     def quantize(self):
         args = self.args
@@ -43,7 +43,7 @@ class QuantEngine:
         logger.info(f'model: {self.model}')
         save_checkpoint(
             None,
-            self.tokenizer,
+            self.processor,
             args.output_dir,
             model_dirs=[args.ckpt_dir],
             additional_saved_files=self.model.model_meta.additional_saved_files)

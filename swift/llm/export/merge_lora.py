@@ -45,7 +45,7 @@ def merge_lora(args: ExportArguments, replace_if_exists=False, device_map=None) 
 
         save_checkpoint(
             model,
-            template.tokenizer,
+            template.processor,
             output_dir,
             safe_serialization=args.safe_serialization,
             model_dirs=[args.ckpt_dir],
