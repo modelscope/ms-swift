@@ -44,10 +44,6 @@ class ModelGroup:
     # Higher priority. If set to None, the attributes of the DatasetMeta will be used.
     ignore_file_pattern: Optional[List[str]] = None
     requires: Optional[List[str]] = None
-    support_flash_attn: Optional[bool] = None
-    support_vllm: Optional[bool] = None
-    support_lmdeploy: Optional[bool] = None
-    support_megatron: Optional[bool] = None
 
 
 @dataclass
