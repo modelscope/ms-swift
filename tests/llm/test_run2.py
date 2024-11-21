@@ -1,6 +1,6 @@
 if __name__ == '__main__':
     import os
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+    os.environ['CUDA_VISIBLE_DEVICES'] = '3'
     os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 
 import os
@@ -11,7 +11,7 @@ import unittest
 import torch
 
 from swift import get_logger
-from swift.llm import DatasetName, InferArguments, ModelType, SftArguments, infer_main, sft_main
+from swift.llm import DatasetName, InferArguments, ModelType, TrainArguments, infer_main, sft_main
 
 NO_EVAL_HUMAN = True
 
@@ -76,7 +76,7 @@ class TestRun2(unittest.TestCase):
         folder = os.path.join(os.path.dirname(__file__), 'data')
         torch.cuda.empty_cache()
         output = sft_main(
-            SftArguments(
+            TrainArguments(
                 model_type=ModelType.yi_vl_6b_chat,
                 #   dataset=DatasetName.capcha_images,
                 lora_target_modules='ALL',
@@ -95,7 +95,7 @@ class TestRun2(unittest.TestCase):
         folder = os.path.join(os.path.dirname(__file__), 'data')
         torch.cuda.empty_cache()
         output = sft_main(
-            SftArguments(
+            TrainArguments(
                 model_type=ModelType.glm4v_9b_chat,
                 # dataset=DatasetName.capcha_images,
                 # lora_target_modules='ALL',
@@ -113,9 +113,9 @@ class TestRun2(unittest.TestCase):
         if not __name__ == '__main__':
             # ignore citest error in github
             return
-        from swift.llm import sft_main, infer_main, SftArguments, InferArguments, ModelType, DatasetName
+        from swift.llm import sft_main, infer_main, TrainArguments, InferArguments, ModelType, DatasetName
         output = sft_main(
-            SftArguments(
+            TrainArguments(
                 model_type=ModelType.baichuan2_7b_chat_int4,
                 dataset=['alpaca-zh'],
                 lora_target_modules=['DEFAULT', 'EMBEDDING'],
@@ -128,7 +128,7 @@ class TestRun2(unittest.TestCase):
             # ignore citest error in github
             return
         for dataset in [[], [DatasetName.alpaca_zh, DatasetName.alpaca_en]]:
-            sft_args = SftArguments(
+            sft_args = TrainArguments(
                 model_type=ModelType.qwen1half_1_8b_chat_int4,
                 dataset=dataset,  # no dataset
                 train_dataset_sample=100,
@@ -160,4 +160,8 @@ class TestRun2(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main()
+    TestRun2().test_self_cognition()
+    TestRun2().test_glm4v_9b_chat()
+    # TestRun2().test_yi_vl_6b_chat()
+    TestRun2().test_loss_matching()
+    # unittest.main()

@@ -11,9 +11,9 @@ kwargs = {
 
 
 def test_llm():
-    from swift.llm import sft_main, SftArguments, infer_main, InferArguments
+    from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
     result = sft_main(
-        SftArguments(
+        TrainArguments(
             model='qwen/Qwen2-7B-Instruct',
             dataset=['AI-ModelScope/alpaca-gpt4-data-zh#100', 'AI-ModelScope/alpaca-gpt4-data-en#100'],
             **kwargs))
@@ -22,9 +22,9 @@ def test_llm():
 
 
 def test_mllm():
-    from swift.llm import sft_main, SftArguments, infer_main, InferArguments
+    from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
     result = sft_main(
-        SftArguments(
+        TrainArguments(
             model='qwen/Qwen2-VL-7B-Instruct',
             dataset=['modelscope/coco_2014_caption:validation#20', 'AI-ModelScope/alpaca-gpt4-data-en#20'],
             **kwargs))
@@ -33,5 +33,5 @@ def test_mllm():
 
 
 if __name__ == '__main__':
-    test_llm()
-    # test_mllm()
+    # test_llm()
+    test_mllm()

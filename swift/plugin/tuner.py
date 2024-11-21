@@ -21,7 +21,7 @@ class Tuner:
 class IA3(Tuner):
 
     @staticmethod
-    def prepare_model(model, args: 'SftArguments'):
+    def prepare_model(model, args: 'TrainArguments'):
         model_group = args.get_model_group()
         mapping: ModelKeys = MODEL_KEYS_MAPPING.get(model_group)
 

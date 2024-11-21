@@ -129,10 +129,9 @@ class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
 
     def compute_loss(self, model, inputs, return_outputs=None, num_items_in_batch=None):
         loss_kwargs = {}
+        labels = None
         if (self.label_smoother is not None or self.compute_loss_func is not None) and 'labels' in inputs:
             labels = inputs.pop('labels')
-        else:
-            labels = None
 
         loss_scale = inputs.pop('loss_scale', None)
         if loss_scale is not None:

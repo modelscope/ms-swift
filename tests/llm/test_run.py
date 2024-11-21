@@ -20,7 +20,7 @@ from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoConfig, AutoTokenizer
 
 from swift import Trainer, TrainingArguments, get_logger
-from swift.llm import (DatasetName, InferArguments, ModelType, RLHFArguments, SftArguments, infer_main, merge_lora_main,
+from swift.llm import (DatasetName, InferArguments, ModelType, RLHFArguments, TrainArguments, infer_main, merge_lora_main,
                        rlhf_main, sft_main)
 
 NO_EVAL_HUMAN = True
@@ -44,7 +44,7 @@ class TestRun(unittest.TestCase):
             return
         torch.cuda.empty_cache()
         output = sft_main(
-            SftArguments(
+            TrainArguments(
                 model_type=ModelType.qwen1half_1_8b,
                 template_type='qwen',
                 sft_type='full',
@@ -88,7 +88,7 @@ class TestRun(unittest.TestCase):
             predict_with_generate = True
             if quantization_bit == 0:
                 predict_with_generate = False
-            sft_args = SftArguments(
+            sft_args = TrainArguments(
                 model_type=model_type,
                 template_type='AUTO',
                 lora_target_modules=['AUTO', 'EMBEDDING'],
@@ -133,7 +133,7 @@ class TestRun(unittest.TestCase):
         model_type_list = [ModelType.qwen_vl_chat, ModelType.qwen_audio_chat]
         dataset_list = [DatasetName.coco_en_mini, DatasetName.aishell1_zh_mini]
         for model_type, dataset in zip(model_type_list, dataset_list):
-            sft_args = SftArguments(
+            sft_args = TrainArguments(
                 model_type=model_type,
                 template_type='AUTO',
                 eval_steps=5,
@@ -170,7 +170,7 @@ class TestRun(unittest.TestCase):
         train_dataset_fnames = ['science-qa#300', 'a-okvqa#300', 'alpaca-cleaned#300']
         val_dataset_fnames = ['okvqa']
 
-        sft_args = SftArguments(
+        sft_args = TrainArguments(
             model_type='yi-vl-6b-chat',
             dataset=train_dataset_fnames,
             lora_target_modules='ALL',
@@ -197,7 +197,7 @@ class TestRun(unittest.TestCase):
             return
         train_dataset_fnames = ['sharegpt-4o-image']
 
-        sft_args = SftArguments(
+        sft_args = TrainArguments(
             model_type='yi-vl-6b-chat',
             dataset=train_dataset_fnames,
             lora_target_modules='ALL',
@@ -229,7 +229,7 @@ class TestRun(unittest.TestCase):
         folder = os.path.join(os.path.dirname(__file__), 'data')
         resume_from_checkpoint = None
         for num_train_epochs in [1, 2]:
-            sft_args = SftArguments(
+            sft_args = TrainArguments(
                 model_type='qwen-7b-chat',
                 dataset=['self-cognition#20'],
                 custom_train_dataset_path=[os.path.join(folder, fname) for fname in train_dataset_fnames],
@@ -270,7 +270,7 @@ class TestRun(unittest.TestCase):
             quantization_bit = 0
         torch.cuda.empty_cache()
         output = sft_main(
-            SftArguments(
+            TrainArguments(
                 model_type=ModelType.cogagent_18b_instruct,
                 dataset=DatasetName.coco_en_2_mini,
                 train_dataset_sample=100,
@@ -287,7 +287,7 @@ class TestRun(unittest.TestCase):
             return
         torch.cuda.empty_cache()
         output = sft_main(
-            SftArguments(
+            TrainArguments(
                 model_type=ModelType.internlm_xcomposer2_7b_chat,
                 dataset=DatasetName.coco_en_mini,
                 lora_target_modules='DEFAULT',
@@ -377,7 +377,7 @@ class TestRun(unittest.TestCase):
         folder = os.path.join(os.path.dirname(__file__), 'data')
         torch.cuda.empty_cache()
         sft_main(
-            SftArguments(
+            TrainArguments(
                 model_type=ModelType.deepseek_vl_1_3b_chat,
                 #   dataset=DatasetName.capcha_images,
                 lora_target_modules='ALL',
