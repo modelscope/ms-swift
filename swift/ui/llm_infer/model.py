@@ -112,19 +112,17 @@ class Model(BaseUI):
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
         with gr.Row():
-            model = gr.Dropdown(elem_id='model', lines=1, scale=20,
-                                choices=[base_tab.locale('checkpoint', cls.lang)['value']] + )
+            model = gr.Dropdown(
+                elem_id='model', lines=1, scale=20, choices=[base_tab.locale('checkpoint',
+                                                                             cls.lang)['value']])  # TODO +
             model_type = gr.Dropdown(
                 elem_id='model_type',
                 choices=ModelType.get_model_name_list() + cls.get_custom_name_list(),
                 value=base_tab.locale('checkpoint', cls.lang)['value'],
                 scale=20)
             model_type = gr.Dropdown(
-                elem_id='model_type',
-                choices=ModelType.get_model_name_list() + cls.get_custom_name_list(),
-                scale=20)
-            template = gr.Dropdown(
-                elem_id='template', choices=list(TEMPLATE_MAPPING.keys()) + ['AUTO'], scale=20)
+                elem_id='model_type', choices=ModelType.get_model_name_list() + cls.get_custom_name_list(), scale=20)
+            template = gr.Dropdown(elem_id='template', choices=list(TEMPLATE_MAPPING.keys()) + ['AUTO'], scale=20)
             gr.Checkbox(elem_id='merge_lora', scale=4)
             reset_btn = gr.Button(elem_id='reset', scale=2)
             model_state = gr.State({})

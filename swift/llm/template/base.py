@@ -782,8 +782,11 @@ class Template:
 
         kl_res = self._data_collator(kl_batch, padding_side=padding_side, padding_to=padding_to, model=model)
         res = self._data_collator(new_batch, padding_side=padding_side, padding_to=padding_to, model=model)
-        res = {f'completion_{k}': v for k, v in kl_res.items()}
-        res.update({f'KL_completion_{k}': v for k, v in kl_res.items()})
+        if res and kl_res:
+            res = {f'completion_{k}': v for k, v in res.items()}
+            res.update({f'KL_completion_{k}': v for k, v in kl_res.items()})
+        else:
+            res = res or kl_res
 
         label = [b['label'] for b in batch if b.get('label') is not None]
         if label:

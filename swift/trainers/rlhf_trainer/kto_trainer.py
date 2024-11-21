@@ -68,20 +68,16 @@ class KTOTrainer(RLHFTrainerMixin, SwiftMixin, HFKTOTrainer):
                 data = [{k: v for k, v in inputs.items() if k.startswith('completion_')} for inputs in _data]
             is_kl = not is_kl
             kwargs['_data'] = data
-            return args, kwargs
-
-        def _remove_prefix_hook(model: nn.Module, args, kwargs):
-            kwargs = {k.replace('completion_', ''): v for k, v in kwargs.items()}
-            return args, kwargs
+            return (), kwargs
 
         @contextmanager
         def _patch_model_call():
-            handles = [model.register_forward_pre_hook(_remove_prefix_hook, with_kwargs=True)]
+            handle = None
             if '_data' in batch:
-                handles.append(model.register_forward_pre_hook(_add_data_hook, with_kwargs=True, prepend=True))
+                handle = model.register_forward_pre_hook(_add_data_hook, with_kwargs=True, prepend=True)
 
             yield
-            for handle in handles:
+            if handle:
                 handle.remove()
 
         with _patch_model_call():
