@@ -50,13 +50,6 @@ def get_model_tokenizer_emu3_chat(model_dir: str,
                                   model_kwargs: Dict[str, Any],
                                   load_model: bool = True,
                                   **kwargs):
-    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    # flash attention
-    use_flash_attn = kwargs.pop('use_flash_attn', False)
-    if use_flash_attn:
-        model_config._attn_implementation = 'flash_attention_2'
-    elif use_flash_attn is False:
-        model_config._attn_implementation = 'eager'
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
 
     # download and load vision tokenizer
@@ -65,7 +58,7 @@ def get_model_tokenizer_emu3_chat(model_dir: str,
     image_processor = AutoImageProcessor.from_pretrained(vq_model, trust_remote_code=True)
     image_tokenizer = AutoModel.from_pretrained(vq_model, device_map=model_kwargs['device_map'], trust_remote_code=True)
     image_tokenizer.requires_grad_(False)
-    image_tokenizer.to('cuda:0')
+    image_tokenizer.to('cuda:0')  # TODO: check npu
 
     # load processor
     if 'local_repo_path' in kwargs:
@@ -86,7 +79,7 @@ register_model(
             ModelGroup([
                 Model('BAAI/Emu3-Chat', 'BAAI/Emu3-Chat'),
             ],
-                       tags=['multi-modal', 'vision'],
+                       tags=['vision'],
                        requires=['transformers>=4.44.0']),
         ],
         TemplateType.emu3_chat,
