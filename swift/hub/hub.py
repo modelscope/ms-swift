@@ -1,12 +1,15 @@
 import os
 import tempfile
+from contextlib import contextmanager
 from functools import partial
 from pathlib import Path
 from typing import List, Literal, Optional, Union
 
+import huggingface_hub
 from huggingface_hub import RepoUrl
 from huggingface_hub.hf_api import CommitInfo, api, future_compatible
 from requests.exceptions import HTTPError
+from transformers import trainer
 from transformers.utils import logging, strtobool
 
 from swift.utils.env import use_hf_hub
@@ -15,6 +18,11 @@ logger = logging.get_logger(__name__)
 
 
 class HubOperation:
+
+    @classmethod
+    @contextmanager
+    def patch_hub(cls):
+        yield
 
     @classmethod
     def try_login(cls, token: Optional[str] = None) -> bool:
@@ -110,58 +118,75 @@ class HubOperation:
         raise NotImplementedError
 
 
-def create_repo(repo_id: str, *, token: Union[str, bool, None] = None, private: bool = False, **kwargs) -> RepoUrl:
-    """
-    Create a new repository on the hub.
-
-    Args:
-        repo_id: The ID of the repository to create.
-        token: The authentication token to use.
-        private: Whether the repository should be private.
-        **kwargs: Additional arguments.
-
-    Returns:
-        RepoUrl: The URL of the created repository.
-    """
-    hub_model_id = MSHub.create_model_repo(repo_id, token, private)
-    return RepoUrl(url=hub_model_id, )
-
-
-@future_compatible
-def upload_folder(
-    self,
-    *,
-    repo_id: str,
-    folder_path: Union[str, Path],
-    path_in_repo: Optional[str] = None,
-    commit_message: Optional[str] = None,
-    commit_description: Optional[str] = None,
-    token: Union[str, bool, None] = None,
-    revision: Optional[str] = 'master',
-    ignore_patterns: Optional[Union[List[str], str]] = None,
-    run_as_future: bool = False,
-    **kwargs,
-):
-    MSHub.push_to_hub(repo_id, folder_path, path_in_repo, commit_message, commit_description, token, revision,
-                      ignore_patterns)
-    return CommitInfo(
-        commit_url=f'https://www.modelscope.cn/models/{repo_id}/files',
-        commit_message=commit_message,
-        commit_description=commit_description,
-        oid=None,
-    )
-
-
 class MSHub(HubOperation):
     ms_token = None
-    # [TODO:check py38 compat]
-    if not use_hf_hub():
-        import huggingface_hub
-        from transformers import trainer
-        huggingface_hub.create_repo = create_repo
-        huggingface_hub.upload_folder = partial(upload_folder, api)
-        trainer.create_repo = create_repo
-        trainer.upload_folder = partial(upload_folder, api)
+
+    @classmethod
+    def create_repo(cls,
+                    repo_id: str,
+                    *,
+                    token: Union[str, bool, None] = None,
+                    private: bool = False,
+                    **kwargs) -> RepoUrl:
+        """
+        Create a new repository on the hub.
+
+        Args:
+            repo_id: The ID of the repository to create.
+            token: The authentication token to use.
+            private: Whether the repository should be private.
+            **kwargs: Additional arguments.
+
+        Returns:
+            RepoUrl: The URL of the created repository.
+        """
+        hub_model_id = cls.create_model_repo(repo_id, token, private)
+        return RepoUrl(url=hub_model_id, )
+
+    @classmethod
+    @future_compatible
+    def upload_folder(
+        cls,
+        *,
+        repo_id: str,
+        folder_path: Union[str, Path],
+        path_in_repo: Optional[str] = None,
+        commit_message: Optional[str] = None,
+        commit_description: Optional[str] = None,
+        token: Union[str, bool, None] = None,
+        revision: Optional[str] = 'master',
+        ignore_patterns: Optional[Union[List[str], str]] = None,
+        run_as_future: bool = False,
+        **kwargs,
+    ):
+        cls.push_to_hub(repo_id, folder_path, path_in_repo, commit_message, commit_description, token, revision,
+                        ignore_patterns)
+        return CommitInfo(
+            commit_url=f'https://www.modelscope.cn/models/{repo_id}/files',
+            commit_message=commit_message,
+            commit_description=commit_description,
+            oid=None,
+        )
+
+    @classmethod
+    @contextmanager
+    def patch_hub(cls):
+        hub_create_repo = huggingface_hub.create_repo
+        hub_upload_folder = huggingface_hub.upload_folder
+        trainer_create_repo = trainer.create_repo
+        trainer_upload_folder = trainer.upload_folder
+
+        huggingface_hub.create_repo = cls.create_repo
+        huggingface_hub.upload_folder = partial(cls.upload_folder, api)
+        trainer.create_repo = cls.create_repo
+        trainer.upload_folder = partial(cls.upload_folder, api)
+        try:
+            yield
+        finally:
+            huggingface_hub.create_repo = hub_create_repo
+            huggingface_hub.upload_folder = hub_upload_folder
+            trainer.create_repo = trainer_create_repo
+            trainer.upload_folder = trainer_upload_folder
 
     @classmethod
     def try_login(cls, token: Optional[str] = None) -> bool:
@@ -182,7 +207,7 @@ class MSHub(HubOperation):
 
         if not cls.try_login(token):
             raise ValueError('Please specify a token by `--hub_token` or `MODELSCOPE_API_TOKEN=xxx`')
-        MSHub.ms_token = token
+        cls.ms_token = token
         visibility = ModelVisibility.PRIVATE if private else ModelVisibility.PUBLIC
 
         if '/' not in repo_id:
@@ -199,17 +224,17 @@ class MSHub(HubOperation):
         with tempfile.TemporaryDirectory() as temp_cache_dir:
             from modelscope.hub.repository import Repository
             repo = Repository(temp_cache_dir, repo_id)
-            MSHub.add_patterns_to_gitattributes(repo, ['*.safetensors', '*.bin', '*.pt'])
+            cls.add_patterns_to_gitattributes(repo, ['*.safetensors', '*.bin', '*.pt'])
             # Add 'runs/' to .gitignore, ignore tensorboard files
-            MSHub.add_patterns_to_gitignore(repo, ['runs/', 'images/'])
-            MSHub.add_patterns_to_file(
+            cls.add_patterns_to_gitignore(repo, ['runs/', 'images/'])
+            cls.add_patterns_to_file(
                 repo,
                 'configuration.json', ['{"framework": "pytorch", "task": "text-generation", "allow_remote": true}'],
                 ignore_push_error=True)
             # Add '*.sagemaker' to .gitignore if using SageMaker
             if os.environ.get('SM_TRAINING_ENV'):
-                MSHub.add_patterns_to_gitignore(repo, ['*.sagemaker-uploading', '*.sagemaker-uploaded'],
-                                                'Add `*.sagemaker` patterns to .gitignore')
+                cls.add_patterns_to_gitignore(repo, ['*.sagemaker-uploading', '*.sagemaker-uploaded'],
+                                              'Add `*.sagemaker` patterns to .gitignore')
         return repo_id
 
     @classmethod
@@ -244,7 +269,7 @@ class MSHub(HubOperation):
         push_to_hub(
             repo_id,
             folder_path,
-            token or MSHub.ms_token,
+            token or cls.ms_token,
             commit_message=commit_message,
             ignore_file_pattern=ignore_patterns,
             revision=revision,
@@ -421,7 +446,7 @@ class HFHub(HubOperation):
             model_id_or_path, repo_type='model', revision=revision, ignore_patterns=ignore_file_pattern, **kwargs)
 
 
-if use_hf_hub():
-    default_hub = HFHub
-else:
-    default_hub = MSHub
+def get_hub(use_hf: Optional[bool] = None):
+    if use_hf is None:
+        use_hf = True if use_hf_hub() else False
+    return {True: HFHub, False: MSHub}[use_hf]

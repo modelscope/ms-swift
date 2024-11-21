@@ -94,13 +94,12 @@ class RLHFTrainerMixin:
             self.pad_token_id = self.get_model_config_attr(model.config, 'pad_token_id')
         # not use
         self.is_vision_model = False
-        tokenizer = kwargs['tokenizer']
         self.label_pad_token_id = -100
-        self.padding_value = tokenizer.pad_token_id
         self.use_dpo_data_collator = True
         if is_deepspeed_zero3_enabled() and ref_model is not None:
             model = ModelWrapper(model, ref_model)
         super().__init__(model, *_args, **kwargs)
+        self.padding_value = self.tokenizer.pad_token_id
 
     def _save_checkpoint(self, model, trial, metrics=None):
         context = nullcontext()

@@ -24,12 +24,12 @@ from transformers.trainer import Trainer, TrainerCallback
 from transformers.trainer_utils import EvalPrediction
 from transformers.utils import is_torch_npu_available
 
+from swift.hub import get_hub
 from swift.llm import Processor, ProcessorMixin
 from swift.tuners import SwiftModel
 from swift.utils import get_logger, is_ddp_plus_mp
 from .arguments import TrainingArguments
 from .optimizers.galore import create_optimizer_and_scheduler
-from .push_to_hub import PushToHubHelper
 from .torchacc_mixin import TorchAccMixin
 from .utils import can_return_loss, find_labels, get_function, is_instance_of_ms_model
 
@@ -39,7 +39,6 @@ except (ImportError, RuntimeError):
     AutoModelForCausalLMWithValueHead = None
 
 logger = get_logger()
-PushToHubHelper.patch()
 
 
 class SwiftMixin(TorchAccMixin, ProcessorMixin):
@@ -69,6 +68,7 @@ class SwiftMixin(TorchAccMixin, ProcessorMixin):
         self.processor = processor
         self.compute_loss_func = compute_loss_func
         self.max_memory = 0
+        self.hub = get_hub()
         if args.sequence_parallel_size > 1:
             from swift.trainers.xtuner import init_sequence_parallel_xtuner
             init_sequence_parallel_xtuner(args.sequence_parallel_size)
@@ -218,7 +218,12 @@ class SwiftMixin(TorchAccMixin, ProcessorMixin):
 
     def train(self, resume_from_checkpoint: Optional[Union[str, bool]] = None, *args, **kwargs) -> torch.Tensor:
         self._save_initial_model(self.args.output_dir)
-        return super().train(resume_from_checkpoint, *args, **kwargs)
+        with self.hub.patch_hub():
+            return super().train(resume_from_checkpoint, *args, **kwargs)
+
+    def push_to_hub(*args, **kwargs):
+        with self.hub.patch_hub():
+            return super().push_to_hub(*args, **kwargs)
 
     def get_max_cuda_memory(self, device: Optional[Union[torch.device, int]] = None) -> float:
         if device is None:

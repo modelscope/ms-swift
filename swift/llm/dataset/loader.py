@@ -22,8 +22,8 @@ logger = get_logger()
 
 standard_keys = ['messages', 'rejected_response', 'label', 'images', 'videos', 'audios', 'tools', 'objects']
 
-
 _dataset_meta_mapping = None
+
 
 @dataclass
 class DatasetSyntax:
@@ -43,6 +43,30 @@ class DatasetSyntax:
         dataset_sample = '' if self.dataset_sample is None else f'#{self.dataset_sample}'
         return f'{self.dataset}{subsets}{dataset_sample}'
 
+    @staticmethod
+    def _safe_split(s: str,
+                    sep: str,
+                    use_0: bool,
+                    split_mode: Literal['left', 'right'] = 'left') -> Tuple[Optional[str], Optional[str]]:
+        """
+        use_0: When the length of the part is 1, is it considered as part0 or part1.
+        split_mode: use split or rsplit
+        """
+        if s is None or len(s) == 0:
+            return None, None
+        if split_mode == 'left':
+            part = s.split(sep, 1)
+        else:
+            part = s.rsplit(sep, 1)
+        if len(part) == 1:
+            if use_0:
+                part = part[0], None
+            else:
+                part = None, part[0]
+        else:
+            assert len(part) == 2
+        return part
+
     @classmethod
     def parse(cls, dataset: str) -> 'DatasetSyntax':
         """Parse the dataset from the command line"""
@@ -50,11 +74,11 @@ class DatasetSyntax:
         if os.path.isfile(dataset):
             other, dataset_sample = dataset, None
         else:
-            other, dataset_sample = DatasetLoader._safe_split(dataset, '#', True, 'right')
+            other, dataset_sample = cls._safe_split(dataset, '#', True, 'right')
         if os.path.isfile(other):
             dataset, subsets = other, None
         else:
-            dataset, subsets = DatasetLoader._safe_split(other, ':', True)
+            dataset, subsets = cls._safe_split(other, ':', True)
 
         if subsets is not None:
             subsets = [subset.strip() for subset in subsets.split('/')]
@@ -62,10 +86,10 @@ class DatasetSyntax:
             dataset_sample = int(dataset_sample)
         return cls(dataset.strip(), subsets or [], dataset_sample)
 
-    def get_dataset_mata(self, use_hf: Optional[bool] = None):
+    def get_dataset_meta(self, use_hf: Optional[bool] = None):
         if use_hf is None:
             use_hf = True if use_hf_hub() else False
-        dataset_meta_mapping = _get_dataset_meta_mapping()
+        dataset_meta_mapping = self._get_dataset_meta_mapping()
         dataset_type = self.dataset_type
         if dataset_type == 'path':
             dataset_meta = dataset_meta_mapping.get((dataset_type, self.dataset.lower()))
@@ -81,6 +105,7 @@ class DatasetSyntax:
                     dataset_meta = DatasetMeta(ms_dataset_id=dataset)
         return dataset_meta
 
+    @staticmethod
     def _get_dataset_meta_mapping() -> Dict[str, str]:
         global _dataset_meta_mapping
         if _dataset_meta_mapping is not None:
@@ -338,42 +363,6 @@ class DatasetLoader:
             dataset = DatasetLoader._concat_datasets(datasets, streaming)
         return dataset
 
-    @staticmethod
-    def _safe_split(s: str,
-                    sep: str,
-                    use_0: bool,
-                    split_mode: Literal['left', 'right'] = 'left') -> Tuple[Optional[str], Optional[str]]:
-        """
-        use_0: When the length of the part is 1, is it considered as part0 or part1.
-        split_mode: use split or rsplit
-        """
-        if s is None or len(s) == 0:
-            return None, None
-        if split_mode == 'left':
-            part = s.split(sep, 1)
-        else:
-            part = s.rsplit(sep, 1)
-        if len(part) == 1:
-            if use_0:
-                part = part[0], None
-            else:
-                part = None, part[0]
-        else:
-            assert len(part) == 2
-        return part
-
-    @staticmethod
-    def parse_dataset(datasets: List[str]) -> List[DatasetSyntax]:
-        # ms_dataset_id/hf_dataset_id/dataset_path -> dataset_syntax
-        # register_dataset
-        res_datasets: List[str] = []
-        register_idx = 0
-        for dataset in datasets:
-            dataset_syntax = DatasetSyntax.parse(dataset)
-            res_datasets.append(dataset_syntax)
-
-        return res_datasets
-
 
 def init_self_cognition_preprocessor(
     model_name: Union[Tuple[str, str], List[str], None] = None,
@@ -435,7 +424,8 @@ def load_dataset(
         'streaming': streaming,
     }
 
-    for dataset_syntax in DatasetLoader.parse_dataset(datasets):
+    for dataset in datasets:
+        dataset_syntax = DatasetSyntax.parse(dataset)
         dataset_meta = dataset_syntax.get_dataset_meta(use_hf)
         load_function = dataset_meta.load_function
         train_dataset = load_function(dataset_syntax, dataset_meta, **load_kwargs)
