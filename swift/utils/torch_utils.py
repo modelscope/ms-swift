@@ -263,8 +263,10 @@ def find_all_linears(model: Module) -> List[str]:
 def safe_ddp_context():
     if (is_dist() or is_dist_ta()) and not is_local_master() and dist.is_initialized():
         dist.barrier()
-    yield
-    if (is_dist() or is_dist_ta()) and is_local_master() and dist.is_initialized():
-        dist.barrier()
-    if (is_dist() or is_dist_ta()) and dist.is_initialized():  # sync
-        dist.barrier()
+    try:
+        yield
+    finally:
+        if (is_dist() or is_dist_ta()) and is_local_master() and dist.is_initialized():
+            dist.barrier()
+        if (is_dist() or is_dist_ta()) and dist.is_initialized():  # sync
+            dist.barrier()

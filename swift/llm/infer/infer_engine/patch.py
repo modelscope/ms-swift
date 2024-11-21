@@ -14,8 +14,10 @@ def patch_auto_tokenizer(tokenizer: PreTrainedTokenizerBase):
         return tokenizer
 
     AutoTokenizer.from_pretrained = _from_pretrained
-    yield
-    AutoTokenizer.from_pretrained = _old_from_pretrained
+    try:
+        yield
+    finally:
+        AutoTokenizer.from_pretrained = _old_from_pretrained
 
 
 @contextmanager
@@ -27,5 +29,7 @@ def patch_auto_config(config: PretrainedConfig):
         return (config, {}) if 'return_unused_kwargs' in kwargs else config
 
     AutoConfig.from_pretrained = _from_pretrained
-    yield
-    AutoConfig.from_pretrained = _old_from_pretrained
+    try:
+        yield
+    finally:
+        AutoConfig.from_pretrained = _old_from_pretrained

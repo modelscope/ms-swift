@@ -111,7 +111,7 @@ class Qwen2AudioTemplate(Template):
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         assert media_type == 'audio'
-        if self.use_generate_template:
+        if not self.use_chat_template:
             return ['<|audio_bos|><|AUDIO|><|audio_eos|>\n']
         else:
             return [f'Audio {index + 1}: <|audio_bos|><|AUDIO|><|audio_eos|>\n']

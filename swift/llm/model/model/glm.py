@@ -210,7 +210,6 @@ register_model(
         TemplateType.cogvlm,
         get_model_tokenizer_cogvlm,
         architectures=['CogVLMForCausalLM'],
-        support_gradient_checkpointing=False,
         requires=['transformers<4.42'],
         model_arch=ModelArch.cogvlm))
 
@@ -224,7 +223,6 @@ register_model(
         TemplateType.cogagent_chat,
         get_model_tokenizer_cogvlm,
         architectures=['CogAgentForCausalLM'],
-        support_gradient_checkpointing=False,
         requires=['transformers<4.42'],
         model_arch=ModelArch.cogvlm))
 
@@ -236,7 +234,6 @@ register_model(
         TemplateType.cogagent_vqa,
         get_model_tokenizer_cogvlm,
         architectures=['CogAgentForCausalLM'],
-        support_gradient_checkpointing=False,
         requires=['transformers<4.42'],
         model_arch=ModelArch.cogvlm))
 
@@ -267,8 +264,7 @@ register_model(
         get_model_tokenizer_cogvlm2,
         architectures=['CogVLMForCausalLM'],
         requires=['transformers<4.42'],
-        model_arch=ModelArch.cogvlm,
-        support_gradient_checkpointing=False))
+        model_arch=ModelArch.cogvlm))
 
 register_model(
     ModelMeta(
@@ -282,5 +278,4 @@ register_model(
         get_model_tokenizer_cogvlm2,
         architectures=['CogVLMVideoForCausalLM'],
         requires=['transformers>=4.42'],
-        support_gradient_checkpointing=False,
         model_arch=ModelArch.cogvlm))

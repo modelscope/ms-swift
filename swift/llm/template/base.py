@@ -21,14 +21,14 @@ from transformers.integrations import is_deepspeed_zero3_enabled
 from swift.utils import dataclass_to_dict
 from .agent import loss_scale_map, split_str_parts_by
 from .template_inputs import InferRequest, StdTemplateInputs, TemplateInputs
-from .utils import (Context, ContextType, GenerationProperty, Processor, Prompt, StopWordsCriteria, Word, fetch_one,
-                    findall)
+from .utils import (Context, ContextType, GenerationProperty, Processor, ProcessorMixin, Prompt, StopWordsCriteria,
+                    Word, fetch_one, findall)
 from .vision_utils import load_batch, load_image, normalize_bbox, rescale_image
 
 logger = get_logger()
 
 
-class Template:
+class Template(ProcessorMixin):
     """A template class for all supported models.
 
     Args:
@@ -56,6 +56,7 @@ class Template:
     video_placeholder = ['<video>']
     audio_placeholder = ['<audio>']
     load_medias = True
+    skip_prompt = True
 
     output_prompt_answer = False  # for encoder-decoder & kto
     padding_side: Literal['left', 'right'] = 'right'  # The padding_side when the training batch_size >= 2.
@@ -67,7 +68,7 @@ class Template:
             default_system: Optional[str] = None,
             max_length: Optional[int] = None,
             *,
-            use_generate_template: bool = False,
+            use_chat_template: bool = True,
             truncation_strategy: Literal['delete', 'left'] = 'left',
             max_pixels: Optional[int] = None,
             tools_prompt: Optional[str] = None,
@@ -84,23 +85,24 @@ class Template:
         tools_prompt: The type of tools_prompt added in the system.
         """
         from .template_meta import TemplateMeta
-        if use_generate_template:
-            template_meta = template_meta.to_generation_template_meta()
+        self.processor = processor
+        tokenizer = self.tokenizer
+        if not use_chat_template:
+            template_meta = template_meta.to_generate_template_meta()
         # if default_system is None. not change self.default_system
         if default_system is not None:
             self.default_system = template_meta.check_system(default_system)
         else:
             self.default_system = template_meta.default_system
 
-        template_meta.token_attr_to_id(processor)
+        template_meta.token_attr_to_id(tokenizer)
 
         for i, token in enumerate(template_meta.placeholder_tokens):
             if isinstance(token, str):
-                template_meta.placeholder_tokens[i] = processor.convert_tokens_to_ids(token)
+                template_meta.placeholder_tokens[i] = tokenizer.convert_tokens_to_ids(token)
 
         self.template_meta: TemplateMeta = template_meta
-        self.processor = processor
-        self.use_generate_template = use_generate_template
+        self.use_chat_template = use_chat_template
         self.max_length = max_length
         self.truncation_strategy = truncation_strategy
         self.loss_scale = loss_scale
@@ -140,8 +142,9 @@ class Template:
         self._get_std_messages(inputs.messages)
         n_round = len(inputs.messages) // 2
         if n_round > 1 and not template_meta.support_multi_round:
-            raise ValueError(
-                f'The template does not support multi-round chat, template_type: {template_meta.template_type}')
+            logger.warning_once(
+                'The template does not support multi-round chat. Only use the last round of the conversation.')
+            inputs.messages = inputs.messages[-2:]
 
     def _rlhf_encode(self, inputs):
         chosen_inputs, rejected_inputs = inputs, inputs.copy()
@@ -164,10 +167,10 @@ class Template:
         if len(encoded) == 0:
             return {}
         return {
-            'input_ids': encoded['chosen_input_ids'],
-            'labels': encoded['chosen_labels'],
-            'KL_input_ids': encoded['chosen_prompt_input_ids'] + encoded['rejected_answer_input_ids'],
-            'KL_labels': encoded['chosen_prompt_labels'] + encoded['rejected_answer_labels'],
+            'completion_input_ids': encoded['chosen_input_ids'],
+            'completion_labels': encoded['chosen_labels'],
+            'KL_completion_input_ids': encoded['chosen_prompt_input_ids'] + encoded['rejected_answer_input_ids'],
+            'KL_completion_labels': encoded['chosen_prompt_labels'] + encoded['rejected_answer_labels'],
             'label': inputs.label
         }
 
@@ -222,16 +225,16 @@ class Template:
 
     def skip_stop_decode(self, generate_ids: List[int], is_finished: bool, **decode_kwargs) -> Any:
         # Do not print template_meta.suffix[-1] and eos_token.
-        processor = self.processor
+        tokenizer = self.tokenizer
 
-        if len(generate_ids) > 0 and generate_ids[-1] == processor.eos_token_id:
+        if len(generate_ids) > 0 and generate_ids[-1] == tokenizer.eos_token_id:
             generate_ids = generate_ids[:-1]
         # skip suffix and eos_token
         template_suffix = self.template_meta.suffix[-1]
         if isinstance(template_suffix, str):
-            template_suffix = processor.encode(template_suffix, add_special_tokens=False)
+            template_suffix = tokenizer.encode(template_suffix, add_special_tokens=False)
         generate_ids = self._skip_stop_tokens(generate_ids, template_suffix, is_finished)
-        return processor.decode(generate_ids, **decode_kwargs)
+        return tokenizer.decode(generate_ids, **decode_kwargs)
         # if not is_finished or is_finished and response[-len_suffix:] == template_suffix:
         #     # To avoid response length being shorter than previous response length during streaming.
         #     # TODO:check
@@ -242,7 +245,7 @@ class Template:
                                generation_config,
                                inputs: Optional[Dict[str, Any]] = None,
                                model=None) -> GenerationProperty:
-        return GenerationProperty(stopping_criteria=[StopWordsCriteria(self.processor, generation_config.stop_words)])
+        return GenerationProperty(stopping_criteria=[StopWordsCriteria(self.tokenizer, generation_config.stop_words)])
 
     def _preprocess_objects(self, inputs: StdTemplateInputs, objects: List[Dict[str, Any]]):
         # Load image into PIL format
@@ -350,10 +353,7 @@ class Template:
         return res, loss_scale_res
 
     def _tokenize(self, context, **tokenizer_kwargs):
-        tokenizer = self.processor
-        if not isinstance(tokenizer, PreTrainedTokenizerBase) and hasattr(tokenizer, 'tokenizer'):
-            tokenizer = tokenizer.tokenizer
-        return tokenizer(
+        return self.tokenizer(
             context, return_attention_mask=False, add_special_tokens=False, **tokenizer_kwargs)['input_ids']
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
@@ -524,8 +524,8 @@ class Template:
         res_context_types: List[ContextType] = []
         template_meta = self.template_meta
         if template_meta.auto_add_bos:
-            bos_token_id = self.processor.bos_token_id
-            if isinstance(bos_token_id, int) and bos_token_id in self.processor.encode(''):
+            bos_token_id = self.tokenizer.bos_token_id
+            if isinstance(bos_token_id, int) and bos_token_id in self.tokenizer.encode(''):
                 res_context_list.append([bos_token_id])
                 res_context_types.append(ContextType.OTHER)
 
@@ -633,7 +633,7 @@ class Template:
 
     def get_generate_ids(self, generate_ids: Union[torch.Tensor, List[int]],
                          num_prompt_tokens: int) -> Union[torch.Tensor, List[int]]:
-        if self.template_meta.skip_prompt:
+        if self.skip_prompt:
             return generate_ids[..., num_prompt_tokens:]
         else:
             return generate_ids
@@ -650,8 +650,9 @@ class Template:
                          padding_to: Optional[int] = None) -> Dict[str, Any]:
         # inplace
         from swift.llm import to_device
-        extra_inputs = []
+        kwargs = kwargs.copy()
         batched_data = kwargs.pop('_data')
+        extra_inputs = []
         for data in batched_data:
             for k, v in data.items():
                 if k in {'input_ids', 'labels', 'loss_scale'} and isinstance(v, (list, tuple)):
@@ -688,8 +689,9 @@ class Template:
         """
         if self._handles:
             return
-        # TODO:torch>=2.0
+
         for model in models:
+            # please use torch>=2.0
             handle = model.register_forward_pre_hook(self.pre_forward_hook, with_kwargs=True)
             self._handles.append(handle)
 
@@ -700,7 +702,7 @@ class Template:
             @wraps(self._deepspeed_initialize)
             def _initialize(*args, **kwargs):
                 res = self._deepspeed_initialize(*args, **kwargs)
-                for model, handle in zip(models, handles):
+                for model, handle in zip(models, self._handles):
                     model._forward_pre_hooks.move_to_end(handle.id)
                 return res
 
@@ -725,7 +727,7 @@ class Template:
         """for multimodal LLM"""
         new_batch = []
         for b in batch:
-            new_batch.append({k: v for k, v in b.items() if k.endswith('labels')})
+            new_batch.append({k: v for k, v in b.items() if k.endswith('labels') or k == 'label'})
 
         res = self.data_collator(
             new_batch, padding_side=padding_side, padding_to=padding_to, model=model)  # only labels
@@ -742,26 +744,31 @@ class Template:
             return self._rlhf_data_collator(batch, padding_side=padding_side, padding_to=padding_to, model=model)
         elif self.mode == 'kto':
             return self._kto_data_collator(batch, padding_side=padding_side, padding_to=padding_to, model=model)
-        elif self.mode == 'train':
+        elif self.mode in {'pt', 'train'}:
             return self._data_collator(batch, padding_side=padding_side, padding_to=padding_to, model=model)
+
+    @staticmethod
+    def _fetch_inputs_startswith(batch: List[Dict[str, Any]], prefix: str) -> List[Dict[str, Any]]:
+        new_batch = []
+        for inputs in batch:
+            new_inputs = {}
+            for k, v in inputs.items():
+                if k.startswith(prefix):
+                    new_inputs[k[len(prefix):]] = v
+            new_batch.append(new_inputs)
+        return new_batch
 
     def _rlhf_data_collator(self,
                             batch: List[Dict[str, Any]],
                             *,
+                            chosen_prefix: str = 'chosen_',
+                            rejected_prefix: str = 'rejected_',
                             padding_side: Optional[str] = None,
                             padding_to: Optional[int] = None,
                             model: Optional[nn.Module] = None) -> Dict[str, Any]:
         new_batch = []
-        for prefix in ['chosen_', 'rejected_']:
-            for inputs in batch:
-                new_inputs = {}
-                for k, v in inputs.items():
-                    if k.startswith(prefix):
-                        new_k = k[len(prefix):]
-                        new_inputs[new_k] = inputs[k]
-                if len(new_inputs) > 0:
-                    new_batch.append(new_inputs)
-        assert len(new_batch) == len(batch) * 2, f'new_batch: {new_batch}'
+        for prefix in [chosen_prefix, rejected_prefix]:
+            new_batch += self._fetch_inputs_startswith(batch, prefix)
         return self._data_collator(new_batch, padding_side=padding_side, padding_to=padding_to, model=model)
 
     def _kto_data_collator(self,
@@ -770,15 +777,20 @@ class Template:
                            padding_side: Optional[str] = None,
                            padding_to: Optional[int] = None,
                            model: Optional[nn.Module] = None) -> Dict[str, Any]:
-        res = {}
-        for prefix in ['', 'KL_']:
-            new_batch = []
-            for b in batch:
-                new_batch.append({'input_ids': b[f'{prefix}input_ids'], 'labels': b[f'{prefix}labels']})
-            for k, v in self._data_collator(
-                    new_batch, padding_side=padding_side, padding_to=padding_to, model=model).items():
-                res[f'{prefix}completion_{k}'] = v
-        res['label'] = [b['label'] for b in batch]
+        kl_batch = self._fetch_inputs_startswith(batch, 'KL_completion_')
+        new_batch = self._fetch_inputs_startswith(batch, 'completion_')
+
+        kl_res = self._data_collator(kl_batch, padding_side=padding_side, padding_to=padding_to, model=model)
+        res = self._data_collator(new_batch, padding_side=padding_side, padding_to=padding_to, model=model)
+        if res and kl_res:
+            res = {f'completion_{k}': v for k, v in res.items()}
+            res.update({f'KL_completion_{k}': v for k, v in kl_res.items()})
+        else:
+            res = res or kl_res
+
+        label = [b['label'] for b in batch if b.get('label') is not None]
+        if label:
+            res['label'] = label
         return res
 
     def _data_collator(self,
@@ -793,10 +805,10 @@ class Template:
             padding_to(`int`, optional): Whether padding the batch to a fixed length, if none, the batch
                 will be padded to the `longest`
         """
+        if len(batch) == 0:
+            return {}
         from swift.utils import get_dist_setting, use_torchacc
-        tokenizer = self.processor
-        if not isinstance(tokenizer, PreTrainedTokenizerBase) and hasattr(tokenizer, 'tokenizer'):
-            tokenizer = tokenizer.tokenizer
+        tokenizer = self.tokenizer
         assert tokenizer.pad_token_id is not None
         if padding_side is None:
             padding_side = self.padding_side
@@ -974,12 +986,12 @@ class Template:
                 continue
             if _is_special(input_ids[i]) and not _is_special(input_ids[i - 1]):
                 s = i
-                result_str += self.processor.decode(input_ids[e:s], **tokenizer_kwargs)
+                result_str += self.tokenizer.decode(input_ids[e:s], **tokenizer_kwargs)
             if not _is_special(input_ids[i]) and _is_special(input_ids[i - 1]):
                 e = i
                 result_str += f'[{input_ids[i - 1]} * {e - s}]'
         if _is_special(input_ids[i]):
             result_str += f'[{input_ids[i]} * {len(input_ids) - s}]'
         else:
-            result_str += self.processor.decode(input_ids[e:], **tokenizer_kwargs)
+            result_str += self.tokenizer.decode(input_ids[e:], **tokenizer_kwargs)
         return result_str

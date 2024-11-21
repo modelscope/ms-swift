@@ -390,8 +390,10 @@ class VllmEngine(InferEngine):
                                            'actual cause.') from e
 
         async_llm_engine._log_task_completion = new_log_task_completion
-        yield
-        async_llm_engine._log_task_completion = log_task_completion
+        try:
+            yield
+        finally:
+            async_llm_engine._log_task_completion = log_task_completion
 
     def _batch_infer_stream(self,
                             tasks,

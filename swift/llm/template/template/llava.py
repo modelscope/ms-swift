@@ -249,6 +249,7 @@ register_template(Llama3TemplateMeta(
 
 
 class LLavaTemplate(Template):
+    skip_prompt = False
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
         assert media_type == 'image'
@@ -291,10 +292,9 @@ class LLavaTemplate(Template):
         return res
 
 
-register_template(
-    LlavaMistralTemplateMeta(MLLMTemplateType.llava1_6_mistral, template_cls=LLavaTemplate, skip_prompt=False))
+register_template(LlavaMistralTemplateMeta(MLLMTemplateType.llava1_6_mistral, template_cls=LLavaTemplate))
 
-register_template(ChatmlTemplateMeta(MLLMTemplateType.llava1_6_yi, template_cls=LLavaTemplate, skip_prompt=False))
+register_template(ChatmlTemplateMeta(MLLMTemplateType.llava1_6_yi, template_cls=LLavaTemplate))
 
 register_template(
     Llama3TemplateMeta(
@@ -303,7 +303,6 @@ register_template(
         default_system=('You are a helpful language and vision assistant. '
                         'You are able to understand the visual content that the user provides, '
                         'and assist the user with a variety of tasks using natural language.'),
-        skip_prompt=False,
     ))
 
-register_template(QwenTemplateMeta(MLLMTemplateType.llava_next_qwen, template_cls=LLavaTemplate, skip_prompt=False))
+register_template(QwenTemplateMeta(MLLMTemplateType.llava_next_qwen, template_cls=LLavaTemplate))

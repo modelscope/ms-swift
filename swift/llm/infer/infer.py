@@ -7,8 +7,8 @@ from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 import numpy as np
 from datasets import Dataset as HfDataset
 
-from swift.llm import (InferArguments, InferRequest, Messages, SwiftPipeline, Template, get_template, load_dataset,
-                       sample_dataset)
+from swift.llm import (InferArguments, InferRequest, Messages, Processor, SwiftPipeline, Template, get_template,
+                       load_dataset, sample_dataset)
 from swift.tuners import Swift
 from swift.utils import append_to_jsonl, get_logger
 from .protocol import RequestConfig
@@ -65,7 +65,7 @@ class SwiftInfer(SwiftPipeline):
         self.infer_engine = self.get_infer_engine(args)
         if args.ckpt_dir and args.weight_type == 'lora':
             self.infer_engine.model = Swift.from_pretrained(self.infer_engine.model, args.ckpt_dir, inference_mode=True)
-        self.template = self.get_template(args, self.tokenizer)
+        self.template = self.get_template(args, self.processor)
         self.random_state = np.random.RandomState(args.data_seed)
 
     def __getattr__(self, key: str):
@@ -123,10 +123,10 @@ class SwiftInfer(SwiftPipeline):
         return infer_engine_cls(**kwargs)
 
     @staticmethod
-    def get_template(args, tokenizer) -> Template:
+    def get_template(args, processor: Processor) -> Template:
         template = get_template(
             args.template,
-            tokenizer,
+            processor,
             args.system,
             args.max_length,
             truncation_strategy=args.truncation_strategy,

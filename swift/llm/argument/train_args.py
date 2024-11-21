@@ -26,7 +26,7 @@ logger = get_logger()
 class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
     """Override the default value in `Seq2SeqTrainingArguments`"""
     output_dir: Optional[str] = None
-    gradient_checkpointing: Optional[bool] = None
+    gradient_checkpointing: bool = True
 
     per_device_train_batch_size: int = 1
     per_device_eval_batch_size: int = 1
@@ -48,7 +48,6 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
 
     def __post_init__(self):
         self._init_output_dir()
-        self._init_gradient_checkpointing()
 
         if self.learning_rate is None:
             if self.train_type == 'full':
@@ -65,51 +64,6 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
             self.evaluation_strategy = self.save_strategy
             self.eval_strategy = self.save_strategy
             self.eval_steps = self.save_steps
-
-    def _init_gradient_checkpointing(self):
-        """Prepare gradient checkpointing arguments"""
-        if self.gradient_checkpointing is None:
-            self.gradient_checkpointing = self.model_meta.support_gradient_checkpointing
-
-
-@dataclass
-class MegatronArguments:
-    """
-    MegatronArguments is a dataclass that holds arguments specific to the Megatron training backend.
-
-    Args:
-        train_backend (Literal['hf', 'megatron']): Specifies the training backend to use. Default is 'hf'.
-        tp (int): Tensor parallelism degree. Default is 1.
-        pp (int): Pipeline parallelism degree. Default is 1.
-        min_lr (Optional[float]): Minimum learning rate. Default is None.
-        sequence_parallel (bool): Whether to use sequence parallelism. Default is False.
-    """
-
-    # megatron
-    train_backend: Literal['hf', 'megatron'] = 'hf'
-    tp: int = 1
-    pp: int = 1
-    min_lr: Optional[float] = None
-    sequence_parallel: bool = False
-
-    def __post_init__(self):
-        if self.train_backend != 'megatron':
-            return
-
-        if self.train_type == 'lora':
-            logger.warning('Currently, only full parameter is supported. Setting args.train_type: "full"')
-            self.train_type = 'full'
-
-        if self.resume_from_checkpoint is None:
-            self.resume_from_checkpoint = f'{self.model_type}-tp{self.tp}-pp{self.pp}'
-        self.model_id_or_path = self.resume_from_checkpoint
-
-    def init_megatron(self):
-        """Init megatron if you are using megatron to pt"""
-        assert is_dist(), 'Please start in distributed mode.'
-        dist.init_process_group(backend=self.ddp_backend)
-        if self.min_lr is None:
-            self.min_lr = self.learning_rate * 0.1
 
 
 @dataclass
@@ -128,8 +82,7 @@ class TorchAccArguments:
 
 
 @dataclass
-class TrainArguments(MegatronArguments, TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideArguments,
-                     BaseArguments):
+class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideArguments, BaseArguments):
     """
     TrainArguments class is a dataclass that holds various arguments related to training configuration and usage.
 
@@ -181,7 +134,6 @@ class TrainArguments(MegatronArguments, TorchAccArguments, TunerArguments, Seq2S
         Seq2SeqTrainingOverrideArguments.__post_init__(self)
         TunerArguments.__post_init__(self)
         TorchAccArguments.__post_init__(self)
-        MegatronArguments.__post_init__(self)
         self._handle_pai_compat()
         self.prepare_deepspeed()
 
@@ -195,10 +147,8 @@ class TrainArguments(MegatronArguments, TorchAccArguments, TunerArguments, Seq2S
         if self.lazy_tokenize is None and not self.streaming:
             self.lazy_tokenize = self.model_meta.is_multimodal
             logger.info(f'Setting args.lazy_tokenize: {self.lazy_tokenize}')
-        if self.train_backend == 'hf':
-            self.training_args = TrainerFactory.get_training_args(self)
-        else:
-            self.init_megatron()
+        self.training_args = TrainerFactory.get_training_args(self)
+
         self._add_version()
         self.save_args()
 
@@ -306,7 +256,6 @@ class TrainArguments(MegatronArguments, TorchAccArguments, TunerArguments, Seq2S
         if is_local_master():
             os.makedirs(self.output_dir, exist_ok=True)
 
-        if self.train_backend == 'hf':
-            self.training_args.output_dir = self.output_dir
-            self.training_args.run_name = self.output_dir
-            self.training_args.logging_dir = self.logging_dir
+        self.training_args.output_dir = self.output_dir
+        self.training_args.run_name = self.output_dir
+        self.training_args.logging_dir = self.logging_dir

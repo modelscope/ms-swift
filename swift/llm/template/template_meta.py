@@ -45,12 +45,11 @@ class TemplateMeta:
     default_system: Optional[str] = None
     stop_words: List[Word] = field(default_factory=list)
     placeholder_tokens: List[Union[int, str]] = field(default_factory=list)
-    skip_prompt: bool = True
 
     default_tools_prompt: str = 'react_en'
     support_stream: bool = True
 
-    def to_generation_template_meta(self) -> 'TemplateMeta':
+    def to_generate_template_meta(self) -> 'TemplateMeta':
         return TemplateMeta(
             self.template_type,
             prefix=[],
@@ -60,7 +59,6 @@ class TemplateMeta:
             auto_add_bos=True,
             stop_words=deepcopy(self.stop_words),
             placeholder_tokens=deepcopy(self.placeholder_tokens),
-            skip_prompt=self.skip_prompt,
             support_stream=self.support_stream,
         )
 

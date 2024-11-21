@@ -95,8 +95,10 @@ class LmdeployEngine(InferEngine):
             return self.model_info.model_type
 
         async_engine.best_match_model = _best_match_model
-        yield
-        async_engine.best_match_model = _old_best_match_model
+        try:
+            yield
+        finally:
+            async_engine.best_match_model = _old_best_match_model
 
     def _prepare_engine(self):
         with patch_auto_tokenizer(self.tokenizer), patch_auto_config(self.config), self._patch_pipeline():
@@ -264,8 +266,10 @@ class LmdeployEngine(InferEngine):
             yield
             return
         self.model_info.max_model_len -= 1
-        yield
-        self.model_info.max_model_len += 1
+        try:
+            yield
+        finally:
+            self.model_info.max_model_len += 1
 
     @torch.inference_mode()
     def infer(

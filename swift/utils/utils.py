@@ -212,9 +212,6 @@ def subprocess_run(command: List[str], env: Optional[Dict[str, str]] = None, std
     return resp
 
 
-_log_set = set()  # log once
-
-
 def get_env_args(args_name: str, type_func: Callable[[str], _T], default_value: Optional[_T]) -> Optional[_T]:
     args_name_upper = args_name.upper()
     value = os.getenv(args_name_upper)
@@ -225,9 +222,7 @@ def get_env_args(args_name: str, type_func: Callable[[str], _T], default_value: 
     else:
         value = type_func(value)
         log_info = f'Using environment variable `{args_name_upper}`, Setting {args_name}: {value}.'
-    if log_info not in _log_set:
-        _log_set.add(log_info)
-        logger.info(log_info)
+    logger.info_once(log_info)
     return value
 
 

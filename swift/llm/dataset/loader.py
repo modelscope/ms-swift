@@ -12,7 +12,7 @@ from datasets import concatenate_datasets, interleave_datasets
 from modelscope.hub.api import ModelScopeConfig
 from modelscope.utils.config_ds import MS_CACHE_HOME
 
-from swift.hub import HFHub, MSHub
+from swift.hub import get_hub
 from swift.utils import download_ms_file, get_logger, get_seed, safe_ddp_context, use_hf_hub
 from .preprocessor import get_dataset_features
 from .register import DATASET_MAPPING, DATASET_TYPE, DatasetMeta, SubsetDataset, register_dataset_info
@@ -22,78 +22,103 @@ logger = get_logger()
 
 standard_keys = ['messages', 'rejected_response', 'label', 'images', 'videos', 'audios', 'tools', 'objects']
 
+_dataset_meta_mapping = None
+
 
 @dataclass
 class DatasetSyntax:
     dataset: str
-    use_hf: Optional[bool] = None
     subsets: List[str] = field(default_factory=list)
     dataset_sample: Optional[int] = None
 
     def __post_init__(self):
-        if self.use_hf is None:
-            self.use_hf = use_hf_hub()
         if os.path.isfile(self.dataset) or self.dataset.startswith('/'):
             self.dataset_type = 'path'
             assert os.path.isfile(self.dataset)
-        elif self.use_hf:
-            self.dataset_type = 'hf'
         else:
-            self.dataset_type = 'ms'
+            self.dataset_type = 'repo'
 
     def get_raw(self):
-        use_hf_mapping = {None: '', 1: 'HF::', 0: 'MS::'}
         subsets = '/'.join(self.subsets)
         dataset_sample = '' if self.dataset_sample is None else f'#{self.dataset_sample}'
-        return f'{use_hf_mapping[self.use_hf]}{self.dataset}{subsets}{dataset_sample}'
+        return f'{self.dataset}{subsets}{dataset_sample}'
+
+    @staticmethod
+    def _safe_split(s: str,
+                    sep: str,
+                    use_0: bool,
+                    split_mode: Literal['left', 'right'] = 'left') -> Tuple[Optional[str], Optional[str]]:
+        """
+        use_0: When the length of the part is 1, is it considered as part0 or part1.
+        split_mode: use split or rsplit
+        """
+        if s is None or len(s) == 0:
+            return None, None
+        if split_mode == 'left':
+            part = s.split(sep, 1)
+        else:
+            part = s.rsplit(sep, 1)
+        if len(part) == 1:
+            if use_0:
+                part = part[0], None
+            else:
+                part = None, part[0]
+        else:
+            assert len(part) == 2
+        return part
 
     @classmethod
     def parse(cls, dataset: str) -> 'DatasetSyntax':
         """Parse the dataset from the command line"""
         # HF::dataset_id or dataset_path:subset1/subset2/subset3#dataset_sample
-        use_hf, other = DatasetLoader._safe_split(dataset, '::', False)
+        if os.path.isfile(dataset):
+            other, dataset_sample = dataset, None
+        else:
+            other, dataset_sample = cls._safe_split(dataset, '#', True, 'right')
         if os.path.isfile(other):
-            part1, dataset_sample = other, None
+            dataset, subsets = other, None
         else:
-            part1, dataset_sample = DatasetLoader._safe_split(other, '#', True, 'right')
-        if os.path.isfile(part1):
-            dataset, subsets = part1, None
-        else:
-            dataset, subsets = DatasetLoader._safe_split(part1, ':', True)
+            dataset, subsets = cls._safe_split(other, ':', True)
 
-        if use_hf is not None:
-            use_hf = {'ms': False, 'hf': True}[use_hf.strip().lower()]
         if subsets is not None:
             subsets = [subset.strip() for subset in subsets.split('/')]
         if dataset_sample is not None:
             dataset_sample = int(dataset_sample)
-        return cls(dataset.strip(), use_hf, subsets or [], dataset_sample)
+        return cls(dataset.strip(), subsets or [], dataset_sample)
 
-    def to_dict(self):
-        # Convert to a format that can be parsed by register_dataset_info.
-        res = {}
-        mapping = {'path': 'dataset_path', 'hf': 'hf_dataset_id', 'ms': 'ms_dataset_id'}
-        key = mapping[self.dataset_type]
-        res[key] = self.dataset
-        return res
+    def get_dataset_meta(self, use_hf: Optional[bool] = None):
+        if use_hf is None:
+            use_hf = True if use_hf_hub() else False
+        dataset_meta_mapping = self._get_dataset_meta_mapping()
+        dataset_type = self.dataset_type
+        if dataset_type == 'path':
+            dataset_meta = dataset_meta_mapping.get((dataset_type, self.dataset.lower()))
+            if dataset_meta is None:
+                dataset_meta = DatasetMeta(dataset_path=self.dataset)
+        else:
+            dataset_type = {True: 'hf', False: 'ms'}[use_hf]
+            dataset_meta = dataset_meta_mapping.get((dataset_type, self.dataset.lower()))
+            if dataset_meta is None:
+                if use_hf:
+                    dataset_meta = DatasetMeta(hf_dataset_id=dataset)
+                else:
+                    dataset_meta = DatasetMeta(ms_dataset_id=dataset)
+        return dataset_meta
 
-
-_dataset_meta_mapping = None
-
-
-def get_dataset_meta_mapping() -> Dict[str, str]:
-    global _dataset_meta_mapping
-    if _dataset_meta_mapping is not None:
+    @staticmethod
+    def _get_dataset_meta_mapping() -> Dict[str, str]:
+        global _dataset_meta_mapping
+        if _dataset_meta_mapping is not None:
+            return _dataset_meta_mapping
+        _dataset_meta_mapping = {}
+        for dataset_meta in DATASET_MAPPING.values():
+            if dataset_meta.dataset_path is not None:
+                _dataset_meta_mapping[('path', dataset_meta.dataset_path.lower())] = dataset_meta
+            if dataset_meta.ms_dataset_id is not None:
+                _dataset_meta_mapping[('ms', dataset_meta.ms_dataset_id.lower())] = dataset_meta
+            if dataset_meta.hf_dataset_id is not None:
+                _dataset_meta_mapping[('hf', dataset_meta.hf_dataset_id.lower())] = dataset_meta
         return _dataset_meta_mapping
-    _dataset_meta_mapping = {}
-    for dataset_meta in DATASET_MAPPING.values():
-        if dataset_meta.dataset_path is not None:
-            _dataset_meta_mapping[('path', dataset_meta.dataset_path.lower())] = dataset_meta
-        if dataset_meta.ms_dataset_id is not None:
-            _dataset_meta_mapping[('ms', dataset_meta.ms_dataset_id.lower())] = dataset_meta
-        if dataset_meta.hf_dataset_id is not None:
-            _dataset_meta_mapping[('hf', dataset_meta.hf_dataset_id.lower())] = dataset_meta
-    return _dataset_meta_mapping
 
 
 class DatasetLoader:
@@ -166,9 +191,9 @@ class DatasetLoader:
     def _load_repo_dataset(
         dataset_id: str,
         subset: SubsetDataset,
-        use_hf: bool,
         *,
         num_proc: int = 1,
+        use_hf: Optional[bool] = None,
         strict: bool = True,
         load_from_cache_file: bool = False,
         streaming: bool = False,
@@ -178,10 +203,7 @@ class DatasetLoader:
         datasets = []
         for split in subset.split:
             retry = 3
-            if use_hf:
-                hub = HFHub
-            else:
-                hub = MSHub
+            hub = get_hub(use_hf)
             with safe_ddp_context():
                 while True:
                     try:
@@ -293,6 +315,7 @@ class DatasetLoader:
         dataset_meta: Optional[DatasetMeta] = None,
         *,
         num_proc: int = 1,
+        use_hf: Optional[bool] = None,
         strict: bool = True,
         load_from_cache_file: bool = False,
         download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists',
@@ -311,7 +334,7 @@ class DatasetLoader:
         else:
             subsets: List[SubsetDataset] = DatasetLoader._select_subsets(dataset_syntax.subsets, dataset_meta)
             dataset_str_f = 'Downloading the dataset from {hub}, dataset_id: {dataset_id}'
-            if dataset_syntax.use_hf:
+            if use_hf:
                 dataset_id = dataset_meta.hf_dataset_id
                 revision = dataset_meta.hf_revision
                 dataset_str = dataset_str_f.format(hub='HuggingFace', dataset_id=dataset_id)
@@ -320,14 +343,14 @@ class DatasetLoader:
                 revision = dataset_meta.ms_revision
                 dataset_str = dataset_str_f.format(hub='ModelScope', dataset_id=dataset_id)
             logger.info(dataset_str)
-            assert dataset_id is not None, (f'dataset: {dataset_syntax.dataset}, use_hf: {dataset_syntax.use_hf}, '
+            assert dataset_id is not None, (f'dataset: {dataset_syntax.dataset}, use_hf: {use_hf}, '
                                             f'dataset_id: {dataset_id}.')
             datasets = []
             for subset in subsets:
                 dataset = DatasetLoader._load_repo_dataset(
                     dataset_id,
                     subset,
-                    dataset_syntax.use_hf,
+                    use_hf=use_hf,
                     num_proc=num_proc,
                     strict=strict,
                     load_from_cache_file=load_from_cache_file,
@@ -339,49 +362,6 @@ class DatasetLoader:
 
             dataset = DatasetLoader._concat_datasets(datasets, streaming)
         return dataset
-
-    @staticmethod
-    def _safe_split(s: str,
-                    sep: str,
-                    use_0: bool,
-                    split_mode: Literal['left', 'right'] = 'left') -> Tuple[Optional[str], Optional[str]]:
-        """
-        use_0: When the length of the part is 1, is it considered as part0 or part1.
-        split_mode: use split or rsplit
-        """
-        if s is None or len(s) == 0:
-            return None, None
-        if split_mode == 'left':
-            part = s.split(sep, 1)
-        else:
-            part = s.rsplit(sep, 1)
-        if len(part) == 1:
-            if use_0:
-                part = part[0], None
-            else:
-                part = None, part[0]
-        else:
-            assert len(part) == 2
-        return part
-
-    @staticmethod
-    def parse_dataset(datasets: List[str]) -> List[Tuple[DatasetSyntax, DatasetMeta]]:
-        # ms_dataset_id/hf_dataset_id/dataset_path -> dataset_syntax, dataset_meta
-        dataset_meta_mapping = get_dataset_meta_mapping()
-
-        # register_dataset
-        res_datasets: List[str] = []
-        register_idx = 0
-        for dataset in datasets:
-            dataset_syntax = DatasetSyntax.parse(dataset)
-            dataset_meta = dataset_meta_mapping.get((dataset_syntax.dataset_type, dataset_syntax.dataset.lower()))
-            if dataset_meta is None:
-                # This dataset needs to be registered.
-                register_idx += 1
-                dataset_meta = register_dataset_info([dataset_syntax.to_dict()])[0]
-            res_datasets.append((dataset_syntax, dataset_meta))
-
-        return res_datasets
 
 
 def init_self_cognition_preprocessor(
@@ -405,6 +385,7 @@ def load_dataset(
         seed: Union[int, np.random.RandomState, None] = None,
         *,
         num_proc: int = 1,
+        use_hf: Optional[bool] = None,
         strict: bool = True,
         load_from_cache_file: bool = False,
         download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists',
@@ -436,12 +417,16 @@ def load_dataset(
     val_datasets = []
     load_kwargs = {
         'num_proc': num_proc,
+        'use_hf': use_hf,
         'strict': strict,
         'load_from_cache_file': load_from_cache_file,
         'download_mode': download_mode,
         'streaming': streaming,
     }
-    for dataset_syntax, dataset_meta in DatasetLoader.parse_dataset(datasets):
+
+    for dataset in datasets:
+        dataset_syntax = DatasetSyntax.parse(dataset)
+        dataset_meta = dataset_syntax.get_dataset_meta(use_hf)
         load_function = dataset_meta.load_function
         train_dataset = load_function(dataset_syntax, dataset_meta, **load_kwargs)
         train_dataset, val_dataset = DatasetLoader.post_process(

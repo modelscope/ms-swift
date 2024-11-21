@@ -1,8 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import warnings
-from typing import Any, Dict, List, Optional, Union
+from contextlib import contextmanager
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
+import torch
 import torch.nn as nn
 from datasets import Dataset as HfDataset
 from peft import PeftModel
@@ -43,29 +45,42 @@ class KTOTrainer(RLHFTrainerMixin, SwiftMixin, HFKTOTrainer):
         self.calculate_KL = True
         if self.loss_type in ['apo_zero_unpaired']:
             self.calculate_KL = False
-        train_dataset, eval_dataset = kwargs['train_dataset'], kwargs['eval_dataset']
-        label = train_dataset['label']
-        num_desirable = max(sum(label), 1)
-        num_undesirable = max(len(label) - num_desirable, 1)  # "label" is binary
-
-        if num_desirable != num_undesirable:
-            # The lower and upper bounds come from Eq. (8) of https://huggingface.co/papers/2402.01306
-            des_weight_lower_bound = round((num_undesirable * self.undesirable_weight / num_desirable) * 1, 2)
-            des_weight_upper_bound = round((num_undesirable * self.undesirable_weight / num_desirable) * 1.33, 2)
-            und_weight_lower_bound = round((num_desirable * self.desirable_weight / num_undesirable) / 1.33, 2)
-            und_weight_upper_bound = round((num_desirable * self.desirable_weight / num_undesirable) / 1, 2)
-
-            des_weight_in_range = des_weight_lower_bound <= self.desirable_weight <= des_weight_upper_bound
-            und_weight_in_range = und_weight_lower_bound <= self.undesirable_weight <= und_weight_upper_bound
-
-            if not (des_weight_in_range or und_weight_in_range):
-                logger.info(f'desirable_weight: {self.desirable_weight}, undesirable_weight: {self.undesirable_weight}')
-                warnings.warn(
-                    f"""
-            You have different amounts of desirable/positive and undesirable/negative examples but the
-            weights on the desirable and undesirable losses don't seem to be in an ideal range. Based
-            on your data, we recommend EITHER desirable_weight in [{des_weight_lower_bound}, '{des_weight_upper_bound}]
-            or undesirable_weight in [{und_weight_lower_bound}, {und_weight_upper_bound}] (but NOT BOTH).
-            See the documentation on how to optimally set these weights.""", UserWarning)
-        kwargs['train_dataset'], kwargs['eval_dataset'] = train_dataset, eval_dataset
         super().__init__(model, ref_model, *_args, **kwargs)
+
+    def forward(
+        self, model: nn.Module, batch: Dict[str, Union[List, torch.LongTensor]]
+    ) -> Tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
+        for key in [
+                'completion_input_ids', 'completion_attention_mask', 'KL_completion_input_ids',
+                'KL_completion_attention_mask'
+        ]:
+            if key not in batch:
+                batch[key] = None
+        is_kl = True
+
+        def _add_data_hook(model: nn.Module, args, kwargs):
+            nonlocal is_kl
+            _data = batch['_data']
+            if is_kl:
+                data = [{k[len('KL_'):]: v
+                         for k, v in inputs.items() if k.startswith('KL_completion_')} for inputs in _data]
+            else:
+                data = [{k: v for k, v in inputs.items() if k.startswith('completion_')} for inputs in _data]
+            is_kl = not is_kl
+            kwargs['_data'] = data
+            return (), kwargs
+
+        @contextmanager
+        def _patch_model_call():
+            handle = None
+            if '_data' in batch:
+                handle = model.register_forward_pre_hook(_add_data_hook, with_kwargs=True, prepend=True)
+
+            try:
+                yield
+            finally:
+                if handle:
+                    handle.remove()
+
+        with _patch_model_call():
+            return super().forward(model, batch)

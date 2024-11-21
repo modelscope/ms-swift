@@ -48,10 +48,12 @@ class ModelWrapper(nn.Module):
         deepspeed_model.__dict__['module'] = _new_model
         deepspeed_model._modules['module'] = _new_model
         trainer.model = _new_model
-        yield
-        deepspeed_model.__dict__['module'] = _old_model
-        deepspeed_model._modules['module'] = _old_model
-        trainer.model = deepspeed_model
+        try:
+            yield
+        finally:
+            deepspeed_model.__dict__['module'] = _old_model
+            deepspeed_model._modules['module'] = _old_model
+            trainer.model = deepspeed_model
 
 
 class RLHFTrainerMixin:
@@ -92,13 +94,12 @@ class RLHFTrainerMixin:
             self.pad_token_id = self.get_model_config_attr(model.config, 'pad_token_id')
         # not use
         self.is_vision_model = False
-        tokenizer = kwargs['tokenizer']
         self.label_pad_token_id = -100
-        self.padding_value = tokenizer.pad_token_id
         self.use_dpo_data_collator = True
         if is_deepspeed_zero3_enabled() and ref_model is not None:
             model = ModelWrapper(model, ref_model)
         super().__init__(model, *_args, **kwargs)
+        self.padding_value = self.tokenizer.pad_token_id
 
     def _save_checkpoint(self, model, trial, metrics=None):
         context = nullcontext()
@@ -135,9 +136,11 @@ class RLHFTrainerMixin:
             _old_model_call = model.__class__.__call__
             self.concatenated_inputs = lambda *args, **kwargs: model_kwargs
             model.__class__.__call__ = lambda *args, **kwargs: outputs
-            yield
-            self.concatenated_inputs = _old_concatenated_inputs
-            model.__class__.__call__ = _old_model_call
+            try:
+                yield
+            finally:
+                self.concatenated_inputs = _old_concatenated_inputs
+                model.__class__.__call__ = _old_model_call
 
         with _patch_concatenated_forward():
             return super().concatenated_forward(model, model_kwargs)

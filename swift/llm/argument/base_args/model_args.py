@@ -110,11 +110,11 @@ class ModelArguments:
                 raise ValueError(f'args.torch_dtype: {self.torch_dtype}')
 
     def _init_model_info(self, torch_dtype: Optional[torch.dtype]) -> torch.dtype:
-        from swift.llm import get_model_tokenizer
-        tokenizer = get_model_tokenizer(
+        from swift.llm import get_model_tokenizer, ModelInfo
+        processor = get_model_tokenizer(
             self.model, torch_dtype, load_model=False, model_type=self.model_type, revision=self.model_revision)[1]
-        self.model_info = tokenizer.model_info
-        self.model_meta = tokenizer.model_meta
+        self.model_info = processor.model_info
+        self.model_meta = processor.model_meta
         self.model_type = self.model_info.model_type
         return self.model_info.torch_dtype
 
