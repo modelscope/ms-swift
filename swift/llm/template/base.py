@@ -164,10 +164,10 @@ class Template:
         if len(encoded) == 0:
             return {}
         return {
-            'input_ids': encoded['chosen_input_ids'],
-            'labels': encoded['chosen_labels'],
-            'KL_input_ids': encoded['chosen_prompt_input_ids'] + encoded['rejected_answer_input_ids'],
-            'KL_labels': encoded['chosen_prompt_labels'] + encoded['rejected_answer_labels'],
+            'completion_input_ids': encoded['chosen_input_ids'],
+            'completion_labels': encoded['chosen_labels'],
+            'KL_completion_input_ids': encoded['chosen_prompt_input_ids'] + encoded['rejected_answer_input_ids'],
+            'KL_completion_labels': encoded['chosen_prompt_labels'] + encoded['rejected_answer_labels'],
             'label': inputs.label
         }
 
@@ -688,8 +688,9 @@ class Template:
         """
         if self._handles:
             return
-        # TODO:torch>=2.0
+
         for model in models:
+            # please use torch>=2.0
             handle = model.register_forward_pre_hook(self.pre_forward_hook, with_kwargs=True)
             self._handles.append(handle)
 
@@ -725,7 +726,7 @@ class Template:
         """for multimodal LLM"""
         new_batch = []
         for b in batch:
-            new_batch.append({k: v for k, v in b.items() if k.endswith('labels')})
+            new_batch.append({k: v for k, v in b.items() if k.endswith('labels') or k == 'label'})
 
         res = self.data_collator(
             new_batch, padding_side=padding_side, padding_to=padding_to, model=model)  # only labels
@@ -745,23 +746,29 @@ class Template:
         elif self.mode == 'train':
             return self._data_collator(batch, padding_side=padding_side, padding_to=padding_to, model=model)
 
+    @staticmethod
+    def _fetch_inputs_startswith(batch: List[Dict[str, Any]], prefix: str) -> List[Dict[str, Any]]:
+        new_batch = []
+        for inputs in batch:
+            new_inputs = {}
+            for k, v in inputs.items():
+                if k.startswith(prefix):
+                    new_k = k[len(prefix):]
+                    new_inputs[new_k] = v
+            new_batch.append(new_inputs)
+        return new_batch
+
     def _rlhf_data_collator(self,
                             batch: List[Dict[str, Any]],
                             *,
+                            chosen_prefix: str = 'chosen_',
+                            rejected_prefix: str = 'rejected_',
                             padding_side: Optional[str] = None,
                             padding_to: Optional[int] = None,
                             model: Optional[nn.Module] = None) -> Dict[str, Any]:
         new_batch = []
-        for prefix in ['chosen_', 'rejected_']:
-            for inputs in batch:
-                new_inputs = {}
-                for k, v in inputs.items():
-                    if k.startswith(prefix):
-                        new_k = k[len(prefix):]
-                        new_inputs[new_k] = inputs[k]
-                if len(new_inputs) > 0:
-                    new_batch.append(new_inputs)
-        assert len(new_batch) == len(batch) * 2, f'new_batch: {new_batch}'
+        for prefix in [chosen_prefix, rejected_prefix]:
+            new_batch += self._fetch_inputs_startswith(new_batch, prefix)
         return self._data_collator(new_batch, padding_side=padding_side, padding_to=padding_to, model=model)
 
     def _kto_data_collator(self,
@@ -770,15 +777,17 @@ class Template:
                            padding_side: Optional[str] = None,
                            padding_to: Optional[int] = None,
                            model: Optional[nn.Module] = None) -> Dict[str, Any]:
-        res = {}
-        for prefix in ['', 'KL_']:
-            new_batch = []
-            for b in batch:
-                new_batch.append({'input_ids': b[f'{prefix}input_ids'], 'labels': b[f'{prefix}labels']})
-            for k, v in self._data_collator(
-                    new_batch, padding_side=padding_side, padding_to=padding_to, model=model).items():
-                res[f'{prefix}completion_{k}'] = v
-        res['label'] = [b['label'] for b in batch]
+        kl_batch = self._fetch_inputs_startswith(batch, 'KL_completion_')
+        new_batch = self._fetch_inputs_startswith(batch, 'completion_')
+
+        kl_res = self._data_collator(kl_batch, padding_side=padding_side, padding_to=padding_to, model=model)
+        res = self._data_collator(new_batch, padding_side=padding_side, padding_to=padding_to, model=model)
+        res = {f'completion_{k}': v for k, v in kl_res.items()}
+        res.update({f'KL_completion_{k}': v for k, v in kl_res.items()})
+
+        label = [b['label'] for b in batch if b.get('label') is not None]
+        if label:
+            res['label'] = label
         return res
 
     def _data_collator(self,
@@ -793,6 +802,8 @@ class Template:
             padding_to(`int`, optional): Whether padding the batch to a fixed length, if none, the batch
                 will be padded to the `longest`
         """
+        if len(batch) == 0:
+            return {}
         from swift.utils import get_dist_setting, use_torchacc
         tokenizer = self.processor
         if not isinstance(tokenizer, PreTrainedTokenizerBase) and hasattr(tokenizer, 'tokenizer'):

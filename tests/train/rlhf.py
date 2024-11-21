@@ -32,5 +32,5 @@ def test_mllm():
 
 
 if __name__ == '__main__':
-    test_llm()
-    # test_mllm()
+    # test_llm()
+    test_mllm()
