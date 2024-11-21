@@ -309,7 +309,7 @@ class PtEngine(InferEngine):
         if request_config.stream:
 
             async def _gen_wrapper():
-                for response in gen:
+                for response in res_or_gen:
                     yield response[0]
 
             return _gen_wrapper()

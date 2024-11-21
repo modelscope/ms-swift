@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from .argument import (EvalArguments, InferArguments, TrainArguments, ExportArguments, DeployArguments,
                            RLHFArguments, WebUIArguments, BaseArguments)
     from .template import (TEMPLATE_MAPPING, Template, Word, get_template, TemplateType, register_template,
-                           TemplateInputs, Messages, TemplateMeta, get_template_meta, InferRequest)
+                           TemplateInputs, Messages, TemplateMeta, get_template_meta, InferRequest, Processor)
     from .model import (MODEL_MAPPING, ModelType, get_model_tokenizer, safe_snapshot_download, HfConfigFactory,
                         ModelInfo, ModelMeta, ModelKeys, register_model_arch, MultiModelKeys, ModelArch, get_model_arch,
                         MODEL_ARCH_MAPPING)
@@ -40,7 +40,7 @@ else:
         ],
         'template': [
             'TEMPLATE_MAPPING', 'Template', 'Word', 'get_template', 'TemplateType', 'register_template',
-            'TemplateInputs', 'Messages', 'TemplateMeta', 'get_template_meta', 'InferRequest'
+            'TemplateInputs', 'Messages', 'TemplateMeta', 'get_template_meta', 'InferRequest', 'Processor'
         ],
         'model': [
             'MODEL_MAPPING', 'ModelType', 'get_model_tokenizer', 'safe_snapshot_download', 'HfConfigFactory',

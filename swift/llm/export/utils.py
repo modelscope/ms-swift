@@ -5,8 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import json
 from transformers import PreTrainedModel, PreTrainedTokenizerBase
-
-from swift.llm import ExportArguments, PtEngine, SwiftInfer, Template
+from swift.llm import ExportArguments, PtEngine, SwiftInfer, Template, Processor
 
 
 def prepare_pt_engine_template(args: ExportArguments, load_model: bool = True, **kwargs) -> Tuple[PtEngine, Template]:
@@ -18,7 +17,7 @@ def prepare_pt_engine_template(args: ExportArguments, load_model: bool = True, *
 
 
 def save_checkpoint(model: Optional[PreTrainedModel],
-                    tokenizer: PreTrainedTokenizerBase,
+                    tokenizer: Processor,
                     output_dir: str,
                     *,
                     safe_serialization: bool = True,
@@ -31,8 +30,6 @@ def save_checkpoint(model: Optional[PreTrainedModel],
         model_dirs = []
     if model.model_dir not in model_dirs:
         model_dirs.append(model.model_dir)
-    if hasattr(tokenizer, 'processor'):
-        tokenizer.processor.save_pretrained(output_dir)
     tokenizer.save_pretrained(output_dir)
 
     if additional_saved_files is None:

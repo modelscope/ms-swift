@@ -42,6 +42,8 @@ class SwiftSft(SwiftPipeline):
 
     def _prepare_train(self):
         self.template.set_mode('train')
+        if self.model.model_meta.is_multimodal:
+            self.template.register_post_encode_hook([self.model])
 
     def _prepare_gradient_checkpointing(self):
         args = self.args
@@ -148,16 +150,11 @@ class SwiftSft(SwiftPipeline):
         args = self.args
         template = self.template
         padding_to = args.max_length if args.train_type == 'longlora' else None
-        is_multimodal = self.model.model_meta.is_multimodal
-        if is_multimodal:
+        if self.model.model_meta.is_multimodal:
             data_collator = template.pre_data_collator
-            self._register_post_encode_hook()
         else:
             data_collator = template.data_collator
         return partial(data_collator, padding_to=padding_to, model=self.model)
-
-    def _register_post_encode_hook(self):
-        template.register_post_encode_hook([self.model])
 
     def run(self):
         args = self.args

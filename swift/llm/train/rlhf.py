@@ -29,11 +29,11 @@ class SwiftRLHF(SwiftSft):
             # Avoid padding labels during the model's forward pass in multimodal models.
             self.template.loss_scale = 'last_round'
 
-    def _register_post_encode_hook(self):
-        models = [self.model]
-        if self.ref_model:
-            models.append(self.ref_model)
-        self.template.register_post_encode_hook(models)
+        if self.model.model_meta.is_multimodal:
+            models = [self.model]
+            if self.ref_model:
+                models.append(self.ref_model)
+            self.template.register_post_encode_hook(models)
 
     def _get_dataset(self):
         args = self.args
