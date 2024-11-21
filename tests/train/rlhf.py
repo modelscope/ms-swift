@@ -12,7 +12,7 @@ kwargs = {
 
 def test_llm():
     from swift.llm import rlhf_main, RLHFArguments, infer_main, InferArguments
-    rlhf_main(
+    result = rlhf_main(
         RLHFArguments(
             rlhf_type='dpo',
             model='qwen/Qwen2-7B-Instruct',

@@ -32,12 +32,13 @@ class SwiftSft(SwiftPipeline):
         self._prepare_model_tokenizer()
         self._prepare_template()
         self._prepare_callbacks()
-        self._prepare_train()
         self.model = prepare_tuner(self.model, args)
         logger.info(self.model)
         model_parameter_info = get_model_parameter_info(self.model)
         self.train_msg['model_parameter_info'] = model_parameter_info
         logger.info(f'model_parameter_info: {model_parameter_info}')
+
+        self._prepare_train()
 
     def _prepare_train(self):
         self.template.set_mode('train')
@@ -95,7 +96,7 @@ class SwiftSft(SwiftPipeline):
         self._prepare_generation_config()
         self._prepare_gradient_checkpointing()
 
-    def _prepare_template(self) -> None:
+    def _prepare_template(self, **template_kwargs) -> None:
         args = self.args
         template = get_template(
             args.template,
@@ -107,7 +108,7 @@ class SwiftSft(SwiftPipeline):
             loss_scale=args.loss_scale,
             tools_prompt=args.tools_prompt,
             sequence_parallel_size=args.sequence_parallel_size,
-        )
+            **template_kwargs)
         logger.info(f'default_system: {template.default_system}')
         self.template = template
 

@@ -56,6 +56,7 @@ class Template:
     video_placeholder = ['<video>']
     audio_placeholder = ['<audio>']
     load_medias = True
+    skip_prompt = True
 
     output_prompt_answer = False  # for encoder-decoder & kto
     padding_side: Literal['left', 'right'] = 'right'  # The padding_side when the training batch_size >= 2.
@@ -67,7 +68,7 @@ class Template:
             default_system: Optional[str] = None,
             max_length: Optional[int] = None,
             *,
-            use_generate_template: bool = False,
+            use_chat_template: bool = True,
             truncation_strategy: Literal['delete', 'left'] = 'left',
             max_pixels: Optional[int] = None,
             tools_prompt: Optional[str] = None,
@@ -84,8 +85,8 @@ class Template:
         tools_prompt: The type of tools_prompt added in the system.
         """
         from .template_meta import TemplateMeta
-        if use_generate_template:
-            template_meta = template_meta.to_generation_template_meta()
+        if not use_chat_template:
+            template_meta = template_meta.to_generate_template_meta()
         # if default_system is None. not change self.default_system
         if default_system is not None:
             self.default_system = template_meta.check_system(default_system)
@@ -100,7 +101,7 @@ class Template:
 
         self.template_meta: TemplateMeta = template_meta
         self.processor = processor
-        self.use_generate_template = use_generate_template
+        self.use_chat_template = use_chat_template
         self.max_length = max_length
         self.truncation_strategy = truncation_strategy
         self.loss_scale = loss_scale
@@ -633,7 +634,7 @@ class Template:
 
     def get_generate_ids(self, generate_ids: Union[torch.Tensor, List[int]],
                          num_prompt_tokens: int) -> Union[torch.Tensor, List[int]]:
-        if self.template_meta.skip_prompt:
+        if self.skip_prompt:
             return generate_ids[..., num_prompt_tokens:]
         else:
             return generate_ids

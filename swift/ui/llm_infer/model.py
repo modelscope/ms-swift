@@ -114,7 +114,7 @@ class Model(BaseUI):
         with gr.Row():
             model = gr.Dropdown(
                 elem_id='model', lines=1, scale=20, choices=[base_tab.locale('checkpoint',
-                                                                             cls.lang)['value']])  # TODO +
+                                                                             cls.lang)['value']])  # TODO lint
             model_type = gr.Dropdown(
                 elem_id='model_type',
                 choices=ModelType.get_model_name_list() + cls.get_custom_name_list(),

@@ -25,7 +25,7 @@ def get_template(
         default_system: Optional[str] = None,
         max_length: Optional[int] = None,
         *,
-        use_generate_template: bool = False,
+        use_chat_template: bool = False,
         truncation_strategy: Literal['delete', 'left'] = 'delete',
         max_pixels: Optional[int] = None,  # h * w
         tools_prompt: str = 'react_en',
@@ -39,7 +39,7 @@ def get_template(
         template_meta,
         default_system,
         max_length,
-        use_generate_template=use_generate_template,
+        use_chat_template=use_chat_template,
         truncation_strategy=truncation_strategy,
         loss_scale=loss_scale,
         max_pixels=max_pixels,
