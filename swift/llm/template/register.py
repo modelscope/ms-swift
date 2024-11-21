@@ -2,10 +2,9 @@
 
 from typing import Any, Dict, List, Literal, Optional, Tuple, Type, Union
 
-from transformers import PreTrainedTokenizerBase
-
 from .base import Template
 from .template_meta import TemplateMeta
+from .utils import Processor
 
 TEMPLATE_MAPPING: Dict[str, TemplateMeta] = {}
 
@@ -21,7 +20,7 @@ def register_template(template_meta: TemplateMeta, *, exist_ok: bool = False) ->
 
 def get_template(
         template_type: str,
-        tokenizer: PreTrainedTokenizerBase,
+        processor: Processor,
         default_system: Optional[str] = None,
         max_length: Optional[int] = None,
         *,
@@ -35,7 +34,7 @@ def get_template(
     template_meta = TEMPLATE_MAPPING[template_type]
     template_cls = template_meta.template_cls
     return template_cls(
-        tokenizer,
+        processor,
         template_meta,
         default_system,
         max_length,
