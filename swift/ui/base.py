@@ -98,7 +98,6 @@ class BaseUI:
     bool_regex = r'^(T|t)rue$|^(F|f)alse$'
     cache_dir = os.path.join(get_cache_dir(), 'swift-web-ui')
     os.makedirs(cache_dir, exist_ok=True)
-    visible = True
     quote = '\'' if sys.platform != 'win32' else '"'
 
     @classmethod
@@ -129,6 +128,7 @@ class BaseUI:
     @classmethod
     def save_cache(cls, key, value):
         timestamp = str(int(time.time()))
+        key = key.replace('/', '-')
         filename = os.path.join(cls.cache_dir, key + '-' + timestamp)
         with open(filename, 'w') as f:
             json.dump(value, f)
@@ -136,6 +136,7 @@ class BaseUI:
     @classmethod
     def list_cache(cls, key):
         files = []
+        key = key.replace('/', '-')
         for _, _, filenames in os.walk(cls.cache_dir):
             for filename in filenames:
                 if filename.startswith(key):
@@ -150,6 +151,7 @@ class BaseUI:
     def load_cache(cls, key, timestamp) -> BaseArguments:
         dt_object = datetime.strptime(timestamp, '%Y/%m/%d %H:%M:%S')
         timestamp = int(dt_object.timestamp())
+        key = key.replace('/', '-')
         filename = key + '-' + str(timestamp)
         with open(os.path.join(cls.cache_dir, filename), 'r') as f:
             ckpt_dir = f.read()
@@ -157,6 +159,7 @@ class BaseUI:
 
     @classmethod
     def clear_cache(cls, key):
+        key = key.replace('/', '-')
         for _, _, filenames in os.walk(cls.cache_dir):
             for filename in filenames:
                 if filename.startswith(key):
@@ -211,7 +214,10 @@ class BaseUI:
     @classmethod
     def valid_elements(cls):
         elements = cls.elements()
-        return {key: value for key, value in elements if isinstance(value, (Textbox, Dropdown, Slider, Checkbox))}
+        return {
+            key: value
+            for key, value in elements.items() if isinstance(value, (Textbox, Dropdown, Slider, Checkbox))
+        }
 
     @classmethod
     def element_keys(cls):
@@ -219,7 +225,9 @@ class BaseUI:
 
     @classmethod
     def valid_element_keys(cls):
-        return [key for key, value in cls.elements().items() if isinstance(value, (Textbox, Dropdown, Slider, Checkbox))]
+        return [
+            key for key, value in cls.elements().items() if isinstance(value, (Textbox, Dropdown, Slider, Checkbox))
+        ]
 
     @classmethod
     def element(cls, elem_id):

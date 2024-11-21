@@ -4,6 +4,7 @@ from typing import Type
 import gradio as gr
 
 from swift.llm import TEMPLATE_MAPPING, ModelType
+from swift.llm.model.register import get_all_models
 from swift.ui.base import BaseUI
 
 
@@ -13,15 +14,15 @@ class Model(BaseUI):
     locale_dict = {
         'model_type': {
             'label': {
-                'zh': '选择模型',
-                'en': 'Select Model'
+                'zh': '模型类型',
+                'en': 'Select Model Type'
             },
             'info': {
-                'zh': 'SWIFT已支持的模型名称',
-                'en': 'Base model supported by SWIFT'
+                'zh': 'SWIFT已支持的模型类型',
+                'en': 'Base model type supported by SWIFT'
             }
         },
-        'model_id_or_path': {
+        'model': {
             'label': {
                 'zh': '模型id或路径',
                 'en': 'Model id or path'
@@ -31,7 +32,7 @@ class Model(BaseUI):
                 'en': 'The actual model id or model path'
             }
         },
-        'template_type': {
+        'template': {
             'label': {
                 'zh': '模型Prompt模板类型',
                 'en': 'Prompt template type'
@@ -79,19 +80,24 @@ class Model(BaseUI):
                 'en': 'Model settings'
             },
         },
+        'checkpoint': {
+            'value': {
+                'zh': '训练后的模型',
+                'en': 'Trained model'
+            }
+        },
     }
 
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
         with gr.Accordion(elem_id='model_param', open=True):
             with gr.Row():
-                model = gr.Dropdown(elem_id='model', lines=1, scale=20, choices=)
+                model = gr.Dropdown(elem_id='model', scale=20, choices=get_all_models(), allow_custom_value=True)
                 gr.Dropdown(
                     elem_id='model_type',
                     choices=ModelType.get_model_name_list() + cls.get_custom_name_list(),
                     scale=20)
-                gr.Dropdown(
-                    elem_id='template', choices=list(TEMPLATE_MAPPING.keys()) + ['AUTO'], scale=20)
+                gr.Dropdown(elem_id='template', choices=list(TEMPLATE_MAPPING.keys()) + ['AUTO'], scale=20)
                 train_record = gr.Dropdown(elem_id='train_record', choices=[], scale=20)
                 clear_cache = gr.Button(elem_id='clear_cache', scale=2)
             with gr.Row():

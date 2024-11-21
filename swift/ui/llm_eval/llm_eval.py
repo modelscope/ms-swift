@@ -138,11 +138,9 @@ class LLMEval(BaseUI):
                     more_params_cmd = value
 
         kwargs.update(more_params)
-        if kwargs['model_type'] == cls.locale('checkpoint', cls.lang)['value']:
-            model_dir = kwargs.pop('model_id_or_path')
-            if not os.path.exists(model_dir):
-                model_dir = snapshot_download(model_dir)
-            kwargs['ckpt_dir'] = model_dir
+        model = kwargs.get('model')
+        if os.path.exists(model) and os.path.exists(os.path.join(model, 'args.json')):
+            kwargs['ckpt_dir'] = kwargs.pop('model')
 
         eval_args = EvalArguments(
             **{

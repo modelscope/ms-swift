@@ -16,7 +16,7 @@ from packaging import version
 from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer, GenerationConfig, PretrainedConfig,
                           PreTrainedModel, PreTrainedTokenizerBase)
 from transformers.integrations import is_deepspeed_zero3_enabled
-from transformers.utils import is_torch_bf16_gpu_available, is_torch_cuda_available, is_torch_npu_available
+from transformers.utils import is_torch_bf16_gpu_available, is_torch_cuda_available, is_torch_npu_available, strtobool
 from transformers.utils.versions import require_version
 
 from swift.utils import get_dist_setting, get_logger, is_ddp_plus_mp, is_dist, is_unsloth_available, use_torchacc
@@ -369,6 +369,19 @@ def _get_model_name(model_id_or_path: str) -> str:
     else:
         model_name = model_id_or_path.rsplit('/', 1)[-1]
     return model_name.lower()
+
+
+def get_all_models() -> List[str]:
+    use_hf = strtobool(os.environ.get('USE_HF', 'False'))
+    models = []
+    for model_type, model_meta in MODEL_MAPPING.items():
+        for group in model_meta.model_groups:
+            for model in group.models:
+                if use_hf:
+                    models.append(model.hf_model_id)
+                else:
+                    models.append(model.ms_model_id)
+    return models
 
 
 def get_matched_model_meta(model_id_or_path: str) -> Optional[ModelMeta]:
