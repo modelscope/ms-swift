@@ -2,19 +2,17 @@
 # Part of the implementation is borrowed from huggingface/transformers.
 import inspect
 import os
-import re
 import shutil
 import time
 from copy import copy
-from pathlib import Path
 from types import MethodType
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
-import numpy as np
 import safetensors
 import torch
 import transformers
 from datasets import Dataset as HfDataset
+from modelscope import check_local_model_is_latest
 from packaging import version
 from peft import PeftModel
 from torch.nn import Module
@@ -22,14 +20,15 @@ from transformers import PreTrainedModel, PreTrainedTokenizerBase
 from transformers.data.data_collator import DataCollator
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.modeling_utils import unwrap_model
-from transformers.trainer import PREFIX_CHECKPOINT_DIR, TRAINER_STATE_NAME, Trainer, TrainerCallback
+from transformers.trainer import Trainer, TrainerCallback
 from transformers.trainer_utils import EvalPrediction
-from transformers.training_args import TrainingArguments
-from transformers.utils import is_sagemaker_mp_enabled, is_torch_npu_available
+from transformers.utils import is_torch_npu_available
 
 from swift.tuners import SwiftModel
-from swift.utils import check_json_format, get_logger, is_ddp_plus_mp
+from swift.utils import get_logger, is_ddp_plus_mp
+from .arguments import TrainingArguments
 from .optimizers.galore import create_optimizer_and_scheduler
+from .push_to_hub import PushToHubHelper
 from .torchacc_mixin import TorchAccMixin
 from .utils import can_return_loss, find_labels, get_function, is_instance_of_ms_model
 
@@ -39,6 +38,7 @@ except (ImportError, RuntimeError):
     AutoModelForCausalLMWithValueHead = None
 
 logger = get_logger()
+PushToHubHelper.patch()
 
 
 class SwiftMixin(TorchAccMixin):
@@ -58,13 +58,12 @@ class SwiftMixin(TorchAccMixin):
             optimizers: Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR] = (None, None),
             preprocess_logits_for_metrics: Optional[Callable[[torch.Tensor, torch.Tensor],
                                                              torch.Tensor]] = None) -> None:
-        # if check_model and hasattr(model, 'model_dir'):
-        #     check_local_model_is_latest(
-        #         model.model_dir,
-        #         user_agent={
-        #             Invoke.KEY: Invoke.LOCAL_TRAINER,
-        #             Invoke.THIRD_PARTY: kwargs.pop(Invoke.THIRD_PARTY, Invoke.SWIFT),
-        #         })
+        if args.check_model and hasattr(model, 'model_dir'):
+            check_local_model_is_latest(
+                model.model_dir, user_agent={
+                    'invoked_by': 'local_trainer',
+                    'third_party': 'swift',
+                })
         self._custom_metrics = {}
         self.compute_loss_func = compute_loss_func
         self.max_memory = 0

@@ -90,7 +90,7 @@ class LoRA(BaseUI):
             with gr.Blocks():
                 with gr.Row():
                     lora_target_modules = gr.Textbox(
-                        elem_id='lora_target_modules', lines=1, scale=5, value='ALL', is_list=True)
+                        elem_id='target_modules', lines=1, scale=5, value='ALL', is_list=True)
                     gr.Slider(elem_id='lora_rank', value=32, minimum=1, maximum=512, step=8, scale=2)
                     gr.Slider(elem_id='lora_alpha', value=8, minimum=1, maximum=512, step=8, scale=2)
                     gr.Textbox(elem_id='lora_dropout', scale=2)
@@ -100,14 +100,3 @@ class LoRA(BaseUI):
                     gr.Checkbox(elem_id='use_rslora', scale=2)
                     gr.Checkbox(elem_id='use_dora', scale=2)
                     gr.Textbox(elem_id='init_lora_weights', scale=4)
-
-            def update_lora(choice):
-                if choice is not None:
-                    target_modules = 'ALL'
-                    if isinstance(target_modules, list):
-                        target_modules = 'ALL'  # llm
-                    return target_modules
-                return None
-
-            base_tab.element('model_type').change(
-                update_lora, inputs=[base_tab.element('model_type')], outputs=[lora_target_modules])

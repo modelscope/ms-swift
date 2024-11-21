@@ -1,4 +1,5 @@
 import os.path
+from functools import partial
 from typing import Type
 
 import gradio as gr
@@ -63,32 +64,9 @@ class Model(BaseUI):
             reset_btn = gr.Button(elem_id='reset', scale=2)
             model_state = gr.State({})
 
-        def update_input_model(choice, model_state=None):
-            if choice in (base_tab.locale('checkpoint', cls.lang)['value']):
-                if model_state and choice in model_state:
-                    model_id_or_path = model_state[choice]
-                else:
-                    model_id_or_path = None
-            else:
-                if model_state and choice in model_state:
-                    model_id_or_path = model_state[choice]
-                else:
-                    model_id_or_path = MODEL_MAPPING[choice]['model_id_or_path']
-            return model_id_or_path
-
-        def update_model_id_or_path(model_type, path, model_state):
-            if not path or not os.path.exists(path):
-                return gr.update()
-            model_state[model_type] = path
-            return model_state
-
-        model_type.change(update_input_model, inputs=[model_type, model_state], outputs=[model_id_or_path])
-
-        model_id_or_path.change(
-            update_model_id_or_path, inputs=[model_type, model_id_or_path, model_state], outputs=[model_state])
-
-        def reset(model_type):
-            model_id_or_path = update_input_model(model_type)
-            return model_id_or_path, {}
-
-        reset_btn.click(reset, inputs=[model_type], outputs=[model_id_or_path, model_state])
+    @classmethod
+    def after_build_ui(cls, base_tab: Type['BaseUI']):
+        cls.element('model').change(
+            partial(cls.update_input_model, has_record=False),
+            inputs=[cls.element('model')],
+            outputs=list(cls.valid_elements().values()))
