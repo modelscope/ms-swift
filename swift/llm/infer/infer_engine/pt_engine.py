@@ -334,7 +334,7 @@ class PtEngine(InferEngine):
         template.set_mode('pt')
         batched_inputs = []
         for infer_request in infer_requests:
-            inputs = template.encode(infer_request, model=self.model)
+            inputs = template.encode(infer_request)
             batched_inputs.append(inputs)
         if self.model.model_meta.is_multimodal:
             inputs = template.pre_data_collator(batched_inputs, padding_side='left', model=self.model)
