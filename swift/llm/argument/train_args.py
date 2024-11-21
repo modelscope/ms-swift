@@ -48,7 +48,6 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
 
     def __post_init__(self):
         self._init_output_dir()
-        self._init_gradient_checkpointing()
 
         if self.learning_rate is None:
             if self.train_type == 'full':

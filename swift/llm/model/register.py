@@ -481,7 +481,6 @@ def get_model_tokenizer(model_id_or_path: str,
     model_info.torch_dtype = torch_dtype
 
     model_meta.check_requires()
-    model_meta.check_flash_attn(attn_impl)
     get_function = model_meta.get_function
     kwargs['automodel_class'] = automodel_class
     model, tokenizer = get_function(model_dir, model_info, model_kwargs, load_model, **kwargs)

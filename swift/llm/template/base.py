@@ -650,8 +650,9 @@ class Template(ProcessorMixin):
                          padding_to: Optional[int] = None) -> Dict[str, Any]:
         # inplace
         from swift.llm import to_device
-        extra_inputs = []
+        kwargs = kwargs.copy()
         batched_data = kwargs.pop('_data')
+        extra_inputs = []
         for data in batched_data:
             for k, v in data.items():
                 if k in {'input_ids', 'labels', 'loss_scale'} and isinstance(v, (list, tuple)):
@@ -753,8 +754,7 @@ class Template(ProcessorMixin):
             new_inputs = {}
             for k, v in inputs.items():
                 if k.startswith(prefix):
-                    new_k = k[len(prefix):]
-                    new_inputs[new_k] = v
+                    new_inputs[k[len(prefix):]] = v
             new_batch.append(new_inputs)
         return new_batch
 
@@ -768,7 +768,7 @@ class Template(ProcessorMixin):
                             model: Optional[nn.Module] = None) -> Dict[str, Any]:
         new_batch = []
         for prefix in [chosen_prefix, rejected_prefix]:
-            new_batch += self._fetch_inputs_startswith(new_batch, prefix)
+            new_batch += self._fetch_inputs_startswith(batch, prefix)
         return self._data_collator(new_batch, padding_side=padding_side, padding_to=padding_to, model=model)
 
     def _kto_data_collator(self,
