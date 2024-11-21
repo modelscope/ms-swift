@@ -10,7 +10,7 @@ import json
 import torch
 from PIL import Image
 from tqdm import tqdm
-from transformers import GenerationConfig, LogitsProcessorList
+from transformers import GenerationConfig
 from transformers.utils import is_torch_npu_available
 
 from swift.llm import InferRequest, Template, TemplateMeta, to_device

@@ -701,7 +701,7 @@ class Template(ProcessorMixin):
             @wraps(self._deepspeed_initialize)
             def _initialize(*args, **kwargs):
                 res = self._deepspeed_initialize(*args, **kwargs)
-                for model, handle in zip(models, handles):
+                for model, handle in zip(models, self._handles):
                     model._forward_pre_hooks.move_to_end(handle.id)
                 return res
 
@@ -743,7 +743,7 @@ class Template(ProcessorMixin):
             return self._rlhf_data_collator(batch, padding_side=padding_side, padding_to=padding_to, model=model)
         elif self.mode == 'kto':
             return self._kto_data_collator(batch, padding_side=padding_side, padding_to=padding_to, model=model)
-        elif self.mode == 'train':
+        elif self.mode in {'pt', 'train'}:
             return self._data_collator(batch, padding_side=padding_side, padding_to=padding_to, model=model)
 
     @staticmethod

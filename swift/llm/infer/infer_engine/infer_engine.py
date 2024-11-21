@@ -154,9 +154,9 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
 
             return _gen_wrapper()
         else:
-            for outputs in self._batch_infer_stream(tasks, False, use_tqdm):
+            for res in self._batch_infer_stream(tasks, False, use_tqdm):
                 pass
-            return self._update_metrics(outputs, metrics)
+            return self._update_metrics(res, metrics)
 
     def _get_toolcall(self, response: Union[str, List[int]],
                       is_finished: bool) -> Optional[List[ChatCompletionMessageToolCall]]:
