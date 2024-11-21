@@ -3,7 +3,6 @@ import os
 import shutil
 import tempfile
 
-from swift.hub import default_hub
 from swift.llm import ExportArguments, ModelMeta, SwiftPipeline
 from swift.tuners import Swift
 from swift.utils import get_logger
@@ -34,7 +33,7 @@ def merge_lora(args: ExportArguments, replace_if_exists=False, device_map=None) 
         if args.use_merge_kit:
             base_model_id_or_path = args.model_id_or_path
             if not os.path.exists(args.instruct_model_id_or_path):
-                args.instruct_model_id_or_path = default_hub.download_model(
+                args.instruct_model_id_or_path = args.hub.download_model(
                     args.instruct_model_id_or_path, revision=args.instruct_model_revision)
             args.model_id_or_path = args.instruct_model_id_or_path
         model, template = prepare_pt_engine_template(args)
