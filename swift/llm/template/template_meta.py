@@ -59,7 +59,6 @@ class TemplateMeta:
             auto_add_bos=True,
             stop_words=deepcopy(self.stop_words),
             placeholder_tokens=deepcopy(self.placeholder_tokens),
-            skip_prompt=self.skip_prompt,
             support_stream=self.support_stream,
         )
 

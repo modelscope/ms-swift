@@ -141,8 +141,9 @@ class Template:
         self._get_std_messages(inputs.messages)
         n_round = len(inputs.messages) // 2
         if n_round > 1 and not template_meta.support_multi_round:
-            raise ValueError(
-                f'The template does not support multi-round chat, template_type: {template_meta.template_type}')
+            logger.warning_once(
+                f'The template does not support multi-round chat. Only use the last round of the conversation.')
+            inputs.messages = inputs.messages[-2:]
 
     def _rlhf_encode(self, inputs):
         chosen_inputs, rejected_inputs = inputs, inputs.copy()
