@@ -193,9 +193,9 @@ class ExpManager:
             env['MASTER_PORT'] = str(_find_free_port())
 
         if exp.cmd == 'sft':
-            from swift.llm import SftArguments
+            from swift.llm import TrainArguments
             args = exp.args
-            sft_args = SftArguments(**args)
+            sft_args = TrainArguments(**args)
             args['output_dir'] = sft_args.output_dir
             args['logging_dir'] = sft_args.logging_dir
             args['add_output_dir_suffix'] = False

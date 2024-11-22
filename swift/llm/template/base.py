@@ -650,7 +650,6 @@ class Template(ProcessorMixin):
                          padding_to: Optional[int] = None) -> Dict[str, Any]:
         # inplace
         from swift.llm import to_device
-        kwargs = kwargs.copy()
         batched_data = kwargs.pop('_data')
         extra_inputs = []
         for data in batched_data:

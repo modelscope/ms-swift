@@ -36,7 +36,8 @@ def load_and_tokenize(ms_model_id, template):
         template_ins = get_template(template, tokenizer)
         template_ins.set_mode('train')
         if 'audio' in template_ins.__class__.__name__.lower():
-            output = EncodePreprocessor(template_ins)(load_ds('speech_asr/speech_asr_aishell1_trainsets:validation/test'))
+            output = EncodePreprocessor(template_ins)(
+                load_ds('speech_asr/speech_asr_aishell1_trainsets:validation/test'))
             input_ids = output[0].get('input_ids')
         elif any([vl in template for vl in vl_fields]):
             for row in load_ds('modelscope/coco_2014_caption:validation'):

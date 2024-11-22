@@ -76,11 +76,10 @@ register_model(
     ModelMeta(
         MLLMModelType.emu3_chat,
         [
-            ModelGroup([
-                Model('BAAI/Emu3-Chat', 'BAAI/Emu3-Chat'),
-            ],
-                       tags=['vision'],
-                       requires=['transformers>=4.44.0']),
+            ModelGroup(
+                [
+                    Model('BAAI/Emu3-Chat', 'BAAI/Emu3-Chat'),
+                ], tags=['vision'], requires=['transformers>=4.44.0']),
         ],
         TemplateType.emu3_chat,
         get_model_tokenizer_emu3_chat,

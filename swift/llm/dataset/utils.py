@@ -24,7 +24,7 @@ logger = get_logger()
 
 
 def sample_dataset(dataset: HfDataset,
-                   dataset_sample: int,
+                   dataset_sample: Optional[int],
                    random_state: Optional[np.random.RandomState] = None) -> HfDataset:
     """Sample dataset by a dataset_sample number
     Args:
@@ -34,7 +34,7 @@ def sample_dataset(dataset: HfDataset,
     Returns:
         The sampled dataset
     """
-    if dataset_sample in {None, -1, len(dataset)}:
+    if dataset_sample is None:
         return dataset
     if random_state is None:
         random_state = np.random.RandomState()

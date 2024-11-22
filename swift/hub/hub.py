@@ -276,16 +276,15 @@ class MSHub(HubOperation):
             tag=path_in_repo)
 
     @classmethod
-    def load_dataset(
-        cls,
-        dataset_id: str,
-        subset_name: str,
-        split: str,
-        streaming: bool = False,
-        revision: Optional[str] = None,
-        download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists',
-        token: Optional[str] = None,
-    ):
+    def load_dataset(cls,
+                     dataset_id: str,
+                     subset_name: str,
+                     split: str,
+                     streaming: bool = False,
+                     revision: Optional[str] = None,
+                     download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists',
+                     token: Optional[str] = None,
+                     num_proc: Optional[int] = None):
         from modelscope import MsDataset
         cls.try_login(token)
         if revision is None or revision == 'main':
@@ -297,7 +296,8 @@ class MSHub(HubOperation):
             split=split,
             version=revision,
             download_mode=download_mode,
-            use_streaming=streaming)
+            use_streaming=streaming,
+            num_proc=num_proc)
 
     @classmethod
     def download_model(cls,
@@ -408,15 +408,14 @@ class HFHub(HubOperation):
             **kwargs)
 
     @classmethod
-    def load_dataset(
-        cls,
-        dataset_id: str,
-        subset_name: str,
-        split: str,
-        streaming: bool = False,
-        revision: Optional[str] = None,
-        download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists',
-    ):
+    def load_dataset(cls,
+                     dataset_id: str,
+                     subset_name: str,
+                     split: str,
+                     streaming: bool = False,
+                     revision: Optional[str] = None,
+                     download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists',
+                     num_proc: Optional[int] = None):
         from datasets import load_dataset
         if revision is None or revision == 'master':
             revision = 'main'
@@ -426,7 +425,8 @@ class HFHub(HubOperation):
             split=split,
             streaming=streaming,
             revision=revision,
-            download_mode=download_mode)
+            download_mode=download_mode,
+            num_proc=num_proc)
 
     @classmethod
     def download_model(cls,
