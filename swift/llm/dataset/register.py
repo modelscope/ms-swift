@@ -4,7 +4,7 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from functools import partial
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
-
+from swift.utils.env import use_hf_hub
 import json
 
 from swift.utils import get_logger
@@ -71,6 +71,18 @@ class DatasetMeta:
 
 
 DATASET_MAPPING: Dict[str, DatasetMeta] = {}
+
+
+def get_dataset_list():
+    datasets = []
+    for key in DATASET_MAPPING:
+        if use_hf_hub():
+            if key[1]:
+                datasets.append(key[1])
+        else:
+            if key[0]:
+                datasets.append(key[0])
+    return datasets
 
 
 def register_dataset(dataset_meta: DatasetMeta, *, exist_ok: bool = False) -> None:

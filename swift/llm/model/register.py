@@ -21,6 +21,7 @@ from transformers.utils.versions import require_version
 
 from swift.utils import get_dist_setting, get_logger, is_ddp_plus_mp, is_dist, is_unsloth_available, use_torchacc
 from .utils import AttnImpl, HfConfigFactory, ModelInfo, safe_snapshot_download
+from .constant import ModelType
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]]
 logger = get_logger()
@@ -357,13 +358,15 @@ def _get_model_name(model_id_or_path: str) -> str:
 def get_all_models() -> List[str]:
     use_hf = strtobool(os.environ.get('USE_HF', 'False'))
     models = []
-    for model_type, model_meta in MODEL_MAPPING.items():
-        for group in model_meta.model_groups:
-            for model in group.models:
-                if use_hf:
-                    models.append(model.hf_model_id)
-                else:
-                    models.append(model.ms_model_id)
+    for model_type in ModelType.get_model_name_list():
+        model_meta = MODEL_MAPPING.get(model_type)
+        if model_meta:
+            for group in model_meta.model_groups:
+                for model in group.models:
+                    if use_hf:
+                        models.append(model.hf_model_id)
+                    else:
+                        models.append(model.ms_model_id)
     return models
 
 

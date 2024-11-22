@@ -25,6 +25,8 @@ def update_data(fn):
     @wraps(fn)
     def wrapper(*args, **kwargs):
         elem_id = kwargs.get('elem_id', None)
+        if elem_id == 'hub_strategy':
+            print()
         self = args[0]
 
         if builder is not None:
@@ -154,8 +156,7 @@ class BaseUI:
         key = key.replace('/', '-')
         filename = key + '-' + str(timestamp)
         with open(os.path.join(cls.cache_dir, filename), 'r') as f:
-            ckpt_dir = f.read()
-            return BaseArguments.load_args_from_ckpt(ckpt_dir)
+            return json.load(f)
 
     @classmethod
     def clear_cache(cls, key):
@@ -216,7 +217,7 @@ class BaseUI:
         elements = cls.elements()
         return {
             key: value
-            for key, value in elements.items() if isinstance(value, (Textbox, Dropdown, Slider, Checkbox))
+            for key, value in elements.items() if isinstance(value, (Textbox, Dropdown, Slider, Checkbox)) and key != 'train_record'
         }
 
     @classmethod
@@ -226,7 +227,7 @@ class BaseUI:
     @classmethod
     def valid_element_keys(cls):
         return [
-            key for key, value in cls.elements().items() if isinstance(value, (Textbox, Dropdown, Slider, Checkbox))
+            key for key, value in cls.elements().items() if isinstance(value, (Textbox, Dropdown, Slider, Checkbox)) and key != 'train_record'
         ]
 
     @classmethod
@@ -273,53 +274,60 @@ class BaseUI:
             arguments[f.name] = f'--{f.name}'
         return arguments
 
-    @staticmethod
-    def get_custom_name_list():
-        return list(set(MODEL_MAPPING.keys()) - set(ModelType.get_model_name_list()))
-
     @classmethod
-    def update_input_model(cls, model, has_record=True):
+    def update_input_model(cls, model, allow_keys=None, has_record=True):
         keys = cls.valid_element_keys()
 
         if os.path.exists(model):
-            local_path = os.path.join(model, 'sft_args.json')
+            local_path = os.path.join(model, 'args.json')
             if not os.path.exists(local_path):
-                return [gr.update()] * (len(keys) + int(has_record))
+                ret = [gr.update()] * (len(keys) + int(has_record))
+                if len(ret) == 1:
+                    return ret[0]
 
-            args: BaseArguments = BaseArguments.load_args_from_ckpt(local_path)
+            args: BaseArguments = BaseArguments().load_args_from_ckpt(local_path)
             values = []
             for key in keys:
+                if allow_keys is not None and key not in allow_keys:
+                    continue
                 arg_value = getattr(args, key, None)
                 if arg_value:
                     values.append(gr.update(value=arg_value))
                 else:
                     values.append(gr.update())
-            return [gr.update(choices=[])] * int(has_record) + values
+            ret = [gr.update(choices=[])] * int(has_record) + values
+            if len(ret) == 1:
+                return ret[0]
         else:
             values = []
             model_meta = get_matched_model_meta(model)
             for key in keys:
-                if key in ('template', 'model_type'):
-                    values.append(gr.update(value=getattr(model_meta, key)))
-                elif key == 'system':
-                    values.append(gr.update(value=TEMPLATE_MAPPING[model_meta.template].default_system))
-                else:
+                if allow_keys is not None and key not in allow_keys:
+                    continue
+                if model_meta is None or key not in ('template', 'model_type', 'ref_model_type', 'system'):
                     values.append(gr.update())
+                elif key in ('template', 'model_type', 'ref_model_type'):
+                    if key == 'ref_model_type':
+                        key = 'model_type'
+                    values.append(gr.update(value=getattr(model_meta, key)))
+                else:
+                    values.append(gr.update(value=TEMPLATE_MAPPING[model_meta.template].default_system))
+
         if has_record:
             return [gr.update(choices=cls.list_cache(model))] + values
         else:
-            return values
+            ret = tuple(values)
+            if len(ret) == 1:
+                return ret[0]
 
     @classmethod
-    def update_all_settings(cls, model_type, train_record, base_tab):
+    def update_all_settings(cls, model, train_record, base_tab):
         if not train_record:
-            return [gr.update()] * len(base_tab.elements())
-        cache = cls.load_cache(model_type, train_record)
+            return [gr.update()] * len(cls.elements())
+        cache = cls.load_cache(model, train_record)
         updates = []
-        for key, value in base_tab.valid_elements().items():
-            if isinstance(value, (Tab, Accordion)):
-                continue
-            if key in cache and key != 'train_record':
+        for key, value in cls.valid_elements().items():
+            if key in cache:
                 updates.append(gr.update(value=cache[key]))
             else:
                 updates.append(gr.update())

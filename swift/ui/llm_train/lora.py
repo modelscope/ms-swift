@@ -16,7 +16,7 @@ class LoRA(BaseUI):
                 'en': 'LoRA settings'
             },
         },
-        'lora_target_modules': {
+        'target_modules': {
             'label': {
                 'zh': 'LoRA目标模块',
                 'en': 'LoRA target modules'
@@ -90,7 +90,7 @@ class LoRA(BaseUI):
             with gr.Blocks():
                 with gr.Row():
                     lora_target_modules = gr.Textbox(
-                        elem_id='target_modules', lines=1, scale=5, value='ALL', is_list=True)
+                        elem_id='target_modules', lines=1, scale=5, value='all-linear', is_list=True)
                     gr.Slider(elem_id='lora_rank', value=32, minimum=1, maximum=512, step=8, scale=2)
                     gr.Slider(elem_id='lora_alpha', value=8, minimum=1, maximum=512, step=8, scale=2)
                     gr.Textbox(elem_id='lora_dropout', scale=2)

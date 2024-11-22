@@ -3,7 +3,7 @@ from typing import Type
 
 import gradio as gr
 
-from swift.llm import DATASET_MAPPING
+from swift.llm.dataset.register import DATASET_MAPPING, get_dataset_list
 from swift.ui.base import BaseUI
 
 
@@ -87,7 +87,7 @@ class Dataset(BaseUI):
                 gr.Dropdown(
                     elem_id='dataset',
                     multiselect=True,
-                    choices=list(DATASET_MAPPING.keys()),
+                    choices=get_dataset_list(),
                     scale=20,
                     allow_custom_value=True)
                 gr.Textbox(elem_id='custom_dataset_info', is_list=False, scale=20)

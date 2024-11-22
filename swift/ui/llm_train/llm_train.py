@@ -29,6 +29,7 @@ from swift.ui.llm_train.runtime import Runtime
 from swift.ui.llm_train.save import Save
 from swift.ui.llm_train.self_cog import SelfCog
 from swift.utils import get_logger
+from swift.llm.argument.tuner_args import get_supported_tuners
 
 logger = get_logger()
 
@@ -67,7 +68,7 @@ class LLMTrain(BaseUI):
                 'en': 'LLM Training',
             }
         },
-        'train_type': {
+        'train_stage': {
             'label': {
                 'zh': '训练Stage',
                 'en': 'Train Stage'
@@ -118,7 +119,7 @@ class LLMTrain(BaseUI):
                 'en': 'Select GPU to train'
             }
         },
-        'sft_type': {
+        'train_type': {
             'label': {
                 'zh': '训练方式',
                 'en': 'Train type'
@@ -138,7 +139,7 @@ class LLMTrain(BaseUI):
                 'en': 'Select a random seed'
             }
         },
-        'dtype': {
+        'torch_dtype': {
             'label': {
                 'zh': '训练精度',
                 'en': 'Training Precision'
@@ -223,13 +224,13 @@ class LLMTrain(BaseUI):
                 Dataset.build_ui(base_tab)
                 with gr.Accordion(elem_id='train_param', open=True):
                     with gr.Row():
-                        gr.Dropdown(elem_id='train_stage', choices=['pretrain', 'sft', 'rlhf'], value='sft', scale=3)
-                        gr.Dropdown(elem_id='train_type', scale=2)
+                        gr.Dropdown(elem_id='train_stage', choices=['pt', 'sft', 'rlhf'], value='sft', scale=3)
+                        gr.Dropdown(elem_id='train_type', scale=2, choices=list(get_supported_tuners()))
                         gr.Dropdown(elem_id='tuner_backend', scale=2)
                         gr.Textbox(elem_id='sequence_parallel_size', scale=3)
                     with gr.Row():
                         gr.Textbox(elem_id='seed', scale=4)
-                        gr.Dropdown(elem_id='dtype', scale=4)
+                        gr.Dropdown(elem_id='torch_dtype', scale=4)
                         gr.Checkbox(elem_id='use_liger', scale=4)
                         gr.Checkbox(elem_id='use_ddp', value=False, scale=4)
                         gr.Textbox(elem_id='ddp_num', value='2', scale=4)
@@ -357,7 +358,7 @@ class LLMTrain(BaseUI):
             else:
                 params += f'--{e} {cls.quote}{kwargs[e]}{cls.quote} '
         params += more_params_cmd + ' '
-        params += f'--add_output_dir_suffix False --output_dir {sft_args.output_dir} ' \
+        params += f'--add_version False --output_dir {sft_args.output_dir} ' \
                   f'--logging_dir {sft_args.logging_dir} --ignore_args_error True'
         ddp_param = ''
         devices = other_kwargs['gpu_id']
@@ -378,15 +379,13 @@ class LLMTrain(BaseUI):
             if ddp_param:
                 ddp_param = f'set {ddp_param} && '
             run_command = f'{cuda_param}{ddp_param}start /b swift sft {params} > {log_file} 2>&1'
-        elif cls.is_studio:
-            run_command = f'{cuda_param} {ddp_param} swift {cmd} {params}'
         else:
             run_command = f'{cuda_param} {ddp_param} nohup swift {cmd} {params} > {log_file} 2>&1 &'
         logger.info(f'Run training: {run_command}')
         if model:
             record = {}
             for key, value in zip(keys, args):
-                if key in default_args or key in ('more_params', 'train_type', 'use_ddp', 'ddp_num', 'gpu_id'):
+                if key in default_args or key in ('more_params', 'train_stage', 'use_ddp', 'ddp_num', 'gpu_id'):
                     record[key] = value or None
             cls.save_cache(model, record)
         return run_command, sft_args, other_kwargs
@@ -417,4 +416,4 @@ class LLMTrain(BaseUI):
             time.sleep(1)  # to make sure the log file has been created.
             gr.Info(cls.locale('submit_alert', cls.lang)['value'])
         return run_command, sft_args.logging_dir, gr.update(open=True), Runtime.refresh_tasks(
-            sft_args.output_dir), gr.update(choices=cls.list_cache(sft_args.model_type))
+            sft_args.output_dir), gr.update(choices=cls.list_cache(sft_args.model))

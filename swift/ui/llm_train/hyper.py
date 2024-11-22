@@ -66,15 +66,11 @@ class Hyper(BaseUI):
                 'en': 'Set the gradient accumulation steps',
             }
         },
-        'use_flash_attn': {
+        'attn_impl': {
             'label': {
-                'zh': '使用Flash Attention',
-                'en': 'Use Flash Attention',
+                'zh': 'Flash Attention类型',
+                'en': 'Flash Attention Type',
             },
-            'info': {
-                'zh': '使用Flash Attention减小显存占用',
-                'en': 'Use Flash Attention to reduce memory',
-            }
         },
         'neftune_noise_alpha': {
             'label': {

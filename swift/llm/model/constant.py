@@ -185,10 +185,10 @@ class ModelType(LLMModelType, MLLMModelType):
     @classmethod
     def get_model_name_list(cls) -> List[str]:
         res = []
-        for k in cls.__dict__.keys():
+        for k in dir(cls):
             if k.startswith('__'):
                 continue
-            value = cls.__dict__[k]
+            value = getattr(cls, k)
             if isinstance(value, str):
                 res.append(value)
         return res
