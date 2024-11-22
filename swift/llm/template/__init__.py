@@ -12,4 +12,4 @@ from .constant import TemplateType
 from .register import TEMPLATE_MAPPING, get_template, get_template_meta, register_template
 from .template_inputs import InferRequest, Messages, TemplateInputs, Tool
 from .template_meta import TemplateMeta
-from .utils import Word
+from .utils import Processor, ProcessorMixin, Word

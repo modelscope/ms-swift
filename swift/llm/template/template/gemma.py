@@ -23,10 +23,6 @@ register_template(
 
 class PaliGemmaTemplate(Template):
 
-    def _check_inputs(self, inputs: StdTemplateInputs):
-        images = inputs.images or []
-        assert len(images) <= 1
-
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         assert media_type == 'image'

@@ -4,7 +4,7 @@ from typing import List, Optional, Union
 
 import json
 
-from swift.hub import default_hub
+from swift.hub import get_hub
 from swift.utils import check_json_format, get_logger, is_master
 from ..tuner_args import TunerArguments, get_supported_tuners
 from .data_args import DataArguments
@@ -47,7 +47,8 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
         TemplateArguments.__post_init__(self)
         DataArguments.__post_init__(self)
         QuantizeArguments.__post_init__(self)
-        if default_hub.try_login(self.hub_token):
+        self.hub = get_hub(self.use_hf)
+        if self.hub.try_login(self.hub_token):
             logger.info('hub login successful!')
 
     @property
@@ -59,6 +60,7 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
         return TunerArguments.adapters_can_be_merged
 
     def load_args_from_ckpt(self, checkpoint_dir: str) -> None:
+        # TODO
         """Load specific attributes from args.json"""
         from swift.llm import TrainArguments
         if isinstance(self, TrainArguments):

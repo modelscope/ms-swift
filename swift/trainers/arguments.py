@@ -15,7 +15,7 @@ from swift.utils import is_dist, use_torchacc
 
 @dataclass
 class SwiftArgumentsMixin:
-    # ckpt only save model
+    logging_first_step: bool = True
     acc_strategy: str = field(default='token', metadata={'choices': ['token', 'sentence']})
     sequence_parallel_size: int = 1
     check_model: bool = True

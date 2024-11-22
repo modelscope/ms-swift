@@ -34,6 +34,7 @@ register_template(
 
 class DeepseekVLTemplate(Template):
     image_placeholder = ['<image_placeholder>']
+    skip_prompt = False
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
@@ -85,8 +86,7 @@ register_template(
         template_cls=DeepseekVLTemplate,
         default_system=('You are a helpful language and vision assistant. '
                         'You are able to understand the visual content that the user provides, '
-                        'and assist the user with a variety of tasks using natural language.'),
-        skip_prompt=False))
+                        'and assist the user with a variety of tasks using natural language.')))
 
 register_template(
     TemplateMeta(

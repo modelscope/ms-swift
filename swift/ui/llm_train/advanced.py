@@ -185,7 +185,6 @@ class Advanced(BaseUI):
                     gr.Dropdown(elem_id='truncation_strategy', scale=20)
                     gr.Slider(elem_id='eval_batch_size', minimum=1, maximum=256, step=2, scale=20)
                     gr.Textbox(elem_id='max_grad_norm', lines=1, scale=20)
-                    gr.Checkbox(elem_id='predict_with_generate', scale=20)
                 with gr.Row():
                     gr.Dropdown(
                         elem_id='deepspeed',

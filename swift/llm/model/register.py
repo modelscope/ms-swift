@@ -16,7 +16,7 @@ from packaging import version
 from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer, GenerationConfig, PretrainedConfig,
                           PreTrainedModel, PreTrainedTokenizerBase)
 from transformers.integrations import is_deepspeed_zero3_enabled
-from transformers.utils import is_torch_bf16_gpu_available, is_torch_cuda_available, is_torch_npu_available
+from transformers.utils import is_torch_bf16_gpu_available, is_torch_cuda_available, is_torch_npu_available, strtobool
 from transformers.utils.versions import require_version
 
 from swift.utils import get_dist_setting, get_logger, is_ddp_plus_mp, is_dist, is_unsloth_available, use_torchacc
@@ -44,10 +44,6 @@ class ModelGroup:
     # Higher priority. If set to None, the attributes of the DatasetMeta will be used.
     ignore_file_pattern: Optional[List[str]] = None
     requires: Optional[List[str]] = None
-    support_flash_attn: Optional[bool] = None
-    support_vllm: Optional[bool] = None
-    support_lmdeploy: Optional[bool] = None
-    support_megatron: Optional[bool] = None
 
 
 @dataclass
@@ -65,7 +61,6 @@ class ModelMeta:
     is_multimodal: bool = False
     # Additional files that need to be saved for full parameter training/merge-lora.
     additional_saved_files: List[str] = field(default_factory=list)
-    support_gradient_checkpointing: bool = True
     torch_dtype: Optional[torch.dtype] = None
 
     # File patterns to ignore when downloading the model.
@@ -87,23 +82,11 @@ class ModelMeta:
         for require in self.requires:
             require_version(require)
 
-    def check_flash_attn(self, attn_impl: Optional[str]) -> None:
-        from .utils import AttnImpl
-        if attn_impl is None:
-            return
-        if attn_impl == AttnImpl.flash_attn and not self.support_flash_attn:
-            logger.warning(f'attn_impl: {attn_impl}, but support_flash_attn: {self.support_flash_attn}')
-
     def check_infer_backend(self, infer_backend: str) -> None:
         if infer_backend == 'vllm' and not self.support_vllm:
             logger.warning(f'infer_backend: {infer_backend}, but support_vllm: {self.support_vllm}')
         elif infer_backend == 'lmdeploy' and not self.support_lmdeploy:
             logger.warning(f'infer_backend: {infer_backend}, but support_lmdeploy: {self.support_lmdeploy}')
-
-    def check_gradient_checkpointing(self, gradient_checkpoint: bool) -> None:
-        if gradient_checkpoint and not self.support_gradient_checkpointing:
-            logger.warning(f'gradient_checkpoint: {gradient_checkpoint}, but support_gradient_checkpointing: '
-                           f'{self.support_gradient_checkpointing}')
 
 
 MODEL_MAPPING: Dict[str, ModelMeta] = {}
@@ -371,7 +354,21 @@ def _get_model_name(model_id_or_path: str) -> str:
     return model_name.lower()
 
 
+def get_all_models() -> List[str]:
+    use_hf = strtobool(os.environ.get('USE_HF', 'False'))
+    models = []
+    for model_type, model_meta in MODEL_MAPPING.items():
+        for group in model_meta.model_groups:
+            for model in group.models:
+                if use_hf:
+                    models.append(model.hf_model_id)
+                else:
+                    models.append(model.ms_model_id)
+    return models
+
+
 def get_matched_model_meta(model_id_or_path: str) -> Optional[ModelMeta]:
+    # TODO: Case insensitive
     assert isinstance(model_id_or_path, str), f'model_id_or_path: {model_id_or_path}'
     model_name = _get_model_name(model_id_or_path).lower()
     for model_type, model_meta in MODEL_MAPPING.items():
@@ -497,12 +494,11 @@ def get_model_tokenizer(model_id_or_path: str,
     model_info.torch_dtype = torch_dtype
 
     model_meta.check_requires()
-    model_meta.check_flash_attn(attn_impl)
     get_function = model_meta.get_function
     kwargs['automodel_class'] = automodel_class
     model, tokenizer = get_function(model_dir, model_info, model_kwargs, load_model, **kwargs)
 
-    if hasattr(tokenizer, 'tokenizer'):
+    if not isinstance(tokenizer, PreTrainedTokenizerBase) and hasattr(tokenizer, 'tokenizer'):
         patch_processor(tokenizer)
     tokenizer.model_info = model_info
     tokenizer.model_meta = model_meta

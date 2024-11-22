@@ -4,13 +4,13 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Callable, Generic, List, Optional, Type, TypeVar, Union
 
-from swift.llm import BaseArguments
+from swift.llm import BaseArguments, ProcessorMixin
 from swift.utils import get_logger, parse_args, seed_everything
 
 logger = get_logger()
 
 
-class SwiftPipeline(ABC):
+class SwiftPipeline(ABC, ProcessorMixin):
     args_class = BaseArguments
 
     def __init__(self, args: Union[List[str], args_class, None] = None):

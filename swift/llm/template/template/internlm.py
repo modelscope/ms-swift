@@ -37,6 +37,7 @@ register_template(ChatmlTemplateMeta(LLMTemplateType.internlm2, default_system=I
 class InternLMXComposer2Template(Template):
     image_placeholder = ['</s>']
     version = 'v2'
+    skip_prompt = False
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
@@ -134,7 +135,6 @@ class Xcomposer2TemplateMeta(TemplateMeta):
     suffix: Prompt = field(default_factory=lambda: ['[UNUSED_TOKEN_145]'])
     system_prefix: Optional[Prompt] = field(
         default_factory=lambda: ['<s>[UNUSED_TOKEN_146]system\n{{SYSTEM}}[UNUSED_TOKEN_145]\n'])
-    skip_prompt: bool = False
 
 
 register_template(

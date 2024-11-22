@@ -32,15 +32,18 @@ class SwiftSft(SwiftPipeline):
         self._prepare_model_tokenizer()
         self._prepare_template()
         self._prepare_callbacks()
-        self._prepare_train()
         self.model = prepare_tuner(self.model, self.args)
         logger.info(self.model)
         model_parameter_info = get_model_parameter_info(self.model)
         self.train_msg['model_parameter_info'] = model_parameter_info
         logger.info(f'model_parameter_info: {model_parameter_info}')
 
+        self._prepare_train()
+
     def _prepare_train(self):
         self.template.set_mode('train')
+        if self.model.model_meta.is_multimodal:
+            self.template.register_post_encode_hook([self.model])
 
     def _prepare_gradient_checkpointing(self):
         args = self.args
@@ -85,7 +88,7 @@ class SwiftSft(SwiftPipeline):
 
     def _prepare_model_tokenizer(self):
         args = self.args
-        self.model, self.tokenizer = self._get_model_tokenizer(args.model, args.model_type, args.model_revision)
+        self.model, self.processor = self._get_model_tokenizer(args.model, args.model_type, args.model_revision)
 
         if hasattr(self.model, 'hf_device_map'):
             logger.info(f'model.hf_device_map: {self.model.hf_device_map}')
@@ -95,11 +98,11 @@ class SwiftSft(SwiftPipeline):
         self._prepare_generation_config()
         self._prepare_gradient_checkpointing()
 
-    def _prepare_template(self) -> None:
+    def _prepare_template(self, **template_kwargs) -> None:
         args = self.args
         template = get_template(
             args.template,
-            self.tokenizer,
+            self.processor,
             args.system,
             args.max_length,
             truncation_strategy=args.truncation_strategy,
@@ -107,7 +110,7 @@ class SwiftSft(SwiftPipeline):
             loss_scale=args.loss_scale,
             tools_prompt=args.tools_prompt,
             sequence_parallel_size=args.sequence_parallel_size,
-        )
+            **template_kwargs)
         logger.info(f'default_system: {template.default_system}')
         self.template = template
 
@@ -147,16 +150,14 @@ class SwiftSft(SwiftPipeline):
         args = self.args
         template = self.template
         padding_to = args.max_length if args.train_type == 'longlora' else None
-        is_multimodal = self.model.model_meta.is_multimodal
-        if is_multimodal:
+        if self.model.model_meta.is_multimodal:
             data_collator = template.pre_data_collator
-            self._register_post_encode_hook()
         else:
             data_collator = template.data_collator
         return partial(data_collator, padding_to=padding_to, model=self.model)
 
     def _register_post_encode_hook(self):
-        self.template.register_post_encode_hook([self.model])
+        template.register_post_encode_hook([self.model])
 
     def run(self):
         args = self.args
@@ -177,7 +178,7 @@ class SwiftSft(SwiftPipeline):
             eval_dataset=val_dataset,
             callbacks=self.callbacks,
             optimizers=optimizers,
-            tokenizer=self.tokenizer,
+            processor=self.processor,
             **self._get_trainer_kwargs(),
         )
         return self.train(trainer)

@@ -35,12 +35,6 @@ register_template(Qwen2_5TemplateMeta(TemplateType.qwen2_5))
 class QwenVLTemplate(Template):
     load_medias = False
 
-    def _check_inputs(self, inputs: StdTemplateInputs):
-        if self.mode in {'lmdeploy', 'vllm'}:
-            return
-        images = inputs.images
-        assert not images or isinstance(fetch_one(images), str), 'QwenVL only supports datasets with images paths!'
-
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         assert media_type == 'image'
@@ -117,7 +111,7 @@ class Qwen2AudioTemplate(Template):
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         assert media_type == 'audio'
-        if self.use_generate_template:
+        if not self.use_chat_template:
             return ['<|audio_bos|><|AUDIO|><|audio_eos|>\n']
         else:
             return [f'Audio {index + 1}: <|audio_bos|><|AUDIO|><|audio_eos|>\n']

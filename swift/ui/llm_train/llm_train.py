@@ -223,9 +223,8 @@ class LLMTrain(BaseUI):
                 Dataset.build_ui(base_tab)
                 with gr.Accordion(elem_id='train_param', open=True):
                     with gr.Row():
-                        gr.Dropdown(
-                            elem_id='train_type', choices=['pretrain/sft', 'rlhf'], value='pretrain/sft', scale=3)
-                        gr.Dropdown(elem_id='sft_type', scale=2)
+                        gr.Dropdown(elem_id='train_stage', choices=['pretrain', 'sft', 'rlhf'], value='sft', scale=3)
+                        gr.Dropdown(elem_id='train_type', scale=2)
                         gr.Dropdown(elem_id='tuner_backend', scale=2)
                         gr.Textbox(elem_id='sequence_parallel_size', scale=3)
                     with gr.Row():
@@ -259,25 +258,20 @@ class LLMTrain(BaseUI):
                 Save.build_ui(base_tab)
                 Advanced.build_ui(base_tab)
 
-                cls.element('sft_type').change(
-                    Hyper.update_lr, inputs=[base_tab.element('sft_type')], outputs=[cls.element('learning_rate')])
+                cls.element('train_type').change(
+                    Hyper.update_lr, inputs=[base_tab.element('train_type')], outputs=[cls.element('learning_rate')])
 
-                cls.element('train_record').change(
-                    partial(cls.update_all_settings, base_tab=base_tab),
-                    inputs=[cls.element('model_type'), cls.element('train_record')],
-                    outputs=[value for value in cls.elements().values() if not isinstance(value, (Tab, Accordion))])
                 if cls.is_studio:
-                    submit.click(
-                        cls.update_runtime, [],
-                        [cls.element('runtime_tab'), cls.element('log')]).then(
-                            cls.train_studio,
-                            [value for value in cls.elements().values() if not isinstance(value, (Tab, Accordion))],
-                            [cls.element('log')] + Runtime.all_plots + [cls.element('running_cmd')],
-                            queue=True)
+                    submit.click(cls.update_runtime, [],
+                                 [cls.element('runtime_tab'), cls.element('log')]).then(
+                                     cls.train_studio,
+                                     list(cls.valid_elements().values()),
+                                     [cls.element('log')] + Runtime.all_plots + [cls.element('running_cmd')],
+                                     queue=True)
                 else:
                     submit.click(
                         cls.train_local,
-                        [value for value in cls.elements().values() if not isinstance(value, (Tab, Accordion))], [
+                        list(cls.valid_elements().values()), [
                             cls.element('running_cmd'),
                             cls.element('logging_dir'),
                             cls.element('runtime_tab'),
@@ -303,32 +297,16 @@ class LLMTrain(BaseUI):
         return gr.update(open=True), gr.update(visible=True)
 
     @classmethod
-    def update_all_settings(cls, model_type, train_record, base_tab):
-        if not train_record:
-            return [gr.update()] * len(base_tab.elements())
-        cache = cls.load_cache(model_type, train_record)
-        updates = []
-        for key, value in base_tab.elements().items():
-            if isinstance(value, (Tab, Accordion)):
-                continue
-            if (key in cache and isinstance(value, (Textbox, Dropdown, Slider, Checkbox)) and key != 'train_record'):
-                updates.append(gr.update(value=cache[key]))
-            else:
-                updates.append(gr.update())
-        return updates
-
-    @classmethod
     def train(cls, *args):
-        ignore_elements = ('model_type', 'logging_dir', 'more_params', 'train_type')
+        ignore_elements = ('logging_dir', 'more_params', 'train_stage')
         default_args = cls.get_default_value_from_dataclass(RLHFArguments)
         kwargs = {}
         kwargs_is_list = {}
         other_kwargs = {}
         more_params = {}
         more_params_cmd = ''
-        keys = [key for key, value in cls.elements().items() if not isinstance(value, (Tab, Accordion))]
-        model_type = None
-        do_rlhf = False
+        keys = cls.valid_element_keys()
+        train_stage = 'sft'
         for key, value in zip(keys, args):
             compare_value = default_args.get(key)
             if isinstance(value, str) and re.fullmatch(cls.int_regex, value):
@@ -348,20 +326,18 @@ class LLMTrain(BaseUI):
                 except (JSONDecodeError or TypeError):
                     more_params_cmd = value
 
-            if key == 'model_type':
-                model_type = value
-
-            if key == 'train_type':
-                do_rlhf = value == 'rlhf'
-
-        if os.path.exists(kwargs['model_id_or_path']):
-            kwargs['model_type'] = model_type
+            if key == 'train_stage':
+                train_stage = value
 
         kwargs.update(more_params)
         if 'dataset' not in kwargs and 'custom_train_dataset_path' not in kwargs:
             raise gr.Error(cls.locale('dataset_alert', cls.lang)['value'])
 
-        cmd = 'rlhf' if do_rlhf else 'sft'
+        model = kwargs.get('model')
+        if os.path.exists(model) and os.path.exists(os.path.join(model, 'args.json')):
+            kwargs['resume_from_checkpoint'] = kwargs.pop('model')
+
+        cmd = train_stage
         if kwargs.get('deepspeed'):
             more_params_cmd += f' --deepspeed {kwargs.pop("deepspeed")} '
         sft_args = RLHFArguments(
@@ -407,12 +383,12 @@ class LLMTrain(BaseUI):
         else:
             run_command = f'{cuda_param} {ddp_param} nohup swift {cmd} {params} > {log_file} 2>&1 &'
         logger.info(f'Run training: {run_command}')
-        if model_type:
+        if model:
             record = {}
             for key, value in zip(keys, args):
                 if key in default_args or key in ('more_params', 'train_type', 'use_ddp', 'ddp_num', 'gpu_id'):
                     record[key] = value or None
-            cls.save_cache(model_type, record)
+            cls.save_cache(model, record)
         return run_command, sft_args, other_kwargs
 
     @classmethod

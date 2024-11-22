@@ -85,7 +85,7 @@ class Export(BaseUI):
             gr.Checkbox(elem_id='merge_lora', scale=10)
             gr.Textbox(elem_id='merge_device_map', scale=20)
         with gr.Row():
-            gr.Textbox(elem_id='quant_bits', scale=20)
+            gr.Dropdown(elem_id='quant_bits', scale=20)
             gr.Dropdown(elem_id='quant_method', scale=20)
             gr.Textbox(elem_id='quant_n_samples', scale=20)
             gr.Textbox(elem_id='quant_seqlen', scale=20)

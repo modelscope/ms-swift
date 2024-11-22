@@ -18,7 +18,7 @@ from tqdm.auto import tqdm
 from transformers import PreTrainedTokenizerBase
 
 from swift.utils import get_logger, stat_array
-from .preprocess import DATASET_TYPE, RowPreprocessor
+from .preprocessor import DATASET_TYPE, RowPreprocessor
 
 logger = get_logger()
 
@@ -230,7 +230,7 @@ class LazyLLMDataset(Dataset):
             try:
                 res = self.encode_func(data)
             except Exception:
-                if i == len(idx_list) - 1:
+                if i == self.n_try_fetch - 1:
                     logger.warning('To avoid errors, you can pass `strict=False`.')
                     raise
                 if self.traceback_limit is not None and self._traceback_counter < self.traceback_limit:

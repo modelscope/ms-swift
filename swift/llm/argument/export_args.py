@@ -23,7 +23,6 @@ class ExportArguments(MergeArguments, BaseArguments):
             This argument is useless for now.
         quant_n_samples (int): Number of samples for quantization.
         quant_seqlen (int): Sequence length for quantization.
-        quant_device_map (str): Device map for quantization, e.g., 'cpu', 'auto'.
         quant_batch_size (int): Batch size for quantization.
         to_ollama (bool): Flag to indicate export model to ollama format.
         gguf_file (Optional[str]): Path to the GGUF file when exporting to ollama format.
@@ -31,10 +30,6 @@ class ExportArguments(MergeArguments, BaseArguments):
         hub_model_id (Optional[str]): Model ID for the hub.
         hub_private_repo (bool): Flag to indicate if the hub repository is private.
         commit_message (str): Commit message for pushing to the hub.
-        to_megatron (bool): Flag to indicate export model to megatron format.
-        to_hf (bool): Flag to indicate export model to hugging face format.
-        tp (int): Tensor parallelism degree.
-        pp (int): Pipeline parallelism degree.
     """
     ckpt_dir: Optional[str] = field(default=None, metadata={'help': '/path/to/your/vx-xxx/checkpoint-xxx'})
     output_dir: Optional[str] = None
@@ -57,12 +52,6 @@ class ExportArguments(MergeArguments, BaseArguments):
     hub_private_repo: bool = False
     commit_message: str = 'update files'
 
-    # megatron
-    to_megatron: bool = False
-    to_hf: bool = False
-    tp: int = 1
-    pp: int = 1
-
     def _init_quant(self):
 
         if self.quant_bits > 0:
@@ -84,10 +73,6 @@ class ExportArguments(MergeArguments, BaseArguments):
             suffix = f'{self.quant_method}-int{self.quant_bits}'
         elif self.to_ollama:
             suffix = 'ollama'
-        elif self.to_megatron:
-            suffix = f'tp{self.tp}-pp{self.pp}'
-        elif self.to_hf:
-            suffix = 'hf'
         else:
             raise ValueError(f'args: {self}')
         self.output_dir = os.path.join(ckpt_dir, f'{ckpt_name}-{suffix}')

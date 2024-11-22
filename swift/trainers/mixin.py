@@ -2,19 +2,17 @@
 # Part of the implementation is borrowed from huggingface/transformers.
 import inspect
 import os
-import re
 import shutil
 import time
 from copy import copy
-from pathlib import Path
 from types import MethodType
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
-import numpy as np
 import safetensors
 import torch
 import transformers
 from datasets import Dataset as HfDataset
+from modelscope import check_local_model_is_latest
 from packaging import version
 from peft import PeftModel
 from torch.nn import Module
@@ -22,13 +20,15 @@ from transformers import PreTrainedModel, PreTrainedTokenizerBase
 from transformers.data.data_collator import DataCollator
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.modeling_utils import unwrap_model
-from transformers.trainer import PREFIX_CHECKPOINT_DIR, TRAINER_STATE_NAME, Trainer, TrainerCallback
+from transformers.trainer import Trainer, TrainerCallback
 from transformers.trainer_utils import EvalPrediction
-from transformers.training_args import TrainingArguments
-from transformers.utils import is_sagemaker_mp_enabled, is_torch_npu_available
+from transformers.utils import is_torch_npu_available
 
+from swift.hub import get_hub
+from swift.llm import Processor, ProcessorMixin
 from swift.tuners import SwiftModel
-from swift.utils import check_json_format, get_logger, is_ddp_plus_mp
+from swift.utils import get_logger, is_ddp_plus_mp
+from .arguments import TrainingArguments
 from .optimizers.galore import create_optimizer_and_scheduler
 from .torchacc_mixin import TorchAccMixin
 from .utils import can_return_loss, find_labels, get_function, is_instance_of_ms_model
@@ -41,7 +41,7 @@ except (ImportError, RuntimeError):
 logger = get_logger()
 
 
-class SwiftMixin(TorchAccMixin):
+class SwiftMixin(TorchAccMixin, ProcessorMixin):
 
     def __init__(
             self,
@@ -50,7 +50,7 @@ class SwiftMixin(TorchAccMixin):
             data_collator: Optional[DataCollator] = None,
             train_dataset: Optional[HfDataset] = None,
             eval_dataset: Optional[Union[HfDataset, Dict[str, HfDataset]]] = None,
-            tokenizer: Optional[PreTrainedTokenizerBase] = None,
+            processor: Optional[Processor] = None,
             model_init: Optional[Callable[[], PreTrainedModel]] = None,
             compute_loss_func: Optional[Callable] = None,
             compute_metrics: Optional[Callable[[EvalPrediction], Dict]] = None,
@@ -58,16 +58,17 @@ class SwiftMixin(TorchAccMixin):
             optimizers: Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR] = (None, None),
             preprocess_logits_for_metrics: Optional[Callable[[torch.Tensor, torch.Tensor],
                                                              torch.Tensor]] = None) -> None:
-        # if check_model and hasattr(model, 'model_dir'):
-        #     check_local_model_is_latest(
-        #         model.model_dir,
-        #         user_agent={
-        #             Invoke.KEY: Invoke.LOCAL_TRAINER,
-        #             Invoke.THIRD_PARTY: kwargs.pop(Invoke.THIRD_PARTY, Invoke.SWIFT),
-        #         })
+        if args.check_model and hasattr(model, 'model_dir'):
+            check_local_model_is_latest(
+                model.model_dir, user_agent={
+                    'invoked_by': 'local_trainer',
+                    'third_party': 'swift',
+                })
         self._custom_metrics = {}
+        self.processor = processor
         self.compute_loss_func = compute_loss_func
         self.max_memory = 0
+        self.hub = get_hub()
         if args.sequence_parallel_size > 1:
             from swift.trainers.xtuner import init_sequence_parallel_xtuner
             init_sequence_parallel_xtuner(args.sequence_parallel_size)
@@ -78,7 +79,7 @@ class SwiftMixin(TorchAccMixin):
             data_collator=data_collator,
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
-            tokenizer=tokenizer,
+            tokenizer=self.tokenizer,
             model_init=model_init,
             compute_metrics=compute_metrics,
             callbacks=callbacks,
@@ -187,7 +188,7 @@ class SwiftMixin(TorchAccMixin):
             from swift.llm import save_checkpoint
             additional_saved_files = self.model.model_meta.additional_saved_files if hasattr(self.model,
                                                                                              'model_meta') else []
-            save_checkpoint(None, self.tokenizer, output_dir, additional_saved_files=additional_saved_files)
+            save_checkpoint(None, self.processor, output_dir, additional_saved_files=additional_saved_files)
 
     def _fix_zero3_gather_all_parameters(self) -> None:
         if is_deepspeed_zero3_enabled() and not hasattr(self.deepspeed, '_zero3_consolidated_16bit_state_dict_origin'):
@@ -217,7 +218,12 @@ class SwiftMixin(TorchAccMixin):
 
     def train(self, resume_from_checkpoint: Optional[Union[str, bool]] = None, *args, **kwargs) -> torch.Tensor:
         self._save_initial_model(self.args.output_dir)
-        return super().train(resume_from_checkpoint, *args, **kwargs)
+        with self.hub.patch_hub():
+            return super().train(resume_from_checkpoint, *args, **kwargs)
+
+    def push_to_hub(*args, **kwargs):
+        with self.hub.patch_hub():
+            return super().push_to_hub(*args, **kwargs)
 
     def get_max_cuda_memory(self, device: Optional[Union[torch.device, int]] = None) -> float:
         if device is None:

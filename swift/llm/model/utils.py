@@ -17,7 +17,7 @@ from modelscope.hub.utils.utils import get_cache_dir
 from packaging import version
 from transformers import AutoConfig, PretrainedConfig
 
-from swift.hub import HFHub, MSHub, default_hub
+from swift.hub import get_hub
 from swift.llm import to_device
 from swift.utils import deep_getattr, get_logger, is_dist, is_dist_ta, safe_ddp_context, subprocess_run
 
@@ -245,7 +245,7 @@ def safe_snapshot_download(model_id_or_path: str,
         context = FileLock(file_path)
     else:
         context = safe_ddp_context()
-    hub = {True: HFHub, False: MSHub, None: default_hub}[use_hf]
+    hub = get_hub(use_hf)
     with context:
         if os.path.exists(model_id_or_path):
             model_dir = model_id_or_path
@@ -331,5 +331,7 @@ def ignore_check_imports():
 
     td._old_check_imports = td.check_imports
     td.check_imports = _check_imports
-    yield
-    td.check_imports = td._old_check_imports
+    try:
+        yield
+    finally:
+        td.check_imports = td._old_check_imports

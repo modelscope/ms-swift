@@ -48,11 +48,6 @@ class MiniCPMVTemplate(Template):
         else:
             return [[-100]]
 
-    def _check_inputs(self, inputs):
-        images = inputs.images or []
-        if self.mode not in ('vllm', 'lmdeploy'):
-            assert len(images) == 1
-
     async def prepare_lmdeploy_inputs(self, inputs: Dict[str, Any]) -> None:
         images = inputs.pop('images', None) or []
         if len(images) == 0:
@@ -154,9 +149,6 @@ register_template(Llama3TemplateMeta(MLLMTemplateType.minicpmv2_5, template_cls=
 
 
 class MiniCPMV2_6Template(MiniCPMVTemplate):
-
-    def _check_inputs(self, inputs):
-        pass
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
         assert media_type in {'image', 'video'}

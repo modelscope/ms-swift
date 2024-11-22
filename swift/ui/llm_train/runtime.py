@@ -282,7 +282,7 @@ class Runtime(BaseUI):
 
     @classmethod
     def get_plot(cls, task):
-        if not task or 'swift sft' in task:
+        if not task or 'swift sft' in task or 'swift pt' in task:
             return cls.sft_plot
 
         args: dict = cls.parse_info_from_cmdline(task)[1]
@@ -394,7 +394,7 @@ class Runtime(BaseUI):
         output_dir = running_task if not running_task or 'pid:' not in running_task else None
         process_name = 'swift'
         negative_name = 'swift.exe'
-        cmd_name = ['sft', 'rlhf']
+        cmd_name = ['pt', 'sft', 'rlhf']
         process = []
         selected = None
         for proc in psutil.process_iter():
@@ -438,6 +438,8 @@ class Runtime(BaseUI):
                 task = task[slash + 1:]
         if 'swift sft' in task:
             args = task.split('swift sft')[1]
+        elif 'swift pt' in task:
+            args = task.split('swift pt')[1]
         elif 'swift rlhf' in task:
             args = task.split('swift rlhf')[1]
         else:

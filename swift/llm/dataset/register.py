@@ -8,7 +8,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import json
 
 from swift.utils import get_logger
-from .preprocess import DATASET_TYPE, AutoPreprocessor, MessagesPreprocessor
+from .preprocessor import DATASET_TYPE, AutoPreprocessor, MessagesPreprocessor
 
 PreprocessFunc = Callable[..., DATASET_TYPE]
 LoadFunction = Callable[..., DATASET_TYPE]

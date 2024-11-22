@@ -1,7 +1,8 @@
 import argparse
+
 import json
-from transformers import PreTrainedTokenizerBase
 import torch
+from transformers import PreTrainedTokenizerBase
 
 
 def to_list(input_ids):

@@ -1,6 +1,8 @@
 from typing import Any, Dict, List, Union
 
+from swift.utils import get_dist_setting
 from ..argument import RLHFArguments
+from .kto import prepare_kto_dataset
 from .sft import SwiftSft
 
 
@@ -27,11 +29,18 @@ class SwiftRLHF(SwiftSft):
             # Avoid padding labels during the model's forward pass in multimodal models.
             self.template.loss_scale = 'last_round'
 
-    def _register_post_encode_hook(self):
-        models = [self.model]
-        if self.ref_model:
-            models.append(self.ref_model)
-        self.template.register_post_encode_hook(models)
+        if self.model.model_meta.is_multimodal:
+            models = [self.model]
+            if self.ref_model:
+                models.append(self.ref_model)
+            self.template.register_post_encode_hook(models)
+
+    def _get_dataset(self):
+        args = self.args
+        train_dataset, val_dataset = super()._get_dataset()
+        if args.rlhf_type == 'kto':
+            train_dataset, val_dataset = prepare_kto_dataset(args, train_dataset, val_dataset)
+        return train_dataset, val_dataset
 
     def _get_trainer_kwargs(self):
         trainer_kwargs = {}

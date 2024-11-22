@@ -57,10 +57,12 @@ class RowPreprocessor:
         if messages[0]['role'] == 'system':
             messages = messages[1:]
         for user_message, assistant_message in zip(messages[::2], messages[1::2]):
-            assert (user_message['role'] in {'user', 'tool'} and 'content' in user_message
-                    and user_message['content'] is not None), f'user_message: {user_message}'
-            assert (assistant_message['role'] in {'assistant'} and 'content' in assistant_message
-                    and assistant_message['content']), f'assistant_message: {assistant_message}'
+            if (user_message['role'] not in {'user', 'tool'} or 'content' not in user_message
+                    or user_message['content'] is None):
+                raise ValueError(f'user_message: {user_message}')
+            if (assistant_message['role'] not in {'assistant'} or 'content' not in assistant_message
+                    or assistant_message['content'] in {'', None}):
+                raise ValueError(f'assistant_message: {assistant_message}')
 
     @staticmethod
     def check_rejected_response(row: Dict[str, Any]) -> None:
@@ -82,8 +84,8 @@ class RowPreprocessor:
         if 'rejected_response' in row:
             messages = row['messages']
             rejected_response = row['rejected_response']
-            assert rejected_response is not None and rejected_response != messages[-1][
-                'content'], f'rejected_response: {rejected_response}'
+            if rejected_response is None or rejected_response == messages[-1]['content']:
+                raise ValueError(f'rejected_response: {rejected_response}')
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         raise NotImplementedError
@@ -107,8 +109,8 @@ class RowPreprocessor:
             try:
                 row = self.preprocess(row)
                 if row is not None:
-                    self.check_rejected_response(row)
                     self.check_messages(row)
+                    self.check_rejected_response(row)
             except Exception:
                 if strict:
                     logger.warning('To avoid errors, you can pass `strict=False`.')
@@ -172,9 +174,11 @@ class RowPreprocessor:
 
         ArrowWriter.__origin_init__ = ArrowWriter.__init__
         ArrowWriter.__init__ = _new_init
-        yield
-        ArrowWriter.__init__ = ArrowWriter.__origin_init__
-        del ArrowWriter.__origin_init__
+        try:
+            yield
+        finally:
+            ArrowWriter.__init__ = ArrowWriter.__origin_init__
+            del ArrowWriter.__origin_init__
 
     def _cast_mm_data(self, dataset, decode: bool):
         if not self.cast_mm_data:

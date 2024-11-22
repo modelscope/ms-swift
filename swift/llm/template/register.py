@@ -2,10 +2,9 @@
 
 from typing import Any, Dict, List, Literal, Optional, Tuple, Type, Union
 
-from transformers import PreTrainedTokenizerBase
-
 from .base import Template
 from .template_meta import TemplateMeta
+from .utils import Processor
 
 TEMPLATE_MAPPING: Dict[str, TemplateMeta] = {}
 
@@ -21,11 +20,11 @@ def register_template(template_meta: TemplateMeta, *, exist_ok: bool = False) ->
 
 def get_template(
         template_type: str,
-        tokenizer: PreTrainedTokenizerBase,
+        processor: Processor,
         default_system: Optional[str] = None,
         max_length: Optional[int] = None,
         *,
-        use_generate_template: bool = False,
+        use_chat_template: bool = False,
         truncation_strategy: Literal['delete', 'left'] = 'delete',
         max_pixels: Optional[int] = None,  # h * w
         tools_prompt: str = 'react_en',
@@ -35,11 +34,11 @@ def get_template(
     template_meta = TEMPLATE_MAPPING[template_type]
     template_cls = template_meta.template_cls
     return template_cls(
-        tokenizer,
+        processor,
         template_meta,
         default_system,
         max_length,
-        use_generate_template=use_generate_template,
+        use_chat_template=use_chat_template,
         truncation_strategy=truncation_strategy,
         loss_scale=loss_scale,
         max_pixels=max_pixels,
