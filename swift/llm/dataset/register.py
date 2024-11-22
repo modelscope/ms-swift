@@ -26,7 +26,7 @@ class SubsetDataset:
     split: Optional[List[str]] = None
     preprocess_func: Optional[PreprocessFunc] = None
 
-    # If the dataset does not specify subsets, this parameter determines whether the dataset is used.
+    # If the dataset specifies "all," weak subsets will be skipped.
     is_weak_subset: bool = False
 
     def __post_init__(self):

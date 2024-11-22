@@ -22,11 +22,8 @@ logger = get_logger()
 
 
 def get_dataset_features(dataset: DATASET_TYPE) -> Dict[str, Any]:
-    if isinstance(dataset, HfIterableDataset) and dataset.features is None:
-        features = next(iter(dataset))
-    else:
-        features = dataset.features
-    return features
+    features = dataset.features
+    return features or {}
 
 
 class RowPreprocessor:
@@ -205,16 +202,18 @@ class RowPreprocessor:
         dataset = self.prepare_dataset(dataset)
 
         dataset = self._cast_mm_data(dataset, False)
+        map_kwargs = {}
+        if isinstance(dataset, HfDataset):
+            map_kwargs.update({'num_proc': num_proc, 'load_from_cache_file': load_from_cache_file})
         with self._patch_arrow_writer():
             try:
                 dataset_mapped = dataset.map(
                     self.batched_preprocess,
-                    num_proc=num_proc,
-                    load_from_cache_file=load_from_cache_file,
                     batched=True,
                     batch_size=batch_size,
                     fn_kwargs={'strict': strict},
-                    remove_columns=list(get_dataset_features(dataset).keys()))
+                    remove_columns=list(get_dataset_features(dataset).keys()),
+                    **map_kwargs)
             except NotImplementedError:
                 pass
         dataset_mapped = self._cast_mm_data(dataset_mapped, True)

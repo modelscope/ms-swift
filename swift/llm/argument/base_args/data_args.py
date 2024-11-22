@@ -33,7 +33,7 @@ class DataArguments:
         custom_register_path (Optional[str]): Path to custom .py file for dataset registration. Default is None.
         custom_dataset_info (Optional[str]): Path to custom dataset_info.json file. Default is None.
     """
-    # dataset_id or dataset_path
+    # dataset_id or dataset_dir or dataset_path
     dataset: List[str] = field(
         default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     val_dataset: List[str] = field(

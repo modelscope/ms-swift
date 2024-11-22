@@ -5,7 +5,6 @@ from torch.nn import CrossEntropyLoss
 
 
 class LossType:
-    long_ce = 'long-ce'
     loss_scale = 'loss-scale'
 
 
@@ -42,29 +41,6 @@ def ce_loss_func(outputs, labels):
     loss_fct = CrossEntropyLoss(reduction='none')
     loss = loss_fct(shift_logits, shift_labels)
     return loss, masks
-
-
-class LongCrossEntropy:
-    """Assign higher weight to long text."""
-
-    def __init__(self, length_smooth: float = 0.9):
-        self._s_length = 0
-        self._norm_factor = 0
-        self._smoothing = length_smooth
-
-    def __call__(self, outputs, labels, num_items_in_batch=None) -> torch.Tensor:
-        # moving average
-        loss, masks = ce_loss_func(outputs, labels)
-        if num_items_in_batch is not None:
-            # The gradient accumulation equivalent to mini_batch for transformers >= 4.46 and fallback behavior.
-            return loss.sum() / num_items_in_batch
-        self._s_length = self._s_length * self._smoothing + loss.shape[0]
-        self._norm_factor = self._norm_factor * self._smoothing + 1
-        loss = loss.sum() / (self._s_length / self._norm_factor)
-        return loss
-
-
-register_loss_func(LossType.long_ce, LongCrossEntropy())
 
 
 @register_loss_func(LossType.loss_scale)
