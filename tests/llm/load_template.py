@@ -35,10 +35,10 @@ def load_and_tokenize(ms_model_id, template):
         template_ins = get_template(template, tokenizer)
         template_ins.set_mode('train')
         if 'audio' in template_ins.__class__.__name__.lower():
-            output = EncodePreprocessor(template_ins)(load_ds('speech_asr/speech_asr_aishell1_trainsets:validation'))
+            output = EncodePreprocessor(template_ins)(load_ds('speech_asr/speech_asr_aishell1_trainsets:validation/test'))
             input_ids = output[0].get('input_ids')
         elif any([vl in template for vl in vl_fields]):
-            for row in load_ds('swift/OK-VQA_train'):
+            for row in load_ds('modelscope/coco_2014_caption:validation'):
                 output = template_ins.encode(row)
                 input_ids = output.get('input_ids')
                 # output = EncodePreprocessor(template_ins)(load_ds('swift/OK-VQA_train'))
@@ -46,7 +46,7 @@ def load_and_tokenize(ms_model_id, template):
                     inputs = template_ins.pre_data_collator([output], padding_side='left', model=model_ins)
                     _, output = template_ins.pre_forward_hook(model_ins, None, inputs, padding_side='left')
         else:
-            output = EncodePreprocessor(template_ins)(load_ds('AI-ModelScope/sharegpt_gpt4:default'))
+            output = EncodePreprocessor(template_ins)(load_ds('modelscope/DuReader_robust-QG'))
             input_ids = output[0].get('input_ids')
         if isinstance(output, dict):
             assert output.get('input_ids') is not None or output.get('inputs_embeds') is not None
@@ -83,7 +83,7 @@ def load_and_tokenize_old(ms_model_id, template):
             break
 
     if model_type is None:
-        return
+        raise ValueError(f'No model_type found: {model_type}')
 
     vl_fields = ['vl', 'video', 'minicpmv', 'gen', 'llava', 'vision']
     load_model = False
@@ -95,11 +95,11 @@ def load_and_tokenize_old(ms_model_id, template):
         model_info['template'] = template.replace('_', '-')
     template_ins = get_template(model_info['template'], tokenizer)
     if 'audio' in model_info['template']:
-        output = template_ins.encode(load_ds_old('speech_asr/speech_asr_aishell1_trainsets:validation')[0])
+        output = template_ins.encode(load_ds_old('aishell1-zh-mini')[0])
     elif any([vl in model_info['template'] for vl in vl_fields]):
-        output = template_ins.encode(load_ds_old('swift/OK-VQA_train')[0])
+        output = template_ins.encode(load_ds_old('coco-en-mini')[0])
     else:
-        output = template_ins.encode(load_ds_old('AI-ModelScope/sharegpt_gpt4:default')[0])
+        output = template_ins.encode(load_ds_old('dureader-robust-zh')[0])
     input_ids = to_list(output[0]['input_ids'])
     sent = ''
     try:
