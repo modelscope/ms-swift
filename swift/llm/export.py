@@ -277,6 +277,7 @@ def llm_export(args: ExportArguments) -> None:
             from awq import AutoAWQForCausalLM
             model, template = prepare_model_template(
                 args, device_map=args.quant_device_map, task='export', automodel_class=AutoAWQForCausalLM)
+            template.model = model.model
             awq_model_quantize(model, template.tokenizer, args.quant_batch_size)
             model.save_quantized(args.quant_output_dir)
         elif args.quant_method == 'gptq':
