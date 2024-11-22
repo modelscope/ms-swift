@@ -6,9 +6,8 @@ def test_local_dataset():
     local_dataset = '/mnt/nas2/huangjintao.hjt/work/datasets/swift-sft-mixture:firefly#100'
     dataset = load_dataset(datasets=[local_dataset], streaming=True)[0]
     for i, x in enumerate(dataset):
-        if i == 1000:
-            return
-        print(i, x)
+        pass
+    print(i, x)
 
 
 def test_hub_dataset():

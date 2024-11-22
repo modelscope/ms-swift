@@ -124,8 +124,6 @@ class SwiftSft(SwiftPipeline):
             'model_name': args.model_name,
             'model_author': args.model_author,
             'streaming': args.streaming,
-            'streaming_val_size': args.streaming_val_size,
-            'streaming_buffer_size': args.streaming_buffer_size,
             'strict': args.strict
         }
 
@@ -301,7 +299,7 @@ class SwiftSft(SwiftPipeline):
                 val_dataset = EncodePreprocessor(template)(
                     val_dataset, num_proc=args.dataset_num_proc, load_from_cache_file=args.load_from_cache_file)
 
-        inputs = train_dataset[0] if isinstance(train_dataset, HfDataset) else next(iter(train_dataset))
+        inputs = train_dataset[0] if hasattr(train_dataset, '__len__') else next(iter(train_dataset))
         template.print_inputs(inputs, tokenizer_kwargs=inputs.pop('tokenizer_kwargs', {}))
         if isinstance(train_dataset, HfDataset):
             self.train_msg['train_dataset'] = self._stat_dataset(train_dataset)

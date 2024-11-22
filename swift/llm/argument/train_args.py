@@ -143,9 +143,8 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
             raise ValueError(f'self.dataset: {self.dataset}, Please input the training dataset.')
 
         self.prepare_liger()
-        self._init_streaming_args()
-        if self.lazy_tokenize is None and not self.streaming:
-            self.lazy_tokenize = self.model_meta.is_multimodal
+        if self.lazy_tokenize is None:
+            self.lazy_tokenize = self.model_meta.is_multimodal and not self.streaming
             logger.info(f'Setting args.lazy_tokenize: {self.lazy_tokenize}')
         self.training_args = TrainerFactory.get_training_args(self)
 
@@ -201,7 +200,7 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
         if self.use_liger:
             assert is_liger_available(), 'use_liger requires liger_kernels, try `pip install liger-kernel`'
             if self.loss_scale != 'default':
-                logger.warn('use_liger is not compatible with `loss_scale`, setting to default...')
+                logger.warning('use_liger is not compatible with `loss_scale`, setting to default...')
                 self.loss_scale = 'default'
 
     def _handle_pai_compat(self) -> None:
@@ -216,37 +215,11 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
         self.add_version = False
         logger.info(f'Setting args.add_version: {self.add_version}')
 
-    def _init_streaming_args(self) -> None:
-        """Streaming mode does not support some specific arguments"""
-        if not self.streaming:
-            return
-        if self.max_steps == -1:
-            raise ValueError('Please specify `max_steps` in streaming mode.')
-
-        if self.packing:
-            self.packing = False
-            logger.warning('Packing is not supported for streaming dataset, set to False')
-
-        if self.lazy_tokenize:
-            self.lazy_tokenize = False
-            logger.warning('lazy_tokenize set to False in streaming dataset')
-
-        if self.split_dataset_ratio > 0:
-            logger.warning('Set split_dataset_ratio to 0 in streaming mode.'
-                           'You can manually set val_dataset and val_dataset_sample.'
-                           'or set streaming_val_size instead to split from train dataset')
-            self.split_dataset_ratio = 0
-
-        if self.dataloader_num_workers is None or self.dataloader_num_workers > 0:
-            logger.warning('Set dataloader_num_workers to 0 in streaming mode')
-            self.dataloader_num_workers = 0
-
     def _add_version(self):
         """Prepare the output folder"""
         if self.add_version:
             self.output_dir = add_version_to_work_dir(self.output_dir)
             logger.info(f'output_dir: {self.output_dir}')
-            assert not os.path.exists(self.output_dir), f'args.output_dir: {self.output_dir} already exists.'
 
         if self.logging_dir is None:
             self.logging_dir = f'{self.output_dir}/runs'

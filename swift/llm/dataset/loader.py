@@ -160,7 +160,7 @@ class DatasetLoader:
             return
         if len(datasets) == 1:
             return datasets[0]
-        return interleave_datasets(datasets) if streaming else concatenate_datasets(datasets)
+        return concatenate_datasets(datasets)
 
     @staticmethod
     def _load_dataset_path(dataset_meta: DatasetMeta,
@@ -271,47 +271,47 @@ class DatasetLoader:
         streaming: bool = False,
         *,
         load_from_cache_file: bool = False,
-        streaming_val_size: int = 0,
-        streaming_buffer_size: int = 16384,
     ) -> Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]:
         """Split into train/val datasets and perform dataset sampling."""
+        assert dataset_sample is None or dataset_sample > 0
+        assert 0 <= split_dataset_ratio <= 1
         if streaming:
-            val_dataset = None
-            if split_dataset_ratio == 1:
-                train_dataset, val_dataset = None, train_dataset
+            if dataset_sample is None:
+                if split_dataset_ratio == 0:
+                    val_dataset = None
+                elif split_dataset_ratio == 1:
+                    train_dataset, val_dataset = None, train_dataset
+                else:
+                    raise ValueError('The IterableDataset does not support splitting the training set '
+                                     'and validation set when dataset_sample is None.')
             else:
-                if streaming_val_size > 0:
-                    train_dataset = train_dataset.shuffle(
-                        seed=get_seed(random_state), buffer_size=streaming_buffer_size)
-                    val_dataset = train_dataset.take(int(streaming_val_size))
-                    train_dataset = train_dataset.skip(int(streaming_val_size))
+                # not shuffle
+                train_dataset = train_dataset.take(dataset_sample)
+                val_sample = int(dataset_sample * split_dataset_ratio)
+                val_dataset = None if val_sample == 0 else train_dataset.take(val_sample)
+                if val_sample:
+                    train_dataset = train_dataset.skip(val_sample)
         else:
             if dataset_sample is None:
                 dataset_sample = len(train_dataset)
-            assert 0 <= split_dataset_ratio <= 1
-            if split_dataset_ratio == 1:
+            if split_dataset_ratio == 0:
+                train_dataset = sample_dataset(train_dataset, dataset_sample, random_state)
+                val_dataset = None
+            elif split_dataset_ratio == 1:
                 train_dataset, val_dataset = None, train_dataset
                 val_sample = dataset_sample
-                assert val_sample <= len(
-                    val_dataset), f'dataset_sample: {dataset_sample}, len(val_dataset): {len(val_dataset)}'
+                # Avoid duplication in the val_dataset.
+                assert val_sample <= len(val_dataset), f'val_sample: {val_sample}, len(val_dataset): {len(val_dataset)}'
                 val_dataset = sample_dataset(val_dataset, val_sample, random_state)
             else:
-                if split_dataset_ratio == 0:
-                    train_sample = dataset_sample
-                    val_dataset = None
-                else:
-                    # Avoid having a high train_sample causing a high val_sample.
-                    train_len = min(len(train_dataset), dataset_sample)
-                    val_sample = max(int(train_len * split_dataset_ratio), 1)
-                    train_sample = dataset_sample - val_sample
-                    train_dataset, val_dataset = train_dataset.train_test_split(
-                        test_size=val_sample, seed=get_seed(random_state),
-                        load_from_cache_file=load_from_cache_file).values()
-                # TODO
-                try:
-                    assert train_sample > 0
-                except Exception:
-                    raise
+                # Avoid duplication in the val_dataset.
+                train_len = min(len(train_dataset), dataset_sample)
+                val_sample = max(int(train_len * split_dataset_ratio), 1)
+                train_sample = dataset_sample - val_sample
+                assert train_sample > 0
+                train_dataset, val_dataset = train_dataset.train_test_split(
+                    test_size=val_sample, seed=get_seed(random_state),
+                    load_from_cache_file=load_from_cache_file).values()
                 train_dataset = sample_dataset(train_dataset, train_sample, random_state)
         return train_dataset, val_dataset
 
@@ -402,9 +402,7 @@ def load_dataset(
         model_name: Union[Tuple[str, str], List[str], None] = None,  # zh, en
         model_author: Union[Tuple[str, str], List[str], None] = None,
         # streaming
-        streaming: bool = False,
-        streaming_val_size: int = 0,
-        streaming_buffer_size: int = 16384) -> Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]:
+        streaming: bool = False) -> Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]:
     """The interface to load any registered dataset
 
     Args:
@@ -446,9 +444,7 @@ def load_dataset(
             split_dataset_ratio,
             seed,
             streaming,
-            load_from_cache_file=load_from_cache_file,
-            streaming_val_size=streaming_val_size,
-            streaming_buffer_size=streaming_buffer_size)
+            load_from_cache_file=load_from_cache_file)
         if train_dataset is not None:
             train_datasets.append(train_dataset)
         if val_dataset is not None:

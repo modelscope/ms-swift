@@ -23,7 +23,8 @@ logger = get_logger()
 
 def get_dataset_features(dataset: DATASET_TYPE) -> Dict[str, Any]:
     features = dataset.features
-    return features or {}
+    assert features is not None
+    return features
 
 
 class RowPreprocessor:
@@ -193,14 +194,13 @@ class RowPreprocessor:
         num_proc: int = 1,
         strict: bool = True,
         load_from_cache_file: bool = False,
-        batch_size: Optional[int] = 1000,
+        batch_size: int = 1000,
     ) -> DATASET_TYPE:
         from ..utils import sample_dataset
         if self.dataset_sample is not None:
             dataset = sample_dataset(dataset, self.dataset_sample, self.random_state)
         dataset = self.safe_rename_columns(dataset, self.columns_mapping)
         dataset = self.prepare_dataset(dataset)
-
         dataset = self._cast_mm_data(dataset, False)
         map_kwargs = {}
         if isinstance(dataset, HfDataset):
@@ -216,11 +216,13 @@ class RowPreprocessor:
                     **map_kwargs)
             except NotImplementedError:
                 pass
-        dataset_mapped = self._cast_mm_data(dataset_mapped, True)
-
-        if hasattr(dataset, '__len__') and len(dataset) != len(dataset_mapped):
+        if isinstance(dataset_mapped, HfIterableDataset):
+            dataset_mapped = dataset_mapped._resolve_features()
+        elif len(dataset) != len(dataset_mapped):
             logger.info(
                 f'Dataset filtered, origin length: {len(dataset)}, filtered dataset length: {len(dataset_mapped)}')
+
+        dataset_mapped = self._cast_mm_data(dataset_mapped, True)
         return dataset_mapped
 
 

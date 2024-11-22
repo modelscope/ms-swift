@@ -28,8 +28,6 @@ class DataArguments:
         model_author (List[str]): List containing Chinese and English names of the model author.
             Default is [None, None].
         streaming (bool): Flag to enable streaming of datasets. Default is False.
-        streaming_val_size (int): Size of the validation set when streaming. Default is 0.
-        streaming_buffer_size (int): Buffer size for streaming. Default is 16384.
         custom_register_path (Optional[str]): Path to custom .py file for dataset registration. Default is None.
         custom_dataset_info (Optional[str]): Path to custom dataset_info.json file. Default is None.
     """
@@ -38,7 +36,7 @@ class DataArguments:
         default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     val_dataset: List[str] = field(
         default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
-    split_dataset_ratio: float = 0.01  # If val_dataset is empty, use a split from the dataset as the validation set.
+    split_dataset_ratio: float = 0.
     data_seed: Optional[int] = None
 
     dataset_num_proc: int = 1
@@ -49,8 +47,6 @@ class DataArguments:
     model_author: List[str] = field(
         default_factory=lambda: [None, None], metadata={'help': "e.g. ['魔搭', 'ModelScope']"})
     streaming: bool = False
-    streaming_val_size: int = 0
-    streaming_buffer_size: int = 16384
 
     custom_register_path: Optional[str] = None  # .py
     custom_dataset_info: Optional[str] = None  # .json
