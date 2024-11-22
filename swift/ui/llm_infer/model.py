@@ -3,9 +3,9 @@ from functools import partial
 from typing import Type
 
 import gradio as gr
-import json
 
-from swift.llm import MODEL_MAPPING, TEMPLATE_MAPPING, ModelType
+from swift.llm import TEMPLATE_MAPPING, ModelType
+from swift.llm.model.register import get_all_models
 from swift.ui.base import BaseUI
 from swift.ui.llm_infer.generate import Generate
 
@@ -27,12 +27,12 @@ class Model(BaseUI):
         },
         'model_type': {
             'label': {
-                'zh': '选择模型',
-                'en': 'Select Model'
+                'zh': '选择模型类型',
+                'en': 'Select Model Type'
             },
             'info': {
-                'zh': 'SWIFT已支持的模型名称',
-                'en': 'Base model supported by SWIFT'
+                'zh': 'SWIFT已支持的模型类型',
+                'en': 'Base model type supported by SWIFT'
             }
         },
         'load_checkpoint': {
@@ -41,7 +41,7 @@ class Model(BaseUI):
                 'en': 'Load model' if is_inference else 'Deploy model',
             }
         },
-        'model_id_or_path': {
+        'model': {
             'label': {
                 'zh': '模型id或路径',
                 'en': 'Model id or path'
@@ -51,7 +51,7 @@ class Model(BaseUI):
                 'en': 'The actual model id or path, if is a trained model, please fill in the checkpoint-xxx dir'
             }
         },
-        'template_type': {
+        'template': {
             'label': {
                 'zh': '模型Prompt模板类型',
                 'en': 'Prompt template type'
@@ -112,14 +112,7 @@ class Model(BaseUI):
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
         with gr.Row():
-            model = gr.Dropdown(
-                elem_id='model', lines=1, scale=20, choices=[base_tab.locale('checkpoint',
-                                                                             cls.lang)['value']])  # TODO lint
-            model_type = gr.Dropdown(
-                elem_id='model_type',
-                choices=ModelType.get_model_name_list() + cls.get_custom_name_list(),
-                value=base_tab.locale('checkpoint', cls.lang)['value'],
-                scale=20)
+            model = gr.Dropdown(elem_id='model', scale=20, choices=get_all_models(), allow_custom_value=True)
             model_type = gr.Dropdown(
                 elem_id='model_type', choices=ModelType.get_model_name_list() + cls.get_custom_name_list(), scale=20)
             template = gr.Dropdown(elem_id='template', choices=list(TEMPLATE_MAPPING.keys()) + ['AUTO'], scale=20)

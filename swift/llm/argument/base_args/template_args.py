@@ -37,8 +37,8 @@ class TemplateArguments:
     sequence_parallel_size: int = 1
 
     def __post_init__(self):
-        if self.template is None:
+        if self.template is None and hasattr(self, 'model_meta'):
             self.template = self.model_meta.template
 
-        if self.max_length is None:
+        if self.max_length is None and hasattr(self, 'model_info'):
             self.max_length = self.model_info.max_model_len

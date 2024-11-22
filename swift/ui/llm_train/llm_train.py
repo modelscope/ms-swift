@@ -262,17 +262,16 @@ class LLMTrain(BaseUI):
                     Hyper.update_lr, inputs=[base_tab.element('train_type')], outputs=[cls.element('learning_rate')])
 
                 if cls.is_studio:
-                    submit.click(
-                        cls.update_runtime, [],
-                        [cls.element('runtime_tab'), cls.element('log')]).then(
-                            cls.train_studio,
-                            [value for value in cls.elements().values() if not isinstance(value, (Tab, Accordion))],
-                            [cls.element('log')] + Runtime.all_plots + [cls.element('running_cmd')],
-                            queue=True)
+                    submit.click(cls.update_runtime, [],
+                                 [cls.element('runtime_tab'), cls.element('log')]).then(
+                                     cls.train_studio,
+                                     list(cls.valid_elements().values()),
+                                     [cls.element('log')] + Runtime.all_plots + [cls.element('running_cmd')],
+                                     queue=True)
                 else:
                     submit.click(
                         cls.train_local,
-                        [value for value in cls.elements().values() if not isinstance(value, (Tab, Accordion))], [
+                        list(cls.valid_elements().values()), [
                             cls.element('running_cmd'),
                             cls.element('logging_dir'),
                             cls.element('runtime_tab'),
@@ -306,9 +305,8 @@ class LLMTrain(BaseUI):
         other_kwargs = {}
         more_params = {}
         more_params_cmd = ''
-        keys = cls.get_element_keys()
-        model_type = None
-        do_rlhf = False
+        keys = cls.valid_element_keys()
+        train_stage = 'sft'
         for key, value in zip(keys, args):
             compare_value = default_args.get(key)
             if isinstance(value, str) and re.fullmatch(cls.int_regex, value):
@@ -329,13 +327,17 @@ class LLMTrain(BaseUI):
                     more_params_cmd = value
 
             if key == 'train_stage':
-                do_rlhf = value == 'rlhf'
+                train_stage = value
 
         kwargs.update(more_params)
         if 'dataset' not in kwargs and 'custom_train_dataset_path' not in kwargs:
             raise gr.Error(cls.locale('dataset_alert', cls.lang)['value'])
 
-        cmd = 'rlhf' if do_rlhf else 'sft'
+        model = kwargs.get('model')
+        if os.path.exists(model) and os.path.exists(os.path.join(model, 'args.json')):
+            kwargs['resume_from_checkpoint'] = kwargs.pop('model')
+
+        cmd = train_stage
         if kwargs.get('deepspeed'):
             more_params_cmd += f' --deepspeed {kwargs.pop("deepspeed")} '
         sft_args = RLHFArguments(
@@ -381,12 +383,12 @@ class LLMTrain(BaseUI):
         else:
             run_command = f'{cuda_param} {ddp_param} nohup swift {cmd} {params} > {log_file} 2>&1 &'
         logger.info(f'Run training: {run_command}')
-        if model_type:
+        if model:
             record = {}
             for key, value in zip(keys, args):
                 if key in default_args or key in ('more_params', 'train_type', 'use_ddp', 'ddp_num', 'gpu_id'):
                     record[key] = value or None
-            cls.save_cache(model_type, record)
+            cls.save_cache(model, record)
         return run_command, sft_args, other_kwargs
 
     @classmethod

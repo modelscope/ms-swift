@@ -104,7 +104,10 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
 
         if self.result_dir is None:
             if self.ckpt_dir is None:
-                result_dir = self.model_info.model_dir
+                if hasattr(self, 'model_info'):
+                    result_dir = self.model_info.model_dir
+                else:
+                    result_dir = './'
             else:
                 result_dir = self.ckpt_dir
             result_dir = os.path.join(result_dir, folder_name)
@@ -122,10 +125,11 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
         if self.stream is None:
             self.stream = self.eval_human
 
-        template_meta = get_template_meta(self.template)
-        if self.num_beams != 1 or not template_meta.support_stream:
-            self.stream = False
-            logger.info('Setting args.stream: False')
+        if self.template:
+            template_meta = get_template_meta(self.template)
+            if self.num_beams != 1 or not template_meta.support_stream:
+                self.stream = False
+                logger.info('Setting args.stream: False')
 
     def _init_weight_type(self):
         if self.ckpt_dir and os.path.exists(os.path.join(self.ckpt_dir, 'adapter_config.json')):

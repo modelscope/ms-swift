@@ -1,17 +1,17 @@
 import os
 from dataclasses import fields
+from typing import List, Union
 
 import gradio as gr
 from gradio import Accordion, Tab
 from packaging import version
 from transformers.utils import strtobool
 
-from swift.llm import WebUIArguments
+from swift.llm import SwiftPipeline, WebUIArguments
 from swift.ui.llm_eval.llm_eval import LLMEval
 from swift.ui.llm_export.llm_export import LLMExport
 from swift.ui.llm_infer.llm_infer import LLMInfer
 from swift.ui.llm_train.llm_train import LLMTrain
-from swift.utils import get_main
 
 locale_dict = {
     'title': {
@@ -42,55 +42,62 @@ else:
     is_shared_ui = False
 
 
-def run_ui(arguments: WebUIArguments):
-    lang = os.environ.get('SWIFT_UI_LANG') or arguments.lang
-    share_env = os.environ.get('WEBUI_SHARE')
-    share = strtobool(share_env) if share_env else arguments.share
-    server = os.environ.get('WEBUI_SERVER') or arguments.host
-    port_env = os.environ.get('WEBUI_PORT')
-    port = int(port_env) if port_env else arguments.port
+class SwiftWebUI(SwiftPipeline):
 
-    LLMTrain.set_lang(lang)
-    LLMInfer.set_lang(lang)
-    LLMExport.set_lang(lang)
-    LLMEval.set_lang(lang)
-    with gr.Blocks(title='SWIFT WebUI') as app:
-        gr.HTML(f"<h1><center>{locale_dict['title'][lang]}</center></h1>")
-        gr.HTML(f"<h3><center>{locale_dict['sub_title'][lang]}</center></h3>")
-        gr.HTML(f"<h3><center>{locale_dict['star_beggar'][lang]}</center></h3>")
+    args_class = WebUIArguments
+    args: args_class
+
+    def run(self):
+        lang = os.environ.get('SWIFT_UI_LANG') or self.args.lang
+        share_env = os.environ.get('WEBUI_SHARE')
+        share = strtobool(share_env) if share_env else self.args.share
+        server = os.environ.get('WEBUI_SERVER') or self.args.host
+        port_env = os.environ.get('WEBUI_PORT')
+        port = int(port_env) if port_env else self.args.port
+
+        LLMTrain.set_lang(lang)
+        LLMInfer.set_lang(lang)
+        LLMExport.set_lang(lang)
+        LLMEval.set_lang(lang)
+        with gr.Blocks(title='SWIFT WebUI') as app:
+            gr.HTML(f"<h1><center>{locale_dict['title'][lang]}</center></h1>")
+            gr.HTML(f"<h3><center>{locale_dict['sub_title'][lang]}</center></h3>")
+            gr.HTML(f"<h3><center>{locale_dict['star_beggar'][lang]}</center></h3>")
+            if is_shared_ui:
+                gr.HTML(
+                    f'<div class="gr-prose" style="max-width: 80%"><p>If the waiting queue is too long, you can either run locally or duplicate the Space and run it on your own profile using a (paid) private A10G-large GPU for training. A A10G-large costs US$3.15/h. &nbsp;&nbsp;<a class="duplicate-button" style="display:inline-block" target="_blank" href="https://huggingface.co/spaces/{os.environ["SPACE_ID"]}?duplicate=true"><img src="https://img.shields.io/badge/-Duplicate%20Space-blue?labelColor=white&style=flat&logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAP5JREFUOE+lk7FqAkEURY+ltunEgFXS2sZGIbXfEPdLlnxJyDdYB62sbbUKpLbVNhyYFzbrrA74YJlh9r079973psed0cvUD4A+4HoCjsA85X0Dfn/RBLBgBDxnQPfAEJgBY+A9gALA4tcbamSzS4xq4FOQAJgCDwV2CPKV8tZAJcAjMMkUe1vX+U+SMhfAJEHasQIWmXNN3abzDwHUrgcRGmYcgKe0bxrblHEB4E/pndMazNpSZGcsZdBlYJcEL9Afo75molJyM2FxmPgmgPqlWNLGfwZGG6UiyEvLzHYDmoPkDDiNm9JR9uboiONcBXrpY1qmgs21x1QwyZcpvxt9NS09PlsPAAAAAElFTkSuQmCC&logoWidth=14" alt="Duplicate Space"></a></p></div>'  # noqa
+                )
+            with gr.Tabs():
+                if self.args.model or self.args.ckpt_dir:
+                    for f in fields(self.args):
+                        if getattr(self.args, f.name):
+                            LLMInfer.default_dict[f.name] = getattr(self.args, f.name)
+                    LLMInfer.is_gradio_app = True
+                    LLMInfer.build_ui(LLMInfer)
+                elif is_shared_ui:
+                    LLMInfer.build_ui(LLMInfer)
+                    LLMTrain.build_ui(LLMTrain)
+                    LLMExport.build_ui(LLMExport)
+                    LLMEval.build_ui(LLMEval)
+                else:
+                    LLMTrain.build_ui(LLMTrain)
+                    LLMInfer.build_ui(LLMInfer)
+                    LLMExport.build_ui(LLMExport)
+                    LLMEval.build_ui(LLMEval)
+
+        concurrent = {}
+        if version.parse(
+                gr.__version__) < version.parse('4.0.0') and os.environ.get('MODELSCOPE_ENVIRONMENT') != 'studio':
+            concurrent = {'concurrency_count': 5}
         if is_shared_ui:
-            gr.HTML(
-                f'<div class="gr-prose" style="max-width: 80%"><p>If the waiting queue is too long, you can either run locally or duplicate the Space and run it on your own profile using a (paid) private A10G-large GPU for training. A A10G-large costs US$3.15/h. &nbsp;&nbsp;<a class="duplicate-button" style="display:inline-block" target="_blank" href="https://huggingface.co/spaces/{os.environ["SPACE_ID"]}?duplicate=true"><img src="https://img.shields.io/badge/-Duplicate%20Space-blue?labelColor=white&style=flat&logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAP5JREFUOE+lk7FqAkEURY+ltunEgFXS2sZGIbXfEPdLlnxJyDdYB62sbbUKpLbVNhyYFzbrrA74YJlh9r079973psed0cvUD4A+4HoCjsA85X0Dfn/RBLBgBDxnQPfAEJgBY+A9gALA4tcbamSzS4xq4FOQAJgCDwV2CPKV8tZAJcAjMMkUe1vX+U+SMhfAJEHasQIWmXNN3abzDwHUrgcRGmYcgKe0bxrblHEB4E/pndMazNpSZGcsZdBlYJcEL9Afo75molJyM2FxmPgmgPqlWNLGfwZGG6UiyEvLzHYDmoPkDDiNm9JR9uboiONcBXrpY1qmgs21x1QwyZcpvxt9NS09PlsPAAAAAElFTkSuQmCC&logoWidth=14" alt="Duplicate Space"></a></p></div>'  # noqa
-            )
-        with gr.Tabs():
-            if arguments.model_type or arguments.ckpt_dir:
-                for f in fields(arguments):
-                    if getattr(arguments, f.name):
-                        LLMInfer.default_dict[f.name] = getattr(arguments, f.name)
-                LLMInfer.is_gradio_app = True
-                LLMInfer.build_ui(LLMInfer)
-            elif is_shared_ui:
-                LLMInfer.build_ui(LLMInfer)
-                LLMTrain.build_ui(LLMTrain)
-                LLMExport.build_ui(LLMExport)
-                LLMEval.build_ui(LLMEval)
-            else:
-                LLMTrain.build_ui(LLMTrain)
-                LLMInfer.build_ui(LLMInfer)
-                LLMExport.build_ui(LLMExport)
-                LLMEval.build_ui(LLMEval)
-
-    concurrent = {}
-    if version.parse(gr.__version__) < version.parse('4.0.0') and os.environ.get('MODELSCOPE_ENVIRONMENT') != 'studio':
-        concurrent = {'concurrency_count': 5}
-    if is_shared_ui:
-        app.load(LLMInfer.deploy_model, [
-            LLMInfer.element('runtime_tab'),
-            [value for value in LLMInfer.elements().values() if not isinstance(value, (Tab, Accordion))],
-            LLMInfer.element('running_tasks'),
-            LLMInfer.element('model_and_template')
-        ])
-    app.queue(**concurrent).launch(server_name=server, inbrowser=True, server_port=port, height=800, share=share)
+            app.load(LLMInfer.deploy_model, [
+                LLMInfer.element('runtime_tab'),
+                [value for value in LLMInfer.elements().values() if not isinstance(value, (Tab, Accordion))],
+                LLMInfer.element('running_tasks'),
+                LLMInfer.element('model_and_template')
+            ])
+        app.queue(**concurrent).launch(server_name=server, inbrowser=True, server_port=port, height=800, share=share)
 
 
-webui_main = get_main(WebUIArguments, run_ui)
+def webui_main(args: Union[List[str], WebUIArguments, None] = None):
+    return SwiftWebUI(args).main()

@@ -125,4 +125,5 @@ class ModelArguments:
             os.environ['USE_HF'] = '1'
         self._init_model_kwargs()
         self._init_device_map()
-        self._init_torch_dtype()
+        if self.model:
+            self._init_torch_dtype()

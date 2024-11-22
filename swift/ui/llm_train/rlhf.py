@@ -34,7 +34,7 @@ class RLHF(BaseUI):
                 'en': 'Base model supported by SWIFT'
             }
         },
-        'ref_model_id_or_path': {
+        'ref_model': {
             'label': {
                 'zh': 'ref模型id或路径',
                 'en': 'Ref model id or path'

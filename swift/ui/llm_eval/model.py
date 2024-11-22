@@ -1,9 +1,11 @@
 import os.path
+from functools import partial
 from typing import Type
 
 import gradio as gr
 
 from swift.llm import MODEL_MAPPING, ModelType
+from swift.llm.model.register import get_all_models
 from swift.ui.base import BaseUI
 
 
@@ -20,15 +22,15 @@ class Model(BaseUI):
         },
         'model_type': {
             'label': {
-                'zh': '选择模型',
-                'en': 'Select Model'
+                'zh': '选择模型类型',
+                'en': 'Select Model Type'
             },
             'info': {
-                'zh': 'SWIFT已支持的模型名称',
-                'en': 'Base model supported by SWIFT'
+                'zh': 'SWIFT已支持的模型类型',
+                'en': 'Base model type supported by SWIFT'
             }
         },
-        'model_id_or_path': {
+        'model': {
             'label': {
                 'zh': '模型id或路径',
                 'en': 'Model id or path'
@@ -49,16 +51,9 @@ class Model(BaseUI):
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
         with gr.Row():
+            model = gr.Dropdown(elem_id='model', scale=20, choices=get_all_models(), allow_custom_value=True)
             model_type = gr.Dropdown(
-                elem_id='model_type',
-                choices=[base_tab.locale('checkpoint', cls.lang)['value']] + ModelType.get_model_name_list()
-                + cls.get_custom_name_list(),
-                value=base_tab.locale('checkpoint', cls.lang)['value'],
-                allow_custom_value=True,
-                scale=20)
-            model_id_or_path = gr.Textbox(elem_id='model_id_or_path', lines=1, scale=20, interactive=True)
-            reset_btn = gr.Button(elem_id='reset', scale=2)
-            model_state = gr.State({})
+                elem_id='model_type', choices=ModelType.get_model_name_list() + cls.get_custom_name_list(), scale=20)
 
     @classmethod
     def after_build_ui(cls, base_tab: Type['BaseUI']):

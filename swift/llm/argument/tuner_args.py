@@ -191,7 +191,7 @@ class TunerArguments:
         return {'lora', 'longlora', 'llamapro', 'adalora'}
 
     def __post_init__(self):
-        if self.init_lora_weights.lower() in {'true', 'false'}:
+        if isinstance(self.init_lora_weights, str) and self.init_lora_weights.lower() in {'true', 'false'}:
             self.init_lora_weights = bool(strtobool(self.init_lora_weights))
 
     def handle_target_modules(self, model) -> Union[str, List[str]]:

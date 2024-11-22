@@ -32,7 +32,7 @@ class SwiftSft(SwiftPipeline):
         self._prepare_model_tokenizer()
         self._prepare_template()
         self._prepare_callbacks()
-        self.model = prepare_tuner(self.model, args)
+        self.model = prepare_tuner(self.model, self.args)
         logger.info(self.model)
         model_parameter_info = get_model_parameter_info(self.model)
         self.train_msg['model_parameter_info'] = model_parameter_info
@@ -155,6 +155,9 @@ class SwiftSft(SwiftPipeline):
         else:
             data_collator = template.data_collator
         return partial(data_collator, padding_to=padding_to, model=self.model)
+
+    def _register_post_encode_hook(self):
+        template.register_post_encode_hook([self.model])
 
     def run(self):
         args = self.args
@@ -299,7 +302,7 @@ class SwiftSft(SwiftPipeline):
                     val_dataset, num_proc=args.dataset_num_proc, load_from_cache_file=args.load_from_cache_file)
 
         inputs = train_dataset[0] if isinstance(train_dataset, HfDataset) else next(iter(train_dataset))
-        template.print_inputs(inputs)
+        template.print_inputs(inputs, tokenizer_kwargs=inputs.pop('tokenizer_kwargs', {}))
         if isinstance(train_dataset, HfDataset):
             self.train_msg['train_dataset'] = self._stat_dataset(train_dataset)
             if val_dataset is not None:
