@@ -63,6 +63,7 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
         # TODO
         """Load specific attributes from args.json"""
         from swift.llm import TrainArguments
+        self.ckpt_dir = checkpoint_dir
         if isinstance(self, TrainArguments):
             self.resume_from_checkpoint = to_abspath(self.resume_from_checkpoint, True)
             ckpt_dir = self.resume_from_checkpoint

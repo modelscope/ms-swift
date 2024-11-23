@@ -60,13 +60,13 @@ class SwiftInfer(SwiftPipeline):
     def __init__(self, args: Union[List[str], InferArguments, None] = None) -> None:
         from swift.llm import merge_lora
         super().__init__(args)
-        if args.merge_lora:
-            merge_lora(args, device_map='cpu')
-        self.infer_engine = self.get_infer_engine(args)
-        if args.ckpt_dir and args.weight_type == 'lora':
-            self.infer_engine.model = Swift.from_pretrained(self.infer_engine.model, args.ckpt_dir, inference_mode=True)
-        self.template = self.get_template(args, self.processor)
-        self.random_state = np.random.RandomState(args.data_seed)
+        if self.args.merge_lora:
+            merge_lora(self.args, device_map='cpu')
+        self.infer_engine = self.get_infer_engine(self.args)
+        if self.args.ckpt_dir and self.args.weight_type == 'lora':
+            self.infer_engine.model = Swift.from_pretrained(self.infer_engine.model, self.args.ckpt_dir, inference_mode=True)
+        self.template = self.get_template(self.args, self.processor)
+        self.random_state = np.random.RandomState(self.args.data_seed)
 
     def __getattr__(self, key: str):
         try:

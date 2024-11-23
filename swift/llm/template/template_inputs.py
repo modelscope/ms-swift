@@ -50,7 +50,7 @@ class InferRequest:
         self._remove_response()
 
     def _remove_response(self):
-        last_role = self.messages[-1]['role']
+        last_role = self.messages[-1]['role'] if self.messages else None
         if last_role == 'assistant':
             self.messages.pop()
 

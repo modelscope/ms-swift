@@ -275,7 +275,7 @@ class BaseUI:
         return arguments
 
     @classmethod
-    def update_input_model(cls, model, allow_keys=None, has_record=True):
+    def update_input_model(cls, model, allow_keys=None, has_record=True, arg_cls=BaseArguments):
         keys = cls.valid_element_keys()
 
         if os.path.exists(model):
@@ -285,7 +285,8 @@ class BaseUI:
                 if len(ret) == 1:
                     return ret[0]
 
-            args: BaseArguments = BaseArguments().load_args_from_ckpt(local_path)
+            args = arg_cls()
+            args.load_args_from_ckpt(model)
             values = []
             for key in keys:
                 if allow_keys is not None and key not in allow_keys:
@@ -316,9 +317,9 @@ class BaseUI:
         if has_record:
             return [gr.update(choices=cls.list_cache(model))] + values
         else:
-            ret = tuple(values)
-            if len(ret) == 1:
-                return ret[0]
+            if len(values) == 1:
+                return values[0]
+            return values
 
     @classmethod
     def update_all_settings(cls, model, train_record, base_tab):

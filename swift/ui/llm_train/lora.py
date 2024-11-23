@@ -95,7 +95,7 @@ class LoRA(BaseUI):
                     gr.Slider(elem_id='lora_alpha', value=8, minimum=1, maximum=512, step=8, scale=2)
                     gr.Textbox(elem_id='lora_dropout', scale=2)
                 with gr.Row():
-                    gr.Dropdown(elem_id='lora_dtype', scale=2)
+                    gr.Dropdown(elem_id='lora_dtype', scale=2, value=None)
                     gr.Textbox(elem_id='lora_lr_ratio', scale=2)
                     gr.Checkbox(elem_id='use_rslora', scale=2)
                     gr.Checkbox(elem_id='use_dora', scale=2)
