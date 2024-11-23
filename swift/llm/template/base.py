@@ -657,9 +657,6 @@ class Template(ProcessorMixin):
         batched_data = kwargs.pop('_data')
         extra_inputs = []
         for data in batched_data:
-            for k, v in data.items():
-                if k in {'input_ids', 'labels', 'loss_scale'} and isinstance(v, (list, tuple)):
-                    data[k] = torch.tensor(v)
             extra_inputs.append(self._post_encode(model, to_device(data, model.device)))
         new_kwargs = self.data_collator(extra_inputs, padding_side=padding_side, padding_to=padding_to, model=model)
         new_kwargs.pop('labels', None)
@@ -728,6 +725,13 @@ class Template(ProcessorMixin):
                           padding_to: Optional[int] = None,
                           model: Optional[nn.Module] = None) -> Dict[str, Any]:
         """for multimodal LLM"""
+        # compat streaming
+        for data in batch:
+            for key in {'input_ids', 'labels', 'loss_scale'}:
+                for k, v in data.items():
+                    if k.endswith(key) and isinstance(v, (list, tuple)):
+                        data[k] = torch.tensor(v)[None]
+
         new_batch = []
         for b in batch:
             new_batch.append({k: v for k, v in b.items() if k.endswith('labels') or k == 'label'})
@@ -817,40 +821,45 @@ class Template(ProcessorMixin):
             padding_side = self.padding_side
         padding_right = padding_side == 'right'
         res = {}
-        if 'inputs_embeds' in batch[0]:
-            inputs_embeds = [b['inputs_embeds'] for b in batch]
+        inputs_embeds = [b['inputs_embeds'] for b in batch if b.get('inputs_embeds') is not None]
+        input_ids = [b['input_ids'] for b in batch if b.get('input_ids') is not None]
+        if inputs_embeds:
             res['inputs_embeds'] = inputs_embeds
-            res['attention_mask'] = [
-                torch.ones((inputs_embeds[i].shape[0]), dtype=torch.int64) for i in range(len(inputs_embeds))
-            ]
-        if 'input_ids' in batch[0]:
-            input_ids = [b['input_ids'] for b in batch]
+        if input_ids:
             res['input_ids'] = input_ids
-            if 'attention_mask' not in res:
-                res['attention_mask'] = [
-                    torch.ones(len(input_ids[i]), dtype=torch.int64) for i in range(len(input_ids))
-                ]
 
         for key in ['labels', 'loss_scale', 'position_ids']:
-            if key in batch[0]:
-                res[key] = [b[key] for b in batch]
+            val = [b[key] for b in batch if b.get(key) is not None]
+            if val:
+                res[key] = val
 
-        if padding_to is not None:
-            assert 'input_ids' in res
-            padding_len = padding_to - res['input_ids'][0].shape[-1]
-            if padding_len > 0:
-                for key, value in zip(['input_ids', 'attention_mask', 'labels', 'loss_scale', 'position_ids'],
-                                      [tokenizer.pad_token_id, 0, -100, 0., -1]):
-                    if key in res:
-                        res[key][0] = F.pad(res[key][0], (0, padding_len) if padding_right else (padding_len, 0),
-                                            'constant', value)
-        for key, value in zip(['input_ids', 'inputs_embeds', 'attention_mask', 'labels', 'loss_scale', 'position_ids'],
-                              [tokenizer.pad_token_id, 0., 0, -100, 0., -1]):
-            if key in res:
-                for i, val in enumerate(res[key]):
-                    if isinstance(val, (list, tuple)):
-                        res[key][i] = torch.tensor(val)
-                res[key] = self._pad_sequence(res[key], value, padding_side)
+        keys = ['input_ids', 'inputs_embeds', 'attention_mask', 'labels', 'loss_scale', 'position_ids']
+        pad_value = [tokenizer.pad_token_id, 0., 0, -100, 0., -1]
+        # Convert to tensor and remove unnecessary dimensions.
+        seq_lens = None
+        for key in keys:
+            if key not in res:
+                continue
+            for i, val in enumerate(res[key]):
+                if isinstance(val, (list, tuple)):
+                    val = torch.tensor(val)
+                elif key == 'inputs_embeds' and val.ndim == 3 or key != 'inputs_embeds' and val.ndim == 2:
+                    val = val[0]
+                res[key][i] = val
+            if not seq_lens:
+                seq_lens = [seq.shape[0] for seq in res[key]]
+        if seq_lens:
+            res['attention_mask'] = [torch.ones(seq_len, dtype=torch.int64) for seq_len in seq_lens]
+
+        for key, pad_value in zip(keys, pad_value):
+            if key not in res:
+                continue
+            if padding_to is not None:
+                padding_len = padding_to - seq_lens[0]
+                if padding_len > 0:
+                    res[key][0] = F.pad(res[key][0], (0, padding_len) if padding_right else (padding_len, 0),
+                                        'constant', pad_value)
+            res[key] = self._pad_sequence(res[key], pad_value, padding_side)
 
         # multimodal
         pixel_values = [b['pixel_values'] for b in batch if b.get('pixel_values') is not None]
@@ -865,6 +874,11 @@ class Template(ProcessorMixin):
         if len(pixel_values_videos) > 0:
             res['pixel_values_videos'] = torch.concat(pixel_values_videos)
 
+        if use_torchacc() or self.sequence_parallel_size > 1:
+            res = self._torchacc_xtuner_data_collator(res)
+        return res
+
+    def _torchacc_xtuner_data_collator(self, res):
         # torchacc & xtuner
         input_ids = res.get('input_ids')
         attention_mask = res.get('attention_mask')

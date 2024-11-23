@@ -8,12 +8,14 @@ import torch
 
 from swift.llm import MODEL_MAPPING, HfConfigFactory
 from swift.utils import get_dist_setting, get_logger
+from .generation_args import GenerationArguments
+from .quant_args import QuantizeArguments
 
 logger = get_logger()
 
 
 @dataclass
-class ModelArguments:
+class ModelArguments(QuantizeArguments, GenerationArguments):
     """
     ModelArguments class is a dataclass that holds various arguments related to model configuration and usage.
 
@@ -121,6 +123,7 @@ class ModelArguments:
         self._init_device_map()
         if self.model:
             self._init_torch_dtype()
+        QuantizeArguments.__post_init__(self)
 
     def get_model_kwargs(self):
         return {
@@ -132,7 +135,7 @@ class ModelArguments:
             'hub_token': self.hub_token,
             'local_repo_path': self.local_repo_path,
             'device_map': self.device_map,
-            'quantization_config': getattr(self, 'quantization_config', None),
+            'quantization_config': self.get_quantization_config(),
             'attn_impl': self.attn_impl,
             'rope_scaling': self.rope_scaling,
         }

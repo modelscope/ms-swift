@@ -76,7 +76,12 @@ class SwiftSft(SwiftPipeline):
 
     def _get_model_tokenizer(self, model, model_type, model_revision):
         args = self.args
-        return get_model_tokenizer(**self.get_model_kwargs(), use_unsloth=args.tuner_backend == 'unsloth')
+        model_kwargs = args.get_model_kwargs()
+        # compat rlhf
+        model_kwargs['model_id_or_path'] = model
+        model_kwargs['model_type'] = model_type
+        model_kwargs['model_revision'] = model_revision
+        return get_model_tokenizer(**model_kwargs, use_unsloth=args.tuner_backend == 'unsloth')
 
     def _prepare_model_tokenizer(self):
         args = self.args

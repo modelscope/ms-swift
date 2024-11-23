@@ -253,7 +253,7 @@ class Qwen2VLTemplate(Template):
     def _post_encode(self, model, data: Any) -> Dict[str, Any]:
         if self.mode != 'train':
             return data
-        input_ids = data['input_ids'][None]
+        input_ids = data['input_ids']
         _model = model.model
         if not hasattr(_model, 'embed_tokens'):
             _model = _model.model  # LoRA
@@ -288,7 +288,7 @@ class Qwen2VLTemplate(Template):
                 video_mask = (input_ids == model.config.video_token_id).unsqueeze(-1).expand_as(inputs_embeds)
                 video_embeds = video_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
                 inputs_embeds = inputs_embeds.masked_scatter(video_mask, video_embeds)
-        res = {'inputs_embeds': inputs_embeds[0]}
+        res = {'inputs_embeds': inputs_embeds}
         for key in ['input_ids', 'image_grid_thw', 'video_grid_thw']:
             value = data.get(key, None)
             if value is not None:

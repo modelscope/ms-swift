@@ -8,9 +8,7 @@ from swift.hub import get_hub
 from swift.utils import check_json_format, get_logger, is_master
 from ..tuner_args import TunerArguments, get_supported_tuners
 from .data_args import DataArguments
-from .generation_args import GenerationArguments
 from .model_args import ModelArguments
-from .quant_args import QuantizeArguments
 from .template_args import TemplateArguments
 from .utils import to_abspath
 
@@ -18,10 +16,10 @@ logger = get_logger()
 
 
 @dataclass
-class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, TemplateArguments, ModelArguments):
+class BaseArguments(DataArguments, TemplateArguments, ModelArguments):
     """
     BaseArguments class is a dataclass that inherits from multiple argument classes:
-    ModelArguments, TemplateArguments, QuantizeArguments, GenerationArguments, and DataArguments.
+    ModelArguments, TemplateArguments, and DataArguments.
 
     Args:
         seed (int): Random seed for reproducibility. Default is 42.
@@ -47,7 +45,6 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
         ModelArguments.__post_init__(self)
         TemplateArguments.__post_init__(self)
         DataArguments.__post_init__(self)
-        QuantizeArguments.__post_init__(self)
         self.hub = get_hub(self.use_hf)
         if self.hub.try_login(self.hub_token):
             logger.info('hub login successful!')
