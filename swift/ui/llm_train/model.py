@@ -95,7 +95,7 @@ class Model(BaseUI):
                 model = gr.Dropdown(elem_id='model', scale=20, choices=get_all_models(), allow_custom_value=True)
                 gr.Dropdown(
                     elem_id='model_type',
-                    choices=ModelType.get_model_name_list() + cls.get_custom_name_list(),
+                    choices=ModelType.get_model_name_list(),
                     scale=20)
                 gr.Dropdown(elem_id='template', choices=list(TEMPLATE_MAPPING.keys()) + ['AUTO'], scale=20)
                 train_record = gr.Dropdown(elem_id='train_record', choices=[], scale=20)
@@ -114,11 +114,11 @@ class Model(BaseUI):
     @classmethod
     def after_build_ui(cls, base_tab: Type['BaseUI']):
         cls.element('model').change(
-            cls.update_input_model,
+            base_tab.update_input_model,
             inputs=[cls.element('model')],
-            outputs=[cls.element('train_record')] + list(cls.valid_elements().values()))
+            outputs=[cls.element('train_record')] + list(base_tab.valid_elements().values()))
 
         cls.element('train_record').change(
-            partial(cls.update_all_settings, base_tab=base_tab),
+            partial(base_tab.update_all_settings, base_tab=base_tab),
             inputs=[cls.element('model'), cls.element('train_record')],
-            outputs=list(cls.valid_elements().values()))
+            outputs=list(base_tab.valid_elements().values()))

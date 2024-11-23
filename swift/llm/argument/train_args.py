@@ -171,7 +171,7 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
                                  f'n_gpu: {torch.cuda.device_count()}, '
                                  f'local_world_size: {self.local_world_size}.')
             require_version('deepspeed')
-            self.parse_to_dict('deepspeed')
+            self.parse_to_dict(self.deepspeed)
             logger.info(f'Using deepspeed: {self.deepspeed}')
 
     def prepare_ddp_backend(self):

@@ -154,9 +154,6 @@ class SwiftSft(SwiftPipeline):
             data_collator = template.data_collator
         return partial(data_collator, padding_to=padding_to, model=self.model)
 
-    def _register_post_encode_hook(self):
-        template.register_post_encode_hook([self.model])
-
     def run(self):
         args = self.args
 

@@ -58,7 +58,7 @@ class Model(BaseUI):
             ]
             model = gr.Dropdown(elem_id='model', scale=20, choices=all_models, allow_custom_value=True)
             model_type = gr.Dropdown(
-                elem_id='model_type', choices=ModelType.get_model_name_list() + cls.get_custom_name_list(), scale=20)
+                elem_id='model_type', choices=ModelType.get_model_name_list(), scale=20)
             template = gr.Dropdown(elem_id='template', choices=list(TEMPLATE_MAPPING.keys()) + ['AUTO'], scale=20)
 
     @classmethod
