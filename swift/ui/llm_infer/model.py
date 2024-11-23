@@ -53,16 +53,6 @@ class Model(BaseUI):
                 'en': 'Choose the template type of the model'
             }
         },
-        'system': {
-            'label': {
-                'zh': 'system字段',
-                'en': 'system'
-            },
-            'info': {
-                'zh': 'system字段支持在加载模型后修改',
-                'en': 'system can be modified after the model weights loaded'
-            }
-        },
         'merge_lora': {
             'label': {
                 'zh': '合并lora',
@@ -99,6 +89,12 @@ class Model(BaseUI):
                 'en': 'Reset to default'
             },
         },
+        'infer_backend': {
+            'label': {
+                'zh': '推理框架',
+                'en': 'Infer backend'
+            },
+        },
     }
 
     @classmethod
@@ -110,7 +106,7 @@ class Model(BaseUI):
             gr.Checkbox(elem_id='merge_lora', scale=4)
             gr.Button(elem_id='reset', scale=2)
         with gr.Row():
-            gr.Textbox(elem_id='system', lines=4, scale=20)
+            gr.Dropdown(elem_id='infer_backend', value='pt', scale=5)
         Generate.build_ui(base_tab)
         with gr.Row():
             gr.Textbox(elem_id='lora_modules', lines=1, is_list=True, scale=40)

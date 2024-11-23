@@ -16,6 +16,9 @@ from swift.llm import DeployArguments, InferArguments, InferClient, InferRequest
 from swift.ui.base import BaseUI
 from swift.ui.llm_infer.model import Model
 from swift.ui.llm_infer.runtime import Runtime
+from swift.utils import get_logger
+
+logger = get_logger()
 
 
 class LLMInfer(BaseUI):
@@ -51,6 +54,12 @@ class LLMInfer(BaseUI):
                 'en': 'Start to deploy model, '
                 'please Click "Show running '
                 'status" to view details',
+            }
+        },
+        'load_alert_gradio_app': {
+            'value': {
+                'zh': '部署中，请查看部署日志',
+                'en': 'Start to deploy model, please check the log',
             }
         },
         'loaded_alert': {
@@ -139,7 +148,7 @@ class LLMInfer(BaseUI):
                         value=default_device,
                         scale=8)
                     infer_model_type = gr.Textbox(elem_id='infer_model_type', scale=4)
-                    gr.Textbox(elem_id='port', lines=1, value='8000')
+                    gr.Textbox(elem_id='port', lines=1, value='8000', scale=4)
                 chatbot = gr.Chatbot(elem_id='chatbot', elem_classes='control-height')
                 with gr.Row():
                     prompt = gr.Textbox(elem_id='prompt', lines=1, interactive=True)
@@ -274,8 +283,12 @@ class LLMInfer(BaseUI):
     @classmethod
     def deploy_model(cls, *args):
         run_command, deploy_args, log_file = cls.deploy(*args)
+        logger.info(f'Running deployment command: {run_command}')
         os.system(run_command)
-        gr.Info(cls.locale('load_alert', cls.lang)['value'])
+        if cls.is_gradio_app:
+            gr.Info(cls.locale('load_alert_gradio_app', cls.lang)['value'])
+        else:
+            gr.Info(cls.locale('load_alert', cls.lang)['value'])
         time.sleep(2)
         return gr.update(open=True), Runtime.refresh_tasks(log_file), [
             deploy_args.model_type, deploy_args.template, deploy_args.train_type

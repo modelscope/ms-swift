@@ -48,21 +48,21 @@ class SwiftWebUI(SwiftPipeline):
         server = os.environ.get('WEBUI_SERVER') or self.args.host
         port_env = os.environ.get('WEBUI_PORT')
         port = int(port_env) if port_env else self.args.port
-        is_studio = self.args.model or self.args.ckpt_dir
+        is_gradio_app = self.args.model or self.args.ckpt_dir
 
         LLMTrain.set_lang(lang)
         LLMInfer.set_lang(lang)
         LLMExport.set_lang(lang)
         LLMEval.set_lang(lang)
         with gr.Blocks(title='SWIFT WebUI') as app:
-            if is_studio:
+            if is_gradio_app:
                 gr.HTML(f"<h1><center>{self.args.studio_title}</center></h1>")
             else:
                 gr.HTML(f"<h1><center>{locale_dict['title'][lang]}</center></h1>")
                 gr.HTML(f"<h3><center>{locale_dict['sub_title'][lang]}</center></h3>")
                 gr.HTML(f"<h3><center>{locale_dict['star_beggar'][lang]}</center></h3>")
             with gr.Tabs():
-                if is_studio:
+                if is_gradio_app:
                     for f in fields(self.args):
                         if getattr(self.args, f.name):
                             LLMInfer.default_dict[f.name] = getattr(self.args, f.name)
@@ -77,7 +77,7 @@ class SwiftWebUI(SwiftPipeline):
             concurrent = {}
             if version.parse(gr.__version__) < version.parse('4.0.0'):
                 concurrent = {'concurrency_count': 5}
-            if is_studio:
+            if is_gradio_app:
                 app.load(LLMInfer.deploy_model, list(LLMInfer.valid_elements().values()), [
                     LLMInfer.element('runtime_tab'),
                     LLMInfer.element('running_tasks'),

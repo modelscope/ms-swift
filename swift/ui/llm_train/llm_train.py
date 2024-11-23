@@ -251,7 +251,7 @@ class LLMTrain(BaseUI):
                 cls.element('train_type').change(
                     Hyper.update_lr, inputs=[base_tab.element('train_type')], outputs=[cls.element('learning_rate')])
 
-                if cls.is_studio:
+                if cls.is_gradio_app:
                     submit.click(cls.update_runtime, [],
                                  [cls.element('runtime_tab'), cls.element('log')]).then(
                                      cls.train_studio,
@@ -269,7 +269,7 @@ class LLMTrain(BaseUI):
                             cls.element('train_record'),
                         ],
                         queue=True)
-                if not cls.is_studio:
+                if not cls.is_gradio_app:
                     base_tab.element('running_tasks').change(
                         partial(Runtime.task_changed, base_tab=base_tab), [base_tab.element('running_tasks')],
                         list(base_tab.valid_elements().values())
