@@ -3,7 +3,7 @@ from typing import Type
 
 import gradio as gr
 
-from swift.llm import TEMPLATE_MAPPING, ModelType
+from swift.llm import TEMPLATE_MAPPING, ModelType, RLHFArguments
 from swift.llm.model.register import get_all_models
 from swift.ui.base import BaseUI
 
@@ -111,7 +111,7 @@ class Model(BaseUI):
     @classmethod
     def after_build_ui(cls, base_tab: Type['BaseUI']):
         cls.element('model').change(
-            base_tab.update_input_model,
+            partial(base_tab.update_input_model, arg_cls=RLHFArguments),
             inputs=[cls.element('model')],
             outputs=[cls.element('train_record')] + list(base_tab.valid_elements().values()))
 

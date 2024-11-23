@@ -478,7 +478,7 @@ class Runtime(BaseUI):
             _, all_args = Runtime.parse_info_from_cmdline(task)
         else:
             all_args = {}
-        elements = [value for value in base_tab.elements().values() if not isinstance(value, (Tab, Accordion))]
+        elements = list(base_tab.valid_elements().values())
         ret = []
         for e in elements:
             if e.elem_id in all_args:

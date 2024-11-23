@@ -249,7 +249,7 @@ class Runtime(BaseUI):
             _, all_args = cls.parse_info_from_cmdline(task)
         else:
             all_args = {}
-        elements = [value for value in base_tab.elements().values() if not isinstance(value, (Tab, Accordion))]
+        elements = list(base_tab.valid_elements().values())
         ret = []
         is_custom_path = 'ckpt_dir' in all_args
         for e in elements:

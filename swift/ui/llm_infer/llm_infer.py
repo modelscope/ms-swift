@@ -186,7 +186,7 @@ class LLMInfer(BaseUI):
         other_kwargs = {}
         more_params = {}
         more_params_cmd = ''
-        keys = [key for key, value in cls.elements().items() if not isinstance(value, (Tab, Accordion))]
+        keys = cls.valid_element_keys()
         for key, value in zip(keys, args):
             compare_value = deploy_args.get(key)
             compare_value_arg = str(compare_value) if not isinstance(compare_value, (list, dict)) else compare_value
@@ -355,12 +355,12 @@ class LLMInfer(BaseUI):
             port=args['port'],
             **media_kwargs,
         ).infer(
-            infer_requests=infer_request,
+            infer_requests=[infer_request],
             request_config=request_config,
         )
         if infer_request.messages[-1]['role'] != 'assistant':
             infer_request.messages.append({'role': 'assistant', 'content': ''})
         for chunk in stream_resp:
-            stream_resp_with_history += chunk.choices[0].delta.content if chat else chunk.choices[0].text
+            stream_resp_with_history += chunk[0].choices[0].delta.content if chat else chunk.choices[0].text
             infer_request.messages[-1]['content'] = stream_resp_with_history
             yield '', cls._replace_tag_with_media(infer_request), infer_request
