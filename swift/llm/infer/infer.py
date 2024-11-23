@@ -102,14 +102,8 @@ class SwiftInfer(SwiftPipeline):
 
     @staticmethod
     def get_template(args, processor: Processor) -> Template:
-        template = get_template(
-            args.template,
-            processor,
-            args.system,
-            args.max_length,
-            truncation_strategy=args.truncation_strategy,
-            max_pixels=args.max_pixels,
-            tools_prompt=args.tools_prompt)
+        template_kwargs = args.get_template_kwargs()
+        template = get_template(args.template, processor, use_chat_template=args.use_chat_template, **template_kwargs)
         logger.info(f'default_system: {template.default_system}')
         return template
 

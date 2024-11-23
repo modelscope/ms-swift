@@ -31,7 +31,7 @@ class SwiftSft(SwiftPipeline):
         super().__init__(args)
         self.train_msg = {}
         self._prepare_model_tokenizer()
-        self._prepare_template()
+        self._prepare_template(True)
         self._prepare_callbacks()
         self.model = prepare_tuner(self.model, self.args)
         logger.info(self.model)
@@ -95,19 +95,10 @@ class SwiftSft(SwiftPipeline):
         self._prepare_generation_config()
         self._prepare_gradient_checkpointing()
 
-    def _prepare_template(self, **template_kwargs) -> None:
+    def _prepare_template(self, use_chat_template: bool) -> None:
         args = self.args
-        template = get_template(
-            args.template,
-            self.processor,
-            args.system,
-            args.max_length,
-            truncation_strategy=args.truncation_strategy,
-            max_pixels=args.max_pixels,
-            loss_scale=args.loss_scale,
-            tools_prompt=args.tools_prompt,
-            sequence_parallel_size=args.sequence_parallel_size,
-            **template_kwargs)
+        template_kwargs = args.get_template_kwargs()
+        template = get_template(args.template, self.processor, use_chat_template=use_chat_template, **template_kwargs)
         logger.info(f'default_system: {template.default_system}')
         self.template = template
 

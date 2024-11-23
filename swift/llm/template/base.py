@@ -848,7 +848,7 @@ class Template(ProcessorMixin):
                 res[key][i] = val
             if not seq_lens:
                 seq_lens = [seq.shape[0] for seq in res[key]]
-        if seq_lens:
+        if seq_lens and ('input_ids' in res or 'inputs_embeds' in res):
             res['attention_mask'] = [torch.ones(seq_len, dtype=torch.int64) for seq_len in seq_lens]
 
         for key, pad_value in zip(keys, pad_value):

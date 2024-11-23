@@ -12,7 +12,7 @@ class SwiftPt(SwiftSft):
         self.template.loss_scale = 'all'
         super()._prepare_train()
 
-    def _prepare_template(self, **template_kwargs) -> None:
+    def _prepare_template(self, use_chat_template: bool) -> None:
         super()._prepare_template(use_chat_template=False)
 
 
