@@ -52,8 +52,7 @@ class Model(BaseUI):
     def do_build_ui(cls, base_tab: Type['BaseUI']):
         with gr.Row():
             model = gr.Dropdown(elem_id='model', scale=20, choices=get_all_models(), allow_custom_value=True)
-            model_type = gr.Dropdown(
-                elem_id='model_type', choices=ModelType.get_model_name_list(), scale=20)
+            model_type = gr.Dropdown(elem_id='model_type', choices=ModelType.get_model_name_list(), scale=20)
 
     @classmethod
     def after_build_ui(cls, base_tab: Type['BaseUI']):

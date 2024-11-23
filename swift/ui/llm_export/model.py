@@ -57,8 +57,7 @@ class Model(BaseUI):
                 model for model in get_all_models() if not any([ignored in model for ignored in cls.ignored_models])
             ]
             model = gr.Dropdown(elem_id='model', scale=20, choices=all_models, allow_custom_value=True)
-            model_type = gr.Dropdown(
-                elem_id='model_type', choices=ModelType.get_model_name_list(), scale=20)
+            model_type = gr.Dropdown(elem_id='model_type', choices=ModelType.get_model_name_list(), scale=20)
             template = gr.Dropdown(elem_id='template', choices=list(TEMPLATE_MAPPING.keys()) + ['AUTO'], scale=20)
 
     @classmethod

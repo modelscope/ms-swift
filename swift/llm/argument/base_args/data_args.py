@@ -74,3 +74,16 @@ class DataArguments:
             logger.info(f'Using val_dataset, setting split_dataset_ratio: {self.split_dataset_ratio}')
         self._init_custom_register()
         self._init_custom_dataset_info()
+
+    def get_dataset_kwargs(self):
+        return {
+            'seed': self.data_seed,
+            'num_proc': self.dataset_num_proc,
+            'use_hf': self.use_hf,
+            'hub_token': self.hub_token,
+            'load_from_cache_file': self.load_from_cache_file,
+            'download_mode': self.download_mode,
+            'model_name': self.model_name,
+            'model_author': self.model_author,
+            'strict': self.strict
+        }

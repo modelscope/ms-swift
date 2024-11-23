@@ -113,8 +113,7 @@ class Model(BaseUI):
     def do_build_ui(cls, base_tab: Type['BaseUI']):
         with gr.Row():
             model = gr.Dropdown(elem_id='model', scale=20, choices=get_all_models(), allow_custom_value=True)
-            model_type = gr.Dropdown(
-                elem_id='model_type', choices=ModelType.get_model_name_list(), scale=20)
+            model_type = gr.Dropdown(elem_id='model_type', choices=ModelType.get_model_name_list(), scale=20)
             template = gr.Dropdown(elem_id='template', choices=list(TEMPLATE_MAPPING.keys()) + ['AUTO'], scale=20)
             gr.Checkbox(elem_id='merge_lora', scale=4)
             reset_btn = gr.Button(elem_id='reset', scale=2)

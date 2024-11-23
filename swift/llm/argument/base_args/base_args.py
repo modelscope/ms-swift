@@ -33,6 +33,7 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
     seed: int = 42
     strict: bool = False
     load_dataset_config: bool = False
+    use_hf: bool = False
     # None: use env var `MODELSCOPE_API_TOKEN`
     hub_token: Optional[str] = field(
         default=None, metadata={'help': 'SDK token can be found in https://modelscope.cn/my/myaccesstoken'})
@@ -41,6 +42,8 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
     ignore_args_error: bool = False  # True: notebook compatibility
 
     def __post_init__(self):
+        if self.use_hf:
+            os.environ['USE_HF'] = '1'
         ModelArguments.__post_init__(self)
         TemplateArguments.__post_init__(self)
         DataArguments.__post_init__(self)

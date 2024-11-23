@@ -72,10 +72,10 @@ class SwiftDeploy(SwiftInfer):
         return JSONResponse({'message': message, 'object': 'error'}, status_code)
 
     def _post_process(self, response, return_cmpl_response: bool = False):
-        if return_cmpl_response:
-            response = response.to_cmpl_response()
         if self.args.log_interval > 0:
             self.infer_states.update(response)
+        if return_cmpl_response:
+            response = response.to_cmpl_response()
         return response
 
     async def create_chat_completion(self,

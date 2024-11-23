@@ -4,10 +4,10 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from functools import partial
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
-from swift.utils.env import use_hf_hub
+
 import json
 
-from swift.utils import get_logger
+from swift.utils import get_logger, use_hf_hub
 from .preprocessor import DATASET_TYPE, AutoPreprocessor, MessagesPreprocessor
 
 PreprocessFunc = Callable[..., DATASET_TYPE]

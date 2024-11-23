@@ -414,7 +414,8 @@ class HFHub(HubOperation):
                      streaming: bool = False,
                      revision: Optional[str] = None,
                      download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists',
-                     num_proc: Optional[int] = None):
+                     num_proc: Optional[int] = None,
+                     **kwargs):
         from datasets import load_dataset
         if revision is None or revision == 'master':
             revision = 'main'
