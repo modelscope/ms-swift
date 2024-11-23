@@ -6,7 +6,7 @@ kwargs = {
     'per_device_train_batch_size': 2,
     'save_steps': 5,
     'gradient_accumulation_steps': 4,
-    'num_train_epoch': 1,
+    'num_train_epochs': 1,
     'metric_for_best_model': 'loss'
 }
 
@@ -32,6 +32,19 @@ def test_mllm():
     infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True, merge_lora=True))
 
 
+def test_mllm_zero3():
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+    from swift.llm import rlhf_main, RLHFArguments, infer_main, InferArguments
+    result = rlhf_main(
+        RLHFArguments(
+            rlhf_type='dpo',
+            model='qwen/Qwen2-VL-7B-Instruct',
+            dataset=['swift/RLAIF-V-Dataset#100'],
+            deepspeed='zero3',
+            **kwargs))
+
+
 if __name__ == '__main__':
     # test_llm()
-    test_mllm()
+    # test_mllm()
+    test_mllm_zero3()

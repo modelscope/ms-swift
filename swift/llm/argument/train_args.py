@@ -155,12 +155,7 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
     def prepare_deepspeed(self):
         """Prepare deepspeed settings"""
         ds_config_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'ds_config'))
-        deepspeed_mapping = {
-            'default-zero2': 'zero2.json',
-            'default-zero3': 'zero3.json',
-            'zero2-offload': 'zero2_offload.json',
-            'zero3-offload': 'zero3_offload.json',
-        }
+        deepspeed_mapping = {name: f'{name}.json' for name in ['zero2', 'zero3', 'zero2_offload', 'zero3_offload']}
         for ds_name, ds_config in deepspeed_mapping.items():
             if self.deepspeed == ds_name:
                 self.deepspeed = os.path.join(ds_config_folder, ds_config)
