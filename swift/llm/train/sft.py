@@ -2,7 +2,7 @@ import os
 from functools import partial
 from typing import Any, Dict, List, Union
 
-from datasets import Dataset as HfDataset
+from datasets import Dataset as HfDataset, IterableDataset as HfIterableDataset
 from transformers import IntervalStrategy
 
 from swift.plugin import extra_callbacks, get_loss_func, optimizers_map
