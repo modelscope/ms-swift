@@ -65,8 +65,8 @@ def test_mllm_zero3():
     result = sft_main(
         TrainArguments(
             model='qwen/Qwen2-VL-7B-Instruct',
-            dataset=['modelscope/coco_2014_caption:validation#100', 'AI-ModelScope/alpaca-gpt4-data-en#100'],
-            deepspeed='zero2',
+            dataset=['modelscope/coco_2014_caption:validation#100'],  # , 'AI-ModelScope/alpaca-gpt4-data-en#100'
+            deepspeed='zero3',
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
     infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True, merge_lora=True))
