@@ -283,8 +283,7 @@ class LLMTrain(BaseUI):
                 if not cls.is_studio:
                     base_tab.element('running_tasks').change(
                         partial(Runtime.task_changed, base_tab=base_tab), [base_tab.element('running_tasks')],
-                        list(base_tab.valid_elements().values())
-                        + [cls.element('log')] + Runtime.all_plots,
+                        list(base_tab.valid_elements().values()) + [cls.element('log')] + Runtime.all_plots,
                         cancels=Runtime.log_event)
                     Runtime.element('kill_task').click(
                         Runtime.kill_task,

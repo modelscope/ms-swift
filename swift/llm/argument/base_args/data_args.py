@@ -37,16 +37,17 @@ class DataArguments:
     val_dataset: List[str] = field(
         default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     split_dataset_ratio: float = 0.
-    data_seed: Optional[int] = None
 
+    data_seed: Optional[int] = None
     dataset_num_proc: int = 1
+    streaming: bool = False
+
     load_from_cache_file: bool = False
     download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists'
     # Chinese name and English name
     model_name: List[str] = field(default_factory=lambda: [None, None], metadata={'help': "e.g. ['小黄', 'Xiao Huang']"})
     model_author: List[str] = field(
         default_factory=lambda: [None, None], metadata={'help': "e.g. ['魔搭', 'ModelScope']"})
-    streaming: bool = False
 
     custom_register_path: Optional[str] = None  # .py
     custom_dataset_info: Optional[str] = None  # .json
@@ -79,6 +80,7 @@ class DataArguments:
         return {
             'seed': self.data_seed,
             'num_proc': self.dataset_num_proc,
+            'streaming': self.streaming,
             'use_hf': self.use_hf,
             'hub_token': self.hub_token,
             'load_from_cache_file': self.load_from_cache_file,

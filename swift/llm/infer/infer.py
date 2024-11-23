@@ -88,38 +88,15 @@ class SwiftInfer(SwiftPipeline):
         if args.infer_backend == 'pt':
             from .infer_engine import PtEngine
             infer_engine_cls = PtEngine
-            kwargs.update({
-                'attn_impl': args.attn_impl,
-                'quantization_config': args.quantization_config,
-                'max_batch_size': getattr(args, 'max_batch_size', 1),
-                'device_map': args.device_map
-            })
+            kwargs.update(args.get_model_kwargs())
         elif args.infer_backend == 'vllm':
             from .infer_engine import VllmEngine
             infer_engine_cls = VllmEngine
-            kwargs.update({
-                'gpu_memory_utilization': args.gpu_memory_utilization,
-                'tensor_parallel_size': args.tensor_parallel_size,
-                'pipeline_parallel_size': args.pipeline_parallel_size,
-                'max_num_seqs': args.max_num_seqs,
-                'max_model_len': args.max_model_len,
-                'disable_custom_all_reduce': args.disable_custom_all_reduce,
-                'enforce_eager': args.enforce_eager,
-                'limit_mm_per_prompt': args.limit_mm_per_prompt,
-                'enable_lora': args.vllm_enable_lora,
-                'max_loras': args.vllm_max_loras,
-                'max_lora_rank': args.vllm_max_lora_rank
-            })
+            kwargs.update(args.get_vllm_engine_kwargs())
         else:
             from .infer_engine import LmdeployEngine
             infer_engine_cls = LmdeployEngine
-            kwargs.update({
-                'tp': args.tp,
-                'session_len': args.session_len,
-                'cache_max_entry_count': args.cache_max_entry_count,
-                'quant_policy': args.quant_policy,
-                'vision_batch_size': args.vision_batch_size
-            })
+            kwargs.update(args.get_lmdeploy_engine_kwargs())
 
         return infer_engine_cls(**kwargs)
 

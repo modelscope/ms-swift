@@ -20,8 +20,8 @@ from transformers.utils import is_torch_bf16_gpu_available, is_torch_cuda_availa
 from transformers.utils.versions import require_version
 
 from swift.utils import get_dist_setting, get_logger, is_ddp_plus_mp, is_dist, is_unsloth_available, use_torchacc
-from .utils import AttnImpl, HfConfigFactory, ModelInfo, safe_snapshot_download
 from .constant import ModelType
+from .utils import AttnImpl, HfConfigFactory, ModelInfo, safe_snapshot_download
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]]
 logger = get_logger()
@@ -435,6 +435,7 @@ def get_model_tokenizer(model_id_or_path: str,
                         attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None,
                         rope_scaling: Optional[Dict[str, Any]] = None,
                         use_hf: Optional[bool] = None,
+                        hub_token: Optional[str] = None,
                         revision: Optional[str] = None,
                         download_model: Optional[bool] = None,
                         automodel_class=AutoModelForCausalLM,
@@ -467,7 +468,8 @@ def get_model_tokenizer(model_id_or_path: str,
         revision=revision,
         download_model=download_model,
         use_hf=use_hf,
-        ignore_file_pattern=ignore_file_pattern)
+        ignore_file_pattern=ignore_file_pattern,
+        hub_token=hub_token)
 
     if not use_torchacc() and device_map is None:
         device_map = get_default_device_map()

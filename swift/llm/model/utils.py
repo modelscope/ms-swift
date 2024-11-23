@@ -220,6 +220,7 @@ def safe_snapshot_download(model_id_or_path: str,
                            revision: Optional[str] = None,
                            download_model: bool = True,
                            use_hf: Optional[bool] = None,
+                           hub_token: Optional[str] = None,
                            ignore_file_pattern: Optional[List[str]] = None,
                            **kwargs) -> str:
     """Download model protected by DDP context
@@ -252,7 +253,7 @@ def safe_snapshot_download(model_id_or_path: str,
         else:
             if model_id_or_path[:1] in {'~', '/'}:  # startswith
                 raise ValueError(f"path: '{model_id_or_path}' not found")
-            model_dir = hub.download_model(model_id_or_path, revision, ignore_file_pattern, **kwargs)
+            model_dir = hub.download_model(model_id_or_path, revision, ignore_file_pattern, token=hub_token, **kwargs)
 
         logger.info(f'Loading the model using model_dir: {model_dir}')
 

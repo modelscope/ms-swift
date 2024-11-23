@@ -2,7 +2,8 @@ import os
 from functools import partial
 from typing import Any, Dict, List, Union
 
-from datasets import Dataset as HfDataset, IterableDataset as HfIterableDataset
+from datasets import Dataset as HfDataset
+from datasets import IterableDataset as HfIterableDataset
 from transformers import IntervalStrategy
 
 from swift.plugin import extra_callbacks, get_loss_func, optimizers_map
@@ -75,16 +76,7 @@ class SwiftSft(SwiftPipeline):
 
     def _get_model_tokenizer(self, model, model_type, model_revision):
         args = self.args
-        return get_model_tokenizer(
-            model,
-            args.torch_dtype,
-            args.device_map,
-            model_type=model_type,
-            revision=model_revision,
-            quantization_config=args.quantization_config,
-            attn_impl=args.attn_impl,
-            rope_scaling=args.rope_scaling,
-            use_unsloth=args.tuner_backend == 'unsloth')
+        return get_model_tokenizer(**self.get_model_kwargs(), use_unsloth=args.tuner_backend == 'unsloth')
 
     def _prepare_model_tokenizer(self):
         args = self.args
@@ -116,17 +108,7 @@ class SwiftSft(SwiftPipeline):
 
     def _get_dataset(self):
         args = self.args
-        dataset_kwargs = {
-            'seed': args.data_seed,
-            'num_proc': args.dataset_num_proc,
-            'load_from_cache_file': args.load_from_cache_file,
-            'download_mode': args.download_mode,
-            'model_name': args.model_name,
-            'model_author': args.model_author,
-            'streaming': args.streaming,
-            'strict': args.strict
-        }
-
+        dataset_kwargs = args.get_dataset_kwargs()
         if len(args.val_dataset) > 0:
             # Loading val dataset
             _, val_dataset = load_dataset(args.val_dataset, 1.0, **dataset_kwargs)
