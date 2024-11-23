@@ -90,8 +90,7 @@ class LLMEval(BaseUI):
                     scale=8)
 
                 cls.element('evaluate').click(
-                    cls.eval_model,
-                    list(base_tab.valid_elements().values()),
+                    cls.eval_model, list(base_tab.valid_elements().values()),
                     [cls.element('runtime_tab'),
                      cls.element('running_tasks'), model_and_template])
 

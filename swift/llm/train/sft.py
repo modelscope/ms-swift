@@ -118,7 +118,8 @@ class SwiftSft(SwiftPipeline):
             # Loading val dataset
             _, val_dataset = load_dataset(args.val_dataset, 1.0, **dataset_kwargs)
             args.split_dataset_ratio = 0
-        train_dataset, val_dataset = load_dataset(args.dataset, args.split_dataset_ratio, **dataset_kwargs)
+        train_dataset, val_dataset = load_dataset(
+            args.dataset, split_dataset_ratio=args.split_dataset_ratio, **dataset_kwargs)
         logger.info(f'train_dataset: {train_dataset}')
         logger.info(f'val_dataset: {val_dataset}')
 

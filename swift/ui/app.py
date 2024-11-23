@@ -56,7 +56,7 @@ class SwiftWebUI(SwiftPipeline):
         LLMEval.set_lang(lang)
         with gr.Blocks(title='SWIFT WebUI') as app:
             if is_gradio_app:
-                gr.HTML(f"<h1><center>{self.args.studio_title}</center></h1>")
+                gr.HTML(f'<h1><center>{self.args.studio_title}</center></h1>')
             else:
                 gr.HTML(f"<h1><center>{locale_dict['title'][lang]}</center></h1>")
                 gr.HTML(f"<h3><center>{locale_dict['sub_title'][lang]}</center></h3>")
@@ -78,11 +78,10 @@ class SwiftWebUI(SwiftPipeline):
             if version.parse(gr.__version__) < version.parse('4.0.0'):
                 concurrent = {'concurrency_count': 5}
             if is_gradio_app:
-                app.load(LLMInfer.deploy_model, list(LLMInfer.valid_elements().values()), [
-                    LLMInfer.element('runtime_tab'),
-                    LLMInfer.element('running_tasks'),
-                    LLMInfer.model_and_template
-                ])
+                app.load(
+                    LLMInfer.deploy_model, list(LLMInfer.valid_elements().values()),
+                    [LLMInfer.element('runtime_tab'),
+                     LLMInfer.element('running_tasks'), LLMInfer.model_and_template])
         app.queue(**concurrent).launch(server_name=server, inbrowser=True, server_port=port, height=800, share=share)
 
 

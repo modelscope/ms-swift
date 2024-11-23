@@ -88,8 +88,7 @@ class LLMExport(BaseUI):
                     scale=8)
 
                 cls.element('export').click(
-                    cls.export_model,
-                    list(base_tab.valid_elements().values()),
+                    cls.export_model, list(base_tab.valid_elements().values()),
                     [cls.element('runtime_tab'),
                      cls.element('running_tasks'), model_and_template])
 
