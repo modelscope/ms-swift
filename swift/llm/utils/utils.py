@@ -336,7 +336,7 @@ def _map_mp_i(dataset: HfDataset, map_func: MapFunc, num_proc: int) -> Iterator[
         os.environ = pre_environ
         queue = manager.Queue()
         async_results = []
-        shard_list = [dataset.shard(num_proc, i) for i in range(num_proc)]
+        shard_list = [dataset.shard(num_proc, i, contiguous=True) for i in range(num_proc)]
         for i in range(num_proc):
             async_results.append(pool.apply_async(_map_mp_single, args=(shard_list[i], map_func, queue, i)))
         while True:
