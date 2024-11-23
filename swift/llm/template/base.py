@@ -86,7 +86,10 @@ class Template(ProcessorMixin):
         """
         from .template_meta import TemplateMeta
         self.processor = processor
+        self.model_info = processor.model_info
+        self.model_meta = processor.model_meta
         tokenizer = self.tokenizer
+
         if not use_chat_template:
             template_meta = template_meta.to_generate_template_meta()
         # if default_system is None. not change self.default_system
@@ -109,6 +112,7 @@ class Template(ProcessorMixin):
         self.max_pixels = max_pixels
         self.sequence_parallel_size = sequence_parallel_size
         self.tools_prompt = tools_prompt or template_meta.default_tools_prompt
+        # infer: 'pt', 'vllm', 'lmdeploy'; train: 'train', 'rlhf', 'kto'
         self.mode: Literal['pt', 'vllm', 'lmdeploy', 'train', 'rlhf', 'kto'] = 'pt'
         self._handles = []
         self._deepspeed_initialize = None

@@ -22,7 +22,7 @@ if TYPE_CHECKING:
                           MediaResource, register_dataset, register_dataset_info, EncodePreprocessor,
                           LLMIterableDataset, LazyLLMDataset, ConstantLengthDataset, print_inputs, standard_keys,
                           load_dataset, DATASET_TYPE, HfDataset, sample_dataset, RowPreprocessor)
-    from .utils import deep_getattr, to_device, History, decode_base64, history_to_messages, messages_to_history
+    from .utils import deep_getattr, to_device, History, history_to_messages, messages_to_history
     from .base import SwiftPipeline
 else:
     _extra_objects = {k: v for k, v in globals().items() if not k.startswith('_')}
@@ -55,8 +55,7 @@ else:
             'LLMIterableDataset', 'LazyLLMDataset', 'ConstantLengthDataset', 'print_inputs', 'standard_keys',
             'load_dataset', 'DATASET_TYPE', 'HfDataset', 'sample_dataset', 'RowPreprocessor'
         ],
-        'utils':
-        ['deep_getattr', 'to_device', 'History', 'decode_base64', 'history_to_messages', 'messages_to_history'],
+        'utils': ['deep_getattr', 'to_device', 'History', 'history_to_messages', 'messages_to_history'],
         'base': ['SwiftPipeline']
     }
 
