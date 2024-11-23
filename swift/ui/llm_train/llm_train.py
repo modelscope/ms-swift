@@ -33,17 +33,9 @@ from swift.utils import get_logger
 
 logger = get_logger()
 
-is_spaces = True if 'SPACE_ID' in os.environ else False
-if is_spaces:
-    is_shared_ui = True if 'modelscope/swift' in os.environ['SPACE_ID'] else False
-else:
-    is_shared_ui = False
-
 
 class LLMTrain(BaseUI):
     group = 'llm_train'
-
-    is_studio = os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio'
 
     sub_ui = [
         Model,
@@ -243,10 +235,7 @@ class LLMTrain(BaseUI):
                         choices=[str(i) for i in range(gpu_count)] + ['cpu'],
                         value=default_device,
                         scale=8)
-                    if is_shared_ui:
-                        gr.Checkbox(elem_id='dry_run', value=True, interactive=False, scale=4)
-                    else:
-                        gr.Checkbox(elem_id='dry_run', value=False, scale=4)
+                    gr.Checkbox(elem_id='dry_run', value=False, scale=4)
                     submit = gr.Button(elem_id='submit', scale=4, variant='primary')
 
                 LoRA.build_ui(base_tab)

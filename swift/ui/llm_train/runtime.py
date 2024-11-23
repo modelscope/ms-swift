@@ -10,7 +10,7 @@ import gradio as gr
 import json
 import matplotlib.pyplot as plt
 import psutil
-from gradio import Accordion, Tab
+from packaging import version
 from transformers import is_tensorboard_available
 
 from swift.ui.base import BaseUI
@@ -249,10 +249,13 @@ class Runtime(BaseUI):
                         name = k['name']
                         cls.all_plots.append(gr.Plot(elem_id=str(idx), label=name))
 
+                concurrency_limit = {}
+                if version.parse(gr.__version__) >= version.parse('4.0.0'):
+                    concurrency_limit = {'concurrency_limit': 5}
                 cls.log_event = base_tab.element('show_log').click(
                     Runtime.update_log, [base_tab.element('running_tasks')], [cls.element('log')] + cls.all_plots).then(
                         Runtime.wait, [base_tab.element('logging_dir'),
-                                       base_tab.element('running_tasks')], [cls.element('log')] + cls.all_plots)
+                                       base_tab.element('running_tasks')], [cls.element('log')] + cls.all_plots, **concurrency_limit)
 
                 base_tab.element('stop_show_log').click(lambda: None, cancels=cls.log_event)
 

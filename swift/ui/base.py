@@ -41,10 +41,7 @@ def update_data(fn):
             self.is_list = kwargs.pop('is_list')
 
         if base_builder and base_builder.default(elem_id) is not None:
-            if os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio' and kwargs.get('value') is not None:
-                pass
-            else:
-                kwargs['value'] = base_builder.default(elem_id)
+            kwargs['value'] = base_builder.default(elem_id)
 
         if builder is not None:
             if elem_id in builder.locales(builder.lang):
@@ -101,6 +98,7 @@ class BaseUI:
     cache_dir = os.path.join(get_cache_dir(), 'swift-web-ui')
     os.makedirs(cache_dir, exist_ok=True)
     quote = '\'' if sys.platform != 'win32' else '"'
+    visible = True
 
     @classmethod
     def build_ui(cls, base_tab: Type['BaseUI']):

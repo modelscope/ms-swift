@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from dataclasses import dataclass
+from typing import Optional
 
 from swift.llm import InferArguments
 
@@ -19,3 +20,4 @@ class WebUIArguments(InferArguments):
     port: int = 7860
     share: bool = False
     lang: str = 'zh'
+    studio_title: Optional[str] = None

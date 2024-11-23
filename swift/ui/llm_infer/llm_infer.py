@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import sys
@@ -5,16 +6,13 @@ import time
 from copy import deepcopy
 from datetime import datetime
 from functools import partial
+from json import JSONDecodeError
 from typing import List, Type
 
 import gradio as gr
-import json
 import torch
-from gradio import Accordion, Tab
-from json import JSONDecodeError
 
 from swift.llm import DeployArguments, InferArguments, InferClient, InferRequest, RequestConfig
-from swift.llm.infer.infer import SwiftInfer
 from swift.ui.base import BaseUI
 from swift.ui.llm_infer.model import Model
 from swift.ui.llm_infer.runtime import Runtime
@@ -23,6 +21,8 @@ from swift.ui.llm_infer.runtime import Runtime
 class LLMInfer(BaseUI):
 
     group = 'llm_infer'
+
+    is_gradio_app = False
 
     sub_ui = [Model, Runtime]
 
@@ -33,10 +33,16 @@ class LLMInfer(BaseUI):
                 'en': 'Please deploy model first',
             }
         },
+        'port': {
+            'label': {
+                'zh': '端口',
+                'en': 'port'
+            },
+        },
         'llm_infer': {
             'label': {
-                'zh': 'LLM部署',
-                'en': 'LLM Deployment',
+                'zh': 'LLM推理',
+                'en': 'LLM Inference',
             }
         },
         'load_alert': {
@@ -118,11 +124,14 @@ class LLMInfer(BaseUI):
                 gpu_count = torch.cuda.device_count()
                 default_device = '0'
             with gr.Blocks():
-                model_and_template = gr.State([])
+                cls.model_and_template = gr.State([])
                 infer_request = gr.State(None)
+                if LLMInfer.is_gradio_app:
+                    Model.visible = False
+                    Runtime.visible = False
                 Model.build_ui(base_tab)
                 Runtime.build_ui(base_tab)
-                with gr.Row():
+                with gr.Row(visible=not LLMInfer.is_gradio_app):
                     gr.Dropdown(
                         elem_id='gpu_id',
                         multiselect=True,
@@ -130,7 +139,7 @@ class LLMInfer(BaseUI):
                         value=default_device,
                         scale=8)
                     infer_model_type = gr.Textbox(elem_id='infer_model_type', scale=4)
-                BaseUI.visible = True
+                    gr.Textbox(elem_id='port', lines=1, value='8000')
                 chatbot = gr.Chatbot(elem_id='chatbot', elem_classes='control-height')
                 with gr.Row():
                     prompt = gr.Textbox(elem_id='prompt', lines=1, interactive=True)
@@ -146,14 +155,15 @@ class LLMInfer(BaseUI):
                     clear_history = gr.Button(elem_id='clear_history')
                     submit = gr.Button(elem_id='submit')
 
-                cls.element('load_checkpoint').click(
-                    cls.deploy_model, list(cls.valid_elements().values()),
-                    [cls.element('runtime_tab'),
-                     cls.element('running_tasks'), model_and_template])
+                if not LLMInfer.is_gradio_app:
+                    cls.element('load_checkpoint').click(
+                        cls.deploy_model, list(base_tab.valid_elements().values()),
+                        [cls.element('runtime_tab'),
+                         cls.element('running_tasks'), cls.model_and_template])
                 submit.click(
                     cls.send_message,
                     inputs=[
-                        cls.element('running_tasks'), model_and_template,
+                        cls.element('running_tasks'), cls.model_and_template,
                         cls.element('template'), prompt, image, video, audio, infer_request, infer_model_type,
                         cls.element('system'),
                         cls.element('max_new_tokens'),
@@ -167,16 +177,17 @@ class LLMInfer(BaseUI):
 
                 clear_history.click(fn=cls.clear_session, inputs=[], outputs=[prompt, chatbot, image, video, audio, infer_request])
 
-                base_tab.element('running_tasks').change(
-                    partial(Runtime.task_changed, base_tab=base_tab), [base_tab.element('running_tasks')],
-                    list(cls.valid_elements().values()) + [cls.element('log'), model_and_template],
-                    cancels=Runtime.log_event)
-                Runtime.element('kill_task').click(
-                    Runtime.kill_task,
-                    [Runtime.element('running_tasks')],
-                    [Runtime.element('running_tasks')] + [Runtime.element('log')],
-                    cancels=[Runtime.log_event],
-                )
+                if not LLMInfer.is_gradio_app:
+                    base_tab.element('running_tasks').change(
+                        partial(Runtime.task_changed, base_tab=base_tab), [base_tab.element('running_tasks')],
+                        list(cls.valid_elements().values()) + [cls.element('log'), cls.model_and_template],
+                        cancels=Runtime.log_event)
+                    Runtime.element('kill_task').click(
+                        Runtime.kill_task,
+                        [Runtime.element('running_tasks')],
+                        [Runtime.element('running_tasks')] + [Runtime.element('log')],
+                        cancels=[Runtime.log_event],
+                    )
 
     @classmethod
     def deploy(cls, *args):
@@ -319,7 +330,7 @@ class LLMInfer(BaseUI):
                 infer_request.messages.insert(0, {'role': 'system', 'content': system})
             else:
                 infer_request.messages[0]['content'] = system
-        if infer_request.messages[-1]['role'] != 'user':
+        if not infer_request.messages or infer_request.messages[-1]['role'] != 'user':
             infer_request.messages.append({'role': 'user', 'content': '', 'medias': []})
         media = image or video or audio
         media_type = 'images' if image else 'videos' if video else 'audios'
