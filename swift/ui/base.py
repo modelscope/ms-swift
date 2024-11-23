@@ -217,7 +217,8 @@ class BaseUI:
         elements = cls.elements()
         return {
             key: value
-            for key, value in elements.items() if isinstance(value, (Textbox, Dropdown, Slider, Checkbox)) and key != 'train_record'
+            for key, value in elements.items()
+            if isinstance(value, (Textbox, Dropdown, Slider, Checkbox)) and key != 'train_record'
         }
 
     @classmethod
@@ -227,7 +228,8 @@ class BaseUI:
     @classmethod
     def valid_element_keys(cls):
         return [
-            key for key, value in cls.elements().items() if isinstance(value, (Textbox, Dropdown, Slider, Checkbox)) and key != 'train_record'
+            key for key, value in cls.elements().items()
+            if isinstance(value, (Textbox, Dropdown, Slider, Checkbox)) and key != 'train_record'
         ]
 
     @classmethod

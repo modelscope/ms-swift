@@ -250,10 +250,9 @@ class Runtime(BaseUI):
                         cls.all_plots.append(gr.Plot(elem_id=str(idx), label=name))
 
                 cls.log_event = base_tab.element('show_log').click(
-                    Runtime.update_log,
-                    [base_tab.element('running_tasks')], [cls.element('log')] + cls.all_plots).then(
+                    Runtime.update_log, [base_tab.element('running_tasks')], [cls.element('log')] + cls.all_plots).then(
                         Runtime.wait, [base_tab.element('logging_dir'),
-                                        base_tab.element('running_tasks')], [cls.element('log')] + cls.all_plots)
+                                       base_tab.element('running_tasks')], [cls.element('log')] + cls.all_plots)
 
                 base_tab.element('stop_show_log').click(lambda: None, cancels=cls.log_event)
 

@@ -185,10 +185,11 @@ class DatasetLoader:
         subset: SubsetDataset,
         *,
         num_proc: int = 1,
+        streaming: bool = False,
         use_hf: Optional[bool] = None,
+        hub_token: Optional[str] = None,
         strict: bool = True,
         load_from_cache_file: bool = False,
-        streaming: bool = False,
         revision: Optional[str] = None,
         download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists',
     ) -> HfDataset:
@@ -226,6 +227,7 @@ class DatasetLoader:
                             streaming=streaming,
                             revision=revision,
                             download_mode=download_mode,
+                            hub_token=hub_token,
                             num_proc=num_proc)
                     except Exception as e:
                         if i == retry:
@@ -267,11 +269,11 @@ class DatasetLoader:
     @staticmethod
     def post_process(
         train_dataset: DATASET_TYPE,
+        *,
         dataset_sample: Optional[int] = None,
         split_dataset_ratio: float = 0.,
-        random_state: Optional[np.random.RandomState] = None,
         streaming: bool = False,
-        *,
+        random_state: Optional[np.random.RandomState] = None,
         load_from_cache_file: bool = False,
     ) -> Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]:
         """Split into train/val datasets and perform dataset sampling."""
@@ -330,12 +332,12 @@ class DatasetLoader:
         dataset_meta: Optional[DatasetMeta] = None,
         *,
         num_proc: int = 1,
+        streaming: bool = False,
         use_hf: Optional[bool] = None,
+        hub_token: Optional[str] = None,
         strict: bool = True,
         load_from_cache_file: bool = False,
         download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists',
-        # streaming
-        streaming: bool = False,
     ) -> HfDataset:
 
         if dataset_meta.dataset_path:
@@ -362,6 +364,7 @@ class DatasetLoader:
                     dataset_id,
                     subset,
                     use_hf=use_hf,
+                    hub_token=hub_token,
                     num_proc=num_proc,
                     strict=strict,
                     load_from_cache_file=load_from_cache_file,
@@ -391,20 +394,21 @@ def init_self_cognition_preprocessor(
 
 
 def load_dataset(
-        datasets: List[str],
-        split_dataset_ratio: float = 0.,
-        seed: Union[int, np.random.RandomState, None] = None,
-        *,
-        num_proc: int = 1,
-        use_hf: Optional[bool] = None,
-        strict: bool = True,
-        load_from_cache_file: bool = False,
-        download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists',
-        # self-cognition
-        model_name: Union[Tuple[str, str], List[str], None] = None,  # zh, en
-        model_author: Union[Tuple[str, str], List[str], None] = None,
-        # streaming
-        streaming: bool = False) -> Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]:
+    datasets: List[str],
+    *,
+    split_dataset_ratio: float = 0.,
+    seed: Union[int, np.random.RandomState, None] = None,
+    num_proc: int = 1,
+    streaming: bool = False,
+    use_hf: Optional[bool] = None,
+    hub_token: Optional[str] = None,
+    strict: bool = True,
+    load_from_cache_file: bool = False,
+    download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists',
+    # self-cognition
+    model_name: Union[Tuple[str, str], List[str], None] = None,  # zh, en
+    model_author: Union[Tuple[str, str], List[str], None] = None,
+) -> Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]:
     """The interface to load any registered dataset
 
     Args:
@@ -433,6 +437,7 @@ def load_dataset(
         'load_from_cache_file': load_from_cache_file,
         'download_mode': download_mode,
         'streaming': streaming,
+        'hub_token': hub_token
     }
 
     for dataset in datasets:
@@ -442,10 +447,10 @@ def load_dataset(
         train_dataset = load_function(dataset_syntax, dataset_meta, **load_kwargs)
         train_dataset, val_dataset = DatasetLoader.post_process(
             train_dataset,
-            dataset_syntax.dataset_sample,
-            split_dataset_ratio,
-            seed,
-            streaming,
+            dataset_sample=dataset_syntax.dataset_sample,
+            split_dataset_ratio=split_dataset_ratio,
+            random_state=seed,
+            streaming=streaming,
             load_from_cache_file=load_from_cache_file)
         if train_dataset is not None:
             train_datasets.append(train_dataset)

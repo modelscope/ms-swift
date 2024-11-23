@@ -14,6 +14,7 @@ from gradio import Accordion, Checkbox, Dropdown, Slider, Tab, Textbox
 from json import JSONDecodeError
 
 from swift.llm import RLHFArguments
+from swift.llm.argument.tuner_args import get_supported_tuners
 from swift.ui.base import BaseUI
 from swift.ui.llm_train.advanced import Advanced
 from swift.ui.llm_train.dataset import Dataset
@@ -29,7 +30,6 @@ from swift.ui.llm_train.runtime import Runtime
 from swift.ui.llm_train.save import Save
 from swift.ui.llm_train.self_cog import SelfCog
 from swift.utils import get_logger
-from swift.llm.argument.tuner_args import get_supported_tuners
 
 logger = get_logger()
 

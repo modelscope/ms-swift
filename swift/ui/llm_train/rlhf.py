@@ -1,11 +1,11 @@
+from functools import partial
 from typing import Type
 
 import gradio as gr
-from functools import partial
+
 from swift.llm import MODEL_MAPPING, TEMPLATE_MAPPING, ModelType
-from swift.llm.model.register import get_matched_model_meta
+from swift.llm.model.register import get_all_models, get_matched_model_meta
 from swift.ui.base import BaseUI
-from swift.llm.model.register import get_all_models
 
 
 class RLHF(BaseUI):
@@ -83,12 +83,10 @@ class RLHF(BaseUI):
             with gr.Blocks():
                 with gr.Row():
                     rlhf_type = gr.Dropdown(elem_id='rlhf_type', value=None)
-                    ref_model = gr.Dropdown(elem_id='ref_model', scale=20, value=None, choices=get_all_models(), allow_custom_value=True)
+                    ref_model = gr.Dropdown(
+                        elem_id='ref_model', scale=20, value=None, choices=get_all_models(), allow_custom_value=True)
                     ref_model_type = gr.Dropdown(
-                        elem_id='ref_model_type',
-                        choices=ModelType.get_model_name_list(),
-                        value=None,
-                        scale=20)
+                        elem_id='ref_model_type', choices=ModelType.get_model_name_list(), value=None, scale=20)
                     model_state = gr.State({})
                 with gr.Row():
                     beta = gr.Slider(elem_id='beta', minimum=0., maximum=5.0, step=0.1, scale=20)
@@ -97,11 +95,9 @@ class RLHF(BaseUI):
                     gr.Slider(elem_id='desirable_weight', minimum=0., maximum=2.0, step=0.1, scale=20)
                     gr.Slider(elem_id='undesirable_weight', minimum=0., maximum=2.0, step=0.1, scale=20)
 
-
     @classmethod
     def after_build_ui(cls, base_tab: Type['BaseUI']):
         cls.element('ref_model').change(
             partial(cls.update_input_model, allow_keys=['ref_model_type'], has_record=False),
             inputs=[cls.element('ref_model')],
             outputs=[cls.element('ref_model_type')])
-

@@ -267,15 +267,7 @@ class SwiftInfer(SwiftPipeline):
 
     def _prepare_val_dataset(self) -> HfDataset:
         args = self.args
-        dataset_kwargs = {
-            'seed': args.data_seed,
-            'num_proc': args.dataset_num_proc,
-            'load_from_cache_file': args.load_from_cache_file,
-            'download_mode': args.download_mode,
-            'model_name': args.model_name,
-            'model_author': args.model_author,
-            'strict': args.strict
-        }
+        dataset_kwargs = args.get_dataset_kwargs()
         if len(args.val_dataset) > 0:
             _, val_dataset = load_dataset(args.val_dataset, 1.0, **dataset_kwargs)
         else:
