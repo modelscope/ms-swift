@@ -48,25 +48,21 @@ class SwiftSft(SwiftPipeline):
 
     def _prepare_gradient_checkpointing(self):
         args = self.args
-        dynamic_gradient_checkpointing(self.model)
 
         if args.gradient_checkpointing:
+            dynamic_gradient_checkpointing(self.model)
             self.model.config.use_cache = False  # fix transformers==4.36
-            logger.info('Setting model.config.use_cache: False')
             self.model.enable_input_require_grads()
         model_meta = self.model.model_meta
         model_arch = get_model_arch(model_meta.model_arch)
         if model_meta.is_multimodal and model_arch:
             for vision_tower_name in model_arch.vision_tower:
                 vision_tower = deep_getattr(self.model, vision_tower_name)
-                if args.vit_gradient_checkpointing:
-                    if hasattr(vision_tower, 'enable_input_require_grads'):
-                        try:
-                            vision_tower.enable_input_require_grads()
-                        except NotImplementedError:
-                            pass
-                else:
-                    self.model.gradient_checkpointing_disable()
+                if hasattr(vision_tower, 'enable_input_require_grads'):
+                    try:
+                        vision_tower.enable_input_require_grads()
+                    except NotImplementedError:
+                        pass
 
     def _prepare_generation_config(self):
         args = self.args

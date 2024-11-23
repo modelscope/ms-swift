@@ -111,7 +111,6 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
     freeze_parameters_ratio: float = 0.  # 0 ~ 1
     additional_trainable_parameters: List[str] = field(default_factory=list)
 
-    vit_gradient_checkpointing: bool = True
     add_version: bool = True
     resume_from_checkpoint: Optional[str] = None
     resume_only_model: bool = False

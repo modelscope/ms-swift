@@ -35,7 +35,7 @@ def test_mllm():
 def test_mllm_zero3():
     os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
     from swift.llm import rlhf_main, RLHFArguments, infer_main, InferArguments
-    result = rlhf_main(
+    rlhf_main(
         RLHFArguments(
             rlhf_type='dpo',
             model='qwen/Qwen2-VL-7B-Instruct',

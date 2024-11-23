@@ -8,7 +8,9 @@ from swift.hub import get_hub
 from swift.utils import check_json_format, get_logger, is_master
 from ..tuner_args import TunerArguments, get_supported_tuners
 from .data_args import DataArguments
+from .generation_args import GenerationArguments
 from .model_args import ModelArguments
+from .quant_args import QuantizeArguments
 from .template_args import TemplateArguments
 from .utils import to_abspath
 
@@ -16,7 +18,7 @@ logger = get_logger()
 
 
 @dataclass
-class BaseArguments(DataArguments, TemplateArguments, ModelArguments):
+class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, TemplateArguments, ModelArguments):
     """
     BaseArguments class is a dataclass that inherits from multiple argument classes:
     ModelArguments, TemplateArguments, and DataArguments.
@@ -43,6 +45,7 @@ class BaseArguments(DataArguments, TemplateArguments, ModelArguments):
         if self.use_hf:
             os.environ['USE_HF'] = '1'
         ModelArguments.__post_init__(self)
+        QuantizeArguments.__post_init__(self)
         TemplateArguments.__post_init__(self)
         DataArguments.__post_init__(self)
         self.hub = get_hub(self.use_hf)
@@ -57,8 +60,7 @@ class BaseArguments(DataArguments, TemplateArguments, ModelArguments):
     def adapters_can_be_merged(self):
         return TunerArguments.adapters_can_be_merged
 
-    @staticmethod
-    def load_args_from_ckpt(checkpoint_dir: str) -> None:
+    def load_args_from_ckpt(self, checkpoint_dir: str) -> None:
         """Load specific attributes from args.json"""
         args_path = os.path.join(checkpoint_dir, 'args.json')
         if not os.path.exists(args_path):
