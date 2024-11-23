@@ -162,10 +162,10 @@ class LLMInfer(BaseUI):
                         cls.element('top_p'),
                         cls.element('repetition_penalty')
                     ],
-                    outputs=[prompt, chatbot, infer_request],
+                    outputs=[prompt, chatbot, image, video, audio, infer_request],
                     queue=True)
 
-                clear_history.click(fn=cls.clear_session, inputs=[], outputs=[prompt, chatbot, infer_request])
+                clear_history.click(fn=cls.clear_session, inputs=[], outputs=[prompt, chatbot, image, video, audio, infer_request])
 
                 base_tab.element('running_tasks').change(
                     partial(Runtime.task_changed, base_tab=base_tab), [base_tab.element('running_tasks')],
@@ -272,7 +272,7 @@ class LLMInfer(BaseUI):
 
     @classmethod
     def clear_session(cls):
-        return '', [], []
+        return '', [], gr.update(value=None), gr.update(value=None), gr.update(value=None), []
 
     @classmethod
     def _replace_tag_with_media(cls, infer_request: InferRequest):
@@ -281,11 +281,17 @@ class LLMInfer(BaseUI):
         if messages[0]['role'] == 'system':
             messages.pop(0)
         for i in range(0, len(messages), 2):
-            user, assistant = messages[i:i + 2]
+            slices = messages[i:i + 2]
+            if len(slices) == 2:
+                user, assistant = slices
+            else:
+                user = slices[0]
+                assistant = {'role': 'assistant', 'content': None}
+            user['content'] = (user['content'] or '').replace('<image>', '').replace('<video>', '').replace('<audio>', '').strip()
             for media in user['medias']:
                 total_history.append([(media, ), None])
             if user['content'] or assistant['content']:
-                total_history.append((user['content'].strip(), assistant['content'].strip()))
+                total_history.append((user['content'], assistant['content']))
         return total_history
 
     @classmethod
@@ -325,7 +331,7 @@ class LLMInfer(BaseUI):
                 infer_request.messages[-1]['medias'].append(media)
 
         if not prompt:
-            yield '', cls._replace_tag_with_media(infer_request), infer_request
+            yield '', cls._replace_tag_with_media(infer_request), gr.update(value=None), gr.update(value=None), gr.update(value=None), infer_request
             return
         else:
             infer_request.messages[-1]['content'] = infer_request.messages[-1]['content'] + prompt
@@ -340,7 +346,6 @@ class LLMInfer(BaseUI):
         request_config.stop = ['Observation:']
         request_config.max_tokens = max_new_tokens
         stream_resp_with_history = ''
-        media_kwargs = {}
         response = ''
         i = len(infer_request.messages) - 1
         for i in range(len(infer_request.messages) - 1, -1, -1):
@@ -351,11 +356,14 @@ class LLMInfer(BaseUI):
             infer_request.messages[i + 1]['role'] = 'tool'
 
         chat = not template_type.endswith('generation')
+        _infer_request = deepcopy(infer_request)
+        for m in _infer_request.messages:
+            if 'medias' in m:
+                m.pop('medias')
         stream_resp = InferClient(
             port=args['port'],
-            **media_kwargs,
         ).infer(
-            infer_requests=[infer_request],
+            infer_requests=[_infer_request],
             request_config=request_config,
         )
         if infer_request.messages[-1]['role'] != 'assistant':
@@ -363,4 +371,4 @@ class LLMInfer(BaseUI):
         for chunk in stream_resp:
             stream_resp_with_history += chunk[0].choices[0].delta.content if chat else chunk.choices[0].text
             infer_request.messages[-1]['content'] = stream_resp_with_history
-            yield '', cls._replace_tag_with_media(infer_request), infer_request
+            yield '', cls._replace_tag_with_media(infer_request), gr.update(value=None), gr.update(value=None), gr.update(value=None), infer_request
