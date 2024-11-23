@@ -89,7 +89,7 @@ class LLMExport(BaseUI):
 
                 cls.element('export').click(
                     cls.export_model,
-                    [value for value in cls.elements().values() if not isinstance(value, (Tab, Accordion))],
+                    list(base_tab.valid_elements().values()),
                     [cls.element('runtime_tab'),
                      cls.element('running_tasks'), model_and_template])
 
@@ -112,7 +112,7 @@ class LLMExport(BaseUI):
         other_kwargs = {}
         more_params = {}
         more_params_cmd = ''
-        keys = [key for key, value in cls.elements().items() if not isinstance(value, (Tab, Accordion))]
+        keys = cls.valid_element_keys()
         for key, value in zip(keys, args):
             compare_value = export_args.get(key)
             compare_value_arg = str(compare_value) if not isinstance(compare_value, (list, dict)) else compare_value

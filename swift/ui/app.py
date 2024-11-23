@@ -35,12 +35,6 @@ locale_dict = {
     },
 }
 
-is_spaces = True if 'SPACE_ID' in os.environ else False
-if is_spaces:
-    is_shared_ui = True if 'modelscope/swift' in os.environ['SPACE_ID'] else False
-else:
-    is_shared_ui = False
-
 
 class SwiftWebUI(SwiftPipeline):
 
@@ -54,48 +48,41 @@ class SwiftWebUI(SwiftPipeline):
         server = os.environ.get('WEBUI_SERVER') or self.args.host
         port_env = os.environ.get('WEBUI_PORT')
         port = int(port_env) if port_env else self.args.port
+        is_gradio_app = self.args.model or self.args.ckpt_dir
 
         LLMTrain.set_lang(lang)
         LLMInfer.set_lang(lang)
         LLMExport.set_lang(lang)
         LLMEval.set_lang(lang)
         with gr.Blocks(title='SWIFT WebUI') as app:
-            gr.HTML(f"<h1><center>{locale_dict['title'][lang]}</center></h1>")
-            gr.HTML(f"<h3><center>{locale_dict['sub_title'][lang]}</center></h3>")
-            gr.HTML(f"<h3><center>{locale_dict['star_beggar'][lang]}</center></h3>")
-            if is_shared_ui:
-                gr.HTML(
-                    f'<div class="gr-prose" style="max-width: 80%"><p>If the waiting queue is too long, you can either run locally or duplicate the Space and run it on your own profile using a (paid) private A10G-large GPU for training. A A10G-large costs US$3.15/h. &nbsp;&nbsp;<a class="duplicate-button" style="display:inline-block" target="_blank" href="https://huggingface.co/spaces/{os.environ["SPACE_ID"]}?duplicate=true"><img src="https://img.shields.io/badge/-Duplicate%20Space-blue?labelColor=white&style=flat&logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAP5JREFUOE+lk7FqAkEURY+ltunEgFXS2sZGIbXfEPdLlnxJyDdYB62sbbUKpLbVNhyYFzbrrA74YJlh9r079973psed0cvUD4A+4HoCjsA85X0Dfn/RBLBgBDxnQPfAEJgBY+A9gALA4tcbamSzS4xq4FOQAJgCDwV2CPKV8tZAJcAjMMkUe1vX+U+SMhfAJEHasQIWmXNN3abzDwHUrgcRGmYcgKe0bxrblHEB4E/pndMazNpSZGcsZdBlYJcEL9Afo75molJyM2FxmPgmgPqlWNLGfwZGG6UiyEvLzHYDmoPkDDiNm9JR9uboiONcBXrpY1qmgs21x1QwyZcpvxt9NS09PlsPAAAAAElFTkSuQmCC&logoWidth=14" alt="Duplicate Space"></a></p></div>'  # noqa
-                )
+            if is_gradio_app:
+                gr.HTML(f"<h1><center>{self.args.studio_title}</center></h1>")
+            else:
+                gr.HTML(f"<h1><center>{locale_dict['title'][lang]}</center></h1>")
+                gr.HTML(f"<h3><center>{locale_dict['sub_title'][lang]}</center></h3>")
+                gr.HTML(f"<h3><center>{locale_dict['star_beggar'][lang]}</center></h3>")
             with gr.Tabs():
-                if self.args.model or self.args.ckpt_dir:
+                if is_gradio_app:
                     for f in fields(self.args):
                         if getattr(self.args, f.name):
                             LLMInfer.default_dict[f.name] = getattr(self.args, f.name)
                     LLMInfer.is_gradio_app = True
                     LLMInfer.build_ui(LLMInfer)
-                elif is_shared_ui:
-                    LLMInfer.build_ui(LLMInfer)
-                    LLMTrain.build_ui(LLMTrain)
-                    LLMExport.build_ui(LLMExport)
-                    LLMEval.build_ui(LLMEval)
                 else:
                     LLMTrain.build_ui(LLMTrain)
                     LLMInfer.build_ui(LLMInfer)
                     LLMExport.build_ui(LLMExport)
                     LLMEval.build_ui(LLMEval)
 
-        concurrent = {}
-        if version.parse(
-                gr.__version__) < version.parse('4.0.0') and os.environ.get('MODELSCOPE_ENVIRONMENT') != 'studio':
-            concurrent = {'concurrency_count': 5}
-        if is_shared_ui:
-            app.load(LLMInfer.deploy_model, [
-                LLMInfer.element('runtime_tab'),
-                [value for value in LLMInfer.elements().values() if not isinstance(value, (Tab, Accordion))],
-                LLMInfer.element('running_tasks'),
-                LLMInfer.element('model_and_template')
-            ])
+            concurrent = {}
+            if version.parse(gr.__version__) < version.parse('4.0.0'):
+                concurrent = {'concurrency_count': 5}
+            if is_gradio_app:
+                app.load(LLMInfer.deploy_model, list(LLMInfer.valid_elements().values()), [
+                    LLMInfer.element('runtime_tab'),
+                    LLMInfer.element('running_tasks'),
+                    LLMInfer.model_and_template
+                ])
         app.queue(**concurrent).launch(server_name=server, inbrowser=True, server_port=port, height=800, share=share)
 
 

@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import sys
@@ -5,24 +6,26 @@ import time
 from copy import deepcopy
 from datetime import datetime
 from functools import partial
+from json import JSONDecodeError
 from typing import List, Type
 
 import gradio as gr
-import json
 import torch
-from gradio import Accordion, Tab
-from json import JSONDecodeError
 
 from swift.llm import DeployArguments, InferArguments, InferClient, InferRequest, RequestConfig
-from swift.llm.infer.infer import SwiftInfer
 from swift.ui.base import BaseUI
 from swift.ui.llm_infer.model import Model
 from swift.ui.llm_infer.runtime import Runtime
+from swift.utils import get_logger
+
+logger = get_logger()
 
 
 class LLMInfer(BaseUI):
 
     group = 'llm_infer'
+
+    is_gradio_app = False
 
     sub_ui = [Model, Runtime]
 
@@ -33,10 +36,16 @@ class LLMInfer(BaseUI):
                 'en': 'Please deploy model first',
             }
         },
+        'port': {
+            'label': {
+                'zh': '端口',
+                'en': 'port'
+            },
+        },
         'llm_infer': {
             'label': {
-                'zh': 'LLM部署',
-                'en': 'LLM Deployment',
+                'zh': 'LLM推理',
+                'en': 'LLM Inference',
             }
         },
         'load_alert': {
@@ -45,6 +54,12 @@ class LLMInfer(BaseUI):
                 'en': 'Start to deploy model, '
                 'please Click "Show running '
                 'status" to view details',
+            }
+        },
+        'load_alert_gradio_app': {
+            'value': {
+                'zh': '部署中，请查看部署日志',
+                'en': 'Start to deploy model, please check the log',
             }
         },
         'loaded_alert': {
@@ -118,11 +133,14 @@ class LLMInfer(BaseUI):
                 gpu_count = torch.cuda.device_count()
                 default_device = '0'
             with gr.Blocks():
-                model_and_template = gr.State([])
+                cls.model_and_template = gr.State([])
                 infer_request = gr.State(None)
+                if LLMInfer.is_gradio_app:
+                    Model.visible = False
+                    Runtime.visible = False
                 Model.build_ui(base_tab)
                 Runtime.build_ui(base_tab)
-                with gr.Row():
+                with gr.Row(visible=not LLMInfer.is_gradio_app):
                     gr.Dropdown(
                         elem_id='gpu_id',
                         multiselect=True,
@@ -130,7 +148,7 @@ class LLMInfer(BaseUI):
                         value=default_device,
                         scale=8)
                     infer_model_type = gr.Textbox(elem_id='infer_model_type', scale=4)
-                BaseUI.visible = True
+                    gr.Textbox(elem_id='port', lines=1, value='8000', scale=4)
                 chatbot = gr.Chatbot(elem_id='chatbot', elem_classes='control-height')
                 with gr.Row():
                     prompt = gr.Textbox(elem_id='prompt', lines=1, interactive=True)
@@ -146,14 +164,15 @@ class LLMInfer(BaseUI):
                     clear_history = gr.Button(elem_id='clear_history')
                     submit = gr.Button(elem_id='submit')
 
-                cls.element('load_checkpoint').click(
-                    cls.deploy_model, list(cls.valid_elements().values()),
-                    [cls.element('runtime_tab'),
-                     cls.element('running_tasks'), model_and_template])
+                if not LLMInfer.is_gradio_app:
+                    cls.element('load_checkpoint').click(
+                        cls.deploy_model, list(base_tab.valid_elements().values()),
+                        [cls.element('runtime_tab'),
+                         cls.element('running_tasks'), cls.model_and_template])
                 submit.click(
                     cls.send_message,
                     inputs=[
-                        cls.element('running_tasks'), model_and_template,
+                        cls.element('running_tasks'), cls.model_and_template,
                         cls.element('template'), prompt, image, video, audio, infer_request, infer_model_type,
                         cls.element('system'),
                         cls.element('max_new_tokens'),
@@ -162,21 +181,22 @@ class LLMInfer(BaseUI):
                         cls.element('top_p'),
                         cls.element('repetition_penalty')
                     ],
-                    outputs=[prompt, chatbot, infer_request],
+                    outputs=[prompt, chatbot, image, video, audio, infer_request],
                     queue=True)
 
-                clear_history.click(fn=cls.clear_session, inputs=[], outputs=[prompt, chatbot, infer_request])
+                clear_history.click(fn=cls.clear_session, inputs=[], outputs=[prompt, chatbot, image, video, audio, infer_request])
 
-                base_tab.element('running_tasks').change(
-                    partial(Runtime.task_changed, base_tab=base_tab), [base_tab.element('running_tasks')],
-                    list(cls.valid_elements().values()) + [cls.element('log'), model_and_template],
-                    cancels=Runtime.log_event)
-                Runtime.element('kill_task').click(
-                    Runtime.kill_task,
-                    [Runtime.element('running_tasks')],
-                    [Runtime.element('running_tasks')] + [Runtime.element('log')],
-                    cancels=[Runtime.log_event],
-                )
+                if not LLMInfer.is_gradio_app:
+                    base_tab.element('running_tasks').change(
+                        partial(Runtime.task_changed, base_tab=base_tab), [base_tab.element('running_tasks')],
+                        list(cls.valid_elements().values()) + [cls.element('log'), cls.model_and_template],
+                        cancels=Runtime.log_event)
+                    Runtime.element('kill_task').click(
+                        Runtime.kill_task,
+                        [Runtime.element('running_tasks')],
+                        [Runtime.element('running_tasks')] + [Runtime.element('log')],
+                        cancels=[Runtime.log_event],
+                    )
 
     @classmethod
     def deploy(cls, *args):
@@ -263,8 +283,12 @@ class LLMInfer(BaseUI):
     @classmethod
     def deploy_model(cls, *args):
         run_command, deploy_args, log_file = cls.deploy(*args)
+        logger.info(f'Running deployment command: {run_command}')
         os.system(run_command)
-        gr.Info(cls.locale('load_alert', cls.lang)['value'])
+        if cls.is_gradio_app:
+            gr.Info(cls.locale('load_alert_gradio_app', cls.lang)['value'])
+        else:
+            gr.Info(cls.locale('load_alert', cls.lang)['value'])
         time.sleep(2)
         return gr.update(open=True), Runtime.refresh_tasks(log_file), [
             deploy_args.model_type, deploy_args.template, deploy_args.train_type
@@ -272,7 +296,7 @@ class LLMInfer(BaseUI):
 
     @classmethod
     def clear_session(cls):
-        return '', [], []
+        return '', [], gr.update(value=None), gr.update(value=None), gr.update(value=None), []
 
     @classmethod
     def _replace_tag_with_media(cls, infer_request: InferRequest):
@@ -281,11 +305,17 @@ class LLMInfer(BaseUI):
         if messages[0]['role'] == 'system':
             messages.pop(0)
         for i in range(0, len(messages), 2):
-            user, assistant = messages[i:i + 2]
+            slices = messages[i:i + 2]
+            if len(slices) == 2:
+                user, assistant = slices
+            else:
+                user = slices[0]
+                assistant = {'role': 'assistant', 'content': None}
+            user['content'] = (user['content'] or '').replace('<image>', '').replace('<video>', '').replace('<audio>', '').strip()
             for media in user['medias']:
                 total_history.append([(media, ), None])
             if user['content'] or assistant['content']:
-                total_history.append((user['content'].strip(), assistant['content'].strip()))
+                total_history.append((user['content'], assistant['content']))
         return total_history
 
     @classmethod
@@ -313,7 +343,7 @@ class LLMInfer(BaseUI):
                 infer_request.messages.insert(0, {'role': 'system', 'content': system})
             else:
                 infer_request.messages[0]['content'] = system
-        if infer_request.messages[-1]['role'] != 'user':
+        if not infer_request.messages or infer_request.messages[-1]['role'] != 'user':
             infer_request.messages.append({'role': 'user', 'content': '', 'medias': []})
         media = image or video or audio
         media_type = 'images' if image else 'videos' if video else 'audios'
@@ -325,7 +355,7 @@ class LLMInfer(BaseUI):
                 infer_request.messages[-1]['medias'].append(media)
 
         if not prompt:
-            yield '', cls._replace_tag_with_media(infer_request), infer_request
+            yield '', cls._replace_tag_with_media(infer_request), gr.update(value=None), gr.update(value=None), gr.update(value=None), infer_request
             return
         else:
             infer_request.messages[-1]['content'] = infer_request.messages[-1]['content'] + prompt
@@ -340,7 +370,6 @@ class LLMInfer(BaseUI):
         request_config.stop = ['Observation:']
         request_config.max_tokens = max_new_tokens
         stream_resp_with_history = ''
-        media_kwargs = {}
         response = ''
         i = len(infer_request.messages) - 1
         for i in range(len(infer_request.messages) - 1, -1, -1):
@@ -351,11 +380,14 @@ class LLMInfer(BaseUI):
             infer_request.messages[i + 1]['role'] = 'tool'
 
         chat = not template_type.endswith('generation')
+        _infer_request = deepcopy(infer_request)
+        for m in _infer_request.messages:
+            if 'medias' in m:
+                m.pop('medias')
         stream_resp = InferClient(
             port=args['port'],
-            **media_kwargs,
         ).infer(
-            infer_requests=[infer_request],
+            infer_requests=[_infer_request],
             request_config=request_config,
         )
         if infer_request.messages[-1]['role'] != 'assistant':
@@ -363,4 +395,4 @@ class LLMInfer(BaseUI):
         for chunk in stream_resp:
             stream_resp_with_history += chunk[0].choices[0].delta.content if chat else chunk.choices[0].text
             infer_request.messages[-1]['content'] = stream_resp_with_history
-            yield '', cls._replace_tag_with_media(infer_request), infer_request
+            yield '', cls._replace_tag_with_media(infer_request), gr.update(value=None), gr.update(value=None), gr.update(value=None), infer_request

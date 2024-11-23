@@ -16,15 +16,7 @@ class Model(BaseUI):
 
     sub_ui = [Generate]
 
-    is_inference = os.environ.get('USE_INFERENCE') == '1' or os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio'
-
     locale_dict = {
-        'checkpoint': {
-            'value': {
-                'zh': '训练后的模型',
-                'en': 'Trained model'
-            }
-        },
         'model_type': {
             'label': {
                 'zh': '选择模型类型',
@@ -37,8 +29,8 @@ class Model(BaseUI):
         },
         'load_checkpoint': {
             'value': {
-                'zh': '加载模型' if is_inference else '部署模型',
-                'en': 'Load model' if is_inference else 'Deploy model',
+                'zh': '部署模型',
+                'en': 'Deploy model',
             }
         },
         'model': {
@@ -59,16 +51,6 @@ class Model(BaseUI):
             'info': {
                 'zh': '选择匹配模型的Prompt模板',
                 'en': 'Choose the template type of the model'
-            }
-        },
-        'system': {
-            'label': {
-                'zh': 'system字段',
-                'en': 'system'
-            },
-            'info': {
-                'zh': 'system字段支持在加载模型后修改',
-                'en': 'system can be modified after the model weights loaded'
             }
         },
         'merge_lora': {
@@ -107,19 +89,24 @@ class Model(BaseUI):
                 'en': 'Reset to default'
             },
         },
+        'infer_backend': {
+            'label': {
+                'zh': '推理框架',
+                'en': 'Infer backend'
+            },
+        },
     }
 
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
         with gr.Row():
-            model = gr.Dropdown(elem_id='model', scale=20, choices=get_all_models(), allow_custom_value=True)
-            model_type = gr.Dropdown(elem_id='model_type', choices=ModelType.get_model_name_list(), scale=20)
-            template = gr.Dropdown(elem_id='template', choices=list(TEMPLATE_MAPPING.keys()) + ['AUTO'], scale=20)
+            gr.Dropdown(elem_id='model', scale=20, choices=get_all_models(), allow_custom_value=True)
+            gr.Dropdown(elem_id='model_type', choices=ModelType.get_model_name_list(), scale=20)
+            gr.Dropdown(elem_id='template', choices=list(TEMPLATE_MAPPING.keys()) + ['AUTO'], scale=20)
             gr.Checkbox(elem_id='merge_lora', scale=4)
-            reset_btn = gr.Button(elem_id='reset', scale=2)
-            model_state = gr.State({})
+            gr.Button(elem_id='reset', scale=2)
         with gr.Row():
-            system = gr.Textbox(elem_id='system', lines=4, scale=20)
+            gr.Dropdown(elem_id='infer_backend', value='pt', scale=5)
         Generate.build_ui(base_tab)
         with gr.Row():
             gr.Textbox(elem_id='lora_modules', lines=1, is_list=True, scale=40)
