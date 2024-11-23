@@ -284,7 +284,7 @@ class MSHub(HubOperation):
                      revision: Optional[str] = None,
                      download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists',
                      token: Optional[str] = None,
-                     num_proc: Optional[int] = None):
+                     **kwargs):
         from modelscope import MsDataset
         cls.try_login(token)
         if revision is None or revision == 'main':

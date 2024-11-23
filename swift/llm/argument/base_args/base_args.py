@@ -25,7 +25,6 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
 
     Args:
         seed (int): Random seed for reproducibility. Default is 42.
-        load_args (bool): Flag to determine if arguments should be loaded from sft_args.json. Default is True.
         load_dataset_config (bool): Flag to determine if dataset configuration should be loaded. Default is False.
         save_safetensors (bool): Flag to determine if save to safetensors. Default is True.
         hub_token (Optional[str]): SDK token for authentication. Default is None.
@@ -33,7 +32,6 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
     """
     seed: int = 42
     strict: bool = False
-    load_args: bool = True
     load_dataset_config: bool = False
     # None: use env var `MODELSCOPE_API_TOKEN`
     hub_token: Optional[str] = field(
@@ -59,21 +57,10 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
     def adapters_can_be_merged(self):
         return TunerArguments.adapters_can_be_merged
 
-    def load_args_from_ckpt(self, checkpoint_dir: str) -> None:
-        # TODO
+    @staticmethod
+    def load_args_from_ckpt(checkpoint_dir: str) -> None:
         """Load specific attributes from args.json"""
-        from swift.llm import TrainArguments
-        self.ckpt_dir = checkpoint_dir
-        if isinstance(self, TrainArguments):
-            self.resume_from_checkpoint = to_abspath(self.resume_from_checkpoint, True)
-            ckpt_dir = self.resume_from_checkpoint
-        else:
-            self.ckpt_dir = to_abspath(self.ckpt_dir, True)
-            ckpt_dir = self.ckpt_dir
-        if ckpt_dir is None:
-            return
-
-        args_path = os.path.join(ckpt_dir, 'args.json')
+        args_path = os.path.join(checkpoint_dir, 'args.json')
         if not os.path.exists(args_path):
             logger.warning(f'{args_path} not found')
             return

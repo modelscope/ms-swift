@@ -2,7 +2,7 @@ import os
 from functools import partial
 from typing import Any, Dict, List, Union
 
-from datasets import Dataset as HfDataset
+from datasets import Dataset as HfDataset, IterableDataset as HfIterableDataset
 from transformers import IntervalStrategy
 
 from swift.plugin import extra_callbacks, get_loss_func, optimizers_map
@@ -290,11 +290,17 @@ class SwiftSft(SwiftPipeline):
                 val_dataset = ConstantLengthDataset.get_packed_dataset(
                     template, val_dataset, args.max_length, lazy_tokenize=args.lazy_tokenize)
         else:
+            kwargs = {}
+            if isinstance(train_dataset, HfIterableDataset) and args.model_meta.is_multimodal:
+                kwargs['batch_size'] = 16
             train_dataset = EncodePreprocessor(template)(
-                train_dataset, num_proc=args.dataset_num_proc, load_from_cache_file=args.load_from_cache_file)
+                train_dataset, num_proc=args.dataset_num_proc, load_from_cache_file=args.load_from_cache_file, **kwargs)
             if val_dataset is not None:
                 val_dataset = EncodePreprocessor(template)(
-                    val_dataset, num_proc=args.dataset_num_proc, load_from_cache_file=args.load_from_cache_file)
+                    val_dataset,
+                    num_proc=args.dataset_num_proc,
+                    load_from_cache_file=args.load_from_cache_file,
+                    **kwargs)
 
         inputs = train_dataset[0] if hasattr(train_dataset, '__len__') else next(iter(train_dataset))
         template.print_inputs(inputs, tokenizer_kwargs=inputs.pop('tokenizer_kwargs', {}))

@@ -237,6 +237,8 @@ class DatasetLoader:
                         break
                 if hasattr(dataset, '_hf_ds'):
                     dataset = dataset._hf_ds
+                    if streaming and isinstance(dataset, HfDataset):
+                        dataset = dataset.to_iterable_dataset()
             dataset = subset.preprocess_func(
                 dataset, num_proc=num_proc, strict=strict, load_from_cache_file=load_from_cache_file)
             datasets.append(dataset)
