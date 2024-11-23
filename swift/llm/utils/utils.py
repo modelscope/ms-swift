@@ -350,7 +350,7 @@ def _map_mp_i(dataset: HfDataset, map_func: MapFunc, num_proc: int) -> Iterator[
 def _map_mp(dataset: HfDataset, map_func: MapFunc, num_proc: int) -> List[Dict[str, Any]]:
     # Solving the unordered problem
     num_proc = min(num_proc, len(dataset))
-    data_list = [[]] * num_proc
+    data_list = [[] for _ in range(num_proc)]
     prog_bar = tqdm(total=len(dataset), desc=f'Map (num_proc={num_proc})', dynamic_ncols=True)
     for d in _map_mp_i(dataset, map_func, num_proc):
         data_list[d[0]] += d[1]
