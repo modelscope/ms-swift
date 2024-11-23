@@ -81,6 +81,22 @@ def _get_dataset(*args, **kwargs):
     return res
 
 
+@contextmanager
+def _patch_move_embed(awq_model):
+    _origin_move_embed = awq_model.move_embed
+
+    def _move_embed(model, device: str):
+        if hasattr(model, '_hf_hook') and device != 'cpu':
+            return
+        _origin_move_embed(model, device)
+
+    awq_model.move_embed = _move_embed
+    try:
+        yield
+    finally:
+        awq_model.move_embed = _origin_move_embed
+
+
 def awq_model_quantize(awq_model, tokenizer, batch_size) -> None:
 
     from awq.quantize import quantizer
@@ -93,7 +109,8 @@ def awq_model_quantize(awq_model, tokenizer, batch_size) -> None:
     group_size = 128
     quant_config = {'zero_point': True, 'q_group_size': group_size, 'w_bit': _args.quant_bits, 'version': 'GEMM'}
     logger.info('Start quantizing the model...')
-    awq_model.quantize(tokenizer, quant_config=quant_config, n_parallel_calib_samples=batch_size)
+    with _patch_move_embed(awq_model):
+        awq_model.quantize(tokenizer, quant_config=quant_config, n_parallel_calib_samples=batch_size)
     quantizer.get_calib_dataset = _origin_get_calib_dataset  # recover
     awq_model.model.config.quantization_config = AwqConfig(
         bits=_args.quant_bits, group_size=group_size, zero_point=True, version='GEMM')
@@ -260,6 +277,7 @@ def llm_export(args: ExportArguments) -> None:
             from awq import AutoAWQForCausalLM
             model, template = prepare_model_template(
                 args, device_map=args.quant_device_map, task='export', automodel_class=AutoAWQForCausalLM)
+            template.model = model.model
             awq_model_quantize(model, template.tokenizer, args.quant_batch_size)
             model.save_quantized(args.quant_output_dir)
         elif args.quant_method == 'gptq':

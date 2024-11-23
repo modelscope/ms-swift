@@ -317,7 +317,7 @@ def _single_map(d: Dict[str, Any], map_func: MapFunc) -> Optional[Dict[str, Any]
 
 def _map_mp_single(shard: HfDataset, map_func: MapFunc, queue: Queue, rank: int):
     batch_size = 64
-    pre_i = 0
+    pre_i = -1
     result = []
     for i, d in enumerate(shard):
         output = map_func(d)
@@ -336,7 +336,7 @@ def _map_mp_i(dataset: HfDataset, map_func: MapFunc, num_proc: int) -> Iterator[
         os.environ = pre_environ
         queue = manager.Queue()
         async_results = []
-        shard_list = [dataset.shard(num_proc, i) for i in range(num_proc)]
+        shard_list = [dataset.shard(num_proc, i, contiguous=True) for i in range(num_proc)]
         for i in range(num_proc):
             async_results.append(pool.apply_async(_map_mp_single, args=(shard_list[i], map_func, queue, i)))
         while True:
@@ -350,11 +350,12 @@ def _map_mp_i(dataset: HfDataset, map_func: MapFunc, num_proc: int) -> Iterator[
 def _map_mp(dataset: HfDataset, map_func: MapFunc, num_proc: int) -> List[Dict[str, Any]]:
     # Solving the unordered problem
     num_proc = min(num_proc, len(dataset))
-    data_list = [[]] * num_proc
+    data_list = [[] for _ in range(num_proc)]
     prog_bar = tqdm(total=len(dataset), desc=f'Map (num_proc={num_proc})', dynamic_ncols=True)
     for d in _map_mp_i(dataset, map_func, num_proc):
         data_list[d[0]] += d[1]
         prog_bar.update(d[2])
+    prog_bar.close()
     res = []
     for data in data_list:
         res += data
