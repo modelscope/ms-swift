@@ -7,10 +7,9 @@ from datasets import IterableDataset as HfIterableDataset
 
 from swift.plugin import extra_callbacks, get_loss_func, optimizers_map
 from swift.trainers import TrainerFactory
-from swift.utils import (append_to_jsonl, compute_acc_metrics, compute_nlg_metrics, get_logger,
-                         get_model_parameter_info, is_master, plot_images, preprocess_logits_for_acc, stat_array,
-                         use_torchacc, find_all_linears, find_embedding)
-from .tuner import prepare_model
+from swift.utils import (append_to_jsonl, compute_acc_metrics, compute_nlg_metrics, find_all_linears, find_embedding,
+                         get_logger, get_model_parameter_info, is_master, plot_images, preprocess_logits_for_acc,
+                         stat_array, use_torchacc)
 from ..argument import TrainArguments
 from ..base import SwiftPipeline
 from ..dataset import ConstantLengthDataset, EncodePreprocessor, GetLengthPreprocessor, LazyLLMDataset, load_dataset
@@ -18,6 +17,7 @@ from ..infer import prepare_generation_config
 from ..model import get_model_arch, get_model_tokenizer
 from ..template import get_template
 from ..utils import deep_getattr, dynamic_gradient_checkpointing
+from .tuner import prepare_model
 
 logger = get_logger()
 
@@ -267,7 +267,7 @@ class SwiftSft(SwiftPipeline):
         else:
             kwargs = {}
             if isinstance(train_dataset, HfIterableDataset) and args.model_meta.is_multimodal:
-                kwargs['batch_size'] = 16
+                kwargs['batch_size'] = 64
             train_dataset = EncodePreprocessor(template)(
                 train_dataset, num_proc=args.dataset_num_proc, load_from_cache_file=args.load_from_cache_file, **kwargs)
             if val_dataset is not None:

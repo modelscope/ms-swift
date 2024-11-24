@@ -1,16 +1,16 @@
 import collections
-import json
 import os
 import re
 import sys
 import time
 from functools import partial
-from json import JSONDecodeError
 from subprocess import PIPE, STDOUT, Popen
 from typing import Dict, Type
 
 import gradio as gr
+import json
 import torch
+from json import JSONDecodeError
 
 from swift.llm import RLHFArguments
 from swift.llm.argument.tuner_args import get_supported_tuners

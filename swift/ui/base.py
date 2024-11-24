@@ -1,4 +1,3 @@
-import json
 import os
 import sys
 import time
@@ -9,6 +8,7 @@ from functools import wraps
 from typing import Any, Dict, List, OrderedDict, Type
 
 import gradio as gr
+import json
 from gradio import Accordion, Audio, Button, Checkbox, Dropdown, File, Image, Slider, Tab, TabItem, Textbox, Video
 from modelscope.hub.utils.utils import get_cache_dir
 

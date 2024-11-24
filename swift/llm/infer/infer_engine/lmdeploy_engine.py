@@ -16,11 +16,11 @@ from transformers import GenerationConfig
 from swift.llm import InferRequest, Template, TemplateMeta
 from swift.plugin import Metric
 from swift.utils import get_logger, get_seed
+from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
+                        ChatCompletionStreamResponse, ChatMessage, DeltaMessage, RequestConfig)
 from .infer_engine import InferEngine
 from .patch import patch_auto_config, patch_auto_tokenizer
 from .utils import InferStreamer
-from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
-                        ChatCompletionStreamResponse, ChatMessage, DeltaMessage, RequestConfig)
 
 logger = get_logger()
 

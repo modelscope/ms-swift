@@ -7,8 +7,8 @@ if TYPE_CHECKING:
     from .infer import infer_main, SwiftInfer
     from .deploy import deploy_main, SwiftDeploy
     from .protocol import RequestConfig
-    from .infer_engine import (InferEngine, VllmEngine, LmdeployEngine, PtEngine, PtLoRARequest,
-                               InferClient, prepare_generation_config)
+    from .infer_engine import (InferEngine, VllmEngine, LmdeployEngine, PtEngine, PtLoRARequest, InferClient,
+                               prepare_generation_config)
 else:
     _extra_objects = {k: v for k, v in globals().items() if not k.startswith('_')}
     _import_structure = {
