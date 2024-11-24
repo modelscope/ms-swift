@@ -50,3 +50,6 @@ def patch_ddp_mp():
         trainer.Accelerator.__init__ = (lambda self, device_placement=False, *args, **kwargs: _old_accelerator_init(
             self, device_placement=device_placement, *args, **kwargs))
         trainer.Accelerator.verify_device_map = lambda *args, **kwargs: False
+
+
+patch_ddp_mp()

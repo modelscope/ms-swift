@@ -4,21 +4,20 @@ from typing import Any, Dict, List, Union
 
 from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HfIterableDataset
-from transformers import IntervalStrategy
 
 from swift.plugin import extra_callbacks, get_loss_func, optimizers_map
 from swift.trainers import TrainerFactory
-from swift.utils import (append_to_jsonl, check_json_format, compute_acc_metrics, compute_nlg_metrics, get_dist_setting,
-                         get_logger, get_model_parameter_info, is_ddp_plus_mp, is_dist, is_master, plot_images,
-                         preprocess_logits_for_acc, seed_everything, show_layers, stat_array, use_torchacc)
+from swift.utils import (append_to_jsonl, compute_acc_metrics, compute_nlg_metrics, get_logger,
+                         get_model_parameter_info, is_master, plot_images, preprocess_logits_for_acc, stat_array,
+                         use_torchacc)
 from ..argument import TrainArguments
 from ..base import SwiftPipeline
 from ..dataset import ConstantLengthDataset, EncodePreprocessor, GetLengthPreprocessor, LazyLLMDataset, load_dataset
-from ..infer import RequestConfig, prepare_generation_config
-from ..model import ModelInfo, ModelMeta, get_model_arch, get_model_tokenizer
-from ..template import Template, get_template
+from ..infer import prepare_generation_config
+from ..model import get_model_arch, get_model_tokenizer
+from ..template import get_template
 from ..utils import deep_getattr, dynamic_gradient_checkpointing
-from .tuner import prepare_tuner
+from .tuner import prepare_model
 
 logger = get_logger()
 
@@ -33,7 +32,7 @@ class SwiftSft(SwiftPipeline):
         self._prepare_model_tokenizer()
         self._prepare_template(True)
         self._prepare_callbacks()
-        self.model = prepare_tuner(self.model, self.args)
+        self.model = prepare_model(self.model, self.args)
         logger.info(self.model)
         model_parameter_info = get_model_parameter_info(self.model)
         self.train_msg['model_parameter_info'] = model_parameter_info

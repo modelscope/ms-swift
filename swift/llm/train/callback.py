@@ -1,20 +1,11 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import os
 import types
-from typing import List
 
-import json
 import numpy as np
 import torch
-import transformers
-from packaging import version
 from transformers import TrainerCallback
 
-from swift.llm import TrainArguments, get_model_arch
-from swift.plugin import Tuner, extra_tuners
-from swift.tuners import (AdaLoraConfig, AdapterConfig, BOFTConfig, IA3Config, LLaMAProConfig, LongLoRAModelType,
-                          LoraConfig, LoRAConfig, ReftConfig, Swift, VeraConfig)
-from swift.utils import activate_model_parameters, freeze_model_parameters, get_logger, use_torchacc
+from swift.utils import get_logger
 
 logger = get_logger()
 

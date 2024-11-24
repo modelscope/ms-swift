@@ -2,10 +2,14 @@
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional, Union
 
+import torch
+import transformers
+from packaging import version
 from transformers.utils import strtobool
 
-from swift.tuners import LoRAConfig
-from swift.utils import find_all_linears
+from swift.utils import find_all_linears, get_logger
+
+logger = get_logger()
 
 
 def get_supported_tuners():
@@ -202,6 +206,16 @@ class TunerArguments:
         if isinstance(self.init_lora_weights, str) and self.init_lora_weights.lower() in {'true', 'false'}:
             self.init_lora_weights = bool(strtobool(self.init_lora_weights))
 
+    def init_full_parameters(self):
+        """Some arguments will be decided by the train_type"""
+        if self.train_type == 'full':
+            # TODO: freeze xxx
+            if self.freeze_vit:
+                if self.model_type in MODEL_KEYS_MAPPING:
+                    vision_tower = MODEL_KEYS_MAPPING[self.model_type].vision_tower
+                    if vision_tower:
+                        self.freeze_parameters += vision_tower
+
     def get_target_modules(self, model) -> Union[str, List[str]]:
         """Replace EMBEDDING and ALL to actual modules
         Args:
@@ -217,7 +231,8 @@ class TunerArguments:
             target_modules += find_all_linears(model)
         return target_modules
 
-    def get_vera_target_modules(model: torch.nn.Module, config: VeraConfig):
+    @staticmethod
+    def get_vera_target_modules(model, config):
         """This function is only useful on the vera tuner"""
         target_modules = config.target_modules
         modules_dict = {
@@ -236,17 +251,9 @@ class TunerArguments:
             config.target_modules = [t for t in target_modules if any([t in name for name in names])]
         return config
 
-    def init_full_parameters(self):
-        """Some arguments will be decided by the train_type"""
-        if self.train_type == 'full':
-            # TODO: freeze xxx
-            if self.freeze_vit:
-                if self.model_type in MODEL_KEYS_MAPPING:
-                    vision_tower = MODEL_KEYS_MAPPING[self.model_type].vision_tower
-                    if vision_tower:
-                        self.freeze_parameters += vision_tower
-
     def prepare_adapter(self, model):
+        from swift.tuners import (AdaLoraConfig, AdapterConfig, BOFTConfig, IA3Config, LLaMAProConfig,
+                                  LongLoRAModelType, LoraConfig, LoRAConfig, ReftConfig, Swift, VeraConfig)
         target_modules = self.handle_target_modules(model)
         lora_kwargs = {
             'r': self.lora_rank,
@@ -332,7 +339,7 @@ class TunerArguments:
                 d_initial=self.vera_d_initial,
                 modules_to_save=self.modules_to_save,
             )
-            vera_config = get_vera_target_modules(model, vera_config)
+            vera_config = self.get_vera_target_modules(model, vera_config)
             model = Swift.prepare_model(model, vera_config)
             logger.info(f'vera_config: {vera_config}')
         elif self.train_type == 'boft':

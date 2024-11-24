@@ -1,6 +1,5 @@
 from typing import Any, Dict, List, Union
 
-from swift.utils import get_dist_setting
 from ..argument import RLHFArguments
 from .kto import prepare_kto_dataset
 from .sft import SwiftSft
