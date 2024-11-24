@@ -29,7 +29,7 @@ def save_checkpoint(model: Optional[PreTrainedModel],
         model.save_pretrained(output_dir, safe_serialization=safe_serialization, max_shard_size=max_shard_size)
     if model_dirs is None:
         model_dirs = []
-    if model.model_dir not in model_dirs:
+    if model and model.model_dir not in model_dirs:
         model_dirs.append(model.model_dir)
     processor.save_pretrained(output_dir)
 

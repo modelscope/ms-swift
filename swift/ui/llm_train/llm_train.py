@@ -251,36 +251,28 @@ class LLMTrain(BaseUI):
                 cls.element('train_type').change(
                     Hyper.update_lr, inputs=[base_tab.element('train_type')], outputs=[cls.element('learning_rate')])
 
-                if cls.is_gradio_app:
-                    submit.click(cls.update_runtime, [],
-                                 [cls.element('runtime_tab'), cls.element('log')]).then(
-                                     cls.train_studio,
-                                     list(cls.valid_elements().values()),
-                                     [cls.element('log')] + Runtime.all_plots + [cls.element('running_cmd')],
-                                     queue=True)
-                else:
-                    submit.click(
-                        cls.train_local,
-                        list(cls.valid_elements().values()), [
-                            cls.element('running_cmd'),
-                            cls.element('logging_dir'),
-                            cls.element('runtime_tab'),
-                            cls.element('running_tasks'),
-                            cls.element('train_record'),
-                        ],
-                        queue=True)
-                if not cls.is_gradio_app:
-                    base_tab.element('running_tasks').change(
-                        partial(Runtime.task_changed, base_tab=base_tab), [base_tab.element('running_tasks')],
-                        list(base_tab.valid_elements().values())
-                        + [cls.element('log')] + Runtime.all_plots,
-                        cancels=Runtime.log_event)
-                    Runtime.element('kill_task').click(
-                        Runtime.kill_task,
-                        [Runtime.element('running_tasks')],
-                        [Runtime.element('running_tasks')] + [Runtime.element('log')] + Runtime.all_plots,
-                        cancels=[Runtime.log_event],
-                    ).then(Runtime.reset, [], [Runtime.element('logging_dir')] + [Hyper.element('output_dir')])
+                submit.click(
+                    cls.train_local,
+                    list(cls.valid_elements().values()), [
+                        cls.element('running_cmd'),
+                        cls.element('logging_dir'),
+                        cls.element('runtime_tab'),
+                        cls.element('running_tasks'),
+                        cls.element('train_record'),
+                    ],
+                    queue=True)
+
+                base_tab.element('running_tasks').change(
+                    partial(Runtime.task_changed, base_tab=base_tab), [base_tab.element('running_tasks')],
+                    list(base_tab.valid_elements().values())
+                    + [cls.element('log')] + Runtime.all_plots,
+                    cancels=Runtime.log_event)
+                Runtime.element('kill_task').click(
+                    Runtime.kill_task,
+                    [Runtime.element('running_tasks')],
+                    [Runtime.element('running_tasks')] + [Runtime.element('log')] + Runtime.all_plots,
+                    cancels=[Runtime.log_event],
+                ).then(Runtime.reset, [], [Runtime.element('logging_dir')] + [Hyper.element('output_dir')])
 
     @classmethod
     def update_runtime(cls):

@@ -271,9 +271,9 @@ class Runtime(BaseUI):
                 ret.append(gr.update(value=arg))
             else:
                 ret.append(gr.update())
-        sft_type = None
+        train_type = None
         if is_custom_path:
             with open(os.path.join(all_args['ckpt_dir'], 'sft_args.json'), 'r') as f:
                 _json = json.load(f)
-                sft_type = _json['sft_type']
-        return ret + [gr.update(value=None), [all_args.get('model_type'), all_args.get('template_type'), sft_type]]
+                train_type = _json.get('train_type')
+        return ret + [gr.update(value=None), [all_args.get('model_type'), all_args.get('template_type'), train_type]]
