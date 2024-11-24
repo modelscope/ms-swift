@@ -21,7 +21,7 @@ class InferClient(InferEngine):
 
     def __init__(self,
                  host: str = '127.0.0.1',
-                 port: str = '8000',
+                 port: int = 8000,
                  api_key: str = 'EMPTY',
                  *,
                  timeout: Optional[int] = None) -> None:

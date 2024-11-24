@@ -21,22 +21,6 @@ from .logger import get_logger
 logger = get_logger()
 
 
-def is_on_same_device(model: torch.nn.Module) -> bool:
-    device_set = set(map(lambda p: p.device, model.parameters()))
-    return len(device_set) == 1
-
-
-def _find_free_port() -> str:
-    # Copied from https://github.com/facebookresearch/detectron2/blob/main/detectron2/engine/launch.py # noqa: E501
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    # Binding to port 0 will cause the OS to find an available port for us
-    sock.bind(('', 0))
-    port = sock.getsockname()[1]
-    sock.close()
-    # NOTE: there is still a chance the port could be taken by other processes.
-    return port
-
-
 def _find_local_mac() -> str:
     mac = uuid.getnode()
     mac_address = ':'.join(('%012x' % mac)[i:i + 2] for i in range(0, 12, 2))

@@ -11,8 +11,7 @@ import json
 import torch
 
 from swift.llm import ExportArguments
-from swift.utils import get_logger
-from swift.utils.torch_utils import _find_free_port
+from swift.utils import find_free_port, get_logger
 
 logger = get_logger()
 
@@ -190,7 +189,7 @@ class ExpManager:
             env['CUDA_VISIBLE_DEVICES'] = ','.join(allocated)
         if int(exp.requirements.get('ddp', 1)) > 1:
             env['NPROC_PER_NODE'] = exp.requirements.get('ddp')
-            env['MASTER_PORT'] = str(_find_free_port())
+            env['MASTER_PORT'] = str(find_free_port())
 
         if exp.cmd == 'sft':
             from swift.llm import TrainArguments

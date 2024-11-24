@@ -3,6 +3,7 @@ import datetime as dt
 import os
 import random
 import re
+import socket
 import subprocess
 import sys
 import time
@@ -230,3 +231,17 @@ def dataclass_to_dict(instance: Any) -> Dict[str, Any]:
     """shallow copy"""
     assert is_dataclass(instance)
     return {field.name: getattr(instance, field.name) for field in fields(instance)}
+
+
+def find_free_port(start_port: Optional[int] = None, retry: int = 100) -> str:
+    if start_port is None:
+        start_port = 0
+    for port in range(start_port, start_port + retry):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            try:
+                sock.bind(('', start_port))
+                port = sock.getsockname()[1]
+                break
+            except OSError:
+                pass
+    return port

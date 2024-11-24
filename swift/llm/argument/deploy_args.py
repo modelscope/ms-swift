@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from .infer_args import InferArguments
+from .swift.utils import find_free_port
 
 
 @dataclass
@@ -33,6 +34,10 @@ class DeployArguments(InferArguments):
     log_interval: int = 10  # Interval for printing global statistics
 
     max_logprobs: int = 20
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.port = find_free_port(self.port)
 
     def _init_stream(self):
         pass

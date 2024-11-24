@@ -2,13 +2,13 @@
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional
 
-from .infer_args import InferArguments
+from .deploy_args import DeployArguments
 
 # [TODO]
 
 
 @dataclass
-class EvalArguments(InferArguments):
+class EvalArguments(DeployArguments):
     """
     EvalArguments is a dataclass that extends InferArguments and is used to define
     the arguments required for evaluating a model.

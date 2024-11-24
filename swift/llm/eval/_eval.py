@@ -158,7 +158,7 @@ def vlmeval_runner(args: EvalArguments, dataset: List[str], model_type: str, is_
 
 @contextmanager
 def deploy_context(args):
-    from swift.utils.torch_utils import _find_free_port
+    from swift.utils import find_free_port
 
     process = None
     try:
