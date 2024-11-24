@@ -33,11 +33,11 @@ class LmdeployArguments:
 
     def get_lmdeploy_engine_kwargs(self):
         return {
-            'tp': args.tp,
-            'session_len': args.session_len,
-            'cache_max_entry_count': args.cache_max_entry_count,
-            'quant_policy': args.quant_policy,
-            'vision_batch_size': args.vision_batch_size
+            'tp': self.tp,
+            'session_len': self.session_len,
+            'cache_max_entry_count': self.cache_max_entry_count,
+            'quant_policy': self.quant_policy,
+            'vision_batch_size': self.vision_batch_size
         }
 
 

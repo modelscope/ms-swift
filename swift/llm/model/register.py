@@ -347,7 +347,7 @@ def get_model_info(model_dir: str,
                    attn_impl: AttnImpl,
                    rope_scaling: Optional[Dict[str, Any]] = None) -> ModelInfo:
     config_dict = PretrainedConfig.get_config_dict(model_dir)[0]
-    if quantization_config is None:
+    if quantization_config is not None:
         config_dict['quantization_config'] = quantization_config
     quant_info = HfConfigFactory.get_quant_info(config_dict) or {}
     torch_dtype = HfConfigFactory.get_torch_dtype(config_dict, quant_info)
