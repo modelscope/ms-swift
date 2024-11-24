@@ -97,6 +97,14 @@ class TunerArguments:
     tuner_backend: Literal['swift', 'peft', 'unsloth'] = 'peft'
     train_type: str = field(default='lora', metadata={'help': f'train_type choices: {list(get_supported_tuners())}'})
 
+    # full
+    freeze_parameters: List[str] = field(default_factory=list)
+    freeze_parameters_ratio: float = 0.  # 0 ~ 1
+    trainable_parameters: List[str] = field(default_factory=list)
+    # lora or full
+    freeze_vit: bool = True
+    freeze_aligner: bool = True
+    freeze_llm: bool = False
     # tuners
     target_modules: List[str] = field(default_factory=lambda: ['all-linear'])
     target_regex: Optional[str] = None
@@ -194,11 +202,11 @@ class TunerArguments:
         if isinstance(self.init_lora_weights, str) and self.init_lora_weights.lower() in {'true', 'false'}:
             self.init_lora_weights = bool(strtobool(self.init_lora_weights))
 
-    def handle_target_modules(self, model) -> Union[str, List[str]]:
+    def get_target_modules(self, model) -> Union[str, List[str]]:
         """Replace EMBEDDING and ALL to actual modules
         Args:
             model: The input model
-            args: The TrainArguments
+            self: The TrainArguments
         """
         if self.target_regex:
             return self.target_regex
@@ -208,3 +216,155 @@ class TunerArguments:
             target_modules.remove('all-linear')
             target_modules += find_all_linears(model)
         return target_modules
+
+    def get_vera_target_modules(model: torch.nn.Module, config: VeraConfig):
+        """This function is only useful on the vera tuner"""
+        target_modules = config.target_modules
+        modules_dict = {
+            name: module.weight.shape
+            for name, module in model.named_modules()
+            if isinstance(module, torch.nn.Linear) and any([t in name for t in target_modules])
+        }  # only Linear for now
+        if len(set(modules_dict.values())) > 1:
+            v = [t for t in target_modules if 'v' in t]
+            if not v:
+                raise ValueError('Please manually pass in `vera_target_modules`, do not use `DEFAULT` or `ALL`,'
+                                 'because Vera need all target linears to be the same size.')
+            v = v[0]
+            shape = [shape for name, shape in modules_dict.items() if v in name][0]
+            names = [_name for _name, _shape in modules_dict.items() if _shape == shape]
+            config.target_modules = [t for t in target_modules if any([t in name for name in names])]
+        return config
+
+    def init_full_parameters(self):
+        """Some arguments will be decided by the train_type"""
+        if self.train_type == 'full':
+            # TODO: freeze xxx
+            if self.freeze_vit:
+                if self.model_type in MODEL_KEYS_MAPPING:
+                    vision_tower = MODEL_KEYS_MAPPING[self.model_type].vision_tower
+                    if vision_tower:
+                        self.freeze_parameters += vision_tower
+
+    def prepare_adapter(self, model):
+        target_modules = self.handle_target_modules(model)
+        lora_kwargs = {
+            'r': self.lora_rank,
+            'target_modules': target_modules,
+            'lora_alpha': self.lora_alpha,
+            'lora_dropout': self.lora_dropout,
+            'bias': self.lora_bias,
+            'modules_to_save': self.modules_to_save,
+            'use_rslora': self.use_rslora,
+            'use_dora': self.use_dora,
+            'lorap_lr_ratio': self.lorap_lr_ratio,
+            'init_lora_weights': self.init_lora_weights,
+        }
+
+        if self.train_type in ('lora', 'longlora'):
+            if self.tuner_backend == 'swift':
+                lora_config = LoRAConfig(lora_dtype=self.lora_dtype, **lora_kwargs)
+                model = Swift.prepare_model(model, lora_config)
+                logger.info(f'lora_config: {lora_config}')
+            elif self.tuner_backend == 'peft':
+                lora_config = LoraConfig(task_type='CAUSAL_LM', lora_dtype=self.lora_dtype, **lora_kwargs)
+                model = Swift.prepare_model(model, lora_config)
+                logger.info(f'lora_config: {lora_config}')
+            elif self.tuner_backend == 'unsloth':
+                from unsloth import FastLanguageModel
+                assert self.train_type == 'lora', 'Unsloth does not support LongLoRA'
+                lora_kwargs.pop('lorap_lr_ratio')
+                model = FastLanguageModel.get_peft_model(
+                    model,
+                    use_gradient_checkpointing=True,
+                    max_seq_length=self.max_length,
+                    **lora_kwargs,
+                )
+                logger.info(f'unsloth_config: {lora_kwargs}')
+            if self.train_type == 'longlora':
+                assert LongLoRAModelType.LLAMA in self.model_type
+                assert version.parse(transformers.__version__) >= version.parse('4.39.3')
+                from swift.tuners.longlora.llama import replace_llama_attn
+                replace_llama_attn(model)
+                model.config.group_size_ratio = 0.25
+        elif self.train_type == 'adalora':
+            lora_kwargs.pop('lorap_lr_ratio', None)
+            lora_kwargs['rank_pattern'] = None
+            adalora_config = AdaLoraConfig(
+                task_type='CAUSAL_LM',
+                **lora_kwargs,
+                target_r=self.adalora_target_r,
+                init_r=self.adalora_init_r,
+                tinit=self.adalora_tinit,
+                tfinal=self.adalora_tfinal,
+                deltaT=self.adalora_deltaT,
+                beta1=self.adalora_beta1,
+                beta2=self.adalora_beta2,
+                orth_reg_weight=self.adalora_orth_reg_weight,
+            )
+            model = Swift.prepare_model(model, adalora_config)
+            logger.info(f'adalora_config: {adalora_config}')
+        elif self.train_type == 'llamapro':
+            llamapro_config = LLaMAProConfig(
+                model_type=model.model_meta.model_arch,
+                num_new_blocks=self.llamapro_num_new_blocks,
+                num_groups=self.llamapro_num_groups)
+            model = Swift.prepare_model(model, llamapro_config)
+            logger.info(f'llamapro_config: {llamapro_config}')
+        elif self.train_type == 'adapter':
+            model_arch = get_model_arch(model.model_meta.model_arch)
+            mlp_key = model_arch.mlp
+            mlp_key = mlp_key.split('.{}.')[1]
+            adapter_config = AdapterConfig(
+                dim=model.config.hidden_size,
+                target_modules=[mlp_key],
+                hidden_pos=0,
+                adapter_length=self.adapter_length,
+                act_layer=self.adapter_act)
+            model = Swift.prepare_model(model, adapter_config)
+            logger.info(f'adapter_config: {adapter_config}')
+        elif self.train_type == 'vera':
+            vera_config = VeraConfig(
+                r=self.vera_rank,
+                target_modules=self.target_modules,
+                projection_prng_key=self.vera_projection_prng_key,
+                vera_dropout=self.vera_dropout,
+                d_initial=self.vera_d_initial,
+                modules_to_save=self.modules_to_save,
+            )
+            vera_config = get_vera_target_modules(model, vera_config)
+            model = Swift.prepare_model(model, vera_config)
+            logger.info(f'vera_config: {vera_config}')
+        elif self.train_type == 'boft':
+            boft_config = BOFTConfig(
+                boft_block_size=self.boft_block_size,
+                boft_block_num=self.boft_block_num,
+                boft_n_butterfly_factor=self.boft_n_butterfly_factor,
+                target_modules=self.target_modules,
+                boft_dropout=self.boft_dropout,
+                modules_to_save=self.modules_to_save,
+            )
+            model = Swift.prepare_model(model, boft_config)
+            logger.info(f'boft_config: {boft_config}')
+        elif self.train_type == 'fourierft':
+            from peft import FourierFTConfig
+            fourier_config = FourierFTConfig(
+                target_modules=self.target_modules,
+                modules_to_save=self.modules_to_save,
+                n_frequency=self.fourier_n_frequency,
+                scaling=self.fourier_scaling,
+            )
+            model = Swift.prepare_model(model, fourier_config)
+            logger.info(f'fourier_config: {fourier_config}')
+        elif self.train_type == 'reft':
+            reft_config = ReftConfig(
+                model_type=model.model_meta.model_arch,
+                layer_key=self.reft_layer_key,
+                r=self.reft_rank,
+                layers=self.reft_layers,
+                intervention_type=self.reft_intervention_type,
+                self=self.reft_args,
+            )
+            logger.info(f'reft config: {reft_config}')
+            model = Swift.prepare_model(model, {'reft': reft_config})
+        return model

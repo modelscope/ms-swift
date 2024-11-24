@@ -104,13 +104,6 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
         lazy_tokenize (Optional[bool]): Flag to indicate if lazy tokenization is used. Default is None.
         acc_strategy (Literal): Strategy for accuracy calculation. Default is 'token'.
     """
-    freeze_vit: bool = True
-    freeze_aligner: bool = True
-    freeze_llm: bool = False
-    freeze_parameters: List[str] = field(default_factory=list)
-    freeze_parameters_ratio: float = 0.  # 0 ~ 1
-    additional_trainable_parameters: List[str] = field(default_factory=list)
-
     add_version: bool = True
     resume_from_checkpoint: Optional[str] = None
     resume_only_model: bool = False
@@ -134,15 +127,15 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
         Seq2SeqTrainingOverrideArguments.__post_init__(self)
         TunerArguments.__post_init__(self)
         TorchAccArguments.__post_init__(self)
-        self._handle_pai_compat()
-        self.prepare_deepspeed()
 
         self.rank, self.local_rank, self.global_world_size, self.local_world_size = get_dist_setting()
-
         if len(self.dataset) == 0:
             raise ValueError(f'self.dataset: {self.dataset}, Please input the training dataset.')
 
-        self.prepare_liger()
+        self._handle_pai_compat()
+        self._prepare_deepspeed()
+        self._prepare_ddp_backend()
+        self._prepare_liger()
         if self.lazy_tokenize is None:
             self.lazy_tokenize = self.model_meta.is_multimodal and not self.streaming
             logger.info(f'Setting args.lazy_tokenize: {self.lazy_tokenize}')
@@ -151,7 +144,7 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
         self._add_version()
         self.save_args()
 
-    def prepare_deepspeed(self):
+    def _prepare_deepspeed(self):
         """Prepare deepspeed settings"""
         ds_config_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'ds_config'))
         deepspeed_mapping = {name: f'{name}.json' for name in ['zero2', 'zero3', 'zero2_offload', 'zero3_offload']}
@@ -169,7 +162,7 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
             self.parse_to_dict(self.deepspeed)
             logger.info(f'Using deepspeed: {self.deepspeed}')
 
-    def prepare_ddp_backend(self):
+    def _prepare_ddp_backend(self):
         """Prepare ddp of course"""
         if is_dist():
             if is_torch_npu_available():
@@ -177,20 +170,8 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
             else:
                 torch.cuda.set_device(self.local_rank)
             self.seed += self.rank  # Avoid the same dropout
-            if self.ddp_backend is None:
-                self.ddp_backend = 'nccl'
 
-    def init_freeze_parameters(self):
-        """Some arguments will be decided by the train_type"""
-        if self.train_type == 'full':
-            # TODO: freeze xxx
-            if self.freeze_vit:
-                if self.model_type in MODEL_KEYS_MAPPING:
-                    vision_tower = MODEL_KEYS_MAPPING[self.model_type].vision_tower
-                    if vision_tower:
-                        self.freeze_parameters += vision_tower
-
-    def prepare_liger(self):
+    def _prepare_liger(self):
         """Liger kernel"""
         if self.use_liger:
             assert is_liger_available(), 'use_liger requires liger_kernels, try `pip install liger-kernel`'

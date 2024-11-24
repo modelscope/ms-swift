@@ -86,6 +86,7 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
         if isinstance(self, InferArguments):
             return
         if is_master():
+            os.makedirs(self.output_dir, exist_ok=True)
             fpath = os.path.join(self.output_dir, 'args.json')
             logger.info(f'The {self.__class__.__name__} will be saved in: {fpath}')
             with open(fpath, 'w', encoding='utf-8') as f:

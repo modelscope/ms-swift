@@ -17,8 +17,8 @@ from ..dataset import ConstantLengthDataset, EncodePreprocessor, GetLengthPrepro
 from ..infer import RequestConfig, prepare_generation_config
 from ..model import ModelInfo, ModelMeta, get_model_arch, get_model_tokenizer
 from ..template import Template, get_template
-from ..tuner import prepare_tuner
 from ..utils import deep_getattr, dynamic_gradient_checkpointing
+from .tuner import prepare_tuner
 
 logger = get_logger()
 
@@ -224,6 +224,7 @@ class SwiftSft(SwiftPipeline):
         return optimizer_callback(self.model, train_dataset, args)
 
     def _prepare_callbacks(self):
+        from .callback import DynamicLayerActivationCallback, TrainerAdapterCallback
         args = self.args
         callbacks = []
         if args.lisa_activated_layers > 0:

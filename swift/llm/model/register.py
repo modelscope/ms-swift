@@ -250,43 +250,6 @@ def get_model_tokenizer_multimodal(model_dir: str, *args, **kwargs):
     return model, processor
 
 
-def fix_transformers_upgrade(module: PreTrainedModel) -> None:
-    # from 4.35, transformers changes its arguments of _set_gradient_checkpointing
-    if version.parse(transformers.__version__) >= version.parse('4.35'):
-        if isinstance(module, PreTrainedModel) and hasattr(module, '_set_gradient_checkpointing') \
-                and 'value' in inspect.signature(module._set_gradient_checkpointing).parameters.keys():
-            module._set_gradient_checkpointing = MethodType(PreTrainedModel._set_gradient_checkpointing, module)
-
-
-def fix_gradient_checkpointing_warning(is_moe: bool = False) -> None:
-    torch_version = version.parse(torch.__version__)
-    if torch_version < version.parse('2'):
-        return
-    elif torch_version < version.parse('2.1'):
-        # fix https://github.com/Dao-AILab/flash-attention/issues/341
-        _use_reentrant = True
-    else:
-        _use_reentrant = is_moe
-    if hasattr(torch.utils.checkpoint, '_checkpoint_origin'):
-        return
-    # fix torch
-    _checkpoint_origin = torch.utils.checkpoint.checkpoint
-    torch.utils.checkpoint._checkpoint_origin = _checkpoint_origin
-    checkpoint = update_wrapper(
-        lambda *args, use_reentrant=_use_reentrant, **kwargs: _checkpoint_origin(
-            *args, use_reentrant=use_reentrant, **kwargs),
-        _checkpoint_origin)
-    torch.utils.checkpoint.checkpoint = checkpoint
-
-    try:
-        # fix gradient_checkpointing_enable
-        import transformers.modeling_utils
-        if hasattr(transformers.modeling_utils, 'checkpoint'):
-            transformers.modeling_utils.checkpoint = checkpoint
-    except ImportError:
-        pass
-
-
 def fix_do_sample_warning(generation_config: GenerationConfig) -> None:
     # Use the default values of temperature/top_p/top_k in generation_config.
     if generation_config.temperature == 0:
@@ -512,8 +475,6 @@ def get_model_tokenizer(model_id_or_path: str,
         model.model_info = model_info
         model.model_meta = model_meta
         model.model_dir = model_dir
-        fix_gradient_checkpointing_warning(model_meta.is_moe)
-        fix_transformers_upgrade(model)
 
         # generation_config
         generation_config_path = os.path.join(model_dir, 'generation_config.json')

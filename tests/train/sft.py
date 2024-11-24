@@ -65,8 +65,30 @@ def test_mllm_zero3():
     result = sft_main(
         TrainArguments(
             model='qwen/Qwen2-VL-7B-Instruct',
-            dataset=['modelscope/coco_2014_caption:validation#100'],  # , 'AI-ModelScope/alpaca-gpt4-data-en#100'
+            dataset=['modelscope/coco_2014_caption:validation#100', 'AI-ModelScope/alpaca-gpt4-data-en#100'],  #
             deepspeed='zero3',
+            **kwargs))
+    last_model_checkpoint = result['last_model_checkpoint']
+    infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True, merge_lora=True))
+
+
+def test_llm_gptq():
+    from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
+    result = sft_main(
+        TrainArguments(
+            model='Qwen/Qwen2-7B-Instruct-GPTQ-Int4',
+            dataset=['AI-ModelScope/alpaca-gpt4-data-zh#100', 'AI-ModelScope/alpaca-gpt4-data-en#100'],
+            **kwargs))
+    last_model_checkpoint = result['last_model_checkpoint']
+    infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True, merge_lora=True))
+
+
+def test_llm_awq():
+    from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
+    result = sft_main(
+        TrainArguments(
+            model='Qwen/Qwen2-7B-Instruct-AWQ',
+            dataset=['AI-ModelScope/alpaca-gpt4-data-zh#100', 'AI-ModelScope/alpaca-gpt4-data-en#100'],
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
     infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True, merge_lora=True))
@@ -77,4 +99,6 @@ if __name__ == '__main__':
     # test_mllm()
     # test_llm_streaming()
     # test_mllm_streaming()
-    test_mllm_zero3()
+    # test_mllm_zero3()
+    # test_llm_gptq()
+    test_llm_awq()

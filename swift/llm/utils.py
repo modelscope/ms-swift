@@ -1,3 +1,4 @@
+import inspect
 from types import MethodType
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
@@ -74,11 +75,27 @@ def find_module_list(model) -> Optional[nn.ModuleList]:
         return max(module_lists, key=lambda x: len(x))
 
 
+def _kwargs_to_args(func, args, kwargs) -> Optional[List[Any]]:
+    parameters = inspect.signature(func).parameters
+    args = list(args)
+    parameters = list(parameters.items())[len(args):]
+    for key, param in parameters:
+        if key in kwargs:
+            args.append(kwargs[key])
+        elif param.default != param.empty:
+            args.append(param.default)
+        else:
+            return
+    return args
+
+
 def _add_gradient_checkpointing(module_list):
 
     def _new_forward(self, *args, **kwargs):
-        if self.gradient_checkpointing and self.training:
-            layer_ret = torch.utils.checkpoint.checkpoint(self.__old_forward, *args, **kwargs)
+        new_args = _kwargs_to_args(self.__old_forward, args, kwargs)
+        if new_args is not None and self.gradient_checkpointing and self.training:
+            layer_ret = self._gradient_checkpointing_func(self.__old_forward, *new_args)
+            logger.info_once('Successfully using dynamic gradient checkpointing.')
         else:
             layer_ret = self.__old_forward(*args, **kwargs)
         return layer_ret
