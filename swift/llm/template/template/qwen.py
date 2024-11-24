@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from functools import partial
 from typing import Any, Dict, List, Literal, Optional
 
@@ -7,13 +7,13 @@ import torch
 import torch.nn as nn
 
 from swift.utils import get_env_args, is_deepspeed_enabled
+from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
 from ..base import Template
 from ..constant import TemplateType
-from ..register import TemplateMeta, register_template
+from ..register import register_template
 from ..template_inputs import StdTemplateInputs
-from ..utils import Context, Prompt, fetch_one, findall
+from ..utils import Context, findall
 from ..vision_utils import load_audio_qwen, load_batch, load_video_qwen2
-from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
 
 
 @dataclass

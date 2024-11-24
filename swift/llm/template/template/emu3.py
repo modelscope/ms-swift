@@ -1,17 +1,16 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import torch
-import torch.nn as nn
 from PIL import Image
 
+from .utils import EmptyTemplateMeta
 from ..base import Template
 from ..constant import MLLMTemplateType
 from ..register import register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import GenerationProperty
-from .utils import EmptyTemplateMeta
 
 
 class Emu3GenTemplate(Template):

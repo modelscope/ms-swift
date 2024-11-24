@@ -3,51 +3,29 @@ import hashlib
 import inspect
 import os
 import re
-from contextlib import contextmanager
-from dataclasses import asdict
-from functools import partial, wraps
+from functools import wraps
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from PIL import Image
 from modelscope import get_logger
 from peft import PeftModel
-from PIL import Image
 from torch.nn.utils.rnn import pad_sequence
-from transformers import PreTrainedTokenizerBase
 from transformers.integrations import is_deepspeed_zero3_enabled
 
-from swift.utils import dataclass_to_dict
+from swift.utils import dataclass_to_dict, get_dist_setting, use_torchacc
 from .agent import loss_scale_map, split_str_parts_by
 from .template_inputs import InferRequest, StdTemplateInputs, TemplateInputs
-from .utils import (Context, ContextType, GenerationProperty, Processor, ProcessorMixin, Prompt, StopWordsCriteria,
-                    Word, fetch_one, findall)
+from .utils import (Context, ContextType, GenerationProperty, Processor, ProcessorMixin, StopWordsCriteria,
+                    fetch_one, findall)
 from .vision_utils import load_batch, load_image, normalize_bbox, rescale_image
 
 logger = get_logger()
 
 
 class Template(ProcessorMixin):
-    """A template class for all supported models.
-
-    Args:
-        prefix: Prefix before the first round
-        prompt: Template format for each round
-        chat_sep: Separator symbol between rounds. If set to None, it is a single-round template and
-            does not support multi-round conversations.
-        suffix: Ending for the last round, used to stop generation.
-        default_system: Default system
-        system_prefix: If it includes a prefix for the system, used in cases where the prefix parameter
-            cannot accommodate a template with the system.
-        tool_prompt: The prompt when the role of messages is set to 'tool'.
-
-        stop_words: A list of stop words, where each stop word can consist of multiple tokens.
-        placeholder_tokens: A list of placeholder tokens, where each placeholder token can only be a single token.
-        auto_add_bos: By default, the bos_token is not added. The auto_add_bos option will determine
-            whether to add it based on `processor.encode('')`.
-
-    """
 
     special_tokens = ['<image>', '<video>', '<audio>', '<bbox>', '<ref-object>']
     special_keys = ['images', 'videos', 'audios', 'objects']
@@ -814,7 +792,7 @@ class Template(ProcessorMixin):
         """
         if len(batch) == 0:
             return {}
-        from swift.utils import get_dist_setting, use_torchacc
+        from swift.utils import use_torchacc
         tokenizer = self.tokenizer
         assert tokenizer.pad_token_id is not None
         if padding_side is None:

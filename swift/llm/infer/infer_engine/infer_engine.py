@@ -1,22 +1,21 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
 import asyncio
-from copy import deepcopy
 from queue import Queue
 from threading import Thread
-from typing import Any, AsyncIterator, Dict, Iterator, List, Literal, Optional, Union
+from typing import Any, Dict, Iterator, List, Literal, Optional, Union
 
 import torch
 from tqdm import tqdm
 from transformers import PreTrainedTokenizerBase
 
-from swift.llm import InferRequest, ProcessorMixin, Template, get_model_tokenizer, get_template
+from swift.llm import InferRequest, ProcessorMixin, get_model_tokenizer, get_template
 from swift.llm.template import split_action_action_input
 from swift.plugin import Metric
 from swift.utils import get_logger
+from .base import BaseInferEngine
 from ..protocol import (ChatCompletionMessageToolCall, ChatCompletionResponse, ChatCompletionStreamResponse, Function,
                         RequestConfig, UsageInfo)
-from .base import BaseInferEngine
 
 logger = get_logger()
 

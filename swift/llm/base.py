@@ -2,7 +2,7 @@
 import os
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Callable, Generic, List, Optional, Type, TypeVar, Union
+from typing import List, Union
 
 from swift.llm import BaseArguments, ProcessorMixin
 from swift.utils import get_logger, parse_args, seed_everything

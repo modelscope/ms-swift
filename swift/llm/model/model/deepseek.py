@@ -192,7 +192,6 @@ def get_model_tokenizer_deepseek_janus(model_dir: str, *args, **kwargs):
         local_repo_path = git_clone_github('https://github.com/deepseek-ai/Janus')
     sys.path.append(os.path.join(local_repo_path))
     from janus.models import MultiModalityCausalLM, VLChatProcessor
-    from janus.utils.io import load_pil_images
 
     processor: VLChatProcessor = VLChatProcessor.from_pretrained(model_dir)
     tokenizer = processor.tokenizer

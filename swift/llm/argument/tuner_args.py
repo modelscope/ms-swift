@@ -7,6 +7,7 @@ import transformers
 from packaging import version
 from transformers.utils import strtobool
 
+from swift.llm import get_model_arch
 from swift.utils import find_all_linears, get_logger
 
 logger = get_logger()

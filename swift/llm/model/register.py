@@ -1,18 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import inspect
-import itertools
 import os
 import re
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
-from functools import partial, update_wrapper
-from types import MethodType
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
 import torch.utils.checkpoint
-import transformers
-from packaging import version
 from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer, GenerationConfig, PretrainedConfig,
                           PreTrainedModel, PreTrainedTokenizerBase)
 from transformers.integrations import is_deepspeed_zero3_enabled

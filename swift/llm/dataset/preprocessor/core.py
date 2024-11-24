@@ -1,15 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import ast
-import multiprocessing
 from collections import Counter
 from contextlib import contextmanager
-from functools import partial
-from multiprocessing import shared_memory
-from typing import Any, Callable, Dict, List, Literal, Optional, Set, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
 from datasets import Dataset as HfDataset
-from datasets import Features, Image
+from datasets import Image
 from datasets import IterableDataset as HfIterableDataset
 from datasets import Value
 

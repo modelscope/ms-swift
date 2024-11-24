@@ -1,6 +1,4 @@
-from typing import Any, Dict, Optional, Tuple
-
-import torch.nn as nn
+from typing import Any, Dict
 
 from ..base import Template
 from ..constant import MLLMTemplateType

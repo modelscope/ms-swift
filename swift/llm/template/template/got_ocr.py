@@ -1,14 +1,14 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional
 
 import torch.nn as nn
 
+from .qwen import QwenTemplateMeta
 from ..base import Template
 from ..constant import MLLMTemplateType
 from ..register import register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import Context, gather_list
-from .qwen import QwenTemplateMeta
 
 
 class GOTImageEvalProcessor:

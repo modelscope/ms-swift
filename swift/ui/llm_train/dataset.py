@@ -1,9 +1,8 @@
-import os
 from typing import Type
 
 import gradio as gr
 
-from swift.llm.dataset.register import DATASET_MAPPING, get_dataset_list
+from swift.llm.dataset.register import get_dataset_list
 from swift.ui.base import BaseUI
 
 

@@ -1,17 +1,15 @@
+import json
 import os
 import re
 import sys
 import time
 from datetime import datetime
 from functools import partial
+from json import JSONDecodeError
 from typing import Type
 
 import gradio as gr
-import json
 import torch
-from gradio import Accordion, Tab
-from json import JSONDecodeError
-from modelscope import snapshot_download
 
 from swift.llm import ExportArguments
 from swift.ui.base import BaseUI

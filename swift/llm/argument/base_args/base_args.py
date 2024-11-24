@@ -1,18 +1,16 @@
+import json
 import os
 from dataclasses import dataclass, field, fields
-from typing import List, Optional, Union
-
-import json
+from typing import Optional
 
 from swift.hub import get_hub
 from swift.utils import check_json_format, get_logger, is_master
-from ..tuner_args import TunerArguments, get_supported_tuners
 from .data_args import DataArguments
 from .generation_args import GenerationArguments
 from .model_args import ModelArguments
 from .quant_args import QuantizeArguments
 from .template_args import TemplateArguments
-from .utils import to_abspath
+from ..tuner_args import TunerArguments, get_supported_tuners
 
 logger = get_logger()
 

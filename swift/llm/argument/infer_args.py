@@ -2,13 +2,10 @@
 import datetime as dt
 import os
 from dataclasses import dataclass, field
-from typing import Any, List, Literal, Optional, Tuple
+from typing import List, Literal, Optional
 
-import json
-from transformers.utils.versions import require_version
-
-from swift.llm import MODEL_MAPPING, TEMPLATE_MAPPING, ModelInfo, PtLoRARequest, get_template_meta
-from swift.utils import get_logger, is_lmdeploy_available, is_vllm_available
+from swift.llm import PtLoRARequest, get_template_meta
+from swift.utils import get_logger
 from .base_args import BaseArguments, to_abspath
 from .merge_args import MergeArguments
 
@@ -76,15 +73,15 @@ class VllmArguments:
 
     def get_vllm_engine_kwargs(self):
         return {
-            'gpu_memory_utilization': args.gpu_memory_utilization,
-            'tensor_parallel_size': args.tensor_parallel_size,
-            'pipeline_parallel_size': args.pipeline_parallel_size,
-            'max_num_seqs': args.max_num_seqs,
-            'max_model_len': args.max_model_len,
-            'disable_custom_all_reduce': args.disable_custom_all_reduce,
-            'enforce_eager': args.enforce_eager,
-            'limit_mm_per_prompt': args.limit_mm_per_prompt,
-            'max_lora_rank': args.vllm_max_lora_rank,
+            'gpu_memory_utilization': self.gpu_memory_utilization,
+            'tensor_parallel_size': self.tensor_parallel_size,
+            'pipeline_parallel_size': self.pipeline_parallel_size,
+            'max_num_seqs': self.max_num_seqs,
+            'max_model_len': self.max_model_len,
+            'disable_custom_all_reduce': self.disable_custom_all_reduce,
+            'enforce_eager': self.enforce_eager,
+            'limit_mm_per_prompt': self.limit_mm_per_prompt,
+            'max_lora_rank': self.vllm_max_lora_rank,
             'enable_lora': len(self.lora_modules) > 0,
             'max_loras': max(len(self.lora_modules), 1),
         }

@@ -1,8 +1,5 @@
 from dataclasses import dataclass
 
-from swift.llm import get_default_template_type, get_template, get_vllm_engine, inference_vllm
-from swift.utils import get_main
-
 
 @dataclass
 class VLLMTestArgs:

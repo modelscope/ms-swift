@@ -5,7 +5,7 @@ from typing import Any, Dict
 import torch.nn.functional as F
 from modelscope import AutoConfig
 from torch import Tensor
-from transformers import BitsAndBytesConfig, PretrainedConfig
+from transformers import PretrainedConfig
 
 from swift.llm import TemplateType
 from swift.utils import get_logger

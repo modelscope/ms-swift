@@ -3,7 +3,7 @@ import os
 import sys
 from typing import Any, Dict
 
-from modelscope import AutoConfig, AutoModel
+from modelscope import AutoModel
 
 from swift.llm import TemplateType
 from ..constant import MLLMModelType
