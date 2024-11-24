@@ -231,7 +231,7 @@ class SwiftModel(nn.Module):
         try:
             return super().__getattr__(key)
         except AttributeError:
-            if 'base_model' in self.__dict__:
+            if 'base_model' in dir(self):
                 return getattr(self.base_model, key)
             raise
 
