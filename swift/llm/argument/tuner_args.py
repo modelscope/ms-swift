@@ -255,7 +255,7 @@ class TunerArguments:
     def prepare_adapter(self, model):
         from swift.tuners import (AdaLoraConfig, AdapterConfig, BOFTConfig, IA3Config, LLaMAProConfig,
                                   LongLoRAModelType, LoraConfig, LoRAConfig, ReftConfig, Swift, VeraConfig)
-        target_modules = self.handle_target_modules(model)
+        target_modules = self.get_target_modules(model)
         lora_kwargs = {
             'r': self.lora_rank,
             'target_modules': target_modules,
