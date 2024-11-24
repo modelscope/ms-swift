@@ -32,6 +32,8 @@ class DeployArguments(InferArguments):
     verbose: bool = True  # Whether to log request_info
     log_interval: int = 10  # Interval for printing global statistics
 
+    max_logprobs: int = 20
+
     def _init_stream(self):
         pass
 

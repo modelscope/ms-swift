@@ -30,11 +30,13 @@ class TemplateArguments:
     max_length: Optional[int] = None
 
     truncation_strategy: Literal['delete', 'left'] = 'left'
-    tools_prompt: str = 'react_en'  # Override the default_tools_prompt in the template.
     max_pixels: Optional[int] = None
+    tools_prompt: str = 'react_en'  # Override the default_tools_prompt in the template.
     # train
     loss_scale: str = 'default'
     sequence_parallel_size: int = 1
+    # infer
+    use_chat_template: bool = True
 
     def __post_init__(self):
         if self.template is None and hasattr(self, 'model_meta'):
@@ -42,3 +44,14 @@ class TemplateArguments:
 
         if self.max_length is None and hasattr(self, 'model_info'):
             self.max_length = self.model_info.max_model_len
+
+    def get_template_kwargs(self):
+        return {
+            'default_system': self.system,
+            'max_length': self.max_length,
+            'truncation_strategy': self.truncation_strategy,
+            'max_pixels': self.max_pixels,
+            'tools_prompt': self.tools_prompt,
+            'loss_scale': self.loss_scale,
+            'sequence_parallel_size': self.sequence_parallel_size
+        }

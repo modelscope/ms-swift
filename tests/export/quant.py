@@ -23,7 +23,18 @@ def test_vlm_quant(quant_method: Literal['gptq', 'awq'] = 'awq'):
             dataset=['modelscope/coco_2014_caption:val#1000'],
             quant_method=quant_method))
 
+def test_vlm_bnb_quant():
+    from swift.llm import export_main, ExportArguments, infer_main, InferArguments
+    # export_main(
+    #     ExportArguments(
+    #         model='qwen/Qwen2-VL-7B-Instruct',
+    #         quant_bits=4,
+    #         quant_method='bnb'))
+    
+    infer_main(InferArguments(ckpt_dir='/mnt/nas2/huangjintao.hjt/.cache/modelscope/hub/qwen/Qwen2-VL-7B-Instruct-bnb-int4'))
+
 
 if __name__ == '__main__':
     # test_llm_quant('gptq')
-    test_vlm_quant('gptq')
+    # test_vlm_quant('gptq')
+    test_vlm_bnb_quant()

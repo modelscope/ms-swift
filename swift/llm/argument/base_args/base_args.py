@@ -21,7 +21,7 @@ logger = get_logger()
 class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, TemplateArguments, ModelArguments):
     """
     BaseArguments class is a dataclass that inherits from multiple argument classes:
-    ModelArguments, TemplateArguments, QuantizeArguments, GenerationArguments, and DataArguments.
+    ModelArguments, TemplateArguments, and DataArguments.
 
     Args:
         seed (int): Random seed for reproducibility. Default is 42.
@@ -45,9 +45,9 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
         if self.use_hf:
             os.environ['USE_HF'] = '1'
         ModelArguments.__post_init__(self)
+        QuantizeArguments.__post_init__(self)
         TemplateArguments.__post_init__(self)
         DataArguments.__post_init__(self)
-        QuantizeArguments.__post_init__(self)
         self.hub = get_hub(self.use_hf)
         if self.hub.try_login(self.hub_token):
             logger.info('hub login successful!')
@@ -60,8 +60,7 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
     def adapters_can_be_merged(self):
         return TunerArguments.adapters_can_be_merged
 
-    @staticmethod
-    def load_args_from_ckpt(checkpoint_dir: str) -> None:
+    def load_args_from_ckpt(self, checkpoint_dir: str) -> None:
         """Load specific attributes from args.json"""
         args_path = os.path.join(checkpoint_dir, 'args.json')
         if not os.path.exists(args_path):

@@ -77,10 +77,14 @@ def find_module_list(model) -> Optional[nn.ModuleList]:
 def _add_gradient_checkpointing(module_list):
 
     def _new_forward(self, *args, **kwargs):
-        layer_ret = torch.utils.checkpoint.checkpoint(self.__old_forward, *args, **kwargs)
+        if self.gradient_checkpointing and self.training:
+            layer_ret = torch.utils.checkpoint.checkpoint(self.__old_forward, *args, **kwargs)
+        else:
+            layer_ret = self.__old_forward(*args, **kwargs)
         return layer_ret
 
     for module in module_list:
+        module.gradient_checkpointing = False
         if hasattr(module, '_old_forward'):  # device_map
             __old_forward = module._old_forward
             module._old_forward = MethodType(_new_forward, module)

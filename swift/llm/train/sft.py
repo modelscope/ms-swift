@@ -2,7 +2,8 @@ import os
 from functools import partial
 from typing import Any, Dict, List, Union
 
-from datasets import Dataset as HfDataset, IterableDataset as HfIterableDataset
+from datasets import Dataset as HfDataset
+from datasets import IterableDataset as HfIterableDataset
 from transformers import IntervalStrategy
 
 from swift.plugin import extra_callbacks, get_loss_func, optimizers_map
@@ -30,7 +31,7 @@ class SwiftSft(SwiftPipeline):
         super().__init__(args)
         self.train_msg = {}
         self._prepare_model_tokenizer()
-        self._prepare_template()
+        self._prepare_template(True)
         self._prepare_callbacks()
         self.model = prepare_tuner(self.model, self.args)
         logger.info(self.model)
@@ -47,25 +48,21 @@ class SwiftSft(SwiftPipeline):
 
     def _prepare_gradient_checkpointing(self):
         args = self.args
-        dynamic_gradient_checkpointing(self.model)
 
         if args.gradient_checkpointing:
+            dynamic_gradient_checkpointing(self.model)
             self.model.config.use_cache = False  # fix transformers==4.36
-            logger.info('Setting model.config.use_cache: False')
             self.model.enable_input_require_grads()
         model_meta = self.model.model_meta
         model_arch = get_model_arch(model_meta.model_arch)
         if model_meta.is_multimodal and model_arch:
             for vision_tower_name in model_arch.vision_tower:
                 vision_tower = deep_getattr(self.model, vision_tower_name)
-                if args.vit_gradient_checkpointing:
-                    if hasattr(vision_tower, 'enable_input_require_grads'):
-                        try:
-                            vision_tower.enable_input_require_grads()
-                        except NotImplementedError:
-                            pass
-                else:
-                    self.model.gradient_checkpointing_disable()
+                if hasattr(vision_tower, 'enable_input_require_grads'):
+                    try:
+                        vision_tower.enable_input_require_grads()
+                    except NotImplementedError:
+                        pass
 
     def _prepare_generation_config(self):
         args = self.args
@@ -75,16 +72,12 @@ class SwiftSft(SwiftPipeline):
 
     def _get_model_tokenizer(self, model, model_type, model_revision):
         args = self.args
-        return get_model_tokenizer(
-            model,
-            args.torch_dtype,
-            args.device_map,
-            model_type=model_type,
-            revision=model_revision,
-            quantization_config=args.quantization_config,
-            attn_impl=args.attn_impl,
-            rope_scaling=args.rope_scaling,
-            use_unsloth=args.tuner_backend == 'unsloth')
+        model_kwargs = args.get_model_kwargs()
+        # compat rlhf
+        model_kwargs['model_id_or_path'] = model
+        model_kwargs['model_type'] = model_type
+        model_kwargs['model_revision'] = model_revision
+        return get_model_tokenizer(**model_kwargs, use_unsloth=args.tuner_backend == 'unsloth')
 
     def _prepare_model_tokenizer(self):
         args = self.args
@@ -98,40 +91,22 @@ class SwiftSft(SwiftPipeline):
         self._prepare_generation_config()
         self._prepare_gradient_checkpointing()
 
-    def _prepare_template(self, **template_kwargs) -> None:
+    def _prepare_template(self, use_chat_template: bool) -> None:
         args = self.args
-        template = get_template(
-            args.template,
-            self.processor,
-            args.system,
-            args.max_length,
-            truncation_strategy=args.truncation_strategy,
-            max_pixels=args.max_pixels,
-            loss_scale=args.loss_scale,
-            tools_prompt=args.tools_prompt,
-            sequence_parallel_size=args.sequence_parallel_size,
-            **template_kwargs)
+        template_kwargs = args.get_template_kwargs()
+        template = get_template(args.template, self.processor, use_chat_template=use_chat_template, **template_kwargs)
         logger.info(f'default_system: {template.default_system}')
         self.template = template
 
     def _get_dataset(self):
         args = self.args
-        dataset_kwargs = {
-            'seed': args.data_seed,
-            'num_proc': args.dataset_num_proc,
-            'load_from_cache_file': args.load_from_cache_file,
-            'download_mode': args.download_mode,
-            'model_name': args.model_name,
-            'model_author': args.model_author,
-            'streaming': args.streaming,
-            'strict': args.strict
-        }
-
+        dataset_kwargs = args.get_dataset_kwargs()
         if len(args.val_dataset) > 0:
             # Loading val dataset
             _, val_dataset = load_dataset(args.val_dataset, 1.0, **dataset_kwargs)
             args.split_dataset_ratio = 0
-        train_dataset, val_dataset = load_dataset(args.dataset, args.split_dataset_ratio, **dataset_kwargs)
+        train_dataset, val_dataset = load_dataset(
+            args.dataset, split_dataset_ratio=args.split_dataset_ratio, **dataset_kwargs)
         logger.info(f'train_dataset: {train_dataset}')
         logger.info(f'val_dataset: {val_dataset}')
 

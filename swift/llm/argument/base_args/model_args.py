@@ -27,14 +27,12 @@ class ModelArguments:
         model_kwargs (Optional[str]): Additional keyword arguments for the model. Default is None.
         rope_scaling (Literal): Type of rope scaling to use. Default is None.
         device_map (Optional[str]): Configuration for device mapping. Default is None.
-        device_max_memory (List[str]): List of maximum memory for each CUDA device. Default is an empty list.
         local_repo_path (Optional[str]): Path to the local repository for model code. Default is None.
     """
     model: Optional[str] = None  # model id or model path
     model_type: Optional[str] = field(
         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
     model_revision: Optional[str] = None
-    use_hf: bool = False
 
     torch_dtype: Literal['bfloat16', 'float16', 'float32', None] = None
     # flash_attn: It will automatically convert names based on the model.
@@ -45,7 +43,6 @@ class ModelArguments:
     model_kwargs: Optional[str] = None
     rope_scaling: Literal['linear', 'dynamic'] = None  # TODO:check
     device_map: Optional[str] = None
-    device_max_memory: List[str] = field(default_factory=list)
     # When some model code needs to be downloaded from GitHub,
     # this parameter specifies the path to the locally downloaded repository.
     local_repo_path: Optional[str] = None
@@ -111,8 +108,7 @@ class ModelArguments:
 
     def _init_model_info(self, torch_dtype: Optional[torch.dtype]) -> torch.dtype:
         from swift.llm import get_model_tokenizer, ModelInfo
-        processor = get_model_tokenizer(
-            self.model, torch_dtype, load_model=False, model_type=self.model_type, revision=self.model_revision)[1]
+        processor = get_model_tokenizer(**self.get_model_kwargs())[1]
         self.model_info = processor.model_info
         self.model_meta = processor.model_meta
         self.model_type = self.model_info.model_type
@@ -121,9 +117,22 @@ class ModelArguments:
     def __post_init__(self):
         if self.rope_scaling:  # TODO: check
             logger.info(f'rope_scaling is set to {self.rope_scaling}, please remember to set max_length')
-        if self.use_hf:
-            os.environ['USE_HF'] = '1'
         self._init_model_kwargs()
         self._init_device_map()
         if self.model:
             self._init_torch_dtype()
+
+    def get_model_kwargs(self):
+        return {
+            'model_id_or_path': self.model,
+            'torch_dtype': self.torch_dtype,
+            'model_type': self.model_type,
+            'revision': self.model_revision,
+            'use_hf': self.use_hf,
+            'hub_token': self.hub_token,
+            'local_repo_path': self.local_repo_path,
+            'device_map': self.device_map,
+            'quantization_config': self.get_quantization_config(),
+            'attn_impl': self.attn_impl,
+            'rope_scaling': self.rope_scaling,
+        }

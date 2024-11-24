@@ -34,6 +34,15 @@ class LmdeployArguments:
     quant_policy: int = 0  # e.g. 4, 8
     vision_batch_size: int = 1  # max_batch_size in VisionConfig
 
+    def get_lmdeploy_engine_kwargs(self):
+        return {
+            'tp': args.tp,
+            'session_len': args.session_len,
+            'cache_max_entry_count': args.cache_max_entry_count,
+            'quant_policy': args.quant_policy,
+            'vision_batch_size': args.vision_batch_size
+        }
+
 
 @dataclass
 class VllmArguments:
@@ -51,7 +60,6 @@ class VllmArguments:
         limit_mm_per_prompt (Optional[str]): Limit multimedia per prompt. Default is None.
         vllm_max_lora_rank (int): Maximum LoRA rank. Default is 16.
         lora_modules (List[str]): List of LoRA modules. Default is an empty list.
-        max_logprobs (int): Maximum log probabilities. Default is 20.
     """
     # vllm
     gpu_memory_utilization: float = 0.9
@@ -63,12 +71,23 @@ class VllmArguments:
     enforce_eager: bool = False
     limit_mm_per_prompt: Optional[str] = None  # '{"image": 10, "video": 5}'
     vllm_max_lora_rank: int = 16
-    lora_modules: List[str] = field(default_factory=list)
-    max_logprobs: int = 20
 
-    def __post_init__(self):
-        self.vllm_enable_lora = len(self.lora_modules) > 0
-        self.vllm_max_loras = max(len(self.lora_modules), 1)
+    lora_modules: List[str] = field(default_factory=list)
+
+    def get_vllm_engine_kwargs(self):
+        return {
+            'gpu_memory_utilization': args.gpu_memory_utilization,
+            'tensor_parallel_size': args.tensor_parallel_size,
+            'pipeline_parallel_size': args.pipeline_parallel_size,
+            'max_num_seqs': args.max_num_seqs,
+            'max_model_len': args.max_model_len,
+            'disable_custom_all_reduce': args.disable_custom_all_reduce,
+            'enforce_eager': args.enforce_eager,
+            'limit_mm_per_prompt': args.limit_mm_per_prompt,
+            'max_lora_rank': args.vllm_max_lora_rank,
+            'enable_lora': len(self.lora_modules) > 0,
+            'max_loras': max(len(self.lora_modules), 1),
+        }
 
 
 @dataclass
@@ -143,7 +162,6 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
             self.load_args_from_ckpt(self.ckpt_dir)
         self._init_weight_type()
         BaseArguments.__post_init__(self)
-        VllmArguments.__post_init__(self)
         MergeArguments.__post_init__(self)
         self._parse_lora_modules()
 

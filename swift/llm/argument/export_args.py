@@ -57,7 +57,7 @@ class ExportArguments(MergeArguments, BaseArguments):
         if self.quant_bits > 0:
             if self.quant_method is None:
                 raise ValueError('Please specify the quantization method using `--quant_method awq/gptq`.')
-            if len(self.dataset) == 0 and self.quant_method in ('gptq', 'awq'):
+            if len(self.dataset) == 0 and self.quant_method in {'gptq', 'awq'}:
                 raise ValueError(f'self.dataset: {self.dataset}, Please input the quant dataset.')
 
     def _init_output_dir(self):
@@ -88,6 +88,7 @@ class ExportArguments(MergeArguments, BaseArguments):
         self._init_output_dir()
         if self.quant_bits > 0:
             self._init_quant()
+        self.save_args()
 
     def _init_torch_dtype(self) -> None:
         if self.quant_bits > 0 and self.torch_dtype is None:

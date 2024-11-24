@@ -35,11 +35,9 @@ class QuantizeArguments:
     bnb_4bit_quant_type: Literal['fp4', 'nf4'] = 'nf4'
     bnb_4bit_use_double_quant: bool = True
 
-    def _init_quantization_config(self) -> None:
-        from ..export_args import ExportArguments
-        if isinstance(self, ExportArguments) or self.quant_method is None:
-            self.quantization_config = None
-            return
+    def get_quantization_config(self):
+        if self.quant_method is None:
+            return None
         assert self.quant_method in {'bnb', 'hqq', 'eetq'}
         if self.quant_method == 'bnb':
             if self.quant_bits == 4:
@@ -61,14 +59,12 @@ class QuantizeArguments:
             from transformers import EetqConfig
             quantization_config = EetqConfig(f'int{self.quant_bits}')
 
-        self.quantization_config = quantization_config
+        return quantization_config
 
     def __post_init__(self):
-        from swift.llm import ExportArguments
         if self.bnb_4bit_compute_dtype is None:
             if self.torch_dtype in {torch.float16, torch.float32}:
                 self.bnb_4bit_compute_dtype = torch.float32
             elif self.torch_dtype == torch.bfloat16:
                 self.bnb_4bit_compute_dtype = torch.bfloat16
         self.bnb_4bit_compute_dtype: torch.dtype = HfConfigFactory.to_torch_dtype(self.bnb_4bit_compute_dtype)
-        self._init_quantization_config()

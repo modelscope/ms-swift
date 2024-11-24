@@ -1,4 +1,3 @@
-import json
 import os
 import re
 import sys
@@ -6,11 +5,12 @@ import time
 from copy import deepcopy
 from datetime import datetime
 from functools import partial
-from json import JSONDecodeError
 from typing import List, Type
 
 import gradio as gr
+import json
 import torch
+from json import JSONDecodeError
 
 from swift.llm import DeployArguments, InferArguments, InferClient, InferRequest, RequestConfig
 from swift.ui.base import BaseUI
@@ -184,7 +184,8 @@ class LLMInfer(BaseUI):
                     outputs=[prompt, chatbot, image, video, audio, infer_request],
                     queue=True)
 
-                clear_history.click(fn=cls.clear_session, inputs=[], outputs=[prompt, chatbot, image, video, audio, infer_request])
+                clear_history.click(
+                    fn=cls.clear_session, inputs=[], outputs=[prompt, chatbot, image, video, audio, infer_request])
 
                 if not LLMInfer.is_gradio_app:
                     base_tab.element('running_tasks').change(
@@ -311,7 +312,8 @@ class LLMInfer(BaseUI):
             else:
                 user = slices[0]
                 assistant = {'role': 'assistant', 'content': None}
-            user['content'] = (user['content'] or '').replace('<image>', '').replace('<video>', '').replace('<audio>', '').strip()
+            user['content'] = (user['content'] or '').replace('<image>', '').replace('<video>',
+                                                                                     '').replace('<audio>', '').strip()
             for media in user['medias']:
                 total_history.append([(media, ), None])
             if user['content'] or assistant['content']:
@@ -355,7 +357,8 @@ class LLMInfer(BaseUI):
                 infer_request.messages[-1]['medias'].append(media)
 
         if not prompt:
-            yield '', cls._replace_tag_with_media(infer_request), gr.update(value=None), gr.update(value=None), gr.update(value=None), infer_request
+            yield '', cls._replace_tag_with_media(infer_request), gr.update(value=None), gr.update(
+                value=None), gr.update(value=None), infer_request
             return
         else:
             infer_request.messages[-1]['content'] = infer_request.messages[-1]['content'] + prompt
@@ -385,14 +388,14 @@ class LLMInfer(BaseUI):
             if 'medias' in m:
                 m.pop('medias')
         stream_resp = InferClient(
-            port=args['port'],
-        ).infer(
-            infer_requests=[_infer_request],
-            request_config=request_config,
-        )
+            port=args['port'], ).infer(
+                infer_requests=[_infer_request],
+                request_config=request_config,
+            )
         if infer_request.messages[-1]['role'] != 'assistant':
             infer_request.messages.append({'role': 'assistant', 'content': ''})
         for chunk in stream_resp:
             stream_resp_with_history += chunk[0].choices[0].delta.content if chat else chunk.choices[0].text
             infer_request.messages[-1]['content'] = stream_resp_with_history
-            yield '', cls._replace_tag_with_media(infer_request), gr.update(value=None), gr.update(value=None), gr.update(value=None), infer_request
+            yield '', cls._replace_tag_with_media(infer_request), gr.update(value=None), gr.update(
+                value=None), gr.update(value=None), infer_request
