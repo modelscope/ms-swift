@@ -100,7 +100,6 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
         max_batch_size (int): Maximum batch size for the pt engine. Default is 1.
         val_dataset_sample (Optional[int]): Sample size for validation dataset. Default is None.
         result_dir (Optional[str]): Directory to store inference results. Default is None.
-        save_result (bool): Flag to indicate if results should be saved. Default is True.
         stream (Optional[bool]): Flag to indicate if streaming should be enabled. Default is None.
     """
     ckpt_dir: Optional[str] = field(default=None, metadata={'help': '/path/to/your/vx-xxx/checkpoint-xxx'})
@@ -109,31 +108,23 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
 
     # only for inference
     val_dataset_sample: Optional[int] = None
-    result_dir: Optional[str] = field(default=None, metadata={'help': '/path/to/your/infer_result'})
-    save_result: bool = True
+    result_path: Optional[str] = None
     stream: Optional[bool] = None
 
-    def _init_result_dir(self, folder_name: str = 'infer_result') -> None:
-        self.result_path = None
-        if not self.save_result:
-            return
-
-        if self.result_dir is None:
-            if self.ckpt_dir is None:
-                if hasattr(self, 'model_info'):
-                    result_dir = self.model_info.model_dir
-                else:
-                    result_dir = './'
-            else:
-                result_dir = self.ckpt_dir
-            result_dir = os.path.join(result_dir, folder_name)
+    def get_result_path(self, folder_name) -> str:
+        if self.ckpt_dir is None:
+            result_dir = self.model_info.model_dir
         else:
-            result_dir = self.result_dir
-        result_dir = to_abspath(result_dir)
+            result_dir = self.ckpt_dir
+        result_dir = to_abspath(os.path.join(result_dir, folder_name))
         os.makedirs(result_dir, exist_ok=True)
-        self.result_dir = result_dir
         time = dt.datetime.now().strftime('%Y%m%d-%H%M%S')
-        self.result_path = os.path.join(result_dir, f'{time}.jsonl')
+        return os.path.join(result_dir, f'{time}.jsonl')
+
+    def _init_result_path(self) -> None:
+        if self.result_path is not None:
+            return
+        self.result_path = self.get_result_path('infer_result')
         logger.info(f'args.result_path: {self.result_path}')
 
     def _init_stream(self):
@@ -162,7 +153,7 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
         MergeArguments.__post_init__(self)
         self._parse_lora_modules()
 
-        self._init_result_dir()
+        self._init_result_path()
         self._init_stream()
         self._init_eval_human()
         if self.ckpt_dir is None:

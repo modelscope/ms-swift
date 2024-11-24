@@ -14,6 +14,12 @@ class SwiftEval(SwiftPipeline):
     def run(self):
         args = self.args
 
+    def run_opencompass(self):
+        pass
+
+    def run_vlmeval(self):
+        pass
+
 
 def eval_main(args: Union[List[str], EvalArguments, None] = None):
     return SwiftEval(args).main()
