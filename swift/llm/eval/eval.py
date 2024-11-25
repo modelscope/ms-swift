@@ -111,8 +111,10 @@ class SwiftEval(SwiftPipeline):
             'eval_config': {
                 'data': dataset,
                 'work_dir': args.eval_result_dir,
-                'models': [{
+                'model': [{
+                    'name': 'CustomAPIModel',
                     'api_base': args.url,
+                    'type': args.model,
                 }],
                 'nproc': args.max_batch_size,
             }
