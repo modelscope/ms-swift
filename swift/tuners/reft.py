@@ -56,7 +56,7 @@ class Reft(SwiftAdapter):
         from swift.utils.import_utils import is_pyreft_available
         if not is_pyreft_available():
             raise ImportError('Please install pyreft before using ReFT: '
-                              '`pip install git+https://github.com/stanfordnlp/pyreft.git`')
+                              '`pip install pyreft`')
 
         import pyreft
         from pyreft import ReftModel
@@ -83,7 +83,7 @@ class Reft(SwiftAdapter):
             try:
                 return super(ReftModel, self).__getattr__(key)
             except AttributeError:
-                if 'model' in self.__dict__:
+                if 'model' in dir(self):
                     return getattr(self.model, key)
                 raise
 

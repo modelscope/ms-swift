@@ -1,3 +1,4 @@
+# 16GiB * 2
 nproc_per_node=2
 
 PYTHONPATH=../../.. \
@@ -19,4 +20,5 @@ swift sft \
     --logging_steps 5 \
     --model_author swift \
     --model_name swift-robot \
-    --deepspeed default-zero3
+    --deepspeed zero3 \
+    --max_length 1024

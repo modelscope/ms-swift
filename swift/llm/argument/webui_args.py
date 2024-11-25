@@ -21,3 +21,7 @@ class WebUIArguments(InferArguments):
     share: bool = False
     lang: str = 'zh'
     studio_title: Optional[str] = None
+
+    def __post_init__(self):
+        if self.model is not None:
+            super().__post_init__()
