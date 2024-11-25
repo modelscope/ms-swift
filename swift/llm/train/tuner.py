@@ -6,10 +6,10 @@ import torch
 import transformers
 from packaging import version
 
-from swift.llm import TrainArguments
+from swift.llm import TrainArguments, get_model_arch
 from swift.plugin import Tuner, extra_tuners
 from swift.tuners import Swift
-from swift.utils import get_logger, use_torchacc
+from swift.utils import get_logger, use_torchacc, find_all_linears, find_embedding
 
 logger = get_logger()
 
@@ -222,6 +222,28 @@ def prepare_model(model, args: TrainArguments):
         model.is_tuner_plugin = True
     else:
         raise ValueError(f'args.train_type: {args.train_type}')
+
+    if args.use_galore:
+        from swift.trainers.optimizers.galore import GaLoreConfig
+        if args.galore_target_modules is None:
+            args.galore_target_modules = find_all_linears(model)
+        if args.galore_with_embedding:
+            args.galore_target_modules += find_embedding(model)
+        args.training_args.galore_config = GaLoreConfig(
+            target_modules=args.galore_target_modules,
+            rank=args.galore_rank,
+            update_proj_gap=args.galore_update_proj_gap,
+            galore_scale=args.galore_scale,
+            proj_type=args.galore_proj_type,
+            optim_per_parameter=args.galore_optim_per_parameter,
+            quantize=args.galore_quantization,
+            proj_quant=args.galore_proj_quant,
+            proj_bits=args.galore_proj_bits,
+            proj_group_size=args.galore_proj_group_size,
+            cos_threshold=args.galore_cos_threshold,
+            gamma_proj=args.galore_gamma_proj,
+            queue_size=args.galore_queue_size,
+        )
 
     if args.sequence_parallel_size > 1:
         from swift.trainers.xtuner import dispatch_module_xtuner

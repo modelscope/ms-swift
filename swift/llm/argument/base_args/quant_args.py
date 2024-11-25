@@ -21,6 +21,7 @@ class QuantizeArguments:
             The compute dtype for bnb 4-bit quantization.
         bnb_4bit_quant_type (Literal['fp4', 'nf4']): The quantization type for bnb 4-bit quantization.
         bnb_4bit_use_double_quant (bool): Whether to use double quantization for bnb 4-bit quantization.
+        bnb_4bit_quant_storage (Optional[str]): This sets the storage type to pack the quanitzed 4-bit prarams.
     """
     # awq, gptq, and aqlm need to be pre-quantized models,
     # while bnb, hqq, and eetq can be quantized during SFT using the original models.
@@ -34,6 +35,7 @@ class QuantizeArguments:
     bnb_4bit_compute_dtype: Literal['float16', 'bfloat16', 'float32', None] = None
     bnb_4bit_quant_type: Literal['fp4', 'nf4'] = 'nf4'
     bnb_4bit_use_double_quant: bool = True
+    bnb_4bit_quant_storage: Optional[str] = None
 
     def get_quantization_config(self):
         if self.quant_method is None:
@@ -51,7 +53,8 @@ class QuantizeArguments:
                 load_in_8bit=load_in_8bit,
                 bnb_4bit_compute_dtype=self.bnb_4bit_compute_dtype,
                 bnb_4bit_quant_type=self.bnb_4bit_quant_type,
-                bnb_4bit_use_double_quant=self.bnb_4bit_use_double_quant)
+                bnb_4bit_use_double_quant=self.bnb_4bit_use_double_quant,
+                bnb_4bit_quant_storage=self.bnb_4bit_quant_storage)
         elif self.quant_method == 'hqq':
             from transformers import HqqConfig
             quantization_config = HqqConfig(nbits=self.quant_bits, axis=self.hqq_axis)
