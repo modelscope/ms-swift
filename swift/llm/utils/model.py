@@ -218,6 +218,8 @@ class ModelType:
     qwen2_5_coder_32b_instruct_gptq_int8 = 'qwen2_5-coder-32b-instruct-gptq-int8'
     qwen2_5_coder_32b_instruct_awq = 'qwen2_5-coder-32b-instruct-awq'
 
+    marco_o1 = 'marco-o1'
+
     # qwen-vl
     qwen_vl = 'qwen-vl'
     qwen_vl_chat = 'qwen-vl-chat'
@@ -3572,6 +3574,16 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     support_megatron=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen2-0.5B-Instruct')
+@register_model(
+    ModelType.marco_o1,
+    'AIDC-AI/Marco-o1',
+    LoRATM.llama,
+    TemplateType.marco_o1,
+    support_flash_attn=True,
+    support_vllm=True,
+    support_lmdeploy=True,
+    requires=['transformers>=4.37'],
+    hf_model_id='AIDC-AI/Marco-o1')
 @register_model(
     ModelType.qwen2_1_5b_instruct,
     'qwen/Qwen2-1.5B-Instruct',
