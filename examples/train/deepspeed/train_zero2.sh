@@ -1,3 +1,4 @@
+# 18GiB * 2
 nproc_per_node=2
 
 PYTHONPATH=../../.. \
@@ -7,6 +8,7 @@ swift sft \
     --model Qwen/Qwen2-7B-Instruct \
     --train_type lora \
     --dataset swift/self-cognition#1000 \
+    --torch_dtype bfloat16 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \
     --lora_rank 8 \
@@ -19,4 +21,4 @@ swift sft \
     --logging_steps 5 \
     --model_author swift \
     --model_name swift-robot \
-    --deepspeed default-zero2
+    --deepspeed zero2

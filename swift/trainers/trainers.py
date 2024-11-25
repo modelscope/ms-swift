@@ -178,7 +178,9 @@ class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
         if getattr(self.args, 'average_tokens_across_devices', False):
             loss *= self.accelerator.num_processes
 
-        self._compute_token_acc(outputs, labels)
+        if outputs.logits is not None:
+            # In case of Liger
+            self._compute_token_acc(outputs, labels)
         return (loss, outputs) if return_outputs else loss
 
     def _compute_token_acc(self, outputs, labels) -> None:

@@ -1,3 +1,4 @@
+# 14GiB * 4
 nproc_per_node=2
 
 PYTHONPATH=../../.. \
