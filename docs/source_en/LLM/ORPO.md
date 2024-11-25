@@ -40,7 +40,7 @@ Swift has built-in methods for processing this dataset, using `answer_zh` as `re
 
 ```shell
 # Experimental environment: A100
-# DDP + MP
+# MP + DDP
 # Memory usage: 4*24G
 nproc_per_node=2
 

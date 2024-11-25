@@ -78,7 +78,7 @@ class SwiftInfer(SwiftPipeline):
             raise
 
     @staticmethod
-    def get_infer_engine(args, **kwargs):
+    def get_infer_engine(args: InferArguments, **kwargs):
         kwargs.update({
             'model_id_or_path': args.model,
             'model_type': args.model_type,

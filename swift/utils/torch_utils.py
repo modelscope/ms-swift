@@ -138,7 +138,7 @@ def time_synchronize() -> float:
 
 
 def _get_max_memory(device_ids: List[int]) -> Dict[Union[int, str], int]:
-    """add feat in accelerate to support DDP + MP"""
+    """add feat in accelerate to support MP + DDP"""
     import psutil
     # Make sure CUDA is initialized on each GPU to have the right memory info.
     for i in device_ids:

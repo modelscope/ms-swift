@@ -13,7 +13,7 @@ from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import is_torch_bf16_gpu_available, is_torch_cuda_available, is_torch_npu_available, strtobool
 from transformers.utils.versions import require_version
 
-from swift.utils import get_dist_setting, get_logger, is_ddp_plus_mp, is_dist, is_unsloth_available, use_torchacc
+from swift.utils import get_dist_setting, get_logger, is_mp_ddp, is_dist, is_unsloth_available, use_torchacc
 from .constant import ModelType
 from .utils import AttnImpl, HfConfigFactory, ModelInfo, safe_snapshot_download
 
@@ -267,7 +267,7 @@ def get_default_device_map():
         return 'cpu'
     elif torch.cuda.device_count() == 1:
         return 'cuda:0'
-    elif is_dist() and not is_ddp_plus_mp():
+    elif is_dist() and not is_mp_ddp():
         return f'cuda:{local_rank}'
     else:
         return 'auto'

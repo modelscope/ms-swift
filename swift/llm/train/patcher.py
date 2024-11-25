@@ -9,7 +9,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from transformers import trainer
 
 from swift import get_logger
-from swift.utils import get_dist_setting, is_ddp_plus_mp, use_torchacc
+from swift.utils import get_dist_setting, is_mp_ddp, use_torchacc
 from swift.utils.torch_utils import _get_max_memory, _sync_max_memory
 
 logger = get_logger()
@@ -20,15 +20,15 @@ def patch_ddp_mp():
     After patching, the ddp can run with the device_map.
     This should be called before any training starts.
     """
-    if is_ddp_plus_mp():
+    if is_mp_ddp():
         from accelerate.utils.modeling import get_balanced_memory, infer_auto_device_map
 
         @wraps(infer_auto_device_map)
         def _infer_auto_device_map_patch(model: Module,
                                          max_memory: Optional[Dict[Union[int, str], Union[int, str]]] = None,
                                          **kwargs) -> Dict[str, Union[int, str, torch.device]]:
-            """The auxiliary function for supports DDP+MP. Monkey Patching.
-            add feat in accelerate to support DDP + MP"""
+            """The auxiliary function for supports MP + DDP. Monkey Patching.
+            add feat in accelerate to support MP + DDP"""
             verbose = kwargs.pop('verbose', False)
             n_gpu = torch.cuda.device_count()
             _, local_rank, _, local_world_size = get_dist_setting()
@@ -45,7 +45,7 @@ def patch_ddp_mp():
         transformers.modeling_utils.get_balanced_memory = lambda *args, **kwargs: None
         transformers.modeling_utils.infer_auto_device_map = _infer_auto_device_map_patch
 
-    if is_ddp_plus_mp() or use_torchacc():
+    if is_mp_ddp() or use_torchacc():
         _old_accelerator_init = trainer.Accelerator.__init__
         trainer.Accelerator.__init__ = (lambda self, device_placement=False, *args, **kwargs: _old_accelerator_init(
             self, device_placement=device_placement, *args, **kwargs))

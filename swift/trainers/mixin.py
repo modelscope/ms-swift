@@ -27,7 +27,7 @@ from transformers.utils import is_torch_npu_available
 from swift.hub import get_hub
 from swift.llm import Processor, ProcessorMixin
 from swift.tuners import SwiftModel
-from swift.utils import get_logger, is_ddp_plus_mp
+from swift.utils import get_logger, is_mp_ddp
 from .arguments import TrainingArguments
 from .optimizers.galore import create_optimizer_and_scheduler
 from .torchacc_mixin import TorchAccMixin
@@ -119,7 +119,7 @@ class SwiftMixin(TorchAccMixin, ProcessorMixin):
 
     def _load_optimizer_and_scheduler(self, checkpoint):
         super()._load_optimizer_and_scheduler(checkpoint)
-        if is_ddp_plus_mp():
+        if is_mp_ddp():
             # fix mp+ddp adamw
             for v in self.optimizer.state.values():
                 if 'step' in v:

@@ -98,7 +98,7 @@ class ModelArguments:
 
     def _init_model_info(self, torch_dtype: Optional[torch.dtype]) -> torch.dtype:
         from swift.llm import get_model_tokenizer, ModelInfo
-        processor = get_model_tokenizer(**self.get_model_kwargs())[1]
+        processor = get_model_tokenizer(load_model=False, **self.get_model_kwargs())[1]
         self.model_info = processor.model_info
         self.model_meta = processor.model_meta
         self.model_type = self.model_info.model_type
