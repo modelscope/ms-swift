@@ -20,7 +20,7 @@ class EvalArguments(DeployArguments):
         do_sample (bool): Flag to indicate if sampling should be done. Default is False.
     """
     eval_dataset: List[str] = field(default_factory=list)
-    eval_limit: Optional[str] = None
+    eval_limit: Optional[int] = None
 
     eval_result_path: Optional[str] = None
     do_sample: bool = False
