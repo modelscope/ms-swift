@@ -12,7 +12,7 @@ from datasets import Dataset as HfDataset
 from swift.llm import (InferArguments, InferRequest, Messages, Processor, SwiftPipeline, Template, get_template,
                        load_dataset, sample_dataset)
 from swift.tuners import Swift
-from swift.utils import append_to_jsonl, get_logger
+from swift.utils import append_to_jsonl, get_logger, is_master
 from .protocol import RequestConfig
 
 logger = get_logger()
@@ -278,7 +278,7 @@ class SwiftInfer(SwiftPipeline):
                 dist.gather_object(result_list, total_result_list)
                 result_list = total_result_list and list(chain.from_iterable(total_result_list))
 
-            if args.result_path and result_list:
+            if is_master() and args.result_path and result_list:
                 append_to_jsonl(args.result_path, result_list)
         return result_list
 
