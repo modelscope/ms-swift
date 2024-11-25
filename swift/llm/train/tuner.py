@@ -3,6 +3,8 @@ import os
 
 import json
 import torch
+import transformers
+from packaging import version
 
 from swift.llm import TrainArguments
 from swift.plugin import Tuner, extra_tuners
@@ -28,6 +30,132 @@ def apply_liger(model_type: str):
         apply_liger_kernel_to_qwen2()
     else:
         raise ValueError(f'Unsupported liger model_type: {model_type}')
+
+
+def prepare_adapter(model, args: TrainArguments):
+    from swift.tuners import (AdaLoraConfig, AdapterConfig, BOFTConfig, IA3Config, LLaMAProConfig, LongLoRAModelType,
+                              LoraConfig, LoRAConfig, ReftConfig, Swift, VeraConfig)
+    target_modules = args.get_target_modules(model)
+    lora_kwargs = {
+        'r': args.lora_rank,
+        'target_modules': target_modules,
+        'lora_alpha': args.lora_alpha,
+        'lora_dropout': args.lora_dropout,
+        'bias': args.lora_bias,
+        'modules_to_save': args.modules_to_save,
+        'use_rslora': args.use_rslora,
+        'use_dora': args.use_dora,
+        'lorap_lr_ratio': args.lorap_lr_ratio,
+        'init_lora_weights': args.init_lora_weights,
+    }
+
+    if args.train_type in ('lora', 'longlora'):
+        if args.tuner_backend == 'swift':
+            lora_config = LoRAConfig(lora_dtype=args.lora_dtype, **lora_kwargs)
+            model = Swift.prepare_model(model, lora_config)
+            logger.info(f'lora_config: {lora_config}')
+        elif args.tuner_backend == 'peft':
+            lora_config = LoraConfig(task_type='CAUSAL_LM', lora_dtype=args.lora_dtype, **lora_kwargs)
+            model = Swift.prepare_model(model, lora_config)
+            logger.info(f'lora_config: {lora_config}')
+        elif args.tuner_backend == 'unsloth':
+            from unsloth import FastLanguageModel
+            assert args.train_type == 'lora', 'Unsloth does not support LongLoRA'
+            lora_kwargs.pop('lorap_lr_ratio')
+            model = FastLanguageModel.get_peft_model(
+                model,
+                use_gradient_checkpointing=True,
+                max_seq_length=args.max_length,
+                **lora_kwargs,
+            )
+            logger.info(f'unsloth_config: {lora_kwargs}')
+        if args.train_type == 'longlora':
+            assert LongLoRAModelType.LLAMA in args.model_type
+            assert version.parse(transformers.__version__) >= version.parse('4.39.3')
+            from swift.tuners.longlora.llama import replace_llama_attn
+            replace_llama_attn(model)
+            model.config.group_size_ratio = 0.25
+    elif args.train_type == 'adalora':
+        lora_kwargs.pop('lorap_lr_ratio', None)
+        lora_kwargs['rank_pattern'] = None
+        adalora_config = AdaLoraConfig(
+            task_type='CAUSAL_LM',
+            **lora_kwargs,
+            target_r=args.adalora_target_r,
+            init_r=args.adalora_init_r,
+            tinit=args.adalora_tinit,
+            tfinal=args.adalora_tfinal,
+            deltaT=args.adalora_deltaT,
+            beta1=args.adalora_beta1,
+            beta2=args.adalora_beta2,
+            orth_reg_weight=args.adalora_orth_reg_weight,
+        )
+        model = Swift.prepare_model(model, adalora_config)
+        logger.info(f'adalora_config: {adalora_config}')
+    elif args.train_type == 'llamapro':
+        llamapro_config = LLaMAProConfig(
+            model_type=model.model_meta.model_arch,
+            num_new_blocks=args.llamapro_num_new_blocks,
+            num_groups=args.llamapro_num_groups)
+        model = Swift.prepare_model(model, llamapro_config)
+        logger.info(f'llamapro_config: {llamapro_config}')
+    elif args.train_type == 'adapter':
+        model_arch = get_model_arch(model.model_meta.model_arch)
+        mlp_key = model_arch.mlp
+        mlp_key = mlp_key.split('.{}.')[1]
+        adapter_config = AdapterConfig(
+            dim=model.config.hidden_size,
+            target_modules=[mlp_key],
+            hidden_pos=0,
+            adapter_length=args.adapter_length,
+            act_layer=args.adapter_act)
+        model = Swift.prepare_model(model, adapter_config)
+        logger.info(f'adapter_config: {adapter_config}')
+    elif args.train_type == 'vera':
+        vera_config = VeraConfig(
+            r=args.vera_rank,
+            target_modules=args.target_modules,
+            projection_prng_key=args.vera_projection_prng_key,
+            vera_dropout=args.vera_dropout,
+            d_initial=args.vera_d_initial,
+            modules_to_save=args.modules_to_save,
+        )
+        vera_config = args.get_vera_target_modules(model, vera_config)
+        model = Swift.prepare_model(model, vera_config)
+        logger.info(f'vera_config: {vera_config}')
+    elif args.train_type == 'boft':
+        boft_config = BOFTConfig(
+            boft_block_size=args.boft_block_size,
+            boft_block_num=args.boft_block_num,
+            boft_n_butterfly_factor=args.boft_n_butterfly_factor,
+            target_modules=args.target_modules,
+            boft_dropout=args.boft_dropout,
+            modules_to_save=args.modules_to_save,
+        )
+        model = Swift.prepare_model(model, boft_config)
+        logger.info(f'boft_config: {boft_config}')
+    elif args.train_type == 'fourierft':
+        from peft import FourierFTConfig
+        fourier_config = FourierFTConfig(
+            target_modules=args.target_modules,
+            modules_to_save=args.modules_to_save,
+            n_frequency=args.fourier_n_frequency,
+            scaling=args.fourier_scaling,
+        )
+        model = Swift.prepare_model(model, fourier_config)
+        logger.info(f'fourier_config: {fourier_config}')
+    elif args.train_type == 'reft':
+        reft_config = ReftConfig(
+            model_type=model.model_meta.model_arch,
+            layer_key=args.reft_layer_key,
+            r=args.reft_rank,
+            layers=args.reft_layers,
+            intervention_type=args.reft_intervention_type,
+            args=args.reft_args,
+        )
+        logger.info(f'reft config: {reft_config}')
+        model = Swift.prepare_model(model, {'reft': reft_config})
+    return model
 
 
 def torchacc_resume_from_checkpoint(args, model):
@@ -64,7 +192,7 @@ def prepare_model(model, args: TrainArguments):
     if args.is_adapter:
         model.requires_grad_(False)
         if args.resume_from_checkpoint is None:
-            model = args.prepare_adapter(model)
+            model = prepare_adapter(model, args)
         else:
             if getattr(model, 'is_tuner_plugin', False):
                 with open(os.path.join(args.resume_from_checkpoint, 'args.json'), 'r') as f:
