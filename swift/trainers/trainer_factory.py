@@ -2,9 +2,10 @@
 import importlib.util
 import inspect
 from contextlib import contextmanager
+from dataclasses import asdict
 from typing import Dict
 
-from swift.utils import dataclass_to_dict, get_logger
+from swift.utils import get_logger
 
 logger = get_logger()
 
@@ -47,12 +48,11 @@ class TrainerFactory:
     @classmethod
     def get_training_args(cls, args):
         training_args_cls = cls.get_cls(args, cls.TRAINING_ARGS_MAPPING)
-        parameters = dataclass_to_dict(args)
-        train_args_parameters = inspect.signature(training_args_cls.__init__).parameters
+        args_dict = asdict(args)
+        parameters = inspect.signature(training_args_cls.__init__).parameters
 
-        training_args_kwargs = {}
-        for k, v in parameters.items():
-            if k in train_args_parameters:
-                training_args_kwargs[k] = v
+        for k in list(args_dict.keys()):
+            if k not in parameters:
+                args_dict.pop(k)
 
-        return training_args_cls(**training_args_kwargs)
+        return training_args_cls(**args_dict)

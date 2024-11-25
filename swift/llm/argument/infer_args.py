@@ -114,7 +114,7 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
     result_path: Optional[str] = None
     stream: Optional[bool] = None
 
-    def get_result_path(self, folder_name) -> str:
+    def get_result_path(self, folder_name, suffix: str = '.jsonl') -> str:
         if self.ckpt_dir is None:
             result_dir = self.model_info.model_dir
         else:
@@ -122,7 +122,7 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
         result_dir = to_abspath(os.path.join(result_dir, folder_name))
         os.makedirs(result_dir, exist_ok=True)
         time = dt.datetime.now().strftime('%Y%m%d-%H%M%S')
-        return os.path.join(result_dir, f'{time}.jsonl')
+        return os.path.join(result_dir, f'{time}{suffix}')
 
     def _init_result_path(self) -> None:
         if self.result_path is not None:

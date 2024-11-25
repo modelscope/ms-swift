@@ -1,8 +1,11 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import datetime as dt
+import os
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional
 
 from swift.utils import get_logger
+from .base_args import to_abspath
 from .deploy_args import DeployArguments
 
 logger = get_logger()
@@ -24,6 +27,7 @@ class EvalArguments(DeployArguments):
 
     eval_result_dir: Optional[str] = None
     do_sample: bool = False
+    verbose: bool = False
 
     def __post_init__(self):
         super().__post_init__()
@@ -33,6 +37,8 @@ class EvalArguments(DeployArguments):
     def _init_eval_dataset(self):
         if isinstance(self.eval_dataset, str):
             self.eval_dataset = [self.eval_dataset]
+        self.url = f'http://127.0.0.1:{self.port}/v1/chat/completions'
+
         from evalscope.backend.opencompass import OpenCompassBackendManager
         from evalscope.backend.vlm_eval_kit import VLMEvalKitBackendManager
         self.opencompass_dataset = set(OpenCompassBackendManager.list_datasets())
@@ -57,8 +63,9 @@ class EvalArguments(DeployArguments):
     def _init_eval_result_dir(self) -> None:
         if self.eval_result_dir is not None:
             return
-        self.eval_result_dir = self.get_result_path('eval_result')
+        self.eval_result_dir = self.get_result_path('eval_result', '')
+        os.makedirs(self.eval_result_dir, exist_ok=True)
         logger.info(f'args.eval_result_dir: {self.eval_result_dir}')
 
     def _init_result_path(self) -> None:
-        pass
+        return

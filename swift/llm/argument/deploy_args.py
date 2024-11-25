@@ -1,8 +1,10 @@
 from dataclasses import dataclass
 from typing import Optional
 
-from swift.utils import find_free_port
+from swift.utils import find_free_port, get_logger
 from .infer_args import InferArguments
+
+logger = get_logger()
 
 
 @dataclass

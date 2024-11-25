@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import asyncio
-from dataclasses import asdict
+from contextlib import contextmanager
+from dataclasses import asdict, is_dataclass
 from http import HTTPStatus
 from threading import Thread
 from typing import Any, Dict, List, Optional, Union
@@ -12,7 +13,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from swift.llm import TEMPLATE_MAPPING, DeployArguments, Template, merge_lora
 from swift.plugin import InferStats
-from swift.utils import get_logger
+from swift.utils import append_to_jsonl, get_logger
 from .infer import SwiftInfer
 from .protocol import ChatCompletionRequest, CompletionRequest, Model, ModelList
 
@@ -71,12 +72,37 @@ class SwiftDeploy(SwiftInfer):
         status_code = int(status_code)
         return JSONResponse({'message': message, 'object': 'error'}, status_code)
 
-    def _post_process(self, response, return_cmpl_response: bool = False):
-        if self.args.log_interval > 0:
+    def _post_process(self, request_info, response, return_cmpl_response: bool = False):
+        args = self.args
+        if args.log_interval > 0:
             self.infer_states.update(response)
         if return_cmpl_response:
             response = response.to_cmpl_response()
+
+        if args.result_path is not None:
+            data = {'response': response, **request_info}
+            data = {k: asdict(v) if is_dataclass(v) else str(v) for k, v in data.items()}
+            append_to_jsonl(args.result_path, data, strict=False)
         return response
+
+    @contextmanager
+    def patch_infer_engine(self, infer_request, request_info):
+        # log generation_config
+        verbose = self.args.verbose
+        _origin_add_stop_words = self.infer_engine.__class__._add_stop_words
+
+        def _add_stop_words(self, generation_config, *args, **kwargs):
+            res = _origin_add_stop_words(self, generation_config, *args, **kwargs)
+            request_info.update({'infer_request': infer_request, 'generation_config': generation_config})
+            if verbose:
+                logger.info(request_info)
+            return res
+
+        self.infer_engine.__class__._add_stop_words = _add_stop_words
+        try:
+            yield
+        finally:
+            self.infer_engine.__class__._add_stop_words = _origin_add_stop_words
 
     async def create_chat_completion(self,
                                      request: ChatCompletionRequest,
@@ -84,18 +110,20 @@ class SwiftDeploy(SwiftInfer):
                                      *,
                                      return_cmpl_response: bool = False):
         infer_request, request_config = request.parse()
-        res_or_gen = await self.infer_async(infer_request, request_config, template=self.template)
+        request_info = {}
+        with self.patch_infer_engine(infer_request, request_info):
+            res_or_gen = await self.infer_async(infer_request, request_config, template=self.template)
         if request_config.stream:
 
             async def _gen_wrapper():
                 async for res in res_or_gen:
-                    res = self._post_process(res, return_cmpl_response)
+                    res = self._post_process(request_info, res, return_cmpl_response)
                     yield f'data: {json.dumps(asdict(res), ensure_ascii=False)}\n\n'
                 yield 'data: [DONE]\n\n'
 
             return StreamingResponse(_gen_wrapper(), media_type='text/event-stream')
         else:
-            return self._post_process(res_or_gen, return_cmpl_response)
+            return self._post_process(request_info, res_or_gen, return_cmpl_response)
 
     async def create_completion(self, request: CompletionRequest, raw_request: Request):
         chat_request = ChatCompletionRequest.from_cmpl_request(request)

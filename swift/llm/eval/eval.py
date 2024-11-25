@@ -1,6 +1,8 @@
+import inspect
 import multiprocessing
 import time
 from contextlib import contextmanager
+from dataclasses import asdict
 from typing import Any, Dict, List, Union
 
 from aiohttp.client_exceptions import ClientConnectorError
@@ -8,10 +10,10 @@ from evalscope.run import run_task
 from evalscope.summarizer import Summarizer
 
 from swift.utils import get_logger
-from ..argument import EvalArguments
+from ..argument import DeployArguments, EvalArguments
 from ..base import SwiftPipeline
 from ..dataset import MediaResource
-from ..infer import InferClient
+from ..infer import InferClient, deploy_main
 
 logger = get_logger()
 
@@ -23,24 +25,26 @@ class SwiftEval(SwiftPipeline):
     def __init__(self, args: Union[List[str], args_class, None] = None):
         super().__init__(args)
         self._download_eval_dataset()
-        self.url = f'http://127.0.0.1:{args.port}/v1/chat/completions'
 
-    def run(self):
-        args = self.args
-        eval_report = []
-        with self.run_deploy():
-            for oc_dataset in args.eval_dataset_oc:
-                eval_report.append(self.run_task(oc_dataset, 'opencompass'))
-            for vlm_dataset in args.eval_dataset_vlm:
-                eval_report.append(self.run_task(vlm_dataset, 'vlmeval'))
-        return eval_report
+    def _download_eval_dataset(self):
+        self.cache_dir = MediaResource.download(
+            'https://www.modelscope.cn/api/v1/datasets/swift/evalscope_resource/'
+            'repo?Revision=master&FilePath=eval.zip',
+            'evalscope',
+        )
 
     @contextmanager
     def run_deploy(self):
-        from swift.llm import deploy_main
+
         args = self.args
+        args_dict = asdict(args)
+        parameters = inspect.signature(DeployArguments.__init__).parameters
+        for k in list(args_dict.keys()):
+            if k not in parameters:
+                args_dict.pop(k)
+
         mp = multiprocessing.get_context('spawn')
-        process = mp.Process(target=deploy_main, args=(args, ))
+        process = mp.Process(target=deploy_main, args=(DeployArguments(**args_dict), ))
         process.start()
         try:
             while not self._is_accessible(args.port):
@@ -59,7 +63,20 @@ class SwiftEval(SwiftPipeline):
             return False
         return True
 
-    def run_task(self, dataset: str, eval_backend):
+    def run(self):
+        args = self.args
+        eval_report = []
+        with self.run_deploy():
+            if args.eval_dataset_oc:
+                eval_report += self.run_task(args.eval_dataset_oc, 'opencompass')
+            if args.eval_dataset_vlm:
+                eval_report += self.run_task(args.eval_dataset_vlm, 'vlmeval')
+
+        if args.eval_result_dir is not None:
+            logger.info(f'The eval results have been saved to eval_result_dir: `{args.eval_result_dir}`.')
+        return eval_report
+
+    def run_task(self, dataset: List[str], eval_backend: str):
         args = self.args
         assert eval_backend in {'opencompass', 'vlmeval'}
         if eval_backend == 'opencompass':
@@ -72,7 +89,7 @@ class SwiftEval(SwiftPipeline):
         run_task(task_cfg=task_cfg)
         return Summarizer.get_report_from_cfg(task_cfg=task_cfg)
 
-    def get_opencompass_task_cfg(self, dataset: str):
+    def get_opencompass_task_cfg(self, dataset: List[str]):
         args = self.args
         return {
             'eval_backend': 'OpenCompass',
@@ -81,12 +98,13 @@ class SwiftEval(SwiftPipeline):
                 'batch_size': args.max_batch_size,
                 'work_dir': args.eval_result_dir,
                 'models': [{
-                    'url': self.url,
+                    'path': args.model,
+                    'openai_api_base': args.url,
                 }]
             }
         }
 
-    def get_vlmeval_task_cfg(self, dataset: str):
+    def get_vlmeval_task_cfg(self, dataset: List[str]):
         args = self.args
         return {
             'eval_backend': 'VLMEvalKit',
@@ -94,18 +112,11 @@ class SwiftEval(SwiftPipeline):
                 'data': dataset,
                 'work_dir': args.eval_result_dir,
                 'models': [{
-                    'api_base': self.url,
+                    'api_base': args.url,
                 }],
                 'nproc': args.max_batch_size,
             }
         }
-
-    def _download_eval_dataset(self):
-        self.cache_dir = MediaResource.download(
-            'https://www.modelscope.cn/api/v1/datasets/swift/evalscope_resource/'
-            'repo?Revision=master&FilePath=eval.zip',
-            'evalscope',
-        )
 
 
 def eval_main(args: Union[List[str], EvalArguments, None] = None):
