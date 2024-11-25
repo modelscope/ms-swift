@@ -40,7 +40,6 @@ class ModelArguments:
     attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None
 
     # extra
-    model_kwargs: Optional[str] = None
     rope_scaling: Literal['linear', 'dynamic'] = None  # TODO:check
     device_map: Optional[str] = None
     # When some model code needs to be downloaded from GitHub,
@@ -64,13 +63,6 @@ class ModelArguments:
                     if strict:
                         raise
         return value
-
-    def _init_model_kwargs(self):
-        """Prepare model kwargs and set them to the env"""
-        self.model_kwargs: Dict[str, Any] = self.parse_to_dict(self.model_kwargs)
-        for k, v in self.model_kwargs.items():
-            k = k.upper()
-            os.environ[k] = str(v)
 
     def _init_device_map(self):
         """Prepare device map args"""
@@ -118,7 +110,6 @@ class ModelArguments:
     def __post_init__(self):
         if self.rope_scaling:  # TODO: check
             logger.info(f'rope_scaling is set to {self.rope_scaling}, please remember to set max_length')
-        self._init_model_kwargs()
         self._init_device_map()
         if self.model:
             self._init_torch_dtype()

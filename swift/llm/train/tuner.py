@@ -9,7 +9,7 @@ from packaging import version
 from swift.llm import TrainArguments, get_model_arch
 from swift.plugin import Tuner, extra_tuners
 from swift.tuners import Swift
-from swift.utils import get_logger, use_torchacc, find_all_linears, find_embedding
+from swift.utils import find_all_linears, find_embedding, get_logger, use_torchacc
 
 logger = get_logger()
 
