@@ -9,8 +9,10 @@ def test_eval_llm():
 
 
 def test_eval_mllm():
-    pass
+    from swift.llm import EvalArguments, eval_main
+    eval_main(EvalArguments(model='qwen/Qwen2-VL-7B-Instruct', eval_dataset='realWorldQA'))
 
 
 if __name__ == '__main__':
     test_eval_llm()
+    # test_eval_mllm()
