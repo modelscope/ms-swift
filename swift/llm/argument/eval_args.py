@@ -22,13 +22,13 @@ class EvalArguments(DeployArguments):
     eval_dataset: List[str] = field(default_factory=list)
     eval_limit: Optional[int] = None
 
-    eval_result_path: Optional[str] = None
+    eval_result_dir: Optional[str] = None
     do_sample: bool = False
 
     def __post_init__(self):
         super().__post_init__()
         self._init_eval_dataset()
-        self._init_eval_result_path()
+        self._init_eval_result_dir()
 
     def _init_eval_dataset(self):
         if isinstance(self.eval_dataset, str):
@@ -54,11 +54,11 @@ class EvalArguments(DeployArguments):
                                  f'opencompass_dataset: {OpenCompassBackendManager.list_datasets()}.\n\n'
                                  f'vlmeval_dataset: {VLMEvalKitBackendManager.list_supported_datasets()}.')
 
-    def _init_eval_result_path(self) -> None:
-        if self.eval_result_path is not None:
+    def _init_eval_result_dir(self) -> None:
+        if self.eval_result_dir is not None:
             return
-        self.eval_result_path = self.get_result_path('eval_result')
-        logger.info(f'args.eval_result_path: {self.eval_result_path}')
+        self.eval_result_dir = self.get_result_path('eval_result')
+        logger.info(f'args.eval_result_dir: {self.eval_result_dir}')
 
     def _init_result_path(self) -> None:
         pass

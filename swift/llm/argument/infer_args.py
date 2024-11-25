@@ -142,7 +142,8 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
                 logger.info('Setting args.stream: False')
 
     def _init_weight_type(self):
-        if self.ckpt_dir and (os.path.exists(os.path.join(self.ckpt_dir, 'adapter_config.json')) or os.path.exists(os.path.join(self.ckpt_dir, 'default', 'adapter_config.json'))):
+        if self.ckpt_dir and (os.path.exists(os.path.join(self.ckpt_dir, 'adapter_config.json'))
+                              or os.path.exists(os.path.join(self.ckpt_dir, 'default', 'adapter_config.json'))):
             self.weight_type = 'adapter'
         else:
             self.weight_type = 'full'
