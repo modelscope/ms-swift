@@ -48,6 +48,7 @@ class TemplateType:
     default = 'default'
     qwen = 'qwen'
     qwen2_5 = 'qwen2_5'
+    marco_o1 = 'marco_o1'
     qwen_vl = 'qwen-vl'
     qwen_audio = 'qwen-audio'
     qwen2_audio = 'qwen2-audio'
@@ -1401,6 +1402,18 @@ class Qwen2_5Template(QwenTemplate):
 
 register_template(TemplateType.qwen, QwenTemplate())
 register_template(TemplateType.qwen2_5, Qwen2_5Template())
+
+
+class MarcoO1Template(QwenTemplate):
+    system = """
+你是一个经过良好训练的AI助手，你的名字是Marco-o1.由阿里国际数字商业集团的AI Business创造.
+        \n## 重要！！！！！
+当你回答问题时，你的思考应该在<Thought>内完成，<Output>内输出你的结果。
+<Thought>应该尽可能是英文，但是有2个特例，一个是对原文中的引用，另一个是是数学应该使用markdown格式，<Output>内的输出需要遵循用户输入的语言。
+        """
+
+
+register_template(TemplateType.marco_o1, MarcoO1Template())
 
 
 class QwenVLTemplate(_QwenVLTemplateMixin, QwenTemplate):
