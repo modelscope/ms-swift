@@ -355,11 +355,6 @@ def prepare_dataset(args, template: Template, msg: Optional[Dict[str, Any]] = No
     if use_torchacc():
         training_args.train_dataset_sample = train_dataset.shape[0] if train_dataset is not None else 0
 
-    if val_dataset is None:
-        training_args.evaluation_strategy = IntervalStrategy.NO
-        training_args.eval_strategy = IntervalStrategy.NO
-        training_args.do_eval = False
-
     tokenizer = template.tokenizer
     dataset_info = {}
     if args.packing:
@@ -415,6 +410,11 @@ def prepare_dataset(args, template: Template, msg: Optional[Dict[str, Any]] = No
         train_dataset = LazyLLMDataset(train_dataset, template.encode)
         if val_dataset is not None:
             val_dataset = LazyLLMDataset(val_dataset, template.encode)
+
+    if val_dataset is None:
+        training_args.evaluation_strategy = IntervalStrategy.NO
+        training_args.eval_strategy = IntervalStrategy.NO
+        training_args.do_eval = False
     if isinstance(msg, dict):
         msg['dataset_info'] = dataset_info
     return train_dataset, val_dataset
