@@ -96,11 +96,11 @@ def _create_and_replace_hook(self, peft_config, adapter_name, target, *args, **k
 
 
 def _convert_dtype(target: torch.nn.Module, adapter_name: str, lora_dtype: str):
-    if lora_dtype == 'fp32':
+    if lora_dtype == 'float32':
         torch_dtype = torch.float32
-    elif lora_dtype == 'fp16':
+    elif lora_dtype == 'float16':
         torch_dtype = torch.float16
-    elif lora_dtype == 'bf16':
+    elif lora_dtype == 'bfloat16':
         torch_dtype = torch.bfloat16
     else:
         torch_dtype = None

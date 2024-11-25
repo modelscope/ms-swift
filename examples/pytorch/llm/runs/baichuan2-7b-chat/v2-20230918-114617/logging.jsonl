@@ -1,0 +1,2 @@
+{"loss": 4.4572, "learning_rate": 5.46e-06, "epoch": 0.0, "global_step": 10}
+{"eval_loss": 4.4215006828308105, "eval_runtime": 109.7829, "eval_samples_per_second": 8.335, "eval_steps_per_second": 8.335, "epoch": 0.0, "global_step": 10}

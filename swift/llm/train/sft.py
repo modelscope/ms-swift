@@ -215,9 +215,9 @@ class SwiftSft(SwiftPipeline):
             optimizer_callback = optimizers_map['lorap']
         if args.use_galore:
             if args.galore_target_modules is None:
-                args.galore_target_modules = find_all_linears(model, 0, args.model_type, args.quant_method)
+                args.galore_target_modules = find_all_linears(self.model)
             if args.galore_with_embedding:
-                args.galore_target_modules += find_embedding(model)
+                args.galore_target_modules += find_embedding(self.model)
             optimizer_callback = optimizers_map['galore']
 
         return optimizer_callback(self.model, train_dataset, args)
