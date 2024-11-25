@@ -1,5 +1,7 @@
 import os
 
+import torch
+
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 kwargs = {
@@ -25,12 +27,16 @@ def test_llm_ddp():
     infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True, merge_lora=True))
 
 
-def test_mllm():
+def test_mllm_mp():
+    os.environ['MAX_PIXELS'] = '100352'
+    os.environ['SIZE_FACTOR'] = '12'
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
     from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
     result = sft_main(
         TrainArguments(
             model='qwen/Qwen2-VL-7B-Instruct',
             dataset=['modelscope/coco_2014_caption:validation#20', 'AI-ModelScope/alpaca-gpt4-data-en#20'],
+            train_type='full',
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
     infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True, merge_lora=True))
@@ -122,11 +128,11 @@ def test_mllm_streaming_mp_ddp():
 
 if __name__ == '__main__':
     # test_llm_ddp()
-    # test_mllm()
+    test_mllm_mp()
     # test_llm_streaming()
     # test_mllm_streaming()
     # test_mllm_zero3()
     # test_llm_gptq()
     # test_llm_awq()
     # test_mllm_streaming_zero3()
-    test_mllm_streaming_mp_ddp()
+    # test_mllm_streaming_mp_ddp()

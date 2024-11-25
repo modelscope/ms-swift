@@ -84,10 +84,7 @@ class ModelArguments:
                 value = getattr(self, key)
                 if value:
                     self.torch_dtype = {'fp16': 'float16', 'bf16': 'bfloat16'}[key]
-                    return
 
-            if self.train_type == 'full':
-                self.torch_dtype = 'float32'
         self.torch_dtype: Optional[torch.dtype] = HfConfigFactory.to_torch_dtype(self.torch_dtype)
         self.torch_dtype: torch.dtype = self._init_model_info(self.torch_dtype)
         # Mixed Precision Training
