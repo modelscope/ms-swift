@@ -5,8 +5,11 @@ from typing import Any, Dict, List, Union
 from evalscope.backend.opencompass import OpenCompassBackendManager
 from evalscope.backend.vlm_eval_kit import VLMEvalKitBackendManager
 
+from swift.utils import get_logger
 from ..argument import EvalArguments
 from ..base import SwiftPipeline
+
+logger = get_logger()
 
 
 class SwiftEval(SwiftPipeline):

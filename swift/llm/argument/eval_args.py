@@ -2,9 +2,10 @@
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional
 
+from swift.utils import get_logger
 from .deploy_args import DeployArguments
 
-# [TODO]
+logger = get_logger()
 
 
 @dataclass
