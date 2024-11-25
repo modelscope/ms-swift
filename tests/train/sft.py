@@ -126,7 +126,7 @@ def test_mllm_streaming_mp_ddp():
 
 
 if __name__ == '__main__':
-    # test_llm_ddp()
+    test_llm_ddp()
     # test_mllm_mp()
     # test_llm_streaming()
     # test_mllm_streaming()
@@ -134,4 +134,4 @@ if __name__ == '__main__':
     # test_llm_gptq()
     # test_llm_awq()
     # test_mllm_streaming_zero3()
-    test_mllm_streaming_mp_ddp()
+    # test_mllm_streaming_mp_ddp()

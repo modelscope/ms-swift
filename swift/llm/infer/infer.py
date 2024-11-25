@@ -262,7 +262,9 @@ class SwiftInfer(SwiftPipeline):
                 if args.result_path is not None:
                     append_to_jsonl(args.result_path, data)
         else:
-            infer_requests = [InferRequest(**data) for data in val_dataset]
+            infer_requests = [
+                InferRequest(**data) for i, data in enumerate(val_dataset) if i % args.global_world_size == args.rank
+            ]
             resp_list = self.infer(infer_requests, request_config, template=self.template, use_tqdm=True)
             for data, resp in zip(val_dataset, resp_list):
                 data['response'] = resp.choices[0].message.content

@@ -45,7 +45,7 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
         if self.use_hf:
             os.environ['USE_HF'] = '1'
         self._init_model_kwargs()
-        self.rank, self.local_rank, self.world_size, self.local_world_size = get_dist_setting()
+        self.rank, self.local_rank, self.global_world_size, self.local_world_size = get_dist_setting()
         ModelArguments.__post_init__(self)
         QuantizeArguments.__post_init__(self)
         TemplateArguments.__post_init__(self)

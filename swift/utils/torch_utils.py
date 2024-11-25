@@ -1,12 +1,13 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
 import os
+import pickle
 import socket
 import time
 import uuid
 from bisect import bisect_right
 from contextlib import contextmanager, nullcontext
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -110,10 +111,14 @@ def activate_model_parameters(model: Module, additional_trainable_parameters: Li
                        f'additional_trainable_parameters: {additional_trainable_parameters}')
 
 
-def broadcast_string(string: Optional[str], buffer_size: int = 1024) -> str:
+def gather_obj(obj: Any) -> Any:
+    pass
+
+
+def broadcast_obj(obj: Any) -> Any:
     """String broadcasting in case of DDP
-    string: main rank: str
-        other rank: None or str(not use)
+    obj: main rank: obj
+        other rank: None
     return: all rank: str
     """
     assert dist.is_initialized()
@@ -121,15 +126,16 @@ def broadcast_string(string: Optional[str], buffer_size: int = 1024) -> str:
     device = f'npu:{local_rank}' if is_torch_npu_available() else f'cuda:{local_rank}'
     assert rank >= 0
     if rank == 0:
-        assert string is not None
-        tensor = torch.tensor(
-            [ord(c) for c in string] + [0] * (buffer_size - len(string)), dtype=torch.int64, device=device)
+        serialized_obj = pickle.dumps(obj)
+        tensor = torch.tensor(np.frombuffer(serialized_obj, dtype=np.uint8), device=device)
+        buffer_size = torch.tensor([tensor.shape[0]], dtype=torch.int64, device=device)
+        dist.broadcast(buffer_size, 0)
     else:
-        tensor = torch.zeros(buffer_size, dtype=torch.int64, device=device)
+        buffer_size = torch.zeros((1, ), dtype=torch.int64, device=device)
+        dist.broadcast(buffer_size, 0)
+        tensor = torch.zeros((buffer_size[0]), dtype=torch.uint8, device=device)
     dist.broadcast(tensor, 0)
-    first_zero = (tensor == 0).nonzero()[0].item()
-    res = tensor.tolist()[:first_zero]
-    return ''.join([chr(x) for x in res])
+    return pickle.loads(tensor.to('cpu').numpy().tobytes())
 
 
 def time_synchronize() -> float:

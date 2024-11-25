@@ -18,7 +18,7 @@ from transformers.trainer import TrainingArguments
 
 from .logger import get_logger
 from .np_utils import stat_array
-from .torch_utils import broadcast_string, is_dist, is_dist_ta, is_local_master
+from .torch_utils import broadcast_obj, is_dist, is_dist_ta, is_local_master
 
 logger = get_logger()
 
@@ -123,7 +123,7 @@ def add_version_to_work_dir(work_dir: str) -> str:
     time = dt.datetime.now().strftime('%Y%m%d-%H%M%S')
     sub_folder = f'v{version}-{time}'
     if (dist.is_initialized() and is_dist()) or is_dist_ta():
-        sub_folder = broadcast_string(sub_folder)
+        sub_folder = broadcast_obj(sub_folder)
 
     work_dir = os.path.join(work_dir, sub_folder)
     return work_dir
