@@ -44,11 +44,7 @@ def test_llm_streaming():
     from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
     result = sft_main(
         TrainArguments(
-            model='qwen/Qwen2-7B-Instruct',
-            dataset=['swift/chinese-c4'],
-            streaming=True,
-            max_steps=16,
-            **kwargs))
+            model='qwen/Qwen2-7B-Instruct', dataset=['swift/chinese-c4'], streaming=True, max_steps=16, **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
     infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True, merge_lora=True))
 
@@ -85,7 +81,7 @@ def test_llm_gptq():
             dataset=['AI-ModelScope/alpaca-gpt4-data-zh#100', 'AI-ModelScope/alpaca-gpt4-data-en#100'],
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
-    infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True, merge_lora=True))
+    infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True))
 
 
 def test_llm_awq():
@@ -96,7 +92,7 @@ def test_llm_awq():
             dataset=['AI-ModelScope/alpaca-gpt4-data-zh#100', 'AI-ModelScope/alpaca-gpt4-data-en#100'],
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
-    infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True, merge_lora=True))
+    infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True))
 
 
 def test_mllm_streaming_zero3():
@@ -125,13 +121,26 @@ def test_mllm_streaming_mp_ddp():
             **kwargs))
 
 
+def test_llm_bnb():
+    from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
+    result = sft_main(
+        TrainArguments(
+            model='Qwen/Qwen2-7B-Instruct',
+            dataset=['AI-ModelScope/alpaca-gpt4-data-zh#100', 'AI-ModelScope/alpaca-gpt4-data-en#100'],
+            quant_method='bnb',
+            **kwargs))
+    last_model_checkpoint = result['last_model_checkpoint']
+    infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True))
+
+
 if __name__ == '__main__':
     # test_llm_ddp()
     # test_mllm_mp()
-    test_llm_streaming()
+    # test_llm_streaming()
     # test_mllm_streaming()
     # test_mllm_zero3()
     # test_llm_gptq()
     # test_llm_awq()
     # test_mllm_streaming_zero3()
     # test_mllm_streaming_mp_ddp()
+    test_llm_bnb()

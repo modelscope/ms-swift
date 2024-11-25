@@ -181,8 +181,8 @@ class HfConfigFactory:
                 res['quant_bits'] = quant_bits
         elif quant_method == 'bitsandbytes':
             res['quant_method'] = 'bnb'
-            load_in_4bit = quantization_config.get('load_in_4bit')
-            load_in_8bit = quantization_config.get('load_in_8bit')
+            load_in_4bit = quantization_config.get('_load_in_4bit')
+            load_in_8bit = quantization_config.get('_load_in_8bit')
             bnb_4bit_compute_dtype = quantization_config.get('bnb_4bit_compute_dtype')
             if load_in_4bit:
                 res['quant_bits'] = 4
