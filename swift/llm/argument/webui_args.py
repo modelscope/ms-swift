@@ -23,5 +23,5 @@ class WebUIArguments(InferArguments):
     studio_title: Optional[str] = None
 
     def __post_init__(self):
-        if self.model is not None:
+        if self.model or self.ckpt_dir:
             super().__post_init__()

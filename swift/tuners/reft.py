@@ -55,8 +55,7 @@ class Reft(SwiftAdapter):
     def prepare_model(model: nn.Module, config: ReftConfig, adapter_name: str):
         from swift.utils.import_utils import is_pyreft_available
         if not is_pyreft_available():
-            raise ImportError('Please install pyreft before using ReFT: '
-                              '`pip install pyreft`')
+            raise ImportError('Please install pyreft before using ReFT: ' '`pip install pyreft`')
 
         import pyreft
         from pyreft import ReftModel
