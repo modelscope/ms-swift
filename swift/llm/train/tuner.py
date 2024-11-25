@@ -229,7 +229,7 @@ def prepare_model(model, args: TrainArguments):
             args.galore_target_modules = find_all_linears(model)
         if args.galore_with_embedding:
             args.galore_target_modules += find_embedding(model)
-        args.training_args.galore_config = GaLoreConfig(
+        args.galore_config = GaLoreConfig(
             target_modules=args.galore_target_modules,
             rank=args.galore_rank,
             update_proj_gap=args.galore_update_proj_gap,
