@@ -123,6 +123,7 @@ def test_mllm_streaming_mp_ddp():
             dataset=['modelscope/coco_2014_caption:validation', 'AI-ModelScope/alpaca-gpt4-data-en'],
             streaming=True,
             max_steps=16,
+            gradient_checkpointing_kwargs={'use_reentrant': False},
             **kwargs))
 
 
