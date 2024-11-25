@@ -232,7 +232,7 @@ class SwiftInfer(SwiftPipeline):
             data = infer_state.to_dict()
             response = self.infer_single(InferRequest(**data), request_config)
             infer_state.add_response(response)
-            data['response'] = response
+            data = {'response': response, **data}
             result_list.append(data)
             if args.result_path is not None:
                 append_to_jsonl(args.result_path, data, strict=False)
@@ -260,7 +260,8 @@ class SwiftInfer(SwiftPipeline):
         result_list = []
         if request_config.stream:
             for data in val_dataset:
-                data['response'] = self.infer_single(InferRequest(**data), request_config)
+                response = self.infer_single(InferRequest(**data), request_config)
+                data = {'response': response, **data}
                 result_list.append(data)
                 if args.result_path is not None:
                     append_to_jsonl(args.result_path, data)
@@ -271,7 +272,8 @@ class SwiftInfer(SwiftPipeline):
 
             resp_list = self.infer(infer_requests, request_config, template=self.template, use_tqdm=True)
             for data, resp in zip(val_dataset, resp_list):
-                data['response'] = resp.choices[0].message.content
+                response = resp.choices[0].message.content
+                data = {'response': response, **data}
                 result_list.append(data)
             if dist.is_initialized():
                 total_result_list = [None for _ in range(args.global_world_size)] if args.rank == 0 else None

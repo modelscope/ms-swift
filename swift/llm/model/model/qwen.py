@@ -479,7 +479,6 @@ register_model(
         get_model_tokenizer_with_flash_attn,
         architectures=['Qwen2MoeForCausalLM'],
         requires=['transformers>=4.40'],
-        is_moe=True,
         model_arch=ModelArch.llama))
 
 
