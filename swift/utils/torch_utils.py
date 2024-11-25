@@ -169,8 +169,8 @@ def find_all_linears(model: Module) -> List[str]:
     from swift.llm import get_model_arch
     model_info = model.model_info
     model_arch = get_model_arch(model.model_meta.model_arch)
-    if model_arch:
-        output = model_arch.output or 'lm_head'
+    if model_arch and model_arch.output:
+        output = model_arch.output
         idx = output.rfind('.')
         lm_head_name = output[idx + 1:]
     else:
