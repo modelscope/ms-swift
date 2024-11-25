@@ -4,8 +4,10 @@ import os
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional
 
+import torch.distributed as dist
+
 from swift.llm import PtLoRARequest, get_template_meta
-from swift.utils import get_logger
+from swift.utils import get_logger, is_dist
 from .base_args import BaseArguments, to_abspath
 from .merge_args import MergeArguments
 
@@ -104,7 +106,8 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
     """
     ckpt_dir: Optional[str] = field(default=None, metadata={'help': '/path/to/your/vx-xxx/checkpoint-xxx'})
     infer_backend: Literal['vllm', 'pt', 'lmdeploy'] = 'pt'
-    max_batch_size: int = 1  # for pt engine
+    # for pt engine
+    max_batch_size: int = 1
 
     # only for inference
     val_dataset_sample: Optional[int] = None
@@ -144,6 +147,13 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
         else:
             self.weight_type = 'full'
 
+    def _init_pt_ddp(self):
+        if self.infer_backend != 'pt' or not is_dist():
+            return
+        assert not self.eval_human and not self.stream
+        self._init_device()
+        dist.init_process_group(backend='nccl')
+
     def __post_init__(self) -> None:
         if self.ckpt_dir:
             self.ckpt_dir = to_abspath(self.ckpt_dir, True)
@@ -156,6 +166,7 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
         self._init_result_path()
         self._init_stream()
         self._init_eval_human()
+        self._init_pt_ddp()
         if self.ckpt_dir is None:
             self.train_type = 'full'
 

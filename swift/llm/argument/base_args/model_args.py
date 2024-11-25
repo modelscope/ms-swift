@@ -108,8 +108,7 @@ class ModelArguments:
         if self.rope_scaling:  # TODO: check
             logger.info(f'rope_scaling is set to {self.rope_scaling}, please remember to set max_length')
         self._init_device_map()
-        if self.model:
-            self._init_torch_dtype()
+        self._init_torch_dtype()
 
     def get_model_kwargs(self):
         return {

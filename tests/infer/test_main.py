@@ -18,7 +18,7 @@ def test_dataset(infer_backend):
     infer_main(args)
 
 
-def test_dataset_zero2():
+def test_dataset_ddp():
     os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
     from swift.llm import infer_main, InferArguments
     args = InferArguments(
@@ -29,4 +29,4 @@ def test_dataset_zero2():
 if __name__ == '__main__':
     # test_cli('pt')
     # test_dataset('vllm')
-    test_dataset_zero2()
+    test_dataset_ddp()

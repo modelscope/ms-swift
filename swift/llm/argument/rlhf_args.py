@@ -45,7 +45,7 @@ class RLHFArguments(TrainArguments):
     undesirable_weight: float = 1.0
 
     def __post_init__(self):
-        self._prepare_simpo()
+        self._init_simpo()
         self._set_default()
         super().__post_init__()
 
@@ -56,7 +56,7 @@ class RLHFArguments(TrainArguments):
         else:
             assert self.ref_model is None
 
-    def _prepare_simpo(self):
+    def _init_simpo(self):
         if self.rlhf_type != 'simpo':
             return
 

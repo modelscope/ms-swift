@@ -45,7 +45,7 @@ def test_llm_streaming():
     result = sft_main(
         TrainArguments(
             model='qwen/Qwen2-7B-Instruct',
-            dataset=['AI-ModelScope/alpaca-gpt4-data-zh', 'AI-ModelScope/alpaca-gpt4-data-en'],
+            dataset=['swift/chinese-c4'],
             streaming=True,
             max_steps=16,
             **kwargs))
@@ -126,9 +126,9 @@ def test_mllm_streaming_mp_ddp():
 
 
 if __name__ == '__main__':
-    test_llm_ddp()
+    # test_llm_ddp()
     # test_mllm_mp()
-    # test_llm_streaming()
+    test_llm_streaming()
     # test_mllm_streaming()
     # test_mllm_zero3()
     # test_llm_gptq()

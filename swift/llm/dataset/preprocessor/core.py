@@ -20,7 +20,10 @@ logger = get_logger()
 
 def get_dataset_features(dataset: DATASET_TYPE) -> Dict[str, Any]:
     features = dataset.features
-    assert features is not None
+    if features is None:
+        assert isinstance(dataset, HfIterableDataset)
+        dataset = dataset._resolve_features()
+        features = dataset.features
     return features
 
 
@@ -213,9 +216,7 @@ class RowPreprocessor:
                     **map_kwargs)
             except NotImplementedError:
                 pass
-        if isinstance(dataset_mapped, HfIterableDataset):
-            dataset_mapped = dataset_mapped._resolve_features()
-        elif len(dataset) != len(dataset_mapped):
+        if isinstance(dataset_mapped, HfDataset) and len(dataset) != len(dataset_mapped):
             logger.info(
                 f'Dataset filtered, origin length: {len(dataset)}, filtered dataset length: {len(dataset_mapped)}')
 

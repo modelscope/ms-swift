@@ -133,9 +133,12 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
             raise ValueError(f'self.dataset: {self.dataset}, Please input the training dataset.')
 
         self._handle_pai_compat()
-        self._prepare_deepspeed()
-        self._prepare_ddp_backend()
-        self._prepare_liger()
+        self._init_liger()
+
+        self._init_deepspeed()
+        self._init_device()
+        self.seed += self.rank  # Avoid the same dropout
+
         if self.lazy_tokenize is None:
             self.lazy_tokenize = self.model_meta.is_multimodal and not self.streaming
             logger.info(f'Setting args.lazy_tokenize: {self.lazy_tokenize}')
@@ -145,7 +148,7 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
         self._add_version()
         self.save_args()
 
-    def _prepare_deepspeed(self):
+    def _init_deepspeed(self):
         """Prepare deepspeed settings"""
         ds_config_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'ds_config'))
         deepspeed_mapping = {name: f'{name}.json' for name in ['zero2', 'zero3', 'zero2_offload', 'zero3_offload']}
@@ -163,16 +166,7 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
             self.parse_to_dict(self.deepspeed)
             logger.info(f'Using deepspeed: {self.deepspeed}')
 
-    def _prepare_ddp_backend(self):
-        """Prepare ddp of course"""
-        if is_dist():
-            if is_torch_npu_available():
-                torch.npu.set_device(self.local_rank)
-            else:
-                torch.cuda.set_device(self.local_rank)
-            self.seed += self.rank  # Avoid the same dropout
-
-    def _prepare_liger(self):
+    def _init_liger(self):
         """Liger kernel"""
         if self.use_liger:
             assert is_liger_available(), 'use_liger requires liger_kernels, try `pip install liger-kernel`'

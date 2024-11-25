@@ -89,6 +89,7 @@ class SwiftInfer(SwiftPipeline):
             from .infer_engine import PtEngine
             infer_engine_cls = PtEngine
             kwargs.update(args.get_model_kwargs())
+            kwargs.update({'max_batch_size': args.max_batch_size})
         elif args.infer_backend == 'vllm':
             from .infer_engine import VllmEngine
             infer_engine_cls = VllmEngine

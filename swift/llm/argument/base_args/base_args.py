@@ -1,11 +1,13 @@
 import os
 from dataclasses import dataclass, field, fields
-from typing import Optional
+from typing import Any, Dict, Optional
 
 import json
+import torch
+from transformers.utils import is_torch_npu_available
 
 from swift.hub import get_hub
-from swift.utils import check_json_format, get_dist_setting, get_logger, is_master
+from swift.utils import check_json_format, get_dist_setting, get_logger, is_dist, is_master
 from ..tuner_args import TunerArguments, get_supported_tuners
 from .data_args import DataArguments
 from .generation_args import GenerationArguments
@@ -31,8 +33,8 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
     """
     seed: int = 42
     model_kwargs: Optional[str] = None
-    strict: bool = False
     load_dataset_config: bool = False
+
     use_hf: bool = False
     # None: use env var `MODELSCOPE_API_TOKEN`
     hub_token: Optional[str] = field(
@@ -100,3 +102,11 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
             logger.info(f'The {self.__class__.__name__} will be saved in: {fpath}')
             with open(fpath, 'w', encoding='utf-8') as f:
                 json.dump(check_json_format(self.__dict__), f, ensure_ascii=False, indent=2)
+
+    def _init_device(self):
+        """Prepare ddp of course"""
+        if is_dist():
+            if is_torch_npu_available():
+                torch.npu.set_device(self.local_rank)
+            else:
+                torch.cuda.set_device(self.local_rank)

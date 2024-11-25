@@ -44,6 +44,7 @@ class DataArguments:
 
     load_from_cache_file: bool = False
     download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists'
+    strict: bool = False
     # Chinese name and English name
     model_name: List[str] = field(default_factory=lambda: [None, None], metadata={'help': "e.g. ['小黄', 'Xiao Huang']"})
     model_author: List[str] = field(
@@ -85,7 +86,7 @@ class DataArguments:
             'hub_token': self.hub_token,
             'load_from_cache_file': self.load_from_cache_file,
             'download_mode': self.download_mode,
+            'strict': self.strict,
             'model_name': self.model_name,
             'model_author': self.model_author,
-            'strict': self.strict
         }
