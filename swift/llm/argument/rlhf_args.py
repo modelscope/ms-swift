@@ -53,8 +53,8 @@ class RLHFArguments(TrainArguments):
             self.ref_model = self.ref_model or self.model
             self.ref_model_type = self.ref_model_type or self.model_type
             self.ref_model_revision = self.ref_model_revision or self.model_revision
-        else:
-            assert self.ref_model is None
+        elif self.ref_model is not None:
+            raise ValueError('CPO/ORPO or LoRA training does not require a ref_model to be passed in.')
 
     def _init_simpo(self):
         if self.rlhf_type != 'simpo':

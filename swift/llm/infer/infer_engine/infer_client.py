@@ -38,10 +38,17 @@ class InferClient(InferEngine):
         self.host = host
         self.port = port
         self.timeout = timeout
-        self.models = []
-        for model in self.get_model_list().data:
-            self.models.append(model.id)
-        assert len(self.models) > 0, f'self.models: {self.models}'
+        self._models = None
+
+    @property
+    def models(self):
+        if self._models is None:
+            models = []
+            for model in self.get_model_list().data:
+                models.append(model.id)
+            assert len(models) > 0, f'models: {models}'
+            self._models = models
+        return self._models
 
     def get_model_list(self, *, url: Optional[str] = None) -> ModelList:
         """Get model list from the inference server.

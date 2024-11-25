@@ -45,5 +45,8 @@ class DeployArguments(InferArguments):
     def _init_eval_human(self):
         pass
 
-    def _init_result_dir(self, folder_name: str = 'deploy_result') -> None:
-        super()._init_result_dir(folder_name=folder_name)
+    def _init_result_path(self) -> None:
+        if self.result_path is not None:
+            return
+        self.result_path = self.get_result_path('deploy_result')
+        logger.info(f'args.result_path: {self.result_path}')
