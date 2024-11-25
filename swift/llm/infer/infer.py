@@ -2,9 +2,11 @@
 import re
 from copy import deepcopy
 from dataclasses import dataclass, field
+from itertools import chain
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import numpy as np
+import torch.distributed as dist
 from datasets import Dataset as HfDataset
 
 from swift.llm import (InferArguments, InferRequest, Messages, Processor, SwiftPipeline, Template, get_template,
@@ -263,14 +265,20 @@ class SwiftInfer(SwiftPipeline):
                 if args.result_path is not None:
                     append_to_jsonl(args.result_path, data)
         else:
-            infer_requests = [
-                InferRequest(**data) for i, data in enumerate(val_dataset) if i % args.global_world_size == args.rank
-            ]
+            if dist.is_initialized():
+                val_dataset = val_dataset.shard(args.global_world_size, args.rank, contiguous=True)
+            infer_requests = [InferRequest(**data) for i, data in enumerate(val_dataset)]
+
             resp_list = self.infer(infer_requests, request_config, template=self.template, use_tqdm=True)
             for data, resp in zip(val_dataset, resp_list):
                 data['response'] = resp.choices[0].message.content
                 result_list.append(data)
-            if args.result_path is not None:
+            if dist.is_initialized():
+                total_result_list = [None for _ in range(args.global_world_size)] if args.rank == 0 else None
+                dist.gather_object(result_list, total_result_list)
+                result_list = total_result_list and list(chain.from_iterable(total_result_list))
+
+            if args.result_path and result_list:
                 append_to_jsonl(args.result_path, result_list)
         return result_list
 

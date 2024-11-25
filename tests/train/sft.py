@@ -44,11 +44,7 @@ def test_llm_streaming():
     from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
     result = sft_main(
         TrainArguments(
-            model='qwen/Qwen2-7B-Instruct',
-            dataset=['swift/chinese-c4'],
-            streaming=True,
-            max_steps=16,
-            **kwargs))
+            model='qwen/Qwen2-7B-Instruct', dataset=['swift/chinese-c4'], streaming=True, max_steps=16, **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
     infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True, merge_lora=True))
 

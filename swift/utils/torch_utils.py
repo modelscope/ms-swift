@@ -111,33 +111,6 @@ def activate_model_parameters(model: Module, additional_trainable_parameters: Li
                        f'additional_trainable_parameters: {additional_trainable_parameters}')
 
 
-def gather_obj(obj: Any) -> Any:
-    pass
-
-
-def broadcast_obj(obj: Any) -> Any:
-    """String broadcasting in case of DDP
-    obj: main rank: obj
-        other rank: None
-    return: all rank: str
-    """
-    assert dist.is_initialized()
-    rank, local_rank, _, _ = get_dist_setting()
-    device = f'npu:{local_rank}' if is_torch_npu_available() else f'cuda:{local_rank}'
-    assert rank >= 0
-    if rank == 0:
-        serialized_obj = pickle.dumps(obj)
-        tensor = torch.tensor(np.frombuffer(serialized_obj, dtype=np.uint8), device=device)
-        buffer_size = torch.tensor([tensor.shape[0]], dtype=torch.int64, device=device)
-        dist.broadcast(buffer_size, 0)
-    else:
-        buffer_size = torch.zeros((1, ), dtype=torch.int64, device=device)
-        dist.broadcast(buffer_size, 0)
-        tensor = torch.zeros((buffer_size[0]), dtype=torch.uint8, device=device)
-    dist.broadcast(tensor, 0)
-    return pickle.loads(tensor.to('cpu').numpy().tobytes())
-
-
 def time_synchronize() -> float:
     torch.cuda.synchronize()
     return time.perf_counter()  # second

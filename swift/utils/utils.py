@@ -18,7 +18,7 @@ from transformers.trainer import TrainingArguments
 
 from .logger import get_logger
 from .np_utils import stat_array
-from .torch_utils import broadcast_obj, is_dist, is_dist_ta, is_local_master
+from .torch_utils import is_dist, is_dist_ta, is_local_master
 
 logger = get_logger()
 
@@ -123,7 +123,9 @@ def add_version_to_work_dir(work_dir: str) -> str:
     time = dt.datetime.now().strftime('%Y%m%d-%H%M%S')
     sub_folder = f'v{version}-{time}'
     if (dist.is_initialized() and is_dist()) or is_dist_ta():
-        sub_folder = broadcast_obj(sub_folder)
+        obj_list = [sub_folder]
+        dist.broadcast_object_list(obj_list)
+        sub_folder = obj_list[0]
 
     work_dir = os.path.join(work_dir, sub_folder)
     return work_dir
@@ -245,3 +247,11 @@ def find_free_port(start_port: Optional[int] = None, retry: int = 100) -> str:
             except OSError:
                 pass
     return port
+
+
+def split_list(ori_list, num_shards):
+    idx_list = np.linspace(0, len(ori_list), num_shards + 1)
+    shard = []
+    for i in range(len(idx_list) - 1):
+        shard.append(ori_list[int(idx_list[i]):int(idx_list[i + 1])])
+    return shard

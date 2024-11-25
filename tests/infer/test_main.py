@@ -19,10 +19,10 @@ def test_dataset(infer_backend):
 
 
 def test_dataset_ddp():
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
     from swift.llm import infer_main, InferArguments
     args = InferArguments(
-        model='qwen/Qwen2-7B-Instruct', max_batch_size=16, val_dataset=['AI-ModelScope/alpaca-gpt4-data-zh#100'])
+        model='qwen/Qwen2-7B-Instruct', max_batch_size=64, val_dataset=['AI-ModelScope/alpaca-gpt4-data-zh#1000'])
     infer_main(args)
 
 
