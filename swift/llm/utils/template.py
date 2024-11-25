@@ -10,6 +10,7 @@ from types import MethodType
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, TypeVar, Union
 
 import json
+import numpy as np
 import torch
 import torch.nn.functional as F
 import transformers
@@ -997,6 +998,27 @@ class Template:
             padded_sequences.append(padded_seq)
 
         return torch.stack(padded_sequences)
+
+    def data_collator_with_flattening(self,
+                                      batch: List[Dict[str, Any]],
+                                      padding_to: Optional[int] = None) -> Dict[str, Any]:
+        """
+        Data collator used for padding free approach. Does the following:
+
+        - concatate the entire mini batch into single long sequence [1, total_tokens]
+        - no padding will be added, returns `input_ids`, `labels` and `position_ids`
+
+        Args:
+            batch(`List[Dict[str, Any]]`): The input data in batch
+            padding_to(`int`, optional): Whether padding the batch to a fixed length, if none, the batch
+                will be padded to the `longest`
+        """
+        packed_data = {}
+        position_id_lengths = [len(item['input_ids']) for item in batch]
+        packed_data['input_ids'] = np.concatenate([item['input_ids'] for item in batch])
+        packed_data['labels'] = np.concatenate([item['labels'] for item in batch])
+        packed_data['position_ids'] = np.concatenate([list(range(pil)) for pil in position_id_lengths])
+        return self.data_collator([packed_data], padding_to)
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         """
