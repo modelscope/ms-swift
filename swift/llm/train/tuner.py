@@ -114,7 +114,7 @@ def prepare_adapter(model, args: TrainArguments):
     elif args.train_type == 'vera':
         vera_config = VeraConfig(
             r=args.vera_rank,
-            target_modules=args.target_modules,
+            target_modules=target_modules,
             projection_prng_key=args.vera_projection_prng_key,
             vera_dropout=args.vera_dropout,
             d_initial=args.vera_d_initial,
@@ -128,7 +128,7 @@ def prepare_adapter(model, args: TrainArguments):
             boft_block_size=args.boft_block_size,
             boft_block_num=args.boft_block_num,
             boft_n_butterfly_factor=args.boft_n_butterfly_factor,
-            target_modules=args.target_modules,
+            target_modules=target_modules,
             boft_dropout=args.boft_dropout,
             modules_to_save=args.modules_to_save,
         )
@@ -137,7 +137,7 @@ def prepare_adapter(model, args: TrainArguments):
     elif args.train_type == 'fourierft':
         from peft import FourierFTConfig
         fourier_config = FourierFTConfig(
-            target_modules=args.target_modules,
+            target_modules=target_modules,
             modules_to_save=args.modules_to_save,
             n_frequency=args.fourier_n_frequency,
             scaling=args.fourier_scaling,

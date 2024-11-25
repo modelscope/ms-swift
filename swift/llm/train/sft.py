@@ -235,7 +235,7 @@ class SwiftSft(SwiftPipeline):
             lisa_callback.switch_active_layers()  # Make trainable parameters printing a correct value
             callbacks.append(lisa_callback)
 
-        if args.is_adapter and args.tuner_backend == 'swift':
+        if args.is_adapter and args.train_type == 'adalora':
             callbacks.append(TrainerAdapterCallback(args))
         callbacks += extra_callbacks
         self.callbacks = callbacks

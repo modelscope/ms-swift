@@ -19,8 +19,6 @@ class TrainerAdapterCallback(TrainerCallback):
     # offload original_modules to cpu, to save memory
     def on_train_begin(self, _args, state, control, **kwargs):
         model = kwargs['model']
-        if hasattr(model, 'set_active_adapters'):
-            model.set_active_adapters(model.adapters.keys(), offload='cpu')
         if self.args.train_type == 'adalora':
             model.peft_config['default'].total_step = state.max_steps
 
