@@ -41,7 +41,7 @@ Swift has built-in methods for processing this dataset, using `answer_zh` as `re
 
 ```shell
 # Experimental environment: A100
-# DDP + MP
+# MP + DDP
 # Memory usage: 4*56G
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=2 \

@@ -46,7 +46,7 @@ swift内置了处理方法将`answer_zh`作为`response`,将`answer_en`作为`re
 ## 训练
 ```shell
 # Experimental environment: A100
-# DDP + MP
+# MP + DDP
 # Memory usage: 4*56G
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=2 \

@@ -30,6 +30,7 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
         ignore_args_error (bool): Flag to ignore argument errors for notebook compatibility. Default is False.
     """
     seed: int = 42
+    model_kwargs: Optional[str] = None
     strict: bool = False
     load_dataset_config: bool = False
     use_hf: bool = False
@@ -43,6 +44,7 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
     def __post_init__(self):
         if self.use_hf:
             os.environ['USE_HF'] = '1'
+        self._init_model_kwargs()
         ModelArguments.__post_init__(self)
         QuantizeArguments.__post_init__(self)
         TemplateArguments.__post_init__(self)
@@ -50,6 +52,13 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
         self.hub = get_hub(self.use_hf)
         if self.hub.try_login(self.hub_token):
             logger.info('hub login successful!')
+
+    def _init_model_kwargs(self):
+        """Prepare model kwargs and set them to the env"""
+        self.model_kwargs: Dict[str, Any] = self.parse_to_dict(self.model_kwargs)
+        for k, v in self.model_kwargs.items():
+            k = k.upper()
+            os.environ[k] = str(v)
 
     @property
     def supported_tuners(self):

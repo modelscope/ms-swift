@@ -90,7 +90,7 @@ swift rlhf \
     --warmup_ratio  0.03  \
     --save_total_limit  2
 
-# DDP + MP
+# MP + DDP
 nproc_per_node=2
 
 CUDA_VISIBLE_DEVICES=0,1,2,3 \

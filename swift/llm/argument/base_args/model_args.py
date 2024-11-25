@@ -40,7 +40,6 @@ class ModelArguments:
     attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None
 
     # extra
-    model_kwargs: Optional[str] = None
     rope_scaling: Literal['linear', 'dynamic'] = None  # TODO:check
     device_map: Optional[str] = None
     # When some model code needs to be downloaded from GitHub,
@@ -50,6 +49,7 @@ class ModelArguments:
     @staticmethod
     def parse_to_dict(value: Union[str, Dict, None], strict: bool = True) -> Union[str, Dict]:
         """Convert a JSON string or JSON file into a dict"""
+        # If the value could potentially be a string, it is generally advisable to set strict to False.
         if value is None:
             value = {}
         elif isinstance(value, str):
@@ -63,13 +63,6 @@ class ModelArguments:
                     if strict:
                         raise
         return value
-
-    def _init_model_kwargs(self):
-        """Prepare model kwargs and set them to the env"""
-        self.model_kwargs: Dict[str, Any] = self.parse_to_dict(self.model_kwargs)
-        for k, v in self.model_kwargs.items():
-            k = k.upper()
-            os.environ[k] = str(v)
 
     def _init_device_map(self):
         """Prepare device map args"""
@@ -91,10 +84,7 @@ class ModelArguments:
                 value = getattr(self, key)
                 if value:
                     self.torch_dtype = {'fp16': 'float16', 'bf16': 'bfloat16'}[key]
-                    return
 
-            if self.train_type == 'full':
-                self.torch_dtype = 'float32'
         self.torch_dtype: Optional[torch.dtype] = HfConfigFactory.to_torch_dtype(self.torch_dtype)
         self.torch_dtype: torch.dtype = self._init_model_info(self.torch_dtype)
         # Mixed Precision Training
@@ -108,7 +98,7 @@ class ModelArguments:
 
     def _init_model_info(self, torch_dtype: Optional[torch.dtype]) -> torch.dtype:
         from swift.llm import get_model_tokenizer, ModelInfo
-        processor = get_model_tokenizer(**self.get_model_kwargs())[1]
+        processor = get_model_tokenizer(load_model=False, **self.get_model_kwargs())[1]
         self.model_info = processor.model_info
         self.model_meta = processor.model_meta
         self.model_type = self.model_info.model_type
@@ -117,7 +107,6 @@ class ModelArguments:
     def __post_init__(self):
         if self.rope_scaling:  # TODO: check
             logger.info(f'rope_scaling is set to {self.rope_scaling}, please remember to set max_length')
-        self._init_model_kwargs()
         self._init_device_map()
         if self.model:
             self._init_torch_dtype()

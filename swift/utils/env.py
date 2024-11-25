@@ -65,12 +65,12 @@ def is_mp() -> bool:
     return False
 
 
-def is_ddp_plus_mp() -> bool:
+def is_mp_ddp() -> bool:
     if not is_dist():
         return False
     if not is_mp():
         return False
-    logger.info('Using DDP + MP(device_map)')
+    logger.info('Using MP + DDP(device_map)')
     return True
 
 
