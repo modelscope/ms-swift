@@ -7,13 +7,13 @@ from swift.utils import get_dist_setting
 
 
 def calculate_max_steps(dataset, args: 'TrainArguments') -> int:
-    if args.max_steps:
+    if args.max_steps and args.max_steps > 0:
         max_steps = args.max_steps
     else:
         assert not args.streaming
         len_dataset = len(dataset)
         _, _, world_size, _ = get_dist_setting()
-        total_train_batch_size = args.batch_size * args.gradient_accumulation_steps * world_size
+        total_train_batch_size = args.per_device_train_batch_size * args.gradient_accumulation_steps * world_size
         num_update_steps_per_epoch = len_dataset // total_train_batch_size
         num_update_steps_per_epoch = max(num_update_steps_per_epoch, 1)
         max_steps = math.ceil(args.num_train_epochs * num_update_steps_per_epoch)
