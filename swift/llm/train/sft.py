@@ -102,7 +102,7 @@ class SwiftSft(SwiftPipeline):
         dataset_kwargs = args.get_dataset_kwargs()
         if len(args.val_dataset) > 0:
             # Loading val dataset
-            _, val_dataset = load_dataset(args.val_dataset, 1.0, **dataset_kwargs)
+            _, val_dataset = load_dataset(args.val_dataset, split_dataset_ratio=1.0, **dataset_kwargs)
             args.split_dataset_ratio = 0
         train_dataset, val_dataset = load_dataset(
             args.dataset, split_dataset_ratio=args.split_dataset_ratio, **dataset_kwargs)

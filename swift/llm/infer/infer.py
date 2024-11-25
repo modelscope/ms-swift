@@ -240,9 +240,9 @@ class SwiftInfer(SwiftPipeline):
         args = self.args
         dataset_kwargs = args.get_dataset_kwargs()
         if len(args.val_dataset) > 0:
-            _, val_dataset = load_dataset(args.val_dataset, 1.0, **dataset_kwargs)
+            _, val_dataset = load_dataset(args.val_dataset, split_dataset_ratio=1.0, **dataset_kwargs)
         else:
-            _, val_dataset = load_dataset(args.dataset, args.split_dataset_ratio, **dataset_kwargs)
+            _, val_dataset = load_dataset(args.dataset, split_dataset_ratio=args.split_dataset_ratio, **dataset_kwargs)
         assert val_dataset is not None
         val_dataset = sample_dataset(val_dataset, args.val_dataset_sample, self.random_state)
         return val_dataset

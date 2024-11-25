@@ -55,6 +55,7 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
             else:
                 self.learning_rate = 1e-4
         self.lr_scheduler_kwargs = self.parse_to_dict(self.lr_scheduler_kwargs)
+        self.gradient_checkpointing_kwargs = self.parse_to_dict(self.gradient_checkpointing_kwargs)
 
         if len(self.val_dataset) == 0 and self.split_dataset_ratio == 0:
             self.evaluation_strategy = IntervalStrategy.NO

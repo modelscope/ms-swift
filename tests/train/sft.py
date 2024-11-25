@@ -11,12 +11,15 @@ kwargs = {
 }
 
 
-def test_llm():
+def test_llm_ddp():
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
     from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
     result = sft_main(
         TrainArguments(
             model='qwen/Qwen2-7B-Instruct',
             dataset=['AI-ModelScope/alpaca-gpt4-data-zh#100', 'AI-ModelScope/alpaca-gpt4-data-en#100'],
+            # ddp_find_unused_parameters=False,
+            gradient_checkpointing_kwargs={'use_reentrant': False},
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
     infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True, merge_lora=True))
@@ -101,16 +104,29 @@ def test_mllm_streaming_zero3():
             dataset=['modelscope/coco_2014_caption:validation', 'AI-ModelScope/alpaca-gpt4-data-en'],
             streaming=True,
             max_steps=16,
-            deepspeed='zero3',
+            # deepspeed='zero3',
+            **kwargs))
+
+
+def test_mllm_streaming_mp_ddp():
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
+    from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
+    sft_main(
+        TrainArguments(
+            model='qwen/Qwen2-VL-7B-Instruct',
+            dataset=['modelscope/coco_2014_caption:validation', 'AI-ModelScope/alpaca-gpt4-data-en'],
+            streaming=True,
+            max_steps=16,
             **kwargs))
 
 
 if __name__ == '__main__':
-    # test_llm()
+    # test_llm_ddp()
     # test_mllm()
     # test_llm_streaming()
     # test_mllm_streaming()
     # test_mllm_zero3()
     # test_llm_gptq()
     # test_llm_awq()
-    test_mllm_streaming_zero3()
+    # test_mllm_streaming_zero3()
+    test_mllm_streaming_mp_ddp()

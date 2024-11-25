@@ -50,6 +50,7 @@ class ModelArguments:
     @staticmethod
     def parse_to_dict(value: Union[str, Dict, None], strict: bool = True) -> Union[str, Dict]:
         """Convert a JSON string or JSON file into a dict"""
+        # If the value could potentially be a string, it is generally advisable to set strict to False.
         if value is None:
             value = {}
         elif isinstance(value, str):

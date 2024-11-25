@@ -65,16 +65,7 @@ class QuantEngine(ProcessorMixin):
         block_size = args.quant_seqlen
 
         # only use train_dataset
-        dataset = load_dataset(
-            data,
-            0,
-            args.data_seed,
-            num_proc=args.dataset_num_proc,
-            load_from_cache_file=args.load_from_cache_file,
-            download_mode=args.download_mode,
-            model_name=args.model_name,
-            model_author=args.model_author,
-            strict=args.strict)[0]
+        dataset = load_dataset(data, split_dataset_ratio=0, **args.get_dataset_kwargs())[0]
         logger.info(f'quant_dataset: {dataset}')
         dataset = dataset.shuffle()
 
