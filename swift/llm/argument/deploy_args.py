@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 from typing import Optional
 
+from swift.utils import find_free_port
 from .infer_args import InferArguments
-from .swift.utils import find_free_port
 
 
 @dataclass
