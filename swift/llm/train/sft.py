@@ -6,7 +6,7 @@ from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HfIterableDataset
 
 from swift.plugin import extra_callbacks, get_loss_func, optimizers_map
-from swift.trainers import TrainerFactory
+from swift.trainers import IntervalStrategy, TrainerFactory
 from swift.utils import (append_to_jsonl, compute_acc_metrics, compute_nlg_metrics, find_all_linears, find_embedding,
                          get_logger, get_model_parameter_info, is_master, plot_images, preprocess_logits_for_acc,
                          stat_array, use_torchacc)
@@ -284,6 +284,9 @@ class SwiftSft(SwiftPipeline):
             if val_dataset is not None:
                 self.train_msg['val_dataset'] = self._stat_dataset(val_dataset)
 
+        if val_dataset is None:
+            args.training_args.evaluation_strategy = IntervalStrategy.NO
+            args.training_args.eval_strategy = IntervalStrategy.NO
         return train_dataset, val_dataset
 
 

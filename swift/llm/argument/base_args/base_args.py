@@ -5,7 +5,7 @@ from typing import Optional
 import json
 
 from swift.hub import get_hub
-from swift.utils import check_json_format, get_logger, is_master
+from swift.utils import check_json_format, get_dist_setting, get_logger, is_master
 from ..tuner_args import TunerArguments, get_supported_tuners
 from .data_args import DataArguments
 from .generation_args import GenerationArguments
@@ -45,6 +45,7 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
         if self.use_hf:
             os.environ['USE_HF'] = '1'
         self._init_model_kwargs()
+        self.rank, self.local_rank, self.world_size, self.local_world_size = get_dist_setting()
         ModelArguments.__post_init__(self)
         QuantizeArguments.__post_init__(self)
         TemplateArguments.__post_init__(self)

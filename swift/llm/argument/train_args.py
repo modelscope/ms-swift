@@ -129,7 +129,6 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
         TunerArguments.__post_init__(self)
         TorchAccArguments.__post_init__(self)
 
-        self.rank, self.local_rank, self.global_world_size, self.local_world_size = get_dist_setting()
         if len(self.dataset) == 0:
             raise ValueError(f'self.dataset: {self.dataset}, Please input the training dataset.')
 
