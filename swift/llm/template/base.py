@@ -3,6 +3,7 @@ import hashlib
 import inspect
 import os
 import re
+from copy import deepcopy
 from functools import wraps
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
@@ -15,7 +16,7 @@ from PIL import Image
 from torch.nn.utils.rnn import pad_sequence
 from transformers.integrations import is_deepspeed_zero3_enabled
 
-from swift.utils import dataclass_to_dict, get_dist_setting, use_torchacc
+from swift.utils import get_dist_setting, use_torchacc
 from .agent import loss_scale_map, split_str_parts_by
 from .template_inputs import InferRequest, StdTemplateInputs, TemplateInputs
 from .utils import (Context, ContextType, GenerationProperty, Processor, ProcessorMixin, StopWordsCriteria, fetch_one,
@@ -130,8 +131,8 @@ class Template(ProcessorMixin):
                 'The template does not support multi-round chat. Only use the last round of the conversation.')
             inputs.messages = inputs.messages[-2:]
 
-    def _rlhf_encode(self, inputs):
-        chosen_inputs, rejected_inputs = inputs, inputs.copy()
+    def _rlhf_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        chosen_inputs, rejected_inputs = inputs, deepcopy(inputs)
         assert chosen_inputs.rejected_response is not None, f'inputs: {inputs}'
         rejected_inputs.messages[-1]['content'] = chosen_inputs.rejected_response
         chosen_encoded = self._encode(chosen_inputs)
@@ -146,7 +147,7 @@ class Template(ProcessorMixin):
                 encoded[f'{prefix}_{k}'] = v
         return encoded
 
-    def _kto_encode(self, inputs):
+    def _kto_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = self._rlhf_encode(inputs)
         if len(encoded) == 0:
             return {}
@@ -168,13 +169,12 @@ class Template(ProcessorMixin):
             return {'input_ids': List[int], 'labels': Optional[List[int]], ...}
         """
         if isinstance(inputs, (InferRequest, TemplateInputs)):
-            # The safety is guaranteed in StdTemplateInputs.from_dict.
-            inputs = dataclass_to_dict(inputs)
+            inputs = asdict(inputs)
 
         if isinstance(inputs, dict):
             inputs = StdTemplateInputs.from_dict(inputs, tools_prompt=self.tools_prompt)
         elif isinstance(inputs, StdTemplateInputs):
-            inputs = inputs.copy()
+            inputs = deepcopy(inputs)
 
         assert isinstance(inputs, StdTemplateInputs)
         self._preprocess_inputs(inputs)

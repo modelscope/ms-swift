@@ -16,7 +16,7 @@ from transformers.utils import is_torch_npu_available
 from swift.llm import InferRequest, Template, TemplateMeta, to_device
 from swift.plugin import Metric
 from swift.tuners import Swift
-from swift.utils import dataclass_to_dict, get_logger
+from swift.utils import get_logger
 from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                         ChatCompletionStreamResponse, ChatMessage, DeltaMessage, ImageObject, ImagesResponse,
                         MultiModalRequestMixin, RequestConfig, random_uuid)
@@ -162,7 +162,7 @@ class PtEngine(InferEngine):
             kwargs={
                 'generation_config': generation_config,
                 'streamer': streamer,
-                **dataclass_to_dict(generation_property),
+                **asdict(generation_property),
                 **inputs,
                 **kwargs
             })
@@ -258,8 +258,7 @@ class PtEngine(InferEngine):
         num_prompt_tokens = self._get_num_tokens(inputs)
         generation_property = template.prepare_for_generation(generation_config, inputs, self.model)
         output = dict(
-            self.model.generate(
-                generation_config=generation_config, **dataclass_to_dict(generation_property), **inputs, **kwargs))
+            self.model.generate(generation_config=generation_config, **asdict(generation_property), **inputs, **kwargs))
         batched_generate_ids = output['sequences']
         batched_generate_ids = template.get_generate_ids(batched_generate_ids, num_prompt_tokens)
         batched_logprobs = self.preprocess_logits(

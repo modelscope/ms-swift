@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, Union
 import json
 from PIL import Image
 
-from swift.utils import dataclass_to_dict, get_logger
+from swift.utils import get_logger
 from ..utils import messages_to_history
 
 logger = get_logger()
@@ -54,14 +54,6 @@ class InferRequest:
         if last_role == 'assistant':
             self.messages.pop()
 
-    def copy(self):
-        return self.__class__(
-            messages=deepcopy(self.messages),
-            images=self.images.copy(),
-            audios=self.audios.copy(),
-            videos=self.videos.copy(),
-            tools=deepcopy(self.tools))
-
     @staticmethod
     def _to_printable(obj, key: Optional[str] = None):
         if isinstance(obj, str) and key not in {'content', 'text'} and len(obj) >= 1000:
@@ -79,7 +71,7 @@ class InferRequest:
         return obj
 
     def to_printable(self):
-        return InferRequest._to_printable(dataclass_to_dict(self))
+        return InferRequest._to_printable(asdict(self))
 
 
 @dataclass
@@ -99,13 +91,6 @@ class TemplateInputs(InferRequest):
             self.objects = json.loads(self.objects)
         elif self.objects is None:
             self.objects = []
-
-    def copy(self):
-        res = super().copy()
-        res.rejected_response = self.rejected_response
-        res.label = self.label
-        res.objects = deepcopy(self.objects)
-        return res
 
 
 @dataclass
@@ -136,17 +121,6 @@ class StdTemplateInputs:
         if self.audios and not isinstance(self.audios, list):
             self.audios = [self.audios]
 
-    def copy(self):
-        return self.__class__(
-            messages=deepcopy(self.messages),
-            system=self.system,
-            rejected_response=self.rejected_response,
-            label=self.label,
-            images=self.images.copy(),
-            audios=self.audios.copy(),
-            videos=self.videos.copy(),
-            objects=self.objects.copy())
-
     def to_history(self):
         if not self.messages:
             return None
@@ -159,13 +133,14 @@ class StdTemplateInputs:
     @classmethod
     def from_dict(cls, inputs: Dict[str, Any], *, tools_prompt: str = 'react_en') -> 'StdTemplateInputs':
         from .agent import get_tools_prompt
+        inputs = deepcopy(inputs)
         kwargs = {}
         for key in ['rejected_response', 'label']:
             if key in inputs:
                 kwargs[key] = inputs[key]
-        messages = deepcopy(inputs['messages'])
-        tools = deepcopy(inputs.get('tools'))
-        objects = deepcopy(inputs.get('objects') or [])
+        messages = inputs['messages']
+        tools = inputs.get('tools')
+        objects = inputs.get('objects') or []
 
         assert len(messages) >= 1
 

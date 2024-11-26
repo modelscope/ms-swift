@@ -229,12 +229,6 @@ def get_env_args(args_name: str, type_func: Callable[[str], _T], default_value: 
     return value
 
 
-def dataclass_to_dict(instance: Any) -> Dict[str, Any]:
-    """shallow copy"""
-    assert is_dataclass(instance)
-    return {field.name: getattr(instance, field.name) for field in fields(instance)}
-
-
 def find_free_port(start_port: Optional[int] = None, retry: int = 100) -> str:
     if start_port is None:
         start_port = 0

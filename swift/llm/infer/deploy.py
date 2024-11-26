@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from swift.llm import TEMPLATE_MAPPING, DeployArguments, Template, merge_lora
 from swift.plugin import InferStats
-from swift.utils import dataclass_to_dict, get_logger
+from swift.utils import get_logger
 from .infer import SwiftInfer
 from .protocol import ChatCompletionRequest, CompletionRequest, Model, ModelList
 
@@ -97,7 +97,7 @@ class SwiftDeploy(SwiftInfer):
             response = response.to_cmpl_response()
 
         if args.result_path is not None:
-            data = {'response': dataclass_to_dict(response), **request_info}
+            data = {'response': asdict(response), **request_info}
             self.jsonl_writer.append(data)
         return response
 

@@ -238,8 +238,9 @@ class ChatCompletionResponseChoice:
     logprobs: Optional[Dict[str, List[Dict[str, Any]]]] = None
 
     def to_cmpl_choice(self) -> 'CompletionResponseChoice':
-        assert not self.message.tool_calls
-        return CompletionResponseChoice(self.index, self.message.content, self.finish_reason, deepcopy(self.logprobs))
+        self = deepcopy(self)
+        assert not self.message.tool_calls, f'message: {self.message}'
+        return CompletionResponseChoice(self.index, self.message.content, self.finish_reason, self.logprobs)
 
 
 @dataclass
@@ -260,9 +261,10 @@ class ChatCompletionResponse:
     created: int = field(default_factory=lambda: int(time.time()))
 
     def to_cmpl_response(self) -> 'CompletionResponse':
+        self = deepcopy(self)
         choices = [choice.to_cmpl_choice() for choice in self.choices]
         id_ = f'cmpl{self.id[len("chatcmpl"):]}'
-        return CompletionResponse(self.model, choices, deepcopy(self.usage), id_, created=self.created)
+        return CompletionResponse(self.model, choices, self.usage, id_, created=self.created)
 
 
 @dataclass
@@ -297,9 +299,9 @@ class ChatCompletionResponseStreamChoice:
     logprobs: Optional[Dict[str, List[Dict[str, Any]]]] = None
 
     def to_cmpl_choice(self) -> 'CompletionResponseStreamChoice':
+        self = deepcopy(self)
         assert not self.delta.tool_calls
-        return CompletionResponseStreamChoice(self.index, self.delta.content, self.finish_reason,
-                                              deepcopy(self.logprobs))
+        return CompletionResponseStreamChoice(self.index, self.delta.content, self.finish_reason, self.logprobs)
 
 
 @dataclass
@@ -320,9 +322,10 @@ class ChatCompletionStreamResponse:
     created: int = field(default_factory=lambda: int(time.time()))
 
     def to_cmpl_response(self) -> 'CompletionStreamResponse':
+        self = deepcopy(self)
         choices = [choice.to_cmpl_choice() for choice in self.choices]
         id_ = f'cmpl{self.id[len("chatcmpl"):]}'
-        return CompletionStreamResponse(self.model, choices, deepcopy(self.usage), id_, created=self.created)
+        return CompletionStreamResponse(self.model, choices, self.usage, id_, created=self.created)
 
 
 @dataclass
