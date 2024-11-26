@@ -127,7 +127,7 @@ class ConstantLengthDataset(IterableDataset):
                 try:
                     example = next(iterator)
                     lens = sum([len(value) if value else 0 for value in example.values()])
-                    buffer.append(next(iterator))
+                    buffer.append(example)
                     buffer_len += lens
                 except StopIteration:
                     more_examples = False
@@ -140,6 +140,8 @@ class ConstantLengthDataset(IterableDataset):
                     continue
                 sequences.append((input, len(input['input_ids'])))
 
+            if not sequences:
+                return
             packed_sequences = self.calculate_matched_group(sequences)
             for sequence in packed_sequences:
                 yield sequence
@@ -218,9 +220,14 @@ class EncodePreprocessor(RowPreprocessor):
 
 class PackingPreprocessor(EncodePreprocessor):
 
+    def __init__(self, *, max_length, **kwargs):
+        self.max_length = max_length
+        super().__init__(**kwargs)
+
     def batched_preprocess(self, batched_row: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         subset = self.batched_to_rows(batched_row)
-        packed_dataset = ConstantLengthDataset.get_packed_dataset(self.template, dataset=subset, num_of_sequences=4096)
+        packed_dataset = ConstantLengthDataset.get_packed_dataset(self.template, dataset=subset, 
+            seq_length=self.max_length, num_of_sequences=4096)
         batched_row = self.rows_to_batched(packed_dataset)
         return batched_row
 
