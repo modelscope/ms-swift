@@ -15,7 +15,7 @@ class MergeArguments:
     Args:
         merge_lora (bool): Flag to indicate if LoRA merging is enabled. Default is False.
         use_merge_kit (bool): Flag to indicate merge with `mergekit`. Default is False.
-        instruct_model_id_or_path (Optional[str]): Path or ID of the instruct model. Use when `use_merge_kit` is True.
+        instruct_model (Optional[str]): Path or ID of the instruct model. Use when `use_merge_kit` is True.
         instruct_model_revision (Optional[str]): Revision of the instruct model. Use when `use_merge_kit` is True.
     """
     merge_lora: bool = False
@@ -23,7 +23,7 @@ class MergeArguments:
     max_shard_size: str = '5GB'
 
     use_merge_kit: bool = False
-    instruct_model_id_or_path: Optional[str] = None
+    instruct_model: Optional[str] = None
     instruct_model_revision: Optional[str] = None
 
     def __post_init__(self):
@@ -33,7 +33,7 @@ class MergeArguments:
             logger.info('Important: You are using mergekit, please remember '
                         'the LoRA should be trained against the base model,'
                         'and pass its instruct model by --instruct_model xxx when merging')
-            assert self.instruct_model_id_or_path, 'Please pass in the instruct model'
+            assert self.instruct_model, 'Please pass in the instruct model'
 
             self.merge_yaml = ('models:'
                                '  - model: {merged_model}'

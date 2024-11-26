@@ -22,18 +22,6 @@ class SwiftEval(SwiftPipeline):
     args_class = EvalArguments
     args: args_class
 
-    def __init__(self, args: Union[List[str], args_class, None] = None):
-        super().__init__(args)
-        self._download_eval_dataset()
-
-    def _download_eval_dataset(self):
-        self.cache_dir = MediaResource.download(
-            'https://www.modelscope.cn/api/v1/datasets/swift/evalscope_resource/'
-            'repo?Revision=master&FilePath=eval.zip',
-            'evalscope',
-        )
-        logger.info(f'eval_dataset cache_dir: {self.cache_dir}')
-
     @contextmanager
     def run_deploy(self):
 
@@ -99,7 +87,7 @@ class SwiftEval(SwiftPipeline):
                 'batch_size': args.max_batch_size,
                 'work_dir': args.eval_result_dir,
                 'models': [{
-                    'path': args.model,
+                    'path': args.model_name,
                     'openai_api_base': args.url,
                 }]
             }
@@ -115,7 +103,7 @@ class SwiftEval(SwiftPipeline):
                 'model': [{
                     'name': 'CustomAPIModel',
                     'api_base': args.url,
-                    'type': args.model,
+                    'type': args.model_name,
                 }],
                 'nproc': args.max_batch_size,
             }

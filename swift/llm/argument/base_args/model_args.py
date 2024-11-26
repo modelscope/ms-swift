@@ -105,6 +105,7 @@ class ModelArguments:
         return self.model_info.torch_dtype
 
     def __post_init__(self):
+        self.model_name = os.path.basename(self.model)
         if self.rope_scaling:  # TODO: check
             logger.info(f'rope_scaling is set to {self.rope_scaling}, please remember to set max_length')
         self._init_device_map()
