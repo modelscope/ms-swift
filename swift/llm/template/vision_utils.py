@@ -2,6 +2,7 @@
 import base64
 import math
 import os
+import re
 from io import BytesIO
 from typing import Any, Callable, Dict, List, Literal, TypeVar, Union
 
@@ -117,7 +118,12 @@ def load_file(path: Union[str, _T]) -> Union[BytesIO, _T]:
         else:  # base64_str
             import binascii
             try:
-                data = base64.b64decode(path)
+                data = path
+                if data.startswith('data:'):
+                    match_ = re.match(r'data:(.+?);base64,(.+)', data)
+                    assert match_ is not None
+                    data = match_.group(2)
+                data = base64.b64decode(data)
                 res = BytesIO(data)
             except (ValueError, binascii.Error) as error:
                 if len(path) < 200:
