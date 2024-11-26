@@ -58,8 +58,9 @@ def merge_lora(args: ExportArguments, replace_if_exists=False, device_map=None) 
     if args.use_merge_kit:
         tempdir = tempfile.gettempdir()
         mergekit_path = os.path.join(output_dir, 'mergekit')
-        merge_yaml = args.merge_yaml.replace('{merged_model}', output_dir).replace(
-            '{instruct_model}', args.instruct_model).replace('{base_model}', base_model)
+        merge_yaml = args.merge_yaml.replace('{merged_model}', output_dir).replace('{instruct_model}',
+                                                                                   args.instruct_model).replace(
+                                                                                       '{base_model}', base_model)
         try:
             yamlfile = os.path.join(tempdir, 'mergekit.yaml')
             with open(yamlfile, 'w') as f:
