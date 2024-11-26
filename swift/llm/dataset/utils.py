@@ -52,49 +52,6 @@ def sample_dataset(dataset: HfDataset,
     return dataset
 
 
-class LLMIterableDataset(HFIterableDataset):
-    """This class offers abilities of deal with IterableDataset, and skip the bad samples"""
-
-    def __init__(self, dataset: HFIterableDataset, max_retries=10):
-        from .loader import standard_keys
-        super().__init__(
-            dataset._ex_iterable,
-            dataset._info,
-            dataset._split,
-            dataset._formatting,
-            dataset._shuffling,
-            dataset._distributed,
-            dataset._token_per_repo_id,
-        )
-        self.dataset = dataset
-        self.max_retries = max_retries
-        dataset._ex_iterable.remove_columns = standard_keys & next(iter(dataset)).keys()
-
-    def __iter__(self):
-        """Iter the dataset, skip bad ones. This iter will never stop until your max-length reached.
-        Yields:
-            An example
-        """
-        iterator = iter(self.dataset)
-        while True:
-            retries = 0
-            while retries < self.max_retries:
-                try:
-                    value = next(iterator)
-                    if value:
-                        yield value
-                        break
-                    else:
-                        raise ValueError
-                except StopIteration:
-                    iterator = iter(self.dataset)
-                    break
-                except Exception as e:
-                    retries += 1
-                    if retries >= self.max_retries:
-                        raise e
-
-
 # Code borrowed from trl
 class ConstantLengthDataset(IterableDataset):
     """This class wraps to do dataset packing
