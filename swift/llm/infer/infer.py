@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import re
+from contextlib import nullcontext
 from copy import deepcopy
 from dataclasses import dataclass, field
 from itertools import chain
@@ -12,7 +13,7 @@ from datasets import Dataset as HfDataset
 from swift.llm import (InferArguments, InferRequest, Messages, Processor, SwiftPipeline, Template, get_template,
                        load_dataset, sample_dataset)
 from swift.tuners import Swift
-from swift.utils import append_to_jsonl, get_logger, is_master
+from swift.utils import get_logger, is_master, open_jsonl_writer
 from .protocol import RequestConfig
 
 logger = get_logger()
@@ -115,6 +116,13 @@ class SwiftInfer(SwiftPipeline):
         template = get_template(args.template, processor, use_chat_template=args.use_chat_template, **template_kwargs)
         logger.info(f'default_system: {template.default_system}')
         return template
+
+    def main(self):
+        args = self.args
+        context = open_jsonl_writer(args.result_path, buffer_size=4096) if args.result_path else nullcontext()
+        with context as json_writer:
+            self.jsonl_writer = json_writer
+            super().main()
 
     def run(self) -> List[Dict[str, Any]]:
         args = self.args
@@ -240,8 +248,8 @@ class SwiftInfer(SwiftPipeline):
             infer_state.add_response(response)
             data = {'response': response, **data}
             result_list.append(data)
-            if args.result_path is not None:
-                append_to_jsonl(args.result_path, data, strict=False)
+            if self.jsonl_writer is not None:
+                self.jsonl_writer.append(data)
 
         return result_list
 
@@ -266,13 +274,17 @@ class SwiftInfer(SwiftPipeline):
         result_list = []
         if request_config.stream:
             for data in val_dataset:
+                query = data['messages'][-1]['content']
+                print(f'[QUERY] {query}\n[RESPONSE] ', end='')
                 response = self.infer_single(InferRequest(**data), request_config)
+                print('-' * 50)
                 data = {'response': response, **data}
                 result_list.append(data)
-                if args.result_path is not None:
-                    append_to_jsonl(args.result_path, data)
+                if self.jsonl_writer is not None:
+                    self.jsonl_writer.append(data)
         else:
-            if dist.is_initialized():
+            is_dist = args.global_world_size > 1 and dist.is_initialized()
+            if is_dist:
                 val_dataset = val_dataset.shard(args.global_world_size, args.rank, contiguous=True)
             infer_requests = [InferRequest(**data) for i, data in enumerate(val_dataset)]
 
@@ -281,13 +293,13 @@ class SwiftInfer(SwiftPipeline):
                 response = resp.choices[0].message.content
                 data = {'response': response, **data}
                 result_list.append(data)
-            if dist.is_initialized():
+            if is_dist:
                 total_result_list = [None for _ in range(args.global_world_size)] if args.rank == 0 else None
                 dist.gather_object(result_list, total_result_list)
                 result_list = total_result_list and list(chain.from_iterable(total_result_list))
 
-            if is_master() and args.result_path and result_list:
-                append_to_jsonl(args.result_path, result_list)
+            if is_master() and self.jsonl_writer and result_list:
+                self.jsonl_writer.append(result_list)
         return result_list
 
 

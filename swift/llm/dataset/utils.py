@@ -226,8 +226,8 @@ class PackingPreprocessor(EncodePreprocessor):
 
     def batched_preprocess(self, batched_row: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         subset = self.batched_to_rows(batched_row)
-        packed_dataset = ConstantLengthDataset.get_packed_dataset(self.template, dataset=subset, 
-            seq_length=self.max_length, num_of_sequences=4096)
+        packed_dataset = ConstantLengthDataset.get_packed_dataset(
+            self.template, dataset=subset, seq_length=self.max_length, num_of_sequences=4096)
         batched_row = self.rows_to_batched(packed_dataset)
         return batched_row
 
