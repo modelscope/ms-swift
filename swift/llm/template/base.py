@@ -93,7 +93,6 @@ class Template(ProcessorMixin):
         self.sequence_parallel_size = sequence_parallel_size
         self.tools_prompt = tools_prompt or template_meta.default_tools_prompt
 
-        # infer: 'pt', 'vllm', 'lmdeploy'; train: 'train', 'rlhf', 'kto'
         self.mode: Literal['pt', 'vllm', 'lmdeploy', 'train', 'rlhf', 'kto'] = 'pt'
         self._handles = []
         self._deepspeed_initialize = None
@@ -518,7 +517,6 @@ class Template(ProcessorMixin):
         self._concat_context_list(prefix, res_context_list, res_context_types, system=inputs.system)
 
         n_round = len(inputs.messages) // 2
-        is_training = self.mode in {'train', 'rlhf', 'kto'}
         for i, (query_message, response_message) in enumerate(zip(inputs.messages[::2], inputs.messages[1::2])):
             query_role, query = query_message['role'], query_message['content']
             response_role, response = response_message['role'], response_message['content']
@@ -543,7 +541,7 @@ class Template(ProcessorMixin):
             elif response is not None:
                 # It is the final round, and the response exists (during training).
                 context_list.append('{{RESPONSE}}')
-                if is_training:
+                if self.is_training:
                     extra_context_list = template_meta.suffix
                     extra_context_type = ContextType.SUFFIX
 
@@ -601,11 +599,11 @@ class Template(ProcessorMixin):
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
         encoded['loss_scale'] = loss_scale
-        if not is_training:
+        if not self.is_training:
             for k in list(encoded.keys()):
                 if k.endswith('labels'):
                     encoded[k] = None
-        if not is_training or self.loss_scale in {'default', 'all', 'last_round'}:
+        if not self.is_training or self.loss_scale in {'default', 'all', 'last_round'}:
             for k in list(encoded.keys()):
                 if k.endswith('loss_scale'):
                     encoded[k] = None
@@ -655,6 +653,10 @@ class Template(ProcessorMixin):
         if 'position_ids' not in parameters:
             kwargs.pop('position_ids', None)
         return args, kwargs
+
+    @property
+    def is_training(self):
+        return self.mode not in {'vllm', 'lmdeploy', 'pt'}
 
     def set_mode(self, mode: Literal['vllm', 'lmdeploy', 'pt', 'train', 'rlhf', 'kto']) -> None:
         self.mode = mode

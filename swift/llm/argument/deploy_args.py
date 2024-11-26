@@ -33,7 +33,7 @@ class DeployArguments(InferArguments):
     owned_by: str = 'swift'
     served_model_name: Optional[str] = None
     verbose: bool = True  # Whether to log request_info
-    log_interval: int = 60  # Interval for printing global statistics
+    log_interval: int = 20  # Interval for printing global statistics
 
     max_logprobs: int = 20
 
