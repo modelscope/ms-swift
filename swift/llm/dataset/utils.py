@@ -182,7 +182,7 @@ class ConstantLengthDataset(IterableDataset):
 
             sequences = []
             for example in buffer:
-                input, _ = self.template.encode(example)
+                input = self.template.encode(example)
                 if not input:
                     continue
                 sequences.append((input, len(input['input_ids'])))
