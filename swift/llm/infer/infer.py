@@ -38,7 +38,11 @@ class InferCliState:
         self.videos = []
 
     def add_query(self, query: str) -> None:
-        self.messages.append({'role': 'user', 'content': query})
+        role = 'user'
+        if query.startswith('tool:'):
+            role = 'tool'
+            query = query[len('tool:'):]
+        self.messages.append({'role': role, 'content': query})
 
     def add_response(self, response: str) -> None:
         self.messages.append({'role': 'assistant', 'content': response})

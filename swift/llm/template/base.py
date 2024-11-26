@@ -518,6 +518,7 @@ class Template(ProcessorMixin):
         self._concat_context_list(prefix, res_context_list, res_context_types, system=inputs.system)
 
         n_round = len(inputs.messages) // 2
+        is_training = self.mode in {'train', 'rlhf', 'kto'}
         for i, (query_message, response_message) in enumerate(zip(inputs.messages[::2], inputs.messages[1::2])):
             query_role, query = query_message['role'], query_message['content']
             response_role, response = response_message['role'], response_message['content']
@@ -535,15 +536,17 @@ class Template(ProcessorMixin):
             extra_context_list = []
             extra_context_type = None
             if i < n_round - 1:
+                # Not the last round.
                 context_list.append('{{RESPONSE}}')
-                extra_context_list = template_meta.chat_sep  # TODO:agent check
+                extra_context_list = template_meta.chat_sep
                 extra_context_type = ContextType.OTHER
             elif response is not None:
                 # It is the final round, and the response exists (during training).
                 context_list.append('{{RESPONSE}}')
-                extra_context_list = template_meta.suffix
-                extra_context_type = ContextType.SUFFIX
-            assert query or response  # TODO:check
+                if is_training:
+                    extra_context_list = template_meta.suffix
+                    extra_context_type = ContextType.SUFFIX
+
             self._concat_context_list(
                 context_list,
                 res_context_list,
@@ -578,6 +581,7 @@ class Template(ProcessorMixin):
             res_context_list, loss_scale_list = self._simplify_context_list(res_context_list, loss_scale_list, inputs)
             input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(
                 res_context_list, loss_scale_list)
+        if self.loss_scale in {'default', 'all', 'last_round'}:
             self._add_dynamic_eos(labels, self._encode_context_list(template_meta.suffix)[0])
 
         if tokenizer_kwargs:
@@ -597,11 +601,11 @@ class Template(ProcessorMixin):
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
         encoded['loss_scale'] = loss_scale
-        if response is None:
+        if not is_training:
             for k in list(encoded.keys()):
                 if k.endswith('labels'):
                     encoded[k] = None
-        if response is None or self.loss_scale in {'default', 'all', 'last_round'}:
+        if not is_training or self.loss_scale in {'default', 'all', 'last_round'}:
             for k in list(encoded.keys()):
                 if k.endswith('loss_scale'):
                     encoded[k] = None

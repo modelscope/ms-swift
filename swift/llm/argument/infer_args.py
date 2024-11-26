@@ -106,12 +106,12 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
     """
     ckpt_dir: Optional[str] = field(default=None, metadata={'help': '/path/to/your/vx-xxx/checkpoint-xxx'})
     infer_backend: Literal['vllm', 'pt', 'lmdeploy'] = 'pt'
+    result_path: Optional[str] = None
     # for pt engine
     max_batch_size: int = 1
 
     # only for inference
     val_dataset_sample: Optional[int] = None
-    result_path: Optional[str] = None
     stream: Optional[bool] = None
 
     def get_result_path(self, folder_name, suffix: str = '.jsonl') -> str:
