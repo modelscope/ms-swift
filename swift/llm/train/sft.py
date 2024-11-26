@@ -66,7 +66,7 @@ class SwiftSft(SwiftPipeline):
     def _prepare_generation_config(self):
         args = self.args
         self.model.generation_config = prepare_generation_config(self.model.generation_config,
-                                                                 args.get_request_config(False))
+                                                                 args.get_request_config())
         logger.info(f'model.generation_config: {self.model.generation_config}')
 
     def _get_model_tokenizer(self, model, model_type, model_revision):

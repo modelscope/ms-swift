@@ -35,7 +35,7 @@ class GenerationArguments:
 
     stop_words: List[str] = field(default_factory=list)
 
-    def get_request_config(self, stream: bool = False):
+    def get_request_config(self):
         from swift.llm import RequestConfig
         temperature = self.temperature
         if not self.do_sample:
@@ -48,5 +48,5 @@ class GenerationArguments:
             top_k=self.top_k,
             num_beams=self.num_beams,
             stop=self.stop_words,
-            stream=stream,
+            stream=getattr(self, 'stream', False),
             repetition_penalty=self.repetition_penalty)

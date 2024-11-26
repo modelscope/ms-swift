@@ -147,7 +147,7 @@ class SwiftInfer(SwiftPipeline):
             text = f'{input(prompt)}\n'
             prompt = ''
             if text.endswith(stop_words):
-                query += text[:len(stop_words)]
+                query += text[:-len(stop_words)]
                 break
             query += text
         return query
@@ -156,7 +156,7 @@ class SwiftInfer(SwiftPipeline):
     def _input_text(multiline_mode: bool, input_system: bool) -> str:
         if multiline_mode:
             addi_prompt = '[MS]' if input_system else '[M]'
-            text = SwiftInfer._input_multiline(f'<<<[{addi_prompt}] ')
+            text = SwiftInfer._input_multiline(f'<<<{addi_prompt} ')
         else:
             addi_prompt = '[S]' if input_system else ''
             text = input(f'<<<{addi_prompt} ')
@@ -254,7 +254,7 @@ class SwiftInfer(SwiftPipeline):
 
     def infer_dataset(self) -> List[Dict[str, Any]]:
         args = self.args
-        request_config = args.get_request_config(args.stream)
+        request_config = args.get_request_config()
         logger.info(f'request_config: {request_config}')
 
         val_dataset = self._prepare_val_dataset()

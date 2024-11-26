@@ -909,6 +909,9 @@ class Template(ProcessorMixin):
                 logger.info(f'[{key_upper}_IDS] {val}')
                 val_str = self.safe_decode(val, **tokenizer_kwargs)
                 logger.info(f'[{key_upper}] {val_str}')
+        if inputs.get('loss_scale') is not None:
+            val = inputs['loss_scale']
+            logger.info(f'[LOSS_SCALE] {val}')
 
     async def prepare_lmdeploy_inputs(self, inputs: Dict[str, Any]) -> None:
         images = inputs.pop('images', None) or []

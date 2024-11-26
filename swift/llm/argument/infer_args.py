@@ -165,8 +165,8 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
         self._parse_lora_modules()
 
         self._init_result_path()
-        self._init_stream()
         self._init_eval_human()
+        self._init_stream()
         self._init_pt_ddp()
         if self.ckpt_dir is None:
             self.train_type = 'full'
