@@ -43,14 +43,14 @@ class EvalArguments(DeployArguments):
         from evalscope.backend.vlm_eval_kit import VLMEvalKitBackendManager
         self.opencompass_dataset = set(OpenCompassBackendManager.list_datasets())
         self.vlmeval_dataset = set(VLMEvalKitBackendManager.list_supported_datasets())
-        self.eval_dataset_mapping = {
+        eval_dataset_mapping = {
             dataset.lower(): dataset
             for dataset in self.opencompass_dataset | self.vlmeval_dataset
         }
         self.eval_dataset_oc = []
         self.eval_dataset_vlm = []
         for dataset in self.eval_dataset:
-            dataset = self.eval_dataset_mapping.get(dataset.lower(), dataset)
+            dataset = eval_dataset_mapping.get(dataset.lower(), dataset)
             if dataset in self.opencompass_dataset:
                 self.eval_dataset_oc.append(dataset)
             elif dataset in self.vlmeval_dataset:

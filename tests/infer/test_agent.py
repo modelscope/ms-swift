@@ -16,9 +16,8 @@ kwargs = {
 def test_sft():
     os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
     from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
-    result = sft_main(
+    sft_main(
         TrainArguments(model='qwen/Qwen2-7B-Instruct', dataset=['iic/ms_agent#2000'], loss_scale='react', **kwargs))
-    print()
 
 
 def test_infer():
@@ -28,5 +27,5 @@ def test_infer():
 
 
 if __name__ == '__main__':
-    # test_sft()
-    test_infer()
+    test_sft()
+    # test_infer()

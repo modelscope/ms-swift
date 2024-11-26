@@ -99,7 +99,7 @@ class SwiftEval(SwiftPipeline):
                 'batch_size': args.max_batch_size,
                 'work_dir': args.eval_result_dir,
                 'models': [{
-                    'path': '',
+                    'path': args.model,
                     'openai_api_base': args.url,
                 }]
             }
@@ -115,7 +115,7 @@ class SwiftEval(SwiftPipeline):
                 'model': [{
                     'name': 'CustomAPIModel',
                     'api_base': args.url,
-                    'type': '',
+                    'type': args.model,
                 }],
                 'nproc': args.max_batch_size,
             }
