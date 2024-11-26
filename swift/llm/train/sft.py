@@ -33,7 +33,7 @@ class SwiftSft(SwiftPipeline):
         self._prepare_template(True)
         self._prepare_callbacks()
         self.model = prepare_model(self.model, self.args)
-        logger.info(self.model)
+        logger.info(f'model: {self.model}')
         model_parameter_info = get_model_parameter_info(self.model)
         self.train_msg['model_parameter_info'] = model_parameter_info
         logger.info(f'model_parameter_info: {model_parameter_info}')

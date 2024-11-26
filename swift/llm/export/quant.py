@@ -39,8 +39,8 @@ class QuantEngine(ProcessorMixin):
         else:
             raise ValueError(f'args.quant_method: {args.quant_method}')
 
-        logger.info(get_model_parameter_info(self.model))
         logger.info(f'model: {self.model}')
+        logger.info(f'model_parameter_info: {get_model_parameter_info(self.model)}')
         save_checkpoint(
             None,
             self.processor,
