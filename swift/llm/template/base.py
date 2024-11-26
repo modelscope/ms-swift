@@ -4,6 +4,7 @@ import inspect
 import os
 import re
 from copy import deepcopy
+from dataclasses import asdict
 from functools import wraps
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
