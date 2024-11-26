@@ -36,7 +36,7 @@ class Template(ProcessorMixin):
     load_medias = True
     skip_prompt = True
 
-    output_prompt_answer = False  # for encoder-decoder & kto
+    is_encoder_decoder = False
     padding_side: Literal['left', 'right'] = 'right'  # The padding_side when the training batch_size >= 2.
 
     def __init__(
@@ -154,8 +154,8 @@ class Template(ProcessorMixin):
         return {
             'completion_input_ids': encoded['chosen_input_ids'],
             'completion_labels': encoded['chosen_labels'],
-            'KL_completion_input_ids': encoded['chosen_prompt_input_ids'] + encoded['rejected_answer_input_ids'],
-            'KL_completion_labels': encoded['chosen_prompt_labels'] + encoded['rejected_answer_labels'],
+            'KL_completion_input_ids': encoded['rejected_input_ids'],
+            'KL_completion_labels': encoded['rejected_labels'],
             'label': inputs.label
         }
 
@@ -484,7 +484,7 @@ class Template(ProcessorMixin):
         return input_ids, labels, loss_scale, tokenizer_kwargs
 
     @staticmethod
-    def _use_dynamic_eos(labels: List[int], suffix_tokens_id: List[int]) -> None:
+    def _add_dynamic_eos(labels: List[int], suffix_tokens_id: List[int]) -> None:
         suffix_len = len(suffix_tokens_id)
         start = 0
         for i in range(1, len(labels)):
@@ -558,30 +558,27 @@ class Template(ProcessorMixin):
                                                                             inputs.messages)
 
         encoded = {}
-        if self.output_prompt_answer:
+        if self.is_encoder_decoder:
             # tokenizer_kwargs: use prompt (qwen-audio)
             answer_len = len(extra_context_list) + bool(response is not None)
             total_len = len(res_context_list)
-            for key, _slice in zip(['answer', 'prompt'],
-                                   [slice(total_len - answer_len, total_len),
-                                    slice(0, total_len - answer_len)]):
+            for key, _slice in zip(['prompt', 'answer'],
+                                   [slice(0, total_len - answer_len),
+                                    slice(total_len - answer_len, total_len)]):
                 _res_context_list, _loss_scale_list = self._simplify_context_list(res_context_list[_slice],
                                                                                   loss_scale_list[_slice], inputs)
                 input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(
                     _res_context_list, _loss_scale_list)
-                encoded[f'{key}_input_ids'], encoded[f'{key}_labels'] = input_ids, labels
-                if self.loss_scale != 'default':
-                    encoded[f'{key}_loss_scale'] = loss_scale
+                encoded[f'{key}_input_ids'] = input_ids
+                if key == 'answer':
+                    encoded['labels'] = labels
+                    encoded['loss_scale'] = loss_scale
             input_ids = encoded['prompt_input_ids'] + encoded['answer_input_ids']
-            labels = encoded['prompt_labels'] + encoded['answer_labels']
-            if response is None:
-                assert len(encoded['answer_labels']) == 0
-                encoded['answer_labels'] = None
         else:
             res_context_list, loss_scale_list = self._simplify_context_list(res_context_list, loss_scale_list, inputs)
             input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(
                 res_context_list, loss_scale_list)
-            self._use_dynamic_eos(labels, self._encode_context_list(template_meta.suffix)[0])
+            self._add_dynamic_eos(labels, self._encode_context_list(template_meta.suffix)[0])
 
         if tokenizer_kwargs:
             encoded['tokenizer_kwargs'] = tokenizer_kwargs
@@ -656,13 +653,6 @@ class Template(ProcessorMixin):
         return args, kwargs
 
     def set_mode(self, mode: Literal['vllm', 'lmdeploy', 'pt', 'train', 'rlhf', 'kto']) -> None:
-        if mode == 'kto':
-            self.output_prompt_answer = True
-        else:
-            try:
-                del self.output_prompt_answer
-            except AttributeError:
-                pass
         self.mode = mode
 
     def register_post_encode_hook(self, models: List[nn.Module]) -> None:
