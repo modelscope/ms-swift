@@ -28,6 +28,7 @@ class EvalArguments(DeployArguments):
     eval_result_dir: Optional[str] = None
     do_sample: bool = False
     verbose: bool = False
+    max_batch_size: int = 16
 
     def __post_init__(self):
         super().__post_init__()
