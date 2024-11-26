@@ -66,7 +66,7 @@ class SwiftSft(SwiftPipeline):
     def _prepare_generation_config(self):
         args = self.args
         self.model.generation_config = prepare_generation_config(self.model.generation_config,
-                                                                 args.get_request_config(False))
+                                                                 args.get_request_config())
         logger.info(f'model.generation_config: {self.model.generation_config}')
 
     def _get_model_tokenizer(self, model, model_type, model_revision):
@@ -278,7 +278,7 @@ class SwiftSft(SwiftPipeline):
                     **kwargs)
 
         inputs = train_dataset[0] if hasattr(train_dataset, '__len__') else next(iter(train_dataset))
-        template.print_inputs(inputs, tokenizer_kwargs=inputs.pop('tokenizer_kwargs', {}))
+        template.print_inputs(inputs, tokenizer_kwargs=inputs.pop('tokenizer_kwargs', None) or {})
         if isinstance(train_dataset, HfDataset):
             self.train_msg['train_dataset'] = self._stat_dataset(train_dataset)
             if val_dataset is not None:

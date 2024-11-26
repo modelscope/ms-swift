@@ -16,7 +16,7 @@ from ..vision_utils import load_image
 
 class FlorenceTemplate(Template):
     loss_scale = 'last_round'
-    output_prompt_answer = True
+    is_encoder_decoder = True
 
     def __init__(self, *args, **kwargs):
         self.task_prompts_without_inputs = {

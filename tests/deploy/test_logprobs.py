@@ -1,11 +1,11 @@
-def _test_client(print_logprobs: bool = False, test_vlm: bool = False):
+def _test_client(port: int, print_logprobs: bool = False, test_vlm: bool = False):
     import requests
     import time
     import aiohttp
     from pprint import pprint
     from swift.llm import InferClient, InferRequest, RequestConfig
 
-    infer_client = InferClient()
+    infer_client = InferClient(port=port)
 
     while True:
         try:
@@ -71,10 +71,10 @@ def _test(infer_backend, test_vlm: bool = False):
     import multiprocessing
     mp = multiprocessing.get_context('spawn')
     model = 'qwen/Qwen2-VL-7B-Instruct' if test_vlm else 'qwen/Qwen2-7B-Instruct'
-    process = mp.Process(
-        target=deploy_main, args=(DeployArguments(model=model, infer_backend=infer_backend, verbose=False), ))
+    args = DeployArguments(model=model, infer_backend=infer_backend, verbose=False)
+    process = mp.Process(target=deploy_main, args=(args, ))
     process.start()
-    _test_client(True, test_vlm)
+    _test_client(args.port, True, test_vlm)
     process.terminate()
 
 

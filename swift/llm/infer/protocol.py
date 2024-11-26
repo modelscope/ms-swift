@@ -143,6 +143,7 @@ class ChatCompletionRequest(RequestConfig, MultiModalRequestMixin, ChatCompletio
         RequestConfig.__post_init__(self)
         MultiModalRequestMixin.__post_init__(self)
         ChatCompletionRequestMixin.__post_init__(self)
+        self.convert_to_base64()
 
     def convert_to_base64(self):
         for message in self.messages:
@@ -151,18 +152,32 @@ class ChatCompletionRequest(RequestConfig, MultiModalRequestMixin, ChatCompletio
                 continue
             for item in content:
                 key: str = item['type']
+                if key == 'text':
+                    continue
+
                 key_origin = key
                 value = item[key]
                 if key.endswith('_url'):
                     key = key[:-len('_url')]
+                is_dict = False
+                if isinstance(value, dict):
+                    is_dict = True
+                    value = value['url']
+                if isinstance(value, str) and value.startswith('data:') or value.startswith('http'):
+                    continue
+
+                # local_path / PIL.Image
                 if isinstance(value, str) and os.path.isfile(value):
-                    suffix = os.path.splitext(value)[1].lower()
+                    suffix = os.path.splitext(value)[1][1:].lower()
                 elif isinstance(value, Image.Image):
                     suffix = 'jpeg'
                 else:
                     raise ValueError(f'value: {value}')
                 mm_data_base64 = self._to_base64(value)
-                item[key_origin] = f'data:{key}/{suffix};base64,{mm_data_base64}'
+                new_value = f'data:{key}/{suffix};base64,{mm_data_base64}'
+                if is_dict:
+                    new_value = {'url': new_value}
+                item[key_origin] = new_value
 
     def parse(self) -> Tuple['InferRequest', 'RequestConfig']:
         data = asdict(self)

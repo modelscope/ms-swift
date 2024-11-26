@@ -36,7 +36,7 @@ class Template(ProcessorMixin):
     load_medias = True
     skip_prompt = True
 
-    output_prompt_answer = False  # for encoder-decoder & kto
+    is_encoder_decoder = False
     padding_side: Literal['left', 'right'] = 'right'  # The padding_side when the training batch_size >= 2.
 
     def __init__(
@@ -133,7 +133,7 @@ class Template(ProcessorMixin):
 
     def _rlhf_encode(self, inputs):
         chosen_inputs, rejected_inputs = inputs, inputs.copy()
-        assert chosen_inputs.rejected_response is not None
+        assert chosen_inputs.rejected_response is not None, f'inputs: {inputs}'
         rejected_inputs.messages[-1]['content'] = chosen_inputs.rejected_response
         chosen_encoded = self._encode(chosen_inputs)
         rejected_encoded = self._encode(rejected_inputs)
@@ -154,8 +154,8 @@ class Template(ProcessorMixin):
         return {
             'completion_input_ids': encoded['chosen_input_ids'],
             'completion_labels': encoded['chosen_labels'],
-            'KL_completion_input_ids': encoded['chosen_prompt_input_ids'] + encoded['rejected_answer_input_ids'],
-            'KL_completion_labels': encoded['chosen_prompt_labels'] + encoded['rejected_answer_labels'],
+            'KL_completion_input_ids': encoded['rejected_input_ids'],
+            'KL_completion_labels': encoded['rejected_labels'],
             'label': inputs.label
         }
 
@@ -484,7 +484,7 @@ class Template(ProcessorMixin):
         return input_ids, labels, loss_scale, tokenizer_kwargs
 
     @staticmethod
-    def _use_dynamic_eos(labels: List[int], suffix_tokens_id: List[int]) -> None:
+    def _add_dynamic_eos(labels: List[int], suffix_tokens_id: List[int]) -> None:
         suffix_len = len(suffix_tokens_id)
         start = 0
         for i in range(1, len(labels)):
@@ -518,6 +518,7 @@ class Template(ProcessorMixin):
         self._concat_context_list(prefix, res_context_list, res_context_types, system=inputs.system)
 
         n_round = len(inputs.messages) // 2
+        is_training = self.mode in {'train', 'rlhf', 'kto'}
         for i, (query_message, response_message) in enumerate(zip(inputs.messages[::2], inputs.messages[1::2])):
             query_role, query = query_message['role'], query_message['content']
             response_role, response = response_message['role'], response_message['content']
@@ -535,15 +536,17 @@ class Template(ProcessorMixin):
             extra_context_list = []
             extra_context_type = None
             if i < n_round - 1:
+                # Not the last round.
                 context_list.append('{{RESPONSE}}')
-                extra_context_list = template_meta.chat_sep  # TODO:agent check
+                extra_context_list = template_meta.chat_sep
                 extra_context_type = ContextType.OTHER
             elif response is not None:
                 # It is the final round, and the response exists (during training).
                 context_list.append('{{RESPONSE}}')
-                extra_context_list = template_meta.suffix
-                extra_context_type = ContextType.SUFFIX
-            assert query or response  # TODO:check
+                if is_training:
+                    extra_context_list = template_meta.suffix
+                    extra_context_type = ContextType.SUFFIX
+
             self._concat_context_list(
                 context_list,
                 res_context_list,
@@ -554,33 +557,32 @@ class Template(ProcessorMixin):
                 round0=i)
             res_context_list += extra_context_list
             res_context_types += [extra_context_type] * len(extra_context_list)
-        loss_scale_list = loss_scale_map[self.loss_scale](res_context_types, inputs.messages)
+        res_context_list, loss_scale_list = loss_scale_map[self.loss_scale](res_context_list, res_context_types,
+                                                                            inputs.messages)
 
         encoded = {}
-        if self.output_prompt_answer:
+        if self.is_encoder_decoder:
             # tokenizer_kwargs: use prompt (qwen-audio)
             answer_len = len(extra_context_list) + bool(response is not None)
             total_len = len(res_context_list)
-            for key, _slice in zip(['answer', 'prompt'],
-                                   [slice(total_len - answer_len, total_len),
-                                    slice(0, total_len - answer_len)]):
+            for key, _slice in zip(['prompt', 'answer'],
+                                   [slice(0, total_len - answer_len),
+                                    slice(total_len - answer_len, total_len)]):
                 _res_context_list, _loss_scale_list = self._simplify_context_list(res_context_list[_slice],
                                                                                   loss_scale_list[_slice], inputs)
                 input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(
                     _res_context_list, _loss_scale_list)
-                encoded[f'{key}_input_ids'], encoded[f'{key}_labels'] = input_ids, labels
-                if self.loss_scale != 'default':
-                    encoded[f'{key}_loss_scale'] = loss_scale
+                encoded[f'{key}_input_ids'] = input_ids
+                if key == 'answer':
+                    encoded['labels'] = labels
+                    encoded['loss_scale'] = loss_scale
             input_ids = encoded['prompt_input_ids'] + encoded['answer_input_ids']
-            labels = encoded['prompt_labels'] + encoded['answer_labels']
-            if response is None:
-                assert len(encoded['answer_labels']) == 0
-                encoded['answer_labels'] = None
         else:
             res_context_list, loss_scale_list = self._simplify_context_list(res_context_list, loss_scale_list, inputs)
             input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(
                 res_context_list, loss_scale_list)
-            self._use_dynamic_eos(labels, self._encode_context_list(template_meta.suffix)[0])
+        if self.loss_scale in {'default', 'all', 'last_round'}:
+            self._add_dynamic_eos(labels, self._encode_context_list(template_meta.suffix)[0])
 
         if tokenizer_kwargs:
             encoded['tokenizer_kwargs'] = tokenizer_kwargs
@@ -599,11 +601,11 @@ class Template(ProcessorMixin):
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
         encoded['loss_scale'] = loss_scale
-        if response is None:
+        if not is_training:
             for k in list(encoded.keys()):
                 if k.endswith('labels'):
                     encoded[k] = None
-        if response is None or self.loss_scale in {'default', 'all', 'last_round'}:
+        if not is_training or self.loss_scale in {'default', 'all', 'last_round'}:
             for k in list(encoded.keys()):
                 if k.endswith('loss_scale'):
                     encoded[k] = None
@@ -655,13 +657,6 @@ class Template(ProcessorMixin):
         return args, kwargs
 
     def set_mode(self, mode: Literal['vllm', 'lmdeploy', 'pt', 'train', 'rlhf', 'kto']) -> None:
-        if mode == 'kto':
-            self.output_prompt_answer = True
-        else:
-            try:
-                del self.output_prompt_answer
-            except AttributeError:
-                pass
         self.mode = mode
 
     def register_post_encode_hook(self, models: List[nn.Module]) -> None:
@@ -908,6 +903,9 @@ class Template(ProcessorMixin):
                 logger.info(f'[{key_upper}_IDS] {val}')
                 val_str = self.safe_decode(val, **tokenizer_kwargs)
                 logger.info(f'[{key_upper}] {val_str}')
+        if inputs.get('loss_scale') is not None:
+            val = inputs['loss_scale']
+            logger.info(f'[LOSS_SCALE] {val}')
 
     async def prepare_lmdeploy_inputs(self, inputs: Dict[str, Any]) -> None:
         images = inputs.pop('images', None) or []
@@ -965,7 +963,7 @@ class Template(ProcessorMixin):
         placeholder_tokens = self.template_meta.placeholder_tokens
 
         def _is_special(token: int) -> bool:
-            if token < 0:
+            if isinstance(token, float) or token < 0:
                 return True
             return token in placeholder_tokens
 
