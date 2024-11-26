@@ -96,6 +96,17 @@ class RowPreprocessor:
         batch_size = len(batched_row[keys[0]])
         return [{key: batched_row[key][i] for key in keys} for i in range(batch_size)]
 
+    @staticmethod
+    def rows_to_batched(rows: List[Dict[str, Any]]):
+        if not rows:
+            return {}
+        keys = list(next(iter(rows)).keys())
+        batched = {key: [] for key in keys}
+        for row in rows:
+            for key in keys:
+                batched[key].append(row[key])
+        return batched
+
     def batched_preprocess(self, batched_row: Dict[str, Any], *, strict: bool) -> Dict[str, Any]:
         batched_row = dict(batched_row)
         assert len(batched_row) > 0

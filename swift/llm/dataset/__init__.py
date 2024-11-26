@@ -10,7 +10,7 @@ from .preprocessor import (AlpacaPreprocessor, AutoPreprocessor, MessagesPreproc
                            RowPreprocessor)
 from .register import DATASET_MAPPING, register_dataset, register_dataset_info
 from .utils import (ConstantLengthDataset, EncodePreprocessor, GetLengthPreprocessor, LazyLLMDataset,
-                    LLMIterableDataset, sample_dataset)
+                    LLMIterableDataset, PackingPreprocessor, sample_dataset)
 
 
 def _update_fingerprint_mac(*args, **kwargs):

@@ -133,13 +133,9 @@ class ConstantLengthDataset(IterableDataset):
                            num_of_sequences=2048,
                            chars_per_token=3.6,
                            append_concat_token=True,
-                           add_special_tokens=True,
-                           lazy_tokenize=False):
+                           add_special_tokens=True):
         constant_length_iterator = ConstantLengthDataset(template, dataset, seq_length, num_of_sequences,
                                                          chars_per_token, append_concat_token, add_special_tokens)
-
-        if lazy_tokenize:
-            return constant_length_iterator
 
         dataset_list = []
         for item in constant_length_iterator:
@@ -261,6 +257,15 @@ class EncodePreprocessor(RowPreprocessor):
         if len(res) == 0:
             res = None
         return res
+
+
+class PackingPreprocessor(EncodePreprocessor):
+
+    def batched_preprocess(self, batched_row: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+        subset = self.batched_to_rows(batched_row)
+        packed_dataset = ConstantLengthDataset.get_packed_dataset(self.template, dataset=subset, num_of_sequences=4096)
+        batched_row = self.rows_to_batched(packed_dataset)
+        return batched_row
 
 
 class GetLengthPreprocessor(RowPreprocessor):

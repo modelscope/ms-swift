@@ -12,7 +12,8 @@ from swift.utils import (append_to_jsonl, compute_acc_metrics, compute_nlg_metri
                          stat_array, use_torchacc)
 from ..argument import TrainArguments
 from ..base import SwiftPipeline
-from ..dataset import ConstantLengthDataset, EncodePreprocessor, GetLengthPreprocessor, LazyLLMDataset, load_dataset
+from ..dataset import (ConstantLengthDataset, EncodePreprocessor, GetLengthPreprocessor, LazyLLMDataset,
+                       PackingPreprocessor, load_dataset)
 from ..infer import prepare_generation_config
 from ..model import get_model_arch, get_model_tokenizer
 from ..template import get_template
@@ -258,20 +259,18 @@ class SwiftSft(SwiftPipeline):
             if val_dataset is not None:
                 val_dataset = LazyLLMDataset(
                     val_dataset, template.encode, strict=args.strict, random_state=args.data_seed)
-        elif args.packing:
-            train_dataset = ConstantLengthDataset.get_packed_dataset(
-                template, train_dataset, args.max_length, lazy_tokenize=args.lazy_tokenize)
-            if val_dataset is not None:
-                val_dataset = ConstantLengthDataset.get_packed_dataset(
-                    template, val_dataset, args.max_length, lazy_tokenize=args.lazy_tokenize)
         else:
             kwargs = {}
             if isinstance(train_dataset, HfIterableDataset) and args.model_meta.is_multimodal:
                 kwargs['batch_size'] = 64
-            train_dataset = EncodePreprocessor(template)(
+            if args.packing:
+                preprocessor_cls = PackingPreprocessor
+            else:
+                preprocessor_cls = EncodePreprocessor
+            train_dataset = preprocessor_cls(template)(
                 train_dataset, num_proc=args.dataset_num_proc, load_from_cache_file=args.load_from_cache_file, **kwargs)
             if val_dataset is not None:
-                val_dataset = EncodePreprocessor(template)(
+                val_dataset = preprocessor_cls(template)(
                     val_dataset,
                     num_proc=args.dataset_num_proc,
                     load_from_cache_file=args.load_from_cache_file,
