@@ -98,7 +98,7 @@ class SwiftDeploy(SwiftInfer):
 
         if args.result_path is not None:
             data = {'response': dataclass_to_dict(response), **request_info}
-            self.jsonl_writer.append(args.result_path, data, strict=False)
+            self.jsonl_writer.append(data)
         return response
 
     @contextmanager
