@@ -98,13 +98,12 @@ class RowPreprocessor:
 
     @staticmethod
     def rows_to_batched(rows: List[Dict[str, Any]]):
-        if not rows:
-            return {}
-        keys = list(next(iter(rows)).keys())
-        batched = {key: [] for key in keys}
-        for row in rows:
-            for key in keys:
-                batched[key].append(row[key])
+        batched = {}
+        for i, row in enumerate(rows):
+            for k, v in row.items():
+                if k not in batched:
+                    batched[k] = [None] * i
+                batched[k].append(v)
         return batched
 
     def batched_preprocess(self, batched_row: Dict[str, Any], *, strict: bool) -> Dict[str, Any]:
@@ -113,8 +112,7 @@ class RowPreprocessor:
         self.row_keys_map(batched_row, self.row_mapping)
         rows = self.batched_to_rows(batched_row)
 
-        res = {}
-        num_samples = 0
+        new_rows = []
         for row in rows:
             try:
                 row = self.preprocess(row)
@@ -133,13 +131,8 @@ class RowPreprocessor:
                 row = None
             if row is None:
                 continue
-
-            for k, v in row.items():
-                if k not in res:
-                    res[k] = [None] * num_samples
-                res[k].append(v)
-
-            num_samples += 1
+            new_rows.append(row)
+        res = self.rows_to_batched(new_rows)
 
         if len(res) == 0:
             res['messages'] = []

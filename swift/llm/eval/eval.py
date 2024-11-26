@@ -32,6 +32,7 @@ class SwiftEval(SwiftPipeline):
             'repo?Revision=master&FilePath=eval.zip',
             'evalscope',
         )
+        logger.info(f'eval_dataset cache_dir: {self.cache_dir}')
 
     @contextmanager
     def run_deploy(self):
@@ -98,7 +99,7 @@ class SwiftEval(SwiftPipeline):
                 'batch_size': args.max_batch_size,
                 'work_dir': args.eval_result_dir,
                 'models': [{
-                    'path': args.model,
+                    'path': '',
                     'openai_api_base': args.url,
                 }]
             }
@@ -114,7 +115,7 @@ class SwiftEval(SwiftPipeline):
                 'model': [{
                     'name': 'CustomAPIModel',
                     'api_base': args.url,
-                    'type': args.model,
+                    'type': '',
                 }],
                 'nproc': args.max_batch_size,
             }
