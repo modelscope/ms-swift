@@ -2257,7 +2257,7 @@ def _preprocess_latex_ocr_dataset(dataset: DATASET_TYPE) -> DATASET_TYPE:
 
 register_dataset(
     DatasetName.latex_ocr_print,
-    'AI-ModelScope/LaTeX_OCR',
+    'AI-ModelScope/LaTeX_OCR', ['default'],
     _preprocess_latex_ocr_dataset,
     get_dataset_from_repo,
     split=['train', 'validation', 'test'],
