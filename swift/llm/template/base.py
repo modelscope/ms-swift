@@ -67,6 +67,8 @@ class Template(ProcessorMixin):
         self.model_info = processor.model_info
         self.model_meta = processor.model_meta
         tokenizer = self.tokenizer
+        self.pad_token_id = tokenizer.pad_token_id or tokenizer.eos_token_id
+        assert self.pad_token_id is not None
 
         if not use_chat_template:
             template_meta = template_meta.to_generate_template_meta()
@@ -90,6 +92,7 @@ class Template(ProcessorMixin):
         self.max_pixels = max_pixels
         self.sequence_parallel_size = sequence_parallel_size
         self.tools_prompt = tools_prompt or template_meta.default_tools_prompt
+
         # infer: 'pt', 'vllm', 'lmdeploy'; train: 'train', 'rlhf', 'kto'
         self.mode: Literal['pt', 'vllm', 'lmdeploy', 'train', 'rlhf', 'kto'] = 'pt'
         self._handles = []
@@ -793,8 +796,7 @@ class Template(ProcessorMixin):
         if len(batch) == 0:
             return {}
         from swift.utils import use_torchacc
-        tokenizer = self.tokenizer
-        assert tokenizer.pad_token_id is not None
+        assert self.pad_token_id is not None
         if padding_side is None:
             padding_side = self.padding_side
         padding_right = padding_side == 'right'
@@ -812,7 +814,7 @@ class Template(ProcessorMixin):
                 res[key] = val
 
         keys = ['input_ids', 'inputs_embeds', 'attention_mask', 'labels', 'loss_scale', 'position_ids']
-        pad_value = [tokenizer.pad_token_id, 0., 0, -100, 0., -1]
+        pad_value = [self.pad_token_id, 0., 0, -100, 0., -1]
         # Convert to tensor and remove unnecessary dimensions.
         seq_lens = None
         for key in keys:

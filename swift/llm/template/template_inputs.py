@@ -73,6 +73,7 @@ class TemplateInputs(InferRequest):
     objects: Union[str, None, List[Dict[str, Any]]] = None  # List[Dict[str, Any]]
 
     def __post_init__(self):
+        InferRequest.__post_init__(self)
         # Format objects(groundings/refs) to json
         if isinstance(self.objects, str):
             # reload grounding from str
@@ -198,6 +199,8 @@ class StdTemplateInputs:
                 if key.endswith('_url'):
                     key = key[:-len('_url')]
                 new_content += f'<{key}>'
+                if isinstance(value, dict):
+                    value = value['url']
                 res[f'{key}s'].append(value)
             message['content'] = new_content
         return res

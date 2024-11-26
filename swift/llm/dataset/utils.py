@@ -208,6 +208,7 @@ class LazyLLMDataset(Dataset):
 
         n_try_fetch = 1 if strict else min(n_try_fetch, len(self.dataset))
         assert n_try_fetch >= 1
+        self.strict = strict
         self.n_try_fetch = n_try_fetch
 
         if not isinstance(random_state, np.random.RandomState):
@@ -231,7 +232,8 @@ class LazyLLMDataset(Dataset):
                 res = self.encode_func(data)
             except Exception:
                 if i == self.n_try_fetch - 1:
-                    logger.warning('To avoid errors, you can pass `strict=False`.')
+                    if self.strict:
+                        logger.warning('To avoid errors, you can pass `strict=False`.')
                     raise
                 if self.traceback_limit is not None and self._traceback_counter < self.traceback_limit:
                     import traceback

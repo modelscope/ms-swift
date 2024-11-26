@@ -130,13 +130,21 @@ class MultiModalRequestMixin:
 
 @dataclass
 class CompletionRequest(RequestConfig, MultiModalRequestMixin, CompletionRequestMixin):
-    pass
+
+    def __post_init__(self):
+        RequestConfig.__post_init__(self)
+        MultiModalRequestMixin.__post_init__(self)
 
 
 @dataclass
 class ChatCompletionRequest(RequestConfig, MultiModalRequestMixin, ChatCompletionRequestMixin):
 
-    def _messages_convert_to_base64(self):
+    def __post_init__(self):
+        RequestConfig.__post_init__(self)
+        MultiModalRequestMixin.__post_init__(self)
+        ChatCompletionRequestMixin.__post_init__(self)
+
+    def convert_to_base64(self):
         for message in self.messages:
             content = message['content']
             if isinstance(content, str):
@@ -155,10 +163,6 @@ class ChatCompletionRequest(RequestConfig, MultiModalRequestMixin, ChatCompletio
                     raise ValueError(f'value: {value}')
                 mm_data_base64 = self._to_base64(value)
                 item[key_origin] = f'data:{key}/{suffix};base64,{mm_data_base64}'
-
-    def convert_to_base64(self):
-        super().convert_to_base64()
-        self._messages_convert_to_base64()
 
     def parse(self) -> Tuple['InferRequest', 'RequestConfig']:
         data = asdict(self)

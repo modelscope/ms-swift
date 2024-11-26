@@ -1,22 +1,45 @@
-def _test_client(print_logprobs: bool = False):
+def _test_client(print_logprobs: bool = False, test_vlm: bool = False):
     import requests
     import time
     import aiohttp
     from pprint import pprint
     from swift.llm import InferClient, InferRequest, RequestConfig
-    query = '123*234=?'
+
+    infer_client = InferClient()
 
     while True:
         try:
-            infer_client = InferClient()
+            models = infer_client.models
+            print(f'models: {models}')
         except aiohttp.ClientConnectorError:
             time.sleep(5)
             continue
         break
-    models = infer_client.models
-    print(f'models: {models}')
 
-    infer_request = InferRequest(messages=[{'role': 'user', 'content': '你是谁'}])
+    if test_vlm:
+        query = '这是什么'
+        # http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png
+        messages = [{
+            'role':
+            'user',
+            'content': [
+                {
+                    'type': 'text',
+                    'text': '这是什么'
+                },
+                {
+                    'type': 'image_url',
+                    'image_url': {
+                        'url': 'cat.png'
+                    }
+                },
+            ]
+        }]
+    else:
+        query = '123*234=?'
+        messages = [{'role': 'user', 'content': query}]
+
+    infer_request = InferRequest(messages=messages)
     request_config = RequestConfig(seed=42, max_tokens=256, temperature=0.8, logprobs=True, top_logprobs=5)
 
     resp = infer_client.infer([infer_request], request_config=request_config)[0]
@@ -39,7 +62,7 @@ def _test_client(print_logprobs: bool = False):
     print()
 
 
-def _test(infer_backend):
+def _test(infer_backend, test_vlm: bool = False):
     import os
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
@@ -47,12 +70,16 @@ def _test(infer_backend):
     from swift.llm import deploy_main
     import multiprocessing
     mp = multiprocessing.get_context('spawn')
+    model = 'qwen/Qwen2-VL-7B-Instruct' if test_vlm else 'qwen/Qwen2-7B-Instruct'
     process = mp.Process(
-        target=deploy_main,
-        args=(DeployArguments(model='qwen/Qwen2-7B-Instruct', infer_backend=infer_backend, verbose=False), ))
+        target=deploy_main, args=(DeployArguments(model=model, infer_backend=infer_backend, verbose=False), ))
     process.start()
-    _test_client(True)
+    _test_client(True, test_vlm)
     process.terminate()
+
+
+def test_vllm_vlm():
+    _test('vllm', test_vlm=True)
 
 
 def test_vllm():
@@ -81,6 +108,7 @@ def test_vllm_orgin():
 
 if __name__ == '__main__':
     # test_vllm_orgin()
-    test_vllm()
+    # test_vllm()
+    test_vllm_vlm()
     # test_lmdeploy()
     # test_pt()

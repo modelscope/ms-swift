@@ -86,11 +86,16 @@ class PtEngine(InferEngine):
         generation_config = prepare_generation_config(self.generation_config, request_config)
         return _GenerationConfig(**generation_config.to_dict())
 
-    def _add_stop_words(self, generation_config: GenerationConfig, request_config: RequestConfig,
-                        template_meta: TemplateMeta) -> None:
+    def _add_stop_words(self, generation_config: _GenerationConfig, request_config: RequestConfig,
+                        template: Template) -> None:
+        template_meta = template.template_meta
         stop_words = (request_config.stop or []) + template_meta.stop_words
         stop_words += [template_meta.suffix[-1], self.tokenizer.eos_token]
         generation_config.stop_words = self._get_stop_words(stop_words)
+        if generation_config.eos_token_id is None:
+            generation_config.eos_token_id = self.tokenizer.eos_token_id
+        if generation_config.pad_token_id is None:
+            generation_config.pad_token_id = template.pad_token_id
 
     @staticmethod
     def preprocess_logits(batched_logits: Optional[List[torch.Tensor]], batched_generate_ids: torch.Tensor,
@@ -196,7 +201,7 @@ class PtEngine(InferEngine):
                 generate_ids = batched_generate_ids[i]
 
                 # ignore pad_token
-                masks = generate_ids != generation_config.pad_token_id
+                masks = generate_ids != template.pad_token_id
                 generate_ids = generate_ids[masks].tolist()
                 logprobs_list = None
                 if batched_logprobs[i]:
@@ -204,7 +209,7 @@ class PtEngine(InferEngine):
 
                 is_finished[i] = (
                     all_is_finished or is_finished[i]
-                    or len(generate_ids) > 0 and generate_ids[-1] == generation_config.pad_token_id)
+                    or len(generate_ids) > 0 and generate_ids[-1] == template.pad_token_id)
                 delta_text = infer_streamers[i].get_printable_text(generate_ids, is_finished[i])
                 if not delta_text and not is_finished[i]:
                     res.append(None)
@@ -265,7 +270,7 @@ class PtEngine(InferEngine):
             generate_ids = batched_generate_ids[i]
 
             # ignore pad_token
-            masks = generate_ids != generation_config.pad_token_id
+            masks = generate_ids != template.pad_token_id
             generate_ids = generate_ids[masks].tolist()
             logprobs_list = None
             if batched_logprobs is not None:
@@ -344,7 +349,7 @@ class PtEngine(InferEngine):
                 template.data_collator(batched_inputs, padding_side='left', model=self.model), self.model.device)
         self.set_default_max_tokens(request_config, inputs)
         generation_config = self._prepare_generation_config(request_config)
-        self._add_stop_words(generation_config, request_config, template.template_meta)
+        self._add_stop_words(generation_config, request_config, template)
 
         infer_args = (template, inputs, generation_config)
         if request_config.stream:
