@@ -1,3 +1,4 @@
+import datetime as dt
 import inspect
 import multiprocessing
 import time
@@ -54,15 +55,28 @@ class SwiftEval(SwiftPipeline):
 
     def run(self):
         args = self.args
-        eval_report = []
+        eval_report = {
+            'time': dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f'),
+            'model': args.ckpt_dir or args.model,
+        }
         with self.run_deploy():
             if args.eval_dataset_oc:
-                eval_report += self.run_task(args.eval_dataset_oc, 'opencompass')
+                reports = self.run_task(args.eval_dataset_oc, 'opencompass')
+                result = {}
+                for report in reports:
+                    if report[args.model_name] != '-':
+                        result[report['dataset']] = {report['metric']: report[args.model_name]}
+                eval_report['opencompass'] = result
             if args.eval_dataset_vlm:
-                eval_report += self.run_task(args.eval_dataset_vlm, 'vlmeval')
+                reports = self.run_task(args.eval_dataset_vlm, 'vlmeval')
+                result = {}
+                for dataset, report in zip(args.eval_dataset_vlm, reports):
+                    metric = next(iter(report)).rsplit('_')[-1]
+                    result[dataset] = {metric: report[list(report.values())[0]['Overall']]}
 
-        if args.eval_result_dir is not None:
-            logger.info(f'The eval results have been saved to eval_result_dir: `{args.eval_result_dir}`.')
+        if self.jsonl_writer:
+            self.jsonl_writer.append(result)
+            logger.info(f'The eval result have been saved to result_path: `{args.result_path}`.')
         return eval_report
 
     def run_task(self, dataset: List[str], eval_backend: str):
@@ -85,7 +99,7 @@ class SwiftEval(SwiftPipeline):
             'eval_config': {
                 'datasets': dataset,
                 'batch_size': args.max_batch_size,
-                'work_dir': args.eval_result_dir,
+                'work_dir': os.path.join(args.eval_output_dir, 'opencompass'),
                 'models': [{
                     'path': args.model_name,
                     'openai_api_base': args.url,
@@ -95,11 +109,12 @@ class SwiftEval(SwiftPipeline):
 
     def get_vlmeval_task_cfg(self, dataset: List[str]):
         args = self.args
+        time = dt.datetime.now().strftime('%Y%m%d-%H%M%S')
         return {
             'eval_backend': 'VLMEvalKit',
             'eval_config': {
                 'data': dataset,
-                'work_dir': args.eval_result_dir,
+                'work_dir': os.path.join(args.eval_output_dir, 'vlmeval', time),
                 'model': [{
                     'name': 'CustomAPIModel',
                     'api_base': args.url,

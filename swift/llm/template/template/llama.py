@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
+import datetime as dt
 from dataclasses import dataclass, field
-from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import torch
@@ -54,7 +54,7 @@ register_template(Llama3TemplateMeta(LLMTemplateType.llama3))
 
 
 def _get_llama3_2_prefix() -> Prompt:
-    now = datetime.now()
+    now = dt.datetime.now()
     date_string = now.strftime('%d %b %Y')
     date_prompt = f'Cutting Knowledge Date: December 2023\nToday Date: {date_string}'
     return [f'<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{date_prompt}\n\n' '{{SYSTEM}}<|eot_id|>']

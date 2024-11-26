@@ -96,7 +96,7 @@ class SwiftDeploy(SwiftInfer):
         if return_cmpl_response:
             response = response.to_cmpl_response()
 
-        if args.result_path is not None:
+        if self.jsonl_writer:
             data = {'response': asdict(response), **request_info}
             self.jsonl_writer.append(data)
         return response

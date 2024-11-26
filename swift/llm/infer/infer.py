@@ -130,7 +130,7 @@ class SwiftInfer(SwiftPipeline):
             result = self.infer_cli()
         else:
             result = self.infer_dataset()
-        if args.result_path is not None:
+        if args.result_path:
             logger.info(f'The inference results have been saved to result_path: `{args.result_path}`.')
         return result
 
@@ -248,7 +248,7 @@ class SwiftInfer(SwiftPipeline):
             infer_state.add_response(response)
             data = {'response': response, **data}
             result_list.append(data)
-            if self.jsonl_writer is not None:
+            if self.jsonl_writer:
                 self.jsonl_writer.append(data)
 
         return result_list
@@ -280,7 +280,7 @@ class SwiftInfer(SwiftPipeline):
                 print('-' * 50)
                 data = {'response': response, **data}
                 result_list.append(data)
-                if self.jsonl_writer is not None:
+                if self.jsonl_writer:
                     self.jsonl_writer.append(data)
         else:
             is_dist = args.global_world_size > 1 and dist.is_initialized()

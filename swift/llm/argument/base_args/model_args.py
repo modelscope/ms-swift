@@ -104,8 +104,13 @@ class ModelArguments:
         self.model_type = self.model_info.model_type
         return self.model_info.torch_dtype
 
+    def _init_model_name(self):
+        model = getattr(self, 'ckpt_dir', None) or self.model
+        self.model_name = os.path.basename(model)
+
     def __post_init__(self):
-        self.model_name = os.path.basename(self.model)
+        self._init_model_name()
+
         if self.rope_scaling:  # TODO: check
             logger.info(f'rope_scaling is set to {self.rope_scaling}, please remember to set max_length')
         self._init_device_map()
