@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from swift.llm import TEMPLATE_MAPPING, DeployArguments, Template, merge_lora
 from swift.plugin import InferStats
-from swift.utils import append_to_jsonl, get_logger
+from swift.utils import dataclass_to_dict, get_logger
 from .infer import SwiftInfer
 from .protocol import ChatCompletionRequest, CompletionRequest, Model, ModelList
 
@@ -97,9 +97,8 @@ class SwiftDeploy(SwiftInfer):
             response = response.to_cmpl_response()
 
         if args.result_path is not None:
-            data = {'response': response, **request_info}
-            data = {k: asdict(v) if is_dataclass(v) else str(v) for k, v in data.items()}
-            append_to_jsonl(args.result_path, data, strict=False)
+            data = {'response': dataclass_to_dict(response), **request_info}
+            self.jsonl_writer.append(args.result_path, data, strict=False)
         return response
 
     @contextmanager
@@ -110,7 +109,8 @@ class SwiftDeploy(SwiftInfer):
 
         def _add_stop_words(self, generation_config, *args, **kwargs):
             res = _origin_add_stop_words(self, generation_config, *args, **kwargs)
-            request_info.update({'infer_request': infer_request, 'generation_config': generation_config})
+            printable_infer_request = infer_request.to_printable()
+            request_info.update({'infer_request': printable_infer_request, 'generation_config': generation_config})
             if verbose:
                 logger.info(request_info)
             return res
