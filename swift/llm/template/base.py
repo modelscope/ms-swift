@@ -430,7 +430,7 @@ class Template(ProcessorMixin):
                     c_list = self.replace_object(inputs.objects[idx], idx, inputs)
                     inputs.object_idx = idx + 1
                 elif context == '<bbox>':
-                    idx = inputs.object_idx
+                    idx = inputs.box_idx
                     c_list = self.replace_box(inputs.objects[idx], idx, inputs)
                     inputs.box_idx = idx + 1
                 else:
@@ -852,10 +852,10 @@ class Template(ProcessorMixin):
             res['pixel_values_videos'] = torch.concat(pixel_values_videos)
 
         if use_torchacc() or self.sequence_parallel_size > 1:
-            res = self._torchacc_xtuner_data_collator(res)
+            res = self._torchacc_xtuner_data_collator(res, padding_to, self.tokenizer, padding_side)
         return res
 
-    def _torchacc_xtuner_data_collator(self, res):
+    def _torchacc_xtuner_data_collator(self, res, padding_to, tokenizer, padding_side):
         # torchacc & xtuner
         input_ids = res.get('input_ids')
         attention_mask = res.get('attention_mask')
@@ -874,11 +874,11 @@ class Template(ProcessorMixin):
                 tokenizer,
                 rank,
                 world_size,
-                padding_right=padding_right)
+                padding_right=padding_side == 'right')
         if self.sequence_parallel_size > 1 and input_ids is not None:
             bs, seq_len = input_ids.shape
             position_ids = torch.arange(seq_len).unsqueeze(0).long().repeat(bs, 1)
-            assert padding_right or bs == 1, 'Sequence parallel only support padding_side=right'
+            assert padding_side == 'right' or bs == 1, 'Sequence parallel only support padding_side=right'
             from swift.trainers.xtuner import get_xtuner_sequence_parallel_world_size
             if get_xtuner_sequence_parallel_world_size() > 1:
                 from swift.trainers.xtuner import pad_and_split_for_sequence_parallel
