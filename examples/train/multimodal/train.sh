@@ -1,6 +1,7 @@
+# 22GiB
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
-    --model OpenGVLab/InternVL2-8B \
+    --model Qwen/Qwen2-VL-7B-Instruct \
     --train_type lora \
     --dataset swift/OK-VQA_train#1000 \
     --num_train_epochs 1 \
