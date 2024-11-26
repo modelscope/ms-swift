@@ -1,6 +1,7 @@
 import datetime as dt
 import inspect
 import multiprocessing
+import os
 import time
 from contextlib import contextmanager
 from dataclasses import asdict
@@ -10,7 +11,7 @@ from aiohttp.client_exceptions import ClientConnectorError
 from evalscope.run import run_task
 from evalscope.summarizer import Summarizer
 
-from swift.utils import get_logger
+from swift.utils import append_to_jsonl, get_logger
 from ..argument import DeployArguments, EvalArguments
 from ..base import SwiftPipeline
 from ..dataset import MediaResource
@@ -32,7 +33,7 @@ class SwiftEval(SwiftPipeline):
         for k in list(args_dict.keys()):
             if k not in parameters:
                 args_dict.pop(k)
-
+        args_dict.pop('result_path')
         mp = multiprocessing.get_context('spawn')
         process = mp.Process(target=deploy_main, args=(DeployArguments(**args_dict), ))
         process.start()
@@ -72,10 +73,11 @@ class SwiftEval(SwiftPipeline):
                 result = {}
                 for dataset, report in zip(args.eval_dataset_vlm, reports):
                     metric = next(iter(report)).rsplit('_')[-1]
-                    result[dataset] = {metric: report[list(report.values())[0]['Overall']]}
+                    result[dataset] = {metric: list(report.values())[0]['Overall']}
+                eval_report['vlmeval'] = result
 
-        if self.jsonl_writer:
-            self.jsonl_writer.append(result)
+        if args.result_path:
+            append_to_jsonl(args.result_path, eval_report)
             logger.info(f'The eval result have been saved to result_path: `{args.result_path}`.')
         return eval_report
 
@@ -98,7 +100,7 @@ class SwiftEval(SwiftPipeline):
             'eval_backend': 'OpenCompass',
             'eval_config': {
                 'datasets': dataset,
-                'batch_size': args.max_batch_size,
+                'batch_size': args.max_batch_size or 256,
                 'work_dir': os.path.join(args.eval_output_dir, 'opencompass'),
                 'models': [{
                     'path': args.model_name,
@@ -120,7 +122,7 @@ class SwiftEval(SwiftPipeline):
                     'api_base': args.url,
                     'type': args.model_name,
                 }],
-                'nproc': args.max_batch_size,
+                'nproc': args.max_batch_size or 16,
             }
         }
 

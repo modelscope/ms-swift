@@ -130,6 +130,7 @@ result.mp4
 output/
 *.out
 benchmarks/
+eval_output/
 eval_outputs/
 transformers/
 vlmeval/
