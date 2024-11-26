@@ -1,10 +1,10 @@
 # 17GiB
-CUDA_VISIBLE_DEVICES=0 \
+CUDA_VISIBLE_DEVICES=2 \
 swift sft \
     --model Qwen/Qwen2-7B-Instruct \
     --train_type boft \
     --dataset swift/self-cognition#1000 \
-    --num_train_epochs 1 \
+    --num_train_epochs 50 \
     --per_device_train_batch_size 1 \
     --learning_rate 1e-4 \
     --gradient_accumulation_steps 16 \

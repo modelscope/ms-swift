@@ -244,7 +244,7 @@ class TunerArguments:
         if len(set(modules_dict.values())) > 1:
             v = [t for t in target_modules if 'v' in t]
             if not v:
-                raise ValueError('Please manually pass in `vera_target_modules`, do not use `DEFAULT` or `ALL`,'
+                raise ValueError('Please manually pass in `vera_target_modules`, do not use `all-linear`,'
                                  'because Vera need all target linears to be the same size.')
             v = v[0]
             shape = [shape for name, shape in modules_dict.items() if v in name][0]
