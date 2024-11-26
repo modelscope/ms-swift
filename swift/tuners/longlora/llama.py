@@ -71,8 +71,10 @@ def _postprocess_qkv(attn_module, attn_output, q_len):
         attn_output = attn_output.transpose(1, 2)
         attn_output = attn_output.reshape(-1, q_len, attn_module.num_heads, attn_module.head_dim)
         # shift back
-        attn_output[:, :, attn_module.num_heads // 2:] = attn_output[:, :, attn_module.num_heads // 2:].roll(
+        attn_output_clone = attn_output.clone()
+        attn_output_clone[:, :, attn_module.num_heads // 2:] = attn_output[:, :, attn_module.num_heads // 2:].roll(
             group_size // 2, dims=1)
+        attn_output = attn_output_clone
     return attn_output.transpose(1, 2)
 
 
@@ -80,9 +82,11 @@ def _postprocess_qkv_fa2(attn_module, attn_output, q_len):
     if attn_module.training:
         group_size = int(q_len * attn_module.config.group_size_ratio)
         attn_output = attn_output.reshape(-1, q_len, attn_module.num_heads, attn_module.head_dim)
+        attn_output_clone = attn_output.clone()
         # shift back
-        attn_output[:, :, attn_module.num_heads // 2:] = attn_output[:, :, attn_module.num_heads // 2:].roll(
+        attn_output_clone[:, :, attn_module.num_heads // 2:] = attn_output[:, :, attn_module.num_heads // 2:].roll(
             group_size // 2, dims=1)
+        attn_output = attn_output_clone
     return attn_output
 
 
