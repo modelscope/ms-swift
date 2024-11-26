@@ -554,7 +554,8 @@ class Template(ProcessorMixin):
                 round0=i)
             res_context_list += extra_context_list
             res_context_types += [extra_context_type] * len(extra_context_list)
-        loss_scale_list = loss_scale_map[self.loss_scale](res_context_types, inputs.messages)
+        res_context_list, loss_scale_list = loss_scale_map[self.loss_scale](res_context_list, res_context_types,
+                                                                            inputs.messages)
 
         encoded = {}
         if self.output_prompt_answer:
@@ -965,7 +966,7 @@ class Template(ProcessorMixin):
         placeholder_tokens = self.template_meta.placeholder_tokens
 
         def _is_special(token: int) -> bool:
-            if token < 0:
+            if isinstance(token, float) or token < 0:
                 return True
             return token in placeholder_tokens
 

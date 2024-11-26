@@ -278,7 +278,7 @@ class SwiftSft(SwiftPipeline):
                     **kwargs)
 
         inputs = train_dataset[0] if hasattr(train_dataset, '__len__') else next(iter(train_dataset))
-        template.print_inputs(inputs, tokenizer_kwargs=inputs.pop('tokenizer_kwargs', {}))
+        template.print_inputs(inputs, tokenizer_kwargs=inputs.pop('tokenizer_kwargs', None) or {})
         if isinstance(train_dataset, HfDataset):
             self.train_msg['train_dataset'] = self._stat_dataset(train_dataset)
             if val_dataset is not None:
