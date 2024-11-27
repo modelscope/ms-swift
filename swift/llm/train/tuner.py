@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
+from typing import List, Union
 
 import json
 import torch
@@ -32,7 +33,39 @@ def apply_liger(model_type: str):
         raise ValueError(f'Unsupported liger model_type: {model_type}')
 
 
-def prepare_adapter(model, args: TrainArguments):
+def get_target_modules(args, model) -> Union[str, List[str]]:
+    """Replace all-linear to actual modules"""
+    if args.target_regex:
+        return args.target_regex
+
+    target_modules = args.target_modules.copy()
+    if 'all-linear' in target_modules:
+        target_modules.remove('all-linear')
+        target_modules += find_all_linears(model)
+    return target_modules
+
+
+def get_vera_target_modules(model, config):
+    """This function is only useful on the vera tuner"""
+    target_modules = config.target_modules
+    modules_dict = {
+        name: module.weight.shape
+        for name, module in model.named_modules()
+        if isinstance(module, torch.nn.Linear) and any([t in name for t in target_modules])
+    }  # only Linear for now
+    if len(set(modules_dict.values())) > 1:
+        v = [t for t in target_modules if 'v' in t]
+        if not v:
+            raise ValueError('Please manually pass in `vera_target_modules`, do not use `all-linear`,'
+                             'because Vera need all target linears to be the same size.')
+        v = v[0]
+        shape = [shape for name, shape in modules_dict.items() if v in name][0]
+        names = [_name for _name, _shape in modules_dict.items() if _shape == shape]
+        config.target_modules = [t for t in target_modules if any([t in name for name in names])]
+    return config
+
+
+def prepare_adapter(args: TrainArguments, model):
     from swift.tuners import (AdaLoraConfig, AdapterConfig, BOFTConfig, IA3Config, LLaMAProConfig, LongLoRAModelType,
                               LoraConfig, LoRAConfig, ReftConfig, Swift, VeraConfig)
     target_modules = args.get_target_modules(model)
@@ -120,7 +153,7 @@ def prepare_adapter(model, args: TrainArguments):
             d_initial=args.vera_d_initial,
             modules_to_save=args.modules_to_save,
         )
-        vera_config = args.get_vera_target_modules(model, vera_config)
+        vera_config = get_vera_target_modules(model, vera_config)
         model = Swift.prepare_model(model, vera_config)
         logger.info(f'vera_config: {vera_config}')
     elif args.train_type == 'boft':
@@ -184,27 +217,44 @@ def torchacc_resume_from_checkpoint(args, model):
             logger.warning(f'There were unexpected keys in the checkpoint model loaded: {load_result.unexpected_keys}.')
 
 
-def prepare_model(model, args: TrainArguments):
+def prepare_full(args, model):
+    """Some arguments will be decided by the train_type"""
+    model.train()
+    model.requires_grad_(True)
+    # TODO: freeze xxx
+    if args.freeze_vit:
+        if args.model_type in MODEL_KEYS_MAPPING:
+            vision_tower = MODEL_KEYS_MAPPING[args.model_type].vision_tower
+            if vision_tower:
+                args.freeze_parameters += vision_tower
+
+
+def prepare_model(args: TrainArguments, model):
     if args.use_liger:
         # Apply liger
         apply_liger(args.model_type)
 
     if args.is_adapter:
+        # Fix the name of the layer in xcomposer that contains Plora.
         model.requires_grad_(False)
-        if args.resume_from_checkpoint is None:
-            model = prepare_adapter(model, args)
-        else:
+        if args.resume_from_checkpoint:
             if getattr(model, 'is_tuner_plugin', False):
                 with open(os.path.join(args.resume_from_checkpoint, 'args.json'), 'r') as f:
                     content = json.load(f)
 
                 tuner: Tuner = extra_tuners[content['sft_type']]
                 model = tuner.from_pretrained(model, args.resume_from_checkpoint)
-            elif use_torchacc():
-                model = Swift.from_pretrained(
-                    model, args.resume_from_checkpoint, adapter_name='default', is_trainable=True)
             else:
-                model = Swift.from_pretrained(model, args.resume_from_checkpoint, is_trainable=True)
+                if use_torchacc():
+                    kwargs = {'adapter_name': 'default'}
+                model = Swift.from_pretrained(model, args.resume_from_checkpoint, is_trainable=True, **kwargs)
+        else:
+            if args.train_type in extra_tuners:
+                tuner: Tuner = extra_tuners[args.train_type]
+                model = tuner.prepare_model(args, model)
+                model.is_tuner_plugin = True
+            else:
+                model = prepare_adapter(args, model)
         # fix bug: Attempting to unscale FP16 gradients.
         #   peft: https://github.com/huggingface/peft/issues/1249
         for p in model.parameters():
@@ -212,14 +262,10 @@ def prepare_model(model, args: TrainArguments):
                 logger.info_once('Convert trainable parameters from fp16 to fp32.')
                 p.data = p.data.to(dtype=torch.float32)
     elif args.train_type == 'full':
-        model.requires_grad_(True)
+        model = prepare_full(args, model)
 
-        if use_torchacc() and args.resume_from_checkpoint is not None:
+        if use_torchacc() and args.resume_from_checkpoint:
             torchacc_resume_from_checkpoint(args, model)
-    elif args.train_type in extra_tuners:
-        tuner: Tuner = extra_tuners[args.train_type]
-        model = tuner.prepare_model(model, args)
-        model.is_tuner_plugin = True
     else:
         raise ValueError(f'args.train_type: {args.train_type}')
 

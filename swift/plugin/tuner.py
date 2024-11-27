@@ -6,7 +6,7 @@ from swift.utils import find_all_linears
 class Tuner:
 
     @staticmethod
-    def prepare_model(model, args):
+    def prepare_model(args, model):
         raise NotImplementedError
 
     @staticmethod
@@ -21,7 +21,7 @@ class Tuner:
 class IA3(Tuner):
 
     @staticmethod
-    def prepare_model(model, args: 'TrainArguments'):
+    def prepare_model(args: 'TrainArguments', model):
         model_group = args.get_model_group()
         mapping: ModelKeys = MODEL_KEYS_MAPPING.get(model_group)
 

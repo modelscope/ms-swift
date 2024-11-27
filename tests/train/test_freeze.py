@@ -1,3 +1,16 @@
+import os
+
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
+kwargs = {
+    'per_device_train_batch_size': 2,
+    'save_steps': 5,
+    'gradient_accumulation_steps': 4,
+    'num_train_epochs': 1,
+    'metric_for_best_model': 'loss'
+}
+
+
 def test_freeze_vit_full():
     os.environ['MAX_PIXELS'] = '100352'
     os.environ['SIZE_FACTOR'] = '12'
@@ -39,5 +52,5 @@ def test_freeze_aligner():
 
 if __name__ == '__main__':
     test_freeze_vit_full()
-    test_freeze_llm()
-    test_freeze_aligner()
+    # test_freeze_llm()
+    # test_freeze_aligner()

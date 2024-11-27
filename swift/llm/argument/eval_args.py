@@ -33,6 +33,7 @@ class EvalArguments(DeployArguments):
     def __post_init__(self):
         super().__post_init__()
         self._init_eval_dataset()
+        logger.info(f'eval_output_dir: {eval_output_dir}')
 
     def _init_eval_dataset(self):
         if isinstance(self.eval_dataset, str):
@@ -56,6 +57,9 @@ class EvalArguments(DeployArguments):
                 raise ValueError(f'eval_dataset: {dataset} is not supported.\n'
                                  f'opencompass_dataset: {OpenCompassBackendManager.list_datasets()}.\n\n'
                                  f'vlmeval_dataset: {VLMEvalKitBackendManager.list_supported_datasets()}.')
+
+        logger.info(f'opencompass dataset: {self.eval_dataset_oc}')
+        logger.info(f'vlmeval dataset: {self.eval_dataset_vlm}')
 
     def _init_result_path(self) -> None:
         if self.result_path is not None:
