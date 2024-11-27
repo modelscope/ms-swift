@@ -101,7 +101,7 @@ class StdTemplateInputs:
     system: Optional[str] = None
 
     rejected_response: Optional[str] = None
-    label: Optional[bool] = None
+    label: Optional[int] = None
 
     images: List[Union[str, Image.Image]] = field(default_factory=list)
     audios: List[str] = field(default_factory=list)

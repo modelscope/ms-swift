@@ -1,8 +1,11 @@
-from swift.llm.template.agent.loss_scale import loss_scale_map
+from swift.llm.template.agent.loss_scale import LossScale, loss_scale_map
+from swift.llm.template.utils import ContextType
 
 
-def custom_loss_scale(query: str, response: str):
-    return [response], [1.0]
+class TrainAllLossScale(LossScale):
+
+    def get_loss_scale(self, context: str, context_type: ContextType, *args, **kwargs):
+        return [context], [1.]
 
 
-loss_scale_map['custom'] = custom_loss_scale
+loss_scale_map['all'] = TrainAllLossScale()

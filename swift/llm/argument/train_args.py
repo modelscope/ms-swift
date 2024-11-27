@@ -91,13 +91,12 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
         freeze_llm (bool): Flag to indicate if LLM should be frozen. Default is False.
         freeze_parameters (List[str]): List of parameters to freeze. Default is an empty list.
         freeze_parameters_ratio (float): Ratio of parameters to freeze. Default is 0.
-        additional_trainable_parameters (List[str]): List of additional trainable parameters. Default is an empty list.
         add_version (bool): Flag to indicate if output directory suffix should be added. Default is True.
         resume_from_checkpoint (Optional[str]): Path to resume from checkpoint. Default is None.
         resume_only_model (bool): Flag to indicate if only the model should be resumed when resume-training.
             Default is False.
         check_model (bool): Flag to check if the model is the latest. Default is True.
-            Turn this to False if you network is unstable.
+            Turn this to False if your network is unstable.
         loss_type (Optional[str]): Type of loss function. Default is None.
         packing (bool): Flag to indicate if packing is used. Default is False.
         lazy_tokenize (Optional[bool]): Flag to indicate if lazy tokenization is used. Default is None.
@@ -108,6 +107,7 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
     resume_only_model: bool = False
     check_model: bool = True
     loss_type: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
+    num_labels: Optional[int] = None
 
     # dataset
     packing: bool = False
