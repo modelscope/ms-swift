@@ -40,4 +40,3 @@ cd ms-swift
 # If your node number is different, edit examples/train/multi-node/deepspeed/host.txt
 sh examples/train/multi-node/deepspeed/train.sh
 ```
-

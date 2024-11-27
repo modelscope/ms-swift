@@ -144,7 +144,7 @@ class SwiftInfer(SwiftPipeline):
 
         mm_types = ['image', 'video', 'audio']
         query = infer_state.messages[-1]['content']
-        mm_tags = re.findall('|'.join(f'<({mm_type})>' for mm_type in mm_types), query)
+        mm_tags = re.findall('|'.join(f'<{mm_type}>' for mm_type in mm_types), query)
         # mm_tag -> mm_type/mm_key
         mm_mapping = {f'<{mm_type}>': (mm_type, f'{mm_type}s') for mm_type in mm_types}
         for mm_tag in mm_tags:

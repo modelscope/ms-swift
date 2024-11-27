@@ -1,5 +1,5 @@
 # If your need only a part of the GPUs in every node, try:
-# --include="worker-0:0,1@worker-1:2,3" 
+# --include="worker-0:0,1@worker-1:2,3"
 deepspeed --hostfile=./examples/train/multi-node-deepspeed/host.txt \
   swift/cli/sft.py \
       --model Qwen/Qwen2-7B-Instruct \

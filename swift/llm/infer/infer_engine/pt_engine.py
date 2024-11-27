@@ -52,14 +52,14 @@ class PtEngine(InferEngine):
             model_id_or_path: str,
             torch_dtype: Optional[torch.dtype] = None,
             *,
+            max_batch_size: int = 1,
+            # hub kwargs
             model_type: Optional[str] = None,
             use_hf: Optional[bool] = None,
             revision: Optional[str] = None,
-            attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None,
-            # TODO: async batch_size
-            max_batch_size: int = 1,
             load_model: bool = True,
             # model kwargs
+            attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None,
             device_map: Optional[Union[str, Dict[str, Any]]] = None,
             quantization_config: Optional[Dict[str, Any]] = None,
             model_kwargs: Optional[Dict[str, Any]] = None,
