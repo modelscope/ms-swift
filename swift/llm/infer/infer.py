@@ -12,9 +12,9 @@ from datasets import Dataset as HfDataset
 
 from swift.llm import (InferArguments, InferRequest, Messages, Processor, SwiftPipeline, Template, get_template,
                        load_dataset, sample_dataset)
+from swift.plugin import extra_tuners
 from swift.tuners import Swift
 from swift.utils import get_logger, is_master, open_jsonl_writer
-from ...plugin import extra_tuners
 from .protocol import RequestConfig
 
 logger = get_logger()
@@ -290,9 +290,9 @@ class SwiftInfer(SwiftPipeline):
                 if self.jsonl_writer:
                     self.jsonl_writer.append(data)
         else:
-            is_dist = args.global_world_size > 1 and dist.is_initialized()
+            is_dist = args.world_size > 1 and dist.is_initialized()
             if is_dist:
-                val_dataset = val_dataset.shard(args.global_world_size, args.rank, contiguous=True)
+                val_dataset = val_dataset.shard(args.world_size, args.rank, contiguous=True)
             infer_requests = [InferRequest(**data) for i, data in enumerate(val_dataset)]
 
             resp_list = self.infer(infer_requests, request_config, template=self.template, use_tqdm=True)
@@ -301,7 +301,7 @@ class SwiftInfer(SwiftPipeline):
                 data = {'response': response, **data}
                 result_list.append(data)
             if is_dist:
-                total_result_list = [None for _ in range(args.global_world_size)] if args.rank == 0 else None
+                total_result_list = [None for _ in range(args.world_size)] if args.rank == 0 else None
                 dist.gather_object(result_list, total_result_list)
                 result_list = total_result_list and list(chain.from_iterable(total_result_list))
 

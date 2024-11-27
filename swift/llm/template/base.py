@@ -69,8 +69,6 @@ class Template(ProcessorMixin):
         self.model_info = processor.model_info
         self.model_meta = processor.model_meta
         tokenizer = self.tokenizer
-        self.pad_token_id = tokenizer.pad_token_id or tokenizer.eos_token_id
-        assert self.pad_token_id is not None
 
         if not use_chat_template:
             template_meta = template_meta.to_generate_template_meta()
@@ -795,7 +793,7 @@ class Template(ProcessorMixin):
         if len(batch) == 0:
             return {}
         from swift.utils import use_torchacc
-        assert self.pad_token_id is not None
+        assert self.tokenizer.pad_token_id is not None
         if padding_side is None:
             padding_side = self.padding_side
         padding_right = padding_side == 'right'
@@ -813,7 +811,7 @@ class Template(ProcessorMixin):
                 res[key] = val
 
         keys = ['input_ids', 'inputs_embeds', 'attention_mask', 'labels', 'loss_scale', 'position_ids']
-        pad_value = [self.pad_token_id, 0., 0, -100, 0., -1]
+        pad_value = [self.tokenizer.pad_token_id, 0., 0, -100, 0., -1]
         # Convert to tensor and remove unnecessary dimensions.
         seq_lens = None
         for key in keys:
