@@ -181,10 +181,8 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
             return inputs['inputs_embeds'].shape[-1]
         raise ValueError(f'Unable to retrieve input_ids and inputs_embeds. inputs: {inputs}')
 
-    def set_default_max_tokens(self,
-                               request_config: RequestConfig,
-                               inputs: Dict[str, Any],
-                               strict: bool = False) -> None:
+    def set_default_max_tokens(self, request_config: RequestConfig, inputs: Dict[str, Any]) -> None:
+        strict = getattr(self, 'strict', False)
         max_model_len = self.model_info.max_model_len
         if isinstance(inputs, dict):
             inputs = [inputs]

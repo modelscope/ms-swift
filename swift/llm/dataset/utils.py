@@ -52,49 +52,6 @@ def sample_dataset(dataset: HfDataset,
     return dataset
 
 
-class LLMIterableDataset(HFIterableDataset):
-    """This class offers abilities of deal with IterableDataset, and skip the bad samples"""
-
-    def __init__(self, dataset: HFIterableDataset, max_retries=10):
-        from .loader import standard_keys
-        super().__init__(
-            dataset._ex_iterable,
-            dataset._info,
-            dataset._split,
-            dataset._formatting,
-            dataset._shuffling,
-            dataset._distributed,
-            dataset._token_per_repo_id,
-        )
-        self.dataset = dataset
-        self.max_retries = max_retries
-        dataset._ex_iterable.remove_columns = standard_keys & next(iter(dataset)).keys()
-
-    def __iter__(self):
-        """Iter the dataset, skip bad ones. This iter will never stop until your max-length reached.
-        Yields:
-            An example
-        """
-        iterator = iter(self.dataset)
-        while True:
-            retries = 0
-            while retries < self.max_retries:
-                try:
-                    value = next(iterator)
-                    if value:
-                        yield value
-                        break
-                    else:
-                        raise ValueError
-                except StopIteration:
-                    iterator = iter(self.dataset)
-                    break
-                except Exception as e:
-                    retries += 1
-                    if retries >= self.max_retries:
-                        raise e
-
-
 # Code borrowed from trl
 class ConstantLengthDataset(IterableDataset):
     """This class wraps to do dataset packing
@@ -133,13 +90,9 @@ class ConstantLengthDataset(IterableDataset):
                            num_of_sequences=2048,
                            chars_per_token=3.6,
                            append_concat_token=True,
-                           add_special_tokens=True,
-                           lazy_tokenize=False):
+                           add_special_tokens=True):
         constant_length_iterator = ConstantLengthDataset(template, dataset, seq_length, num_of_sequences,
                                                          chars_per_token, append_concat_token, add_special_tokens)
-
-        if lazy_tokenize:
-            return constant_length_iterator
 
         dataset_list = []
         for item in constant_length_iterator:
@@ -174,7 +127,7 @@ class ConstantLengthDataset(IterableDataset):
                 try:
                     example = next(iterator)
                     lens = sum([len(value) if value else 0 for value in example.values()])
-                    buffer.append(next(iterator))
+                    buffer.append(example)
                     buffer_len += lens
                 except StopIteration:
                     more_examples = False
@@ -182,11 +135,13 @@ class ConstantLengthDataset(IterableDataset):
 
             sequences = []
             for example in buffer:
-                input, _ = self.template.encode(example)
+                input = self.template.encode(example)
                 if not input:
                     continue
                 sequences.append((input, len(input['input_ids'])))
 
+            if not sequences:
+                return
             packed_sequences = self.calculate_matched_group(sequences)
             for sequence in packed_sequences:
                 yield sequence
@@ -261,6 +216,20 @@ class EncodePreprocessor(RowPreprocessor):
         if len(res) == 0:
             res = None
         return res
+
+
+class PackingPreprocessor(EncodePreprocessor):
+
+    def __init__(self, *, max_length, **kwargs):
+        self.max_length = max_length
+        super().__init__(**kwargs)
+
+    def batched_preprocess(self, batched_row: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+        subset = self.batched_to_rows(batched_row)
+        packed_dataset = ConstantLengthDataset.get_packed_dataset(
+            self.template, dataset=subset, seq_length=self.max_length, num_of_sequences=4096)
+        batched_row = self.rows_to_batched(packed_dataset)
+        return batched_row
 
 
 class GetLengthPreprocessor(RowPreprocessor):

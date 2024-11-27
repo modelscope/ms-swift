@@ -54,13 +54,24 @@ class InferRequest:
         if last_role == 'assistant':
             self.messages.pop()
 
-    def copy(self):
-        return self.__class__(
-            messages=deepcopy(self.messages),
-            images=self.images.copy(),
-            audios=self.audios.copy(),
-            videos=self.videos.copy(),
-            tools=deepcopy(self.tools))
+    @staticmethod
+    def _to_printable(obj, key: Optional[str] = None):
+        if isinstance(obj, str) and key not in {'content', 'text'} and len(obj) >= 1000:
+            return f'<<<base64:{obj[:50]}..>>>'
+        elif isinstance(obj, list):
+            res = []
+            for item in obj:
+                res.append(InferRequest._to_printable(item))
+            return res
+        elif isinstance(obj, dict):
+            res = {}
+            for k, v in obj.items():
+                res[k] = InferRequest._to_printable(v, key=k)
+            return res
+        return obj
+
+    def to_printable(self):
+        return InferRequest._to_printable(asdict(self))
 
 
 @dataclass
@@ -80,13 +91,6 @@ class TemplateInputs(InferRequest):
             self.objects = json.loads(self.objects)
         elif self.objects is None:
             self.objects = []
-
-    def copy(self):
-        res = super().copy()
-        res.rejected_response = self.rejected_response
-        res.label = self.label
-        res.objects = deepcopy(self.objects)
-        return res
 
 
 @dataclass
@@ -117,17 +121,6 @@ class StdTemplateInputs:
         if self.audios and not isinstance(self.audios, list):
             self.audios = [self.audios]
 
-    def copy(self):
-        return self.__class__(
-            messages=deepcopy(self.messages),
-            system=self.system,
-            rejected_response=self.rejected_response,
-            label=self.label,
-            images=self.images.copy(),
-            audios=self.audios.copy(),
-            videos=self.videos.copy(),
-            objects=self.objects.copy())
-
     def to_history(self):
         if not self.messages:
             return None
@@ -140,13 +133,14 @@ class StdTemplateInputs:
     @classmethod
     def from_dict(cls, inputs: Dict[str, Any], *, tools_prompt: str = 'react_en') -> 'StdTemplateInputs':
         from .agent import get_tools_prompt
+        inputs = deepcopy(inputs)
         kwargs = {}
         for key in ['rejected_response', 'label']:
             if key in inputs:
                 kwargs[key] = inputs[key]
-        messages = deepcopy(inputs['messages'])
-        tools = deepcopy(inputs.get('tools'))
-        objects = deepcopy(inputs.get('objects') or [])
+        messages = inputs['messages']
+        tools = inputs.get('tools')
+        objects = inputs.get('objects') or []
 
         assert len(messages) >= 1
 
@@ -234,8 +228,8 @@ class StdTemplateInputs:
             pre_message, message = messages[i - 1], messages[i]
             pre_role, pre_content = pre_message['role'], pre_message['content']
             role, content = message['role'], message['content']
-            if pre_role == 'assistant' and role == 'tool' and isinstance(content,
-                                                                         str) and content.endswith('Observation:'):
+            if pre_role == 'assistant' and role == 'tool' and isinstance(pre_content,
+                                                                         str) and pre_content.endswith('Observation:'):
                 assert isinstance(pre_content, str)
                 pre_message['content'] = pre_content + content  # assistant
                 messages.pop(i)  # remove tool

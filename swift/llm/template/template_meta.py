@@ -50,6 +50,7 @@ class TemplateMeta:
     support_stream: bool = True
 
     def to_generate_template_meta(self) -> 'TemplateMeta':
+        self = deepcopy(self)
         return TemplateMeta(
             self.template_type,
             prefix=[],
@@ -57,8 +58,8 @@ class TemplateMeta:
             chat_sep=None,
             template_cls=self.template_cls,
             auto_add_bos=True,
-            stop_words=deepcopy(self.stop_words),
-            placeholder_tokens=deepcopy(self.placeholder_tokens),
+            stop_words=self.stop_words,
+            placeholder_tokens=self.placeholder_tokens,
             support_stream=self.support_stream,
         )
 

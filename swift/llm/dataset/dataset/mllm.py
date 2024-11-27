@@ -1134,7 +1134,7 @@ register_dataset(
             ),
             SubsetDataset(
                 subset='synthetic_handwrite',
-                split=['train', 'validation'],
+                split=['train'],
                 preprocess_func=LatexocrPreprocessor(columns_mapping={
                     'image': 'images',
                     'text': 'response'

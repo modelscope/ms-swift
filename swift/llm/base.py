@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import datetime as dt
 import os
 from abc import ABC, abstractmethod
-from datetime import datetime
 from typing import List, Union
 
 from swift.llm import BaseArguments, ProcessorMixin
@@ -38,11 +38,11 @@ class SwiftPipeline(ABC, ProcessorMixin):
     def main(self):
         args = self.args
         self._compat_dsw_gradio(args)
-        logger.info(f'Start time of running main: {datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")}')
+        logger.info(f'Start time of running main: {dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")}')
         logger.info(f'args: {args}')
         seed_everything(args.seed)
         result = self.run()
-        logger.info(f'End time of running main: {datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")}')
+        logger.info(f'End time of running main: {dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")}')
         return result
 
     @abstractmethod

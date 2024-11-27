@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import re
+from contextlib import nullcontext
 from copy import deepcopy
 from dataclasses import dataclass, field
 from itertools import chain
@@ -12,7 +13,7 @@ from datasets import Dataset as HfDataset
 from swift.llm import (InferArguments, InferRequest, Messages, Processor, SwiftPipeline, Template, get_template,
                        load_dataset, sample_dataset)
 from swift.tuners import Swift
-from swift.utils import append_to_jsonl, get_logger, is_master
+from swift.utils import get_logger, is_master, open_jsonl_writer
 from .protocol import RequestConfig
 
 logger = get_logger()
@@ -38,7 +39,11 @@ class InferCliState:
         self.videos = []
 
     def add_query(self, query: str) -> None:
-        self.messages.append({'role': 'user', 'content': query})
+        role = 'user'
+        if query.startswith('tool:'):
+            role = 'tool'
+            query = query[len('tool:'):]
+        self.messages.append({'role': role, 'content': query})
 
     def add_response(self, response: str) -> None:
         self.messages.append({'role': 'assistant', 'content': response})
@@ -112,13 +117,20 @@ class SwiftInfer(SwiftPipeline):
         logger.info(f'default_system: {template.default_system}')
         return template
 
+    def main(self):
+        args = self.args
+        context = open_jsonl_writer(args.result_path, buffer_size=65536) if args.result_path else nullcontext()
+        with context as json_writer:
+            self.jsonl_writer = json_writer
+            super().main()
+
     def run(self) -> List[Dict[str, Any]]:
         args = self.args
         if args.eval_human:
             result = self.infer_cli()
         else:
             result = self.infer_dataset()
-        if args.result_path is not None:
+        if args.result_path:
             logger.info(f'The inference results have been saved to result_path: `{args.result_path}`.')
         return result
 
@@ -147,7 +159,7 @@ class SwiftInfer(SwiftPipeline):
             text = f'{input(prompt)}\n'
             prompt = ''
             if text.endswith(stop_words):
-                query += text[:len(stop_words)]
+                query += text[:-len(stop_words)]
                 break
             query += text
         return query
@@ -156,7 +168,7 @@ class SwiftInfer(SwiftPipeline):
     def _input_text(multiline_mode: bool, input_system: bool) -> str:
         if multiline_mode:
             addi_prompt = '[MS]' if input_system else '[M]'
-            text = SwiftInfer._input_multiline(f'<<<[{addi_prompt}] ')
+            text = SwiftInfer._input_multiline(f'<<<{addi_prompt} ')
         else:
             addi_prompt = '[S]' if input_system else ''
             text = input(f'<<<{addi_prompt} ')
@@ -236,8 +248,8 @@ class SwiftInfer(SwiftPipeline):
             infer_state.add_response(response)
             data = {'response': response, **data}
             result_list.append(data)
-            if args.result_path is not None:
-                append_to_jsonl(args.result_path, data, strict=False)
+            if self.jsonl_writer:
+                self.jsonl_writer.append(data)
 
         return result_list
 
@@ -254,7 +266,7 @@ class SwiftInfer(SwiftPipeline):
 
     def infer_dataset(self) -> List[Dict[str, Any]]:
         args = self.args
-        request_config = args.get_request_config(args.stream)
+        request_config = args.get_request_config()
         logger.info(f'request_config: {request_config}')
 
         val_dataset = self._prepare_val_dataset()
@@ -262,13 +274,17 @@ class SwiftInfer(SwiftPipeline):
         result_list = []
         if request_config.stream:
             for data in val_dataset:
+                query = data['messages'][-1]['content']
+                print(f'[QUERY] {query}\n[RESPONSE] ', end='')
                 response = self.infer_single(InferRequest(**data), request_config)
+                print('-' * 50)
                 data = {'response': response, **data}
                 result_list.append(data)
-                if args.result_path is not None:
-                    append_to_jsonl(args.result_path, data)
+                if self.jsonl_writer:
+                    self.jsonl_writer.append(data)
         else:
-            if dist.is_initialized():
+            is_dist = args.global_world_size > 1 and dist.is_initialized()
+            if is_dist:
                 val_dataset = val_dataset.shard(args.global_world_size, args.rank, contiguous=True)
             infer_requests = [InferRequest(**data) for i, data in enumerate(val_dataset)]
 
@@ -277,13 +293,13 @@ class SwiftInfer(SwiftPipeline):
                 response = resp.choices[0].message.content
                 data = {'response': response, **data}
                 result_list.append(data)
-            if dist.is_initialized():
+            if is_dist:
                 total_result_list = [None for _ in range(args.global_world_size)] if args.rank == 0 else None
                 dist.gather_object(result_list, total_result_list)
                 result_list = total_result_list and list(chain.from_iterable(total_result_list))
 
-            if is_master() and args.result_path and result_list:
-                append_to_jsonl(args.result_path, result_list)
+            if is_master() and self.jsonl_writer and result_list:
+                self.jsonl_writer.append(result_list)
         return result_list
 
 

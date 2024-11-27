@@ -31,11 +31,11 @@ def merge_lora(args: ExportArguments, replace_if_exists=False, device_map=None) 
         args.device_map = device_map or args.device_map
         logger.info(f'merge_device_map: {device_map}')
         if args.use_merge_kit:
-            base_model_id_or_path = args.model_id_or_path
-            if not os.path.exists(args.instruct_model_id_or_path):
-                args.instruct_model_id_or_path = args.hub.download_model(
-                    args.instruct_model_id_or_path, revision=args.instruct_model_revision)
-            args.model_id_or_path = args.instruct_model_id_or_path
+            base_model = args.model
+            if not os.path.exists(args.instruct_model):
+                args.instruct_model = args.hub.download_model(
+                    args.instruct_model, revision=args.instruct_model_revision)
+            args.model = args.instruct_model
         model, template = prepare_pt_engine_template(args)
         logger.info('Merge LoRA...')
         Swift.merge_and_unload(model)
@@ -58,8 +58,9 @@ def merge_lora(args: ExportArguments, replace_if_exists=False, device_map=None) 
     if args.use_merge_kit:
         tempdir = tempfile.gettempdir()
         mergekit_path = os.path.join(output_dir, 'mergekit')
-        merge_yaml = args.merge_yaml.replace('{merged_model}', output_dir).replace(
-            '{instruct_model}', args.instruct_model_id_or_path).replace('{base_model}', base_model_id_or_path)
+        merge_yaml = args.merge_yaml.replace('{merged_model}', output_dir).replace('{instruct_model}',
+                                                                                   args.instruct_model).replace(
+                                                                                       '{base_model}', base_model)
         try:
             yamlfile = os.path.join(tempdir, 'mergekit.yaml')
             with open(yamlfile, 'w') as f:

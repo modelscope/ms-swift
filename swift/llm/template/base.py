@@ -3,6 +3,8 @@ import hashlib
 import inspect
 import os
 import re
+from copy import deepcopy
+from dataclasses import asdict
 from functools import wraps
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
@@ -15,7 +17,7 @@ from PIL import Image
 from torch.nn.utils.rnn import pad_sequence
 from transformers.integrations import is_deepspeed_zero3_enabled
 
-from swift.utils import dataclass_to_dict, get_dist_setting, use_torchacc
+from swift.utils import get_dist_setting, use_torchacc
 from .agent import loss_scale_map, split_str_parts_by
 from .template_inputs import InferRequest, StdTemplateInputs, TemplateInputs
 from .utils import (Context, ContextType, GenerationProperty, Processor, ProcessorMixin, StopWordsCriteria, fetch_one,
@@ -36,7 +38,7 @@ class Template(ProcessorMixin):
     load_medias = True
     skip_prompt = True
 
-    output_prompt_answer = False  # for encoder-decoder & kto
+    is_encoder_decoder = False
     padding_side: Literal['left', 'right'] = 'right'  # The padding_side when the training batch_size >= 2.
 
     def __init__(
@@ -93,7 +95,6 @@ class Template(ProcessorMixin):
         self.sequence_parallel_size = sequence_parallel_size
         self.tools_prompt = tools_prompt or template_meta.default_tools_prompt
 
-        # infer: 'pt', 'vllm', 'lmdeploy'; train: 'train', 'rlhf', 'kto'
         self.mode: Literal['pt', 'vllm', 'lmdeploy', 'train', 'rlhf', 'kto'] = 'pt'
         self._handles = []
         self._deepspeed_initialize = None
@@ -131,8 +132,8 @@ class Template(ProcessorMixin):
                 'The template does not support multi-round chat. Only use the last round of the conversation.')
             inputs.messages = inputs.messages[-2:]
 
-    def _rlhf_encode(self, inputs):
-        chosen_inputs, rejected_inputs = inputs, inputs.copy()
+    def _rlhf_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        chosen_inputs, rejected_inputs = inputs, deepcopy(inputs)
         assert chosen_inputs.rejected_response is not None, f'inputs: {inputs}'
         rejected_inputs.messages[-1]['content'] = chosen_inputs.rejected_response
         chosen_encoded = self._encode(chosen_inputs)
@@ -147,15 +148,15 @@ class Template(ProcessorMixin):
                 encoded[f'{prefix}_{k}'] = v
         return encoded
 
-    def _kto_encode(self, inputs):
+    def _kto_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = self._rlhf_encode(inputs)
         if len(encoded) == 0:
             return {}
         return {
             'completion_input_ids': encoded['chosen_input_ids'],
             'completion_labels': encoded['chosen_labels'],
-            'KL_completion_input_ids': encoded['chosen_prompt_input_ids'] + encoded['rejected_answer_input_ids'],
-            'KL_completion_labels': encoded['chosen_prompt_labels'] + encoded['rejected_answer_labels'],
+            'KL_completion_input_ids': encoded['rejected_input_ids'],
+            'KL_completion_labels': encoded['rejected_labels'],
             'label': inputs.label
         }
 
@@ -169,13 +170,12 @@ class Template(ProcessorMixin):
             return {'input_ids': List[int], 'labels': Optional[List[int]], ...}
         """
         if isinstance(inputs, (InferRequest, TemplateInputs)):
-            # The safety is guaranteed in StdTemplateInputs.from_dict.
-            inputs = dataclass_to_dict(inputs)
+            inputs = asdict(inputs)
 
         if isinstance(inputs, dict):
             inputs = StdTemplateInputs.from_dict(inputs, tools_prompt=self.tools_prompt)
         elif isinstance(inputs, StdTemplateInputs):
-            inputs = inputs.copy()
+            inputs = deepcopy(inputs)
 
         assert isinstance(inputs, StdTemplateInputs)
         self._preprocess_inputs(inputs)
@@ -431,7 +431,7 @@ class Template(ProcessorMixin):
                     c_list = self.replace_object(inputs.objects[idx], idx, inputs)
                     inputs.object_idx = idx + 1
                 elif context == '<bbox>':
-                    idx = inputs.object_idx
+                    idx = inputs.box_idx
                     c_list = self.replace_box(inputs.objects[idx], idx, inputs)
                     inputs.box_idx = idx + 1
                 else:
@@ -484,7 +484,7 @@ class Template(ProcessorMixin):
         return input_ids, labels, loss_scale, tokenizer_kwargs
 
     @staticmethod
-    def _use_dynamic_eos(labels: List[int], suffix_tokens_id: List[int]) -> None:
+    def _add_dynamic_eos(labels: List[int], suffix_tokens_id: List[int]) -> None:
         suffix_len = len(suffix_tokens_id)
         start = 0
         for i in range(1, len(labels)):
@@ -535,15 +535,17 @@ class Template(ProcessorMixin):
             extra_context_list = []
             extra_context_type = None
             if i < n_round - 1:
+                # Not the last round.
                 context_list.append('{{RESPONSE}}')
-                extra_context_list = template_meta.chat_sep  # TODO:agent check
+                extra_context_list = template_meta.chat_sep
                 extra_context_type = ContextType.OTHER
             elif response is not None:
                 # It is the final round, and the response exists (during training).
                 context_list.append('{{RESPONSE}}')
-                extra_context_list = template_meta.suffix
-                extra_context_type = ContextType.SUFFIX
-            assert query or response  # TODO:check
+                if self.is_training:
+                    extra_context_list = template_meta.suffix
+                    extra_context_type = ContextType.SUFFIX
+
             self._concat_context_list(
                 context_list,
                 res_context_list,
@@ -558,30 +560,28 @@ class Template(ProcessorMixin):
                                                                             inputs.messages)
 
         encoded = {}
-        if self.output_prompt_answer:
+        if self.is_encoder_decoder:
             # tokenizer_kwargs: use prompt (qwen-audio)
             answer_len = len(extra_context_list) + bool(response is not None)
             total_len = len(res_context_list)
-            for key, _slice in zip(['answer', 'prompt'],
-                                   [slice(total_len - answer_len, total_len),
-                                    slice(0, total_len - answer_len)]):
+            for key, _slice in zip(['prompt', 'answer'],
+                                   [slice(0, total_len - answer_len),
+                                    slice(total_len - answer_len, total_len)]):
                 _res_context_list, _loss_scale_list = self._simplify_context_list(res_context_list[_slice],
                                                                                   loss_scale_list[_slice], inputs)
                 input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(
                     _res_context_list, _loss_scale_list)
-                encoded[f'{key}_input_ids'], encoded[f'{key}_labels'] = input_ids, labels
-                if self.loss_scale != 'default':
-                    encoded[f'{key}_loss_scale'] = loss_scale
+                encoded[f'{key}_input_ids'] = input_ids
+                if key == 'answer':
+                    encoded['labels'] = labels
+                    encoded['loss_scale'] = loss_scale
             input_ids = encoded['prompt_input_ids'] + encoded['answer_input_ids']
-            labels = encoded['prompt_labels'] + encoded['answer_labels']
-            if response is None:
-                assert len(encoded['answer_labels']) == 0
-                encoded['answer_labels'] = None
         else:
             res_context_list, loss_scale_list = self._simplify_context_list(res_context_list, loss_scale_list, inputs)
             input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(
                 res_context_list, loss_scale_list)
-            self._use_dynamic_eos(labels, self._encode_context_list(template_meta.suffix)[0])
+        if self.loss_scale in {'default', 'all', 'last_round'}:
+            self._add_dynamic_eos(labels, self._encode_context_list(template_meta.suffix)[0])
 
         if tokenizer_kwargs:
             encoded['tokenizer_kwargs'] = tokenizer_kwargs
@@ -600,11 +600,11 @@ class Template(ProcessorMixin):
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
         encoded['loss_scale'] = loss_scale
-        if response is None:
+        if not self.is_training:
             for k in list(encoded.keys()):
                 if k.endswith('labels'):
                     encoded[k] = None
-        if response is None or self.loss_scale in {'default', 'all', 'last_round'}:
+        if not self.is_training or self.loss_scale in {'default', 'all', 'last_round'}:
             for k in list(encoded.keys()):
                 if k.endswith('loss_scale'):
                     encoded[k] = None
@@ -655,14 +655,11 @@ class Template(ProcessorMixin):
             kwargs.pop('position_ids', None)
         return args, kwargs
 
+    @property
+    def is_training(self):
+        return self.mode not in {'vllm', 'lmdeploy', 'pt'}
+
     def set_mode(self, mode: Literal['vllm', 'lmdeploy', 'pt', 'train', 'rlhf', 'kto']) -> None:
-        if mode == 'kto':
-            self.output_prompt_answer = True
-        else:
-            try:
-                del self.output_prompt_answer
-            except AttributeError:
-                pass
         self.mode = mode
 
     def register_post_encode_hook(self, models: List[nn.Module]) -> None:
@@ -856,10 +853,10 @@ class Template(ProcessorMixin):
             res['pixel_values_videos'] = torch.concat(pixel_values_videos)
 
         if use_torchacc() or self.sequence_parallel_size > 1:
-            res = self._torchacc_xtuner_data_collator(res)
+            res = self._torchacc_xtuner_data_collator(res, padding_to, self.tokenizer, padding_side)
         return res
 
-    def _torchacc_xtuner_data_collator(self, res):
+    def _torchacc_xtuner_data_collator(self, res, padding_to, tokenizer, padding_side):
         # torchacc & xtuner
         input_ids = res.get('input_ids')
         attention_mask = res.get('attention_mask')
@@ -878,11 +875,11 @@ class Template(ProcessorMixin):
                 tokenizer,
                 rank,
                 world_size,
-                padding_right=padding_right)
+                padding_right=padding_side == 'right')
         if self.sequence_parallel_size > 1 and input_ids is not None:
             bs, seq_len = input_ids.shape
             position_ids = torch.arange(seq_len).unsqueeze(0).long().repeat(bs, 1)
-            assert padding_right or bs == 1, 'Sequence parallel only support padding_side=right'
+            assert padding_side == 'right' or bs == 1, 'Sequence parallel only support padding_side=right'
             from swift.trainers.xtuner import get_xtuner_sequence_parallel_world_size
             if get_xtuner_sequence_parallel_world_size() > 1:
                 from swift.trainers.xtuner import pad_and_split_for_sequence_parallel
@@ -909,6 +906,9 @@ class Template(ProcessorMixin):
                 logger.info(f'[{key_upper}_IDS] {val}')
                 val_str = self.safe_decode(val, **tokenizer_kwargs)
                 logger.info(f'[{key_upper}] {val_str}')
+        if inputs.get('loss_scale') is not None:
+            val = inputs['loss_scale']
+            logger.info(f'[LOSS_SCALE] {val}')
 
     async def prepare_lmdeploy_inputs(self, inputs: Dict[str, Any]) -> None:
         images = inputs.pop('images', None) or []

@@ -1,13 +1,13 @@
+# 29GiB
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen2-7B-Instruct \
-    --train_type reft \
+    --train_type full \
     --dataset swift/self-cognition#1000 \
-    --reft_intervention_type 'LoreftIntervention' \
+    --lisa_activated_layers 2 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \
     --learning_rate 1e-4 \
-    --gradient_checkpointing false \
     --gradient_accumulation_steps 16 \
     --eval_steps 100 \
     --save_steps 100 \

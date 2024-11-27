@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from swift.llm import TEMPLATE_MAPPING, DeployArguments, Template, merge_lora
 from swift.plugin import InferStats
-from swift.utils import append_to_jsonl, get_logger
+from swift.utils import get_logger
 from .infer import SwiftInfer
 from .protocol import ChatCompletionRequest, CompletionRequest, Model, ModelList
 
@@ -31,6 +31,7 @@ class SwiftDeploy(SwiftInfer):
 
     def __init__(self, args: Union[List[str], DeployArguments, None] = None) -> None:
         super().__init__(args)
+        self.infer_engine.strict = True
         self.infer_states = InferStats()
         self.app = FastAPI(lifespan=self.lifespan)
         self._register_app()
@@ -53,19 +54,35 @@ class SwiftDeploy(SwiftInfer):
 
     async def get_available_models(self):
         args = self.args
-        model_list = [args.served_model_name or self.model_dir]
+        model_list = [args.served_model_name or args.model_name]
         if args.lora_request_list is not None:
             model_list += [lora_request.lora_name for lora_request in args.lora_request_list]
         data = [Model(id=model_id, owned_by=args.owned_by) for model_id in model_list]
         return ModelList(data=data)
 
-    async def check_model(self, request: ChatCompletionRequest) -> Optional[str]:
+    async def _check_model(self, request: ChatCompletionRequest) -> Optional[str]:
         available_models = await self.get_available_models()
         model_list = [model.id for model in available_models.data]
-        if request.model in model_list:
-            return
-        else:
+        if request.model not in model_list:
             return f'`{request.model}` is not in the model_list: `{model_list}`.'
+
+    def _check_api_key(self, raw_request: Request) -> Optional[str]:
+        api_key = self.args.api_key
+        if api_key is None:
+            return
+        authorization = dict(raw_request.headers).get('authorization')
+        error_msg = 'API key error'
+        if authorization is None or not authorization.startswith('Bearer '):
+            return error_msg
+        request_api_key = authorization[7:]
+        if request_api_key != api_key:
+            return error_msg
+
+    def _check_max_logprobs(self, request):
+        args = self.args
+        if isinstance(request.top_logprobs, int) and request.top_logprobs > self.args.max_logprobs:
+            return (f'The value of top_logprobs({request.top_logprobs}) is greater than '
+                    f'the server\'s max_logprobs({args.max_logprobs}).')
 
     @staticmethod
     def create_error_response(status_code: Union[int, str, HTTPStatus], message: str) -> JSONResponse:
@@ -79,10 +96,9 @@ class SwiftDeploy(SwiftInfer):
         if return_cmpl_response:
             response = response.to_cmpl_response()
 
-        if args.result_path is not None:
-            data = {'response': response, **request_info}
-            data = {k: asdict(v) if is_dataclass(v) else str(v) for k, v in data.items()}
-            append_to_jsonl(args.result_path, data, strict=False)
+        if self.jsonl_writer:
+            data = {'response': asdict(response), **request_info}
+            self.jsonl_writer.append(data)
         return response
 
     @contextmanager
@@ -93,7 +109,8 @@ class SwiftDeploy(SwiftInfer):
 
         def _add_stop_words(self, generation_config, *args, **kwargs):
             res = _origin_add_stop_words(self, generation_config, *args, **kwargs)
-            request_info.update({'infer_request': infer_request, 'generation_config': generation_config})
+            printable_infer_request = infer_request.to_printable()
+            request_info.update({'infer_request': printable_infer_request, 'generation_config': generation_config})
             if verbose:
                 logger.info(request_info)
             return res
@@ -109,10 +126,18 @@ class SwiftDeploy(SwiftInfer):
                                      raw_request: Request,
                                      *,
                                      return_cmpl_response: bool = False):
+        error_msg = (await self._check_model(request) or self._check_api_key(raw_request)
+                     or self._check_max_logprobs(request))
+        if error_msg:
+            return self.create_error_response(HTTPStatus.BAD_REQUEST, error_msg)
+
         infer_request, request_config = request.parse()
         request_info = {}
-        with self.patch_infer_engine(infer_request, request_info):
-            res_or_gen = await self.infer_async(infer_request, request_config, template=self.template)
+        try:
+            with self.patch_infer_engine(infer_request, request_info):
+                res_or_gen = await self.infer_async(infer_request, request_config, template=self.template)
+        except ValueError as e:
+            return self.create_error_response(HTTPStatus.BAD_REQUEST, str(e))
         if request_config.stream:
 
             async def _gen_wrapper():

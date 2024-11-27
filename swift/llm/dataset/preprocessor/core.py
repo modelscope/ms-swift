@@ -28,7 +28,6 @@ def get_dataset_features(dataset: DATASET_TYPE) -> Dict[str, Any]:
 
 
 class RowPreprocessor:
-
     cast_mm_data = True
 
     def __init__(self,
@@ -91,19 +90,30 @@ class RowPreprocessor:
     def prepare_dataset(self, dataset: HfDataset) -> HfDataset:
         return dataset
 
+    @staticmethod
+    def batched_to_rows(batched_row: Dict[str, Any]):
+        keys = list(batched_row.keys())
+        batch_size = len(batched_row[keys[0]])
+        return [{key: batched_row[key][i] for key in keys} for i in range(batch_size)]
+
+    @staticmethod
+    def rows_to_batched(rows: List[Dict[str, Any]]):
+        batched = {}
+        for i, row in enumerate(rows):
+            for k, v in row.items():
+                if k not in batched:
+                    batched[k] = [None] * i
+                batched[k].append(v)
+        return batched
+
     def batched_preprocess(self, batched_row: Dict[str, Any], *, strict: bool) -> Dict[str, Any]:
         batched_row = dict(batched_row)
+        assert len(batched_row) > 0
         self.row_keys_map(batched_row, self.row_mapping)
-        keys = list(batched_row.keys())
-        if len(keys) == 0:
-            return {}
+        rows = self.batched_to_rows(batched_row)
 
-        batch_size = len(batched_row[keys[0]])
-        res = {}
-        num_samples = 0
-        for i in range(batch_size):
-            row = {key: batched_row[key][i] for key in keys}
-
+        new_rows = []
+        for row in rows:
             try:
                 row = self.preprocess(row)
                 if row is not None:
@@ -121,13 +131,8 @@ class RowPreprocessor:
                 row = None
             if row is None:
                 continue
-
-            for k, v in row.items():
-                if k not in res:
-                    res[k] = [None] * num_samples
-                res[k].append(v)
-
-            num_samples += 1
+            new_rows.append(row)
+        res = self.rows_to_batched(new_rows)
 
         if len(res) == 0:
             res['messages'] = []

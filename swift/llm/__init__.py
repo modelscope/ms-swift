@@ -19,9 +19,9 @@ if TYPE_CHECKING:
                         ModelInfo, ModelMeta, ModelKeys, register_model_arch, MultiModelKeys, ModelArch, get_model_arch,
                         MODEL_ARCH_MAPPING)
     from .dataset import (AlpacaPreprocessor, MessagesPreprocessor, AutoPreprocessor, DATASET_MAPPING, MediaResource,
-                          register_dataset, register_dataset_info, EncodePreprocessor, LLMIterableDataset,
-                          LazyLLMDataset, ConstantLengthDataset, standard_keys, load_dataset, DATASET_TYPE,
-                          sample_dataset, RowPreprocessor)
+                          register_dataset, register_dataset_info, EncodePreprocessor, LazyLLMDataset,
+                          ConstantLengthDataset, standard_keys, load_dataset, DATASET_TYPE, sample_dataset,
+                          RowPreprocessor)
     from .utils import deep_getattr, to_device, History, history_to_messages, messages_to_history
     from .base import SwiftPipeline
 else:
@@ -51,9 +51,9 @@ else:
         ],
         'dataset': [
             'AlpacaPreprocessor', 'ClsPreprocessor', 'ComposePreprocessor', 'MessagesPreprocessor', 'DATASET_MAPPING',
-            'MediaResource', 'register_dataset', 'register_dataset_info', 'EncodePreprocessor', 'LLMIterableDataset',
-            'LazyLLMDataset', 'ConstantLengthDataset', 'standard_keys', 'load_dataset', 'DATASET_TYPE',
-            'sample_dataset', 'RowPreprocessor'
+            'MediaResource', 'register_dataset', 'register_dataset_info', 'EncodePreprocessor', 'LazyLLMDataset',
+            'ConstantLengthDataset', 'standard_keys', 'load_dataset', 'DATASET_TYPE', 'sample_dataset',
+            'RowPreprocessor'
         ],
         'utils': ['deep_getattr', 'to_device', 'History', 'history_to_messages', 'messages_to_history'],
         'base': ['SwiftPipeline']
