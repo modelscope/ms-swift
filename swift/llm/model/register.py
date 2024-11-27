@@ -457,12 +457,18 @@ def get_model_tokenizer(model_id_or_path: str,
     model_meta.check_requires()
     get_function = model_meta.get_function
     kwargs['automodel_class'] = automodel_class
-    model, tokenizer = get_function(model_dir, model_info, model_kwargs, load_model, **kwargs)
+    model, processor = get_function(model_dir, model_info, model_kwargs, load_model, **kwargs)
 
-    if not isinstance(tokenizer, PreTrainedTokenizerBase) and hasattr(tokenizer, 'tokenizer'):
-        patch_processor(tokenizer)
-    tokenizer.model_info = model_info
-    tokenizer.model_meta = model_meta
+    if not isinstance(processor, PreTrainedTokenizerBase) and hasattr(processor, 'tokenizer'):
+        tokenizer = processor.tokenizer
+        patch_processor(processor)
+    else:
+        tokenizer = processor
+    processor.model_info = model_info
+    processor.model_meta = model_meta
+    tokenizer.pad_token_id = tokenizer.pad_token_id or tokenizer.eos_token_id
+    assert tokenizer.eos_token_id is not None
+    assert tokenizer.pad_token_id is not None
 
     if model is not None:
         model.model_info = model_info
@@ -476,4 +482,4 @@ def get_model_tokenizer(model_id_or_path: str,
             model.generation_config = GenerationConfig.from_pretrained(model_dir)
         # fix llama2 warning
         fix_do_sample_warning(model.generation_config)
-    return model, tokenizer
+    return model, processor

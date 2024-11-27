@@ -7,7 +7,7 @@ from typing import List, Literal, Optional
 
 import torch
 import torch.distributed as dist
-from transformers import Seq2SeqTrainingArguments
+from transformers import Seq2SeqTrainingArguments, TrainingArguments
 from transformers.utils import is_torch_npu_available
 from transformers.utils.versions import require_version
 
@@ -45,6 +45,7 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
         self.output_dir = f'output/{self.model_name}'
 
     def __post_init__(self):
+        del TrainingArguments.world_size
         self._init_output_dir()
 
         if self.learning_rate is None:
@@ -122,8 +123,8 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
             self.load_args_from_ckpt(self.resume_from_checkpoint)
             if self.train_type == 'full':
                 self.model_id_or_path = self.resume_from_checkpoint
-        BaseArguments.__post_init__(self)
         Seq2SeqTrainingOverrideArguments.__post_init__(self)
+        BaseArguments.__post_init__(self)
         TunerArguments.__post_init__(self)
         TorchAccArguments.__post_init__(self)
 

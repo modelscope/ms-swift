@@ -101,7 +101,7 @@ class MultiModalRequestMixin:
     videos: List[str] = field(default_factory=list)
 
     @staticmethod
-    def _to_base64(mm_data: Union[str, Image.Image, bytes]) -> str:
+    def to_base64(mm_data: Union[str, Image.Image, bytes]) -> str:
         if isinstance(mm_data, str) and not os.path.isfile(mm_data):
             # base64 or url
             return mm_data
@@ -125,7 +125,7 @@ class MultiModalRequestMixin:
                 values = [values]
                 setattr(self, key, values)
             for i, val in enumerate(values):
-                values[i] = self._to_base64(val)
+                values[i] = self.to_base64(val)
 
 
 @dataclass
@@ -173,7 +173,7 @@ class ChatCompletionRequest(RequestConfig, MultiModalRequestMixin, ChatCompletio
                     suffix = 'jpeg'
                 else:
                     raise ValueError(f'value: {value}')
-                mm_data_base64 = self._to_base64(value)
+                mm_data_base64 = self.to_base64(value)
                 new_value = f'data:{key}/{suffix};base64,{mm_data_base64}'
                 if is_dict:
                     new_value = {'url': new_value}
