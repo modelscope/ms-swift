@@ -563,6 +563,7 @@ class ModelType:
     mplug_owl3_1b_chat = 'mplug-owl3-1b-chat'
     mplug_owl3_2b_chat = 'mplug-owl3-2b-chat'
     mplug_owl3_7b_chat = 'mplug-owl3-7b-chat'
+    mplug_owl3v_7b_chat = 'mplug-owl3v-7b-chat'
     # yuan
     yuan2_2b_instruct = 'yuan2-2b-instruct'
     yuan2_2b_janus_instruct = 'yuan2-2b-janus-instruct'
@@ -3070,6 +3071,15 @@ def get_model_tokenizer_ovis(*args, **kwargs):
     support_flash_attn=True,
     tags=['multi-modal', 'vision', 'video'],
     hf_model_id='mPLUG/mPLUG-Owl3-7B-240728')
+@register_model(
+    ModelType.mplug_owl3v_7b_chat,
+    'iic/mPLUG-Owl3-7B-241101',
+    LoRATM.mplug_owl3,
+    TemplateType.mplug_owl3v,
+    requires=['transformers>=4.36', 'icecream'],  # decord
+    support_flash_attn=True,
+    tags=['multi-modal', 'vision', 'video'],
+    hf_model_id='mPLUG/mPLUG-Owl3-7B-241101')
 def get_model_tokenizer_mplug_owl3(model_dir: str,
                                    torch_dtype: torch.dtype,
                                    model_kwargs: Dict[str, Any],

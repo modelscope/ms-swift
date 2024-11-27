@@ -134,6 +134,7 @@ class TemplateType:
     paligemma = 'paligemma'
     mplug_owl2 = 'mplug-owl2'
     mplug_owl3 = 'mplug_owl3'
+    mplug_owl3v = 'mplug_owl3v'
     wizardlm2_awq = 'wizardlm2-awq'
     wizardlm2 = 'wizardlm2'
     atom = 'atom'
@@ -4004,7 +4005,69 @@ class mPlugOwl3Template(QwenTemplateMixin, Template):
         return res
 
 
+class mPlugOwl3vTemplate(mPlugOwl3Template):
+    system = None
+
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super(mPlugOwl3Template, self)._encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
+        images = example['images']
+        videos = example['videos']
+        cut_enable = not videos
+        input_ids = inputs['input_ids']
+        labels = inputs['labels']
+        idx_list = _findall(input_ids, -100)
+        processor = self.tokenizer.processor
+        inputs = {'_data': {}}
+        if images:
+            image_inputs = processor.image_processor(images, cut_enable=cut_enable, return_tensors='pt')
+            added_tokens_len = 0
+            cut_shapes = image_inputs['cut_shape'] or [None] * 2 * len(idx_list)
+            image_token_list = self.tokenizer.encode('<|image|>', add_special_tokens=False)
+            for idx, cut_shape in zip(idx_list, cut_shapes[::2]):
+                if cut_shape:
+                    token_list = self._get_image_token_list(cut_shape)
+                else:
+                    token_list = image_token_list
+                input_ids = input_ids[:idx + added_tokens_len] + token_list + input_ids[added_tokens_len + idx + 1:]
+                if labels:
+                    labels = labels[:idx + added_tokens_len] + [-100] * len(token_list) + labels[added_tokens_len + idx
+                                                                                                 + 1:]
+                added_tokens_len += len(token_list) - 1
+            image_token_idx = torch.tensor(_findall(input_ids, image_token_list))
+
+            inputs['_data'].update({
+                'pixel_values': image_inputs['pixel_values'],
+                'media_offset': image_token_idx,
+            })
+        inputs['_data']['input_ids'] = input_ids
+        inputs['labels'] = labels
+        return inputs, {}
+
+    def _post_encode(self, model, data: Any) -> Dict[str, Any]:
+        if 'pixel_values' in data:
+            pixel_values = data.pop('pixel_values')
+            data['image_embeds'] = model.forward_image(pixel_values)
+        return data
+
+    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super(mPlugOwl3Template, self).data_collator(batch, padding_to)
+        image_embeds = [b['image_embeds'] for b in batch if 'image_embeds' in b]
+        if image_embeds:
+            res['image_embeds'] = torch.concat(image_embeds)
+        media_offset = []
+
+        for bi, b in enumerate(batch):
+            media_offset.append(b.get('media_offset', torch.tensor([]).long()))
+
+        if media_offset:
+            res['media_offset'] = media_offset
+        return res
+
+
 register_template(TemplateType.mplug_owl3, mPlugOwl3Template(), use_model=True, lazy_tokenize=True)
+register_template(TemplateType.mplug_owl3v, mPlugOwl3vTemplate(), use_model=True, lazy_tokenize=True)
 
 register_template(TemplateType.wizardlm2_awq,
                   Template(['{{SYSTEM}}'], ['User:\n{{QUERY}}\n\nAssistant:\n'], ['\n\n'], ['</s>']))
