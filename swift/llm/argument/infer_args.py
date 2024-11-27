@@ -116,6 +116,9 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
     val_dataset_sample: Optional[int] = None
     stream: Optional[bool] = None
 
+    # From args.json
+    train_type: Optional[str] = None
+
     def get_result_path(self, folder_name, suffix: str = '.jsonl') -> str:
         result_dir = self.ckpt_dir or self.model_info.model_dir
         result_dir = to_abspath(os.path.join(result_dir, folder_name))
@@ -168,8 +171,6 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
         self._init_eval_human()
         self._init_stream()
         self._init_pt_ddp()
-        if self.ckpt_dir is None:
-            self.train_type = 'full'
 
     def _init_eval_human(self):
         if len(self.dataset) == 0 and len(self.val_dataset) == 0:

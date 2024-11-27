@@ -28,6 +28,7 @@ from swift.hub import get_hub
 from swift.llm import Processor, ProcessorMixin
 from swift.tuners import SwiftModel
 from swift.utils import get_logger, is_mp_ddp
+from ..plugin import extra_tuners
 from .arguments import TrainingArguments
 from .optimizers.galore import create_optimizer_and_scheduler
 from .torchacc_mixin import TorchAccMixin
@@ -57,7 +58,7 @@ class SwiftMixin(TorchAccMixin, ProcessorMixin):
             callbacks: Optional[List[TrainerCallback]] = None,
             optimizers: Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR] = (None, None),
             preprocess_logits_for_metrics: Optional[Callable[[torch.Tensor, torch.Tensor],
-            torch.Tensor]] = None) -> None:
+                                                             torch.Tensor]] = None) -> None:
         if args.check_model and hasattr(model, 'model_dir'):
             check_local_model_is_latest(
                 model.model_dir, user_agent={
@@ -132,7 +133,7 @@ class SwiftMixin(TorchAccMixin, ProcessorMixin):
         # model
         supported_classes = (SwiftModel, PreTrainedModel, PeftModel)
         if AutoModelForCausalLMWithValueHead is not None:
-            supported_classes = supported_classes + (AutoModelForCausalLMWithValueHead,)
+            supported_classes = supported_classes + (AutoModelForCausalLMWithValueHead, )
         save_safetensors = self.args.save_safetensors
         if not isinstance(self.model, supported_classes):
             if state_dict is None:
@@ -166,6 +167,9 @@ class SwiftMixin(TorchAccMixin, ProcessorMixin):
                 torch.save(v_head_state_dict, os.path.join(output_dir, 'value_head.bin'))
         elif is_instance_of_ms_model(self.model):
             PreTrainedModel.save_pretrained(
+                self.model, output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
+        elif self.args.train_type in extra_tuners:
+            extra_tuners[self.args.train_type].save_pretrained(
                 self.model, output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
         else:
             self.model.save_pretrained(output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
@@ -232,7 +236,7 @@ class SwiftMixin(TorchAccMixin, ProcessorMixin):
             mems = [torch.cuda.max_memory_reserved(device=device) for device in range(torch.cuda.device_count())]
         else:
             mems = [torch.cuda.max_memory_reserved(device=device)]
-        mem = sum(mems) / 1024 ** 3
+        mem = sum(mems) / 1024**3
         self.max_memory = max(self.max_memory, mem)
         return mem
 

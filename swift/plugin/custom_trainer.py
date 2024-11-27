@@ -1,8 +1,6 @@
-from swift.trainers import Trainer
-from swift.utils import compute_acc, use_torchacc
 import torch
 
-from swift.utils.torchacc_utils import ta_trim_graph
+from swift.trainers import Trainer, TrainerFactory
 
 
 class SequenceClassificationTrainer(Trainer):
@@ -12,8 +10,5 @@ class SequenceClassificationTrainer(Trainer):
         return super().compute_loss(model, inputs, return_outputs=return_outputs)
 
 
-def custom_trainer_class(trainer_mapping, trainer_args_mapping):
-    TrainerFactory.trainer_mapping['train'] = 'swift.plugin.custom_trainer.SequenceClassificationTrainer'
-
-
-custom_trainer_class()
+def custom_trainer_class(trainer_mapping, training_args_mapping):
+    trainer_mapping['train'] = 'swift.plugin.custom_trainer.SequenceClassificationTrainer'

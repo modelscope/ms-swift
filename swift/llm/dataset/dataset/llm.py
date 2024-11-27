@@ -465,11 +465,12 @@ for hc3_subset_name in hc3_subset_names:
         subset=hc3_subset_name,
         preprocess_func=_preprocess_hc3,
     ))
-    hc3_subsets.append(SubsetDataset(
-        name=f'{hc3_subset_name}_cls',
-        subset=hc3_subset_name,
-        preprocess_func=_preprocess_hc3_cls,
-    ))
+    hc3_subsets.append(
+        SubsetDataset(
+            name=f'{hc3_subset_name}_cls',
+            subset=hc3_subset_name,
+            preprocess_func=_preprocess_hc3_cls,
+        ))
 
 register_dataset(
     DatasetMeta(
@@ -477,7 +478,6 @@ register_dataset(
         hf_dataset_id='Hello-SimpleAI/HC3-Chinese',
         subsets=hc3_subsets,
         tags=['text-generation', 'classification', '🔥']))
-
 
 register_dataset(
     DatasetMeta(

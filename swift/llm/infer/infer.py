@@ -14,6 +14,7 @@ from swift.llm import (InferArguments, InferRequest, Messages, Processor, SwiftP
                        load_dataset, sample_dataset)
 from swift.tuners import Swift
 from swift.utils import get_logger, is_master, open_jsonl_writer
+from ...plugin import extra_tuners
 from .protocol import RequestConfig
 
 logger = get_logger()
@@ -72,8 +73,13 @@ class SwiftInfer(SwiftPipeline):
             merge_lora(args, device_map='cpu')
         self.infer_engine = self.get_infer_engine(args)
         if args.infer_backend == 'pt' and args.ckpt_dir and args.weight_type == 'adapter':
-            # TODO: vllm lora
-            self.infer_engine.model = Swift.from_pretrained(self.infer_engine.model, args.ckpt_dir, inference_mode=True)
+            if args.train_type in extra_tuners:
+                extra_tuners[args.train_type].from_pretrained(
+                    self.infer_engine.model, args.ckpt_dir, inference_mode=True)
+            else:
+                # TODO: vllm lora
+                self.infer_engine.model = Swift.from_pretrained(
+                    self.infer_engine.model, args.ckpt_dir, inference_mode=True)
             logger.info(f'model: {self.infer_engine.model}')
         self.template = self.get_template(args, self.processor)
         self.random_state = np.random.RandomState(args.data_seed)

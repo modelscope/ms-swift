@@ -257,7 +257,7 @@ def prepare_model(args: TrainArguments, model):
         # Fix the name of the layer in xcomposer that contains Plora.
         model.requires_grad_(False)
         if args.resume_from_checkpoint:
-            if getattr(model, 'is_tuner_plugin', False):
+            if args.train_type in extra_tuners:
                 tuner: Tuner = extra_tuners[args.train_type]
                 model = tuner.from_pretrained(model, args.resume_from_checkpoint)
             else:
@@ -269,7 +269,6 @@ def prepare_model(args: TrainArguments, model):
             if args.train_type in extra_tuners:
                 tuner: Tuner = extra_tuners[args.train_type]
                 model = tuner.prepare_model(args, model)
-                model.is_tuner_plugin = True
             else:
                 model = prepare_adapter(args, model)
         # fix bug: Attempting to unscale FP16 gradients.

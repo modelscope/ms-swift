@@ -26,6 +26,9 @@ class SwiftArgumentsMixin:
     train_dataset_sample: Optional[int] = -1
     acc_steps: int = 1
 
+    # Value copied from TrainArguments
+    train_type: Optional[str] = None
+
     def __post_init__(self):
         if is_dist() and self.ddp_backend == 'nccl' and torch.cuda.is_available() and is_accelerate_available():
             try:
