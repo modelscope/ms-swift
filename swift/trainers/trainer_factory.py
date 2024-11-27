@@ -5,7 +5,6 @@ from contextlib import contextmanager
 from dataclasses import asdict
 from typing import Dict
 
-from swift.plugin.custom_trainer import custom_trainer_class
 from swift.utils import get_logger
 
 logger = get_logger()
@@ -31,8 +30,6 @@ class TrainerFactory:
         'rm': 'swift.trainers.RewardConfig',
         'ppo': 'swift.trainers.PPOConfig',
     }
-
-    custom_trainer_class(TRAINER_MAPPING, TRAINING_ARGS_MAPPING)
 
     @staticmethod
     def get_cls(args, mapping: Dict[str, str]):

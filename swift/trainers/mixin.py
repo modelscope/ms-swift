@@ -57,7 +57,7 @@ class SwiftMixin(TorchAccMixin, ProcessorMixin):
             callbacks: Optional[List[TrainerCallback]] = None,
             optimizers: Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR] = (None, None),
             preprocess_logits_for_metrics: Optional[Callable[[torch.Tensor, torch.Tensor],
-                                                             torch.Tensor]] = None) -> None:
+            torch.Tensor]] = None) -> None:
         if args.check_model and hasattr(model, 'model_dir'):
             check_local_model_is_latest(
                 model.model_dir, user_agent={
@@ -128,17 +128,12 @@ class SwiftMixin(TorchAccMixin, ProcessorMixin):
                     if len(device_set) >= 1:
                         v['step'] = v['step'].to('cpu')
 
-    def _save(self, output_dir: Optional[str] = None, state_dict=None):
-        """Compatible with swift and peft"""
-        # If we are executing this function, we are the process zero, so we don't check for that.
-        output_dir = output_dir if output_dir is not None else self.args.output_dir
-        os.makedirs(output_dir, exist_ok=True)
+    def _save_model(self, output_dir: Optional[str] = None, state_dict=None):
         # model
         supported_classes = (SwiftModel, PreTrainedModel, PeftModel)
         if AutoModelForCausalLMWithValueHead is not None:
-            supported_classes = supported_classes + (AutoModelForCausalLMWithValueHead, )
+            supported_classes = supported_classes + (AutoModelForCausalLMWithValueHead,)
         save_safetensors = self.args.save_safetensors
-
         if not isinstance(self.model, supported_classes):
             if state_dict is None:
                 state_dict = self.model.state_dict()
@@ -174,6 +169,13 @@ class SwiftMixin(TorchAccMixin, ProcessorMixin):
                 self.model, output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
         else:
             self.model.save_pretrained(output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
+
+    def _save(self, output_dir: Optional[str] = None, state_dict=None):
+        """Compatible with swift and peft"""
+        # If we are executing this function, we are the process zero, so we don't check for that.
+        output_dir = output_dir if output_dir is not None else self.args.output_dir
+        os.makedirs(output_dir, exist_ok=True)
+        self._save_model(output_dir, state_dict)
         # training_args.bin
         torch.save(self.args, os.path.join(output_dir, 'training_args.bin'))
         self._save_converted_model(output_dir)
@@ -230,7 +232,7 @@ class SwiftMixin(TorchAccMixin, ProcessorMixin):
             mems = [torch.cuda.max_memory_reserved(device=device) for device in range(torch.cuda.device_count())]
         else:
             mems = [torch.cuda.max_memory_reserved(device=device)]
-        mem = sum(mems) / 1024**3
+        mem = sum(mems) / 1024 ** 3
         self.max_memory = max(self.max_memory, mem)
         return mem
 

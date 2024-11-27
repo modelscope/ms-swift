@@ -481,14 +481,6 @@ register_dataset(
 
 register_dataset(
     DatasetMeta(
-        ms_dataset_id='simpleai/HC3-Chinese',
-        hf_dataset_id='Hello-SimpleAI/HC3-Chinese',
-        subsets=['baike', 'open_qa', 'nlpcc_dbqa', 'finance', 'medicine', 'law', 'psychology'],
-        preprocess_func=_preprocess_hc3,
-        tags=['text-generation', 'classification', '🔥']))
-
-register_dataset(
-    DatasetMeta(
         ms_dataset_id='simpleai/HC3',
         hf_dataset_id='Hello-SimpleAI/HC3',
         subsets=['finance', 'medicine'],

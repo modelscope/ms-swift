@@ -18,8 +18,7 @@ class EarlyStopCallback(TrainerCallback):
         if (self.best_metric is None or operator(state.best_metric, self.best_metric)):
             self.best_metric = state.best_metric
         else:
-            if not np.isclose(state.best_metric, self.best_metric, atol=0.1):
-                self.interval += 1
+            self.interval += 1
 
         if self.interval >= self.total_interval:
             logger.info(f'Training stop because of eval metric is stable at step {state.global_step}')

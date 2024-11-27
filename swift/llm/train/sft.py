@@ -84,6 +84,7 @@ class SwiftSft(SwiftPipeline):
         model, tokenizer = get_model_tokenizer(
             **model_kwargs, use_unsloth=args.tuner_backend == 'unsloth', **automodel_param)
         model.num_labels = args.num_labels
+        model.config.pad_token_id = 151643
         return model, tokenizer
 
     def _prepare_model_tokenizer(self):
@@ -95,7 +96,8 @@ class SwiftSft(SwiftPipeline):
 
         logger.info(f'model_info: {self.model.model_info}')
 
-        self._prepare_generation_config()
+        if getattr(self.model, 'generation_config', None):
+            self._prepare_generation_config()
         self._prepare_gradient_checkpointing()
 
     def _prepare_template(self, use_chat_template: bool) -> None:
