@@ -34,7 +34,6 @@ class LLMModelType:
     modelscope_agent = 'modelscope_agent'
     qwen2 = 'qwen2'
     qwen2_5 = 'qwen2_5'
-    qwen2_5_cls = 'qwen2_5_cls'
 
     llama = 'llama'
     llama3 = 'llama3'
