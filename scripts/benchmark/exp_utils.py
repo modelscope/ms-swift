@@ -153,6 +153,8 @@ class ExpManager:
         env = {}
         allocated = []
         if gpu:
+            if not exp.eval_dataset:
+                logger.info(f'Experiment {exp.eval_requirements} have been set, but the evaluation dataset {exp.eval_dataset} is empty. If eval is not needed, you can delete eval_requirements and eval_dataset.')
             allocated = self._find_free_gpu(int(gpu))
             assert allocated, 'No free gpu for now!'
             allocated = [str(gpu) for gpu in allocated]
