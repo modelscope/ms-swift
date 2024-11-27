@@ -202,3 +202,14 @@ class TunerArguments:
     def __post_init__(self):
         if isinstance(self.init_lora_weights, str) and self.init_lora_weights.lower() in {'true', 'false'}:
             self.init_lora_weights = bool(strtobool(self.init_lora_weights))
+
+    def _init_freeze_parameters(self):
+        pass
+        # if self.freeze_vit:
+        #     if self.model_type in MODEL_KEYS_MAPPING:
+        #         vision_tower = MODEL_KEYS_MAPPING[args.model_type].vision_tower
+        #         if vision_tower:
+        #             self.freeze_parameters += vision_tower
+
+    def _init_target_regex(self):
+        pass

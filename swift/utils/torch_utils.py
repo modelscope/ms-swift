@@ -80,7 +80,7 @@ def show_layers(model: Module, max_lines: Optional[int] = 20) -> None:
         logger.info(f'[{n}]: requires_grad={p.requires_grad}, dtype={p.dtype}, device={p.device}')
 
 
-def freeze_model_parameters(model: Module, freeze_parameters_ratio: float, freeze_parameters: List[str]) -> None:
+def freeze_parameters(model: Module, freeze_parameters_ratio: float, freeze_parameters: List[str]) -> None:
     if freeze_parameters_ratio > 0:
         n_parameters = get_n_params_grads(model)[0]
         n_parameters = np.array(n_parameters, dtype=np.int64)
@@ -97,7 +97,7 @@ def freeze_model_parameters(model: Module, freeze_parameters_ratio: float, freez
                     p.requires_grad = False
 
 
-def activate_model_parameters(model: Module, additional_trainable_parameters: List[str]) -> None:
+def activate_parameters(model: Module, additional_trainable_parameters: List[str]) -> None:
     if len(additional_trainable_parameters) == 0:
         return
     has_activate = False

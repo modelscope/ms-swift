@@ -10,7 +10,8 @@ from packaging import version
 from swift.llm import TrainArguments, get_model_arch
 from swift.plugin import Tuner, extra_tuners
 from swift.tuners import Swift
-from swift.utils import find_all_linears, find_embedding, get_logger, use_torchacc
+from swift.utils import (activate_parameters, find_all_linears, find_embedding, freeze_parameters, get_logger,
+                         use_torchacc)
 
 logger = get_logger()
 
@@ -68,7 +69,7 @@ def get_vera_target_modules(model, config):
 def prepare_adapter(args: TrainArguments, model):
     from swift.tuners import (AdaLoraConfig, AdapterConfig, BOFTConfig, IA3Config, LLaMAProConfig, LongLoRAModelType,
                               LoraConfig, LoRAConfig, ReftConfig, Swift, VeraConfig)
-    target_modules = args.get_target_modules(model)
+    target_modules = get_target_modules(args, model)
     lora_kwargs = {
         'r': args.lora_rank,
         'target_modules': target_modules,
@@ -217,18 +218,6 @@ def torchacc_resume_from_checkpoint(args, model):
             logger.warning(f'There were unexpected keys in the checkpoint model loaded: {load_result.unexpected_keys}.')
 
 
-def prepare_full(args, model):
-    """Some arguments will be decided by the train_type"""
-    model.train()
-    model.requires_grad_(True)
-    # TODO: freeze xxx
-    if args.freeze_vit:
-        if args.model_type in MODEL_KEYS_MAPPING:
-            vision_tower = MODEL_KEYS_MAPPING[args.model_type].vision_tower
-            if vision_tower:
-                args.freeze_parameters += vision_tower
-
-
 def prepare_model(args: TrainArguments, model):
     if args.use_liger:
         # Apply liger
@@ -262,8 +251,12 @@ def prepare_model(args: TrainArguments, model):
                 logger.info_once('Convert trainable parameters from fp16 to fp32.')
                 p.data = p.data.to(dtype=torch.float32)
     elif args.train_type == 'full':
-        model = prepare_full(args, model)
+        model.train()
+        model.requires_grad_(True)
 
+        freeze_parameters(model, args.freeze_parameters_ratio, args.freeze_parameters)
+        if len(args.trainable_parameters) > 0:
+            activate_parameters(model, args.additional_trainable_parameters)
         if use_torchacc() and args.resume_from_checkpoint:
             torchacc_resume_from_checkpoint(args, model)
     else:

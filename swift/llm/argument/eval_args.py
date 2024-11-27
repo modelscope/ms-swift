@@ -33,7 +33,8 @@ class EvalArguments(DeployArguments):
     def __post_init__(self):
         super().__post_init__()
         self._init_eval_dataset()
-        logger.info(f'eval_output_dir: {eval_output_dir}')
+        self.eval_output_dir = to_abspath(self.eval_output_dir)
+        logger.info(f'eval_output_dir: {self.eval_output_dir}')
 
     def _init_eval_dataset(self):
         if isinstance(self.eval_dataset, str):
@@ -62,7 +63,7 @@ class EvalArguments(DeployArguments):
         logger.info(f'vlmeval dataset: {self.eval_dataset_vlm}')
 
     def _init_result_path(self) -> None:
-        if self.result_path is not None:
-            return
+        self.time = dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')
         result_dir = self.ckpt_dir or self.model_info.model_dir
-        self.result_path = to_abspath(os.path.join(result_dir, 'eval_result.jsonl'))
+        self.result_jsonl = to_abspath(os.path.join(result_dir, 'eval_result.jsonl'))
+        super()._init_result_path()

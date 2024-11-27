@@ -9,7 +9,7 @@ from .logger import get_logger
 from .metric import compute_acc, compute_acc_metrics, compute_nlg_metrics, preprocess_logits_for_acc
 from .np_utils import get_seed, stat_array, transform_jsonl_to_df
 from .tb_utils import TB_COLOR, TB_COLOR_SMOOTH, plot_images, read_tensorboard_file, tensorboard_smoothing
-from .torch_utils import (activate_model_parameters, find_all_linears, find_embedding, freeze_model_parameters,
+from .torch_utils import (activate_parameters, find_all_linears, find_embedding, freeze_parameters,
                           get_model_parameter_info, safe_ddp_context, show_layers, time_synchronize)
 from .utils import (add_version_to_work_dir, check_json_format, deep_getattr, find_free_port, get_env_args, lower_bound,
                     parse_args, read_multi_line, seed_everything, split_list, subprocess_run, test_time, upper_bound)
