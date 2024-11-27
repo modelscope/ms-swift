@@ -96,7 +96,7 @@ class Emu3GenTemplate(Template):
         res.logits_processor += logits_processor
         return res
 
-    def safe_decode(self, input_ids: List[int], **tokenizer_kwargs) -> Image.Image:
+    def decode(self, input_ids: List[int], **tokenizer_kwargs) -> Image.Image:
         mm_list = self.processor.decode(input_ids)
         for idx, im in enumerate(mm_list):
             if not isinstance(im, Image.Image):

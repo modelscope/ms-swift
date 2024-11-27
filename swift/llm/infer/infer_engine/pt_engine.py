@@ -277,7 +277,7 @@ class PtEngine(InferEngine):
 
             logprobs = self._get_logprobs(self.tokenizer, logprobs_list, generate_ids, generation_config.top_logprobs)
             usage_info = self._get_usage_info(num_prompt_tokens, len(generate_ids))
-            response = template.skip_stop_decode(generate_ids, True)
+            response = template.decode(generate_ids, True)
             if isinstance(response, str):
                 toolcall = self._get_toolcall(response, True)
                 choices = [

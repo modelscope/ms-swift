@@ -208,7 +208,10 @@ class Template(ProcessorMixin):
                     return generate_ids[:-i]
         return generate_ids
 
-    def skip_stop_decode(self, generate_ids: List[int], is_finished: bool, **decode_kwargs) -> Any:
+    def decode(self, generate_ids: List[int], is_finished: bool = True, **decode_kwargs) -> Any:
+        return self._skip_stop_decode(generate_ids, is_finished, **decode_kwargs)
+
+    def _skip_stop_decode(self, generate_ids: List[int], is_finished: bool, **decode_kwargs) -> Any:
         # Do not print template_meta.suffix[-1] and eos_token.
         tokenizer = self.tokenizer
 
