@@ -211,7 +211,7 @@ def find_all_linears(model: Module) -> List[str]:
             inner_nodes.add(name)
     target_module_names = set()
     for name, module in model.named_modules():
-        if isinstance(module, tuple(linear_cls)) and lm_head_name not in name:
+        if isinstance(module, tuple(linear_cls)) and lm_head_name not in name and 'score' not in name:
             module_name_list = name.split('.')
             module_name = module_name_list.pop()
             for inner_node in inner_nodes:

@@ -481,5 +481,6 @@ def get_model_tokenizer(model_id_or_path: str,
         if not hasattr(model, 'generation_config') and os.path.isfile(generation_config_path):
             model.generation_config = GenerationConfig.from_pretrained(model_dir)
         # fix llama2 warning
-        fix_do_sample_warning(model.generation_config)
-    return model, processor
+        if getattr(model, 'generation_config', None):
+            fix_do_sample_warning(model.generation_config)
+    return model, tokenizer

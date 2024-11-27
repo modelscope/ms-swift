@@ -28,6 +28,7 @@ from swift.hub import get_hub
 from swift.llm import Processor, ProcessorMixin
 from swift.tuners import SwiftModel
 from swift.utils import get_logger, is_mp_ddp
+from ..plugin import extra_tuners
 from .arguments import TrainingArguments
 from .optimizers.galore import create_optimizer_and_scheduler
 from .torchacc_mixin import TorchAccMixin
@@ -128,17 +129,12 @@ class SwiftMixin(TorchAccMixin, ProcessorMixin):
                     if len(device_set) >= 1:
                         v['step'] = v['step'].to('cpu')
 
-    def _save(self, output_dir: Optional[str] = None, state_dict=None):
-        """Compatible with swift and peft"""
-        # If we are executing this function, we are the process zero, so we don't check for that.
-        output_dir = output_dir if output_dir is not None else self.args.output_dir
-        os.makedirs(output_dir, exist_ok=True)
+    def _save_model(self, output_dir: Optional[str] = None, state_dict=None):
         # model
         supported_classes = (SwiftModel, PreTrainedModel, PeftModel)
         if AutoModelForCausalLMWithValueHead is not None:
             supported_classes = supported_classes + (AutoModelForCausalLMWithValueHead, )
         save_safetensors = self.args.save_safetensors
-
         if not isinstance(self.model, supported_classes):
             if state_dict is None:
                 state_dict = self.model.state_dict()
@@ -172,8 +168,18 @@ class SwiftMixin(TorchAccMixin, ProcessorMixin):
         elif is_instance_of_ms_model(self.model):
             PreTrainedModel.save_pretrained(
                 self.model, output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
+        elif self.args.train_type in extra_tuners:
+            extra_tuners[self.args.train_type].save_pretrained(
+                self.model, output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
         else:
             self.model.save_pretrained(output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
+
+    def _save(self, output_dir: Optional[str] = None, state_dict=None):
+        """Compatible with swift and peft"""
+        # If we are executing this function, we are the process zero, so we don't check for that.
+        output_dir = output_dir if output_dir is not None else self.args.output_dir
+        os.makedirs(output_dir, exist_ok=True)
+        self._save_model(output_dir, state_dict)
         # training_args.bin
         torch.save(self.args, os.path.join(output_dir, 'training_args.bin'))
         self._save_converted_model(output_dir)
