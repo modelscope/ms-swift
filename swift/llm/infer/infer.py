@@ -12,9 +12,9 @@ from datasets import Dataset as HfDataset
 
 from swift.llm import (InferArguments, InferRequest, Messages, Processor, SwiftPipeline, Template, get_template,
                        load_dataset, sample_dataset)
+from swift.plugin import extra_tuners
 from swift.tuners import Swift
 from swift.utils import get_logger, is_master, open_jsonl_writer
-from ...plugin import extra_tuners
 from .protocol import RequestConfig
 
 logger = get_logger()
