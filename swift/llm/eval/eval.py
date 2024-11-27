@@ -100,7 +100,7 @@ class SwiftEval(SwiftPipeline):
             'eval_backend': 'OpenCompass',
             'eval_config': {
                 'datasets': dataset,
-                'batch_size': args.max_batch_size or 256,
+                'batch_size': args.max_batch_size,
                 'work_dir': os.path.join(args.eval_output_dir, 'opencompass'),
                 'models': [{
                     'path': args.model_name,
@@ -122,7 +122,7 @@ class SwiftEval(SwiftPipeline):
                     'api_base': args.url,
                     'type': args.model_name,
                 }],
-                'nproc': args.max_batch_size or 16,
+                'nproc': args.max_batch_size,
             }
         }
 
