@@ -4004,6 +4004,7 @@ class mPlugOwl3Template(QwenTemplateMixin, Template):
             res['media_offset'] = torch.concat(media_offset)
         return res
 
+
 class mPlugOwl3vTemplate(mPlugOwl3Template):
     system = None
 
@@ -4035,7 +4036,7 @@ class mPlugOwl3vTemplate(mPlugOwl3Template):
                                                                                                  + 1:]
                 added_tokens_len += len(token_list) - 1
             image_token_idx = torch.tensor(_findall(input_ids, image_token_list))
-           
+
             inputs['_data'].update({
                 'pixel_values': image_inputs['pixel_values'],
                 'media_offset': image_token_idx,
@@ -4056,7 +4057,6 @@ class mPlugOwl3vTemplate(mPlugOwl3Template):
         if image_embeds:
             res['image_embeds'] = torch.concat(image_embeds)
         media_offset = []
-        cusum_offset = 0
 
         for bi, b in enumerate(batch):
             media_offset.append(b.get('media_offset', torch.tensor([]).long()))
@@ -4064,6 +4064,7 @@ class mPlugOwl3vTemplate(mPlugOwl3Template):
         if media_offset:
             res['media_offset'] = media_offset
         return res
+
 
 register_template(TemplateType.mplug_owl3, mPlugOwl3Template(), use_model=True, lazy_tokenize=True)
 register_template(TemplateType.mplug_owl3v, mPlugOwl3vTemplate(), use_model=True, lazy_tokenize=True)
