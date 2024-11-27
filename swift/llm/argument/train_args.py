@@ -59,7 +59,7 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
             self.evaluation_strategy = IntervalStrategy.NO
             self.eval_strategy = IntervalStrategy.NO
             self.eval_steps = None
-        elif self.eval_steps is None:
+        else:
             self.evaluation_strategy = self.save_strategy
             self.eval_strategy = self.save_strategy
             self.eval_steps = self.save_steps
