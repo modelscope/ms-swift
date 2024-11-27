@@ -601,6 +601,8 @@ class Template(ProcessorMixin):
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
         encoded['loss_scale'] = loss_scale
+        if inputs.label is not None:
+            encoded['label'] = inputs.label
         if not self.is_training:
             for k in list(encoded.keys()):
                 if k.endswith('labels'):
@@ -774,10 +776,6 @@ class Template(ProcessorMixin):
             res.update({f'KL_completion_{k}': v for k, v in kl_res.items()})
         else:
             res = res or kl_res
-
-        label = [b['label'] for b in batch if b.get('label') is not None]
-        if label:
-            res['label'] = label
         return res
 
     def _data_collator(self,
@@ -852,7 +850,10 @@ class Template(ProcessorMixin):
         pixel_values_videos = [b['pixel_values_videos'] for b in batch if b.get('pixel_values_videos') is not None]
         if len(pixel_values_videos) > 0:
             res['pixel_values_videos'] = torch.concat(pixel_values_videos)
-
+        # kto & sequence_classification
+        label = [b['label'] for b in batch if b.get('label') is not None]
+        if label:
+            res['label'] = label
         if use_torchacc() or self.sequence_parallel_size > 1:
             res = self._torchacc_xtuner_data_collator(res, padding_to, self.tokenizer, padding_side)
         return res

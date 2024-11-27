@@ -261,6 +261,7 @@ def prepare_model(args: TrainArguments, model):
                 tuner: Tuner = extra_tuners[args.train_type]
                 model = tuner.from_pretrained(model, args.resume_from_checkpoint)
             else:
+                kwargs = {}
                 if use_torchacc():
                     kwargs = {'adapter_name': 'default'}
                 model = Swift.from_pretrained(model, args.resume_from_checkpoint, is_trainable=True, **kwargs)
