@@ -218,6 +218,8 @@ class ModelType:
     qwen2_5_coder_32b_instruct_gptq_int8 = 'qwen2_5-coder-32b-instruct-gptq-int8'
     qwen2_5_coder_32b_instruct_awq = 'qwen2_5-coder-32b-instruct-awq'
 
+    qwq_32b_preview = 'qwq-32b-preview'
+
     marco_o1 = 'marco-o1'
 
     # qwen-vl
@@ -3345,6 +3347,17 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     return model, tokenizer
 
 
+@register_model(
+    ModelType.qwq_32b_preview,
+    'Qwen/QwQ-32B-Preview',
+    LoRATM.llama,
+    TemplateType.qwq,
+    support_flash_attn=True,
+    support_vllm=True,
+    support_lmdeploy=True,
+    support_megatron=True,
+    requires=['transformers>=4.37'],
+    hf_model_id='Qwen/QwQ-32B-Preview')
 @register_model(
     ModelType.qwen2_math_1_5b_instruct,
     'qwen/Qwen2-Math-1.5B-Instruct',
