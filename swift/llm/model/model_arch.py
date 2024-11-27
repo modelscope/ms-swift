@@ -53,39 +53,26 @@ class ModelKeys:
 
     arch_name: str = None
 
-    module_list: str = None
-
     embedding: str = None
-
-    mlp: str = None
-
-    down_proj: str = None
-
-    attention: str = None
-
-    o_proj: str = None
+    module_list: str = None
+    lm_head: str = None
 
     q_proj: str = None
-
     k_proj: str = None
-
     v_proj: str = None
+    o_proj: str = None
+    attention: str = None
+
+    mlp: str = None
+    down_proj: str = None
 
     qkv_proj: str = None
-
     qk_proj: str = None
-
     qa_proj: str = None
-
     qb_proj: str = None
-
     kv_proj: str = None
-
     kva_proj: str = None
-
     kvb_proj: str = None
-
-    output: str = None
 
 
 @dataclass
@@ -131,7 +118,7 @@ register_model_arch(
         k_proj='model.layers.{}.self_attn.k_proj',
         v_proj='model.layers.{}.self_attn.v_proj',
         embedding='model.embed_tokens',
-        output='lm_head',
+        lm_head='lm_head',
     ))
 
 register_model_arch(
@@ -144,7 +131,7 @@ register_model_arch(
         o_proj='model.layers.{}.attention.wo',
         qkv_proj='model.layers.{}.attention.wqkv',
         embedding='model.tok_embeddings',
-        output='output',
+        lm_head='output',
     ))
 
 register_model_arch(
@@ -157,7 +144,7 @@ register_model_arch(
         o_proj='transformer.encoder.layers.{}.self_attention.dense',
         qkv_proj='transformer.encoder.layers.{}.self_attention.query_key_value',
         embedding='transformer.embedding',
-        output='transformer.output_layer'))
+        lm_head='transformer.output_layer'))
 
 register_model_arch(
     ModelKeys(
@@ -170,7 +157,7 @@ register_model_arch(
         q_proj='transformer.h.{}.self_attention.query',
         kv_proj='transformer.h.{}.self_attention.key_value',
         embedding='transformer.word_embeddings',
-        output='lm_head'))
+        lm_head='lm_head'))
 
 register_model_arch(
     ModelKeys(
@@ -181,7 +168,7 @@ register_model_arch(
         attention='model.layers.{}.self_attn',
         qkv_proj='model.layers.{}.self_attn.W_pack',
         embedding='model.embed_tokens',
-        output='lm_head',
+        lm_head='lm_head',
     ))
 
 register_model_arch(
@@ -197,7 +184,7 @@ register_model_arch(
         k_proj='model.layers.{}.self_attn.k_proj',
         v_proj='model.layers.{}.self_attn.v_proj',
         embedding='model.embed_tokens',
-        output='lm_head',
+        lm_head='lm_head',
     ))
 
 register_model_arch(
@@ -210,7 +197,7 @@ register_model_arch(
         o_proj='gpt_neox.layers.{}.attention.dense',
         qkv_proj='gpt_neox.layers.{}.attention.query_key_value',
         embedding='gpt_neox.embed_in',
-        output='gpt_neox.embed_out',
+        lm_head='gpt_neox.embed_out',
     ))
 
 register_model_arch(
@@ -225,7 +212,7 @@ register_model_arch(
         k_proj='model.layers.{}.self_attn.k_proj',
         v_proj='model.layers.{}.self_attn.v_proj',
         embedding='model.embed_tokens',
-        output='lm_head',
+        lm_head='lm_head',
     ))
 
 register_model_arch(
@@ -238,7 +225,7 @@ register_model_arch(
         o_proj='transformer.h.{}.attn.c_proj',
         qkv_proj='transformer.h.{}.attn.c_attn',
         embedding='transformer.wte',
-        output='lm_head',
+        lm_head='lm_head',
     ))
 
 register_model_arch(
@@ -250,7 +237,7 @@ register_model_arch(
         o_proj='transformer.blocks.{}.norm_attn_norm.attn.out_proj',
         qkv_proj='transformer.blocks.{}.norm_attn_norm.attn.Wqkv',
         embedding='transformer.wte',
-        output='lm_head',
+        lm_head='lm_head',
     ))
 
 register_model_arch(
@@ -263,7 +250,7 @@ register_model_arch(
         o_proj='model.layers.{}.self_attn.o_proj',
         qkv_proj='model.layers.{}.self_attn.qkv_proj',
         embedding='model.embed_tokens',
-        output='lm_head',
+        lm_head='lm_head',
     ))
 
 register_model_arch(
@@ -276,7 +263,7 @@ register_model_arch(
         o_proj='model.layers.{}.self_attn.dense',
         qkv_proj='model.layers.{}.self_attn.query_key_value',
         embedding='model.embed_tokens',
-        output='lm_head',
+        lm_head='lm_head',
     ))
 
 register_model_arch(
@@ -292,7 +279,7 @@ register_model_arch(
         kva_proj='model.layers.{}.self_attn.kv_a_proj_with_mqa',
         kvb_proj='model.layers.{}.self_attn.kv_b_proj',
         embedding='model.embed_tokens',
-        output='lm_head',
+        lm_head='lm_head',
     ))
 
 register_model_arch(

@@ -4,6 +4,7 @@ from typing import List, Literal, Optional
 
 from transformers.utils import strtobool
 
+from swift.llm import get_model_arch
 from swift.utils import get_logger
 
 logger = get_logger()
@@ -202,14 +203,19 @@ class TunerArguments:
     def __post_init__(self):
         if isinstance(self.init_lora_weights, str) and self.init_lora_weights.lower() in {'true', 'false'}:
             self.init_lora_weights = bool(strtobool(self.init_lora_weights))
+        self._init_freeze_parameters()
+        if self.target_regex:
+            self.target_modules = self.target_regex
 
     def _init_freeze_parameters(self):
-        pass
-        # if self.freeze_vit:
-        #     if self.model_type in MODEL_KEYS_MAPPING:
-        #         vision_tower = MODEL_KEYS_MAPPING[args.model_type].vision_tower
-        #         if vision_tower:
-        #             self.freeze_parameters += vision_tower
-
-    def _init_target_regex(self):
-        pass
+        model_arch = get_model_arch(self.model_meta.model_arch)
+        if self.freeze_llm and hasattr(model_arch, 'language_model'):
+            self.freeze_parameters += model_arch.language_model
+        if self.freeze_vit and hasattr(model_arch, 'vision_tower'):
+            self.freeze_parameters += model_arch.vision_tower
+        if self.freeze_aligner and hasattr(model_arch, 'aligner'):
+            self.freeze_parameters += model_arch.aligner
+        if hasattr(model_arch, 'generator'):
+            self.freeze_parameters += model_arch.generator
+        if freeze_parameters:
+            logger.info(f'freeze_parameters: {freeze_parameters}')

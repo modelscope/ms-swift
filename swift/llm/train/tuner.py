@@ -34,15 +34,33 @@ def apply_liger(model_type: str):
         raise ValueError(f'Unsupported liger model_type: {model_type}')
 
 
+def get_multimodal_target_regex(args):
+    model_arch = get_model_arch(args.model_meta.model_arch)
+    modules = []
+    if not args.freeze_llm and hasattr(model_arch, 'language_model'):
+        modules += model_arch.language_model
+    if not args.freeze_vit and hasattr(model_arch, 'vision_tower'):
+        modules += model_arch.vision_tower
+    if not args.freeze_aligner and hasattr(model_arch, 'aligner'):
+        modules += model_arch.aligner
+
+    regex = '|'.join(modules)
+    regex = f'^({regex})(?!.*(lm_head|output|emb|wte|shared)).*'
+    return regex
+
+
 def get_target_modules(args, model) -> Union[str, List[str]]:
     """Replace all-linear to actual modules"""
-    if args.target_regex:
-        return args.target_regex
-
-    target_modules = args.target_modules.copy()
-    if 'all-linear' in target_modules:
-        target_modules.remove('all-linear')
-        target_modules += find_all_linears(model)
+    model_meta = model.model_meta
+    if isinstance(args.target_modules, str):
+        return args.target_modules
+    elif 'all-linear' in target_modules:
+        if model_meta.is_multimodal:
+            return get_multimodal_target_regex(args)
+        else:
+            target_modules = args.target_modules.copy()
+            target_modules.remove('all-linear')
+            target_modules += find_all_linears(model)
     return target_modules
 
 
