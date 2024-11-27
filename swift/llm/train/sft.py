@@ -211,17 +211,13 @@ class SwiftSft(SwiftPipeline):
 
     def _get_optimizers(self, train_dataset):
         args = self.args
-        optimizer_callback = optimizers_map['default']
         if args.lorap_lr_ratio:
             optimizer_callback = optimizers_map['lorap']
-        if args.use_galore:
-            if args.galore_target_modules is None:
-                args.galore_target_modules = find_all_linears(self.model)
-            if args.galore_with_embedding:
-                args.galore_target_modules += find_embedding(self.model)
+        elif args.use_galore:
             optimizer_callback = optimizers_map['galore']
-
-        return optimizer_callback(self.model, train_dataset, args)
+        else:
+            optimizer_callback = optimizers_map['default']
+        return optimizer_callback(args, self.model, train_dataset)
 
     def _prepare_callbacks(self):
         from .callback import DynamicLayerActivationCallback, TrainerAdapterCallback

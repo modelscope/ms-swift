@@ -395,11 +395,13 @@ register_model_arch(
         vision_tower='audio_tower',
     ))
 
-register_model_arch(MultiModelKeys(
-    ModelArch.qwen2_vl,
-    language_model='model',
-    vision_tower='visual',
-))
+register_model_arch(
+    MultiModelKeys(
+        ModelArch.qwen2_vl,
+        language_model=['model', 'lm_head'],
+        aligner='visual.merger',
+        vision_tower='visual',
+    ))
 
 register_model_arch(
     MultiModelKeys(

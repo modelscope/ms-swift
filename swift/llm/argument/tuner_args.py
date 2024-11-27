@@ -203,19 +203,24 @@ class TunerArguments:
     def __post_init__(self):
         if isinstance(self.init_lora_weights, str) and self.init_lora_weights.lower() in {'true', 'false'}:
             self.init_lora_weights = bool(strtobool(self.init_lora_weights))
-        self._init_freeze_parameters()
+        self._init_multimodal_full()
         if self.target_regex:
             self.target_modules = self.target_regex
 
-    def _init_freeze_parameters(self):
+    def _init_multimodal_full(self):
+        if not self.model_meta.is_multimodal:
+            return
         model_arch = get_model_arch(self.model_meta.model_arch)
-        if self.freeze_llm and hasattr(model_arch, 'language_model'):
+        if self.freeze_llm:
             self.freeze_parameters += model_arch.language_model
-        if self.freeze_vit and hasattr(model_arch, 'vision_tower'):
+        if self.freeze_vit:
             self.freeze_parameters += model_arch.vision_tower
-        if self.freeze_aligner and hasattr(model_arch, 'aligner'):
+        if self.freeze_aligner:
             self.freeze_parameters += model_arch.aligner
-        if hasattr(model_arch, 'generator'):
-            self.freeze_parameters += model_arch.generator
-        if freeze_parameters:
-            logger.info(f'freeze_parameters: {freeze_parameters}')
+        else:
+            self.trainable_parameters += model_arch.aligner
+        self.freeze_parameters += model_arch.generator
+        if self.freeze_parameters:
+            logger.info(f'freeze_parameters: {self.freeze_parameters}')
+        if self.trainable_parameters:
+            logger.info(f'trainable_parameters: {self.trainable_parameters}')

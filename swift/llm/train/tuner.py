@@ -37,16 +37,28 @@ def apply_liger(model_type: str):
 def get_multimodal_target_regex(args):
     model_arch = get_model_arch(args.model_meta.model_arch)
     modules = []
-    if not args.freeze_llm and hasattr(model_arch, 'language_model'):
+    rejected_modules = []
+    if not args.freeze_llm:
         modules += model_arch.language_model
-    if not args.freeze_vit and hasattr(model_arch, 'vision_tower'):
+    if not args.freeze_vit:
         modules += model_arch.vision_tower
-    if not args.freeze_aligner and hasattr(model_arch, 'aligner'):
+    if args.freeze_aligner:
+        rejected_modules += model_arch.aligner
+    else:
         modules += model_arch.aligner
 
-    regex = '|'.join(modules)
-    regex = f'^({regex})(?!.*(lm_head|output|emb|wte|shared)).*'
-    return regex
+    prefix_pattern = '|'.join(modules)
+    rejected_pattern = '|'.join(rejected_modules)
+    # ignore embedding/lm_head
+    ignore_pattern = ['lm_head', 'output', 'emb', 'wte', 'shared']
+    ignore_pattern += model_arch.lm_head or []
+    ignore_pattern += model_arch.embedding or []
+    ignore_pattern = '|'.join(ignore_pattern)
+
+    target_regex = f'^({prefix_pattern})(?!.*({ignore_pattern})).*'
+    if rejected_pattern:
+        target_regex = f'(?!^({rejected_pattern}))' + target_regex
+    return target_regex
 
 
 def get_target_modules(args, model) -> Union[str, List[str]]:
@@ -54,7 +66,7 @@ def get_target_modules(args, model) -> Union[str, List[str]]:
     model_meta = model.model_meta
     if isinstance(args.target_modules, str):
         return args.target_modules
-    elif 'all-linear' in target_modules:
+    elif 'all-linear' in args.target_modules:
         if model_meta.is_multimodal:
             return get_multimodal_target_regex(args)
         else:
@@ -246,10 +258,7 @@ def prepare_model(args: TrainArguments, model):
         model.requires_grad_(False)
         if args.resume_from_checkpoint:
             if getattr(model, 'is_tuner_plugin', False):
-                with open(os.path.join(args.resume_from_checkpoint, 'args.json'), 'r') as f:
-                    content = json.load(f)
-
-                tuner: Tuner = extra_tuners[content['sft_type']]
+                tuner: Tuner = extra_tuners[args.train_type]
                 model = tuner.from_pretrained(model, args.resume_from_checkpoint)
             else:
                 if use_torchacc():
@@ -274,7 +283,7 @@ def prepare_model(args: TrainArguments, model):
 
         freeze_parameters(model, args.freeze_parameters_ratio, args.freeze_parameters)
         if len(args.trainable_parameters) > 0:
-            activate_parameters(model, args.additional_trainable_parameters)
+            activate_parameters(model, args.trainable_parameters)
         if use_torchacc() and args.resume_from_checkpoint:
             torchacc_resume_from_checkpoint(args, model)
     else:
