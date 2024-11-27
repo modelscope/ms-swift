@@ -55,6 +55,7 @@ You can contact us and communicate with us by adding our group:
 <img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
 ## 🎉 News
+- 2024.11.28: Supports the model qwq-32b-preview, macro-o1, and the dataset open-o1. Use `swift infer --model_type qwq-32b-preview` for the experience.
 - 2024.11.12: Supports training and deployment of the qwen2.5-coder series models: 0.5b, 3b, 14b, and 32b. Use `swift infer --model_type qwen2_5-coder-3b-instruct` to experience it.
 - 2024.10.26: Support for training and deploying aya-expanse series models. Experience it using `swift infer --model_type aya-expanse-32b`.
 - 2024.10.23: Support for training and deploying emu3-chat. Experience it using `swift infer --model_type emu3-chat`.

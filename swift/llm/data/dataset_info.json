@@ -1,4 +1,10 @@
 {
+    "open-o1": {
+        "dataset_id": "AI-ModelScope/OpenO1-SFT",
+        "hf_dataset_id": "O1-OPEN/OpenO1-SFT",
+        "subsets": ["default"],
+        "tags": ["chat", "general", "o1"]
+    },
     "multi-alpaca": {
         "dataset_id": "damo/nlp_polylm_multialpaca_sft",
         "subsets": ["ar", "de", "es", "fr", "id", "ja", "ko", "pt", "ru", "th", "vi"],

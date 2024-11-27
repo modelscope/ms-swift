@@ -49,6 +49,7 @@ class TemplateType:
     default = 'default'
     qwen = 'qwen'
     qwen2_5 = 'qwen2_5'
+    qwq = 'qwq'
     marco_o1 = 'marco_o1'
     qwen_vl = 'qwen-vl'
     qwen_audio = 'qwen-audio'
@@ -1423,8 +1424,14 @@ class Qwen2_5Template(QwenTemplate):
     system = 'You are Qwen, created by Alibaba Cloud. You are a helpful assistant.'
 
 
+class QwqTemplate(QwenTemplate):
+    system = ('You are a helpful and harmless assistant. You are Qwen developed by Alibaba. '
+              'You should think step-by-step.')
+
+
 register_template(TemplateType.qwen, QwenTemplate())
 register_template(TemplateType.qwen2_5, Qwen2_5Template())
+register_template(TemplateType.qwq, QwqTemplate())
 
 
 class MarcoO1Template(QwenTemplate):
