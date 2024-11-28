@@ -474,6 +474,8 @@ def get_model_tokenizer(model_id_or_path: str,
     assert tokenizer.pad_token_id is not None
 
     if model is not None:
+        if model.config.pad_token_id is None:
+            model.config.pad_token_id = tokenizer.pad_token_id
         model.model_info = model_info
         model.model_meta = model_meta
         model.model_dir = model_dir

@@ -1,4 +1,6 @@
-# 17.2GiB
+# loss_scale all to train all tokens
+# use loss_type loss_scale
+# This is just an example
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen2-7B-Instruct \
@@ -16,4 +18,6 @@ swift sft \
     --save_total_limit 2 \
     --logging_steps 5 \
     --model_author swift \
-    --model_name swift-robot
+    --model_name swift-robot \
+    --loss_scale all \
+    --loss_type loss_scale
