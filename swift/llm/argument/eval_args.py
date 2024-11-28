@@ -3,7 +3,7 @@ import datetime as dt
 import os
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional
-
+import torch
 from swift.utils import get_logger
 from .base_args import to_abspath
 from .deploy_args import DeployArguments
@@ -63,7 +63,20 @@ class EvalArguments(DeployArguments):
         logger.info(f'vlmeval dataset: {self.eval_dataset_vlm}')
 
     def _init_result_path(self) -> None:
+        if not self.model and not self.ckpt_dir:
+            self.result_jsonl = to_abspath('./eval_result.jsonl')
+            return
         self.time = dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')
         result_dir = self.ckpt_dir or self.model_info.model_dir
         self.result_jsonl = to_abspath(os.path.join(result_dir, 'eval_result.jsonl'))
         super()._init_result_path()
+
+    def _init_model_name(self):
+        if not self.model and not self.ckpt_dir:
+            return
+        return super()._init_model_name()
+    
+    def _init_model_info(self) -> torch.dtype:
+        if not self.model and not self.ckpt_dir:
+            return
+        return super()._init_model_info()
