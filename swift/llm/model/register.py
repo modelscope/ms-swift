@@ -495,8 +495,8 @@ def get_model_tokenizer(
         patch_processor(processor)
     else:
         tokenizer = processor
-    processor.model_info = model_info
-    processor.model_meta = model_meta
+    tokenizer.model_info = model_info
+    tokenizer.model_meta = model_meta
     tokenizer.pad_token_id = tokenizer.pad_token_id or tokenizer.eos_token_id
     assert tokenizer.eos_token_id is not None
     assert tokenizer.pad_token_id is not None
@@ -516,4 +516,4 @@ def get_model_tokenizer(
         # fix llama2 warning
         if getattr(model, 'generation_config', None):
             fix_do_sample_warning(model.generation_config)
-    return model, tokenizer
+    return model, processor

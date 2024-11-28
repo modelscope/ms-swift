@@ -3,6 +3,7 @@
 import asyncio
 from copy import deepcopy
 from dataclasses import asdict
+from threading import Thread
 from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
 
 import aiohttp
@@ -52,7 +53,8 @@ class InferClient(InferEngine):
     def get_model_list(self, *, url: Optional[str] = None) -> ModelList:
         """Get model list from the inference server.
         """
-        return asyncio.run(self.get_model_list_async(url=url))
+        coro = self.get_model_list_async(url=url)
+        return self.safe_asyncio_run(coro)
 
     def _get_request_kwargs(self) -> Dict[str, Any]:
         request_kwargs = {}

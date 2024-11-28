@@ -3,7 +3,7 @@ import inspect
 import multiprocessing
 import os
 import time
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import asdict
 from typing import Any, Dict, List, Union
 
@@ -24,22 +24,23 @@ class SwiftEval(SwiftPipeline):
     args_class = EvalArguments
     args: args_class
 
+    @staticmethod
     @contextmanager
-    def run_deploy(self):
+    def run_deploy(args):
 
-        args = self.args
         args_dict = asdict(args)
         parameters = inspect.signature(DeployArguments.__init__).parameters
         for k in list(args_dict.keys()):
             if k not in parameters:
                 args_dict.pop(k)
         mp = multiprocessing.get_context('spawn')
-        process = mp.Process(target=deploy_main, args=(DeployArguments(**args_dict), ))
+        deploy_args = DeployArguments(**args_dict)
+        process = mp.Process(target=deploy_main, args=(deploy_args, ))
         process.start()
         try:
-            while not self._is_accessible(args.port):
+            while not SwiftEval._is_accessible(deploy_args.port):
                 time.sleep(1)
-            yield
+            yield f'http://127.0.0.1:{deploy_args.port}/v1/chat/completions'
         finally:
             process.kill()
             logger.info('The deployment process has been terminated.')
@@ -62,16 +63,18 @@ class SwiftEval(SwiftPipeline):
             'eval_output_dir': args.eval_output_dir,
             'eval_limit': args.eval_limit
         }
-        with self.run_deploy():
+        deploy_context = nullcontext() if args.eval_url else self.run_deploy(self.args)
+        with deploy_context as url:
+            url = args.eval_url or url
             if args.eval_dataset_oc:
-                reports = self.run_task(args.eval_dataset_oc, 'opencompass')
+                reports = self.run_task(args.eval_dataset_oc, 'opencompass', url)
                 result = {}
                 for report in reports:
                     if report[args.model_suffix] != '-':
                         result[report['dataset']] = {report['metric']: report[args.model_suffix]}
                 eval_report['opencompass'] = result
             if args.eval_dataset_vlm:
-                reports = self.run_task(args.eval_dataset_vlm, 'vlmeval')
+                reports = self.run_task(args.eval_dataset_vlm, 'vlmeval', url)
                 result = {}
                 for dataset, report in zip(args.eval_dataset_vlm, reports):
                     metric = next(iter(report)).rsplit('_')[-1]
@@ -83,20 +86,20 @@ class SwiftEval(SwiftPipeline):
             logger.info(f'The eval result have been saved to result_jsonl: `{args.result_jsonl}`.')
         return eval_report
 
-    def run_task(self, dataset: List[str], eval_backend: str):
+    def run_task(self, dataset: List[str], eval_backend: str, url: str):
         args = self.args
         assert eval_backend in {'opencompass', 'vlmeval'}
         if eval_backend == 'opencompass':
-            task_cfg = self.get_opencompass_task_cfg(dataset)
+            task_cfg = self.get_opencompass_task_cfg(dataset, url)
         else:
-            task_cfg = self.get_vlmeval_task_cfg(dataset)
+            task_cfg = self.get_vlmeval_task_cfg(dataset, url)
         if args.eval_limit:
             task_cfg['limit'] = args.eval_limit
 
         run_task(task_cfg=task_cfg)
         return Summarizer.get_report_from_cfg(task_cfg=task_cfg)
 
-    def get_opencompass_task_cfg(self, dataset: List[str]):
+    def get_opencompass_task_cfg(self, dataset: List[str], url: str):
         args = self.args
         return {
             'eval_backend': 'OpenCompass',
@@ -111,7 +114,7 @@ class SwiftEval(SwiftPipeline):
             }
         }
 
-    def get_vlmeval_task_cfg(self, dataset: List[str]):
+    def get_vlmeval_task_cfg(self, dataset: List[str], url: str):
         args = self.args
         time = dt.datetime.now().strftime('%Y%m%d-%H%M%S')
         return {

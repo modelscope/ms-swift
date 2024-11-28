@@ -29,6 +29,9 @@ class EvalArguments(DeployArguments):
     do_sample: bool = False
     verbose: bool = False
     max_batch_size: int = 16
+    # If eval_url is set, ms-swift will not perform deployment operations and
+    # will directly use the URL for evaluation.
+    eval_url: Optional[str] = None
 
     def __post_init__(self):
         super().__post_init__()
@@ -39,7 +42,6 @@ class EvalArguments(DeployArguments):
     def _init_eval_dataset(self):
         if isinstance(self.eval_dataset, str):
             self.eval_dataset = [self.eval_dataset]
-        self.url = f'http://127.0.0.1:{self.port}/v1/chat/completions'
 
         from evalscope.backend.opencompass import OpenCompassBackendManager
         from evalscope.backend.vlm_eval_kit import VLMEvalKitBackendManager
