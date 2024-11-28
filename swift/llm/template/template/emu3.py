@@ -183,5 +183,4 @@ register_template(
         chat_sep=[['eos_token_id']],
         suffix=[['eos_token_id']],
         default_system=DEFAULT_SYSTEM,
-        template_cls=Emu3ChatTemplate
-))
+        template_cls=Emu3ChatTemplate))

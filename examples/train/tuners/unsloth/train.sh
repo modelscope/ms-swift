@@ -1,17 +1,20 @@
-# uncomment custom_trainer
+# 9GiB
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen2-7B-Instruct \
-    --train_type full \
-    --freeze_parameters_ratio 1 \
-    --trainable_parameters score \
-    --dataset simpleai/HC3-Chinese:baike_cls#1000 \
+    --tuner_backend unsloth \
+    --train_type lora \
+    --lorap_lr_ratio 16 \
+    --dataset swift/self-cognition#1000 \
     --num_train_epochs 1 \
-    --num_labels 2 \
     --per_device_train_batch_size 1 \
     --learning_rate 1e-4 \
+    --lora_rank 8 \
+    --lora_alpha 32 \
     --gradient_accumulation_steps 16 \
     --eval_steps 100 \
     --save_steps 100 \
     --save_total_limit 2 \
-    --logging_steps 5
+    --logging_steps 5 \
+    --model_author swift \
+    --model_name swift-robot
