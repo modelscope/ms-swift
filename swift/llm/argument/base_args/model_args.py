@@ -104,7 +104,7 @@ class ModelArguments:
 
     def _init_model_name(self):
         model = getattr(self, 'ckpt_dir', None) or self.model
-        self.model_name = os.path.basename(model)
+        self.model_suffix = os.path.basename(model)
 
     def __post_init__(self):
         self._init_model_name()

@@ -67,8 +67,8 @@ class SwiftEval(SwiftPipeline):
                 reports = self.run_task(args.eval_dataset_oc, 'opencompass')
                 result = {}
                 for report in reports:
-                    if report[args.model_name] != '-':
-                        result[report['dataset']] = {report['metric']: report[args.model_name]}
+                    if report[args.model_suffix] != '-':
+                        result[report['dataset']] = {report['metric']: report[args.model_suffix]}
                 eval_report['opencompass'] = result
             if args.eval_dataset_vlm:
                 reports = self.run_task(args.eval_dataset_vlm, 'vlmeval')
@@ -105,7 +105,7 @@ class SwiftEval(SwiftPipeline):
                 'batch_size': args.max_batch_size,
                 'work_dir': os.path.join(args.eval_output_dir, 'opencompass'),
                 'models': [{
-                    'path': args.model_name,
+                    'path': args.model_suffix,
                     'openai_api_base': args.url,
                 }]
             }
@@ -122,7 +122,7 @@ class SwiftEval(SwiftPipeline):
                 'model': [{
                     'name': 'CustomAPIModel',
                     'api_base': args.url,
-                    'type': args.model_name,
+                    'type': args.model_suffix,
                 }],
                 'nproc': args.max_batch_size,
             }

@@ -41,6 +41,8 @@ class QuantizeArguments:
         if self.quant_method is None:
             return None
         assert self.quant_method in {'bnb', 'hqq', 'eetq'}
+        if self.quant_bits == 0:
+            raise ValueError(f'Please set the quant_bits. args.quant_bits: {self.quant_bits}')
         if self.quant_method == 'bnb':
             if self.quant_bits == 4:
                 load_in_4bit, load_in_8bit = True, False
