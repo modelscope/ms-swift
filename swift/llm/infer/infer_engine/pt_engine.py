@@ -350,17 +350,24 @@ class PtEngine(InferEngine):
         generation_config = self._prepare_generation_config(request_config)
         self._add_stop_words(generation_config, request_config, template)
 
-        infer_args = (template, inputs, generation_config)
+        kwargs = {
+            'template': template,
+            'inputs': inputs,
+            'generation_config': generation_config,
+            'lora_request': lora_request
+        }
+        for pre_infer_hook in self.pre_infer_hooks:
+            kwargs = pre_infer_hook(kwargs)
         if request_config.stream:
 
             def _gen_wrapper():
-                for res in self._infer_stream(*infer_args, lora_request=lora_request):
+                for res in self._infer_stream(**kwargs):
                     yield res
                 self._update_metrics(res, metrics)
 
             return _gen_wrapper()
         else:
-            return self._update_metrics(self._infer_full(*infer_args, lora_request=lora_request), metrics)
+            return self._update_metrics(self._infer_full(**kwargs), metrics)
 
     @torch.inference_mode()
     def infer(

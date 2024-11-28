@@ -45,6 +45,7 @@ class LmdeployEngine(InferEngine):
 
         self._prepare_model_tokenizer(
             model_id_or_path, torch_dtype, False, model_type=model_type, use_hf=use_hf, revision=revision)
+        self.max_model_len -= 1
         self._prepare_engine_kwargs(
             tp=tp,
             session_len=session_len,
@@ -250,26 +251,16 @@ class LmdeployEngine(InferEngine):
             inputs['images'] = await self.engine.vl_encoder.async_infer(images)
             await template.prepare_lmdeploy_inputs(inputs)
 
-        with self._patch_max_model_len():
-            self.set_default_max_tokens(request_config, inputs)
+        self.set_default_max_tokens(request_config, inputs)
         generation_config = self._prepare_generation_config(request_config)
         self._add_stop_words(generation_config, request_config, template.template_meta)
-        infer_args = (template, inputs, generation_config)
+        kwargs.update({'template': template, 'inputs': inputs, 'generation_config': generation_config})
+        for pre_infer_hook in self.pre_infer_hooks:
+            kwargs = pre_infer_hook(kwargs)
         if request_config.stream:
-            return self._infer_stream_async(*infer_args, **kwargs)
+            return self._infer_stream_async(**kwargs)
         else:
-            return await self._infer_full_async(*infer_args, **kwargs)
-
-    @contextmanager
-    def _patch_max_model_len(self):
-        if self.model_info.max_model_len is None:
-            yield
-            return
-        self.model_info.max_model_len -= 1
-        try:
-            yield
-        finally:
-            self.model_info.max_model_len += 1
+            return await self._infer_full_async(**kwargs)
 
     @torch.inference_mode()
     def infer(

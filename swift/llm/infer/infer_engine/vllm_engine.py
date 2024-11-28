@@ -76,6 +76,7 @@ class VllmEngine(InferEngine):
         self._prepare_default_template()
         self._load_generation_config()
         self._fix_vllm_bug()
+        self.patch_remove_log()
 
     def _prepare_engine(self) -> None:
         with patch_auto_tokenizer(self.tokenizer), patch_auto_config(self.config):
@@ -357,18 +358,24 @@ class VllmEngine(InferEngine):
         self.set_default_max_tokens(request_config, inputs)
         generation_config = self._prepare_generation_config(request_config)
         self._add_stop_words(generation_config, request_config, template.template_meta)
-        infer_args = (template, inputs, generation_config)
+        kwargs = {
+            'template': template,
+            'inputs': inputs,
+            'generation_config': generation_config,
+            'lora_request': lora_request
+        }
+        for pre_infer_hook in self.pre_infer_hooks:
+            kwargs = pre_infer_hook(kwargs)
         if request_config.stream:
-            return self._infer_stream_async(*infer_args, lora_request=lora_request)
+            return self._infer_stream_async(**kwargs)
         else:
-            return await self._infer_full_async(*infer_args, lora_request=lora_request)
+            return await self._infer_full_async(**kwargs)
 
     @staticmethod
-    @contextmanager
     def patch_remove_log():
         from vllm.engine import async_llm_engine
 
-        log_task_completion = async_llm_engine._log_task_completion
+        async_llm_engine._origin_log_task_completion = async_llm_engine._log_task_completion
 
         def new_log_task_completion(task, error_callback) -> None:
             exception = None
@@ -390,14 +397,3 @@ class VllmEngine(InferEngine):
                                            'actual cause.') from e
 
         async_llm_engine._log_task_completion = new_log_task_completion
-        try:
-            yield
-        finally:
-            async_llm_engine._log_task_completion = log_task_completion
-
-    def _batch_infer_stream(self,
-                            tasks,
-                            stream: bool = True,
-                            use_tqdm: bool = True) -> Iterator[List[Optional[ChatCompletionStreamResponse]]]:
-        with self.patch_remove_log():
-            yield from super()._batch_infer_stream(tasks, stream, use_tqdm)
