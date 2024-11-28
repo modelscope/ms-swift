@@ -72,16 +72,20 @@ class SwiftSft(SwiftPipeline):
 
     def _get_model_tokenizer(self, model, model_type, model_revision):
         args = self.args
-        model_kwargs = args.get_model_kwargs()
+        kwargs = args.get_model_kwargs()
         # compat rlhf
-        model_kwargs['model_id_or_path'] = model
-        model_kwargs['model_type'] = model_type
-        model_kwargs['model_revision'] = model_revision
+        kwargs['model_id_or_path'] = model
+        kwargs['model_type'] = model_type
+        kwargs['model_revision'] = model_revision
+        automodel_param = {}
+        model_kwargs = {}
         if args.num_labels is not None:
             from modelscope import AutoModelForSequenceClassification
-            model_kwargs = {'automodel_class': AutoModelForSequenceClassification}
-        model, tokenizer = get_model_tokenizer(**model_kwargs, use_unsloth=args.tuner_backend == 'unsloth')
-        model.num_labels = args.num_labels  # TODO
+            automodel_param = {'automodel_class': AutoModelForSequenceClassification}
+            model_kwargs = {'num_labels': args.num_labels}
+        model, tokenizer = get_model_tokenizer(
+            **kwargs, model_kwargs=model_kwargs, use_unsloth=(args.tuner_backend == 'unsloth'), **automodel_param)
+        model.num_labels = args.num_labels
         return model, tokenizer
 
     def _prepare_model_tokenizer(self):
@@ -162,7 +166,7 @@ class SwiftSft(SwiftPipeline):
     def _get_trainer_kwargs(self):
         args = self.args
         if args.predict_with_generate:
-            compute_metrics = partial(compute_nlg_metrics, tokenizer=tokenizer)
+            compute_metrics = partial(compute_nlg_metrics, tokenizer=self.tokenizer)
             preprocess_logits_for_metrics = None
         else:
             compute_metrics = partial(
