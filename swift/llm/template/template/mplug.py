@@ -117,9 +117,6 @@ class mPlugOwl3Template(Template):
         return res
 
 
-register_template(QwenTemplateMeta(MLLMTemplateType.mplug_owl3, template_cls=mPlugOwl3Template, default_system=None))
-
-
 class mPlugOwl3vTemplate(mPlugOwl3Template):
 
     def _encode(self, template_inputs: StdTemplateInputs) -> Dict[str, Any]:
