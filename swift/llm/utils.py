@@ -158,23 +158,26 @@ def history_to_messages(history: History,
 
 def messages_to_history(messages: 'Messages') -> Dict[str, Any]:
     system = None
+    messages = messages.copy()
     if messages[0]['role'] == 'system':
         system = messages[0]['content']
         messages = messages[1::]
+    if len(messages) % 2 == 1:
+        messages.append({'role': 'assistant', 'content': None})
     history = []
     history_roles = []
-    for q, r in zip(messages[::2], messages[1::2]):
-        history.append([q['content'], r['content']])
-        history_roles.append([q['role'], r['role']])
-    query = None
-    query_role = None
-    if len(messages) % 2 == 1:
-        query = messages[-1]['content']
-        query_role = messages[-1]['role']
+    for user_message, assistant_message in zip(messages[::2], messages[1::2]):
+        assert user_message['role'] in {'tool', 'user'}, f'user_message {user_message}'
+        assert assistant_message['role'] == 'assistant', f'assistant_message: {assistant_message}'
+        history.append([user_message['content'], assistant_message['content']])
+        history_roles.append([user_message['role'], assistant_message['role']])
+    query, response = history.pop() if history else (None, None)
+    query_role = history_roles.pop()[0] if history_roles else None
     return {
         'history': history,
         'history_roles': history_roles,
         'query': query,
         'query_role': query_role,
+        'response': response,
         'system': system,
     }

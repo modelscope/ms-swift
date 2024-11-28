@@ -188,3 +188,19 @@ register_template(
         prompt=['<s>Human: {{QUERY}}\n</s><s>Assistant: '],
         chat_sep=['</s>'],
         suffix=['</s>']))
+
+AYA_SYSTEM = ('You are Aya, a brilliant, sophisticated, multilingual AI-assistant trained to assist human users by '
+              'providing thorough responses. You are able to interact and respond to questions in 23 languages and '
+              'you are powered by a multilingual model built by Cohere For AI.')
+register_template(
+    TemplateMeta(
+        LLMTemplateType.aya,
+        prefix=['<BOS_TOKEN>'],
+        prompt=[
+            '<|START_OF_TURN_TOKEN|><|USER_TOKEN|>{{QUERY}}<|END_OF_TURN_TOKEN|>'
+            '<|START_OF_TURN_TOKEN|><|CHATBOT_TOKEN|>'
+        ],
+        chat_sep=['<|END_OF_TURN_TOKEN|>'],
+        suffix=['<|END_OF_TURN_TOKEN|>'],
+        default_system=AYA_SYSTEM,
+        system_prefix=['<|START_OF_TURN_TOKEN|><|SYSTEM_TOKEN|>{{SYSTEM}}<|END_OF_TURN_TOKEN|']))
