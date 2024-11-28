@@ -143,6 +143,50 @@ def test_moe():
     infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True))
 
 
+def test_resume_from_checkpoint():
+    from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
+    result = sft_main(
+        TrainArguments(
+            model='Qwen/Qwen2-0.5B',
+            dataset=['AI-ModelScope/alpaca-gpt4-data-zh#100', 'AI-ModelScope/alpaca-gpt4-data-en#100'],
+            max_steps=5,
+            **kwargs))
+    last_model_checkpoint = result['last_model_checkpoint']
+    result = sft_main(
+        TrainArguments(resume_from_checkpoint=last_model_checkpoint, load_dataset_config=True, max_steps=10))
+
+
+def test_resume_only_model():
+    import os
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+    from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
+    result = sft_main(
+        TrainArguments(
+            model='Qwen/Qwen2-0.5B',
+            dataset=['AI-ModelScope/alpaca-gpt4-data-zh#10', 'AI-ModelScope/alpaca-gpt4-data-en#10'],
+            max_steps=20,
+            save_only_model=True,
+            deepspeed='zero3',
+            **kwargs))
+    last_model_checkpoint = result['last_model_checkpoint']
+    result = sft_main(
+        TrainArguments(
+            resume_from_checkpoint=last_model_checkpoint,
+            load_dataset_config=True,
+            max_steps=20,
+            resume_only_model=True))
+
+
+def test_llm_transformers_4_33():
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+    from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
+    sft_main(
+        TrainArguments(
+            model='qwen/Qwen-7B-Chat',
+            dataset=['AI-ModelScope/alpaca-gpt4-data-zh#100', 'AI-ModelScope/alpaca-gpt4-data-en#100'],
+            **kwargs))
+
+
 if __name__ == '__main__':
     # test_llm_ddp()
     # test_mllm_mp()
@@ -154,4 +198,7 @@ if __name__ == '__main__':
     # test_mllm_streaming_zero3()
     # test_mllm_streaming_mp_ddp()
     # test_llm_bnb()
-    test_moe()
+    # test_moe()
+    # test_resume_from_checkpoint()
+    # test_resume_only_model()
+    test_llm_transformers_4_33()
