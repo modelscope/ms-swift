@@ -108,6 +108,7 @@ def load_by_unsloth(model_dir: str,
     """Load model by unsloth"""
     # TODO:check
     assert is_unsloth_available(), 'please install unsloth if using `use_unsloth=True`'
+    os.environ['UNSLOTH_RETURN_LOGITS'] = '1'
     from unsloth import FastLanguageModel
     return FastLanguageModel.from_pretrained(
         model_name=model_dir,

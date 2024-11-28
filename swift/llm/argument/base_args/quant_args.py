@@ -28,7 +28,7 @@ class QuantizeArguments:
     quant_method: Literal['bnb', 'hqq', 'eetq', 'awq', 'gptq'] = None
     # bnb: 4,8; hqq: 1,2,3,4,8'; eetq: 8
     # awq: 4; gptq: 2,3,4,8
-    quant_bits: Literal[0, 1, 2, 3, 4, 8] = 4
+    quant_bits: Literal[0, 1, 2, 3, 4, 8] = 0
     # hqq
     hqq_axis: Optional[int] = None
     # bnb
