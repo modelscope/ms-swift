@@ -89,6 +89,9 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
         # read settings
         all_keys = list(f.name for f in fields(self.__class__))
         data_keys = list(f.name for f in fields(DataArguments))
+        load_keys = [
+            'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant', 'split_dataset_ratio', 'model_name', 'model_author'
+        ]
         for key in all_keys:
             if not self.load_dataset_config and key in data_keys:
                 continue
@@ -96,7 +99,7 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
             if old_value is None:
                 continue
             value = getattr(self, key, None)
-            if value is None or isinstance(value, (list, tuple)) and len(value) == 0:
+            if value is None or isinstance(value, (list, tuple)) and len(value) == 0 or key in load_keys:
                 setattr(self, key, old_value)
 
     def save_args(self) -> None:
