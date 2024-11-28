@@ -92,7 +92,10 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
         load_keys = [
             'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant', 'split_dataset_ratio', 'model_name', 'model_author'
         ]
+        skip_keys = ['output_dir', 'deepspeed']
         for key in all_keys:
+            if key in skip_keys:
+                continue
             if not self.load_dataset_config and key in data_keys:
                 continue
             old_value = old_args.get(key)

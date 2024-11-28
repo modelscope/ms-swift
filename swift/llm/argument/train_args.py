@@ -105,7 +105,6 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
         acc_strategy (Literal): Strategy for accuracy calculation. Default is 'token'.
     """
     add_version: bool = True
-    resume_from_checkpoint: Optional[str] = None
     resume_only_model: bool = False
     check_model: bool = True
     loss_type: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
