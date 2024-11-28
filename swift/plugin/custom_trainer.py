@@ -1,4 +1,4 @@
-from typing import Dict, Union, Any, Optional, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 
@@ -17,12 +17,12 @@ class SequenceClassificationTrainer(Trainer):
         return super().compute_loss(model, inputs, return_outputs=return_outputs)
 
     def prediction_step(
-            self,
-            model: torch.nn.Module,
-            inputs: Dict[str, Union[torch.Tensor, Any]],
-            prediction_loss_only: bool,
-            ignore_keys: Optional[List[str]] = None,
-            **gen_kwargs,
+        self,
+        model: torch.nn.Module,
+        inputs: Dict[str, Union[torch.Tensor, Any]],
+        prediction_loss_only: bool,
+        ignore_keys: Optional[List[str]] = None,
+        **gen_kwargs,
     ) -> Tuple[Optional[float], Optional[torch.Tensor], Optional[torch.Tensor]]:
         if 'label' in inputs:
             inputs['labels'] = torch.tensor(inputs.pop('label')).unsqueeze(1)
