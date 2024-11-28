@@ -107,7 +107,7 @@ class DeepseekJanus(DeepseekVLTemplate):
     image_placeholder = ['<image_placeholder>\n']
 
 
-register_template(DeepseekVLTemplateMeta(MLLMTemplateType.deepseek_vl, template_cls=DeepseekJanus))
+register_template(DeepseekVLTemplateMeta(MLLMTemplateType.deepseek_janus, template_cls=DeepseekJanus))
 
 register_template(
     TemplateMeta(

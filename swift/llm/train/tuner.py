@@ -279,7 +279,8 @@ def prepare_model(args: TrainArguments, model):
                 p.data = p.data.to(dtype=torch.float32)
     elif args.train_type == 'full':
         model.train()
-        model.requires_grad_(True)
+        if args.tuner_backend != 'unsloth':
+            model.requires_grad_(True)
 
         freeze_parameters(model, args.freeze_parameters_ratio, args.freeze_parameters)
         if len(args.trainable_parameters) > 0:

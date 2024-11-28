@@ -112,6 +112,7 @@ class MLLMTemplateType:
     minicpmv2_6 = 'minicpmv2_6'
 
     deepseek_vl = 'deepseek_vl'
+    deepseek_janus = 'deepseek_janus'
     mplug_owl2 = 'mplug_owl2'
     mplug_owl3 = 'mplug_owl3'
     mplug_owl3v = 'mplug_owl3v'
