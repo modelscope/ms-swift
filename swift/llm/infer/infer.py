@@ -1,21 +1,17 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import re
 from contextlib import nullcontext
-from copy import deepcopy
-from dataclasses import dataclass, field
 from itertools import chain
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Dict, List, Union
 
 import numpy as np
 import torch.distributed as dist
 from datasets import Dataset as HfDataset
 
-from swift.llm import (InferArguments, InferRequest, Messages, Processor, SwiftPipeline, Template, get_template,
+from swift.llm import (InferArguments, InferRequest, Processor, SwiftPipeline, Template, get_template,
                        load_dataset, sample_dataset)
-from swift.plugin import extra_tuners
-from swift.tuners import Swift
+
 from swift.utils import get_logger, is_master, open_jsonl_writer
-from ..model.register import load_by_unsloth
 from .protocol import RequestConfig
 from .tuner import prepare_infer_engine
 from .utils import InferCliState

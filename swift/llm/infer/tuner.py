@@ -1,5 +1,8 @@
 
 from ..argument import InferArguments
+from swift.plugin import extra_tuners
+from swift.tuners import Swift
+from ..model.register import load_by_unsloth
 
 
 def prepare_infer_engine(args: InferArguments, infer_engine):

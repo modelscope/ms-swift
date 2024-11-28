@@ -4,7 +4,7 @@ import inspect
 import multiprocessing
 import time
 from contextlib import contextmanager
-from dataclasses import asdict, is_dataclass
+from dataclasses import asdict
 from http import HTTPStatus
 from threading import Thread
 from typing import Any, Dict, List, Optional, Union
@@ -15,7 +15,7 @@ from aiohttp import ClientConnectorError
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from swift.llm import TEMPLATE_MAPPING, DeployArguments, Template, merge_lora
+from swift.llm import DeployArguments
 from swift.plugin import InferStats
 from swift.utils import get_logger
 from .infer import SwiftInfer
