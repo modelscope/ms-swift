@@ -73,6 +73,8 @@ def get_target_modules(args, model) -> Union[str, List[str]]:
             target_modules = args.target_modules.copy()
             target_modules.remove('all-linear')
             target_modules += find_all_linears(model)
+    else:
+        target_modules = args.target_modules
     return target_modules
 
 
@@ -123,10 +125,13 @@ def prepare_adapter(args: TrainArguments, model):
             model = Swift.prepare_model(model, lora_config)
             logger.info(f'lora_config: {lora_config}')
         elif args.tuner_backend == 'unsloth':
-            from unsloth import FastLanguageModel
+            if args.model_meta.is_multimodal:
+                from unsloth import FastVisionModel as UnslothModel
+            else:
+                from unsloth import FastLanguageModel as UnslothModel
             assert args.train_type == 'lora', 'Unsloth does not support LongLoRA'
             lora_kwargs.pop('lorap_lr_ratio')
-            model = FastLanguageModel.get_peft_model(
+            model = UnslothModel.get_peft_model(
                 model,
                 use_gradient_checkpointing=True,
                 max_seq_length=args.max_length,
