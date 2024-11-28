@@ -9,7 +9,6 @@ kwargs = {
     'save_steps': 5,
     'gradient_accumulation_steps': 4,
     'num_train_epochs': 1,
-    'metric_for_best_model': 'loss'
 }
 
 

@@ -95,7 +95,7 @@ class PtEngine(InferEngine):
         if generation_config.eos_token_id is None:
             generation_config.eos_token_id = self.tokenizer.eos_token_id
         if generation_config.pad_token_id is None:
-            generation_config.pad_token_id = template.pad_token_id
+            generation_config.pad_token_id = self.tokenizer.pad_token_id
 
     @staticmethod
     def preprocess_logits(batched_logits: Optional[List[torch.Tensor]], batched_generate_ids: torch.Tensor,
@@ -201,7 +201,7 @@ class PtEngine(InferEngine):
                 generate_ids = batched_generate_ids[i]
 
                 # ignore pad_token
-                masks = generate_ids != template.pad_token_id
+                masks = generate_ids != self.tokenizer.pad_token_id
                 generate_ids = generate_ids[masks].tolist()
                 logprobs_list = None
                 if batched_logprobs[i]:
@@ -209,7 +209,7 @@ class PtEngine(InferEngine):
 
                 is_finished[i] = (
                     all_is_finished or is_finished[i]
-                    or len(generate_ids) > 0 and generate_ids[-1] == template.pad_token_id)
+                    or len(generate_ids) > 0 and generate_ids[-1] == self.tokenizer.pad_token_id)
                 delta_text = infer_streamers[i].get_printable_text(generate_ids, is_finished[i])
                 if not delta_text and not is_finished[i]:
                     res.append(None)
@@ -269,7 +269,7 @@ class PtEngine(InferEngine):
             generate_ids = batched_generate_ids[i]
 
             # ignore pad_token
-            masks = generate_ids != template.pad_token_id
+            masks = generate_ids != self.tokenizer.pad_token_id
             generate_ids = generate_ids[masks].tolist()
             logprobs_list = None
             if batched_logprobs is not None:
@@ -291,7 +291,7 @@ class PtEngine(InferEngine):
             elif isinstance(response, Image.Image):
                 res.append(
                     ImagesResponse(
-                        created=time.time(), data=[ImageObject(b64_json=MultiModalRequestMixin._to_base64(response))]))
+                        created=time.time(), data=[ImageObject(b64_json=MultiModalRequestMixin.to_base64(response))]))
 
         return res
 

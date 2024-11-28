@@ -116,9 +116,14 @@ class RowPreprocessor:
         for row in rows:
             try:
                 row = self.preprocess(row)
-                if row is not None:
-                    self.check_messages(row)
-                    self.check_rejected_response(row)
+                # support [row1, row2, ...]
+                if row is None:
+                    row = []
+                if isinstance(row, dict):
+                    row = [row]
+                for r in row:
+                    self.check_messages(r)
+                    self.check_rejected_response(r)
             except Exception:
                 if strict:
                     logger.warning('To avoid errors, you can pass `strict=False`.')
@@ -128,10 +133,8 @@ class RowPreprocessor:
                     print(traceback.format_exc())
                     logger.error('👆👆👆There are errors in the dataset, the data will be deleted')
                     self._traceback_counter += 1
-                row = None
-            if row is None:
-                continue
-            new_rows.append(row)
+                row = []
+            new_rows += row
         res = self.rows_to_batched(new_rows)
 
         if len(res) == 0:
@@ -247,14 +250,10 @@ class ResponsePreprocessor(RowPreprocessor):
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         response = row.pop('response', None)
-        if response is None:
-            row.pop('query', None)
-            row.pop('history', None)
-            row.pop('system', None)
-            return
-        if isinstance(response, (list, tuple)):
-            # sometimes response is a list, pick one randomly
-            response = self.random_state.choice(response)
+        if response is not None:
+            if isinstance(response, (list, tuple)):
+                # sometimes response is a list, pick one randomly
+                response = self.random_state.choice(response)
         history = row.pop('history', None) or []
         query = row.pop('query', None)
         system = row.pop('system', None)

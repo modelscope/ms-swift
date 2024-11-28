@@ -1,4 +1,3 @@
-from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 
@@ -9,19 +8,20 @@ class SequenceClassificationTrainer(Trainer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.args.label_names = ['labels']
+        self.label_names = ['labels']
 
     def compute_loss(self, model, inputs, return_outputs=None, **kwargs):
-        inputs['labels'] = torch.tensor(inputs.pop('label')).unsqueeze(1)
+        if 'label' in inputs:
+            inputs['labels'] = torch.tensor(inputs.pop('label')).unsqueeze(1)
         return super().compute_loss(model, inputs, return_outputs=return_outputs)
 
     def prediction_step(
-        self,
-        model: torch.nn.Module,
-        inputs: Dict[str, Union[torch.Tensor, Any]],
-        prediction_loss_only: bool,
-        ignore_keys: Optional[List[str]] = None,
-        **gen_kwargs,
+            self,
+            model: torch.nn.Module,
+            inputs: Dict[str, Union[torch.Tensor, Any]],
+            prediction_loss_only: bool,
+            ignore_keys: Optional[List[str]] = None,
+            **gen_kwargs,
     ) -> Tuple[Optional[float], Optional[torch.Tensor], Optional[torch.Tensor]]:
         inputs['labels'] = torch.tensor(inputs.pop('label')).unsqueeze(1)
         return super().prediction_step(model, inputs, prediction_loss_only, ignore_keys, **gen_kwargs)

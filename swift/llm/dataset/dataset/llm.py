@@ -345,131 +345,45 @@ register_dataset(
 register_dataset(DatasetMeta(ms_dataset_id='swift/ToolBench', tags=['chat', 'agent', 'multi-round']))
 
 
-def _preprocess_hc3(dataset: DATASET_TYPE, **kwargs) -> DATASET_TYPE:
+class HC3Preprocessor(ResponsePreprocessor):
     prompt = """Classification Task: Are the following responses from a human or from ChatGPT?
 Question: {question}
 Answer: {answer}
 Category: Human, ChatGPT
 Output:"""
-    if isinstance(dataset, IterableDataset):
 
-        def generate_example(dataset):
-            for example in dataset:
-                question = example['question']
-                for h in example['human_answers']:
-                    yield {
-                        'messages': [{
-                            'role': 'user',
-                            'content': prompt.format(question=question, answer=h)
-                        }, {
-                            'role': 'assistant',
-                            'content': 'Human'
-                        }]
-                    }
-                for c in example['chatgpt_answers']:
-                    yield {
-                        'messages': [{
-                            'role': 'user',
-                            'content': prompt.format(question=question, answer=c)
-                        }, {
-                            'role': 'assistant',
-                            'content': 'ChatGPT'
-                        }]
-                    }
-
-        return IterableDataset.from_generator(generate_example, gen_kwargs={'dataset': dataset})
-
-    messages = []
-    for d in dataset:
-        question = d['question']
-        for h in d['human_answers']:
-            messages.append({
-                'messages': [{
-                    'role': 'user',
-                    'content': prompt.format(question=question, answer=h)
-                }, {
-                    'role': 'assistant',
-                    'content': 'Human'
-                }]
-            })
-        for c in d['chatgpt_answers']:
-            messages.append({
-                'messages': [{
-                    'role': 'user',
-                    'content': prompt.format(question=question, answer=c)
-                }, {
-                    'role': 'assistant',
-                    'content': 'ChatGPT'
-                }]
-            })
-    return HfDataset.from_list(messages)
+    def preprocess(self, row):
+        rows = []
+        for response in ['Human', 'ChatGPT']:
+            query = self.prompt.format(question=row['query'], answer=row[f'{response.lower()}_answers'])
+            rows.append(super().preprocess({'query': query, 'response': response}))
+        return rows
 
 
-def _preprocess_hc3_cls(dataset: DATASET_TYPE, **kwargs) -> DATASET_TYPE:
-    prompt = """Classification Task: Are the following responses from a human or from ChatGPT?
-Question: {question}
-Answer: {answer}
-Category: 0 for Human, 1 for ChatGPT
-Output:"""
-    if isinstance(dataset, IterableDataset):
+class HC3ClsPreprocessor(HC3Preprocessor):
 
-        def generate_example(dataset):
-            for example in dataset:
-                question = example['question']
-                for h in example['human_answers']:
-                    yield {
-                        'messages': [{
-                            'role': 'user',
-                            'content': prompt.format(question=question, answer=h)
-                        }],
-                        'label': 0,
-                    }
-                for c in example['chatgpt_answers']:
-                    yield {
-                        'messages': [{
-                            'role': 'user',
-                            'content': prompt.format(question=question, answer=c)
-                        }],
-                        'label': 1,
-                    }
-
-        return IterableDataset.from_generator(generate_example, gen_kwargs={'dataset': dataset})
-
-    messages = []
-    for d in dataset:
-        question = d['question']
-        for h in d['human_answers']:
-            messages.append({
-                'messages': [{
-                    'role': 'user',
-                    'content': prompt.format(question=question, answer=h)
-                }],
-                'label': 0,
-            })
-        for c in d['chatgpt_answers']:
-            messages.append({
-                'messages': [{
-                    'role': 'user',
-                    'content': prompt.format(question=question, answer=c)
-                }],
-                'label': 1,
-            })
-    return HfDataset.from_list(messages)
+    def preprocess(self, row):
+        rows = []
+        for i, response in enumerate(['Human', 'ChatGPT']):
+            query = self.prompt.format(question=row['query'], answer=row[f'{response.lower()}_answers'])
+            rows.append(ResponsePreprocessor.preprocess(self, {'query': query, 'label': i}))
+        return rows
 
 
 hc3_subset_names = ['baike', 'open_qa', 'nlpcc_dbqa', 'finance', 'medicine', 'law', 'psychology']
 hc3_subsets: List[SubsetDataset] = []
 for hc3_subset_name in hc3_subset_names:
-    hc3_subsets.append(SubsetDataset(
-        name=hc3_subset_name,
-        subset=hc3_subset_name,
-        preprocess_func=_preprocess_hc3,
-    ))
+    hc3_subsets.append(
+        SubsetDataset(
+            name=hc3_subset_name,
+            subset=hc3_subset_name,
+            preprocess_func=HC3Preprocessor(),
+        ))
     hc3_subsets.append(
         SubsetDataset(
             name=f'{hc3_subset_name}_cls',
             subset=hc3_subset_name,
-            preprocess_func=_preprocess_hc3_cls,
+            preprocess_func=HC3ClsPreprocessor(),
         ))
 
 register_dataset(
@@ -484,7 +398,7 @@ register_dataset(
         ms_dataset_id='simpleai/HC3',
         hf_dataset_id='Hello-SimpleAI/HC3',
         subsets=['finance', 'medicine'],
-        preprocess_func=_preprocess_hc3,
+        preprocess_func=HC3Preprocessor(),
         tags=['text-generation', 'classification', '🔥']))
 
 
