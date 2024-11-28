@@ -24,7 +24,8 @@ class SequenceClassificationTrainer(Trainer):
             ignore_keys: Optional[List[str]] = None,
             **gen_kwargs,
     ) -> Tuple[Optional[float], Optional[torch.Tensor], Optional[torch.Tensor]]:
-        inputs['labels'] = torch.tensor(inputs.pop('label')).unsqueeze(1)
+        if 'label' in inputs:
+            inputs['labels'] = torch.tensor(inputs.pop('label')).unsqueeze(1)
         return super().prediction_step(model, inputs, prediction_loss_only, ignore_keys, **gen_kwargs)
 
 
