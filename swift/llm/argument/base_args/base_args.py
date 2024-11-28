@@ -54,7 +54,7 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
         except AttributeError:
             pass
         logger.info(f'rank: {self.rank}, local_rank: {self.local_rank}, '
-                    f'world_size: {self.world_size}, local_world_size: {self.local_world_size}')
+                    f'world_size: {world_size}, local_world_size: {self.local_world_size}')
         ModelArguments.__post_init__(self)
         QuantizeArguments.__post_init__(self)
         TemplateArguments.__post_init__(self)

@@ -129,7 +129,7 @@ class SwiftMixin(TorchAccMixin, ProcessorMixin):
                         v['step'] = v['step'].to('cpu')
 
     def _save_model(self, output_dir: Optional[str] = None, state_dict=None):
-        from ..plugin import extra_tuners
+        from swift.plugin import extra_tuners
         # model
         supported_classes = (SwiftModel, PreTrainedModel, PeftModel)
         if AutoModelForCausalLMWithValueHead is not None:
