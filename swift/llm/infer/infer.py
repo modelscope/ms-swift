@@ -16,6 +16,7 @@ from swift.plugin import extra_tuners
 from swift.tuners import Swift
 from swift.utils import get_logger, is_master, open_jsonl_writer
 from .protocol import RequestConfig
+from ..model.register import load_by_unsloth
 
 logger = get_logger()
 
@@ -81,26 +82,22 @@ class SwiftInfer(SwiftPipeline):
             logger.info(f'model: {self.infer_engine.model}')
         self.template = self.get_template(args, self.processor)
         self.random_state = np.random.RandomState(args.data_seed)
+        if args.tuner_backend == 'unsloth':
+            if args.model_meta.is_multimodal:
+                from unsloth import FastVisionModel as UnslothModel
+            else:
+                from unsloth import FastLanguageModel as UnslothModel
+            UnslothModel.for_inference(self.infer_engine.model)
 
     def prepare_module(self, args: args_class):
         if args.train_type in extra_tuners:
             extra_tuners[args.train_type].from_pretrained(self.infer_engine.model, args.ckpt_dir, inference_mode=True)
         else:
             if args.tuner_backend == 'unsloth':
-                if args.model_meta.is_multimodal:
-                    from unsloth import FastVisionModel as UnslothModel
-                else:
-                    from unsloth import FastLanguageModel as UnslothModel
+                model, processor = load_by_unsloth(args.ckpt_dir, args.torch_dtype, args.max_length,
+                                                   args.quant_bits == 4, args.model_meta.is_multimodal)
                 model_info = self.processor.model_info
                 model_meta = self.processor.model_meta
-                model, processor = UnslothModel.from_pretrained(
-                    model_name=args.ckpt_dir or args.model,
-                    dtype=args.torch_dtype,
-                    max_seq_length=args.max_length,
-                    load_in_4bit=args.quant_bits == 4,
-                    trust_remote_code=True,
-                )
-                UnslothModel.for_inference(model)
                 processor.model_info = model_info
                 processor.model_meta = model_meta
                 model.model_info = model_info

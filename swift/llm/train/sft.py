@@ -5,6 +5,7 @@ from typing import List, Union
 from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HfIterableDataset
 
+from swift.llm.model.register import load_by_unsloth
 from swift.plugin import extra_callbacks, get_loss_func, optimizers_map
 from swift.trainers import IntervalStrategy, TrainerFactory
 from swift.utils import (append_to_jsonl, compute_acc_metrics, compute_nlg_metrics, find_all_linears, find_embedding,
@@ -82,10 +83,18 @@ class SwiftSft(SwiftPipeline):
             from transformers import AutoModelForSequenceClassification
             kwargs['automodel_class'] = AutoModelForSequenceClassification
             model_kwargs = {'num_labels': args.num_labels}
-        if args.tuner_backend == 'unsloth':
-            kwargs['unsloth_kwargs'] = {'load_in_4bit': args.quant_bits == 4}
-        model, tokenizer = get_model_tokenizer(
-            **kwargs, model_kwargs=model_kwargs, use_unsloth=(args.tuner_backend == 'unsloth'))
+        if args.tuner_backend == 'unsloth' and args.resume_from_checkpoint is not None and args.train_type != 'full':
+            model, tokenizer = load_by_unsloth(args.resume_from_checkpoint, args.torch_dtype, args.max_length,
+                                               args.quant_bits == 4, args.model_meta.is_multimodal)
+            model.model_info = args.model_info
+            model.model_meta = args.model_meta
+            tokenizer.model_info = args.model_info
+            tokenizer.model_meta = args.model_meta
+        else:
+            if args.tuner_backend == 'unsloth':
+                kwargs['unsloth_kwargs'] = {'load_in_4bit': args.quant_bits == 4}
+            model, tokenizer = get_model_tokenizer(
+                **kwargs, model_kwargs=model_kwargs, use_unsloth=(args.tuner_backend == 'unsloth'))
         return model, tokenizer
 
     def _prepare_model_tokenizer(self):
