@@ -27,6 +27,8 @@ class QuantEngine(ProcessorMixin):
 
     def quantize(self):
         args = self.args
+        if args.quant_bits == 0:
+            raise ValueError(f'Please set the quant_bits. args.quant_bits: {args.quant_bits}')
         if args.quant_method == 'awq':
             self.awq_model_quantize()
             self.model.save_quantized(args.output_dir)
