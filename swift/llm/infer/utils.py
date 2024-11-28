@@ -1,9 +1,9 @@
-
-from typing import List, Literal
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import List, Literal, Optional
+
 from ..template import Messages
+
 
 @dataclass
 class InferCliState:
@@ -44,7 +44,6 @@ class InferCliState:
             'audios': infer_state.audios,
             'videos': infer_state.videos
         }
-
 
     def input_mm_data(self) -> None:
 

@@ -8,9 +8,8 @@ import numpy as np
 import torch.distributed as dist
 from datasets import Dataset as HfDataset
 
-from swift.llm import (InferArguments, InferRequest, Processor, SwiftPipeline, Template, get_template,
-                       load_dataset, sample_dataset)
-
+from swift.llm import (InferArguments, InferRequest, Processor, SwiftPipeline, Template, get_template, load_dataset,
+                       sample_dataset)
 from swift.utils import get_logger, is_master, open_jsonl_writer
 from .protocol import RequestConfig
 from .tuner import prepare_infer_engine
