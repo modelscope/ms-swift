@@ -44,7 +44,7 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
     def _init_output_dir(self):
         if self.output_dir is not None:
             return
-        self.output_dir = f'output/{self.model_name}'
+        self.output_dir = f'output/{self.model_suffix}'
 
     def __post_init__(self):
         self._init_output_dir()
