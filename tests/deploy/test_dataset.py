@@ -1,18 +1,17 @@
 def _test_client():
     import time
     import aiohttp
-    from swift.llm import InferClient, InferRequest, RequestConfig, load_dataset
-    dataset = load_dataset(['alpaca_zh#100'], num_proc=4)
-
+    from swift.llm import InferClient, InferRequest, RequestConfig, load_dataset, run_deploy
+    dataset = load_dataset(['AI-ModelScope/alpaca-gpt4-data-zh#1000'], num_proc=4)
+    infer_client = InferClient()
     while True:
         try:
-            infer_client = InferClient()
+            models = infer_client.models
+            print(f'models: {models}')
         except aiohttp.ClientConnectorError:
             time.sleep(5)
             continue
         break
-    models = infer_client.models
-    print(f'models: {models}')
     infer_requests = []
     for data in dataset[0]:
         infer_requests.append(InferRequest(**data))
@@ -27,15 +26,10 @@ def _test(infer_backend):
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
     from swift.llm import DeployArguments
-    from swift.llm import deploy_main
-    import multiprocessing
-    mp = multiprocessing.get_context('spawn')
-    process = mp.Process(
-        target=deploy_main,
-        args=(DeployArguments(model='qwen/Qwen2-7B-Instruct', infer_backend=infer_backend, verbose=False), ))
-    process.start()
-    _test_client()
-    process.terminate()
+    from swift.llm import run_deploy
+    args = DeployArguments(model='qwen/Qwen2-7B-Instruct', infer_backend=infer_backend, verbose=False)
+    with run_deploy(args):
+        _test_client()
 
 
 def test_vllm():
@@ -63,6 +57,6 @@ def test_vllm_orgin():
 
 if __name__ == '__main__':
     # test_vllm_orgin()
-    # test_vllm()
+    test_vllm()
     # test_lmdeploy()
-    test_pt()
+    # test_pt()

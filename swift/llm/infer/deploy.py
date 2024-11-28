@@ -1,5 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import asyncio
+import inspect
+import multiprocessing
+import time
 from contextlib import contextmanager
 from dataclasses import asdict, is_dataclass
 from http import HTTPStatus
@@ -8,6 +11,7 @@ from typing import Any, Dict, List, Optional, Union
 
 import json
 import uvicorn
+from aiohttp import ClientConnectorError
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
@@ -15,6 +19,7 @@ from swift.llm import TEMPLATE_MAPPING, DeployArguments, Template, merge_lora
 from swift.plugin import InferStats
 from swift.utils import get_logger
 from .infer import SwiftInfer
+from .infer_engine import InferClient
 from .protocol import ChatCompletionRequest, CompletionRequest, Model, ModelList
 
 logger = get_logger()
@@ -164,3 +169,36 @@ class SwiftDeploy(SwiftInfer):
 
 def deploy_main(args: Union[List[str], DeployArguments, None] = None) -> None:
     SwiftDeploy(args).main()
+
+
+def is_accessible(port: int):
+    infer_client = InferClient(port=port)
+    try:
+        infer_client.get_model_list()
+    except ClientConnectorError:
+        return False
+    return True
+
+
+@contextmanager
+def run_deploy(args):
+    if isinstance(args, DeployArguments) and args.__class__.__name__ == 'DeployArguments':
+        deploy_args = args
+    else:
+        args_dict = asdict(args)
+        parameters = inspect.signature(DeployArguments.__init__).parameters
+        for k in list(args_dict.keys()):
+            if k not in parameters:
+                args_dict.pop(k)
+        deploy_args = DeployArguments(**args_dict)
+
+    mp = multiprocessing.get_context('spawn')
+    process = mp.Process(target=deploy_main, args=(deploy_args, ))
+    process.start()
+    try:
+        while not is_accessible(deploy_args.port):
+            time.sleep(1)
+        yield f'http://127.0.0.1:{deploy_args.port}/v1/chat/completions'
+    finally:
+        process.kill()
+        logger.info('The deployment process has been terminated.')

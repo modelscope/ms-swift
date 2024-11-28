@@ -1,13 +1,10 @@
 import datetime as dt
-import inspect
-import multiprocessing
 import os
 import time
 from contextlib import contextmanager, nullcontext
 from dataclasses import asdict
 from typing import Any, Dict, List, Union
 
-from aiohttp.client_exceptions import ClientConnectorError
 from evalscope.run import run_task
 from evalscope.summarizer import Summarizer
 
@@ -15,7 +12,7 @@ from swift.utils import append_to_jsonl, get_logger
 from ..argument import DeployArguments, EvalArguments
 from ..base import SwiftPipeline
 from ..dataset import MediaResource
-from ..infer import InferClient, deploy_main
+from ..infer import run_deploy
 
 logger = get_logger()
 
@@ -23,39 +20,6 @@ logger = get_logger()
 class SwiftEval(SwiftPipeline):
     args_class = EvalArguments
     args: args_class
-
-    @staticmethod
-    @contextmanager
-    def run_deploy(args):
-        if isinstance(args, DeployArguments) and args.__class__.__name__ == 'DeployArguments':
-            deploy_args = args
-        else:
-            args_dict = asdict(args)
-            parameters = inspect.signature(DeployArguments.__init__).parameters
-            for k in list(args_dict.keys()):
-                if k not in parameters:
-                    args_dict.pop(k)
-            deploy_args = DeployArguments(**args_dict)
-
-        mp = multiprocessing.get_context('spawn')
-        process = mp.Process(target=deploy_main, args=(deploy_args, ))
-        process.start()
-        try:
-            while not SwiftEval._is_accessible(deploy_args.port):
-                time.sleep(1)
-            yield f'http://127.0.0.1:{deploy_args.port}/v1/chat/completions'
-        finally:
-            process.kill()
-            logger.info('The deployment process has been terminated.')
-
-    @staticmethod
-    def _is_accessible(port: int):
-        infer_client = InferClient(port=port)
-        try:
-            infer_client.get_model_list()
-        except ClientConnectorError:
-            return False
-        return True
 
     def run(self):
         args = self.args
@@ -66,7 +30,7 @@ class SwiftEval(SwiftPipeline):
             'eval_output_dir': args.eval_output_dir,
             'eval_limit': args.eval_limit
         }
-        deploy_context = nullcontext() if args.eval_url else self.run_deploy(self.args)
+        deploy_context = nullcontext() if args.eval_url else run_deploy(self.args)
         with deploy_context as url:
             url = args.eval_url or url
             if args.eval_dataset_oc:
@@ -116,7 +80,7 @@ class SwiftEval(SwiftPipeline):
                 'models': [{
                     'path': args.model_suffix,
                     'openai_api_base': url,
-                    'key': args.api_key,
+                    'key': args.api_key or 'EMPTY',
                     'is_chat': args.use_chat_template
                 }]
             }
@@ -124,19 +88,22 @@ class SwiftEval(SwiftPipeline):
 
     def get_vlmeval_task_cfg(self, dataset: List[str], url: str):
         args = self.args
-        time = dt.datetime.now().strftime('%Y%m%d-%H%M%S')
         return {
             'eval_backend': 'VLMEvalKit',
             'eval_config': {
-                'data': dataset,
-                'work_dir': os.path.join(args.eval_output_dir, 'vlmeval', time),
+                'data':
+                dataset,
+                'work_dir':
+                os.path.join(args.eval_output_dir, 'vlmeval',
+                             dt.datetime.now().strftime('%Y%m%d-%H%M%S')),
                 'model': [{
                     'type': args.model_suffix,
                     'name': 'CustomAPIModel',
                     'api_base': url,
-                    'key': args.api_key,
+                    'key': args.api_key or 'EMPTY',
                 }],
-                'nproc': args.max_batch_size,
+                'nproc':
+                args.max_batch_size,
             }
         }
 
