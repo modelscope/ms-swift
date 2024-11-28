@@ -61,9 +61,9 @@ class Eval(BaseUI):
             },
             'info': {
                 'zh':
-                'OpenAI样式的评测链接(如：http://localhost:8080/v1)，用于评测接口（模型类型输入为实际模型类型）',
+                'OpenAI样式的评测链接(如：http://localhost:8080/v1/chat/completions)，用于评测接口（模型类型输入为实际模型类型）',
                 'en':
-                'The OpenAI style link(like: http://localhost:8080/v1) for '
+                'The OpenAI style link(like: http://localhost:8080/v1/chat/completions) for '
                 'evaluation(Input actual model type into model_type)'
             }
         },
