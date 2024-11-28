@@ -79,7 +79,8 @@ class PtEngine(InferEngine):
         self._prepare_default_template()
         self.max_batch_size = max_batch_size
         self.engine = self.model
-        self.generation_config = self.model.generation_config
+        if self.model is not None:
+            self.generation_config = self.model.generation_config
         self._lora_request_pool = {}
 
     def _prepare_generation_config(self, request_config: RequestConfig) -> _GenerationConfig:

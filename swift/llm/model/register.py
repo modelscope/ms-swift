@@ -104,13 +104,17 @@ def register_model(model_meta: ModelMeta, *, exist_ok: bool = False) -> None:
 def load_by_unsloth(model_dir: str,
                     torch_dtype: torch.dtype,
                     max_seq_length: Optional[int] = None,
-                    load_in_4bit: bool = True):
+                    load_in_4bit: bool = True,
+                    is_multimodal=False):
     """Load model by unsloth"""
     # TODO:check
     assert is_unsloth_available(), 'please install unsloth if using `use_unsloth=True`'
     os.environ['UNSLOTH_RETURN_LOGITS'] = '1'
-    from unsloth import FastLanguageModel
-    return FastLanguageModel.from_pretrained(
+    if is_multimodal:
+        from unsloth import FastVisionModel as UnslothModel
+    else:
+        from unsloth import FastLanguageModel as UnslothModel
+    return UnslothModel.from_pretrained(
         model_name=model_dir,
         dtype=torch_dtype,
         max_seq_length=max_seq_length,
@@ -157,7 +161,8 @@ def get_model_tokenizer_from_local(model_dir: str,
         if kwargs.get('use_unsloth', False):
             unsloth_kwargs = kwargs.get('unsloth_kwargs') or {}
             logger.info(f'unsloth_kwargs: {unsloth_kwargs}')
-            model, tokenizer = load_by_unsloth(model_dir, torch_dtype, **unsloth_kwargs)
+            model, tokenizer = load_by_unsloth(
+                model_dir, torch_dtype, **unsloth_kwargs, is_multimodal=kwargs.pop('is_multimodal', False))
         else:
             logger.info(f'model_kwargs: {model_kwargs}')
             model = automodel_class.from_pretrained(
@@ -488,6 +493,7 @@ def get_model_tokenizer(
     kwargs['automodel_class'] = automodel_class
     kwargs['attn_impl'] = attn_impl
     kwargs['rope_scaling'] = rope_scaling
+    kwargs['is_multimodal'] = model_meta.is_multimodal
     model, processor = get_function(model_dir, model_info, model_kwargs, load_model, **kwargs)
 
     if not isinstance(processor, PreTrainedTokenizerBase) and hasattr(processor, 'tokenizer'):
