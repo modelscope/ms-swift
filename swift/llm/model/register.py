@@ -306,7 +306,7 @@ def get_default_torch_dtype(torch_dtype: Optional[torch.dtype]):
     return res
 
 
-def _get_model_name(model_id_or_path: str) -> Optional[str]:
+def get_model_name(model_id_or_path: str) -> Optional[str]:
     # compat hf hub
     model_id_or_path = model_id_or_path.rstrip('/')
     match_ = re.search('/models--.+?--(.+?)/snapshots/', model_id_or_path)
@@ -337,7 +337,7 @@ def get_all_models() -> List[str]:
 def get_matched_model_meta(model_id_or_path: str) -> Optional[ModelMeta]:
     # TODO: Case insensitive
     assert isinstance(model_id_or_path, str), f'model_id_or_path: {model_id_or_path}'
-    model_name = _get_model_name(model_id_or_path).lower()
+    model_name = get_model_name(model_id_or_path).lower()
     for model_type, model_meta in MODEL_MAPPING.items():
         model_group = model_meta.get_matched_model_group(model_name)
         if model_group is not None:

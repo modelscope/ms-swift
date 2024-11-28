@@ -18,5 +18,11 @@ def test_qwen2():
     print(f'model: {model}, tokenizer: {tokenizer}')
 
 
+def test_modelscope_hub():
+    from swift.llm import get_model_tokenizer
+    model, tokenizer = get_model_tokenizer('qwen/Qwen2___5-Math-1___5B-Instruct/', load_model=False)
+
+
 if __name__ == '__main__':
     test_qwen2()
+    # test_modelscope_hub()

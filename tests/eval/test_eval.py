@@ -21,7 +21,7 @@ def test_eval_url():
     deploy_args = DeployArguments(model='qwen/Qwen2-VL-7B-Instruct')
 
     with SwiftEval.run_deploy(deploy_args) as url:
-        eval_main(EvalArguments(eval_url=url, eval_dataset=['realWorldQA', 'arc_c'], infer_backend='vllm'))
+        eval_main(EvalArguments(model='Qwen2-VL-7B-Instruct', eval_url=url, eval_dataset=['realWorldQA', 'arc_c']))
 
 
 if __name__ == '__main__':

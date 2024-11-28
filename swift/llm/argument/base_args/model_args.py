@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Literal, Optional, Union
 import json
 import torch
 
-from swift.llm import MODEL_MAPPING, HfConfigFactory
+from swift.llm import MODEL_MAPPING, HfConfigFactory, get_model_name
 from swift.utils import get_dist_setting, get_logger
 
 logger = get_logger()
@@ -99,16 +99,12 @@ class ModelArguments:
     def _init_model_info(self) -> torch.dtype:
         from swift.llm import get_model_info_meta
         self.model_info, self.model_meta = get_model_info_meta(**self.get_model_kwargs())
+        self.model_dir = self.model_info.model_dir
         self.model_type = self.model_info.model_type
         return self.model_info.torch_dtype
 
-    def _init_model_name(self):
-        model = getattr(self, 'ckpt_dir', None) or self.model
-        model = model.rstrip('/')
-        self.model_suffix = os.path.basename(model)
-
     def __post_init__(self):
-        self._init_model_name()
+        self.model_suffix = get_model_name(self.model)
 
         if self.rope_scaling:  # TODO: check
             logger.info(f'rope_scaling is set to {self.rope_scaling}, please remember to set max_length')

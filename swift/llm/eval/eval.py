@@ -27,14 +27,17 @@ class SwiftEval(SwiftPipeline):
     @staticmethod
     @contextmanager
     def run_deploy(args):
+        if isinstance(args, DeployArguments) and args.__class__.__name__ == 'DeployArguments':
+            deploy_args = args
+        else:
+            args_dict = asdict(args)
+            parameters = inspect.signature(DeployArguments.__init__).parameters
+            for k in list(args_dict.keys()):
+                if k not in parameters:
+                    args_dict.pop(k)
+            deploy_args = DeployArguments(**args_dict)
 
-        args_dict = asdict(args)
-        parameters = inspect.signature(DeployArguments.__init__).parameters
-        for k in list(args_dict.keys()):
-            if k not in parameters:
-                args_dict.pop(k)
         mp = multiprocessing.get_context('spawn')
-        deploy_args = DeployArguments(**args_dict)
         process = mp.Process(target=deploy_main, args=(deploy_args, ))
         process.start()
         try:
@@ -109,7 +112,7 @@ class SwiftEval(SwiftPipeline):
                 'work_dir': os.path.join(args.eval_output_dir, 'opencompass'),
                 'models': [{
                     'path': args.model_suffix,
-                    'openai_api_base': args.url,
+                    'openai_api_base': url,
                 }]
             }
         }
@@ -124,7 +127,7 @@ class SwiftEval(SwiftPipeline):
                 'work_dir': os.path.join(args.eval_output_dir, 'vlmeval', time),
                 'model': [{
                     'name': 'CustomAPIModel',
-                    'api_base': args.url,
+                    'api_base': url,
                     'type': args.model_suffix,
                 }],
                 'nproc': args.max_batch_size,
