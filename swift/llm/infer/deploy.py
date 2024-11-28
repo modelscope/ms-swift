@@ -108,26 +108,6 @@ class SwiftDeploy(SwiftInfer):
                 self.jsonl_writer.append(data)
         return response
 
-    @contextmanager
-    def patch_infer_engine(self, infer_request, request_info):
-        # log generation_config
-        verbose = self.args.verbose
-        _origin_add_stop_words = self.infer_engine.__class__._add_stop_words
-
-        def _add_stop_words(self, generation_config, *args, **kwargs):
-            res = _origin_add_stop_words(self, generation_config, *args, **kwargs)
-            printable_infer_request = infer_request.to_printable()
-            request_info.update({'infer_request': printable_infer_request, 'generation_config': generation_config})
-            if verbose:
-                logger.info(request_info)
-            return res
-
-        self.infer_engine.__class__._add_stop_words = _add_stop_words
-        try:
-            yield
-        finally:
-            self.infer_engine.__class__._add_stop_words = _origin_add_stop_words
-
     async def create_chat_completion(self,
                                      request: ChatCompletionRequest,
                                      raw_request: Request,
@@ -139,10 +119,17 @@ class SwiftDeploy(SwiftInfer):
             return self.create_error_response(HTTPStatus.BAD_REQUEST, error_msg)
 
         infer_request, request_config = request.parse()
-        request_info = {}
+        request_info = {'infer_request': infer_request.to_printable()}
+
+        def pre_infer_hook(kwargs):
+            request_info['generation_config'] = kwargs['generation_config']
+            if self.args.verbose:
+                logger.info(request_info)
+            return kwargs
+
+        self.infer_engine.pre_infer_hooks = [pre_infer_hook]
         try:
-            with self.patch_infer_engine(infer_request, request_info):
-                res_or_gen = await self.infer_async(infer_request, request_config, template=self.template)
+            res_or_gen = await self.infer_async(infer_request, request_config, template=self.template)
         except ValueError as e:
             return self.create_error_response(HTTPStatus.BAD_REQUEST, str(e))
         if request_config.stream:
@@ -181,7 +168,7 @@ def is_accessible(port: int):
 
 
 @contextmanager
-def run_deploy(args):
+def run_deploy(args, return_url: bool = True):
     if isinstance(args, DeployArguments) and args.__class__.__name__ == 'DeployArguments':
         deploy_args = args
     else:
@@ -198,7 +185,7 @@ def run_deploy(args):
     try:
         while not is_accessible(deploy_args.port):
             time.sleep(1)
-        yield f'http://127.0.0.1:{deploy_args.port}/v1/chat/completions'
+        yield f'http://127.0.0.1:{deploy_args.port}/v1/chat/completions' if return_url else deploy_args.port
     finally:
         process.kill()
         logger.info('The deployment process has been terminated.')

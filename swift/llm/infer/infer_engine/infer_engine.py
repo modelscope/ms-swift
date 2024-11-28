@@ -55,7 +55,9 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         self.model_info = processor.model_info
         self.model_meta = processor.model_meta
         self.model_dir = self.model_info.model_dir
+        self.max_model_len = self.model_info.max_model_len
         self.config = self.model_info.config
+        self.pre_infer_hooks = []
 
     def _prepare_default_template(self):
         self.default_template = get_template(self.model_meta.template, self.processor)
@@ -183,7 +185,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
 
     def set_default_max_tokens(self, request_config: RequestConfig, inputs: Dict[str, Any]) -> None:
         strict = getattr(self, 'strict', False)
-        max_model_len = self.model_info.max_model_len
+        max_model_len = self.max_model_len
         if isinstance(inputs, dict):
             inputs = [inputs]
         # The num_tokens takes the maximum value from inputs_list.
@@ -257,7 +259,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
 
         if loop:
             queue = Queue()
-            thread = Thread(target=self._thread_run, args=(queue, ))
+            thread = Thread(target=InferEngine._thread_run, args=(queue, coro))
             thread.start()
             thread.join()
             result = queue.get()

@@ -1,17 +1,16 @@
-def _test_client():
+def _test_client(port=8000):
     import time
     import aiohttp
     from swift.llm import InferClient, InferRequest, RequestConfig, load_dataset, run_deploy
     dataset = load_dataset(['AI-ModelScope/alpaca-gpt4-data-zh#1000'], num_proc=4)
-    infer_client = InferClient()
+    infer_client = InferClient(port=port)
     while True:
         try:
-            models = infer_client.models
-            print(f'models: {models}')
-        except aiohttp.ClientConnectorError:
-            time.sleep(5)
-            continue
-        break
+            infer_client.models
+            break
+        except Exception:
+            time.sleep(1)
+            pass
     infer_requests = []
     for data in dataset[0]:
         infer_requests.append(InferRequest(**data))
@@ -28,8 +27,8 @@ def _test(infer_backend):
     from swift.llm import DeployArguments
     from swift.llm import run_deploy
     args = DeployArguments(model='qwen/Qwen2-7B-Instruct', infer_backend=infer_backend, verbose=False)
-    with run_deploy(args):
-        _test_client()
+    with run_deploy(args, return_url=False) as port:
+        _test_client(port)
 
 
 def test_vllm():
@@ -57,6 +56,6 @@ def test_vllm_orgin():
 
 if __name__ == '__main__':
     # test_vllm_orgin()
-    test_vllm()
-    # test_lmdeploy()
+    # test_vllm()
+    test_lmdeploy()
     # test_pt()

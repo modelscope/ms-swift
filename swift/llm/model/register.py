@@ -321,7 +321,7 @@ def get_model_name(model_id_or_path: str) -> Optional[str]:
         model_name = model_id_or_path.rsplit('/', 1)[-1]
     # compat modelscope snapshot_download
     model_name = model_name.replace('___', '.')
-    return model_name.lower()
+    return model_name
 
 
 def get_all_models() -> List[str]:

@@ -30,7 +30,7 @@ class EvalArguments(DeployArguments):
 
     do_sample: bool = False
     verbose: bool = False
-    max_batch_size: int = 16
+    max_batch_size: Optional[int] = None
     # If eval_url is set, ms-swift will not perform deployment operations and
     # will directly use the URL for evaluation.
     eval_url: Optional[str] = None
