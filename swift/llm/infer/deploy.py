@@ -91,14 +91,16 @@ class SwiftDeploy(SwiftInfer):
 
     def _post_process(self, request_info, response, return_cmpl_response: bool = False):
         args = self.args
-        if args.log_interval > 0:
-            self.infer_states.update(response)
+
+        is_finished = all(response.choices[i].finish_reason for i in range(len(response.choices)))
         if return_cmpl_response:
             response = response.to_cmpl_response()
-
-        if self.jsonl_writer:
-            data = {'response': asdict(response), **request_info}
-            self.jsonl_writer.append(data)
+        if is_finished:
+            if args.log_interval > 0:
+                self.infer_states.update(response)
+            if self.jsonl_writer:
+                data = {'response': asdict(response), **request_info}
+                self.jsonl_writer.append(data)
         return response
 
     @contextmanager

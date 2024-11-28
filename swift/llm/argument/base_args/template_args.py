@@ -35,7 +35,7 @@ class TemplateArguments:
     # train
     loss_scale: str = 'default'
     sequence_parallel_size: int = 1
-    # infer
+    # infer/deploy
     use_chat_template: bool = True
 
     def __post_init__(self):

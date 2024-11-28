@@ -107,12 +107,17 @@ class SwiftEval(SwiftPipeline):
         return {
             'eval_backend': 'OpenCompass',
             'eval_config': {
-                'datasets': dataset,
-                'batch_size': args.max_batch_size,
-                'work_dir': os.path.join(args.eval_output_dir, 'opencompass'),
+                'datasets':
+                dataset,
+                'batch_size':
+                args.max_batch_size,
+                'work_dir':
+                os.path.join(args.eval_output_dir, 'opencompass'),
                 'models': [{
                     'path': args.model_suffix,
                     'openai_api_base': url,
+                    'key': args.api_key,
+                    'is_chat': args.use_chat_template
                 }]
             }
         }
@@ -126,9 +131,10 @@ class SwiftEval(SwiftPipeline):
                 'data': dataset,
                 'work_dir': os.path.join(args.eval_output_dir, 'vlmeval', time),
                 'model': [{
+                    'type': args.model_suffix,
                     'name': 'CustomAPIModel',
                     'api_base': url,
-                    'type': args.model_suffix,
+                    'key': args.api_key,
                 }],
                 'nproc': args.max_batch_size,
             }
