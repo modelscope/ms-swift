@@ -28,7 +28,6 @@ from swift.hub import get_hub
 from swift.llm import Processor, ProcessorMixin
 from swift.tuners import SwiftModel
 from swift.utils import get_logger, is_mp_ddp
-from ..plugin import extra_tuners
 from .arguments import TrainingArguments
 from .optimizers.galore import create_optimizer_and_scheduler
 from .torchacc_mixin import TorchAccMixin
@@ -130,6 +129,7 @@ class SwiftMixin(TorchAccMixin, ProcessorMixin):
                         v['step'] = v['step'].to('cpu')
 
     def _save_model(self, output_dir: Optional[str] = None, state_dict=None):
+        from ..plugin import extra_tuners
         # model
         supported_classes = (SwiftModel, PreTrainedModel, PeftModel)
         if AutoModelForCausalLMWithValueHead is not None:
