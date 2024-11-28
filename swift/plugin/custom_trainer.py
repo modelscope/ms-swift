@@ -2,7 +2,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 
-from swift.trainers.trainers import Trainer
+from swift.trainers import Trainer
 
 
 class SequenceClassificationTrainer(Trainer):
