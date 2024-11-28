@@ -8,7 +8,7 @@ if TYPE_CHECKING:
     from .infer import (VllmEngine, RequestConfig, LmdeployEngine, PtEngine, infer_main, deploy_main, PtLoRARequest,
                         InferClient, SwiftInfer, SwiftDeploy)
     from .export import export_main, merge_lora, quantize_model, export_to_ollama, save_checkpoint
-    from .eval import eval_main
+    from .eval import eval_main, SwiftEval
     from .train import sft_main, pt_main, rlhf_main
     from .argument import (EvalArguments, InferArguments, TrainArguments, ExportArguments, DeployArguments,
                            RLHFArguments, WebUIArguments, BaseArguments)
@@ -33,7 +33,7 @@ else:
             'InferClient', 'SwiftInfer', 'SwiftDeploy'
         ],
         'export': ['export_main', 'merge_lora', 'quantize_model', 'export_to_ollama', 'save_checkpoint'],
-        'eval': ['eval_main'],
+        'eval': ['eval_main', 'SwiftEval'],
         'train': ['sft_main', 'pt_main', 'rlhf_main'],
         'argument': [
             'EvalArguments', 'InferArguments', 'TrainArguments', 'ExportArguments', 'WebUIArguments', 'DeployArguments',

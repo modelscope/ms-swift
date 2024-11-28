@@ -91,7 +91,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
 
         queue = Queue()
         new_tasks = [_run_infer(i, task, queue, stream) for i, task in enumerate(tasks)]
-        # TODO: check vllm
+
         thread = Thread(target=lambda: asyncio.run(_batch_run(new_tasks)))
         thread.start()
 
@@ -243,3 +243,16 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         else:
             finish_reason = None
         return finish_reason
+
+    @staticmethod
+    def safe_asyncio_run(coro):
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        if loop:
+            thread = Thread(target=lambda: asyncio.run(coro))
+            thread.start()
+            thread.join()
+        else:
+            asyncio.run(coro)

@@ -104,6 +104,7 @@ class ModelArguments:
 
     def _init_model_name(self):
         model = getattr(self, 'ckpt_dir', None) or self.model
+        model = model.rstrip('/')
         self.model_suffix = os.path.basename(model)
 
     def __post_init__(self):

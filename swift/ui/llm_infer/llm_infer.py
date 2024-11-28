@@ -27,6 +27,10 @@ class LLMInfer(BaseUI):
 
     is_gradio_app = False
 
+    is_multimodal = True
+
+    deployed = False
+
     sub_ui = [Model, Runtime]
 
     locale_dict = {
@@ -86,8 +90,8 @@ class LLMInfer(BaseUI):
                 'en': 'Lora module'
             },
             'info': {
-                'zh': '发送给server端哪个LoRA，默认为`default-lora`',
-                'en': 'Which LoRA to use on server, default value is `default-lora`'
+                'zh': '发送给server端哪个LoRA，默认为`default`',
+                'en': 'Which LoRA to use on server, default value is `default`'
             }
         },
         'prompt': {
@@ -133,7 +137,6 @@ class LLMInfer(BaseUI):
                 gpu_count = torch.cuda.device_count()
                 default_device = '0'
             with gr.Blocks():
-                cls.model_and_template = gr.State([])
                 infer_request = gr.State(None)
                 if LLMInfer.is_gradio_app:
                     Model.visible = False
@@ -152,7 +155,7 @@ class LLMInfer(BaseUI):
                 chatbot = gr.Chatbot(elem_id='chatbot', elem_classes='control-height')
                 with gr.Row():
                     prompt = gr.Textbox(elem_id='prompt', lines=1, interactive=True)
-                    with gr.Tabs():
+                    with gr.Tabs(visible=not cls.is_gradio_app or cls.is_multimodal):
                         with gr.TabItem(label='Image'):
                             image = gr.Image(type='filepath')
                         with gr.TabItem(label='Video'):
@@ -167,12 +170,11 @@ class LLMInfer(BaseUI):
                 if not LLMInfer.is_gradio_app:
                     cls.element('load_checkpoint').click(
                         cls.deploy_model, list(base_tab.valid_elements().values()),
-                        [cls.element('runtime_tab'),
-                         cls.element('running_tasks'), cls.model_and_template])
+                        [cls.element('runtime_tab'), cls.element('running_tasks')])
                 submit.click(
                     cls.send_message,
                     inputs=[
-                        cls.element('running_tasks'), cls.model_and_template,
+                        cls.element('running_tasks'),
                         cls.element('template'), prompt, image, video, audio, infer_request, infer_model_type,
                         cls.element('system'),
                         cls.element('max_new_tokens'),
@@ -190,7 +192,7 @@ class LLMInfer(BaseUI):
                 if not LLMInfer.is_gradio_app:
                     base_tab.element('running_tasks').change(
                         partial(Runtime.task_changed, base_tab=base_tab), [base_tab.element('running_tasks')],
-                        list(cls.valid_elements().values()) + [cls.element('log'), cls.model_and_template],
+                        list(cls.valid_elements().values()) + [cls.element('log')],
                         cancels=Runtime.log_event)
                     Runtime.element('kill_task').click(
                         Runtime.kill_task,
@@ -283,6 +285,9 @@ class LLMInfer(BaseUI):
 
     @classmethod
     def deploy_model(cls, *args):
+        if cls.is_gradio_app:
+            if cls.deployed:
+                return gr.update(), gr.update()
         run_command, deploy_args, log_file = cls.deploy(*args)
         logger.info(f'Running deployment command: {run_command}')
         os.system(run_command)
@@ -291,9 +296,8 @@ class LLMInfer(BaseUI):
         else:
             gr.Info(cls.locale('load_alert', cls.lang)['value'])
         time.sleep(2)
-        return gr.update(open=True), Runtime.refresh_tasks(log_file), [
-            deploy_args.model_type, deploy_args.template, deploy_args.train_type
-        ]
+        cls.deployed = True
+        return gr.update(open=True), Runtime.refresh_tasks(log_file)
 
     @classmethod
     def clear_session(cls):
@@ -331,12 +335,8 @@ class LLMInfer(BaseUI):
         return None
 
     @classmethod
-    def send_message(cls, running_task, model_and_template, template_type, prompt: str, image, video, audio,
-                     infer_request: InferRequest, infer_model_type, system, max_new_tokens, temperature, top_k, top_p,
-                     repetition_penalty):
-        if not model_and_template:
-            gr.Warning(cls.locale('generate_alert', cls.lang)['value'])
-            return '', None, None, []
+    def send_message(cls, running_task, template_type, prompt: str, image, video, audio, infer_request: InferRequest,
+                     infer_model_type, system, max_new_tokens, temperature, top_k, top_p, repetition_penalty):
 
         if not infer_request:
             infer_request = InferRequest(messages=[])
@@ -364,9 +364,6 @@ class LLMInfer(BaseUI):
             infer_request.messages[-1]['content'] = infer_request.messages[-1]['content'] + prompt
 
         _, args = Runtime.parse_info_from_cmdline(running_task)
-        model, template, train_type = model_and_template
-        if train_type in ('lora', 'longlora') and not args.get('merge_lora'):
-            model_type = infer_model_type or 'default-lora'
         request_config = RequestConfig(
             temperature=temperature, top_k=top_k, top_p=top_p, repetition_penalty=repetition_penalty)
         request_config.stream = True
@@ -387,11 +384,12 @@ class LLMInfer(BaseUI):
         for m in _infer_request.messages:
             if 'medias' in m:
                 m.pop('medias')
+        model_kwargs = {}
+        if infer_model_type:
+            model_kwargs = {'model': infer_model_type}
         stream_resp = InferClient(
             port=args['port'], ).infer(
-                infer_requests=[_infer_request],
-                request_config=request_config,
-            )
+                infer_requests=[_infer_request], request_config=request_config, **model_kwargs)
         if infer_request.messages[-1]['role'] != 'assistant':
             infer_request.messages.append({'role': 'assistant', 'content': ''})
         for chunk in stream_resp:

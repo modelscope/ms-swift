@@ -73,7 +73,6 @@ class LLMEval(BaseUI):
                 gpu_count = torch.cuda.device_count()
                 default_device = '0'
             with gr.Blocks():
-                model_and_template = gr.State([])
                 Model.build_ui(base_tab)
                 Eval.build_ui(base_tab)
                 EvalRuntime.build_ui(base_tab)
@@ -89,12 +88,11 @@ class LLMEval(BaseUI):
 
                 cls.element('evaluate').click(
                     cls.eval_model, list(base_tab.valid_elements().values()),
-                    [cls.element('runtime_tab'),
-                     cls.element('running_tasks'), model_and_template])
+                    [cls.element('runtime_tab'), cls.element('running_tasks')])
 
                 base_tab.element('running_tasks').change(
                     partial(EvalRuntime.task_changed, base_tab=base_tab), [base_tab.element('running_tasks')],
-                    list(base_tab.valid_elements().values()) + [cls.element('log'), model_and_template],
+                    list(base_tab.valid_elements().values()) + [cls.element('log')],
                     cancels=EvalRuntime.log_event)
                 EvalRuntime.element('kill_task').click(
                     EvalRuntime.kill_task,
@@ -135,7 +133,7 @@ class LLMEval(BaseUI):
 
         kwargs.update(more_params)
         model = kwargs.get('model')
-        if os.path.exists(model) and os.path.exists(os.path.join(model, 'args.json')):
+        if model and os.path.exists(model) and os.path.exists(os.path.join(model, 'args.json')):
             kwargs['ckpt_dir'] = kwargs.pop('model')
 
         eval_args = EvalArguments(
@@ -183,4 +181,4 @@ class LLMEval(BaseUI):
         run_command, eval_args, log_file = cls.eval(*args)
         os.system(run_command)
         time.sleep(2)
-        return gr.update(open=True), EvalRuntime.refresh_tasks(log_file), [eval_args.train_type]
+        return gr.update(open=True), EvalRuntime.refresh_tasks(log_file)
