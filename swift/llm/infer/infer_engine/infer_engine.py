@@ -245,14 +245,22 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         return finish_reason
 
     @staticmethod
+    def _thread_run(queue, coro):
+        queue.put(asyncio.run(coro))
+
+    @staticmethod
     def safe_asyncio_run(coro):
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
             loop = None
+
         if loop:
-            thread = Thread(target=lambda: asyncio.run(coro))
+            queue = Queue()
+            thread = Thread(target=self._thread_run, args=(queue, ))
             thread.start()
             thread.join()
+            result = queue.get()
         else:
-            asyncio.run(coro)
+            result = asyncio.run(coro)
+        return result

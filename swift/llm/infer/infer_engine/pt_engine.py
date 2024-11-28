@@ -277,13 +277,14 @@ class PtEngine(InferEngine):
             logprobs = self._get_logprobs(self.tokenizer, logprobs_list, generate_ids, generation_config.top_logprobs)
             usage_info = self._get_usage_info(num_prompt_tokens, len(generate_ids))
             response = template.decode(generate_ids, True)
+            finish_reason = self._get_finish_reason(generation_config.max_new_tokens, num_prompt_tokens, True)
             if isinstance(response, str):
                 toolcall = self._get_toolcall(response, True)
                 choices = [
                     ChatCompletionResponseChoice(
                         index=0,
                         message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
-                        finish_reason=None,
+                        finish_reason=finish_reason,
                         logprobs=logprobs)
                 ]
                 res.append(ChatCompletionResponse(model=self.model_dir, choices=choices, usage=usage_info))
