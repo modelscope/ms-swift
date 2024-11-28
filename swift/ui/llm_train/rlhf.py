@@ -82,14 +82,12 @@ class RLHF(BaseUI):
         with gr.Accordion(elem_id='rlhf_tab', open=False):
             with gr.Blocks():
                 with gr.Row():
-                    rlhf_type = gr.Dropdown(elem_id='rlhf_type', value=None)
-                    ref_model = gr.Dropdown(
+                    gr.Dropdown(elem_id='rlhf_type', value=None)
+                    gr.Dropdown(
                         elem_id='ref_model', scale=20, value=None, choices=get_all_models(), allow_custom_value=True)
-                    ref_model_type = gr.Dropdown(
-                        elem_id='ref_model_type', choices=ModelType.get_model_name_list(), value=None, scale=20)
-                    model_state = gr.State({})
+                    gr.Dropdown(elem_id='ref_model_type', choices=ModelType.get_model_name_list(), value=None, scale=20)
                 with gr.Row():
-                    beta = gr.Slider(elem_id='beta', minimum=0., maximum=5.0, step=0.1, scale=20)
+                    gr.Slider(elem_id='beta', minimum=0., maximum=5.0, step=0.1, scale=20)
                     gr.Slider(elem_id='rpo_alpha', minimum=0., maximum=2, step=0.1, scale=20)
                     gr.Slider(elem_id='simpo_gamma', minimum=0., maximum=2.0, step=0.1, scale=20)
                     gr.Slider(elem_id='desirable_weight', minimum=0., maximum=2.0, step=0.1, scale=20)
