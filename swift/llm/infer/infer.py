@@ -71,45 +71,47 @@ class SwiftInfer(SwiftPipeline):
         args = self.args
         if args.merge_lora:
             merge_lora(args, device_map='cpu')
-        
+
         kwargs = {}
         if args.tuner_backend == 'unsloth' and args.weight_type == 'adapter':
             kwargs = {'load_model': False}
         self.infer_engine = self.get_infer_engine(args, **kwargs)
         if args.infer_backend == 'pt' and args.ckpt_dir and args.weight_type == 'adapter':
-            if args.train_type in extra_tuners:
-                extra_tuners[args.train_type].from_pretrained(
-                    self.infer_engine.model, args.ckpt_dir, inference_mode=True)
-            else:
-                if args.tuner_backend == 'unsloth':
-                    if args.model_meta.is_multimodal:
-                        from unsloth import FastVisionModel as UnslothModel
-                    else:
-                        from unsloth import FastLanguageModel as UnslothModel
-                    model_info = self.processor.model_info
-                    model_meta = self.processor.model_meta
-                    model, processor = UnslothModel.from_pretrained(
-                        model_name=args.ckpt_dir or args.model,
-                        dtype=args.torch_dtype,
-                        max_seq_length=args.max_length,
-                        load_in_4bit=args.quant_bits == 4,
-                        trust_remote_code=True,
-                    )
-                    UnslothModel.for_inference(model)
-                    processor.model_info = model_info
-                    processor.model_meta = model_meta
-                    model.model_info = model_info
-                    model.model_meta = model_meta
-                    self.infer_engine.model = model
-                    self.infer_engine.generation_config =model.generation_config
-                    self.processor = processor
-                else:
-                    # TODO: vllm lora
-                    self.infer_engine.model = Swift.from_pretrained(
-                        self.infer_engine.model, args.ckpt_dir, inference_mode=True)
+            self.prepare_module(args)
             logger.info(f'model: {self.infer_engine.model}')
         self.template = self.get_template(args, self.processor)
         self.random_state = np.random.RandomState(args.data_seed)
+
+    def prepare_module(self, args: args_class):
+        if args.train_type in extra_tuners:
+            extra_tuners[args.train_type].from_pretrained(self.infer_engine.model, args.ckpt_dir, inference_mode=True)
+        else:
+            if args.tuner_backend == 'unsloth':
+                if args.model_meta.is_multimodal:
+                    from unsloth import FastVisionModel as UnslothModel
+                else:
+                    from unsloth import FastLanguageModel as UnslothModel
+                model_info = self.processor.model_info
+                model_meta = self.processor.model_meta
+                model, processor = UnslothModel.from_pretrained(
+                    model_name=args.ckpt_dir or args.model,
+                    dtype=args.torch_dtype,
+                    max_seq_length=args.max_length,
+                    load_in_4bit=args.quant_bits == 4,
+                    trust_remote_code=True,
+                )
+                UnslothModel.for_inference(model)
+                processor.model_info = model_info
+                processor.model_meta = model_meta
+                model.model_info = model_info
+                model.model_meta = model_meta
+                self.infer_engine.model = model
+                self.infer_engine.generation_config = model.generation_config
+                self.processor = processor
+            else:
+                # TODO: vllm lora
+                self.infer_engine.model = Swift.from_pretrained(
+                    self.infer_engine.model, args.ckpt_dir, inference_mode=True)
 
     def __getattr__(self, key: str):
         try:

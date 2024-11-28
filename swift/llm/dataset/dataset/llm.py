@@ -3,8 +3,8 @@ import re
 from functools import partial
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from ..preprocessor import (AlpacaPreprocessor, ClsPreprocessor, MessagesPreprocessor,
-                            ResponsePreprocessor, RowPreprocessor, TextGenerationPreprocessor)
+from ..preprocessor import (AlpacaPreprocessor, ClsPreprocessor, MessagesPreprocessor, ResponsePreprocessor,
+                            RowPreprocessor, TextGenerationPreprocessor)
 from ..register import DatasetMeta, SubsetDataset, register_dataset
 
 
