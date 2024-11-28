@@ -283,20 +283,28 @@ class BaseUI:
                 if len(ret) == 1:
                     return ret[0]
 
-            args = arg_cls()
-            args.load_args_from_ckpt(model)
+            args = arg_cls(resume_from_checkpoint=model, load_dataset_config=True)
             values = []
             for key in keys:
                 if allow_keys is not None and key not in allow_keys:
                     continue
                 arg_value = getattr(args, key, None)
-                if arg_value:
+                if arg_value and key != 'model':
+                    if key in ('torch_dtype', 'bnb_4bit_compute_dtype'):
+                        arg_value = str(arg_value).split('.')[1]
+                    if isinstance(arg_value, list) and key != 'dataset':
+                        try:
+                            arg_value = ' '.join(arg_value)
+                        except Exception:
+                            arg_value = None
                     values.append(gr.update(value=arg_value))
                 else:
                     values.append(gr.update())
             ret = [gr.update(choices=[])] * int(has_record) + values
             if len(ret) == 1:
                 return ret[0]
+            else:
+                return ret
         else:
             values = []
             model_meta = get_matched_model_meta(model)

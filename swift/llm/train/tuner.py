@@ -125,19 +125,20 @@ def prepare_adapter(args: TrainArguments, model):
             model = Swift.prepare_model(model, lora_config)
             logger.info(f'lora_config: {lora_config}')
         elif args.tuner_backend == 'unsloth':
-            if args.model_meta.is_multimodal:
-                from unsloth import FastVisionModel as UnslothModel
-            else:
-                from unsloth import FastLanguageModel as UnslothModel
-            assert args.train_type == 'lora', 'Unsloth does not support LongLoRA'
-            lora_kwargs.pop('lorap_lr_ratio')
-            model = UnslothModel.get_peft_model(
-                model,
-                use_gradient_checkpointing=True,
-                max_seq_length=args.max_length,
-                **lora_kwargs,
-            )
-            logger.info(f'unsloth_config: {lora_kwargs}')
+            if args.resume_from_checkpoint is None:
+                if args.model_meta.is_multimodal:
+                    from unsloth import FastVisionModel as UnslothModel
+                else:
+                    from unsloth import FastLanguageModel as UnslothModel
+                assert args.train_type == 'lora', 'Unsloth does not support LongLoRA'
+                lora_kwargs.pop('lorap_lr_ratio')
+                model = UnslothModel.get_peft_model(
+                    model,
+                    use_gradient_checkpointing=True,
+                    max_seq_length=args.max_length,
+                    **lora_kwargs,
+                )
+                logger.info(f'unsloth_config: {lora_kwargs}')
         if args.train_type == 'longlora':
             assert LongLoRAModelType.LLAMA in args.model_type
             assert version.parse(transformers.__version__) >= version.parse('4.39.3')

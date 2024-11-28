@@ -87,19 +87,10 @@ class SwiftInfer(SwiftPipeline):
             extra_tuners[args.train_type].from_pretrained(self.infer_engine.model, args.ckpt_dir, inference_mode=True)
         else:
             if args.tuner_backend == 'unsloth':
-                if args.model_meta.is_multimodal:
-                    from unsloth import FastVisionModel as UnslothModel
-                else:
-                    from unsloth import FastLanguageModel as UnslothModel
+                model, processor = load_by_unsloth(args.ckpt_dir, args.torch_dtype, args.max_length,
+                                                   args.quant_bits == 4, args.model_meta.is_multimodal)
                 model_info = self.processor.model_info
                 model_meta = self.processor.model_meta
-                model, processor = UnslothModel.from_pretrained(
-                    model_name=args.ckpt_dir or args.model,
-                    dtype=args.torch_dtype,
-                    max_seq_length=args.max_length,
-                    load_in_4bit=args.quant_bits == 4,
-                    trust_remote_code=True,
-                )
                 UnslothModel.for_inference(model)
                 processor.model_info = model_info
                 processor.model_meta = model_meta
