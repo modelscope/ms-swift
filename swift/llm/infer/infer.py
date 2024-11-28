@@ -15,51 +15,12 @@ from swift.llm import (InferArguments, InferRequest, Messages, Processor, SwiftP
 from swift.plugin import extra_tuners
 from swift.tuners import Swift
 from swift.utils import get_logger, is_master, open_jsonl_writer
-from .protocol import RequestConfig
 from ..model.register import load_by_unsloth
+from .protocol import RequestConfig
+from .tuner import prepare_infer_engine
+from .utils import InferCliState
 
 logger = get_logger()
-
-
-@dataclass
-class InferCliState:
-    # None: use default-system. '': not use system.
-    system: Optional[str] = None
-    messages: Messages = field(default_factory=list)  # not including system
-
-    images: List[str] = field(default_factory=list)
-    audios: List[str] = field(default_factory=list)
-    videos: List[str] = field(default_factory=list)
-
-    multiline_mode: bool = False
-    input_system: bool = False
-
-    def clear(self):
-        self.messages = []
-        self.images = []
-        self.audios = []
-        self.videos = []
-
-    def add_query(self, query: str) -> None:
-        role = 'user'
-        if query.startswith('tool:'):
-            role = 'tool'
-            query = query[len('tool:'):]
-        self.messages.append({'role': role, 'content': query})
-
-    def add_response(self, response: str) -> None:
-        self.messages.append({'role': 'assistant', 'content': response})
-
-    def to_dict(self):
-        infer_state = deepcopy(self)
-        if infer_state.system is not None:
-            infer_state.messages.insert(0, {'role': 'system', 'content': infer_state.system})
-        return {
-            'messages': infer_state.messages,
-            'images': infer_state.images,
-            'audios': infer_state.audios,
-            'videos': infer_state.videos
-        }
 
 
 class SwiftInfer(SwiftPipeline):
@@ -78,37 +39,10 @@ class SwiftInfer(SwiftPipeline):
             kwargs = {'load_model': False}
         self.infer_engine = self.get_infer_engine(args, **kwargs)
         if args.infer_backend == 'pt' and args.ckpt_dir and args.weight_type == 'adapter':
-            self.prepare_module(args)
+            prepare_infer_engine(args, self.infer_engine)
             logger.info(f'model: {self.infer_engine.model}')
         self.template = self.get_template(args, self.processor)
         self.random_state = np.random.RandomState(args.data_seed)
-        if args.tuner_backend == 'unsloth':
-            if args.model_meta.is_multimodal:
-                from unsloth import FastVisionModel as UnslothModel
-            else:
-                from unsloth import FastLanguageModel as UnslothModel
-            UnslothModel.for_inference(self.infer_engine.model)
-
-    def prepare_module(self, args: args_class):
-        if args.train_type in extra_tuners:
-            extra_tuners[args.train_type].from_pretrained(self.infer_engine.model, args.ckpt_dir, inference_mode=True)
-        else:
-            if args.tuner_backend == 'unsloth':
-                model, processor = load_by_unsloth(args.ckpt_dir, args.torch_dtype, args.max_length,
-                                                   args.quant_bits == 4, args.model_meta.is_multimodal)
-                model_info = self.processor.model_info
-                model_meta = self.processor.model_meta
-                processor.model_info = model_info
-                processor.model_meta = model_meta
-                model.model_info = model_info
-                model.model_meta = model_meta
-                self.infer_engine.model = model
-                self.infer_engine.generation_config = model.generation_config
-                self.processor = processor
-            else:
-                # TODO: vllm lora
-                self.infer_engine.model = Swift.from_pretrained(
-                    self.infer_engine.model, args.ckpt_dir, inference_mode=True)
 
     def __getattr__(self, key: str):
         try:
@@ -118,7 +52,6 @@ class SwiftInfer(SwiftPipeline):
                 return getattr(self.infer_engine, key)
             raise
 
-    @staticmethod
     def get_infer_engine(args: InferArguments, **kwargs):
         kwargs.update({
             'model_id_or_path': args.model,
@@ -167,74 +100,6 @@ class SwiftInfer(SwiftPipeline):
             logger.info(f'The inference results have been saved to result_path: `{args.result_path}`.')
         return result
 
-    @staticmethod
-    def _input_mm_data(infer_state: InferCliState) -> None:
-
-        def _input_mm_file(mm_type: Literal['image', 'video', 'audio']) -> str:
-            a_an = 'an' if mm_type[0] in {'i', 'a'} else 'a'
-            return input(f'Input {a_an} {mm_type} path or URL <<< ')
-
-        mm_types = ['image', 'video', 'audio']
-        query = infer_state.messages[-1]['content']
-        mm_tags = re.findall('|'.join(f'<{mm_type}>' for mm_type in mm_types), query)
-        # mm_tag -> mm_type/mm_key
-        mm_mapping = {f'<{mm_type}>': (mm_type, f'{mm_type}s') for mm_type in mm_types}
-        for mm_tag in mm_tags:
-            mm_type, mm_key = mm_mapping[mm_tag]
-            mm_val = getattr(infer_state, mm_key)
-            mm_val.append(_input_mm_file(mm_type))
-
-    @staticmethod
-    def _input_multiline(prompt: str) -> str:
-        query = ''
-        stop_words = '#\n'
-        while True:
-            text = f'{input(prompt)}\n'
-            prompt = ''
-            if text.endswith(stop_words):
-                query += text[:-len(stop_words)]
-                break
-            query += text
-        return query
-
-    @staticmethod
-    def _input_text(multiline_mode: bool, input_system: bool) -> str:
-        if multiline_mode:
-            addi_prompt = '[MS]' if input_system else '[M]'
-            text = SwiftInfer._input_multiline(f'<<<{addi_prompt} ')
-        else:
-            addi_prompt = '[S]' if input_system else ''
-            text = input(f'<<<{addi_prompt} ')
-        return text
-
-    @staticmethod
-    def _check_query(infer_state: InferCliState, query: str) -> Optional[str]:
-        query_std = query.strip().lower()
-        if infer_state.input_system:
-            if query == 'default-system':
-                infer_state.system = None
-            else:
-                infer_state.system = query
-            infer_state.input_system = False
-            query_std = 'clear'
-        if query_std == 'clear':
-            infer_state.clear()
-            return
-        if query_std == '':
-            return
-        if query_std == 'reset-system':
-            infer_state.input_system = True
-            return
-        if query_std == 'multi-line':
-            infer_state.multiline_mode = True
-            logger.info('End multi-line input with `#`.')
-            logger.info('Input `single-line` to switch to single-line input mode.')
-            return
-        if query_std == 'single-line':
-            infer_state.multiline_mode = False
-            return
-        return query
-
     def infer_single(self, infer_request: InferRequest, request_config: RequestConfig) -> str:
         res_or_gen = self.infer([infer_request], request_config, template=self.template, use_tqdm=False)
         if request_config.stream:
@@ -268,14 +133,15 @@ class SwiftInfer(SwiftPipeline):
         while True:
             if not support_multi_round:
                 infer_state.clear()
-            query = self._input_text(infer_state.multiline_mode, infer_state.input_system)
+            query = infer_state.input_text()
             if query.strip().lower() in {'exit', 'quit'}:
                 break
-            query = self._check_query(infer_state, query)
+            query = infer_state.check_query(query)
             if query is None:
                 continue
             infer_state.add_query(query)
-            self._input_mm_data(infer_state)
+            if args.is_multimodal:
+                infer_state.input_mm_data()
             data = infer_state.to_dict()
             response = self.infer_single(InferRequest(**data), request_config)
             infer_state.add_response(response)
