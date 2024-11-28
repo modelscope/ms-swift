@@ -150,7 +150,7 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
             self.weight_type = 'adapter'
         else:
             self.weight_type = 'full'
-            self.model = self.model or self.ckpt_dir
+            self.model = self.ckpt_dir or self.model
 
     def _init_pt_ddp(self):
         if self.infer_backend != 'pt' or not is_dist():
