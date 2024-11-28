@@ -17,7 +17,7 @@ if TYPE_CHECKING:
                            ProcessorMixin)
     from .model import (MODEL_MAPPING, ModelType, get_model_tokenizer, safe_snapshot_download, HfConfigFactory,
                         ModelInfo, ModelMeta, ModelKeys, register_model_arch, MultiModelKeys, ModelArch, get_model_arch,
-                        MODEL_ARCH_MAPPING)
+                        MODEL_ARCH_MAPPING, get_model_info_meta)
     from .dataset import (AlpacaPreprocessor, MessagesPreprocessor, AutoPreprocessor, DATASET_MAPPING, MediaResource,
                           register_dataset, register_dataset_info, EncodePreprocessor, LazyLLMDataset,
                           ConstantLengthDataset, standard_keys, load_dataset, DATASET_TYPE, sample_dataset,
@@ -47,7 +47,7 @@ else:
         'model': [
             'MODEL_MAPPING', 'ModelType', 'get_model_tokenizer', 'safe_snapshot_download', 'HfConfigFactory',
             'ModelInfo', 'ModelMeta', 'ModelKeys', 'register_model_arch', 'MultiModelKeys', 'ModelArch',
-            'MODEL_ARCH_MAPPING', 'get_model_arch'
+            'MODEL_ARCH_MAPPING', 'get_model_arch', 'get_model_info_meta'
         ],
         'dataset': [
             'AlpacaPreprocessor', 'ClsPreprocessor', 'ComposePreprocessor', 'MessagesPreprocessor', 'DATASET_MAPPING',
