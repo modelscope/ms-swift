@@ -3,6 +3,9 @@
         "dataset_id": "AI-ModelScope/OpenO1-SFT",
         "hf_dataset_id": "O1-OPEN/OpenO1-SFT",
         "subsets": ["default"],
+        "columns": {
+            "prompt": "query"
+        },
         "tags": ["chat", "general", "o1"]
     },
     "multi-alpaca": {
