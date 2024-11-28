@@ -81,7 +81,7 @@ class SwiftEval(SwiftPipeline):
                 result = {}
                 for dataset, report in zip(args.eval_dataset_vlm, reports):
                     metric = next(iter(report)).rsplit('_')[-1]
-                    result[dataset] = {metric: list(report.values())[0]['Overall']}
+                    result[dataset] = {metric: list(report.values())[0]}
                 eval_report['vlmeval'] = result
 
         if args.result_jsonl:
