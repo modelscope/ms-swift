@@ -77,9 +77,19 @@ class SwiftInfer(SwiftPipeline):
                 extra_tuners[args.train_type].from_pretrained(
                     self.infer_engine.model, args.ckpt_dir, inference_mode=True)
             else:
-                # TODO: vllm lora
-                self.infer_engine.model = Swift.from_pretrained(
-                    self.infer_engine.model, args.ckpt_dir, inference_mode=True)
+                if args.tuner_backend == 'unsloth':
+                    from unsloth import FastLanguageModel
+                    self.infer_engine.model = FastLanguageModel.from_pretrained(
+                        model_name=self.model,
+                        dtype=self.model.dtype,
+                        max_seq_length=args.max_length,
+                        load_in_4bit=args.quant_bits == 4,
+                        trust_remote_code=True,
+                    )
+                else:
+                    # TODO: vllm lora
+                    self.infer_engine.model = Swift.from_pretrained(
+                        self.infer_engine.model, args.ckpt_dir, inference_mode=True)
             logger.info(f'model: {self.infer_engine.model}')
         self.template = self.get_template(args, self.processor)
         self.random_state = np.random.RandomState(args.data_seed)

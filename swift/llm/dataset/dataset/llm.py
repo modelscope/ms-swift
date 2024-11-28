@@ -3,10 +3,7 @@ import re
 from functools import partial
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from datasets import Dataset as HfDataset
-from datasets import IterableDataset
-
-from ..preprocessor import (DATASET_TYPE, AlpacaPreprocessor, ClsPreprocessor, MessagesPreprocessor,
+from ..preprocessor import (AlpacaPreprocessor, ClsPreprocessor, MessagesPreprocessor,
                             ResponsePreprocessor, RowPreprocessor, TextGenerationPreprocessor)
 from ..register import DatasetMeta, SubsetDataset, register_dataset
 
