@@ -52,14 +52,14 @@ class PtEngine(InferEngine):
             model_id_or_path: str,
             torch_dtype: Optional[torch.dtype] = None,
             *,
+            max_batch_size: int = 1,
+            # hub kwargs
             model_type: Optional[str] = None,
             use_hf: Optional[bool] = None,
             revision: Optional[str] = None,
-            attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None,
-            # TODO: async batch_size
-            max_batch_size: int = 1,
             load_model: bool = True,
             # model kwargs
+            attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None,
             device_map: Optional[Union[str, Dict[str, Any]]] = None,
             quantization_config: Optional[Dict[str, Any]] = None,
             model_kwargs: Optional[Dict[str, Any]] = None,
@@ -95,7 +95,7 @@ class PtEngine(InferEngine):
         if generation_config.eos_token_id is None:
             generation_config.eos_token_id = self.tokenizer.eos_token_id
         if generation_config.pad_token_id is None:
-            generation_config.pad_token_id = template.pad_token_id
+            generation_config.pad_token_id = self.tokenizer.pad_token_id
 
     @staticmethod
     def preprocess_logits(batched_logits: Optional[List[torch.Tensor]], batched_generate_ids: torch.Tensor,
@@ -201,7 +201,7 @@ class PtEngine(InferEngine):
                 generate_ids = batched_generate_ids[i]
 
                 # ignore pad_token
-                masks = generate_ids != template.pad_token_id
+                masks = generate_ids != self.tokenizer.pad_token_id
                 generate_ids = generate_ids[masks].tolist()
                 logprobs_list = None
                 if batched_logprobs[i]:
@@ -209,7 +209,7 @@ class PtEngine(InferEngine):
 
                 is_finished[i] = (
                     all_is_finished or is_finished[i]
-                    or len(generate_ids) > 0 and generate_ids[-1] == template.pad_token_id)
+                    or len(generate_ids) > 0 and generate_ids[-1] == self.tokenizer.pad_token_id)
                 delta_text = infer_streamers[i].get_printable_text(generate_ids, is_finished[i])
                 if not delta_text and not is_finished[i]:
                     res.append(None)
@@ -269,7 +269,7 @@ class PtEngine(InferEngine):
             generate_ids = batched_generate_ids[i]
 
             # ignore pad_token
-            masks = generate_ids != template.pad_token_id
+            masks = generate_ids != self.tokenizer.pad_token_id
             generate_ids = generate_ids[masks].tolist()
             logprobs_list = None
             if batched_logprobs is not None:
@@ -277,7 +277,7 @@ class PtEngine(InferEngine):
 
             logprobs = self._get_logprobs(self.tokenizer, logprobs_list, generate_ids, generation_config.top_logprobs)
             usage_info = self._get_usage_info(num_prompt_tokens, len(generate_ids))
-            response = template.skip_stop_decode(generate_ids, True)
+            response = template.decode(generate_ids, True)
             if isinstance(response, str):
                 toolcall = self._get_toolcall(response, True)
                 choices = [
@@ -291,7 +291,7 @@ class PtEngine(InferEngine):
             elif isinstance(response, Image.Image):
                 res.append(
                     ImagesResponse(
-                        created=time.time(), data=[ImageObject(b64_json=MultiModalRequestMixin._to_base64(response))]))
+                        created=time.time(), data=[ImageObject(b64_json=MultiModalRequestMixin.to_base64(response))]))
 
         return res
 

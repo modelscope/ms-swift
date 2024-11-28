@@ -1,7 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Optional, Union
 
-import torch
 import torch.nn as nn
 from transformers import PreTrainedModel
 from trl import ORPOTrainer as HFORPOTrainer

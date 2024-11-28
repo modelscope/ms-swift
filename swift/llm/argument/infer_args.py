@@ -106,13 +106,18 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
     """
     ckpt_dir: Optional[str] = field(default=None, metadata={'help': '/path/to/your/vx-xxx/checkpoint-xxx'})
     infer_backend: Literal['vllm', 'pt', 'lmdeploy'] = 'pt'
+
     result_path: Optional[str] = None
+    writer_buffer_size: int = 65536  # B
     # for pt engine
     max_batch_size: int = 1
 
     # only for inference
     val_dataset_sample: Optional[int] = None
     stream: Optional[bool] = None
+
+    # From args.json
+    train_type: Optional[str] = None
 
     def get_result_path(self, folder_name, suffix: str = '.jsonl') -> str:
         result_dir = self.ckpt_dir or self.model_info.model_dir
@@ -166,8 +171,6 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
         self._init_eval_human()
         self._init_stream()
         self._init_pt_ddp()
-        if self.ckpt_dir is None:
-            self.train_type = 'full'
 
     def _init_eval_human(self):
         if len(self.dataset) == 0 and len(self.val_dataset) == 0:

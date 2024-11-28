@@ -24,15 +24,17 @@ class EvalArguments(DeployArguments):
     """
     eval_dataset: List[str] = field(default_factory=list)
     eval_limit: Optional[int] = None
-
     eval_output_dir: str = 'eval_output'
+
     do_sample: bool = False
     verbose: bool = False
-    max_batch_size: Optional[int] = None
+    max_batch_size: int = 16
 
     def __post_init__(self):
         super().__post_init__()
         self._init_eval_dataset()
+        self.eval_output_dir = to_abspath(self.eval_output_dir)
+        logger.info(f'eval_output_dir: {self.eval_output_dir}')
 
     def _init_eval_dataset(self):
         if isinstance(self.eval_dataset, str):
@@ -57,8 +59,11 @@ class EvalArguments(DeployArguments):
                                  f'opencompass_dataset: {OpenCompassBackendManager.list_datasets()}.\n\n'
                                  f'vlmeval_dataset: {VLMEvalKitBackendManager.list_supported_datasets()}.')
 
+        logger.info(f'opencompass dataset: {self.eval_dataset_oc}')
+        logger.info(f'vlmeval dataset: {self.eval_dataset_vlm}')
+
     def _init_result_path(self) -> None:
-        if self.result_path is not None:
-            return
+        self.time = dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')
         result_dir = self.ckpt_dir or self.model_info.model_dir
-        self.result_path = to_abspath(os.path.join(result_dir, 'eval_result.jsonl'))
+        self.result_jsonl = to_abspath(os.path.join(result_dir, 'eval_result.jsonl'))
+        super()._init_result_path()

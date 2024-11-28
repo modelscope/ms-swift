@@ -7,7 +7,7 @@ from typing import List, Literal, Optional
 
 import torch
 import torch.distributed as dist
-from transformers import Seq2SeqTrainingArguments
+from transformers import Seq2SeqTrainingArguments, TrainingArguments
 from transformers.utils import is_torch_npu_available
 from transformers.utils.versions import require_version
 
@@ -38,11 +38,13 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
     report_to: List[str] = field(default_factory=lambda: ['tensorboard'])
     remove_unused_columns: bool = False
     logging_first_step: bool = True
+    # Usually, the point where eval_loss is minimized does not represent the best model.
+    metric_for_best_model: str = 'loss'
 
     def _init_output_dir(self):
         if self.output_dir is not None:
             return
-        self.output_dir = f'output/{self.model_name}'
+        self.output_dir = f'output/{self.model_suffix}'
 
     def __post_init__(self):
         self._init_output_dir()
@@ -59,7 +61,7 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
             self.evaluation_strategy = IntervalStrategy.NO
             self.eval_strategy = IntervalStrategy.NO
             self.eval_steps = None
-        elif self.eval_steps is None:
+        else:
             self.evaluation_strategy = self.save_strategy
             self.eval_strategy = self.save_strategy
             self.eval_steps = self.save_steps
@@ -91,13 +93,12 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
         freeze_llm (bool): Flag to indicate if LLM should be frozen. Default is False.
         freeze_parameters (List[str]): List of parameters to freeze. Default is an empty list.
         freeze_parameters_ratio (float): Ratio of parameters to freeze. Default is 0.
-        additional_trainable_parameters (List[str]): List of additional trainable parameters. Default is an empty list.
         add_version (bool): Flag to indicate if output directory suffix should be added. Default is True.
         resume_from_checkpoint (Optional[str]): Path to resume from checkpoint. Default is None.
         resume_only_model (bool): Flag to indicate if only the model should be resumed when resume-training.
             Default is False.
         check_model (bool): Flag to check if the model is the latest. Default is True.
-            Turn this to False if you network is unstable.
+            Turn this to False if your network is unstable.
         loss_type (Optional[str]): Type of loss function. Default is None.
         packing (bool): Flag to indicate if packing is used. Default is False.
         lazy_tokenize (Optional[bool]): Flag to indicate if lazy tokenization is used. Default is None.
@@ -108,6 +109,7 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
     resume_only_model: bool = False
     check_model: bool = True
     loss_type: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
+    num_labels: Optional[int] = None
 
     # dataset
     packing: bool = False

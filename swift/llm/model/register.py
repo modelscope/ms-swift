@@ -141,11 +141,15 @@ def get_model_tokenizer_from_local(model_dir: str,
     torch_dtype = model_info.torch_dtype
     model_config.torch_dtype = torch_dtype
     HfConfigFactory.compat_zero3(model_config)
-    if model_info.rope_scaling is not None:
-        HfConfigFactory.set_config_attr(model_config, 'rope_scaling', model_info.rope_scaling)
+    rope_scaling = kwargs.get('rope_scaling')
+    if rope_scaling is not None:
+        HfConfigFactory.set_config_attr(model_config, 'rope_scaling', rope_scaling)
 
     if tokenizer is None:
         tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
+
+    if model_kwargs.get('num_labels') is not None:
+        model_config.num_labels = model_kwargs.pop('num_labels')
 
     model = None
     if load_model:
@@ -230,7 +234,7 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     model_config = kwargs.get('model_config')
     if model_config is None:
         model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    AttnImpl.update_attn_impl(model_config, model_info.attn_impl)
+    AttnImpl.update_attn_impl(model_config, kwargs.get('attn_impl'))
     kwargs['model_config'] = model_config
     return get_model_tokenizer_from_local(model_dir, model_info, model_kwargs, load_model, **kwargs)
 
@@ -340,11 +344,7 @@ def get_matched_model_meta(model_id_or_path: str) -> Optional[ModelMeta]:
             return model_meta
 
 
-def get_model_info(model_dir: str,
-                   model_type: Optional[str],
-                   quantization_config,
-                   attn_impl: AttnImpl,
-                   rope_scaling: Optional[Dict[str, Any]] = None) -> ModelInfo:
+def get_model_info(model_dir: str, model_type: Optional[str], quantization_config) -> ModelInfo:
     config_dict = PretrainedConfig.get_config_dict(model_dir)[0]
     if quantization_config is not None:
         config_dict['quantization_config'] = quantization_config
@@ -361,7 +361,7 @@ def get_model_info(model_dir: str,
             model_type = model_types[0]
 
     res = ModelInfo(model_type, model_dir, torch_dtype, max_model_len, quant_info.get('quant_method'),
-                    quant_info.get('quant_bits'), attn_impl, rope_scaling)
+                    quant_info.get('quant_bits'))
     return res
 
 
@@ -381,22 +381,71 @@ def patch_processor(processor):
     processor.__class__._patch = True
 
 
-def get_model_tokenizer(model_id_or_path: str,
-                        torch_dtype: Optional[torch.dtype] = None,
-                        device_map: Union[str, Dict[str, Any], None] = None,
-                        load_model: bool = True,
-                        *,
-                        quantization_config=None,
-                        model_type: Optional[str] = None,
-                        attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None,
-                        rope_scaling: Optional[Dict[str, Any]] = None,
-                        use_hf: Optional[bool] = None,
-                        hub_token: Optional[str] = None,
-                        revision: Optional[str] = None,
-                        download_model: Optional[bool] = None,
-                        automodel_class=AutoModelForCausalLM,
-                        model_kwargs: Optional[Dict[str, Any]] = None,
-                        **kwargs) -> Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]:
+def get_model_info_meta(
+        model_id_or_path: str,
+        torch_dtype: Optional[torch.dtype] = None,
+        *,
+        # hub
+        use_hf: Optional[bool] = None,
+        hub_token: Optional[str] = None,
+        revision: Optional[str] = None,
+        download_model: bool = False,
+        # model kwargs
+        model_type: Optional[str] = None,
+        quantization_config=None,
+        **kwargs) -> Tuple[ModelInfo, ModelMeta]:
+    ignore_file_pattern = ['*.zip', '*.gguf', '*.pth', '*.pt', 'consolidated*']
+    model_meta = get_matched_model_meta(model_id_or_path)
+    if getattr(model_meta, 'ignore_file_pattern', None) is not None:
+        ignore_file_pattern += model_meta.ignore_file_pattern
+
+    model_dir = safe_snapshot_download(
+        model_id_or_path,
+        revision=revision,
+        download_model=download_model,
+        use_hf=use_hf,
+        ignore_file_pattern=ignore_file_pattern,
+        hub_token=hub_token)
+    model_info = get_model_info(
+        model_dir, getattr(model_meta, 'model_type', None), quantization_config=quantization_config)
+    if model_type is None and model_info.model_type is not None:
+        model_type = model_info.model_type
+        logger.info(f'Setting model_type: {model_type}')
+    if model_meta is None and model_type is not None:
+        model_meta = MODEL_MAPPING[model_type]
+    if model_meta is None:
+        model_meta = ModelMeta('', [], '', get_model_tokenizer_from_local, model_arch=None)
+        logger.info(f'Temporarily create model_meta: {model_meta}')
+
+    if torch_dtype is None:
+        torch_dtype = model_meta.torch_dtype or get_default_torch_dtype(model_info.torch_dtype)
+        logger.info(f'Setting torch_dtype: {torch_dtype}')
+    _check_torch_dtype(torch_dtype)
+    model_info.torch_dtype = torch_dtype
+
+    model_meta.check_requires()
+    return model_info, model_meta
+
+
+def get_model_tokenizer(
+        model_id_or_path: str,
+        torch_dtype: Optional[torch.dtype] = None,
+        device_map: Union[str, Dict[str, Any], None] = None,
+        load_model: bool = True,
+        *,
+        # hub
+        use_hf: Optional[bool] = None,
+        hub_token: Optional[str] = None,
+        revision: Optional[str] = None,
+        download_model: Optional[bool] = None,
+        # model kwargs
+        model_type: Optional[str] = None,
+        quantization_config=None,
+        attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None,
+        rope_scaling: Optional[Dict[str, Any]] = None,
+        automodel_class=AutoModelForCausalLM,
+        model_kwargs: Optional[Dict[str, Any]] = None,
+        **kwargs) -> Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]:
     """
     model_id_or_path: The path to the model or the model_id from modelscope/huggingface (controlled by `use_hf`).
     torch_dtype: If you pass `None`, it will retrieve the torch_dtype from the config.json file.
@@ -414,57 +463,43 @@ def get_model_tokenizer(model_id_or_path: str,
         model_kwargs = {}
     if download_model is None:
         download_model = load_model
-    ignore_file_pattern = ['*.zip', '*.gguf', '*.pth', '*.pt', 'consolidated*']
-    model_meta = get_matched_model_meta(model_id_or_path)
-    if getattr(model_meta, 'ignore_file_pattern', None) is not None:
-        ignore_file_pattern += model_meta.ignore_file_pattern
 
-    model_dir = safe_snapshot_download(
+    model_info, model_meta = get_model_info_meta(
         model_id_or_path,
+        torch_dtype,
+        use_hf=use_hf,
+        hub_token=hub_token,
         revision=revision,
         download_model=download_model,
-        use_hf=use_hf,
-        ignore_file_pattern=ignore_file_pattern,
-        hub_token=hub_token)
+        model_type=model_type,
+        quantization_config=quantization_config)
 
     if not use_torchacc() and device_map is None:
         device_map = get_default_device_map()
     model_kwargs['device_map'] = device_map
     if quantization_config:
         model_kwargs['quantization_config'] = quantization_config
-
-    model_info = get_model_info(
-        model_dir,
-        getattr(model_meta, 'model_type', None),
-        quantization_config=quantization_config,
-        attn_impl=attn_impl,
-        rope_scaling=rope_scaling)
-    if model_type is None and model_info.model_type is not None:
-        model_type = model_info.model_type
-        logger.info(f'Setting model_type: {model_type}')
-    if model_meta is None and model_type is not None:
-        model_meta = MODEL_MAPPING[model_type]
-    if model_meta is None:
-        model_meta = ModelMeta('', [], '', get_model_tokenizer_from_local, model_arch=None)
-        logger.info(f'Temporarily create model_meta: {model_meta}')
-
-    if torch_dtype is None:
-        torch_dtype = model_meta.torch_dtype or get_default_torch_dtype(model_info.torch_dtype)
-        logger.info(f'Setting torch_dtype: {torch_dtype}')
-    _check_torch_dtype(torch_dtype)
-    model_info.torch_dtype = torch_dtype
-
-    model_meta.check_requires()
+    model_dir = model_info.model_dir
     get_function = model_meta.get_function
     kwargs['automodel_class'] = automodel_class
-    model, tokenizer = get_function(model_dir, model_info, model_kwargs, load_model, **kwargs)
+    kwargs['attn_impl'] = attn_impl
+    kwargs['rope_scaling'] = rope_scaling
+    model, processor = get_function(model_dir, model_info, model_kwargs, load_model, **kwargs)
 
-    if not isinstance(tokenizer, PreTrainedTokenizerBase) and hasattr(tokenizer, 'tokenizer'):
-        patch_processor(tokenizer)
-    tokenizer.model_info = model_info
-    tokenizer.model_meta = model_meta
+    if not isinstance(processor, PreTrainedTokenizerBase) and hasattr(processor, 'tokenizer'):
+        tokenizer = processor.tokenizer
+        patch_processor(processor)
+    else:
+        tokenizer = processor
+    processor.model_info = model_info
+    processor.model_meta = model_meta
+    tokenizer.pad_token_id = tokenizer.pad_token_id or tokenizer.eos_token_id
+    assert tokenizer.eos_token_id is not None
+    assert tokenizer.pad_token_id is not None
 
     if model is not None:
+        if model.config.pad_token_id is None:
+            model.config.pad_token_id = tokenizer.pad_token_id
         model.model_info = model_info
         model.model_meta = model_meta
         model.model_dir = model_dir
@@ -475,5 +510,6 @@ def get_model_tokenizer(model_id_or_path: str,
         if not hasattr(model, 'generation_config') and os.path.isfile(generation_config_path):
             model.generation_config = GenerationConfig.from_pretrained(model_dir)
         # fix llama2 warning
-        fix_do_sample_warning(model.generation_config)
+        if getattr(model, 'generation_config', None):
+            fix_do_sample_warning(model.generation_config)
     return model, tokenizer

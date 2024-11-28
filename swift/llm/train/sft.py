@@ -33,7 +33,7 @@ class SwiftSft(SwiftPipeline):
         self._prepare_model_tokenizer()
         self._prepare_template(True)
         self._prepare_callbacks()
-        self.model = prepare_model(self.model, self.args)
+        self.model = prepare_model(self.args, self.model)
         logger.info(f'model: {self.model}')
         model_parameter_info = get_model_parameter_info(self.model)
         self.train_msg['model_parameter_info'] = model_parameter_info
@@ -72,12 +72,20 @@ class SwiftSft(SwiftPipeline):
 
     def _get_model_tokenizer(self, model, model_type, model_revision):
         args = self.args
-        model_kwargs = args.get_model_kwargs()
+        kwargs = args.get_model_kwargs()
         # compat rlhf
-        model_kwargs['model_id_or_path'] = model
-        model_kwargs['model_type'] = model_type
-        model_kwargs['model_revision'] = model_revision
-        return get_model_tokenizer(**model_kwargs, use_unsloth=args.tuner_backend == 'unsloth')
+        kwargs['model_id_or_path'] = model
+        kwargs['model_type'] = model_type
+        kwargs['model_revision'] = model_revision
+        model_kwargs = {}
+        if args.num_labels is not None:
+            from transformers import AutoModelForSequenceClassification
+            kwargs['automodel_class'] = AutoModelForSequenceClassification
+            model_kwargs = {'num_labels': args.num_labels}
+        model, tokenizer = get_model_tokenizer(
+            **kwargs, model_kwargs=model_kwargs, use_unsloth=(args.tuner_backend == 'unsloth'))
+        model.num_labels = args.num_labels
+        return model, tokenizer
 
     def _prepare_model_tokenizer(self):
         args = self.args
@@ -88,7 +96,8 @@ class SwiftSft(SwiftPipeline):
 
         logger.info(f'model_info: {self.model.model_info}')
 
-        self._prepare_generation_config()
+        if getattr(self.model, 'generation_config', None):
+            self._prepare_generation_config()
         self._prepare_gradient_checkpointing()
 
     def _prepare_template(self, use_chat_template: bool) -> None:
@@ -156,7 +165,7 @@ class SwiftSft(SwiftPipeline):
     def _get_trainer_kwargs(self):
         args = self.args
         if args.predict_with_generate:
-            compute_metrics = partial(compute_nlg_metrics, tokenizer=tokenizer)
+            compute_metrics = partial(compute_nlg_metrics, tokenizer=self.tokenizer)
             preprocess_logits_for_metrics = None
         else:
             compute_metrics = partial(
@@ -211,17 +220,13 @@ class SwiftSft(SwiftPipeline):
 
     def _get_optimizers(self, train_dataset):
         args = self.args
-        optimizer_callback = optimizers_map['default']
         if args.lorap_lr_ratio:
             optimizer_callback = optimizers_map['lorap']
-        if args.use_galore:
-            if args.galore_target_modules is None:
-                args.galore_target_modules = find_all_linears(self.model)
-            if args.galore_with_embedding:
-                args.galore_target_modules += find_embedding(self.model)
+        elif args.use_galore:
             optimizer_callback = optimizers_map['galore']
-
-        return optimizer_callback(self.model, train_dataset, args)
+        else:
+            optimizer_callback = optimizers_map['default']
+        return optimizer_callback(args, self.model, train_dataset)
 
     def _prepare_callbacks(self):
         from .callback import DynamicLayerActivationCallback, TrainerAdapterCallback

@@ -11,7 +11,6 @@ from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
 from transformers.utils import is_peft_available
 
-from swift.plugin import MeanMetric, get_loss_func
 from swift.utils import compute_acc, use_torchacc
 from swift.utils.torchacc_utils import ta_trim_graph
 from .mixin import SwiftMixin
@@ -24,6 +23,7 @@ class Trainer(SwiftMixin, HfTrainer):
 class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
 
     def __init__(self, *args, **kwargs):
+        from swift.plugin import MeanMetric
         super().__init__(*args, **kwargs)
         self._custom_metrics['acc'] = MeanMetric()
 

@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import Any, Dict
+from dataclasses import dataclass, field
+from typing import Any, Dict, Optional
 
 import torch
 import torch.nn as nn
@@ -8,16 +9,20 @@ from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
-from ..utils import findall
+from ..utils import Prompt, findall
 
-register_template(
-    TemplateMeta(
-        LLMTemplateType.deepseek,
-        prefix=[['bos_token_id']],
-        prompt=['User: {{QUERY}}\n\nAssistant:'],
-        chat_sep=[['eos_token_id']],
-        system_prefix=[['bos_token_id'], '{{SYSTEM}}\n\n'],
-    ))
+
+@dataclass
+class DeepseekTemplateMeta(TemplateMeta):
+    prefix: Prompt = field(default_factory=lambda: [['bos_token_id']])
+    prompt: Prompt = field(default_factory=lambda: ['User: {{QUERY}}\n\nAssistant:'])
+    chat_sep: Optional[Prompt] = field(default_factory=lambda: [['eos_token_id']])
+    suffix: Prompt = field(default_factory=lambda: [['eos_token_id']])
+    system_prefix: Optional[Prompt] = field(default_factory=lambda: [['bos_token_id'], '{{SYSTEM}}\n\n'])
+    auto_add_bos: bool = True
+
+
+register_template(DeepseekTemplateMeta(LLMTemplateType.deepseek, ))
 
 register_template(
     TemplateMeta(
@@ -37,6 +42,8 @@ class DeepseekVLTemplate(Template):
     skip_prompt = False
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        is_janus = getattr(self, 'is_janus', False)
+
         encoded = super()._encode(inputs)
         if len(encoded) == 0:
             return encoded
@@ -50,15 +57,22 @@ class DeepseekVLTemplate(Template):
             new_input_ids += input_ids[lo:hi]
             if labels is not None:
                 new_labels += labels[lo:hi]
-            new_input_ids += [processor.image_id] * processor.num_image_tokens
-            new_labels += [-100] * processor.num_image_tokens
+            image_tokens = [processor.image_id] * processor.num_image_tokens
+            if is_janus:
+                image_tokens = [processor.image_start_id] + image_tokens + [processor.image_end_id]
+            new_input_ids += image_tokens
+            new_labels += [-100] * len(image_tokens)
             lo = hi + 1
         new_input_ids += input_ids[lo:]
         if labels is not None:
             new_labels += labels[lo:]
         else:
             new_labels = None
-        from deepseek_vl.models.processing_vlm import VLChatProcessorOutput
+        if is_janus:
+            from janus.models.processing_vlm import VLChatProcessorOutput
+        else:
+            from deepseek_vl.models.processing_vlm import VLChatProcessorOutput
+
         images_outputs = processor.image_processor(images, return_tensors='pt')
         output = VLChatProcessorOutput(
             sft_format=None,
@@ -66,36 +80,34 @@ class DeepseekVLTemplate(Template):
             pixel_values=images_outputs.pixel_values,
             num_image_tokens=torch.tensor([processor.num_image_tokens] * len(idx_list)))
         batched_output = dict(processor.batchify([output]))
-        # batched_output['pixel_values'] = batched_output['pixel_values'].to(dtype=model.dtype)
+        batched_output['pixel_values'] = batched_output['pixel_values'].to(dtype=model.dtype)
         encoded = {'input_ids': new_input_ids, 'labels': new_labels, '_data': batched_output}
         return encoded
 
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        inputs['pixel_values'] = pixel_values['pixel_values'].to(dtype=model.dtype)
         inputs_embeds = model.prepare_inputs_embeds(**inputs)[0]
         return {'inputs_embeds': inputs_embeds}
 
 
-register_template(
-    TemplateMeta(
-        MLLMTemplateType.deepseek_vl,
-        prefix=['<｜begin▁of▁sentence｜>{{SYSTEM}}\n\n'],
-        prompt=['User: {{QUERY}}\n\nAssistant:'],
-        chat_sep=['<｜end▁of▁sentence｜>'],
-        suffix=['<｜end▁of▁sentence｜>'],
-        template_cls=DeepseekVLTemplate,
-        default_system=('You are a helpful language and vision assistant. '
-                        'You are able to understand the visual content that the user provides, '
-                        'and assist the user with a variety of tasks using natural language.')))
+@dataclass
+class DeepseekVLTemplateMeta(DeepseekTemplateMeta):
+    default_system: Optional[str] = ('You are a helpful language and vision assistant. '
+                                     'You are able to understand the visual content that the user provides, '
+                                     'and assist the user with a variety of tasks using natural language.')
 
-register_template(
-    TemplateMeta(
-        LLMTemplateType.deepseek2,
-        prefix=[[100000]],
-        prompt=['User: {{QUERY}}\n\nAssistant:'],
-        chat_sep=[[100001]],
-        suffix=[[100001]],
-        system_prefix=[[100000], '{{SYSTEM}}\n\n']))
+
+register_template(DeepseekVLTemplateMeta(
+    MLLMTemplateType.deepseek_vl,
+    template_cls=DeepseekVLTemplate,
+))
+
+
+class DeepseekJanus(DeepseekVLTemplate):
+    is_janus = True
+    image_placeholder = ['<image_placeholder>\n']
+
+
+register_template(DeepseekVLTemplateMeta(MLLMTemplateType.deepseek_janus, template_cls=DeepseekJanus))
 
 register_template(
     TemplateMeta(

@@ -33,7 +33,6 @@ class SwiftEval(SwiftPipeline):
         for k in list(args_dict.keys()):
             if k not in parameters:
                 args_dict.pop(k)
-        args_dict.pop('result_path')
         mp = multiprocessing.get_context('spawn')
         process = mp.Process(target=deploy_main, args=(DeployArguments(**args_dict), ))
         process.start()
@@ -57,16 +56,19 @@ class SwiftEval(SwiftPipeline):
     def run(self):
         args = self.args
         eval_report = {
-            'time': dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f'),
+            'time': args.time,
             'model': args.ckpt_dir or args.model,
+            'result_path': args.result_path,
+            'eval_output_dir': args.eval_output_dir,
+            'eval_limit': args.eval_limit
         }
         with self.run_deploy():
             if args.eval_dataset_oc:
                 reports = self.run_task(args.eval_dataset_oc, 'opencompass')
                 result = {}
                 for report in reports:
-                    if report[args.model_name] != '-':
-                        result[report['dataset']] = {report['metric']: report[args.model_name]}
+                    if report[args.model_suffix] != '-':
+                        result[report['dataset']] = {report['metric']: report[args.model_suffix]}
                 eval_report['opencompass'] = result
             if args.eval_dataset_vlm:
                 reports = self.run_task(args.eval_dataset_vlm, 'vlmeval')
@@ -76,9 +78,9 @@ class SwiftEval(SwiftPipeline):
                     result[dataset] = {metric: list(report.values())[0]['Overall']}
                 eval_report['vlmeval'] = result
 
-        if args.result_path:
-            append_to_jsonl(args.result_path, eval_report)
-            logger.info(f'The eval result have been saved to result_path: `{args.result_path}`.')
+        if args.result_jsonl:
+            append_to_jsonl(args.result_jsonl, eval_report)
+            logger.info(f'The eval result have been saved to result_jsonl: `{args.result_jsonl}`.')
         return eval_report
 
     def run_task(self, dataset: List[str], eval_backend: str):
@@ -100,10 +102,10 @@ class SwiftEval(SwiftPipeline):
             'eval_backend': 'OpenCompass',
             'eval_config': {
                 'datasets': dataset,
-                'batch_size': args.max_batch_size or 256,
+                'batch_size': args.max_batch_size,
                 'work_dir': os.path.join(args.eval_output_dir, 'opencompass'),
                 'models': [{
-                    'path': args.model_name,
+                    'path': args.model_suffix,
                     'openai_api_base': args.url,
                 }]
             }
@@ -120,9 +122,9 @@ class SwiftEval(SwiftPipeline):
                 'model': [{
                     'name': 'CustomAPIModel',
                     'api_base': args.url,
-                    'type': args.model_name,
+                    'type': args.model_suffix,
                 }],
-                'nproc': args.max_batch_size or 16,
+                'nproc': args.max_batch_size,
             }
         }
 

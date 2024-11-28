@@ -6,7 +6,7 @@ from swift.trainers.optimizers.galore import create_optimizer_and_scheduler
 from swift.utils import get_dist_setting
 
 
-def calculate_max_steps(dataset, args: 'TrainArguments') -> int:
+def calculate_max_steps(args: 'TrainArguments', dataset) -> int:
     if args.max_steps and args.max_steps > 0:
         max_steps = args.max_steps
     else:
@@ -20,8 +20,8 @@ def calculate_max_steps(dataset, args: 'TrainArguments') -> int:
     return max_steps
 
 
-def create_galore_optimizers(model, dataset, args):
-    training_steps = calculate_max_steps(dataset, args)
+def create_galore_optimizers(args, model, dataset):
+    training_steps = calculate_max_steps(args, dataset)
     return create_optimizer_and_scheduler(
         model,
         args.training_args,
@@ -31,7 +31,7 @@ def create_galore_optimizers(model, dataset, args):
         weight_decay=args.weight_decay)
 
 
-def create_lorap_optimizers(model, dataset, args):
+def create_lorap_optimizers(args, model, dataset):
     args = args.training_args
     optimizer_grouped_parameters = None
     if hasattr(model, 'create_optimizer_param_groups'):
@@ -56,7 +56,7 @@ def create_lorap_optimizers(model, dataset, args):
     return optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs), None
 
 
-def default_create_optimizers(model, dataset, args):
+def default_create_optimizers(args, model, dataset):
     return None, None
 
 

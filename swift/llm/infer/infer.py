@@ -12,6 +12,7 @@ from datasets import Dataset as HfDataset
 
 from swift.llm import (InferArguments, InferRequest, Messages, Processor, SwiftPipeline, Template, get_template,
                        load_dataset, sample_dataset)
+from swift.plugin import extra_tuners
 from swift.tuners import Swift
 from swift.utils import get_logger, is_master, open_jsonl_writer
 from .protocol import RequestConfig
@@ -72,8 +73,13 @@ class SwiftInfer(SwiftPipeline):
             merge_lora(args, device_map='cpu')
         self.infer_engine = self.get_infer_engine(args)
         if args.infer_backend == 'pt' and args.ckpt_dir and args.weight_type == 'adapter':
-            # TODO: vllm lora
-            self.infer_engine.model = Swift.from_pretrained(self.infer_engine.model, args.ckpt_dir, inference_mode=True)
+            if args.train_type in extra_tuners:
+                extra_tuners[args.train_type].from_pretrained(
+                    self.infer_engine.model, args.ckpt_dir, inference_mode=True)
+            else:
+                # TODO: vllm lora
+                self.infer_engine.model = Swift.from_pretrained(
+                    self.infer_engine.model, args.ckpt_dir, inference_mode=True)
             logger.info(f'model: {self.infer_engine.model}')
         self.template = self.get_template(args, self.processor)
         self.random_state = np.random.RandomState(args.data_seed)
@@ -119,7 +125,8 @@ class SwiftInfer(SwiftPipeline):
 
     def main(self):
         args = self.args
-        context = open_jsonl_writer(args.result_path, buffer_size=65536) if args.result_path else nullcontext()
+        context = open_jsonl_writer(
+            args.result_path, buffer_size=args.writer_buffer_size) if args.result_path else nullcontext()
         with context as json_writer:
             self.jsonl_writer = json_writer
             super().main()
@@ -143,7 +150,7 @@ class SwiftInfer(SwiftPipeline):
 
         mm_types = ['image', 'video', 'audio']
         query = infer_state.messages[-1]['content']
-        mm_tags = re.findall('|'.join(f'<({mm_type})>' for mm_type in mm_types), query)
+        mm_tags = re.findall('|'.join(f'<{mm_type}>' for mm_type in mm_types), query)
         # mm_tag -> mm_type/mm_key
         mm_mapping = {f'<{mm_type}>': (mm_type, f'{mm_type}s') for mm_type in mm_types}
         for mm_tag in mm_tags:
@@ -283,9 +290,9 @@ class SwiftInfer(SwiftPipeline):
                 if self.jsonl_writer:
                     self.jsonl_writer.append(data)
         else:
-            is_dist = args.global_world_size > 1 and dist.is_initialized()
+            is_dist = args.world_size > 1 and dist.is_initialized()
             if is_dist:
-                val_dataset = val_dataset.shard(args.global_world_size, args.rank, contiguous=True)
+                val_dataset = val_dataset.shard(args.world_size, args.rank, contiguous=True)
             infer_requests = [InferRequest(**data) for i, data in enumerate(val_dataset)]
 
             resp_list = self.infer(infer_requests, request_config, template=self.template, use_tqdm=True)
@@ -294,7 +301,7 @@ class SwiftInfer(SwiftPipeline):
                 data = {'response': response, **data}
                 result_list.append(data)
             if is_dist:
-                total_result_list = [None for _ in range(args.global_world_size)] if args.rank == 0 else None
+                total_result_list = [None for _ in range(args.world_size)] if args.rank == 0 else None
                 dist.gather_object(result_list, total_result_list)
                 result_list = total_result_list and list(chain.from_iterable(total_result_list))
 

@@ -9,7 +9,6 @@ kwargs = {
     'save_steps': 5,
     'gradient_accumulation_steps': 4,
     'num_train_epochs': 1,
-    'metric_for_best_model': 'loss'
 }
 
 
@@ -133,6 +132,17 @@ def test_llm_bnb():
     infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True))
 
 
+def test_moe():
+    from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
+    result = sft_main(
+        TrainArguments(
+            model='qwen/Qwen1.5-MoE-A2.7B-Chat-GPTQ-Int4',
+            dataset=['AI-ModelScope/alpaca-gpt4-data-zh#100', 'AI-ModelScope/alpaca-gpt4-data-en#100'],
+            **kwargs))
+    last_model_checkpoint = result['last_model_checkpoint']
+    infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True))
+
+
 if __name__ == '__main__':
     # test_llm_ddp()
     # test_mllm_mp()
@@ -143,4 +153,5 @@ if __name__ == '__main__':
     # test_llm_awq()
     # test_mllm_streaming_zero3()
     # test_mllm_streaming_mp_ddp()
-    test_llm_bnb()
+    # test_llm_bnb()
+    test_moe()

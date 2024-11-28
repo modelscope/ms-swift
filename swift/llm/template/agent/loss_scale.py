@@ -52,12 +52,6 @@ class LossScale:
         return res_context_list, res_loss_scale
 
 
-class TrainAllLossScale(LossScale):
-
-    def get_loss_scale(self, context: str, context_type: ContextType, *args, **kwargs):
-        return [context], [1.]
-
-
 class LastRoundLossScale(LossScale):
 
     def get_loss_scale(self, context: str, context_type: ContextType, is_last_round: bool, **kwargs):
@@ -105,6 +99,5 @@ loss_scale_map = {
     'react': REACTLossScale(),
     'alpha_umi': AlphaUmiLossScale(),
     'default': LossScale(),
-    'all': TrainAllLossScale(),
     'last_round': LastRoundLossScale(),
 }

@@ -86,7 +86,7 @@ class ModelArguments:
                     self.torch_dtype = {'fp16': 'float16', 'bf16': 'bfloat16'}[key]
 
         self.torch_dtype: Optional[torch.dtype] = HfConfigFactory.to_torch_dtype(self.torch_dtype)
-        self.torch_dtype: torch.dtype = self._init_model_info(self.torch_dtype)
+        self.torch_dtype: torch.dtype = self._init_model_info()
         # Mixed Precision Training
         if isinstance(self, TrainArguments):
             if self.torch_dtype in {torch.float16, torch.float32}:
@@ -96,17 +96,15 @@ class ModelArguments:
             else:
                 raise ValueError(f'args.torch_dtype: {self.torch_dtype}')
 
-    def _init_model_info(self, torch_dtype: Optional[torch.dtype]) -> torch.dtype:
-        from swift.llm import get_model_tokenizer, ModelInfo
-        processor = get_model_tokenizer(load_model=False, **self.get_model_kwargs())[1]
-        self.model_info = processor.model_info
-        self.model_meta = processor.model_meta
+    def _init_model_info(self) -> torch.dtype:
+        from swift.llm import get_model_info_meta
+        self.model_info, self.model_meta = get_model_info_meta(**self.get_model_kwargs())
         self.model_type = self.model_info.model_type
         return self.model_info.torch_dtype
 
     def _init_model_name(self):
         model = getattr(self, 'ckpt_dir', None) or self.model
-        self.model_name = os.path.basename(model)
+        self.model_suffix = os.path.basename(model)
 
     def __post_init__(self):
         self._init_model_name()

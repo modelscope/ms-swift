@@ -80,7 +80,7 @@ def show_layers(model: Module, max_lines: Optional[int] = 20) -> None:
         logger.info(f'[{n}]: requires_grad={p.requires_grad}, dtype={p.dtype}, device={p.device}')
 
 
-def freeze_model_parameters(model: Module, freeze_parameters_ratio: float, freeze_parameters: List[str]) -> None:
+def freeze_parameters(model: Module, freeze_parameters_ratio: float, freeze_parameters: List[str]) -> None:
     if freeze_parameters_ratio > 0:
         n_parameters = get_n_params_grads(model)[0]
         n_parameters = np.array(n_parameters, dtype=np.int64)
@@ -97,7 +97,7 @@ def freeze_model_parameters(model: Module, freeze_parameters_ratio: float, freez
                     p.requires_grad = False
 
 
-def activate_model_parameters(model: Module, additional_trainable_parameters: List[str]) -> None:
+def activate_parameters(model: Module, additional_trainable_parameters: List[str]) -> None:
     if len(additional_trainable_parameters) == 0:
         return
     has_activate = False
@@ -165,12 +165,11 @@ def find_embedding(model: Module) -> List[str]:
 
 def find_all_linears(model: Module) -> List[str]:
     """ref: https://github.com/artidoro/qlora"""
-    # TODO: head check
     from swift.llm import get_model_arch
     model_info = model.model_info
     model_arch = get_model_arch(model.model_meta.model_arch)
-    if model_arch and model_arch.output:
-        output = model_arch.output
+    if model_arch and model_arch.lm_head:
+        output = model_arch.lm_head
         idx = output.rfind('.')
         lm_head_name = output[idx + 1:]
     else:
@@ -212,7 +211,7 @@ def find_all_linears(model: Module) -> List[str]:
             inner_nodes.add(name)
     target_module_names = set()
     for name, module in model.named_modules():
-        if isinstance(module, tuple(linear_cls)) and lm_head_name not in name:
+        if isinstance(module, tuple(linear_cls)) and lm_head_name not in name and 'score' not in name:
             module_name_list = name.split('.')
             module_name = module_name_list.pop()
             for inner_node in inner_nodes:

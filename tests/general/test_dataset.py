@@ -59,6 +59,11 @@ def test_dataset_info():
     # _test_dataset(['codefuse-ai/CodeExercise-Python-27k'])
 
 
+def test_cls():
+    _test_dataset(['simpleai/HC3-Chinese:baike'])
+    _test_dataset(['simpleai/HC3-Chinese:baike_cls'])
+
+
 if __name__ == '__main__':
     # test_sft()
     # test_agent()
@@ -66,4 +71,5 @@ if __name__ == '__main__':
     # test_kto()
     # test_mllm()
     # test_pretrain()
-    test_dataset_info()
+    # test_dataset_info()
+    test_cls()

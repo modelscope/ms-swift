@@ -1,14 +1,11 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from dataclasses import dataclass, field
-from typing import List, Literal, Optional, Union
+from typing import List, Literal, Optional
 
-import torch
-import transformers
-from packaging import version
 from transformers.utils import strtobool
 
 from swift.llm import get_model_arch
-from swift.utils import find_all_linears, get_logger
+from swift.utils import get_logger
 
 logger = get_logger()
 
@@ -206,48 +203,24 @@ class TunerArguments:
     def __post_init__(self):
         if isinstance(self.init_lora_weights, str) and self.init_lora_weights.lower() in {'true', 'false'}:
             self.init_lora_weights = bool(strtobool(self.init_lora_weights))
-
-    def init_full_parameters(self):
-        """Some arguments will be decided by the train_type"""
-        if self.train_type == 'full':
-            # TODO: freeze xxx
-            if self.freeze_vit:
-                if self.model_type in MODEL_KEYS_MAPPING:
-                    vision_tower = MODEL_KEYS_MAPPING[self.model_type].vision_tower
-                    if vision_tower:
-                        self.freeze_parameters += vision_tower
-
-    def get_target_modules(self, model) -> Union[str, List[str]]:
-        """Replace EMBEDDING and ALL to actual modules
-        Args:
-            model: The input model
-            self: The TrainArguments
-        """
+        self._init_multimodal_full()
         if self.target_regex:
-            return self.target_regex
+            self.target_modules = self.target_regex
 
-        target_modules = self.target_modules.copy()
-        if 'all-linear' in target_modules:
-            target_modules.remove('all-linear')
-            target_modules += find_all_linears(model)
-        return target_modules
-
-    @staticmethod
-    def get_vera_target_modules(model, config):
-        """This function is only useful on the vera tuner"""
-        target_modules = config.target_modules
-        modules_dict = {
-            name: module.weight.shape
-            for name, module in model.named_modules()
-            if isinstance(module, torch.nn.Linear) and any([t in name for t in target_modules])
-        }  # only Linear for now
-        if len(set(modules_dict.values())) > 1:
-            v = [t for t in target_modules if 'v' in t]
-            if not v:
-                raise ValueError('Please manually pass in `vera_target_modules`, do not use `all-linear`,'
-                                 'because Vera need all target linears to be the same size.')
-            v = v[0]
-            shape = [shape for name, shape in modules_dict.items() if v in name][0]
-            names = [_name for _name, _shape in modules_dict.items() if _shape == shape]
-            config.target_modules = [t for t in target_modules if any([t in name for name in names])]
-        return config
+    def _init_multimodal_full(self):
+        if not self.model_meta.is_multimodal:
+            return
+        model_arch = get_model_arch(self.model_meta.model_arch)
+        if self.freeze_llm:
+            self.freeze_parameters += model_arch.language_model
+        if self.freeze_vit:
+            self.freeze_parameters += model_arch.vision_tower
+        if self.freeze_aligner:
+            self.freeze_parameters += model_arch.aligner
+        else:
+            self.trainable_parameters += model_arch.aligner
+        self.freeze_parameters += model_arch.generator
+        if self.freeze_parameters:
+            logger.info(f'freeze_parameters: {self.freeze_parameters}')
+        if self.trainable_parameters:
+            logger.info(f'trainable_parameters: {self.trainable_parameters}')

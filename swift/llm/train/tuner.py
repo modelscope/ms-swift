@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
+from typing import List, Union
 
 import json
 import torch
@@ -9,7 +10,8 @@ from packaging import version
 from swift.llm import TrainArguments, get_model_arch
 from swift.plugin import Tuner, extra_tuners
 from swift.tuners import Swift
-from swift.utils import find_all_linears, find_embedding, get_logger, use_torchacc
+from swift.utils import (activate_parameters, find_all_linears, find_embedding, freeze_parameters, get_logger,
+                         use_torchacc)
 
 logger = get_logger()
 
@@ -32,10 +34,72 @@ def apply_liger(model_type: str):
         raise ValueError(f'Unsupported liger model_type: {model_type}')
 
 
-def prepare_adapter(model, args: TrainArguments):
+def get_multimodal_target_regex(args):
+    model_arch = get_model_arch(args.model_meta.model_arch)
+    modules = []
+    rejected_modules = []
+    if not args.freeze_llm:
+        modules += model_arch.language_model
+    if not args.freeze_vit:
+        modules += model_arch.vision_tower
+    if args.freeze_aligner:
+        rejected_modules += model_arch.aligner
+    else:
+        modules += model_arch.aligner
+
+    prefix_pattern = '|'.join(modules)
+    rejected_pattern = '|'.join(rejected_modules)
+    # ignore embedding/lm_head
+    ignore_pattern = ['lm_head', 'output', 'emb', 'wte', 'shared']
+    ignore_pattern += model_arch.lm_head or []
+    ignore_pattern += model_arch.embedding or []
+    ignore_pattern = '|'.join(ignore_pattern)
+
+    target_regex = f'^({prefix_pattern})(?!.*({ignore_pattern})).*'
+    if rejected_pattern:
+        target_regex = f'(?!^({rejected_pattern}))' + target_regex
+    return target_regex
+
+
+def get_target_modules(args, model) -> Union[str, List[str]]:
+    """Replace all-linear to actual modules"""
+    model_meta = model.model_meta
+    if isinstance(args.target_modules, str):
+        return args.target_modules
+    elif 'all-linear' in args.target_modules:
+        if model_meta.is_multimodal:
+            return get_multimodal_target_regex(args)
+        else:
+            target_modules = args.target_modules.copy()
+            target_modules.remove('all-linear')
+            target_modules += find_all_linears(model)
+    return target_modules
+
+
+def get_vera_target_modules(model, config):
+    """This function is only useful on the vera tuner"""
+    target_modules = config.target_modules
+    modules_dict = {
+        name: module.weight.shape
+        for name, module in model.named_modules()
+        if isinstance(module, torch.nn.Linear) and any([t in name for t in target_modules])
+    }  # only Linear for now
+    if len(set(modules_dict.values())) > 1:
+        v = [t for t in target_modules if 'v' in t]
+        if not v:
+            raise ValueError('Please manually pass in `vera_target_modules`, do not use `all-linear`,'
+                             'because Vera need all target linears to be the same size.')
+        v = v[0]
+        shape = [shape for name, shape in modules_dict.items() if v in name][0]
+        names = [_name for _name, _shape in modules_dict.items() if _shape == shape]
+        config.target_modules = [t for t in target_modules if any([t in name for name in names])]
+    return config
+
+
+def prepare_adapter(args: TrainArguments, model):
     from swift.tuners import (AdaLoraConfig, AdapterConfig, BOFTConfig, IA3Config, LLaMAProConfig, LongLoRAModelType,
                               LoraConfig, LoRAConfig, ReftConfig, Swift, VeraConfig)
-    target_modules = args.get_target_modules(model)
+    target_modules = get_target_modules(args, model)
     lora_kwargs = {
         'r': args.lora_rank,
         'target_modules': target_modules,
@@ -120,7 +184,7 @@ def prepare_adapter(model, args: TrainArguments):
             d_initial=args.vera_d_initial,
             modules_to_save=args.modules_to_save,
         )
-        vera_config = args.get_vera_target_modules(model, vera_config)
+        vera_config = get_vera_target_modules(model, vera_config)
         model = Swift.prepare_model(model, vera_config)
         logger.info(f'vera_config: {vera_config}')
     elif args.train_type == 'boft':
@@ -184,27 +248,29 @@ def torchacc_resume_from_checkpoint(args, model):
             logger.warning(f'There were unexpected keys in the checkpoint model loaded: {load_result.unexpected_keys}.')
 
 
-def prepare_model(model, args: TrainArguments):
+def prepare_model(args: TrainArguments, model):
     if args.use_liger:
         # Apply liger
         apply_liger(args.model_type)
 
     if args.is_adapter:
+        # Fix the name of the layer in xcomposer that contains Plora.
         model.requires_grad_(False)
-        if args.resume_from_checkpoint is None:
-            model = prepare_adapter(model, args)
-        else:
-            if getattr(model, 'is_tuner_plugin', False):
-                with open(os.path.join(args.resume_from_checkpoint, 'args.json'), 'r') as f:
-                    content = json.load(f)
-
-                tuner: Tuner = extra_tuners[content['sft_type']]
+        if args.resume_from_checkpoint:
+            if args.train_type in extra_tuners:
+                tuner: Tuner = extra_tuners[args.train_type]
                 model = tuner.from_pretrained(model, args.resume_from_checkpoint)
-            elif use_torchacc():
-                model = Swift.from_pretrained(
-                    model, args.resume_from_checkpoint, adapter_name='default', is_trainable=True)
             else:
-                model = Swift.from_pretrained(model, args.resume_from_checkpoint, is_trainable=True)
+                kwargs = {}
+                if use_torchacc():
+                    kwargs = {'adapter_name': 'default'}
+                model = Swift.from_pretrained(model, args.resume_from_checkpoint, is_trainable=True, **kwargs)
+        else:
+            if args.train_type in extra_tuners:
+                tuner: Tuner = extra_tuners[args.train_type]
+                model = tuner.prepare_model(args, model)
+            else:
+                model = prepare_adapter(args, model)
         # fix bug: Attempting to unscale FP16 gradients.
         #   peft: https://github.com/huggingface/peft/issues/1249
         for p in model.parameters():
@@ -212,14 +278,15 @@ def prepare_model(model, args: TrainArguments):
                 logger.info_once('Convert trainable parameters from fp16 to fp32.')
                 p.data = p.data.to(dtype=torch.float32)
     elif args.train_type == 'full':
-        model.requires_grad_(True)
+        model.train()
+        if args.tuner_backend != 'unsloth':
+            model.requires_grad_(True)
 
-        if use_torchacc() and args.resume_from_checkpoint is not None:
+        freeze_parameters(model, args.freeze_parameters_ratio, args.freeze_parameters)
+        if len(args.trainable_parameters) > 0:
+            activate_parameters(model, args.trainable_parameters)
+        if use_torchacc() and args.resume_from_checkpoint:
             torchacc_resume_from_checkpoint(args, model)
-    elif args.train_type in extra_tuners:
-        tuner: Tuner = extra_tuners[args.train_type]
-        model = tuner.prepare_model(model, args)
-        model.is_tuner_plugin = True
     else:
         raise ValueError(f'args.train_type: {args.train_type}')
 

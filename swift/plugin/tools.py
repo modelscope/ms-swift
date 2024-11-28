@@ -1,4 +1,4 @@
-from swift.llm.template.tools_prompt import tools_prompt
+from swift.llm.template.agent.tools import tools_prompt
 
 
 def format_custom(tool_names, tool_descs):

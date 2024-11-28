@@ -69,8 +69,6 @@ class Template(ProcessorMixin):
         self.model_info = processor.model_info
         self.model_meta = processor.model_meta
         tokenizer = self.tokenizer
-        self.pad_token_id = tokenizer.pad_token_id or tokenizer.eos_token_id
-        assert self.pad_token_id is not None
 
         if not use_chat_template:
             template_meta = template_meta.to_generate_template_meta()
@@ -208,7 +206,10 @@ class Template(ProcessorMixin):
                     return generate_ids[:-i]
         return generate_ids
 
-    def skip_stop_decode(self, generate_ids: List[int], is_finished: bool, **decode_kwargs) -> Any:
+    def decode(self, generate_ids: List[int], is_finished: bool = True, **decode_kwargs) -> Any:
+        return self._skip_stop_decode(generate_ids, is_finished, **decode_kwargs)
+
+    def _skip_stop_decode(self, generate_ids: List[int], is_finished: bool, **decode_kwargs) -> Any:
         # Do not print template_meta.suffix[-1] and eos_token.
         tokenizer = self.tokenizer
 
@@ -600,6 +601,8 @@ class Template(ProcessorMixin):
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
         encoded['loss_scale'] = loss_scale
+        if inputs.label is not None:
+            encoded['label'] = inputs.label
         if not self.is_training:
             for k in list(encoded.keys()):
                 if k.endswith('labels'):
@@ -773,10 +776,6 @@ class Template(ProcessorMixin):
             res.update({f'KL_completion_{k}': v for k, v in kl_res.items()})
         else:
             res = res or kl_res
-
-        label = [b['label'] for b in batch if b.get('label') is not None]
-        if label:
-            res['label'] = label
         return res
 
     def _data_collator(self,
@@ -794,7 +793,7 @@ class Template(ProcessorMixin):
         if len(batch) == 0:
             return {}
         from swift.utils import use_torchacc
-        assert self.pad_token_id is not None
+        assert self.tokenizer.pad_token_id is not None
         if padding_side is None:
             padding_side = self.padding_side
         padding_right = padding_side == 'right'
@@ -812,7 +811,7 @@ class Template(ProcessorMixin):
                 res[key] = val
 
         keys = ['input_ids', 'inputs_embeds', 'attention_mask', 'labels', 'loss_scale', 'position_ids']
-        pad_value = [self.pad_token_id, 0., 0, -100, 0., -1]
+        pad_value = [self.tokenizer.pad_token_id, 0., 0, -100, 0., -1]
         # Convert to tensor and remove unnecessary dimensions.
         seq_lens = None
         for key in keys:
@@ -851,7 +850,10 @@ class Template(ProcessorMixin):
         pixel_values_videos = [b['pixel_values_videos'] for b in batch if b.get('pixel_values_videos') is not None]
         if len(pixel_values_videos) > 0:
             res['pixel_values_videos'] = torch.concat(pixel_values_videos)
-
+        # kto & sequence_classification
+        label = [b['label'] for b in batch if b.get('label') is not None]
+        if label:
+            res['label'] = label
         if use_torchacc() or self.sequence_parallel_size > 1:
             res = self._torchacc_xtuner_data_collator(res, padding_to, self.tokenizer, padding_side)
         return res
