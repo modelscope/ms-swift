@@ -82,9 +82,10 @@ class SwiftSft(SwiftPipeline):
             from transformers import AutoModelForSequenceClassification
             kwargs['automodel_class'] = AutoModelForSequenceClassification
             model_kwargs = {'num_labels': args.num_labels}
+        if args.tuner_backend == 'unsloth':
+            kwargs['unsloth_kwargs'] = {'load_in_4bit': args.quant_bits == 4}
         model, tokenizer = get_model_tokenizer(
             **kwargs, model_kwargs=model_kwargs, use_unsloth=(args.tuner_backend == 'unsloth'))
-        model.num_labels = args.num_labels
         return model, tokenizer
 
     def _prepare_model_tokenizer(self):

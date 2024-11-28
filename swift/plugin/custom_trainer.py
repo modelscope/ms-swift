@@ -30,4 +30,5 @@ class SequenceClassificationTrainer(Trainer):
 
 
 def custom_trainer_class(trainer_mapping, training_args_mapping):
-    trainer_mapping['train'] = 'swift.plugin.custom_trainer.SequenceClassificationTrainer'
+    # trainer_mapping['train'] = 'swift.plugin.custom_trainer.SequenceClassificationTrainer'
+    pass

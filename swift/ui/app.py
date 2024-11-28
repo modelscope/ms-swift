@@ -49,7 +49,6 @@ class SwiftWebUI(SwiftPipeline):
         port_env = os.environ.get('WEBUI_PORT')
         port = int(port_env) if port_env else self.args.port
         is_gradio_app = self.args.model or self.args.ckpt_dir
-
         LLMTrain.set_lang(lang)
         LLMInfer.set_lang(lang)
         LLMExport.set_lang(lang)
@@ -63,10 +62,13 @@ class SwiftWebUI(SwiftPipeline):
                 gr.HTML(f"<h3><center>{locale_dict['star_beggar'][lang]}</center></h3>")
             with gr.Tabs():
                 if is_gradio_app:
+                    if self.args.ckpt_dir:
+                        self.args.model = self.args.ckpt_dir
                     for f in fields(self.args):
                         if getattr(self.args, f.name):
                             LLMInfer.default_dict[f.name] = getattr(self.args, f.name)
                     LLMInfer.is_gradio_app = True
+                    LLMInfer.is_multimodal = self.args.model_meta.is_multimodal
                     LLMInfer.build_ui(LLMInfer)
                 else:
                     LLMTrain.build_ui(LLMTrain)
@@ -81,7 +83,7 @@ class SwiftWebUI(SwiftPipeline):
                 app.load(
                     LLMInfer.deploy_model, list(LLMInfer.valid_elements().values()),
                     [LLMInfer.element('runtime_tab'),
-                     LLMInfer.element('running_tasks'), LLMInfer.model_and_template])
+                     LLMInfer.element('running_tasks')])
         app.queue(**concurrent).launch(server_name=server, inbrowser=True, server_port=port, height=800, share=share)
 
 

@@ -25,4 +25,5 @@ class EarlyStopCallback(TrainerCallback):
             control.should_training_stop = True
 
 
-extra_callbacks = [EarlyStopCallback()]
+# extra_callbacks = [EarlyStopCallback()]
+extra_callbacks = []
