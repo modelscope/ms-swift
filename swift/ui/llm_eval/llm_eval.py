@@ -88,8 +88,7 @@ class LLMEval(BaseUI):
 
                 cls.element('evaluate').click(
                     cls.eval_model, list(base_tab.valid_elements().values()),
-                    [cls.element('runtime_tab'),
-                     cls.element('running_tasks')])
+                    [cls.element('runtime_tab'), cls.element('running_tasks')])
 
                 base_tab.element('running_tasks').change(
                     partial(EvalRuntime.task_changed, base_tab=base_tab), [base_tab.element('running_tasks')],

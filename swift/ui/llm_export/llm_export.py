@@ -86,8 +86,7 @@ class LLMExport(BaseUI):
 
                 cls.element('export').click(
                     cls.export_model, list(base_tab.valid_elements().values()),
-                    [cls.element('runtime_tab'),
-                     cls.element('running_tasks')])
+                    [cls.element('runtime_tab'), cls.element('running_tasks')])
 
                 base_tab.element('running_tasks').change(
                     partial(ExportRuntime.task_changed, base_tab=base_tab), [base_tab.element('running_tasks')],

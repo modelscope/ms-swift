@@ -80,10 +80,9 @@ class SwiftWebUI(SwiftPipeline):
             if version.parse(gr.__version__) < version.parse('4.0.0'):
                 concurrent = {'concurrency_count': 5}
             if is_gradio_app:
-                app.load(
-                    LLMInfer.deploy_model, list(LLMInfer.valid_elements().values()),
-                    [LLMInfer.element('runtime_tab'),
-                     LLMInfer.element('running_tasks')])
+                app.load(LLMInfer.deploy_model, list(LLMInfer.valid_elements().values()),
+                         [LLMInfer.element('runtime_tab'),
+                          LLMInfer.element('running_tasks')])
         app.queue(**concurrent).launch(server_name=server, inbrowser=True, server_port=port, height=800, share=share)
 
 

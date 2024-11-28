@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 from PIL import Image
 
-from swift.llm.template import InferRequest, Messages, Tool
+from swift.llm.template import InferRequest, Message, Messages, Tool
 
 
 def random_uuid() -> str:
@@ -219,15 +219,8 @@ class ChatCompletionMessageToolCall:
 @dataclass
 class ChatMessage:
     role: Literal['system', 'user', 'assistant']
-    content: str
+    content: Message
     tool_calls: Optional[List[ChatCompletionMessageToolCall]] = None
-
-
-@dataclass
-class ImageObject:
-    b64_json: Optional[str] = None
-    revised_prompt: Optional[str] = None
-    url: Optional[str] = None
 
 
 @dataclass
@@ -265,13 +258,6 @@ class ChatCompletionResponse:
         choices = [choice.to_cmpl_choice() for choice in self.choices]
         id_ = f'cmpl{self.id[len("chatcmpl"):]}'
         return CompletionResponse(self.model, choices, self.usage, id_, created=self.created)
-
-
-@dataclass
-class ImagesResponse:
-    created: int
-
-    data: List[ImageObject]
 
 
 @dataclass
