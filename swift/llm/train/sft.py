@@ -77,14 +77,13 @@ class SwiftSft(SwiftPipeline):
         kwargs['model_id_or_path'] = model
         kwargs['model_type'] = model_type
         kwargs['model_revision'] = model_revision
-        automodel_param = {}
         model_kwargs = {}
         if args.num_labels is not None:
-            from modelscope import AutoModelForSequenceClassification
-            automodel_param = {'automodel_class': AutoModelForSequenceClassification}
+            from transformers import AutoModelForSequenceClassification
+            kwargs['automodel_class'] = AutoModelForSequenceClassification
             model_kwargs = {'num_labels': args.num_labels}
         model, tokenizer = get_model_tokenizer(
-            **kwargs, model_kwargs=model_kwargs, use_unsloth=(args.tuner_backend == 'unsloth'), **automodel_param)
+            **kwargs, model_kwargs=model_kwargs, use_unsloth=(args.tuner_backend == 'unsloth'))
         model.num_labels = args.num_labels
         return model, tokenizer
 
