@@ -97,7 +97,7 @@ class SwiftEval(SwiftPipeline):
         else:
             task_cfg = self.get_vlmeval_task_cfg(dataset, url)
         if args.eval_limit:
-            task_cfg['limit'] = args.eval_limit
+            task_cfg['eval_config']['limit'] = args.eval_limit
 
         run_task(task_cfg=task_cfg)
         return Summarizer.get_report_from_cfg(task_cfg=task_cfg)

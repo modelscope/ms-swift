@@ -1,10 +1,9 @@
-import os.path
 from functools import partial
 from typing import Type
 
 import gradio as gr
 
-from swift.llm import MODEL_MAPPING, TEMPLATE_MAPPING, ModelType
+from swift.llm import TEMPLATE_MAPPING, ModelType
 from swift.llm.model.register import get_all_models
 from swift.ui.base import BaseUI
 
@@ -46,6 +45,16 @@ class Model(BaseUI):
                 'en': 'Reset to default'
             },
         },
+        'template': {
+            'label': {
+                'zh': '模型Prompt模板类型',
+                'en': 'Prompt template type'
+            },
+            'info': {
+                'zh': '选择匹配模型的Prompt模板',
+                'en': 'Choose the template type of the model'
+            }
+        },
     }
 
     ignored_models = ['int1', 'int2', 'int4', 'int8', 'awq', 'gptq', 'bnb', 'eetq', 'aqlm', 'hqq']
@@ -56,9 +65,9 @@ class Model(BaseUI):
             all_models = [
                 model for model in get_all_models() if not any([ignored in model for ignored in cls.ignored_models])
             ]
-            model = gr.Dropdown(elem_id='model', scale=20, choices=all_models, allow_custom_value=True)
-            model_type = gr.Dropdown(elem_id='model_type', choices=ModelType.get_model_name_list(), scale=20)
-            template = gr.Dropdown(elem_id='template', choices=list(TEMPLATE_MAPPING.keys()) + ['AUTO'], scale=20)
+            gr.Dropdown(elem_id='model', scale=20, choices=all_models, allow_custom_value=True)
+            gr.Dropdown(elem_id='model_type', choices=ModelType.get_model_name_list(), scale=20)
+            gr.Dropdown(elem_id='template', choices=list(TEMPLATE_MAPPING.keys()), scale=20)
 
     @classmethod
     def after_build_ui(cls, base_tab: Type['BaseUI']):

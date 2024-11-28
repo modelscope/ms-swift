@@ -6,7 +6,8 @@ from typing import Any, Dict, List, Literal, Optional, Union
 import json
 import torch
 
-from swift.llm import MODEL_MAPPING, HfConfigFactory, get_model_name
+from swift.llm import MODEL_MAPPING, HfConfigFactory
+from swift.llm.model import get_model_name
 from swift.utils import get_dist_setting, get_logger
 
 logger = get_logger()
