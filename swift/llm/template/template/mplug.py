@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+from dataclasses import dataclass
 from functools import partial
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
@@ -13,11 +14,9 @@ from ..template_inputs import StdTemplateInputs
 from ..utils import Context, findall, gather_list
 from ..vision_utils import load_video_minicpmv_mplug_owl3, replace_video2image
 from .qwen import QwenTemplateMeta
-from .utils import DEFAULT_SYSTEM
 
 
 class mPlugOwl3Template(Template):
-    system = None
 
     def _get_image_token_list(self, cut_shape):
         processor = self.processor
@@ -119,3 +118,78 @@ class mPlugOwl3Template(Template):
 
 
 register_template(QwenTemplateMeta(MLLMTemplateType.mplug_owl3, template_cls=mPlugOwl3Template, default_system=None))
+
+
+class mPlugOwl3vTemplate(mPlugOwl3Template):
+
+    def _encode(self, template_inputs: StdTemplateInputs) -> Dict[str, Any]:
+        inputs, _ = super(mPlugOwl3Template, self)._encode(template_inputs)
+        if len(inputs) == 0:
+            return inputs
+        images = template_inputs.images
+        videos = template_inputs.videos
+        cut_enable = not videos
+        input_ids = inputs['input_ids']
+        labels = inputs['labels']
+        idx_list = findall(input_ids, -100)
+        processor = self.tokenizer.processor
+        inputs = {'_data': {}}
+        if images:
+            image_inputs = processor.image_processor(images, cut_enable=cut_enable, return_tensors='pt')
+            added_tokens_len = 0
+            cut_shapes = image_inputs['cut_shape'] or [None] * 2 * len(idx_list)
+            image_token_list = self.tokenizer.encode('<|image|>', add_special_tokens=False)
+            for idx, cut_shape in zip(idx_list, cut_shapes[::2]):
+                if cut_shape:
+                    token_list = self._get_image_token_list(cut_shape)
+                else:
+                    token_list = image_token_list
+                input_ids = input_ids[:idx + added_tokens_len] + token_list + input_ids[added_tokens_len + idx + 1:]
+                if labels:
+                    labels = labels[:idx + added_tokens_len] + [-100] * len(token_list) + labels[added_tokens_len + idx
+                                                                                                 + 1:]
+                added_tokens_len += len(token_list) - 1
+            image_token_idx = torch.tensor(findall(input_ids, image_token_list))
+
+            inputs['_data'].update({
+                'pixel_values': image_inputs['pixel_values'],
+                'media_offset': image_token_idx,
+            })
+        inputs['_data']['input_ids'] = input_ids
+        inputs['labels'] = labels
+        return inputs
+
+    def _post_encode(self, model, data: Any) -> Dict[str, Any]:
+        if 'pixel_values' in data:
+            pixel_values = data.pop('pixel_values')
+            data['image_embeds'] = model.forward_image(pixel_values)
+        return data
+
+    def _data_collator(self,
+                       batch: List[Dict[str, Any]],
+                       *,
+                       padding_side: Optional[str] = None,
+                       padding_to: Optional[int] = None,
+                       model: Optional[nn.Module] = None) -> Dict[str, Any]:
+        res = super()._data_collator(batch, padding_to=padding_to, padding_side=padding_side)
+        image_embeds = [b['image_embeds'] for b in batch if 'image_embeds' in b]
+        if image_embeds:
+            res['image_embeds'] = torch.concat(image_embeds)
+        media_offset = []
+
+        for bi, b in enumerate(batch):
+            media_offset.append(b.get('media_offset', torch.tensor([]).long()))
+
+        if media_offset:
+            res['media_offset'] = media_offset
+        return res
+
+
+@dataclass
+class mPlugOwl3TemplateMeta(QwenTemplateMeta):
+    default_system: Optional[str] = None
+
+
+register_template(mPlugOwl3TemplateMeta(MLLMTemplateType.mplug_owl3, template_cls=mPlugOwl3Template))
+
+register_template(mPlugOwl3TemplateMeta(MLLMTemplateType.mplug_owl3v, template_cls=mPlugOwl3vTemplate))

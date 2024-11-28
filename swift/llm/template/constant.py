@@ -7,7 +7,9 @@ class LLMTemplateType:
     default = 'default'
     qwen = 'qwen'
     qwen2_5 = 'qwen2_5'
+    qwq = 'qwq'
     chatml = 'chatml'
+    marco_o1 = 'marco_o1'
 
     llama = 'llama'  # llama2
     llama3 = 'llama3'
@@ -25,7 +27,6 @@ class LLMTemplateType:
 
     deepseek = 'deepseek'
     deepseek_coder = 'deepseek_coder'
-    deepseek2 = 'deepseek2'
     deepseek2_5 = 'deepseek2_5'
 
     baichuan = 'baichuan'
@@ -113,6 +114,7 @@ class MLLMTemplateType:
     deepseek_vl = 'deepseek_vl'
     mplug_owl2 = 'mplug_owl2'
     mplug_owl3 = 'mplug_owl3'
+    mplug_owl3v = 'mplug_owl3v'
     got_ocr2 = 'got_ocr2'
 
     florence = 'florence'

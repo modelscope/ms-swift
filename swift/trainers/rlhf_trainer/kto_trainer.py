@@ -1,18 +1,14 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import warnings
 from contextlib import contextmanager
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
-import numpy as np
 import torch
 import torch.nn as nn
-from datasets import Dataset as HfDataset
 from peft import PeftModel
 from transformers import PreTrainedModel
 from trl import KTOTrainer as HFKTOTrainer
 
-from swift.llm import RowPreprocessor
-from swift.utils import get_dist_setting, get_logger
+from swift.utils import get_logger
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 
