@@ -206,7 +206,7 @@ class UsageInfo:
 @dataclass
 class Function:
     name: str
-    arguments: str
+    arguments: Optional[str]
 
 
 @dataclass

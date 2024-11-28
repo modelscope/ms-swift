@@ -37,25 +37,31 @@ class SwiftDeploy(SwiftInfer):
     def __init__(self, args: Union[List[str], DeployArguments, None] = None) -> None:
         super().__init__(args)
         self.infer_engine.strict = True
-        self.infer_states = InferStats()
+        self.infer_stats = InferStats()
         self.app = FastAPI(lifespan=self.lifespan)
         self._register_app()
 
-    async def _log_stats_hook(self, log_interval: int):
+    async def _log_stats_hook(self):
         while True:
-            await asyncio.sleep(log_interval)
-            global_stats = self.infer_states.compute()
-            self.infer_states.reset()
-            for k, v in global_stats.items():
-                global_stats[k] = round(v, 8)
-            logger.info(global_stats)
+            await asyncio.sleep(self.args.log_interval)
+            self._compute_infer_stats()
+            self.infer_stats.reset()
+
+    def _compute_infer_stats(self):
+        global_stats = self.infer_stats.compute()
+        for k, v in global_stats.items():
+            global_stats[k] = round(v, 8)
+        logger.info(global_stats)
 
     def lifespan(self, app: FastAPI):
         args = self.args
         if args.log_interval > 0:
-            thread = Thread(target=lambda: asyncio.run(self._log_stats_hook(args.log_interval)))
+            thread = Thread(target=lambda: asyncio.run(self._log_stats_hook()))
             thread.start()
-        yield
+        try:
+            yield
+        finally:
+            self._compute_infer_stats()
 
     async def get_available_models(self):
         args = self.args
@@ -102,7 +108,7 @@ class SwiftDeploy(SwiftInfer):
             response = response.to_cmpl_response()
         if is_finished:
             if args.log_interval > 0:
-                self.infer_states.update(response)
+                self.infer_stats.update(response)
             if self.jsonl_writer:
                 data = {'response': asdict(response), **request_info}
                 self.jsonl_writer.append(data)
@@ -187,5 +193,5 @@ def run_deploy(args, return_url: bool = True):
             time.sleep(1)
         yield f'http://127.0.0.1:{deploy_args.port}/v1/chat/completions' if return_url else deploy_args.port
     finally:
-        process.kill()
+        process.terminate()
         logger.info('The deployment process has been terminated.')
