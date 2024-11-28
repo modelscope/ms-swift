@@ -47,7 +47,6 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
         self.output_dir = f'output/{self.model_name}'
 
     def __post_init__(self):
-        del TrainingArguments.world_size
         self._init_output_dir()
 
         if self.learning_rate is None:
