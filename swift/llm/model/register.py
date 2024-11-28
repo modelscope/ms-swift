@@ -306,13 +306,16 @@ def get_default_torch_dtype(torch_dtype: Optional[torch.dtype]):
     return res
 
 
-def _get_model_name(model_id_or_path: str) -> str:
+def _get_model_name(model_id_or_path: str) -> Optional[str]:
     # compat hf hub
+    model_id_or_path = model_id_or_path.rstrip('/')
     match_ = re.search('/models--.+?--(.+?)/snapshots/', model_id_or_path)
     if match_ is not None:
         model_name = match_.group(1)
     else:
         model_name = model_id_or_path.rsplit('/', 1)[-1]
+    # compat modelscope snapshot_download
+    model_name = model_name.replace('___', '.')
     return model_name.lower()
 
 
@@ -407,8 +410,8 @@ def get_model_info_meta(
         use_hf=use_hf,
         ignore_file_pattern=ignore_file_pattern,
         hub_token=hub_token)
-    model_info = get_model_info(
-        model_dir, getattr(model_meta, 'model_type', None), quantization_config=quantization_config)
+    model_type = model_type or getattr(model_meta, 'model_type', None)
+    model_info = get_model_info(model_dir, model_type, quantization_config=quantization_config)
     if model_type is None and model_info.model_type is not None:
         model_type = model_info.model_type
         logger.info(f'Setting model_type: {model_type}')

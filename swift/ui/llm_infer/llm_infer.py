@@ -170,8 +170,7 @@ class LLMInfer(BaseUI):
                 if not LLMInfer.is_gradio_app:
                     cls.element('load_checkpoint').click(
                         cls.deploy_model, list(base_tab.valid_elements().values()),
-                        [cls.element('runtime_tab'),
-                         cls.element('running_tasks')])
+                        [cls.element('runtime_tab'), cls.element('running_tasks')])
                 submit.click(
                     cls.send_message,
                     inputs=[
@@ -336,9 +335,8 @@ class LLMInfer(BaseUI):
         return None
 
     @classmethod
-    def send_message(cls, running_task, template_type, prompt: str, image, video, audio,
-                     infer_request: InferRequest, infer_model_type, system, max_new_tokens, temperature, top_k, top_p,
-                     repetition_penalty):
+    def send_message(cls, running_task, template_type, prompt: str, image, video, audio, infer_request: InferRequest,
+                     infer_model_type, system, max_new_tokens, temperature, top_k, top_p, repetition_penalty):
 
         if not infer_request:
             infer_request = InferRequest(messages=[])
@@ -391,10 +389,7 @@ class LLMInfer(BaseUI):
             model_kwargs = {'model': infer_model_type}
         stream_resp = InferClient(
             port=args['port'], ).infer(
-                infer_requests=[_infer_request],
-                request_config=request_config,
-                **model_kwargs
-            )
+                infer_requests=[_infer_request], request_config=request_config, **model_kwargs)
         if infer_request.messages[-1]['role'] != 'assistant':
             infer_request.messages.append({'role': 'assistant', 'content': ''})
         for chunk in stream_resp:
