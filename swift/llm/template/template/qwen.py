@@ -8,9 +8,10 @@ import torch.nn as nn
 
 from swift.utils import get_env_args, is_deepspeed_enabled
 from ..base import Template
-from ..constant import TemplateType
+from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import register_template
 from ..template_inputs import StdTemplateInputs
+from ..template_meta import TemplateMeta
 from ..utils import Context, findall
 from ..vision_utils import load_audio_qwen, load_batch, load_video_qwen2
 from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
@@ -27,9 +28,16 @@ class Qwen2_5TemplateMeta(QwenTemplateMeta):
     default_system: Optional[str] = 'You are Qwen, created by Alibaba Cloud. You are a helpful assistant.'
 
 
-register_template(ChatmlTemplateMeta(TemplateType.chatml))
-register_template(QwenTemplateMeta(TemplateType.qwen))
-register_template(Qwen2_5TemplateMeta(TemplateType.qwen2_5))
+@dataclass
+class QwqTemplateMeta(QwenTemplateMeta):
+    default_system: Optional[str] = ('You are a helpful and harmless assistant. You are Qwen developed by Alibaba. '
+                                     'You should think step-by-step.')
+
+
+register_template(ChatmlTemplateMeta(LLMTemplateType.chatml))
+register_template(QwenTemplateMeta(LLMTemplateType.qwen))
+register_template(Qwen2_5TemplateMeta(LLMTemplateType.qwen2_5))
+register_template(QwqTemplateMeta(LLMTemplateType.qwq))
 
 
 class QwenVLTemplate(Template):
@@ -64,7 +72,7 @@ class QwenVLTemplate(Template):
             ]
 
 
-register_template(QwenTemplateMeta(TemplateType.qwen_vl, template_cls=QwenVLTemplate))
+register_template(QwenTemplateMeta(MLLMTemplateType.qwen_vl, template_cls=QwenVLTemplate))
 
 
 class QwenAudioTemplate(Template):
@@ -103,7 +111,7 @@ class QwenAudioTemplate(Template):
         return res
 
 
-register_template(QwenTemplateMeta(TemplateType.qwen_audio, template_cls=QwenAudioTemplate))
+register_template(QwenTemplateMeta(MLLMTemplateType.qwen_audio, template_cls=QwenAudioTemplate))
 
 
 class Qwen2AudioTemplate(Template):
@@ -147,7 +155,7 @@ class Qwen2AudioTemplate(Template):
         return res
 
 
-register_template(QwenTemplateMeta(TemplateType.qwen2_audio, template_cls=Qwen2AudioTemplate))
+register_template(QwenTemplateMeta(MLLMTemplateType.qwen2_audio, template_cls=Qwen2AudioTemplate))
 
 
 def _process_image_qwen(image):
@@ -318,4 +326,76 @@ class Qwen2VLTemplate(Template):
 
 register_template(
     QwenTemplateMeta(
-        TemplateType.qwen2_vl, template_cls=Qwen2VLTemplate, placeholder_tokens=['<|image_pad|>', '<|video_pad|>']))
+        MLLMTemplateType.qwen2_vl, template_cls=Qwen2VLTemplate, placeholder_tokens=['<|image_pad|>', '<|video_pad|>']))
+
+
+class Ovis1_6Template(Template):
+    skip_prompt = False
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    example: Dict[str, Any]) -> List[Context]:
+        assert media_type == 'image'
+        return [[-200], '\n']
+
+    def _encode(self, template_inputs: StdTemplateInputs) -> Dict[str, Any]:
+        inputs, tokenizer_kwargs = super()._encode(template_inputs)
+        if len(inputs) == 0:
+            return inputs
+        images = template_inputs.images
+        input_ids = inputs['input_ids']
+        labels = inputs['labels']
+        idx_list = findall(input_ids, [-200])
+        added_tokens_len = 0
+        pixel_values = []
+        for i, idx in enumerate(idx_list):
+            max_partition = get_env_args('max_partition', int, 9)
+            raw_pixel_values, image_placeholders = self.model.visual_tokenizer.preprocess_image(
+                images[i], max_partition=max_partition)
+            input_ids = input_ids[:idx] + image_placeholders + input_ids[idx + 1:]
+            if labels is not None:
+                labels = labels[:idx] + [-100] * len(image_placeholders) + labels[idx + 1:]
+            pixel_values.append(raw_pixel_values)
+            added_tokens_len += len(image_placeholders) - 1
+        if pixel_values:
+            pixel_values = torch.cat(pixel_values, dim=0).to(self.model.visual_tokenizer.dtype)
+        else:
+            pixel_values = None
+        inputs = {'labels': labels}
+        if labels is not None:
+            labels = torch.tensor(labels)[None]
+        inputs['_data'] = {'input_ids': torch.tensor(input_ids)[None], 'labels': labels, 'pixel_values': [pixel_values]}
+        return inputs
+
+    def _post_encode(self, model, data: Any) -> Dict[str, Any]:
+        _, inputs_embeds, labels, _ = self.model.merge_multimodal(
+            text_input_ids=data['input_ids'],
+            text_attention_masks=torch.ones_like(data['input_ids']),  # not use, only compat
+            text_labels=data['labels'],
+            pixel_values=data['pixel_values'],
+            left_padding=True)
+        return {'inputs_embeds': inputs_embeds[0], 'labels': labels}
+
+
+register_template(
+    TemplateMeta(
+        MLLMTemplateType.ovis1_6,
+        prefix=['<bos>'],
+        prompt=['<start_of_turn>user\n{{QUERY}}<end_of_turn>\n<start_of_turn>model\n'],
+        chat_sep=['<end_of_turn>\n'],
+        suffix=['<end_of_turn>'],
+        system_prefix=['<bos><start_of_turn>system\n{{SYSTEM}}<end_of_turn>\n'],
+        template_cls=Ovis1_6Template,
+    ))
+
+
+@dataclass
+class MarcoO1TemplateMeta(QwenTemplateMeta):
+    default_system: Optional[str] = """
+你是一个经过良好训练的AI助手，你的名字是Marco-o1.由阿里国际数字商业集团的AI Business创造.
+        \n## 重要！！！！！
+当你回答问题时，你的思考应该在<Thought>内完成，<Output>内输出你的结果。
+<Thought>应该尽可能是英文，但是有2个特例，一个是对原文中的引用，另一个是是数学应该使用markdown格式，<Output>内的输出需要遵循用户输入的语言。
+        """
+
+
+register_template(MarcoO1TemplateMeta(LLMTemplateType.marco_o1))
