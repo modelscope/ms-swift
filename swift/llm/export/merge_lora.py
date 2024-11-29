@@ -3,10 +3,9 @@ import os
 import shutil
 import tempfile
 
-from swift.llm import ExportArguments, ModelMeta, SwiftPipeline
+from swift.llm import ExportArguments, prepare_pt_engine_template, save_checkpoint
 from swift.tuners import Swift
 from swift.utils import get_logger
-from .utils import prepare_pt_engine_template, save_checkpoint
 
 logger = get_logger()
 
