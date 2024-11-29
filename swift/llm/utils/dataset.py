@@ -2257,11 +2257,10 @@ def _preprocess_latex_ocr_dataset(dataset: DATASET_TYPE) -> DATASET_TYPE:
 
 register_dataset(
     DatasetName.latex_ocr_print,
-    'AI-ModelScope/LaTeX_OCR',
-    ['full'],
+    'AI-ModelScope/LaTeX_OCR', ['default'],
     _preprocess_latex_ocr_dataset,
     get_dataset_from_repo,
-    split=['validation', 'test'],  # There are some problems in the training dataset.
+    split=['train', 'validation', 'test'],
     hf_dataset_id='linxy/LaTeX_OCR',
     tags=['chat', 'ocr', 'multi-modal', 'vision'])
 

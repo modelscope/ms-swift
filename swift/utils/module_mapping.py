@@ -319,6 +319,8 @@ DEEPSPEED_JANUS = MultiModelKeys(
 
 EMU3_CHAT_KEYS = MultiModelKeys(language_model='model', )
 
+GLM_EDGE_V = MultiModelKeys(language_model='model.layers', vision_tower='model.vision')
+
 MODEL_KEYS_MAPPING = OrderedDict([
     # MLLM here
     ('qwen_audio', QWEN_AUDIO_KEYS),
@@ -326,6 +328,7 @@ MODEL_KEYS_MAPPING = OrderedDict([
     ('qwen2_audio', QWEN2_AUDIO_KEYS),
     ('qwen2_vl', QWEN2_VL_KEYS),
     ('glm4v', GLM4V_KEYS),
+    ('glm_edge_v', GLM_EDGE_V),
     ('llava_next_video', LLAVA_NEXT_VIDEO_KEYS),
     ('llava_llama', LLAVA_LLAMA_KEYS),
     ('llava', LLAVA_KEYS),

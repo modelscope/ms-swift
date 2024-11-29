@@ -10,6 +10,7 @@ from types import MethodType
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, TypeVar, Union
 
 import json
+import numpy as np
 import torch
 import torch.nn.functional as F
 import transformers
@@ -48,6 +49,8 @@ class TemplateType:
     default = 'default'
     qwen = 'qwen'
     qwen2_5 = 'qwen2_5'
+    qwq = 'qwq'
+    marco_o1 = 'marco_o1'
     qwen_vl = 'qwen-vl'
     qwen_audio = 'qwen-audio'
     qwen2_audio = 'qwen2-audio'
@@ -59,6 +62,7 @@ class TemplateType:
     chatglm2 = 'chatglm2'
     chatglm3 = 'chatglm3'
     chatglm4 = 'chatglm4'
+    glm_edge_v = 'glm-edge-v'
     codegeex4 = 'codegeex4'
     llama = 'llama'  # llama2
     llama3 = 'llama3'
@@ -132,6 +136,7 @@ class TemplateType:
     paligemma = 'paligemma'
     mplug_owl2 = 'mplug-owl2'
     mplug_owl3 = 'mplug_owl3'
+    mplug_owl3v = 'mplug_owl3v'
     wizardlm2_awq = 'wizardlm2-awq'
     wizardlm2 = 'wizardlm2'
     atom = 'atom'
@@ -997,6 +1002,27 @@ class Template:
 
         return torch.stack(padded_sequences)
 
+    def data_collator_with_flattening(self,
+                                      batch: List[Dict[str, Any]],
+                                      padding_to: Optional[int] = None) -> Dict[str, Any]:
+        """
+        Data collator used for padding free approach. Does the following:
+
+        - concatate the entire mini batch into single long sequence [1, total_tokens]
+        - no padding will be added, returns `input_ids`, `labels` and `position_ids`
+
+        Args:
+            batch(`List[Dict[str, Any]]`): The input data in batch
+            padding_to(`int`, optional): Whether padding the batch to a fixed length, if none, the batch
+                will be padded to the `longest`
+        """
+        packed_data = {}
+        position_id_lengths = [len(item['input_ids']) for item in batch]
+        packed_data['input_ids'] = np.concatenate([item['input_ids'] for item in batch])
+        packed_data['labels'] = np.concatenate([item['labels'] for item in batch])
+        packed_data['position_ids'] = np.concatenate([list(range(pil)) for pil in position_id_lengths])
+        return self.data_collator([packed_data], padding_to)
+
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         """
         Args:
@@ -1399,8 +1425,26 @@ class Qwen2_5Template(QwenTemplate):
     system = 'You are Qwen, created by Alibaba Cloud. You are a helpful assistant.'
 
 
+class QwqTemplate(QwenTemplate):
+    system = ('You are a helpful and harmless assistant. You are Qwen developed by Alibaba. '
+              'You should think step-by-step.')
+
+
 register_template(TemplateType.qwen, QwenTemplate())
 register_template(TemplateType.qwen2_5, Qwen2_5Template())
+register_template(TemplateType.qwq, QwqTemplate())
+
+
+class MarcoO1Template(QwenTemplate):
+    system = """
+你是一个经过良好训练的AI助手，你的名字是Marco-o1.由阿里国际数字商业集团的AI Business创造.
+        \n## 重要！！！！！
+当你回答问题时，你的思考应该在<Thought>内完成，<Output>内输出你的结果。
+<Thought>应该尽可能是英文，但是有2个特例，一个是对原文中的引用，另一个是是数学应该使用markdown格式，<Output>内的输出需要遵循用户输入的语言。
+        """
+
+
+register_template(TemplateType.marco_o1, MarcoO1Template())
 
 
 class QwenVLTemplate(_QwenVLTemplateMixin, QwenTemplate):
@@ -1876,6 +1920,30 @@ class GLM4VTemplate(GLMTemplate):
 
 
 register_template(TemplateType.glm4v, GLM4VTemplate(), infer_media_type='dialogue', lazy_tokenize=True, use_model=True)
+
+
+class GLMEdgeVTemplate(GLMTemplate):
+
+    def __init__(self):
+        super().__init__([], ['<|user|>\\n{{QUERY}}\\n<|assistant|>\\n'], ['\\n'], ['<|endoftext|>'], None,
+                         ['<|system|>\\n{{SYSTEM}}\\n'])
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
+        assert media_type == 'image'
+        return ['<|begin_of_image|>' * 578]
+
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super()._encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
+        processor = self.tokenizer.processor
+        images = example['images']
+        if images:
+            inputs['pixel_values'] = torch.tensor(processor(images).pixel_values)
+        return inputs, {}
+
+
+register_template(TemplateType.glm_edge_v, GLMEdgeVTemplate(), lazy_tokenize=True, use_model=True)
 
 register_template(
     TemplateType.yi_vl,
@@ -3969,7 +4037,69 @@ class mPlugOwl3Template(QwenTemplateMixin, Template):
         return res
 
 
+class mPlugOwl3vTemplate(mPlugOwl3Template):
+    system = None
+
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super(mPlugOwl3Template, self)._encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
+        images = example['images']
+        videos = example['videos']
+        cut_enable = not videos
+        input_ids = inputs['input_ids']
+        labels = inputs['labels']
+        idx_list = _findall(input_ids, -100)
+        processor = self.tokenizer.processor
+        inputs = {'_data': {}}
+        if images:
+            image_inputs = processor.image_processor(images, cut_enable=cut_enable, return_tensors='pt')
+            added_tokens_len = 0
+            cut_shapes = image_inputs['cut_shape'] or [None] * 2 * len(idx_list)
+            image_token_list = self.tokenizer.encode('<|image|>', add_special_tokens=False)
+            for idx, cut_shape in zip(idx_list, cut_shapes[::2]):
+                if cut_shape:
+                    token_list = self._get_image_token_list(cut_shape)
+                else:
+                    token_list = image_token_list
+                input_ids = input_ids[:idx + added_tokens_len] + token_list + input_ids[added_tokens_len + idx + 1:]
+                if labels:
+                    labels = labels[:idx + added_tokens_len] + [-100] * len(token_list) + labels[added_tokens_len + idx
+                                                                                                 + 1:]
+                added_tokens_len += len(token_list) - 1
+            image_token_idx = torch.tensor(_findall(input_ids, image_token_list))
+
+            inputs['_data'].update({
+                'pixel_values': image_inputs['pixel_values'],
+                'media_offset': image_token_idx,
+            })
+        inputs['_data']['input_ids'] = input_ids
+        inputs['labels'] = labels
+        return inputs, {}
+
+    def _post_encode(self, model, data: Any) -> Dict[str, Any]:
+        if 'pixel_values' in data:
+            pixel_values = data.pop('pixel_values')
+            data['image_embeds'] = model.forward_image(pixel_values)
+        return data
+
+    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super(mPlugOwl3Template, self).data_collator(batch, padding_to)
+        image_embeds = [b['image_embeds'] for b in batch if 'image_embeds' in b]
+        if image_embeds:
+            res['image_embeds'] = torch.concat(image_embeds)
+        media_offset = []
+
+        for bi, b in enumerate(batch):
+            media_offset.append(b.get('media_offset', torch.tensor([]).long()))
+
+        if media_offset:
+            res['media_offset'] = media_offset
+        return res
+
+
 register_template(TemplateType.mplug_owl3, mPlugOwl3Template(), use_model=True, lazy_tokenize=True)
+register_template(TemplateType.mplug_owl3v, mPlugOwl3vTemplate(), use_model=True, lazy_tokenize=True)
 
 register_template(TemplateType.wizardlm2_awq,
                   Template(['{{SYSTEM}}'], ['User:\n{{QUERY}}\n\nAssistant:\n'], ['\n\n'], ['</s>']))
