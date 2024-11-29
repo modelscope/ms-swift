@@ -8,7 +8,6 @@ from transformers.utils import is_torch_npu_available
 
 from swift.hub import get_hub
 from swift.utils import check_json_format, get_dist_setting, get_logger, is_dist, is_master
-from ..tuner_args import TunerArguments, get_supported_tuners
 from .data_args import DataArguments
 from .generation_args import GenerationArguments
 from .model_args import ModelArguments
@@ -16,6 +15,10 @@ from .quant_args import QuantizeArguments
 from .template_args import TemplateArguments
 
 logger = get_logger()
+
+
+def get_supported_tuners():
+    return {'lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft', 'reft'}
 
 
 @dataclass
@@ -31,6 +34,9 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
         hub_token (Optional[str]): SDK token for authentication. Default is None.
         ignore_args_error (bool): Flag to ignore argument errors for notebook compatibility. Default is False.
     """
+    tuner_backend: Literal['swift', 'peft', 'unsloth'] = 'peft'
+    train_type: str = field(default='lora', metadata={'help': f'train_type choices: {list(get_supported_tuners())}'})
+
     seed: int = 42
     model_kwargs: Optional[str] = None
     load_dataset_config: bool = False
@@ -71,12 +77,16 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
             os.environ[k] = str(v)
 
     @property
+    def is_adapter(self) -> bool:
+        return self.train_type not in {'full'}
+
+    @property
     def supported_tuners(self):
         return get_supported_tuners()
 
     @property
     def adapters_can_be_merged(self):
-        return TunerArguments.adapters_can_be_merged
+        return {'lora', 'longlora', 'llamapro', 'adalora'}
 
     def load_args_from_ckpt(self, checkpoint_dir: str) -> None:
         """Load specific attributes from args.json"""
@@ -90,7 +100,8 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
         all_keys = list(f.name for f in fields(self.__class__))
         data_keys = list(f.name for f in fields(DataArguments))
         load_keys = [
-            'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant', 'split_dataset_ratio', 'model_name', 'model_author'
+            'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant', 'split_dataset_ratio', 'model_name', 'model_author',
+            'train_type', 'tuner_backend'
         ]
         skip_keys = ['output_dir', 'deepspeed']
         for key in all_keys:

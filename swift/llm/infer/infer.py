@@ -9,7 +9,7 @@ import torch.distributed as dist
 from datasets import Dataset as HfDataset
 
 from swift.llm import (InferArguments, InferRequest, Processor, SwiftPipeline, Template, get_template, load_dataset,
-                       sample_dataset)
+                       prepare_pt_engine_template, sample_dataset)
 from swift.utils import get_logger, is_master, open_jsonl_writer
 from .protocol import RequestConfig
 from .tuner import prepare_infer_engine
@@ -29,13 +29,12 @@ class SwiftInfer(SwiftPipeline):
         if args.merge_lora:
             merge_lora(args, device_map='cpu')
 
-        kwargs = {}
-        if args.tuner_backend == 'unsloth' and args.weight_type == 'adapter':
-            kwargs = {'load_model': False}
-        self.infer_engine = SwiftInfer.get_infer_engine(args, **kwargs)
-        if args.infer_backend == 'pt' and args.ckpt_dir and args.weight_type == 'adapter':
-            prepare_infer_engine(args, self.infer_engine)
+        if args.infer_backend == 'pt':
+            self.model, self.template = prepare_pt_engine_template(args)
             logger.info(f'model: {self.infer_engine.model}')
+        else:
+            self.model = SwiftInfer.get_infer_engine(args)
+
         self.template = self.get_template(args, self.processor)
         self.random_state = np.random.RandomState(args.data_seed)
 
@@ -55,13 +54,14 @@ class SwiftInfer(SwiftPipeline):
             'revision': args.model_revision,
             'torch_dtype': args.torch_dtype,
         })
-        if args.infer_backend == 'pt':
+        infer_backend = kwargs.pop('infer_backend', None) or args.infer_backend
+        if infer_backend == 'pt':
             from .infer_engine import PtEngine
             infer_engine_cls = PtEngine
             kwargs.update(args.get_model_kwargs())
             if hasattr(args, 'max_batch_size'):
                 kwargs.update({'max_batch_size': args.max_batch_size})
-        elif args.infer_backend == 'vllm':
+        elif infer_backend == 'vllm':
             from .infer_engine import VllmEngine
             infer_engine_cls = VllmEngine
             kwargs.update(args.get_vllm_engine_kwargs())
