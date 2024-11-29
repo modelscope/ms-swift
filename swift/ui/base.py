@@ -283,7 +283,10 @@ class BaseUI:
                 if len(ret) == 1:
                     return ret[0]
 
-            args = arg_cls(resume_from_checkpoint=model, load_dataset_config=True)
+            if hasattr(arg_cls, 'resume_from_checkpoint'):
+                args = arg_cls(resume_from_checkpoint=model)
+            else:
+                args = arg_cls(ckpt_dir=model)
             values = []
             for key in keys:
                 if allow_keys is not None and key not in allow_keys:

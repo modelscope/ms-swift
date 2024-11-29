@@ -256,16 +256,11 @@ class Runtime(BaseUI):
                 if isinstance(e, gr.Dropdown) and e.multiselect:
                     arg = all_args[e.elem_id].split(' ')
                 else:
-                    if e.elem_id == 'model_type':
-                        if is_custom_path:
-                            arg = base_tab.locale('checkpoint', base_tab.lang)['value']
-                        else:
-                            arg = all_args[e.elem_id]
-                    elif e.elem_id == 'model_id_or_path':
+                    if e.elem_id == 'model':
                         if is_custom_path:
                             arg = all_args['ckpt_dir']
                         else:
-                            arg = all_args['model_id_or_path']
+                            arg = all_args[e.elem_id]
                     else:
                         arg = all_args[e.elem_id]
                 ret.append(gr.update(value=arg))
@@ -273,7 +268,7 @@ class Runtime(BaseUI):
                 ret.append(gr.update())
         train_type = None
         if is_custom_path:
-            with open(os.path.join(all_args['ckpt_dir'], 'sft_args.json'), 'r') as f:
+            with open(os.path.join(all_args['ckpt_dir'], 'args.json'), 'r') as f:
                 _json = json.load(f)
                 train_type = _json.get('train_type')
         return ret + [gr.update(value=None), [all_args.get('model_type'), all_args.get('template_type'), train_type]]

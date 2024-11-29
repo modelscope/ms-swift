@@ -40,7 +40,7 @@ class QuantizeArguments:
     def get_quantization_config(self):
         if self.quant_method is None:
             return None
-        assert self.quant_method in {'bnb', 'hqq', 'eetq'}
+        assert self.quant_method in {'bnb', 'hqq', 'eetq', 'awq', 'gptq'}
         if self.quant_bits is None:
             raise ValueError(f'Please set the quant_bits. args.quant_bits: {self.quant_bits}')
         if self.quant_method == 'bnb':

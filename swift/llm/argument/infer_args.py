@@ -144,15 +144,6 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
                 self.stream = False
                 logger.info('Setting args.stream: False')
 
-    def _init_weight_type(self):
-        if self.ckpt_dir and (os.path.exists(os.path.join(self.ckpt_dir, 'adapter_config.json'))
-                              or os.path.exists(os.path.join(self.ckpt_dir, 'default', 'adapter_config.json'))
-                              or os.path.exists(os.path.join(self.ckpt_dir, 'reft'))):
-            self.weight_type = 'adapter'
-        else:
-            self.weight_type = 'full'
-            self.model = self.ckpt_dir or self.model
-
     def _init_pt_ddp(self):
         if self.infer_backend != 'pt' or not is_dist():
             return
@@ -164,7 +155,7 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
         if self.ckpt_dir:
             self.ckpt_dir = to_abspath(self.ckpt_dir, True)
             self.load_args_from_ckpt(self.ckpt_dir)
-        self._init_weight_type()
+        self._init_weight_type(self.ckpt_dir)
         BaseArguments.__post_init__(self)
         MergeArguments.__post_init__(self)
         self._parse_lora_modules()
