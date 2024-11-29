@@ -18,10 +18,10 @@ from torch.nn.utils.rnn import pad_sequence
 from transformers.integrations import is_deepspeed_zero3_enabled
 
 from swift.utils import get_dist_setting, use_torchacc
+from ..utils import Processor, ProcessorMixin
 from .agent import loss_scale_map, split_str_parts_by
 from .template_inputs import InferRequest, StdTemplateInputs, TemplateInputs
-from .utils import (Context, ContextType, GenerationProperty, Processor, ProcessorMixin, StopWordsCriteria, fetch_one,
-                    findall)
+from .utils import Context, ContextType, GenerationProperty, StopWordsCriteria, fetch_one, findall
 from .vision_utils import load_batch, load_image, normalize_bbox, rescale_image
 
 logger = get_logger()

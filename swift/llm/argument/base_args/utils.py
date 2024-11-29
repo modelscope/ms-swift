@@ -23,5 +23,5 @@ def to_abspath(path: Union[str, List[str], None], check_path_exist: bool = False
     assert isinstance(path, list), f'path: {path}'
     res = []
     for v in path:
-        res.append(BaseArguments.to_abspath(v, check_path_exist))
+        res.append(to_abspath(v, check_path_exist))
     return res

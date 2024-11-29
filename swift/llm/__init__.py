@@ -6,15 +6,14 @@ from swift.utils.import_utils import _LazyModule
 if TYPE_CHECKING:
     # Recommend using `xxx_main`
     from .infer import (VllmEngine, RequestConfig, LmdeployEngine, PtEngine, infer_main, deploy_main, PtLoRARequest,
-                        InferClient, SwiftInfer, SwiftDeploy, run_deploy)
-    from .export import export_main, merge_lora, quantize_model, export_to_ollama, save_checkpoint
+                        InferClient, SwiftInfer, SwiftDeploy, run_deploy, prepare_pt_engine_template)
+    from .export import (export_main, merge_lora, quantize_model, export_to_ollama)
     from .eval import eval_main, SwiftEval
     from .train import sft_main, pt_main, rlhf_main
     from .argument import (EvalArguments, InferArguments, TrainArguments, ExportArguments, DeployArguments,
                            RLHFArguments, WebUIArguments, BaseArguments)
     from .template import (TEMPLATE_MAPPING, Template, Word, get_template, TemplateType, register_template,
-                           TemplateInputs, Messages, TemplateMeta, get_template_meta, InferRequest, Processor,
-                           ProcessorMixin)
+                           TemplateInputs, Messages, TemplateMeta, get_template_meta, InferRequest)
     from .model import (MODEL_MAPPING, ModelType, get_model_tokenizer, safe_snapshot_download, HfConfigFactory,
                         ModelInfo, ModelMeta, ModelKeys, register_model_arch, MultiModelKeys, ModelArch, get_model_arch,
                         MODEL_ARCH_MAPPING, get_model_info_meta, get_model_name)
@@ -22,7 +21,8 @@ if TYPE_CHECKING:
                           register_dataset, register_dataset_info, EncodePreprocessor, LazyLLMDataset,
                           ConstantLengthDataset, standard_keys, load_dataset, DATASET_TYPE, sample_dataset,
                           RowPreprocessor)
-    from .utils import deep_getattr, to_device, History, history_to_messages, messages_to_history
+    from .utils import (deep_getattr, to_device, History, history_to_messages, messages_to_history, Processor,
+                        save_checkpoint, ProcessorMixin)
     from .base import SwiftPipeline
 else:
     _extra_objects = {k: v for k, v in globals().items() if not k.startswith('_')}
@@ -30,9 +30,9 @@ else:
         'rlhf': ['rlhf_main'],
         'infer': [
             'deploy_main', 'VllmEngine', 'RequestConfig', 'LmdeployEngine', 'PtEngine', 'infer_main', 'PtLoRARequest',
-            'InferClient', 'SwiftInfer', 'SwiftDeploy', 'run_deploy'
+            'InferClient', 'SwiftInfer', 'SwiftDeploy', 'run_deploy', 'prepare_pt_engine_template'
         ],
-        'export': ['export_main', 'merge_lora', 'quantize_model', 'export_to_ollama', 'save_checkpoint'],
+        'export': ['export_main', 'merge_lora', 'quantize_model', 'export_to_ollama'],
         'eval': ['eval_main', 'SwiftEval'],
         'train': ['sft_main', 'pt_main', 'rlhf_main'],
         'argument': [
@@ -40,9 +40,17 @@ else:
             'RLHFArguments', 'BaseArguments'
         ],
         'template': [
-            'TEMPLATE_MAPPING', 'Template', 'Word', 'get_template', 'TemplateType', 'register_template',
-            'TemplateInputs', 'Messages', 'TemplateMeta', 'get_template_meta', 'InferRequest', 'Processor',
-            'ProcessorMixin'
+            'TEMPLATE_MAPPING',
+            'Template',
+            'Word',
+            'get_template',
+            'TemplateType',
+            'register_template',
+            'TemplateInputs',
+            'Messages',
+            'TemplateMeta',
+            'get_template_meta',
+            'InferRequest',
         ],
         'model': [
             'MODEL_MAPPING', 'ModelType', 'get_model_tokenizer', 'safe_snapshot_download', 'HfConfigFactory',
@@ -55,7 +63,10 @@ else:
             'ConstantLengthDataset', 'standard_keys', 'load_dataset', 'DATASET_TYPE', 'sample_dataset',
             'RowPreprocessor'
         ],
-        'utils': ['deep_getattr', 'to_device', 'History', 'history_to_messages', 'messages_to_history'],
+        'utils': [
+            'deep_getattr', 'to_device', 'History', 'history_to_messages', 'messages_to_history', 'Processor',
+            'save_checkpoint', 'ProcessorMixin'
+        ],
         'base': ['SwiftPipeline']
     }
 

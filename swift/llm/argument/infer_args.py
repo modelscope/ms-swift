@@ -116,10 +116,6 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
     val_dataset_sample: Optional[int] = None
     stream: Optional[bool] = None
 
-    # From args.json
-    train_type: Optional[str] = None
-    tuner_backend: Optional[str] = None
-
     def get_result_path(self, folder_name, suffix: str = '.jsonl') -> str:
         result_dir = self.ckpt_dir or self.model_dir
         result_dir = to_abspath(os.path.join(result_dir, folder_name))

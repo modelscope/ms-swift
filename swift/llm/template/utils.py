@@ -4,18 +4,12 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set, Tuple, Type, Union
 
 import torch
-from transformers import FeatureExtractionMixin, LogitsProcessor, LogitsProcessorList, PreTrainedTokenizerBase
-from transformers import ProcessorMixin as HfProcessorMixin
-from transformers import StoppingCriteria, StoppingCriteriaList
+from transformers import (LogitsProcessor, LogitsProcessorList, PreTrainedTokenizerBase, StoppingCriteria,
+                          StoppingCriteriaList)
 
 from swift.llm import History
 
 Prompt = List[Union[str, List[int], List[str]]]
-try:
-    from transformers import BaseImageProcessor
-    Processor = Union[PreTrainedTokenizerBase, BaseImageProcessor, FeatureExtractionMixin, HfProcessorMixin]
-except ImportError:
-    Processor = Union[PreTrainedTokenizerBase, FeatureExtractionMixin, HfProcessorMixin]
 Word = Union[str, List[int]]
 Context = Word
 
@@ -161,20 +155,3 @@ def gather_list(batch: List[Dict[str, Any]], attr_name: str) -> Optional[List[An
         if b.get(attr_name) is not None:
             res += b.pop(attr_name)
     return res
-
-
-class ProcessorMixin:
-
-    @property
-    def tokenizer(self):
-        tokenizer = self.processor
-        if not isinstance(tokenizer, PreTrainedTokenizerBase) and hasattr(tokenizer, 'tokenizer'):
-            tokenizer = tokenizer.tokenizer
-        return tokenizer
-
-    @tokenizer.setter
-    def tokenizer(self, value):
-        if self.processor is self.tokenizer:
-            self.processor = value
-        elif self.tokenizer is not value:
-            raise AttributeError('Please use `self.processor` for assignment.')

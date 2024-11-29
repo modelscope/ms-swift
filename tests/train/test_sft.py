@@ -6,6 +6,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 kwargs = {
     'per_device_train_batch_size': 2,
+    'per_device_eval_batch_size': 2,
     'save_steps': 5,
     'gradient_accumulation_steps': 4,
     'num_train_epochs': 1,
@@ -33,7 +34,7 @@ def test_mllm_mp():
         TrainArguments(
             model='qwen/Qwen2-VL-7B-Instruct',
             dataset=['modelscope/coco_2014_caption:validation#20', 'AI-ModelScope/alpaca-gpt4-data-en#20'],
-            train_type='full',
+            train_type='lora',
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
     infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True, merge_lora=True))
@@ -187,6 +188,26 @@ def test_llm_transformers_4_33():
             **kwargs))
 
 
+def test_predict_with_generate():
+    from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
+    sft_main(
+        TrainArguments(
+            model='qwen/Qwen-7B-Chat',
+            dataset=['AI-ModelScope/alpaca-gpt4-data-zh#100', 'AI-ModelScope/alpaca-gpt4-data-en#100'],
+            predict_with_generate=True,
+            **kwargs))
+
+
+def test_template():
+    from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
+    global kwargs
+    kwargs = kwargs.copy()
+    kwargs['num_train_epochs'] = 3
+    result = sft_main(TrainArguments(model='Qwen/Qwen2-0.5B', dataset=['swift/self-cognition#200'], **kwargs))
+    last_model_checkpoint = result['last_model_checkpoint']
+    infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True, merge_lora=True))
+
+
 if __name__ == '__main__':
     # test_llm_ddp()
     # test_mllm_mp()
@@ -201,4 +222,6 @@ if __name__ == '__main__':
     # test_moe()
     # test_resume_from_checkpoint()
     # test_resume_only_model()
-    test_llm_transformers_4_33()
+    # test_llm_transformers_4_33()
+    # test_predict_with_generate()
+    test_template()

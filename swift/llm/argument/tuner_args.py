@@ -10,10 +10,6 @@ from swift.utils import get_logger
 logger = get_logger()
 
 
-def get_supported_tuners():
-    return {'lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft', 'reft'}
-
-
 @dataclass
 class TunerArguments:
     """
@@ -96,9 +92,6 @@ class TunerArguments:
 
         use_liger (bool): Flag to indicate if Liger-kernel is used. Default is False.
     """
-    tuner_backend: Literal['swift', 'peft', 'unsloth'] = 'peft'
-    train_type: str = field(default='lora', metadata={'help': f'train_type choices: {list(get_supported_tuners())}'})
-
     # full
     freeze_parameters: List[str] = field(default_factory=list)
     freeze_parameters_ratio: float = 0.  # 0 ~ 1
@@ -191,14 +184,6 @@ class TunerArguments:
 
     # use_liger
     use_liger: bool = False
-
-    @property
-    def is_adapter(self) -> bool:
-        return self.train_type not in {'full'}
-
-    @property
-    def adapters_can_be_merged(self):
-        return {'lora', 'longlora', 'llamapro', 'adalora'}
 
     def __post_init__(self):
         if isinstance(self.init_lora_weights, str) and self.init_lora_weights.lower() in {'true', 'false'}:
