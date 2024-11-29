@@ -198,9 +198,19 @@ def test_predict_with_generate():
             **kwargs))
 
 
+def test_template():
+    from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
+    global kwargs
+    kwargs = kwargs.copy()
+    kwargs['num_train_epochs'] = 3
+    result = sft_main(TrainArguments(model='Qwen/Qwen2-0.5B', dataset=['swift/self-cognition#200'], **kwargs))
+    last_model_checkpoint = result['last_model_checkpoint']
+    infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True, merge_lora=True))
+
+
 if __name__ == '__main__':
     # test_llm_ddp()
-    test_mllm_mp()
+    # test_mllm_mp()
     # test_llm_streaming()
     # test_mllm_streaming()
     # test_mllm_zero3()
@@ -214,3 +224,4 @@ if __name__ == '__main__':
     # test_resume_only_model()
     # test_llm_transformers_4_33()
     # test_predict_with_generate()
+    test_template()

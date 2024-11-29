@@ -33,7 +33,8 @@ def merge_lora(args: ExportArguments, device_map=None, replace_if_exists=False) 
                 args.instruct_model = args.hub.download_model(
                     args.instruct_model, revision=args.instruct_model_revision)
             args.model = args.instruct_model
-        model, template = prepare_pt_engine_template(args)
+        pt_engine, template = prepare_pt_engine_template(args)
+        model = pt_engine.model
         logger.info('Merge LoRA...')
         Swift.merge_and_unload(model)
         model = model.model

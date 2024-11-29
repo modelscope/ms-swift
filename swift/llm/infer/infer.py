@@ -29,10 +29,10 @@ class SwiftInfer(SwiftPipeline):
             merge_lora(args, device_map='cpu')
 
         if args.infer_backend == 'pt':
-            self.model, self.template = prepare_pt_engine_template(args)
+            self.infer_engine, self.template = prepare_pt_engine_template(args)
             logger.info(f'model: {self.infer_engine.model}')
         else:
-            self.model = SwiftInfer.get_infer_engine(args)
+            self.infer_engine = SwiftInfer.get_infer_engine(args)
 
         self.template = self.get_template(args, self.processor)
         self.random_state = np.random.RandomState(args.data_seed)
@@ -136,7 +136,7 @@ class SwiftInfer(SwiftPipeline):
             if query is None:
                 continue
             infer_state.add_query(query)
-            if args.is_multimodal:
+            if args.model_meta.is_multimodal:
                 infer_state.input_mm_data()
             data = infer_state.to_dict()
             response = self.infer_single(InferRequest(**data), request_config)

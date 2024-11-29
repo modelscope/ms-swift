@@ -639,8 +639,11 @@ class SelfCognitionPreprocessor(ResponsePreprocessor):
             if val is None:
                 continue
             val = val[0] if row['tag'] == 'zh' else val[1]
-            row['query'] = row['query'].replace(f'{{{{{key.upper()}}}}}', val)
-            row['response'] = row['response'].replace(f'{{{{{key.upper()}}}}}', val)
+            if val is None:
+                continue
+            placeholder = '{{' + key.upper() + '}}'
+            row['query'] = row['query'].replace(placeholder, val)
+            row['response'] = row['response'].replace(placeholder, val)
         return super().preprocess(row)
 
 
