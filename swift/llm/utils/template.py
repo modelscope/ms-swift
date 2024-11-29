@@ -62,6 +62,7 @@ class TemplateType:
     chatglm2 = 'chatglm2'
     chatglm3 = 'chatglm3'
     chatglm4 = 'chatglm4'
+    glm_edge_v = 'glm-edge-v'
     codegeex4 = 'codegeex4'
     llama = 'llama'  # llama2
     llama3 = 'llama3'
@@ -1919,6 +1920,30 @@ class GLM4VTemplate(GLMTemplate):
 
 
 register_template(TemplateType.glm4v, GLM4VTemplate(), infer_media_type='dialogue', lazy_tokenize=True, use_model=True)
+
+
+class GLMEdgeVTemplate(GLMTemplate):
+
+    def __init__(self):
+        super().__init__([], ['<|user|>\\n{{QUERY}}\\n<|assistant|>\\n'], ['\\n'], ['<|endoftext|>'], None,
+                         ['<|system|>\\n{{SYSTEM}}\\n'])
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
+        assert media_type == 'image'
+        return ['<|begin_of_image|>' * 578]
+
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super()._encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
+        processor = self.tokenizer.processor
+        images = example['images']
+        if images:
+            inputs['pixel_values'] = torch.tensor(processor(images).pixel_values)
+        return inputs, {}
+
+
+register_template(TemplateType.glm_edge_v, GLMEdgeVTemplate(), lazy_tokenize=True, use_model=True)
 
 register_template(
     TemplateType.yi_vl,

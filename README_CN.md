@@ -56,7 +56,8 @@ SWIFT具有丰富全面的文档，请查看我们的文档网站:
 
 
 ## 🎉 新闻
-- 2024.11.28: 支持模型qwq-32b-preview, macro-o1, 支持数据集open-o1. 使用`swift infer --model_type qwq-32b-preview`进行体验.
+- 2024.11.29: 支持glm-edge和glm-edge-v系列模型. 使用`swift infer --model_type glm-edge-v-2b`进行体验.
+- 2024.11.28: 支持模型qwq-32b-preview, marco-o1, 支持数据集open-o1. 使用`swift infer --model_type qwq-32b-preview`进行体验.
 - 2024.11.12: 支持qwen2.5-coder系列模型0.5b, 3b, 14b, 32b的训练到部署. 使用`swift infer --model_type qwen2_5-coder-3b-instruct`进行体验.
 - 2024.10.26: 支持aya-expanse系列模型的训练到部署. 使用`swift infer --model_type aya-expanse-32b`进行体验.
 - 2024.10.23: 支持emu3-chat的训练到部署. 使用`swift infer --model_type emu3-chat`进行体验.
