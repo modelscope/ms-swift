@@ -3,7 +3,7 @@ from typing import Type
 
 import gradio as gr
 
-from swift.llm import TEMPLATE_MAPPING, ModelType, ExportArguments
+from swift.llm import TEMPLATE_MAPPING, ExportArguments, ModelType
 from swift.llm.model.register import get_all_models
 from swift.ui.base import BaseUI
 

@@ -4,7 +4,7 @@ from typing import Type
 
 import gradio as gr
 
-from swift.llm import MODEL_MAPPING, TEMPLATE_MAPPING, ModelType, EvalArguments
+from swift.llm import MODEL_MAPPING, TEMPLATE_MAPPING, EvalArguments, ModelType
 from swift.llm.model.register import get_all_models
 from swift.ui.base import BaseUI
 

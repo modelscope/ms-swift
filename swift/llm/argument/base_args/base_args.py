@@ -106,9 +106,6 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
                 setattr(self, key, old_value)
 
     def save_args(self) -> None:
-        from swift.llm import InferArguments
-        if isinstance(self, InferArguments):
-            return
         if is_master():
             os.makedirs(self.output_dir, exist_ok=True)
             fpath = os.path.join(self.output_dir, 'args.json')
@@ -118,13 +115,13 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
 
     def _init_weight_type(self, ckpt_dir):
         if ckpt_dir and (os.path.exists(os.path.join(ckpt_dir, 'adapter_config.json'))
-                              or os.path.exists(os.path.join(ckpt_dir, 'default', 'adapter_config.json'))
-                              or os.path.exists(os.path.join(ckpt_dir, 'reft'))):
+                         or os.path.exists(os.path.join(ckpt_dir, 'default', 'adapter_config.json'))
+                         or os.path.exists(os.path.join(ckpt_dir, 'reft'))):
             self.weight_type = 'adapter'
         else:
             self.weight_type = 'full'
             self.model = ckpt_dir or self.model
-            
+
     def _init_device(self):
         """Prepare ddp of course"""
         if is_dist():
