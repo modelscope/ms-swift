@@ -32,7 +32,7 @@ class SwiftInfer(SwiftPipeline):
         kwargs = {}
         if args.tuner_backend == 'unsloth' and args.weight_type == 'adapter':
             kwargs = {'load_model': False}
-        self.infer_engine = self.get_infer_engine(args, **kwargs)
+        self.infer_engine = SwiftInfer.get_infer_engine(args, **kwargs)
         if args.infer_backend == 'pt' and args.ckpt_dir and args.weight_type == 'adapter':
             prepare_infer_engine(args, self.infer_engine)
             logger.info(f'model: {self.infer_engine.model}')
@@ -59,7 +59,8 @@ class SwiftInfer(SwiftPipeline):
             from .infer_engine import PtEngine
             infer_engine_cls = PtEngine
             kwargs.update(args.get_model_kwargs())
-            kwargs.update({'max_batch_size': args.max_batch_size})
+            if hasattr(args, 'max_batch_size'):
+                kwargs.update({'max_batch_size': args.max_batch_size})
         elif args.infer_backend == 'vllm':
             from .infer_engine import VllmEngine
             infer_engine_cls = VllmEngine

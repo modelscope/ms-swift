@@ -1,7 +1,7 @@
 from typing import Type
 
 import gradio as gr
-
+from swift.llm.dataset.register import get_dataset_list
 from swift.llm import DATASET_MAPPING
 from swift.ui.base import BaseUI
 
@@ -88,5 +88,5 @@ class Export(BaseUI):
                 elem_id='dataset',
                 multiselect=True,
                 allow_custom_value=True,
-                choices=list(DATASET_MAPPING.keys()),
+                choices=get_dataset_list(),
                 scale=20)

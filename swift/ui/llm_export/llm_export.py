@@ -5,12 +5,11 @@ import time
 from datetime import datetime
 from functools import partial
 from typing import Type
-
+import shutil
 import gradio as gr
 import json
 import torch
 from json import JSONDecodeError
-
 from swift.llm import ExportArguments
 from swift.ui.base import BaseUI
 from swift.ui.llm_export.export import Export
@@ -133,12 +132,16 @@ class LLMExport(BaseUI):
         model = kwargs.get('model')
         if os.path.exists(model) and os.path.exists(os.path.join(model, 'args.json')):
             kwargs['ckpt_dir'] = kwargs.pop('model')
-
-        export_args = ExportArguments(
-            **{
-                key: value.split(' ') if key in kwargs_is_list and kwargs_is_list[key] else value
-                for key, value in kwargs.items()
-            })
+        export_args = None
+        try:
+            export_args = ExportArguments(
+                **{
+                    key: value.split(' ') if key in kwargs_is_list and kwargs_is_list[key] else value
+                    for key, value in kwargs.items()
+                })
+        finally:
+            if export_args:
+                shutil.rmtree(export_args.output_dir)
         params = ''
         sep = f'{cls.quote} {cls.quote}'
         for e in kwargs:

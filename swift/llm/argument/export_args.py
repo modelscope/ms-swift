@@ -54,7 +54,7 @@ class ExportArguments(MergeArguments, BaseArguments):
 
     def _init_quant(self):
 
-        if self.quant_bits > 0:
+        if self.quant_bits is not None and self.quant_bits > 0:
             if self.quant_method is None:
                 raise ValueError('Please specify the quantization method using `--quant_method awq/gptq`.')
             if len(self.dataset) == 0 and self.quant_method in {'gptq', 'awq'}:
@@ -67,29 +67,35 @@ class ExportArguments(MergeArguments, BaseArguments):
             suffix = 'peft'
         elif self.merge_lora:
             suffix = 'merged'
-        elif self.quant_bits > 0:
+        elif self.quant_bits is not None and self.quant_bits > 0:
             suffix = f'{self.quant_method}-int{self.quant_bits}'
         elif self.to_ollama:
             suffix = 'ollama'
         else:
-            raise ValueError(f'args: {self}')
+            suffix = 'dummy'
+            logger.warn(f'Not a valid export argument: {self}')
         self.output_dir = os.path.join(ckpt_dir, f'{ckpt_name}-{suffix}')
 
         logger.info(f'Setting args.output_dir: {self.output_dir}')
 
         self.output_dir = to_abspath(self.output_dir)
-        assert not os.path.exists(self.output_dir), f'args.output_dir: {self.output_dir} already exists.'
+        if suffix != 'dummy':
+            assert not os.path.exists(self.output_dir), f'args.output_dir: {self.output_dir} already exists.'
 
     def __post_init__(self):
+        if self.ckpt_dir:
+            self.ckpt_dir = to_abspath(self.ckpt_dir, True)
+            self.load_args_from_ckpt(self.ckpt_dir)
+        self._init_weight_type(self.ckpt_dir)
         MergeArguments.__post_init__(self)
         BaseArguments.__post_init__(self)
         self._init_output_dir()
-        if self.quant_bits > 0:
+        if self.quant_bits is not None and self.quant_bits > 0:
             self._init_quant()
         self.save_args()
 
     def _init_torch_dtype(self) -> None:
-        if self.quant_bits > 0 and self.torch_dtype is None:
+        if self.quant_bits is not None and self.quant_bits > 0 and self.torch_dtype is None:
             self.torch_dtype = 'float16'
             logger.info(f'Setting args.torch_dtype: {self.torch_dtype}')
         super()._init_torch_dtype()
