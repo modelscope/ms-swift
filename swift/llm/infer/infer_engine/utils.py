@@ -170,11 +170,7 @@ def prepare_generation_config(model_generation_config: GenerationConfig,
         kwargs['top_k'] = 50
     else:
         kwargs['do_sample'] = True
-    kwargs['return_dict_in_generate'] = True
-    if request_config.logprobs:
-        kwargs['output_logits'] = True
     generation_config = GenerationConfig(**kwargs)
-    generation_config.top_logprobs = request_config.top_logprobs
     generation_config = _set_generation_config_default_value(model_generation_config, generation_config)
     fix_do_sample_warning(generation_config)
     return generation_config

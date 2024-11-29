@@ -54,7 +54,7 @@ class ExportArguments(MergeArguments, BaseArguments):
 
     def _init_quant(self):
 
-        if self.quant_bits is not None and self.quant_bits > 0:
+        if self.quant_bits:
             if self.quant_method is None:
                 raise ValueError('Please specify the quantization method using `--quant_method awq/gptq`.')
             if len(self.dataset) == 0 and self.quant_method in {'gptq', 'awq'}:
@@ -67,7 +67,7 @@ class ExportArguments(MergeArguments, BaseArguments):
             suffix = 'peft'
         elif self.merge_lora:
             suffix = 'merged'
-        elif self.quant_bits is not None and self.quant_bits > 0:
+        elif self.quant_bits:
             suffix = f'{self.quant_method}-int{self.quant_bits}'
         elif self.to_ollama:
             suffix = 'ollama'
@@ -90,12 +90,11 @@ class ExportArguments(MergeArguments, BaseArguments):
         MergeArguments.__post_init__(self)
         BaseArguments.__post_init__(self)
         self._init_output_dir()
-        if self.quant_bits is not None and self.quant_bits > 0:
+        if self.quant_bits:
             self._init_quant()
-        self.save_args()
 
     def _init_torch_dtype(self) -> None:
-        if self.quant_bits is not None and self.quant_bits > 0 and self.torch_dtype is None:
+        if self.quant_bits and self.torch_dtype is None:
             self.torch_dtype = 'float16'
             logger.info(f'Setting args.torch_dtype: {self.torch_dtype}')
         super()._init_torch_dtype()

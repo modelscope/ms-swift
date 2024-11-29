@@ -85,6 +85,10 @@ class PtEngine(InferEngine):
 
     def _prepare_generation_config(self, request_config: RequestConfig) -> _GenerationConfig:
         generation_config = prepare_generation_config(self.generation_config, request_config)
+        generation_config.return_dict_in_generate = True
+        if request_config.logprobs:
+            generation_config.output_logits = True
+        generation_config.top_logprobs = request_config.top_logprobs
         return _GenerationConfig(**generation_config.to_dict())
 
     def _add_stop_words(self, generation_config: _GenerationConfig, request_config: RequestConfig,

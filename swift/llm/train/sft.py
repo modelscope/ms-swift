@@ -30,6 +30,7 @@ class SwiftSft(SwiftPipeline):
 
     def __init__(self, args: Union[List[str], TrainArguments, None] = None) -> None:
         super().__init__(args)
+        self.args.save_args()
         self.train_msg = {}
         self._prepare_model_tokenizer()
         self._prepare_template(True)

@@ -146,7 +146,6 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
         self.training_args = TrainerFactory.get_training_args(self)
 
         self._add_version()
-        self.save_args()
 
     def _init_deepspeed(self):
         """Prepare deepspeed settings"""

@@ -1,8 +1,9 @@
 from typing import Type
 
 import gradio as gr
-from swift.llm.dataset.register import get_dataset_list
+
 from swift.llm import DATASET_MAPPING
+from swift.llm.dataset.register import get_dataset_list
 from swift.ui.base import BaseUI
 
 
@@ -85,8 +86,4 @@ class Export(BaseUI):
         with gr.Row():
             gr.Textbox(elem_id='output_dir', scale=20)
             gr.Dropdown(
-                elem_id='dataset',
-                multiselect=True,
-                allow_custom_value=True,
-                choices=get_dataset_list(),
-                scale=20)
+                elem_id='dataset', multiselect=True, allow_custom_value=True, choices=get_dataset_list(), scale=20)

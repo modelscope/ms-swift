@@ -43,10 +43,6 @@ class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
         has_labels = 'labels' in inputs
         inputs = self._prepare_inputs(inputs)
 
-        # XXX: adapt synced_gpus for fairscale as well
-        # Priority (handled in generate):
-        # gen_kwargs > model.generation_config > default GenerationConfig()
-
         if len(gen_kwargs) == 0 and hasattr(self, '_gen_kwargs'):
             gen_kwargs = self._gen_kwargs.copy()
             if hasattr(self.model, 'generation_config'):
@@ -112,9 +108,6 @@ class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
                     loss = (outputs['loss'] if isinstance(outputs, dict) else outputs[0]).mean().detach()
             else:
                 loss = None
-
-        if self.args.prediction_loss_only:
-            return loss, None, None
 
         if has_labels:
             labels = generate_inputs['labels']

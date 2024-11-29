@@ -26,8 +26,7 @@ class GenerationArguments:
     # generation config
     max_new_tokens: Optional[int] = None  # Unlimited, constrained by max_model_len.
     # If it is None, use the parameters from generation_config.
-    do_sample: Optional[bool] = None
-    temperature: Optional[float] = None
+    temperature: Optional[float] = None  # Set to 0, which means do_sample is False.
     top_k: Optional[int] = None
     top_p: Optional[float] = None
     repetition_penalty: Optional[float] = None
@@ -37,13 +36,10 @@ class GenerationArguments:
 
     def get_request_config(self):
         from swift.llm import RequestConfig
-        temperature = self.temperature
-        if not self.do_sample:
-            temperature = 0
 
         return RequestConfig(
             max_tokens=self.max_new_tokens,
-            temperature=temperature,
+            temperature=self.temperature,
             top_p=self.top_p,
             top_k=self.top_k,
             num_beams=self.num_beams,
