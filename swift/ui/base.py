@@ -282,11 +282,13 @@ class BaseUI:
                 ret = [gr.update()] * (len(keys) + int(has_record))
                 if len(ret) == 1:
                     return ret[0]
-
-            if hasattr(arg_cls, 'resume_from_checkpoint'):
-                args = arg_cls(resume_from_checkpoint=model, load_dataset_config=True)
-            else:
-                args = arg_cls(ckpt_dir=model, load_dataset_config=True)
+            try:
+                if hasattr(arg_cls, 'resume_from_checkpoint'):
+                    args = arg_cls(resume_from_checkpoint=model, load_dataset_config=True)
+                else:
+                    args = arg_cls(ckpt_dir=model, load_dataset_config=True)
+            except ValueError:
+                return [gr.update()] * (len(keys) + int(has_record))
             values = []
             for key in keys:
                 if allow_keys is not None and key not in allow_keys:

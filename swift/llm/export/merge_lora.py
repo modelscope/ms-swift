@@ -32,6 +32,9 @@ def merge_lora(args: ExportArguments, replace_if_exists=False, device_map=None) 
         logger.info(f'merge_device_map: {device_map}')
         if args.use_merge_kit:
             base_model = args.model
+            if not os.path.exists(base_model):
+                base_model = args.hub.download_model(
+                    base_model, revision=args.model_revision)
             if not os.path.exists(args.instruct_model):
                 args.instruct_model = args.hub.download_model(
                     args.instruct_model, revision=args.instruct_model_revision)
@@ -65,7 +68,9 @@ def merge_lora(args: ExportArguments, replace_if_exists=False, device_map=None) 
             yamlfile = os.path.join(tempdir, 'mergekit.yaml')
             with open(yamlfile, 'w') as f:
                 f.write(merge_yaml)
+            logger.info(f'Merging with config: {merge_yaml}')
             os.system(f'mergekit-yaml {yamlfile} {mergekit_path}')
+            logger.info(f'Merge complete with path: {mergekit_path}')
         finally:
             if tempdir:
                 shutil.rmtree(tempdir, ignore_errors=True)

@@ -137,7 +137,7 @@ class SwiftInfer(SwiftPipeline):
             if query is None:
                 continue
             infer_state.add_query(query)
-            if args.is_multimodal:
+            if args.model_meta.is_multimodal:
                 infer_state.input_mm_data()
             data = infer_state.to_dict()
             response = self.infer_single(InferRequest(**data), request_config)
