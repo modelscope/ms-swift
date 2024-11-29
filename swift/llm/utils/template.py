@@ -4,7 +4,7 @@ import os
 import re
 from contextlib import contextmanager
 from copy import deepcopy
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import partial, wraps
 from types import MethodType
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, TypeVar, Union
@@ -93,6 +93,7 @@ class TemplateType:
     idefics3 = 'idefics3'
     mistral_nemo = 'mistral-nemo'
     pixtral = 'pixtral'
+    pixtral_large = 'pixtral-large'
     openbuddy = 'openbuddy'
     openbuddy2 = 'openbuddy2'
     internlm = 'internlm'
@@ -1756,9 +1757,6 @@ def _gather_list(batch: List[Dict[str, Any]], attr_name: str) -> Optional[List[A
 
 class PixtralTemplate(Template):
 
-    def __init__(self):
-        super().__init__(['<s>{{SYSTEM}}'], ['[INST]{{QUERY}}[/INST]'], ['</s>'], ['</s>'], None)
-
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     example: Dict[str, Any]) -> List[Context]:
         return ['[IMG]']
@@ -1805,7 +1803,34 @@ class PixtralTemplate(Template):
         return res
 
 
-register_template(TemplateType.pixtral, PixtralTemplate(), lazy_tokenize=True)
+register_template(
+    TemplateType.pixtral,
+    PixtralTemplate(['<s>[INST]'], ['{{SYSTEM}}\n\n', '{{QUERY}}[/INST]'], ['</s>[INST]'], ['</s>'], None),
+    lazy_tokenize=True)
+
+
+class PixtralLargeTemplate(PixtralTemplate):
+
+    @staticmethod
+    def _load_system_prompt(model_dir: str) -> str:
+        file_path = os.path.join(model_dir, 'SYSTEM_PROMPT.txt')
+        with open(file_path, 'r') as file:
+            system_prompt = file.read()
+        today = datetime.today().strftime('%Y-%m-%d')
+        yesterday = (datetime.today() - timedelta(days=1)).strftime('%Y-%m-%d')
+        model_name = model_dir.split('/')[-1]
+        return system_prompt.format(name=model_name, today=today, yesterday=yesterday)
+
+    def _init_template(self, tokenizer: PreTrainedTokenizerBase, *args, **kwargs) -> None:
+        self.default_system = self._load_system_prompt(tokenizer.model_dir)
+        return super()._init_template(tokenizer, *args, **kwargs)
+
+
+register_template(
+    TemplateType.pixtral_large,
+    PixtralLargeTemplate(['<s>[SYSTEM_PROMPT]{{SYSTEM}}[/SYSTEM_PROMPT]'], ['[INST]{{QUERY}}[/INST]'], ['</s>'],
+                         ['</s>'], None),
+    lazy_tokenize=True)
 
 
 class YiCoderTemplate(ChatmlTemplate):
@@ -2016,7 +2041,7 @@ register_template(
              ['<<SYS>>\n{{SYSTEM}}\n<</SYS>>\n\n']))
 
 register_template(TemplateType.mistral_nemo,
-                  Template(['<s>[INST] '], ['{{SYSTEM}}\n\n', '{{QUERY}}[/INST]'], ['</s>[INST] '], ['</s>']))
+                  Template(['<s>[INST]'], ['{{SYSTEM}}\n\n', '{{QUERY}}[/INST]'], ['</s>[INST]'], ['</s>']))
 
 
 class Llama3TemplateMixin:
