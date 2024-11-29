@@ -6693,7 +6693,7 @@ def get_model_tokenizer_llava_hf(model_dir: str, *args, **kwargs):
     requires=['transformers>=4.46'],
     placeholder_tokens=['<|begin_of_image|>'],
     tags=['multi-modal', 'vision'],
-    hf_model_id='THUDM/glm-edge-v-2b')
+    hf_model_id='THUDM/glm-edge-v-5b')
 def get_model_tokenizer_glm_edge_v(model_dir: str, *args, **kwargs):
     from transformers import AutoImageProcessor
     processor = AutoImageProcessor.from_pretrained(model_dir)
