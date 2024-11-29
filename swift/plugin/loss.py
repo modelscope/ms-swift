@@ -5,7 +5,7 @@ from torch.nn import CrossEntropyLoss
 
 
 class LossType:
-    loss_scale = 'loss_scale'
+    loss_scale = 'loss-scale'
 
 
 LOSS_MAPPING = {}

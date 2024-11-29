@@ -66,7 +66,6 @@ class SwiftMixin(TorchAccMixin, ProcessorMixin):
                 })
         self._custom_metrics = {}
         self.processor = processor
-        self.compute_loss_func = compute_loss_func
         self.max_memory = 0
         self.hub = get_hub()
         if args.sequence_parallel_size > 1:
@@ -86,6 +85,7 @@ class SwiftMixin(TorchAccMixin, ProcessorMixin):
             optimizers=optimizers,
             preprocess_logits_for_metrics=preprocess_logits_for_metrics)
 
+        self.compute_loss_func = compute_loss_func
         if get_function(model.__class__.forward) is not get_function(model.forward):
             self.label_names = find_labels(model) or ['labels']
             self.can_return_loss = can_return_loss(model)
