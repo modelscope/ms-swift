@@ -1,16 +1,42 @@
 import inspect
+import os
+import shutil
 from types import MethodType
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
 import torch
 import torch.nn as nn
-from transformers import GenerationConfig, PreTrainedTokenizerBase
+from transformers import FeatureExtractionMixin, GenerationConfig, PreTrainedModel, PreTrainedTokenizerBase
+from transformers import ProcessorMixin as HfProcessorMixin
 
 from swift.utils import deep_getattr, get_logger, upper_bound
+
+try:
+    from transformers import BaseImageProcessor
+    Processor = Union[PreTrainedTokenizerBase, BaseImageProcessor, FeatureExtractionMixin, HfProcessorMixin]
+except ImportError:
+    Processor = Union[PreTrainedTokenizerBase, FeatureExtractionMixin, HfProcessorMixin]
 
 logger = get_logger()
 
 History = List[Union[Tuple[str, str], List[str]]]
+
+
+class ProcessorMixin:
+
+    @property
+    def tokenizer(self):
+        tokenizer = self.processor
+        if not isinstance(tokenizer, PreTrainedTokenizerBase) and hasattr(tokenizer, 'tokenizer'):
+            tokenizer = tokenizer.tokenizer
+        return tokenizer
+
+    @tokenizer.setter
+    def tokenizer(self, value):
+        if self.processor is self.tokenizer:
+            self.processor = value
+        elif self.tokenizer is not value:
+            raise AttributeError('Please use `self.processor` for assignment.')
 
 
 def to_device(inputs: Any, device: torch.device) -> Any:
@@ -181,3 +207,29 @@ def messages_to_history(messages: 'Messages') -> Dict[str, Any]:
         'response': response,
         'system': system,
     }
+
+
+def save_checkpoint(model: Optional[PreTrainedModel],
+                    processor: 'Processor',
+                    output_dir: str,
+                    *,
+                    safe_serialization: bool = True,
+                    max_shard_size: Union[int, str] = '5GB',
+                    ckpt_dir: str = None,
+                    additional_saved_files: Optional[List[str]] = None) -> None:
+    if model is not None:
+        model.save_pretrained(output_dir, safe_serialization=safe_serialization, max_shard_size=max_shard_size)
+    processor.save_pretrained(output_dir)
+
+    for src_file in additional_saved_files or [] + ['preprocessor_config.json', 'args.json']:
+        for model_dir in [model and model.model_dir, ckpt_dir]:
+            if model_dir is None:
+                continue
+            src_path: str = os.path.join(model_dir, src_file)
+            tgt_path = os.path.join(output_dir, src_file)
+            if os.path.isfile(src_path):
+                shutil.copy(src_path, tgt_path)
+                break
+            elif os.path.isdir(src_path):
+                shutil.copytree(src_path, tgt_path)
+                break

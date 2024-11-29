@@ -9,10 +9,10 @@ import torch.distributed as dist
 from datasets import Dataset as HfDataset
 
 from swift.llm import (InferArguments, InferRequest, Processor, SwiftPipeline, Template, get_template, load_dataset,
-                       prepare_pt_engine_template, sample_dataset)
+                       sample_dataset)
 from swift.utils import get_logger, is_master, open_jsonl_writer
 from .protocol import RequestConfig
-from .utils import InferCliState
+from .utils import InferCliState, prepare_pt_engine_template
 
 logger = get_logger()
 

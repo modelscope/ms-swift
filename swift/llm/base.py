@@ -4,8 +4,9 @@ import os
 from abc import ABC, abstractmethod
 from typing import List, Union
 
-from swift.llm import BaseArguments, ProcessorMixin
 from swift.utils import get_logger, parse_args, seed_everything
+from .argument import BaseArguments
+from .utils import ProcessorMixin
 
 logger = get_logger()
 
