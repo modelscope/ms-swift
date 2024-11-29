@@ -259,6 +259,11 @@ class ModelType:
     glm4_9b_chat = 'glm4-9b-chat'
     glm4_9b_chat_1m = 'glm4-9b-chat-1m'
     codegeex4_9b_chat = 'codegeex4-9b-chat'
+
+    glm_edge_1_5b_chat = 'glm-edge-1_5b-chat'
+    glm_edge_4b_chat = 'glm-edge-4b-chat'
+    glm_edge_v_2b = 'glm-edge-v-2b'
+    glm_edge_v_5b = 'glm-edge-v-5b'
     # llama2
     llama2_7b = 'llama2-7b'
     llama2_7b_chat = 'llama2-7b-chat'
@@ -711,6 +716,7 @@ class LoRATM(NamedTuple):
     molmo = 'molmo'
     deepseek_janus = 'deepseek_janus'
     emu3_chat = 'emu3_chat'
+    glm_edge_v = 'glm_edge_v'
     # default lora target modules for nlp llms.
     minicpm3 = ['q_a_proj', 'q_b_proj', 'kv_a_proj_with_mqa', 'kv_b_proj']
     baichuan = ['W_pack']
@@ -5159,6 +5165,22 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
 
 
 @register_model(
+    ModelType.glm_edge_1_5b_chat,
+    'ZhipuAI/glm-edge-1.5b-chat',
+    LoRATM.llama,
+    TemplateType.chatglm4,
+    support_flash_attn=True,
+    requires=['transformers>=4.46'],
+    hf_model_id='THUDM/glm-edge-1.5b-chat')
+@register_model(
+    ModelType.glm_edge_4b_chat,
+    'ZhipuAI/glm-edge-4b-chat',
+    LoRATM.llama,
+    TemplateType.chatglm4,
+    support_flash_attn=True,
+    requires=['transformers>=4.46'],
+    hf_model_id='THUDM/glm-edge-4b-chat')
+@register_model(
     ModelType.llama3_1_nemotron_70B_instruct_hf,
     'AI-ModelScope/Llama-3.1-Nemotron-70B-Instruct-HF',
     LoRATM.llama,
@@ -6647,6 +6669,34 @@ def _patch_llava(model):
 def get_model_tokenizer_llava_hf(model_dir: str, *args, **kwargs):
     from transformers import AutoProcessor
     processor = AutoProcessor.from_pretrained(model_dir)
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
+    tokenizer.processor = processor
+    return model, tokenizer
+
+
+@register_model(
+    ModelType.glm_edge_v_2b,
+    'ZhipuAI/glm-edge-v-2b',
+    LoRATM.glm_edge_v,
+    TemplateType.glm_edge_v,
+    support_flash_attn=True,
+    placeholder_tokens=['<|begin_of_image|>'],
+    requires=['transformers>=4.46'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='THUDM/glm-edge-v-2b')
+@register_model(
+    ModelType.glm_edge_v_5b,
+    'ZhipuAI/glm-edge-v-5b',
+    LoRATM.glm_edge_v,
+    TemplateType.glm_edge_v,
+    support_flash_attn=True,
+    requires=['transformers>=4.46'],
+    placeholder_tokens=['<|begin_of_image|>'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='THUDM/glm-edge-v-5b')
+def get_model_tokenizer_glm_edge_v(model_dir: str, *args, **kwargs):
+    from transformers import AutoImageProcessor
+    processor = AutoImageProcessor.from_pretrained(model_dir)
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
     tokenizer.processor = processor
     return model, tokenizer
