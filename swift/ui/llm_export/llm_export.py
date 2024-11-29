@@ -134,16 +134,11 @@ class LLMExport(BaseUI):
         model = kwargs.get('model')
         if os.path.exists(model) and os.path.exists(os.path.join(model, 'args.json')):
             kwargs['ckpt_dir'] = kwargs.pop('model')
-        export_args = None
-        try:
-            export_args = ExportArguments(
-                **{
-                    key: value.split(' ') if key in kwargs_is_list and kwargs_is_list[key] else value
-                    for key, value in kwargs.items()
-                })
-        finally:
-            if export_args:
-                shutil.rmtree(export_args.output_dir)
+        export_args = ExportArguments(
+            **{
+                key: value.split(' ') if key in kwargs_is_list and kwargs_is_list[key] else value
+                for key, value in kwargs.items()
+            })
         params = ''
         sep = f'{cls.quote} {cls.quote}'
         for e in kwargs:
