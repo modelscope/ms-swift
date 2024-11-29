@@ -46,7 +46,7 @@ def prepare_pt_engine_template(args: ExportArguments, load_model: bool = True, *
 
     pt_engine: PtEngine = SwiftInfer.get_infer_engine(args, infer_backend='pt', load_model=load_model, **kwargs)
     if args.ckpt_dir and args.weight_type == 'adapter':
-        prepare_pt_engine(args, infer_engine)
+        prepare_pt_engine(args, pt_engine)
 
     template = SwiftInfer.get_template(args, pt_engine.processor)
     return pt_engine, template

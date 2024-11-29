@@ -12,7 +12,6 @@ from swift.llm import (InferArguments, InferRequest, Processor, SwiftPipeline, T
                        prepare_pt_engine_template, sample_dataset)
 from swift.utils import get_logger, is_master, open_jsonl_writer
 from .protocol import RequestConfig
-from .tuner import prepare_infer_engine
 from .utils import InferCliState
 
 logger = get_logger()

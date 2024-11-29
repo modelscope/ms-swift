@@ -11,7 +11,7 @@ from .utils import prepare_pt_engine_template, save_checkpoint
 logger = get_logger()
 
 
-def merge_lora(args: ExportArguments, replace_if_exists=False, device_map=None) -> None:
+def merge_lora(args: ExportArguments, device_map=None, replace_if_exists=False) -> None:
     if replace_if_exists:
         logger.info(f'replace_if_exists: {replace_if_exists}')
     assert args.ckpt_dir is not None, f'args.ckpt_dir: {args.ckpt_dir}'
@@ -19,9 +19,7 @@ def merge_lora(args: ExportArguments, replace_if_exists=False, device_map=None) 
     assert args.quant_method is None, (f'args.quant_method: {args.quant_method}, '
                                        'quantized model and does not support merge-lora.')
 
-    output_dir = getattr(args, 'output_dir', None)
-    if output_dir is None:
-        output_dir = f'{args.ckpt_dir}-merged'
+    output_dir = getattr(args, 'output_dir', None) or f'{args.ckpt_dir}-merged'
     if os.path.exists(output_dir) and not replace_if_exists:
         logger.info(f'The weight directory for the merged LoRA already exists in {output_dir}, '
                     'skipping the saving process. '
