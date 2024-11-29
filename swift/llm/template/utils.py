@@ -174,6 +174,7 @@ class ProcessorMixin:
 
     @tokenizer.setter
     def tokenizer(self, value):
-        if hasattr(self.processor, 'tokenizer') and self.processor.tokenizer is not value:
+        if self.processor is self.tokenizer:
+            self.processor = value
+        elif self.tokenizer is not value:
             raise AttributeError('Please use `self.processor` for assignment.')
-        self.processor = value

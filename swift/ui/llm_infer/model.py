@@ -4,7 +4,7 @@ from typing import Type
 
 import gradio as gr
 
-from swift.llm import TEMPLATE_MAPPING, ModelType
+from swift.llm import TEMPLATE_MAPPING, ModelType, DeployArguments
 from swift.llm.model.register import get_all_models
 from swift.ui.base import BaseUI
 from swift.ui.llm_infer.generate import Generate
@@ -102,7 +102,7 @@ class Model(BaseUI):
         with gr.Row():
             gr.Dropdown(elem_id='model', scale=20, choices=get_all_models(), allow_custom_value=True)
             gr.Dropdown(elem_id='model_type', choices=ModelType.get_model_name_list(), scale=20)
-            gr.Dropdown(elem_id='template', choices=list(TEMPLATE_MAPPING.keys()) + ['AUTO'], scale=20)
+            gr.Dropdown(elem_id='template', choices=list(TEMPLATE_MAPPING.keys()), scale=20)
             gr.Checkbox(elem_id='merge_lora', scale=4)
             gr.Button(elem_id='reset', scale=2)
         with gr.Row():
@@ -116,6 +116,6 @@ class Model(BaseUI):
     @classmethod
     def after_build_ui(cls, base_tab: Type['BaseUI']):
         cls.element('model').change(
-            partial(cls.update_input_model, has_record=False),
+            partial(cls.update_input_model, arg_cls=DeployArguments, has_record=False),
             inputs=[cls.element('model')],
             outputs=list(cls.valid_elements().values()))

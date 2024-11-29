@@ -89,14 +89,20 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
         # read settings
         all_keys = list(f.name for f in fields(self.__class__))
         data_keys = list(f.name for f in fields(DataArguments))
+        load_keys = [
+            'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant', 'split_dataset_ratio', 'model_name', 'model_author'
+        ]
+        skip_keys = ['output_dir', 'deepspeed']
         for key in all_keys:
+            if key in skip_keys:
+                continue
             if not self.load_dataset_config and key in data_keys:
                 continue
             old_value = old_args.get(key)
             if old_value is None:
                 continue
             value = getattr(self, key, None)
-            if value is None or isinstance(value, (list, tuple)) and len(value) == 0:
+            if value is None or isinstance(value, (list, tuple)) and len(value) == 0 or key in load_keys:
                 setattr(self, key, old_value)
 
     def save_args(self) -> None:
@@ -110,6 +116,15 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
             with open(fpath, 'w', encoding='utf-8') as f:
                 json.dump(check_json_format(self.__dict__), f, ensure_ascii=False, indent=2)
 
+    def _init_weight_type(self, ckpt_dir):
+        if ckpt_dir and (os.path.exists(os.path.join(ckpt_dir, 'adapter_config.json'))
+                              or os.path.exists(os.path.join(ckpt_dir, 'default', 'adapter_config.json'))
+                              or os.path.exists(os.path.join(ckpt_dir, 'reft'))):
+            self.weight_type = 'adapter'
+        else:
+            self.weight_type = 'full'
+            self.model = ckpt_dir or self.model
+            
     def _init_device(self):
         """Prepare ddp of course"""
         if is_dist():

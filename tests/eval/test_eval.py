@@ -17,11 +17,11 @@ def test_eval_mllm():
 
 
 def test_eval_url():
-    from swift.llm import EvalArguments, eval_main, DeployArguments
-    deploy_args = DeployArguments(model='qwen/Qwen2-VL-7B-Instruct')
+    from swift.llm import EvalArguments, eval_main, DeployArguments, run_deploy
+    deploy_args = DeployArguments(model='qwen/Qwen2-VL-7B-Instruct', infer_backend='vllm', verbose=False)
 
-    with SwiftEval.run_deploy(deploy_args) as url:
-        eval_main(EvalArguments(eval_url=url, eval_dataset=['realWorldQA', 'arc_c'], infer_backend='vllm'))
+    with run_deploy(deploy_args) as url:
+        eval_main(EvalArguments(model='Qwen2-VL-7B-Instruct', eval_url=url, eval_dataset=['gsm8k', 'arc_c']))
 
 
 if __name__ == '__main__':

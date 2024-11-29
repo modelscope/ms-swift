@@ -4,7 +4,7 @@ from typing import Type
 
 import gradio as gr
 
-from swift.llm import MODEL_MAPPING, ModelType
+from swift.llm import MODEL_MAPPING, TEMPLATE_MAPPING, ModelType, EvalArguments
 from swift.llm.model.register import get_all_models
 from swift.ui.base import BaseUI
 
@@ -46,17 +46,28 @@ class Model(BaseUI):
                 'en': 'Reset to default'
             },
         },
+        'template': {
+            'label': {
+                'zh': '模型Prompt模板类型',
+                'en': 'Prompt template type'
+            },
+            'info': {
+                'zh': '选择匹配模型的Prompt模板',
+                'en': 'Choose the template type of the model'
+            }
+        },
     }
 
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
         with gr.Row():
-            model = gr.Dropdown(elem_id='model', scale=20, choices=get_all_models(), allow_custom_value=True)
-            model_type = gr.Dropdown(elem_id='model_type', choices=ModelType.get_model_name_list(), scale=20)
+            gr.Dropdown(elem_id='model', scale=20, choices=get_all_models(), allow_custom_value=True)
+            gr.Dropdown(elem_id='model_type', choices=ModelType.get_model_name_list(), scale=20)
+            gr.Dropdown(elem_id='template', choices=list(TEMPLATE_MAPPING.keys()), scale=20)
 
     @classmethod
     def after_build_ui(cls, base_tab: Type['BaseUI']):
         cls.element('model').change(
-            partial(cls.update_input_model, has_record=False),
+            partial(cls.update_input_model, arg_cls=EvalArguments, has_record=False),
             inputs=[cls.element('model')],
             outputs=list(cls.valid_elements().values()))

@@ -1,20 +1,25 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import asyncio
+import inspect
+import multiprocessing
+import time
 from contextlib import contextmanager
-from dataclasses import asdict, is_dataclass
+from dataclasses import asdict
 from http import HTTPStatus
 from threading import Thread
 from typing import Any, Dict, List, Optional, Union
 
 import json
 import uvicorn
+from aiohttp import ClientConnectorError
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from swift.llm import TEMPLATE_MAPPING, DeployArguments, Template, merge_lora
+from swift.llm import DeployArguments
 from swift.plugin import InferStats
 from swift.utils import get_logger
 from .infer import SwiftInfer
+from .infer_engine import InferClient
 from .protocol import ChatCompletionRequest, CompletionRequest, Model, ModelList
 
 logger = get_logger()
@@ -32,25 +37,31 @@ class SwiftDeploy(SwiftInfer):
     def __init__(self, args: Union[List[str], DeployArguments, None] = None) -> None:
         super().__init__(args)
         self.infer_engine.strict = True
-        self.infer_states = InferStats()
+        self.infer_stats = InferStats()
         self.app = FastAPI(lifespan=self.lifespan)
         self._register_app()
 
-    async def _log_stats_hook(self, log_interval: int):
+    async def _log_stats_hook(self):
         while True:
-            await asyncio.sleep(log_interval)
-            global_stats = self.infer_states.compute()
-            self.infer_states.reset()
-            for k, v in global_stats.items():
-                global_stats[k] = round(v, 8)
-            logger.info(global_stats)
+            await asyncio.sleep(self.args.log_interval)
+            self._compute_infer_stats()
+            self.infer_stats.reset()
+
+    def _compute_infer_stats(self):
+        global_stats = self.infer_stats.compute()
+        for k, v in global_stats.items():
+            global_stats[k] = round(v, 8)
+        logger.info(global_stats)
 
     def lifespan(self, app: FastAPI):
         args = self.args
         if args.log_interval > 0:
-            thread = Thread(target=lambda: asyncio.run(self._log_stats_hook(args.log_interval)))
+            thread = Thread(target=lambda: asyncio.run(self._log_stats_hook()))
             thread.start()
-        yield
+        try:
+            yield
+        finally:
+            self._compute_infer_stats()
 
     async def get_available_models(self):
         args = self.args
@@ -91,35 +102,17 @@ class SwiftDeploy(SwiftInfer):
 
     def _post_process(self, request_info, response, return_cmpl_response: bool = False):
         args = self.args
-        if args.log_interval > 0:
-            self.infer_states.update(response)
+
+        is_finished = all(response.choices[i].finish_reason for i in range(len(response.choices)))
         if return_cmpl_response:
             response = response.to_cmpl_response()
-
-        if self.jsonl_writer:
-            data = {'response': asdict(response), **request_info}
-            self.jsonl_writer.append(data)
+        if is_finished:
+            if args.log_interval > 0:
+                self.infer_stats.update(response)
+            if self.jsonl_writer:
+                data = {'response': asdict(response), **request_info}
+                self.jsonl_writer.append(data)
         return response
-
-    @contextmanager
-    def patch_infer_engine(self, infer_request, request_info):
-        # log generation_config
-        verbose = self.args.verbose
-        _origin_add_stop_words = self.infer_engine.__class__._add_stop_words
-
-        def _add_stop_words(self, generation_config, *args, **kwargs):
-            res = _origin_add_stop_words(self, generation_config, *args, **kwargs)
-            printable_infer_request = infer_request.to_printable()
-            request_info.update({'infer_request': printable_infer_request, 'generation_config': generation_config})
-            if verbose:
-                logger.info(request_info)
-            return res
-
-        self.infer_engine.__class__._add_stop_words = _add_stop_words
-        try:
-            yield
-        finally:
-            self.infer_engine.__class__._add_stop_words = _origin_add_stop_words
 
     async def create_chat_completion(self,
                                      request: ChatCompletionRequest,
@@ -132,10 +125,17 @@ class SwiftDeploy(SwiftInfer):
             return self.create_error_response(HTTPStatus.BAD_REQUEST, error_msg)
 
         infer_request, request_config = request.parse()
-        request_info = {}
+        request_info = {'infer_request': infer_request.to_printable()}
+
+        def pre_infer_hook(kwargs):
+            request_info['generation_config'] = kwargs['generation_config']
+            if self.args.verbose:
+                logger.info(request_info)
+            return kwargs
+
+        self.infer_engine.pre_infer_hooks = [pre_infer_hook]
         try:
-            with self.patch_infer_engine(infer_request, request_info):
-                res_or_gen = await self.infer_async(infer_request, request_config, template=self.template)
+            res_or_gen = await self.infer_async(infer_request, request_config, template=self.template)
         except ValueError as e:
             return self.create_error_response(HTTPStatus.BAD_REQUEST, str(e))
         if request_config.stream:
@@ -162,3 +162,36 @@ class SwiftDeploy(SwiftInfer):
 
 def deploy_main(args: Union[List[str], DeployArguments, None] = None) -> None:
     SwiftDeploy(args).main()
+
+
+def is_accessible(port: int):
+    infer_client = InferClient(port=port)
+    try:
+        infer_client.get_model_list()
+    except ClientConnectorError:
+        return False
+    return True
+
+
+@contextmanager
+def run_deploy(args, return_url: bool = True):
+    if isinstance(args, DeployArguments) and args.__class__.__name__ == 'DeployArguments':
+        deploy_args = args
+    else:
+        args_dict = asdict(args)
+        parameters = inspect.signature(DeployArguments.__init__).parameters
+        for k in list(args_dict.keys()):
+            if k not in parameters:
+                args_dict.pop(k)
+        deploy_args = DeployArguments(**args_dict)
+
+    mp = multiprocessing.get_context('spawn')
+    process = mp.Process(target=deploy_main, args=(deploy_args, ))
+    process.start()
+    try:
+        while not is_accessible(deploy_args.port):
+            time.sleep(1)
+        yield f'http://127.0.0.1:{deploy_args.port}/v1/chat/completions' if return_url else deploy_args.port
+    finally:
+        process.terminate()
+        logger.info('The deployment process has been terminated.')

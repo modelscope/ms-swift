@@ -55,7 +55,8 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
             else:
                 self.learning_rate = 1e-4
         self.lr_scheduler_kwargs = self.parse_to_dict(self.lr_scheduler_kwargs)
-        self.gradient_checkpointing_kwargs = self.parse_to_dict(self.gradient_checkpointing_kwargs)
+        if hasattr(self, 'gradient_checkpointing_kwargs'):
+            self.gradient_checkpointing_kwargs = self.parse_to_dict(self.gradient_checkpointing_kwargs)
 
         if len(self.val_dataset) == 0 and self.split_dataset_ratio == 0:
             self.evaluation_strategy = IntervalStrategy.NO
@@ -105,7 +106,6 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
         acc_strategy (Literal): Strategy for accuracy calculation. Default is 'token'.
     """
     add_version: bool = True
-    resume_from_checkpoint: Optional[str] = None
     resume_only_model: bool = False
     check_model: bool = True
     loss_type: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
@@ -123,7 +123,7 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
             self.resume_from_checkpoint = to_abspath(self.resume_from_checkpoint, True)
             self.load_args_from_ckpt(self.resume_from_checkpoint)
             if self.train_type == 'full':
-                self.model_id_or_path = self.resume_from_checkpoint
+                self.model = self.resume_from_checkpoint
         BaseArguments.__post_init__(self)
         Seq2SeqTrainingOverrideArguments.__post_init__(self)
         TunerArguments.__post_init__(self)

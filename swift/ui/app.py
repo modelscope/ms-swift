@@ -59,7 +59,6 @@ class SwiftWebUI(SwiftPipeline):
             else:
                 gr.HTML(f"<h1><center>{locale_dict['title'][lang]}</center></h1>")
                 gr.HTML(f"<h3><center>{locale_dict['sub_title'][lang]}</center></h3>")
-                gr.HTML(f"<h3><center>{locale_dict['star_beggar'][lang]}</center></h3>")
             with gr.Tabs():
                 if is_gradio_app:
                     if self.args.ckpt_dir:

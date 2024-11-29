@@ -44,6 +44,8 @@ def get_model_tokenizer_qwen(model_dir: str,
         logger.info('registered_causal_mask to cuda')
     except AttributeError:
         pass
+    if tokenizer.eos_token_id is None:
+        tokenizer.eos_token_id = tokenizer.eod_id
     return model, tokenizer
 
 

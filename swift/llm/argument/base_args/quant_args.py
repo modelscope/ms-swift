@@ -28,7 +28,7 @@ class QuantizeArguments:
     quant_method: Literal['bnb', 'hqq', 'eetq', 'awq', 'gptq'] = None
     # bnb: 4,8; hqq: 1,2,3,4,8'; eetq: 8
     # awq: 4; gptq: 2,3,4,8
-    quant_bits: Literal[0, 1, 2, 3, 4, 8] = 0
+    quant_bits: Literal[1, 2, 3, 4, 8] = None
     # hqq
     hqq_axis: Optional[int] = None
     # bnb
@@ -40,8 +40,8 @@ class QuantizeArguments:
     def get_quantization_config(self):
         if self.quant_method is None:
             return None
-        assert self.quant_method in {'bnb', 'hqq', 'eetq'}
-        if self.quant_bits == 0:
+        assert self.quant_method in {'bnb', 'hqq', 'eetq', 'awq', 'gptq'}
+        if self.quant_bits is None:
             raise ValueError(f'Please set the quant_bits. args.quant_bits: {self.quant_bits}')
         if self.quant_method == 'bnb':
             if self.quant_bits == 4:

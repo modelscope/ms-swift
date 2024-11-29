@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 from PIL import Image
 
-from swift.llm.template import InferRequest, Message, Messages, Tool
+from swift.llm.template import InferRequest, Messages, Tool
 
 
 def random_uuid() -> str:
@@ -206,7 +206,7 @@ class UsageInfo:
 @dataclass
 class Function:
     name: str
-    arguments: str
+    arguments: Optional[str]
 
 
 @dataclass
@@ -219,7 +219,7 @@ class ChatCompletionMessageToolCall:
 @dataclass
 class ChatMessage:
     role: Literal['system', 'user', 'assistant']
-    content: Message
+    content: Union[str, List[Dict[str, Any]]]
     tool_calls: Optional[List[ChatCompletionMessageToolCall]] = None
 
 

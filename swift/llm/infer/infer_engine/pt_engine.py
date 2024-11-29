@@ -79,7 +79,8 @@ class PtEngine(InferEngine):
         self._prepare_default_template()
         self.max_batch_size = max_batch_size
         self.engine = self.model
-        self.generation_config = self.model.generation_config
+        if self.model is not None:
+            self.generation_config = self.model.generation_config
         self._lora_request_pool = {}
 
     def _prepare_generation_config(self, request_config: RequestConfig) -> _GenerationConfig:
@@ -277,13 +278,14 @@ class PtEngine(InferEngine):
             logprobs = self._get_logprobs(self.tokenizer, logprobs_list, generate_ids, generation_config.top_logprobs)
             usage_info = self._get_usage_info(num_prompt_tokens, len(generate_ids))
             response = template.decode(generate_ids, True)
+            finish_reason = self._get_finish_reason(generation_config.max_new_tokens, num_prompt_tokens, True)
             if isinstance(response, str):
                 toolcall = self._get_toolcall(response, True)
                 choices = [
                     ChatCompletionResponseChoice(
                         index=0,
                         message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
-                        finish_reason=None,
+                        finish_reason=finish_reason,
                         logprobs=logprobs)
                 ]
                 res.append(ChatCompletionResponse(model=self.model_dir, choices=choices, usage=usage_info))
@@ -349,17 +351,24 @@ class PtEngine(InferEngine):
         generation_config = self._prepare_generation_config(request_config)
         self._add_stop_words(generation_config, request_config, template)
 
-        infer_args = (template, inputs, generation_config)
+        kwargs = {
+            'template': template,
+            'inputs': inputs,
+            'generation_config': generation_config,
+            'lora_request': lora_request
+        }
+        for pre_infer_hook in self.pre_infer_hooks:
+            kwargs = pre_infer_hook(kwargs)
         if request_config.stream:
 
             def _gen_wrapper():
-                for res in self._infer_stream(*infer_args, lora_request=lora_request):
+                for res in self._infer_stream(**kwargs):
                     yield res
                 self._update_metrics(res, metrics)
 
             return _gen_wrapper()
         else:
-            return self._update_metrics(self._infer_full(*infer_args, lora_request=lora_request), metrics)
+            return self._update_metrics(self._infer_full(**kwargs), metrics)
 
     @torch.inference_mode()
     def infer(

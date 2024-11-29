@@ -73,6 +73,8 @@ def get_target_modules(args, model) -> Union[str, List[str]]:
             target_modules = args.target_modules.copy()
             target_modules.remove('all-linear')
             target_modules += find_all_linears(model)
+    else:
+        target_modules = args.target_modules
     return target_modules
 
 
@@ -123,16 +125,20 @@ def prepare_adapter(args: TrainArguments, model):
             model = Swift.prepare_model(model, lora_config)
             logger.info(f'lora_config: {lora_config}')
         elif args.tuner_backend == 'unsloth':
-            from unsloth import FastLanguageModel
-            assert args.train_type == 'lora', 'Unsloth does not support LongLoRA'
-            lora_kwargs.pop('lorap_lr_ratio')
-            model = FastLanguageModel.get_peft_model(
-                model,
-                use_gradient_checkpointing=True,
-                max_seq_length=args.max_length,
-                **lora_kwargs,
-            )
-            logger.info(f'unsloth_config: {lora_kwargs}')
+            if args.resume_from_checkpoint is None:
+                if args.model_meta.is_multimodal:
+                    from unsloth import FastVisionModel as UnslothModel
+                else:
+                    from unsloth import FastLanguageModel as UnslothModel
+                assert args.train_type == 'lora', 'Unsloth does not support LongLoRA'
+                lora_kwargs.pop('lorap_lr_ratio')
+                model = UnslothModel.get_peft_model(
+                    model,
+                    use_gradient_checkpointing=True,
+                    max_seq_length=args.max_length,
+                    **lora_kwargs,
+                )
+                logger.info(f'unsloth_config: {lora_kwargs}')
         if args.train_type == 'longlora':
             assert LongLoRAModelType.LLAMA in args.model_type
             assert version.parse(transformers.__version__) >= version.parse('4.39.3')
@@ -289,6 +295,8 @@ def prepare_model(args: TrainArguments, model):
     else:
         raise ValueError(f'args.train_type: {args.train_type}')
 
+    if args.resume_only_model:
+        args.training_args.resume_from_checkpoint = None
     if args.use_galore:
         from swift.trainers.optimizers.galore import GaLoreConfig
         if args.galore_target_modules is None:

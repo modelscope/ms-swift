@@ -55,7 +55,9 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         self.model_info = processor.model_info
         self.model_meta = processor.model_meta
         self.model_dir = self.model_info.model_dir
+        self.max_model_len = self.model_info.max_model_len
         self.config = self.model_info.config
+        self.pre_infer_hooks = []
 
     def _prepare_default_template(self):
         self.default_template = get_template(self.model_meta.template, self.processor)
@@ -183,7 +185,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
 
     def set_default_max_tokens(self, request_config: RequestConfig, inputs: Dict[str, Any]) -> None:
         strict = getattr(self, 'strict', False)
-        max_model_len = self.model_info.max_model_len
+        max_model_len = self.max_model_len
         if isinstance(inputs, dict):
             inputs = [inputs]
         # The num_tokens takes the maximum value from inputs_list.
@@ -245,14 +247,22 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         return finish_reason
 
     @staticmethod
+    def _thread_run(queue, coro):
+        queue.put(asyncio.run(coro))
+
+    @staticmethod
     def safe_asyncio_run(coro):
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
             loop = None
+
         if loop:
-            thread = Thread(target=lambda: asyncio.run(coro))
+            queue = Queue()
+            thread = Thread(target=InferEngine._thread_run, args=(queue, coro))
             thread.start()
             thread.join()
+            result = queue.get()
         else:
-            asyncio.run(coro)
+            result = asyncio.run(coro)
+        return result

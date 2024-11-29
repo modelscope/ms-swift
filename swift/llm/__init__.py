@@ -6,7 +6,7 @@ from swift.utils.import_utils import _LazyModule
 if TYPE_CHECKING:
     # Recommend using `xxx_main`
     from .infer import (VllmEngine, RequestConfig, LmdeployEngine, PtEngine, infer_main, deploy_main, PtLoRARequest,
-                        InferClient, SwiftInfer, SwiftDeploy)
+                        InferClient, SwiftInfer, SwiftDeploy, run_deploy)
     from .export import export_main, merge_lora, quantize_model, export_to_ollama, save_checkpoint
     from .eval import eval_main, SwiftEval
     from .train import sft_main, pt_main, rlhf_main
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
                            ProcessorMixin)
     from .model import (MODEL_MAPPING, ModelType, get_model_tokenizer, safe_snapshot_download, HfConfigFactory,
                         ModelInfo, ModelMeta, ModelKeys, register_model_arch, MultiModelKeys, ModelArch, get_model_arch,
-                        MODEL_ARCH_MAPPING, get_model_info_meta)
+                        MODEL_ARCH_MAPPING, get_model_info_meta, get_model_name)
     from .dataset import (AlpacaPreprocessor, MessagesPreprocessor, AutoPreprocessor, DATASET_MAPPING, MediaResource,
                           register_dataset, register_dataset_info, EncodePreprocessor, LazyLLMDataset,
                           ConstantLengthDataset, standard_keys, load_dataset, DATASET_TYPE, sample_dataset,
@@ -30,7 +30,7 @@ else:
         'rlhf': ['rlhf_main'],
         'infer': [
             'deploy_main', 'VllmEngine', 'RequestConfig', 'LmdeployEngine', 'PtEngine', 'infer_main', 'PtLoRARequest',
-            'InferClient', 'SwiftInfer', 'SwiftDeploy'
+            'InferClient', 'SwiftInfer', 'SwiftDeploy', 'run_deploy'
         ],
         'export': ['export_main', 'merge_lora', 'quantize_model', 'export_to_ollama', 'save_checkpoint'],
         'eval': ['eval_main', 'SwiftEval'],
@@ -47,7 +47,7 @@ else:
         'model': [
             'MODEL_MAPPING', 'ModelType', 'get_model_tokenizer', 'safe_snapshot_download', 'HfConfigFactory',
             'ModelInfo', 'ModelMeta', 'ModelKeys', 'register_model_arch', 'MultiModelKeys', 'ModelArch',
-            'MODEL_ARCH_MAPPING', 'get_model_arch', 'get_model_info_meta'
+            'MODEL_ARCH_MAPPING', 'get_model_arch', 'get_model_info_meta', 'get_model_name'
         ],
         'dataset': [
             'AlpacaPreprocessor', 'ClsPreprocessor', 'ComposePreprocessor', 'MessagesPreprocessor', 'DATASET_MAPPING',
