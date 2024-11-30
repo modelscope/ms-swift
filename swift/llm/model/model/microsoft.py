@@ -72,8 +72,8 @@ register_model(
         [
             # llama2
             ModelGroup([
-                Model('AI-ModelScope/Florence-2-base', 'microsoft/Florence-2-base'),
                 Model('AI-ModelScope/Florence-2-base-ft', 'microsoft/Florence-2-base-ft'),
+                Model('AI-ModelScope/Florence-2-base', 'microsoft/Florence-2-base'),
                 Model('AI-ModelScope/Florence-2-large', 'microsoft/Florence-2-large'),
                 Model('AI-ModelScope/Florence-2-large-ft', 'microsoft/Florence-2-large-ft'),
             ],

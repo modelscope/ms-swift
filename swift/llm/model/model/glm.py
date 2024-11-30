@@ -92,8 +92,8 @@ register_model(
     ModelMeta(
         LLMModelType.chatglm3, [
             ModelGroup([
-                Model('ZhipuAI/chatglm3-6b-base', 'THUDM/chatglm3-6b-base'),
                 Model('ZhipuAI/chatglm3-6b', 'THUDM/chatglm3-6b'),
+                Model('ZhipuAI/chatglm3-6b-base', 'THUDM/chatglm3-6b-base'),
                 Model('ZhipuAI/chatglm3-6b-32k', 'THUDM/chatglm3-6b-32k'),
                 Model('ZhipuAI/chatglm3-6b-128k', 'THUDM/chatglm3-6b-128k'),
             ])
@@ -124,8 +124,8 @@ register_model(
     ModelMeta(
         LLMModelType.glm4, [
             ModelGroup([
-                Model('ZhipuAI/glm-4-9b', 'THUDM/glm-4-9b'),
                 Model('ZhipuAI/glm-4-9b-chat', 'THUDM/glm-4-9b-chat'),
+                Model('ZhipuAI/glm-4-9b', 'THUDM/glm-4-9b'),
                 Model('ZhipuAI/glm-4-9b-chat-1m', 'THUDM/glm-4-9b-chat-1m'),
             ]),
             ModelGroup([

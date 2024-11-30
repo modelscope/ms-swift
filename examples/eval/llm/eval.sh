@@ -1,3 +1,4 @@
 swift eval \
-  --model_id_or_path qwen/Qwen2-7B-Instruct \
+  --model Qwen/Qwen2-7B-Instruct \
+  --eval_limit 10 \
   --eval_dataset gsm8k

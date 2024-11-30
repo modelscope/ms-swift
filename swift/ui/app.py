@@ -7,6 +7,7 @@ from gradio import Accordion, Tab
 from packaging import version
 from transformers.utils import strtobool
 
+import swift
 from swift.llm import SwiftPipeline, WebUIArguments
 from swift.ui.llm_eval.llm_eval import LLMEval
 from swift.ui.llm_export.llm_export import LLMExport
@@ -57,7 +58,11 @@ class SwiftWebUI(SwiftPipeline):
             if is_gradio_app:
                 gr.HTML(f'<h1><center>{self.args.studio_title}</center></h1>')
             else:
-                gr.HTML(f"<h1><center>{locale_dict['title'][lang]}</center></h1>")
+                try:
+                    _version = swift.__version__
+                except AttributeError:
+                    _version = ''
+                gr.HTML(f"<h1><center>{locale_dict['title'][lang]}({_version})</center></h1>")
                 gr.HTML(f"<h3><center>{locale_dict['sub_title'][lang]}</center></h3>")
             with gr.Tabs():
                 if is_gradio_app:

@@ -16,7 +16,7 @@ class Hyper(BaseUI):
                 'en': 'Hyper settings(more params->Advanced settings)',
             },
         },
-        'batch_size': {
+        'per_device_train_batch_size': {
             'label': {
                 'zh': '训练batch size',
                 'en': 'Train batch size',
@@ -109,7 +109,7 @@ class Hyper(BaseUI):
         with gr.Accordion(elem_id='hyper_param', open=False):
             with gr.Blocks():
                 with gr.Row():
-                    gr.Slider(elem_id='batch_size', minimum=1, maximum=256, step=2, scale=20)
+                    gr.Slider(elem_id='per_device_train_batch_size', minimum=1, maximum=256, step=2, scale=20)
                     gr.Textbox(elem_id='learning_rate', value='1e-4', lines=1, scale=20)
                     gr.Textbox(elem_id='num_train_epochs', lines=1, scale=20)
                     gr.Dropdown(elem_id='attn_impl', scale=20, value='flash_attn')

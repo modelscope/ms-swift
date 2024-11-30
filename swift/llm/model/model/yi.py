@@ -67,8 +67,8 @@ register_model(
         [
             ModelGroup(
                 [
-                    Model('01ai/Yi-VL-34B', '01-ai/Yi-VL-34B'),
                     Model('01ai/Yi-VL-6B', '01-ai/Yi-VL-6B'),
+                    Model('01ai/Yi-VL-34B', '01-ai/Yi-VL-34B'),
                 ],
                 requires=['transformers>=4.34'],
                 tags=['multi-modal', 'vision'],

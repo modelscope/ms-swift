@@ -116,7 +116,7 @@ def prepare_adapter(args: TrainArguments, model):
     }
 
     if args.train_type in ('lora', 'longlora'):
-        if args.tuner_backend == 'swift':
+        if args.use_swift_lora:
             lora_config = LoRAConfig(lora_dtype=args.lora_dtype, **lora_kwargs)
             model = Swift.prepare_model(model, lora_config)
             logger.info(f'lora_config: {lora_config}')
