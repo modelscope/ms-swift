@@ -114,11 +114,6 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
 
     # only for inference
     val_dataset_sample: Optional[int] = None
-    stream: Optional[bool] = None
-
-    # From args.json
-    train_type: Optional[str] = None
-    tuner_backend: Optional[str] = None
 
     def get_result_path(self, folder_name, suffix: str = '.jsonl') -> str:
         result_dir = self.ckpt_dir or self.model_dir
@@ -135,10 +130,8 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
 
     def _init_stream(self):
         self.eval_human = not (self.dataset and self.split_dataset_ratio > 0 or self.val_dataset)
-        if self.stream is None:
-            self.stream = self.eval_human
 
-        if self.template:
+        if self.stream and self.template:
             template_meta = get_template_meta(self.template)
             if self.num_beams != 1 or not template_meta.support_stream:
                 self.stream = False

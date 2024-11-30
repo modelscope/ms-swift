@@ -23,13 +23,7 @@ class SwiftEval(SwiftPipeline):
 
     def run(self):
         args = self.args
-        eval_report = {
-            'time': args.time,
-            'model': args.ckpt_dir or args.model,
-            'result_path': args.result_path,
-            'eval_output_dir': args.eval_output_dir,
-            'eval_limit': args.eval_limit
-        }
+        eval_report = {}
         deploy_context = nullcontext() if args.eval_url else run_deploy(self.args)
         with deploy_context as url:
             url = args.eval_url or url
@@ -47,6 +41,13 @@ class SwiftEval(SwiftPipeline):
                     metric = next(iter(report)).rsplit('_')[-1]
                     result[dataset] = {metric: list(report.values())[0]}
                 eval_report['vlmeval'] = result
+        eval_report.update({
+            'time': args.time,
+            'model': args.ckpt_dir or args.model,
+            'result_path': args.result_path,
+            'eval_output_dir': args.eval_output_dir,
+            'eval_limit': args.eval_limit
+        })
 
         if args.result_jsonl:
             append_to_jsonl(args.result_jsonl, eval_report)

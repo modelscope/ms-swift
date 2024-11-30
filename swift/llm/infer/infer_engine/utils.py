@@ -148,8 +148,8 @@ def _set_generation_config_default_value(model_generation_config: GenerationConf
     return generation_config
 
 
-def prepare_generation_config(model_generation_config: GenerationConfig,
-                              request_config: RequestConfig) -> GenerationConfig:
+def prepare_generation_config(model_generation_config: GenerationConfig, request_config: RequestConfig,
+                              tokenizer) -> GenerationConfig:
     kwargs = {'max_new_tokens': request_config.max_tokens}
     # not use: 'n', 'best_of', 'frequency_penalty', 'presence_penalty'
     for key in ['length_penalty']:
@@ -173,4 +173,9 @@ def prepare_generation_config(model_generation_config: GenerationConfig,
     generation_config = GenerationConfig(**kwargs)
     generation_config = _set_generation_config_default_value(model_generation_config, generation_config)
     fix_do_sample_warning(generation_config)
+
+    if generation_config.eos_token_id is None:
+        generation_config.eos_token_id = self.tokenizer.eos_token_id
+    if generation_config.pad_token_id is None:
+        generation_config.pad_token_id = self.tokenizer.pad_token_id
     return generation_config

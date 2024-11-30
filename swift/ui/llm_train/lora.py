@@ -72,7 +72,7 @@ class LoRA(BaseUI):
                 'en': 'gaussian/pissa/pissa_niter_[n]/olora/loftq/true/false',
             }
         },
-        'lora_lr_ratio': {
+        'lorap_lr_ratio': {
             'label': {
                 'zh': 'Lora+学习率倍率',
                 'en': 'The lr ratio of Lora+'
@@ -95,7 +95,7 @@ class LoRA(BaseUI):
                     gr.Textbox(elem_id='lora_dropout', scale=2)
                 with gr.Row():
                     gr.Dropdown(elem_id='lora_dtype', scale=2, value=None)
-                    gr.Textbox(elem_id='lora_lr_ratio', scale=2)
+                    gr.Textbox(elem_id='lorap_lr_ratio', scale=2)
                     gr.Checkbox(elem_id='use_rslora', scale=2)
                     gr.Checkbox(elem_id='use_dora', scale=2)
                     gr.Textbox(elem_id='init_lora_weights', scale=4)

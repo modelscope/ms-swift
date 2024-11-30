@@ -13,7 +13,7 @@ from packaging import version
 from transformers import PreTrainedTokenizerBase
 from vllm import AsyncEngineArgs, AsyncLLMEngine, SamplingParams
 
-from swift.llm import InferRequest, Template, TemplateMeta
+from swift.llm import InferRequest, Template, TemplateMeta, get_model_tokenizer
 from swift.plugin import Metric
 from swift.utils import get_logger
 from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
@@ -56,8 +56,10 @@ class VllmEngine(InferEngine):
             max_lora_rank: int = 16,
             engine_kwargs: Optional[Dict[str, Any]] = None) -> None:
         self._init_env()
-        self._prepare_model_tokenizer(
-            model_id_or_path, torch_dtype, False, model_type=model_type, use_hf=use_hf, revision=revision)
+        self.processor = get_model_tokenizer(
+            model_id_or_path, torch_dtype, load_model=False, model_type=model_type, use_hf=use_hf, revision=revision)
+        self._post_init()
+
         self._prepare_engine_kwargs(
             gpu_memory_utilization=gpu_memory_utilization,
             tensor_parallel_size=tensor_parallel_size,
@@ -73,7 +75,6 @@ class VllmEngine(InferEngine):
             engine_kwargs=engine_kwargs)
 
         self._prepare_engine()
-        self._prepare_default_template()
         self._load_generation_config()
         self._fix_vllm_bug()
         self.patch_remove_log()

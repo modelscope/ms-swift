@@ -35,18 +35,23 @@ class MergeArguments:
                         'and pass its instruct model by --instruct_model xxx when merging')
             assert self.instruct_model, 'Please pass in the instruct model'
 
-            self.merge_yaml = ('models:'
-                               '  - model: {merged_model}'
-                               '    parameters:'
-                               '      weight: 1'
-                               '  }'
-                               '  - model: {instruct_model}'
-                               '    parameters:'
-                               '      weight: 1'
-                               '  }'
-                               'merge_method: ties'
-                               'base_model: {base_model}'
-                               'parameters:'
-                               '  normalize: true'
-                               '  int8_mask: true'
-                               'dtype: bfloat16')
+            self.merge_yaml = """
+models:
+  - model: {merged_model}
+    parameters:
+      weight: 1
+      density: 1
+  - model: {instruct_model}
+    parameters:
+      weight: 1
+      density: 1
+merge_method: ties
+base_model: {base_model}
+parameters:
+  weight: 1
+  density: 1
+  normalize: true
+  int8_mask: true
+tokenizer_source: {merged_model}
+dtype: bfloat16
+"""

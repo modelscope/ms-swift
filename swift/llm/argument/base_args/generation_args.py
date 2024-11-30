@@ -14,7 +14,6 @@ class GenerationArguments:
 
     Args:
         max_new_tokens (Optional[int]): Maximum number of new tokens to generate. Default is None (unlimited).
-        do_sample (Optional[bool]): Flag to enable sampling during generation. Default is None.
         temperature (Optional[float]): Sampling temperature. Default is None.
         top_k (Optional[int]): Top-k sampling parameter. Default is None.
         top_p (Optional[float]): Top-p (nucleus) sampling parameter. Default is None.
@@ -32,6 +31,7 @@ class GenerationArguments:
     repetition_penalty: Optional[float] = None
     num_beams: int = 1
 
+    stream: bool = False
     stop_words: List[str] = field(default_factory=list)
 
     def get_request_config(self):
@@ -44,5 +44,5 @@ class GenerationArguments:
             top_k=self.top_k,
             num_beams=self.num_beams,
             stop=self.stop_words,
-            stream=getattr(self, 'stream', False),
+            stream=self.stream,
             repetition_penalty=self.repetition_penalty)

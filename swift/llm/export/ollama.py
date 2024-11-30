@@ -2,9 +2,8 @@
 import os
 from typing import List
 
-from swift.llm import ExportArguments, RequestConfig, Template
+from swift.llm import ExportArguments, RequestConfig, Template, prepare_pt_engine_template
 from swift.utils import get_logger
-from .utils import prepare_pt_engine_template
 
 logger = get_logger()
 

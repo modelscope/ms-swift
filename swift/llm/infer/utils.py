@@ -1,8 +1,19 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
+
+import re
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
+from swift.llm import ExportArguments, Template
+from swift.plugin import extra_tuners
+from swift.tuners import Swift
+from swift.utils import get_logger
+from ..model.register import load_by_unsloth
 from ..template import Messages
+from .infer_engine import PtEngine
+
+logger = get_logger()
 
 
 @dataclass
@@ -109,3 +120,43 @@ class InferCliState:
             self.multiline_mode = False
             return
         return query
+
+
+def _prepare_pt_engine(args: ExportArguments, pt_engine):
+    if args.train_type in extra_tuners:
+        extra_tuners[args.train_type].from_pretrained(pt_engine.model, args.ckpt_dir, inference_mode=True)
+    else:
+        if args.tuner_backend == 'unsloth':
+            model, processor = load_by_unsloth(args.ckpt_dir, args.torch_dtype, args.max_length, args.quant_bits == 4,
+                                               args.model_meta.is_multimodal)
+            model_info = pt_engine.processor.model_info
+            model_meta = pt_engine.processor.model_meta
+            processor.model_info = model_info
+            processor.model_meta = model_meta
+            model.model_info = model_info
+            model.model_meta = model_meta
+
+            if args.model_meta.is_multimodal:
+                from unsloth import FastVisionModel as UnslothModel
+            else:
+                from unsloth import FastLanguageModel as UnslothModel
+            UnslothModel.for_inference(model)
+
+            pt_engine.model = model
+            pt_engine.generation_config = model.generation_config
+            pt_engine.processor = processor
+        else:
+            pt_engine.model = Swift.from_pretrained(pt_engine.model, args.ckpt_dir, inference_mode=True)
+
+
+def prepare_pt_engine_template(args: ExportArguments, load_model: bool = True, **kwargs) -> Tuple[PtEngine, Template]:
+    from .infer import SwiftInfer
+    if args.tuner_backend == 'unsloth' and args.weight_type == 'adapter':
+        kwargs['load_model'] = False
+
+    pt_engine: PtEngine = SwiftInfer.get_infer_engine(args, infer_backend='pt', load_model=load_model, **kwargs)
+    if args.ckpt_dir and args.weight_type == 'adapter':
+        _prepare_pt_engine(args, pt_engine)
+
+    template = SwiftInfer.get_template(args, pt_engine.processor)
+    return pt_engine, template

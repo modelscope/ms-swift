@@ -6,9 +6,9 @@ from typing import Dict, List, Optional
 import torch
 import torch.nn as nn
 
-from swift.llm import ExportArguments, ProcessorMixin, deep_getattr, get_model_arch, load_dataset
+from swift.llm import (ExportArguments, ProcessorMixin, deep_getattr, get_model_arch, load_dataset,
+                       prepare_pt_engine_template, save_checkpoint)
 from swift.utils import get_logger, get_model_parameter_info
-from .utils import prepare_pt_engine_template, save_checkpoint
 
 logger = get_logger()
 

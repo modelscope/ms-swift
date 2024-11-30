@@ -4,18 +4,12 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set, Tuple, Type, Union
 
 import torch
-from transformers import FeatureExtractionMixin, LogitsProcessor, LogitsProcessorList, PreTrainedTokenizerBase
-from transformers import ProcessorMixin as HfProcessorMixin
-from transformers import StoppingCriteria, StoppingCriteriaList
+from transformers import (LogitsProcessor, LogitsProcessorList, PreTrainedTokenizerBase, StoppingCriteria,
+                          StoppingCriteriaList)
 
 from swift.llm import History
 
 Prompt = List[Union[str, List[int], List[str]]]
-try:
-    from transformers import BaseImageProcessor
-    Processor = Union[PreTrainedTokenizerBase, BaseImageProcessor, FeatureExtractionMixin, HfProcessorMixin]
-except ImportError:
-    Processor = Union[PreTrainedTokenizerBase, FeatureExtractionMixin, HfProcessorMixin]
 Word = Union[str, List[int]]
 Context = Word
 
@@ -49,23 +43,32 @@ class StopWordsCriteria(StoppingCriteria):
         self.stop_words = stop_words
         self.tokenizer_kwargs = tokenizer_kwargs
         self.start_idx = -1
+        self.is_done = None
 
     def __call__(self, input_ids: torch.Tensor, scores: torch.Tensor, **kwargs) -> bool:
         if self.start_idx == -1:
             self.start_idx = len(input_ids[0]) - 1
+            self.is_done = torch.full((input_ids.shape[0], ), False, device=input_ids.device, dtype=torch.bool)
         tokenizer = self.tokenizer
         stop_words = self.stop_words
         # [-20:]: Assuming the end tokens do not exceed 20 tokens,
         #   to avoid input_ids being too long and affecting efficiency.
-        text = tokenizer.decode(input_ids[0, self.start_idx:][-20:], **self.tokenizer_kwargs)
-        for stop_word in stop_words:
-            if isinstance(stop_word, str):
-                if stop_word in text:
-                    return True
-            else:  # list
-                if len(stop_word) > 0 and input_ids[0].tolist()[-len(stop_word):] == stop_word:
-                    return True
-        return False
+        text_list = tokenizer.batch_decode(input_ids[:, self.start_idx:][-20:], **self.tokenizer_kwargs)
+        for i, text in enumerate(text_list):
+            if self.is_done[i]:
+                continue
+            is_finished = False
+            for stop_word in stop_words:
+                if isinstance(stop_word, str):
+                    if stop_word in text:
+                        is_finished = True
+                else:  # list
+                    last_tokens = input_ids[i]
+                    assert len(stop_word) > 0
+                    if input_ids[i][-len(stop_word):].tolist() == stop_word:
+                        is_finished = True
+            self.is_done[i] = is_finished
+        return self.is_done
 
 
 def fetch_one(element: Union[Tuple, List, Set, Dict, Any], item_type: Optional[Type] = None) -> Any:
@@ -161,20 +164,3 @@ def gather_list(batch: List[Dict[str, Any]], attr_name: str) -> Optional[List[An
         if b.get(attr_name) is not None:
             res += b.pop(attr_name)
     return res
-
-
-class ProcessorMixin:
-
-    @property
-    def tokenizer(self):
-        tokenizer = self.processor
-        if not isinstance(tokenizer, PreTrainedTokenizerBase) and hasattr(tokenizer, 'tokenizer'):
-            tokenizer = tokenizer.tokenizer
-        return tokenizer
-
-    @tokenizer.setter
-    def tokenizer(self, value):
-        if self.processor is self.tokenizer:
-            self.processor = value
-        elif self.tokenizer is not value:
-            raise AttributeError('Please use `self.processor` for assignment.')

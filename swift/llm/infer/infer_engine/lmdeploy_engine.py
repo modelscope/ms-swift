@@ -13,7 +13,7 @@ from lmdeploy.api import autoget_backend_config
 from lmdeploy.serve import async_engine
 from transformers import GenerationConfig
 
-from swift.llm import InferRequest, Template, TemplateMeta
+from swift.llm import InferRequest, Template, TemplateMeta, get_model_tokenizer
 from swift.plugin import Metric
 from swift.utils import get_logger, get_seed
 from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
@@ -43,8 +43,10 @@ class LmdeployEngine(InferEngine):
             vision_batch_size: int = 1,  # max_batch_size in VisionConfig
             engine_kwargs: Optional[Dict[str, Any]] = None) -> None:
 
-        self._prepare_model_tokenizer(
-            model_id_or_path, torch_dtype, False, model_type=model_type, use_hf=use_hf, revision=revision)
+        self.processor = get_model_tokenizer(
+            model_id_or_path, torch_dtype, load_model=False, model_type=model_type, use_hf=use_hf, revision=revision)[1]
+        self._post_init()
+
         self.max_model_len -= 1
         self._prepare_engine_kwargs(
             tp=tp,
@@ -56,7 +58,6 @@ class LmdeployEngine(InferEngine):
 
         self.config.torch_dtype = torch_dtype
         self._prepare_engine()
-        self._prepare_default_template()
         self._load_generation_config()
 
     def _prepare_engine_kwargs(self,

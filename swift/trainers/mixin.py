@@ -25,7 +25,7 @@ from transformers.trainer_utils import EvalPrediction
 from transformers.utils import is_torch_npu_available
 
 from swift.hub import get_hub
-from swift.llm import Processor, ProcessorMixin
+from swift.llm import Template
 from swift.tuners import SwiftModel
 from swift.utils import get_logger, is_mp_ddp
 from .arguments import TrainingArguments
@@ -41,7 +41,7 @@ except (ImportError, RuntimeError):
 logger = get_logger()
 
 
-class SwiftMixin(TorchAccMixin, ProcessorMixin):
+class SwiftMixin(TorchAccMixin):
 
     def __init__(
             self,
@@ -50,7 +50,7 @@ class SwiftMixin(TorchAccMixin, ProcessorMixin):
             data_collator: Optional[DataCollator] = None,
             train_dataset: Optional[HfDataset] = None,
             eval_dataset: Optional[Union[HfDataset, Dict[str, HfDataset]]] = None,
-            processor: Optional[Processor] = None,
+            template: Optional[Template] = None,
             model_init: Optional[Callable[[], PreTrainedModel]] = None,
             compute_loss_func: Optional[Callable] = None,
             compute_metrics: Optional[Callable[[EvalPrediction], Dict]] = None,
@@ -65,9 +65,12 @@ class SwiftMixin(TorchAccMixin, ProcessorMixin):
                     'third_party': 'swift',
                 })
         self._custom_metrics = {}
-        self.processor = processor
         self.max_memory = 0
         self.hub = get_hub()
+        if args.predict_with_generate:
+            from swift.llm import PtEngine
+            self.infer_engine = PtEngine.from_model_processor(
+                model, template.processor, max_batch_size=args.per_device_eval_batch_size)
         if args.sequence_parallel_size > 1:
             from swift.trainers.xtuner import init_sequence_parallel_xtuner
             init_sequence_parallel_xtuner(args.sequence_parallel_size)
@@ -78,7 +81,7 @@ class SwiftMixin(TorchAccMixin, ProcessorMixin):
             data_collator=data_collator,
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
-            tokenizer=self.tokenizer,
+            tokenizer=template.tokenizer,
             model_init=model_init,
             compute_metrics=compute_metrics,
             callbacks=callbacks,
@@ -117,8 +120,8 @@ class SwiftMixin(TorchAccMixin, ProcessorMixin):
                 )
                 model.peft_config['default'] = config
 
-    def _load_optimizer_and_scheduler(self, checkpoint):
-        super()._load_optimizer_and_scheduler(checkpoint)
+    def _load_optimizer_and_scheduler(self, *args, **kwargs):
+        super()._load_optimizer_and_scheduler(*args, **kwargs)
         if is_mp_ddp():
             # fix mp+ddp adamw
             for v in self.optimizer.state.values():
@@ -194,7 +197,7 @@ class SwiftMixin(TorchAccMixin, ProcessorMixin):
             from swift.llm import save_checkpoint
             additional_saved_files = self.model.model_meta.additional_saved_files if hasattr(self.model,
                                                                                              'model_meta') else []
-            save_checkpoint(None, self.processor, output_dir, additional_saved_files=additional_saved_files)
+            save_checkpoint(None, self.template.processor, output_dir, additional_saved_files=additional_saved_files)
 
     def _fix_zero3_gather_all_parameters(self) -> None:
         if is_deepspeed_zero3_enabled() and not hasattr(self.deepspeed, '_zero3_consolidated_16bit_state_dict_origin'):
@@ -215,17 +218,17 @@ class SwiftMixin(TorchAccMixin, ProcessorMixin):
                 self.deepspeed._zero3_consolidated_16bit_state_dict = MethodType(_zero3_consolidated_16bit_state_dict,
                                                                                  self.deepspeed)
 
-    def _save_checkpoint(self, model, trial, metrics=None):
+    def _save_checkpoint(self, *args, **kwargs):
         self.state.last_model_checkpoint = os.path.join(self.args.output_dir, f'checkpoint-{self.state.global_step}')
         self._fix_zero3_gather_all_parameters()
-        result = super()._save_checkpoint(model, trial, metrics)
+        result = super()._save_checkpoint(*args, **kwargs)
         logger.info(f'Saving model checkpoint to {self.state.last_model_checkpoint}')
         return result
 
-    def train(self, resume_from_checkpoint: Optional[Union[str, bool]] = None, *args, **kwargs) -> torch.Tensor:
+    def train(self, *args, **kwargs):
         self._save_initial_model(self.args.output_dir)
         with self.hub.patch_hub():
-            return super().train(resume_from_checkpoint, *args, **kwargs)
+            return super().train(*args, **kwargs)
 
     def push_to_hub(*args, **kwargs):
         with self.hub.patch_hub():

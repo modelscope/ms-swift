@@ -7,6 +7,7 @@ if TYPE_CHECKING:
     from .infer import infer_main, SwiftInfer
     from .deploy import deploy_main, SwiftDeploy, run_deploy
     from .protocol import RequestConfig
+    from .utils import prepare_pt_engine_template
     from .infer_engine import (InferEngine, VllmEngine, LmdeployEngine, PtEngine, PtLoRARequest, InferClient,
                                prepare_generation_config)
 else:
@@ -15,6 +16,7 @@ else:
         'infer': ['infer_main', 'SwiftInfer'],
         'deploy': ['deploy_main', 'SwiftDeploy', 'run_deploy'],
         'protocol': ['RequestConfig'],
+        'utils': ['prepare_pt_engine_template'],
         'infer_engine': [
             'InferEngine', 'VllmEngine', 'LmdeployEngine', 'PtEngine', 'PtLoRARequest', 'InferClient',
             'prepare_generation_config'

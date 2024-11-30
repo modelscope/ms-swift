@@ -133,8 +133,8 @@ register_model(
         LLMModelType.skywork,
         [
             ModelGroup([
-                Model('skywork/Skywork-13B-base'),
                 Model('skywork/Skywork-13B-chat'),
+                Model('skywork/Skywork-13B-base'),
             ]),
         ],
         TemplateType.skywork,
@@ -215,8 +215,8 @@ register_model(
         LLMModelType.orion,
         [
             ModelGroup([
-                Model('OrionStarAI/Orion-14B-Base', 'OrionStarAI/Orion-14B-Base'),
                 Model('OrionStarAI/Orion-14B-Chat', 'OrionStarAI/Orion-14B-Chat'),
+                Model('OrionStarAI/Orion-14B-Base', 'OrionStarAI/Orion-14B-Base'),
             ],
                        ignore_file_pattern=[r'.+\.gguf$'],
                        requires=['transformers==4.34.1']),
@@ -365,8 +365,8 @@ register_model(
         LLMModelType.ziya2,
         [
             ModelGroup([
-                Model('Fengshenbang/Ziya2-13B-Base', 'IDEA-CCNL/Ziya2-13B-Base'),
                 Model('Fengshenbang/Ziya2-13B-Chat', 'IDEA-CCNL/Ziya2-13B-Chat'),
+                Model('Fengshenbang/Ziya2-13B-Base', 'IDEA-CCNL/Ziya2-13B-Base'),
             ]),
         ],
         TemplateType.ziya,
@@ -462,8 +462,8 @@ register_model(
         LLMModelType.dbrx,
         [
             ModelGroup([
-                Model('AI-ModelScope/dbrx-base', 'databricks/dbrx-base'),
                 Model('AI-ModelScope/dbrx-instruct', 'databricks/dbrx-instruct'),
+                Model('AI-ModelScope/dbrx-base', 'databricks/dbrx-base'),
             ],
                        tags=['moe', 'skip_test'],
                        requires=['transformers>=4.36']),
@@ -555,8 +555,8 @@ register_model(
         LLMModelType.atom,
         [
             ModelGroup([
-                Model('FlagAlpha/Atom-7B', 'FlagAlpha/Atom-7B'),
                 Model('FlagAlpha/Atom-7B-Chat', 'FlagAlpha/Atom-7B-Chat'),
+                Model('FlagAlpha/Atom-7B', 'FlagAlpha/Atom-7B'),
             ]),
         ],
         TemplateType.atom,
@@ -636,8 +636,8 @@ register_model(
         LLMModelType.xverse,
         [
             ModelGroup([
-                Model('xverse/XVERSE-7B', 'xverse/XVERSE-7B'),
                 Model('xverse/XVERSE-7B-Chat', 'xverse/XVERSE-7B-Chat'),
+                Model('xverse/XVERSE-7B', 'xverse/XVERSE-7B'),
                 Model('xverse/XVERSE-13B', 'xverse/XVERSE-13B'),
                 Model('xverse/XVERSE-13B-Chat', 'xverse/XVERSE-13B-Chat'),
                 Model('xverse/XVERSE-65B', 'xverse/XVERSE-65B'),

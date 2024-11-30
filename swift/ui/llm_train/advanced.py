@@ -86,16 +86,6 @@ class Advanced(BaseUI):
                 'en': 'How to deal with the rows exceed the max length'
             }
         },
-        'gpu_memory_fraction': {
-            'label': {
-                'zh': 'GPU显存限制',
-                'en': 'GPU memory fraction'
-            },
-            'info': {
-                'zh': '设置使用显存的比例，一般用于显存测试',
-                'en': 'Set the memory fraction ratio of GPU, usually used in memory test'
-            }
-        },
         'max_steps': {
             'label': {
                 'zh': '最大迭代步数',
@@ -106,7 +96,7 @@ class Advanced(BaseUI):
                 'en': 'Set the max steps, if the value > 0 then num_train_epochs has no effects',
             }
         },
-        'eval_batch_size': {
+        'per_device_eval_batch_size': {
             'label': {
                 'zh': '验证batch size',
                 'en': 'Val batch size',
@@ -161,13 +151,12 @@ class Advanced(BaseUI):
                     gr.Slider(elem_id='warmup_ratio', minimum=0.0, maximum=1.0, step=0.05, scale=20)
                 with gr.Row():
                     gr.Dropdown(elem_id='truncation_strategy', scale=20)
-                    gr.Slider(elem_id='eval_batch_size', minimum=1, maximum=256, step=2, scale=20)
+                    gr.Slider(elem_id='per_device_eval_batch_size', minimum=1, maximum=256, step=2, scale=20)
                     gr.Textbox(elem_id='max_grad_norm', lines=1, scale=20)
                     gr.Dropdown(
                         elem_id='deepspeed',
                         scale=20,
                         allow_custom_value=True,
                         choices=['default-zero2', 'default-zero3', 'zero2-offload', 'zero3-offload'])
-                    gr.Textbox(elem_id='gpu_memory_fraction', scale=20)
                 with gr.Row():
                     gr.Textbox(elem_id='more_params', lines=4, scale=20)

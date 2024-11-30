@@ -22,13 +22,12 @@ class EvalArguments(DeployArguments):
     Args:
         eval_dataset (List[str]): List of evaluation datasets. Default is an empty list.
         eval_limit (Optional[str]): Limit number of each evaluation dataset. Default is None.
-        do_sample (bool): Flag to indicate if sampling should be done. Default is False.
     """
     eval_dataset: List[str] = field(default_factory=list)
     eval_limit: Optional[int] = None
     eval_output_dir: str = 'eval_output'
 
-    do_sample: bool = False
+    temperature: Optional[float] = 0.
     verbose: bool = False
     max_batch_size: Optional[int] = None
     # If eval_url is set, ms-swift will not perform deployment operations and

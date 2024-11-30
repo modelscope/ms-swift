@@ -440,8 +440,8 @@ def get_model_tokenizer(
         model_id_or_path: str,
         torch_dtype: Optional[torch.dtype] = None,
         device_map: Union[str, Dict[str, Any], None] = None,
-        load_model: bool = True,
         *,
+        load_model: bool = True,
         # hub
         use_hf: Optional[bool] = None,
         hub_token: Optional[str] = None,
