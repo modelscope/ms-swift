@@ -136,7 +136,7 @@ class SwiftSft(SwiftPipeline):
         args = self.args
         loss_type = args.loss_type
         if loss_type is None and args.loss_scale != 'default':
-            loss_type = 'loss-scale'
+            loss_type = 'loss_scale'
         return get_loss_func(loss_type)
 
     def _get_data_collator(self):
