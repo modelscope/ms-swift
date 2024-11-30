@@ -14,7 +14,6 @@ class GenerationArguments:
 
     Args:
         max_new_tokens (Optional[int]): Maximum number of new tokens to generate. Default is None (unlimited).
-        do_sample (Optional[bool]): Flag to enable sampling during generation. Default is None.
         temperature (Optional[float]): Sampling temperature. Default is None.
         top_k (Optional[int]): Top-k sampling parameter. Default is None.
         top_p (Optional[float]): Top-p (nucleus) sampling parameter. Default is None.
