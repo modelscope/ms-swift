@@ -189,12 +189,31 @@ def test_llm_transformers_4_33():
 
 
 def test_predict_with_generate():
+    import os
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
     from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
+    # 'modelscope/coco_2014_caption:validation#100',
     sft_main(
         TrainArguments(
-            model='qwen/Qwen-7B-Chat',
-            dataset=['AI-ModelScope/alpaca-gpt4-data-zh#100', 'AI-ModelScope/alpaca-gpt4-data-en#100'],
+            model='qwen/Qwen2-7B-Instruct',
+            dataset=['AI-ModelScope/alpaca-gpt4-data-en#40'],
             predict_with_generate=True,
+            split_dataset_ratio=0.5,
+            **kwargs))
+
+
+def test_predict_with_generate_zero3():
+    import os
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+    from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
+    # 'modelscope/coco_2014_caption:validation#100',
+    sft_main(
+        TrainArguments(
+            model='qwen/Qwen2-VL-7B-Instruct',
+            dataset=['AI-ModelScope/alpaca-gpt4-data-en#40', 'AI-ModelScope/LaTeX_OCR#40'],  #
+            predict_with_generate=True,
+            split_dataset_ratio=0.5,
+            deepspeed='zero3',
             **kwargs))
 
 
@@ -230,4 +249,5 @@ if __name__ == '__main__':
     # test_resume_only_model()
     # test_llm_transformers_4_33()
     test_predict_with_generate()
+    # test_predict_with_generate_zero3()
     # test_template()

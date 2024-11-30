@@ -79,11 +79,7 @@ class SwiftSft(SwiftPipeline):
         kwargs['model_type'] = model_type
         kwargs['model_revision'] = model_revision
         model_kwargs = {}
-        if args.num_labels is not None:
-            from transformers import AutoModelForSequenceClassification
-            kwargs['automodel_class'] = AutoModelForSequenceClassification
-            model_kwargs = {'num_labels': args.num_labels}
-        if args.tuner_backend == 'unsloth' and args.resume_from_checkpoint is not None and args.train_type != 'full':
+        if args.tuner_backend == 'unsloth' and args.resume_from_checkpoint and args.train_type != 'full':
             model, tokenizer = load_by_unsloth(args.resume_from_checkpoint, args.torch_dtype, args.max_length,
                                                args.quant_bits == 4, args.model_meta.is_multimodal)
             model.model_info = args.model_info
@@ -91,6 +87,10 @@ class SwiftSft(SwiftPipeline):
             tokenizer.model_info = args.model_info
             tokenizer.model_meta = args.model_meta
         else:
+            if args.num_labels is not None:
+                from transformers import AutoModelForSequenceClassification
+                kwargs['automodel_class'] = AutoModelForSequenceClassification
+                model_kwargs = {'num_labels': args.num_labels}
             if args.tuner_backend == 'unsloth':
                 kwargs['unsloth_kwargs'] = {'load_in_4bit': args.quant_bits == 4}
             model, tokenizer = get_model_tokenizer(

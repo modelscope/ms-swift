@@ -21,7 +21,7 @@ from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, Ch
                         ChatCompletionStreamResponse, ChatMessage, DeltaMessage, MultiModalRequestMixin, RequestConfig,
                         random_uuid)
 from .infer_engine import InferEngine
-from .utils import InferStreamer, LogitsStreamer, StopWordsCriteria, TokensIteratorStreamer, prepare_generation_config
+from .utils import InferStreamer, LogitsStreamer, TokensIteratorStreamer, prepare_generation_config
 
 logger = get_logger()
 

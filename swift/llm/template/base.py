@@ -162,7 +162,7 @@ class Template(ProcessorMixin):
 
     def encode(
         self,
-        inputs: Union[TemplateInputs, Dict[str, Any], StdTemplateInputs, InferRequest],
+        inputs: Union[TemplateInputs, Dict[str, Any], InferRequest],
     ) -> Dict[str, Any]:
         """The entrance method of Template!
 
@@ -657,15 +657,6 @@ class Template(ProcessorMixin):
     @property
     def is_training(self):
         return self.mode not in {'vllm', 'lmdeploy', 'pt'}
-
-    @contextmanager
-    def mode_context(self, mode):
-        origin_mode = self.mode
-        self.set_mode(mode)
-        try:
-            yield
-        finally:
-            self.set_mode(origin_mode)
 
     def set_mode(self, mode: Literal['vllm', 'lmdeploy', 'pt', 'train', 'rlhf', 'kto']) -> None:
         self.mode = mode

@@ -96,7 +96,7 @@ class SwiftInfer(SwiftPipeline):
             logger.info(f'The inference results have been saved to result_path: `{args.result_path}`.')
         return result
 
-    def infer_single(self, infer_request: InferRequest, request_config: RequestConfig) -> str:
+    def infer_single(self, infer_request: Union[InferRequest, Dict[str, Any]], request_config: RequestConfig) -> str:
         res_or_gen = self.infer([infer_request], request_config, template=self.template, use_tqdm=False)
         if request_config.stream:
             response = ''
@@ -139,7 +139,7 @@ class SwiftInfer(SwiftPipeline):
             if args.model_meta.is_multimodal:
                 infer_state.input_mm_data()
             data = infer_state.to_dict()
-            response = self.infer_single(InferRequest(**data), request_config)
+            response = self.infer_single(data, request_config)
             infer_state.add_response(response)
             data = {'response': response, **data}
             result_list.append(data)
@@ -169,12 +169,12 @@ class SwiftInfer(SwiftPipeline):
         result_list = []
         if request_config.stream:
             for data in val_dataset:
-                infer_request = InferRequest(**data)
-                query = infer_request.messages[-1]['content']
+                labels = InferRequest.remove_response(data['messages'])
+                query = data['messages'][-1]['content']
                 print(f'[QUERY] {query}\n[RESPONSE] ', end='')
-                response = self.infer_single(infer_request, request_config)
+                response = self.infer_single(data, request_config)
                 print('-' * 50)
-                data = {'response': response, **data}
+                data = {'response': response, 'labels': labels, **data}
                 result_list.append(data)
                 if self.jsonl_writer:
                     self.jsonl_writer.append(data)
@@ -182,12 +182,13 @@ class SwiftInfer(SwiftPipeline):
             is_dist = args.world_size > 1 and dist.is_initialized()
             if is_dist:
                 val_dataset = val_dataset.shard(args.world_size, args.rank, contiguous=True)
-            infer_requests = [InferRequest(**data) for i, data in enumerate(val_dataset)]
+            val_dataset = list(val_dataset)
+            labels_list = [InferRequest.remove_response(data['messages']) for data in val_dataset]
 
-            resp_list = self.infer(infer_requests, request_config, template=self.template, use_tqdm=True)
-            for data, resp in zip(val_dataset, resp_list):
+            resp_list = self.infer(val_dataset, request_config, template=self.template, use_tqdm=True)
+            for data, resp, labels in zip(val_dataset, resp_list, labels_list):
                 response = resp.choices[0].message.content
-                data = {'response': response, **data}
+                data = {'response': response, 'labels': labels, **data}
                 result_list.append(data)
             if is_dist:
                 total_result_list = [None for _ in range(args.world_size)] if args.rank == 0 else None

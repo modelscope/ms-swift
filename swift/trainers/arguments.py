@@ -20,7 +20,6 @@ class SwiftArgumentsMixin:
     check_model: bool = True
     train_sampler_random: bool = True
     is_encoder_decoder: bool = False
-    max_new_tokens: int = 64
 
     # torchacc
     metric_warmup_step: Optional[float] = 0

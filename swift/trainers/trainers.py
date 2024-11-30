@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import os
 import pickle
 import time
 from contextlib import contextmanager, nullcontext
@@ -8,13 +9,14 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import torch
 from peft import PeftModel
 from torch import nn
+from torch.nn.utils.rnn import pad_sequence
 from transformers import Seq2SeqTrainer as HfSeq2SeqTrainer
 from transformers import Trainer as HfTrainer
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
 from transformers.utils import is_peft_available
 
-from swift.utils import Serializer, use_torchacc
+from swift.utils import JsonlWriter, Serializer, use_torchacc
 from swift.utils.torchacc_utils import ta_trim_graph
 from .mixin import SwiftMixin
 
@@ -28,13 +30,17 @@ class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
     def __init__(self, *args, **kwargs):
         from swift.plugin import MeanMetric
         super().__init__(*args, **kwargs)
+        self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'predict.jsonl'))
         self._custom_metrics['acc'] = MeanMetric()
 
     @contextmanager
     def _patch_predict_with_generate(self):
-        has_hook = self._handles
+        origin_mode = self.template.mode
+        self.template.set_mode('pt')
+        has_hook = self.template._handles
         origin_data_collator = self.data_collator
-        if has_hook:
+
+        if has_hook:  # multimodal
             self.template.remove_post_encode_hook()
         else:
             self.data_collator = partial(self.template.pre_data_collator, model=self.model)
@@ -44,10 +50,10 @@ class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
             if has_hook:
                 self.template.register_post_encode_hook([self.model])
             self.data_collator = origin_data_collator
+            self.template.set_mode(origin_mode)
 
     def evaluate(self, *args, **kwargs):
-        context = (self.template.mode_context('pt'),
-                   self._patch_predict_with_generate()) if self.args.predict_with_generate else nullcontext()
+        context = self._patch_predict_with_generate() if self.args.predict_with_generate else nullcontext()
         with context:
             return super().evaluate(*args, **kwargs)
 
@@ -63,17 +69,23 @@ class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
             return super().prediction_step(
                 model, inputs, prediction_loss_only=prediction_loss_only, ignore_keys=ignore_keys)
         from swift.llm import RequestConfig, InferRequest
-        labels = [
-            Serializer.to_tensor(InferRequest.remove_response(data['messages']), device=self.args.device)
-            for data in inputs['_data']
-        ]
+        data_list = inputs['_data']
+        labels_list = [InferRequest.remove_response(data['messages']) for data in data_list]
         resp_list = self.infer_engine.infer(
-            inputs['_data'], RequestConfig(max_tokens=self.args.max_new_tokens), use_tqdm=False)
-        response_list = [
-            Serializer.to_tensor(resp.choices[0].message.content, device=self.args.device) for resp in resp_list
-        ]
+            data_list,
+            RequestConfig(max_tokens=self.model.generation_config.max_new_tokens),
+            use_tqdm=False,
+            template=self.template)
 
-        return None, response_list, labels
+        response_list = []
+        for data, resp, labels in zip(data_list, resp_list, labels_list):
+            response = resp.choices[0].message.content
+            self.jsonl_writer.append({'response': response, 'labels': labels, **data})
+            response_list.append(Serializer.to_tensor(resp.choices[0].message.content, device=self.args.device))
+        labels_list = [Serializer.to_tensor(labels, device=self.args.device) for labels in labels_list]
+        response_list = pad_sequence(response_list, batch_first=True, padding_value=0)
+        labels_list = pad_sequence(labels_list, batch_first=True, padding_value=0)
+        return None, response_list, labels_list
 
     def compute_loss(self, model, inputs, return_outputs=None, num_items_in_batch=None):
         loss_kwargs = {}

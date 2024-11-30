@@ -14,7 +14,7 @@ def test_dataset(infer_backend):
     args = InferArguments(
         model='qwen/Qwen2-7B-Instruct',
         infer_backend=infer_backend,
-        val_dataset=['AI-ModelScope/alpaca-gpt4-data-zh#100'],
+        val_dataset=['AI-ModelScope/alpaca-gpt4-data-zh#10'],
         stream=True)
     infer_main(args)
 

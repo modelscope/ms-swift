@@ -118,6 +118,7 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
     # extra
     acc_strategy: Literal['token', 'sentence'] = 'token'
     max_new_tokens: int = 64
+    temperature: float = 0.
 
     def __post_init__(self) -> None:
         if self.resume_from_checkpoint:
