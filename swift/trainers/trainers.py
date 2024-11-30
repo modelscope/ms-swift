@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import pickle
 import time
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from functools import partial
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -32,18 +32,23 @@ class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
 
     @contextmanager
     def _patch_predict_with_generate(self):
-        self.template.remove_post_encode_hook()
+        has_hook = self._handles
         origin_data_collator = self.data_collator
-        self.data_collator = partial(self.template.pre_data_collator, model=self.model)
+        if has_hook:
+            self.template.remove_post_encode_hook()
+        else:
+            self.data_collator = partial(self.template.pre_data_collator, model=self.model)
         try:
             yield
         finally:
-            if self.model.model_meta.is_multimodal:
+            if has_hook:
                 self.template.register_post_encode_hook([self.model])
             self.data_collator = origin_data_collator
 
     def evaluate(self, *args, **kwargs):
-        with self.template.mode_context('pt'), self._patch_predict_with_generate():
+        context = (self.template.mode_context('pt'),
+                   self._patch_predict_with_generate()) if self.args.predict_with_generate else nullcontext()
+        with context:
             return super().evaluate(*args, **kwargs)
 
     def prediction_step(
@@ -62,7 +67,8 @@ class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
             Serializer.to_tensor(InferRequest.remove_response(data['messages']), device=self.args.device)
             for data in inputs['_data']
         ]
-        resp_list = self.infer_engine.infer(inputs['_data'], RequestConfig(), use_tqdm=False)
+        resp_list = self.infer_engine.infer(
+            inputs['_data'], RequestConfig(max_tokens=self.args.max_new_tokens), use_tqdm=False)
         response_list = [
             Serializer.to_tensor(resp.choices[0].message.content, device=self.args.device) for resp in resp_list
         ]

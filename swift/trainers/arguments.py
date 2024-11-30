@@ -20,13 +20,14 @@ class SwiftArgumentsMixin:
     check_model: bool = True
     train_sampler_random: bool = True
     is_encoder_decoder: bool = False
+    max_new_tokens: int = 64
 
     # torchacc
     metric_warmup_step: Optional[float] = 0
     train_dataset_sample: Optional[int] = -1
     acc_steps: int = 1
 
-    # Value copied from TrainArguments
+    # Value copied from TrainArguments, Used for external tuners.
     train_type: Optional[str] = None
 
     def __post_init__(self):

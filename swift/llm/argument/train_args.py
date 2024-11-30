@@ -138,7 +138,6 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
 
         self._init_deepspeed()
         self._init_device()
-        self.seed += self.rank  # Avoid the same dropout
 
         if self.lazy_tokenize is None:
             self.lazy_tokenize = self.model_meta.is_multimodal and not self.streaming

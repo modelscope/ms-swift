@@ -17,7 +17,7 @@ from peft import PeftModel
 from PIL import Image
 from torch.nn.utils.rnn import pad_sequence
 from transformers import StoppingCriteriaList
-from transformers.integrations import is_deepspeed_zero3_enabled, is_fsdp_managed_module
+from transformers.integrations import is_deepspeed_zero3_enabled
 
 from swift.utils import get_dist_setting, use_torchacc
 from ..utils import Processor, ProcessorMixin
@@ -230,8 +230,6 @@ class Template(ProcessorMixin):
         #     response = response[:-len_suffix]
 
     def prepare_generate_kwargs(self, generate_kwargs: Dict[str, Any], *, model=None) -> Dict[str, Any]:
-        default_synced_gpus = is_deepspeed_zero3_enabled() or is_fsdp_managed_module(model)
-        generate_kwargs['synced_gpus'] = generate_kwargs.get('synced_gpus', default_synced_gpus)
         generation_config = generate_kwargs['generation_config']
         stop_words = getattr(generation_config, 'stop_words', None) or self.template_meta.stop_words
         generate_kwargs['stopping_criteria'] = StoppingCriteriaList([StopWordsCriteria(self.tokenizer, stop_words)])
