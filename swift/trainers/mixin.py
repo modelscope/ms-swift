@@ -65,6 +65,7 @@ class SwiftMixin(TorchAccMixin):
                     'third_party': 'swift',
                 })
         self._custom_metrics = {}
+        self.template = template
         self.max_memory = 0
         self.hub = get_hub()
         if args.predict_with_generate:
