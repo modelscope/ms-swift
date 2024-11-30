@@ -47,12 +47,13 @@ class InferRequest:
             if isinstance(val, str):
                 setattr(self, key, [val])
 
-        self._remove_response()
+        self.remove_response(self.messages)
 
-    def _remove_response(self):
-        last_role = self.messages[-1]['role'] if self.messages else None
+    @staticmethod
+    def remove_response(messages) -> Optional[str]:
+        last_role = messages[-1]['role'] if messages else None
         if last_role == 'assistant':
-            self.messages.pop()
+            return messages.pop()['content']
 
     @staticmethod
     def _to_printable(obj, key: Optional[str] = None):
@@ -76,7 +77,8 @@ class InferRequest:
 
 @dataclass
 class TemplateInputs(InferRequest):
-    """
+    """The training functionality has been added on top of the InferRequest.
+
     objects: Used for grounding tasks in a general format.
     """
     rejected_response: Optional[str] = None

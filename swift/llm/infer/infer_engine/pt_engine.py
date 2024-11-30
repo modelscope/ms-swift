@@ -13,7 +13,7 @@ from tqdm import tqdm
 from transformers import GenerationConfig
 from transformers.utils import is_torch_npu_available
 
-from swift.llm import InferRequest, Template, TemplateMeta, to_device
+from swift.llm import InferRequest, Template, TemplateMeta, get_model_tokenizer, to_device
 from swift.plugin import Metric
 from swift.tuners import Swift
 from swift.utils import get_logger
@@ -64,11 +64,12 @@ class PtEngine(InferEngine):
             quantization_config: Optional[Dict[str, Any]] = None,
             model_kwargs: Optional[Dict[str, Any]] = None,
             **kwargs):
-        self._prepare_model_tokenizer(
+        self.model, self.processor = get_model_tokenizer(
             model_id_or_path,
             torch_dtype,
             load_model=load_model,
             model_type=model_type,
+            download_model=True,
             use_hf=use_hf,
             revision=revision,
             device_map=device_map,
@@ -76,12 +77,23 @@ class PtEngine(InferEngine):
             attn_impl=attn_impl,
             model_kwargs=model_kwargs,
             **kwargs)
-        self._prepare_default_template()
         self.max_batch_size = max_batch_size
-        self.engine = self.model
-        if self.model is not None:
-            self.generation_config = self.model.generation_config
+        self._post_init()
+
+    def _post_init(self):
+        super()._post_init()
+        self.engine = self.model  # dummy
+        self.generation_config = self.model.generation_config
         self._lora_request_pool = {}
+
+    @classmethod
+    def from_model_processor(cls, model, processor, *, max_batch_size: int = 1):
+        self = super().__new__(cls)
+        self.model = model
+        self.processor = processor
+        self.max_batch_size = max_batch_size
+        self._post_init()
+        return self
 
     def _prepare_generation_config(self, request_config: RequestConfig) -> _GenerationConfig:
         generation_config = prepare_generation_config(self.generation_config, request_config, self.tokenizer)
@@ -258,7 +270,9 @@ class PtEngine(InferEngine):
         num_prompt_tokens = self._get_num_tokens(inputs)
         generation_property = template.prepare_for_generation(generation_config, inputs, self.model)
         output = dict(
-            self.model.generate(generation_config=generation_config, **asdict(generation_property), **inputs, **kwargs))
+            self.model.generate(
+                generation_config=generation_config, **generation_property.__dict__, **inputs, **kwargs))
+        output.pop('past_key_values', None)
         batched_generate_ids = output['sequences']
         batched_generate_ids = template.get_generate_ids(batched_generate_ids, num_prompt_tokens)
         batched_logprobs = self.preprocess_logits(
@@ -342,11 +356,10 @@ class PtEngine(InferEngine):
             inputs = template.encode(infer_request)
             batched_inputs.append(inputs)
         if self.model.model_meta.is_multimodal:
-            inputs = template.pre_data_collator(batched_inputs, padding_side='left', model=self.model)
-            template.pre_forward_hook(self.model, None, inputs, padding_side='left')
+            inputs = template.pre_data_collator(batched_inputs, model=self.model)
+            template.pre_forward_hook(self.model, None, inputs)
         else:
-            inputs = to_device(
-                template.data_collator(batched_inputs, padding_side='left', model=self.model), self.model.device)
+            inputs = to_device(template.data_collator(batched_inputs, model=self.model), self.model.device)
         self.set_default_max_tokens(request_config, inputs)
         generation_config = self._prepare_generation_config(request_config)
         self._add_stop_words(generation_config, request_config, template)

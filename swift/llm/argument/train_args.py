@@ -38,8 +38,6 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
     report_to: List[str] = field(default_factory=lambda: ['tensorboard'])
     remove_unused_columns: bool = False
     logging_first_step: bool = True
-    # Usually, the point where eval_loss is minimized does not represent the best model.
-    metric_for_best_model: str = 'loss'
 
     def _init_output_dir(self):
         if self.output_dir is not None:
@@ -48,6 +46,8 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
 
     def __post_init__(self):
         self._init_output_dir()
+        if self.metric_for_best_model is None:
+            metric_for_best_model = 'rouge-l' if self.predict_with_generate else 'loss'
 
         if self.learning_rate is None:
             if self.train_type == 'full':
@@ -117,6 +117,7 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
 
     # extra
     acc_strategy: Literal['token', 'sentence'] = 'token'
+    max_new_tokens: int = 64
 
     def __post_init__(self) -> None:
         if self.resume_from_checkpoint:

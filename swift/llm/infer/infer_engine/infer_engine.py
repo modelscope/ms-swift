@@ -22,44 +22,14 @@ logger = get_logger()
 
 class InferEngine(BaseInferEngine, ProcessorMixin):
 
-    def _prepare_model_tokenizer(
-            self,
-            model_id_or_path: str,
-            torch_dtype: Optional[torch.dtype],
-            load_model: bool,
-            *,
-            model_type: Optional[str] = None,
-            use_hf: Optional[bool] = None,
-            revision: Optional[str] = None,
-            # model
-            device_map: Union[str, Dict[str, Any], None] = None,
-            quantization_config=None,
-            attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None,
-            model_kwargs: Optional[Dict[str, Any]] = None,
-            **kwargs) -> None:
-        model, processor = get_model_tokenizer(
-            model_id_or_path,
-            torch_dtype,
-            load_model=load_model,
-            model_type=model_type,
-            download_model=True,
-            use_hf=use_hf,
-            revision=revision,
-            device_map=device_map,
-            quantization_config=quantization_config,
-            attn_impl=attn_impl,
-            model_kwargs=model_kwargs,
-            **kwargs)
-        self.processor = processor
-        self.model = model
+    def _post_init(self):
+        processor = self.processor
         self.model_info = processor.model_info
         self.model_meta = processor.model_meta
         self.model_dir = self.model_info.model_dir
         self.max_model_len = self.model_info.max_model_len
         self.config = self.model_info.config
         self.pre_infer_hooks = []
-
-    def _prepare_default_template(self):
         self.default_template = get_template(self.model_meta.template, self.processor)
 
     def _get_stop_words(self, stop_words: List[Union[str, List[int], None]]) -> List[str]:

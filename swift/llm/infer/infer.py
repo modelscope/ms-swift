@@ -169,9 +169,10 @@ class SwiftInfer(SwiftPipeline):
         result_list = []
         if request_config.stream:
             for data in val_dataset:
-                query = data['messages'][-1]['content']
+                infer_request = InferRequest(**data)
+                query = infer_request.messages[-1]['content']
                 print(f'[QUERY] {query}\n[RESPONSE] ', end='')
-                response = self.infer_single(InferRequest(**data), request_config)
+                response = self.infer_single(infer_request, request_config)
                 print('-' * 50)
                 data = {'response': response, **data}
                 result_list.append(data)

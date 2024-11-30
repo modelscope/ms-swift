@@ -3,6 +3,7 @@ import hashlib
 import inspect
 import os
 import re
+from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import asdict
 from functools import wraps
@@ -630,20 +631,14 @@ class Template(ProcessorMixin):
     def post_process_generate_response(self, response: str, inputs: StdTemplateInputs) -> str:
         return response
 
-    def pre_forward_hook(self,
-                         model: nn.Module,
-                         args,
-                         kwargs,
-                         *,
-                         padding_side: Optional[str] = None,
-                         padding_to: Optional[int] = None) -> Dict[str, Any]:
+    def pre_forward_hook(self, model: nn.Module, args, kwargs, *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         # inplace
         from swift.llm import to_device
         batched_data = kwargs.pop('_data')
         extra_inputs = []
         for data in batched_data:
             extra_inputs.append(self._post_encode(model, to_device(data, model.device)))
-        new_kwargs = self.data_collator(extra_inputs, padding_side=padding_side, padding_to=padding_to, model=model)
+        new_kwargs = self.data_collator(extra_inputs, padding_to=padding_to, model=model)
         new_kwargs.pop('labels', None)
         if 'inputs_embeds' in new_kwargs:
             new_kwargs.pop('input_ids', None)
@@ -661,6 +656,15 @@ class Template(ProcessorMixin):
     @property
     def is_training(self):
         return self.mode not in {'vllm', 'lmdeploy', 'pt'}
+
+    @contextmanager
+    def mode_context(self, mode):
+        origin_mode = self.mode
+        self.set_mode(mode)
+        try:
+            yield
+        finally:
+            self.set_mode(origin_mode)
 
     def set_mode(self, mode: Literal['vllm', 'lmdeploy', 'pt', 'train', 'rlhf', 'kto']) -> None:
         self.mode = mode
@@ -703,7 +707,6 @@ class Template(ProcessorMixin):
     def pre_data_collator(self,
                           batch: List[Dict[str, Any]],
                           *,
-                          padding_side: Optional[str] = None,
                           padding_to: Optional[int] = None,
                           model: Optional[nn.Module] = None) -> Dict[str, Any]:
         """for multimodal LLM"""
@@ -718,23 +721,21 @@ class Template(ProcessorMixin):
         for b in batch:
             new_batch.append({k: v for k, v in b.items() if k.endswith('labels') or k == 'label'})
 
-        res = self.data_collator(
-            new_batch, padding_side=padding_side, padding_to=padding_to, model=model)  # only labels
+        res = self.data_collator(new_batch, padding_to=padding_to, model=model)  # only labels
         res['_data'] = batch
         return res
 
     def data_collator(self,
                       batch: List[Dict[str, Any]],
                       *,
-                      padding_side: Optional[str] = None,
                       padding_to: Optional[int] = None,
                       model: Optional[nn.Module] = None) -> Dict[str, Any]:
         if self.mode == 'rlhf':
-            return self._rlhf_data_collator(batch, padding_side=padding_side, padding_to=padding_to, model=model)
+            return self._rlhf_data_collator(batch, padding_to=padding_to, model=model)
         elif self.mode == 'kto':
-            return self._kto_data_collator(batch, padding_side=padding_side, padding_to=padding_to, model=model)
+            return self._kto_data_collator(batch, padding_to=padding_to, model=model)
         elif self.mode in {'pt', 'train'}:
-            return self._data_collator(batch, padding_side=padding_side, padding_to=padding_to, model=model)
+            return self._data_collator(batch, padding_to=padding_to, model=model)
 
     @staticmethod
     def _fetch_inputs_startswith(batch: List[Dict[str, Any]], prefix: str) -> List[Dict[str, Any]]:
@@ -752,25 +753,23 @@ class Template(ProcessorMixin):
                             *,
                             chosen_prefix: str = 'chosen_',
                             rejected_prefix: str = 'rejected_',
-                            padding_side: Optional[str] = None,
                             padding_to: Optional[int] = None,
                             model: Optional[nn.Module] = None) -> Dict[str, Any]:
         new_batch = []
         for prefix in [chosen_prefix, rejected_prefix]:
             new_batch += self._fetch_inputs_startswith(batch, prefix)
-        return self._data_collator(new_batch, padding_side=padding_side, padding_to=padding_to, model=model)
+        return self._data_collator(new_batch, padding_to=padding_to, model=model)
 
     def _kto_data_collator(self,
                            batch: List[Dict[str, Any]],
                            *,
-                           padding_side: Optional[str] = None,
                            padding_to: Optional[int] = None,
                            model: Optional[nn.Module] = None) -> Dict[str, Any]:
         kl_batch = self._fetch_inputs_startswith(batch, 'KL_completion_')
         new_batch = self._fetch_inputs_startswith(batch, 'completion_')
 
-        kl_res = self._data_collator(kl_batch, padding_side=padding_side, padding_to=padding_to, model=model)
-        res = self._data_collator(new_batch, padding_side=padding_side, padding_to=padding_to, model=model)
+        kl_res = self._data_collator(kl_batch, padding_to=padding_to, model=model)
+        res = self._data_collator(new_batch, padding_to=padding_to, model=model)
         if res and kl_res:
             res = {f'completion_{k}': v for k, v in res.items()}
             res.update({f'KL_completion_{k}': v for k, v in kl_res.items()})
@@ -781,7 +780,6 @@ class Template(ProcessorMixin):
     def _data_collator(self,
                        batch: List[Dict[str, Any]],
                        *,
-                       padding_side: Optional[str] = None,
                        padding_to: Optional[int] = None,
                        model: Optional[nn.Module] = None) -> Dict[str, Any]:
         """
@@ -794,8 +792,7 @@ class Template(ProcessorMixin):
             return {}
         from swift.utils import use_torchacc
         assert self.tokenizer.pad_token_id is not None
-        if padding_side is None:
-            padding_side = self.padding_side
+        padding_side = self.padding_side if self.is_training else 'left'
         padding_right = padding_side == 'right'
         res = {}
         inputs_embeds = [b['inputs_embeds'] for b in batch if b.get('inputs_embeds') is not None]

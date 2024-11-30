@@ -168,7 +168,7 @@ class SwiftSft(SwiftPipeline):
             eval_dataset=val_dataset,
             callbacks=self.callbacks,
             optimizers=optimizers,
-            processor=self.processor,
+            template=self.template,
             **self._get_trainer_kwargs(),
         )
         return self.train(trainer)
@@ -285,7 +285,7 @@ class SwiftSft(SwiftPipeline):
                 preprocessor_cls = EncodePreprocessor(template=template)
             train_dataset = preprocessor_cls(
                 train_dataset, num_proc=args.dataset_num_proc, load_from_cache_file=args.load_from_cache_file, **kwargs)
-            if val_dataset is not None:
+            if val_dataset is not None and not args.predict_with_generate:
                 val_dataset = preprocessor_cls(
                     val_dataset,
                     num_proc=args.dataset_num_proc,
@@ -296,7 +296,7 @@ class SwiftSft(SwiftPipeline):
         template.print_inputs(inputs, tokenizer_kwargs=inputs.pop('tokenizer_kwargs', None) or {})
         if isinstance(train_dataset, HfDataset):
             self.train_msg['train_dataset'] = self._stat_dataset(train_dataset)
-            if val_dataset is not None:
+            if val_dataset is not None and not args.predict_with_generate:
                 self.train_msg['val_dataset'] = self._stat_dataset(val_dataset)
 
         if val_dataset is None:

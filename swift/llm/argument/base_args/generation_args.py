@@ -31,6 +31,7 @@ class GenerationArguments:
     repetition_penalty: Optional[float] = None
     num_beams: int = 1
 
+    stream: bool = False
     stop_words: List[str] = field(default_factory=list)
 
     def get_request_config(self):
@@ -43,5 +44,5 @@ class GenerationArguments:
             top_k=self.top_k,
             num_beams=self.num_beams,
             stop=self.stop_words,
-            stream=getattr(self, 'stream', False),
+            stream=self.stream,
             repetition_penalty=self.repetition_penalty)

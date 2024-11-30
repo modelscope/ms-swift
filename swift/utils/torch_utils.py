@@ -232,3 +232,22 @@ def safe_ddp_context():
             dist.barrier()
         if (is_dist() or is_dist_ta()) and dist.is_initialized():  # sync
             dist.barrier()
+
+
+class Serializer:
+
+    @staticmethod
+    def to_tensor(obj):
+        res = pickle.dumps(obj)
+        res = np.array([len(res)], dtype=np.int64).tobytes() + res
+        res = np.frombuffer(res, dtype=np.uint8).copy()
+        return torch.from_numpy(res)
+
+    @staticmethod
+    def from_tensor(obj):
+        if isinstance(obj, torch.Tensor):
+            obj = obj.cpu().numpy()
+        res = obj.tobytes()
+        buffer_size = np.frombuffer(res[:8], dtype=np.int64)[0]
+        res = res[8:]
+        return pickle.loads(res[:buffer_size])

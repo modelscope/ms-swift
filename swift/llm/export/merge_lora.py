@@ -30,8 +30,7 @@ def merge_lora(args: ExportArguments, device_map=None, replace_if_exists=False) 
         if args.use_merge_kit:
             base_model = args.model
             if not os.path.exists(base_model):
-                base_model = args.hub.download_model(
-                    base_model, revision=args.model_revision)
+                base_model = args.hub.download_model(base_model, revision=args.model_revision)
             if not os.path.exists(args.instruct_model):
                 args.instruct_model = args.hub.download_model(
                     args.instruct_model, revision=args.instruct_model_revision)
