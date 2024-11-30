@@ -2,7 +2,7 @@
 import os
 import time
 
-from tqdm.auto import tqdm
+from tqdm import tqdm
 from transformers import trainer
 from transformers.trainer_callback import (DefaultFlowCallback, PrinterCallback, ProgressCallback, TrainerCallback,
                                            TrainerControl, TrainerState)

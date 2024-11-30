@@ -41,7 +41,7 @@ except (ImportError, RuntimeError):
 logger = get_logger()
 
 
-class SwiftMixin(TorchAccMixin):
+class SwiftMixin:
 
     def __init__(
             self,

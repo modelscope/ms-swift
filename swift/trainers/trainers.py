@@ -19,13 +19,14 @@ from transformers.utils import is_peft_available
 from swift.utils import JsonlWriter, Serializer, use_torchacc
 from swift.utils.torchacc_utils import ta_trim_graph
 from .mixin import SwiftMixin
+from .torchacc_mixin import TorchAccMixin
 
 
-class Trainer(SwiftMixin, HfTrainer):
+class Trainer(Seq2SeqTrainerSwiftMixin, HfTrainer):
     pass
 
 
-class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
+class Seq2SeqTrainer(TorchAccMixin, SwiftMixin, HfSeq2SeqTrainer):
 
     def __init__(self, *args, **kwargs):
         from swift.plugin import MeanMetric
