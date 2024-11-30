@@ -17,8 +17,8 @@ class Dataset(BaseUI):
                 'en': 'Dataset Code'
             },
             'info': {
-                'zh': '选择训练的数据集，支持复选',
-                'en': 'The dataset(s) to train the models'
+                'zh': '选择训练的数据集，支持复选/本地路径',
+                'en': 'The dataset(s) to train the models, support multi select and local folder/files'
             }
         },
         'max_length': {
@@ -86,8 +86,5 @@ class Dataset(BaseUI):
                 gr.Dropdown(
                     elem_id='dataset', multiselect=True, choices=get_dataset_list(), scale=20, allow_custom_value=True)
                 gr.Textbox(elem_id='custom_dataset_info', is_list=False, scale=20)
-            with gr.Row():
-                gr.Slider(elem_id='split_dataset_ratio', minimum=0.0, maximum=1.0, step=0.05, scale=20)
-                gr.Slider(elem_id='max_length', minimum=32, maximum=32768, step=1, scale=20)
-                gr.Textbox(elem_id='train_dataset_sample', scale=20)
-                gr.Textbox(elem_id='val_dataset_sample', scale=20)
+                gr.Slider(elem_id='split_dataset_ratio', minimum=0.0, maximum=1.0, step=0.05, scale=10)
+                gr.Slider(elem_id='max_length', minimum=32, maximum=32768, step=1, scale=10)

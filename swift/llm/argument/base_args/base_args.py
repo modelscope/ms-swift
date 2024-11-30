@@ -34,7 +34,7 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
         hub_token (Optional[str]): SDK token for authentication. Default is None.
         ignore_args_error (bool): Flag to ignore argument errors for notebook compatibility. Default is False.
     """
-    tuner_backend: Literal['swift', 'peft', 'unsloth'] = 'peft'
+    tuner_backend: Literal['peft', 'unsloth'] = 'peft'
     train_type: str = field(default='lora', metadata={'help': f'train_type choices: {list(get_supported_tuners())}'})
 
     seed: int = 42
@@ -48,6 +48,7 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
 
     # extra
     ignore_args_error: bool = False  # True: notebook compatibility
+    use_swift_lora: bool = False  # True for using tuner_backend == swift, don't specify this unless you know what you are doing # noqa
 
     def __post_init__(self):
         if self.use_hf:

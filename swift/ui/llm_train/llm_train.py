@@ -13,7 +13,7 @@ import torch
 from json import JSONDecodeError
 
 from swift.llm import RLHFArguments
-from swift.llm.argument.tuner_args import get_supported_tuners
+from swift.llm.argument.base_args.base_args import get_supported_tuners
 from swift.ui.base import BaseUI
 from swift.ui.llm_train.advanced import Advanced
 from swift.ui.llm_train.dataset import Dataset
@@ -65,7 +65,7 @@ class LLMTrain(BaseUI):
                 'en': 'Train Stage'
             },
             'info': {
-                'zh': '请注意选择于此匹配的数据集，人类对齐配置在页面下方',
+                'zh': '请注意选择与此匹配的数据集，人类对齐配置在页面下方',
                 'en': 'Please choose matched dataset, RLHF settings is at the bottom of the page'
             }
         },
@@ -166,8 +166,8 @@ class LLMTrain(BaseUI):
                 'en': 'Tuner backend'
             },
             'info': {
-                'zh': 'tuner实现框架，建议peft或者unsloth',
-                'en': 'The tuner backend, suggest to use peft or unsloth'
+                'zh': 'tuner实现框架',
+                'en': 'The tuner backend'
             }
         },
         'use_liger': {
