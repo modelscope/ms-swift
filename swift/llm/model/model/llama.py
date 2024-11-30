@@ -76,12 +76,12 @@ register_model(
             # llama3
             ModelGroup(
                 [
-                    # base
-                    Model('LLM-Research/Meta-Llama-3-8B', 'meta-llama/Meta-Llama-3-8B'),
-                    Model('LLM-Research/Meta-Llama-3-70B', 'meta-llama/Meta-Llama-3-70B'),
                     # chat
                     Model('LLM-Research/Meta-Llama-3-8B-Instruct', 'meta-llama/Meta-Llama-3-8B-Instruct'),
                     Model('LLM-Research/Meta-Llama-3-70B-Instruct', 'meta-llama/Meta-Llama-3-70B-Instruct'),
+                    # base
+                    Model('LLM-Research/Meta-Llama-3-8B', 'meta-llama/Meta-Llama-3-8B'),
+                    Model('LLM-Research/Meta-Llama-3-70B', 'meta-llama/Meta-Llama-3-70B'),
                 ],
                 TemplateType.llama3),
             # llama3-quant
@@ -95,22 +95,22 @@ register_model(
             ], TemplateType.llama3),
             # chinese-llama3
             ModelGroup([
-                Model('ChineseAlpacaGroup/llama-3-chinese-8b', 'hfl/llama-3-chinese-8b'),
                 Model('ChineseAlpacaGroup/llama-3-chinese-8b-instruct', 'hfl/llama-3-chinese-8b-instruct'),
+                Model('ChineseAlpacaGroup/llama-3-chinese-8b', 'hfl/llama-3-chinese-8b'),
             ], TemplateType.llama3),
             # llama3.1
             ModelGroup(
                 [
-                    # base
-                    Model('LLM-Research/Meta-Llama-3.1-8B', 'meta-llama/Meta-Llama-3.1-8B'),
-                    Model('LLM-Research/Meta-Llama-3.1-70B', 'meta-llama/Meta-Llama-3.1-70B'),
-                    Model('LLM-Research/Meta-Llama-3.1-405B', 'meta-llama/Meta-Llama-3.1-405B'),
                     # chat
                     Model('LLM-Research/Meta-Llama-3.1-8B-Instruct', 'meta-llama/Meta-Llama-3.1-8B-Instruct'),
                     Model('LLM-Research/Meta-Llama-3.1-70B-Instruct', 'meta-llama/Meta-Llama-3.1-70B-Instruct'),
                     Model('AI-ModelScope/Llama-3.1-Nemotron-70B-Instruct-HF',
                           'nvidia/Llama-3.1-Nemotron-70B-Instruct-HF'),
                     Model('LLM-Research/Meta-Llama-3.1-405B-Instruct', 'meta-llama/Meta-Llama-3.1-405B-Instruct'),
+                    # base
+                    Model('LLM-Research/Meta-Llama-3.1-8B', 'meta-llama/Meta-Llama-3.1-8B'),
+                    Model('LLM-Research/Meta-Llama-3.1-70B', 'meta-llama/Meta-Llama-3.1-70B'),
+                    Model('LLM-Research/Meta-Llama-3.1-405B', 'meta-llama/Meta-Llama-3.1-405B'),
                     # fp8
                     Model('LLM-Research/Meta-Llama-3.1-70B-Instruct-FP8', 'meta-llama/Meta-Llama-3.1-70B-Instruct-FP8'),
                     Model('LLM-Research/Meta-Llama-3.1-405B-Instruct-FP8',
@@ -170,10 +170,10 @@ register_model(
         LLMModelType.llama3_2,
         [
             ModelGroup([
-                Model('LLM-Research/Llama-3.2-1B', 'meta-llama/Llama-3.2-1B'),
-                Model('LLM-Research/Llama-3.2-3B', 'meta-llama/Llama-3.2-3B'),
                 Model('LLM-Research/Llama-3.2-1B-Instruct', 'meta-llama/Llama-3.2-1B-Instruct'),
                 Model('LLM-Research/Llama-3.2-3B-Instruct', 'meta-llama/Llama-3.2-3B-Instruct'),
+                Model('LLM-Research/Llama-3.2-1B', 'meta-llama/Llama-3.2-1B'),
+                Model('LLM-Research/Llama-3.2-3B', 'meta-llama/Llama-3.2-3B'),
             ])
         ],
         TemplateType.llama3_2,
@@ -196,10 +196,10 @@ register_model(
         MLLMModelType.llama3_2_vision,
         [
             ModelGroup([
-                Model('LLM-Research/Llama-3.2-11B-Vision', 'meta-llama/Llama-3.2-11B-Vision'),
-                Model('LLM-Research/Llama-3.2-90B-Vision', 'meta-llama/Llama-3.2-90B-Vision'),
                 Model('LLM-Research/Llama-3.2-11B-Vision-Instruct', 'meta-llama/Llama-3.2-11B-Vision-Instruct'),
                 Model('LLM-Research/Llama-3.2-90B-Vision-Instruct', 'meta-llama/Llama-3.2-90B-Vision-Instruct'),
+                Model('LLM-Research/Llama-3.2-11B-Vision', 'meta-llama/Llama-3.2-11B-Vision'),
+                Model('LLM-Research/Llama-3.2-90B-Vision', 'meta-llama/Llama-3.2-90B-Vision'),
             ],
                        tags=['vision'])
         ],

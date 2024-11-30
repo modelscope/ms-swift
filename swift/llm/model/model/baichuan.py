@@ -38,9 +38,9 @@ register_model(
         LLMModelType.baichuan,
         [
             ModelGroup([
-                Model('baichuan-inc/baichuan-7B', 'baichuan-inc/Baichuan-7B'),
-                Model('baichuan-inc/Baichuan-13B-Base', 'baichuan-inc/Baichuan-13B-Base'),
                 Model('baichuan-inc/Baichuan-13B-Chat', 'baichuan-inc/Baichuan-13B-Chat'),
+                Model('baichuan-inc/Baichuan-13B-Base', 'baichuan-inc/Baichuan-13B-Base'),
+                Model('baichuan-inc/baichuan-7B', 'baichuan-inc/Baichuan-7B'),
             ],
                        requires=['transformers<4.33.3']),
         ],
@@ -98,10 +98,10 @@ register_model(
         LLMModelType.baichuan2,
         [
             ModelGroup([
-                Model('baichuan-inc/Baichuan2-7B-Base', 'baichuan-inc/Baichuan2-7B-Base'),
                 Model('baichuan-inc/Baichuan2-7B-Chat', 'baichuan-inc/Baichuan2-7B-Chat'),
-                Model('baichuan-inc/Baichuan2-13B-Base', 'baichuan-inc/Baichuan2-13B-Base'),
+                Model('baichuan-inc/Baichuan2-7B-Base', 'baichuan-inc/Baichuan2-7B-Base'),
                 Model('baichuan-inc/Baichuan2-13B-Chat', 'baichuan-inc/Baichuan2-13B-Chat'),
+                Model('baichuan-inc/Baichuan2-13B-Base', 'baichuan-inc/Baichuan2-13B-Base'),
             ]),
         ],
         TemplateType.baichuan,

@@ -55,16 +55,16 @@ register_model(
         [
             # qwen
             ModelGroup([
-                # base
-                Model('Qwen/Qwen-1_8B', 'Qwen/Qwen-1_8B'),
-                Model('Qwen/Qwen-7B', 'Qwen/Qwen-7B'),
-                Model('Qwen/Qwen-14B', 'Qwen/Qwen-14B'),
-                Model('Qwen/Qwen-72B', 'Qwen/Qwen-72B'),
                 # chat
                 Model('Qwen/Qwen-1_8B-Chat', 'Qwen/Qwen-1_8B-Chat'),
                 Model('Qwen/Qwen-7B-Chat', 'Qwen/Qwen-7B-Chat'),
                 Model('Qwen/Qwen-14B-Chat', 'Qwen/Qwen-14B-Chat'),
                 Model('Qwen/Qwen-72B-Chat', 'Qwen/Qwen-72B-Chat'),
+                # base
+                Model('Qwen/Qwen-1_8B', 'Qwen/Qwen-1_8B'),
+                Model('Qwen/Qwen-7B', 'Qwen/Qwen-7B'),
+                Model('Qwen/Qwen-14B', 'Qwen/Qwen-14B'),
+                Model('Qwen/Qwen-72B', 'Qwen/Qwen-72B'),
                 # gptq-int4
                 Model('Qwen/Qwen-1_8B-Chat-Int4', 'Qwen/Qwen-1_8B-Chat-Int4'),
                 Model('Qwen/Qwen-7B-Chat-Int4', 'Qwen/Qwen-7B-Chat-Int4'),
@@ -78,8 +78,8 @@ register_model(
             ]),
             # tongyi-finance
             ModelGroup([
-                Model('TongyiFinance/Tongyi-Finance-14B'),
                 Model('TongyiFinance/Tongyi-Finance-14B-Chat', 'jxy/Tongyi-Finance-14B-Chat'),
+                Model('TongyiFinance/Tongyi-Finance-14B'),
                 Model('TongyiFinance/Tongyi-Finance-14B-Chat-Int4', 'jxy/Tongyi-Finance-14B-Chat-Int4'),
             ],
                        tags=['financial']),
@@ -157,8 +157,8 @@ register_model(
     ModelMeta(
         MLLMModelType.qwen_audio, [
             ModelGroup([
-                Model('Qwen/Qwen-Audio', 'Qwen/Qwen-Audio'),
                 Model('Qwen/Qwen-Audio-Chat', 'Qwen/Qwen-Audio-Chat'),
+                Model('Qwen/Qwen-Audio', 'Qwen/Qwen-Audio'),
             ],
                        tags=['audio'])
         ],
@@ -236,8 +236,8 @@ register_model(
     ModelMeta(
         MLLMModelType.qwen_vl, [
             ModelGroup([
-                Model('Qwen/Qwen-VL', 'Qwen/Qwen-VL'),
                 Model('Qwen/Qwen-VL-Chat', 'Qwen/Qwen-VL-Chat'),
+                Model('Qwen/Qwen-VL', 'Qwen/Qwen-VL'),
                 Model('Qwen/Qwen-VL-Chat-Int4', 'Qwen/Qwen-VL-Chat-Int4'),
             ],
                        tags=['vision'])
@@ -254,15 +254,6 @@ register_model(
         [
             # qwen1.5
             ModelGroup([
-                # base
-                Model('Qwen/Qwen1.5-0.5B', 'Qwen/Qwen1.5-0.5B'),
-                Model('Qwen/Qwen1.5-1.8B', 'Qwen/Qwen1.5-1.8B'),
-                Model('Qwen/Qwen1.5-4B', 'Qwen/Qwen1.5-4B'),
-                Model('Qwen/Qwen1.5-7B', 'Qwen/Qwen1.5-7B'),
-                Model('Qwen/Qwen1.5-14B', 'Qwen/Qwen1.5-14B'),
-                Model('Qwen/Qwen1.5-32B', 'Qwen/Qwen1.5-32B'),
-                Model('Qwen/Qwen1.5-72B', 'Qwen/Qwen1.5-72B'),
-                Model('Qwen/Qwen1.5-110B', 'Qwen/Qwen1.5-110B'),
                 # chat
                 Model('Qwen/Qwen1.5-0.5B-Chat', 'Qwen/Qwen1.5-0.5B-Chat'),
                 Model('Qwen/Qwen1.5-1.8B-Chat', 'Qwen/Qwen1.5-1.8B-Chat'),
@@ -272,6 +263,15 @@ register_model(
                 Model('Qwen/Qwen1.5-32B-Chat', 'Qwen/Qwen1.5-32B-Chat'),
                 Model('Qwen/Qwen1.5-72B-Chat', 'Qwen/Qwen1.5-72B-Chat'),
                 Model('Qwen/Qwen1.5-110B-Chat', 'Qwen/Qwen1.5-110B-Chat'),
+                # base
+                Model('Qwen/Qwen1.5-0.5B', 'Qwen/Qwen1.5-0.5B'),
+                Model('Qwen/Qwen1.5-1.8B', 'Qwen/Qwen1.5-1.8B'),
+                Model('Qwen/Qwen1.5-4B', 'Qwen/Qwen1.5-4B'),
+                Model('Qwen/Qwen1.5-7B', 'Qwen/Qwen1.5-7B'),
+                Model('Qwen/Qwen1.5-14B', 'Qwen/Qwen1.5-14B'),
+                Model('Qwen/Qwen1.5-32B', 'Qwen/Qwen1.5-32B'),
+                Model('Qwen/Qwen1.5-72B', 'Qwen/Qwen1.5-72B'),
+                Model('Qwen/Qwen1.5-110B', 'Qwen/Qwen1.5-110B'),
                 # gptq-int4
                 Model('Qwen/Qwen1.5-0.5B-Chat-GPTQ-Int4', 'Qwen/Qwen1.5-0.5B-Chat-GPTQ-Int4'),
                 Model('Qwen/Qwen1.5-1.8B-Chat-GPTQ-Int4', 'Qwen/Qwen1.5-1.8B-Chat-GPTQ-Int4'),
@@ -307,16 +307,16 @@ register_model(
                        tags=['coding']),
             # qwen2
             ModelGroup([
-                # base
-                Model('Qwen/Qwen2-0.5B', 'Qwen/Qwen2-0.5B'),
-                Model('Qwen/Qwen2-1.5B', 'Qwen/Qwen2-1.5B'),
-                Model('Qwen/Qwen2-7B', 'Qwen/Qwen2-7B'),
-                Model('Qwen/Qwen2-72B', 'Qwen/Qwen2-72B'),
                 # instruct
                 Model('Qwen/Qwen2-0.5B-Instruct', 'Qwen/Qwen2-0.5B-Instruct'),
                 Model('Qwen/Qwen2-1.5B-Instruct', 'Qwen/Qwen2-1.5B-Instruct'),
                 Model('Qwen/Qwen2-7B-Instruct', 'Qwen/Qwen2-7B-Instruct'),
                 Model('Qwen/Qwen2-72B-Instruct', 'Qwen/Qwen2-72B-Instruct'),
+                # base
+                Model('Qwen/Qwen2-0.5B', 'Qwen/Qwen2-0.5B'),
+                Model('Qwen/Qwen2-1.5B', 'Qwen/Qwen2-1.5B'),
+                Model('Qwen/Qwen2-7B', 'Qwen/Qwen2-7B'),
+                Model('Qwen/Qwen2-72B', 'Qwen/Qwen2-72B'),
                 # gptq-int4
                 Model('Qwen/Qwen2-0.5B-Instruct-GPTQ-Int4', 'Qwen/Qwen2-0.5B-Instruct-GPTQ-Int4'),
                 Model('Qwen/Qwen2-1.5B-Instruct-GPTQ-Int4', 'Qwen/Qwen2-1.5B-Instruct-GPTQ-Int4'),
@@ -336,14 +336,14 @@ register_model(
             # qwen2-math
             ModelGroup(
                 [
-                    # base
-                    Model('Qwen/Qwen2-Math-1.5B', 'Qwen/Qwen2-Math-1.5B'),
-                    Model('Qwen/Qwen2-Math-7B', 'Qwen/Qwen2-Math-7B'),
-                    Model('Qwen/Qwen2-Math-72B', 'Qwen/Qwen2-Math-72B'),
                     # instruct
                     Model('Qwen/Qwen2-Math-1.5B-Instruct', 'Qwen/Qwen2-Math-1.5B-Instruct'),
                     Model('Qwen/Qwen2-Math-7B-Instruct', 'Qwen/Qwen2-Math-7B-Instruct'),
                     Model('Qwen/Qwen2-Math-72B-Instruct', 'Qwen/Qwen2-Math-72B-Instruct'),
+                    # base
+                    Model('Qwen/Qwen2-Math-1.5B', 'Qwen/Qwen2-Math-1.5B'),
+                    Model('Qwen/Qwen2-Math-7B', 'Qwen/Qwen2-Math-7B'),
+                    Model('Qwen/Qwen2-Math-72B', 'Qwen/Qwen2-Math-72B'),
                 ],
                 tags=['math']),
         ],
@@ -359,14 +359,6 @@ register_model(
         [
             # qwen2.5
             ModelGroup([
-                # base
-                Model('Qwen/Qwen2.5-0.5B', 'Qwen/Qwen2.5-0.5B'),
-                Model('Qwen/Qwen2.5-1.5B', 'Qwen/Qwen2.5-1.5B'),
-                Model('Qwen/Qwen2.5-3B', 'Qwen/Qwen2.5-3B'),
-                Model('Qwen/Qwen2.5-7B', 'Qwen/Qwen2.5-7B'),
-                Model('Qwen/Qwen2.5-14B', 'Qwen/Qwen2.5-14B'),
-                Model('Qwen/Qwen2.5-32B', 'Qwen/Qwen2.5-32B'),
-                Model('Qwen/Qwen2.5-72B', 'Qwen/Qwen2.5-72B'),
                 # instruct
                 Model('Qwen/Qwen2.5-0.5B-Instruct', 'Qwen/Qwen2.5-0.5B-Instruct'),
                 Model('Qwen/Qwen2.5-1.5B-Instruct', 'Qwen/Qwen2.5-1.5B-Instruct'),
@@ -375,6 +367,14 @@ register_model(
                 Model('Qwen/Qwen2.5-14B-Instruct', 'Qwen/Qwen2.5-14B-Instruct'),
                 Model('Qwen/Qwen2.5-32B-Instruct', 'Qwen/Qwen2.5-32B-Instruct'),
                 Model('Qwen/Qwen2.5-72B-Instruct', 'Qwen/Qwen2.5-72B-Instruct'),
+                # base
+                Model('Qwen/Qwen2.5-0.5B', 'Qwen/Qwen2.5-0.5B'),
+                Model('Qwen/Qwen2.5-1.5B', 'Qwen/Qwen2.5-1.5B'),
+                Model('Qwen/Qwen2.5-3B', 'Qwen/Qwen2.5-3B'),
+                Model('Qwen/Qwen2.5-7B', 'Qwen/Qwen2.5-7B'),
+                Model('Qwen/Qwen2.5-14B', 'Qwen/Qwen2.5-14B'),
+                Model('Qwen/Qwen2.5-32B', 'Qwen/Qwen2.5-32B'),
+                Model('Qwen/Qwen2.5-72B', 'Qwen/Qwen2.5-72B'),
                 # gptq-int4
                 Model('Qwen/Qwen2.5-0.5B-Instruct-GPTQ-Int4', 'Qwen/Qwen2.5-0.5B-Instruct-GPTQ-Int4'),
                 Model('Qwen/Qwen2.5-1.5B-Instruct-GPTQ-Int4', 'Qwen/Qwen2.5-1.5B-Instruct-GPTQ-Int4'),
@@ -403,26 +403,19 @@ register_model(
             # qwen2.5-math
             ModelGroup(
                 [
-                    # base
-                    Model('Qwen/Qwen2.5-Math-1.5B', 'Qwen/Qwen2.5-Math-1.5B'),
-                    Model('Qwen/Qwen2.5-Math-7B', 'Qwen/Qwen2.5-Math-7B'),
-                    Model('Qwen/Qwen2.5-Math-72B', 'Qwen/Qwen2.5-Math-72B'),
                     # instruct
                     Model('Qwen/Qwen2.5-Math-1.5B-Instruct', 'Qwen/Qwen2.5-Math-1.5B-Instruct'),
                     Model('Qwen/Qwen2.5-Math-7B-Instruct', 'Qwen/Qwen2.5-Math-7B-Instruct'),
                     Model('Qwen/Qwen2.5-Math-72B-Instruct', 'Qwen/Qwen2.5-Math-72B-Instruct'),
+                    # base
+                    Model('Qwen/Qwen2.5-Math-1.5B', 'Qwen/Qwen2.5-Math-1.5B'),
+                    Model('Qwen/Qwen2.5-Math-7B', 'Qwen/Qwen2.5-Math-7B'),
+                    Model('Qwen/Qwen2.5-Math-72B', 'Qwen/Qwen2.5-Math-72B'),
                 ],
                 tags=['math']),
             # qwen2.5-coder
             ModelGroup(
                 [
-                    # base
-                    Model('Qwen/Qwen2.5-Coder-0.5B', 'Qwen/Qwen2.5-Coder-0.5B'),
-                    Model('Qwen/Qwen2.5-Coder-1.5B', 'Qwen/Qwen2.5-Coder-1.5B'),
-                    Model('Qwen/Qwen2.5-Coder-3B', 'Qwen/Qwen2.5-Coder-3B'),
-                    Model('Qwen/Qwen2.5-Coder-7B', 'Qwen/Qwen2.5-Coder-7B'),
-                    Model('Qwen/Qwen2.5-Coder-14B', 'Qwen/Qwen2.5-Coder-14B'),
-                    Model('Qwen/Qwen2.5-Coder-32B', 'Qwen/Qwen2.5-Coder-32B'),
                     # instruct
                     Model('Qwen/Qwen2.5-Coder-0.5B-Instruct', 'Qwen/Qwen2.5-Coder-0.5B-Instruct'),
                     Model('Qwen/Qwen2.5-Coder-1.5B-Instruct', 'Qwen/Qwen2.5-Coder-1.5B-Instruct'),
@@ -430,6 +423,13 @@ register_model(
                     Model('Qwen/Qwen2.5-Coder-7B-Instruct', 'Qwen/Qwen2.5-Coder-7B-Instruct'),
                     Model('Qwen/Qwen2.5-Coder-14B-Instruct', 'Qwen/Qwen2.5-Coder-14B-Instruct'),
                     Model('Qwen/Qwen2.5-Coder-32B-Instruct', 'Qwen/Qwen2.5-Coder-32B-Instruct'),
+                    # base
+                    Model('Qwen/Qwen2.5-Coder-0.5B', 'Qwen/Qwen2.5-Coder-0.5B'),
+                    Model('Qwen/Qwen2.5-Coder-1.5B', 'Qwen/Qwen2.5-Coder-1.5B'),
+                    Model('Qwen/Qwen2.5-Coder-3B', 'Qwen/Qwen2.5-Coder-3B'),
+                    Model('Qwen/Qwen2.5-Coder-7B', 'Qwen/Qwen2.5-Coder-7B'),
+                    Model('Qwen/Qwen2.5-Coder-14B', 'Qwen/Qwen2.5-Coder-14B'),
+                    Model('Qwen/Qwen2.5-Coder-32B', 'Qwen/Qwen2.5-Coder-32B'),
                     # AWQ
                     Model('Qwen/Qwen2.5-Coder-0.5B-Instruct-AWQ', 'Qwen/Qwen2.5-Coder-0.5B-Instruct-AWQ'),
                     Model('Qwen/Qwen2.5-Coder-1.5B-Instruct-AWQ', 'Qwen/Qwen2.5-Coder-1.5B-Instruct-AWQ'),
@@ -465,14 +465,14 @@ register_model(
         [
             # qwen1.5-moe
             ModelGroup([
-                Model('Qwen/Qwen1.5-MoE-A2.7B', 'Qwen/Qwen1.5-MoE-A2.7B'),
                 Model('Qwen/Qwen1.5-MoE-A2.7B-Chat', 'Qwen/Qwen1.5-MoE-A2.7B-Chat'),
+                Model('Qwen/Qwen1.5-MoE-A2.7B', 'Qwen/Qwen1.5-MoE-A2.7B'),
                 Model('Qwen/Qwen1.5-MoE-A2.7B-Chat-GPTQ-Int4', 'Qwen/Qwen1.5-MoE-A2.7B-Chat-GPTQ-Int4'),
             ],
                        tags=['skip_test']),
             ModelGroup([
-                Model('Qwen/Qwen2-57B-A14B', 'Qwen/Qwen2-57B-A14B'),
                 Model('Qwen/Qwen2-57B-A14B-Instruct', 'Qwen/Qwen2-57B-A14B-Instruct'),
+                Model('Qwen/Qwen2-57B-A14B', 'Qwen/Qwen2-57B-A14B'),
                 Model('Qwen/Qwen2-57B-A14B-Instruct-GPTQ-Int4', 'Qwen/Qwen2-57B-A14B-Instruct-GPTQ-Int4'),
             ],
                        tags=['skip_test'])
@@ -521,14 +521,14 @@ register_model(
         [
             ModelGroup(
                 [
-                    # base
-                    Model('Qwen/Qwen2-VL-2B', 'Qwen/Qwen2-VL-2B'),
-                    Model('Qwen/Qwen2-VL-7B', 'Qwen/Qwen2-VL-7B'),
-                    Model('Qwen/Qwen2-VL-72B', 'Qwen/Qwen2-VL-72B'),
                     # chat
                     Model('Qwen/Qwen2-VL-2B-Instruct', 'Qwen/Qwen2-VL-2B-Instruct'),
                     Model('Qwen/Qwen2-VL-7B-Instruct', 'Qwen/Qwen2-VL-7B-Instruct'),
                     Model('Qwen/Qwen2-VL-72B-Instruct', 'Qwen/Qwen2-VL-72B-Instruct'),
+                    # base
+                    Model('Qwen/Qwen2-VL-2B', 'Qwen/Qwen2-VL-2B'),
+                    Model('Qwen/Qwen2-VL-7B', 'Qwen/Qwen2-VL-7B'),
+                    Model('Qwen/Qwen2-VL-72B', 'Qwen/Qwen2-VL-72B'),
                     # gptq-int4
                     Model('Qwen/Qwen2-VL-2B-Instruct-GPTQ-Int4', 'Qwen/Qwen2-VL-2B-Instruct-GPTQ-Int4'),
                     Model('Qwen/Qwen2-VL-7B-Instruct-GPTQ-Int4', 'Qwen/Qwen2-VL-7B-Instruct-GPTQ-Int4'),
@@ -562,8 +562,8 @@ register_model(
     ModelMeta(
         MLLMModelType.qwen2_audio, [
             ModelGroup([
-                Model('Qwen/Qwen2-Audio-7B', 'Qwen/Qwen2-Audio-7B'),
                 Model('Qwen/Qwen2-Audio-7B-Instruct', 'Qwen/Qwen2-Audio-7B-Instruct'),
+                Model('Qwen/Qwen2-Audio-7B', 'Qwen/Qwen2-Audio-7B'),
                 Model('Qwen/Qwen2-Audio-7B', 'Qwen/Qwen2-Audio-7B'),
             ],
                        tags=['audio']),
