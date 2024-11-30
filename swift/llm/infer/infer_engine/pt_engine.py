@@ -241,13 +241,12 @@ class PtEngine(InferEngine):
 
     def _get_adapter_names(self, lora_request: LoRARequest) -> str:
         lora_name = lora_request.lora_name
-        lora_local_path = lora_request.lora_local_path
+        lora_path = lora_request.lora_path
         if lora_name in self._lora_request_pool:
-            assert lora_local_path == self._lora_request_pool[lora_name].lora_local_path
+            assert lora_path == self._lora_request_pool[lora_name].lora_path
         else:
             self._lora_request_pool[lora_name] = lora_request
-            self.model = Swift.from_pretrained(
-                self.model, lora_local_path, lora_name, inference_mode=True)
+            self.model = Swift.from_pretrained(self.model, lora_path, lora_name, inference_mode=True)
         return [lora_name]
 
     def _infer_full(self,

@@ -53,7 +53,7 @@ class VllmEngine(InferEngine):
             engine_kwargs: Optional[Dict[str, Any]] = None) -> None:
         self._init_env()
         self.processor = get_model_tokenizer(
-            model_id_or_path, torch_dtype, load_model=False, model_type=model_type, use_hf=use_hf, revision=revision)
+            model_id_or_path, torch_dtype, load_model=False, model_type=model_type, use_hf=use_hf, revision=revision)[1]
         self._post_init()
 
         self._prepare_engine_kwargs(
@@ -189,9 +189,9 @@ class VllmEngine(InferEngine):
                      request_id: str,
                      lora_request: Optional[LoRARequest] = None):
         kwargs = {}
-        if self.enable_lora:
+        if self.enable_lora and lora_request:
             from vllm.lora.request import LoRARequest
-            kwargs['lora_request'] = LoRARequest(asdict(lora_request), lora_int_id=len(self._lora_request_pool))
+            kwargs['lora_request'] = LoRARequest(**asdict(lora_request), lora_int_id=len(self._lora_request_pool))
             self._lora_request_pool[lora_request.lora_name] = lora_request
         input_ids = inputs['input_ids']
         if version.parse(vllm.__version__) >= version.parse('0.4.3'):

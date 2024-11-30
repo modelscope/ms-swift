@@ -173,6 +173,6 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
         assert self.infer_backend in {'vllm', 'pt'}
         lora_request_list = []
         for i, lora_module in enumerate(self.lora_modules):
-            lora_name, lora_local_path = lora_module.split('=')
-            lora_request_list.append(LoRARequest(lora_name, i + 1, lora_local_path))
+            lora_name, lora_path = lora_module.split('=')
+            lora_request_list.append(LoRARequest(lora_name, i + 1, lora_path))
         self.lora_request_list = lora_request_list
