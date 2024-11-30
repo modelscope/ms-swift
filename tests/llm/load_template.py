@@ -80,11 +80,13 @@ def load_and_tokenize_old(ms_model_id, template):
     model_info = None
     from swift.llm import get_model_tokenizer
     from swift.llm import get_template, MODEL_MAPPING
+    found = False
     for model_type, model_info in MODEL_MAPPING.items():
-        if model_info['model_id_or_path'] == ms_model_id:
+        if model_info['model_id_or_path'].lower() == ms_model_id.lower():
+            found = True
             break
 
-    if model_type is None:
+    if not found:
         raise ValueError(f'No model_type found: {model_type}')
 
     vl_fields = ['vl', 'video', 'minicpmv', 'gen', 'llava', 'vision']
