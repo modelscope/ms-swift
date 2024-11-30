@@ -14,7 +14,7 @@ from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
 from transformers.utils import is_peft_available
 
-from swift.utils import Serializer, compute_acc, use_torchacc
+from swift.utils import Serializer, use_torchacc
 from swift.utils.torchacc_utils import ta_trim_graph
 from .mixin import SwiftMixin
 
@@ -58,9 +58,14 @@ class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
             return super().prediction_step(
                 model, inputs, prediction_loss_only=prediction_loss_only, ignore_keys=ignore_keys)
         from swift.llm import RequestConfig, InferRequest
-        labels = [Serializer.to_tensor(InferRequest.remove_response(data['messages'])) for data in inputs['_data']]
+        labels = [
+            Serializer.to_tensor(InferRequest.remove_response(data['messages']), device=self.args.device)
+            for data in inputs['_data']
+        ]
         resp_list = self.infer_engine.infer(inputs['_data'], RequestConfig(), use_tqdm=False)
-        response_list = [Serializer.to_tensor(resp.choices[0].message.content) for resp in resp_list]
+        response_list = [
+            Serializer.to_tensor(resp.choices[0].message.content, device=self.args.device) for resp in resp_list
+        ]
 
         return None, response_list, labels
 
@@ -80,20 +85,7 @@ class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
         if self.args.past_index >= 0:
             self._past = outputs[self.args.past_index]
 
-        if labels is not None:
-            unwrapped_model = self.accelerator.unwrap_model(model)
-            if is_peft_available() and isinstance(unwrapped_model, PeftModel):
-                model_name = unwrapped_model.base_model.model._get_name()
-            else:
-                model_name = unwrapped_model._get_name()
-            # User-defined compute_loss function
-            if self.compute_loss_func is not None:
-                loss = self.compute_loss_func(outputs, labels, num_items_in_batch=num_items_in_batch, **loss_kwargs)
-            elif model_name in MODEL_FOR_CAUSAL_LM_MAPPING_NAMES.values():
-                loss = self.label_smoother(outputs, labels, shift_labels=True)
-            else:
-                loss = self.label_smoother(outputs, labels)
-        else:
+        if labels is None:
             labels = inputs['labels']
             # fix https://github.com/huggingface/transformers/issues/34263
             if num_items_in_batch is not None:
@@ -107,6 +99,19 @@ class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
                     f"{','.join(outputs.keys())}. For reference, the inputs it received are {','.join(inputs.keys())}.")
             # We don't use .loss here since the model may return tuples instead of ModelOutput.
             loss = outputs['loss'] if isinstance(outputs, dict) else outputs[0]
+        else:
+            unwrapped_model = self.accelerator.unwrap_model(model)
+            if is_peft_available() and isinstance(unwrapped_model, PeftModel):
+                model_name = unwrapped_model.base_model.model._get_name()
+            else:
+                model_name = unwrapped_model._get_name()
+            # User-defined compute_loss function
+            if self.compute_loss_func is not None:
+                loss = self.compute_loss_func(outputs, labels, num_items_in_batch=num_items_in_batch, **loss_kwargs)
+            elif model_name in MODEL_FOR_CAUSAL_LM_MAPPING_NAMES.values():
+                loss = self.label_smoother(outputs, labels, shift_labels=True)
+            else:
+                loss = self.label_smoother(outputs, labels)
 
         if self.args.sequence_parallel_size > 1:
             from swift.trainers.xtuner import reduce_xtuner_sequence_parallel_loss
@@ -121,6 +126,8 @@ class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
         return (loss, outputs) if return_outputs else loss
 
     def _compute_token_acc(self, outputs, labels) -> None:
+        from swift.plugin import compute_acc
+
         acc_steps = self.args.acc_steps
         preds = outputs.logits.argmax(dim=2)
         if self.state.global_step % acc_steps == 0:

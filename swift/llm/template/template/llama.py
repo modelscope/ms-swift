@@ -104,10 +104,9 @@ class Llama3_2VisionTemplate(Template):
     def _data_collator(self,
                        batch: List[Dict[str, Any]],
                        *,
-                       padding_side: Optional[str] = None,
                        padding_to: Optional[int] = None,
                        model: Optional[nn.Module] = None) -> Dict[str, Any]:
-        res = super()._data_collator(batch, padding_side=padding_side, padding_to=padding_to)
+        res = super()._data_collator(batch, padding_to=padding_to, model=model)
         for key in ['aspect_ratio_ids', 'aspect_ratio_mask']:
             value = [b[key] for b in batch if b.get(key) is not None]
             if value:
@@ -117,7 +116,7 @@ class Llama3_2VisionTemplate(Template):
             b['cross_attention_mask'][0] for b in batch if b.get('cross_attention_mask') is not None
         ]
         if cross_attention_mask:
-            res['cross_attention_mask'] = self._pad_sequence(cross_attention_mask, 0, padding_side=padding_side)
+            res['cross_attention_mask'] = self._pad_sequence(cross_attention_mask, 0)
         return res
 
 

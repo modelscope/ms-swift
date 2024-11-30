@@ -14,7 +14,8 @@ def test_dataset(infer_backend):
     args = InferArguments(
         model='qwen/Qwen2-7B-Instruct',
         infer_backend=infer_backend,
-        val_dataset=['AI-ModelScope/alpaca-gpt4-data-zh#100'])
+        val_dataset=['AI-ModelScope/alpaca-gpt4-data-zh#100'],
+        stream=True)
     infer_main(args)
 
 
@@ -35,7 +36,7 @@ def test_dataset_mp_ddp():
 
 
 if __name__ == '__main__':
-    test_cli('pt')
-    # test_dataset('vllm')
+    # test_cli('pt')
+    test_dataset('pt')
     # test_dataset_ddp()
     # test_dataset_mp_ddp()

@@ -20,19 +20,6 @@ class ContextType:
     OTHER = 'other'
 
 
-@dataclass
-class GenerationProperty:
-
-    logits_processor: List[LogitsProcessor] = field(default_factory=list)
-    stopping_criteria: List[StoppingCriteria] = field(default_factory=list)
-
-    def __post_init__(self):
-        if isinstance(self.logits_processor, (list, tuple)):
-            self.logits_processor = LogitsProcessorList(self.logits_processor)
-        if isinstance(self.stopping_criteria, (list, tuple)):
-            self.stopping_criteria = StoppingCriteriaList(self.stopping_criteria)
-
-
 class StopWordsCriteria(StoppingCriteria):
     """Adding extra stop words in template to prevent unstoppable generation
         Like suffixes and chat seps in the template.
@@ -63,7 +50,6 @@ class StopWordsCriteria(StoppingCriteria):
                     if stop_word in text:
                         is_finished = True
                 else:  # list
-                    last_tokens = input_ids[i]
                     assert len(stop_word) > 0
                     if input_ids[i][-len(stop_word):].tolist() == stop_word:
                         is_finished = True

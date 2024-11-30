@@ -129,12 +129,10 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
                 pass
             return self._update_metrics(res, metrics)
 
-    def _get_toolcall(self, response: Union[str, List[int]],
-                      is_finished: bool) -> Optional[List[ChatCompletionMessageToolCall]]:
-        if not is_finished:
-            return None
+    def _get_toolcall(self, response: Dict[str, List[Dict[str, Any]]]) -> Optional[List[ChatCompletionMessageToolCall]]:
         if not isinstance(response, str):
-            response = self.tokenizer.decode(response)
+            response = '\n'.join([resp['text'] for resp in response if resp['type'] == 'text'])
+
         action, action_input = split_action_action_input(response)
         if action is None:
             return None

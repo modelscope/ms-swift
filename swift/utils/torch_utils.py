@@ -237,11 +237,12 @@ def safe_ddp_context():
 class Serializer:
 
     @staticmethod
-    def to_tensor(obj):
+    def to_tensor(obj, device=None):
         res = pickle.dumps(obj)
         res = np.array([len(res)], dtype=np.int64).tobytes() + res
         res = np.frombuffer(res, dtype=np.uint8).copy()
-        return torch.from_numpy(res)
+        res = torch.from_numpy(res)
+        return res.to(device) if device else res
 
     @staticmethod
     def from_tensor(obj):

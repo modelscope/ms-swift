@@ -194,5 +194,5 @@ class ModelType(LLMModelType, MLLMModelType):
                 if isinstance(value, str):
                     res.append(value)
             return res
-        
+
         return _get_model_name_list(LLMModelType) + _get_model_name_list(MLLMModelType)

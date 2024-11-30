@@ -10,7 +10,7 @@ import json
 import torch
 from PIL import Image
 from tqdm import tqdm
-from transformers import GenerationConfig
+from transformers import GenerationConfig, LogitsProcessorList
 from transformers.utils import is_torch_npu_available
 
 from swift.llm import InferRequest, Template, TemplateMeta, get_model_tokenizer, to_device
@@ -21,7 +21,7 @@ from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, Ch
                         ChatCompletionStreamResponse, ChatMessage, DeltaMessage, MultiModalRequestMixin, RequestConfig,
                         random_uuid)
 from .infer_engine import InferEngine
-from .utils import InferStreamer, LogitsStreamer, TokensIteratorStreamer, prepare_generation_config
+from .utils import InferStreamer, LogitsStreamer, StopWordsCriteria, TokensIteratorStreamer, prepare_generation_config
 
 logger = get_logger()
 
@@ -152,33 +152,28 @@ class PtEngine(InferEngine):
         kwargs = {}
         if lora_request is not None:
             kwargs['adapter_names'] = self._get_adapter_names(lora_request)
-        num_prompt_tokens = self._get_num_tokens(inputs)
-        generation_property = template.prepare_for_generation(generation_config, inputs, self.model)
         if generation_config.num_beams != 1:
             error_msg = 'Streaming generation does not support beam search.'
             raise ValueError(error_msg)
+        num_prompt_tokens = self._get_num_tokens(inputs)
 
         streamer = TokensIteratorStreamer()
+        kwargs.update({
+            'generation_config': generation_config,
+            'streamer': streamer,
+            **inputs,
+        })
+        logits_streamer = None
+        if generation_config.output_logits:
+            kwargs['logits_processor'] = LogitsProcessorList([LogitsStreamer()])
 
         def _model_generate(*args, **kwargs):
             if is_torch_npu_available():
                 torch.npu.set_device(self.model.device)
             self.model.generate(*args, **kwargs)
 
-        logits_streamer = None
-        if generation_config.output_logits:
-            logits_streamer = LogitsStreamer()
-            generation_property.logits_processor.append(logits_streamer)
-
-        thread = Thread(
-            target=_model_generate,
-            kwargs={
-                'generation_config': generation_config,
-                'streamer': streamer,
-                **asdict(generation_property),
-                **inputs,
-                **kwargs
-            })
+        kwargs = template.prepare_generate_kwargs(kwargs, model=self.model)
+        thread = Thread(target=_model_generate, kwargs=kwargs)
         thread.start()
         batch_size = inputs['attention_mask'].shape[0]
         all_is_finished = False
@@ -232,7 +227,9 @@ class PtEngine(InferEngine):
                 token_idxs[i] = len(generate_ids)
 
                 usage_info = self._get_usage_info(num_prompt_tokens, len(generate_ids))
-                toolcall = self._get_toolcall(generate_ids, is_finished[i])
+                toolcall = None
+                if is_finished[i]:
+                    toolcall = self._get_toolcall(template.decode(generate_ids))
                 finish_reason = self._get_finish_reason(generation_config.max_new_tokens, num_prompt_tokens,
                                                         is_finished[i])
 
@@ -267,11 +264,11 @@ class PtEngine(InferEngine):
         kwargs = {}
         if lora_request is not None:
             kwargs['adapter_names'] = self._get_adapter_names(lora_request)
+        kwargs.update({'generation_config': generation_config, **inputs})
         num_prompt_tokens = self._get_num_tokens(inputs)
-        generation_property = template.prepare_for_generation(generation_config, inputs, self.model)
-        output = dict(
-            self.model.generate(
-                generation_config=generation_config, **generation_property.__dict__, **inputs, **kwargs))
+
+        kwargs = template.prepare_generate_kwargs(kwargs, model=self.model)
+        output = dict(self.model.generate(**kwargs))
         output.pop('past_key_values', None)
         batched_generate_ids = output['sequences']
         batched_generate_ids = template.get_generate_ids(batched_generate_ids, num_prompt_tokens)
@@ -291,24 +288,17 @@ class PtEngine(InferEngine):
 
             logprobs = self._get_logprobs(self.tokenizer, logprobs_list, generate_ids, generation_config.top_logprobs)
             usage_info = self._get_usage_info(num_prompt_tokens, len(generate_ids))
-            response = template.decode(generate_ids, True)
+            response = template.decode(generate_ids)
             finish_reason = self._get_finish_reason(generation_config.max_new_tokens, num_prompt_tokens, True)
-            if isinstance(response, str):
-                toolcall = self._get_toolcall(response, True)
-                choices = [
-                    ChatCompletionResponseChoice(
-                        index=0,
-                        message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
-                        finish_reason=finish_reason,
-                        logprobs=logprobs)
-                ]
-                res.append(ChatCompletionResponse(model=self.model_dir, choices=choices, usage=usage_info))
-            elif isinstance(response, Image.Image):
-                # TODO: remove
-                res.append(
-                    ImagesResponse(
-                        created=time.time(), data=[ImageObject(b64_json=MultiModalRequestMixin.to_base64(response))]))
-
+            toolcall = self._get_toolcall(response)
+            choices = [
+                ChatCompletionResponseChoice(
+                    index=0,
+                    message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
+                    finish_reason=finish_reason,
+                    logprobs=logprobs)
+            ]
+            res.append(ChatCompletionResponse(model=self.model_dir, choices=choices, usage=usage_info))
         return res
 
     @torch.inference_mode()

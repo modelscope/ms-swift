@@ -10,7 +10,7 @@ from ..constant import MLLMTemplateType
 from ..register import register_template
 from ..template_inputs import StdTemplateInputs
 from ..template_meta import TemplateMeta
-from ..utils import GenerationProperty, findall
+from ..utils import findall
 from .utils import DEFAULT_SYSTEM, EmptyTemplateMeta
 
 
@@ -56,14 +56,13 @@ class Emu3GenTemplate(Template):
     def prepare_for_output(self, output: str) -> str:
         return output
 
-    def prepare_for_generation(self,
-                               generation_config,
-                               inputs: Optional[Dict[str, Any]] = None,
-                               model=None) -> GenerationProperty:
+    def prepare_generate_kwargs(self, generate_kwargs: Dict[str, Any], *, model=None) -> Dict[str, Any]:
+
         from transformers import UnbatchedClassifierFreeGuidanceLogitsProcessor
         from transformers import PrefixConstrainedLogitsProcessor
         from transformers import LogitsProcessorList
-
+        generate_kwargs = generate_kwargs.prepare_generate_kwargs(generate_kwargs, model=model)
+        inputs = generate_kwargs['inputs']
         kwargs = dict(
             mode='G',
             ratio='1:1',
@@ -93,9 +92,10 @@ class Emu3GenTemplate(Template):
                 num_beams=1,
             ),
         ])
-        res = super().prepare_for_generation(generation_config, inputs, model)
-        res.logits_processor += logits_processor
-        return res
+        if 'logits_processor' not in generate_kwargs:
+            generate_kwargs['logits_processor'] = LogitsProcessorList()
+        generate_kwargs['logits_processor'] += logits_processor
+        return generate_kwargs
 
     def decode(self, input_ids: List[int], **tokenizer_kwargs) -> Image.Image:
         mm_list = self.processor.decode(input_ids)

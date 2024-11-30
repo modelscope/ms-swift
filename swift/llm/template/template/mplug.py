@@ -88,10 +88,9 @@ class mPlugOwl3Template(Template):
     def _data_collator(self,
                        batch: List[Dict[str, Any]],
                        *,
-                       padding_side: Optional[str] = None,
                        padding_to: Optional[int] = None,
                        model: Optional[nn.Module] = None) -> Dict[str, Any]:
-        res = super()._data_collator(batch, padding_to=padding_to, padding_side=padding_side)
+        res = super()._data_collator(batch, padding_to=padding_to, model=model)
         image_embeds = [b['image_embeds'] for b in batch if 'image_embeds' in b]
         if image_embeds:
             res['image_embeds'] = torch.concat(image_embeds)
@@ -165,10 +164,9 @@ class mPlugOwl3vTemplate(mPlugOwl3Template):
     def _data_collator(self,
                        batch: List[Dict[str, Any]],
                        *,
-                       padding_side: Optional[str] = None,
                        padding_to: Optional[int] = None,
                        model: Optional[nn.Module] = None) -> Dict[str, Any]:
-        res = super()._data_collator(batch, padding_to=padding_to, padding_side=padding_side)
+        res = super()._data_collator(batch, padding_to=padding_to, model=model)
         image_embeds = [b['image_embeds'] for b in batch if 'image_embeds' in b]
         if image_embeds:
             res['image_embeds'] = torch.concat(image_embeds)

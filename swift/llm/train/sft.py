@@ -6,11 +6,10 @@ from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HfIterableDataset
 
 from swift.llm.model.register import load_by_unsloth
-from swift.plugin import extra_callbacks, get_loss_func, optimizers_map
+from swift.plugin import extra_callbacks, get_loss_func, get_metric, optimizers_map
 from swift.trainers import IntervalStrategy, TrainerFactory
-from swift.utils import (append_to_jsonl, compute_acc_metrics, compute_nlg_metrics, find_all_linears, find_embedding,
-                         get_logger, get_model_parameter_info, is_master, plot_images, preprocess_logits_for_acc,
-                         stat_array, use_torchacc)
+from swift.utils import (append_to_jsonl, find_all_linears, find_embedding, get_logger, get_model_parameter_info,
+                         is_master, plot_images, stat_array, use_torchacc)
 from ..argument import TrainArguments
 from ..base import SwiftPipeline
 from ..dataset import (ConstantLengthDataset, EncodePreprocessor, GetLengthPreprocessor, LazyLLMDataset,
@@ -132,7 +131,7 @@ class SwiftSft(SwiftPipeline):
 
         return train_dataset, val_dataset
 
-    def _get_compute_loss(self):
+    def _get_loss_func(self):
         args = self.args
         loss_type = args.loss_type
         if loss_type is None and args.loss_scale != 'default':
@@ -176,20 +175,17 @@ class SwiftSft(SwiftPipeline):
     def _get_trainer_kwargs(self):
         args = self.args
         if args.predict_with_generate:
-            compute_metrics = partial(compute_nlg_metrics, tokenizer=self.tokenizer)
-            preprocess_logits_for_metrics = None
+            compute_metrics, preprocess_logits_for_metrics = get_metric('nlg')
         else:
+            compute_metrics, preprocess_logits_for_metrics = get_metric('acc')
             compute_metrics = partial(
-                compute_acc_metrics,
+                compute_metrics,
                 acc_strategy=args.acc_strategy,
                 is_encoder_decoder=self.model.config.is_encoder_decoder)
-            compute_metrics = compute_metrics
-            preprocess_logits_for_metrics = preprocess_logits_for_acc
-
         return {
             'compute_metrics': compute_metrics,
             'preprocess_logits_for_metrics': preprocess_logits_for_metrics,
-            'compute_loss_func': self._get_compute_loss()
+            'compute_loss_func': self._get_loss_func()
         }
 
     def _save_trainer_state(self, trainer):
@@ -272,7 +268,7 @@ class SwiftSft(SwiftPipeline):
         if args.lazy_tokenize:
             train_dataset = LazyLLMDataset(
                 train_dataset, template.encode, strict=args.strict, random_state=args.data_seed)
-            if val_dataset is not None:
+            if val_dataset is not None and not args.predict_with_generate:
                 val_dataset = LazyLLMDataset(
                     val_dataset, template.encode, strict=args.strict, random_state=args.data_seed)
         else:

@@ -16,13 +16,14 @@ from modelscope import get_logger
 from peft import PeftModel
 from PIL import Image
 from torch.nn.utils.rnn import pad_sequence
-from transformers.integrations import is_deepspeed_zero3_enabled
+from transformers import StoppingCriteriaList
+from transformers.integrations import is_deepspeed_zero3_enabled, is_fsdp_managed_module
 
 from swift.utils import get_dist_setting, use_torchacc
 from ..utils import Processor, ProcessorMixin
 from .agent import loss_scale_map, split_str_parts_by
 from .template_inputs import InferRequest, StdTemplateInputs, TemplateInputs
-from .utils import Context, ContextType, GenerationProperty, StopWordsCriteria, fetch_one, findall
+from .utils import Context, ContextType, StopWordsCriteria, fetch_one, findall
 from .vision_utils import load_batch, load_image, normalize_bbox, rescale_image
 
 logger = get_logger()
@@ -228,11 +229,13 @@ class Template(ProcessorMixin):
         #     # idx = max(len(response) - len_suffix, 0, self.print_idx)
         #     response = response[:-len_suffix]
 
-    def prepare_for_generation(self,
-                               generation_config,
-                               inputs: Optional[Dict[str, Any]] = None,
-                               model=None) -> GenerationProperty:
-        return GenerationProperty(stopping_criteria=[StopWordsCriteria(self.tokenizer, generation_config.stop_words)])
+    def prepare_generate_kwargs(self, generate_kwargs: Dict[str, Any], *, model=None) -> Dict[str, Any]:
+        default_synced_gpus = is_deepspeed_zero3_enabled() or is_fsdp_managed_module(model)
+        generate_kwargs['synced_gpus'] = generate_kwargs.get('synced_gpus', default_synced_gpus)
+        generation_config = generate_kwargs['generation_config']
+        stop_words = getattr(generation_config, 'stop_words', None) or self.template_meta.stop_words
+        generate_kwargs['stopping_criteria'] = StoppingCriteriaList([StopWordsCriteria(self.tokenizer, stop_words)])
+        return generate_kwargs
 
     def _preprocess_objects(self, inputs: StdTemplateInputs, objects: List[Dict[str, Any]]):
         # Load image into PIL format
@@ -833,7 +836,7 @@ class Template(ProcessorMixin):
                 if padding_len > 0:
                     res[key][0] = F.pad(res[key][0], (0, padding_len) if padding_right else (padding_len, 0),
                                         'constant', pad_value)
-            res[key] = self._pad_sequence(res[key], pad_value, padding_side)
+            res[key] = self._pad_sequence(res[key], pad_value)
 
         # multimodal
         pixel_values = [b['pixel_values'] for b in batch if b.get('pixel_values') is not None]
@@ -932,34 +935,18 @@ class Template(ProcessorMixin):
         inputs['input_embedding_ranges'] = ranges
         inputs['input_ids'] = new_input_ids
 
-    @staticmethod
-    def _pad_sequence(sequences: List[torch.Tensor],
-                      padding_value: float = 0.,
-                      padding_side: Literal['right', 'left'] = 'right') -> torch.Tensor:
+    def _pad_sequence(self, sequences: List[torch.Tensor], padding_value: float = 0.) -> torch.Tensor:
         """Pad sequence by some side
 
         Args:
             sequences: The input sequences in tensor.
             padding_value: The padding value
-            padding_side: The padding side
 
         Returns:
             A tensor after padding
         """
-        padding_right = padding_side == 'right'
-        if padding_right:
-            return pad_sequence(sequences, batch_first=True, padding_value=padding_value)
-
-        max_len = max([s.size(0) for s in sequences])
-
-        padded_sequences = []
-        for seq in sequences:
-            pad_length = max_len - seq.size(0)
-            pad_tuple = [0] * ((seq.dim() - 1) * 2) + [pad_length, 0]
-            padded_seq = F.pad(seq, tuple(pad_tuple), 'constant', padding_value)
-            padded_sequences.append(padded_seq)
-
-        return torch.stack(padded_sequences)
+        padding_side = self.padding_side if self.is_training else 'left'
+        return pad_sequence(sequences, batch_first=True, padding_value=padding_value, padding_side=padding_side)
 
     def safe_decode(self, input_ids: List[int], **tokenizer_kwargs) -> str:
         placeholder_tokens = self.template_meta.placeholder_tokens

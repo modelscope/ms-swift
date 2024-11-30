@@ -203,7 +203,13 @@ def test_template():
     global kwargs
     kwargs = kwargs.copy()
     kwargs['num_train_epochs'] = 3
-    result = sft_main(TrainArguments(model='Qwen/Qwen2-0.5B', dataset=['swift/self-cognition#200'], **kwargs))
+    result = sft_main(
+        TrainArguments(
+            model='Qwen/Qwen2-0.5B',
+            dataset=['swift/self-cognition#200'],
+            model_name=['小黄'],
+            model_author=['swift'],
+            **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
     infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True, merge_lora=True))
 
@@ -223,5 +229,5 @@ if __name__ == '__main__':
     # test_resume_from_checkpoint()
     # test_resume_only_model()
     # test_llm_transformers_4_33()
-    # test_predict_with_generate()
-    test_template()
+    test_predict_with_generate()
+    # test_template()

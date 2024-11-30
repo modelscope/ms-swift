@@ -83,10 +83,9 @@ class GLM4VTemplate(GLMTemplate):
     def _data_collator(self,
                        batch: List[Dict[str, Any]],
                        *,
-                       padding_side: Optional[str] = None,
                        padding_to: Optional[int] = None,
                        model: Optional[nn.Module] = None) -> Dict[str, Any]:
-        res = super()._data_collator(batch, padding_side=padding_side, padding_to=padding_to)
+        res = super()._data_collator(batch, padding_to=padding_to, model=model)
         images = [b['images'] for b in batch if 'images' in b]
         if images:
             res['images'] = torch.concat(images)
@@ -158,16 +157,15 @@ class CogTemplate(Template):
     def _data_collator(self,
                        batch: List[Dict[str, Any]],
                        *,
-                       padding_side: Optional[str] = None,
                        padding_to: Optional[int] = None,
                        model: Optional[nn.Module] = None) -> Dict[str, Any]:
-        res = super()._data_collator(batch, padding_side=padding_side, padding_to=padding_to)
+        res = super()._data_collator(batch, padding_to=padding_to, model=model)
         keys = ['images', 'cross_images']
         for key in keys:
             if key in batch[0]:
                 res[key] = [b[key][0] for b in batch]
         token_type_ids = [torch.tensor(b['token_type_ids']) for b in batch]
-        token_type_ids = self._pad_sequence(token_type_ids, 0, padding_side=padding_side)
+        token_type_ids = self._pad_sequence(token_type_ids, 0)
         res['token_type_ids'] = token_type_ids
         return res
 

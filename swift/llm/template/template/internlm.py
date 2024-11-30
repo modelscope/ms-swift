@@ -115,13 +115,12 @@ class InternLMXComposer2Template(Template):
     def _data_collator(self,
                        batch: List[Dict[str, Any]],
                        *,
-                       padding_side: Optional[str] = None,
                        padding_to: Optional[int] = None,
                        model: Optional[nn.Module] = None) -> Dict[str, Any]:
-        res = super()._data_collator(batch, padding_to=padding_to, padding_side=padding_side)
+        res = super()._data_collator(batch, padding_to=padding_to, model=model)
         if 'im_mask' in batch[0]:
             im_mask = [b['im_mask'][0] for b in batch]
-            im_mask = self._pad_sequence(im_mask, 0, padding_side=padding_side)
+            im_mask = self._pad_sequence(im_mask, 0)
             res['im_mask'] = im_mask
         return res
 

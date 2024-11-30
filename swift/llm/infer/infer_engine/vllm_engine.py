@@ -290,7 +290,8 @@ class VllmEngine(InferEngine):
                 logprobs = self._get_logprobs(template.tokenizer, output.logprobs,
                                               output.token_ids[token_idxs[output.index]:], generation_config.logprobs)
                 token_idxs[output.index] = len(output.token_ids)
-                toolcall = self._get_toolcall(output.token_ids, output.is_finished)
+                if output.is_finished:
+                    toolcall = self._get_toolcall(template.decode(output.token_ids))
                 choice = ChatCompletionResponseStreamChoice(
                     index=output.index,
                     delta=DeltaMessage(role='assistant', content=output.delta_text, tool_calls=toolcall),
@@ -315,10 +316,10 @@ class VllmEngine(InferEngine):
         choices = []
         for output in result.outputs:
             output.token_ids = list(output.token_ids)
-            response = template.decode(output.token_ids, True)
+            response = template.decode(output.token_ids)
             logprobs = self._get_logprobs(template.tokenizer, output.logprobs, output.token_ids,
                                           generation_config.logprobs)
-            toolcall = self._get_toolcall(response, True)
+            toolcall = self._get_toolcall(response)
             choice = ChatCompletionResponseChoice(
                 index=output.index,
                 message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),

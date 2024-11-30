@@ -102,10 +102,9 @@ class QwenAudioTemplate(Template):
     def _data_collator(self,
                        batch: List[Dict[str, Any]],
                        *,
-                       padding_side: Optional[str] = None,
                        padding_to: Optional[int] = None,
                        model: Optional[nn.Module] = None) -> Dict[str, Any]:
-        res = super()._data_collator(batch, padding_side=padding_side, padding_to=padding_to, model=model)
+        res = super()._data_collator(batch, padding_to=padding_to, model=model)
         if batch[0].get('audio_info') is not None:
             res['audio_info'] = [b['audio_info'] for b in batch]
         return res
@@ -141,10 +140,9 @@ class Qwen2AudioTemplate(Template):
     def _data_collator(self,
                        batch: List[Dict[str, Any]],
                        *,
-                       padding_side: Optional[str] = None,
                        padding_to: Optional[int] = None,
                        model: Optional[nn.Module] = None) -> Dict[str, Any]:
-        res = super()._data_collator(batch, padding_side=padding_side, padding_to=padding_to, model=model)
+        res = super()._data_collator(batch, padding_to=padding_to, model=model)
         input_features = [b['input_features'] for b in batch if b.get('input_features') is not None]
         feature_attention_mask = [
             b['feature_attention_mask'] for b in batch if b.get('feature_attention_mask') is not None
@@ -306,10 +304,9 @@ class Qwen2VLTemplate(Template):
     def _data_collator(self,
                        batch: List[Dict[str, Any]],
                        *,
-                       padding_side: Optional[str] = None,
                        padding_to: Optional[int] = None,
                        model: Optional[nn.Module] = None) -> Dict[str, Any]:
-        res = super()._data_collator(batch, padding_side=padding_side, padding_to=padding_to, model=model)
+        res = super()._data_collator(batch, padding_to=padding_to, model=model)
         for media_type in ['image', 'video']:
             grid_thw = [b[f'{media_type}_grid_thw'] for b in batch if b.get(f'{media_type}_grid_thw') is not None]
             if grid_thw:

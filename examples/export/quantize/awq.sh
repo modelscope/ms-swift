@@ -5,4 +5,3 @@ swift export \
   --quant_n_samples 16 \
   --quant_method awq \
   --quant_bits 4
-
