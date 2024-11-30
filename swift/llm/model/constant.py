@@ -107,15 +107,15 @@ class LLMModelType:
 
 
 class MLLMModelType:
-    emu3_chat = 'emu3_chat'
-    got_ocr2 = 'got_ocr2'
-    ovis1_6 = 'ovis1_6'
     qwen_vl = 'qwen_vl'
     qwen_audio = 'qwen_audio'
     qwen2_vl = 'qwen2_vl'
     qwen2_audio = 'qwen2_audio'
     llama3_2_vision = 'llama3_2_vision'
 
+    emu3_chat = 'emu3_chat'
+    got_ocr2 = 'got_ocr2'
+    ovis1_6 = 'ovis1_6'
     glm4v = 'glm4v'
     cogvlm = 'cogvlm'
     cogagent_vqa = 'cogagent_vqa'
@@ -184,11 +184,15 @@ class ModelType(LLMModelType, MLLMModelType):
 
     @classmethod
     def get_model_name_list(cls) -> List[str]:
-        res = []
-        for k in dir(cls):
-            if k.startswith('__'):
-                continue
-            value = getattr(cls, k)
-            if isinstance(value, str):
-                res.append(value)
-        return res
+
+        def _get_model_name_list(cls):
+            res = []
+            for k in cls.__dict__:
+                if k.startswith('__'):
+                    continue
+                value = getattr(cls, k)
+                if isinstance(value, str):
+                    res.append(value)
+            return res
+        
+        return _get_model_name_list(LLMModelType) + _get_model_name_list(MLLMModelType)
