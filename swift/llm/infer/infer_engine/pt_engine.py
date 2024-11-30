@@ -21,16 +21,9 @@ from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, Ch
                         ChatCompletionStreamResponse, ChatMessage, DeltaMessage, MultiModalRequestMixin, RequestConfig,
                         random_uuid)
 from .infer_engine import InferEngine
-from .utils import InferStreamer, LogitsStreamer, TokensIteratorStreamer, prepare_generation_config
+from .utils import InferStreamer, LogitsStreamer, LoRARequest, TokensIteratorStreamer, prepare_generation_config
 
 logger = get_logger()
-
-
-@dataclass
-class PtLoRARequest:
-    lora_name: str
-    lora_int_id: int  # not use, only compat with vllm
-    lora_local_path: str
 
 
 class _GenerationConfig(GenerationConfig):
@@ -148,7 +141,7 @@ class PtEngine(InferEngine):
             inputs: Dict[str, Any],
             generation_config: GenerationConfig,
             *,
-            lora_request: Optional[PtLoRARequest] = None) -> Iterator[List[Optional[ChatCompletionStreamResponse]]]:
+            lora_request: Optional[LoRARequest] = None) -> Iterator[List[Optional[ChatCompletionStreamResponse]]]:
         kwargs = {}
         if lora_request is not None:
             kwargs['adapter_names'] = self._get_adapter_names(lora_request)
@@ -246,20 +239,23 @@ class PtEngine(InferEngine):
             if any(res):
                 yield res
 
-    def _get_adapter_names(self, lora_request: PtLoRARequest) -> List[str]:
-        if lora_request.lora_name in self._lora_request_pool:
-            assert lora_request == self._lora_request_pool[lora_request.lora_name]
+    def _get_adapter_names(self, lora_request: LoRARequest) -> str:
+        lora_name = lora_request.lora_name
+        lora_local_path = lora_request.lora_local_path
+        if lora_name in self._lora_request_pool:
+            assert lora_local_path == self._lora_request_pool[lora_name].lora_local_path
         else:
-            self._lora_request_pool[lora_request.lora_name] = lora_request
-            Swift.from_pretrained(self.model, lora_request.lora_local_path, lora_request.lora_name, inference_mode=True)
-        return [lora_request.lora_name]
+            self._lora_request_pool[lora_name] = lora_request
+            self.model = Swift.from_pretrained(
+                self.model, lora_local_path, lora_name, inference_mode=True)
+        return [lora_name]
 
     def _infer_full(self,
                     template: Template,
                     inputs: Dict[str, Any],
                     generation_config: GenerationConfig,
                     *,
-                    lora_request: Optional[PtLoRARequest] = None) -> Union[List[ChatCompletionResponse]]:
+                    lora_request: Optional[LoRARequest] = None) -> Union[List[ChatCompletionResponse]]:
         # bos_token TODO: encoder-decoder
         kwargs = {}
         if lora_request is not None:
@@ -308,7 +304,7 @@ class PtEngine(InferEngine):
         request_config: Optional[RequestConfig] = None,
         *,
         template: Optional[Template] = None,
-        lora_request: Optional[PtLoRARequest] = None,
+        lora_request: Optional[LoRARequest] = None,
     ) -> Union[ChatCompletionResponse, AsyncIterator[ChatCompletionStreamResponse]]:
         # TODO:auto batch
         res_or_gen = self.infer([infer_request],
@@ -333,7 +329,7 @@ class PtEngine(InferEngine):
         metrics: Optional[List[Metric]] = None,
         *,
         template: Optional[Template] = None,
-        lora_request: Optional[PtLoRARequest] = None,
+        lora_request: Optional[LoRARequest] = None,
     ) -> Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
         self.model.eval()
         request_config = deepcopy(request_config or RequestConfig())
@@ -382,7 +378,7 @@ class PtEngine(InferEngine):
         *,
         template: Optional[Template] = None,
         use_tqdm: Optional[bool] = None,
-        lora_request: Optional[PtLoRARequest] = None
+        lora_request: Optional[LoRARequest] = None
     ) -> Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
         if use_tqdm is None:
             use_tqdm = request_config is None or not request_config.stream

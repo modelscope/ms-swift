@@ -22,7 +22,7 @@ from .mixin import SwiftMixin
 from .torchacc_mixin import TorchAccMixin
 
 
-class Trainer(Seq2SeqTrainerSwiftMixin, HfTrainer):
+class Trainer(SwiftMixin, HfTrainer):
     pass
 
 

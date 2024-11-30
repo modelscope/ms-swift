@@ -6,7 +6,7 @@ from typing import List, Literal, Optional
 
 import torch.distributed as dist
 
-from swift.llm import PtLoRARequest, get_template_meta
+from swift.llm import LoRARequest, get_template_meta
 from swift.utils import get_logger, is_dist
 from .base_args import BaseArguments, to_abspath
 from .merge_args import MergeArguments
@@ -171,14 +171,8 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
             self.lora_request_list = []
             return
         assert self.infer_backend in {'vllm', 'pt'}
-        if self.infer_backend == 'vllm':
-            from vllm.lora.request import LoRARequest
-            lora_request_cls = LoRARequest
-        elif self.infer_backend == 'pt':
-            lora_request_cls = PtLoRARequest
-
         lora_request_list = []
         for i, lora_module in enumerate(self.lora_modules):
             lora_name, lora_local_path = lora_module.split('=')
-            lora_request_list.append(lora_request_cls(lora_name, i + 1, lora_local_path))
+            lora_request_list.append(LoRARequest(lora_name, i + 1, lora_local_path))
         self.lora_request_list = lora_request_list

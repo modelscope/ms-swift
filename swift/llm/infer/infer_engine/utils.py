@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
 import time
+from dataclasses import dataclass
 from queue import Queue
 from typing import List, Literal
 
@@ -12,6 +13,12 @@ from swift.llm import Template, Word
 from swift.llm.model.register import fix_do_sample_warning
 from swift.plugin import Metric
 from ..protocol import RequestConfig
+
+
+@dataclass
+class LoRARequest:
+    lora_name: str
+    lora_local_path: str
 
 
 class InferTools:

@@ -4,6 +4,7 @@ import inspect
 import os
 from contextlib import contextmanager
 from copy import deepcopy
+from dataclasses import asdict
 from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
 
 import torch
@@ -20,12 +21,7 @@ from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, Ch
                         ChatCompletionStreamResponse, ChatMessage, DeltaMessage, RequestConfig, UsageInfo, random_uuid)
 from .infer_engine import InferEngine
 from .patch import patch_auto_config, patch_auto_tokenizer
-from .utils import InferStreamer, InferTools
-
-try:
-    from vllm.lora.request import LoRARequest
-except ImportError:
-    pass
+from .utils import InferStreamer, InferTools, LoRARequest
 
 logger = get_logger()
 dtype_mapping = {torch.float16: 'float16', torch.bfloat16: 'bfloat16', torch.float32: 'float32'}
@@ -78,6 +74,7 @@ class VllmEngine(InferEngine):
         self._load_generation_config()
         self._fix_vllm_bug()
         self.patch_remove_log()
+        self._lora_request_pool = {}
 
     def _prepare_engine(self) -> None:
         with patch_auto_tokenizer(self.tokenizer), patch_auto_config(self.config):
@@ -190,10 +187,12 @@ class VllmEngine(InferEngine):
                      inputs: Dict[str, Any],
                      generation_config: SamplingParams,
                      request_id: str,
-                     lora_request: Optional['LoRARequest'] = None):
+                     lora_request: Optional[LoRARequest] = None):
         kwargs = {}
         if self.enable_lora:
-            kwargs['lora_request'] = lora_request
+            from vllm.lora.request import LoRARequest
+            kwargs['lora_request'] = LoRARequest(asdict(lora_request), lora_int_id=len(self._lora_request_pool))
+            self._lora_request_pool[lora_request.lora_name] = lora_request
         input_ids = inputs['input_ids']
         if version.parse(vllm.__version__) >= version.parse('0.4.3'):
             llm_inputs = {'prompt_token_ids': input_ids}
@@ -304,7 +303,7 @@ class VllmEngine(InferEngine):
                                 template: Template,
                                 inputs: Dict[str, Any],
                                 generation_config: SamplingParams,
-                                lora_request: Optional['LoRARequest'] = None) -> ChatCompletionResponse:
+                                lora_request: Optional[LoRARequest] = None) -> ChatCompletionResponse:
         request_id = random_uuid()
         result_generator = self._add_request(inputs, generation_config, request_id, lora_request=lora_request)
         result = None
@@ -337,7 +336,7 @@ class VllmEngine(InferEngine):
         *,
         template: Optional[Template] = None,
         use_tqdm: Optional[bool] = None,
-        lora_request: Optional['LoRARequest'] = None
+        lora_request: Optional[LoRARequest] = None
     ) -> Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
         return super().infer(
             infer_requests, request_config, metrics, template=template, use_tqdm=use_tqdm, lora_request=lora_request)
@@ -349,7 +348,7 @@ class VllmEngine(InferEngine):
         request_config: Optional[RequestConfig] = None,
         *,
         template: Optional[Template] = None,
-        lora_request: Optional['LoRARequest'] = None,
+        lora_request: Optional[LoRARequest] = None,
     ) -> Union[ChatCompletionResponse, AsyncIterator[ChatCompletionStreamResponse]]:
         request_config = deepcopy(request_config or RequestConfig())
         if template is None:

@@ -210,8 +210,9 @@ def test_predict_with_generate_zero3():
     sft_main(
         TrainArguments(
             model='qwen/Qwen2-VL-7B-Instruct',
-            dataset=['AI-ModelScope/alpaca-gpt4-data-en#40', 'AI-ModelScope/LaTeX_OCR#40'],  #
+            dataset=['AI-ModelScope/LaTeX_OCR#40'],
             predict_with_generate=True,
+            freeze_vit=False,
             split_dataset_ratio=0.5,
             deepspeed='zero3',
             **kwargs))
@@ -240,7 +241,7 @@ if __name__ == '__main__':
     # test_mllm_streaming()
     # test_mllm_zero3()
     # test_llm_gptq()
-    # test_llm_awq()
+    test_llm_awq()
     # test_mllm_streaming_zero3()
     # test_mllm_streaming_mp_ddp()
     # test_llm_bnb()
@@ -248,6 +249,6 @@ if __name__ == '__main__':
     # test_resume_from_checkpoint()
     # test_resume_only_model()
     # test_llm_transformers_4_33()
-    test_predict_with_generate()
+    # test_predict_with_generate()
     # test_predict_with_generate_zero3()
     # test_template()

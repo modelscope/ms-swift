@@ -8,7 +8,7 @@ if TYPE_CHECKING:
     from .deploy import deploy_main, SwiftDeploy, run_deploy
     from .protocol import RequestConfig
     from .utils import prepare_pt_engine_template
-    from .infer_engine import (InferEngine, VllmEngine, LmdeployEngine, PtEngine, PtLoRARequest, InferClient,
+    from .infer_engine import (InferEngine, VllmEngine, LmdeployEngine, PtEngine, LoRARequest, InferClient,
                                prepare_generation_config)
 else:
     _extra_objects = {k: v for k, v in globals().items() if not k.startswith('_')}
@@ -18,7 +18,7 @@ else:
         'protocol': ['RequestConfig'],
         'utils': ['prepare_pt_engine_template'],
         'infer_engine': [
-            'InferEngine', 'VllmEngine', 'LmdeployEngine', 'PtEngine', 'PtLoRARequest', 'InferClient',
+            'InferEngine', 'VllmEngine', 'LmdeployEngine', 'PtEngine', 'LoRARequest', 'InferClient',
             'prepare_generation_config'
         ],
     }
