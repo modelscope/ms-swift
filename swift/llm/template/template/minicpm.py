@@ -86,13 +86,13 @@ class MiniCPMVTemplate(Template):
         labels = encoded['labels']
         idx_list = findall(input_ids, -100)
         idx = idx_list[0]
-        config = model.config
         tgt_sizes = None
-        slice_mode = getattr(config, 'slice_mode', False)
+        slice_mode = getattr(self.config, 'slice_mode', False)
         if slice_mode:
+            # TODO post_encode
             if self.is_v2_5:
                 image_processor = self.processor.image_processor
-                image_inputs = image_processor(images, return_tensors='pt').to(model.dtype)
+                image_inputs = image_processor(images, return_tensors='pt').to(self.config.torch_dtype)
                 placeholder = image_processor.get_slice_image_placeholder(image_inputs.image_sizes[0][0])
                 pixel_values = image_inputs['pixel_values']
                 tgt_sizes = image_inputs['tgt_sizes']
@@ -114,12 +114,12 @@ class MiniCPMVTemplate(Template):
                     [image_start_idx[:valid_image_nums].unsqueeze(-1), image_end_idx[:valid_image_nums].unsqueeze(-1)])
             ]
         else:
-            placeholder = '<image>' + '<unk>' * config.query_num + '</image>\n'
+            placeholder = '<image>' + '<unk>' * self.config.query_num + '</image>\n'
             placeholder_id = self.processor.encode(placeholder, add_special_tokens=False)
             input_ids = (input_ids[:idx] + placeholder_id + input_ids[idx + 1:])
             if labels is not None:
                 labels = (labels[:idx] + [-100] * len(placeholder_id) + labels[idx + 1:])
-            image_bound = [torch.tensor([[idx, idx + config.query_num]])]
+            image_bound = [torch.tensor([[idx, idx + self.config.query_num]])]
             pixel_values = [[model.transform(images[0])]]
         encoded = {
             'input_ids': input_ids,

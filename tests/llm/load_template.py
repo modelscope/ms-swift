@@ -45,8 +45,8 @@ def load_and_tokenize(ms_model_id, template):
                 input_ids = output.get('input_ids')
                 # output = EncodePreprocessor(template_ins)(load_ds('swift/OK-VQA_train'))
                 if model_ins is not None and model_ins.model_meta.is_multimodal:
-                    inputs = template_ins.pre_data_collator([output], padding_side='left', model=model_ins)
-                    _, output = template_ins.pre_forward_hook(model_ins, None, inputs, padding_side='left')
+                    inputs = template_ins.pre_data_collator([output], model=model_ins)
+                    _, output = template_ins.pre_forward_hook(model_ins, None, inputs)
         else:
             output = EncodePreprocessor(template_ins)(load_ds('modelscope/DuReader_robust-QG'))
             input_ids = output[0].get('input_ids')
