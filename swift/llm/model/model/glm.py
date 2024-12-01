@@ -204,9 +204,9 @@ def get_model_tokenizer_cogvlm(model_dir: str,
     if load_model:
         logger.warning('CogAgent with FusedLayerNorm will cause an training loss of NAN, '
                        'to avoid this, please uninstall apex.')
+        logger.info('Please ignore the unimported warning.')
     model, tokenizer = get_model_tokenizer_with_flash_attn(
         model_dir, model_info, model_kwargs, load_model, tokenizer=tokenizer, **kwargs)
-    logger.info('Please ignore the unimported warning.')
     return model, tokenizer
 
 
