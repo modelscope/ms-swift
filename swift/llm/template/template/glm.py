@@ -194,13 +194,9 @@ class CogVLMTemplateMeta(TemplateMeta):
 
 register_template(CogVLMTemplateMeta(MLLMTemplateType.cogvlm, template_cls=CogTemplate))
 
-
-@dataclass
-class CogVLM2TemplateMeta(CogVLMTemplateMeta):
-    placeholder_tokens: List[Union[int, str]] = field(default_factory=lambda: ['<|reserved_special_token_0|>'])
-
-
-register_template(CogVLM2TemplateMeta(MLLMTemplateType.cogvlm2, template_cls=CogTemplate))
+register_template(
+    CogVLMTemplateMeta(
+        MLLMTemplateType.cogvlm2, template_cls=CogTemplate, placeholder_tokens=['<|reserved_special_token_0|>']))
 
 
 class Cog2VideoTemplate(CogTemplate):
@@ -238,7 +234,9 @@ class Cog2VideoTemplate(CogTemplate):
         return encoded
 
 
-register_template(CogVLM2TemplateMeta(
-    MLLMTemplateType.cogvlm2_video,
-    template_cls=Cog2VideoTemplate,
-))
+register_template(
+    CogVLMTemplateMeta(
+        MLLMTemplateType.cogvlm2_video,
+        template_cls=Cog2VideoTemplate,
+        placeholder_tokens=['<|reserved_special_token_0|>'],
+    ))

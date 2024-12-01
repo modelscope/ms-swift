@@ -89,11 +89,11 @@ register_model(
     ))
 
 
-def get_model_tokenizer_molmoe_1b(model_dir: str,
-                                  model_info: ModelInfo,
-                                  model_kwargs: Dict[str, Any],
-                                  load_model: bool = True,
-                                  **kwargs):
+def get_model_tokenizer_molmoe(model_dir: str,
+                               model_info: ModelInfo,
+                               model_kwargs: Dict[str, Any],
+                               load_model: bool = True,
+                               **kwargs):
     from transformers import AutoProcessor
     processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
     model, tokenizer = get_model_tokenizer_with_flash_attn(
@@ -138,7 +138,7 @@ register_model(
                        requires=['transformers>=4.45']),
         ],
         TemplateType.molmo,
-        get_model_tokenizer_molmoe_1b,
+        get_model_tokenizer_molmoe,
         model_arch=ModelArch.molmo,
         torch_dtype=torch.float32,
         architectures=['MolmoForCausalLM'],

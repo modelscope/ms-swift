@@ -93,6 +93,7 @@ class DeepseekVLTemplateMeta(DeepseekTemplateMeta):
     default_system: Optional[str] = ('You are a helpful language and vision assistant. '
                                      'You are able to understand the visual content that the user provides, '
                                      'and assist the user with a variety of tasks using natural language.')
+    placeholder_tokens: List[str] = field(default_factory=lambda: ['<image_placeholder>'])
 
 
 register_template(DeepseekVLTemplateMeta(

@@ -145,7 +145,12 @@ class MiniCPMV2_5Template(MiniCPMVTemplate):
     is_v2_5 = True
 
 
-register_template(Llama3TemplateMeta(MLLMTemplateType.minicpmv2_5, template_cls=MiniCPMV2_5Template))
+register_template(
+    Llama3TemplateMeta(
+        MLLMTemplateType.minicpmv2_5,
+        template_cls=MiniCPMV2_5Template,
+        placeholder_tokens=['<unk>'],
+    ))
 
 
 class MiniCPMV2_6Template(MiniCPMVTemplate):
@@ -228,4 +233,9 @@ class MiniCPMV2_6Template(MiniCPMVTemplate):
         return encoded
 
 
-register_template(QwenTemplateMeta(MLLMTemplateType.minicpmv2_6, template_cls=MiniCPMV2_6Template))
+register_template(
+    QwenTemplateMeta(
+        MLLMTemplateType.minicpmv2_6,
+        template_cls=MiniCPMV2_6Template,
+        placeholder_tokens=['<unk>'],
+    ))

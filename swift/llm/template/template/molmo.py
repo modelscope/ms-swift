@@ -177,4 +177,5 @@ register_template(
         chat_sep=['<|endoftext|>'],
         suffix=['<|endoftext|>'],
         template_cls=MolmoTemplate,
+        placeholder_tokens=['<|image|>'],
     ))
