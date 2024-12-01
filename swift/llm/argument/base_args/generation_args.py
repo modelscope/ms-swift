@@ -1,7 +1,6 @@
 from dataclasses import dataclass, field
 from typing import List, Optional
 
-from swift.llm.model import fix_do_sample_warning
 from swift.utils import get_logger
 
 logger = get_logger()

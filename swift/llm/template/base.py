@@ -12,14 +12,13 @@ from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from modelscope import get_logger
 from peft import PeftModel
 from PIL import Image
 from torch.nn.utils.rnn import pad_sequence
 from transformers import StoppingCriteriaList
 from transformers.integrations import is_deepspeed_zero3_enabled
 
-from swift.utils import get_dist_setting, use_torchacc
+from swift.utils import get_dist_setting, get_logger, use_torchacc
 from ..utils import Processor, ProcessorMixin
 from .agent import loss_scale_map, split_str_parts_by
 from .template_inputs import InferRequest, StdTemplateInputs, TemplateInputs
@@ -33,11 +32,13 @@ class Template(ProcessorMixin):
     special_tokens = ['<image>', '<video>', '<audio>', '<bbox>', '<ref-object>']
     special_keys = ['images', 'videos', 'audios', 'objects']
     grounding_type = 'norm_1000'
+
     image_placeholder = ['<image>']
     video_placeholder = ['<video>']
     audio_placeholder = ['<audio>']
     load_medias = True
     skip_prompt = True
+    use_model = False
 
     is_encoder_decoder = False
     padding_side: Literal['left', 'right'] = 'right'  # The padding_side when the training batch_size >= 2.
@@ -809,14 +810,15 @@ class Template(ProcessorMixin):
             res['inputs_embeds'] = inputs_embeds
         if input_ids:
             res['input_ids'] = input_ids
-
-        for key in ['labels', 'loss_scale', 'position_ids']:
+        for key in ['labels', 'loss_scale', 'position_ids', 'token_type_ids']:
             val = [b[key] for b in batch if b.get(key) is not None]
             if val:
                 res[key] = val
 
-        keys = ['input_ids', 'inputs_embeds', 'attention_mask', 'labels', 'loss_scale', 'position_ids']
-        pad_value = [self.tokenizer.pad_token_id, 0., 0, -100, 0., -1]
+        keys = [
+            'input_ids', 'inputs_embeds', 'attention_mask', 'labels', 'loss_scale', 'position_ids', 'token_type_ids'
+        ]
+        pad_value = [self.tokenizer.pad_token_id, 0., 0, -100, 0., -1, 0]
         # Convert to tensor and remove unnecessary dimensions.
         seq_lens = None
         for key in keys:

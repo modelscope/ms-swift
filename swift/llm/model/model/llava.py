@@ -4,8 +4,7 @@ import sys
 from functools import partial, wraps
 from typing import Any, Dict
 
-from modelscope import AutoConfig
-from transformers import PretrainedConfig
+from transformers import AutoConfig, PretrainedConfig
 
 from swift.llm import TemplateType
 from ..constant import MLLMModelType

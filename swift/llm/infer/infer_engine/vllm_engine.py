@@ -9,9 +9,8 @@ from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
 
 import torch
 import vllm
-from modelscope import GenerationConfig
 from packaging import version
-from transformers import PreTrainedTokenizerBase
+from transformers import GenerationConfig, PreTrainedTokenizerBase
 from vllm import AsyncEngineArgs, AsyncLLMEngine, SamplingParams
 
 from swift.llm import InferRequest, Template, TemplateMeta, get_model_tokenizer

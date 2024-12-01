@@ -3,8 +3,7 @@ import os
 import sys
 from typing import Any, Dict
 
-from modelscope import AutoTokenizer
-from transformers import PretrainedConfig
+from transformers import AutoTokenizer, PretrainedConfig
 
 from swift.llm import TemplateType
 from swift.utils import get_logger

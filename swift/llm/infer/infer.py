@@ -33,8 +33,7 @@ class SwiftInfer(SwiftPipeline):
             logger.info(f'model: {self.infer_engine.model}')
         else:
             self.infer_engine = SwiftInfer.get_infer_engine(args)
-
-        self.template = self.get_template(args, self.processor)
+            self.template = self.get_template(args, self.processor)
         self.random_state = np.random.RandomState(args.data_seed)
 
     def __getattr__(self, key: str):

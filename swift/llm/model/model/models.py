@@ -6,8 +6,7 @@ from types import MethodType
 from typing import Any, Dict, Tuple
 
 import torch
-from modelscope import AutoConfig, AutoModel, AutoModelForCausalLM
-from transformers import AutoTokenizer
+from transformers import AutoConfig, AutoModel, AutoModelForCausalLM, AutoTokenizer
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.llm import TemplateType

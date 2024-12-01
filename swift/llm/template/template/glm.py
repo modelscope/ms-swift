@@ -164,9 +164,6 @@ class CogTemplate(Template):
         for key in keys:
             if key in batch[0]:
                 res[key] = [b[key][0] for b in batch]
-        token_type_ids = [torch.tensor(b['token_type_ids']) for b in batch]
-        token_type_ids = self._pad_sequence(token_type_ids, 0)
-        res['token_type_ids'] = token_type_ids
         return res
 
 
@@ -201,12 +198,14 @@ register_template(CogVLMTemplateMeta(MLLMTemplateType.cogvlm, template_cls=CogTe
 
 
 class Cog2VideoTemplate(CogTemplate):
+    use_model = True
 
     def check_example(self, example):
         videos = example.get('videos') or []
         assert len(videos) <= 1
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        model = self.model
         encoded = super(CogTemplate, self)._encode(inputs)
         if len(encoded) == 0:
             return encoded

@@ -2,7 +2,8 @@
 from functools import partial
 from typing import Any, Dict
 
-from modelscope import AutoConfig, AutoTokenizer, BitsAndBytesConfig, snapshot_download
+from modelscope import snapshot_download
+from transformers import AutoConfig, AutoTokenizer, BitsAndBytesConfig
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.llm import TemplateType

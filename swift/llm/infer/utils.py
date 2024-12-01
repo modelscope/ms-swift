@@ -159,4 +159,6 @@ def prepare_pt_engine_template(args: ExportArguments, load_model: bool = True, *
         _prepare_pt_engine(args, pt_engine)
 
     template = SwiftInfer.get_template(args, pt_engine.processor)
+    if template.use_model:
+        template.model = pt_engine.model
     return pt_engine, template
