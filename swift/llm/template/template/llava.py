@@ -37,7 +37,6 @@ class LlavaHfTemplate(Template):
         images = inputs.images
         if images:
             image_processor = self.processor.image_processor
-            # TODO post_encode
             image_inputs = image_processor(images, return_tensors='pt').to(self.config.torch_dtype)
             encoded['pixel_values'] = image_inputs['pixel_values']
             if 'image_sizes' in image_inputs:

@@ -50,7 +50,6 @@ class InternLMXComposer2Template(Template):
             if len(images) > 1:
                 hd_num = 6
             hd_num = get_env_args('hd_num', int, hd_num)
-            # TODO post_encode model_dir
             Image_transform = get_class_from_dynamic_module('ixc_utils.Image_transform', self.processor.model_dir)
             images = [Image_transform(image, hd_num=hd_num) for image in images]
         elif self.version == 'v2-4khd':
