@@ -29,11 +29,11 @@ def load_and_tokenize(ms_model_id, template):
     from swift.llm import EncodePreprocessor, get_model_tokenizer, get_template
     try:
         vl_fields = ['vl', 'video', 'minicpmv', 'gen', 'llava', 'vision']
-        load_model = False
-        if 'audio' in template or any([vl in template.lower() for vl in vl_fields]):
-            load_model = True
-        model_ins, tokenizer = get_model_tokenizer(ms_model_id, load_model=load_model)
+        model_ins, tokenizer = get_model_tokenizer(ms_model_id, load_model=False)
         template_ins = get_template(template, tokenizer)
+        if template_ins.use_model:
+            model_ins, _ = get_model_tokenizer(ms_model_id, load_model=True)
+            template_ins.model = model_ins
         template_ins.set_mode('train')
         if 'audio' in template_ins.__class__.__name__.lower():
             output = EncodePreprocessor(template_ins)(
@@ -90,14 +90,12 @@ def load_and_tokenize_old(ms_model_id, template):
         raise ValueError(f'No model_type found: {model_type}')
 
     vl_fields = ['vl', 'video', 'minicpmv', 'gen', 'llava', 'vision']
-    load_model = False
-    if 'audio' in template or any([vl in template.lower() for vl in vl_fields]):
-        load_model = True
-    model_ins, tokenizer = get_model_tokenizer(model_type, load_model=load_model)
+    model_ins, tokenizer = get_model_tokenizer(model_type, load_model=True)
 
     if model_info['template'] == 'default-generation':
         model_info['template'] = template.replace('_', '-')
     template_ins = get_template(model_info['template'], tokenizer)
+    template_ins.model = model_ins
     if 'audio' in model_info['template']:
         output = template_ins.encode(load_ds_old('aishell1-zh-mini')[0])
     elif any([vl in model_info['template'] for vl in vl_fields]):
