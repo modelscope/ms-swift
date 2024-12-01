@@ -8,7 +8,7 @@ from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.llm import TemplateType
 from swift.utils import get_logger
-from ..constant import LLMModelType, MLLMModelType
+from ..constant import MLLMModelType
 from ..model_arch import ModelArch
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
 from ..utils import ModelInfo, git_clone_github, use_submodel_func
@@ -74,7 +74,7 @@ def get_model_tokenizer_pixtral(model_dir: str, *args, **kwargs):
 
 register_model(
     ModelMeta(
-        LLMModelType.pixtral,
+        MLLMModelType.pixtral,
         [
             ModelGroup([
                 Model('AI-ModelScope/pixtral-12b', 'mistral-community/pixtral-12b'),
@@ -129,7 +129,7 @@ def get_model_tokenizer_molmoe_1b(model_dir: str,
 
 register_model(
     ModelMeta(
-        LLMModelType.molmoe_1b,
+        MLLMModelType.molmoe_1b,
         [
             ModelGroup([
                 Model('LLM-Research/MolmoE-1B-0924', 'allenai/MolmoE-1B-0924'),
@@ -173,7 +173,7 @@ def get_model_tokenizer_molmo(model_dir: str,
 
 register_model(
     ModelMeta(
-        LLMModelType.molmo,
+        MLLMModelType.molmo,
         [
             ModelGroup([
                 Model('LLM-Research/Molmo-7B-O-0924', 'allenai/Molmo-7B-O-0924'),

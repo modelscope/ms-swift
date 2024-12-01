@@ -56,18 +56,6 @@ register_model(
         MLLMModelType.mplug_owl2, [
             ModelGroup([
                 Model('iic/mPLUG-Owl2', 'MAGAer13/mplug-owl2-llama2-7b'),
-            ],
-                       requires=['transformers<4.35'],
-                       tags=['vision']),
-        ],
-        TemplateType.mplug_owl2,
-        get_model_tokenizer_mplug_owl2,
-        model_arch=ModelArch.mplug_owl2))
-
-register_model(
-    ModelMeta(
-        MLLMModelType.mplug_owl2_1, [
-            ModelGroup([
                 Model('iic/mPLUG-Owl2.1', 'Mizukiluke/mplug_owl_2_1'),
             ],
                        requires=['transformers<4.35'],
@@ -75,7 +63,7 @@ register_model(
         ],
         TemplateType.mplug_owl2,
         get_model_tokenizer_mplug_owl2,
-        model_arch=ModelArch.mplug_owl2_1))
+        model_arch=ModelArch.mplug_owl2))
 
 
 def get_model_tokenizer_mplug_owl3(model_dir: str,
@@ -96,7 +84,7 @@ def get_model_tokenizer_mplug_owl3(model_dir: str,
 
 register_model(
     ModelMeta(
-        MLLMModelType.mplug3, [
+        MLLMModelType.mplug_owl3, [
             ModelGroup([
                 Model('iic/mPLUG-Owl3-1B-241014', 'mPLUG/mPLUG-Owl3-1B-241014'),
                 Model('iic/mPLUG-Owl3-2B-241014', 'mPLUG/mPLUG-Owl3-2B-241014'),

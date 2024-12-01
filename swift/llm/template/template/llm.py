@@ -29,7 +29,7 @@ register_template(
 
 register_template(
     TemplateMeta(
-        LLMTemplateType.numina_math,
+        LLMTemplateType.numina,
         prefix=[['bos_token_id']],
         prompt=['### Problem: {{QUERY}}\n### Solution: '],
         chat_sep=['\n'],

@@ -8,9 +8,10 @@ class LLMModelArch:
     llama = 'llama'
     mistral = 'mistral'
     internlm2 = 'internlm2'
-    deepseek_v2 = 'deepseek_v2'
     chatglm = 'chatglm'
+    deepseek_v2 = 'deepseek_v2'
     baichuan = 'baichuan'
+
     yuan = 'yuan'
     codefuse = 'codefuse'
     phi2 = 'phi2'
@@ -18,6 +19,7 @@ class LLMModelArch:
     phi3_small = 'phi3_small'
     telechat = 'telechat'
     dbrx = 'dbrx'
+    bluelm = 'bluelm'
 
 
 class MLLMModelArch:
@@ -42,7 +44,6 @@ class MLLMModelArch:
     deepseek_vl = 'deepseek_vl'
 
     mplug_owl2 = 'mplug_owl2'
-    mplug_owl2_1 = 'mplug_owl2_1'
     mplug_owl3 = 'mplug_owl3'
 
     phi3v = 'phi3v'

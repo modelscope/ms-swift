@@ -192,13 +192,13 @@ register_model(
         ],
         TemplateType.internvl,
         get_model_tokenizer_internvl,
-        architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
+        architectures=['InternVLChatModel'],
         model_arch=ModelArch.internvl,
     ))
 
 register_model(
     ModelMeta(
-        MLLMModelType.internvl_mini,
+        MLLMModelType.internvl_phi3,
         [
             ModelGroup(
                 [
@@ -210,7 +210,7 @@ register_model(
         ],
         TemplateType.internvl_phi3,
         get_model_tokenizer_internvl,
-        architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
+        architectures=['InternVLChatModel'],
         model_arch=ModelArch.internvl,
     ))
 
@@ -239,7 +239,7 @@ register_model(
         ],
         TemplateType.internvl2,
         get_model_tokenizer_internvl,
-        architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
+        architectures=['InternVLChatModel'],
         model_arch=ModelArch.internvl,
     ))
 
@@ -258,7 +258,7 @@ register_model(
         ],
         TemplateType.internvl2_phi3,
         get_model_tokenizer_internvl,
-        architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
+        architectures=['InternVLChatModel'],
         model_arch=ModelArch.internvl,
     ))
 
@@ -274,7 +274,7 @@ register_model(
         ],
         TemplateType.xcomposer2_5,
         get_model_tokenizer_internlm_xcomposer2,
-        architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
+        architectures=['InternLMXComposer2ForCausalLM'],
         model_arch=ModelArch.internlm_xcomposer))
 
 register_model(
@@ -289,7 +289,7 @@ register_model(
         ],
         TemplateType.xcomposer2,
         get_model_tokenizer_internlm_xcomposer2,
-        architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
+        architectures=['InternLMXComposer2ForCausalLM'],
         model_arch=ModelArch.internlm_xcomposer))
 
 register_model(
@@ -304,5 +304,5 @@ register_model(
         ],
         TemplateType.xcomposer2,
         partial(get_model_tokenizer_internlm_xcomposer2, version='v2-4khd'),
-        architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
+        architectures=['InternLMXComposer2ForCausalLM'],
         model_arch=ModelArch.internlm_xcomposer))

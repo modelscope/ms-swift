@@ -8,7 +8,7 @@ from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.llm import TemplateType
 from swift.utils import get_logger
-from ..constant import LLMModelType, MLLMModelType
+from ..constant import LLMModelType
 from ..model_arch import ModelArch
 from ..patcher import patch_output_clone
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model

@@ -10,57 +10,58 @@ class LLMTemplateType:
     qwq = 'qwq'
     chatml = 'chatml'
     marco_o1 = 'marco_o1'
+    modelscope_agent = 'modelscope_agent'
 
     llama = 'llama'  # llama2
     llama3 = 'llama3'
     llama3_2 = 'llama3_2'
-    longwriter_llama3 = 'longwriter_llama3'
     reflection = 'reflection'
+    yi_coder = 'yi_coder'
+    sus = 'sus'
+
+    numina = 'numina'
+    ziya = 'ziya'
+    atom = 'atom'
+    mengzi = 'mengzi'
 
     chatglm2 = 'chatglm2'
-    chatglm3 = 'chatglm3'
-    chatglm4 = 'chatglm4'
+    glm4 = 'glm4'
     codegeex4 = 'codegeex4'
+    longwriter_llama = 'longwriter_llama'
 
     internlm = 'internlm'
     internlm2 = 'internlm2'
 
     deepseek = 'deepseek'
     deepseek_coder = 'deepseek_coder'
-    deepseek2_5 = 'deepseek2_5'
+    deepseek_v2_5 = 'deepseek_v2_5'
 
-    baichuan = 'baichuan'
     openbuddy = 'openbuddy'
     openbuddy2 = 'openbuddy2'
+    baichuan = 'baichuan'
     minicpm = 'minicpm'
     telechat = 'telechat'
     telechat2 = 'telechat2'
 
-    yi_coder = 'yi_coder'
     codefuse = 'codefuse'
     codefuse_codellama = 'codefuse_codellama'
 
-    numina_math = 'numina_math'
     mistral_nemo = 'mistral_nemo'
-    gemma = 'gemma'
+    zephyr = 'zephyr'
     wizardlm2_awq = 'wizardlm2_awq'
     wizardlm2 = 'wizardlm2'
-    atom = 'atom'
+    gemma = 'gemma'
     phi3 = 'phi3'
-    c4ai = 'c4ai'
-    dbrx = 'dbrx'
 
     yuan = 'yuan'
     xverse = 'xverse'
-    ziya = 'ziya'
     skywork = 'skywork'
     bluelm = 'bluelm'
-    zephyr = 'zephyr'
-    sus = 'sus'
     orion = 'orion'
-    modelscope_agent = 'modelscope_agent'
-    mengzi = 'mengzi'
+
     aya = 'aya'
+    c4ai = 'c4ai'
+    dbrx = 'dbrx'
 
 
 class MLLMTemplateType:
@@ -113,20 +114,20 @@ class MLLMTemplateType:
 
     deepseek_vl = 'deepseek_vl'
     deepseek_janus = 'deepseek_janus'
+
     mplug_owl2 = 'mplug_owl2'
     mplug_owl3 = 'mplug_owl3'
     mplug_owl3v = 'mplug_owl3v'
-    got_ocr2 = 'got_ocr2'
 
-    florence = 'florence'
+    emu3_chat = 'emu3_chat'
+    emu3_gen = 'emu3_gen'
+
+    got_ocr2 = 'got_ocr2'
     idefics3 = 'idefics3'
     pixtral = 'pixtral'
     paligemma = 'paligemma'
     phi3_vl = 'phi3_vl'
-
-    emu3_chat = 'emu3_chat'
-    emu3_gen = 'emu3_gen'
-    janus = 'janus'
+    florence = 'florence'
     molmo = 'molmo'
 
 

@@ -159,19 +159,6 @@ register_model(
 
 register_model(
     ModelMeta(
-        LLMModelType.longwriter_llama3,
-        [ModelGroup([
-            Model('ZhipuAI/LongWriter-llama3.1-8b', 'THUDM/LongWriter-llama3.1-8b'),
-        ])],
-        TemplateType.longwriter_llama3,
-        get_model_tokenizer_with_flash_attn,
-        architectures=['LlamaForCausalLM'],
-        requires=['transformers>=4.43'],
-        model_arch=ModelArch.llama,
-    ))
-
-register_model(
-    ModelMeta(
         LLMModelType.llama3_2,
         [
             ModelGroup([
@@ -211,7 +198,7 @@ register_model(
         get_model_tokenizer_llama3_2_vision,
         requires=['transformers>=4.45'],
         architectures=['MllamaForConditionalGeneration'],
-        model_arch=ModelArch.llava3_2_vision,
+        model_arch=ModelArch.llama3_2_vision,
     ))
 
 
@@ -346,7 +333,7 @@ register_model(
                 Model('AI-ModelScope/NuminaMath-7B-TIR', 'AI-MO/NuminaMath-7B-TIR'),
             ], tags=['math']),
         ],
-        TemplateType.numina_math,
+        TemplateType.numina,
         get_model_tokenizer_with_flash_attn,
         model_arch=ModelArch.llama,
         architectures=['LlamaForCausalLM'],
@@ -354,7 +341,7 @@ register_model(
 
 register_model(
     ModelMeta(
-        LLMModelType.ziya2,
+        LLMModelType.ziya,
         [
             ModelGroup([
                 Model('Fengshenbang/Ziya2-13B-Chat', 'IDEA-CCNL/Ziya2-13B-Chat'),
