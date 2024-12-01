@@ -6,7 +6,6 @@ from typing import List, Optional, Union
 class LLMModelArch:
     qwen = 'qwen'
     llama = 'llama'
-    mistral = 'mistral'
     internlm2 = 'internlm2'
     chatglm = 'chatglm'
     deepseek_v2 = 'deepseek_v2'
@@ -19,23 +18,24 @@ class LLMModelArch:
     phi3_small = 'phi3_small'
     telechat = 'telechat'
     dbrx = 'dbrx'
-    bluelm = 'bluelm'
 
 
 class MLLMModelArch:
-    qwen_audio = 'qwen_audio'
     qwen_vl = 'qwen_vl'
-    qwen2_audio = 'qwen2_audio'
+    qwen_audio = 'qwen_audio'
     qwen2_vl = 'qwen2_vl'
+    qwen2_audio = 'qwen2_audio'
 
     cogvlm = 'cogvlm'
     glm4v = 'glm4v'
 
     llama3_1_omni = 'llama3_1_omni'
     llama3_2_vision = 'llama3_2_vision'
-    llava_next_video = 'llava_next_video'
+
+    llava_hf = 'llava_hf'
+    llava_next_video_hf = 'llava_next_video_hf'
+
     llava_llama = 'llava_llama'
-    llava = 'llava'
     llava_mistral = 'llava_mistral'
 
     internlm_xcomposer = 'internlm_xcomposer'
@@ -297,7 +297,7 @@ register_model_arch(
 
 register_model_arch(
     MultiModelKeys(
-        MLLMModelArch.llava,
+        MLLMModelArch.llava_hf,
         language_model='language_model',
         aligner='multi_modal_projector',
         vision_tower='vision_tower',
@@ -313,7 +313,7 @@ register_model_arch(
 
 register_model_arch(
     MultiModelKeys(
-        MLLMModelArch.llava_next_video,
+        MLLMModelArch.llava_next_video_hf,
         language_model='language_model',
         aligner=['multi_modal_projector'],
         vision_tower='vision_tower'))

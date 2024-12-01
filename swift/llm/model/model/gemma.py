@@ -42,7 +42,7 @@ register_model(
         TemplateType.paligemma,
         get_model_tokenizer_paligemma_vision,
         architectures=['PaliGemmaForConditionalGeneration'],
-        model_arch=ModelArch.llava))
+        model_arch=ModelArch.llava_hf))
 
 register_model(
     ModelMeta(

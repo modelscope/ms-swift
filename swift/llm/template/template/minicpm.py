@@ -181,7 +181,8 @@ class MiniCPMV2_6Template(MiniCPMVTemplate):
         idx_list.insert(0, -1)
 
         image_processor = self.processor.image_processor
-        image_inputs = image_processor([images], return_tensors='pt', max_slice_nums=max_slice_nums).to(self.config.torch_dtype)
+        image_inputs = image_processor([images], return_tensors='pt',
+                                       max_slice_nums=max_slice_nums).to(self.config.torch_dtype)
 
         res_input_ids = []
         res_labels = []

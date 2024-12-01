@@ -190,7 +190,7 @@ register_model(
         ],
         TemplateType.bluelm,
         get_model_tokenizer_with_flash_attn,
-        model_arch=ModelArch.bluelm,
+        model_arch=ModelArch.llama,
         architectures=['BlueLMForCausalLM'],
     ))
 

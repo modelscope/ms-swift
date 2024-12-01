@@ -46,7 +46,7 @@ register_model(
         TemplateType.llava_llama3_hf,
         get_model_tokenizer_llava_llama,
         architectures=['LlavaForConditionalGeneration'],
-        model_arch=ModelArch.llava))
+        model_arch=ModelArch.llava_hf))
 
 
 def _patch_llava(model):
@@ -93,7 +93,7 @@ register_model(
         TemplateType.llava1_5_hf,
         get_model_tokenizer_llava_1_5,
         architectures=['LlavaForConditionalGeneration'],
-        model_arch=ModelArch.llava))
+        model_arch=ModelArch.llava_hf))
 
 
 def get_model_tokenizer_llava_onevision(*args, **kwargs):
@@ -120,7 +120,7 @@ register_model(
         TemplateType.llava_onevision_hf,
         get_model_tokenizer_llava_onevision,
         architectures=['LlavaForConditionalGeneration'],
-        model_arch=ModelArch.llava))
+        model_arch=ModelArch.llava_hf))
 
 register_model(
     ModelMeta(
@@ -137,7 +137,7 @@ register_model(
         TemplateType.llava_next_qwen_hf,
         get_model_tokenizer_llava_onevision,
         architectures=['LlavaForConditionalGeneration'],
-        model_arch=ModelArch.llava))
+        model_arch=ModelArch.llava_hf))
 
 
 def get_model_tokenizer_llava_next(*args, **kwargs):
@@ -160,7 +160,7 @@ register_model(
         TemplateType.llama3_llava_next_hf,
         get_model_tokenizer_llava_next,
         architectures=['LlavaForConditionalGeneration'],
-        model_arch=ModelArch.llava))
+        model_arch=ModelArch.llava_hf))
 
 register_model(
     ModelMeta(
@@ -177,7 +177,7 @@ register_model(
         TemplateType.llava1_6_vicuna_hf,
         get_model_tokenizer_llava_next,
         architectures=['LlavaForConditionalGeneration'],
-        model_arch=ModelArch.llava))
+        model_arch=ModelArch.llava_hf))
 
 register_model(
     ModelMeta(
@@ -193,7 +193,7 @@ register_model(
         TemplateType.llava1_6_mistral_hf,
         get_model_tokenizer_llava_next,
         architectures=['LlavaForConditionalGeneration'],
-        model_arch=ModelArch.llava))
+        model_arch=ModelArch.llava_hf))
 
 register_model(
     ModelMeta(
@@ -209,7 +209,7 @@ register_model(
         TemplateType.llava_llama3_1_hf,
         get_model_tokenizer_llava_next,
         architectures=['LlavaForConditionalGeneration'],
-        model_arch=ModelArch.llava))
+        model_arch=ModelArch.llava_hf))
 
 
 def get_model_tokenizer_llava_next_yi(*args, **kwargs):
@@ -233,7 +233,7 @@ register_model(
         TemplateType.llava1_6_yi_hf,
         get_model_tokenizer_llava_next_yi,
         architectures=['LlavaForConditionalGeneration'],
-        model_arch=ModelArch.llava))
+        model_arch=ModelArch.llava_hf))
 
 
 def get_model_tokenizer_llava_next_video(*args, **kwargs):
@@ -258,7 +258,7 @@ register_model(
         TemplateType.llava_next_video_hf,
         get_model_tokenizer_llava_next_video,
         architectures=['LlavaNextVideoForConditionalGeneration'],
-        model_arch=ModelArch.llava_next_video))
+        model_arch=ModelArch.llava_next_video_hf))
 
 
 def get_model_tokenizer_llava_next_video_yi(*args, **kwargs):
@@ -283,7 +283,7 @@ register_model(
         TemplateType.llava_next_video_hf,
         get_model_tokenizer_llava_next_video_yi,
         architectures=['LlavaNextVideoForConditionalGeneration'],
-        model_arch=ModelArch.llava_next_video))
+        model_arch=ModelArch.llava_next_video_hf))
 
 
 def get_model_tokenizer_llava(model_dir: str,
@@ -357,7 +357,7 @@ register_model(
         ],
         TemplateType.llama3_llava_next,
         partial(get_model_tokenizer_llava, llm_model_type='next_llama'),
-        architectures=['LlavaForConditionalGeneration'],
+        architectures=['LlavaLlamaForCausalLM'],
         model_arch=ModelArch.llava_llama))
 
 register_model(
@@ -389,8 +389,8 @@ register_model(
         TemplateType.llava1_6_yi,
         partial(get_model_tokenizer_llava, llm_model_type='llama'),
         requires=['transformers>=4.34'],
-        architectures=['LlavaForConditionalGeneration'],
-        model_arch=ModelArch.llava))
+        architectures=['LlavaLlamaForCausalLM'],
+        model_arch=None))
 
 register_model(
     ModelMeta(
@@ -406,5 +406,5 @@ register_model(
         ],
         TemplateType.llava_next_qwen,
         partial(get_model_tokenizer_llava, llm_model_type='next_qwen'),
-        architectures=['LlavaForConditionalGeneration'],
-        model_arch=ModelArch.llava))
+        architectures=['LlavaQwenForCausalLM'],
+        model_arch=None))
