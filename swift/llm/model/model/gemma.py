@@ -54,7 +54,6 @@ register_model(
                     Model('AI-ModelScope/gemma-7b', 'google/gemma-7b'),
                     Model('AI-ModelScope/gemma-7b-it', 'google/gemma-7b-it'),
                 ],
-                ignore_file_pattern=[r'.+\.gguf$'],
                 requires=['transformers>=4.38'],
             ),
         ],

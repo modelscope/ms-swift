@@ -404,7 +404,7 @@ def get_model_info_meta(
         model_type: Optional[str] = None,
         quantization_config=None,
         **kwargs) -> Tuple[ModelInfo, ModelMeta]:
-    ignore_file_pattern = ['*.zip', '*.gguf', '*.pth', '*.pt', 'consolidated*']
+    ignore_file_pattern = ['*.zip', '*.gguf', '*.pth', '*.pt', 'consolidated*', 'onnx']
     model_meta = get_matched_model_meta(model_id_or_path)
     if getattr(model_meta, 'ignore_file_pattern', None) is not None:
         ignore_file_pattern += model_meta.ignore_file_pattern

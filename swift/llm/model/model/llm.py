@@ -152,7 +152,6 @@ register_model(
                 Model('OrionStarAI/Orion-14B-Chat', 'OrionStarAI/Orion-14B-Chat'),
                 Model('OrionStarAI/Orion-14B-Base', 'OrionStarAI/Orion-14B-Base'),
             ],
-                       ignore_file_pattern=[r'.+\.gguf$'],
                        requires=['transformers==4.34.1']),
         ],
         TemplateType.orion,
