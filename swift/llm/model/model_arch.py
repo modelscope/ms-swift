@@ -44,6 +44,7 @@ class MLLMModelArch:
     deepseek_vl = 'deepseek_vl'
 
     mplug_owl2 = 'mplug_owl2'
+    mplug_owl2_1 = 'mplug_owl2_1'
     mplug_owl3 = 'mplug_owl3'
 
     phi3v = 'phi3v'

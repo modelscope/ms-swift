@@ -110,22 +110,6 @@ def get_model_tokenizer_minicpmv_2_x(model_dir: str,
 
 register_model(
     ModelMeta(
-        MLLMModelType.minicpmv2_6, [
-            ModelGroup(
-                [
-                    Model('OpenBMB/MiniCPM-V-2_6', 'openbmb/MiniCPM-V-2_6'),
-                ],
-                requires=['timm', 'transformers>=4.36'],
-                tags=['vision', 'video'],
-            ),
-        ],
-        TemplateType.minicpmv2_6,
-        partial(get_model_tokenizer_minicpmv_2_x, version='v2.6'),
-        architectures=['MiniCPMV'],
-        model_arch=ModelArch.minicpmv))
-
-register_model(
-    ModelMeta(
         MLLMModelType.minicpmv2_5, [
             ModelGroup(
                 [
@@ -137,6 +121,22 @@ register_model(
         ],
         TemplateType.minicpmv2_5,
         get_model_tokenizer_minicpmv_2_x,
+        architectures=['MiniCPMV'],
+        model_arch=ModelArch.minicpmv))
+
+register_model(
+    ModelMeta(
+        MLLMModelType.minicpmv2_6, [
+            ModelGroup(
+                [
+                    Model('OpenBMB/MiniCPM-V-2_6', 'openbmb/MiniCPM-V-2_6'),
+                ],
+                requires=['timm', 'transformers>=4.36'],
+                tags=['vision', 'video'],
+            ),
+        ],
+        TemplateType.minicpmv2_6,
+        partial(get_model_tokenizer_minicpmv_2_x, version='v2.6'),
         architectures=['MiniCPMV'],
         model_arch=ModelArch.minicpmv))
 

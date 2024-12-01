@@ -34,6 +34,7 @@ register_model(
                 Model('AI-ModelScope/paligemma-3b-pt-224', 'google/paligemma-3b-pt-224'),
                 Model('AI-ModelScope/paligemma-3b-pt-448', 'google/paligemma-3b-pt-448'),
                 Model('AI-ModelScope/paligemma-3b-pt-896', 'google/paligemma-3b-pt-896'),
+                Model('AI-ModelScope/paligemma-3b-mix-224', 'google/paligemma-3b-mix-224'),
                 Model('AI-ModelScope/paligemma-3b-mix-448', 'google/paligemma-3b-mix-448'),
             ],
                        requires=['transformers>=4.41'],

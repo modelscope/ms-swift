@@ -116,7 +116,7 @@ class mPlugOwl3Template(Template):
         return res
 
 
-class mPlugOwl3vTemplate(mPlugOwl3Template):
+class mPlugOwl3_241101Template(mPlugOwl3Template):
 
     def _encode(self, template_inputs: StdTemplateInputs) -> Dict[str, Any]:
         inputs, _ = super(mPlugOwl3Template, self)._encode(template_inputs)
@@ -187,4 +187,4 @@ class mPlugOwl3TemplateMeta(QwenTemplateMeta):
 
 register_template(mPlugOwl3TemplateMeta(MLLMTemplateType.mplug_owl3, template_cls=mPlugOwl3Template))
 
-register_template(mPlugOwl3TemplateMeta(MLLMTemplateType.mplug_owl3v, template_cls=mPlugOwl3vTemplate))
+register_template(mPlugOwl3TemplateMeta(MLLMTemplateType.mplug_owl3_241101, template_cls=mPlugOwl3_241101Template))

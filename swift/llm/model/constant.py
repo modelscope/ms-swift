@@ -141,7 +141,9 @@ class MLLMModelType:
     minicpmv2_5 = 'minicpmv2_5'
 
     mplug_owl2 = 'mplug_owl2'
+    mplug_owl2_1 = 'mplug_owl2_1'
     mplug_owl3 = 'mplug_owl3'
+    mplug_owl3_241101 = 'mplug_owl3_241101'
 
     emu3_gen = 'emu3_gen'
     emu3_chat = 'emu3_chat'
