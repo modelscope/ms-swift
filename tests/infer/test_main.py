@@ -9,6 +9,12 @@ def test_cli(infer_backend):
     infer_main(args)
 
 
+def test_cli_jinja(infer_backend):
+    from swift.llm import infer_main, InferArguments
+    args = InferArguments(model='qwen/Qwen2-VL-7B-Instruct', infer_backend=infer_backend, template_backend='jinja')
+    infer_main(args)
+
+
 def test_dataset(infer_backend):
     from swift.llm import infer_main, InferArguments
     args = InferArguments(
@@ -37,6 +43,7 @@ def test_dataset_mp_ddp():
 
 if __name__ == '__main__':
     # test_cli('pt')
-    test_dataset('pt')
+    test_cli_jinja('pt')
+    # test_dataset('pt')
     # test_dataset_ddp()
     # test_dataset_mp_ddp()

@@ -30,7 +30,6 @@ logger = get_logger()
 
 
 class Template(ProcessorMixin):
-
     special_tokens = ['<image>', '<video>', '<audio>', '<bbox>', '<ref-object>']
     special_keys = ['images', 'videos', 'audios', 'objects']
     grounding_type = 'norm_1000'
@@ -51,6 +50,7 @@ class Template(ProcessorMixin):
             max_length: Optional[int] = None,
             *,
             use_chat_template: bool = True,
+            template_backend: Literal['swift', 'jinja'] = 'swift',
             truncation_strategy: Literal['delete', 'left'] = 'left',
             max_pixels: Optional[int] = None,
             tools_prompt: Optional[str] = None,
@@ -69,11 +69,14 @@ class Template(ProcessorMixin):
         from .template_meta import TemplateMeta
         self.processor = processor
         self.model_info = processor.model_info
+        self.config = self.model_info.config
         self.model_meta = processor.model_meta
         tokenizer = self.tokenizer
 
         if not use_chat_template:
             template_meta = template_meta.to_generate_template_meta()
+        else:
+            template_meta = deepcopy(template_meta)
         # if default_system is None. not change self.default_system
         if default_system is not None:
             self.default_system = template_meta.check_system(default_system)
@@ -88,6 +91,7 @@ class Template(ProcessorMixin):
 
         self.template_meta: TemplateMeta = template_meta
         self.use_chat_template = use_chat_template
+        self.template_backend = template_backend
         self.max_length = max_length
         self.truncation_strategy = truncation_strategy
         self.loss_scale = loss_scale
@@ -506,8 +510,16 @@ class Template(ProcessorMixin):
         if len(messages) % 2 == 1:
             messages.append({'role': 'assistant', 'content': None})  # inference
 
-    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+    def _jinja_encode(self, inputs: StdTemplateInputs):
+        messages = inputs.messages
+        if inputs.system:
+            messages.insert(0, {'role': 'system', 'content': inputs.system})
+        if messages[-1]['content'] is None:
+            messages.pop()
+        input_ids = self.tokenizer.apply_chat_template(inputs.messages, tokenize=False, add_generation_prompt=True)
+        return [input_ids], [1.], 1.
 
+    def _swift_encode(self, inputs: StdTemplateInputs):
         res_context_list: List[Context] = []
         res_context_types: List[ContextType] = []
         template_meta = self.template_meta
@@ -561,11 +573,15 @@ class Template(ProcessorMixin):
             res_context_types += [extra_context_type] * len(extra_context_list)
         res_context_list, loss_scale_list = loss_scale_map[self.loss_scale](res_context_list, res_context_types,
                                                                             inputs.messages)
+        answer_len = len(extra_context_list) + bool(response is not None)
+        return res_context_list, loss_scale_list, answer_len
 
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        res_context_list, loss_scale_list, answer_len = (
+            self._swift_encode(inputs) if self.template_backend == 'swift' else self._jinja_encode(inputs))
         encoded = {}
         if self.is_encoder_decoder:
             # tokenizer_kwargs: use prompt (qwen-audio)
-            answer_len = len(extra_context_list) + bool(response is not None)
             total_len = len(res_context_list)
             for key, _slice in zip(['prompt', 'answer'],
                                    [slice(0, total_len - answer_len),
@@ -584,7 +600,7 @@ class Template(ProcessorMixin):
             input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(
                 res_context_list, loss_scale_list)
         if self.loss_scale in {'default', 'all', 'last_round'}:
-            self._add_dynamic_eos(labels, self._encode_context_list(template_meta.suffix)[0])
+            self._add_dynamic_eos(labels, self._encode_context_list(self.template_meta.suffix)[0])
 
         if tokenizer_kwargs:
             encoded['tokenizer_kwargs'] = tokenizer_kwargs

@@ -25,6 +25,7 @@ def get_template(
         max_length: Optional[int] = None,
         *,
         use_chat_template: bool = True,
+        template_backend: Literal['swift', 'jinja'] = 'swift',
         truncation_strategy: Literal['delete', 'left'] = 'delete',
         max_pixels: Optional[int] = None,  # h * w
         tools_prompt: str = 'react_en',
@@ -39,6 +40,7 @@ def get_template(
         default_system,
         max_length,
         use_chat_template=use_chat_template,
+        template_backend=template_backend,
         truncation_strategy=truncation_strategy,
         loss_scale=loss_scale,
         max_pixels=max_pixels,

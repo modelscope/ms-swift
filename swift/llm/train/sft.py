@@ -78,28 +78,28 @@ class SwiftSft(SwiftPipeline):
         kwargs['model_id_or_path'] = model
         kwargs['model_type'] = model_type
         kwargs['model_revision'] = model_revision
-        if args.tuner_backend == 'unsloth' and args.resume_from_checkpoint and args.train_type != 'full':
-            model, tokenizer = load_by_unsloth(args.resume_from_checkpoint, args.torch_dtype, args.max_length,
-                                               args.quant_bits == 4, args.model_meta.is_multimodal)
-            model.model_info = args.model_info
-            model.model_meta = args.model_meta
-            tokenizer.model_info = args.model_info
-            tokenizer.model_meta = args.model_meta
-        else:
-            model_kwargs = {}
-            if args.num_labels is not None:
-                from transformers import AutoModelForSequenceClassification
-                kwargs['automodel_class'] = AutoModelForSequenceClassification
-                model_kwargs = {'num_labels': args.num_labels}
-            if args.tuner_backend == 'unsloth':
-                kwargs['unsloth_kwargs'] = {'load_in_4bit': args.quant_bits == 4}
-            model, tokenizer = get_model_tokenizer(
-                **kwargs, model_kwargs=model_kwargs, use_unsloth=(args.tuner_backend == 'unsloth'))
-        return model, tokenizer
+        model_kwargs = {}
+        if args.num_labels is not None:
+            from transformers import AutoModelForSequenceClassification
+            kwargs['automodel_class'] = AutoModelForSequenceClassification
+            model_kwargs = {'num_labels': args.num_labels}
+        if args.tuner_backend == 'unsloth':
+            kwargs['unsloth_kwargs'] = {'load_in_4bit': args.quant_bits == 4}
+        model, processor = get_model_tokenizer(
+            **kwargs, model_kwargs=model_kwargs, use_unsloth=(args.tuner_backend == 'unsloth'))
+        return model, processor
 
     def _prepare_model_tokenizer(self):
         args = self.args
-        self.model, self.processor = self._get_model_tokenizer(args.model, args.model_type, args.model_revision)
+        if args.tuner_backend == 'unsloth' and args.resume_from_checkpoint and args.train_type != 'full':
+            self.model, self.processor = load_by_unsloth(args.resume_from_checkpoint, args.torch_dtype, args.max_length,
+                                                         args.quant_bits == 4, args.model_meta.is_multimodal)
+            self.model.model_info = args.model_info
+            self.model.model_meta = args.model_meta
+            self.processor.model_info = args.model_info
+            self.processor.model_meta = args.model_meta
+        else:
+            self.model, self.processor = self._get_model_tokenizer(args.model, args.model_type, args.model_revision)
 
         if hasattr(self.model, 'hf_device_map'):
             logger.info(f'model.hf_device_map: {self.model.hf_device_map}')

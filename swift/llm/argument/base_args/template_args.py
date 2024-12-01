@@ -37,6 +37,7 @@ class TemplateArguments:
     sequence_parallel_size: int = 1
     # infer/deploy
     use_chat_template: bool = True
+    template_backend: Literal['swift', 'jinja'] = 'swift'
 
     def __post_init__(self):
         if self.template is None and hasattr(self, 'model_meta'):
@@ -53,5 +54,6 @@ class TemplateArguments:
             'max_pixels': self.max_pixels,
             'tools_prompt': self.tools_prompt,
             'loss_scale': self.loss_scale,
-            'sequence_parallel_size': self.sequence_parallel_size
+            'sequence_parallel_size': self.sequence_parallel_size,
+            'template_backend': self.template_backend
         }
