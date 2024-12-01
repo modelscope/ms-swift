@@ -11,7 +11,7 @@ from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
 from ..patcher import patch_output_clone, patch_output_to_input_device
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
-from ..utils import ModelInfo, use_submodel_func
+from ..utils import ModelInfo, safe_snapshot_download, use_submodel_func
 
 
 def get_model_tokenizer_internlm_chat(model_dir: str,
@@ -113,7 +113,7 @@ def get_model_tokenizer_internlm_xcomposer2(model_dir: str,
         from transformers import CLIPVisionModel
 
         def load_model(self):
-            self.vision_tower_name = snapshot_download('AI-ModelScope/clip-vit-large-patch14-336')
+            self.vision_tower_name = safe_snapshot_download('AI-ModelScope/clip-vit-large-patch14-336')
             self.vision_tower = CLIPVisionModel.from_pretrained(self.vision_tower_name)
             self.vision_tower.requires_grad_(False)
             self.is_loaded = True

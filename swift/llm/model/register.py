@@ -73,9 +73,12 @@ class ModelMeta:
                         return model_group
 
     def check_requires(self):
-        # TODO: error to warning
-        for require in self.requires:
-            require_version(require)
+        try:
+            for require in self.requires:
+                require_version(require)
+        except ImportError:
+            requires = ' '.join(self.requires)
+            logger.warning(f'Please install the package: `pip install "{requires}" -U`.')
 
     def check_infer_backend(self, infer_backend: str) -> None:
         if infer_backend == 'vllm' and not self.support_vllm:

@@ -105,6 +105,7 @@ class MLLMTemplateType:
     cogagent_chat = 'cogagent_chat'
     cogagent_vqa = 'cogagent_vqa'
     cogvlm = 'cogvlm'
+    cogvlm2 = 'cogvlm2'
     cogvlm2_video = 'cogvlm2_video'
     glm4v = 'glm4v'
 

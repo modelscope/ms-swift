@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal, Optional, Tuple, Type
+from typing import Any, Dict, List, Literal, Optional, Tuple, Type, Union
 
 import torch
 import torch.nn as nn
@@ -195,6 +195,14 @@ class CogVLMTemplateMeta(TemplateMeta):
 register_template(CogVLMTemplateMeta(MLLMTemplateType.cogvlm, template_cls=CogTemplate))
 
 
+@dataclass
+class CogVLM2TemplateMeta(CogVLMTemplateMeta):
+    placeholder_tokens: List[Union[int, str]] = field(default_factory=lambda: ['<|reserved_special_token_0|>'])
+
+
+register_template(CogVLM2TemplateMeta(MLLMTemplateType.cogvlm2, template_cls=CogTemplate))
+
+
 class Cog2VideoTemplate(CogTemplate):
     use_model = True
 
@@ -230,7 +238,7 @@ class Cog2VideoTemplate(CogTemplate):
         return encoded
 
 
-register_template(CogVLMTemplateMeta(
+register_template(CogVLM2TemplateMeta(
     MLLMTemplateType.cogvlm2_video,
     template_cls=Cog2VideoTemplate,
 ))

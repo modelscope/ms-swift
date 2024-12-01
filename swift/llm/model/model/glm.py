@@ -14,7 +14,7 @@ from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
 from ..patcher import patch_output_to_input_device
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
-from ..utils import AttnImpl, ModelInfo
+from ..utils import AttnImpl, ModelInfo, safe_snapshot_download
 
 logger = get_logger()
 
@@ -84,7 +84,6 @@ register_model(
         TemplateType.codefuse,
         get_model_tokenizer_chatglm,
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
-        requires=['transformers==4.33.0'],
         model_arch=ModelArch.chatglm))
 
 register_model(
@@ -134,7 +133,6 @@ register_model(
         TemplateType.glm4,
         get_model_tokenizer_glm4,
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
-        requires=['transformers==4.43.0'],
         model_arch=ModelArch.chatglm))
 
 register_model(
@@ -193,7 +191,6 @@ register_model(
         TemplateType.glm4v,
         get_model_tokenizer_glm4v,
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
-        requires=['transformers==4.43.0'],
         model_arch=ModelArch.glm4v))
 
 
@@ -202,7 +199,8 @@ def get_model_tokenizer_cogvlm(model_dir: str,
                                model_kwargs: Dict[str, Any],
                                load_model: bool = True,
                                **kwargs):
-    tokenizer = AutoTokenizer.from_pretrained('AI-ModelScope/vicuna-7b-v1.5', revision='master', trust_remote_code=True)
+    tokenizer_dir = safe_snapshot_download('AI-ModelScope/vicuna-7b-v1.5', download_model=False)
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_dir, trust_remote_code=True)
     if load_model:
         logger.warning('CogAgent with FusedLayerNorm will cause an training loss of NAN, '
                        'to avoid this, please uninstall apex.')
@@ -272,7 +270,7 @@ register_model(
                 Model('ZhipuAI/cogvlm2-llama3-chinese-chat-19B', 'THUDM/cogvlm2-llama3-chinese-chat-19B'),
             ]),
         ],
-        TemplateType.cogvlm,
+        TemplateType.cogvlm2,
         get_model_tokenizer_cogvlm2,
         architectures=['CogVLMForCausalLM'],
         requires=['transformers<4.42'],
@@ -280,14 +278,16 @@ register_model(
 
 register_model(
     ModelMeta(
-        MLLMModelType.cogvlm2_video, [
+        MLLMModelType.cogvlm2_video,
+        [
             ModelGroup([
                 Model('ZhipuAI/cogvlm2-video-llama3-chat', 'THUDM/cogvlm2-video-llama3-chat'),
-            ],
-                       tags=['video']),
+            ]),
         ],
         TemplateType.cogvlm2_video,
         get_model_tokenizer_cogvlm2,
         architectures=['CogVLMVideoForCausalLM'],
-        requires=['transformers>=4.42'],
-        model_arch=ModelArch.cogvlm))
+        requires=['decord', 'pytorchvideo', 'transformers>=4.42'],
+        model_arch=ModelArch.cogvlm,
+        tags=['video'],
+    ))

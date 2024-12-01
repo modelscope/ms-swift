@@ -78,14 +78,14 @@ register_model(
         [
             ModelGroup([
                 Model('AI-ModelScope/pixtral-12b', 'mistral-community/pixtral-12b'),
-            ],
-                       tags=['vision'],
-                       requires=['transformers>=4.45']),
+            ]),
         ],
         TemplateType.pixtral,
         get_model_tokenizer_pixtral,
-        model_arch=ModelArch.llava,
+        model_arch=ModelArch.llava_hf,
         architectures=['LlavaForConditionalGeneration'],
+        requires=['transformers>=4.45'],
+        tags=['vision'],
     ))
 
 
