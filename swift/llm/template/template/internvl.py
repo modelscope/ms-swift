@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from functools import partial
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional
 
 import torch
 from torch import nn
@@ -127,8 +127,7 @@ class Internvl2Template(InternvlTemplate):
         else:
             return ['<bbox>']
 
-    def _encode(self,
-                inputs: StdTemplateInputs) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super(InternvlTemplate, self)._encode(inputs)
         if len(encoded) == 0:
             return encoded

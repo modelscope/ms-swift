@@ -160,7 +160,7 @@ register_model(
                     Model('deepseek-ai/deepseek-vl-1.3b-chat', 'deepseek-ai/deepseek-vl-1.3b-chat'),
                     Model('deepseek-ai/deepseek-vl-7b-chat', 'deepseek-ai/deepseek-vl-7b-chat'),
                 ],
-                tags=['multi-modal', 'vision'],
+                tags=['vision'],
             ),
         ],
         TemplateType.deepseek_vl,
@@ -196,7 +196,7 @@ register_model(
                 [
                     Model('deepseek-ai/Janus-1.3B', 'deepseek-ai/Janus-1.3B'),
                 ],
-                tags=['multi-modal', 'vision'],
+                tags=['vision'],
             ),
         ],
         TemplateType.deepseek_janus,

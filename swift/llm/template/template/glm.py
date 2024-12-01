@@ -148,7 +148,8 @@ class CogTemplate(Template):
             encoded['images'] = [[img.to(dtype=self.config.torch_dtype)] for img in inputs2['images']]
             if 'cross_images' in inputs2:
                 # is cogagent
-                encoded['cross_images'] = [[cross_img.to(dtype=self.config.torch_dtype)] for cross_img in inputs2['cross_images']]
+                encoded['cross_images'] = [[cross_img.to(dtype=self.config.torch_dtype)]
+                                           for cross_img in inputs2['cross_images']]
         return encoded
 
     def _data_collator(self,

@@ -70,7 +70,7 @@ register_model(
                     Model('01ai/Yi-VL-34B', '01-ai/Yi-VL-34B'),
                 ],
                 requires=['transformers>=4.34'],
-                tags=['multi-modal', 'vision'],
+                tags=['vision'],
             ),
         ],
         TemplateType.yi_vl,

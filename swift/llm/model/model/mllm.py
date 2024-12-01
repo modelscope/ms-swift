@@ -28,7 +28,7 @@ register_model(
         [
             ModelGroup([
                 Model('stepfun-ai/GOT-OCR2_0', 'stepfun-ai/GOT-OCR2_0'),
-            ], tags=['multi-modal', 'audio']),
+            ], tags=['audio']),
         ],
         TemplateType.got_ocr2,
         get_model_tokenizer_got_ocr2,
@@ -53,7 +53,7 @@ register_model(
             ModelGroup([
                 Model('AI-ModelScope/Idefics3-8B-Llama3', 'HuggingFaceM4/Idefics3-8B-Llama3'),
             ],
-                       tags=['multi-modal', 'vision'],
+                       tags=['vision'],
                        requires=['transformers>=4.45']),
         ],
         TemplateType.idefics3,
@@ -79,7 +79,7 @@ register_model(
             ModelGroup([
                 Model('AI-ModelScope/pixtral-12b', 'mistral-community/pixtral-12b'),
             ],
-                       tags=['multi-modal', 'vision'],
+                       tags=['vision'],
                        requires=['transformers>=4.45']),
         ],
         TemplateType.pixtral,
@@ -134,7 +134,7 @@ register_model(
             ModelGroup([
                 Model('LLM-Research/MolmoE-1B-0924', 'allenai/MolmoE-1B-0924'),
             ],
-                       tags=['multi-modal', 'vision'],
+                       tags=['vision'],
                        requires=['transformers>=4.45']),
         ],
         TemplateType.molmo,
@@ -180,7 +180,7 @@ register_model(
                 Model('LLM-Research/Molmo-7B-D-0924', 'allenai/Molmo-7B-D-0924'),
                 Model('LLM-Research/Molmo-72B-0924', 'allenai/Molmo-72B-0924'),
             ],
-                       tags=['multi-modal', 'vision'],
+                       tags=['vision'],
                        requires=['transformers>=4.45']),
         ],
         TemplateType.molmo,

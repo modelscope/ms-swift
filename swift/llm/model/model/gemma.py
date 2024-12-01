@@ -37,7 +37,7 @@ register_model(
                 Model('AI-ModelScope/paligemma-3b-mix-448', 'google/paligemma-3b-mix-448'),
             ],
                        requires=['transformers>=4.41'],
-                       tags=['multi-modal', 'vision']),
+                       tags=['vision']),
         ],
         TemplateType.paligemma,
         get_model_tokenizer_paligemma_vision,

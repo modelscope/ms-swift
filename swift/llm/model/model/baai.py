@@ -36,7 +36,7 @@ register_model(
         [
             ModelGroup([
                 Model('BAAI/Emu3-Gen', 'BAAI/Emu3-Gen'),
-            ], tags=['multi-modal', 't2i']),
+            ], tags=['t2i']),
         ],
         TemplateType.emu3_gen,
         get_model_tokenizer_emu3_gen,

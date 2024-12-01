@@ -622,7 +622,7 @@ register_model(
             ModelGroup([
                 Model('AIDC-AI/Ovis1.6-Gemma2-9B', 'AIDC-AI/Ovis1.6-Gemma2-9B'),
             ],
-                       tags=['multi-modal', 'vision'],
+                       tags=['vision'],
                        requires=['transformers>=4.42']),
         ],
         TemplateType.ovis1_6,
