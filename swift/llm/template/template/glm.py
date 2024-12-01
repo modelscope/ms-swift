@@ -117,6 +117,8 @@ register_template(
 
 class CogTemplate(Template):
 
+    use_model = True
+
     def check_example(self, example):
         images = example.get('images') or []
         assert len(images) <= 1
@@ -133,7 +135,6 @@ class CogTemplate(Template):
         image = inputs.images or []
         encoded.pop('loss_scale', None)
         history_inputs = inputs.to_history()
-        # TODO post_encode
         inputs2 = model.build_conversation_input_ids(
             self.processor, query=history_inputs['query'], history=history_inputs['history'], images=image)
         image_token_len = inputs2['token_type_ids'].sum().item()
@@ -210,7 +211,6 @@ class Cog2VideoTemplate(CogTemplate):
         video = load_batch(videos_path, load_video_cogvlm2)
         encoded.pop('loss_scale', None)
         history_inputs = inputs.to_history()
-        # TODO post_encode
         inputs2 = model.build_conversation_input_ids(
             self.processor,
             query=history_inputs['query'],

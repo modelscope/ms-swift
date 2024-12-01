@@ -40,6 +40,7 @@ def _remove_idx(arr: List[int], idx_list: List[int]) -> List[int]:
 
 class MiniCPMVTemplate(Template):
     is_v2_5 = False
+    use_model = True
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -89,7 +90,6 @@ class MiniCPMVTemplate(Template):
         tgt_sizes = None
         slice_mode = getattr(self.config, 'slice_mode', False)
         if slice_mode:
-            # TODO post_encode
             if self.is_v2_5:
                 image_processor = self.processor.image_processor
                 image_inputs = image_processor(images, return_tensors='pt').to(self.config.torch_dtype)
@@ -97,8 +97,8 @@ class MiniCPMVTemplate(Template):
                 pixel_values = image_inputs['pixel_values']
                 tgt_sizes = image_inputs['tgt_sizes']
             else:
-                images, placeholder = model.get_slice_image_placeholder(images[0], self.processor)
-                pixel_values = [[model.transform(img) for img in images]]
+                images, placeholder = self.model.get_slice_image_placeholder(images[0], self.processor)
+                pixel_values = [[self.model.transform(img) for img in images]]
             placeholder += '\n'
             placeholder_id = self.processor.encode(placeholder, add_special_tokens=False)
             input_ids = (input_ids[:idx] + placeholder_id + input_ids[idx + 1:])
@@ -120,7 +120,7 @@ class MiniCPMVTemplate(Template):
             if labels is not None:
                 labels = (labels[:idx] + [-100] * len(placeholder_id) + labels[idx + 1:])
             image_bound = [torch.tensor([[idx, idx + self.config.query_num]])]
-            pixel_values = [[model.transform(images[0])]]
+            pixel_values = [[self.model.transform(images[0])]]
         encoded = {
             'input_ids': input_ids,
             'labels': labels,
@@ -181,7 +181,7 @@ class MiniCPMV2_6Template(MiniCPMVTemplate):
         idx_list.insert(0, -1)
 
         image_processor = self.processor.image_processor
-        image_inputs = image_processor([images], return_tensors='pt', max_slice_nums=max_slice_nums).to(model.dtype)
+        image_inputs = image_processor([images], return_tensors='pt', max_slice_nums=max_slice_nums).to(self.config.torch_dtype)
 
         res_input_ids = []
         res_labels = []
