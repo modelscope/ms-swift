@@ -104,8 +104,6 @@ register_model(
                     # chat
                     Model('LLM-Research/Meta-Llama-3.1-8B-Instruct', 'meta-llama/Meta-Llama-3.1-8B-Instruct'),
                     Model('LLM-Research/Meta-Llama-3.1-70B-Instruct', 'meta-llama/Meta-Llama-3.1-70B-Instruct'),
-                    Model('AI-ModelScope/Llama-3.1-Nemotron-70B-Instruct-HF',
-                          'nvidia/Llama-3.1-Nemotron-70B-Instruct-HF'),
                     Model('LLM-Research/Meta-Llama-3.1-405B-Instruct', 'meta-llama/Meta-Llama-3.1-405B-Instruct'),
                     # base
                     Model('LLM-Research/Meta-Llama-3.1-8B', 'meta-llama/Meta-Llama-3.1-8B'),
@@ -117,7 +115,6 @@ register_model(
                           'meta-llama/Meta-Llama-3.1-405B-Instruct-FP8'),
                 ],
                 TemplateType.llama3,
-                ignore_file_pattern=[r'.+\.pth$'],
                 requires=['transformers>=4.43']),
             # llama3.1-quant
             ModelGroup(
@@ -145,6 +142,14 @@ register_model(
                           'hugging-quants/Meta-Llama-3.1-405B-Instruct-AWQ-INT4'),
                 ],
                 requires=['transformers>=4.43']),
+            # nvidia Nemotron
+            ModelGroup(
+                [
+                    Model('AI-ModelScope/Llama-3.1-Nemotron-70B-Instruct-HF',
+                          'nvidia/Llama-3.1-Nemotron-70B-Instruct-HF'),
+                ],
+                requires=['transformers>=4.43'],
+            )
         ],
         TemplateType.llama3,
         get_model_tokenizer_with_flash_attn,
@@ -179,7 +184,6 @@ register_model(
         TemplateType.llama3_2,
         get_model_tokenizer_with_flash_attn,
         architectures=['LlamaForCausalLM'],
-        ignore_file_pattern=[r'.+\.pth$'],
         requires=['transformers>=4.45'],
         model_arch=ModelArch.llama,
     ))
@@ -252,7 +256,7 @@ register_model(
                 [
                     Model('ICTNLP/Llama-3.1-8B-Omni', 'ICTNLP/Llama-3.1-8B-Omni'),
                 ],
-                tags=['multi-modal', 'audio', 'skip_test'],
+                tags=['audio'],
                 requires=['whisper', 'openai-whisper'],
             )
         ],
@@ -260,4 +264,48 @@ register_model(
         get_model_tokenizer_omnli,
         architectures=['OmniSpeech2SLlamaForCausalLM'],
         model_arch=ModelArch.llama3_1_omni,
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.reflection,
+        [
+            ModelGroup([
+                Model('LLM-Research/Reflection-Llama-3.1-70B', 'mattshumer/Reflection-Llama-3.1-70B'),
+            ],
+                       requires=['transformers>=4.43']),
+        ],
+        TemplateType.reflection,
+        get_model_tokenizer_with_flash_attn,
+        model_arch=ModelArch.llama,
+        architectures=['LlamaForCausalLM'],
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.atom,
+        [
+            ModelGroup([
+                Model('FlagAlpha/Atom-7B', 'FlagAlpha/Atom-7B'),
+                Model('FlagAlpha/Atom-7B-Chat', 'FlagAlpha/Atom-7B-Chat'),
+            ]),
+        ],
+        TemplateType.atom,
+        get_model_tokenizer_with_flash_attn,
+        model_arch=ModelArch.llama,
+        architectures=['LlamaForCausalLM'],
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.mengzi3,
+        [
+            ModelGroup([
+                Model('langboat/Mengzi3-13B-Base', 'Langboat/Mengzi3-13B-Base'),
+            ]),
+        ],
+        TemplateType.mengzi,
+        get_model_tokenizer_with_flash_attn,
+        model_arch=ModelArch.llama,
+        architectures=['LlamaForCausalLM'],
     ))

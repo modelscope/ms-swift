@@ -161,8 +161,7 @@ register_model(
             ModelGroup([
                 Model('LLM-Research/Phi-3.5-MoE-instruct', 'microsoft/Phi-3.5-MoE-instruct'),
             ],
-                       requires=['transformers>=4.36'],
-                       tags=['moe']),
+                       requires=['transformers>=4.36']),
         ],
         TemplateType.phi3,
         get_model_tokenizer_with_flash_attn,

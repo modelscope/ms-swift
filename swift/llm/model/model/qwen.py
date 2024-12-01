@@ -468,14 +468,12 @@ register_model(
                 Model('Qwen/Qwen1.5-MoE-A2.7B-Chat', 'Qwen/Qwen1.5-MoE-A2.7B-Chat'),
                 Model('Qwen/Qwen1.5-MoE-A2.7B', 'Qwen/Qwen1.5-MoE-A2.7B'),
                 Model('Qwen/Qwen1.5-MoE-A2.7B-Chat-GPTQ-Int4', 'Qwen/Qwen1.5-MoE-A2.7B-Chat-GPTQ-Int4'),
-            ],
-                       tags=['skip_test']),
+            ]),
             ModelGroup([
                 Model('Qwen/Qwen2-57B-A14B-Instruct', 'Qwen/Qwen2-57B-A14B-Instruct'),
                 Model('Qwen/Qwen2-57B-A14B', 'Qwen/Qwen2-57B-A14B'),
                 Model('Qwen/Qwen2-57B-A14B-Instruct-GPTQ-Int4', 'Qwen/Qwen2-57B-A14B-Instruct-GPTQ-Int4'),
-            ],
-                       tags=['skip_test'])
+            ])
         ],
         TemplateType.qwen,
         get_model_tokenizer_with_flash_attn,
@@ -573,3 +571,17 @@ register_model(
         model_arch=ModelArch.qwen2_audio,
         architectures=['Qwen2AudioForConditionalGeneration'],
         requires=['transformers>=4.45']))
+
+register_model(
+    ModelMeta(
+        LLMModelType.marco_o1, [ModelGroup([Model('AIDC-AI/Marco-o1', 'AIDC-AI/Marco-o1')])],
+        LLMModelType.marco_o1,
+        model_arch=ModelArch.llama,
+        requires=['transformers>=4.37']))
+
+register_model(
+    ModelMeta(
+        LLMModelType.qwq, [ModelGroup([Model('Qwen/QwQ-32B-Preview', 'Qwen/QwQ-32B-Preview')])],
+        LLMModelType.qwq,
+        model_arch=ModelArch.llama,
+        requires=['transformers>=4.37']))

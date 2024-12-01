@@ -45,7 +45,7 @@ register_model(
         LLMModelType.grok, [
             ModelGroup([
                 Model('colossalai/grok-1-pytorch', 'hpcai-tech/grok-1'),
-            ], tags=['skip_test']),
+            ]),
         ],
         TemplateType.default,
         get_model_tokenizer_grok,
@@ -53,39 +53,6 @@ register_model(
         model_arch=ModelArch.llama
         # TODO
     ))
-
-
-def get_model_tokenizer_mplug_owl3(model_dir: str,
-                                   model_info: ModelInfo,
-                                   model_kwargs: Dict[str, Any],
-                                   load_model: bool = True,
-                                   **kwargs):
-    get_class_from_dynamic_module('configuration_hyper_qwen2.HyperQwen2Config', model_dir)
-    model_cls = get_class_from_dynamic_module('modeling_mplugowl3.mPLUGOwl3Model', model_dir)
-    model_cls._no_split_modules = ['SiglipEncoderLayer']
-    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
-    processor = model.init_processor(tokenizer)
-    if model is not None:
-        func_list = ['generate', 'forward']
-        use_submodel_func(model, 'language_model', func_list)
-    return model, processor
-
-
-register_model(
-    ModelMeta(
-        MLLMModelType.mplug3, [
-            ModelGroup([
-                Model('iic/mPLUG-Owl3-1B-241014', 'mPLUG/mPLUG-Owl3-1B-241014'),
-                Model('iic/mPLUG-Owl3-2B-241014', 'mPLUG/mPLUG-Owl3-2B-241014'),
-                Model('iic/mPLUG-Owl3-7B-240728', 'mPLUG/mPLUG-Owl3-7B-240728'),
-            ],
-                       requires=['transformers>=4.36', 'icecream'],
-                       tags=['multi-modal', 'vision', 'video']),
-        ],
-        TemplateType.mplug_owl3,
-        get_model_tokenizer_mplug_owl3,
-        architectures=['mPLUGOwl3Model'],
-        model_arch=ModelArch.mplug_owl3))
 
 
 def get_model_tokenizer_polylm(model_dir: str,
@@ -161,7 +128,7 @@ register_model(
                 [
                     Model('codefuse-ai/CodeFuse-CodeLlama-34B', 'codefuse-ai/CodeFuse-CodeLlama-34B'),
                 ],
-                tags=['coding', 'skip_test'],
+                tags=['coding'],
             ),
         ],
         TemplateType.codefuse_codellama,
@@ -201,7 +168,7 @@ register_model(
             ]),
             ModelGroup([
                 Model('IEITYuan/Yuan2-M32-hf', 'IEITYuan/Yuan2-M32-hf'),
-            ], tags=['moe', 'skip_test']),
+            ]),
         ],
         TemplateType.yuan,
         get_model_tokenizer_yuan,
@@ -227,40 +194,15 @@ register_model(
     ))
 
 
-def get_model_tokenizer_idefics(model_dir: str, *args, **kwargs):
-    from transformers import AutoProcessor, AutoModelForVision2Seq
-    processor = AutoProcessor.from_pretrained(model_dir)
-    kwargs['automodel_class'] = AutoModelForVision2Seq
-    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
-    tokenizer.processor = processor
-    return model, tokenizer
-
 
 register_model(
     ModelMeta(
-        MLLMModelType.idefics3,
-        [
-            ModelGroup([
-                Model('AI-ModelScope/Idefics3-8B-Llama3', 'HuggingFaceM4/Idefics3-8B-Llama3'),
-            ],
-                       tags=['multi-modal', 'vision'],
-                       requires=['transformers>=4.45']),
-        ],
-        TemplateType.idefics3,
-        get_model_tokenizer_idefics,
-        model_arch=ModelArch.idefics3,
-        architectures=['Idefics3ForConditionalGeneration'],
-    ))
-
-register_model(
-    ModelMeta(
-        LLMModelType.wizardlm2_moe,
+        LLMModelType.wizardlm2,
         [
             ModelGroup([
                 Model('AI-ModelScope/WizardLM-2-8x22B', 'alpindale/WizardLM-2-8x22B'),
             ],
-                       requires=['transformers>=4.36'],
-                       tags=['skip_test']),
+                       requires=['transformers>=4.36']),
         ],
         TemplateType.wizardlm2,
         get_model_tokenizer_with_flash_attn,
@@ -275,8 +217,7 @@ register_model(
             ModelGroup([
                 Model('AI-ModelScope/WizardLM-2-7B-AWQ', 'MaziyarPanahi/WizardLM-2-7B-AWQ'),
             ],
-                       requires=['transformers>=4.34'],
-                       tags=['skip_test']),
+                       requires=['transformers>=4.34'])
         ],
         TemplateType.wizardlm2_awq,
         get_model_tokenizer_with_flash_attn,
@@ -304,8 +245,7 @@ register_model(
         [
             ModelGroup([
                 Model('OpenBuddy/openbuddy-deepseek-67b-v15.2', 'OpenBuddy/openbuddy-deepseek-67b-v15.2'),
-            ],
-                       tags=['skip_test']),
+            ]),
         ],
         TemplateType.openbuddy,
         get_model_tokenizer_with_flash_attn,
@@ -319,7 +259,7 @@ register_model(
         [
             ModelGroup([
                 Model('SUSTC/SUS-Chat-34B', 'SUSTech/SUS-Chat-34B'),
-            ], tags=['skip_test']),
+            ]),
         ],
         TemplateType.sus,
         get_model_tokenizer_with_flash_attn,
@@ -383,7 +323,6 @@ register_model(
                     Model('OpenBuddy/openbuddy-mixtral-7bx8-v18.1-32k', 'OpenBuddy/openbuddy-mixtral-7bx8-v18.1-32k'),
                 ],
                 requires=['transformers>=4.36'],
-                tags=['moe', 'skip_test'],
             ),
         ],
         TemplateType.openbuddy,
@@ -413,8 +352,7 @@ register_model(
         [
             ModelGroup([
                 Model('OpenBuddy/openbuddy-llama-65b-v8-bf16', 'OpenBuddy/openbuddy-llama-65b-v8-bf16'),
-            ],
-                       tags=['skip_test']),
+            ]),
         ],
         TemplateType.openbuddy,
         get_model_tokenizer_with_flash_attn,
@@ -464,7 +402,6 @@ register_model(
                 Model('AI-ModelScope/dbrx-instruct', 'databricks/dbrx-instruct'),
                 Model('AI-ModelScope/dbrx-base', 'databricks/dbrx-base'),
             ],
-                       tags=['moe', 'skip_test'],
                        requires=['transformers>=4.36']),
         ],
         TemplateType.dbrx,
@@ -516,88 +453,6 @@ register_model(
         architectures=['Ovis'],
     ))
 
-register_model(
-    ModelMeta(
-        LLMModelType.nenotron,
-        [
-            ModelGroup([
-                Model('AI-ModelScope/Llama-3.1-Nemotron-70B-Instruct-HF', 'nvidia/Llama-3.1-Nemotron-70B-Instruct-HF'),
-            ],
-                       requires=['transformers>=4.43'],
-                       ignore_file_pattern=[r'.+\.pth$'],
-                       tags=['skip_test']),
-        ],
-        TemplateType.llama3,
-        get_model_tokenizer_with_flash_attn,
-        model_arch=ModelArch.llama,
-        architectures=['LlamaForCausalLM'],
-    ))
-
-register_model(
-    ModelMeta(
-        LLMModelType.reflection,
-        [
-            ModelGroup([
-                Model('LLM-Research/Reflection-Llama-3.1-70B', 'mattshumer/Reflection-Llama-3.1-70B'),
-            ],
-                       requires=['transformers>=4.43'],
-                       tags=['skip_test']),
-        ],
-        TemplateType.reflection,
-        get_model_tokenizer_with_flash_attn,
-        model_arch=ModelArch.llama,
-        architectures=['LlamaForCausalLM'],
-    ))
-
-register_model(
-    ModelMeta(
-        LLMModelType.atom,
-        [
-            ModelGroup([
-                Model('FlagAlpha/Atom-7B-Chat', 'FlagAlpha/Atom-7B-Chat'),
-                Model('FlagAlpha/Atom-7B', 'FlagAlpha/Atom-7B'),
-            ]),
-        ],
-        TemplateType.atom,
-        get_model_tokenizer_with_flash_attn,
-        model_arch=ModelArch.llama,
-        architectures=['LlamaForCausalLM'],
-    ))
-
-register_model(
-    ModelMeta(
-        LLMModelType.mengzi3,
-        [
-            ModelGroup([
-                Model('langboat/Mengzi3-13B-Base', 'Langboat/Mengzi3-13B-Base'),
-            ]),
-        ],
-        TemplateType.mengzi,
-        get_model_tokenizer_with_flash_attn,
-        model_arch=ModelArch.llama,
-        architectures=['LlamaForCausalLM'],
-    ))
-
-
-def get_model_tokenizer_got_ocr2(*args, **kwargs):
-    kwargs['automodel_class'] = AutoModel
-    model, tokenizer = get_model_tokenizer_with_flash_attn(*args, **kwargs)
-    return model, tokenizer
-
-
-register_model(
-    ModelMeta(
-        MLLMModelType.got_ocr2,
-        [
-            ModelGroup([
-                Model('stepfun-ai/GOT-OCR2_0', 'stepfun-ai/GOT-OCR2_0'),
-            ], tags=['multi-modal', 'audio']),
-        ],
-        TemplateType.got_ocr2,
-        get_model_tokenizer_got_ocr2,
-        model_arch=ModelArch.got_ocr2,
-        architectures=['GOTQwenForCausalLM'],
-    ))
 
 register_model(
     ModelMeta(
@@ -659,7 +514,6 @@ register_model(
             ModelGroup([
                 Model('xverse/XVERSE-MoE-A4.2B', 'xverse/XVERSE-MoE-A4.2B'),
             ],
-                       tags=['moe', 'skip_test'],
                        requires=['transformers==4.38.2']),
         ],
         TemplateType.xverse,
