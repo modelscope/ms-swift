@@ -1,12 +1,9 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import os
-import sys
-from functools import partial
 from types import MethodType
 from typing import Any, Dict, Tuple
 
 import torch
-from transformers import AutoConfig, AutoModel, AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.llm import TemplateType
@@ -16,7 +13,6 @@ from ..model_arch import ModelArch
 from ..patcher import patch_output_clone
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
 from ..utils import ModelInfo, git_clone_github, use_submodel_func
-from .qwen import get_model_tokenizer_qwen
 
 logger = get_logger()
 
@@ -110,34 +106,6 @@ register_model(
     ))
 
 
-def get_model_tokenizer_codellama(model_dir: str,
-                                  model_info: ModelInfo,
-                                  model_kwargs: Dict[str, Any],
-                                  load_model: bool = True,
-                                  **kwargs):
-    tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True, use_fast=False, legacy=False)
-    return get_model_tokenizer_with_flash_attn(
-        model_dir, model_info, model_kwargs, load_model, tokenizer=tokenizer, **kwargs)
-
-
-register_model(
-    ModelMeta(
-        LLMModelType.codefuse_codellama,
-        [
-            ModelGroup(
-                [
-                    Model('codefuse-ai/CodeFuse-CodeLlama-34B', 'codefuse-ai/CodeFuse-CodeLlama-34B'),
-                ],
-                tags=['coding'],
-            ),
-        ],
-        TemplateType.codefuse_codellama,
-        get_model_tokenizer_codellama,
-        model_arch=ModelArch.llama,
-        architectures=['LlamaForCausalLM'],
-    ))
-
-
 def get_model_tokenizer_yuan(model_dir: str,
                              model_info: ModelInfo,
                              model_kwargs: Dict[str, Any],
@@ -195,80 +163,6 @@ register_model(
 
 register_model(
     ModelMeta(
-        LLMModelType.wizardlm2,
-        [
-            ModelGroup([
-                Model('AI-ModelScope/WizardLM-2-8x22B', 'alpindale/WizardLM-2-8x22B'),
-            ],
-                       requires=['transformers>=4.36']),
-        ],
-        TemplateType.wizardlm2,
-        get_model_tokenizer_with_flash_attn,
-        model_arch=ModelArch.llama,
-        architectures=['MixtralForCausalLM'],
-    ))
-
-register_model(
-    ModelMeta(
-        LLMModelType.wizardlm2_awq,
-        [
-            ModelGroup([
-                Model('AI-ModelScope/WizardLM-2-7B-AWQ', 'MaziyarPanahi/WizardLM-2-7B-AWQ'),
-            ],
-                       requires=['transformers>=4.34'])
-        ],
-        TemplateType.wizardlm2_awq,
-        get_model_tokenizer_with_flash_attn,
-        model_arch=ModelArch.llama,
-        architectures=['MistralForCausalLM'],
-    ))
-
-register_model(
-    ModelMeta(
-        LLMModelType.numina,
-        [
-            ModelGroup([
-                Model('AI-ModelScope/NuminaMath-7B-TIR', 'AI-MO/NuminaMath-7B-TIR'),
-            ], tags=['math']),
-        ],
-        TemplateType.numina_math,
-        get_model_tokenizer_with_flash_attn,
-        model_arch=ModelArch.llama,
-        architectures=['LlamaForCausalLM'],
-    ))
-
-register_model(
-    ModelMeta(
-        LLMModelType.zephyr,
-        [
-            ModelGroup([
-                Model('modelscope/zephyr-7b-beta', 'HuggingFaceH4/zephyr-7b-beta'),
-            ],
-                       requires=['transformers>=4.34']),
-        ],
-        TemplateType.zephyr,
-        get_model_tokenizer_with_flash_attn,
-        model_arch=ModelArch.llama,
-        architectures=['MistralForCausalLM'],
-    ))
-
-register_model(
-    ModelMeta(
-        LLMModelType.ziya2,
-        [
-            ModelGroup([
-                Model('Fengshenbang/Ziya2-13B-Chat', 'IDEA-CCNL/Ziya2-13B-Chat'),
-                Model('Fengshenbang/Ziya2-13B-Base', 'IDEA-CCNL/Ziya2-13B-Base'),
-            ]),
-        ],
-        TemplateType.ziya,
-        get_model_tokenizer_with_flash_attn,
-        model_arch=ModelArch.llama,
-        architectures=['LlamaForCausalLM'],
-    ))
-
-register_model(
-    ModelMeta(
         LLMModelType.dbrx,
         [
             ModelGroup([
@@ -281,49 +175,6 @@ register_model(
         get_model_tokenizer_with_flash_attn,
         model_arch=ModelArch.dbrx,
         architectures=['DbrxForCausalLM'],
-    ))
-
-
-def get_model_tokenizer_ovis(*args, **kwargs):
-    model, tokenizer = get_model_tokenizer_with_flash_attn(*args, **kwargs)
-    if model is not None:
-        model.generation_config.cache_implementation = None
-        func_list = ['generate', 'forward', 'get_input_embeddings']
-        use_submodel_func(model, 'llm', func_list)
-        embedding = model.get_input_embeddings()
-        embedding.register_forward_hook(patch_output_clone)
-    try:
-        # fix device_map
-        from transformers.cache_utils import HybridCache
-
-        def update(self, key_states: torch.Tensor, value_states: torch.Tensor, layer_idx: int, *args,
-                   **kwargs) -> Tuple[torch.Tensor]:
-            self.key_cache[layer_idx] = self.key_cache[layer_idx].to(key_states.device)
-            self.value_cache[layer_idx] = self.value_cache[layer_idx].to(value_states.device)
-            return self._update_origin(key_states, value_states, layer_idx, *args, **kwargs)
-
-        if not hasattr(HybridCache, '_update_origin'):
-            HybridCache._update_origin = HybridCache.update
-            HybridCache.update = update
-    except ImportError:
-        pass
-    return model, tokenizer
-
-
-register_model(
-    ModelMeta(
-        MLLMModelType.ovis1_6,
-        [
-            ModelGroup([
-                Model('AIDC-AI/Ovis1.6-Gemma2-9B', 'AIDC-AI/Ovis1.6-Gemma2-9B'),
-            ],
-                       tags=['multi-modal', 'vision'],
-                       requires=['transformers>=4.42']),
-        ],
-        TemplateType.ovis1_6,
-        get_model_tokenizer_ovis,
-        model_arch=ModelArch.ovis1_6,
-        architectures=['Ovis'],
     ))
 
 register_model(
@@ -424,131 +275,4 @@ register_model(
         get_model_tokenizer_with_flash_attn,
         model_arch=ModelArch.llama,
         architectures=['CohereForCausalLM'],
-    ))
-
-
-def get_model_tokenizer_pixtral(model_dir: str, *args, **kwargs):
-    from transformers import AutoProcessor, LlavaForConditionalGeneration
-    processor = AutoProcessor.from_pretrained(model_dir)
-    kwargs['automodel_class'] = LlavaForConditionalGeneration
-    kwargs['tokenizer'] = processor.tokenizer
-    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
-    return model, processor
-
-
-register_model(
-    ModelMeta(
-        LLMModelType.pixtral,
-        [
-            ModelGroup([
-                Model('AI-ModelScope/pixtral-12b', 'mistral-community/pixtral-12b'),
-            ],
-                       tags=['multi-modal', 'vision'],
-                       requires=['transformers>=4.45']),
-        ],
-        TemplateType.pixtral,
-        get_model_tokenizer_pixtral,
-        model_arch=ModelArch.llava,
-        architectures=['LlavaForConditionalGeneration'],
-    ))
-
-
-def get_model_tokenizer_molmoe_1b(model_dir: str,
-                                  model_info: ModelInfo,
-                                  model_kwargs: Dict[str, Any],
-                                  load_model: bool = True,
-                                  **kwargs):
-    from transformers import AutoProcessor
-    processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
-    model, tokenizer = get_model_tokenizer_with_flash_attn(
-        model_dir, model_info, model_kwargs, load_model, tokenizer=processor.tokenizer, **kwargs)
-
-    # fix bug for molmoe-1b
-    def to_dict(self, *args, **kwargs):
-        res = self._to_dict(*args, **kwargs)
-        res['vision_backbone'] = self.vision_backbone.__dict__
-        res.pop('to_dict')
-        res.pop('_to_dict')
-        return res
-
-    model.config._to_dict = model.config.to_dict
-    model.config.to_dict = MethodType(to_dict, model.config)
-    from transformers import GenerationMixin
-    model.generate = MethodType(GenerationMixin.generate, model)
-
-    if model and hasattr(model, '_old_forward'):  # device_map
-        device = model.lm_head.weight.device
-        forward_origin = model._old_forward
-
-        def _forward(*args, **kwargs):
-            if 'append_last_valid_logits' in kwargs:
-                kwargs['append_last_valid_logits'] = kwargs['append_last_valid_logits'].to(device)
-            return forward_origin(*args, **kwargs)
-
-        model._old_forward = _forward
-        model.forward_origin = forward_origin
-
-    return model, processor
-
-
-register_model(
-    ModelMeta(
-        LLMModelType.molmoe_1b,
-        [
-            ModelGroup([
-                Model('LLM-Research/MolmoE-1B-0924', 'allenai/MolmoE-1B-0924'),
-            ],
-                       tags=['multi-modal', 'vision'],
-                       requires=['transformers>=4.45']),
-        ],
-        TemplateType.molmo,
-        get_model_tokenizer_molmoe_1b,
-        model_arch=ModelArch.molmo,
-        torch_dtype=torch.float32,
-        architectures=['MolmoForCausalLM'],
-    ))
-
-
-def get_model_tokenizer_molmo(model_dir: str,
-                              model_info: ModelInfo,
-                              model_kwargs: Dict[str, Any],
-                              load_model: bool = True,
-                              **kwargs):
-    from transformers import AutoProcessor
-    processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
-    model_cls = get_class_from_dynamic_module('modeling_molmo.MolmoForCausalLM', model_dir)
-    model_cls._no_split_modules = ['MolmoSequentialBlock']
-    model, tokenizer = get_model_tokenizer_with_flash_attn(
-        model_dir, model_info, model_kwargs, load_model, tokenizer=processor.tokenizer, **kwargs)
-    if model:
-        device = next(model.model.transformer.ff_out.parameters()).device
-        forward_origin = model.model.forward
-
-        def _forward(*args, **kwargs):
-            if 'append_last_valid_logits' in kwargs:
-                kwargs['append_last_valid_logits'] = kwargs['append_last_valid_logits'].to(device)
-            return forward_origin(*args, **kwargs)
-
-        model.model.forward = _forward
-        model.model.forward_origin = forward_origin
-
-    return model, processor
-
-
-register_model(
-    ModelMeta(
-        LLMModelType.molmo,
-        [
-            ModelGroup([
-                Model('LLM-Research/Molmo-7B-O-0924', 'allenai/Molmo-7B-O-0924'),
-                Model('LLM-Research/Molmo-7B-D-0924', 'allenai/Molmo-7B-D-0924'),
-                Model('LLM-Research/Molmo-72B-0924', 'allenai/Molmo-72B-0924'),
-            ],
-                       tags=['multi-modal', 'vision'],
-                       requires=['transformers>=4.45']),
-        ],
-        TemplateType.molmo,
-        get_model_tokenizer_molmo,
-        model_arch=ModelArch.molmo,
-        architectures=['MolmoForCausalLM'],
     ))

@@ -309,3 +309,60 @@ register_model(
         model_arch=ModelArch.llama,
         architectures=['LlamaForCausalLM'],
     ))
+
+
+def get_model_tokenizer_codellama(model_dir: str,
+                                  model_info: ModelInfo,
+                                  model_kwargs: Dict[str, Any],
+                                  load_model: bool = True,
+                                  **kwargs):
+    tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True, use_fast=False, legacy=False)
+    return get_model_tokenizer_with_flash_attn(
+        model_dir, model_info, model_kwargs, load_model, tokenizer=tokenizer, **kwargs)
+
+
+register_model(
+    ModelMeta(
+        LLMModelType.codefuse_codellama,
+        [
+            ModelGroup(
+                [
+                    Model('codefuse-ai/CodeFuse-CodeLlama-34B', 'codefuse-ai/CodeFuse-CodeLlama-34B'),
+                ],
+                tags=['coding'],
+            ),
+        ],
+        TemplateType.codefuse_codellama,
+        get_model_tokenizer_codellama,
+        model_arch=ModelArch.llama,
+        architectures=['LlamaForCausalLM'],
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.numina,
+        [
+            ModelGroup([
+                Model('AI-ModelScope/NuminaMath-7B-TIR', 'AI-MO/NuminaMath-7B-TIR'),
+            ], tags=['math']),
+        ],
+        TemplateType.numina_math,
+        get_model_tokenizer_with_flash_attn,
+        model_arch=ModelArch.llama,
+        architectures=['LlamaForCausalLM'],
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.ziya2,
+        [
+            ModelGroup([
+                Model('Fengshenbang/Ziya2-13B-Chat', 'IDEA-CCNL/Ziya2-13B-Chat'),
+                Model('Fengshenbang/Ziya2-13B-Base', 'IDEA-CCNL/Ziya2-13B-Base'),
+            ]),
+        ],
+        TemplateType.ziya,
+        get_model_tokenizer_with_flash_attn,
+        model_arch=ModelArch.llama,
+        architectures=['LlamaForCausalLM'],
+    ))
