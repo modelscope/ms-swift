@@ -34,11 +34,11 @@ class Model:
 @dataclass
 class ModelGroup:
     models: List[Model]
-    tags: List[str] = field(default_factory=list)
 
     # Higher priority. If set to None, the attributes of the DatasetMeta will be used.
     ignore_file_pattern: Optional[List[str]] = None
     requires: Optional[List[str]] = None
+    tags: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -61,6 +61,7 @@ class ModelMeta:
     ignore_file_pattern: List[str] = field(default_factory=list)
     # Usually specifies the version limits of transformers.
     requires: List[str] = field(default_factory=list)
+    tags: List[str] = field(default_factory=list)
 
     def get_matched_model_group(self, model_name: str) -> Optional[ModelGroup]:
         for model_group in self.model_groups:

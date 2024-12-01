@@ -217,29 +217,28 @@ register_model(
     ModelMeta(
         MLLMModelType.internvl2,
         [
-            ModelGroup(
-                [
-                    Model('OpenGVLab/InternVL2-1B', 'OpenGVLab/InternVL2-1B'),
-                    Model('OpenGVLab/InternVL2-2B', 'OpenGVLab/InternVL2-2B'),
-                    Model('OpenGVLab/InternVL2-8B', 'OpenGVLab/InternVL2-8B'),
-                    Model('OpenGVLab/InternVL2-26B', 'OpenGVLab/InternVL2-26B'),
-                    Model('OpenGVLab/InternVL2-40B', 'OpenGVLab/InternVL2-40B'),
-                    Model('OpenGVLab/InternVL2-Llama3-76B', 'OpenGVLab/InternVL2-Llama3-76B'),
-                    Model('OpenGVLab/InternVL2-2B-AWQ', 'OpenGVLab/InternVL2-2B-AWQ'),
-                    Model('OpenGVLab/InternVL2-8B-AWQ', 'OpenGVLab/InternVL2-8B-AWQ'),
-                    Model('OpenGVLab/InternVL2-26B-AWQ', 'OpenGVLab/InternVL2-26B-AWQ'),
-                    Model('OpenGVLab/InternVL2-40B-AWQ', 'OpenGVLab/InternVL2-40B-AWQ'),
-                    Model('OpenGVLab/InternVL2-Llama3-76B-AWQ', 'OpenGVLab/InternVL2-Llama3-76B-AWQ'),
-                ],
-                requires=['transformers>=4.36', 'timm'],
-                tags=['vision', 'video'],
-                ignore_file_pattern=[r'.+\.zip$'],
-            ),
+            ModelGroup([
+                Model('OpenGVLab/InternVL2-1B', 'OpenGVLab/InternVL2-1B'),
+                Model('OpenGVLab/InternVL2-2B', 'OpenGVLab/InternVL2-2B'),
+                Model('OpenGVLab/InternVL2-8B', 'OpenGVLab/InternVL2-8B'),
+                Model('OpenGVLab/InternVL2-26B', 'OpenGVLab/InternVL2-26B'),
+                Model('OpenGVLab/InternVL2-40B', 'OpenGVLab/InternVL2-40B'),
+                Model('OpenGVLab/InternVL2-Llama3-76B', 'OpenGVLab/InternVL2-Llama3-76B'),
+            ], ),
+            ModelGroup([
+                Model('OpenGVLab/InternVL2-2B-AWQ', 'OpenGVLab/InternVL2-2B-AWQ'),
+                Model('OpenGVLab/InternVL2-8B-AWQ', 'OpenGVLab/InternVL2-8B-AWQ'),
+                Model('OpenGVLab/InternVL2-26B-AWQ', 'OpenGVLab/InternVL2-26B-AWQ'),
+                Model('OpenGVLab/InternVL2-40B-AWQ', 'OpenGVLab/InternVL2-40B-AWQ'),
+                Model('OpenGVLab/InternVL2-Llama3-76B-AWQ', 'OpenGVLab/InternVL2-Llama3-76B-AWQ'),
+            ])
         ],
         TemplateType.internvl2,
         get_model_tokenizer_internvl,
         architectures=['InternVLChatModel'],
         model_arch=ModelArch.internvl,
+        requires=['transformers>=4.36', 'timm'],
+        tags=['vision', 'video'],
     ))
 
 register_model(
