@@ -129,7 +129,7 @@ def get_model_tokenizer_molmoe(model_dir: str,
 
 register_model(
     ModelMeta(
-        MLLMModelType.molmoe_1b,
+        MLLMModelType.molmoe,
         [
             ModelGroup([
                 Model('LLM-Research/MolmoE-1B-0924', 'allenai/MolmoE-1B-0924'),

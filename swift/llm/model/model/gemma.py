@@ -47,38 +47,38 @@ register_model(
 
 register_model(
     ModelMeta(
-        LLMModelType.gemma, [
-            ModelGroup(
-                [
-                    Model('AI-ModelScope/gemma-2b-it', 'google/gemma-2b-it'),
-                    Model('AI-ModelScope/gemma-2b', 'google/gemma-2b'),
-                    Model('AI-ModelScope/gemma-7b', 'google/gemma-7b'),
-                    Model('AI-ModelScope/gemma-7b-it', 'google/gemma-7b-it'),
-                ],
-                requires=['transformers>=4.38'],
-            ),
+        LLMModelType.gemma,
+        [
+            ModelGroup([
+                Model('AI-ModelScope/gemma-2b-it', 'google/gemma-2b-it'),
+                Model('AI-ModelScope/gemma-2b', 'google/gemma-2b'),
+                Model('AI-ModelScope/gemma-7b', 'google/gemma-7b'),
+                Model('AI-ModelScope/gemma-7b-it', 'google/gemma-7b-it'),
+            ], ),
         ],
         TemplateType.gemma,
         get_model_tokenizer_with_flash_attn,
         architectures=['GemmaForCausalLM'],
-        model_arch=ModelArch.llama))
+        model_arch=ModelArch.llama,
+        requires=['transformers>=4.38'],
+    ))
 
 register_model(
     ModelMeta(
-        LLMModelType.gemma2, [
-            ModelGroup(
-                [
-                    Model('LLM-Research/gemma-2-2b-it', 'google/gemma-2-2b-it'),
-                    Model('LLM-Research/gemma-2-2b', 'google/gemma-2-2b'),
-                    Model('LLM-Research/gemma-2-9b', 'google/gemma-2-9b'),
-                    Model('LLM-Research/gemma-2-9b-it', 'google/gemma-2-9b-it'),
-                    Model('LLM-Research/gemma-2-27b', 'google/gemma-2-27b'),
-                    Model('LLM-Research/gemma-2-27b-it', 'google/gemma-2-27b-it'),
-                ],
-                requires=['transformers>=4.42'],
-            ),
+        LLMModelType.gemma2,
+        [
+            ModelGroup([
+                Model('LLM-Research/gemma-2-2b-it', 'google/gemma-2-2b-it'),
+                Model('LLM-Research/gemma-2-2b', 'google/gemma-2-2b'),
+                Model('LLM-Research/gemma-2-9b', 'google/gemma-2-9b'),
+                Model('LLM-Research/gemma-2-9b-it', 'google/gemma-2-9b-it'),
+                Model('LLM-Research/gemma-2-27b', 'google/gemma-2-27b'),
+                Model('LLM-Research/gemma-2-27b-it', 'google/gemma-2-27b-it'),
+            ], ),
         ],
         TemplateType.gemma,
         get_model_tokenizer_with_flash_attn,
         architectures=['Gemma2ForCausalLM'],
-        model_arch=ModelArch.llama))
+        model_arch=ModelArch.llama,
+        requires=['transformers>=4.42'],
+    ))

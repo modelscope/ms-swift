@@ -115,11 +115,20 @@ class TemplateMeta:
             res_value.append(v)
         return res_value
 
-    def token_attr_to_id(self, tokenizer: PreTrainedTokenizerBase) -> None:
+    def init(self, tokenizer: PreTrainedTokenizerBase) -> None:
         for key in ['prefix', 'prompt', 'chat_sep', 'suffix', 'system_prefix']:
             value = getattr(self, key)
             value = self._token_attr_to_id(tokenizer, value)
             setattr(self, key, value)
+
+        for i, token in enumerate(self.placeholder_tokens):
+            if isinstance(token, str):
+                self.placeholder_tokens[i] = tokenizer.convert_tokens_to_ids(token)
+
+        if self.suffix[-1] not in self.stop_words:
+            self.stop_words.append(self.suffix[-1])
+        if tokenizer.eos_token not in self.stop_words:
+            self.stop_words.append(tokenizer.eos_token)
 
     def check_system(self, system: str) -> str:
         if system is None:

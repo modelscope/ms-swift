@@ -82,18 +82,20 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
 
 register_model(
     ModelMeta(
-        MLLMModelType.llava1_5_hf, [
+        MLLMModelType.llava1_5_hf,
+        [
             ModelGroup([
                 Model('swift/llava-1.5-7b-hf', 'llava-hf/llava-1.5-7b-hf'),
                 Model('swift/llava-1.5-13b-hf', 'llava-hf/llava-1.5-13b-hf'),
-            ],
-                       requires=['transformers>=4.36'],
-                       tags=['vision']),
+            ]),
         ],
         TemplateType.llava1_5_hf,
         get_model_tokenizer_llava_1_5,
         architectures=['LlavaForConditionalGeneration'],
-        model_arch=ModelArch.llava_hf))
+        model_arch=ModelArch.llava_hf,
+        requires=['transformers>=4.36'],
+        tags=['vision'],
+    ))
 
 
 def get_model_tokenizer_llava_onevision(*args, **kwargs):

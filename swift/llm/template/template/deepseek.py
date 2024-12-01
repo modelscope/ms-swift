@@ -30,6 +30,7 @@ register_template(
         prompt=['### Instruction:\n{{QUERY}}\n### Response:\n'],
         chat_sep=['\n<|EOT|>\n'],
         suffix=['\n<|EOT|>'],
+        stop_words=['<|EOT|>'],
         default_system=('You are an AI programming assistant, utilizing the Deepseek Coder model, '
                         'developed by Deepseek Company, and you only answer questions related to computer science. '
                         'For politically sensitive questions, security and privacy issues, '

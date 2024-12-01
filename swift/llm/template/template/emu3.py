@@ -135,16 +135,16 @@ class Emu3ChatTemplate(Template):
     system = 'You are a helpful assistant.'
     image_placeholder = ['<|image token|>']
 
-    def _encode(self, template_inputs: StdTemplateInputs) -> Dict[str, Any]:
-        inputs, _ = super()._encode(template_inputs)
-        if len(inputs) == 0:
-            return inputs
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded, _ = super()._encode(inputs)
+        if len(encoded) == 0:
+            return encoded
         # image
-        raw_image = template_inputs.images
+        raw_image = inputs.images
         if raw_image:
-            inputs['_data'] = {'raw_image': raw_image, 'input_ids': inputs['input_ids'], 'labels': inputs['labels']}
+            encoded['_data'] = {'raw_image': raw_image, 'input_ids': encoded['input_ids'], 'labels': encoded['labels']}
 
-        return inputs
+        return encoded
 
     def _post_encode(self, model, data: Any) -> Dict[str, Any]:
         raw_images = data['raw_image']

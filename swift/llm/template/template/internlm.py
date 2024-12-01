@@ -11,7 +11,7 @@ from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
-from ..utils import Prompt
+from ..utils import Prompt, Word
 from .utils import ChatmlTemplateMeta
 
 INTERNLM_SYSTEM = (
@@ -133,6 +133,7 @@ class Xcomposer2TemplateMeta(TemplateMeta):
     suffix: Prompt = field(default_factory=lambda: ['[UNUSED_TOKEN_145]'])
     system_prefix: Optional[Prompt] = field(
         default_factory=lambda: ['<s>[UNUSED_TOKEN_146]system\n{{SYSTEM}}[UNUSED_TOKEN_145]\n'])
+    stop_words: List[Word] = field(default_factory=lambda: ['<|im_end|>'])
 
 
 register_template(

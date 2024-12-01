@@ -100,7 +100,6 @@ class PtEngine(InferEngine):
                         template: Template) -> None:
         template_meta = template.template_meta
         stop_words = (request_config.stop or []) + template_meta.stop_words
-        stop_words += [template_meta.suffix[-1], self.tokenizer.eos_token]
         generation_config.stop_words = self._get_stop_words(stop_words)
 
     @staticmethod

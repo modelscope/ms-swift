@@ -156,7 +156,7 @@ class MLLMModelType:
     idefics3 = 'idefics3'
     paligemma = 'paligemma'
     molmo = 'molmo'
-    molmoe_1b = 'molmoe_1b'
+    molmoe = 'molmoe'
     pixtral = 'pixtral'
 
 

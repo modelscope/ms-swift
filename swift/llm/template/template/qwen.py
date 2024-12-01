@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import partial
 from typing import Any, Dict, List, Literal, Optional
 
@@ -12,7 +12,7 @@ from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import register_template
 from ..template_inputs import StdTemplateInputs
 from ..template_meta import TemplateMeta
-from ..utils import Context, findall
+from ..utils import Context, Word, findall
 from ..vision_utils import load_audio_qwen, load_batch, load_video_qwen2
 from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
 
@@ -21,6 +21,7 @@ from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
 class QwenTemplateMeta(ChatmlTemplateMeta):
     default_system: Optional[str] = DEFAULT_SYSTEM
     auto_add_bos: bool = False
+    stop_words: List[Word] = field(default_factory=lambda: ['<|endoftext|>'])
 
 
 @dataclass
@@ -123,13 +124,13 @@ class Qwen2AudioTemplate(Template):
         else:
             return [f'Audio {index + 1}: <|audio_bos|><|AUDIO|><|audio_eos|>\n']
 
-    def _encode(self, template_inputs: StdTemplateInputs) -> Dict[str, Any]:
-        encoded = super()._encode(template_inputs)
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded = super()._encode(inputs)
         if len(encoded) == 0:
             return encoded
         processor = self.processor
         sampling_rate = processor.feature_extractor.sampling_rate
-        audios = load_batch(template_inputs.audios, load_func=partial(load_audio_qwen, sampling_rate=sampling_rate))
+        audios = load_batch(inputs.audios, load_func=partial(load_audio_qwen, sampling_rate=sampling_rate))
         if audios:
             audio_inputs = processor.feature_extractor(
                 audios, sampling_rate=sampling_rate, return_attention_mask=True, return_tensors='pt')
@@ -219,15 +220,15 @@ class Qwen2VLTemplate(Template):
         else:
             return ['<bbox>']
 
-    def _encode(self, template_inputs: StdTemplateInputs) -> Dict[str, Any]:
-        encoded = super()._encode(template_inputs)
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded = super()._encode(inputs)
         if len(encoded) == 0:
             return encoded
         processor = self.processor
         input_ids = encoded['input_ids']
         labels = encoded['labels']
-        images = template_inputs.images
-        videos = template_inputs.videos
+        images = inputs.images
+        videos = inputs.videos
         for media_type in ['images', 'videos']:
             if locals()[media_type]:
                 if media_type == 'images':
@@ -334,11 +335,11 @@ class Ovis1_6Template(Template):
         assert media_type == 'image'
         return [[-200], '\n']
 
-    def _encode(self, template_inputs: StdTemplateInputs) -> Dict[str, Any]:
-        inputs, tokenizer_kwargs = super()._encode(template_inputs)
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        inputs, tokenizer_kwargs = super()._encode(inputs)
         if len(inputs) == 0:
             return inputs
-        images = template_inputs.images
+        images = inputs.images
         input_ids = inputs['input_ids']
         labels = inputs['labels']
         idx_list = findall(input_ids, [-200])
