@@ -114,12 +114,11 @@ register_model(
                 ],
                 requires=['transformers>=4.45'],
                 tags=['vision', 'video'],
-                ignore_file_pattern=['onnx'],
             ),
         ],
         TemplateType.llava_onevision_hf,
         get_model_tokenizer_llava_onevision,
-        architectures=['LlavaForConditionalGeneration'],
+        architectures=['LlavaOnevisionForConditionalGeneration'],
         model_arch=ModelArch.llava_hf))
 
 register_model(
