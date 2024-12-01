@@ -1,4 +1,3 @@
-
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 import sys
@@ -68,4 +67,3 @@ register_model(
         model_arch=ModelArch.idefics3,
         architectures=['Idefics3ForConditionalGeneration'],
     ))
-

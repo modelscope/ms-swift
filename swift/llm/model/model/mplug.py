@@ -1,4 +1,3 @@
-
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 import sys
@@ -51,6 +50,7 @@ def get_model_tokenizer_mplug_owl2(model_dir: str,
     tokenizer.processor = processor
     return model, tokenizer
 
+
 register_model(
     ModelMeta(
         MLLMModelType.mplug_owl2, [
@@ -76,6 +76,7 @@ register_model(
         TemplateType.mplug_owl2,
         get_model_tokenizer_mplug_owl2,
         model_arch=ModelArch.mplug_owl2_1))
+
 
 def get_model_tokenizer_mplug_owl3(model_dir: str,
                                    model_info: ModelInfo,
@@ -108,4 +109,3 @@ register_model(
         get_model_tokenizer_mplug_owl3,
         architectures=['mPLUGOwl3Model'],
         model_arch=ModelArch.mplug_owl3))
-

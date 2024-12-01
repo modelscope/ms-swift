@@ -193,8 +193,6 @@ register_model(
         architectures=['OrionForCausalLM'],
     ))
 
-
-
 register_model(
     ModelMeta(
         LLMModelType.wizardlm2,
@@ -452,7 +450,6 @@ register_model(
         model_arch=ModelArch.ovis1_6,
         architectures=['Ovis'],
     ))
-
 
 register_model(
     ModelMeta(
