@@ -655,6 +655,8 @@ class SftArguments(ArgumentsBase):
     dataset_seed: Optional[int] = None
     dataset_test_ratio: float = 0.01
     use_loss_scale: bool = False  # for agent
+    use_channel_loss: bool = False
+    channel_to_save: Optional[str] = None
     loss_scale_config_path: str = 'DEFAULT'
     system: Optional[str] = None
     tools_prompt: Literal['react_en', 'react_zh', 'toolbench'] = 'react_en'
@@ -1198,6 +1200,10 @@ class SftArguments(ArgumentsBase):
             kwargs['accelerator_config'] = {'dispatch_batches': False}
 
         metric_for_best_model = 'rouge-l' if self.predict_with_generate else 'loss'
+        if self.use_channel_loss:
+            if self.channel_to_save is None:
+                raise ValueError('Please specify --channel_to_save')
+            metric_for_best_model = f'{self.channel_to_save}_{metric_for_best_model}'
         if hasattr(self, 'rlhf_type') and self.rlhf_type == 'ppo':
             metric_for_best_model = None
 
