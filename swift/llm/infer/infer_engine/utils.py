@@ -155,7 +155,7 @@ def prepare_generation_config(model_generation_config: GenerationConfig, request
     fix_do_sample_warning(generation_config)
 
     if generation_config.eos_token_id is None:
-        generation_config.eos_token_id = self.tokenizer.eos_token_id
+        generation_config.eos_token_id = tokenizer.eos_token_id
     if generation_config.pad_token_id is None:
-        generation_config.pad_token_id = self.tokenizer.pad_token_id
+        generation_config.pad_token_id = tokenizer.pad_token_id
     return generation_config

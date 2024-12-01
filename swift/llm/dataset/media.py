@@ -3,6 +3,7 @@ import os
 import shutil
 from typing import List, Literal, Optional, Union
 
+import aiohttp
 from modelscope.hub.utils.utils import get_cache_dir
 
 from swift.utils import get_logger
@@ -106,20 +107,19 @@ class MediaResource:
         logger.info('If the downloading fails or lasts a long time, '
                     'you can manually download the resources and extracting to the local dir.')
         logger.info('Now begin.')
+        download_config = DownloadConfig(cache_dir=MediaResource.cache_dir)
+        download_config.storage_options = {'client_kwargs': {'timeout': aiohttp.ClientTimeout(total=3600)}}
         if file_type == 'file':
             filename = media_type.split('/')[-1]
             final_path = os.path.join(final_folder, filename)
-            local_dirs = DownloadManager(download_config=DownloadConfig(
-                cache_dir=MediaResource.cache_dir)).download(media_type)
+            local_dirs = DownloadManager(download_config=download_config).download(media_type)
             shutil.move(str(local_dirs), final_path)
         elif file_type == 'compressed':
-            local_dirs = DownloadManager(download_config=DownloadConfig(
-                cache_dir=MediaResource.cache_dir)).download_and_extract(media_type)
+            local_dirs = DownloadManager(download_config=download_config).download_and_extract(media_type)
             shutil.move(str(local_dirs), final_folder)
         else:
             for media_url in media_type:
-                local_dirs = DownloadManager(download_config=DownloadConfig(
-                    cache_dir=MediaResource.cache_dir)).download_and_extract(media_url)
+                local_dirs = DownloadManager(download_config=download_config).download_and_extract(media_url)
                 MediaResource.move_directory_contents(str(local_dirs), final_folder)
         logger.info('# #################Resource downloading finished#################')
         return final_folder

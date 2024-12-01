@@ -517,8 +517,8 @@ class Template(ProcessorMixin):
             messages.insert(0, {'role': 'system', 'content': inputs.system})
         if messages[-1]['content'] is None:
             messages.pop()
-        input_ids = self.tokenizer.apply_chat_template(inputs.messages, tokenize=False, add_generation_prompt=True)
-        return [input_ids], [1.], 1.
+        text = self.tokenizer.apply_chat_template(inputs.messages, tokenize=False, add_generation_prompt=True)
+        return [text], [1.], 1.
 
     def _swift_encode(self, inputs: StdTemplateInputs):
         res_context_list: List[Context] = []
