@@ -245,6 +245,7 @@ register_template(Llama3TemplateMeta(
 
 class LLavaTemplate(Template):
     skip_prompt = False
+    use_model = True
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
         assert media_type == 'image'
@@ -257,8 +258,7 @@ class LLavaTemplate(Template):
         images = inputs.images or []
         image_sizes = [x.size for x in images]
         from llava.mm_utils import process_images
-        # TODO post_encode
-        model = model.model
+        model = self.model.model
         if not hasattr(model, 'vision_tower'):
             model = model.model
         image_processor = model.vision_tower.image_processor

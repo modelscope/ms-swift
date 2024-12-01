@@ -38,6 +38,7 @@ class InternLMXComposer2Template(Template):
     image_placeholder = ['</s>']
     version = 'v2'
     skip_prompt = False
+    use_model = True
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
@@ -57,8 +58,7 @@ class InternLMXComposer2Template(Template):
             hd_num = get_env_args('hd_num', int, hd_num)
             HD_transform = get_class_from_dynamic_module('ixc_utils.HD_transform', self.processor.model_dir)
             images = [HD_transform(image, hd_num=hd_num) for image in images]
-        # TODO post_encode
-        images = [model.vis_processor(image).to(dtype) for image in images]
+        images = [self.model.vis_processor(image).to(self.model.dtype) for image in images]
         encoded['_data'] = {'input_ids': encoded['input_ids'], 'labels': encoded['labels'], 'images': images}
         return encoded
 
