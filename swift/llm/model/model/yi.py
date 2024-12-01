@@ -147,3 +147,17 @@ register_model(
         architectures=['LlamaForCausalLM'],
         model_arch=ModelArch.llama,
     ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.sus,
+        [
+            ModelGroup([
+                Model('SUSTC/SUS-Chat-34B', 'SUSTech/SUS-Chat-34B'),
+            ]),
+        ],
+        TemplateType.sus,
+        get_model_tokenizer_with_flash_attn,
+        model_arch=ModelArch.llama,
+        architectures=['LlamaForCausalLM'],
+    ))
