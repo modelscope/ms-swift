@@ -117,9 +117,17 @@ def _kwargs_to_args(func, args, kwargs) -> Optional[List[Any]]:
 
 def _add_gradient_checkpointing(module_list):
 
+    requires_grad = None
+
     def _new_forward(self, *args, **kwargs):
+        nonlocal requires_grad
+        if requires_grad is None:
+            requires_grad = any(p.requires_grad for p in self.parameters())
+
         new_args = _kwargs_to_args(self.__old_forward, args, kwargs)
         if new_args is not None and self.gradient_checkpointing and self.training:
+            if new_args and isinstance(new_args[0], torch.Tensor) and requires_grad and not new_args[0].requires_grad:
+                new_args[0].requires_grad_(True)
             layer_ret = self._gradient_checkpointing_func(self.__old_forward, *new_args)
             logger.info_once('Successfully using dynamic gradient checkpointing.')
         else:

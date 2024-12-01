@@ -51,6 +51,7 @@ class SwiftSft(SwiftPipeline):
         args = self.args
 
         if args.gradient_checkpointing:
+            self.model.supports_gradient_checkpointing = True
             dynamic_gradient_checkpointing(self.model)
             self.model.config.use_cache = False  # fix transformers==4.36
             self.model.enable_input_require_grads()
