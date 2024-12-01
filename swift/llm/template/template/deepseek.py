@@ -19,7 +19,6 @@ class DeepseekTemplateMeta(TemplateMeta):
     chat_sep: Optional[Prompt] = field(default_factory=lambda: [['eos_token_id']])
     suffix: Prompt = field(default_factory=lambda: [['eos_token_id']])
     system_prefix: Optional[Prompt] = field(default_factory=lambda: [['bos_token_id'], '{{SYSTEM}}\n\n'])
-    auto_add_bos: bool = True
 
 
 register_template(DeepseekTemplateMeta(LLMTemplateType.deepseek, ))

@@ -60,7 +60,7 @@ class FlorenceTemplate(Template):
         processor = self.processor
         new_query = processor._construct_prompts([inputs.to_history()['query']])[0]
         for i in reversed(range(len(inputs.messages))):
-            if inputs.messages[i]['user'] == 'user':
+            if inputs.messages[i]['role'] == 'user':
                 inputs.messages[i]['content'] = new_query
                 break
         encoded = super()._encode(inputs)
