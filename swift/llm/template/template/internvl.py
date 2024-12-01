@@ -128,9 +128,7 @@ class Internvl2Template(InternvlTemplate):
             return ['<bbox>']
 
     def _encode(self,
-                inputs: StdTemplateInputs,
-                *,
-                model: Optional[nn.Module] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+                inputs: StdTemplateInputs) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         encoded = super(InternvlTemplate, self)._encode(inputs)
         if len(encoded) == 0:
             return encoded
@@ -144,7 +142,7 @@ class Internvl2Template(InternvlTemplate):
             max_num = get_env_args('max_num', int, 1 if has_video else 12)
             pixel_values = [transform_image(image, input_size, max_num) for image in images]
             num_patches = [pv.shape[0] for pv in pixel_values]
-            pixel_values = torch.cat(pixel_values).to(model.dtype)
+            pixel_values = torch.cat(pixel_values).to(self.config.torch_dtype)
         else:
             pixel_values = None
             num_patches = []
