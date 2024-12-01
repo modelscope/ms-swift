@@ -104,8 +104,6 @@ register_model(
                     # chat
                     Model('LLM-Research/Meta-Llama-3.1-8B-Instruct', 'meta-llama/Meta-Llama-3.1-8B-Instruct'),
                     Model('LLM-Research/Meta-Llama-3.1-70B-Instruct', 'meta-llama/Meta-Llama-3.1-70B-Instruct'),
-                    Model('AI-ModelScope/Llama-3.1-Nemotron-70B-Instruct-HF',
-                          'nvidia/Llama-3.1-Nemotron-70B-Instruct-HF'),
                     Model('LLM-Research/Meta-Llama-3.1-405B-Instruct', 'meta-llama/Meta-Llama-3.1-405B-Instruct'),
                     # base
                     Model('LLM-Research/Meta-Llama-3.1-8B', 'meta-llama/Meta-Llama-3.1-8B'),
@@ -117,7 +115,6 @@ register_model(
                           'meta-llama/Meta-Llama-3.1-405B-Instruct-FP8'),
                 ],
                 TemplateType.llama3,
-                ignore_file_pattern=[r'.+\.pth$'],
                 requires=['transformers>=4.43']),
             # llama3.1-quant
             ModelGroup(
@@ -145,23 +142,18 @@ register_model(
                           'hugging-quants/Meta-Llama-3.1-405B-Instruct-AWQ-INT4'),
                 ],
                 requires=['transformers>=4.43']),
+            # nvidia Nemotron
+            ModelGroup(
+                [
+                    Model('AI-ModelScope/Llama-3.1-Nemotron-70B-Instruct-HF',
+                          'nvidia/Llama-3.1-Nemotron-70B-Instruct-HF'),
+                ],
+                requires=['transformers>=4.43'],
+            )
         ],
         TemplateType.llama3,
         get_model_tokenizer_with_flash_attn,
         architectures=['LlamaForCausalLM'],
-        model_arch=ModelArch.llama,
-    ))
-
-register_model(
-    ModelMeta(
-        LLMModelType.longwriter_llama3,
-        [ModelGroup([
-            Model('ZhipuAI/LongWriter-llama3.1-8b', 'THUDM/LongWriter-llama3.1-8b'),
-        ])],
-        TemplateType.longwriter_llama3,
-        get_model_tokenizer_with_flash_attn,
-        architectures=['LlamaForCausalLM'],
-        requires=['transformers>=4.43'],
         model_arch=ModelArch.llama,
     ))
 
@@ -179,7 +171,6 @@ register_model(
         TemplateType.llama3_2,
         get_model_tokenizer_with_flash_attn,
         architectures=['LlamaForCausalLM'],
-        ignore_file_pattern=[r'.+\.pth$'],
         requires=['transformers>=4.45'],
         model_arch=ModelArch.llama,
     ))
@@ -207,7 +198,7 @@ register_model(
         get_model_tokenizer_llama3_2_vision,
         requires=['transformers>=4.45'],
         architectures=['MllamaForConditionalGeneration'],
-        model_arch=ModelArch.llava3_2_vision,
+        model_arch=ModelArch.llama3_2_vision,
     ))
 
 
@@ -252,7 +243,7 @@ register_model(
                 [
                     Model('ICTNLP/Llama-3.1-8B-Omni', 'ICTNLP/Llama-3.1-8B-Omni'),
                 ],
-                tags=['multi-modal', 'audio', 'skip_test'],
+                tags=['audio'],
                 requires=['whisper', 'openai-whisper'],
             )
         ],
@@ -260,4 +251,105 @@ register_model(
         get_model_tokenizer_omnli,
         architectures=['OmniSpeech2SLlamaForCausalLM'],
         model_arch=ModelArch.llama3_1_omni,
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.reflection,
+        [
+            ModelGroup([
+                Model('LLM-Research/Reflection-Llama-3.1-70B', 'mattshumer/Reflection-Llama-3.1-70B'),
+            ],
+                       requires=['transformers>=4.43']),
+        ],
+        TemplateType.reflection,
+        get_model_tokenizer_with_flash_attn,
+        model_arch=ModelArch.llama,
+        architectures=['LlamaForCausalLM'],
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.atom,
+        [
+            ModelGroup([
+                Model('FlagAlpha/Atom-7B', 'FlagAlpha/Atom-7B'),
+                Model('FlagAlpha/Atom-7B-Chat', 'FlagAlpha/Atom-7B-Chat'),
+            ]),
+        ],
+        TemplateType.atom,
+        get_model_tokenizer_with_flash_attn,
+        model_arch=ModelArch.llama,
+        architectures=['LlamaForCausalLM'],
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.mengzi3,
+        [
+            ModelGroup([
+                Model('langboat/Mengzi3-13B-Base', 'Langboat/Mengzi3-13B-Base'),
+            ]),
+        ],
+        TemplateType.mengzi,
+        get_model_tokenizer_with_flash_attn,
+        model_arch=ModelArch.llama,
+        architectures=['LlamaForCausalLM'],
+    ))
+
+
+def get_model_tokenizer_codellama(model_dir: str,
+                                  model_info: ModelInfo,
+                                  model_kwargs: Dict[str, Any],
+                                  load_model: bool = True,
+                                  **kwargs):
+    tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True, use_fast=False, legacy=False)
+    return get_model_tokenizer_with_flash_attn(
+        model_dir, model_info, model_kwargs, load_model, tokenizer=tokenizer, **kwargs)
+
+
+register_model(
+    ModelMeta(
+        LLMModelType.codefuse_codellama,
+        [
+            ModelGroup(
+                [
+                    Model('codefuse-ai/CodeFuse-CodeLlama-34B', 'codefuse-ai/CodeFuse-CodeLlama-34B'),
+                ],
+                tags=['coding'],
+            ),
+        ],
+        TemplateType.codefuse_codellama,
+        get_model_tokenizer_codellama,
+        model_arch=ModelArch.llama,
+        architectures=['LlamaForCausalLM'],
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.numina,
+        [
+            ModelGroup([
+                Model('AI-ModelScope/NuminaMath-7B-TIR', 'AI-MO/NuminaMath-7B-TIR'),
+            ], tags=['math']),
+        ],
+        TemplateType.numina,
+        get_model_tokenizer_with_flash_attn,
+        model_arch=ModelArch.llama,
+        architectures=['LlamaForCausalLM'],
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.ziya,
+        [
+            ModelGroup([
+                Model('Fengshenbang/Ziya2-13B-Chat', 'IDEA-CCNL/Ziya2-13B-Chat'),
+                Model('Fengshenbang/Ziya2-13B-Base', 'IDEA-CCNL/Ziya2-13B-Base'),
+            ]),
+        ],
+        TemplateType.ziya,
+        get_model_tokenizer_with_flash_attn,
+        model_arch=ModelArch.llama,
+        architectures=['LlamaForCausalLM'],
     ))

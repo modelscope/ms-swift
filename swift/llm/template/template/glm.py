@@ -35,7 +35,7 @@ register_template(
 
 
 @dataclass
-class GLM3TemplateMeta(TemplateMeta):
+class GLM4TemplateMeta(TemplateMeta):
     prefix: Prompt = field(default_factory=lambda: [])
     prompt: Prompt = field(default_factory=lambda: ['<|user|>\n{{QUERY}}<|assistant|>\n'])
     chat_sep: Optional[Prompt] = field(default_factory=lambda: [])
@@ -43,6 +43,8 @@ class GLM3TemplateMeta(TemplateMeta):
     template_cls: Type[Template] = GLMTemplate
     system_prefix: Optional[Prompt] = field(default_factory=lambda: ['<|system|>\n{{SYSTEM}}'])
 
+    default_tools_prompt: str = 'glm4'
+    tool_prompt: Optional[Prompt] = field(default_factory=lambda: ['<|observation|>\n{{QUERY}}<|assistant|>\n'])
     stop_words: List[Word] = field(default_factory=lambda: ['<|endoftext|>', '<|user|>', '<|observation|>'])
 
 
@@ -94,28 +96,22 @@ class GLM4VTemplate(GLMTemplate):
 
 # not '<|assistant|>\n'
 register_template(
-    GLM3TemplateMeta(
+    GLM4TemplateMeta(
         MLLMTemplateType.glm4v,
         prompt=['<|user|>\n{{QUERY}}<|assistant|>'],
         suffix=['<|endoftext|>'],
         template_cls=GLM4VTemplate))
 
-register_template(GLM3TemplateMeta(LLMTemplateType.chatglm3))
-
-register_template(
-    GLM3TemplateMeta(
-        LLMTemplateType.chatglm4,
-        default_tools_prompt='glm4',
-        tool_prompt=['<|observation|>\n{{QUERY}}<|assistant|>\n']))
+register_template(GLM4TemplateMeta(LLMTemplateType.glm4))
 
 codegeex4_system = '你是一位智能编程助手，你叫CodeGeeX。你会为用户回答关于编程、代码、计算机方面的任何问题，并提供格式规范、可以执行、准确安全的代码，并在必要时提供详细的解释。'
 
 register_template(
-    GLM3TemplateMeta(LLMTemplateType.codegeex4, suffix=['<|endoftext|>'], default_system=codegeex4_system))
+    GLM4TemplateMeta(LLMTemplateType.codegeex4, suffix=['<|endoftext|>'], default_system=codegeex4_system))
 
 register_template(
     TemplateMeta(
-        LLMTemplateType.longwriter_llama3, ['[INST]'], ['{{QUERY}}[/INST]'], ['[INST]'], ['<|end_of_text|>'],
+        LLMTemplateType.longwriter_llama, ['[INST]'], ['{{QUERY}}[/INST]'], ['[INST]'], ['<|end_of_text|>'],
         system_prefix=['<<SYS>>\n{{SYSTEM}}\n<</SYS>>\n\n']))
 
 

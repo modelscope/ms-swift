@@ -109,12 +109,20 @@ class TestRun3(unittest.TestCase):
                 templates = json.load(f)
         else:
             templates = []
+        skip_model_type = {
+            'grok', 'deepseek_moe', 'deepseek_v2', 'deepseek_v2_5', 'llama3_1_omni', 'llava_next_qwen_hf',
+            'llava1_6_yi', 'llava_next_qwen', 'mixtral', 'codefuse_codellama', 'wizardlm2', 'wizardlm2_awq',
+            'openbuddy_deepseek', 'sus', 'openbuddy_mixtral', 'openbuddy_llama', 'dbrx', 'nenotron', 'reflection',
+            'xverse_moe', 'qwen2_moe', 'yuan2'
+        }
         for model_name, model_meta in MODEL_MAPPING.items():
+            if model_name in skip_model_type:
+                continue
             template = model_meta.template
             meta_requires = model_meta.requires or []
             for group in model_meta.model_groups:
                 model = group.models[0]
-                if 'skip_test' in (group.tags or []) or template in templates:
+                if template in templates:
                     break
                 requires = meta_requires + (group.requires or [])
                 for req in requires:

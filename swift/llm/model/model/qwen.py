@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import Any, Dict, List, Optional, Type
+from typing import Any, Dict, List, Optional, Tuple, Type
 
 import torch
 from transformers import AutoConfig, BitsAndBytesConfig, PreTrainedTokenizerBase
@@ -13,7 +13,7 @@ from ..model_arch import ModelArch
 from ..patcher import patch_fixed_device, patch_output_clone, patch_output_to_input_device
 from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,
                         get_model_tokenizer_with_flash_attn, register_model)
-from ..utils import AttnImpl, ModelInfo
+from ..utils import AttnImpl, ModelInfo, use_submodel_func
 
 logger = get_logger()
 dtype_mapping = {torch.float16: 'fp16', torch.bfloat16: 'bf16', torch.float32: 'fp32'}
@@ -468,14 +468,12 @@ register_model(
                 Model('Qwen/Qwen1.5-MoE-A2.7B-Chat', 'Qwen/Qwen1.5-MoE-A2.7B-Chat'),
                 Model('Qwen/Qwen1.5-MoE-A2.7B', 'Qwen/Qwen1.5-MoE-A2.7B'),
                 Model('Qwen/Qwen1.5-MoE-A2.7B-Chat-GPTQ-Int4', 'Qwen/Qwen1.5-MoE-A2.7B-Chat-GPTQ-Int4'),
-            ],
-                       tags=['skip_test']),
+            ]),
             ModelGroup([
                 Model('Qwen/Qwen2-57B-A14B-Instruct', 'Qwen/Qwen2-57B-A14B-Instruct'),
                 Model('Qwen/Qwen2-57B-A14B', 'Qwen/Qwen2-57B-A14B'),
                 Model('Qwen/Qwen2-57B-A14B-Instruct-GPTQ-Int4', 'Qwen/Qwen2-57B-A14B-Instruct-GPTQ-Int4'),
-            ],
-                       tags=['skip_test'])
+            ])
         ],
         TemplateType.qwen,
         get_model_tokenizer_with_flash_attn,
@@ -573,3 +571,62 @@ register_model(
         model_arch=ModelArch.qwen2_audio,
         architectures=['Qwen2AudioForConditionalGeneration'],
         requires=['transformers>=4.45']))
+
+register_model(
+    ModelMeta(
+        LLMModelType.marco_o1, [ModelGroup([Model('AIDC-AI/Marco-o1', 'AIDC-AI/Marco-o1')])],
+        LLMModelType.marco_o1,
+        get_model_tokenizer_with_flash_attn,
+        model_arch=ModelArch.llama,
+        requires=['transformers>=4.37']))
+
+register_model(
+    ModelMeta(
+        LLMModelType.qwq, [ModelGroup([Model('Qwen/QwQ-32B-Preview', 'Qwen/QwQ-32B-Preview')])],
+        LLMModelType.qwq,
+        get_model_tokenizer_with_flash_attn,
+        model_arch=ModelArch.llama,
+        requires=['transformers>=4.37']))
+
+
+def get_model_tokenizer_ovis(*args, **kwargs):
+    model, tokenizer = get_model_tokenizer_with_flash_attn(*args, **kwargs)
+    if model is not None:
+        model.generation_config.cache_implementation = None
+        func_list = ['generate', 'forward', 'get_input_embeddings']
+        use_submodel_func(model, 'llm', func_list)
+        embedding = model.get_input_embeddings()
+        embedding.register_forward_hook(patch_output_clone)
+    try:
+        # fix device_map
+        from transformers.cache_utils import HybridCache
+
+        def update(self, key_states: torch.Tensor, value_states: torch.Tensor, layer_idx: int, *args,
+                   **kwargs) -> Tuple[torch.Tensor]:
+            self.key_cache[layer_idx] = self.key_cache[layer_idx].to(key_states.device)
+            self.value_cache[layer_idx] = self.value_cache[layer_idx].to(value_states.device)
+            return self._update_origin(key_states, value_states, layer_idx, *args, **kwargs)
+
+        if not hasattr(HybridCache, '_update_origin'):
+            HybridCache._update_origin = HybridCache.update
+            HybridCache.update = update
+    except ImportError:
+        pass
+    return model, tokenizer
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.ovis1_6,
+        [
+            ModelGroup([
+                Model('AIDC-AI/Ovis1.6-Gemma2-9B', 'AIDC-AI/Ovis1.6-Gemma2-9B'),
+            ],
+                       tags=['multi-modal', 'vision'],
+                       requires=['transformers>=4.42']),
+        ],
+        TemplateType.ovis1_6,
+        get_model_tokenizer_ovis,
+        model_arch=ModelArch.ovis1_6,
+        architectures=['Ovis'],
+    ))

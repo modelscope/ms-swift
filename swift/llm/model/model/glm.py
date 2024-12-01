@@ -97,7 +97,7 @@ register_model(
                 Model('ZhipuAI/chatglm3-6b-128k', 'THUDM/chatglm3-6b-128k'),
             ])
         ],
-        TemplateType.chatglm3,
+        TemplateType.glm4,
         get_model_tokenizer_chatglm,
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
         requires=['transformers<4.42'],
@@ -131,11 +131,24 @@ register_model(
                 Model('ZhipuAI/LongWriter-glm4-9b', 'THUDM/LongWriter-glm4-9b'),
             ])
         ],
-        TemplateType.chatglm4,
+        TemplateType.glm4,
         get_model_tokenizer_glm4,
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
         requires=['transformers==4.43.0'],
         model_arch=ModelArch.chatglm))
+
+register_model(
+    ModelMeta(
+        LLMModelType.longwriter_llama3_1,
+        [ModelGroup([
+            Model('ZhipuAI/LongWriter-llama3.1-8b', 'THUDM/LongWriter-llama3.1-8b'),
+        ])],
+        TemplateType.longwriter_llama,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['LlamaForCausalLM'],
+        requires=['transformers>=4.43'],
+        model_arch=ModelArch.llama,
+    ))
 
 register_model(
     ModelMeta(

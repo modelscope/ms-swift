@@ -110,7 +110,7 @@ register_template(DeepseekVLTemplateMeta(MLLMTemplateType.deepseek_janus, templa
 
 register_template(
     TemplateMeta(
-        LLMTemplateType.deepseek2_5,
+        LLMTemplateType.deepseek_v2_5,
         prefix=['<｜begin▁of▁sentence｜>'],
         prompt=['<｜User｜>{{QUERY}}<｜Assistant｜>'],
         chat_sep=['<｜end_of_sentense｜>'],

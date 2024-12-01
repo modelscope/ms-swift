@@ -22,7 +22,6 @@ register_model(
                     Model('OpenBMB/MiniCPM-MoE-8x2B', 'openbmb/MiniCPM-MoE-8x2B'),
                 ],
                 requires=['transformers>=4.36.0'],
-                tags=['moe'],
             ),
         ],
         TemplateType.minicpm,

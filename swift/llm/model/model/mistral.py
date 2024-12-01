@@ -37,12 +37,10 @@ register_model(
                 Model('AI-ModelScope/Mixtral-8x22B-v0.1', 'mistral-community/Mixtral-8x22B-v0.1'),
             ],
                        ignore_file_pattern=[r'.+\.pt$'],
-                       tags=['moe', 'skip_test'],
                        requires=['transformers>=4.36']),
             ModelGroup([
                 Model('AI-ModelScope/Mixtral-8x7b-AQLM-2Bit-1x16-hf', 'ISTA-DASLab/Mixtral-8x7b-AQLM-2Bit-1x16-hf'),
             ],
-                       tags=['moe', 'skip_test'],
                        requires=['transformers>=4.38', 'aqlm', 'torch>=2.2.0']),
         ],
         TemplateType.llama,
@@ -71,3 +69,48 @@ register_model(
         get_model_tokenizer_with_flash_attn,
         architectures=['MistralForCausalLM'],
         model_arch=ModelArch.llama))
+
+register_model(
+    ModelMeta(
+        LLMModelType.zephyr,
+        [
+            ModelGroup([
+                Model('modelscope/zephyr-7b-beta', 'HuggingFaceH4/zephyr-7b-beta'),
+            ],
+                       requires=['transformers>=4.34']),
+        ],
+        TemplateType.zephyr,
+        get_model_tokenizer_with_flash_attn,
+        model_arch=ModelArch.llama,
+        architectures=['MistralForCausalLM'],
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.wizardlm2,
+        [
+            ModelGroup([
+                Model('AI-ModelScope/WizardLM-2-8x22B', 'alpindale/WizardLM-2-8x22B'),
+            ],
+                       requires=['transformers>=4.36']),
+        ],
+        TemplateType.wizardlm2,
+        get_model_tokenizer_with_flash_attn,
+        model_arch=ModelArch.llama,
+        architectures=['MixtralForCausalLM'],
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.wizardlm2_awq,
+        [
+            ModelGroup([
+                Model('AI-ModelScope/WizardLM-2-7B-AWQ', 'MaziyarPanahi/WizardLM-2-7B-AWQ'),
+            ],
+                       requires=['transformers>=4.34'])
+        ],
+        TemplateType.wizardlm2_awq,
+        get_model_tokenizer_with_flash_attn,
+        model_arch=ModelArch.llama,
+        architectures=['MistralForCausalLM'],
+    ))
