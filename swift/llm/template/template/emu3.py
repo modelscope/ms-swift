@@ -36,7 +36,7 @@ class Emu3GenTemplate(Template):
         kwargs = dict(
             mode='U' if self.mode == 'train' else 'G',
             ratio='1:1',
-            image_area=model.config.image_area,
+            image_area=self.config.image_area,
             return_tensors='pt',
             padding='longest',
         )

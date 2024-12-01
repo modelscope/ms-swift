@@ -71,7 +71,7 @@ class FlorenceTemplate(Template):
         labels = encoded['answer_labels']
         if labels is not None:
             labels = [0] + labels
-        pixel_values = processor.image_processor(images, return_tensors='pt')['pixel_values'].to(model.dtype)
+        pixel_values = processor.image_processor(images, return_tensors='pt')['pixel_values'].to(self.config.torch_dtype)
         encoded = {
             'input_ids': input_ids,
             'labels': labels,

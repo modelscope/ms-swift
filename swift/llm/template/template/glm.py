@@ -131,6 +131,7 @@ class CogTemplate(Template):
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
+        model = self.model
         if len(encoded) == 0:
             return encoded
         image = inputs.images or []
@@ -147,11 +148,10 @@ class CogTemplate(Template):
         if labels is not None:
             encoded['labels'] = labels[:1] + [-100] * image_token_len + labels[1:]
         if len(image) > 0:
-            dtype = model.dtype
-            encoded['images'] = [[img.to(dtype=dtype)] for img in inputs2['images']]
+            encoded['images'] = [[img.to(dtype=self.config.model_dtype)] for img in inputs2['images']]
             if 'cross_images' in inputs2:
                 # is cogagent
-                encoded['cross_images'] = [[cross_img.to(dtype=dtype)] for cross_img in inputs2['cross_images']]
+                encoded['cross_images'] = [[cross_img.to(dtype=self.config.model_dtype)] for cross_img in inputs2['cross_images']]
         return encoded
 
     def _data_collator(self,
