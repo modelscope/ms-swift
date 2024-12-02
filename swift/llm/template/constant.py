@@ -48,8 +48,8 @@ class LLMTemplateType:
 
     mistral_nemo = 'mistral_nemo'
     zephyr = 'zephyr'
-    wizardlm2_awq = 'wizardlm2_awq'
     wizardlm2 = 'wizardlm2'
+    wizardlm2_moe = 'wizardlm2_moe'
     gemma = 'gemma'
     phi3 = 'phi3'
 

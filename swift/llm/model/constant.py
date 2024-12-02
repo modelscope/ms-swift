@@ -65,7 +65,7 @@ class LLMModelType:
     mixtral = 'mixtral'
     mistral_nemo = 'mistral_nemo'
     wizardlm2 = 'wizardlm2'
-    wizardlm2_awq = 'wizardlm2_awq'
+    wizardlm2_moe = 'wizardlm2_moe'
 
     phi2 = 'phi2'
     phi3_small = 'phi3_small'

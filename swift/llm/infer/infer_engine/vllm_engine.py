@@ -52,7 +52,13 @@ class VllmEngine(InferEngine):
             engine_kwargs: Optional[Dict[str, Any]] = None) -> None:
         self._init_env()
         self.processor = get_model_tokenizer(
-            model_id_or_path, torch_dtype, load_model=False, model_type=model_type, use_hf=use_hf, revision=revision)[1]
+            model_id_or_path,
+            torch_dtype,
+            load_model=False,
+            download_model=True,
+            model_type=model_type,
+            use_hf=use_hf,
+            revision=revision)[1]
         self._post_init()
 
         self._prepare_engine_kwargs(

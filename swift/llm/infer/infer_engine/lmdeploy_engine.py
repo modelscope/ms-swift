@@ -44,10 +44,17 @@ class LmdeployEngine(InferEngine):
             engine_kwargs: Optional[Dict[str, Any]] = None) -> None:
 
         self.processor = get_model_tokenizer(
-            model_id_or_path, torch_dtype, load_model=False, model_type=model_type, use_hf=use_hf, revision=revision)[1]
+            model_id_or_path,
+            torch_dtype,
+            load_model=False,
+            download_model=True,
+            model_type=model_type,
+            use_hf=use_hf,
+            revision=revision)[1]
         self._post_init()
 
-        self.max_model_len -= 1
+        if self.max_model_len is not None:
+            self.max_model_len -= 1
         self._prepare_engine_kwargs(
             tp=tp,
             session_len=session_len,

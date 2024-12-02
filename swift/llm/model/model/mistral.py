@@ -82,14 +82,14 @@ register_model(
 
 register_model(
     ModelMeta(
-        LLMModelType.wizardlm2,
+        LLMModelType.wizardlm2_moe,
         [
             ModelGroup([
                 Model('AI-ModelScope/WizardLM-2-8x22B', 'alpindale/WizardLM-2-8x22B'),
             ],
                        requires=['transformers>=4.36']),
         ],
-        TemplateType.wizardlm2,
+        TemplateType.wizardlm2_moe,
         get_model_tokenizer_with_flash_attn,
         model_arch=ModelArch.llama,
         architectures=['MixtralForCausalLM'],
@@ -97,14 +97,14 @@ register_model(
 
 register_model(
     ModelMeta(
-        LLMModelType.wizardlm2_awq,
+        LLMModelType.wizardlm2,
         [
             ModelGroup([
                 Model('AI-ModelScope/WizardLM-2-7B-AWQ', 'MaziyarPanahi/WizardLM-2-7B-AWQ'),
             ],
                        requires=['transformers>=4.34'])
         ],
-        TemplateType.wizardlm2_awq,
+        TemplateType.wizardlm2,
         get_model_tokenizer_with_flash_attn,
         model_arch=ModelArch.llama,
         architectures=['MistralForCausalLM'],
