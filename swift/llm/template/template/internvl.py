@@ -166,10 +166,11 @@ class Internvl2Template(InternvlTemplate):
 
 # TODO: self.padding_side = 'left'
 
+_internvl2_system = ('你是由上海人工智能实验室联合商汤科技开发的书生多模态大模型，英文名叫InternVL, 是一个有用无害的人工智能助手。')
 register_template(
     ChatmlTemplateMeta(
         MLLMTemplateType.internvl2,
-        default_system='你是由上海人工智能实验室联合商汤科技开发的书生多模态大模型，英文名叫InternVL, 是一个有用无害的人工智能助手。',
+        default_system=_internvl2_system,
         template_cls=Internvl2Template,
         placeholder_tokens=['<IMG_CONTEXT>'],
     ))
@@ -177,7 +178,7 @@ register_template(
 register_template(
     Phi3TemplateMeta(
         MLLMTemplateType.internvl2_phi3,
-        default_system='You are an AI assistant whose name is Phi-3.',
+        default_system=_internvl2_system,
         template_cls=Internvl2Template,
         placeholder_tokens=['<IMG_CONTEXT>'],
     ))
