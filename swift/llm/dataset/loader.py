@@ -171,7 +171,7 @@ class DatasetLoader:
                            streaming: bool = False) -> HfDataset:
         dataset_path = dataset_meta.dataset_path
 
-        ext = os.path.basename(dataset_path)
+        ext = os.path.splitext(dataset_path)[1].lstrip('.')
         ext = ext if ext != 'jsonl' else 'json'
         dataset = hf_load_dataset(ext, data_files=dataset_path, streaming=streaming, num_proc=num_proc)
 

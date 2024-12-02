@@ -337,12 +337,12 @@ class Ovis1_6Template(Template):
         return [[-200], '\n']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        _encoded = super()._encode(inputs)
-        if len(_encoded) == 0:
-            return _encoded
+        encoded = super()._encode(inputs)
+        if len(encoded) == 0:
+            return encoded
         images = inputs.images
-        input_ids = _encoded['input_ids']
-        labels = _encoded['labels']
+        input_ids = encoded['input_ids']
+        labels = encoded['labels']
         idx_list = findall(input_ids, [-200])
         added_tokens_len = 0
         pixel_values = []
@@ -359,11 +359,9 @@ class Ovis1_6Template(Template):
             pixel_values = torch.cat(pixel_values, dim=0).to(self.model.visual_tokenizer.dtype)
         else:
             pixel_values = None
-        _encoded = {'labels': labels}
-        if labels is not None:
-            labels = torch.tensor(labels)[None]
-        _encoded['pixel_values'] = [pixel_values]
-        return _encoded
+        encoded.update({'input_ids': input_ids, 'labels': labels})
+        encoded['pixel_values'] = [pixel_values]
+        return encoded
 
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
         _, inputs_embeds, labels, _ = self.model.merge_multimodal(

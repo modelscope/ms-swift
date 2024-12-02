@@ -27,12 +27,13 @@ class YiVLTemplate(Template):
     use_model = True
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        model = self.model
         encoded = super()._encode(inputs)
         if len(encoded) == 0:
             return encoded
         from llava.mm_utils import expand2square
         if not hasattr(model, 'vision_tower'):
-            model = self.model.model
+            model = model.model
         image_processor = model.vision_tower.image_processor
         images = inputs.images or []
         for i, image in enumerate(images):
