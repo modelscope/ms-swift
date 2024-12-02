@@ -25,9 +25,8 @@ def get_model_tokenizer_yi_vl(model_dir: str,
                               model_kwargs: Dict[str, Any],
                               load_model: bool = True,
                               **kwargs):
-    if 'local_repo_path' in kwargs:
-        local_repo_path = kwargs['local_repo_path']
-    else:
+    local_repo_path = kwargs.get('local_repo_path')
+    if not local_repo_path:
         local_repo_path = git_clone_github('https://github.com/01-ai/Yi')
     sys.path.append(os.path.join(local_repo_path, 'VL'))
     from llava.model import LlavaLlamaForCausalLM, LlavaConfig
@@ -64,19 +63,17 @@ register_model(
     ModelMeta(
         MLLMModelType.yi_vl,
         [
-            ModelGroup(
-                [
-                    Model('01ai/Yi-VL-6B', '01-ai/Yi-VL-6B'),
-                    Model('01ai/Yi-VL-34B', '01-ai/Yi-VL-34B'),
-                ],
-                requires=['transformers>=4.34'],
-                tags=['multi-modal', 'vision'],
-            ),
+            ModelGroup([
+                Model('01ai/Yi-VL-6B', '01-ai/Yi-VL-6B'),
+                Model('01ai/Yi-VL-34B', '01-ai/Yi-VL-34B'),
+            ], ),
         ],
         TemplateType.yi_vl,
         get_model_tokenizer_yi_vl,
         model_arch=ModelArch.llava_llama,
         architectures=['LlavaForConditionalGeneration'],
+        requires=['transformers>=4.34'],
+        tags=['vision'],
     ))
 
 
@@ -132,21 +129,19 @@ register_model(
 
 register_model(
     ModelMeta(
-        LLMModelType.yi_coder,
-        [
+        LLMModelType.yi_coder, [
             ModelGroup([
                 Model('01ai/Yi-Coder-1.5B', '01-ai/Yi-Coder-1.5B'),
                 Model('01ai/Yi-Coder-9B', '01-ai/Yi-Coder-9B'),
                 Model('01ai/Yi-Coder-1.5B-Chat', '01-ai/Yi-Coder-1.5B-Chat'),
                 Model('01ai/Yi-Coder-9B-Chat', '01-ai/Yi-Coder-9B-Chat'),
-            ],
-                       tags=['coding'])
+            ], )
         ],
         TemplateType.yi_coder,
         get_model_tokenizer_yi,
         architectures=['LlamaForCausalLM'],
         model_arch=ModelArch.llama,
-    ))
+        tags=['coding']))
 
 register_model(
     ModelMeta(

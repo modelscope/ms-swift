@@ -27,9 +27,8 @@ def get_model_tokenizer_mplug_owl2(model_dir: str,
                                    model_kwargs: Dict[str, Any],
                                    load_model: bool = True,
                                    **kwargs):
-    if 'local_repo_path' in kwargs:
-        local_repo_path = kwargs['local_repo_path']
-    else:
+    local_repo_path = kwargs.get('local_repo_path')
+    if not local_repo_path:
         local_repo_path = git_clone_github('https://github.com/X-PLUG/mPLUG-Owl')
     local_repo_path = os.path.join(local_repo_path, 'mPLUG-Owl2')
     sys.path.append(os.path.join(local_repo_path))
@@ -42,28 +41,37 @@ def get_model_tokenizer_mplug_owl2(model_dir: str,
     vocab_size = kwargs.pop('vocab_size', None)
     if vocab_size is not None:
         model_config.vocab_size = vocab_size
-    get_model_tokenizer_function = kwargs.pop('get_model_tokenizer_function')
+    get_model_tokenizer_function = kwargs.pop('get_model_tokenizer_function', get_model_tokenizer_with_flash_attn)
     model, tokenizer = get_model_tokenizer_function(
         model_dir, model_info, model_kwargs, load_model, model_config=model_config, **kwargs)
     logger.info('Please ignore the unimported warning.')
     processor = CLIPImageProcessor.from_pretrained(model_dir)
-    tokenizer.processor = processor
-    return model, tokenizer
+    processor.tokenizer = tokenizer
+    return model, processor
 
 
 register_model(
     ModelMeta(
-        MLLMModelType.mplug_owl2, [
-            ModelGroup([
-                Model('iic/mPLUG-Owl2', 'MAGAer13/mplug-owl2-llama2-7b'),
-                Model('iic/mPLUG-Owl2.1', 'Mizukiluke/mplug_owl_2_1'),
-            ],
-                       requires=['transformers<4.35'],
-                       tags=['vision']),
-        ],
+        MLLMModelType.mplug_owl2, [ModelGroup([
+            Model('iic/mPLUG-Owl2', 'MAGAer13/mplug-owl2-llama2-7b'),
+        ])],
         TemplateType.mplug_owl2,
         get_model_tokenizer_mplug_owl2,
-        model_arch=ModelArch.mplug_owl2))
+        model_arch=ModelArch.mplug_owl2,
+        requires=['transformers<4.35', 'icecream'],
+        tags=['vision']), )
+
+register_model(
+    ModelMeta(
+        MLLMModelType.mplug_owl2_1, [ModelGroup([
+            Model('iic/mPLUG-Owl2.1', 'Mizukiluke/mplug_owl_2_1'),
+        ])],
+        TemplateType.mplug_owl2,
+        partial(
+            get_model_tokenizer_mplug_owl2, vocab_size=151851, get_model_tokenizer_function=get_model_tokenizer_qwen),
+        model_arch=ModelArch.mplug_owl2_1,
+        requires=['transformers<4.35', 'icecream'],
+        tags=['vision']))
 
 
 def get_model_tokenizer_mplug_owl3(model_dir: str,
@@ -88,11 +96,25 @@ register_model(
                 Model('iic/mPLUG-Owl3-1B-241014', 'mPLUG/mPLUG-Owl3-1B-241014'),
                 Model('iic/mPLUG-Owl3-2B-241014', 'mPLUG/mPLUG-Owl3-2B-241014'),
                 Model('iic/mPLUG-Owl3-7B-240728', 'mPLUG/mPLUG-Owl3-7B-240728'),
-            ],
-                       requires=['transformers>=4.36', 'icecream'],
-                       tags=['multi-modal', 'vision', 'video']),
+            ]),
         ],
         TemplateType.mplug_owl3,
         get_model_tokenizer_mplug_owl3,
         architectures=['mPLUGOwl3Model'],
-        model_arch=ModelArch.mplug_owl3))
+        model_arch=ModelArch.mplug_owl3,
+        requires=['transformers>=4.36', 'icecream'],
+        tags=['vision', 'video']))
+
+register_model(
+    ModelMeta(
+        MLLMModelType.mplug_owl3_241101, [
+            ModelGroup([
+                Model('iic/mPLUG-Owl3-7B-241101', 'mPLUG/mPLUG-Owl3-7B-241101'),
+            ]),
+        ],
+        TemplateType.mplug_owl3_241101,
+        get_model_tokenizer_mplug_owl3,
+        architectures=['mPLUGOwl3Model'],
+        model_arch=ModelArch.mplug_owl3,
+        requires=['transformers>=4.36', 'icecream'],
+        tags=['vision', 'video']))

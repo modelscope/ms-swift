@@ -36,12 +36,13 @@ register_model(
         [
             ModelGroup([
                 Model('BAAI/Emu3-Gen', 'BAAI/Emu3-Gen'),
-            ], tags=['multi-modal', 't2i']),
+            ]),
         ],
         TemplateType.emu3_gen,
         get_model_tokenizer_emu3_gen,
         architectures=['LlavaForConditionalGeneration'],
         model_arch=ModelArch.emu3_chat,
+        tags=['t2i'],
     ))
 
 
@@ -61,9 +62,8 @@ def get_model_tokenizer_emu3_chat(model_dir: str,
     image_tokenizer.to('cuda:0')  # TODO: check npu
 
     # load processor
-    if 'local_repo_path' in kwargs:
-        local_repo_path = kwargs['local_repo_path']
-    else:
+    local_repo_path = kwargs.get('local_repo_path')
+    if not local_repo_path:
         local_repo_path = git_clone_github('https://github.com/baaivision/Emu3.git')
     sys.path.append(os.path.join(local_repo_path))
     from emu3.mllm.processing_emu3 import Emu3Processor
@@ -76,13 +76,14 @@ register_model(
     ModelMeta(
         MLLMModelType.emu3_chat,
         [
-            ModelGroup(
-                [
-                    Model('BAAI/Emu3-Chat', 'BAAI/Emu3-Chat'),
-                ], tags=['vision'], requires=['transformers>=4.44.0']),
+            ModelGroup([
+                Model('BAAI/Emu3-Chat', 'BAAI/Emu3-Chat'),
+            ]),
         ],
         TemplateType.emu3_chat,
         get_model_tokenizer_emu3_chat,
         architectures=['LlavaForConditionalGeneration'],
         model_arch=ModelArch.emu3_chat,
+        tags=['vision'],
+        requires=['transformers>=4.44.0'],
     ))

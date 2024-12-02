@@ -65,11 +65,12 @@ class LLMModelType:
     mixtral = 'mixtral'
     mistral_nemo = 'mistral_nemo'
     wizardlm2 = 'wizardlm2'
-    wizardlm2_awq = 'wizardlm2_awq'
+    wizardlm2_moe = 'wizardlm2_moe'
 
     phi2 = 'phi2'
-    phi3 = 'phi3'
     phi3_small = 'phi3_small'
+    phi3 = 'phi3'
+    phi3_moe = 'phi3_moe'
 
     gemma = 'gemma'
     gemma2 = 'gemma2'
@@ -141,7 +142,9 @@ class MLLMModelType:
     minicpmv2_5 = 'minicpmv2_5'
 
     mplug_owl2 = 'mplug_owl2'
+    mplug_owl2_1 = 'mplug_owl2_1'
     mplug_owl3 = 'mplug_owl3'
+    mplug_owl3_241101 = 'mplug_owl3_241101'
 
     emu3_gen = 'emu3_gen'
     emu3_chat = 'emu3_chat'
@@ -149,12 +152,12 @@ class MLLMModelType:
 
     idefics3_llama3 = 'idefics3_llama3'
 
-    phi3_vl = 'phi3_vl'
+    phi3_vision = 'phi3_vision'
     florence = 'florence'
     idefics3 = 'idefics3'
     paligemma = 'paligemma'
     molmo = 'molmo'
-    molmoe_1b = 'molmoe_1b'
+    molmoe = 'molmoe'
     pixtral = 'pixtral'
 
 

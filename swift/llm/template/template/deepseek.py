@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import torch
 import torch.nn as nn
@@ -30,6 +30,7 @@ register_template(
         prompt=['### Instruction:\n{{QUERY}}\n### Response:\n'],
         chat_sep=['\n<|EOT|>\n'],
         suffix=['\n<|EOT|>'],
+        stop_words=['<|EOT|>'],
         default_system=('You are an AI programming assistant, utilizing the Deepseek Coder model, '
                         'developed by Deepseek Company, and you only answer questions related to computer science. '
                         'For politically sensitive questions, security and privacy issues, '
@@ -93,6 +94,7 @@ class DeepseekVLTemplateMeta(DeepseekTemplateMeta):
     default_system: Optional[str] = ('You are a helpful language and vision assistant. '
                                      'You are able to understand the visual content that the user provides, '
                                      'and assist the user with a variety of tasks using natural language.')
+    placeholder_tokens: List[str] = field(default_factory=lambda: ['<image_placeholder>'])
 
 
 register_template(DeepseekVLTemplateMeta(

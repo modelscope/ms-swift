@@ -34,4 +34,5 @@ register_template(
         suffix=['<end_of_utterance>'],
         system_prefix=['System:{{SYSTEM}}<end_of_utterance>\n'],
         template_cls=Idefics3Template,
+        placeholder_tokens=['<image>'],
     ))

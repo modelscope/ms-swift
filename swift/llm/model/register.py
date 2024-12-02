@@ -34,11 +34,11 @@ class Model:
 @dataclass
 class ModelGroup:
     models: List[Model]
-    tags: List[str] = field(default_factory=list)
 
     # Higher priority. If set to None, the attributes of the DatasetMeta will be used.
     ignore_file_pattern: Optional[List[str]] = None
     requires: Optional[List[str]] = None
+    tags: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -50,7 +50,7 @@ class ModelMeta:
     template: str
     get_function: GetModelTokenizerFunction
 
-    model_arch: Optional[str]
+    model_arch: Optional[str] = None
     architectures: List[str] = field(default_factory=list)
     is_multimodal: bool = False
     # Additional files that need to be saved for full parameter training/merge-lora.
@@ -61,6 +61,7 @@ class ModelMeta:
     ignore_file_pattern: List[str] = field(default_factory=list)
     # Usually specifies the version limits of transformers.
     requires: List[str] = field(default_factory=list)
+    tags: List[str] = field(default_factory=list)
 
     def get_matched_model_group(self, model_name: str) -> Optional[ModelGroup]:
         for model_group in self.model_groups:
@@ -72,9 +73,12 @@ class ModelMeta:
                         return model_group
 
     def check_requires(self):
-        # TODO: error to warning
-        for require in self.requires:
-            require_version(require)
+        try:
+            for require in self.requires:
+                require_version(require)
+        except ImportError:
+            requires = ' '.join(self.requires)
+            logger.warning(f'Please install the package: `pip install "{requires}" -U`.')
 
     def check_infer_backend(self, infer_backend: str) -> None:
         if infer_backend == 'vllm' and not self.support_vllm:
@@ -403,7 +407,7 @@ def get_model_info_meta(
         model_type: Optional[str] = None,
         quantization_config=None,
         **kwargs) -> Tuple[ModelInfo, ModelMeta]:
-    ignore_file_pattern = ['*.zip', '*.gguf', '*.pth', '*.pt', 'consolidated*']
+    ignore_file_pattern = ['*.zip', '*.gguf', '*.pth', '*.pt', 'consolidated*', 'onnx']
     model_meta = get_matched_model_meta(model_id_or_path)
     if getattr(model_meta, 'ignore_file_pattern', None) is not None:
         ignore_file_pattern += model_meta.ignore_file_pattern
@@ -503,11 +507,17 @@ def get_model_tokenizer(
         tokenizer = processor
     tokenizer.model_info = model_info
     tokenizer.model_meta = model_meta
-    tokenizer.pad_token_id = tokenizer.pad_token_id or tokenizer.eos_token_id
+
+    pad_token = tokenizer.pad_token_id or tokenizer.eos_token_id
+    if tokenizer.eos_token_id is None:
+        tokenizer.eos_token_id = pad_token
+    if tokenizer.pad_token_id is None:
+        tokenizer.pad_token_id = pad_token
     assert tokenizer.eos_token_id is not None
     assert tokenizer.pad_token_id is not None
 
     if model is not None:
+        # fix seq classification task
         if model.config.pad_token_id is None:
             model.config.pad_token_id = tokenizer.pad_token_id
         model.model_info = model_info

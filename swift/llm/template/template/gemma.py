@@ -70,4 +70,5 @@ register_template(
         chat_sep=None,
         suffix=['<eos>'],
         template_cls=PaliGemmaTemplate,
+        placeholder_tokens=['<image>'],
     ))

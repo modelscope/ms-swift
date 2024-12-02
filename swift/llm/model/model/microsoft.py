@@ -34,18 +34,18 @@ def get_model_tokenizer_phi3_vision(model_dir: str,
 
 register_model(
     ModelMeta(
-        MLLMModelType.phi3_vl, [
+        MLLMModelType.phi3_vision, [
             ModelGroup([
                 Model('LLM-Research/Phi-3-vision-128k-instruct', 'microsoft/Phi-3-vision-128k-instruct'),
                 Model('LLM-Research/Phi-3.5-vision-instruct', 'microsoft/Phi-3.5-vision-instruct'),
-            ],
-                       requires=['transformers>=4.36'],
-                       tags=['multi-modal', 'vision']),
+            ])
         ],
-        TemplateType.phi3_vl,
+        TemplateType.phi3_vision,
         get_model_tokenizer_phi3_vision,
         architectures=['Phi3VForCausalLM'],
-        model_arch=ModelArch.phi3v))
+        model_arch=ModelArch.phi3v,
+        requires=['transformers>=4.36'],
+        tags=['vision']), )
 
 
 def get_model_tokenizer_florence(model_dir: str,
@@ -76,13 +76,14 @@ register_model(
                 Model('AI-ModelScope/Florence-2-base', 'microsoft/Florence-2-base'),
                 Model('AI-ModelScope/Florence-2-large', 'microsoft/Florence-2-large'),
                 Model('AI-ModelScope/Florence-2-large-ft', 'microsoft/Florence-2-large-ft'),
-            ],
-                       tags=['multi-modal', 'vision']),
+            ]),
         ],
         TemplateType.florence,
         get_model_tokenizer_florence,
         architectures=['Florence2ForConditionalGeneration'],
-        model_arch=ModelArch.florence))
+        model_arch=ModelArch.florence,
+        tags=['vision'],
+    ))
 
 
 def get_model_tokenizer_phi3_small(model_dir: str,
@@ -110,18 +111,19 @@ def get_model_tokenizer_phi3_small(model_dir: str,
 
 register_model(
     ModelMeta(
-        LLMModelType.phi3_small, [
+        LLMModelType.phi3_small,
+        [
             ModelGroup([
                 Model('LLM-Research/Phi-3-small-8k-instruct', 'microsoft/Phi-3-small-8k-instruct'),
                 Model('LLM-Research/Phi-3-small-128k-instruct', 'microsoft/Phi-3-small-128k-instruct'),
-            ],
-                       requires=['transformers>=4.36'],
-                       ignore_file_pattern=[r'.+\.bin$']),
+            ]),
         ],
         TemplateType.phi3,
         get_model_tokenizer_phi3_small,
         architectures=['Phi3SmallForCausalLM'],
-        model_arch=ModelArch.phi3_small))
+        model_arch=ModelArch.phi3_small,
+        requires=['transformers>=4.36'],
+    ))
 
 
 def get_model_tokenizer_phi(model_dir: str,
@@ -151,20 +153,30 @@ register_model(
         LLMModelType.phi3,
         [
             ModelGroup([
+                Model('LLM-Research/Phi-3-mini-4k-instruct', 'microsoft/Phi-3-mini-4k-instruct'),
                 Model('LLM-Research/Phi-3-mini-128k-instruct', 'microsoft/Phi-3-mini-128k-instruct'),
                 Model('LLM-Research/Phi-3-medium-4k-instruct', 'microsoft/Phi-3-medium-4k-instruct'),
                 Model('LLM-Research/Phi-3-medium-128k-instruct', 'microsoft/Phi-3-medium-128k-instruct'),
-                Model('LLM-Research/Phi-3-mini-4k-instruct', 'microsoft/Phi-3-mini-4k-instruct'),
                 Model('LLM-Research/Phi-3.5-mini-instruct', 'microsoft/Phi-3.5-mini-instruct'),
-            ],
-                       requires=['transformers>=4.36']),
-            ModelGroup([
-                Model('LLM-Research/Phi-3.5-MoE-instruct', 'microsoft/Phi-3.5-MoE-instruct'),
-            ],
-                       requires=['transformers>=4.36']),
+            ]),
         ],
         TemplateType.phi3,
         get_model_tokenizer_with_flash_attn,
         architectures=['Phi3ForCausalLM'],
+        requires=['transformers>=4.36'],
         model_arch=ModelArch.phi3,
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.phi3_moe,
+        [
+            ModelGroup([
+                Model('LLM-Research/Phi-3.5-MoE-instruct', 'microsoft/Phi-3.5-MoE-instruct'),
+            ]),
+        ],
+        TemplateType.phi3,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['PhiMoEForCausalLM'],
+        requires=['transformers>=4.36'],
     ))

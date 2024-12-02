@@ -87,12 +87,14 @@ class HfConfigFactory:
         for key in [None, 'language_config', 'llm_config', 'text_config']:
             if key is not None:
                 if isinstance(config, dict):
-                    config = config.get(key)
+                    llm_config = config.get(key)
                 else:
-                    config = getattr(config, key, None)
-            value = deep_getattr(config, attr_name, None)
+                    llm_config = getattr(config, key, None)
+            else:
+                llm_config = config
+            value = deep_getattr(llm_config, attr_name, None)
             if value is not None:
-                res.append((config, value))
+                res.append((llm_config, value))
         return res
 
     @staticmethod

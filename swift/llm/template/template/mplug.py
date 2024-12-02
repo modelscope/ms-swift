@@ -16,6 +16,57 @@ from ..vision_utils import load_video_minicpmv_mplug_owl3, replace_video2image
 from .qwen import QwenTemplateMeta
 
 
+class mPlugOwl2Template(Template):
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    inputs: StdTemplateInputs) -> List[Context]:
+        assert media_type == 'image'
+        return [[-200]]
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        from mplug_owl2.mm_utils import process_images
+        processor = self.processor
+        images = inputs.images
+        for i, image in enumerate(images):
+            # ref: https://modelscope.cn/models/iic/mPLUG-Owl2.1
+            max_edge = max(image.size)
+            image = image.resize((max_edge, max_edge))
+            images[i] = image
+        encoded = super()._encode(inputs)
+        if len(encoded) == 0:
+            return encoded
+        input_ids = encoded['input_ids']
+        labels = encoded['labels']
+        res = {'input_ids': input_ids, 'labels': labels}
+        if images:
+            images = process_images(images, processor)
+            images = images.to(self.model.dtype)
+            res['images'] = images
+        return res
+
+    def _data_collator(self,
+                       batch: List[Dict[str, Any]],
+                       *,
+                       padding_to: Optional[int] = None,
+                       model: Optional[nn.Module] = None) -> Dict[str, Any]:
+        res = super().data_collator(batch, padding_to)
+        images = [b['images'] for b in batch if 'images' in b]
+        if images:
+            res['images'] = torch.concat(images)
+        return res
+
+
+register_template(
+    TemplateMeta(
+        MLLMTemplateType.mplug_owl2,
+        template_cls=mPlugOwl2Template,
+        prefix=['{{SYSTEM}}'],
+        prompt=['USER: {{QUERY}}ASSISTANT:'],
+        chat_sep=['</s>'],
+        suffix=[['eos_token_id']],
+        stop_words=['<|endoftext|>', '</s>']))
+
+
 class mPlugOwl3Template(Template):
 
     def _get_image_token_list(self, cut_shape):
@@ -51,7 +102,7 @@ class mPlugOwl3Template(Template):
         labels = encoded['labels']
         idx_list = findall(input_ids, -100)
         processor = self.processor
-        encoded = {'_data': {}}
+        encoded = {}
         if images:
             image_inputs = processor.image_processor(images, cut_enable=cut_enable, return_tensors='pt')
             added_tokens_len = 0
@@ -71,11 +122,11 @@ class mPlugOwl3Template(Template):
             _range = torch.arange(len(input_ids))[:, None]
             matrix = (_range > image_token_idx).sum(dim=1)
             media_offset = torch.stack([torch.zeros(matrix.shape[0], dtype=torch.long), matrix], dim=-1)[None]
-            encoded['_data'].update({
+            encoded.update({
                 'pixel_values': image_inputs['pixel_values'],
                 'media_offset': media_offset,
             })
-        encoded['_data']['input_ids'] = input_ids
+        encoded['input_ids'] = input_ids
         encoded['labels'] = labels
         return encoded
 
@@ -116,20 +167,20 @@ class mPlugOwl3Template(Template):
         return res
 
 
-class mPlugOwl3vTemplate(mPlugOwl3Template):
+class mPlugOwl3_241101Template(mPlugOwl3Template):
 
-    def _encode(self, template_inputs: StdTemplateInputs) -> Dict[str, Any]:
-        inputs, _ = super(mPlugOwl3Template, self)._encode(template_inputs)
-        if len(inputs) == 0:
-            return inputs
-        images = template_inputs.images
-        videos = template_inputs.videos
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded = super(mPlugOwl3Template, self)._encode(inputs)
+        if len(encoded) == 0:
+            return encoded
+        images = inputs.images
+        videos = inputs.videos
         cut_enable = not videos
-        input_ids = inputs['input_ids']
-        labels = inputs['labels']
+        input_ids = encoded['input_ids']
+        labels = encoded['labels']
         idx_list = findall(input_ids, -100)
-        processor = self.tokenizer.processor
-        inputs = {'_data': {}}
+        processor = self.processor
+        encoded = {}
         if images:
             image_inputs = processor.image_processor(images, cut_enable=cut_enable, return_tensors='pt')
             added_tokens_len = 0
@@ -147,19 +198,19 @@ class mPlugOwl3vTemplate(mPlugOwl3Template):
                 added_tokens_len += len(token_list) - 1
             image_token_idx = torch.tensor(findall(input_ids, image_token_list))
 
-            inputs['_data'].update({
+            encoded.update({
                 'pixel_values': image_inputs['pixel_values'],
                 'media_offset': image_token_idx,
             })
-        inputs['_data']['input_ids'] = input_ids
-        inputs['labels'] = labels
-        return inputs
+        encoded['input_ids'] = input_ids
+        encoded['labels'] = labels
+        return encoded
 
-    def _post_encode(self, model, data: Any) -> Dict[str, Any]:
-        if 'pixel_values' in data:
-            pixel_values = data.pop('pixel_values')
-            data['image_embeds'] = model.forward_image(pixel_values)
-        return data
+    def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        if 'pixel_values' in inputs:
+            pixel_values = inputs.pop('pixel_values')
+            inputs['image_embeds'] = model.forward_image(pixel_values)
+        return inputs
 
     def _data_collator(self,
                        batch: List[Dict[str, Any]],
@@ -187,4 +238,4 @@ class mPlugOwl3TemplateMeta(QwenTemplateMeta):
 
 register_template(mPlugOwl3TemplateMeta(MLLMTemplateType.mplug_owl3, template_cls=mPlugOwl3Template))
 
-register_template(mPlugOwl3TemplateMeta(MLLMTemplateType.mplug_owl3v, template_cls=mPlugOwl3vTemplate))
+register_template(mPlugOwl3TemplateMeta(MLLMTemplateType.mplug_owl3_241101, template_cls=mPlugOwl3_241101Template))

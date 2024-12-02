@@ -132,9 +132,8 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
         import collections.abc
         for type_name in collections.abc.__all__:
             setattr(collections, type_name, getattr(collections.abc, type_name))
-    if 'local_repo_path' in kwargs:
-        local_repo_path = kwargs['local_repo_path']
-    else:
+    local_repo_path = kwargs.get('local_repo_path')
+    if not local_repo_path:
         local_repo_path = git_clone_github('https://github.com/deepseek-ai/DeepSeek-VL')
     sys.path.append(os.path.join(local_repo_path))
     from deepseek_vl.models import VLChatProcessor
@@ -154,25 +153,24 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
 
 register_model(
     ModelMeta(
-        MLLMModelType.deepseek_vl, [
-            ModelGroup(
-                [
-                    Model('deepseek-ai/deepseek-vl-1.3b-chat', 'deepseek-ai/deepseek-vl-1.3b-chat'),
-                    Model('deepseek-ai/deepseek-vl-7b-chat', 'deepseek-ai/deepseek-vl-7b-chat'),
-                ],
-                tags=['multi-modal', 'vision'],
-            ),
+        MLLMModelType.deepseek_vl,
+        [
+            ModelGroup([
+                Model('deepseek-ai/deepseek-vl-1.3b-chat', 'deepseek-ai/deepseek-vl-1.3b-chat'),
+                Model('deepseek-ai/deepseek-vl-7b-chat', 'deepseek-ai/deepseek-vl-7b-chat'),
+            ], ),
         ],
         TemplateType.deepseek_vl,
         get_model_tokenizer_deepseek_vl,
         architectures=['MultiModalityCausalLM'],
-        model_arch=ModelArch.deepseek_vl))
+        model_arch=ModelArch.deepseek_vl,
+        tags=['vision'],
+    ))
 
 
 def get_model_tokenizer_deepseek_janus(model_dir: str, *args, **kwargs):
-    if 'local_repo_path' in kwargs:
-        local_repo_path = kwargs['local_repo_path']
-    else:
+    local_repo_path = kwargs.get('local_repo_path')
+    if not local_repo_path:
         local_repo_path = git_clone_github('https://github.com/deepseek-ai/Janus')
     sys.path.append(os.path.join(local_repo_path))
     from janus.models import MultiModalityCausalLM, VLChatProcessor
@@ -191,14 +189,14 @@ def get_model_tokenizer_deepseek_janus(model_dir: str, *args, **kwargs):
 
 register_model(
     ModelMeta(
-        MLLMModelType.deepseek_janus, [
-            ModelGroup(
-                [
-                    Model('deepseek-ai/Janus-1.3B', 'deepseek-ai/Janus-1.3B'),
-                ],
-                tags=['multi-modal', 'vision'],
-            ),
+        MLLMModelType.deepseek_janus,
+        [
+            ModelGroup([
+                Model('deepseek-ai/Janus-1.3B', 'deepseek-ai/Janus-1.3B'),
+            ], ),
         ],
         TemplateType.deepseek_janus,
         get_model_tokenizer_deepseek_janus,
-        model_arch=ModelArch.janus))
+        model_arch=ModelArch.janus,
+        tags=['vision'],
+    ))

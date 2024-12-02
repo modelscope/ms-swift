@@ -96,6 +96,7 @@ register_model(
         [
             ModelGroup([
                 Model('skywork/Skywork-13B-base'),
+                Model('skywork/Skywork-13B-chat'),
             ]),
         ],
         TemplateType.skywork,
@@ -150,9 +151,7 @@ register_model(
             ModelGroup([
                 Model('OrionStarAI/Orion-14B-Chat', 'OrionStarAI/Orion-14B-Chat'),
                 Model('OrionStarAI/Orion-14B-Base', 'OrionStarAI/Orion-14B-Base'),
-            ],
-                       ignore_file_pattern=[r'.+\.gguf$'],
-                       requires=['transformers==4.34.1']),
+            ]),
         ],
         TemplateType.orion,
         get_model_tokenizer_with_flash_attn,
@@ -162,19 +161,17 @@ register_model(
 
 register_model(
     ModelMeta(
-        LLMModelType.dbrx,
-        [
+        LLMModelType.dbrx, [
             ModelGroup([
-                Model('AI-ModelScope/dbrx-instruct', 'databricks/dbrx-instruct'),
                 Model('AI-ModelScope/dbrx-base', 'databricks/dbrx-base'),
-            ],
-                       requires=['transformers>=4.36']),
+                Model('AI-ModelScope/dbrx-instruct', 'databricks/dbrx-instruct'),
+            ]),
         ],
         TemplateType.dbrx,
         get_model_tokenizer_with_flash_attn,
         model_arch=ModelArch.dbrx,
         architectures=['DbrxForCausalLM'],
-    ))
+        requires=['transformers>=4.36']))
 
 register_model(
     ModelMeta(
@@ -189,7 +186,7 @@ register_model(
         ],
         TemplateType.bluelm,
         get_model_tokenizer_with_flash_attn,
-        model_arch=ModelArch.bluelm,
+        model_arch=ModelArch.llama,
         architectures=['BlueLMForCausalLM'],
     ))
 
@@ -199,7 +196,7 @@ register_model(
         [
             ModelGroup([
                 Model('damo/nlp_seqgpt-560m', 'DAMO-NLP/SeqGPT-560M'),
-            ], tags=['multi-modal', 'audio']),
+            ]),
         ],
         TemplateType.default,
         get_model_tokenizer_with_flash_attn,
@@ -220,8 +217,7 @@ register_model(
                 Model('xverse/XVERSE-65B-2', 'xverse/XVERSE-65B-2'),
                 Model('xverse/XVERSE-65B-Chat', 'xverse/XVERSE-65B-Chat'),
                 Model('xverse/XVERSE-13B-256K', 'xverse/XVERSE-13B-256K', ms_revision='v1.0.0'),
-            ],
-                       requires=['transformers==4.38.2']),
+            ]),
         ],
         TemplateType.xverse,
         get_model_tokenizer_with_flash_attn,
@@ -235,8 +231,7 @@ register_model(
         [
             ModelGroup([
                 Model('xverse/XVERSE-MoE-A4.2B', 'xverse/XVERSE-MoE-A4.2B'),
-            ],
-                       requires=['transformers==4.38.2']),
+            ]),
         ],
         TemplateType.xverse,
         get_model_tokenizer_with_flash_attn,
@@ -251,27 +246,25 @@ register_model(
             ModelGroup([
                 Model('AI-ModelScope/c4ai-command-r-v01', 'CohereForAI/c4ai-command-r-v01'),
                 Model('AI-ModelScope/c4ai-command-r-plus', 'CohereForAI/c4ai-command-r-plus'),
-            ],
-                       requires=['transformers>=4.39']),
+            ]),
         ],
         TemplateType.c4ai,
         get_model_tokenizer_with_flash_attn,
         model_arch=ModelArch.llama,
         architectures=['CohereForCausalLM'],
+        requires=['transformers>=4.39'],
     ))
 
 register_model(
     ModelMeta(
-        LLMModelType.aya,
-        [
+        LLMModelType.aya, [
             ModelGroup([
                 Model('AI-ModelScope/aya-expanse-8b', 'CohereForAI/aya-expanse-8b'),
                 Model('AI-ModelScope/aya-expanse-32b', 'CohereForAI/aya-expanse-32b'),
-            ],
-                       requires=['transformers>=4.44.0']),
+            ]),
         ],
         TemplateType.aya,
         get_model_tokenizer_with_flash_attn,
         model_arch=ModelArch.llama,
         architectures=['CohereForCausalLM'],
-    ))
+        requires=['transformers>=4.44.0']))

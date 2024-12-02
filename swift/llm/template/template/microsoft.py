@@ -76,10 +76,7 @@ class FlorenceTemplate(Template):
         encoded = {
             'input_ids': input_ids,
             'labels': labels,
-            '_data': {
-                'input_ids': torch.tensor(input_ids)[None],
-                'pixel_values': pixel_values,
-            }
+            'pixel_values': pixel_values,
         }
         return encoded
 
@@ -165,4 +162,4 @@ class Phi3VisionTemplate(Template):
         return encoded
 
 
-register_template(Phi3TemplateMeta(MLLMTemplateType.phi3_vl, template_cls=Phi3VisionTemplate))
+register_template(Phi3TemplateMeta(MLLMTemplateType.phi3_vision, template_cls=Phi3VisionTemplate))

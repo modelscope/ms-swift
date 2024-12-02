@@ -91,18 +91,6 @@ register_model(
 
 register_model(
     ModelMeta(
-        LLMModelType.codefuse_qwen, [
-            ModelGroup([
-                Model('codefuse-ai/CodeFuse-QWen-14B', 'codefuse-ai/CodeFuse-QWen-14B'),
-            ], tags=['coding']),
-        ],
-        TemplateType.codefuse,
-        get_model_tokenizer_qwen,
-        architectures=['QWenLMHeadModel'],
-        model_arch=ModelArch.qwen))
-
-register_model(
-    ModelMeta(
         LLMModelType.modelscope_agent,
         [ModelGroup([
             Model('iic/ModelScope-Agent-7B'),
@@ -159,14 +147,14 @@ register_model(
             ModelGroup([
                 Model('Qwen/Qwen-Audio-Chat', 'Qwen/Qwen-Audio-Chat'),
                 Model('Qwen/Qwen-Audio', 'Qwen/Qwen-Audio'),
-            ],
-                       tags=['audio'])
+            ])
         ],
         TemplateType.qwen_audio,
         get_model_tokenizer_qwen_audio,
         model_arch=ModelArch.qwen_audio,
         architectures=['QWenLMHeadModel'],
-        additional_saved_files=['mel_filters.npz']))
+        additional_saved_files=['mel_filters.npz'],
+        tags=['audio']))
 
 
 def _qwen_vl_visual_block_forward(
@@ -239,14 +227,14 @@ register_model(
                 Model('Qwen/Qwen-VL-Chat', 'Qwen/Qwen-VL-Chat'),
                 Model('Qwen/Qwen-VL', 'Qwen/Qwen-VL'),
                 Model('Qwen/Qwen-VL-Chat-Int4', 'Qwen/Qwen-VL-Chat-Int4'),
-            ],
-                       tags=['vision'])
+            ])
         ],
         TemplateType.qwen_vl,
         get_model_tokenizer_qwen_vl,
         model_arch=ModelArch.qwen_vl,
         architectures=['QWenLMHeadModel'],
-        additional_saved_files=['SimSun.ttf']))
+        additional_saved_files=['SimSun.ttf'],
+        tags=['vision']))
 
 register_model(
     ModelMeta(
@@ -539,15 +527,14 @@ register_model(
                     Model('Qwen/Qwen2-VL-2B-Instruct-AWQ', 'Qwen/Qwen2-VL-2B-Instruct-AWQ'),
                     Model('Qwen/Qwen2-VL-7B-Instruct-AWQ', 'Qwen/Qwen2-VL-7B-Instruct-AWQ'),
                     Model('Qwen/Qwen2-VL-72B-Instruct-AWQ', 'Qwen/Qwen2-VL-72B-Instruct-AWQ'),
-                ],
-                tags=['vision', 'video']),
+                ], ),
         ],
         TemplateType.qwen2_vl,
         get_model_tokenizer_qwen2_vl,
         model_arch=ModelArch.qwen2_vl,
         architectures=['Qwen2VLForConditionalGeneration'],
-        requires=['transformers>=4.45'],  # pip install qwen_vl_utils
-    ))
+        requires=['transformers>=4.45', 'qwen_vl_utils'],
+        tags=['vision', 'video']))
 
 
 def get_model_tokenizer_qwen2_audio(*args, **kwargs):
@@ -563,14 +550,14 @@ register_model(
                 Model('Qwen/Qwen2-Audio-7B-Instruct', 'Qwen/Qwen2-Audio-7B-Instruct'),
                 Model('Qwen/Qwen2-Audio-7B', 'Qwen/Qwen2-Audio-7B'),
                 Model('Qwen/Qwen2-Audio-7B', 'Qwen/Qwen2-Audio-7B'),
-            ],
-                       tags=['audio']),
+            ], ),
         ],
         TemplateType.qwen2_audio,
         get_model_tokenizer_qwen2_audio,
         model_arch=ModelArch.qwen2_audio,
         architectures=['Qwen2AudioForConditionalGeneration'],
-        requires=['transformers>=4.45']))
+        requires=['transformers>=4.45'],
+        tags=['audio']))
 
 register_model(
     ModelMeta(
@@ -621,12 +608,12 @@ register_model(
         [
             ModelGroup([
                 Model('AIDC-AI/Ovis1.6-Gemma2-9B', 'AIDC-AI/Ovis1.6-Gemma2-9B'),
-            ],
-                       tags=['multi-modal', 'vision'],
-                       requires=['transformers>=4.42']),
+            ]),
         ],
         TemplateType.ovis1_6,
         get_model_tokenizer_ovis,
         model_arch=ModelArch.ovis1_6,
         architectures=['Ovis'],
+        tags=['vision'],
+        requires=['transformers>=4.42'],
     ))

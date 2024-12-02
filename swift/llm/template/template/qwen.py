@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import partial
 from typing import Any, Dict, List, Literal, Optional
 
@@ -12,7 +12,7 @@ from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import register_template
 from ..template_inputs import StdTemplateInputs
 from ..template_meta import TemplateMeta
-from ..utils import Context, findall
+from ..utils import Context, Word, findall
 from ..vision_utils import load_audio_qwen, load_batch, load_video_qwen2
 from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
 
@@ -21,6 +21,7 @@ from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
 class QwenTemplateMeta(ChatmlTemplateMeta):
     default_system: Optional[str] = DEFAULT_SYSTEM
     auto_add_bos: bool = False
+    stop_words: List[Word] = field(default_factory=lambda: ['<|endoftext|>'])
 
 
 @dataclass
@@ -123,13 +124,13 @@ class Qwen2AudioTemplate(Template):
         else:
             return [f'Audio {index + 1}: <|audio_bos|><|AUDIO|><|audio_eos|>\n']
 
-    def _encode(self, template_inputs: StdTemplateInputs) -> Dict[str, Any]:
-        encoded = super()._encode(template_inputs)
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded = super()._encode(inputs)
         if len(encoded) == 0:
             return encoded
         processor = self.processor
         sampling_rate = processor.feature_extractor.sampling_rate
-        audios = load_batch(template_inputs.audios, load_func=partial(load_audio_qwen, sampling_rate=sampling_rate))
+        audios = load_batch(inputs.audios, load_func=partial(load_audio_qwen, sampling_rate=sampling_rate))
         if audios:
             audio_inputs = processor.feature_extractor(
                 audios, sampling_rate=sampling_rate, return_attention_mask=True, return_tensors='pt')
@@ -219,15 +220,15 @@ class Qwen2VLTemplate(Template):
         else:
             return ['<bbox>']
 
-    def _encode(self, template_inputs: StdTemplateInputs) -> Dict[str, Any]:
-        encoded = super()._encode(template_inputs)
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded = super()._encode(inputs)
         if len(encoded) == 0:
             return encoded
         processor = self.processor
         input_ids = encoded['input_ids']
         labels = encoded['labels']
-        images = template_inputs.images
-        videos = template_inputs.videos
+        images = inputs.images
+        videos = inputs.videos
         for media_type in ['images', 'videos']:
             if locals()[media_type]:
                 if media_type == 'images':
@@ -256,15 +257,15 @@ class Qwen2VLTemplate(Template):
         encoded['labels'] = labels
         return encoded
 
-    def _post_encode(self, model, data: Any) -> Dict[str, Any]:
+    def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
         if self.mode != 'train':
-            return data
-        input_ids = data['input_ids']
+            return inputs
+        input_ids = inputs['input_ids']
         _model = model.model
         if not hasattr(_model, 'embed_tokens'):
             _model = _model.model  # LoRA
-        pixel_values = data.get('pixel_values')
-        pixel_values_videos = data.get('pixel_values_videos')
+        pixel_values = inputs.get('pixel_values')
+        pixel_values_videos = inputs.get('pixel_values_videos')
         inputs_embeds = _model.embed_tokens(input_ids)
         if pixel_values is None and pixel_values_videos is None:  # plain-text
             if is_deepspeed_enabled():
@@ -280,7 +281,7 @@ class Qwen2VLTemplate(Template):
                 inputs_embeds += image_embeds.mean() * 0.
         else:
             if pixel_values is not None:
-                image_grid_thw = data['image_grid_thw']
+                image_grid_thw = inputs['image_grid_thw']
                 pixel_values = pixel_values.type(model.visual.get_dtype())
                 image_embeds = model.visual(pixel_values, grid_thw=image_grid_thw)
                 image_mask = (input_ids == model.config.image_token_id).unsqueeze(-1).expand_as(inputs_embeds)
@@ -288,7 +289,7 @@ class Qwen2VLTemplate(Template):
                 inputs_embeds = inputs_embeds.masked_scatter(image_mask, image_embeds)
 
             if pixel_values_videos is not None:
-                video_grid_thw = data['video_grid_thw']
+                video_grid_thw = inputs['video_grid_thw']
                 pixel_values_videos = pixel_values_videos.type(model.visual.get_dtype())
                 video_embeds = model.visual(pixel_values_videos, grid_thw=video_grid_thw)
                 video_mask = (input_ids == model.config.video_token_id).unsqueeze(-1).expand_as(inputs_embeds)
@@ -296,7 +297,7 @@ class Qwen2VLTemplate(Template):
                 inputs_embeds = inputs_embeds.masked_scatter(video_mask, video_embeds)
         res = {'inputs_embeds': inputs_embeds}
         for key in ['input_ids', 'image_grid_thw', 'video_grid_thw']:
-            value = data.get(key, None)
+            value = inputs.get(key, None)
             if value is not None:
                 res[key] = value
         return res
@@ -335,13 +336,13 @@ class Ovis1_6Template(Template):
         assert media_type == 'image'
         return [[-200], '\n']
 
-    def _encode(self, template_inputs: StdTemplateInputs) -> Dict[str, Any]:
-        inputs = super()._encode(template_inputs)
-        if len(inputs) == 0:
-            return inputs
-        images = template_inputs.images
-        input_ids = inputs['input_ids']
-        labels = inputs['labels']
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        _encoded = super()._encode(inputs)
+        if len(_encoded) == 0:
+            return _encoded
+        images = inputs.images
+        input_ids = _encoded['input_ids']
+        labels = _encoded['labels']
         idx_list = findall(input_ids, [-200])
         added_tokens_len = 0
         pixel_values = []
@@ -358,18 +359,18 @@ class Ovis1_6Template(Template):
             pixel_values = torch.cat(pixel_values, dim=0).to(self.model.visual_tokenizer.dtype)
         else:
             pixel_values = None
-        inputs = {'labels': labels}
+        _encoded = {'labels': labels}
         if labels is not None:
             labels = torch.tensor(labels)[None]
-        inputs['_data'] = {'input_ids': torch.tensor(input_ids)[None], 'labels': labels, 'pixel_values': [pixel_values]}
-        return inputs
+        _encoded['pixel_values'] = [pixel_values]
+        return _encoded
 
-    def _post_encode(self, model, data: Any) -> Dict[str, Any]:
+    def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
         _, inputs_embeds, labels, _ = self.model.merge_multimodal(
-            text_input_ids=data['input_ids'],
-            text_attention_masks=torch.ones_like(data['input_ids']),  # not use, only compat
-            text_labels=data['labels'],
-            pixel_values=data['pixel_values'],
+            text_input_ids=inputs['input_ids'],
+            text_attention_masks=torch.ones_like(inputs['input_ids']),  # not use, only compat
+            text_labels=inputs['labels'],
+            pixel_values=inputs['pixel_values'],
             left_padding=True)
         return {'inputs_embeds': inputs_embeds[0], 'labels': labels}
 

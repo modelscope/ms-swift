@@ -198,6 +198,7 @@ register_template(
         MLLMTemplateType.llava_onevision_hf,
         default_system=None,
         template_cls=LlavaOneVisionHfTemplate,
+        placeholder_tokens=['<image>'],
     ))
 
 

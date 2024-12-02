@@ -44,10 +44,17 @@ class LmdeployEngine(InferEngine):
             engine_kwargs: Optional[Dict[str, Any]] = None) -> None:
 
         self.processor = get_model_tokenizer(
-            model_id_or_path, torch_dtype, load_model=False, model_type=model_type, use_hf=use_hf, revision=revision)[1]
+            model_id_or_path,
+            torch_dtype,
+            load_model=False,
+            download_model=True,
+            model_type=model_type,
+            use_hf=use_hf,
+            revision=revision)[1]
         self._post_init()
 
-        self.max_model_len -= 1
+        if self.max_model_len is not None:
+            self.max_model_len -= 1
         self._prepare_engine_kwargs(
             tp=tp,
             session_len=session_len,
@@ -145,7 +152,6 @@ class LmdeployEngine(InferEngine):
     def _add_stop_words(self, generation_config: LmdeployGenerationConfig, request_config: RequestConfig,
                         template_meta: TemplateMeta) -> None:
         stop_words = (request_config.stop or []) + (self.generation_config.stop_words or []) + template_meta.stop_words
-        stop_words += [template_meta.suffix[-1], self.tokenizer.eos_token]
         generation_config.stop_token_ids = self._get_stop_token_ids(stop_words)
 
     def _prepare_generation_config(self, request_config: RequestConfig) -> LmdeployGenerationConfig:

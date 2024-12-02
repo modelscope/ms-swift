@@ -68,4 +68,5 @@ register_template(
         chat_sep=['</s>'],
         suffix=['</s>'],
         template_cls=PixtralTemplate,
+        placeholder_tokens=['[IMG]'],
     ))

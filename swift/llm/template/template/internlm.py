@@ -11,7 +11,7 @@ from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
-from ..utils import Prompt
+from ..utils import Prompt, Word
 from .utils import ChatmlTemplateMeta
 
 INTERNLM_SYSTEM = (
@@ -59,13 +59,13 @@ class InternLMXComposer2Template(Template):
             HD_transform = get_class_from_dynamic_module('ixc_utils.HD_transform', self.model.model_dir)
             images = [HD_transform(image, hd_num=hd_num) for image in images]
         images = [self.model.vis_processor(image).to(self.model.dtype) for image in images]
-        encoded['_data'] = {'input_ids': encoded['input_ids'], 'labels': encoded['labels'], 'images': images}
+        encoded['images'] = images
         return encoded
 
-    def _post_encode(self, model, data: Any) -> Dict[str, Any]:
-        input_ids = data['input_ids']
-        labels = data['labels']
-        images = data['images']
+    def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        input_ids = inputs['input_ids']
+        labels = inputs['labels']
+        images = inputs['images']
         if len(images) > 0:  # ignore <s>
             input_ids = input_ids[1:]
             if labels is not None:
@@ -133,6 +133,7 @@ class Xcomposer2TemplateMeta(TemplateMeta):
     suffix: Prompt = field(default_factory=lambda: ['[UNUSED_TOKEN_145]'])
     system_prefix: Optional[Prompt] = field(
         default_factory=lambda: ['<s>[UNUSED_TOKEN_146]system\n{{SYSTEM}}[UNUSED_TOKEN_145]\n'])
+    stop_words: List[Word] = field(default_factory=lambda: ['<|im_end|>'])
 
 
 register_template(

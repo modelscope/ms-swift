@@ -27,7 +27,7 @@ def _test(infer_backend):
     from swift.llm import DeployArguments
     from swift.llm import run_deploy
     args = DeployArguments(model='qwen/Qwen2-7B-Instruct', infer_backend=infer_backend, verbose=False)
-    with run_deploy(args, return_url=False) as port:
+    with run_deploy(args) as port:
         _test_client(port)
 
 

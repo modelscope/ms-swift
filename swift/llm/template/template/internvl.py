@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from functools import partial
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional
 
 import torch
 from torch import nn
@@ -51,7 +51,7 @@ class InternvlTemplate(Template):
                 labels = labels[:idx] + [-100] * len(img_tokens) + labels[idx2 + 1:]
             encoded['input_ids'] = input_ids
             encoded['labels'] = labels
-        encoded['_data'] = {'input_ids': torch.tensor(input_ids), 'pixel_values': pixel_values}
+        encoded['pixel_values'] = pixel_values
         encoded.pop('loss_scale', None)
         return encoded
 
@@ -78,12 +78,14 @@ register_template(
         MLLMTemplateType.internvl,
         default_system='You are an AI assistant whose name is InternLM (书生·浦语).',
         template_cls=InternvlTemplate,
+        placeholder_tokens=['<IMG_CONTEXT>'],
         auto_add_bos=True))
 register_template(
     Phi3TemplateMeta(
         MLLMTemplateType.internvl_phi3,
         default_system='You are an AI assistant whose name is Phi-3.',
         template_cls=InternvlTemplate,
+        placeholder_tokens=['<IMG_CONTEXT>'],
         auto_add_bos=True))
 
 
@@ -127,8 +129,7 @@ class Internvl2Template(InternvlTemplate):
         else:
             return ['<bbox>']
 
-    def _encode(self,
-                inputs: StdTemplateInputs) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super(InternvlTemplate, self)._encode(inputs)
         if len(encoded) == 0:
             return encoded
@@ -159,7 +160,7 @@ class Internvl2Template(InternvlTemplate):
             added_tokens_len += len(img_tokens) - 1
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
-        encoded['_data'] = {'input_ids': torch.tensor(input_ids), 'pixel_values': pixel_values}
+        encoded['pixel_values'] = pixel_values
         encoded.pop('loss_scale', None)
         return encoded
 
@@ -170,10 +171,14 @@ register_template(
     ChatmlTemplateMeta(
         MLLMTemplateType.internvl2,
         default_system='你是由上海人工智能实验室联合商汤科技开发的书生多模态大模型，英文名叫InternVL, 是一个有用无害的人工智能助手。',
-        template_cls=Internvl2Template))
+        template_cls=Internvl2Template,
+        placeholder_tokens=['<IMG_CONTEXT>'],
+    ))
 
 register_template(
     Phi3TemplateMeta(
         MLLMTemplateType.internvl2_phi3,
         default_system='You are an AI assistant whose name is Phi-3.',
-        template_cls=Internvl2Template))
+        template_cls=Internvl2Template,
+        placeholder_tokens=['<IMG_CONTEXT>'],
+    ))

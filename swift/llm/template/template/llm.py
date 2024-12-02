@@ -164,7 +164,7 @@ register_template(
 
 register_template(
     TemplateMeta(
-        LLMTemplateType.wizardlm2_awq,
+        LLMTemplateType.wizardlm2,
         prefix=['{{SYSTEM}}'],
         prompt=['User:\n{{QUERY}}\n\nAssistant:\n'],
         chat_sep=['\n\n'],
@@ -174,7 +174,7 @@ _wizardlm2_system = ('A chat between a curious user and an artificial intelligen
                      'The assistant gives helpful, detailed, and polite answers to the user\'s questions. ')
 register_template(
     TemplateMeta(
-        LLMTemplateType.wizardlm2,
+        LLMTemplateType.wizardlm2_moe,
         prefix=['{{SYSTEM}}'],
         prompt=['USER: {{QUERY}} ASSISTANT:'],
         chat_sep=['</s>'],

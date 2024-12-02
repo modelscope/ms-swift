@@ -48,8 +48,8 @@ class LLMTemplateType:
 
     mistral_nemo = 'mistral_nemo'
     zephyr = 'zephyr'
-    wizardlm2_awq = 'wizardlm2_awq'
     wizardlm2 = 'wizardlm2'
+    wizardlm2_moe = 'wizardlm2_moe'
     gemma = 'gemma'
     phi3 = 'phi3'
 
@@ -105,6 +105,7 @@ class MLLMTemplateType:
     cogagent_chat = 'cogagent_chat'
     cogagent_vqa = 'cogagent_vqa'
     cogvlm = 'cogvlm'
+    cogvlm2 = 'cogvlm2'
     cogvlm2_video = 'cogvlm2_video'
     glm4v = 'glm4v'
 
@@ -117,7 +118,7 @@ class MLLMTemplateType:
 
     mplug_owl2 = 'mplug_owl2'
     mplug_owl3 = 'mplug_owl3'
-    mplug_owl3v = 'mplug_owl3v'
+    mplug_owl3_241101 = 'mplug_owl3_241101'
 
     emu3_chat = 'emu3_chat'
     emu3_gen = 'emu3_gen'
@@ -126,7 +127,7 @@ class MLLMTemplateType:
     idefics3 = 'idefics3'
     pixtral = 'pixtral'
     paligemma = 'paligemma'
-    phi3_vl = 'phi3_vl'
+    phi3_vision = 'phi3_vision'
     florence = 'florence'
     molmo = 'molmo'
 

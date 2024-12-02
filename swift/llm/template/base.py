@@ -84,11 +84,7 @@ class Template(ProcessorMixin):
         else:
             self.default_system = template_meta.default_system
 
-        template_meta.token_attr_to_id(tokenizer)
-
-        for i, token in enumerate(template_meta.placeholder_tokens):
-            if isinstance(token, str):
-                template_meta.placeholder_tokens[i] = tokenizer.convert_tokens_to_ids(token)
+        template_meta.init(tokenizer)
 
         self.template_meta: TemplateMeta = template_meta
         self.use_chat_template = use_chat_template
@@ -218,6 +214,7 @@ class Template(ProcessorMixin):
 
     def _skip_stop_decode(self, generate_ids: List[int], is_finished: bool, **decode_kwargs) -> Any:
         # Do not print template_meta.suffix[-1] and eos_token.
+        # However, other stop_words will be printed.
         tokenizer = self.tokenizer
 
         if len(generate_ids) > 0 and generate_ids[-1] == tokenizer.eos_token_id:
@@ -953,7 +950,20 @@ class Template(ProcessorMixin):
             A tensor after padding
         """
         padding_side = self.padding_side if self.is_training else 'left'
-        return pad_sequence(sequences, batch_first=True, padding_value=padding_value)
+        padding_right = padding_side == 'right'
+        if padding_right:
+            return pad_sequence(sequences, batch_first=True, padding_value=padding_value)
+
+        max_len = max([s.shape[0] for s in sequences])
+
+        padded_sequences = []
+        for seq in sequences:
+            pad_length = max_len - seq.shape[0]
+            pad_tuple = [0] * ((seq.dim() - 1) * 2) + [pad_length, 0]
+            padded_seq = F.pad(seq, tuple(pad_tuple), 'constant', padding_value)
+            padded_sequences.append(padded_seq)
+
+        return torch.stack(padded_sequences)
 
     def safe_decode(self, input_ids: List[int], **tokenizer_kwargs) -> str:
         placeholder_tokens = self.template_meta.placeholder_tokens

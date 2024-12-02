@@ -24,43 +24,40 @@ def get_model_tokenizer_got_ocr2(*args, **kwargs):
 
 register_model(
     ModelMeta(
-        MLLMModelType.got_ocr2,
-        [
+        MLLMModelType.got_ocr2, [
             ModelGroup([
                 Model('stepfun-ai/GOT-OCR2_0', 'stepfun-ai/GOT-OCR2_0'),
-            ], tags=['multi-modal', 'audio']),
+            ]),
         ],
         TemplateType.got_ocr2,
         get_model_tokenizer_got_ocr2,
         model_arch=ModelArch.got_ocr2,
         architectures=['GOTQwenForCausalLM'],
-    ))
+        tags=['vision']))
 
 
 def get_model_tokenizer_idefics(model_dir: str, *args, **kwargs):
     from transformers import AutoProcessor, AutoModelForVision2Seq
     processor = AutoProcessor.from_pretrained(model_dir)
     kwargs['automodel_class'] = AutoModelForVision2Seq
-    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
-    tokenizer.processor = processor
-    return model, tokenizer
+    kwargs['tokenizer'] = processor.tokenizer
+    model, _ = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
+    return model, processor
 
 
 register_model(
     ModelMeta(
-        MLLMModelType.idefics3,
-        [
+        MLLMModelType.idefics3, [
             ModelGroup([
                 Model('AI-ModelScope/Idefics3-8B-Llama3', 'HuggingFaceM4/Idefics3-8B-Llama3'),
-            ],
-                       tags=['multi-modal', 'vision'],
-                       requires=['transformers>=4.45']),
+            ]),
         ],
         TemplateType.idefics3,
         get_model_tokenizer_idefics,
         model_arch=ModelArch.idefics3,
         architectures=['Idefics3ForConditionalGeneration'],
-    ))
+        tags=['vision'],
+        requires=['transformers>=4.45']))
 
 
 def get_model_tokenizer_pixtral(model_dir: str, *args, **kwargs):
@@ -78,22 +75,22 @@ register_model(
         [
             ModelGroup([
                 Model('AI-ModelScope/pixtral-12b', 'mistral-community/pixtral-12b'),
-            ],
-                       tags=['multi-modal', 'vision'],
-                       requires=['transformers>=4.45']),
+            ]),
         ],
         TemplateType.pixtral,
         get_model_tokenizer_pixtral,
-        model_arch=ModelArch.llava,
+        model_arch=ModelArch.llava_hf,
         architectures=['LlavaForConditionalGeneration'],
+        requires=['transformers>=4.45'],
+        tags=['vision'],
     ))
 
 
-def get_model_tokenizer_molmoe_1b(model_dir: str,
-                                  model_info: ModelInfo,
-                                  model_kwargs: Dict[str, Any],
-                                  load_model: bool = True,
-                                  **kwargs):
+def get_model_tokenizer_molmoe(model_dir: str,
+                               model_info: ModelInfo,
+                               model_kwargs: Dict[str, Any],
+                               load_model: bool = True,
+                               **kwargs):
     from transformers import AutoProcessor
     processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
     model, tokenizer = get_model_tokenizer_with_flash_attn(
@@ -130,20 +127,18 @@ def get_model_tokenizer_molmoe_1b(model_dir: str,
 
 register_model(
     ModelMeta(
-        MLLMModelType.molmoe_1b,
-        [
+        MLLMModelType.molmoe, [
             ModelGroup([
                 Model('LLM-Research/MolmoE-1B-0924', 'allenai/MolmoE-1B-0924'),
-            ],
-                       tags=['multi-modal', 'vision'],
-                       requires=['transformers>=4.45']),
+            ]),
         ],
         TemplateType.molmo,
-        get_model_tokenizer_molmoe_1b,
+        get_model_tokenizer_molmoe,
         model_arch=ModelArch.molmo,
         torch_dtype=torch.float32,
         architectures=['MolmoForCausalLM'],
-    ))
+        tags=['vision'],
+        requires=['transformers>=4.45']))
 
 
 def get_model_tokenizer_molmo(model_dir: str,
@@ -174,18 +169,16 @@ def get_model_tokenizer_molmo(model_dir: str,
 
 register_model(
     ModelMeta(
-        MLLMModelType.molmo,
-        [
+        MLLMModelType.molmo, [
             ModelGroup([
                 Model('LLM-Research/Molmo-7B-O-0924', 'allenai/Molmo-7B-O-0924'),
                 Model('LLM-Research/Molmo-7B-D-0924', 'allenai/Molmo-7B-D-0924'),
                 Model('LLM-Research/Molmo-72B-0924', 'allenai/Molmo-72B-0924'),
-            ],
-                       tags=['multi-modal', 'vision'],
-                       requires=['transformers>=4.45']),
+            ]),
         ],
         TemplateType.molmo,
         get_model_tokenizer_molmo,
         model_arch=ModelArch.molmo,
         architectures=['MolmoForCausalLM'],
-    ))
+        tags=['vision'],
+        requires=['transformers>=4.45']))

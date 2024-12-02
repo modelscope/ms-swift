@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal, Optional, Tuple, Type
+from typing import Any, Dict, List, Literal, Optional, Tuple, Type, Union
 
 import torch
 import torch.nn as nn
@@ -148,7 +148,8 @@ class CogTemplate(Template):
             encoded['images'] = [[img.to(dtype=self.config.torch_dtype)] for img in inputs2['images']]
             if 'cross_images' in inputs2:
                 # is cogagent
-                encoded['cross_images'] = [[cross_img.to(dtype=self.config.torch_dtype)] for cross_img in inputs2['cross_images']]
+                encoded['cross_images'] = [[cross_img.to(dtype=self.config.torch_dtype)]
+                                           for cross_img in inputs2['cross_images']]
         return encoded
 
     def _data_collator(self,
@@ -193,6 +194,10 @@ class CogVLMTemplateMeta(TemplateMeta):
 
 register_template(CogVLMTemplateMeta(MLLMTemplateType.cogvlm, template_cls=CogTemplate))
 
+register_template(
+    CogVLMTemplateMeta(
+        MLLMTemplateType.cogvlm2, template_cls=CogTemplate, placeholder_tokens=['<|reserved_special_token_0|>']))
+
 
 class Cog2VideoTemplate(CogTemplate):
     use_model = True
@@ -229,7 +234,9 @@ class Cog2VideoTemplate(CogTemplate):
         return encoded
 
 
-register_template(CogVLMTemplateMeta(
-    MLLMTemplateType.cogvlm2_video,
-    template_cls=Cog2VideoTemplate,
-))
+register_template(
+    CogVLMTemplateMeta(
+        MLLMTemplateType.cogvlm2_video,
+        template_cls=Cog2VideoTemplate,
+        placeholder_tokens=['<|reserved_special_token_0|>'],
+    ))

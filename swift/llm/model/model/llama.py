@@ -191,14 +191,14 @@ register_model(
                 Model('LLM-Research/Llama-3.2-90B-Vision-Instruct', 'meta-llama/Llama-3.2-90B-Vision-Instruct'),
                 Model('LLM-Research/Llama-3.2-11B-Vision', 'meta-llama/Llama-3.2-11B-Vision'),
                 Model('LLM-Research/Llama-3.2-90B-Vision', 'meta-llama/Llama-3.2-90B-Vision'),
-            ],
-                       tags=['vision'])
+            ])
         ],
         TemplateType.llama3_2_vision,
         get_model_tokenizer_llama3_2_vision,
         requires=['transformers>=4.45'],
         architectures=['MllamaForConditionalGeneration'],
         model_arch=ModelArch.llama3_2_vision,
+        tags=['vision'],
     ))
 
 
@@ -207,9 +207,8 @@ def get_model_tokenizer_omnli(model_dir: str,
                               model_kwargs: Dict[str, Any],
                               load_model: bool = True,
                               **kwargs):
-    if 'local_repo_path' in kwargs:
-        local_repo_path = kwargs['local_repo_path']
-    else:
+    local_repo_path = kwargs.get('local_repo_path')
+    if not local_repo_path:
         local_repo_path = git_clone_github('https://github.com/ictnlp/LLaMA-Omni')
     sys.path.append(os.path.join(local_repo_path))
     from omni_speech.model import OmniSpeech2SLlamaForCausalLM, OmniSpeechLlamaForCausalLM
@@ -238,19 +237,15 @@ def get_model_tokenizer_omnli(model_dir: str,
 register_model(
     ModelMeta(
         MLLMModelType.llama3_1_omni,
-        [
-            ModelGroup(
-                [
-                    Model('ICTNLP/Llama-3.1-8B-Omni', 'ICTNLP/Llama-3.1-8B-Omni'),
-                ],
-                tags=['audio'],
-                requires=['whisper', 'openai-whisper'],
-            )
-        ],
+        [ModelGroup([
+            Model('ICTNLP/Llama-3.1-8B-Omni', 'ICTNLP/Llama-3.1-8B-Omni'),
+        ], )],
         TemplateType.llama3_1_omni,
         get_model_tokenizer_omnli,
         architectures=['OmniSpeech2SLlamaForCausalLM'],
         model_arch=ModelArch.llama3_1_omni,
+        requires=['whisper', 'openai-whisper'],
+        tags=['audio'],
     ))
 
 register_model(
@@ -297,55 +292,26 @@ register_model(
         architectures=['LlamaForCausalLM'],
     ))
 
-
-def get_model_tokenizer_codellama(model_dir: str,
-                                  model_info: ModelInfo,
-                                  model_kwargs: Dict[str, Any],
-                                  load_model: bool = True,
-                                  **kwargs):
-    tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True, use_fast=False, legacy=False)
-    return get_model_tokenizer_with_flash_attn(
-        model_dir, model_info, model_kwargs, load_model, tokenizer=tokenizer, **kwargs)
-
-
 register_model(
     ModelMeta(
-        LLMModelType.codefuse_codellama,
-        [
-            ModelGroup(
-                [
-                    Model('codefuse-ai/CodeFuse-CodeLlama-34B', 'codefuse-ai/CodeFuse-CodeLlama-34B'),
-                ],
-                tags=['coding'],
-            ),
-        ],
-        TemplateType.codefuse_codellama,
-        get_model_tokenizer_codellama,
-        model_arch=ModelArch.llama,
-        architectures=['LlamaForCausalLM'],
-    ))
-
-register_model(
-    ModelMeta(
-        LLMModelType.numina,
-        [
+        LLMModelType.numina, [
             ModelGroup([
                 Model('AI-ModelScope/NuminaMath-7B-TIR', 'AI-MO/NuminaMath-7B-TIR'),
-            ], tags=['math']),
+            ]),
         ],
         TemplateType.numina,
         get_model_tokenizer_with_flash_attn,
         model_arch=ModelArch.llama,
         architectures=['LlamaForCausalLM'],
-    ))
+        tags=['math']))
 
 register_model(
     ModelMeta(
         LLMModelType.ziya,
         [
             ModelGroup([
-                Model('Fengshenbang/Ziya2-13B-Chat', 'IDEA-CCNL/Ziya2-13B-Chat'),
                 Model('Fengshenbang/Ziya2-13B-Base', 'IDEA-CCNL/Ziya2-13B-Base'),
+                Model('Fengshenbang/Ziya2-13B-Chat', 'IDEA-CCNL/Ziya2-13B-Chat'),
             ]),
         ],
         TemplateType.ziya,

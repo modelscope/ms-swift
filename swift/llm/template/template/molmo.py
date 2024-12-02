@@ -42,36 +42,36 @@ class MolmoTemplate(Template):
             }
         }
 
-    def _encode(self, template_inputs: StdTemplateInputs) -> Dict[str, Any]:
-        inputs = super()._encode(template_inputs)
-        if len(inputs) == 0:
-            return inputs
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded = super()._encode(inputs)
+        if len(encoded) == 0:
+            return encoded
         # image
-        raw_image = template_inputs.images
+        raw_image = inputs.images
         res = {}
-        labels = inputs['labels']
+        labels = encoded['labels']
         if raw_image:
             image_id = self.tokenizer.convert_tokens_to_ids(self.image_placeholder)
-            idx_list = findall(inputs['input_ids'], image_id)
-            res = self._process_images(raw_image, inputs['input_ids'], idx_list, labels)
+            idx_list = findall(encoded['input_ids'], image_id)
+            res = self._process_images(raw_image, encoded['input_ids'], idx_list, labels)
             import numpy as np
             if 'image_input_idx' in res:
                 # Shift patch mapping up by one since we added BOS
                 image_input_idx = res['image_input_idx']
                 res['image_input_idx'] = np.where(image_input_idx < 0, image_input_idx, image_input_idx + 1)
-            inputs['input_ids'] = res.pop('input_ids').tolist()
+            encoded['input_ids'] = res.pop('input_ids').tolist()
             if labels:
-                inputs['labels'] = [-100] + res.pop('labels')  # add one label for BOS
+                encoded['labels'] = [-100] + res.pop('labels')  # add one label for BOS
 
             for k, v in res.items():
                 res[k] = torch.from_numpy(v).unsqueeze(0)
         bos = self.tokenizer.bos_token_id or self.tokenizer.eos_token_id
-        inputs['input_ids'] = [bos] + inputs['input_ids']
-        res.update({'input_ids': inputs['input_ids']})
+        encoded['input_ids'] = [bos] + encoded['input_ids']
+        res.update({'input_ids': encoded['input_ids']})
         # prepare meta inputs
-        inputs.update(self.prepare_meta_inputs(res))
+        encoded.update(self.prepare_meta_inputs(res))
 
-        return inputs
+        return encoded
 
     def _process_images(self, images: List, tokens: List, idx_list: List = None, labels: List = None) -> torch.Tensor:
         from PIL import ImageOps
@@ -90,12 +90,12 @@ class MolmoTemplate(Template):
             # For now only support inserting images at the start
         if idx_list is None:
             idx_list = [-1] * len(images)
-        image_patch_token_id = self.tokenizer.processor.special_token_ids[self.DEFAULT_IMAGE_PATCH_TOKEN]
-        image_col_token_id = self.tokenizer.processor.special_token_ids[self.DEFAULT_IM_COL_TOKEN]
-        image_start_token_id = self.tokenizer.processor.special_token_ids[self.DEFAULT_IM_START_TOKEN]
-        image_end_token_id = self.tokenizer.processor.special_token_ids[self.DEFAULT_IM_END_TOKEN]
+        image_patch_token_id = self.processor.special_token_ids[self.DEFAULT_IMAGE_PATCH_TOKEN]
+        image_col_token_id = self.processor.special_token_ids[self.DEFAULT_IM_COL_TOKEN]
+        image_start_token_id = self.processor.special_token_ids[self.DEFAULT_IM_START_TOKEN]
+        image_end_token_id = self.processor.special_token_ids[self.DEFAULT_IM_END_TOKEN]
         sequence_length = self.processor_kwargs['text_kwargs']['sequence_length']
-        res = self.tokenizer.processor.image_processor.multimodal_preprocess(
+        res = self.processor.image_processor.multimodal_preprocess(
             images=images,
             image_idx=idx_list,
             tokens=np.asarray(tokens).astype(np.int32),
@@ -182,4 +182,5 @@ register_template(
         chat_sep=['<|endoftext|>'],
         suffix=['<|endoftext|>'],
         template_cls=MolmoTemplate,
+        placeholder_tokens=['<|image|>'],
     ))

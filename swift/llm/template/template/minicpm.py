@@ -124,12 +124,9 @@ class MiniCPMVTemplate(Template):
         encoded = {
             'input_ids': input_ids,
             'labels': labels,
-            '_data': {
-                'input_ids': torch.tensor(input_ids)[None],
-                'image_bound': image_bound,
-                'pixel_values': pixel_values,
-                'tgt_sizes': tgt_sizes
-            }
+            'image_bound': image_bound,
+            'pixel_values': pixel_values,
+            'tgt_sizes': tgt_sizes
         }
         return encoded
 
@@ -145,7 +142,12 @@ class MiniCPMV2_5Template(MiniCPMVTemplate):
     is_v2_5 = True
 
 
-register_template(Llama3TemplateMeta(MLLMTemplateType.minicpmv2_5, template_cls=MiniCPMV2_5Template))
+register_template(
+    Llama3TemplateMeta(
+        MLLMTemplateType.minicpmv2_5,
+        template_cls=MiniCPMV2_5Template,
+        placeholder_tokens=['<unk>'],
+    ))
 
 
 class MiniCPMV2_6Template(MiniCPMVTemplate):
@@ -181,7 +183,8 @@ class MiniCPMV2_6Template(MiniCPMVTemplate):
         idx_list.insert(0, -1)
 
         image_processor = self.processor.image_processor
-        image_inputs = image_processor([images], return_tensors='pt', max_slice_nums=max_slice_nums).to(self.config.torch_dtype)
+        image_inputs = image_processor([images], return_tensors='pt',
+                                       max_slice_nums=max_slice_nums).to(self.config.torch_dtype)
 
         res_input_ids = []
         res_labels = []
@@ -217,14 +220,16 @@ class MiniCPMV2_6Template(MiniCPMVTemplate):
         encoded = {
             'input_ids': input_ids,
             'labels': labels,
-            '_data': {
-                'input_ids': torch.tensor(input_ids)[None],
-                'image_bound': image_bound,
-                'pixel_values': image_inputs['pixel_values'],
-                'tgt_sizes': image_inputs['tgt_sizes']
-            }
+            'image_bound': image_bound,
+            'pixel_values': image_inputs['pixel_values'],
+            'tgt_sizes': image_inputs['tgt_sizes']
         }
         return encoded
 
 
-register_template(QwenTemplateMeta(MLLMTemplateType.minicpmv2_6, template_cls=MiniCPMV2_6Template))
+register_template(
+    QwenTemplateMeta(
+        MLLMTemplateType.minicpmv2_6,
+        template_cls=MiniCPMV2_6Template,
+        placeholder_tokens=['<unk>'],
+    ))

@@ -135,32 +135,24 @@ class Emu3ChatTemplate(Template):
     system = 'You are a helpful assistant.'
     image_placeholder = ['<|image token|>']
 
-    def _encode(self, template_inputs: StdTemplateInputs) -> Dict[str, Any]:
-        inputs = super()._encode(template_inputs)
-        if len(inputs) == 0:
-            return inputs
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded = super()._encode(inputs)
+        if len(encoded) == 0:
+            return encoded
         # image
-        raw_image = template_inputs.images
-        if raw_image:
-            inputs['_data'] = {'raw_image': raw_image, 'input_ids': inputs['input_ids'], 'labels': inputs['labels']}
-
-        return inputs
-
-    def _post_encode(self, model, data: Any) -> Dict[str, Any]:
-        raw_images = data['raw_image']
-        input_ids = data['input_ids']
-        labels = data['labels']
-        image_tokens = self.tokenizer.processor.tokenize_image(raw_images)
+        images = inputs.images
+        input_ids = inputs['input_ids']
+        labels = inputs['labels']
+        image_tokens = self.processor.tokenize_image(images)
         image_prompts = []
         idxs = findall(input_ids, self.tokenizer.encode(self.image_placeholder))
         # Create image prompts
-        for i in range(len(raw_images)):
+        for i in range(len(images)):
             h, w = image_tokens[i].shape
-            imgstr = self.tokenizer.processor.to_imgstr(image_tokens[i])
+            imgstr = self.processor.to_imgstr(image_tokens[i])
             image_prompt = (
-                self.tokenizer.boi_token + self.tokenizer.processor.prefix_template.format(H=h, W=w)
-                + self.tokenizer.img_token + imgstr + self.tokenizer.eol_token + self.tokenizer.eof_token
-                + self.tokenizer.eoi_token)
+                self.tokenizer.boi_token + self.processor.prefix_template.format(H=h, W=w) + self.tokenizer.img_token
+                + imgstr + self.tokenizer.eol_token + self.tokenizer.eof_token + self.tokenizer.eoi_token)
             image_prompts.append(self.tokenizer.encode(image_prompt))
         added_tokens_len = 0
         # Insert image tokens into input_ids
