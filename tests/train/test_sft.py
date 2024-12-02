@@ -73,6 +73,16 @@ def test_mllm_zero3():
             **kwargs))
 
 
+def test_qwen_vl():
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+    from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
+    sft_main(
+        TrainArguments(
+            model='qwen/Qwen-VL-Chat',
+            dataset=['modelscope/coco_2014_caption:validation#100'],  #
+            **kwargs))
+
+
 def test_llm_gptq():
     from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
     result = sft_main(
@@ -259,7 +269,7 @@ if __name__ == '__main__':
     # test_mllm_streaming_zero3()
     # test_mllm_streaming_mp_ddp()
     # test_llm_bnb()
-    test_llm_hqq()
+    # test_llm_hqq()
     # test_moe()
     # test_resume_from_checkpoint()
     # test_resume_only_model()
@@ -267,3 +277,4 @@ if __name__ == '__main__':
     # test_predict_with_generate()
     # test_predict_with_generate_zero3()
     # test_template()
+    test_qwen_vl()

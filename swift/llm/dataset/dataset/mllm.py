@@ -908,7 +908,6 @@ register_dataset(
         hf_dataset_id='Multimodal-Fatima/OK-VQA_train',
         preprocess_func=ResponsePreprocessor(columns_mapping={
             'image': 'images',
-            'answers': 'response'
         }),
         tags=['multi-modal', 'en', 'vqa', 'quality']))
 

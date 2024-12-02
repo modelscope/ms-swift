@@ -15,7 +15,7 @@ from ..utils import ModelInfo, git_clone_github
 logger = get_logger()
 
 
-def get_model_tokenizer_yi1_5(model_dir, *args, **kwargs):
+def get_model_tokenizer_yi(model_dir, *args, **kwargs):
     tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True, use_fast=False)
     return get_model_tokenizer_with_flash_attn(model_dir, *args, tokenizer=tokenizer, **kwargs)
 
@@ -38,7 +38,7 @@ def get_model_tokenizer_yi_vl(model_dir: str,
     model_config.attention_dropout = 0.
     key_info['model_path'] = model_dir
     kwargs.pop('automodel_class', None)
-    model, tokenizer = get_model_tokenizer_with_flash_attn(
+    model, tokenizer = get_model_tokenizer_yi(
         model_dir,
         model_info,
         model_kwargs,
@@ -75,12 +75,6 @@ register_model(
         requires=['transformers>=4.34'],
         tags=['vision'],
     ))
-
-
-def get_model_tokenizer_yi(model_dir, *args, **kwargs):
-    tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True, use_fast=False)
-    return get_model_tokenizer_with_flash_attn(model_dir, *args, tokenizer=tokenizer, **kwargs)
-
 
 register_model(
     ModelMeta(
@@ -152,7 +146,7 @@ register_model(
             ]),
         ],
         TemplateType.sus,
-        get_model_tokenizer_with_flash_attn,
+        get_model_tokenizer_yi,
         model_arch=ModelArch.llama,
         architectures=['LlamaForCausalLM'],
     ))

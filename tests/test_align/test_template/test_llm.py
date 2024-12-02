@@ -65,6 +65,20 @@ def test_internlm2():
     _infer_model(pt_engine)
 
 
+def test_yi_coder():
+    pt_engine = PtEngine('01ai/Yi-Coder-1.5B-Chat')
+    _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    _infer_model(pt_engine)
+
+
+def test_yi():
+    pt_engine = PtEngine('01ai/Yi-6B-Chat')
+    _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    _infer_model(pt_engine)
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig, get_template, get_model_tokenizer
     from swift.utils import get_logger, seed_everything
@@ -74,4 +88,5 @@ if __name__ == '__main__':
     # test_qwq()
     # test_internlm()
     # test_internlm2()
-    #
+    # test_yi_coder()
+    # test_yi()
