@@ -28,7 +28,6 @@ def get_dataset_features(dataset: DATASET_TYPE) -> Dict[str, Any]:
 
 
 class RowPreprocessor:
-    cast_mm_data = True
 
     def __init__(self,
                  *,
@@ -187,8 +186,6 @@ class RowPreprocessor:
             del ArrowWriter.__origin_init__
 
     def _cast_mm_data(self, dataset, decode: bool):
-        if not self.cast_mm_data:
-            return dataset
         features = get_dataset_features(dataset)
         for key in ['images', 'videos', 'audios']:
             if key in features and isinstance(features[key], Image) and features[key].decode != decode:
@@ -228,7 +225,6 @@ class RowPreprocessor:
             logger.info(
                 f'Dataset filtered, origin length: {len(dataset)}, filtered dataset length: {len(dataset_mapped)}')
 
-        dataset_mapped = self._cast_mm_data(dataset_mapped, True)
         return dataset_mapped
 
 

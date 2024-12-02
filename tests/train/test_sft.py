@@ -79,7 +79,7 @@ def test_qwen_vl():
     sft_main(
         TrainArguments(
             model='qwen/Qwen-VL-Chat',
-            dataset=['modelscope/coco_2014_caption:validation#100'],  #
+            dataset=['AI-ModelScope/LaTeX_OCR#40', 'modelscope/coco_2014_caption:validation#40'],
             **kwargs))
 
 

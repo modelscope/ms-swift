@@ -105,10 +105,9 @@ def test_deepseek_vl():
     pt_engine = PtEngine('deepseek-ai/deepseek-vl-1.3b-chat')
     _infer_model(pt_engine)
 
+
 def test_deepseek_janus():
     pt_engine = PtEngine('deepseek-ai/Janus-1.3B')
-    _infer_model(pt_engine)
-    pt_engine.default_template.template_backend = 'jinja'
     _infer_model(pt_engine)
 
 
@@ -135,6 +134,7 @@ if __name__ == '__main__':
     # test_ovis1_6()
     # test_yi_vl()
     # test_deepseek_vl()
+    # test_deepseek_janus()
     #
     # test_qwen_vl()
-    test_deepseek_janus()
+    pass

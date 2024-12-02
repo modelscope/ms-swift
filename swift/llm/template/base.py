@@ -36,7 +36,7 @@ class Template(ProcessorMixin):
     image_placeholder = ['<image>']
     video_placeholder = ['<video>']
     audio_placeholder = ['<audio>']
-    load_medias = True
+    load_images = True
     skip_prompt = True
     use_model = False
 
@@ -102,6 +102,24 @@ class Template(ProcessorMixin):
         self._handles = []
         self._deepspeed_initialize = None
 
+    @staticmethod
+    def _load_images(images, load_images: bool) -> None:
+        for i, image in enumerate(images):
+            if load_images:
+                if isinstance(image, dict):
+                    image = image['bytes'] or image['path']
+                image = load_image(image)
+            else:
+                if isinstance(image, dict):
+                    path = image['path']
+                    if path and (path.startswith('http') or os.path.exists(path)):
+                        image = path
+                    else:
+                        image = load_image(image['bytes'])
+                elif not isinstance(image, str):
+                    image = load_image(image)
+            images[i] = image
+
     def _preprocess_inputs(
         self,
         inputs: StdTemplateInputs,
@@ -115,18 +133,18 @@ class Template(ProcessorMixin):
         inputs.system = template_meta.check_system(system)
 
         images = inputs.images
-        load_medias = self.load_medias
-        if self.mode in {'vllm', 'lmdeploy'} or max_pixels is not None or inputs.objects:
-            load_medias = True
-        if images and load_medias:
-            images = load_batch(images, load_image)
-            if max_pixels is not None:
-                assert self.grounding_type != 'real', 'not support'  # TODO:check
-                images = [rescale_image(img, max_pixels) for img in images]
-            inputs.images = images
+        load_images = self.load_images or self.mode in {'vllm', 'lmdeploy'}
+        load_images_origin = load_images
+        if max_pixels is not None or inputs.objects:
+            load_images = True
+        if images:
+            self._load_images(images, load_images)
+        if max_pixels is not None:
+            assert self.grounding_type != 'real', 'not support'  # TODO:check
+            images = [rescale_image(img, max_pixels) for img in images]
         if inputs.objects:
             normalize_bbox(inputs.objects, inputs.images, to_type=self.grounding_type)
-        if images and not self.load_medias:  # fix pt & qwen-vl
+        if images and not load_images_origin:  # fix pt & qwen-vl
             for i, image in enumerate(images):
                 if isinstance(image, Image.Image):
                     images[i] = self._save_pil_image(image)

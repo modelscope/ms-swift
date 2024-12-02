@@ -42,7 +42,7 @@ register_template(QwqTemplateMeta(LLMTemplateType.qwq))
 
 
 class QwenVLTemplate(Template):
-    load_medias = False
+    load_images = False
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:

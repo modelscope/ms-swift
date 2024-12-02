@@ -107,7 +107,7 @@ def load_file(path: Union[str, _T]) -> Union[BytesIO, _T]:
         path = path.strip()
         if path.startswith('http'):
             request_kwargs = {}
-            timeout = float(os.getenv('TIMEOUT', '60'))
+            timeout = float(os.getenv('TIMEOUT', '300'))
             if timeout > 0:
                 request_kwargs['timeout'] = timeout
             content = requests.get(path, **request_kwargs).content
@@ -130,6 +130,8 @@ def load_file(path: Union[str, _T]) -> Union[BytesIO, _T]:
                     raise ValueError(f'invalid image: "{path}"')
                 else:
                     raise ValueError(f'invalid image: {error}')
+    elif isinstance(path, bytes):
+        res = BytesIO(path)
     return res
 
 
