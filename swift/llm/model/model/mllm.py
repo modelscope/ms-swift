@@ -40,9 +40,9 @@ def get_model_tokenizer_idefics(model_dir: str, *args, **kwargs):
     from transformers import AutoProcessor, AutoModelForVision2Seq
     processor = AutoProcessor.from_pretrained(model_dir)
     kwargs['automodel_class'] = AutoModelForVision2Seq
-    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
-    tokenizer.processor = processor
-    return model, tokenizer
+    kwargs['tokenizer'] = processor.tokenizer
+    model, _ = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
+    return model, processor
 
 
 register_model(

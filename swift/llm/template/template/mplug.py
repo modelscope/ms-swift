@@ -25,14 +25,14 @@ class mPlugOwl2Template(Template):
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         from mplug_owl2.mm_utils import process_images
-        processor = self.tokenizer.processor
+        processor = self.processor
         images = inputs.images
         for i, image in enumerate(images):
             # ref: https://modelscope.cn/models/iic/mPLUG-Owl2.1
             max_edge = max(image.size)
             image = image.resize((max_edge, max_edge))
             images[i] = image
-        encoded, _ = super()._encode(inputs)
+        encoded = super()._encode(inputs)
         if len(encoded) == 0:
             return encoded
         input_ids = encoded['input_ids']
@@ -170,7 +170,7 @@ class mPlugOwl3Template(Template):
 class mPlugOwl3_241101Template(mPlugOwl3Template):
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        encoded, _ = super(mPlugOwl3Template, self)._encode(inputs)
+        encoded = super(mPlugOwl3Template, self)._encode(inputs)
         if len(encoded) == 0:
             return encoded
         images = inputs.images
@@ -179,7 +179,7 @@ class mPlugOwl3_241101Template(mPlugOwl3Template):
         input_ids = encoded['input_ids']
         labels = encoded['labels']
         idx_list = findall(input_ids, -100)
-        processor = self.tokenizer.processor
+        processor = self.processor
         encoded = {}
         if images:
             image_inputs = processor.image_processor(images, cut_enable=cut_enable, return_tensors='pt')
@@ -206,11 +206,11 @@ class mPlugOwl3_241101Template(mPlugOwl3Template):
         encoded['labels'] = labels
         return encoded
 
-    def _post_encode(self, model, data: Any) -> Dict[str, Any]:
-        if 'pixel_values' in data:
-            pixel_values = data.pop('pixel_values')
-            data['image_embeds'] = model.forward_image(pixel_values)
-        return data
+    def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        if 'pixel_values' in inputs:
+            pixel_values = inputs.pop('pixel_values')
+            inputs['image_embeds'] = model.forward_image(pixel_values)
+        return inputs
 
     def _data_collator(self,
                        batch: List[Dict[str, Any]],

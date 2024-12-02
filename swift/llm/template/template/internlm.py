@@ -62,10 +62,10 @@ class InternLMXComposer2Template(Template):
         encoded['images'] = images
         return encoded
 
-    def _post_encode(self, model, data: Any) -> Dict[str, Any]:
-        input_ids = data['input_ids']
-        labels = data['labels']
-        images = data['images']
+    def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        input_ids = inputs['input_ids']
+        labels = inputs['labels']
+        images = inputs['images']
         if len(images) > 0:  # ignore <s>
             input_ids = input_ids[1:]
             if labels is not None:

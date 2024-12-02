@@ -42,7 +42,7 @@ class MolmoTemplate(Template):
         }
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        encoded, _ = super()._encode(inputs)
+        encoded = super()._encode(inputs)
         if len(encoded) == 0:
             return encoded
         # image
@@ -89,12 +89,12 @@ class MolmoTemplate(Template):
             # For now only support inserting images at the start
         if idx_list is None:
             idx_list = [-1] * len(images)
-        image_patch_token_id = self.tokenizer.processor.special_token_ids[self.DEFAULT_IMAGE_PATCH_TOKEN]
-        image_col_token_id = self.tokenizer.processor.special_token_ids[self.DEFAULT_IM_COL_TOKEN]
-        image_start_token_id = self.tokenizer.processor.special_token_ids[self.DEFAULT_IM_START_TOKEN]
-        image_end_token_id = self.tokenizer.processor.special_token_ids[self.DEFAULT_IM_END_TOKEN]
+        image_patch_token_id = self.processor.special_token_ids[self.DEFAULT_IMAGE_PATCH_TOKEN]
+        image_col_token_id = self.processor.special_token_ids[self.DEFAULT_IM_COL_TOKEN]
+        image_start_token_id = self.processor.special_token_ids[self.DEFAULT_IM_START_TOKEN]
+        image_end_token_id = self.processor.special_token_ids[self.DEFAULT_IM_END_TOKEN]
         sequence_length = self.processor_kwargs['text_kwargs']['sequence_length']
-        res = self.tokenizer.processor.image_processor.multimodal_preprocess(
+        res = self.processor.image_processor.multimodal_preprocess(
             images=images,
             image_idx=idx_list,
             tokens=np.asarray(tokens).astype(np.int32),

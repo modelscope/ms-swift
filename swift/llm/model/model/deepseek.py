@@ -132,9 +132,8 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
         import collections.abc
         for type_name in collections.abc.__all__:
             setattr(collections, type_name, getattr(collections.abc, type_name))
-    if 'local_repo_path' in kwargs:
-        local_repo_path = kwargs['local_repo_path']
-    else:
+    local_repo_path = kwargs.get('local_repo_path')
+    if not local_repo_path:
         local_repo_path = git_clone_github('https://github.com/deepseek-ai/DeepSeek-VL')
     sys.path.append(os.path.join(local_repo_path))
     from deepseek_vl.models import VLChatProcessor
@@ -170,9 +169,8 @@ register_model(
 
 
 def get_model_tokenizer_deepseek_janus(model_dir: str, *args, **kwargs):
-    if 'local_repo_path' in kwargs:
-        local_repo_path = kwargs['local_repo_path']
-    else:
+    local_repo_path = kwargs.get('local_repo_path')
+    if not local_repo_path:
         local_repo_path = git_clone_github('https://github.com/deepseek-ai/Janus')
     sys.path.append(os.path.join(local_repo_path))
     from janus.models import MultiModalityCausalLM, VLChatProcessor

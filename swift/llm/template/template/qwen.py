@@ -257,15 +257,15 @@ class Qwen2VLTemplate(Template):
         encoded['labels'] = labels
         return encoded
 
-    def _post_encode(self, model, data: Any) -> Dict[str, Any]:
+    def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
         if self.mode != 'train':
-            return data
-        input_ids = data['input_ids']
+            return inputs
+        input_ids = inputs['input_ids']
         _model = model.model
         if not hasattr(_model, 'embed_tokens'):
             _model = _model.model  # LoRA
-        pixel_values = data.get('pixel_values')
-        pixel_values_videos = data.get('pixel_values_videos')
+        pixel_values = inputs.get('pixel_values')
+        pixel_values_videos = inputs.get('pixel_values_videos')
         inputs_embeds = _model.embed_tokens(input_ids)
         if pixel_values is None and pixel_values_videos is None:  # plain-text
             if is_deepspeed_enabled():
@@ -281,7 +281,7 @@ class Qwen2VLTemplate(Template):
                 inputs_embeds += image_embeds.mean() * 0.
         else:
             if pixel_values is not None:
-                image_grid_thw = data['image_grid_thw']
+                image_grid_thw = inputs['image_grid_thw']
                 pixel_values = pixel_values.type(model.visual.get_dtype())
                 image_embeds = model.visual(pixel_values, grid_thw=image_grid_thw)
                 image_mask = (input_ids == model.config.image_token_id).unsqueeze(-1).expand_as(inputs_embeds)
@@ -289,7 +289,7 @@ class Qwen2VLTemplate(Template):
                 inputs_embeds = inputs_embeds.masked_scatter(image_mask, image_embeds)
 
             if pixel_values_videos is not None:
-                video_grid_thw = data['video_grid_thw']
+                video_grid_thw = inputs['video_grid_thw']
                 pixel_values_videos = pixel_values_videos.type(model.visual.get_dtype())
                 video_embeds = model.visual(pixel_values_videos, grid_thw=video_grid_thw)
                 video_mask = (input_ids == model.config.video_token_id).unsqueeze(-1).expand_as(inputs_embeds)
@@ -297,7 +297,7 @@ class Qwen2VLTemplate(Template):
                 inputs_embeds = inputs_embeds.masked_scatter(video_mask, video_embeds)
         res = {'inputs_embeds': inputs_embeds}
         for key in ['input_ids', 'image_grid_thw', 'video_grid_thw']:
-            value = data.get(key, None)
+            value = inputs.get(key, None)
             if value is not None:
                 res[key] = value
         return res
@@ -364,12 +364,12 @@ class Ovis1_6Template(Template):
         inputs['pixel_values'] = [pixel_values]
         return inputs
 
-    def _post_encode(self, model, data: Any) -> Dict[str, Any]:
+    def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
         _, inputs_embeds, labels, _ = self.model.merge_multimodal(
-            text_input_ids=data['input_ids'],
-            text_attention_masks=torch.ones_like(data['input_ids']),  # not use, only compat
-            text_labels=data['labels'],
-            pixel_values=data['pixel_values'],
+            text_input_ids=inputs['input_ids'],
+            text_attention_masks=torch.ones_like(inputs['input_ids']),  # not use, only compat
+            text_labels=inputs['labels'],
+            pixel_values=inputs['pixel_values'],
             left_padding=True)
         return {'inputs_embeds': inputs_embeds[0], 'labels': labels}
 

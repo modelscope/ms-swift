@@ -27,9 +27,8 @@ def get_model_tokenizer_mplug_owl2(model_dir: str,
                                    model_kwargs: Dict[str, Any],
                                    load_model: bool = True,
                                    **kwargs):
-    if 'local_repo_path' in kwargs:
-        local_repo_path = kwargs['local_repo_path']
-    else:
+    local_repo_path = kwargs.get('local_repo_path')
+    if not local_repo_path:
         local_repo_path = git_clone_github('https://github.com/X-PLUG/mPLUG-Owl')
     local_repo_path = os.path.join(local_repo_path, 'mPLUG-Owl2')
     sys.path.append(os.path.join(local_repo_path))
@@ -47,8 +46,8 @@ def get_model_tokenizer_mplug_owl2(model_dir: str,
         model_dir, model_info, model_kwargs, load_model, model_config=model_config, **kwargs)
     logger.info('Please ignore the unimported warning.')
     processor = CLIPImageProcessor.from_pretrained(model_dir)
-    tokenizer.processor = processor
-    return model, tokenizer
+    processor.tokenizer = tokenizer
+    return model, processor
 
 
 register_model(

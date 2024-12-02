@@ -950,7 +950,20 @@ class Template(ProcessorMixin):
             A tensor after padding
         """
         padding_side = self.padding_side if self.is_training else 'left'
-        return pad_sequence(sequences, batch_first=True, padding_value=padding_value, padding_side=padding_side)
+        padding_right = padding_side == 'right'
+        if padding_right:
+            return pad_sequence(sequences, batch_first=True, padding_value=padding_value)
+
+        max_len = max([s.shape[0] for s in sequences])
+
+        padded_sequences = []
+        for seq in sequences:
+            pad_length = max_len - seq.shape[0]
+            pad_tuple = [0] * ((seq.dim() - 1) * 2) + [pad_length, 0]
+            padded_seq = F.pad(seq, tuple(pad_tuple), 'constant', padding_value)
+            padded_sequences.append(padded_seq)
+
+        return torch.stack(padded_sequences)
 
     def safe_decode(self, input_ids: List[int], **tokenizer_kwargs) -> str:
         placeholder_tokens = self.template_meta.placeholder_tokens

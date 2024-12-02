@@ -294,13 +294,12 @@ def get_model_tokenizer_llava(model_dir: str,
                               load_model: bool = True,
                               **kwargs):
     llm_model_type = kwargs.pop('llm_model_type')
-    if 'local_repo_path' in kwargs:
-        local_repo_path = kwargs['local_repo_path']
-    elif 'next' in llm_model_type:
-        repo_path = 'https://github.com/LLaVA-VL/LLaVA-NeXT'
-        local_repo_path = git_clone_github(repo_path)
-    else:
-        repo_path = 'https://github.com/haotian-liu/LLaVA'
+    local_repo_path = kwargs.get('local_repo_path')
+    if not local_repo_path:
+        if 'next' in llm_model_type:
+            repo_path = 'https://github.com/LLaVA-VL/LLaVA-NeXT'
+        else:
+            repo_path = 'https://github.com/haotian-liu/LLaVA'
         local_repo_path = git_clone_github(repo_path)
     sys.path.append(os.path.join(local_repo_path))
 
