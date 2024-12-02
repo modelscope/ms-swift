@@ -316,6 +316,7 @@ def get_default_torch_dtype(torch_dtype: Optional[torch.dtype]):
 
 
 def get_model_name(model_id_or_path: str) -> Optional[str]:
+    assert isinstance(model_id_or_path, str), f'model_id_or_path: {model_id_or_path}'
     # compat hf hub
     model_id_or_path = model_id_or_path.rstrip('/')
     match_ = re.search('/models--.+?--(.+?)/snapshots/', model_id_or_path)
@@ -345,7 +346,6 @@ def get_all_models() -> List[str]:
 
 def get_matched_model_meta(model_id_or_path: str) -> Optional[ModelMeta]:
     # TODO: Case insensitive
-    assert isinstance(model_id_or_path, str), f'model_id_or_path: {model_id_or_path}'
     model_name = get_model_name(model_id_or_path).lower()
     for model_type, model_meta in MODEL_MAPPING.items():
         model_group = model_meta.get_matched_model_group(model_name)
@@ -357,7 +357,7 @@ def get_matched_model_meta(model_id_or_path: str) -> Optional[ModelMeta]:
             return model_meta
 
 
-def get_model_info(model_dir: str, model_type: Optional[str], quantization_config) -> ModelInfo:
+def _get_model_info(model_dir: str, model_type: Optional[str], quantization_config) -> ModelInfo:
     config_dict = PretrainedConfig.get_config_dict(model_dir)[0]
     if quantization_config is not None:
         config_dict['quantization_config'] = quantization_config
@@ -420,7 +420,7 @@ def get_model_info_meta(
         ignore_file_pattern=ignore_file_pattern,
         hub_token=hub_token)
     model_type = model_type or getattr(model_meta, 'model_type', None)
-    model_info = get_model_info(model_dir, model_type, quantization_config=quantization_config)
+    model_info = _get_model_info(model_dir, model_type, quantization_config=quantization_config)
     if model_type is None and model_info.model_type is not None:
         model_type = model_info.model_type
         logger.info(f'Setting model_type: {model_type}')

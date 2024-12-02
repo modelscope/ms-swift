@@ -279,11 +279,6 @@ class LLavaTemplate(Template):
         if images:
             res['images'] = images
             res['image_sizes'] = sum([b['image_sizes'] for b in batch if 'image_sizes' in b], start=[])
-        has_images = [(b == -200).sum() for b in res['input_ids']]
-        assert all([
-            h > 0 for h in has_images
-        ]) or not any([h > 0
-                       for h in has_images]), 'Llava does not support mix-batch nlp dataset and multi-modal dataset'
         return res
 
 

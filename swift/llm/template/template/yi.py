@@ -53,11 +53,6 @@ class YiVLTemplate(Template):
         images = [b['images'] for b in batch if 'images' in b]
         if images:
             res['images'] = torch.concat(images)
-        has_images = [(b == -200).sum() for b in res['input_ids']]
-        assert all([
-            h > 0 for h in has_images
-        ]) or not any([h > 0
-                       for h in has_images]), 'YIVL does not support mix-batch nlp dataset and multi-modal dataset'
         return res
 
 

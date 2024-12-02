@@ -64,6 +64,10 @@ class ModelInfo:
     # extra
     config: Optional[PretrainedConfig] = None
 
+    def __post_init__(self):
+        from .register import get_model_name
+        self.model_name = get_model_name(self.model_dir)
+
 
 class HfConfigFactory:
     """This class is used to read config from config.json(maybe params.json also)"""

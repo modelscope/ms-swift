@@ -6,7 +6,7 @@ logger = get_logger()
 
 def _infer_model(pt_engine, system=None):
     seed_everything(42)
-    request_config = RequestConfig(max_tokens=64, temperature=0)
+    request_config = RequestConfig(max_tokens=128, temperature=0)
     messages = []
     if system is not None:
         messages += [{'role': 'system', 'content': system}]
@@ -21,7 +21,7 @@ def _infer_model(pt_engine, system=None):
                            request_config=request_config)
     response = resp[0].choices[0].message.content
     messages += [{'role': 'assistant', 'content': response}]
-    logger.info(f'model: {pt_engine.model_dir}, messages: {messages}')
+    logger.info(f'model: {pt_engine.model_info.model_name}, messages: {messages}')
     return messages
 
 
@@ -52,11 +52,29 @@ def test_qwen2_audio():
 
 
 def test_qwen2_5():
-    pass
+    pt_engine = PtEngine('Qwen/Qwen2.5-3B')
+    _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    _infer_model(pt_engine)
+
+
+def test_qwen1half():
+    pt_engine = PtEngine('Qwen/Qwen1.5-0.5B-Chat-GPTQ-Int4')
+    _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    _infer_model(pt_engine)
+
+
+def test_llava():
+    pt_engine = PtEngine('AI-ModelScope/llava-v1.6-mistral-7b')
+    _infer_model(pt_engine)
 
 
 if __name__ == '__main__':
     # test_qwen2_vl()
     # test_internvl2()
-    test_internvl2_phi3()
+    # test_internvl2_phi3()
     # test_qwen2_audio()
+    # test_qwen2_5()
+    # test_qwen1half()
+    test_llava()
