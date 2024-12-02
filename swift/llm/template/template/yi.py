@@ -61,7 +61,7 @@ register_template(
     TemplateMeta(
         MLLMTemplateType.yi_vl,
         prefix=[],
-        prompt=[[8308], 'Human: {{QUERY}}\n', [8308], 'Assistant:'],
+        prompt=[[8308], ' Human: {{QUERY}}\n', [8308], ' Assistant:'],
         chat_sep=['\n'],
         suffix=['\n', [8308]],
         default_system=yi_vl_default_system,

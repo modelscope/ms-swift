@@ -367,7 +367,7 @@ class Ovis1_6Template(Template):
         _, inputs_embeds, labels, _ = self.model.merge_multimodal(
             text_input_ids=inputs['input_ids'],
             text_attention_masks=torch.ones_like(inputs['input_ids']),  # not use, only compat
-            text_labels=inputs['labels'],
+            text_labels=inputs.get('labels'),
             pixel_values=inputs['pixel_values'],
             left_padding=True)
         return {'inputs_embeds': inputs_embeds[0], 'labels': labels}

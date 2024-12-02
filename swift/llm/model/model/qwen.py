@@ -585,7 +585,7 @@ def get_model_tokenizer_ovis(*args, **kwargs):
         func_list = ['generate', 'forward', 'get_input_embeddings']
         use_submodel_func(model, 'llm', func_list)
         embedding = model.get_input_embeddings()
-        embedding.register_forward_hook(patch_output_clone)
+        patch_output_clone(embedding)
     try:
         # fix device_map
         from transformers.cache_utils import HybridCache

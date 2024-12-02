@@ -60,7 +60,7 @@ def get_model_tokenizer_deepseek_moe(model_dir: str,
 
         for module in model.modules():
             if isinstance(module, mlp_cls):
-                module.register_forward_hook(_dtype_hook)
+                patch_output_to_input_device(module)
     return model, tokenizer
 
 
@@ -175,8 +175,8 @@ def get_model_tokenizer_deepseek_janus(model_dir: str, *args, **kwargs):
     tokenizer = processor.tokenizer
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, *args, tokenizer=tokenizer, **kwargs)
     if model:
-        model.language_model.model.embed_tokens.register_forward_hook(patch_output_clone)
-        model.language_model.model.embed_tokens.register_forward_hook(patch_output_to_input_device)
+        patch_output_clone(model.language_model.model.embed_tokens)
+        patch_output_to_input_device(model.language_model.model.embed_tokens)
         func_list = ['generate', 'get_input_embeddings', 'forward', 'gradient_checkpointing_enable']
         use_submodel_func(model, 'language_model', func_list)
         model.generation_config = model.language_model.generation_config
