@@ -1,7 +1,6 @@
-from swift.llm import PtEngine, RequestConfig, get_template
-from swift.utils import get_logger, seed_everything
+import os
 
-logger = get_logger()
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 
 def _infer_model(pt_engine, system=None):
@@ -48,10 +47,16 @@ def test_llama():
 
 
 def test_qwq():
-    'Qwen/QwQ-32B-Preview'
+    pt_engine = PtEngine('Qwen/QwQ-32B-Preview')
+    _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    _infer_model(pt_engine)
 
 
 if __name__ == '__main__':
+    from swift.llm import PtEngine, RequestConfig, get_template
+    from swift.utils import get_logger, seed_everything
+    logger = get_logger()
     # test_qwen2_5()
     # test_qwen1half()
     #

@@ -1,7 +1,6 @@
-from swift.llm import PtEngine, RequestConfig, get_template
-from swift.utils import get_logger, seed_everything
+import os
 
-logger = get_logger()
+os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 
 
 def _infer_model(pt_engine, system=None):
@@ -33,8 +32,11 @@ def test_qwen2_audio():
     pt_engine = PtEngine('qwen/Qwen2-Audio-7B-Instruct')
     _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
-    _infer_model_jinja(pt_engine)
+    _infer_model(pt_engine)
 
 
 if __name__ == '__main__':
+    from swift.llm import PtEngine, RequestConfig, get_template
+    from swift.utils import get_logger, seed_everything
+    logger = get_logger()
     test_qwen2_audio()

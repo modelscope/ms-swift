@@ -72,12 +72,19 @@ class ModelMeta:
                     if isinstance(value, str) and model_name == value.rsplit('/', 1)[-1].lower():
                         return model_group
 
-    def check_requires(self):
-        try:
-            for require in self.requires:
+    def check_requires(self, model_info=None):
+        extra_requires = []
+        if model_info and model_info.quant_method:
+            mapping = {'bnb': ['bitsandbytes'], 'awq': ['autoawq'], 'gptq': ['auto_gptq']}
+            extra_requires += mapping.get(model_info.quant_method, [])
+        requires = []
+        for require in self.requires + extra_requires:
+            try:
                 require_version(require)
-        except ImportError:
-            requires = ' '.join(f'"{require}"' for require in self.requires)
+            except ImportError:
+                requires.append(f'"{require}"')
+        if requires:
+            requires = ' '.join(requires)
             logger.warning(f'Please install the package: `pip install {requires} -U`.')
 
     def check_infer_backend(self, infer_backend: str) -> None:
@@ -436,7 +443,7 @@ def get_model_info_meta(
     _check_torch_dtype(torch_dtype)
     model_info.torch_dtype = torch_dtype
 
-    model_meta.check_requires()
+    model_meta.check_requires(model_info)
     return model_info, model_meta
 
 

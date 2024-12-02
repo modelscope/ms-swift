@@ -556,7 +556,7 @@ register_model(
         get_model_tokenizer_qwen2_audio,
         model_arch=ModelArch.qwen2_audio,
         architectures=['Qwen2AudioForConditionalGeneration'],
-        requires=['transformers>=4.45'],
+        requires=['transformers>=4.45', 'librosa'],
         tags=['audio']))
 
 register_model(
