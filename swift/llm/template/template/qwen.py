@@ -328,6 +328,7 @@ register_template(
 
 class Ovis1_6Template(Template):
     skip_prompt = False
+    use_model = True
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     example: Dict[str, Any]) -> List[Context]:
@@ -335,7 +336,7 @@ class Ovis1_6Template(Template):
         return [[-200], '\n']
 
     def _encode(self, template_inputs: StdTemplateInputs) -> Dict[str, Any]:
-        inputs, tokenizer_kwargs = super()._encode(template_inputs)
+        inputs = super()._encode(template_inputs)
         if len(inputs) == 0:
             return inputs
         images = template_inputs.images

@@ -51,12 +51,12 @@ class InternLMXComposer2Template(Template):
             if len(images) > 1:
                 hd_num = 6
             hd_num = get_env_args('hd_num', int, hd_num)
-            Image_transform = get_class_from_dynamic_module('ixc_utils.Image_transform', self.processor.model_dir)
+            Image_transform = get_class_from_dynamic_module('ixc_utils.Image_transform', self.model.model_dir)
             images = [Image_transform(image, hd_num=hd_num) for image in images]
         elif self.version == 'v2-4khd':
             hd_num = 55
             hd_num = get_env_args('hd_num', int, hd_num)
-            HD_transform = get_class_from_dynamic_module('ixc_utils.HD_transform', self.processor.model_dir)
+            HD_transform = get_class_from_dynamic_module('ixc_utils.HD_transform', self.model.model_dir)
             images = [HD_transform(image, hd_num=hd_num) for image in images]
         images = [self.model.vis_processor(image).to(self.model.dtype) for image in images]
         encoded['_data'] = {'input_ids': encoded['input_ids'], 'labels': encoded['labels'], 'images': images}

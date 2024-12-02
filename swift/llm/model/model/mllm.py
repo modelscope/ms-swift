@@ -107,10 +107,11 @@ def get_model_tokenizer_molmoe_1b(model_dir: str,
         res.pop('_to_dict')
         return res
 
-    model.config._to_dict = model.config.to_dict
-    model.config.to_dict = MethodType(to_dict, model.config)
-    from transformers import GenerationMixin
-    model.generate = MethodType(GenerationMixin.generate, model)
+    if model is not None:
+        model.config._to_dict = model.config.to_dict
+        model.config.to_dict = MethodType(to_dict, model.config)
+        from transformers import GenerationMixin
+        model.generate = MethodType(GenerationMixin.generate, model)
 
     if model and hasattr(model, '_old_forward'):  # device_map
         device = model.lm_head.weight.device

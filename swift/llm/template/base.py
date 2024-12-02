@@ -953,7 +953,7 @@ class Template(ProcessorMixin):
             A tensor after padding
         """
         padding_side = self.padding_side if self.is_training else 'left'
-        return pad_sequence(sequences, batch_first=True, padding_value=padding_value, padding_side=padding_side)
+        return pad_sequence(sequences, batch_first=True, padding_value=padding_value)
 
     def safe_decode(self, input_ids: List[int], **tokenizer_kwargs) -> str:
         placeholder_tokens = self.template_meta.placeholder_tokens

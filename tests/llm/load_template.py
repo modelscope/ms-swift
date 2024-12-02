@@ -2,6 +2,7 @@ import argparse
 
 import json
 import torch
+from collections.abc import Mapping
 from transformers import PreTrainedTokenizerBase
 
 
@@ -29,7 +30,7 @@ def load_and_tokenize(ms_model_id, template):
     from swift.llm import EncodePreprocessor, get_model_tokenizer, get_template
     try:
         vl_fields = ['vl', 'video', 'minicpmv', 'gen', 'llava', 'vision']
-        model_ins, tokenizer = get_model_tokenizer(ms_model_id, load_model=False)
+        model_ins, tokenizer = get_model_tokenizer(ms_model_id, load_model='mplug' in ms_model_id.lower())
         template_ins = get_template(template, tokenizer)
         if template_ins.use_model:
             model_ins, _ = get_model_tokenizer(ms_model_id, load_model=True)
@@ -50,7 +51,7 @@ def load_and_tokenize(ms_model_id, template):
         else:
             output = EncodePreprocessor(template_ins)(load_ds('modelscope/DuReader_robust-QG'))
             input_ids = output[0].get('input_ids')
-        if isinstance(output, dict):
+        if isinstance(output, Mapping):
             assert output.get('input_ids') is not None or output.get('inputs_embeds') is not None
         else:
             assert output[0].get('input_ids') is not None or output[0].get('inputs_embeds') is not None
@@ -87,7 +88,7 @@ def load_and_tokenize_old(ms_model_id, template):
             break
 
     if not found:
-        raise ValueError(f'No model_type found: {model_type}')
+        raise ValueError(f'No model_type found: {ms_model_id}')
 
     vl_fields = ['vl', 'video', 'minicpmv', 'gen', 'llava', 'vision']
     model_ins, tokenizer = get_model_tokenizer(model_type, load_model=True)

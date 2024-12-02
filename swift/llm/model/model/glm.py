@@ -4,7 +4,7 @@ from typing import Any, Dict, Type
 import torch
 import transformers
 from packaging import version
-from transformers import AutoConfig, AutoTokenizer, PreTrainedTokenizerBase
+from transformers import AutoConfig, PreTrainedTokenizerBase
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
 
@@ -63,14 +63,14 @@ register_model(
             ]),
             ModelGroup(
                 [Model('ZhipuAI/codegeex2-6b', 'THUDM/codegeex2-6b')],
-                requires=['transformers<4.42'],
+                requires=['transformers==4.33.2'],
                 tags=['coding'],
             ),
         ],
         TemplateType.chatglm2,
         get_model_tokenizer_chatglm,
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
-        requires=['transformers<4.42'],
+        requires=['transformers==4.33.2'],
         model_arch=ModelArch.chatglm))
 
 register_model(
@@ -202,6 +202,7 @@ def get_model_tokenizer_cogvlm(model_dir: str,
                                model_kwargs: Dict[str, Any],
                                load_model: bool = True,
                                **kwargs):
+    from modelscope import AutoTokenizer
     tokenizer = AutoTokenizer.from_pretrained('AI-ModelScope/vicuna-7b-v1.5', revision='master', trust_remote_code=True)
     if load_model:
         logger.warning('CogAgent with FusedLayerNorm will cause an training loss of NAN, '

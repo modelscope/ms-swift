@@ -136,7 +136,7 @@ class Emu3ChatTemplate(Template):
     image_placeholder = ['<|image token|>']
 
     def _encode(self, template_inputs: StdTemplateInputs) -> Dict[str, Any]:
-        inputs, _ = super()._encode(template_inputs)
+        inputs = super()._encode(template_inputs)
         if len(inputs) == 0:
             return inputs
         # image

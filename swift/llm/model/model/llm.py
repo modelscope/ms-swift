@@ -95,7 +95,6 @@ register_model(
         LLMModelType.skywork,
         [
             ModelGroup([
-                Model('skywork/Skywork-13B-chat'),
                 Model('skywork/Skywork-13B-base'),
             ]),
         ],

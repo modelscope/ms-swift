@@ -13,14 +13,15 @@ from ..utils import Context, Prompt, findall
 
 class MolmoTemplate(Template):
     system = None
+    use_model = True
     image_placeholder = ['<|image|>']
     DEFAULT_IMAGE_PATCH_TOKEN = '<im_patch>'
     DEFAULT_IM_START_TOKEN = '<im_start>'
     DEFAULT_IM_END_TOKEN = '<im_end>'
     DEFAULT_IM_COL_TOKEN = '<im_col>'
 
-    def __init__(self):
-        Template.__init__(self, self.system)
+    def __init__(self, *args, **kwargs):
+        Template.__init__(self, *args, **kwargs)
         self.processor_kwargs = {
             'images_kwargs': {
                 'max_crops': 12,
@@ -42,7 +43,7 @@ class MolmoTemplate(Template):
         }
 
     def _encode(self, template_inputs: StdTemplateInputs) -> Dict[str, Any]:
-        inputs, _ = super()._encode(template_inputs)
+        inputs = super()._encode(template_inputs)
         if len(inputs) == 0:
             return inputs
         # image
@@ -122,26 +123,30 @@ class MolmoTemplate(Template):
 
         # prepare batch inputs
         input_ids = torch.tensor(data['input_ids']).unsqueeze(0)
-        generation_config = self.model.generation_config
-
         batch_size, seq_len = input_ids.shape
         attention_mask = None
-        max_new_tokens = generation_config.max_new_tokens
-        assert max_new_tokens is not None
-        mask_len = seq_len + max_new_tokens if self.model.config.use_position_ids else seq_len
+        mask_len = seq_len
+        max_new_tokens = None
+        if not self.is_training:
+            generation_config = self.model.generation_config
+            max_new_tokens = generation_config.max_new_tokens
+            if not max_new_tokens:
+                max_new_tokens = 0
+            mask_len = mask_len + max_new_tokens if self.model.config.use_position_ids else mask_len
         position_ids: Optional[torch.Tensor] = None
         append_last_valid_logits: Optional[torch.Tensor] = None
         if self.model.config.use_position_ids and attention_mask is None:
             attention_mask = input_ids != -1
             position_ids = torch.clamp(torch.cumsum(attention_mask.to(torch.int32), dim=-1) - 1, min=0)
             append_last_valid_logits = attention_mask.long().sum(dim=-1) - 1
-            attention_mask = torch.cat(
-                [attention_mask, attention_mask.new_ones((batch_size, max_new_tokens))],
-                dim=1,
-            )
+            if max_new_tokens:
+                attention_mask = torch.cat(
+                    [attention_mask, attention_mask.new_ones((batch_size, max_new_tokens))],
+                    dim=1,
+                )
         if attention_mask is not None:
             assert attention_mask.shape == (batch_size, mask_len)
-        if self._is_training:
+        if self.is_training:
             # no batch_size before data_collator
             attention_mask = attention_mask.squeeze(0)
             position_ids = position_ids.squeeze(0)
