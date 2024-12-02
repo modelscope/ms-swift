@@ -115,7 +115,9 @@ class Template(ProcessorMixin):
         inputs.system = template_meta.check_system(system)
 
         images = inputs.images
-        load_medias = True if self.mode in {'vllm', 'lmdeploy'} else self.load_medias
+        load_medias = self.load_medias
+        if self.mode in {'vllm', 'lmdeploy'} or max_pixels is not None or inputs.objects:
+            load_medias = True
         if images and load_medias:
             images = load_batch(images, load_image)
             if max_pixels is not None:
@@ -123,7 +125,12 @@ class Template(ProcessorMixin):
                 images = [rescale_image(img, max_pixels) for img in images]
             inputs.images = images
         if inputs.objects:
-            self._preprocess_objects(inputs, inputs.objects)
+            normalize_bbox(inputs.objects, inputs.images, to_type=self.grounding_type)
+        if images and not self.load_medias:  # fix pt & qwen-vl
+            for i, image in enumerate(images):
+                if isinstance(image, Image.Image):
+                    images[i] = self._save_pil_image(image)
+        inputs.images = images
 
         if inputs.is_multimodal:
             self._add_default_tags(inputs)
@@ -239,19 +246,6 @@ class Template(ProcessorMixin):
         stop_words = getattr(generation_config, 'stop_words', None) or self.template_meta.stop_words
         generate_kwargs['stopping_criteria'] = StoppingCriteriaList([StopWordsCriteria(self.tokenizer, stop_words)])
         return generate_kwargs
-
-    def _preprocess_objects(self, inputs: StdTemplateInputs, objects: List[Dict[str, Any]]):
-        # Load image into PIL format
-        images = inputs.images
-        images = load_batch(images, load_image)  # base64/local_path -> PIL.Image
-        # Normalize grounding bboxes
-        normalize_bbox(objects, images, to_type=self.grounding_type)
-        load_medias = True if self.mode in {'vllm', 'lmdeploy'} else self.load_medias
-        if not load_medias:  # fix pt & qwen-vl
-            for i, image in enumerate(images):
-                images[i] = self._save_pil_image(image)
-        inputs.images = images
-        inputs.objects = objects
 
     @staticmethod
     def _save_pil_image(image: Image.Image) -> str:

@@ -103,7 +103,8 @@ register_model(
             ModelGroup([
                 Model('baichuan-inc/Baichuan2-7B-Chat-4bits', 'baichuan-inc/Baichuan2-7B-Chat-4bits'),
                 Model('baichuan-inc/Baichuan2-13B-Chat-4bits', 'baichuan-inc/Baichuan2-13B-Chat-4bits'),
-            ])
+            ],
+                       requires=['bitsandbytes<0.41.2', 'accelerate<0.26'])
         ],
         TemplateType.baichuan,
         get_model_tokenizer_baichuan2,

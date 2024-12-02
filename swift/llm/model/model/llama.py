@@ -61,7 +61,8 @@ register_model(
             # base quant
             ModelGroup([
                 Model('AI-ModelScope/Llama-2-7b-AQLM-2Bit-1x16-hf', 'ISTA-DASLab/Llama-2-7b-AQLM-2Bit-1x16-hf'),
-            ]),
+            ],
+                       requires=['transformers>=4.38', 'aqlm', 'torch>=2.2.0']),
         ],
         TemplateType.llama,
         get_model_tokenizer_llama,
@@ -74,16 +75,14 @@ register_model(
         LLMModelType.llama3,
         [
             # llama3
-            ModelGroup(
-                [
-                    # chat
-                    Model('LLM-Research/Meta-Llama-3-8B-Instruct', 'meta-llama/Meta-Llama-3-8B-Instruct'),
-                    Model('LLM-Research/Meta-Llama-3-70B-Instruct', 'meta-llama/Meta-Llama-3-70B-Instruct'),
-                    # base
-                    Model('LLM-Research/Meta-Llama-3-8B', 'meta-llama/Meta-Llama-3-8B'),
-                    Model('LLM-Research/Meta-Llama-3-70B', 'meta-llama/Meta-Llama-3-70B'),
-                ],
-                TemplateType.llama3),
+            ModelGroup([
+                # chat
+                Model('LLM-Research/Meta-Llama-3-8B-Instruct', 'meta-llama/Meta-Llama-3-8B-Instruct'),
+                Model('LLM-Research/Meta-Llama-3-70B-Instruct', 'meta-llama/Meta-Llama-3-70B-Instruct'),
+                # base
+                Model('LLM-Research/Meta-Llama-3-8B', 'meta-llama/Meta-Llama-3-8B'),
+                Model('LLM-Research/Meta-Llama-3-70B', 'meta-llama/Meta-Llama-3-70B'),
+            ]),
             # llama3-quant
             ModelGroup([
                 Model('swift/Meta-Llama-3-8B-Instruct-GPTQ-Int4', 'study-hjt/Meta-Llama-3-8B-Instruct-GPTQ-Int4'),
@@ -92,12 +91,12 @@ register_model(
                 Model('swift/Meta-Llama-3-70B-Instruct-GPTQ-Int4', 'study-hjt/Meta-Llama-3-70B-Instruct-GPTQ-Int4'),
                 Model('swift/Meta-Llama-3-70B-Instruct-GPTQ-Int8', 'study-hjt/Meta-Llama-3-70B-Instruct-GPTQ-Int8'),
                 Model('swift/Meta-Llama-3-70B-Instruct-AWQ', 'study-hjt/Meta-Llama-3-70B-Instruct-AWQ'),
-            ], TemplateType.llama3),
+            ]),
             # chinese-llama3
             ModelGroup([
                 Model('ChineseAlpacaGroup/llama-3-chinese-8b-instruct', 'hfl/llama-3-chinese-8b-instruct'),
                 Model('ChineseAlpacaGroup/llama-3-chinese-8b', 'hfl/llama-3-chinese-8b'),
-            ], TemplateType.llama3),
+            ]),
             # llama3.1
             ModelGroup(
                 [
@@ -114,7 +113,6 @@ register_model(
                     Model('LLM-Research/Meta-Llama-3.1-405B-Instruct-FP8',
                           'meta-llama/Meta-Llama-3.1-405B-Instruct-FP8'),
                 ],
-                TemplateType.llama3,
                 requires=['transformers>=4.43']),
             # llama3.1-quant
             ModelGroup(
@@ -162,10 +160,10 @@ register_model(
         LLMModelType.llama3_2,
         [
             ModelGroup([
-                Model('LLM-Research/Llama-3.2-1B-Instruct', 'meta-llama/Llama-3.2-1B-Instruct'),
-                Model('LLM-Research/Llama-3.2-3B-Instruct', 'meta-llama/Llama-3.2-3B-Instruct'),
                 Model('LLM-Research/Llama-3.2-1B', 'meta-llama/Llama-3.2-1B'),
                 Model('LLM-Research/Llama-3.2-3B', 'meta-llama/Llama-3.2-3B'),
+                Model('LLM-Research/Llama-3.2-1B-Instruct', 'meta-llama/Llama-3.2-1B-Instruct'),
+                Model('LLM-Research/Llama-3.2-3B-Instruct', 'meta-llama/Llama-3.2-3B-Instruct'),
             ])
         ],
         TemplateType.llama3_2,
@@ -254,13 +252,13 @@ register_model(
         [
             ModelGroup([
                 Model('LLM-Research/Reflection-Llama-3.1-70B', 'mattshumer/Reflection-Llama-3.1-70B'),
-            ],
-                       requires=['transformers>=4.43']),
+            ]),
         ],
         TemplateType.reflection,
         get_model_tokenizer_with_flash_attn,
         model_arch=ModelArch.llama,
         architectures=['LlamaForCausalLM'],
+        requires=['transformers>=4.43'],
     ))
 
 register_model(
@@ -294,7 +292,8 @@ register_model(
 
 register_model(
     ModelMeta(
-        LLMModelType.numina, [
+        LLMModelType.numina,
+        [
             ModelGroup([
                 Model('AI-ModelScope/NuminaMath-7B-TIR', 'AI-MO/NuminaMath-7B-TIR'),
             ]),
@@ -303,7 +302,8 @@ register_model(
         get_model_tokenizer_with_flash_attn,
         model_arch=ModelArch.llama,
         architectures=['LlamaForCausalLM'],
-        tags=['math']))
+        tags=['math'],
+    ))
 
 register_model(
     ModelMeta(

@@ -34,6 +34,7 @@ register_model(
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
         model_arch=ModelArch.chatglm,
         tags=['coding'],
+        requires=['transformers<4.34'],
     ))
 
 

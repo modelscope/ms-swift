@@ -83,41 +83,37 @@ register_model(
     ModelMeta(
         LLMModelType.deepseek_v2,
         [
-            ModelGroup(
-                [
-                    Model('deepseek-ai/DeepSeek-Coder-V2-Instruct', 'deepseek-ai/DeepSeek-Coder-V2-Instruct'),
-                    Model('deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct', 'deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct'),
-                    Model('deepseek-ai/DeepSeek-Coder-V2-Base', 'deepseek-ai/DeepSeek-Coder-V2-Base'),
-                    Model('deepseek-ai/DeepSeek-Coder-V2-Lite-Base', 'deepseek-ai/DeepSeek-Coder-V2-Lite-Base'),
-                    Model('deepseek-ai/DeepSeek-V2-Lite', 'deepseek-ai/DeepSeek-V2-Lite'),
-                    Model('deepseek-ai/DeepSeek-V2-Lite-Chat', 'deepseek-ai/DeepSeek-V2-Lite-Chat'),
-                    Model('deepseek-ai/DeepSeek-V2', 'deepseek-ai/DeepSeek-V2'),
-                    Model('deepseek-ai/DeepSeek-V2-Chat', 'deepseek-ai/DeepSeek-V2-Chat'),
-                ],
-                requires=['transformers>=4.39.3'],
-            ),
+            ModelGroup([
+                Model('deepseek-ai/DeepSeek-Coder-V2-Instruct', 'deepseek-ai/DeepSeek-Coder-V2-Instruct'),
+                Model('deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct', 'deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct'),
+                Model('deepseek-ai/DeepSeek-Coder-V2-Base', 'deepseek-ai/DeepSeek-Coder-V2-Base'),
+                Model('deepseek-ai/DeepSeek-Coder-V2-Lite-Base', 'deepseek-ai/DeepSeek-Coder-V2-Lite-Base'),
+                Model('deepseek-ai/DeepSeek-V2-Lite', 'deepseek-ai/DeepSeek-V2-Lite'),
+                Model('deepseek-ai/DeepSeek-V2-Lite-Chat', 'deepseek-ai/DeepSeek-V2-Lite-Chat'),
+                Model('deepseek-ai/DeepSeek-V2', 'deepseek-ai/DeepSeek-V2'),
+                Model('deepseek-ai/DeepSeek-V2-Chat', 'deepseek-ai/DeepSeek-V2-Chat'),
+            ]),
         ],
         TemplateType.deepseek,
         get_model_tokenizer_deepseek_moe,
         architectures=['DeepseekV2ForCausalLM'],
         model_arch=ModelArch.deepseek_v2,
+        requires=['transformers>=4.39.3'],
     ))
 
 register_model(
     ModelMeta(
         LLMModelType.deepseek_v2_5,
         [
-            ModelGroup(
-                [
-                    Model('deepseek-ai/DeepSeek-V2.5', 'deepseek-ai/DeepSeek-V2.5'),
-                ],
-                requires=['transformers>=4.39.3'],
-            ),
+            ModelGroup([
+                Model('deepseek-ai/DeepSeek-V2.5', 'deepseek-ai/DeepSeek-V2.5'),
+            ]),
         ],
         TemplateType.deepseek_v2_5,
         get_model_tokenizer_deepseek_moe,
         architectures=['DeepseekV2ForCausalLM'],
         model_arch=ModelArch.deepseek_v2,
+        requires=['transformers>=4.39.3'],
     ))
 
 

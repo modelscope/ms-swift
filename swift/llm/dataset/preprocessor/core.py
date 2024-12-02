@@ -46,7 +46,7 @@ class RowPreprocessor:
         self.random_state = random_state
 
     @staticmethod
-    def check_messages(row: Dict[str, Any]) -> None:
+    def _check_messages(row: Dict[str, Any]) -> None:
         if 'messages' not in row:
             return
         messages = row['messages']
@@ -62,7 +62,7 @@ class RowPreprocessor:
                 raise ValueError(f'assistant_message: {assistant_message}')
 
     @staticmethod
-    def check_rejected_response(row: Dict[str, Any]) -> None:
+    def _check_rejected_response(row: Dict[str, Any]) -> None:
         if 'rejected_messages' in row:
             chosen_messages = row['messages']
             rejected_messages = row['rejected_messages']
@@ -122,8 +122,8 @@ class RowPreprocessor:
                 if isinstance(row, dict):
                     row = [row]
                 for r in row:
-                    self.check_messages(r)
-                    self.check_rejected_response(r)
+                    self._check_messages(r)
+                    self._check_rejected_response(r)
             except Exception:
                 if strict:
                     logger.warning('To avoid errors, you can pass `strict=False`.')
@@ -239,7 +239,7 @@ class ResponsePreprocessor(RowPreprocessor):
         super().__init__(columns_mapping=columns_mapping, **kwargs)
         system_keys = ['system', 'system_prompt']
         query_keys = ['query', 'prompt', 'input', 'instruction', 'question']
-        response_keys = ['response', 'answer', 'output', 'targets', 'target', 'answer_key', 'solution'
+        response_keys = ['response', 'answer', 'output', 'targets', 'target', 'answer_key', 'solution', 'answers'
                          ] + ['text', 'completion', 'content']
         for key in system_keys:
             self.row_mapping[key] = 'system'

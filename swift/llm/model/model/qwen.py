@@ -533,7 +533,7 @@ register_model(
         get_model_tokenizer_qwen2_vl,
         model_arch=ModelArch.qwen2_vl,
         architectures=['Qwen2VLForConditionalGeneration'],
-        requires=['transformers>=4.45', 'qwen_vl_utils'],
+        requires=['transformers>=4.45', 'qwen_vl_utils', 'pyav'],
         tags=['vision', 'video']))
 
 
@@ -545,7 +545,8 @@ def get_model_tokenizer_qwen2_audio(*args, **kwargs):
 
 register_model(
     ModelMeta(
-        MLLMModelType.qwen2_audio, [
+        MLLMModelType.qwen2_audio,
+        [
             ModelGroup([
                 Model('Qwen/Qwen2-Audio-7B-Instruct', 'Qwen/Qwen2-Audio-7B-Instruct'),
                 Model('Qwen/Qwen2-Audio-7B', 'Qwen/Qwen2-Audio-7B'),
@@ -556,8 +557,9 @@ register_model(
         get_model_tokenizer_qwen2_audio,
         model_arch=ModelArch.qwen2_audio,
         architectures=['Qwen2AudioForConditionalGeneration'],
-        requires=['transformers>=4.45'],
-        tags=['audio']))
+        requires=['transformers>=4.45', 'librosa'],
+        tags=['audio'],
+    ))
 
 register_model(
     ModelMeta(

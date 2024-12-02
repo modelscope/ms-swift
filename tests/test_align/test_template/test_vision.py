@@ -35,6 +35,8 @@ def test_qwen2_vl():
 def test_internvl2():
     pt_engine = PtEngine('OpenGVLab/InternVL2-2B')
     _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    _infer_model(pt_engine)
 
 
 def test_internvl2_phi3():
@@ -44,37 +46,84 @@ def test_internvl2_phi3():
     _infer_model(pt_engine, system='')
 
 
-def test_qwen2_audio():
-    pt_engine = PtEngine('qwen/Qwen2-Audio-7B-Instruct')
-    _infer_model(pt_engine)
-    pt_engine.default_template.template_backend = 'jinja'
-    _infer_model_jinja(pt_engine)
-
-
-def test_qwen2_5():
-    pt_engine = PtEngine('Qwen/Qwen2.5-3B')
-    _infer_model(pt_engine)
-    pt_engine.default_template.template_backend = 'jinja'
-    _infer_model(pt_engine)
-
-
-def test_qwen1half():
-    pt_engine = PtEngine('Qwen/Qwen1.5-0.5B-Chat-GPTQ-Int4')
-    _infer_model(pt_engine)
-    pt_engine.default_template.template_backend = 'jinja'
-    _infer_model(pt_engine)
-
-
 def test_llava():
     pt_engine = PtEngine('AI-ModelScope/llava-v1.6-mistral-7b')
     _infer_model(pt_engine)
+
+
+def test_yi_vl():
+    pt_engine = PtEngine('01ai/Yi-VL-6B')
+    _infer_model(pt_engine)
+
+
+def test_glm4v():
+    pass
+
+
+def test_minicpmv():
+    pass
+
+
+def test_got_ocr():
+    pass
+
+
+def test_llama_vision():
+    pass
+
+
+def test_llava_hf():
+    pass
+
+
+def test_florence():
+    pass
+
+
+def test_phi3_vision():
+    pass
+
+
+def test_qwen_vl():
+    pass
+
+
+def test_ovis1_6():
+    pass
+
+
+def test_llava_onevision_hf():
+    pass
+
+
+def test_xcomposer2_5():
+    pass
+
+
+def test_cogvlm2_video():
+    pass
+
+
+def test_deepseek_vl_janus():
+    pass
+
+
+def test_mplug_owl2():
+    pass
+
+
+def test_mplug_owl3():
+    pass
+
+
+def test_qwq():
+    'Qwen/QwQ-32B-Preview'
 
 
 if __name__ == '__main__':
     # test_qwen2_vl()
     # test_internvl2()
     # test_internvl2_phi3()
-    # test_qwen2_audio()
-    # test_qwen2_5()
-    # test_qwen1half()
-    test_llava()
+    # test_llava()
+    #
+    test_yi_vl()

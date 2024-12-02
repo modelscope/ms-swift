@@ -7,24 +7,25 @@ from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_fl
 
 register_model(
     ModelMeta(
-        LLMModelType.mistral, [
+        LLMModelType.mistral,
+        [
             ModelGroup([
                 Model('AI-ModelScope/Mistral-7B-Instruct-v0.1', 'mistralai/Mistral-7B-Instruct-v0.1'),
                 Model('AI-ModelScope/Mistral-7B-Instruct-v0.2', 'mistralai/Mistral-7B-Instruct-v0.2'),
                 Model('LLM-Research/Mistral-7B-Instruct-v0.3', 'mistralai/Mistral-7B-Instruct-v0.3'),
                 Model('AI-ModelScope/Mistral-7B-v0.1', 'mistralai/Mistral-7B-v0.1'),
                 Model('AI-ModelScope/Mistral-7B-v0.2-hf', 'alpindale/Mistral-7B-v0.2-hf'),
-            ],
-                       requires=['transformers>=4.34']),
+            ]),
             ModelGroup([
                 Model('swift/Codestral-22B-v0.1', 'mistralai/Codestral-22B-v0.1'),
-            ],
-                       requires=['transformers>=4.34']),
+            ]),
         ],
         TemplateType.llama,
         get_model_tokenizer_with_flash_attn,
         architectures=['MistralForCausalLM'],
-        model_arch=ModelArch.llama))
+        model_arch=ModelArch.llama,
+        requires=['transformers>=4.34'],
+    ))
 
 register_model(
     ModelMeta(
@@ -83,29 +84,25 @@ register_model(
 register_model(
     ModelMeta(
         LLMModelType.wizardlm2_moe,
-        [
-            ModelGroup([
-                Model('AI-ModelScope/WizardLM-2-8x22B', 'alpindale/WizardLM-2-8x22B'),
-            ],
-                       requires=['transformers>=4.36']),
-        ],
+        [ModelGroup([
+            Model('AI-ModelScope/WizardLM-2-8x22B', 'alpindale/WizardLM-2-8x22B'),
+        ])],
         TemplateType.wizardlm2_moe,
         get_model_tokenizer_with_flash_attn,
         model_arch=ModelArch.llama,
         architectures=['MixtralForCausalLM'],
+        requires=['transformers>=4.36'],
     ))
 
 register_model(
     ModelMeta(
         LLMModelType.wizardlm2,
-        [
-            ModelGroup([
-                Model('AI-ModelScope/WizardLM-2-7B-AWQ', 'MaziyarPanahi/WizardLM-2-7B-AWQ'),
-            ],
-                       requires=['transformers>=4.34'])
-        ],
+        [ModelGroup([
+            Model('AI-ModelScope/WizardLM-2-7B-AWQ', 'MaziyarPanahi/WizardLM-2-7B-AWQ'),
+        ])],
         TemplateType.wizardlm2,
         get_model_tokenizer_with_flash_attn,
         model_arch=ModelArch.llama,
         architectures=['MistralForCausalLM'],
+        requires=['transformers>=4.34'],
     ))

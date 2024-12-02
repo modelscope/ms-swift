@@ -15,7 +15,7 @@ from ..utils import ModelInfo, git_clone_github
 logger = get_logger()
 
 
-def get_model_tokenizer_yi1_5(model_dir, *args, **kwargs):
+def get_model_tokenizer_yi(model_dir, *args, **kwargs):
     tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True, use_fast=False)
     return get_model_tokenizer_with_flash_attn(model_dir, *args, tokenizer=tokenizer, **kwargs)
 
@@ -38,7 +38,7 @@ def get_model_tokenizer_yi_vl(model_dir: str,
     model_config.attention_dropout = 0.
     key_info['model_path'] = model_dir
     kwargs.pop('automodel_class', None)
-    model, tokenizer = get_model_tokenizer_with_flash_attn(
+    model, tokenizer = get_model_tokenizer_yi(
         model_dir,
         model_info,
         model_kwargs,
@@ -76,12 +76,6 @@ register_model(
         tags=['vision'],
     ))
 
-
-def get_model_tokenizer_yi(model_dir, *args, **kwargs):
-    tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True, use_fast=False)
-    return get_model_tokenizer_with_flash_attn(model_dir, *args, tokenizer=tokenizer, **kwargs)
-
-
 register_model(
     ModelMeta(
         LLMModelType.yi,
@@ -99,7 +93,7 @@ register_model(
                 Model('01ai/Yi-34B-Chat', '01-ai/Yi-34B-Chat'),
                 Model('01ai/Yi-34B-Chat-4bits', '01-ai/Yi-34B-Chat-4bits'),
                 Model('01ai/Yi-34B-Chat-8bits', '01-ai/Yi-34B-Chat-8bits'),
-            ], TemplateType.chatml),
+            ]),
             # yi1.5
             ModelGroup([
                 Model('01ai/Yi-1.5-6B', '01-ai/Yi-1.5-6B'),
@@ -110,7 +104,7 @@ register_model(
                 Model('01ai/Yi-1.5-34B', '01-ai/Yi-1.5-34B'),
                 Model('01ai/Yi-1.5-34B-Chat', '01-ai/Yi-1.5-34B-Chat'),
                 Model('01ai/Yi-1.5-34B-Chat-16K', '01-ai/Yi-1.5-34B-Chat-16K'),
-            ], TemplateType.chatml),
+            ]),
             # yi1.5-quant
             ModelGroup([
                 Model('AI-ModelScope/Yi-1.5-6B-Chat-GPTQ', 'modelscope/Yi-1.5-6B-Chat-GPTQ'),
@@ -152,7 +146,7 @@ register_model(
             ]),
         ],
         TemplateType.sus,
-        get_model_tokenizer_with_flash_attn,
+        get_model_tokenizer_yi,
         model_arch=ModelArch.llama,
         architectures=['LlamaForCausalLM'],
     ))

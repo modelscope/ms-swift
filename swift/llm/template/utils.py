@@ -42,12 +42,12 @@ class StopWordsCriteria(StoppingCriteria):
         for i, text in enumerate(text_list):
             if self.is_done[i]:
                 continue
+            is_finished = False
             for stop_word in self.stop_words:
                 if isinstance(stop_word, str) and stop_word in text or isinstance(
                         stop_word, list) and input_ids[i][-len(stop_word):].tolist() == stop_word:
                     is_finished = True
-                else:
-                    is_finished = False
+                    break
             self.is_done[i] = is_finished
         return self.is_done
 
