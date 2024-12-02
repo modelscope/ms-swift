@@ -113,7 +113,7 @@ class TestRun3(unittest.TestCase):
             'grok', 'deepseek_moe', 'deepseek_v2', 'deepseek_v2_5', 'llama3_1_omni', 'llava_next_qwen_hf',
             'llava1_6_yi', 'llava_next_qwen', 'mixtral', 'codefuse_codellama', 'wizardlm2', 'wizardlm2_awq',
             'openbuddy_deepseek', 'sus', 'openbuddy_mixtral', 'openbuddy_llama', 'dbrx', 'nenotron', 'reflection',
-            'xverse_moe', 'qwen2_moe', 'yuan2'
+            'xverse_moe', 'qwen2_moe', 'yuan2', 'wizardlm2_moe', "emu3_gen", "llava1_6_mistral", "mplug_owl3_241101", "llava1_6_yi_hf"
         }
         for model_name, model_meta in MODEL_MAPPING.items():
             if model_name in skip_model_type:
@@ -134,11 +134,11 @@ class TestRun3(unittest.TestCase):
                 if not any(['accelerate' in req for req in requires]):
                     os.system('pip install accelerate -U')
                 try:
-                    cmd = ('PYTHONPATH=. python tests/llm/load_template.py '
+                    cmd = ('CUDA_VISIBLE_DEVICES=0 PYTHONPATH=. python tests/llm/load_template.py '
                            f'--ms_model_id {model.ms_model_id} --template {template}')
                     if os.system(cmd) != 0:
                         raise RuntimeError()
-                    cmd = ('PYTHONPATH=/mnt/workspace/yzhao/tastelikefeet/swift python tests/llm/load_template.py '
+                    cmd = ('CUDA_VISIBLE_DEVICES=0 PYTHONPATH=/mnt/workspace/yzhao/tastelikefeet/swift python tests/llm/load_template.py '
                            f'--ms_model_id {model.ms_model_id} --template {template} --new 0')
                     if os.system(cmd) != 0:
                         raise RuntimeError()

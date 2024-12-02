@@ -359,7 +359,7 @@ class Ovis1_6Template(Template):
             pixel_values = torch.cat(pixel_values, dim=0).to(self.model.visual_tokenizer.dtype)
         else:
             pixel_values = None
-        _encoded = {'labels': labels}
+        _encoded['labels'] = labels
         if labels is not None:
             labels = torch.tensor(labels)[None]
         _encoded['pixel_values'] = [pixel_values]
