@@ -71,13 +71,13 @@ register_model(
         [
             ModelGroup([
                 Model('modelscope/zephyr-7b-beta', 'HuggingFaceH4/zephyr-7b-beta'),
-            ],
-                       requires=['transformers>=4.34']),
+            ]),
         ],
         TemplateType.zephyr,
         get_model_tokenizer_with_flash_attn,
         model_arch=ModelArch.llama,
         architectures=['MistralForCausalLM'],
+        requires=['transformers>=4.34'],
     ))
 
 register_model(

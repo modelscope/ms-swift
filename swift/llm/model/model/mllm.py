@@ -24,17 +24,16 @@ def get_model_tokenizer_got_ocr2(*args, **kwargs):
 
 register_model(
     ModelMeta(
-        MLLMModelType.got_ocr2,
-        [
+        MLLMModelType.got_ocr2, [
             ModelGroup([
                 Model('stepfun-ai/GOT-OCR2_0', 'stepfun-ai/GOT-OCR2_0'),
-            ], tags=['audio']),
+            ]),
         ],
         TemplateType.got_ocr2,
         get_model_tokenizer_got_ocr2,
         model_arch=ModelArch.got_ocr2,
         architectures=['GOTQwenForCausalLM'],
-    ))
+        tags=['vision']))
 
 
 def get_model_tokenizer_idefics(model_dir: str, *args, **kwargs):
@@ -48,19 +47,17 @@ def get_model_tokenizer_idefics(model_dir: str, *args, **kwargs):
 
 register_model(
     ModelMeta(
-        MLLMModelType.idefics3,
-        [
+        MLLMModelType.idefics3, [
             ModelGroup([
                 Model('AI-ModelScope/Idefics3-8B-Llama3', 'HuggingFaceM4/Idefics3-8B-Llama3'),
-            ],
-                       tags=['vision'],
-                       requires=['transformers>=4.45']),
+            ]),
         ],
         TemplateType.idefics3,
         get_model_tokenizer_idefics,
         model_arch=ModelArch.idefics3,
         architectures=['Idefics3ForConditionalGeneration'],
-    ))
+        tags=['vision'],
+        requires=['transformers>=4.45']))
 
 
 def get_model_tokenizer_pixtral(model_dir: str, *args, **kwargs):
@@ -129,20 +126,18 @@ def get_model_tokenizer_molmoe(model_dir: str,
 
 register_model(
     ModelMeta(
-        MLLMModelType.molmoe,
-        [
+        MLLMModelType.molmoe, [
             ModelGroup([
                 Model('LLM-Research/MolmoE-1B-0924', 'allenai/MolmoE-1B-0924'),
-            ],
-                       tags=['vision'],
-                       requires=['transformers>=4.45']),
+            ]),
         ],
         TemplateType.molmo,
         get_model_tokenizer_molmoe,
         model_arch=ModelArch.molmo,
         torch_dtype=torch.float32,
         architectures=['MolmoForCausalLM'],
-    ))
+        tags=['vision'],
+        requires=['transformers>=4.45']))
 
 
 def get_model_tokenizer_molmo(model_dir: str,
@@ -173,18 +168,16 @@ def get_model_tokenizer_molmo(model_dir: str,
 
 register_model(
     ModelMeta(
-        MLLMModelType.molmo,
-        [
+        MLLMModelType.molmo, [
             ModelGroup([
                 Model('LLM-Research/Molmo-7B-O-0924', 'allenai/Molmo-7B-O-0924'),
                 Model('LLM-Research/Molmo-7B-D-0924', 'allenai/Molmo-7B-D-0924'),
                 Model('LLM-Research/Molmo-72B-0924', 'allenai/Molmo-72B-0924'),
-            ],
-                       tags=['vision'],
-                       requires=['transformers>=4.45']),
+            ]),
         ],
         TemplateType.molmo,
         get_model_tokenizer_molmo,
         model_arch=ModelArch.molmo,
         architectures=['MolmoForCausalLM'],
-    ))
+        tags=['vision'],
+        requires=['transformers>=4.45']))

@@ -75,16 +75,16 @@ register_model(
 
 register_model(
     ModelMeta(
-        LLMModelType.codefuse_codegeex2, [
-            ModelGroup(
-                [Model('codefuse-ai/CodeFuse-CodeGeeX2-6B', 'codefuse-ai/CodeFuse-CodeGeeX2-6B')],
-                tags=['coding'],
-            ),
+        LLMModelType.codefuse_codegeex2,
+        [
+            ModelGroup([Model('codefuse-ai/CodeFuse-CodeGeeX2-6B', 'codefuse-ai/CodeFuse-CodeGeeX2-6B')], ),
         ],
         TemplateType.codefuse,
         get_model_tokenizer_chatglm,
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
-        model_arch=ModelArch.chatglm))
+        model_arch=ModelArch.chatglm,
+        tags=['coding'],
+    ))
 
 register_model(
     ModelMeta(
@@ -153,12 +153,14 @@ register_model(
         LLMModelType.codegeex4,
         [ModelGroup([
             Model('ZhipuAI/codegeex4-all-9b', 'THUDM/codegeex4-all-9b'),
-        ], tags=['coding'])],
+        ])],
         TemplateType.codegeex4,
         get_model_tokenizer_glm4,
         requires=['transformers<4.42'],
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
-        model_arch=ModelArch.chatglm))
+        model_arch=ModelArch.chatglm,
+        tags=['coding'],
+    ))
 
 
 def get_model_tokenizer_glm4v(model_dir: str,

@@ -154,19 +154,19 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
 
 register_model(
     ModelMeta(
-        MLLMModelType.deepseek_vl, [
-            ModelGroup(
-                [
-                    Model('deepseek-ai/deepseek-vl-1.3b-chat', 'deepseek-ai/deepseek-vl-1.3b-chat'),
-                    Model('deepseek-ai/deepseek-vl-7b-chat', 'deepseek-ai/deepseek-vl-7b-chat'),
-                ],
-                tags=['vision'],
-            ),
+        MLLMModelType.deepseek_vl,
+        [
+            ModelGroup([
+                Model('deepseek-ai/deepseek-vl-1.3b-chat', 'deepseek-ai/deepseek-vl-1.3b-chat'),
+                Model('deepseek-ai/deepseek-vl-7b-chat', 'deepseek-ai/deepseek-vl-7b-chat'),
+            ], ),
         ],
         TemplateType.deepseek_vl,
         get_model_tokenizer_deepseek_vl,
         architectures=['MultiModalityCausalLM'],
-        model_arch=ModelArch.deepseek_vl))
+        model_arch=ModelArch.deepseek_vl,
+        tags=['vision'],
+    ))
 
 
 def get_model_tokenizer_deepseek_janus(model_dir: str, *args, **kwargs):
@@ -191,14 +191,14 @@ def get_model_tokenizer_deepseek_janus(model_dir: str, *args, **kwargs):
 
 register_model(
     ModelMeta(
-        MLLMModelType.deepseek_janus, [
-            ModelGroup(
-                [
-                    Model('deepseek-ai/Janus-1.3B', 'deepseek-ai/Janus-1.3B'),
-                ],
-                tags=['vision'],
-            ),
+        MLLMModelType.deepseek_janus,
+        [
+            ModelGroup([
+                Model('deepseek-ai/Janus-1.3B', 'deepseek-ai/Janus-1.3B'),
+            ], ),
         ],
         TemplateType.deepseek_janus,
         get_model_tokenizer_deepseek_janus,
-        model_arch=ModelArch.janus))
+        model_arch=ModelArch.janus,
+        tags=['vision'],
+    ))

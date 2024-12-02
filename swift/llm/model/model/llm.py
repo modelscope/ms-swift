@@ -95,8 +95,8 @@ register_model(
         LLMModelType.skywork,
         [
             ModelGroup([
-                Model('skywork/Skywork-13B-chat'),
                 Model('skywork/Skywork-13B-base'),
+                Model('skywork/Skywork-13B-chat'),
             ]),
         ],
         TemplateType.skywork,
@@ -198,7 +198,7 @@ register_model(
         [
             ModelGroup([
                 Model('damo/nlp_seqgpt-560m', 'DAMO-NLP/SeqGPT-560M'),
-            ], tags=['audio']),
+            ]),
         ],
         TemplateType.default,
         get_model_tokenizer_with_flash_attn,

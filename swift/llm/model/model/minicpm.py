@@ -71,20 +71,20 @@ def get_model_tokenizer_minicpmv(model_dir: str,
 
 register_model(
     ModelMeta(
-        MLLMModelType.minicpmv, [
-            ModelGroup(
-                [
-                    Model('OpenBMB/MiniCPM-V', 'openbmb/MiniCPM-V'),
-                    Model('OpenBMB/MiniCPM-V-2', 'openbmb/MiniCPM-V-2'),
-                ],
-                requires=['timm', 'transformers<4.42'],
-                tags=['vision'],
-            ),
+        MLLMModelType.minicpmv,
+        [
+            ModelGroup([
+                Model('OpenBMB/MiniCPM-V', 'openbmb/MiniCPM-V'),
+                Model('OpenBMB/MiniCPM-V-2', 'openbmb/MiniCPM-V-2'),
+            ], ),
         ],
         TemplateType.minicpmv,
         get_model_tokenizer_minicpmv,
         architectures=['MiniCPMV'],
-        model_arch=ModelArch.minicpmv))
+        model_arch=ModelArch.minicpmv,
+        requires=['timm', 'transformers<4.42'],
+        tags=['vision'],
+    ))
 
 
 def get_model_tokenizer_minicpmv_2_x(model_dir: str,
@@ -110,35 +110,35 @@ def get_model_tokenizer_minicpmv_2_x(model_dir: str,
 
 register_model(
     ModelMeta(
-        MLLMModelType.minicpmv2_5, [
-            ModelGroup(
-                [
-                    Model('OpenBMB/MiniCPM-Llama3-V-2_5', 'openbmb/MiniCPM-Llama3-V-2_5'),
-                ],
-                requires=['timm', 'transformers>=4.36'],
-                tags=['vision'],
-            ),
+        MLLMModelType.minicpmv2_5,
+        [
+            ModelGroup([
+                Model('OpenBMB/MiniCPM-Llama3-V-2_5', 'openbmb/MiniCPM-Llama3-V-2_5'),
+            ], ),
         ],
         TemplateType.minicpmv2_5,
         get_model_tokenizer_minicpmv_2_x,
         architectures=['MiniCPMV'],
-        model_arch=ModelArch.minicpmv))
+        model_arch=ModelArch.minicpmv,
+        requires=['timm', 'transformers>=4.36'],
+        tags=['vision'],
+    ))
 
 register_model(
     ModelMeta(
-        MLLMModelType.minicpmv2_6, [
-            ModelGroup(
-                [
-                    Model('OpenBMB/MiniCPM-V-2_6', 'openbmb/MiniCPM-V-2_6'),
-                ],
-                requires=['timm', 'transformers>=4.36'],
-                tags=['vision', 'video'],
-            ),
+        MLLMModelType.minicpmv2_6,
+        [
+            ModelGroup([
+                Model('OpenBMB/MiniCPM-V-2_6', 'openbmb/MiniCPM-V-2_6'),
+            ], ),
         ],
         TemplateType.minicpmv2_6,
         partial(get_model_tokenizer_minicpmv_2_x, version='v2.6'),
         architectures=['MiniCPMV'],
-        model_arch=ModelArch.minicpmv))
+        model_arch=ModelArch.minicpmv,
+        requires=['timm', 'transformers>=4.36'],
+        tags=['vision', 'video'],
+    ))
 
 register_model(
     ModelMeta(

@@ -179,38 +179,34 @@ register_model(
     ModelMeta(
         MLLMModelType.internvl,
         [
-            ModelGroup(
-                [
-                    Model('AI-ModelScope/InternVL-Chat-V1-5', 'OpenGVLab/InternVL-Chat-V1-5'),
-                    Model('AI-ModelScope/InternVL-Chat-V1-5-int8', 'OpenGVLab/InternVL-Chat-V1-5-int8'),
-                    Model('OpenGVLab/Mini-InternVL-Chat-2B-V1-5', 'OpenGVLab/Mini-InternVL-Chat-2B-V1-5'),
-                ],
-                requires=['transformers>=4.35', 'timm'],
-                tags=['vision'],
-            ),
+            ModelGroup([
+                Model('AI-ModelScope/InternVL-Chat-V1-5', 'OpenGVLab/InternVL-Chat-V1-5'),
+                Model('AI-ModelScope/InternVL-Chat-V1-5-int8', 'OpenGVLab/InternVL-Chat-V1-5-int8'),
+                Model('OpenGVLab/Mini-InternVL-Chat-2B-V1-5', 'OpenGVLab/Mini-InternVL-Chat-2B-V1-5'),
+            ], ),
         ],
         TemplateType.internvl,
         get_model_tokenizer_internvl,
         architectures=['InternVLChatModel'],
         model_arch=ModelArch.internvl,
+        requires=['transformers>=4.35', 'timm'],
+        tags=['vision'],
     ))
 
 register_model(
     ModelMeta(
         MLLMModelType.internvl_phi3,
         [
-            ModelGroup(
-                [
-                    Model('OpenGVLab/Mini-InternVL-Chat-4B-V1-5', 'OpenGVLab/Mini-InternVL-Chat-4B-V1-5'),
-                ],
-                requires=['transformers>=4.35,<4.42', 'timm'],
-                tags=['vision'],
-            ),
+            ModelGroup([
+                Model('OpenGVLab/Mini-InternVL-Chat-4B-V1-5', 'OpenGVLab/Mini-InternVL-Chat-4B-V1-5'),
+            ], ),
         ],
         TemplateType.internvl_phi3,
         get_model_tokenizer_internvl,
         architectures=['InternVLChatModel'],
         model_arch=ModelArch.internvl,
+        requires=['transformers>=4.35,<4.42', 'timm'],
+        tags=['vision'],
     ))
 
 register_model(
@@ -245,61 +241,59 @@ register_model(
     ModelMeta(
         MLLMModelType.internvl2_phi3,
         [
-            ModelGroup(
-                [
-                    Model('OpenGVLab/InternVL2-4B', 'OpenGVLab/InternVL2-4B'),
-                ],
-                requires=['transformers>=4.36,<4.42', 'timm'],
-                tags=['vision', 'video'],
-            ),
+            ModelGroup([
+                Model('OpenGVLab/InternVL2-4B', 'OpenGVLab/InternVL2-4B'),
+            ], ),
         ],
         TemplateType.internvl2_phi3,
         get_model_tokenizer_internvl,
         architectures=['InternVLChatModel'],
         model_arch=ModelArch.internvl,
+        requires=['transformers>=4.36,<4.42', 'timm'],
+        tags=['vision', 'video'],
     ))
 
 register_model(
     ModelMeta(
-        MLLMModelType.xcomposer2_5, [
-            ModelGroup(
-                [
-                    Model('Shanghai_AI_Laboratory/internlm-xcomposer2d5-7b', 'internlm/internlm-xcomposer2d5-7b'),
-                ],
-                tags=['vision'],
-            ),
+        MLLMModelType.xcomposer2_5,
+        [
+            ModelGroup([
+                Model('Shanghai_AI_Laboratory/internlm-xcomposer2d5-7b', 'internlm/internlm-xcomposer2d5-7b'),
+            ], ),
         ],
         TemplateType.xcomposer2_5,
         get_model_tokenizer_internlm_xcomposer2,
         architectures=['InternLMXComposer2ForCausalLM'],
-        model_arch=ModelArch.internlm_xcomposer))
+        model_arch=ModelArch.internlm_xcomposer,
+        tags=['vision'],
+    ))
 
 register_model(
     ModelMeta(
-        MLLMModelType.xcomposer2, [
-            ModelGroup(
-                [
-                    Model('Shanghai_AI_Laboratory/internlm-xcomposer2-7b', 'internlm/internlm-xcomposer2-7b'),
-                ],
-                tags=['vision'],
-            ),
+        MLLMModelType.xcomposer2,
+        [
+            ModelGroup([
+                Model('Shanghai_AI_Laboratory/internlm-xcomposer2-7b', 'internlm/internlm-xcomposer2-7b'),
+            ], ),
         ],
         TemplateType.xcomposer2,
         get_model_tokenizer_internlm_xcomposer2,
         architectures=['InternLMXComposer2ForCausalLM'],
-        model_arch=ModelArch.internlm_xcomposer))
+        model_arch=ModelArch.internlm_xcomposer,
+        tags=['vision'],
+    ))
 
 register_model(
     ModelMeta(
-        MLLMModelType.xcomposer2_4khd, [
-            ModelGroup(
-                [
-                    Model('Shanghai_AI_Laboratory/internlm-xcomposer2-4khd-7b', 'internlm/internlm-xcomposer2-4khd-7b'),
-                ],
-                tags=['vision'],
-            ),
+        MLLMModelType.xcomposer2_4khd,
+        [
+            ModelGroup([
+                Model('Shanghai_AI_Laboratory/internlm-xcomposer2-4khd-7b', 'internlm/internlm-xcomposer2-4khd-7b'),
+            ], ),
         ],
         TemplateType.xcomposer2,
         partial(get_model_tokenizer_internlm_xcomposer2, version='v2-4khd'),
         architectures=['InternLMXComposer2ForCausalLM'],
-        model_arch=ModelArch.internlm_xcomposer))
+        model_arch=ModelArch.internlm_xcomposer,
+        tags=['vision'],
+    ))

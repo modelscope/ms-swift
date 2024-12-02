@@ -191,14 +191,14 @@ register_model(
                 Model('LLM-Research/Llama-3.2-90B-Vision-Instruct', 'meta-llama/Llama-3.2-90B-Vision-Instruct'),
                 Model('LLM-Research/Llama-3.2-11B-Vision', 'meta-llama/Llama-3.2-11B-Vision'),
                 Model('LLM-Research/Llama-3.2-90B-Vision', 'meta-llama/Llama-3.2-90B-Vision'),
-            ],
-                       tags=['vision'])
+            ])
         ],
         TemplateType.llama3_2_vision,
         get_model_tokenizer_llama3_2_vision,
         requires=['transformers>=4.45'],
         architectures=['MllamaForConditionalGeneration'],
         model_arch=ModelArch.llama3_2_vision,
+        tags=['vision'],
     ))
 
 
@@ -238,19 +238,15 @@ def get_model_tokenizer_omnli(model_dir: str,
 register_model(
     ModelMeta(
         MLLMModelType.llama3_1_omni,
-        [
-            ModelGroup(
-                [
-                    Model('ICTNLP/Llama-3.1-8B-Omni', 'ICTNLP/Llama-3.1-8B-Omni'),
-                ],
-                tags=['audio'],
-                requires=['whisper', 'openai-whisper'],
-            )
-        ],
+        [ModelGroup([
+            Model('ICTNLP/Llama-3.1-8B-Omni', 'ICTNLP/Llama-3.1-8B-Omni'),
+        ], )],
         TemplateType.llama3_1_omni,
         get_model_tokenizer_omnli,
         architectures=['OmniSpeech2SLlamaForCausalLM'],
         model_arch=ModelArch.llama3_1_omni,
+        requires=['whisper', 'openai-whisper'],
+        tags=['audio'],
     ))
 
 register_model(
@@ -327,25 +323,24 @@ register_model(
 
 register_model(
     ModelMeta(
-        LLMModelType.numina,
-        [
+        LLMModelType.numina, [
             ModelGroup([
                 Model('AI-ModelScope/NuminaMath-7B-TIR', 'AI-MO/NuminaMath-7B-TIR'),
-            ], tags=['math']),
+            ]),
         ],
         TemplateType.numina,
         get_model_tokenizer_with_flash_attn,
         model_arch=ModelArch.llama,
         architectures=['LlamaForCausalLM'],
-    ))
+        tags=['math']))
 
 register_model(
     ModelMeta(
         LLMModelType.ziya,
         [
             ModelGroup([
-                Model('Fengshenbang/Ziya2-13B-Chat', 'IDEA-CCNL/Ziya2-13B-Chat'),
                 Model('Fengshenbang/Ziya2-13B-Base', 'IDEA-CCNL/Ziya2-13B-Base'),
+                Model('Fengshenbang/Ziya2-13B-Chat', 'IDEA-CCNL/Ziya2-13B-Chat'),
             ]),
         ],
         TemplateType.ziya,

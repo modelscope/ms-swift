@@ -36,12 +36,13 @@ register_model(
         [
             ModelGroup([
                 Model('BAAI/Emu3-Gen', 'BAAI/Emu3-Gen'),
-            ], tags=['t2i']),
+            ]),
         ],
         TemplateType.emu3_gen,
         get_model_tokenizer_emu3_gen,
         architectures=['LlavaForConditionalGeneration'],
         model_arch=ModelArch.emu3_chat,
+        tags=['t2i'],
     ))
 
 
@@ -76,13 +77,14 @@ register_model(
     ModelMeta(
         MLLMModelType.emu3_chat,
         [
-            ModelGroup(
-                [
-                    Model('BAAI/Emu3-Chat', 'BAAI/Emu3-Chat'),
-                ], tags=['vision'], requires=['transformers>=4.44.0']),
+            ModelGroup([
+                Model('BAAI/Emu3-Chat', 'BAAI/Emu3-Chat'),
+            ]),
         ],
         TemplateType.emu3_chat,
         get_model_tokenizer_emu3_chat,
         architectures=['LlavaForConditionalGeneration'],
         model_arch=ModelArch.emu3_chat,
+        tags=['vision'],
+        requires=['transformers>=4.44.0'],
     ))

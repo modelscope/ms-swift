@@ -38,14 +38,14 @@ register_model(
             ModelGroup([
                 Model('LLM-Research/Phi-3-vision-128k-instruct', 'microsoft/Phi-3-vision-128k-instruct'),
                 Model('LLM-Research/Phi-3.5-vision-instruct', 'microsoft/Phi-3.5-vision-instruct'),
-            ],
-                       requires=['transformers>=4.36'],
-                       tags=['vision']),
+            ])
         ],
         TemplateType.phi3_vl,
         get_model_tokenizer_phi3_vision,
         architectures=['Phi3VForCausalLM'],
-        model_arch=ModelArch.phi3v))
+        model_arch=ModelArch.phi3v,
+        requires=['transformers>=4.36'],
+        tags=['vision']), )
 
 
 def get_model_tokenizer_florence(model_dir: str,
@@ -76,13 +76,14 @@ register_model(
                 Model('AI-ModelScope/Florence-2-base', 'microsoft/Florence-2-base'),
                 Model('AI-ModelScope/Florence-2-large', 'microsoft/Florence-2-large'),
                 Model('AI-ModelScope/Florence-2-large-ft', 'microsoft/Florence-2-large-ft'),
-            ],
-                       tags=['vision']),
+            ]),
         ],
         TemplateType.florence,
         get_model_tokenizer_florence,
         architectures=['Florence2ForConditionalGeneration'],
-        model_arch=ModelArch.florence))
+        model_arch=ModelArch.florence,
+        tags=['vision'],
+    ))
 
 
 def get_model_tokenizer_phi3_small(model_dir: str,

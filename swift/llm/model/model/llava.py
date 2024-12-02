@@ -36,17 +36,19 @@ def get_model_tokenizer_llava_llama(model_dir: str,
 
 register_model(
     ModelMeta(
-        MLLMModelType.llava_llama3_hf, [
+        MLLMModelType.llava_llama3_hf,
+        [
             ModelGroup([
                 Model('AI-ModelScope/llava-llama-3-8b-v1_1-transformers', 'xtuner/llava-llama-3-8b-v1_1-transformers'),
-            ],
-                       requires=['transformers>=4.36'],
-                       tags=['vision']),
+            ]),
         ],
         TemplateType.llava_llama3_hf,
         get_model_tokenizer_llava_llama,
         architectures=['LlavaForConditionalGeneration'],
-        model_arch=ModelArch.llava_hf))
+        model_arch=ModelArch.llava_hf,
+        requires=['transformers>=4.36'],
+        tags=['vision'],
+    ))
 
 
 def _patch_llava(model):
@@ -106,39 +108,38 @@ def get_model_tokenizer_llava_onevision(*args, **kwargs):
 
 register_model(
     ModelMeta(
-        MLLMModelType.llava_onevision_hf, [
-            ModelGroup(
-                [
-                    Model('AI-ModelScope/llava-onevision-qwen2-0.5b-ov-hf',
-                          'llava-hf/llava-onevision-qwen2-0.5b-ov-hf'),
-                    Model('AI-ModelScope/llava-onevision-qwen2-7b-ov-hf', 'llava-hf/llava-onevision-qwen2-7b-ov-hf'),
-                    Model('AI-ModelScope/llava-onevision-qwen2-72b-ov-hf', 'llava-hf/llava-onevision-qwen2-72b-ov-hf'),
-                ],
-                requires=['transformers>=4.45'],
-                tags=['vision', 'video'],
-            ),
+        MLLMModelType.llava_onevision_hf,
+        [
+            ModelGroup([
+                Model('AI-ModelScope/llava-onevision-qwen2-0.5b-ov-hf', 'llava-hf/llava-onevision-qwen2-0.5b-ov-hf'),
+                Model('AI-ModelScope/llava-onevision-qwen2-7b-ov-hf', 'llava-hf/llava-onevision-qwen2-7b-ov-hf'),
+                Model('AI-ModelScope/llava-onevision-qwen2-72b-ov-hf', 'llava-hf/llava-onevision-qwen2-72b-ov-hf'),
+            ], ),
         ],
         TemplateType.llava_onevision_hf,
         get_model_tokenizer_llava_onevision,
         architectures=['LlavaOnevisionForConditionalGeneration'],
-        model_arch=ModelArch.llava_hf))
+        model_arch=ModelArch.llava_hf,
+        requires=['transformers>=4.45'],
+        tags=['vision', 'video'],
+    ))
 
 register_model(
     ModelMeta(
-        MLLMModelType.llava_next_qwen_hf, [
-            ModelGroup(
-                [
-                    Model('AI-ModelScope/llava-next-72b-hf', 'llava-hf/llava-next-72b-hf'),
-                    Model('AI-ModelScope/llava-next-110b-hf', 'llava-hf/llava-next-110b-hf'),
-                ],
-                requires=['transformers>=4.39'],
-                tags=['vision'],
-            ),
+        MLLMModelType.llava_next_qwen_hf,
+        [
+            ModelGroup([
+                Model('AI-ModelScope/llava-next-72b-hf', 'llava-hf/llava-next-72b-hf'),
+                Model('AI-ModelScope/llava-next-110b-hf', 'llava-hf/llava-next-110b-hf'),
+            ], ),
         ],
         TemplateType.llava_next_qwen_hf,
         get_model_tokenizer_llava_onevision,
         architectures=['LlavaForConditionalGeneration'],
-        model_arch=ModelArch.llava_hf))
+        model_arch=ModelArch.llava_hf,
+        requires=['transformers>=4.39'],
+        tags=['vision'],
+    ))
 
 
 def get_model_tokenizer_llava_next(*args, **kwargs):
@@ -149,68 +150,68 @@ def get_model_tokenizer_llava_next(*args, **kwargs):
 
 register_model(
     ModelMeta(
-        MLLMModelType.llama3_llava_next_hf, [
-            ModelGroup(
-                [
-                    Model('swift/llama3-llava-next-8b-hf', 'llava-hf/llama3-llava-next-8b-hf'),
-                ],
-                requires=['transformers>=4.39'],
-                tags=['vision'],
-            ),
+        MLLMModelType.llama3_llava_next_hf,
+        [
+            ModelGroup([
+                Model('swift/llama3-llava-next-8b-hf', 'llava-hf/llama3-llava-next-8b-hf'),
+            ], ),
         ],
         TemplateType.llama3_llava_next_hf,
         get_model_tokenizer_llava_next,
         architectures=['LlavaForConditionalGeneration'],
-        model_arch=ModelArch.llava_hf))
+        model_arch=ModelArch.llava_hf,
+        requires=['transformers>=4.39'],
+        tags=['vision'],
+    ))
 
 register_model(
     ModelMeta(
-        MLLMModelType.llava1_6_vicuna_hf, [
-            ModelGroup(
-                [
-                    Model('swift/llava-v1.6-vicuna-7b-hf', 'llava-hf/llava-v1.6-vicuna-7b-hf'),
-                    Model('swift/llava-v1.6-vicuna-13b-hf', 'llava-hf/llava-v1.6-vicuna-13b-hf'),
-                ],
-                requires=['transformers>=4.39'],
-                tags=['vision'],
-            ),
+        MLLMModelType.llava1_6_vicuna_hf,
+        [
+            ModelGroup([
+                Model('swift/llava-v1.6-vicuna-7b-hf', 'llava-hf/llava-v1.6-vicuna-7b-hf'),
+                Model('swift/llava-v1.6-vicuna-13b-hf', 'llava-hf/llava-v1.6-vicuna-13b-hf'),
+            ], ),
         ],
         TemplateType.llava1_6_vicuna_hf,
         get_model_tokenizer_llava_next,
         architectures=['LlavaForConditionalGeneration'],
-        model_arch=ModelArch.llava_hf))
+        model_arch=ModelArch.llava_hf,
+        requires=['transformers>=4.39'],
+        tags=['vision'],
+    ))
 
 register_model(
     ModelMeta(
-        MLLMModelType.llava1_6_mistral_hf, [
-            ModelGroup(
-                [
-                    Model('swift/llava-v1.6-mistral-7b-hf', 'llava-hf/llava-v1.6-mistral-7b-hf'),
-                ],
-                requires=['transformers>=4.39'],
-                tags=['vision'],
-            ),
+        MLLMModelType.llava1_6_mistral_hf,
+        [
+            ModelGroup([
+                Model('swift/llava-v1.6-mistral-7b-hf', 'llava-hf/llava-v1.6-mistral-7b-hf'),
+            ], ),
         ],
         TemplateType.llava1_6_mistral_hf,
         get_model_tokenizer_llava_next,
         architectures=['LlavaForConditionalGeneration'],
-        model_arch=ModelArch.llava_hf))
+        model_arch=ModelArch.llava_hf,
+        requires=['transformers>=4.39'],
+        tags=['vision'],
+    ))
 
 register_model(
     ModelMeta(
-        MLLMModelType.llava_llama3_1_hf, [
-            ModelGroup(
-                [
-                    Model('swift/llava-llama3.1-8b'),
-                ],
-                requires=['transformers>=4.41'],
-                tags=['vision'],
-            ),
+        MLLMModelType.llava_llama3_1_hf,
+        [
+            ModelGroup([
+                Model('swift/llava-llama3.1-8b'),
+            ], ),
         ],
         TemplateType.llava_llama3_1_hf,
         get_model_tokenizer_llava_next,
         architectures=['LlavaForConditionalGeneration'],
-        model_arch=ModelArch.llava_hf))
+        model_arch=ModelArch.llava_hf,
+        requires=['transformers>=4.41'],
+        tags=['vision'],
+    ))
 
 
 def get_model_tokenizer_llava_next_yi(*args, **kwargs):
@@ -222,19 +223,19 @@ def get_model_tokenizer_llava_next_yi(*args, **kwargs):
 
 register_model(
     ModelMeta(
-        MLLMModelType.llava1_6_yi_hf, [
-            ModelGroup(
-                [
-                    Model('swift/llava-v1.6-34b-hf', 'llava-hf/llava-v1.6-34b-hf'),
-                ],
-                requires=['transformers>=4.39'],
-                tags=['vision'],
-            ),
+        MLLMModelType.llava1_6_yi_hf,
+        [
+            ModelGroup([
+                Model('swift/llava-v1.6-34b-hf', 'llava-hf/llava-v1.6-34b-hf'),
+            ], ),
         ],
         TemplateType.llava1_6_yi_hf,
         get_model_tokenizer_llava_next_yi,
         architectures=['LlavaForConditionalGeneration'],
-        model_arch=ModelArch.llava_hf))
+        model_arch=ModelArch.llava_hf,
+        requires=['transformers>=4.39'],
+        tags=['vision'],
+    ))
 
 
 def get_model_tokenizer_llava_next_video(*args, **kwargs):
@@ -245,21 +246,21 @@ def get_model_tokenizer_llava_next_video(*args, **kwargs):
 
 register_model(
     ModelMeta(
-        MLLMModelType.llava_next_video_hf, [
-            ModelGroup(
-                [
-                    Model('swift/LLaVA-NeXT-Video-7B-DPO-hf', 'llava-hf/LLaVA-NeXT-Video-7B-DPO-hf'),
-                    Model('swift/LLaVA-NeXT-Video-7B-32K-hf', 'llava-hf/LLaVA-NeXT-Video-7B-32K-hf'),
-                    Model('swift/LLaVA-NeXT-Video-7B-hf', 'llava-hf/LLaVA-NeXT-Video-7B-hf'),
-                ],
-                requires=['transformers>=4.42', 'av'],
-                tags=['video'],
-            ),
+        MLLMModelType.llava_next_video_hf,
+        [
+            ModelGroup([
+                Model('swift/LLaVA-NeXT-Video-7B-DPO-hf', 'llava-hf/LLaVA-NeXT-Video-7B-DPO-hf'),
+                Model('swift/LLaVA-NeXT-Video-7B-32K-hf', 'llava-hf/LLaVA-NeXT-Video-7B-32K-hf'),
+                Model('swift/LLaVA-NeXT-Video-7B-hf', 'llava-hf/LLaVA-NeXT-Video-7B-hf'),
+            ], ),
         ],
         TemplateType.llava_next_video_hf,
         get_model_tokenizer_llava_next_video,
         architectures=['LlavaNextVideoForConditionalGeneration'],
-        model_arch=ModelArch.llava_next_video_hf))
+        model_arch=ModelArch.llava_next_video_hf,
+        requires=['transformers>=4.42', 'av'],
+        tags=['video'],
+    ))
 
 
 def get_model_tokenizer_llava_next_video_yi(*args, **kwargs):
@@ -272,19 +273,19 @@ def get_model_tokenizer_llava_next_video_yi(*args, **kwargs):
 
 register_model(
     ModelMeta(
-        MLLMModelType.llava_next_video_yi_hf, [
-            ModelGroup(
-                [
-                    Model('swift/LLaVA-NeXT-Video-34B-hf', 'llava-hf/LLaVA-NeXT-Video-34B-hf'),
-                ],
-                requires=['transformers>=4.42', 'av'],
-                tags=['video'],
-            ),
+        MLLMModelType.llava_next_video_yi_hf,
+        [
+            ModelGroup([
+                Model('swift/LLaVA-NeXT-Video-34B-hf', 'llava-hf/LLaVA-NeXT-Video-34B-hf'),
+            ], ),
         ],
         TemplateType.llava_next_video_hf,
         get_model_tokenizer_llava_next_video_yi,
         architectures=['LlavaNextVideoForConditionalGeneration'],
-        model_arch=ModelArch.llava_next_video_hf))
+        model_arch=ModelArch.llava_next_video_hf,
+        requires=['transformers>=4.42', 'av'],
+        tags=['video'],
+    ))
 
 
 def get_model_tokenizer_llava(model_dir: str,
@@ -347,65 +348,61 @@ def get_model_tokenizer_llava(model_dir: str,
 
 register_model(
     ModelMeta(
-        MLLMModelType.llama3_llava_next, [
-            ModelGroup(
-                [
-                    Model('AI-Modelscope/llama3-llava-next-8b', 'lmms-lab/llama3-llava-next-8b'),
-                ],
-                requires=['transformers>=4.42', 'av'],
-                tags=['vision'],
-            ),
+        MLLMModelType.llama3_llava_next,
+        [
+            ModelGroup([
+                Model('AI-Modelscope/llama3-llava-next-8b', 'lmms-lab/llama3-llava-next-8b'),
+            ], ),
         ],
         TemplateType.llama3_llava_next,
         partial(get_model_tokenizer_llava, llm_model_type='next_llama'),
         architectures=['LlavaLlamaForCausalLM'],
-        model_arch=ModelArch.llava_llama))
+        model_arch=ModelArch.llava_llama,
+        requires=['transformers>=4.42', 'av'],
+        tags=['vision'],
+    ))
 
 register_model(
     ModelMeta(
-        MLLMModelType.llava1_6_mistral, [
-            ModelGroup(
-                [
-                    Model('AI-ModelScope/llava-v1.6-mistral-7b', 'liuhaotian/llava-v1.6-mistral-7b'),
-                ],
-                tags=['vision'],
-            ),
+        MLLMModelType.llava1_6_mistral,
+        [
+            ModelGroup([
+                Model('AI-ModelScope/llava-v1.6-mistral-7b', 'liuhaotian/llava-v1.6-mistral-7b'),
+            ], ),
         ],
         TemplateType.llava1_6_mistral,
         partial(get_model_tokenizer_llava, llm_model_type='mistral'),
         requires=['transformers>=4.34'],
         architectures=['LlavaMistralForCausalLM'],
-        model_arch=ModelArch.llava_mistral))
+        model_arch=ModelArch.llava_mistral,
+        tags=['vision'],
+    ))
 
 register_model(
     ModelMeta(
         MLLMModelType.llava1_6_yi, [
-            ModelGroup(
-                [
-                    Model('AI-ModelScope/llava-v1.6-34b', 'liuhaotian/llava-v1.6-34b'),
-                ],
-                tags=['vision'],
-            ),
+            ModelGroup([
+                Model('AI-ModelScope/llava-v1.6-34b', 'liuhaotian/llava-v1.6-34b'),
+            ], ),
         ],
         TemplateType.llava1_6_yi,
         partial(get_model_tokenizer_llava, llm_model_type='llama'),
         requires=['transformers>=4.34'],
         architectures=['LlavaLlamaForCausalLM'],
+        tags=['vision'],
         model_arch=None))
 
 register_model(
     ModelMeta(
         MLLMModelType.llava_next_qwen, [
-            ModelGroup(
-                [
-                    Model('AI-Modelscope/llava-next-72b', 'lmms-lab/llava-next-72b'),
-                    Model('AI-Modelscope/llava-next-110b', 'lmms-lab/llava-next-110b'),
-                ],
-                requires=['transformers>=4.42', 'av'],
-                tags=['vision'],
-            ),
+            ModelGroup([
+                Model('AI-Modelscope/llava-next-72b', 'lmms-lab/llava-next-72b'),
+                Model('AI-Modelscope/llava-next-110b', 'lmms-lab/llava-next-110b'),
+            ], ),
         ],
         TemplateType.llava_next_qwen,
         partial(get_model_tokenizer_llava, llm_model_type='next_qwen'),
         architectures=['LlavaQwenForCausalLM'],
+        requires=['transformers>=4.42', 'av'],
+        tags=['vision'],
         model_arch=None))

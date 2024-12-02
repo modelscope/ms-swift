@@ -98,25 +98,25 @@ register_model(
                 Model('iic/mPLUG-Owl3-1B-241014', 'mPLUG/mPLUG-Owl3-1B-241014'),
                 Model('iic/mPLUG-Owl3-2B-241014', 'mPLUG/mPLUG-Owl3-2B-241014'),
                 Model('iic/mPLUG-Owl3-7B-240728', 'mPLUG/mPLUG-Owl3-7B-240728'),
-            ],
-                       requires=['transformers>=4.36', 'icecream'],
-                       tags=['vision', 'video']),
+            ]),
         ],
         TemplateType.mplug_owl3,
         get_model_tokenizer_mplug_owl3,
         architectures=['mPLUGOwl3Model'],
-        model_arch=ModelArch.mplug_owl3))
+        model_arch=ModelArch.mplug_owl3,
+        requires=['transformers>=4.36', 'icecream'],
+        tags=['vision', 'video']))
 
 register_model(
     ModelMeta(
         MLLMModelType.mplug_owl3_241101, [
             ModelGroup([
                 Model('iic/mPLUG-Owl3-7B-241101', 'mPLUG/mPLUG-Owl3-7B-241101'),
-            ],
-                       requires=['transformers>=4.36', 'icecream'],
-                       tags=['vision', 'video']),
+            ]),
         ],
         TemplateType.mplug_owl3_241101,
         get_model_tokenizer_mplug_owl3,
         architectures=['mPLUGOwl3Model'],
-        model_arch=ModelArch.mplug_owl3))
+        model_arch=ModelArch.mplug_owl3,
+        requires=['transformers>=4.36', 'icecream'],
+        tags=['vision', 'video']))
