@@ -81,7 +81,7 @@ class DeepseekVLTemplate(Template):
             num_image_tokens=torch.tensor([processor.num_image_tokens] * len(idx_list)))
         batched_output = dict(processor.batchify([output]))
         batched_output['pixel_values'] = batched_output['pixel_values'].to(dtype=self.config.torch_dtype)
-        encoded = {'input_ids': new_input_ids, 'labels': new_labels, '_data': batched_output}
+        encoded = {'input_ids': new_input_ids, 'labels': new_labels, **batched_output}
         return encoded
 
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:

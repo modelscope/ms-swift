@@ -40,7 +40,7 @@ class mPlugOwl2Template(Template):
         res = {'input_ids': input_ids, 'labels': labels}
         if images:
             images = process_images(images, processor)
-            images = images.to(self.model.dtype)
+            images = images.to(self.config.torch_dtype)
             res['images'] = images
         return res
 

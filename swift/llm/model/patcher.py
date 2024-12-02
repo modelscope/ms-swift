@@ -43,17 +43,8 @@ def patch_output_to_input_device(module: torch.nn.Module):
         module: The module to be patched
     """
 
-    def recursive_set_device(data, device):
-        if isinstance(data, Mapping):
-            return type(data)({k: recursive_set_device(v, device) for k, v in data.items()})
-        elif isinstance(data, (tuple, list)):
-            return type(data)(recursive_set_device(v, device) for v in data)
-        elif isinstance(data, torch.Tensor):
-            kwargs = {'device': device}
-            return data.to(**kwargs)
-
     def _output_to_input_device_hook(module, args, kwargs, output):
         device = find_device(args) or find_device(kwargs)
-        recursive_set_device(output, device)
+        return to_device(output, device)
 
     module.register_forward_hook(_output_to_input_device_hook, with_kwargs=True)

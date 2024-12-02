@@ -39,22 +39,16 @@ class ProcessorMixin:
             raise AttributeError('Please use `self.processor` for assignment.')
 
 
-def to_device(inputs: Any, device: torch.device) -> Any:
+def to_device(data: Any, device: torch.device) -> Any:
     """Move inputs to a device"""
-    if callable(getattr(inputs, 'to', None)):
-        return inputs.to(device=device)
-
-    if isinstance(inputs, Mapping):
-        res = {}
-        for k, v in inputs.items():
-            res[k] = to_device(v, device)
-    elif isinstance(inputs, Sequence) and not isinstance(inputs, str):
-        res = []
-        for b in inputs:
-            res.append(to_device(b, device))
+    if isinstance(data, Mapping):
+        return type(data)({k: to_device(v, device) for k, v in data.items()})
+    elif isinstance(data, (tuple, list)):
+        return type(data)(to_device(v, device) for v in data)
+    elif isinstance(data, torch.Tensor):
+        return data.to(device=device)
     else:
-        res = inputs
-    return res
+        return data
 
 
 def limit_history_length(template: 'Template', query: str, history: Optional[History],
