@@ -1,6 +1,6 @@
 import os
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '3'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
 
 
 def _infer_model(pt_engine, system=None):
@@ -79,6 +79,11 @@ def test_yi():
     _infer_model(pt_engine)
 
 
+def test_deepseek_moe():
+    pt_engine = PtEngine('deepseek-ai/deepseek-moe-16b-chat')
+    _infer_model(pt_engine)
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig, get_template, get_model_tokenizer
     from swift.utils import get_logger, seed_everything
@@ -90,3 +95,5 @@ if __name__ == '__main__':
     # test_internlm2()
     # test_yi_coder()
     # test_yi()
+    test_deepseek_moe()
+    #

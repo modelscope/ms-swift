@@ -85,11 +85,8 @@ def test_phi3_vision():
 
 
 def test_qwen_vl():
-    pass
-
-
-def test_ovis1_6():
-    pass
+    pt_engine = PtEngine('qwen/Qwen-VL-Chat')
+    _infer_model(pt_engine)
 
 
 def test_llava_onevision_hf():
@@ -104,8 +101,15 @@ def test_cogvlm2_video():
     pass
 
 
-def test_deepseek_vl_janus():
-    pass
+def test_deepseek_vl():
+    pt_engine = PtEngine('deepseek-ai/deepseek-vl-1.3b-chat')
+    _infer_model(pt_engine)
+
+def test_deepseek_janus():
+    pt_engine = PtEngine('deepseek-ai/Janus-1.3B')
+    _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    _infer_model(pt_engine)
 
 
 def test_mplug_owl2():
@@ -116,8 +120,11 @@ def test_mplug_owl3():
     pass
 
 
-def test_qwq():
-    'Qwen/QwQ-32B-Preview'
+def test_ovis1_6():
+    pt_engine = PtEngine('AIDC-AI/Ovis1.6-Gemma2-9B')
+    _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    _infer_model(pt_engine)
 
 
 if __name__ == '__main__':
@@ -125,5 +132,9 @@ if __name__ == '__main__':
     # test_internvl2()
     # test_internvl2_phi3()
     # test_llava()
+    # test_ovis1_6()
+    # test_yi_vl()
+    # test_deepseek_vl()
     #
-    test_yi_vl()
+    # test_qwen_vl()
+    test_deepseek_janus()
