@@ -133,7 +133,6 @@ class CogTemplate(Template):
         if len(encoded) == 0:
             return encoded
         image = inputs.images or []
-        encoded.pop('loss_scale', None)
         history_inputs = inputs.to_history()
         inputs2 = model.build_conversation_input_ids(
             self.processor, query=history_inputs['query'], history=history_inputs['history'], images=image)
@@ -213,7 +212,6 @@ class Cog2VideoTemplate(CogTemplate):
             return encoded
         videos_path = inputs.videos or []
         video = load_batch(videos_path, load_video_cogvlm2)
-        encoded.pop('loss_scale', None)
         history_inputs = inputs.to_history()
         inputs2 = model.build_conversation_input_ids(
             self.processor,
