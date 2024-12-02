@@ -63,7 +63,6 @@ register_model(
             ]),
             ModelGroup(
                 [Model('ZhipuAI/codegeex2-6b', 'THUDM/codegeex2-6b')],
-                requires=['transformers<4.42'],
                 tags=['coding'],
             ),
         ],

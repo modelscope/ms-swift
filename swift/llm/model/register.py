@@ -507,11 +507,13 @@ def get_model_tokenizer(
         tokenizer = processor
     tokenizer.model_info = model_info
     tokenizer.model_meta = model_meta
-    tokenizer.pad_token_id = tokenizer.pad_token_id or tokenizer.eos_token_id
+    if tokenizer.pad_token_id is None:
+        tokenizer.pad_token_id = tokenizer.eos_token_id
     assert tokenizer.eos_token_id is not None
     assert tokenizer.pad_token_id is not None
 
     if model is not None:
+        # fix seq classification task
         if model.config.pad_token_id is None:
             model.config.pad_token_id = tokenizer.pad_token_id
         model.model_info = model_info
