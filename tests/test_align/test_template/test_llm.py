@@ -1,6 +1,6 @@
 import os
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ['CUDA_VISIBLE_DEVICES'] = '3'
 
 
 def _infer_model(pt_engine, system=None):
@@ -53,11 +53,25 @@ def test_qwq():
     _infer_model(pt_engine)
 
 
+def test_internlm():
+    pt_engine = PtEngine('Shanghai_AI_Laboratory/internlm-chat-7b')
+    _infer_model(pt_engine)
+
+
+def test_internlm2():
+    pt_engine = PtEngine('Shanghai_AI_Laboratory/internlm2_5-1_8b-chat')
+    _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    _infer_model(pt_engine)
+
+
 if __name__ == '__main__':
-    from swift.llm import PtEngine, RequestConfig, get_template
+    from swift.llm import PtEngine, RequestConfig, get_template, get_model_tokenizer
     from swift.utils import get_logger, seed_everything
     logger = get_logger()
     # test_qwen2_5()
     # test_qwen1half()
+    # test_qwq()
+    # test_internlm()
+    # test_internlm2()
     #
-    test_qwq()

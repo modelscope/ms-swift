@@ -13,19 +13,6 @@ from ..patcher import patch_output_clone, patch_output_to_input_device
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
 from ..utils import ModelInfo, safe_snapshot_download, use_submodel_func
 
-
-def get_model_tokenizer_internlm_chat(model_dir: str,
-                                      model_info: ModelInfo,
-                                      model_kwargs: Dict[str, Any],
-                                      load_model: bool = True,
-                                      **kwargs):
-    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
-    if getattr(tokenizer.__class__.eos_token_id, 'fset', None) is None:
-        del tokenizer.__class__.eos_token_id
-    tokenizer.eos_token = '<eoa>'
-    return model, tokenizer
-
-
 register_model(
     ModelMeta(
         LLMModelType.internlm,
@@ -39,26 +26,10 @@ register_model(
             ])
         ],
         TemplateType.internlm,
-        get_model_tokenizer_internlm_chat,
+        get_model_tokenizer_with_flash_attn,
         architectures=['InternLMForCausalLM'],
         model_arch=ModelArch.llama,
     ))
-
-
-def get_model_tokenizer_internlm2(model_dir: str,
-                                  model_info: ModelInfo,
-                                  model_kwargs: Dict[str, Any],
-                                  load_model: bool = True,
-                                  **kwargs):
-    eos_token = kwargs.pop('eos_token', None)
-    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
-    if eos_token is not None:
-        if getattr(tokenizer.__class__.eos_token_id, 'fset', None) is None:
-            del tokenizer.__class__.eos_token_id
-        tokenizer.eos_token = eos_token
-
-    return model, tokenizer
-
 
 register_model(
     ModelMeta(
@@ -95,7 +66,7 @@ register_model(
             ])
         ],
         TemplateType.internlm2,
-        get_model_tokenizer_internlm2,
+        get_model_tokenizer_with_flash_attn,
         requires=['transformers>=4.38'],
         architectures=['InternLM2ForCausalLM'],
         model_arch=ModelArch.internlm2,
@@ -139,30 +110,9 @@ def get_model_tokenizer_internvl(model_dir: str,
                                  model_kwargs: Dict[str, Any],
                                  load_model: bool = True,
                                  **kwargs):
-    model_config = kwargs.get('model_config')
-    if not model_config:
-        model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True, use_fast=False)
-    if kwargs.get('eos_token') is None and tokenizer.eos_token != '<|im_end|>':
-        try:
-            del tokenizer.__class__.eos_token_id
-        except AttributeError:
-            pass
-        tokenizer.eos_token = '<|im_end|>'
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
 
-    model_quant_config = getattr(model_config, 'quantization_config', None)
-
-    use_bnb = False
-    if model_quant_config is not None:
-        use_bnb = model_quant_config.get('quant_method', None) == 'bitsandbytes'
-    quantization_config = model_kwargs.get('quantization_config', None)
-    if isinstance(quantization_config, BitsAndBytesConfig):
-        use_bnb = True
-
-    model, tokenizer = get_model_tokenizer_with_flash_attn(
-        model_dir, model_info, model_kwargs, load_model, tokenizer=tokenizer, **kwargs)
-
-    if use_bnb and kwargs.get('is_training'):
+    if model_info.quant_method == 'bnb' and kwargs.get('is_training'):
         # patch: bnb backward shape mismatch bug
         if model is not None and model.language_model is not None:
             model.language_model.output.state.force_no_igemmlt = True

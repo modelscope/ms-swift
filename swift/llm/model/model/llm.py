@@ -12,27 +12,16 @@ from ..constant import LLMModelType
 from ..model_arch import ModelArch
 from ..patcher import patch_output_clone
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
-from ..utils import ModelInfo, git_clone_github, use_submodel_func
+from ..utils import ModelInfo, git_clone_github, safe_snapshot_download, use_submodel_func
 
 logger = get_logger()
 
 
-def get_model_tokenizer_grok(model_dir: str,
-                             model_info: ModelInfo,
-                             model_kwargs: Dict[str, Any],
-                             load_model: bool = True,
-                             tokenizer=None,
-                             automodel_class=AutoModelForCausalLM,
-                             **kwargs):
-    if tokenizer is None:
-        tokenizer = AutoTokenizer.from_pretrained(
-            'AI-ModelScope/grok-1-tokenizer', revision='master', trust_remote_code=True)
-    eos_token = kwargs.get('eos_token')
-    if eos_token is not None:
-        tokenizer.eos_token = eos_token
-    model = None
-    if load_model:
-        model = automodel_class.from_pretrained(model_dir, trust_remote_code=True, **model_kwargs)
+def get_model_tokenizer_grok(*args, **kwargs):
+    tokenizer_dir = safe_snapshot_download('AI-ModelScope/grok-1-tokenizer', download_model=False)
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_dir, trust_remote_code=True)
+    kwargs['tokenizer'] = tokenizer
+    model, _ = get_model_tokenizer_with_flash_attn(*args, **kwargs)
     return model, tokenizer
 
 
