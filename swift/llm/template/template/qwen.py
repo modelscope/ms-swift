@@ -329,6 +329,7 @@ register_template(
 
 class Ovis1_6Template(Template):
     skip_prompt = False
+    use_model = True
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     example: Dict[str, Any]) -> List[Context]:
@@ -336,12 +337,12 @@ class Ovis1_6Template(Template):
         return [[-200], '\n']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        inputs, tokenizer_kwargs = super()._encode(inputs)
-        if len(inputs) == 0:
-            return inputs
+        _encoded = super()._encode(inputs)
+        if len(_encoded) == 0:
+            return _encoded
         images = inputs.images
-        input_ids = inputs['input_ids']
-        labels = inputs['labels']
+        input_ids = _encoded['input_ids']
+        labels = _encoded['labels']
         idx_list = findall(input_ids, [-200])
         added_tokens_len = 0
         pixel_values = []
@@ -358,11 +359,11 @@ class Ovis1_6Template(Template):
             pixel_values = torch.cat(pixel_values, dim=0).to(self.model.visual_tokenizer.dtype)
         else:
             pixel_values = None
-        inputs = {'labels': labels}
+        _encoded = {'labels': labels}
         if labels is not None:
             labels = torch.tensor(labels)[None]
-        inputs['pixel_values'] = [pixel_values]
-        return inputs
+        _encoded['pixel_values'] = [pixel_values]
+        return _encoded
 
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
         _, inputs_embeds, labels, _ = self.model.merge_multimodal(

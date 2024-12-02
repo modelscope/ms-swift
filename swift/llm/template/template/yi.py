@@ -24,6 +24,7 @@ yi_vl_default_system = (
 
 class YiVLTemplate(Template):
     image_placeholder = [[-200], '\n']
+    use_model = True
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
@@ -31,9 +32,8 @@ class YiVLTemplate(Template):
             return inpencodeduts
         encoded.pop('loss_scale', None)
         from llava.mm_utils import expand2square
-        model = model.model
         if not hasattr(model, 'vision_tower'):
-            model = model.model
+            model = self.model.model
         image_processor = model.vision_tower.image_processor
         images = inputs.images or []
         for i, image in enumerate(images):
