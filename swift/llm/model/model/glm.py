@@ -69,7 +69,7 @@ register_model(
         TemplateType.chatglm2,
         get_model_tokenizer_chatglm,
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
-        requires=['transformers==4.33.2'],
+        requires=['transformers<4.42'],
         model_arch=ModelArch.chatglm))
 
 register_model(
