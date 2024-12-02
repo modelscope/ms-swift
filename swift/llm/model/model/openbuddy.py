@@ -69,15 +69,13 @@ register_model(
     ModelMeta(
         LLMModelType.openbuddy_mixtral,
         [
-            ModelGroup(
-                [
-                    Model('OpenBuddy/openbuddy-mixtral-7bx8-v18.1-32k', 'OpenBuddy/openbuddy-mixtral-7bx8-v18.1-32k'),
-                ],
-                requires=['transformers>=4.36'],
-            ),
+            ModelGroup([
+                Model('OpenBuddy/openbuddy-mixtral-7bx8-v18.1-32k', 'OpenBuddy/openbuddy-mixtral-7bx8-v18.1-32k'),
+            ], ),
         ],
         TemplateType.openbuddy,
         get_model_tokenizer_with_flash_attn,
         model_arch=ModelArch.llama,
         architectures=['MixtralForCausalLM'],
+        requires=['transformers>=4.36'],
     ))

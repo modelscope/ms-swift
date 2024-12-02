@@ -16,18 +16,18 @@ from .deepseek import get_model_tokenizer_deepseek_moe
 
 register_model(
     ModelMeta(
-        LLMModelType.minicpm_moe, [
-            ModelGroup(
-                [
-                    Model('OpenBMB/MiniCPM-MoE-8x2B', 'openbmb/MiniCPM-MoE-8x2B'),
-                ],
-                requires=['transformers>=4.36.0'],
-            ),
+        LLMModelType.minicpm_moe,
+        [
+            ModelGroup([
+                Model('OpenBMB/MiniCPM-MoE-8x2B', 'openbmb/MiniCPM-MoE-8x2B'),
+            ]),
         ],
         TemplateType.minicpm,
         get_model_tokenizer_deepseek_moe,
         architectures=['MiniCPMForCausalLM'],
-        model_arch=ModelArch.llama))
+        model_arch=ModelArch.llama,
+        requires=['transformers>=4.36'],
+    ))
 
 
 def _patch_minicpmv_device_map(model) -> None:
@@ -136,7 +136,7 @@ register_model(
         partial(get_model_tokenizer_minicpmv_2_x, version='v2.6'),
         architectures=['MiniCPMV'],
         model_arch=ModelArch.minicpmv,
-        requires=['timm', 'transformers>=4.36'],
+        requires=['timm', 'transformers>=4.36', 'decord'],
         tags=['vision', 'video'],
     ))
 

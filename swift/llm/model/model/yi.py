@@ -99,7 +99,7 @@ register_model(
                 Model('01ai/Yi-34B-Chat', '01-ai/Yi-34B-Chat'),
                 Model('01ai/Yi-34B-Chat-4bits', '01-ai/Yi-34B-Chat-4bits'),
                 Model('01ai/Yi-34B-Chat-8bits', '01-ai/Yi-34B-Chat-8bits'),
-            ], TemplateType.chatml),
+            ]),
             # yi1.5
             ModelGroup([
                 Model('01ai/Yi-1.5-6B', '01-ai/Yi-1.5-6B'),
@@ -110,7 +110,7 @@ register_model(
                 Model('01ai/Yi-1.5-34B', '01-ai/Yi-1.5-34B'),
                 Model('01ai/Yi-1.5-34B-Chat', '01-ai/Yi-1.5-34B-Chat'),
                 Model('01ai/Yi-1.5-34B-Chat-16K', '01-ai/Yi-1.5-34B-Chat-16K'),
-            ], TemplateType.chatml),
+            ]),
             # yi1.5-quant
             ModelGroup([
                 Model('AI-ModelScope/Yi-1.5-6B-Chat-GPTQ', 'modelscope/Yi-1.5-6B-Chat-GPTQ'),

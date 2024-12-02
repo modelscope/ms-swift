@@ -266,6 +266,7 @@ register_model(
         architectures=['InternLMXComposer2ForCausalLM'],
         model_arch=ModelArch.internlm_xcomposer,
         tags=['vision'],
+        requires=['decord'],
     ))
 
 register_model(

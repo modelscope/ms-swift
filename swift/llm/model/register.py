@@ -75,7 +75,7 @@ class ModelMeta:
     def check_requires(self, model_info=None):
         extra_requires = []
         if model_info and model_info.quant_method:
-            mapping = {'bnb': ['bitsandbytes'], 'awq': ['autoawq'], 'gptq': ['auto_gptq']}
+            mapping = {'bnb': ['bitsandbytes'], 'awq': ['autoawq'], 'gptq': ['auto_gptq'], 'aqlm': ['aqlm']}
             extra_requires += mapping.get(model_info.quant_method, [])
         requires = []
         for require in self.requires + extra_requires:

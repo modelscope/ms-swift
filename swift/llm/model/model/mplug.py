@@ -102,7 +102,7 @@ register_model(
         get_model_tokenizer_mplug_owl3,
         architectures=['mPLUGOwl3Model'],
         model_arch=ModelArch.mplug_owl3,
-        requires=['transformers>=4.36', 'icecream'],
+        requires=['transformers>=4.36', 'icecream', 'decord'],
         tags=['vision', 'video']))
 
 register_model(
