@@ -41,6 +41,7 @@ def _remove_idx(arr: List[int], idx_list: List[int]) -> List[int]:
 class MiniCPMVTemplate(Template):
     is_v2_5 = False
     use_model = True
+    skip_prompt = False
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:

@@ -95,6 +95,8 @@ class Template(ProcessorMixin):
         self.max_pixels = max_pixels
         self.sequence_parallel_size = sequence_parallel_size
         self.tools_prompt = tools_prompt or template_meta.default_tools_prompt
+        if self.is_encoder_decoder:
+            skip_prompt = False
 
         self.mode: Literal['pt', 'vllm', 'lmdeploy', 'train', 'rlhf', 'kto'] = 'pt'
         self._handles = []

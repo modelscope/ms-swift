@@ -1,8 +1,8 @@
 import argparse
+from collections.abc import Mapping
 
 import json
 import torch
-from collections.abc import Mapping
 from transformers import PreTrainedTokenizerBase
 
 
