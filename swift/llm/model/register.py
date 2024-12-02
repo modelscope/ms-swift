@@ -507,8 +507,12 @@ def get_model_tokenizer(
         tokenizer = processor
     tokenizer.model_info = model_info
     tokenizer.model_meta = model_meta
+
+    pad_token = tokenizer.pad_token_id or tokenizer.eos_token_id
+    if tokenizer.eos_token_id is None:
+        tokenizer.eos_token_id = pad_token
     if tokenizer.pad_token_id is None:
-        tokenizer.pad_token_id = tokenizer.eos_token_id
+        tokenizer.pad_token_id = pad_token
     assert tokenizer.eos_token_id is not None
     assert tokenizer.pad_token_id is not None
 

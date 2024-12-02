@@ -50,7 +50,7 @@ class GOT_OCR2Template(Template):
         images = inputs.images
         image_processor_high = GOTImageEvalProcessor(image_size=1024)
         for i, image in enumerate(images):
-            images[i] = image_processor_high(image)[None].to(config.dtype)
+            images[i] = image_processor_high(image)[None].to(config.torch_dtype)
         if images:
             encoded['images'] = images
         return encoded
