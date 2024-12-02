@@ -141,8 +141,8 @@ class Emu3ChatTemplate(Template):
             return encoded
         # image
         images = inputs.images
-        input_ids = inputs['input_ids']
-        labels = inputs['labels']
+        input_ids = encoded['input_ids']
+        labels = encoded['labels']
         image_tokens = self.processor.tokenize_image(images)
         image_prompts = []
         idxs = findall(input_ids, self.tokenizer.encode(self.image_placeholder))

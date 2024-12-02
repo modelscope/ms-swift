@@ -20,7 +20,7 @@ def test_vlm_quant(quant_method: Literal['gptq', 'awq'] = 'awq'):
         ExportArguments(
             model='qwen/Qwen2-VL-7B-Instruct',
             quant_bits=4,
-            dataset=['modelscope/coco_2014_caption:val#1000'],
+            dataset=['modelscope/coco_2014_caption:validation#1000'],
             quant_method=quant_method))
 
 
