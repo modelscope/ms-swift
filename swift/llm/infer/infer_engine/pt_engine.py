@@ -305,6 +305,8 @@ class PtEngine(InferEngine):
         lora_request: Optional[LoRARequest] = None,
     ) -> Union[ChatCompletionResponse, AsyncIterator[ChatCompletionStreamResponse]]:
         # TODO:auto batch
+        if request_config is None:
+            request_config = RequestConfig()
         res_or_gen = self.infer([infer_request],
                                 request_config,
                                 template=template,
@@ -323,14 +325,14 @@ class PtEngine(InferEngine):
     def _infer(
         self,
         infer_requests: List[InferRequest],
-        request_config: Optional[RequestConfig] = None,
+        request_config: RequestConfig,
         metrics: Optional[List[Metric]] = None,
         *,
         template: Optional[Template] = None,
         lora_request: Optional[LoRARequest] = None,
     ) -> Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
         self.model.eval()
-        request_config = deepcopy(request_config or RequestConfig())
+        request_config = deepcopy(request_config)
         if template is None:
             template = self.default_template
 
@@ -378,8 +380,10 @@ class PtEngine(InferEngine):
         use_tqdm: Optional[bool] = None,
         lora_request: Optional[LoRARequest] = None
     ) -> Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
+        if request_config is None:
+            request_config = RequestConfig()
         if use_tqdm is None:
-            use_tqdm = request_config is None or not request_config.stream
+            use_tqdm = not request_config.stream
         prog_bar = tqdm(total=len(infer_requests), dynamic_ncols=True, disable=not use_tqdm)
 
         if request_config.stream:
