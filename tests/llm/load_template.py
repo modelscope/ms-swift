@@ -29,7 +29,7 @@ def load_ds(ds):
 def load_and_tokenize(ms_model_id, template):
     from swift.llm import EncodePreprocessor, get_model_tokenizer, get_template
     try:
-        vl_fields = ['vl', 'video', 'minicpmv', 'gen', 'llava', 'vision']
+        vl_fields = ['vl', 'video', 'minicpmv', 'gen', 'llava', 'vision', 'emu']
         model_ins, tokenizer = get_model_tokenizer(ms_model_id, load_model='mplug' in ms_model_id.lower())
         template_ins = get_template(template, tokenizer)
         if template_ins.use_model:
@@ -90,7 +90,7 @@ def load_and_tokenize_old(ms_model_id, template):
     if not found:
         raise ValueError(f'No model_type found: {ms_model_id}')
 
-    vl_fields = ['vl', 'video', 'minicpmv', 'gen', 'llava', 'vision']
+    vl_fields = ['vl', 'video', 'minicpm-v', 'gen', 'llava', 'vision', 'emu']
     model_ins, tokenizer = get_model_tokenizer(model_type, load_model=True)
 
     if model_info['template'] == 'default-generation':

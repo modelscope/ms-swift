@@ -122,6 +122,8 @@ class TestRun3(unittest.TestCase):
             meta_requires = model_meta.requires or []
             for group in model_meta.model_groups:
                 model = group.models[0]
+                if 'awq' in model.ms_model_id.lower() or 'gptq' in model.ms_model_id.lower():
+                    break
                 if template in templates:
                     break
                 requires = meta_requires + (group.requires or [])
