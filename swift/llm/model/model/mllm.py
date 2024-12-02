@@ -127,7 +127,8 @@ def get_model_tokenizer_molmoe(model_dir: str,
 
 register_model(
     ModelMeta(
-        MLLMModelType.molmoe, [
+        MLLMModelType.molmoe,
+        [
             ModelGroup([
                 Model('LLM-Research/MolmoE-1B-0924', 'allenai/MolmoE-1B-0924'),
             ]),
@@ -138,7 +139,8 @@ register_model(
         torch_dtype=torch.float32,
         architectures=['MolmoForCausalLM'],
         tags=['vision'],
-        requires=['transformers>=4.45']))
+        requires=['transformers>=4.45'],
+    ))
 
 
 def get_model_tokenizer_molmo(model_dir: str,
@@ -169,7 +171,8 @@ def get_model_tokenizer_molmo(model_dir: str,
 
 register_model(
     ModelMeta(
-        MLLMModelType.molmo, [
+        MLLMModelType.molmo,
+        [
             ModelGroup([
                 Model('LLM-Research/Molmo-7B-O-0924', 'allenai/Molmo-7B-O-0924'),
                 Model('LLM-Research/Molmo-7B-D-0924', 'allenai/Molmo-7B-D-0924'),
@@ -181,4 +184,5 @@ register_model(
         model_arch=ModelArch.molmo,
         architectures=['MolmoForCausalLM'],
         tags=['vision'],
-        requires=['transformers>=4.45']))
+        requires=['transformers>=4.45'],
+    ))

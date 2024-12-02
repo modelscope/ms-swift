@@ -33,10 +33,10 @@ register_model(
                 Model('AI-ModelScope/mamba-1.4b-hf', 'state-spaces/mamba-1.4b-hf'),
                 Model('AI-ModelScope/mamba-2.8b-hf', 'state-spaces/mamba-2.8b-hf'),
             ],
-                       requires=['transformers>=4.39.0']),
-        ],
+        )],
         TemplateType.default,
         get_model_tokenizer_mamba,
         architectures=['MambaForCausalLM'],
         model_arch=None,
+        requires=['transformers>=4.39.0'],
     ))

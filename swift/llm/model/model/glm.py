@@ -221,7 +221,7 @@ register_model(
         TemplateType.cogagent_chat,
         get_model_tokenizer_cogvlm,
         architectures=['CogAgentForCausalLM'],
-        requires=['transformers<4.42'],
+        requires=['transformers<4.42', 'timm'],
         model_arch=ModelArch.cogvlm))
 
 register_model(

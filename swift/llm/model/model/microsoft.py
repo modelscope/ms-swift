@@ -45,7 +45,8 @@ register_model(
         architectures=['Phi3VForCausalLM'],
         model_arch=ModelArch.phi3v,
         requires=['transformers>=4.36'],
-        tags=['vision']), )
+        tags=['vision'],
+))
 
 
 def get_model_tokenizer_florence(model_dir: str,

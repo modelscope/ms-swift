@@ -45,7 +45,7 @@ register_model(
         get_model_tokenizer_baichuan,
         architectures=['BaiChuanForCausalLM'],
         model_arch=ModelArch.baichuan,
-        requires=['transformers<4.33.3']))
+        requires=['transformers<4.34']))
 
 
 def patch_baichuan2_lm_head_forward(self, hidden_states: Tensor) -> Tensor:
