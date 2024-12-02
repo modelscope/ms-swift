@@ -32,8 +32,8 @@ register_model(
                 Model('AI-ModelScope/mamba-790m-hf', 'state-spaces/mamba-790m-hf'),
                 Model('AI-ModelScope/mamba-1.4b-hf', 'state-spaces/mamba-1.4b-hf'),
                 Model('AI-ModelScope/mamba-2.8b-hf', 'state-spaces/mamba-2.8b-hf'),
-            ],
-        )],
+            ])
+        ],
         TemplateType.default,
         get_model_tokenizer_mamba,
         architectures=['MambaForCausalLM'],
