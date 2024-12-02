@@ -174,7 +174,7 @@ def is_accessible(port: int):
 
 
 @contextmanager
-def run_deploy(args, return_url: bool = True):
+def run_deploy(args, return_url: bool = False):
     if isinstance(args, DeployArguments) and args.__class__.__name__ == 'DeployArguments':
         deploy_args = args
     else:

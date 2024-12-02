@@ -24,7 +24,7 @@ class SwiftEval(SwiftPipeline):
     def run(self):
         args = self.args
         eval_report = {}
-        deploy_context = nullcontext() if args.eval_url else run_deploy(self.args)
+        deploy_context = nullcontext() if args.eval_url else run_deploy(self.args, return_url=True)
         with deploy_context as url:
             url = args.eval_url or url
             if args.eval_dataset_oc:
