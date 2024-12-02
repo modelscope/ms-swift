@@ -34,7 +34,8 @@ def get_model_tokenizer_phi3_vision(model_dir: str,
 
 register_model(
     ModelMeta(
-        MLLMModelType.phi3_vision, [
+        MLLMModelType.phi3_vision,
+        [
             ModelGroup([
                 Model('LLM-Research/Phi-3-vision-128k-instruct', 'microsoft/Phi-3-vision-128k-instruct'),
                 Model('LLM-Research/Phi-3.5-vision-instruct', 'microsoft/Phi-3.5-vision-instruct'),
@@ -45,7 +46,8 @@ register_model(
         architectures=['Phi3VForCausalLM'],
         model_arch=ModelArch.phi3v,
         requires=['transformers>=4.36'],
-        tags=['vision']), )
+        tags=['vision'],
+    ))
 
 
 def get_model_tokenizer_florence(model_dir: str,

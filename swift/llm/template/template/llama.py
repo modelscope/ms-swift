@@ -132,6 +132,7 @@ register_template(
 
 
 class Llama3_1OmniTemplate(Template):
+    skip_prompt = False
     audio_placeholder = [[-200]]
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:

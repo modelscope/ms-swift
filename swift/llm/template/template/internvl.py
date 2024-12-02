@@ -17,6 +17,7 @@ from .utils import ChatmlTemplateMeta
 
 
 class InternvlTemplate(Template):
+    skip_prompt = False
     num_image_token = 256
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
@@ -40,7 +41,7 @@ class InternvlTemplate(Template):
             input_size = get_env_args('input_size', int, 448)
             max_num = get_env_args('max_num', int, 12)
             pixel_values_images = [transform_image(image, input_size, max_num) for image in images]
-            pixel_values = torch.cat(pixel_values_images, dim=0)
+            pixel_values = torch.cat(pixel_values_images, dim=0).to(self.model_info.torch_dtype)
             image_bs = pixel_values.shape[0]
 
             idx, idx2 = idx_list[0], idx_list[-1]  # remove [-100, -100]
@@ -52,15 +53,14 @@ class InternvlTemplate(Template):
             encoded['input_ids'] = input_ids
             encoded['labels'] = labels
         encoded['pixel_values'] = pixel_values
-        encoded.pop('loss_scale', None)
         return encoded
 
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
         embedding = model.get_input_embeddings()
         device = embedding.weight.device
         input_ids = inputs['input_ids']
-        inputs_embeds = embedding(input_ids[None])[0].to(device=device)
-        pixel_values = inputs['pixel_values'].to(model.dtype)
+        inputs_embeds = embedding(input_ids).to(device=device)
+        pixel_values = inputs.get('pixel_values')
         if pixel_values is not None:
             pixel_values = pixel_values.to(device=device)
             vit_embeds = model.extract_feature(pixel_values).to(device=device)
@@ -161,7 +161,6 @@ class Internvl2Template(InternvlTemplate):
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
         encoded['pixel_values'] = pixel_values
-        encoded.pop('loss_scale', None)
         return encoded
 
 

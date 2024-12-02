@@ -189,6 +189,10 @@ class HfConfigFactory:
             elif load_in_8bit:
                 res['quant_bits'] = 8
             res['torch_dtype'] = HfConfigFactory.to_torch_dtype(bnb_4bit_compute_dtype)
+        elif quant_method == 'hqq':
+            res['quant_method'] = quant_method
+            res['quant_bits'] = quantization_config['quant_config']['weight_quant_params']['nbits']
+
         return res or None
 
     @staticmethod
