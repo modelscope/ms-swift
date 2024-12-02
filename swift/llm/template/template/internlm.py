@@ -63,19 +63,16 @@ class InternLMXComposer2Template(Template):
         return encoded
 
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        input_ids = inputs['input_ids']
+        input_ids = inputs['input_ids'][0].tolist()
         labels = inputs['labels']
         images = inputs['images']
         if len(images) > 0:  # ignore <s>
             input_ids = input_ids[1:]
             if labels is not None:
                 labels = labels[1:]
-        if isinstance(input_ids, torch.Tensor):
-            input_ids = input_ids.tolist()
         input_ids.append(2)  # add dummy </s>
         if labels is not None:
-            if isinstance(labels, torch.Tensor):
-                labels = labels.tolist()
+            labels = labels[0].tolist()
             labels.append(2)
         else:
             labels = []

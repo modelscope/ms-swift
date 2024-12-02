@@ -125,7 +125,7 @@ class TemplateMeta:
             if isinstance(token, str):
                 self.placeholder_tokens[i] = tokenizer.convert_tokens_to_ids(token)
 
-        if self.suffix[-1] not in self.stop_words:
+        if self.suffix and self.suffix[-1] not in self.stop_words:
             self.stop_words.append(self.suffix[-1])
         if tokenizer.eos_token not in self.stop_words:
             self.stop_words.append(tokenizer.eos_token)

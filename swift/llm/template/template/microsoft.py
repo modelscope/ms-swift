@@ -15,7 +15,7 @@ from ..vision_utils import load_image
 
 
 class FlorenceTemplate(Template):
-    loss_scale = 'last_round'
+    # loss_scale = 'last_round'
     is_encoder_decoder = True
 
     def __init__(self, *args, **kwargs):
@@ -68,7 +68,7 @@ class FlorenceTemplate(Template):
         if len(encoded) == 0:
             return encoded
         images = inputs.images or []
-        labels = encoded['answer_labels']
+        labels = encoded['labels']
         if labels is not None:
             labels = [0] + labels
         pixel_values = processor.image_processor(
