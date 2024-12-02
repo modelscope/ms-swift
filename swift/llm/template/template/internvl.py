@@ -51,7 +51,7 @@ class InternvlTemplate(Template):
                 labels = labels[:idx] + [-100] * len(img_tokens) + labels[idx2 + 1:]
             encoded['input_ids'] = input_ids
             encoded['labels'] = labels
-        encoded['_data'] = {'input_ids': torch.tensor(input_ids), 'pixel_values': pixel_values}
+        encoded['pixel_values'] = pixel_values
         encoded.pop('loss_scale', None)
         return encoded
 
@@ -160,7 +160,7 @@ class Internvl2Template(InternvlTemplate):
             added_tokens_len += len(img_tokens) - 1
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
-        encoded['_data'] = {'input_ids': torch.tensor(input_ids), 'pixel_values': pixel_values}
+        encoded['pixel_values'] = pixel_values
         encoded.pop('loss_scale', None)
         return encoded
 

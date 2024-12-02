@@ -361,7 +361,7 @@ class Ovis1_6Template(Template):
         inputs = {'labels': labels}
         if labels is not None:
             labels = torch.tensor(labels)[None]
-        inputs['_data'] = {'input_ids': torch.tensor(input_ids)[None], 'labels': labels, 'pixel_values': [pixel_values]}
+        inputs['pixel_values'] = [pixel_values]
         return inputs
 
     def _post_encode(self, model, data: Any) -> Dict[str, Any]:

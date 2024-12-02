@@ -76,10 +76,7 @@ class FlorenceTemplate(Template):
         encoded = {
             'input_ids': input_ids,
             'labels': labels,
-            '_data': {
-                'input_ids': torch.tensor(input_ids)[None],
-                'pixel_values': pixel_values,
-            }
+            'pixel_values': pixel_values,
         }
         return encoded
 

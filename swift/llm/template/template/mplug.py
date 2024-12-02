@@ -102,7 +102,7 @@ class mPlugOwl3Template(Template):
         labels = encoded['labels']
         idx_list = findall(input_ids, -100)
         processor = self.processor
-        encoded = {'_data': {}}
+        encoded = {}
         if images:
             image_inputs = processor.image_processor(images, cut_enable=cut_enable, return_tensors='pt')
             added_tokens_len = 0
@@ -122,11 +122,11 @@ class mPlugOwl3Template(Template):
             _range = torch.arange(len(input_ids))[:, None]
             matrix = (_range > image_token_idx).sum(dim=1)
             media_offset = torch.stack([torch.zeros(matrix.shape[0], dtype=torch.long), matrix], dim=-1)[None]
-            encoded['_data'].update({
+            encoded.update({
                 'pixel_values': image_inputs['pixel_values'],
                 'media_offset': media_offset,
             })
-        encoded['_data']['input_ids'] = input_ids
+        encoded['input_ids'] = input_ids
         encoded['labels'] = labels
         return encoded
 
@@ -180,7 +180,7 @@ class mPlugOwl3_241101Template(mPlugOwl3Template):
         labels = encoded['labels']
         idx_list = findall(input_ids, -100)
         processor = self.tokenizer.processor
-        encoded = {'_data': {}}
+        encoded = {}
         if images:
             image_inputs = processor.image_processor(images, cut_enable=cut_enable, return_tensors='pt')
             added_tokens_len = 0
@@ -198,11 +198,11 @@ class mPlugOwl3_241101Template(mPlugOwl3Template):
                 added_tokens_len += len(token_list) - 1
             image_token_idx = torch.tensor(findall(input_ids, image_token_list))
 
-            encoded['_data'].update({
+            encoded.update({
                 'pixel_values': image_inputs['pixel_values'],
                 'media_offset': image_token_idx,
             })
-        encoded['_data']['input_ids'] = input_ids
+        encoded['input_ids'] = input_ids
         encoded['labels'] = labels
         return encoded
 

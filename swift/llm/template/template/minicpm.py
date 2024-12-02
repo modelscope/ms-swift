@@ -124,12 +124,9 @@ class MiniCPMVTemplate(Template):
         encoded = {
             'input_ids': input_ids,
             'labels': labels,
-            '_data': {
-                'input_ids': torch.tensor(input_ids)[None],
-                'image_bound': image_bound,
-                'pixel_values': pixel_values,
-                'tgt_sizes': tgt_sizes
-            }
+            'image_bound': image_bound,
+            'pixel_values': pixel_values,
+            'tgt_sizes': tgt_sizes
         }
         return encoded
 
@@ -223,12 +220,9 @@ class MiniCPMV2_6Template(MiniCPMVTemplate):
         encoded = {
             'input_ids': input_ids,
             'labels': labels,
-            '_data': {
-                'input_ids': torch.tensor(input_ids)[None],
-                'image_bound': image_bound,
-                'pixel_values': image_inputs['pixel_values'],
-                'tgt_sizes': image_inputs['tgt_sizes']
-            }
+            'image_bound': image_bound,
+            'pixel_values': image_inputs['pixel_values'],
+            'tgt_sizes': image_inputs['tgt_sizes']
         }
         return encoded
 

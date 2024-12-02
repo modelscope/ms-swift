@@ -140,11 +140,6 @@ class Llama3_1OmniTemplate(Template):
         if len(encoded) == 0:
             return encoded
         audios = inputs.audios
-        input_ids = encoded['input_ids']
-        labels = encoded['labels']
-        encoded['_data'] = {'input_ids': torch.tensor(input_ids)[None]}
-        if labels is not None:
-            encoded['_data']['labels'] = torch.tensor(labels)[None]
         if audios:
             audios = load_batch(audios, whisper.load_audio)
             n_mels = get_env_args('n_mels', int, 128)
@@ -152,7 +147,7 @@ class Llama3_1OmniTemplate(Template):
                 audio = whisper.pad_or_trim(audio)
                 audios[i] = whisper.log_mel_spectrogram(audio, n_mels=n_mels).permute(1, 0)
             audios = torch.stack(audios)
-            encoded['_data'].update({'speech': audios, 'speech_lengths': torch.tensor([[audios.shape[1]]])})
+            encoded.update({'speech': audios, 'speech_lengths': torch.tensor([[audios.shape[1]]])})
 
         return encoded
 

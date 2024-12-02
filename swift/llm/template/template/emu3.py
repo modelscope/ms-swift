@@ -142,7 +142,7 @@ class Emu3ChatTemplate(Template):
         # image
         raw_image = inputs.images
         if raw_image:
-            encoded['_data'] = {'raw_image': raw_image, 'input_ids': encoded['input_ids'], 'labels': encoded['labels']}
+            encoded['raw_image'] = raw_image
 
         return encoded
 
