@@ -161,19 +161,17 @@ register_model(
 
 register_model(
     ModelMeta(
-        LLMModelType.dbrx,
-        [
+        LLMModelType.dbrx, [
             ModelGroup([
-                Model('AI-ModelScope/dbrx-instruct', 'databricks/dbrx-instruct'),
                 Model('AI-ModelScope/dbrx-base', 'databricks/dbrx-base'),
-            ],
-                       requires=['transformers>=4.36']),
+                Model('AI-ModelScope/dbrx-instruct', 'databricks/dbrx-instruct'),
+            ]),
         ],
         TemplateType.dbrx,
         get_model_tokenizer_with_flash_attn,
         model_arch=ModelArch.dbrx,
         architectures=['DbrxForCausalLM'],
-    ))
+        requires=['transformers>=4.36']))
 
 register_model(
     ModelMeta(

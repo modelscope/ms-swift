@@ -68,8 +68,9 @@ class LLMModelType:
     wizardlm2_awq = 'wizardlm2_awq'
 
     phi2 = 'phi2'
-    phi3 = 'phi3'
     phi3_small = 'phi3_small'
+    phi3 = 'phi3'
+    phi3_moe = 'phi3_moe'
 
     gemma = 'gemma'
     gemma2 = 'gemma2'
@@ -151,7 +152,7 @@ class MLLMModelType:
 
     idefics3_llama3 = 'idefics3_llama3'
 
-    phi3_vl = 'phi3_vl'
+    phi3_vision = 'phi3_vision'
     florence = 'florence'
     idefics3 = 'idefics3'
     paligemma = 'paligemma'

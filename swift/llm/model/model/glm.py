@@ -75,19 +75,6 @@ register_model(
 
 register_model(
     ModelMeta(
-        LLMModelType.codefuse_codegeex2,
-        [
-            ModelGroup([Model('codefuse-ai/CodeFuse-CodeGeeX2-6B', 'codefuse-ai/CodeFuse-CodeGeeX2-6B')], ),
-        ],
-        TemplateType.codefuse,
-        get_model_tokenizer_chatglm,
-        architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
-        model_arch=ModelArch.chatglm,
-        tags=['coding'],
-    ))
-
-register_model(
-    ModelMeta(
         LLMModelType.chatglm3, [
             ModelGroup([
                 Model('ZhipuAI/chatglm3-6b', 'THUDM/chatglm3-6b'),

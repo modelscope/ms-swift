@@ -91,19 +91,6 @@ register_model(
 
 register_model(
     ModelMeta(
-        LLMModelType.codefuse_qwen, [
-            ModelGroup([
-                Model('codefuse-ai/CodeFuse-QWen-14B', 'codefuse-ai/CodeFuse-QWen-14B'),
-            ]),
-        ],
-        TemplateType.codefuse,
-        get_model_tokenizer_qwen,
-        architectures=['QWenLMHeadModel'],
-        model_arch=ModelArch.qwen,
-        tags=['coding']))
-
-register_model(
-    ModelMeta(
         LLMModelType.modelscope_agent,
         [ModelGroup([
             Model('iic/ModelScope-Agent-7B'),

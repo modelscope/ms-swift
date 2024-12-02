@@ -165,4 +165,4 @@ class Phi3VisionTemplate(Template):
         return encoded
 
 
-register_template(Phi3TemplateMeta(MLLMTemplateType.phi3_vl, template_cls=Phi3VisionTemplate))
+register_template(Phi3TemplateMeta(MLLMTemplateType.phi3_vision, template_cls=Phi3VisionTemplate))

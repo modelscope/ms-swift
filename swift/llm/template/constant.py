@@ -127,7 +127,7 @@ class MLLMTemplateType:
     idefics3 = 'idefics3'
     pixtral = 'pixtral'
     paligemma = 'paligemma'
-    phi3_vl = 'phi3_vl'
+    phi3_vision = 'phi3_vision'
     florence = 'florence'
     molmo = 'molmo'
 

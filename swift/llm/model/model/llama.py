@@ -293,34 +293,6 @@ register_model(
         architectures=['LlamaForCausalLM'],
     ))
 
-
-def get_model_tokenizer_codellama(model_dir: str,
-                                  model_info: ModelInfo,
-                                  model_kwargs: Dict[str, Any],
-                                  load_model: bool = True,
-                                  **kwargs):
-    tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True, use_fast=False, legacy=False)
-    return get_model_tokenizer_with_flash_attn(
-        model_dir, model_info, model_kwargs, load_model, tokenizer=tokenizer, **kwargs)
-
-
-register_model(
-    ModelMeta(
-        LLMModelType.codefuse_codellama,
-        [
-            ModelGroup(
-                [
-                    Model('codefuse-ai/CodeFuse-CodeLlama-34B', 'codefuse-ai/CodeFuse-CodeLlama-34B'),
-                ],
-                tags=['coding'],
-            ),
-        ],
-        TemplateType.codefuse_codellama,
-        get_model_tokenizer_codellama,
-        model_arch=ModelArch.llama,
-        architectures=['LlamaForCausalLM'],
-    ))
-
 register_model(
     ModelMeta(
         LLMModelType.numina, [
