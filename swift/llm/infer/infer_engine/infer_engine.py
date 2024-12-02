@@ -117,7 +117,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
             request_config = RequestConfig()
         tasks = [self.infer_async(infer_request, request_config, **kwargs) for infer_request in infer_requests]
         if use_tqdm is None:
-            use_tqdm = not request_config.stream
+            use_tqdm = not request_config.stream and len(infer_requests) > 1
         if request_config.stream:
 
             def _gen_wrapper():

@@ -224,7 +224,8 @@ class Template(ProcessorMixin):
         # skip suffix and eos_token
         template_suffix = self.template_meta.suffix[-1]
         if isinstance(template_suffix, str):
-            template_suffix = tokenizer.encode(template_suffix, add_special_tokens=False)
+            # [-1:]: fix OpenGVLab/Mini-InternVL-Chat-4B-V1-5
+            template_suffix = tokenizer.encode(template_suffix, add_special_tokens=False)[-1:]
         generate_ids = self._skip_stop_tokens(generate_ids, template_suffix, is_finished)
         return tokenizer.decode(generate_ids, **decode_kwargs)
         # if not is_finished or is_finished and response[-len_suffix:] == template_suffix:
