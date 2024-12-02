@@ -47,7 +47,8 @@ def get_model_tokenizer_idefics(model_dir: str, *args, **kwargs):
 
 register_model(
     ModelMeta(
-        MLLMModelType.idefics3, [
+        MLLMModelType.idefics3,
+        [
             ModelGroup([
                 Model('AI-ModelScope/Idefics3-8B-Llama3', 'HuggingFaceM4/Idefics3-8B-Llama3'),
             ]),
@@ -57,7 +58,8 @@ register_model(
         model_arch=ModelArch.idefics3,
         architectures=['Idefics3ForConditionalGeneration'],
         tags=['vision'],
-        requires=['transformers>=4.45']))
+        requires=['transformers>=4.45'],
+    ))
 
 
 def get_model_tokenizer_pixtral(model_dir: str, *args, **kwargs):

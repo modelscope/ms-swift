@@ -60,16 +60,17 @@ register_model(
             ModelGroup([
                 Model('ZhipuAI/chatglm2-6b', 'THUDM/chatglm2-6b'),
                 Model('ZhipuAI/chatglm2-6b-32k', 'THUDM/chatglm2-6b-32k')
-            ]),
+            ],
+                       requires=['transformers<4.42']),
             ModelGroup(
                 [Model('ZhipuAI/codegeex2-6b', 'THUDM/codegeex2-6b')],
+                requires=['transformers<4.34'],
                 tags=['coding'],
             ),
         ],
         TemplateType.chatglm2,
         get_model_tokenizer_chatglm,
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
-        requires=['transformers<4.42'],
         model_arch=ModelArch.chatglm))
 
 register_model(
@@ -106,7 +107,8 @@ def get_model_tokenizer_glm4(model_dir: str,
 
 register_model(
     ModelMeta(
-        LLMModelType.glm4, [
+        LLMModelType.glm4,
+        [
             ModelGroup([
                 Model('ZhipuAI/glm-4-9b-chat', 'THUDM/glm-4-9b-chat'),
                 Model('ZhipuAI/glm-4-9b', 'THUDM/glm-4-9b'),
@@ -119,7 +121,9 @@ register_model(
         TemplateType.glm4,
         get_model_tokenizer_glm4,
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
-        model_arch=ModelArch.chatglm))
+        model_arch=ModelArch.chatglm,
+        requires=['transformers>=4.42'],
+    ))
 
 register_model(
     ModelMeta(
@@ -173,13 +177,16 @@ def get_model_tokenizer_glm4v(model_dir: str,
 
 register_model(
     ModelMeta(
-        MLLMModelType.glm4v, [ModelGroup([
+        MLLMModelType.glm4v,
+        [ModelGroup([
             Model('ZhipuAI/glm-4v-9b', 'THUDM/glm-4v-9b'),
         ])],
         TemplateType.glm4v,
         get_model_tokenizer_glm4v,
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
-        model_arch=ModelArch.glm4v))
+        model_arch=ModelArch.glm4v,
+        requires=['transformers>=4.42'],
+    ))
 
 
 def get_model_tokenizer_cogvlm(model_dir: str,

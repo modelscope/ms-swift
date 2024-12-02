@@ -142,7 +142,8 @@ register_model(
 
 register_model(
     ModelMeta(
-        LLMModelType.minicpm, [
+        LLMModelType.minicpm,
+        [
             ModelGroup([
                 Model('OpenBMB/MiniCPM-2B-sft-fp32', 'openbmb/MiniCPM-2B-sft-fp32'),
                 Model('OpenBMB/MiniCPM-2B-dpo-fp32', 'openbmb/MiniCPM-2B-dpo-fp32'),
@@ -152,34 +153,36 @@ register_model(
         TemplateType.minicpm,
         get_model_tokenizer_with_flash_attn,
         architectures=['MiniCPMForCausalLM'],
-        model_arch=ModelArch.llama))
+        model_arch=ModelArch.llama,
+        requires=['transformers>=4.36.0'],
+    ))
 
 register_model(
     ModelMeta(
-        LLMModelType.minicpm_chatml, [
-            ModelGroup(
-                [
-                    Model('OpenBMB/MiniCPM-2B-128k', 'openbmb/MiniCPM-2B-128k'),
-                ],
-                requires=['transformers>=4.36.0'],
-            ),
+        LLMModelType.minicpm_chatml,
+        [
+            ModelGroup([
+                Model('OpenBMB/MiniCPM-2B-128k', 'openbmb/MiniCPM-2B-128k'),
+            ]),
         ],
         TemplateType.chatml,
         get_model_tokenizer_with_flash_attn,
         architectures=['MiniCPMForCausalLM'],
-        model_arch=ModelArch.llama))
+        model_arch=ModelArch.llama,
+        requires=['transformers>=4.36'],
+    ))
 
 register_model(
     ModelMeta(
-        LLMModelType.minicpm3, [
-            ModelGroup(
-                [
-                    Model('OpenBMB/MiniCPM3-4B', 'openbmb/MiniCPM3-4B'),
-                ],
-                requires=['transformers>=4.36.0'],
-            ),
+        LLMModelType.minicpm3,
+        [
+            ModelGroup([
+                Model('OpenBMB/MiniCPM3-4B', 'openbmb/MiniCPM3-4B'),
+            ]),
         ],
         TemplateType.chatml,
         get_model_tokenizer_with_flash_attn,
         architectures=['MiniCPM3ForCausalLM'],
-        model_arch=ModelArch.deepseek_v2))
+        model_arch=ModelArch.deepseek_v2,
+        requires=['transformers>=4.36'],
+    ))
