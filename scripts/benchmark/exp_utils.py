@@ -160,17 +160,12 @@ class ExpManager:
         best_model_checkpoint = exp.record.get('best_model_checkpoint')
         eval_dataset = exp.eval_dataset
         if best_model_checkpoint is not None:
-            model_type_kwargs = ''
             if not os.path.exists(os.path.join(best_model_checkpoint, 'args.json')):
-                model_type = best_model_checkpoint[best_model_checkpoint.rfind(os.path.sep) + 1:]
-                model_type = '-'.join(model_type.split('-')[:-2])
-                model_type_kwargs = f'--model_type {model_type}'
-            cmd = f'swift eval {model_type_kwargs} --ckpt_dir {best_model_checkpoint} ' \
-                  + f'--infer_backend pt --train_type full --eval_dataset {" ".join(eval_dataset)}'
+                cmd = f'swift eval --ckpt_dir {best_model_checkpoint} ' \
+                      + f'--infer_backend pt --train_type full --eval_dataset {" ".join(eval_dataset)}'
         else:
-            assert exp.args.get('model_type') is not None
-            cmd = f'swift eval --model_type {exp.args.get("model_type")} --infer_backend pt ' \
-                  f'--name {exp.name} --eval_dataset {" ".join(eval_dataset)}'
+            cmd = f'swift eval --model {exp.args.get("model")} --infer_backend pt ' \
+                  f'--eval_dataset {" ".join(eval_dataset)}'
 
         return {
             'running_cmd': cmd,
@@ -206,12 +201,12 @@ class ExpManager:
         elif exp.cmd == 'rlhf':
             from swift.llm import RLHFArguments
             args = exp.args
-            dpo_args = RLHFArguments(**args)
-            args['output_dir'] = dpo_args.output_dir
-            args['logging_dir'] = dpo_args.logging_dir
+            rlhf_args = RLHFArguments(**args)
+            args['output_dir'] = rlhf_args.output_dir
+            args['logging_dir'] = rlhf_args.logging_dir
             args['add_version'] = False
-            os.makedirs(dpo_args.output_dir, exist_ok=True)
-            os.makedirs(dpo_args.logging_dir, exist_ok=True)
+            os.makedirs(rlhf_args.output_dir, exist_ok=True)
+            os.makedirs(rlhf_args.logging_dir, exist_ok=True)
             cmd = 'swift rlhf '
             for key, value in args.items():
                 cmd += f' --{key} {value}'

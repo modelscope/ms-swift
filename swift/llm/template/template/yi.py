@@ -27,7 +27,6 @@ class YiVLTemplate(Template):
     use_model = True
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        model = self.model
         encoded = super()._encode(inputs)
         if len(encoded) == 0:
             return encoded
