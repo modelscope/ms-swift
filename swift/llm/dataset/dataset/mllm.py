@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 import ast
 import os
 from typing import Any, Dict, Optional

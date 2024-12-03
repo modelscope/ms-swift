@@ -1,9 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
-import asyncio
 from copy import deepcopy
 from dataclasses import asdict
-from threading import Thread
 from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
 
 import aiohttp

@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 import ast
 import re
 from functools import partial
@@ -537,7 +538,7 @@ class GuanacoPreprocessor(RowPreprocessor):
         output = row['output']
         history = []
         if instruction:
-            from swift.llm.template.agent import split_str_parts_by
+            from swift.llm.template import split_str_parts_by
             parts = split_str_parts_by(
                 instruction, ['User:', 'User：', 'Assistant：', 'Assistant:', 'Asssistent:', 'Assistent:', 'Assistenz:'])
             for idx, part in enumerate(parts):

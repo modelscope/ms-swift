@@ -6,7 +6,7 @@ import unittest
 import json
 import numpy as np
 
-from swift.llm import MODEL_MAPPING, EncodePreprocessor, get_model_tokenizer, get_template, load_dataset
+from swift.llm import MODEL_MAPPING, load_dataset
 
 
 class TestRun3(unittest.TestCase):

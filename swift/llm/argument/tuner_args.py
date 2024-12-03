@@ -16,10 +16,6 @@ class TunerArguments:
     TunerArguments is a dataclass that holds configuration for various tuners.
 
     Args:
-        tuner_backend (Literal): Backend to use for tuning. Default is 'peft'. Allowed values are 'peft', 'unsloth'.
-        train_type (str): Type of training to be performed. Default is 'lora'.
-            Choices are defined by `get_supported_tuners()`.
-
         target_modules (List[str]): List of target modules for tuning. Default is ['ALL'].
         target_regex (Optional[str]): Regular expression to match target modules. Default is None.
         modules_to_save (List[str]): List of modules to save. Default is an empty list.
@@ -27,10 +23,9 @@ class TunerArguments:
         lora_rank (int): Rank for LoRA. Default is 8.
         lora_alpha (int): Alpha value for LoRA. Default is 32.
         lora_dropout (float): Dropout rate for LoRA. Default is 0.05.
-        lora_bias_trainable (Literal): Specifies if LoRA bias is trainable. Default is 'none'.
             Allowed values are 'none', 'all'.
         lora_dtype (Literal): Data type for LoRA. Default is 'AUTO'. Allowed values are 'fp16', 'bf16', 'fp32', 'AUTO'.
-        lora_lr_ratio (float): Learning rate ratio for LoRA. Default is None.
+        lorap_lr_ratio (float): Learning rate ratio for LoRA. Default is None.
         use_rslora (bool): Flag to indicate if RSLora is used. Default is False.
         use_dora (bool): Flag to indicate if Dora is used. Default is False.
         init_lora_weights (str): Initialization method for LoRA weights. Default is 'true'.
@@ -73,7 +68,7 @@ class TunerArguments:
         adalora_init_r (int): Initial rank for AdaLoRA. Default is 12.
         adalora_tinit (int): Initial T value for AdaLoRA. Default is 100.
         adalora_tfinal (int): Final T value for AdaLoRA. Default is 1000.
-        adalora_delta_t (int): Delta T value for AdaLoRA. Default is 10.
+        adalora_deltaT (int): Delta T value for AdaLoRA. Default is 10.
         adalora_beta1 (float): Beta1 value for AdaLoRA. Default is 0.85.
         adalora_beta2 (float): Beta2 value for AdaLoRA. Default is 0.85.
         adalora_orth_reg_weight (float): Orthogonal regularization weight for AdaLoRA. Default is 0.5.

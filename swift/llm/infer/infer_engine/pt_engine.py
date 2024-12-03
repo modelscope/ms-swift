@@ -1,25 +1,21 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import inspect
-import time
 from copy import deepcopy
-from dataclasses import asdict, dataclass
 from threading import Thread
 from typing import Any, AsyncIterator, Dict, Iterator, List, Literal, Optional, Union
 
 import json
 import torch
-from PIL import Image
 from tqdm import tqdm
 from transformers import GenerationConfig, LogitsProcessorList
 from transformers.utils import is_torch_npu_available
 
-from swift.llm import InferRequest, Template, TemplateMeta, get_model_tokenizer, to_device
+from swift.llm import InferRequest, Template, get_model_tokenizer, to_device
 from swift.plugin import Metric
 from swift.tuners import Swift
 from swift.utils import get_logger
 from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
-                        ChatCompletionStreamResponse, ChatMessage, DeltaMessage, MultiModalRequestMixin, RequestConfig,
-                        random_uuid)
+                        ChatCompletionStreamResponse, ChatMessage, DeltaMessage, RequestConfig, random_uuid)
 from .infer_engine import InferEngine
 from .utils import InferStreamer, LogitsStreamer, LoRARequest, TokensIteratorStreamer, prepare_generation_config
 

@@ -15,6 +15,7 @@ class WebUIArguments(InferArguments):
         port (int): The port number to bind the web UI server to. Default is 7860.
         share (bool): A flag indicating whether to share the web UI publicly. Default is False.
         lang (str): The language setting for the web UI. Default is 'zh'.
+        studio_title(str): The title of the chat studio when specify `--model` or `--ckpt_dir`.
     """
     host: str = '0.0.0.0'
     port: int = 7860

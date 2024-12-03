@@ -2,7 +2,7 @@
 
 import datetime as dt
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional
 
 import torch
 import torch.nn as nn

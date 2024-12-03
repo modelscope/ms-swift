@@ -2,19 +2,15 @@
 import os
 import sys
 from functools import partial
-from types import MethodType
-from typing import Any, Dict, Tuple
+from typing import Any, Dict
 
-import torch
-from modelscope import AutoConfig, AutoModel, AutoModelForCausalLM
-from transformers import AutoTokenizer
+from modelscope import AutoConfig
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.llm import TemplateType
 from swift.utils import get_logger
-from ..constant import LLMModelType, MLLMModelType
+from ..constant import MLLMModelType
 from ..model_arch import ModelArch
-from ..patcher import patch_output_clone
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
 from ..utils import ModelInfo, git_clone_github, use_submodel_func
 from .qwen import get_model_tokenizer_qwen
@@ -35,7 +31,6 @@ def get_model_tokenizer_mplug_owl2(model_dir: str,
 
     # register
     # https://github.com/X-PLUG/mPLUG-Owl/blob/main/mPLUG-Owl2/mplug_owl2/model/modeling_mplug_owl2.py#L447
-    from mplug_owl2 import MPLUGOwl2LlamaForCausalLM
     from transformers.models.clip.image_processing_clip import CLIPImageProcessor
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     vocab_size = kwargs.pop('vocab_size', None)

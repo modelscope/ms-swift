@@ -1,17 +1,15 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 import datetime as dt
 import os
-import time
-from contextlib import contextmanager, nullcontext
-from dataclasses import asdict
-from typing import Any, Dict, List, Union
+from contextlib import nullcontext
+from typing import List, Union
 
 from evalscope.run import run_task
 from evalscope.summarizer import Summarizer
 
 from swift.utils import append_to_jsonl, get_logger
-from ..argument import DeployArguments, EvalArguments
+from ..argument import EvalArguments
 from ..base import SwiftPipeline
-from ..dataset import MediaResource
 from ..infer import run_deploy
 
 logger = get_logger()

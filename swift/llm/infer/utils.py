@@ -3,7 +3,7 @@
 import re
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import List, Literal, Optional, Tuple
 
 from swift.llm import ExportArguments, Template
 from swift.plugin import extra_tuners

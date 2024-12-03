@@ -22,10 +22,8 @@ class ModelArguments:
         model (Optional[str]): Model identifier or path. Default is None.
         model_type (Optional[str]): Type of the model group. Default is None.
         model_revision (Optional[str]): Revision of the model. Default is None.
-        use_hf (bool): Flag to indicate if Hugging Face model should be used. Default is False, Meaning use modelscope.
         torch_dtype (Literal): Model data type. Default is None.
         attn_impl (Literal): Attention implementation to use. Default is None.
-        model_kwargs (Optional[str]): Additional keyword arguments for the model. Default is None.
         rope_scaling (Literal): Type of rope scaling to use. Default is None.
         device_map (Optional[str]): Configuration for device mapping. Default is None.
         local_repo_path (Optional[str]): Path to the local repository for model code. Default is None.

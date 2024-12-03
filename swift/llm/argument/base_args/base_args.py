@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 from dataclasses import dataclass, field, fields
 from typing import Any, Dict, Literal, Optional
@@ -18,7 +19,9 @@ logger = get_logger()
 
 
 def get_supported_tuners():
-    return {'lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft', 'reft'}
+    from swift.plugin import extra_tuners
+    return {'lora', 'full', 'longlora', 'adalora', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft', 'reft'} | set(
+        extra_tuners.keys())
 
 
 @dataclass
@@ -28,11 +31,15 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
     ModelArguments, TemplateArguments, and DataArguments.
 
     Args:
+        tuner_backend(str): Support peft or unsloth.
+        train_type(str): The training type, support all supported tuners and `full`.
         seed (int): Random seed for reproducibility. Default is 42.
+        model_kwargs (Optional[str]): Additional keyword arguments for the model. Default is None.
+        use_hf (bool): Flag to determine if Hugging Face should be used. Default is False.
         load_dataset_config (bool): Flag to determine if dataset configuration should be loaded. Default is False.
-        save_safetensors (bool): Flag to determine if save to safetensors. Default is True.
         hub_token (Optional[str]): SDK token for authentication. Default is None.
         ignore_args_error (bool): Flag to ignore argument errors for notebook compatibility. Default is False.
+        use_swift_lora (bool): Use swift lora, a compatible argument
     """
     tuner_backend: Literal['peft', 'unsloth'] = 'peft'
     train_type: str = field(default='lora', metadata={'help': f'train_type choices: {list(get_supported_tuners())}'})

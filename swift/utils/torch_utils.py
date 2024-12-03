@@ -1,20 +1,17 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
-import os
 import pickle
-import socket
 import time
 import uuid
 from bisect import bisect_right
 from contextlib import contextmanager, nullcontext
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
 import torch.distributed as dist
 from torch.nn import Linear, Module
 from transformers.integrations import is_deepspeed_zero3_enabled
-from transformers.utils import is_torch_npu_available
 
 from .env import get_dist_setting, is_dist, is_dist_ta, is_local_master
 from .logger import get_logger

@@ -6,7 +6,6 @@ if __name__ == '__main__':
 import os
 import shutil
 import tempfile
-import time
 import unittest
 from functools import partial
 from typing import Any, Dict, List
@@ -17,11 +16,10 @@ from datasets import Dataset as HfDataset
 from modelscope import Model, MsDataset, snapshot_download
 from packaging import version
 from torch.nn.utils.rnn import pad_sequence
-from transformers import AutoConfig, AutoTokenizer
+from transformers import AutoTokenizer
 
 from swift import Trainer, TrainingArguments, get_logger
-from swift.llm import (DatasetName, InferArguments, ModelType, RLHFArguments, TrainArguments, infer_main,
-                       merge_lora_main, rlhf_main, sft_main)
+from swift.llm import InferArguments, ModelType, RLHFArguments, TrainArguments, infer_main, rlhf_main, sft_main
 
 NO_EVAL_HUMAN = True
 

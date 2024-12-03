@@ -2,7 +2,6 @@
 import os
 import sys
 import types
-from collections import OrderedDict
 from typing import List, Optional, Tuple
 
 import safetensors
@@ -804,7 +803,6 @@ def patch_qwen2_model(model):
 
 
 def patch_clip_grad_norm(accelerator):
-    import accelerate
     from accelerate.utils import DistributedType
     from accelerate.optimizer import AcceleratedOptimizer
     import torch_xla.core.xla_model as xm

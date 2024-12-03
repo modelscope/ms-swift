@@ -161,12 +161,12 @@ class ExpManager:
         eval_dataset = exp.eval_dataset
         if best_model_checkpoint is not None:
             model_type_kwargs = ''
-            if not os.path.exists(os.path.join(best_model_checkpoint, 'sft_args.json')):
+            if not os.path.exists(os.path.join(best_model_checkpoint, 'args.json')):
                 model_type = best_model_checkpoint[best_model_checkpoint.rfind(os.path.sep) + 1:]
                 model_type = '-'.join(model_type.split('-')[:-2])
                 model_type_kwargs = f'--model_type {model_type}'
             cmd = f'swift eval {model_type_kwargs} --ckpt_dir {best_model_checkpoint} ' \
-                  + f'--infer_backend pt --sft_type full --name {exp.name} --eval_dataset {" ".join(eval_dataset)}'
+                  + f'--infer_backend pt --train_type full --eval_dataset {" ".join(eval_dataset)}'
         else:
             assert exp.args.get('model_type') is not None
             cmd = f'swift eval --model_type {exp.args.get("model_type")} --infer_backend pt ' \
@@ -197,22 +197,22 @@ class ExpManager:
             sft_args = TrainArguments(**args)
             args['output_dir'] = sft_args.output_dir
             args['logging_dir'] = sft_args.logging_dir
-            args['add_output_dir_suffix'] = False
+            args['add_version'] = False
             os.makedirs(sft_args.output_dir, exist_ok=True)
             os.makedirs(sft_args.logging_dir, exist_ok=True)
             cmd = 'swift sft '
             for key, value in args.items():
                 cmd += f' --{key} {value}'
-        elif exp.cmd == 'dpo':
+        elif exp.cmd == 'rlhf':
             from swift.llm import RLHFArguments
             args = exp.args
             dpo_args = RLHFArguments(**args)
             args['output_dir'] = dpo_args.output_dir
             args['logging_dir'] = dpo_args.logging_dir
-            args['add_output_dir_suffix'] = False
+            args['add_version'] = False
             os.makedirs(dpo_args.output_dir, exist_ok=True)
             os.makedirs(dpo_args.logging_dir, exist_ok=True)
-            cmd = 'swift dpo '
+            cmd = 'swift rlhf '
             for key, value in args.items():
                 cmd += f' --{key} {value}'
         elif exp.cmd == 'export':
