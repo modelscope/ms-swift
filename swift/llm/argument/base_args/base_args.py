@@ -8,6 +8,7 @@ import torch
 from transformers.utils import is_torch_npu_available
 
 from swift.hub import get_hub
+from swift.plugin import extra_tuners
 from swift.utils import check_json_format, get_dist_setting, get_logger, is_dist, is_master, use_hf_hub
 from .data_args import DataArguments
 from .generation_args import GenerationArguments
@@ -19,7 +20,6 @@ logger = get_logger()
 
 
 def get_supported_tuners():
-    from swift.plugin import extra_tuners
     return {'lora', 'full', 'longlora', 'adalora', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft', 'reft'} | set(
         extra_tuners.keys())
 

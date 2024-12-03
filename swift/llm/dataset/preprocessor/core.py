@@ -185,11 +185,10 @@ class RowPreprocessor:
             ArrowWriter.__init__ = ArrowWriter.__origin_init__
             del ArrowWriter.__origin_init__
 
-    def _cast_mm_data(self, dataset, decode: bool):
+    def _cast_pil_image(self, dataset):
         features = get_dataset_features(dataset)
-        for key in ['images', 'videos', 'audios']:
-            if key in features and isinstance(features[key], Image) and features[key].decode != decode:
-                dataset = dataset.cast_column(key, Image(decode=decode))
+        if 'images' in features and isinstance(features['images'], Image) and features['images'].decode:
+            dataset = dataset.cast_column('images', Image(decode=False))
         return dataset
 
     def __call__(
@@ -206,7 +205,7 @@ class RowPreprocessor:
             dataset = sample_dataset(dataset, self.dataset_sample, self.random_state)
         dataset = self.safe_rename_columns(dataset, self.columns_mapping)
         dataset = self.prepare_dataset(dataset)
-        dataset = self._cast_mm_data(dataset, False)
+        dataset = self._cast_pil_image(dataset)
         map_kwargs = {}
         if isinstance(dataset, HfDataset):
             map_kwargs.update({'num_proc': num_proc, 'load_from_cache_file': load_from_cache_file})

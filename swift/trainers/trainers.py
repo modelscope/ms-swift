@@ -16,6 +16,7 @@ from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
 from transformers.utils import is_peft_available
 
+from swift.plugin import MeanMetric, compute_acc
 from swift.utils import JsonlWriter, Serializer, use_torchacc
 from swift.utils.torchacc_utils import ta_trim_graph
 from .mixin import SwiftMixin
@@ -29,7 +30,6 @@ class Trainer(SwiftMixin, HfTrainer):
 class Seq2SeqTrainer(TorchAccMixin, SwiftMixin, HfSeq2SeqTrainer):
 
     def __init__(self, *args, **kwargs):
-        from swift.plugin import MeanMetric
         super().__init__(*args, **kwargs)
         self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'predict.jsonl'))
         self._custom_metrics['acc'] = MeanMetric()
@@ -79,11 +79,12 @@ class Seq2SeqTrainer(TorchAccMixin, SwiftMixin, HfSeq2SeqTrainer):
             template=self.template)
 
         response_list = []
+        device = self.args.device
         for data, resp, labels in zip(data_list, resp_list, labels_list):
             response = resp.choices[0].message.content
             self.jsonl_writer.append({'response': response, 'labels': labels, **data})
-            response_list.append(Serializer.to_tensor(resp.choices[0].message.content, device=self.args.device))
-        labels_list = [Serializer.to_tensor(labels, device=self.args.device) for labels in labels_list]
+            response_list.append(Serializer.to_tensor(resp.choices[0].message.content).to(device=device))
+        labels_list = [Serializer.to_tensor(labels).to(device=device) for labels in labels_list]
         response_list = pad_sequence(response_list, batch_first=True, padding_value=0)
         labels_list = pad_sequence(labels_list, batch_first=True, padding_value=0)
         return None, response_list, labels_list
@@ -145,7 +146,6 @@ class Seq2SeqTrainer(TorchAccMixin, SwiftMixin, HfSeq2SeqTrainer):
         return (loss, outputs) if return_outputs else loss
 
     def _compute_token_acc(self, outputs, labels) -> None:
-        from swift.plugin import compute_acc
 
         acc_steps = self.args.acc_steps
         preds = outputs.logits.argmax(dim=2)

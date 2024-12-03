@@ -26,6 +26,7 @@ from transformers.utils import is_torch_npu_available
 
 from swift.hub import get_hub
 from swift.llm import Template
+from swift.plugin import extra_tuners
 from swift.tuners import SwiftModel
 from swift.utils import get_logger, is_mp_ddp
 from .arguments import TrainingArguments
@@ -132,7 +133,6 @@ class SwiftMixin:
                         v['step'] = v['step'].to('cpu')
 
     def _save_model(self, output_dir: Optional[str] = None, state_dict=None):
-        from swift.plugin import extra_tuners
         # model
         supported_classes = (SwiftModel, PreTrainedModel, PeftModel)
         if AutoModelForCausalLMWithValueHead is not None:
