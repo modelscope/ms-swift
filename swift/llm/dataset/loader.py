@@ -412,6 +412,12 @@ def load_dataset(
     """The interface to load any registered dataset
 
     Args:
+        download_mode: Download mode, default is `reuse_dataset_if_exists`.
+        load_from_cache_file: Use cache file or not, Default False.
+        strict: Raise if any row is not correct.
+        hub_token: The token of the hub.
+        use_hf: Use hf dataset or ms dataset.
+        num_proc: Proc number to use when preprocess the dataset.
         datasets: The dataset name list
         split_dataset_ratio: The dataset split ratio
         seed: The dataset random seed

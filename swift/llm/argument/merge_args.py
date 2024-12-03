@@ -14,6 +14,8 @@ class MergeArguments:
 
     Args:
         merge_lora (bool): Flag to indicate if LoRA merging is enabled. Default is False.
+        safe_serialization(bool): Use safetensors or not, default `True`.
+        max_shard_size(str): The max size of single shard file.
         use_merge_kit (bool): Flag to indicate merge with `mergekit`. Default is False.
         instruct_model (Optional[str]): Path or ID of the instruct model. Use when `use_merge_kit` is True.
         instruct_model_revision (Optional[str]): Revision of the instruct model. Use when `use_merge_kit` is True.

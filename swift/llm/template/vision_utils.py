@@ -201,11 +201,11 @@ def load_video_internvl(video_io: BytesIO, bound=None, num_segments=32):
 
 
 def draw_plot(img_dir: str, bbox: List[int], bbox_type: str, output_file: str):
-    from swift.llm.template.template import Template
+    from swift.llm.template import Template
     image = Image.open(img_dir)
 
     objects = [{'bbox': bbox, 'bbox_type': bbox_type, 'image': 0}]
-    Template.normalize_bbox(objects, [image], 'real')
+    normalize_bbox(objects, [image], 'real')
     bbox = objects[0]['bbox']
     draw = ImageDraw.Draw(image)
     draw.rectangle(bbox, outline='red', width=2)

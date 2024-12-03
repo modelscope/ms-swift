@@ -6,10 +6,10 @@ Please copy the entire template directory to modelscope.
 """
 
 from . import template
-from .agent import get_tools_prompt, split_action_action_input
+from .agent import get_tools_prompt
 from .base import Template
 from .constant import TemplateType
 from .register import TEMPLATE_MAPPING, get_template, get_template_meta, register_template
 from .template_inputs import InferRequest, Messages, TemplateInputs, Tool
 from .template_meta import TemplateMeta
-from .utils import Word
+from .utils import Word, split_action_action_input, split_parts_by_regex, split_str_parts_by

@@ -1,10 +1,9 @@
-from copy import copy
+# Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Any, Dict, List, Optional
 
 import numpy as np
 
-from swift.llm import Messages
-from .core import DATASET_TYPE, ResponsePreprocessor, RowPreprocessor
+from .core import ResponsePreprocessor
 
 
 class GroundingMixin:

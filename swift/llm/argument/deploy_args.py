@@ -23,6 +23,7 @@ class DeployArguments(InferArguments):
         served_model_name (Optional[str]): The name of the model being served. Default is None.
         verbose (bool): Whether to log request information. Default is True.
         log_interval (int): The interval for printing global statistics. Default is 10.
+        max_logprobs(int): Max number of tokens' log probs to return
     """
     host: str = '0.0.0.0'
     port: int = 8000

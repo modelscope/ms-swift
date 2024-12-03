@@ -71,8 +71,8 @@ def load_and_tokenize(ms_model_id, template):
 
 
 def load_ds_old(ds):
-    from swift.llm import get_dataset
-    train_dataset, val_dataset = get_dataset(ds, split_dataset_ratio=0.0)
+    from swift.llm import load_dataset
+    train_dataset, val_dataset = load_dataset(ds, split_dataset_ratio=0.0)
     return train_dataset.select(range(1))
 
 

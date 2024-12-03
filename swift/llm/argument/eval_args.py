@@ -22,6 +22,11 @@ class EvalArguments(DeployArguments):
     Args:
         eval_dataset (List[str]): List of evaluation datasets. Default is an empty list.
         eval_limit (Optional[str]): Limit number of each evaluation dataset. Default is None.
+        eval_output_dir (str): The eval output dir.
+        temperature (float): The temperature.
+        verbose (bool): Output verbose information.
+        max_batch_size(int): The max batch size.
+        eval_url(str): The extra eval url, use this as --model.
     """
     eval_dataset: List[str] = field(default_factory=list)
     eval_limit: Optional[int] = None

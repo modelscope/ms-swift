@@ -30,7 +30,6 @@ from swift.tuners import SwiftModel
 from swift.utils import get_logger, is_mp_ddp
 from .arguments import TrainingArguments
 from .optimizers.galore import create_optimizer_and_scheduler
-from .torchacc_mixin import TorchAccMixin
 from .utils import can_return_loss, find_labels, get_function, is_instance_of_ms_model
 
 try:

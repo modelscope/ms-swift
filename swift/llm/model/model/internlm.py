@@ -2,8 +2,6 @@
 from functools import partial
 from typing import Any, Dict
 
-from modelscope import snapshot_download
-from transformers import AutoConfig, AutoTokenizer, BitsAndBytesConfig
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.llm import TemplateType
@@ -92,7 +90,7 @@ def get_model_tokenizer_internlm_xcomposer2(model_dir: str,
         CLIPVisionTower = get_class_from_dynamic_module('build_mlp.CLIPVisionTower', model_dir)
         CLIPVisionTower.load_model = load_model
 
-    model, tokenizer = get_model_tokenizer_internlm2(model_dir, model_info, model_kwargs, load_model, **kwargs)
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
     if model is not None:
         if version == 'v2' and use_flash_attn:
             # fix AttributeError: no attribute 'attention_dropout'

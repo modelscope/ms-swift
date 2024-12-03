@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from types import MethodType
-from typing import Any, Dict, Tuple
+from typing import Any, Dict
 
 import torch
 from modelscope import AutoModel
@@ -11,7 +11,7 @@ from swift.utils import get_logger
 from ..constant import MLLMModelType
 from ..model_arch import ModelArch
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
-from ..utils import ModelInfo, git_clone_github, use_submodel_func
+from ..utils import ModelInfo
 
 logger = get_logger()
 

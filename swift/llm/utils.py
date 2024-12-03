@@ -2,7 +2,7 @@ import inspect
 import os
 import shutil
 from types import MethodType
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, List, Mapping, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn

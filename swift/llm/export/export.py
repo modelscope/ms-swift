@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import Any, Dict, List, Union
+from typing import List, Union
 
 from swift.llm import ExportArguments, SwiftPipeline
 from swift.tuners import swift_to_peft_format

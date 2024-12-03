@@ -3,13 +3,13 @@
 import asyncio
 from queue import Queue
 from threading import Thread
-from typing import Any, Dict, Iterator, List, Literal, Optional, Union
+from typing import Any, Dict, Iterator, List, Optional, Union
 
 import torch
 from tqdm import tqdm
 from transformers import PreTrainedTokenizerBase
 
-from swift.llm import InferRequest, ProcessorMixin, get_model_tokenizer, get_template
+from swift.llm import InferRequest, ProcessorMixin, get_template
 from swift.llm.template import split_action_action_input
 from swift.plugin import Metric
 from swift.utils import get_logger

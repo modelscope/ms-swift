@@ -3,7 +3,6 @@ import hashlib
 import inspect
 import os
 import re
-from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import asdict
 from functools import wraps
@@ -20,10 +19,9 @@ from transformers.integrations import is_deepspeed_zero3_enabled
 
 from swift.utils import get_dist_setting, get_logger, use_torchacc
 from ..utils import Processor, ProcessorMixin
-from .agent import loss_scale_map, split_str_parts_by
 from .template_inputs import InferRequest, StdTemplateInputs, TemplateInputs
-from .utils import Context, ContextType, StopWordsCriteria, fetch_one, findall
-from .vision_utils import load_batch, load_image, normalize_bbox, rescale_image
+from .utils import Context, ContextType, StopWordsCriteria, fetch_one, findall, split_str_parts_by
+from .vision_utils import load_image, normalize_bbox, rescale_image
 
 logger = get_logger()
 
@@ -584,6 +582,7 @@ class Template(ProcessorMixin):
                 round0=i)
             res_context_list += extra_context_list
             res_context_types += [extra_context_type] * len(extra_context_list)
+        from swift.plugin import loss_scale_map
         res_context_list, loss_scale_list = loss_scale_map[self.loss_scale](res_context_list, res_context_types,
                                                                             inputs.messages)
         answer_len = len(extra_context_list) + bool(response is not None)

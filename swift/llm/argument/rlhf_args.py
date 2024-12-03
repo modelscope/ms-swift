@@ -15,7 +15,6 @@ class RLHFArguments(TrainArguments):
         rlhf_type (Literal): Specifies the type of RLHF to use. Default is 'dpo'.
             Allowed values are 'dpo', 'orpo', 'simpo', 'kto', 'cpo'.
         ref_model_type (Optional[str]): Type of reference model. Default is None.
-        ref_model_id_or_path (Optional[str]): Path or identifier for the reference model. Default is None.
         ref_model_revision (Optional[str]): Revision of the reference model. Default is None.
         beta (Optional[float]): Beta parameter for RLHF. Default is None.
         label_smoothing (float): Label smoothing value. Default is 0.

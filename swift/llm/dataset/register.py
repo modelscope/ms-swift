@@ -86,19 +86,11 @@ def get_dataset_list():
 
 
 def register_dataset(dataset_meta: DatasetMeta, *, exist_ok: bool = False) -> None:
-    """Register dataset to the dataset mapping
+    """Register dataset
 
     Args:
-        dataset_id_or_path: The ms dataset id or dataset file path
-        subsets: The subsets of the dataset id
-        preprocess_func: The preprocess function
-        get_function: How to get this dataset, normally it's `get_dataset_from_repo`
-        split: The dataset split
-        hf_dataset_id: The hf dataset id
-        exist_ok: If the dataset_id exists, whether to raise an error or just override the record, default `False`
-        is_local: If is a local dataset
-    Returns:
-        The dataset instance.
+        dataset_meta: The `DatasetMeta` info of the dataset.
+        exist_ok: If the dataset id exists, raise error or update it.
     """
     from .loader import DatasetLoader
     dataset_id = dataset_meta.ms_dataset_id, dataset_meta.hf_dataset_id, dataset_meta.dataset_path
@@ -154,7 +146,7 @@ def register_dataset_info(dataset_info: Union[str, List[str], None] = None) -> L
     This is used to deal with the datasets defined in the json info file.
 
     Args:
-        dataset_info_path: The dataset info path
+        dataset_info: The dataset info path
     """
     # dataset_info_path: path, json or None
     if dataset_info is None:
