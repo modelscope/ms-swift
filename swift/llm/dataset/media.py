@@ -7,7 +7,7 @@ from typing import List, Literal, Optional, Union
 import aiohttp
 from modelscope.hub.utils.utils import get_cache_dir
 
-from swift.utils import get_logger
+from swift.utils import get_logger, safe_ddp_context
 
 logger = get_logger()
 
@@ -50,16 +50,10 @@ class MediaResource:
         Returns:
             The local dir contains the extracted files.
         """
-        from swift.utils.torch_utils import safe_ddp_context
-        from datasets.utils.filelock import FileLock
         media_file = media_type_or_url if isinstance(media_type_or_url, str) else media_type_or_url[0]
-        file_path = hashlib.md5(media_file.encode('utf-8')).hexdigest() + '.lock'
-        file_path = os.path.join(MediaResource.lock_dir, file_path)
-        os.makedirs(MediaResource.lock_dir, exist_ok=True)
-        with safe_ddp_context():
-            with FileLock(file_path):
-                return MediaResource._safe_download(
-                    media_type=media_type_or_url, media_name=local_alias, file_type=file_type)
+        with safe_ddp_context(hash_id=media_file):
+            return MediaResource._safe_download(
+                media_type=media_type_or_url, media_name=local_alias, file_type=file_type)
 
     @staticmethod
     def move_directory_contents(src_dir, dst_dir):

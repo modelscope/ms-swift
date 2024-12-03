@@ -95,10 +95,7 @@ class GLM4VTemplate(GLMTemplate):
 
 
 # not '<|assistant|>\n'
-register_template(
-    GLM4TemplateMeta(
-        MLLMTemplateType.glm4v,
-        template_cls=GLM4VTemplate))
+register_template(GLM4TemplateMeta(MLLMTemplateType.glm4v, template_cls=GLM4VTemplate))
 
 register_template(GLM4TemplateMeta(LLMTemplateType.glm4))
 

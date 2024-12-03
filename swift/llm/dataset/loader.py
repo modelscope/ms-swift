@@ -199,7 +199,7 @@ class DatasetLoader:
         datasets = []
         if os.path.isdir(dataset_id):
             retry = 1
-            load_context = nullcontext
+            load_context = nullcontext()
             use_hf = True
             dataset_str = f'Use local folder, dataset_id: {dataset_id}'
             # The dataset downloaded from modelscope will have an additional dataset_infos.json file.
@@ -210,7 +210,7 @@ class DatasetLoader:
             raise ValueError(f'The local folder was not found, dataset_id: {dataset_id}.')
         else:
             retry = 3
-            load_context = safe_ddp_context
+            load_context = safe_ddp_context(hash_id=dataset_id)
             dataset_str_f = 'Downloading the dataset from {hub}, dataset_id: {dataset_id}'
             if use_hf:
                 dataset_str = dataset_str_f.format(hub='HuggingFace', dataset_id=dataset_id)
@@ -220,7 +220,7 @@ class DatasetLoader:
         hub = get_hub(use_hf)
         for split in subset.split:
             i = 1
-            with load_context():
+            with load_context:
                 while True:
                     try:
                         dataset = hub.load_dataset(

@@ -25,6 +25,14 @@ NO_EVAL_HUMAN = True
 
 logger = get_logger()
 
+kwargs = {
+    'per_device_train_batch_size': 2,
+    'per_device_eval_batch_size': 2,
+    'save_steps': 10,
+    'gradient_accumulation_steps': 4,
+    'num_train_epochs': 1,
+}
+
 
 class TestRun(unittest.TestCase):
 
@@ -42,17 +50,33 @@ class TestRun(unittest.TestCase):
             return
         torch.cuda.empty_cache()
         output = sft_main(
-            TrainArguments(
-                model_type=ModelType.qwen1half_1_8b,
-                template_type='qwen',
-                sft_type='full',
-                dataset=f'{DatasetName.jd_sentiment_zh}#200',
-                eval_steps=5))
-        best_model_checkpoint = output['best_model_checkpoint']
+            TrainArguments(model='qwen/Qwen1.5-0.5B', train_type='full', dataset='DAMO_NLP/jd#100', **kwargs))
+        last_model_checkpoint = output['last_model_checkpoint']
         torch.cuda.empty_cache()
         result = infer_main(
-            InferArguments(ckpt_dir=best_model_checkpoint, load_dataset_config=True, val_dataset_sample=2))
-        assert len(result['result'][0]['response']) < 20
+            InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True, val_dataset_sample=2))
+        assert len(result[0]['response']) < 20
+
+    def test_hf_hub(self):
+        if not __name__ == '__main__':
+            # ignore citest error in github
+            return
+        torch.cuda.empty_cache()
+        train_dataset_fnames = [
+            'alpaca.csv', 'chatml.jsonl', 'swift_pre.jsonl', 'swift_single.csv', 'swift_multi.jsonl',
+            'swift_multi.json#2'
+        ]
+        folder = os.path.join(os.path.dirname(__file__), 'data')
+        dataset = [
+            'llm-wizard/alpaca-gpt4-data-zh#20',
+            'shibing624/alpaca-zh#20',
+        ] + [os.path.join(folder, fname) for fname in train_dataset_fnames]
+        output = sft_main(
+            TrainArguments(
+                model='qwen/Qwen1.5-0.5B-Chat-GPTQ-Int4', train_type='lora', dataset=dataset, use_hf=True, **kwargs))
+        last_model_checkpoint = output['last_model_checkpoint']
+        torch.cuda.empty_cache()
+        infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True, val_dataset_sample=2))
 
     def test_basic(self):
         output_dir = 'output'
@@ -63,12 +87,8 @@ class TestRun(unittest.TestCase):
         ]
         folder = os.path.join(os.path.dirname(__file__), 'data')
         dataset = [
-            f'MS::{DatasetName.alpaca_zh}#20',
-            f'{DatasetName.jd_sentiment_zh}#20',
             'AI-ModelScope/alpaca-gpt4-data-zh#20',
-            'HF::llm-wizard/alpaca-gpt4-data-zh#20',
             'hurner/alpaca-gpt4-data-zh#20',
-            'HF::shibing624/alpaca-zh#20',
         ] + [os.path.join(folder, fname) for fname in train_dataset_fnames]
         if not __name__ == '__main__':
             output_dir = self.tmp_dir
@@ -76,10 +96,6 @@ class TestRun(unittest.TestCase):
             dataset = dataset[:2]
         import transformers
         from packaging import version
-        if version.parse(transformers.__version__) >= version.parse('4.42'):
-            model_type = ModelType.qwen2_0_5b_instruct
-        else:
-            model_type = ModelType.chatglm3_6b
         for quantization_bit in quantization_bit_list:
             if quantization_bit == 4 and version.parse(transformers.__version__) >= version.parse('4.38'):
                 continue
@@ -87,7 +103,7 @@ class TestRun(unittest.TestCase):
             if quantization_bit == 0:
                 predict_with_generate = False
             sft_args = TrainArguments(
-                model_type=model_type,
+                model='qwen/Qwen2-0.5B-Instruct-GPTQ-Int8',
                 template_type='AUTO',
                 lora_target_modules=['AUTO', 'EMBEDDING'],
                 quantization_bit=quantization_bit,
@@ -487,4 +503,7 @@ class TestTrainer(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main()
+    # TestRun().test_template()
+    TestRun().test_hf_hub()
+    # TestRun().test_basic()
+    # unittest.main()

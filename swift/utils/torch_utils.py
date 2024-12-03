@@ -1,5 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
+import hashlib
+import os
 import pickle
 import time
 import uuid
@@ -10,6 +12,8 @@ from typing import Dict, List, Optional, Tuple, Union
 import numpy as np
 import torch
 import torch.distributed as dist
+from datasets.utils.filelock import FileLock
+from modelscope.hub.utils.utils import get_cache_dir
 from torch.nn import Linear, Module
 from transformers.integrations import is_deepspeed_zero3_enabled
 
@@ -219,16 +223,13 @@ def find_all_linears(model: Module) -> List[str]:
 
 
 @contextmanager
-def safe_ddp_context():
-    if (is_dist() or is_dist_ta()) and not is_local_master() and dist.is_initialized():
-        dist.barrier()
-    try:
+def safe_ddp_context(hash_id: str):
+    lock_dir = os.path.join(get_cache_dir(), 'lockers')
+    os.makedirs(lock_dir, exist_ok=True)
+    file_path = hashlib.sha256(hash_id.encode('utf-8')).hexdigest() + '.lock'
+    file_path = os.path.join(lock_dir, file_path)
+    with FileLock(file_path):
         yield
-    finally:
-        if (is_dist() or is_dist_ta()) and is_local_master() and dist.is_initialized():
-            dist.barrier()
-        if (is_dist() or is_dist_ta()) and dist.is_initialized():  # sync
-            dist.barrier()
 
 
 class Serializer:
