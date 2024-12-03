@@ -43,7 +43,7 @@ register_model(
         ],
         TemplateType.baichuan,
         get_model_tokenizer_baichuan,
-        architectures=['BaichuanForCausalLM'],
+        architectures=['BaichuanForCausalLM', 'BaiChuanForCausalLM'],
         model_arch=ModelArch.baichuan,
         requires=['transformers<4.34']))
 
@@ -108,6 +108,6 @@ register_model(
         ],
         TemplateType.baichuan,
         get_model_tokenizer_baichuan2,
-        architectures=['BaichuanForCausalLM'],
+        architectures=['BaichuanForCausalLM', 'BaiChuanForCausalLM'],
         model_arch=ModelArch.baichuan,
     ))

@@ -383,7 +383,6 @@ class VllmEngine(InferEngine):
         async_llm_engine._origin_log_task_completion = async_llm_engine._log_task_completion
 
         def new_log_task_completion(task, error_callback) -> None:
-            exception = None
             try:
                 return_value = task.result()
                 raise AssertionError(f'The engine background task should never finish without an '
@@ -394,11 +393,11 @@ class VllmEngine(InferEngine):
             #     # down. This should only happen on program exit.
             #     logger.info("Engine is gracefully shutting down.")
             except Exception as e:
-                exception = e
                 logger.error('Engine background task failed', exc_info=e)
-                error_callback(exception)
-                raise AsyncEngineDeadError('Task finished unexpectedly. This should never happen! '
-                                           'Please open an issue on Github. See stack trace above for the '
-                                           'actual cause.') from e
+                error_callback(e)
+                raise async_llm_engine.AsyncEngineDeadError(
+                    'Task finished unexpectedly. This should never happen! '
+                    'Please open an issue on Github. See stack trace above for the '
+                    'actual cause.') from e
 
         async_llm_engine._log_task_completion = new_log_task_completion
