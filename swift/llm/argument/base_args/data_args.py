@@ -73,7 +73,11 @@ class DataArguments:
             self.data_seed = self.seed
         if len(self.val_dataset) > 0 or self.streaming:
             self.split_dataset_ratio = 0.
-            logger.info(f'Setting split_dataset_ratio: {self.split_dataset_ratio}')
+            if len(self.val_dataset) > 0:
+                msg = 'len(args.val_dataset) > 0'
+            else:
+                msg = 'args.streaming is True'
+            logger.info(f'Because {msg}, setting split_dataset_ratio: {self.split_dataset_ratio}')
         self._init_custom_register()
         self._init_custom_dataset_info()
 

@@ -16,7 +16,6 @@ from modelscope.utils.config_ds import MS_CACHE_HOME
 
 from swift.hub import get_hub
 from swift.utils import download_ms_file, get_logger, get_seed, safe_ddp_context, use_hf_hub
-from .preprocessor import get_dataset_features
 from .register import DATASET_MAPPING, DATASET_TYPE, DatasetMeta, SubsetDataset, register_dataset_info
 from .utils import sample_dataset
 
@@ -180,6 +179,7 @@ class DatasetLoader:
 
         dataset = dataset_meta.preprocess_func(
             dataset, num_proc=num_proc, strict=strict, load_from_cache_file=load_from_cache_file)
+        dataset = DatasetLoader._remove_useless_columns(dataset)
         return dataset
 
     @staticmethod
@@ -246,6 +246,7 @@ class DatasetLoader:
                         dataset = dataset.to_iterable_dataset()
             dataset = subset.preprocess_func(
                 dataset, num_proc=num_proc, strict=strict, load_from_cache_file=load_from_cache_file)
+            dataset = DatasetLoader._remove_useless_columns(dataset)
             datasets.append(dataset)
         return DatasetLoader._concat_datasets(datasets, streaming)
 
@@ -323,7 +324,7 @@ class DatasetLoader:
         return train_dataset, val_dataset
 
     def _remove_useless_columns(dataset: DATASET_TYPE) -> DATASET_TYPE:
-        features = get_dataset_features(dataset).keys()
+        features = dataset.features.keys()
         k_list = [k for k in features if k in standard_keys]
         if len(k_list) != len(features):
             dataset = dataset.select_columns(k_list)
@@ -374,9 +375,7 @@ class DatasetLoader:
                     revision=revision,
                     streaming=streaming,
                     download_mode=download_mode)
-                dataset = DatasetLoader._remove_useless_columns(dataset)
                 datasets.append(dataset)
-
             dataset = DatasetLoader._concat_datasets(datasets, streaming)
         return dataset
 

@@ -37,15 +37,9 @@ def get_model_tokenizer_yi_vl(model_dir: str,
     model_config.mm_vision_tower = os.path.join(model_dir, *mm_vision_tower.rsplit('/', maxsplit=2)[-2:])
     model_config.attention_dropout = 0.
     key_info['model_path'] = model_dir
-    kwargs.pop('automodel_class', None)
+    kwargs['automodel_class'] = kwargs['automodel_class'] or LlavaLlamaForCausalLM
     model, tokenizer = get_model_tokenizer_yi(
-        model_dir,
-        model_info,
-        model_kwargs,
-        load_model,
-        model_config=model_config,
-        automodel_class=LlavaLlamaForCausalLM,
-        **kwargs)
+        model_dir, model_info, model_kwargs, load_model, model_config=model_config, **kwargs)
     if model is not None:
         logger.info('Please ignore the above warning.')
         logger.info('Loading the parameters of vision_tower...')

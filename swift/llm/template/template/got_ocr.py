@@ -37,8 +37,8 @@ class GOT_OCR2Template(Template):
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
-        # OCR:
-        # OCR with format:
+        # 'OCR: '
+        # 'OCR with format: '
         assert media_type == 'image'
         return ['<img>' + '<imgpad>' * 256 + '</img>\n']
 

@@ -254,9 +254,7 @@ class SwiftMixin:
 
             for k, metric in self._custom_metrics.items():
                 value = metric.compute()
-                if value is None:
-                    continue
-                elif len(value) == 1:
+                if len(value) == 1:
                     val = list(value.values())[0]
                     logs[k] = val
                 else:
@@ -275,6 +273,9 @@ class SwiftMixin:
 
             elapse_time = time.time() - self.start_time
             logs['train_speed(iter/s)'] = round(self.state.global_step / elapse_time, 6)
+            for k in list(logs.keys()):
+                if logs[k] is None:
+                    logs.pop(k)
             tr_loss -= tr_loss
             self._total_loss_scalar += tr_loss_scalar
             self._globalstep_last_logged = self.state.global_step

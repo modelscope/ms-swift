@@ -39,7 +39,7 @@ register_model(
 def get_model_tokenizer_idefics(model_dir: str, *args, **kwargs):
     from transformers import AutoProcessor, AutoModelForVision2Seq
     processor = AutoProcessor.from_pretrained(model_dir)
-    kwargs['automodel_class'] = AutoModelForVision2Seq
+    kwargs['automodel_class'] = kwargs['automodel_class'] or AutoModelForVision2Seq
     kwargs['tokenizer'] = processor.tokenizer
     model, _ = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
     return model, processor
@@ -65,7 +65,7 @@ register_model(
 def get_model_tokenizer_pixtral(model_dir: str, *args, **kwargs):
     from transformers import AutoProcessor, LlavaForConditionalGeneration
     processor = AutoProcessor.from_pretrained(model_dir)
-    kwargs['automodel_class'] = LlavaForConditionalGeneration
+    kwargs['automodel_class'] = kwargs['automodel_class'] or LlavaForConditionalGeneration
     kwargs['tokenizer'] = processor.tokenizer
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
     return model, processor
