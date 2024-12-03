@@ -490,9 +490,7 @@ class Template(ProcessorMixin):
             if isinstance(context, str):
                 # tokenizer_kwargs is the returned tokenizer_kwargs,
                 # while curr_tokenizer_kwargs is the tokenizer_kwargs for the current context.
-                curr_tokenizer_kwargs = self._get_tokenizer_kwargs(context)
-                self._concat_tokenizer_kwargs(tokenizer_kwargs, curr_tokenizer_kwargs)
-                token_list = self._tokenize(context, **curr_tokenizer_kwargs)
+                token_list = self._tokenize(context)
             else:
                 token_list = context
             input_ids += token_list
@@ -599,10 +597,10 @@ class Template(ProcessorMixin):
             for key, _slice in zip(['prompt', 'answer'],
                                    [slice(0, total_len - answer_len),
                                     slice(total_len - answer_len, total_len)]):
-                _res_context_list, _loss_scale_list = self._simplify_context_list(res_context_list[_slice],
-                                                                                  loss_scale_list[_slice], inputs)
+                res_context_list, loss_scale_list = self._simplify_context_list(res_context_list[_slice],
+                                                                                loss_scale_list[_slice], inputs)
                 input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(
-                    _res_context_list, _loss_scale_list)
+                    res_context_list, loss_scale_list)
                 encoded[f'{key}_input_ids'] = input_ids
                 if key == 'answer':
                     encoded['labels'] = labels
@@ -643,13 +641,6 @@ class Template(ProcessorMixin):
                 if k.endswith('loss_scale'):
                     encoded[k] = None
         return encoded
-
-    def _get_tokenizer_kwargs(self, context: str) -> Dict[str, Any]:
-        """return: curr_tokenizer_kwargs"""
-        return {}
-
-    def _concat_tokenizer_kwargs(self, tokenizer_kwargs: Dict[str, Any], curr_tokenizer_kwargs: Dict[str, Any]) -> None:
-        assert len(tokenizer_kwargs) == 0
 
     def get_generate_ids(self, generate_ids: Union[torch.Tensor, List[int]],
                          num_prompt_tokens: int) -> Union[torch.Tensor, List[int]]:
