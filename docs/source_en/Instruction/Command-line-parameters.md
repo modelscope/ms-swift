@@ -310,6 +310,7 @@ RLHF parameters are an extension of the sft parameters, with the addition of the
 - `--cliprange_value`: Clip range in the PPO value loss function, default is 0.2
 - `--gamma`: Discount factor for cumulative rewards, default is 1.0
 - `--lam`: Lambda value for [GAE](https://arxiv.org/abs/1506.02438), default is 0.95
+- `--num_sample_generations`: Number of debugging samples generations throughout training, default is 10
 
 ## infer merge-lora Parameters
 

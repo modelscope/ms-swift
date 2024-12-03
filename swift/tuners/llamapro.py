@@ -77,7 +77,7 @@ class LLaMAPro(SwiftAdapter):
         model.config.num_hidden_layers = len(new_module_list)
         LLaMAPro._set_module_list(config, model, new_module_list)
 
-        def state_dict_callback(state_dict, adapter_name):
+        def state_dict_callback(state_dict, adapter_name, **kwargs):
             model_key_mapping = LLaMAPro.get_model_key_mapping(config.model_type, config)
             new_module_list = [model_key_mapping.module_list + f'.{i}' for i in new_module_idx]
             return {

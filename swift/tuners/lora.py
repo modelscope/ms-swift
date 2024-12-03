@@ -81,7 +81,7 @@ class LoRA(SwiftAdapter):
                 config.group_size = getattr(auto_gptq_config, 'group_size', None)
         LoraModel(model, config, adapter_name)
 
-        def state_dict_callback(state_dict, adapter_name, cfg=None):
+        def state_dict_callback(state_dict, adapter_name, cfg=None, **kwargs):
             return lora_state_dict(state_dict, adapter_name, cfg.bias if cfg else config.bias)
 
         def mark_trainable_callback(model, cfg=None):

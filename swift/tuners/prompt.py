@@ -126,7 +126,7 @@ class Prompt(SwiftAdapter):
                 logger.info(f'Prompt modules(module_key): {module_key}.prompt_{adapter_name}')
                 match_module_keys.append(module_key)
 
-        def state_dict_callback(state_dict, adapter_name):
+        def state_dict_callback(state_dict, adapter_name, **kwargs):
             return {key: value for key, value in state_dict.items() if f'prompt_{adapter_name}' in key}
 
         def mark_trainable_callback(model):

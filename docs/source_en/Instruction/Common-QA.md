@@ -176,6 +176,43 @@ When fine-tuning on V100, it saves in fp32 format.
 ### Q47: Multi-machine training speed is slow. When using the Swift framework for LLM training, we found that using DeepSpeed ZeRO-3 for training results in a severe speed decrease.
 See the details in this [issue](https://github.com/modelscope/ms-swift/issues/1825).
 
+### Q48: Does swift currently support multi-stage pre-training for qwen2-vl? I noticed in the official best practices that the SFT seems to train VIT+LLM together. Is it possible to finetune separately?
+See [issue](https://github.com/modelscope/ms-swift/issues/2222) for details.
+
+### Q49: Does qwen2-vl not support mixing pure text data?
+It supports both image-text and pure text data.
+
+### Q50: Can we plot loss curves for different datasets during fine-tuning?
+No, it's not supported. Datasets are trained in a mixed manner.
+
+### Q51: After model training, the responses contain a lot of repetitive content
+Refer to the [LLM Fine-tuning Documentation](https://swift.readthedocs.io/en/latest/Instruction/LLM-fine-tuning.html). If repetition occurs during training, try training for more epochs, clean the data, use full parameter training, or adopt RLHF methods to mitigate the issue.
+
+### Q52: I want to ask if swift currently supports prompt tuning or prefix tuning?
+Not supported. These two methods suffer from severe knowledge forgetting, so they are not recommended for use at present.
+
+### Q53: Training on two A10 GPUs reports the following error:
+```text
+[rank0]: torch.distributed.DistBackendError: NCCL error in:../torch/csrc/distributed/c10d/ProcessGroupNCCL.cpp:1970， unhandled system error (run with NCCL_DEBUG=INFO for details),NCCL version 2.20.5
+[rank0]:ncclSystemError: System call (e.g. socket,malloc) or external library call failed or device error.
+```
+Please check if the shared memory is too small, as NCCL requires shared memory.
+
+### Q54: How to solve the problem of some parameters not participating in gradient backpropagation when freezing certain layers during DDP fine-tuning training?
+Configure the parameter `--ddp_find_unused_parameters true`.
+
+### Q55: Does swift have a dataset quality inspection tool?
+[data-juicer](https://github.com/modelscope/data-juicer)。
+
+### Q55: Where can I start model parallelism on the web-ui? I only found the checkbox for data parallelism, but couldn't find where to enable model parallelism.
+Just specify the visible GPUs.
+
+### Q56: How to turn off automatic shuffling? I want to disable it.
+Currently, you can only modify the transformers [code](https://github.com/huggingface/transformers/blob/main/src/transformers/trainer.py).
+
+### Q57: What is the 'num_items_in_batch' parameter? I can't find it anywhere.
+Upgrade to `ms-swift==2.5.2` or downgrade to `transformers<4.46`.
+
 ## Inference
 
 ### Q1:Is there documentation for Swift inference?
@@ -224,6 +261,40 @@ Modify `generation_config.output_logits`. Set `model.generation_config.output_lo
 ### Q14: Has anyone encountered this problem? RuntimeError: "triu_tril_cuda_template" not implemented for 'BFloat16'
 Upgrade torch, this version of torch hasn't implemented this operator.
 
+### Q15: Does qwen2-audio support streaming inference?
+Yes, it does. For details, see this [issue](https://github.com/modelscope/ms-swift/issues/1653).
+
+### Q16: Where do I set do_sample for multimodal model inference in the inference client?
+Set temperature=0.
+
+### Q17: Does ms-swift support batch processing for large models?
+Yes, it does. When inferencing with Python scripts, the request_list in the documentation can contain multiple queries. During deployment, the server will automatically handle batch processing. See [VLLM Inference Acceleration and Deployment](https://swift.readthedocs.io/en/latest/LLM/VLLM-inference-acceleration-and-deployment.html) for details.
+
+### Q18: When quantizing models in ms-swift, it shows insufficient memory. Is it possible to use fewer resources during quantization?
+Try setting `--quant_device_map cpu`.
+
+### Q19: Does swift support quantization for multimodal models?
+Yes, it does.
+
+### Q20:I'm getting the following error when using GPTQ. What's the reason?
+```text
+if llm_config['architectures'][0] == 'LlamaForCausalLM':
+KeyError: 'architectures'
+```
+Try using transformers version 4.44.*.
+
+### Q21: How can I save the evaluation results to a specified file in swift infer? I never know where it's being saved.
+Set `--result_dir your_path`. See [InferArguments](https://github.com/modelscope/ms-swift/blob/main/swift/llm/utils/argument.py) for details.
+
+### Q22: I'm getting the following error when AWQ quantizing yi-vl-6b:
+```text
+TypeError: swift.llm.utils.model.get_model_tokenizer_with_flash_attn() got multiple values for keyword argument 'automodel_class'.
+```
+Please use gptq quantization instead.
+
+### Q23: I'm trying to use swift export for gptq int4 quantization of the qwen2.5 72B model, with max model length=32768 as the default value and a calibration dataset of 128 samples. However, I'm getting an error during quantization. The error log says: "factorization could not be completed because the input is not positive-definite (the leading minor of order 18145 is not positive-definite)". What's the reason?
+This is an issue with the Hessian matrix not being positive-definite. Try using a different dataset.
+
 ## Deployment
 
 ### Q1: How to deploy the trained model?
@@ -255,6 +326,16 @@ Inference settings can only be set before startup. For deployment, default setti
 
 ### Q10: When deploying the qwen2vl model locally with vllm as the inference backend, how can we input local videos? Can we use base64 encoding? How to load videos when using curl?
 You can refer to the [Mutlimoda LLM Deployment](https://swift.readthedocs.io/en/latest/Multi-Modal/mutlimodal-deployment.html). URL, base64, and local file paths are all acceptable. Local file paths are only for testing on the same machine.
+
+### Q11: When deploying qwen2-vl, the following error occurs. Is it due to an incorrect version of vllm?
+```text
+Unrecognized keys in `rope_scaling`for 'rope_type'='default': {'mrope_section'} Unrecognized keys in `rope_scaling`for 'rope_type'='default': {'mrope_section'}
+```
+See [issue](https://github.com/QwenLM/Qwen2-VL/issues/209) for details.
+
+### Q12: Can swift inference output prediction probabilities? How to set it up during deployment?
+For Python script inference, `use model.generation_config.output_logits = True, model.generation_config.return_dict_in_generate = True`.
+During deployment, pass parameters from the client: `logprobs=True, top_logprobs=5`.
 
 ## Evaluation
 
@@ -305,5 +386,17 @@ swift eval --model_type 'qwen2_5-1_5b-instruct' --eval_dataset no --custom_eval_
 ```
 This relies on the nltk package, and the nltk tokenizer needs to download a punkt_tab zip file, which can be unstable or fail directly in some environments in China. We have tried to modify the code to work around this issue; refer to this [issue](https://github.com/nltk/nltk/issues/3293).
 
-### Q6:  When evaluating a fine-tuned model, it always stops at a fixed percentage, but the vllm service seems to be running normally. The larger the model, the earlier it disconnects.
+### Q6: When evaluating a fine-tuned model, it always stops at a fixed percentage, but the vllm service seems to be running normally. The larger the model, the earlier it disconnects.
 Set the `TIMEOUT` environment variable to -1.
+
+### Q7: Does evalscope support multi-model comparison?
+Please refer to the [documentation](https://evalscope.readthedocs.io/zh-cn/latest/user_guides/arena.html) for details.
+
+### Q8: Is there custom evaluation for multimodal datasets?
+For multimodal custom evaluation, please refer to the [documentation](https://evalscope.readthedocs.io/zh-cn/latest/advanced_guides/custom_dataset.html#vlm).
+
+### Q9: Does ms-swift have methods to test QPS, latency, and tokens/s?
+You can try using evalscope's [model stress testing tool](https://evalscope.readthedocs.io/zh-cn/latest/user_guides/stress_test.html#id1).
+
+### Q10: Is it possible to control the number of dataset entries during evaluation? Evaluating one MMLU takes over an hour, which is too slow.
+Configure the parameter `--eval_limit`. Here, `--eval_limit` controls the number of entries for each subset. For example, if MMLU has over 50 subsets and each is limited to 10 entries, it would be over 500 entries in total.
