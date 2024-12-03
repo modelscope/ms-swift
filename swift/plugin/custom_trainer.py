@@ -7,6 +7,7 @@ from swift.trainers import Trainer
 
 
 class SequenceClassificationTrainer(Trainer):
+    """A trainer for text-classification task"""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

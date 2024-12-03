@@ -8,6 +8,7 @@ logger = get_logger()
 
 
 class EarlyStopCallback(TrainerCallback):
+    """An early stop implementation"""
 
     def __init__(self, total_interval=3):
         self.best_metric = None

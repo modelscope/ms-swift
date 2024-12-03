@@ -47,6 +47,17 @@ def ce_loss_func(outputs, labels):
 # Use @register_loss_func to decorate your own loss, use --loss_type xxx to train
 @register_loss_func(LossType.loss_scale)
 def loss_scale_func(outputs, labels, loss_scale=None, num_items_in_batch=None) -> torch.Tensor:
+    """Loss func
+
+    Args:
+        outputs: The model outputs
+        labels: The labels
+        loss_scale: The loss scale
+        num_items_in_batch: The minibatch number in a gradient accumulation round.
+
+    Returns:
+
+    """
     loss, masks = ce_loss_func(outputs, labels)
     if loss_scale is not None:
         shift_scale = loss_scale[..., 1:].to(masks.device)
