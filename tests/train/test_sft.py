@@ -114,7 +114,7 @@ def test_mllm_streaming_zero3():
             dataset=['modelscope/coco_2014_caption:validation', 'AI-ModelScope/alpaca-gpt4-data-en'],
             streaming=True,
             max_steps=16,
-            # deepspeed='zero3',
+            deepspeed='zero3',
             **kwargs))
 
 
@@ -266,7 +266,7 @@ if __name__ == '__main__':
     # test_mllm_zero3()
     # test_llm_gptq()
     # test_llm_awq()
-    # test_mllm_streaming_zero3()
+    test_mllm_streaming_zero3()
     # test_mllm_streaming_mp_ddp()
     # test_llm_bnb()
     # test_llm_hqq()
@@ -277,4 +277,4 @@ if __name__ == '__main__':
     # test_predict_with_generate()
     # test_predict_with_generate_zero3()
     # test_template()
-    test_qwen_vl()
+    # test_qwen_vl()
