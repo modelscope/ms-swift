@@ -79,7 +79,18 @@ class LossScale:
                        context_type: ContextType,
                        is_last_round: bool,
                        *,
-                       query: Optional[str] = None):
+                       query: Optional[str] = None) -> Tuple[List[str], List[float]]:
+        """Calculate loss scale
+
+        Args:
+            context: The input context
+            context_type: The type of this context, like response/suffix(eos token)/other(query/system, etc.)
+            is_last_round: If this is the last round of messages.
+            query: The query of this round.
+
+        Returns:
+            A tuple, list of context and list of loss_scales
+        """
         if context_type in {ContextType.RESPONSE, ContextType.SUFFIX}:
             loss_scale = 1.
         else:
