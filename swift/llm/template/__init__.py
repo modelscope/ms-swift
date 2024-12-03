@@ -6,7 +6,6 @@ Please copy the entire template directory to modelscope.
 """
 
 from . import template
-from .agent import get_tools_prompt
 from .base import Template
 from .constant import TemplateType
 from .register import TEMPLATE_MAPPING, get_template, get_template_meta, register_template
