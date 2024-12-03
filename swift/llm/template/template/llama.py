@@ -120,7 +120,7 @@ class Llama3_2VisionTemplate(Template):
         return res
 
 
-register_template(Llama3TemplateMeta(MLLMTemplateType.llama3_2_vision, template_cls=Llama3_2VisionTemplate))
+register_template(Llama3_2TemplateMeta(MLLMTemplateType.llama3_2_vision, template_cls=Llama3_2VisionTemplate))
 
 register_template(
     Llama3TemplateMeta(

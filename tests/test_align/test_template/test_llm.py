@@ -39,11 +39,18 @@ def test_qwen1half():
 
 
 def test_glm4():
-    pass
+    # The Jinja prompt is missing \n.
+    pt_engine = PtEngine('ZhipuAI/glm-4-9b-chat')
+    _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    _infer_model(pt_engine)
 
 
 def test_llama():
-    pass
+    pt_engine = PtEngine('/mnt/nas2/huangjintao.hjt/.cache/modelscope/hub/LLM-Research/Llama-3___2-3B-Instruct')
+    _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    _infer_model(pt_engine)
 
 
 def test_qwq():
@@ -84,6 +91,14 @@ def test_deepseek_moe():
     _infer_model(pt_engine)
 
 
+def test_codegeex4():
+    # jinja is missing a prefix.
+    pt_engine = PtEngine('ZhipuAI/codegeex4-all-9b')
+    _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    _infer_model(pt_engine)
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig, get_template, get_model_tokenizer
     from swift.utils import get_logger, seed_everything
@@ -95,5 +110,8 @@ if __name__ == '__main__':
     # test_internlm2()
     # test_yi_coder()
     # test_yi()
-    test_deepseek_moe()
+    # test_deepseek_moe()
+    # test_codegeex4()
+    # test_glm4()
+    # test_llama()
     #

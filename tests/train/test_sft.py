@@ -93,8 +93,6 @@ def test_qwen2_audio():
             freeze_parameters_ratio=1,
             trainable_parameters='audio_tower',
             train_type='full',
-            streaming=True,
-            max_steps=100,
             **kwargs))
 
 
@@ -277,7 +275,7 @@ if __name__ == '__main__':
     # test_llm_ddp()
     # test_mllm_mp()
     # test_llm_streaming()
-    # test_mllm_streaming()
+    test_mllm_streaming()
     # test_mllm_zero3()
     # test_llm_gptq()
     # test_llm_awq()
@@ -293,4 +291,4 @@ if __name__ == '__main__':
     # test_predict_with_generate_zero3()
     # test_template()
     # test_qwen_vl()
-    test_qwen2_audio()
+    # test_qwen2_audio()
