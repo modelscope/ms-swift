@@ -1,4 +1,4 @@
-import os.path
+# Copyright (c) Alibaba, Inc. and its affiliates.
 from functools import partial
 from typing import Type
 

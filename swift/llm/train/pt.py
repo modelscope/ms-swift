@@ -1,4 +1,5 @@
-from typing import Any, Dict, List, Union
+# Copyright (c) Alibaba, Inc. and its affiliates.
+from typing import List, Union
 
 from ..argument import TrainArguments
 from .sft import SwiftSft

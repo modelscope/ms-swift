@@ -1,8 +1,8 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Type
 
 import gradio as gr
 
-from swift.llm import DATASET_MAPPING
 from swift.llm.dataset.register import get_dataset_list
 from swift.ui.base import BaseUI
 

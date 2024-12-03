@@ -1,10 +1,11 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 from functools import partial
 from typing import Type
 
 import gradio as gr
 
-from swift.llm import MODEL_MAPPING, TEMPLATE_MAPPING, ModelType
-from swift.llm.model.register import get_all_models, get_matched_model_meta
+from swift.llm import ModelType
+from swift.llm.model.register import get_all_models
 from swift.ui.base import BaseUI
 
 

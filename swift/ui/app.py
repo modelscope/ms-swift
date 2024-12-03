@@ -1,9 +1,9 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 from dataclasses import fields
 from typing import List, Union
 
 import gradio as gr
-from gradio import Accordion, Tab
 from packaging import version
 from transformers.utils import strtobool
 
