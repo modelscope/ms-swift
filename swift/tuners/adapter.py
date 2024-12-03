@@ -111,7 +111,7 @@ class Adapter(SwiftAdapter):
                 setattr(module, f'adapter_{adapter_name}', adapter_module)
                 logger.info(f'Adapter modules(module_key): {module_key}.adapter_{adapter_name}')
 
-        def state_dict_callback(state_dict, adapter_name: str):
+        def state_dict_callback(state_dict, adapter_name: str, **kwargs):
             return {key: value for key, value in state_dict.items() if f'adapter_{adapter_name}' in key}
 
         def mark_trainable_callback(model):

@@ -26,7 +26,7 @@ logger = get_logger()
 def check_json_format(obj: Any, token_safe: bool = True) -> Any:
     if obj is None or isinstance(obj, (int, float, str, complex)):  # bool is a subclass of int
         return obj
-    if isinstance(obj, torch.dtype):
+    if isinstance(obj, (torch.dtype, torch.device)):
         obj = str(obj)
         return obj[len('torch.'):] if obj.startswith('torch.') else obj
 

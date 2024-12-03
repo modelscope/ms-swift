@@ -57,7 +57,10 @@ def test_yi_vl():
 
 
 def test_glm4v():
-    pass
+    pt_engine = PtEngine('ZhipuAI/glm-4v-9b')
+    _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    _infer_model(pt_engine)
 
 
 def test_minicpmv():
@@ -135,6 +138,6 @@ if __name__ == '__main__':
     # test_yi_vl()
     # test_deepseek_vl()
     # test_deepseek_janus()
-    #
     # test_qwen_vl()
-    pass
+    #
+    test_glm4v()

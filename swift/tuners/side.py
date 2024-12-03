@@ -107,7 +107,7 @@ class Side(SwiftAdapter):
                 setattr(tgt_module, f'side_{adapter_name}', side_module)
                 logger.info(f'Side modules(module_key): {module_key}.side_{adapter_name}')
 
-        def state_dict_callback(state_dict, adapter_name):
+        def state_dict_callback(state_dict, adapter_name, **kwargs):
             return {key: value for key, value in state_dict.items() if f'side_{adapter_name}' in key}
 
         def mark_trainable_callback(model):

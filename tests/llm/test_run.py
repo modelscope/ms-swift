@@ -25,6 +25,14 @@ NO_EVAL_HUMAN = True
 
 logger = get_logger()
 
+kwargs = {
+    'per_device_train_batch_size': 2,
+    'per_device_eval_batch_size': 2,
+    'save_steps': 10,
+    'gradient_accumulation_steps': 4,
+    'num_train_epochs': 1,
+}
+
 
 class TestRun(unittest.TestCase):
 
@@ -42,66 +50,72 @@ class TestRun(unittest.TestCase):
             return
         torch.cuda.empty_cache()
         output = sft_main(
-            TrainArguments(
-                model_type=ModelType.qwen1half_1_8b,
-                template_type='qwen',
-                sft_type='full',
-                dataset=f'{DatasetName.jd_sentiment_zh}#200',
-                eval_steps=5))
-        best_model_checkpoint = output['best_model_checkpoint']
+            TrainArguments(model='qwen/Qwen1.5-0.5B', train_type='full', dataset='DAMO_NLP/jd#100', **kwargs))
+        last_model_checkpoint = output['last_model_checkpoint']
         torch.cuda.empty_cache()
         result = infer_main(
-            InferArguments(ckpt_dir=best_model_checkpoint, load_dataset_config=True, val_dataset_sample=2))
-        assert len(result['result'][0]['response']) < 20
+            InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True, val_dataset_sample=2))
+        assert len(result[0]['response']) < 20
 
-    def test_basic(self):
-        output_dir = 'output'
-        quantization_bit_list = [0, 4]
+    def test_hf_hub(self):
+        if not __name__ == '__main__':
+            # ignore citest error in github
+            return
+        torch.cuda.empty_cache()
         train_dataset_fnames = [
             'alpaca.csv', 'chatml.jsonl', 'swift_pre.jsonl', 'swift_single.csv', 'swift_multi.jsonl',
             'swift_multi.json#2'
         ]
         folder = os.path.join(os.path.dirname(__file__), 'data')
         dataset = [
-            f'MS::{DatasetName.alpaca_zh}#20',
-            f'{DatasetName.jd_sentiment_zh}#20',
+            'llm-wizard/alpaca-gpt4-data-zh#20',
+            'shibing624/alpaca-zh#20',
+        ] + [os.path.join(folder, fname) for fname in train_dataset_fnames]
+        output = sft_main(
+            TrainArguments(
+                model='qwen/Qwen1.5-0.5B-Chat-GPTQ-Int4', train_type='lora', dataset=dataset, use_hf=True, **kwargs))
+        last_model_checkpoint = output['last_model_checkpoint']
+        torch.cuda.empty_cache()
+        infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True, val_dataset_sample=2))
+
+    def test_basic(self):
+        output_dir = 'output'
+        quant_bits_list = [0, 4]
+        train_dataset_fnames = [
+            'alpaca.csv', 'chatml.jsonl', 'swift_pre.jsonl', 'swift_single.csv', 'swift_multi.jsonl',
+            'swift_multi.json#2'
+        ]
+        folder = os.path.join(os.path.dirname(__file__), 'data')
+        dataset = [
             'AI-ModelScope/alpaca-gpt4-data-zh#20',
-            'HF::llm-wizard/alpaca-gpt4-data-zh#20',
             'hurner/alpaca-gpt4-data-zh#20',
-            'HF::shibing624/alpaca-zh#20',
         ] + [os.path.join(folder, fname) for fname in train_dataset_fnames]
         if not __name__ == '__main__':
             output_dir = self.tmp_dir
-            quantization_bit_list = [4]
+            quant_bits_list = [4]
             dataset = dataset[:2]
         import transformers
         from packaging import version
-        if version.parse(transformers.__version__) >= version.parse('4.42'):
-            model_type = ModelType.qwen2_0_5b_instruct
-        else:
-            model_type = ModelType.chatglm3_6b
-        for quantization_bit in quantization_bit_list:
-            if quantization_bit == 4 and version.parse(transformers.__version__) >= version.parse('4.38'):
-                continue
-            predict_with_generate = True
-            if quantization_bit == 0:
+        for quant_bits in quant_bits_list:
+            if quant_bits == 0:
                 predict_with_generate = False
+                quant_method = None
+            else:
+                predict_with_generate = True
+                quant_method = 'bnb'
             sft_args = TrainArguments(
-                model_type=model_type,
-                template_type='AUTO',
-                lora_target_modules=['AUTO', 'EMBEDDING'],
-                quantization_bit=quantization_bit,
-                batch_size=2,
+                model='qwen/Qwen2-0.5B-Instruct-GPTQ-Int8',
+                quant_bits=quant_bits,
                 eval_steps=5,
                 adam_beta2=0.95,
-                check_dataset_strategy='warning',
+                quant_method=quant_method,
                 predict_with_generate=predict_with_generate,
                 dataset=dataset,
-                val_dataset=f'{DatasetName.jd_sentiment_zh}#20',
+                val_dataset='DAMO_NLP/jd#20',
                 output_dir=output_dir,
                 include_num_input_tokens_seen=True,
-                gradient_checkpointing=True)
-            self.assertTrue(sft_args.gradient_accumulation_steps == 8)
+                gradient_checkpointing=True,
+                **kwargs)
             torch.cuda.empty_cache()
             output = sft_main(sft_args)
             print(output)
@@ -113,8 +127,7 @@ class TestRun(unittest.TestCase):
                     merge_lora={
                         0: True,
                         4: False
-                    }[quantization_bit],
-                    merge_device_map='cpu',
+                    }[quant_bits],
                     load_dataset_config=NO_EVAL_HUMAN,
                     val_dataset_sample=5)
                 torch.cuda.empty_cache()
@@ -487,4 +500,7 @@ class TestTrainer(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main()
+    # TestRun().test_template()
+    # TestRun().test_hf_hub()
+    TestRun().test_basic()
+    # unittest.main()

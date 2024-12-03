@@ -68,13 +68,13 @@ class GLM4VTemplate(GLMTemplate):
         idx_list = findall(input_ids, -100)
         if idx_list:
             idx = idx_list[0]
-            image = encoded.images[0]
+            image = inputs.images[0]
             placeholder = '<|begin_of_image|><|endoftext|><|end_of_image|>'
             placeholder_id = self.processor.encode(placeholder, add_special_tokens=False)
             input_ids = (input_ids[:idx] + placeholder_id + input_ids[idx + 1:])
             if labels is not None:
                 labels = (labels[:idx] + [-100] * len(placeholder_id) + labels[idx + 1:])
-            messages = encoded.messages
+            messages = inputs.messages
             messages[0]['image'] = image
             inputs2: Dict[str, Any] = self.processor.apply_chat_template(messages, return_dict=True)
             encoded['images'] = inputs2['images']
@@ -95,19 +95,13 @@ class GLM4VTemplate(GLMTemplate):
 
 
 # not '<|assistant|>\n'
-register_template(
-    GLM4TemplateMeta(
-        MLLMTemplateType.glm4v,
-        prompt=['<|user|>\n{{QUERY}}<|assistant|>'],
-        suffix=['<|endoftext|>'],
-        template_cls=GLM4VTemplate))
+register_template(GLM4TemplateMeta(MLLMTemplateType.glm4v, template_cls=GLM4VTemplate))
 
 register_template(GLM4TemplateMeta(LLMTemplateType.glm4))
 
 codegeex4_system = '你是一位智能编程助手，你叫CodeGeeX。你会为用户回答关于编程、代码、计算机方面的任何问题，并提供格式规范、可以执行、准确安全的代码，并在必要时提供详细的解释。'
 
-register_template(
-    GLM4TemplateMeta(LLMTemplateType.codegeex4, suffix=['<|endoftext|>'], default_system=codegeex4_system))
+register_template(GLM4TemplateMeta(LLMTemplateType.codegeex4, default_system=codegeex4_system))
 
 register_template(
     TemplateMeta(

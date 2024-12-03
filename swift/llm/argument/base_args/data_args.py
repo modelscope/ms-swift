@@ -71,9 +71,9 @@ class DataArguments:
     def __post_init__(self):
         if self.data_seed is None:
             self.data_seed = self.seed
-        if len(self.val_dataset) > 0:
+        if len(self.val_dataset) > 0 or self.streaming:
             self.split_dataset_ratio = 0.
-            logger.info(f'Using val_dataset, setting split_dataset_ratio: {self.split_dataset_ratio}')
+            logger.info(f'Setting split_dataset_ratio: {self.split_dataset_ratio}')
         self._init_custom_register()
         self._init_custom_dataset_info()
 

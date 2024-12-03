@@ -65,7 +65,7 @@ class ModelArguments:
 
     def _init_device_map(self):
         """Prepare device map args"""
-        if self.device_map is not None:
+        if self.device_map:
             self.device_map: Union[str, Dict[str, Any], None] = self.parse_to_dict(self.device_map, strict=False)
         # compat mp&ddp
         _, local_rank, _, local_world_size = get_dist_setting()

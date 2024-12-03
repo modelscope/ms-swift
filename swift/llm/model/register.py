@@ -420,7 +420,7 @@ def get_model_info_meta(
         revision=revision,
         download_model=download_model,
         use_hf=use_hf,
-        ignore_file_pattern=model_meta.ignore_file_pattern,
+        ignore_file_pattern=getattr(model_meta, 'ignore_file_pattern', None),
         hub_token=hub_token)
 
     model_type = model_type or getattr(model_meta, 'model_type', None)

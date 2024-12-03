@@ -12,8 +12,6 @@ import torch
 import torch.distributed as dist
 import transformers
 from accelerate.utils import find_device
-from datasets.utils.filelock import FileLock
-from modelscope.hub.utils.utils import get_cache_dir
 from packaging import version
 from transformers import AutoConfig, PretrainedConfig
 
@@ -247,16 +245,8 @@ def safe_snapshot_download(model_id_or_path: str,
     ignore_file_pattern += ['*.zip', '*.gguf', '*.pth', '*.pt', 'consolidated*', 'onnx', 'safetensors.md']
     if not download_model:
         ignore_file_pattern += ['*.bin', '*.safetensors']
-    if (is_dist() or is_dist_ta()) and not dist.is_initialized():
-        # Distributed but uninitialized
-        lock_dir = os.path.join(get_cache_dir(), 'lockers')
-        file_path = hashlib.md5(model_id_or_path.encode('utf-8')).hexdigest() + '.lock'
-        file_path = os.path.join(lock_dir, file_path)
-        context = FileLock(file_path)
-    else:
-        context = safe_ddp_context()
     hub = get_hub(use_hf)
-    with context:
+    with safe_ddp_context(hash_id=model_id_or_path):
         if os.path.exists(model_id_or_path):
             model_dir = model_id_or_path
         else:
@@ -281,7 +271,7 @@ def git_clone_github(github_url: str,
         github_url = github_url.rstrip('/')
         local_repo_name = github_url.rsplit('/', 1)[1]
     local_repo_path = os.path.join(git_cache_dir, local_repo_name)
-    with safe_ddp_context():
+    with safe_ddp_context(hash_id=local_repo_path):
         if not os.path.exists(local_repo_path):
             if not github_url.endswith('.git'):
                 github_url = f'{github_url}.git'

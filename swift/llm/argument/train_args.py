@@ -54,8 +54,9 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
                 self.learning_rate = 1e-5
             else:
                 self.learning_rate = 1e-4
-        self.lr_scheduler_kwargs = self.parse_to_dict(self.lr_scheduler_kwargs)
-        if hasattr(self, 'gradient_checkpointing_kwargs'):
+        if self.lr_scheduler_kwargs:
+            self.lr_scheduler_kwargs = self.parse_to_dict(self.lr_scheduler_kwargs)
+        if getattr(self, 'gradient_checkpointing_kwargs', None):
             self.gradient_checkpointing_kwargs = self.parse_to_dict(self.gradient_checkpointing_kwargs)
 
         if len(self.val_dataset) == 0 and self.split_dataset_ratio == 0:
@@ -65,7 +66,8 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
         else:
             self.evaluation_strategy = self.save_strategy
             self.eval_strategy = self.save_strategy
-            self.eval_steps = self.save_steps
+            if self.eval_steps is None:
+                self.eval_steps = self.save_steps
 
 
 @dataclass
@@ -157,7 +159,7 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
                 self.deepspeed = os.path.join(ds_config_folder, ds_config)
                 break
 
-        if self.deepspeed is not None:
+        if self.deepspeed:
             if is_mp():
                 raise ValueError('DeepSpeed is not compatible with MP. '
                                  f'n_gpu: {torch.cuda.device_count()}, '

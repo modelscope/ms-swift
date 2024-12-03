@@ -61,6 +61,19 @@ class RowPreprocessor:
                 raise ValueError(f'assistant_message: {assistant_message}')
 
     @staticmethod
+    def _cast_images(row: Dict[str, Any]) -> None:
+        images = row.get('images')
+
+        if isinstance(images, str) or isinstance(images, list) and images and isinstance(images[0], str):
+            if isinstance(images, str):
+                images = [images]
+            for i, image in enumerate(images):
+                images[i] = {'bytes': None, 'path': image}
+            row['images'] = images
+        elif isinstance(images, dict):
+            row['images'] = [images]
+
+    @staticmethod
     def _check_rejected_response(row: Dict[str, Any]) -> None:
         if 'rejected_messages' in row:
             chosen_messages = row['messages']
@@ -123,6 +136,7 @@ class RowPreprocessor:
                 for r in row:
                     self._check_messages(r)
                     self._check_rejected_response(r)
+                    self._cast_images(r)
             except Exception:
                 if strict:
                     logger.warning('To avoid errors, you can pass `strict=False`.')
@@ -175,6 +189,7 @@ class RowPreprocessor:
                     'role': Value(dtype='string', id=None),
                     'content': Value(dtype='string', id=None)
                 }]
+                features['images'] = [{'bytes': Value(dtype='binary', id=None), 'path': Value(dtype='string', id=None)}]
             ArrowWriter.__origin_init__(self, schema, features, *args, **kwargs)
 
         ArrowWriter.__origin_init__ = ArrowWriter.__init__

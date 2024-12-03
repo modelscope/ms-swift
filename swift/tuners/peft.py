@@ -287,7 +287,7 @@ def hot_patch_peft_module():
         FourierFTModel._create_and_replace = _create_and_replace_hook
 
     # Support type conversion
-    def __init__(self, model: torch.nn.Module, config: Dict[str, LoraConfig], adapter_name: str):
+    def __new_init__(self, model: torch.nn.Module, config: Dict[str, LoraConfig], adapter_name: str):
 
         self.__init_origin__(model, config, adapter_name)
         if isinstance(self.active_adapter, list):
@@ -303,7 +303,7 @@ def hot_patch_peft_module():
                             lora.forward = MethodType(keep_device_forward, lora)
 
     LoraModel.__init_origin__ = LoraModel.__init__
-    LoraModel.__init__ = __init__
+    LoraModel.__init__ = __new_init__
 
     # Support LoRA+
     PeftModel.create_optimizer_param_groups = create_optimizer_param_groups

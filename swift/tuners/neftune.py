@@ -49,7 +49,7 @@ class NEFTune(SwiftAdapter):
                 sub_module.register_forward_hook(neftune_hook)
                 sub_module.nef_activated = True
 
-        def state_dict_callback(state_dict, adapter_name):
+        def state_dict_callback(state_dict, adapter_name, **kwargs):
             return state_dict
 
         def mark_trainable_callback(model):
