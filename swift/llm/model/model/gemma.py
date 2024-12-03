@@ -4,7 +4,8 @@ from typing import Any, Dict
 from swift.llm import TemplateType
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
-from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal, register_model
+from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,
+                        get_model_tokenizer_with_flash_attn, register_model)
 from ..utils import ModelInfo
 
 
