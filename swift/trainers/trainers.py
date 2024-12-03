@@ -32,7 +32,7 @@ class Seq2SeqTrainer(TorchAccMixin, SwiftMixin, HfSeq2SeqTrainer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'predict.jsonl'))
-        self._custom_metrics['acc'] = MeanMetric()
+        self._custom_metrics['acc'] = MeanMetric(nan_value=None)
 
     @contextmanager
     def _patch_predict_with_generate(self):

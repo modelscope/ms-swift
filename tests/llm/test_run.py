@@ -104,7 +104,7 @@ class TestRun(unittest.TestCase):
                 predict_with_generate = True
                 quant_method = 'bnb'
             sft_args = TrainArguments(
-                model='qwen/Qwen2-0.5B-Instruct-GPTQ-Int8',
+                model='qwen/Qwen2-0.5B-Instruct',
                 quant_bits=quant_bits,
                 eval_steps=5,
                 adam_beta2=0.95,
