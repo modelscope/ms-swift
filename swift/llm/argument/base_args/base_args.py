@@ -7,7 +7,7 @@ import torch
 from transformers.utils import is_torch_npu_available
 
 from swift.hub import get_hub
-from swift.utils import check_json_format, get_dist_setting, get_logger, is_dist, is_master
+from swift.utils import check_json_format, get_dist_setting, get_logger, is_dist, is_master, use_hf_hub
 from .data_args import DataArguments
 from .generation_args import GenerationArguments
 from .model_args import ModelArguments
@@ -51,7 +51,8 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
     use_swift_lora: bool = False  # True for using tuner_backend == swift, don't specify this unless you know what you are doing # noqa
 
     def __post_init__(self):
-        if self.use_hf:
+        if self.use_hf or use_hf_hub():
+            self.use_hf = True
             os.environ['USE_HF'] = '1'
         self._init_model_kwargs()
         self.rank, self.local_rank, world_size, self.local_world_size = get_dist_setting()
