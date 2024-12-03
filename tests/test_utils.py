@@ -17,8 +17,7 @@ from os.path import expanduser
 
 import numpy as np
 import requests
-
-from swift.hub.constants import DEFAULT_CREDENTIALS_PATH
+from modelscope.hub.constants import DEFAULT_CREDENTIALS_PATH
 
 TEST_LEVEL = 2
 TEST_LEVEL_STR = 'TEST_LEVEL'

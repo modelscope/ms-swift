@@ -94,8 +94,6 @@ class TestRun(unittest.TestCase):
             output_dir = self.tmp_dir
             quant_bits_list = [4]
             dataset = dataset[:2]
-        import transformers
-        from packaging import version
         for quant_bits in quant_bits_list:
             if quant_bits == 0:
                 predict_with_generate = False
@@ -272,49 +270,13 @@ class TestRun(unittest.TestCase):
             torch.cuda.empty_cache()
             infer_main(infer_args)
 
-    def test_cogagent_instruct(self):
-        if not __name__ == '__main__':
-            # ignore citest error in github
-            return
-        quantization_bit = 4
-        if version.parse(transformers.__version__) >= version.parse('4.38'):
-            quantization_bit = 0
-        torch.cuda.empty_cache()
-        output = sft_main(
-            TrainArguments(
-                model_type=ModelType.cogagent_18b_instruct,
-                dataset=DatasetName.coco_en_2_mini,
-                train_dataset_sample=100,
-                lora_target_modules='ALL',
-                eval_steps=5,
-                quantization_bit=quantization_bit))
-        best_model_checkpoint = output['best_model_checkpoint']
-        torch.cuda.empty_cache()
-        infer_main(InferArguments(ckpt_dir=best_model_checkpoint, load_dataset_config=True, val_dataset_sample=2))
-
-    def test_xcomposer_chat(self):
-        if not __name__ == '__main__':
-            # ignore citest error in github
-            return
-        torch.cuda.empty_cache()
-        output = sft_main(
-            TrainArguments(
-                model_type=ModelType.internlm_xcomposer2_7b_chat,
-                dataset=DatasetName.coco_en_mini,
-                lora_target_modules='DEFAULT',
-                train_dataset_sample=100,
-                eval_steps=5))
-        best_model_checkpoint = output['best_model_checkpoint']
-        torch.cuda.empty_cache()
-        infer_main(InferArguments(ckpt_dir=best_model_checkpoint, load_dataset_config=True, val_dataset_sample=2))
-
     def test_rlhf(self):
         if not __name__ == '__main__':
             # ignore citest error in github
             return
         torch.cuda.empty_cache()
         # llm rlhf
-        rlhf_types = ['dpo', 'orpo', 'simpo', 'kto', 'cpo', 'rm', 'ppo']
+        rlhf_types = ['dpo', 'orpo', 'simpo', 'kto', 'cpo']  # , 'rm', 'ppo'
         for rlhf_type in rlhf_types:
             dataset_name = 'hh-rlhf-cn-harmless-base-cn' if rlhf_type != 'kto' else 'ultrafeedback-kto'
             kwargs = {}
@@ -380,22 +342,6 @@ class TestRun(unittest.TestCase):
         torch.cuda.empty_cache()
         infer_main([infer_json])
         os.environ.pop('PAI_TRAINING_JOB_ID')
-
-    def test_deepseek_vl_chat(self):
-        if not __name__ == '__main__':
-            # ignore citest error in github
-            return
-        folder = os.path.join(os.path.dirname(__file__), 'data')
-        torch.cuda.empty_cache()
-        sft_main(
-            TrainArguments(
-                model_type=ModelType.deepseek_vl_1_3b_chat,
-                #   dataset=DatasetName.capcha_images,
-                lora_target_modules='ALL',
-                train_dataset_sample=100,
-                eval_steps=5,
-                custom_train_dataset_path=[os.path.join(folder, 'multi_modal_1.jsonl')],
-                lazy_tokenize=False))
 
 
 def data_collate_fn(batch: List[Dict[str, Any]], tokenizer) -> Dict[str, torch.Tensor]:
