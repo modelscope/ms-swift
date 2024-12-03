@@ -83,6 +83,21 @@ def test_qwen_vl():
             **kwargs))
 
 
+def test_qwen2_audio():
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+    from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
+    sft_main(
+        TrainArguments(
+            model='Qwen/Qwen2-Audio-7B-Instruct',
+            dataset=['speech_asr/speech_asr_aishell1_trainsets:validation#200'],
+            freeze_parameters_ratio=1,
+            trainable_parameters='audio_tower',
+            train_type='full',
+            streaming=True,
+            max_steps=100,
+            **kwargs))
+
+
 def test_llm_gptq():
     from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
     result = sft_main(
@@ -266,7 +281,7 @@ if __name__ == '__main__':
     # test_mllm_zero3()
     # test_llm_gptq()
     # test_llm_awq()
-    test_mllm_streaming_zero3()
+    # test_mllm_streaming_zero3()
     # test_mllm_streaming_mp_ddp()
     # test_llm_bnb()
     # test_llm_hqq()
@@ -278,3 +293,4 @@ if __name__ == '__main__':
     # test_predict_with_generate_zero3()
     # test_template()
     # test_qwen_vl()
+    test_qwen2_audio()

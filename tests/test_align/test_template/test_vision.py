@@ -4,21 +4,19 @@ from swift.utils import get_logger, seed_everything
 logger = get_logger()
 
 
-def _infer_model(pt_engine, system=None):
+def _infer_model(pt_engine, system=None, messages=None, images=None):
     seed_everything(42)
     request_config = RequestConfig(max_tokens=128, temperature=0)
-    messages = []
-    if system is not None:
-        messages += [{'role': 'system', 'content': system}]
-    messages += [{'role': 'user', 'content': '你好'}]
-    resp = pt_engine.infer([{'messages': messages}], request_config=request_config)
-    response = resp[0].choices[0].message.content
-    messages += [{'role': 'assistant', 'content': response}, {'role': 'user', 'content': '<image>这是什么'}]
-    resp = pt_engine.infer([{
-        'messages': messages,
-        'images': ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png']
-    }],
-                           request_config=request_config)
+    if messages is None:
+        messages = []
+        if system is not None:
+            messages += [{'role': 'system', 'content': system}]
+        messages += [{'role': 'user', 'content': '你好'}]
+        resp = pt_engine.infer([{'messages': messages}], request_config=request_config)
+        response = resp[0].choices[0].message.content
+        messages += [{'role': 'assistant', 'content': response}, {'role': 'user', 'content': '<image>这是什么'}]
+        images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png']
+    resp = pt_engine.infer([{'messages': messages, 'images': images}], request_config=request_config)
     response = resp[0].choices[0].message.content
     messages += [{'role': 'assistant', 'content': response}]
     logger.info(f'model: {pt_engine.model_info.model_name}, messages: {messages}')
@@ -57,6 +55,7 @@ def test_yi_vl():
 
 
 def test_glm4v():
+    # There will be differences in '\n'. This is normal.
     pt_engine = PtEngine('ZhipuAI/glm-4v-9b')
     _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
@@ -64,11 +63,22 @@ def test_glm4v():
 
 
 def test_minicpmv():
-    pass
+    pt_engine = PtEngine('OpenBMB/MiniCPM-V-2_6')
+    _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    _infer_model(pt_engine)
 
 
 def test_got_ocr():
-    pass
+    # https://github.com/modelscope/ms-swift/issues/2122
+    pt_engine = PtEngine('stepfun-ai/GOT-OCR2_0')
+    _infer_model(
+        pt_engine,
+        messages=[{
+            'role': 'user',
+            'content': 'OCR: '
+        }],
+        images=['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/ocr.png'])
 
 
 def test_llama_vision():
@@ -119,7 +129,10 @@ def test_mplug_owl2():
 
 
 def test_mplug_owl3():
-    pass
+    pt_engine = PtEngine('iic/mPLUG-Owl3-7B-240728')
+    _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    _infer_model(pt_engine)
 
 
 def test_ovis1_6():
@@ -139,5 +152,8 @@ if __name__ == '__main__':
     # test_deepseek_vl()
     # test_deepseek_janus()
     # test_qwen_vl()
+    # test_glm4v()
+    # test_minicpmv()
+    # test_got_ocr()
     #
-    test_glm4v()
+    test_mplug_owl3()

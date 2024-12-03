@@ -239,36 +239,36 @@ class TestRun(unittest.TestCase):
         ]
         folder = os.path.join(os.path.dirname(__file__), 'data')
         resume_from_checkpoint = None
+        train_kwargs = kwargs.copy()
+        train_kwargs.pop('num_train_epochs')
         for num_train_epochs in [1, 2]:
             sft_args = TrainArguments(
-                model_type='qwen-7b-chat',
-                dataset=['self-cognition#20'],
-                custom_train_dataset_path=[os.path.join(folder, fname) for fname in train_dataset_fnames],
-                custom_val_dataset_path=[os.path.join(folder, fname) for fname in val_dataset_fnames],
-                lora_target_modules='ALL',
+                model='Qwen/Qwen-7B-Chat',
+                dataset=['swift/self-cognition#20'] + [os.path.join(folder, fname) for fname in train_dataset_fnames],
+                val_dataset=[os.path.join(folder, fname) for fname in val_dataset_fnames],
                 resume_from_checkpoint=resume_from_checkpoint,
                 num_train_epochs=num_train_epochs,
                 model_name='小黄',
                 model_author='魔搭',
-                check_dataset_strategy='warning')
+                **train_kwargs)
 
             torch.cuda.empty_cache()
             result = sft_main(sft_args)
             best_model_checkpoint = result['best_model_checkpoint']
             resume_from_checkpoint = result['last_model_checkpoint']
 
-        for load_args_from_ckpt_dir in [True, False]:
-            kwargs = {}
-            if load_args_from_ckpt_dir is False:
-                kwargs = {'model_type': 'qwen-7b-chat'}
+        for load_args in [True, False]:
+            infer_kwargs = {}
+            if load_args is False:
+                infer_kwargs = {'model': 'Qwen/Qwen-7B-Chat'}
             infer_args = InferArguments(
                 ckpt_dir=best_model_checkpoint,
-                load_args_from_ckpt_dir=load_args_from_ckpt_dir,
-                load_dataset_config=load_args_from_ckpt_dir and NO_EVAL_HUMAN,
-                merge_lora=load_args_from_ckpt_dir,
+                load_args=load_args,
+                load_dataset_config=load_args and NO_EVAL_HUMAN,
+                merge_lora=load_args,
                 val_dataset_sample=-1,
                 custom_val_dataset_path=[os.path.join(folder, fname) for fname in val_dataset_fnames],
-                **kwargs)
+                **infer_kwargs)
             torch.cuda.empty_cache()
             infer_main(infer_args)
 
@@ -502,5 +502,7 @@ class TestTrainer(unittest.TestCase):
 if __name__ == '__main__':
     # TestRun().test_template()
     # TestRun().test_hf_hub()
-    TestRun().test_basic()
+    # TestRun().test_basic()
+    #
+    TestRun().test_custom_dataset()
     # unittest.main()

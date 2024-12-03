@@ -18,13 +18,11 @@ DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 logger = get_logger()
 
 
-def get_dataset_features(dataset: DATASET_TYPE) -> Dict[str, Any]:
-    features = dataset.features
-    if features is None:
+def get_features_dataset(dataset: DATASET_TYPE) -> DATASET_TYPE:
+    if dataset.features is None:
         assert isinstance(dataset, HfIterableDataset)
         dataset = dataset._resolve_features()
-        features = dataset.features
-    return features
+    return dataset
 
 
 class RowPreprocessor:
@@ -157,7 +155,7 @@ class RowPreprocessor:
 
     @staticmethod
     def safe_rename_columns(dataset: HfDataset, columns_mapping: Dict[str, Any]) -> HfDataset:
-        features = get_dataset_features(dataset).keys()
+        features = dataset.features.keys()
         safe_columns_mapping = {k: v for k, v in columns_mapping.items() if k in features}
         if safe_columns_mapping:
             dataset = dataset.rename_columns(safe_columns_mapping)
@@ -201,7 +199,7 @@ class RowPreprocessor:
             del ArrowWriter.__origin_init__
 
     def _cast_pil_image(self, dataset):
-        features = get_dataset_features(dataset)
+        features = dataset.features
         if 'images' in features and isinstance(features['images'], Image) and features['images'].decode:
             dataset = dataset.cast_column('images', Image(decode=False))
         return dataset
@@ -218,12 +216,18 @@ class RowPreprocessor:
         from ..utils import sample_dataset
         if self.dataset_sample is not None:
             dataset = sample_dataset(dataset, self.dataset_sample, self.random_state)
+
+        dataset = get_features_dataset(dataset)
         dataset = self.safe_rename_columns(dataset, self.columns_mapping)
         dataset = self.prepare_dataset(dataset)
         dataset = self._cast_pil_image(dataset)
         map_kwargs = {}
         if isinstance(dataset, HfDataset):
-            map_kwargs.update({'num_proc': num_proc, 'load_from_cache_file': load_from_cache_file})
+            map_kwargs.update({
+                'num_proc': num_proc,
+                'load_from_cache_file': load_from_cache_file,
+                'remove_columns': list(dataset.features.keys())
+            })
         with self._patch_arrow_writer():
             try:
                 dataset_mapped = dataset.map(
@@ -231,10 +235,10 @@ class RowPreprocessor:
                     batched=True,
                     batch_size=batch_size,
                     fn_kwargs={'strict': strict},
-                    remove_columns=list(get_dataset_features(dataset).keys()),
                     **map_kwargs)
             except NotImplementedError:
                 pass
+        dataset_mapped = get_features_dataset(dataset_mapped)
         if isinstance(dataset_mapped, HfDataset) and len(dataset) != len(dataset_mapped):
             logger.info(
                 f'Dataset filtered, origin length: {len(dataset)}, filtered dataset length: {len(dataset_mapped)}')
@@ -427,7 +431,8 @@ class AutoPreprocessor:
         self.kwargs = kwargs
 
     def _get_preprocessor(self, dataset: DATASET_TYPE) -> RowPreprocessor:
-        features = get_dataset_features(dataset).keys()
+        dataset = get_features_dataset(dataset)
+        features = dataset.features.keys()
         for key in ['conversation', 'conversations', 'messages']:
             if key in features:
                 return MessagesPreprocessor(**self.kwargs)
