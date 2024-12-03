@@ -9,18 +9,29 @@
 pip install 'ms-swift[all]' -U
 # 仅使用LLM
 pip install 'ms-swift[llm]' -U
-# 仅使用AIGC
-pip install 'ms-swift[aigc]' -U
-# 仅使用adapters
-pip install ms-swift -U
+# 仅使用评测
+pip install 'ms-swift[eval]' -U
+# 支持序列并行
+pip install 'ms-swift[seq_parallel]' -U
 ```
 
 ## 源代码安装
 
 ```shell
-git clone https://github.com/modelscope/swift.git
+git clone https://github.com/modelscope/ms-swift.git
 cd swift
 pip install -e '.[all]'
+```
+
+## 旧版本
+
+SWIFT在3.0版本开始进行了不兼容式重构，如果需要使用2.x旧版本，请执行如下命令进行安装：
+```shell
+pip install ms-swift==2.6.1
+# 或者
+git clone --branch v2.6.1 https://github.com/modelscope/ms-swift.git
+cd swift
+pip install -e .
 ```
 
 ## Notebook环境
