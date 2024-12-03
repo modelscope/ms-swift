@@ -1,4 +1,4 @@
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 from swift.llm import AlpacaPreprocessor, register_dataset
 from swift.llm.dataset.register import DatasetMeta
