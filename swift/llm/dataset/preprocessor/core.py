@@ -238,7 +238,6 @@ class RowPreprocessor:
                     **map_kwargs)
             except NotImplementedError:
                 pass
-        dataset_mapped = get_features_dataset(dataset_mapped)
         if isinstance(dataset_mapped, HfDataset) and len(dataset) != len(dataset_mapped):
             logger.info(
                 f'Dataset filtered, origin length: {len(dataset)}, filtered dataset length: {len(dataset_mapped)}')
