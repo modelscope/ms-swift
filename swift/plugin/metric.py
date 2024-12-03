@@ -74,8 +74,9 @@ class InferStats(Metric):
 
 class MeanMetric(Metric):
 
-    def __init__(self):
+    def __init__(self, nan_value=0):
         super().__init__()
+        self.nan_value = nan_value
         self.add_state('state', default=0.)
         self.add_state('count', default=0)
 
@@ -94,7 +95,7 @@ class MeanMetric(Metric):
 
     def compute(self):
         return {
-            'value': self.state / self.count if self.count > 0 else 0,
+            'value': self.state / self.count if self.count > 0 else self.nan_value,
         }
 
 

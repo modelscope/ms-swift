@@ -254,7 +254,9 @@ class SwiftMixin:
 
             for k, metric in self._custom_metrics.items():
                 value = metric.compute()
-                if len(value) == 1:
+                if value is None:
+                    continue
+                elif len(value) == 1:
                     val = list(value.values())[0]
                     logs[k] = val
                 else:
