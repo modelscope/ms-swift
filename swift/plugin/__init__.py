@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from .loss_scale import loss_scale_map
     from .metric import InferStats, MeanMetric, Metric, compute_acc, get_metric
     from .optimizer import optimizers_map
-    from .tools import format_custom
+    from .tools import get_tools_prompt
     from .tuner import Tuner, extra_tuners
 
 else:
@@ -22,7 +22,7 @@ else:
         'loss_scale': ['loss_scale_map'],
         'metric': ['InferStats', 'MeanMetric', 'Metric', 'compute_acc', 'get_metric'],
         'optimizer': ['optimizers_map'],
-        'tools': ['format_custom'],
+        'tools': ['get_tools_prompt'],
         'tuner': ['Tuner', 'extra_tuners'],
     }
 

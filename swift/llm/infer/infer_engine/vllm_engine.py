@@ -388,15 +388,5 @@ class VllmEngine(InferEngine):
                                      f'exception. {return_value}')
             except asyncio.exceptions.CancelledError:
                 pass
-            #     # We assume that if the task is cancelled, we are gracefully shutting
-            #     # down. This should only happen on program exit.
-            #     logger.info("Engine is gracefully shutting down.")
-            except Exception as e:
-                logger.error('Engine background task failed', exc_info=e)
-                error_callback(e)
-                raise async_llm_engine.AsyncEngineDeadError(
-                    'Task finished unexpectedly. This should never happen! '
-                    'Please open an issue on Github. See stack trace above for the '
-                    'actual cause.') from e
 
         async_llm_engine._log_task_completion = new_log_task_completion

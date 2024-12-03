@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from dataclasses import asdict
 from typing import Dict
 
-from swift.plugin.custom_trainer import custom_trainer_class
+from swift.plugin import custom_trainer_class
 from swift.utils import get_logger
 
 logger = get_logger()
