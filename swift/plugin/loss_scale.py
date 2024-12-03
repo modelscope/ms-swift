@@ -68,7 +68,7 @@ class LossScale:
     def __init__(self):
         if self.loss_scale_config is not None:
             path = os.path.dirname(os.path.abspath(__file__))
-            config_path = os.path.join(path, self.loss_scale_config)
+            config_path = os.path.join(path, 'agent', self.loss_scale_config)
             with open(config_path, 'r') as json_file:
                 self.loss_scale_map = json.load(json_file)
         else:
