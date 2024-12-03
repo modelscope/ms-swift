@@ -46,7 +46,7 @@ class PaliGemmaTemplate(Template):
         else:
             encoded['token_type_ids'] = [0] * len(encoded['input_ids'])
         if raw_image:
-            model_inputs = processor(text=encoded.to_history()['query'], images=raw_image[0], return_tensors='pt')
+            model_inputs = processor(text=inputs.to_history()['query'], images=raw_image[0], return_tensors='pt')
             encoded['pixel_values'] = model_inputs['pixel_values']
         return encoded
 
