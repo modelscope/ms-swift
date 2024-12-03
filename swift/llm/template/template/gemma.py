@@ -50,17 +50,6 @@ class PaliGemmaTemplate(Template):
             encoded['pixel_values'] = model_inputs['pixel_values']
         return encoded
 
-    def _data_collator(self,
-                       batch: List[Dict[str, Any]],
-                       *,
-                       padding_to: Optional[int] = None,
-                       model: Optional[nn.Module] = None) -> Dict[str, Any]:
-        res = super()._data_collator(batch, padding_to=padding_to, model=model)
-        token_type_ids = [torch.tensor(b['token_type_ids']) for b in batch]
-        token_type_ids = self._pad_sequence(token_type_ids, 0)
-        res['token_type_ids'] = token_type_ids
-        return res
-
 
 register_template(
     TemplateMeta(

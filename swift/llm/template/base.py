@@ -124,12 +124,6 @@ class Template(ProcessorMixin):
         *,
         max_pixels: Optional[int] = None,
     ) -> None:
-        template_meta = self.template_meta
-        system = inputs.system
-        if system is None:
-            system = self.default_system
-        inputs.system = template_meta.check_system(system)
-
         images = inputs.images
         load_images = self.load_images or self.mode in {'vllm', 'lmdeploy'}
         load_images_origin = load_images
@@ -153,7 +147,7 @@ class Template(ProcessorMixin):
 
         self._get_std_messages(inputs.messages)
         n_round = len(inputs.messages) // 2
-        if n_round > 1 and not template_meta.support_multi_round:
+        if n_round > 1 and not self.template_meta.support_multi_round:
             logger.warning_once(
                 'The template does not support multi-round chat. Only use the last round of the conversation.')
             inputs.messages = inputs.messages[-2:]
@@ -522,26 +516,31 @@ class Template(ProcessorMixin):
             messages.append({'role': 'assistant', 'content': None})  # inference
 
     def _jinja_encode(self, inputs: StdTemplateInputs):
-        messages = inputs.messages
+        messages = inputs.messages.copy()
         if inputs.system:
             messages.insert(0, {'role': 'system', 'content': inputs.system})
         if messages[-1]['content'] is None:
             messages.pop()
-        text = self.tokenizer.apply_chat_template(inputs.messages, tokenize=False, add_generation_prompt=True)
+        text = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
         return [text], [1.], 1.
 
     def _swift_encode(self, inputs: StdTemplateInputs):
+        template_meta = self.template_meta
+        system = inputs.system
+        if system is None:
+            system = self.default_system
+        system = template_meta.check_system(system)
+
         res_context_list: List[Context] = []
         res_context_types: List[ContextType] = []
-        template_meta = self.template_meta
         if template_meta.auto_add_bos:
             bos_token_id = self.tokenizer.bos_token_id
             if isinstance(bos_token_id, int) and bos_token_id in self.tokenizer.encode(''):
                 res_context_list.append([bos_token_id])
                 res_context_types.append(ContextType.OTHER)
 
-        prefix = template_meta.system_prefix if inputs.system else template_meta.prefix
-        self._concat_context_list(prefix, res_context_list, res_context_types, system=inputs.system)
+        prefix = template_meta.system_prefix if system else template_meta.prefix
+        self._concat_context_list(prefix, res_context_list, res_context_types, system=system)
 
         n_round = len(inputs.messages) // 2
         for i, (query_message, response_message) in enumerate(zip(inputs.messages[::2], inputs.messages[1::2])):
@@ -578,7 +577,7 @@ class Template(ProcessorMixin):
                 res_context_types,
                 query=query,
                 response=response,
-                system=inputs.system,
+                system=system,
                 round0=i)
             res_context_list += extra_context_list
             res_context_types += [extra_context_type] * len(extra_context_list)
