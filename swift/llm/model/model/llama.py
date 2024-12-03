@@ -176,7 +176,7 @@ register_model(
 
 def get_model_tokenizer_llama3_2_vision(*args, **kwargs):
     from transformers import MllamaForConditionalGeneration
-    kwargs['automodel_class'] = MllamaForConditionalGeneration
+    kwargs['automodel_class'] = kwargs['automodel_class'] or MllamaForConditionalGeneration
     return get_model_tokenizer_multimodal(*args, **kwargs)
 
 

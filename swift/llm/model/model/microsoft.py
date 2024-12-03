@@ -7,7 +7,8 @@ from swift.utils import get_env_args
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
 from ..patcher import patch_output_clone
-from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
+from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,
+                        get_model_tokenizer_with_flash_attn, register_model)
 from ..utils import ModelInfo, ignore_check_imports, use_submodel_func
 
 
@@ -55,12 +56,9 @@ def get_model_tokenizer_florence(model_dir: str,
                                  model_kwargs: Dict[str, Any],
                                  load_model: bool = True,
                                  **kwargs):
-    from transformers import AutoProcessor
-    processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
     with ignore_check_imports():
         model_kwargs['device_map'] = 'cuda:0'
-        model, tokenizer = get_model_tokenizer_with_flash_attn(
-            model_dir, model_info, model_kwargs, load_model, tokenizer=processor.tokenizer, **kwargs)
+        model, processor = get_model_tokenizer_multimodal(model_dir, model_info, model_kwargs, load_model, **kwargs)
 
     if model is not None:
         # model.vision_tower.enable_checkpoint = True
@@ -133,6 +131,7 @@ def get_model_tokenizer_phi(model_dir: str,
                             model_kwargs: Dict[str, Any],
                             load_model: bool = True,
                             **kwargs):
+    # TODO: check
     return get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
 
 

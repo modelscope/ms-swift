@@ -9,7 +9,7 @@ from transformers import AutoConfig, PretrainedConfig
 from swift.llm import TemplateType
 from ..constant import MLLMModelType
 from ..model_arch import ModelArch
-from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
+from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal, register_model
 from ..utils import ModelInfo, git_clone_github, safe_snapshot_download
 
 
@@ -18,19 +18,11 @@ def get_model_tokenizer_llava_llama(model_dir: str,
                                     model_kwargs: Dict[str, Any],
                                     load_model: bool = True,
                                     **kwargs):
-    from transformers import LlavaForConditionalGeneration, LlavaConfig, AutoProcessor
+    from transformers import LlavaForConditionalGeneration, LlavaConfig
 
-    model_config = LlavaConfig.from_pretrained(model_dir)  # check
-    processor = AutoProcessor.from_pretrained(model_dir)
-    kwargs['automodel_class'] = LlavaForConditionalGeneration
-    model, tokenizer = get_model_tokenizer_with_flash_attn(
-        model_dir,
-        model_info,
-        model_kwargs,
-        load_model,
-        model_config=model_config,
-        tokenizer=processor.tokenizer,
-        **kwargs)
+    kwargs['model_config'] = LlavaConfig.from_pretrained(model_dir)
+    kwargs['automodel_class'] = kwargs['automodel_class'] or LlavaForConditionalGeneration
+    model, tokenizer = get_model_tokenizer_multimodal(model_dir, model_info, model_kwargs, load_model, **kwargs)
     return model, processor
 
 
@@ -68,18 +60,10 @@ def _patch_llava(model):
 
 
 def get_model_tokenizer_llava_hf(model_dir: str, *args, **kwargs):
-    from transformers import AutoProcessor
     from transformers import LlavaForConditionalGeneration
-    processor = AutoProcessor.from_pretrained(model_dir)
-    kwargs['automodel_class'] = LlavaForConditionalGeneration
-    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, *args, tokenizer=processor.tokenizer, **kwargs)
+    kwargs['automodel_class'] = kwargs['automodel_class'] or LlavaForConditionalGeneration
+    model, processor = get_model_tokenizer_multimodal(model_dir, *args, **kwargs)
     return model, processor
-
-
-def get_model_tokenizer_llava_1_5(*args, **kwargs):
-    from transformers import LlavaForConditionalGeneration
-    kwargs['automodel_class'] = LlavaForConditionalGeneration
-    return get_model_tokenizer_llava_hf(*args, **kwargs)
 
 
 register_model(
@@ -92,7 +76,7 @@ register_model(
             ]),
         ],
         TemplateType.llava1_5_hf,
-        get_model_tokenizer_llava_1_5,
+        get_model_tokenizer_llava_hf,
         architectures=['LlavaForConditionalGeneration'],
         model_arch=ModelArch.llava_hf,
         requires=['transformers>=4.36'],
@@ -102,7 +86,7 @@ register_model(
 
 def get_model_tokenizer_llava_onevision(*args, **kwargs):
     from transformers import LlavaOnevisionForConditionalGeneration
-    kwargs['automodel_class'] = LlavaOnevisionForConditionalGeneration
+    kwargs['automodel_class'] = kwargs['automodel_class'] or LlavaOnevisionForConditionalGeneration
     return get_model_tokenizer_llava_hf(*args, **kwargs)
 
 
@@ -144,7 +128,7 @@ register_model(
 
 def get_model_tokenizer_llava_next(*args, **kwargs):
     from transformers import LlavaNextForConditionalGeneration
-    kwargs['automodel_class'] = LlavaNextForConditionalGeneration
+    kwargs['automodel_class'] = kwargs['automodel_class'] or LlavaNextForConditionalGeneration
     return get_model_tokenizer_llava_hf(*args, **kwargs)
 
 
@@ -240,7 +224,7 @@ register_model(
 
 def get_model_tokenizer_llava_next_video(*args, **kwargs):
     from transformers import LlavaNextVideoForConditionalGeneration
-    kwargs['automodel_class'] = LlavaNextVideoForConditionalGeneration
+    kwargs['automodel_class'] = kwargs['automodel_class'] or LlavaNextVideoForConditionalGeneration
     return get_model_tokenizer_llava_hf(*args, **kwargs)
 
 
@@ -328,9 +312,8 @@ def get_model_tokenizer_llava(model_dir: str,
 
     model_config.mm_vision_tower = safe_snapshot_download('AI-ModelScope/clip-vit-large-patch14-336')
     kwargs['model_config'] = model_config
-    kwargs.pop('automodel_class', None)
-    model, tokenizer = get_model_tokenizer_with_flash_attn(
-        model_dir, model_info, model_kwargs, load_model, automodel_class=automodel_class, **kwargs)
+    kwargs['automodel_class'] = automodel_class
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
 
     if model is not None:
         model.resize_token_embeddings(len(tokenizer))

@@ -141,10 +141,10 @@ def get_model_tokenizer_from_local(model_dir: str,
                                    *,
                                    tokenizer=None,
                                    model_config=None,
-                                   automodel_class=AutoModelForCausalLM,
+                                   automodel_class=None,
                                    **kwargs):
     """Load the model and tokenizer from the local model_dir."""
-
+    automodel_class = automodel_class or AutoModelForCausalLM
     if model_config is None:
         model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     # fix prediction_step (internvl2, ovis, ...)
@@ -460,7 +460,7 @@ def get_model_tokenizer(
         quantization_config=None,
         attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None,
         rope_scaling: Optional[Dict[str, Any]] = None,
-        automodel_class=AutoModelForCausalLM,
+        automodel_class=None,
         model_kwargs: Optional[Dict[str, Any]] = None,
         **kwargs) -> Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]:
     """

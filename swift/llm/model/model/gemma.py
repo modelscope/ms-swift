@@ -4,7 +4,7 @@ from typing import Any, Dict
 from swift.llm import TemplateType
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
-from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
+from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal, register_model
 from ..utils import ModelInfo
 
 
@@ -13,17 +13,9 @@ def get_model_tokenizer_paligemma_vision(model_dir: str,
                                          model_kwargs: Dict[str, Any],
                                          load_model: bool = True,
                                          **kwargs):
-    from transformers import AutoProcessor, PaliGemmaForConditionalGeneration
-    processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
-    kwargs.pop('automodel_class', None)
-    model, tokenizer = get_model_tokenizer_with_flash_attn(
-        model_dir,
-        model_info,
-        model_kwargs,
-        load_model,
-        automodel_class=PaliGemmaForConditionalGeneration,
-        tokenizer=processor.tokenizer,
-        **kwargs)
+    from transformers import PaliGemmaForConditionalGeneration
+    kwargs['automodel_class'] = kwargs['automodel_class'] or PaliGemmaForConditionalGeneration
+    model, processor = get_model_tokenizer_multimodal(model_dir, model_info, model_kwargs, load_model, **kwargs)
     return model, processor
 
 
