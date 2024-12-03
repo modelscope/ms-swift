@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 from .callback import extra_callbacks
 from .custom_trainer import custom_trainer_class
 from .loss import LOSS_MAPPING, get_loss_func

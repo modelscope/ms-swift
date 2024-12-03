@@ -1,6 +1,6 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 import re
-import shutil
 import sys
 import time
 from datetime import datetime

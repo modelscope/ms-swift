@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 from functools import partial
 from typing import List, Union

@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 from .base_args import BaseArguments
 from .deploy_args import DeployArguments
 from .eval_args import EvalArguments

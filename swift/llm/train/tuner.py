@@ -2,7 +2,6 @@
 import os
 from typing import List, Union
 
-import json
 import torch
 import transformers
 from packaging import version
@@ -99,8 +98,8 @@ def get_vera_target_modules(model, config):
 
 
 def prepare_adapter(args: TrainArguments, model):
-    from swift.tuners import (AdaLoraConfig, AdapterConfig, BOFTConfig, IA3Config, LLaMAProConfig, LongLoRAModelType,
-                              LoraConfig, LoRAConfig, ReftConfig, Swift, VeraConfig)
+    from swift.tuners import (AdaLoraConfig, AdapterConfig, BOFTConfig, LLaMAProConfig, LongLoRAModelType, LoraConfig,
+                              LoRAConfig, ReftConfig, Swift, VeraConfig)
     target_modules = get_target_modules(args, model)
     lora_kwargs = {
         'r': args.lora_rank,

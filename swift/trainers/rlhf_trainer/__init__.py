@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 from .cpo_trainer import CPOTrainer
 from .dpo_trainer import DPOTrainer
 from .kto_trainer import KTOTrainer

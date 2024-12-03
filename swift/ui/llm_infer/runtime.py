@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 import collections
 import os.path
 import sys
@@ -8,7 +9,6 @@ from typing import Dict, List, Tuple, Type
 import gradio as gr
 import json
 import psutil
-from gradio import Accordion, Tab
 from packaging import version
 
 from swift.ui.base import BaseUI
