@@ -83,7 +83,7 @@ class SwiftInfer(SwiftPipeline):
             args.result_path, buffer_size=args.writer_buffer_size) if args.result_path else nullcontext()
         with context as json_writer:
             self.jsonl_writer = json_writer
-            super().main()
+            return super().main()
 
     def run(self) -> List[Dict[str, Any]]:
         args = self.args

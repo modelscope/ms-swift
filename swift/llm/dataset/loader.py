@@ -173,7 +173,10 @@ class DatasetLoader:
 
         ext = os.path.splitext(dataset_path)[1].lstrip('.')
         ext = ext if ext != 'jsonl' else 'json'
-        dataset = hf_load_dataset(ext, data_files=dataset_path, split='train', streaming=streaming, num_proc=num_proc)
+        kwargs = {'split': 'train', 'streaming': streaming, 'num_proc': num_proc}
+        if ext == 'csv':
+            kwargs['na_filter'] = False
+        dataset = hf_load_dataset(ext, data_files=dataset_path, **kwargs)
 
         dataset = dataset_meta.preprocess_func(
             dataset, num_proc=num_proc, strict=strict, load_from_cache_file=load_from_cache_file)
