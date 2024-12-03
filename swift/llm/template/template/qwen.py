@@ -86,19 +86,21 @@ class QwenAudioTemplate(Template):
         assert isinstance(audio, str)
         return [f'Audio {index + 1}:<audio>{audio}</audio>\n']
 
-    def _get_tokenizer_kwargs(self, context: str) -> Dict[str, Any]:
-        return {'audio_info': self.processor.process_audio(context)}
+    def _tokenize(self, context, **tokenizer_kwargs):
+        audio_info = self.processor.process_audio(context)
+        return super()._tokenize(context, audio_info=audio_info)
 
-    def _concat_tokenizer_kwargs(self, tokenizer_kwargs: Dict[str, Any], curr_tokenizer_kwargs: Dict[str, Any]) -> None:
-        audio_info = curr_tokenizer_kwargs.get('audio_info')
-        old_audio_info = tokenizer_kwargs.get('audio_info')
-        if old_audio_info is None:
-            tokenizer_kwargs['audio_info'] = audio_info
-        elif audio_info is not None:
-            for k in ['input_audios', 'input_audio_lengths']:
-                old_audio_info[k] = torch.concat([old_audio_info[k], audio_info[k]], dim=0)
-            for k in ['audio_span_tokens', 'audio_urls']:
-                old_audio_info[k] = old_audio_info[k] + audio_info[k]
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded = super()._encode(inputs)
+        if len(encoded) == 0:
+            return encoded
+        text = ''.join([f'<audio>{audio}</audio>' for audio in inputs.audios])
+        audio_info = self.processor.process_audio(text)
+        if audio_info:
+            tokenizer_kwargs = {'audio_info': audio_info}
+            encoded.update(tokenizer_kwargs)
+            encoded['tokenizer_kwargs'] = tokenizer_kwargs
+        return encoded
 
     def _data_collator(self,
                        batch: List[Dict[str, Any]],

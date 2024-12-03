@@ -414,18 +414,15 @@ def get_model_info_meta(
         model_type: Optional[str] = None,
         quantization_config=None,
         **kwargs) -> Tuple[ModelInfo, ModelMeta]:
-    ignore_file_pattern = ['*.zip', '*.gguf', '*.pth', '*.pt', 'consolidated*', 'onnx']
     model_meta = get_matched_model_meta(model_id_or_path)
-    if getattr(model_meta, 'ignore_file_pattern', None) is not None:
-        ignore_file_pattern += model_meta.ignore_file_pattern
-
     model_dir = safe_snapshot_download(
         model_id_or_path,
         revision=revision,
         download_model=download_model,
         use_hf=use_hf,
-        ignore_file_pattern=ignore_file_pattern,
+        ignore_file_pattern=model_meta.ignore_file_pattern,
         hub_token=hub_token)
+
     model_type = model_type or getattr(model_meta, 'model_type', None)
     model_info = _get_model_info(model_dir, model_type, quantization_config=quantization_config)
     if model_type is None and model_info.model_type is not None:

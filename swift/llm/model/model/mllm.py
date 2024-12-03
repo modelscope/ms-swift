@@ -139,7 +139,7 @@ register_model(
         get_model_tokenizer_molmoe,
         model_arch=ModelArch.molmo,
         torch_dtype=torch.float32,
-        architectures=['MolmoForCausalLM'],
+        architectures=['OLMoForCausalLM'],
         tags=['vision'],
         requires=['transformers>=4.45'],
     ))

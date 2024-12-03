@@ -71,7 +71,7 @@ register_model(
         TemplateType.yi_vl,
         get_model_tokenizer_yi_vl,
         model_arch=ModelArch.llava_llama,
-        architectures=['LlavaForConditionalGeneration'],
+        architectures=['LlavaLlamaForCausalLM'],
         requires=['transformers>=4.34'],
         tags=['vision'],
     ))

@@ -244,7 +244,7 @@ register_model(
         ],
         TemplateType.xcomposer2,
         partial(get_model_tokenizer_internlm_xcomposer2, version='v2-4khd'),
-        architectures=['InternLMXComposer2ForCausalLM'],
+        architectures=['InternLM2ForCausalLM', 'InternLMXComposer2ForCausalLM'],
         model_arch=ModelArch.internlm_xcomposer,
         tags=['vision'],
     ))

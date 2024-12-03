@@ -567,6 +567,7 @@ register_model(
         LLMModelType.marco_o1,
         get_model_tokenizer_with_flash_attn,
         model_arch=ModelArch.llama,
+        architectures=['Qwen2ForCausalLM'],
         requires=['transformers>=4.37']))
 
 register_model(
@@ -575,6 +576,7 @@ register_model(
         LLMModelType.qwq,
         get_model_tokenizer_with_flash_attn,
         model_arch=ModelArch.llama,
+        architectures=['Qwen2ForCausalLM'],
         requires=['transformers>=4.37']))
 
 

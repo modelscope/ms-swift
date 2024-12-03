@@ -242,9 +242,10 @@ def safe_snapshot_download(model_id_or_path: str,
     Returns:
         model_dir
     """
+    if ignore_file_pattern is None:
+        ignore_file_pattern = []
+    ignore_file_pattern += ['*.zip', '*.gguf', '*.pth', '*.pt', 'consolidated*', 'onnx']
     if not download_model:
-        if ignore_file_pattern is None:
-            ignore_file_pattern = []
         ignore_file_pattern += ['*.bin', '*.safetensors']
     if (is_dist() or is_dist_ta()) and not dist.is_initialized():
         # Distributed but uninitialized

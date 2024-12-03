@@ -40,7 +40,7 @@ register_model(
         ],
         TemplateType.emu3_gen,
         get_model_tokenizer_emu3_gen,
-        architectures=['LlavaForConditionalGeneration'],
+        architectures=['Emu3ForCausalLM'],
         model_arch=ModelArch.emu3_chat,
         tags=['t2i'],
     ))
@@ -82,7 +82,7 @@ register_model(
         ],
         TemplateType.emu3_chat,
         get_model_tokenizer_emu3_chat,
-        architectures=['LlavaForConditionalGeneration'],
+        architectures=['Emu3ForCausalLM'],
         model_arch=ModelArch.emu3_chat,
         tags=['vision'],
         requires=['transformers>=4.44.0'],
