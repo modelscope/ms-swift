@@ -8,12 +8,11 @@ from datasets import IterableDataset as HfIterableDataset
 from swift.llm.model.register import load_by_unsloth
 from swift.plugin import extra_callbacks, get_loss_func, get_metric, optimizers_map
 from swift.trainers import IntervalStrategy, TrainerFactory
-from swift.utils import (append_to_jsonl, find_all_linears, find_embedding, get_logger, get_model_parameter_info,
-                         is_master, plot_images, stat_array, use_torchacc)
+from swift.utils import (append_to_jsonl, get_logger, get_model_parameter_info, is_master, plot_images, stat_array,
+                         use_torchacc)
 from ..argument import TrainArguments
 from ..base import SwiftPipeline
-from ..dataset import (ConstantLengthDataset, EncodePreprocessor, GetLengthPreprocessor, LazyLLMDataset,
-                       PackingPreprocessor, load_dataset)
+from ..dataset import EncodePreprocessor, GetLengthPreprocessor, LazyLLMDataset, PackingPreprocessor, load_dataset
 from ..infer import prepare_generation_config
 from ..model import get_model_arch, get_model_tokenizer
 from ..template import get_template
@@ -177,7 +176,9 @@ class SwiftSft(SwiftPipeline):
 
     def _get_trainer_kwargs(self):
         args = self.args
-        if args.predict_with_generate:
+        if args.metric is not None:
+            compute_metrics, preprocess_logits_for_metrics = get_metric(args.metric)
+        elif args.predict_with_generate:
             compute_metrics, preprocess_logits_for_metrics = get_metric('nlg')
         else:
             compute_metrics, preprocess_logits_for_metrics = get_metric('acc')
@@ -234,6 +235,8 @@ class SwiftSft(SwiftPipeline):
             optimizer_callback = optimizers_map['lorap']
         elif args.use_galore:
             optimizer_callback = optimizers_map['galore']
+        elif args.optimizer is not None:
+            optimizer_callback = optimizers_map[args.optimizer]
         else:
             optimizer_callback = optimizers_map['default']
         return optimizer_callback(args, self.model, train_dataset)

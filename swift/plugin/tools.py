@@ -93,6 +93,7 @@ def format_custom(tool_names, tool_descs):
     return PROMPT.format(tool_list=tool_list)
 
 
+# Add your prompt here, use --tools_prompt to train
 tools_prompt = {
     'react_en': format_react_en,
     'react_zh': format_react_zh,

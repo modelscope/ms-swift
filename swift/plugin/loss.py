@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Callable, Optional
 
 import torch
@@ -43,6 +44,7 @@ def ce_loss_func(outputs, labels):
     return loss, masks
 
 
+# Use @register_loss_func to decorate your own loss, use --loss_type xxx to train
 @register_loss_func(LossType.loss_scale)
 def loss_scale_func(outputs, labels, loss_scale=None, num_items_in_batch=None) -> torch.Tensor:
     loss, masks = ce_loss_func(outputs, labels)

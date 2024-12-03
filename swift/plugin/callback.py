@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 import numpy as np
 from transformers import TrainerCallback, TrainerControl, TrainerState, TrainingArguments
 
@@ -25,5 +26,6 @@ class EarlyStopCallback(TrainerCallback):
             control.should_training_stop = True
 
 
-# extra_callbacks = [EarlyStopCallback()]
 extra_callbacks = []
+# This example shows a simple example of EarlyStop Callback, uncomment this to use
+# extra_callbacks = [EarlyStopCallback()]

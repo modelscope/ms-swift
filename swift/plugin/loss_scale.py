@@ -147,19 +147,18 @@ class AlphaUmiLossScale(REACTLossScale):
     loss_scale_config = 'alpha_umi_loss_scale_config.json'
 
 
-loss_scale_map = {
-    'agentflan': AgentFlanLossScale(),
-    'react': REACTLossScale(),
-    'alpha_umi': AlphaUmiLossScale(),
-    'default': LossScale(),
-    'last_round': LastRoundLossScale(),
-}
-
-
 class TrainAllLossScale(LossScale):
 
     def get_loss_scale(self, context: str, context_type: ContextType, *args, **kwargs):
         return [context], [1.]
 
 
-loss_scale_map['all'] = TrainAllLossScale()
+# Add your loss scale here, use --loss_scale xxx to train
+loss_scale_map = {
+    'agentflan': AgentFlanLossScale(),
+    'react': REACTLossScale(),
+    'alpha_umi': AlphaUmiLossScale(),
+    'default': LossScale(),
+    'last_round': LastRoundLossScale(),
+    'all': TrainAllLossScale(),
+}

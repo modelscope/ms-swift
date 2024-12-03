@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -29,6 +30,7 @@ class SequenceClassificationTrainer(Trainer):
         return super().prediction_step(model, inputs, prediction_loss_only, ignore_keys, **gen_kwargs)
 
 
+# To train sequence classification tasks, uncomment this.
 def custom_trainer_class(trainer_mapping, training_args_mapping):
     # trainer_mapping['train'] = 'swift.plugin.custom_trainer.SequenceClassificationTrainer'
     pass
