@@ -16,6 +16,7 @@ from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
 from transformers.utils import is_peft_available
 
+from swift.plugin import MeanMetric, compute_acc
 from swift.utils import JsonlWriter, Serializer, use_torchacc
 from swift.utils.torchacc_utils import ta_trim_graph
 from .mixin import SwiftMixin
@@ -29,7 +30,6 @@ class Trainer(SwiftMixin, HfTrainer):
 class Seq2SeqTrainer(TorchAccMixin, SwiftMixin, HfSeq2SeqTrainer):
 
     def __init__(self, *args, **kwargs):
-        from swift.plugin import MeanMetric
         super().__init__(*args, **kwargs)
         self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'predict.jsonl'))
         self._custom_metrics['acc'] = MeanMetric()
@@ -145,7 +145,6 @@ class Seq2SeqTrainer(TorchAccMixin, SwiftMixin, HfSeq2SeqTrainer):
         return (loss, outputs) if return_outputs else loss
 
     def _compute_token_acc(self, outputs, labels) -> None:
-        from swift.plugin import compute_acc
 
         acc_steps = self.args.acc_steps
         preds = outputs.logits.argmax(dim=2)
