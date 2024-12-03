@@ -118,7 +118,7 @@ class Llava1_6HfTemplate(LlavaHfTemplate):
 class LlavaMistralTemplateMeta(TemplateMeta):
     prefix: Prompt = field(default_factory=lambda: ['<s>[INST] '])
     prompt: Prompt = field(default_factory=lambda: ['{{QUERY}} [/INST]'])
-    chat_sep: Optional[Prompt] = field(default_factory=lambda: ['</s>'])
+    chat_sep: Optional[Prompt] = field(default_factory=lambda: ['</s>[INST] '])
     suffix: Prompt = field(default_factory=lambda: ['</s>'])
     system_prefix: Optional[Prompt] = field(default_factory=lambda: ['<<SYS>>\n{{system}}\n<</SYS>>\n\n'])
 
