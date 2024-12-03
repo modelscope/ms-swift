@@ -156,4 +156,5 @@ class Seq2SeqTrainer(TorchAccMixin, SwiftMixin, HfSeq2SeqTrainer):
                 labels = labels.to('cpu')
             acc_list = compute_acc(
                 preds, labels, acc_strategy=self.args.acc_strategy, is_encoder_decoder=self.args.is_encoder_decoder)
-            self._custom_metrics['acc'].update(acc_list)
+            if acc_list:
+                self._custom_metrics['acc'].update(acc_list)

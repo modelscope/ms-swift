@@ -66,7 +66,8 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
         else:
             self.evaluation_strategy = self.save_strategy
             self.eval_strategy = self.save_strategy
-            self.eval_steps = self.save_steps
+            if self.eval_steps is None:
+                self.eval_steps = self.save_steps
 
 
 @dataclass
