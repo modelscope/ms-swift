@@ -8,7 +8,16 @@ from swift.utils import find_all_linears
 class Tuner:
 
     @staticmethod
-    def prepare_model(args: 'TrainArguments', model):
+    def prepare_model(args: 'TrainArguments', model: torch.nn.Module):
+        """Prepare a new model with a tuner
+
+        Args:
+            args: The training arguments
+            model: The model instance
+
+        Returns:
+            The wrapped model
+        """
         raise NotImplementedError
 
     @staticmethod
@@ -18,13 +27,29 @@ class Tuner:
         safe_serialization: bool = True,
         **kwargs,
     ):
+        """Save when save_steps reaches
+
+        Args:
+            model: The wrapped model by `prepare_model`
+            save_directory: The directory to save
+            safe_serialization: Use safetensors or not
+        """
         raise NotImplementedError
 
     @staticmethod
     def from_pretrained(model: torch.nn.Module, model_id: str, **kwargs):
+        """Load the ckpt_dir
+
+        Args:
+            model: The original model instance.
+            model_id: The model id or ckpt_dir to load
+        Returns:
+            The wrapped model instance
+        """
         raise NotImplementedError
 
 
+# Here gives a simple example of IA3
 class IA3(Tuner):
 
     @staticmethod
@@ -49,4 +74,5 @@ class IA3(Tuner):
         return PeftModel.from_pretrained(model, model_id, **kwargs)
 
 
+# Add your own tuner here, use --train_type xxx to begin
 extra_tuners = {'ia3': IA3}

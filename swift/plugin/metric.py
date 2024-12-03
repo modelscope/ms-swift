@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 import time
 from abc import ABC, abstractmethod
 from typing import Dict, List, Literal, Optional
@@ -172,6 +173,7 @@ def preprocess_logits_for_acc(logits: torch.Tensor, labels: torch.Tensor) -> tor
     return preds
 
 
+# Add your own metric calculation method here, use --metric xxx to train
 METRIC_MAPPING = {
     'acc': (compute_acc_metrics, preprocess_logits_for_acc),
     'nlg': (compute_nlg_metrics, None),

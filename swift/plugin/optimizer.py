@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 import math
 
 from transformers import Trainer
@@ -60,6 +61,7 @@ def default_create_optimizers(args, model, dataset):
     return None, None
 
 
+# Add your own optimizers here, use --optimizer xxx to train
 optimizers_map = {
     'galore': create_galore_optimizers,
     'lorap': create_lorap_optimizers,

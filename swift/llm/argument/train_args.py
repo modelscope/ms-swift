@@ -86,24 +86,22 @@ class TorchAccArguments:
 @dataclass
 class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideArguments, BaseArguments):
     """
-    TrainArguments class is a dataclass that holds various arguments related to training configuration and usage.
+    TrainArguments class is a dataclass that inherits from multiple argument classes:
+    TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideArguments, and BaseArguments.
 
     Args:
-        freeze_vit (bool): Flag to indicate if ViT should be frozen. Default is True.
-        freeze_aligner (bool): Flag to indicate if aligner should be frozen. Default is True.
-        freeze_llm (bool): Flag to indicate if LLM should be frozen. Default is False.
-        freeze_parameters (List[str]): List of parameters to freeze. Default is an empty list.
-        freeze_parameters_ratio (float): Ratio of parameters to freeze. Default is 0.
-        add_version (bool): Flag to indicate if output directory suffix should be added. Default is True.
-        resume_from_checkpoint (Optional[str]): Path to resume from checkpoint. Default is None.
-        resume_only_model (bool): Flag to indicate if only the model should be resumed when resume-training.
-            Default is False.
-        check_model (bool): Flag to check if the model is the latest. Default is True.
-            Turn this to False if your network is unstable.
-        loss_type (Optional[str]): Type of loss function. Default is None.
-        packing (bool): Flag to indicate if packing is used. Default is False.
-        lazy_tokenize (Optional[bool]): Flag to indicate if lazy tokenization is used. Default is None.
-        acc_strategy (Literal): Strategy for accuracy calculation. Default is 'token'.
+        add_version (bool): Flag to add version information. Default is True.
+        resume_only_model (bool): Flag to resume training only the model. Default is False.
+        check_model (bool): Flag to check the model is latest. Default is True.
+        loss_type (Optional[str]): Type of loss function to use. Default is None.
+        num_labels (Optional[int]): Number of labels for classification tasks. Default is None.
+        packing (bool): Flag to enable packing of datasets. Default is False.
+        lazy_tokenize (Optional[bool]): Flag to enable lazy tokenization. Default is None.
+        acc_strategy (Literal['token', 'sentence']): Strategy for accumulation. Default is 'token'.
+        max_new_tokens (int): Maximum number of new tokens to generate. Default is 64.
+        temperature (float): Temperature for sampling. Default is 0.
+        optimizer (Optional[str]): Optimizer type to use, define it in the plugin package. Default is None.
+        metric (Optional[str]): Metric to use for evaluation, define it in the plugin package. Default is None.
     """
     add_version: bool = True
     resume_only_model: bool = False
@@ -119,6 +117,8 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
     acc_strategy: Literal['token', 'sentence'] = 'token'
     max_new_tokens: int = 64
     temperature: float = 0.
+    optimizer: Optional[str] = None
+    metric: Optional[str] = None
 
     def __post_init__(self) -> None:
         if self.resume_from_checkpoint:
