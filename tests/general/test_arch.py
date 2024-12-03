@@ -10,11 +10,10 @@ def test_model_arch():
         arch_list = model_meta.architectures
         for model_group in model_meta.model_groups:
             model = random.choice(model_group.models).ms_model_id
+            config_dict = None
             try:
                 model_dir = safe_snapshot_download(model, download_model=False)
                 config_dict = PretrainedConfig.get_config_dict(model_dir)[0]
-            except Exception:
-                config_dict = None
             finally:
                 msg = None
                 if config_dict:
