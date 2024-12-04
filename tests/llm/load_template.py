@@ -112,26 +112,27 @@ def load_and_tokenize_old(ms_model_id, template):
     return input_ids, sent
 
 
-parser = argparse.ArgumentParser()
-parser.add_argument(
-    '--ms_model_id',
-    type=str,
-    required=True,
-)
-parser.add_argument(
-    '--template',
-    type=str,
-    required=True,
-)
-parser.add_argument('--new', type=str, required=False, default='1')
-args = parser.parse_args()
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '--ms_model_id',
+        type=str,
+        required=True,
+    )
+    parser.add_argument(
+        '--template',
+        type=str,
+        required=True,
+    )
+    parser.add_argument('--new', type=str, required=False, default='1')
+    args = parser.parse_args()
 
-is_new = args.new == '1'
-if is_new:
-    input_ids, sent = load_and_tokenize(args.ms_model_id, args.template)
-else:
-    input_ids, sent = load_and_tokenize_old(args.ms_model_id, args.template)
-file = 'new_input_ids.txt' if is_new else 'old_input_ids.txt'
-if input_ids is not None:
-    with open(file, 'w') as f:
-        json.dump({'input_ids': input_ids, 'sent': sent}, f)
+    is_new = args.new == '1'
+    if is_new:
+        input_ids, sent = load_and_tokenize(args.ms_model_id, args.template)
+    else:
+        input_ids, sent = load_and_tokenize_old(args.ms_model_id, args.template)
+    file = 'new_input_ids.txt' if is_new else 'old_input_ids.txt'
+    if input_ids is not None:
+        with open(file, 'w') as f:
+            json.dump({'input_ids': input_ids, 'sent': sent}, f)

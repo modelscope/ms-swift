@@ -47,7 +47,7 @@ def test_glm4():
 
 
 def test_llama():
-    pt_engine = PtEngine('/mnt/nas2/huangjintao.hjt/.cache/modelscope/hub/LLM-Research/Llama-3___2-3B-Instruct')
+    pt_engine = PtEngine('LLM-Research/Llama-3.2-3B-Instruct')
     _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     _infer_model(pt_engine)

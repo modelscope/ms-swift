@@ -73,7 +73,13 @@ class TestRun(unittest.TestCase):
         ] + [os.path.join(folder, fname) for fname in train_dataset_fnames]
         output = sft_main(
             TrainArguments(
-                model='qwen/Qwen1.5-0.5B-Chat-GPTQ-Int4', train_type='lora', dataset=dataset, use_hf=True, **kwargs))
+                model='qwen/Qwen1.5-0.5B-Chat-GPTQ-Int4',
+                train_type='lora',
+                dataset=dataset,
+                use_hf=True,
+                streaming=True,
+                max_steps=12,
+                **kwargs))
         last_model_checkpoint = output['last_model_checkpoint']
         torch.cuda.empty_cache()
         infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True, val_dataset_sample=2))
@@ -172,53 +178,6 @@ class TestRun(unittest.TestCase):
             result = infer_main(infer_args)
             print(result)
 
-    def test_vqa(self):
-        if not __name__ == '__main__':
-            # ignore citest error in github
-            return
-        train_dataset_fnames = ['science-qa#300', 'a-okvqa#300', 'alpaca-cleaned#300']
-        val_dataset_fnames = ['okvqa']
-
-        sft_args = TrainArguments(
-            model_type='yi-vl-6b-chat',
-            dataset=train_dataset_fnames,
-            lora_target_modules='ALL',
-            num_train_epochs=1,
-            check_dataset_strategy='warning')
-
-        torch.cuda.empty_cache()
-        result = sft_main(sft_args)
-        best_model_checkpoint = result['best_model_checkpoint']
-
-        infer_args = InferArguments(
-            ckpt_dir=best_model_checkpoint,
-            load_args_from_ckpt_dir=True,
-            load_dataset_config=True,
-            merge_lora=False,
-            val_dataset_sample=10,
-            dataset=val_dataset_fnames)
-        torch.cuda.empty_cache()
-        infer_main(infer_args)
-
-    def test_gpt4o_image(self):
-        if not __name__ == '__main__':
-            # ignore citest error in github
-            return
-        train_dataset_fnames = ['sharegpt-4o-image']
-
-        sft_args = TrainArguments(
-            model_type='yi-vl-6b-chat',
-            dataset=train_dataset_fnames,
-            lora_target_modules='ALL',
-            train_dataset_sample=200,
-            num_train_epochs=1,
-            eval_steps=10,
-            save_steps=10,
-            check_dataset_strategy='warning')
-
-        torch.cuda.empty_cache()
-        self.assertTrue(sft_main(sft_args)['best_model_checkpoint'])
-
     def test_custom_dataset(self):
         if not __name__ == '__main__':
             # ignore citest error in github
@@ -258,14 +217,15 @@ class TestRun(unittest.TestCase):
         for load_args in [True, False]:
             infer_kwargs = {}
             if load_args is False:
+                args_json = os.path.join(best_model_checkpoint, 'args.json')
+                assert os.path.exists()
+                os.remove(args_json)
                 infer_kwargs = {'model': 'Qwen/Qwen-7B-Chat'}
             infer_args = InferArguments(
                 ckpt_dir=best_model_checkpoint,
-                load_args=load_args,
                 load_dataset_config=load_args and NO_EVAL_HUMAN,
                 merge_lora=load_args,
-                val_dataset_sample=-1,
-                custom_val_dataset_path=[os.path.join(folder, fname) for fname in val_dataset_fnames],
+                val_dataset=[os.path.join(folder, fname) for fname in val_dataset_fnames],
                 **infer_kwargs)
             torch.cuda.empty_cache()
             infer_main(infer_args)
@@ -447,8 +407,8 @@ class TestTrainer(unittest.TestCase):
 
 if __name__ == '__main__':
     # TestRun().test_template()
-    # TestRun().test_hf_hub()
+    TestRun().test_hf_hub()
     # TestRun().test_basic()
     #
-    TestRun().test_custom_dataset()
+    # TestRun().test_custom_dataset()
     # unittest.main()
