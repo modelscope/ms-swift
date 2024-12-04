@@ -10,7 +10,8 @@ from swift.llm import TemplateType
 from swift.utils import get_logger
 from ..constant import MLLMModelType
 from ..model_arch import ModelArch
-from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
+from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,
+                        get_model_tokenizer_with_flash_attn, register_model)
 from ..utils import ModelInfo
 
 logger = get_logger()
@@ -37,11 +38,9 @@ register_model(
 
 
 def get_model_tokenizer_idefics(model_dir: str, *args, **kwargs):
-    from transformers import AutoProcessor, AutoModelForVision2Seq
-    processor = AutoProcessor.from_pretrained(model_dir)
+    from transformers import AutoModelForVision2Seq
     kwargs['automodel_class'] = kwargs['automodel_class'] or AutoModelForVision2Seq
-    kwargs['tokenizer'] = processor.tokenizer
-    model, _ = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
+    model, processor = get_model_tokenizer_multimodal(model_dir, *args, **kwargs)
     return model, processor
 
 
@@ -63,11 +62,9 @@ register_model(
 
 
 def get_model_tokenizer_pixtral(model_dir: str, *args, **kwargs):
-    from transformers import AutoProcessor, LlavaForConditionalGeneration
-    processor = AutoProcessor.from_pretrained(model_dir)
+    from transformers import LlavaForConditionalGeneration
     kwargs['automodel_class'] = kwargs['automodel_class'] or LlavaForConditionalGeneration
-    kwargs['tokenizer'] = processor.tokenizer
-    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
+    model, processor = get_model_tokenizer_multimodal(model_dir, *args, **kwargs)
     return model, processor
 
 
@@ -93,10 +90,7 @@ def get_model_tokenizer_molmoe(model_dir: str,
                                model_kwargs: Dict[str, Any],
                                load_model: bool = True,
                                **kwargs):
-    from transformers import AutoProcessor
-    processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
-    model, tokenizer = get_model_tokenizer_with_flash_attn(
-        model_dir, model_info, model_kwargs, load_model, tokenizer=processor.tokenizer, **kwargs)
+    model, processor = get_model_tokenizer_multimodal(model_dir, model_info, model_kwargs, load_model, **kwargs)
 
     # fix bug for molmoe-1b
     def to_dict(self, *args, **kwargs):
@@ -150,12 +144,9 @@ def get_model_tokenizer_molmo(model_dir: str,
                               model_kwargs: Dict[str, Any],
                               load_model: bool = True,
                               **kwargs):
-    from transformers import AutoProcessor
-    processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
     model_cls = get_class_from_dynamic_module('modeling_molmo.MolmoForCausalLM', model_dir)
     model_cls._no_split_modules = ['MolmoSequentialBlock']
-    model, tokenizer = get_model_tokenizer_with_flash_attn(
-        model_dir, model_info, model_kwargs, load_model, tokenizer=processor.tokenizer, **kwargs)
+    model, processor = get_model_tokenizer_multimodal(model_dir, model_info, model_kwargs, load_model, **kwargs)
     if model:
         device = next(model.model.transformer.ff_out.parameters()).device
         forward_origin = model.model.forward
