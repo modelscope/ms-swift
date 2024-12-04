@@ -661,12 +661,17 @@ class Template(ProcessorMixin):
 
     def pre_forward_hook(self, model: nn.Module, args, kwargs, *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         from swift.llm import to_device
-        kwargs = self._post_encode(model, to_device(kwargs, model.device))
+        keep_kwargs = {
+            k: v
+            for k, v in kwargs.items() if k in {'input_ids', 'labels', 'attention_mask', 'position_ids'}
+        }
+        keep_kwargs.update(self._post_encode(model, to_device(kwargs, model.device)))
+        kwargs = keep_kwargs
+
         if isinstance(model, PeftModel):
             parameters = inspect.signature(model.base_model.model.forward).parameters
         else:
             parameters = inspect.signature(model.forward).parameters
-
         if 'position_ids' not in parameters:
             kwargs.pop('position_ids', None)
         return args, kwargs
@@ -731,6 +736,14 @@ class Template(ProcessorMixin):
                     new_inputs[k[len(prefix):]] = v
             new_batch.append(new_inputs)
         return new_batch
+
+    @staticmethod
+    def fetch_inputs(batch: List[Dict[str, Any]], keys: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+        from swift.llm import RowPreprocessor
+        rows = RowPreprocessor.rows_to_batched(batch)
+        if keys is not None:
+            rows = {k: rows[k] for k in keys}
+        return rows
 
     def _rlhf_data_collator(self,
                             batch: List[Dict[str, Any]],

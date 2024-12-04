@@ -254,14 +254,14 @@ class Qwen2VLTemplate(Template):
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
         if not self.is_training:
             return inputs
-        input_ids = inputs.pop('input_ids')
+        input_ids = inputs['input_ids']
         _model = model.model
         if not hasattr(_model, 'embed_tokens'):
             _model = _model.model  # LoRA
-        pixel_values = inputs.pop('pixel_values', None)
-        pixel_values_videos = inputs.pop('pixel_values_videos', None)
-        image_grid_thw = inputs.pop('image_grid_thw', None)
-        video_grid_thw = inputs.pop('video_grid_thw', None)
+        pixel_values = inputs.get('pixel_values')
+        pixel_values_videos = inputs.get('pixel_values_videos')
+        image_grid_thw = inputs.get('image_grid_thw')
+        video_grid_thw = inputs.get('video_grid_thw')
 
         inputs_embeds = _model.embed_tokens(input_ids)
         if pixel_values is None and pixel_values_videos is None:  # plain-text
@@ -292,8 +292,7 @@ class Qwen2VLTemplate(Template):
 
         # fix https://github.com/huggingface/transformers/pull/33487
         position_ids, _ = model.get_rope_index(input_ids, image_grid_thw, video_grid_thw, inputs['attention_mask'])
-        inputs.update({'inputs_embeds': inputs_embeds, 'position_ids': position_ids.contiguous()})
-        return inputs
+        return {'inputs_embeds': inputs_embeds, 'position_ids': position_ids.contiguous()}
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super()._data_collator(batch, padding_to=padding_to)

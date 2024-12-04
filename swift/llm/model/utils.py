@@ -12,6 +12,7 @@ import torch
 import torch.distributed as dist
 import transformers
 from accelerate.utils import find_device
+from modelscope.hub.utils.utils import get_cache_dir
 from packaging import version
 from transformers import AutoConfig, PretrainedConfig
 
