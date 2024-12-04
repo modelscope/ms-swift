@@ -371,6 +371,7 @@ def _get_model_info(model_dir: str, model_type: Optional[str], quantization_conf
     quant_info = HfConfigFactory.get_quant_info(config_dict) or {}
     torch_dtype = HfConfigFactory.get_torch_dtype(config_dict, quant_info)
     max_model_len = HfConfigFactory.get_max_model_len(config_dict)
+    rope_scaling = HfConfigFactory.get_config_attr(config_dict, 'rope_scaling')
 
     if model_type is None:
         model_types = HfConfigFactory.get_matched_model_types(config_dict)  # config.json
@@ -381,7 +382,7 @@ def _get_model_info(model_dir: str, model_type: Optional[str], quantization_conf
             model_type = model_types[0]
 
     res = ModelInfo(model_type, model_dir, torch_dtype, max_model_len, quant_info.get('quant_method'),
-                    quant_info.get('quant_bits'))
+                    quant_info.get('quant_bits'), rope_scaling)
     return res
 
 
