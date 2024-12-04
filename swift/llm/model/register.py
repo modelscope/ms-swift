@@ -381,8 +381,8 @@ def _get_model_info(model_dir: str, model_type: Optional[str], quantization_conf
         elif len(model_types) == 1:
             model_type = model_types[0]
 
-    res = ModelInfo(model_type, model_dir, torch_dtype, max_model_len,
-                    quant_info.get('quant_method'), quant_info.get('quant_bits'), rope_scaling)
+    res = ModelInfo(model_type, model_dir, torch_dtype, max_model_len, quant_info.get('quant_method'),
+                    quant_info.get('quant_bits'), rope_scaling)
     return res
 
 
