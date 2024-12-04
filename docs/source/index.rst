@@ -10,26 +10,24 @@ Swift DOCUMENTATION
    :caption: Get Started
 
    GetStarted/SWIFT安装.md
-   GetStarted/界面训练推理.md
-   GetStarted/推送模型.md
-   GetStarted/使用tuners.md
-   GetStarted/ResTuning.md
-   GetStarted/SCEdit.md
-   GetStarted/在SWIFT内使用PEFT.md
+   GetStarted/快速开始.md
+   GetStarted/界面使用.md
 
 .. toctree::
    :maxdepth: 2
    :caption: Instruction
 
-   Instruction/index.md
-   Instruction/LLM微调文档.md
-   Instruction/LLM推理文档.md
-   Instruction/LLM评测文档.md
-   Instruction/LLM量化与导出文档.md
-   Instruction/LLM实验文档.md
+   Instruction/预训练及微调.md
+   Instruction/人类对齐.md
+   Instruction/推理和部署.md
+   Instruction/评测.md
+   Instruction/导出.md
    Instruction/命令行参数.md
+   Instruction/NPU支持.md
+   Instruction/使用tuners.md
    Instruction/支持的模型和数据集.md
-   Instruction/自定义与拓展.md
+   Instruction/推送模型.md
+   Instruction/ReleaseNote3.0.md
    Instruction/常见问题整理.md
 
 

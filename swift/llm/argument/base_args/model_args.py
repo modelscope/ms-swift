@@ -102,12 +102,12 @@ class ModelArguments:
         self.model_dir = self.model_info.model_dir
         self.model_type = self.model_info.model_type
         if self.rope_scaling is not None and isinstance(self.rope_scaling, str):
-            assert self.max_length is not None
-            max_model_len_no_scaling = self.model_info.max_model_len_no_scaling
+            assert self.max_length is not None, 'Use max_model_len together with rope_scaling'
             rope_scaling = self.model_info.rope_scaling or {}
+            max_model_len = self.model_info.max_model_len
             rope_scaling_factor = 1.0
-            if max_model_len_no_scaling:
-                rope_scaling_factor = max(float(math.ceil(self.max_length / max_model_len_no_scaling)), 1.0)
+            if max_model_len:
+                rope_scaling_factor = max(float(math.ceil(self.max_length / max_model_len)), 1.0)
             if rope_scaling:
                 rope_scaling_factor = max(rope_scaling.get('factor', -1), rope_scaling_factor)
                 rope_scaling['type'] = self.rope_scaling
