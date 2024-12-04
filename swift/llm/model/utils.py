@@ -58,7 +58,6 @@ class ModelInfo:
     max_model_len: int
     quant_method: Literal['gptq', 'awq', 'bnb', 'aqlm', 'hqq', None]
     quant_bits: int
-    rope_scaling: Dict[str, Any]
 
     # extra
     config: Optional[PretrainedConfig] = None

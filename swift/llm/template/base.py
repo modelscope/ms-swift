@@ -172,16 +172,12 @@ class Template(ProcessorMixin):
         return encoded
 
     def _kto_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        label, inputs.label = inputs.label, None
         encoded = self._rlhf_encode(inputs)
         if len(encoded) == 0:
             return {}
-        return {
-            'completion_input_ids': encoded['chosen_input_ids'],
-            'completion_labels': encoded['chosen_labels'],
-            'KL_completion_input_ids': encoded['rejected_input_ids'],
-            'KL_completion_labels': encoded['rejected_labels'],
-            'label': inputs.label
-        }
+        encoded['label'] = label
+        return encoded
 
     def encode(self,
                inputs: Union[TemplateInputs, Dict[str, Any], InferRequest],
@@ -639,8 +635,6 @@ class Template(ProcessorMixin):
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
         encoded['loss_scale'] = loss_scale
-        if inputs.label is not None:
-            encoded['label'] = inputs.label
         if not self.is_training:
             for k in list(encoded.keys()):
                 if k.endswith('labels'):
@@ -649,6 +643,10 @@ class Template(ProcessorMixin):
             for k in list(encoded.keys()):
                 if k.endswith('loss_scale'):
                     encoded[k] = None
+
+        # sequence_classification
+        if inputs.label is not None:
+            encoded['label'] = inputs.label
         return encoded
 
     def get_generate_ids(self, generate_ids: Union[torch.Tensor, List[int]],
@@ -746,17 +744,17 @@ class Template(ProcessorMixin):
         return self._data_collator(new_batch, padding_to=padding_to)
 
     def _kto_data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
-        kl_batch = self._fetch_inputs_startswith(batch, 'KL_completion_')
-        new_batch = self._fetch_inputs_startswith(batch, 'completion_')
+        new_batch = self._fetch_inputs_startswith(batch, 'chosen_')
+        kl_batch = self._fetch_inputs_startswith(batch, 'rejected_')
 
-        kl_res = self._data_collator(kl_batch, padding_to=padding_to)
         res = self._data_collator(new_batch, padding_to=padding_to)
-        if res and kl_res:
-            res = {f'completion_{k}': v for k, v in res.items()}
-            res.update({f'KL_completion_{k}': v for k, v in kl_res.items()})
-        else:
-            res = res or kl_res
-
+        kl_res = self._data_collator(kl_batch, padding_to=padding_to)
+        res = {
+            **{f'completion_{k}': v
+               for k, v in res.items()},
+            **{f'KL_completion_{k}': v
+               for k, v in kl_res.items()},
+        }
         label = [b['label'] for b in batch if b.get('label') is not None]
         if label:
             res['label'] = label
@@ -829,7 +827,7 @@ class Template(ProcessorMixin):
         pixel_values_videos = [b['pixel_values_videos'] for b in batch if b.get('pixel_values_videos') is not None]
         if len(pixel_values_videos) > 0:
             res['pixel_values_videos'] = torch.concat(pixel_values_videos)
-        # # sequence_classification
+        # sequence_classification
         if self.is_training:
             label = [b['label'] for b in batch if b.get('label') is not None]
             if label:

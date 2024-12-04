@@ -170,10 +170,9 @@ def get_model_tokenizer_from_local(model_dir: str,
     model = None
     if load_model:
         if kwargs.get('use_unsloth', False):
-            unsloth_kwargs = kwargs.get('unsloth_kwargs') or {}
+            unsloth_kwargs = kwargs['unsloth_kwargs']
             logger.info(f'unsloth_kwargs: {unsloth_kwargs}')
-            model, tokenizer = load_by_unsloth(
-                model_dir, torch_dtype, **unsloth_kwargs, is_multimodal=kwargs.pop('is_multimodal', False))
+            model, tokenizer = load_by_unsloth(model_dir, torch_dtype, model_info.max_model_len, **unsloth_kwargs)
         else:
             logger.info(f'model_kwargs: {model_kwargs}')
             model = automodel_class.from_pretrained(
@@ -502,7 +501,9 @@ def get_model_tokenizer(
     kwargs['automodel_class'] = automodel_class
     kwargs['attn_impl'] = attn_impl
     kwargs['rope_scaling'] = rope_scaling
-    kwargs['is_multimodal'] = model_meta.is_multimodal
+    if 'unsloth_kwargs' not in kwargs:
+        kwargs['unsloth_kwargs'] = {}
+    kwargs['unsloth_kwargs']['is_multimodal'] = model_meta.is_multimodal
     model, processor = get_function(model_dir, model_info, model_kwargs, load_model, **kwargs)
 
     if not isinstance(processor, PreTrainedTokenizerBase) and hasattr(processor, 'tokenizer'):
