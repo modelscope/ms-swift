@@ -37,7 +37,7 @@ class LoraConfig(peft.LoraConfig):
     lora_dtype: Optional[str] = field(
         default=None, metadata={'help': 'The lora dtype, default None means following the original layer\'s dtype'})
 
-    lorap_lr_ratio: float = field(default=2.0**4, metadata={'help': 'The lr ratio of lora_B in lora+'})
+    lorap_lr_ratio: Optional[float] = field(default=2.0**4, metadata={'help': 'The lr ratio of lora_B in lora+'})
 
     lorap_emb_lr: float = field(default=1e-6, metadata={'help': 'The lr for embedding in lora+'})
 
@@ -96,16 +96,8 @@ def _create_and_replace_hook(self, peft_config, adapter_name, target, *args, **k
 
 
 def _convert_dtype(target: torch.nn.Module, adapter_name: str, lora_dtype: str):
-    if lora_dtype == 'fp32':
-        torch_dtype = torch.float32
-    elif lora_dtype == 'fp16':
-        torch_dtype = torch.float16
-    elif lora_dtype == 'bf16':
-        torch_dtype = torch.bfloat16
-    else:
-        torch_dtype = None
-
-    if torch_dtype is not None:
+    if lora_dtype is not None:
+        torch_dtype = eval(f'torch.{lora_dtype}')
         if hasattr(target, 'lora_A') and adapter_name in target.lora_A:
             target.lora_A[adapter_name].to(torch_dtype)
             target.lora_B[adapter_name].to(torch_dtype)
@@ -295,7 +287,7 @@ def hot_patch_peft_module():
         FourierFTModel._create_and_replace = _create_and_replace_hook
 
     # Support type conversion
-    def init(self, model: torch.nn.Module, config: Dict[str, LoraConfig], adapter_name):
+    def __new_init__(self, model: torch.nn.Module, config: Dict[str, LoraConfig], adapter_name: str):
 
         self.__init_origin__(model, config, adapter_name)
         if isinstance(self.active_adapter, list):
@@ -311,7 +303,7 @@ def hot_patch_peft_module():
                             lora.forward = MethodType(keep_device_forward, lora)
 
     LoraModel.__init_origin__ = LoraModel.__init__
-    LoraModel.__init__ = init
+    LoraModel.__init__ = __new_init__
 
     # Support LoRA+
     PeftModel.create_optimizer_param_groups = create_optimizer_param_groups

@@ -90,7 +90,7 @@ swift rlhf \
     --warmup_ratio  0.03  \
     --save_total_limit  2
 
-# DDP + MP
+# MP + DDP
 # Memory usage: 4*24G
 nproc_per_node=2
 

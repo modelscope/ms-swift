@@ -627,7 +627,7 @@ class LoraModel(_LoraModel):
         self._prepare_model(peft_config, model)
 
         for key in key_list:
-            if '_part_' in key:
+            if '_part_' in key or not key:
                 # Avoid lora conflict with part tuner
                 continue
             # Check for modules_to_save in case
@@ -653,7 +653,6 @@ class LoraModel(_LoraModel):
             parent, target, target_name = _get_submodules(model, key)
             self._create_and_replace(peft_config, adapter_name, target, target_name, parent, current_key=key)
 
-        # Handle X-LoRA case.
         if not is_target_modules_in_base_model and hasattr(peft_config, 'target_modules'):
             raise ValueError(f'Target modules {peft_config.target_modules} not found in the base model. '
                              f'Please check the target modules and try again.')
@@ -672,11 +671,11 @@ class LoraModel(_LoraModel):
                 model.modules_to_save.update(set(peft_config.modules_to_save))
 
     def _convert_dtype(self, target: nn.Module, lora_dtype: str):
-        if lora_dtype == 'fp32':
+        if lora_dtype == 'float32':
             torch_dtype = torch.float32
-        elif lora_dtype == 'fp16':
+        elif lora_dtype == 'float16':
             torch_dtype = torch.float16
-        elif lora_dtype == 'bf16':
+        elif lora_dtype == 'bfloat16':
             torch_dtype = torch.bfloat16
         else:
             torch_dtype = None

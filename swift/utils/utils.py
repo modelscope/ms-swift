@@ -3,56 +3,57 @@ import datetime as dt
 import os
 import random
 import re
+import socket
 import subprocess
 import sys
 import time
-from contextlib import contextmanager
-from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple, Type, TypeVar
+from dataclasses import fields, is_dataclass
+from typing import Any, Callable, Dict, List, Literal, Mapping, Optional, Sequence, Set, Tuple, Type, TypeVar, Union
 
 import numpy as np
+import torch
 import torch.distributed as dist
 from transformers import HfArgumentParser, enable_full_determinism, set_seed
 from transformers.trainer import TrainingArguments
 
 from .logger import get_logger
 from .np_utils import stat_array
-from .torch_utils import broadcast_string, is_dist, is_dist_ta, is_local_master
+from .torch_utils import is_dist, is_dist_ta, is_local_master
 
 logger = get_logger()
 
 
-@contextmanager
-def safe_ddp_context():
-    if (is_dist() or is_dist_ta()) and not is_local_master() and dist.is_initialized():
-        dist.barrier()
-    yield
-    if (is_dist() or is_dist_ta()) and is_local_master() and dist.is_initialized():
-        dist.barrier()
-    if (is_dist() or is_dist_ta()) and dist.is_initialized():  # sync
-        dist.barrier()
-
-
-def check_json_format(obj: Any) -> Any:
+def check_json_format(obj: Any, token_safe: bool = True) -> Any:
     if obj is None or isinstance(obj, (int, float, str, complex)):  # bool is a subclass of int
         return obj
+    if isinstance(obj, (torch.dtype, torch.device)):
+        obj = str(obj)
+        return obj[len('torch.'):] if obj.startswith('torch.') else obj
 
     if isinstance(obj, Sequence):
         res = []
         for x in obj:
-            res.append(check_json_format(x))
+            res.append(check_json_format(x, token_safe))
     elif isinstance(obj, Mapping):
         res = {}
         for k, v in obj.items():
-            if 'hub_token' in k:
+            if token_safe and isinstance(k, str) and '_token' in k:
                 res[k] = None
             else:
-                if isinstance(v, TrainingArguments):
-                    for _k in v.__dict__.keys():
-                        if 'hub_token' in _k:
-                            setattr(v, _k, None)
-                res[k] = check_json_format(v)
+                res[k] = check_json_format(v, token_safe)
     else:
-        res = repr(obj)  # e.g. function
+        if token_safe:
+            unsafe_items = {}
+            for k, v in obj.__dict__.items():
+                if '_token' in k:
+                    unsafe_items[k] = v
+                    setattr(obj, k, None)
+            res = repr(obj)
+            # recover
+            for k, v in unsafe_items.items():
+                setattr(obj, k, v)
+        else:
+            res = repr(obj)  # e.g. function, object
     return res
 
 
@@ -89,6 +90,18 @@ def format_time(seconds):
     return time_str
 
 
+def deep_getattr(obj, attr: str, default=None):
+    attrs = attr.split('.')
+    for a in attrs:
+        if obj is None:
+            break
+        if isinstance(obj, dict):
+            obj = obj.get(a, default)
+        else:
+            obj = getattr(obj, a, default)
+    return obj
+
+
 def seed_everything(seed: Optional[int] = None, full_determinism: bool = False, *, verbose: bool = True) -> int:
 
     if seed is None:
@@ -110,7 +123,9 @@ def add_version_to_work_dir(work_dir: str) -> str:
     time = dt.datetime.now().strftime('%Y%m%d-%H%M%S')
     sub_folder = f'v{version}-{time}'
     if (dist.is_initialized() and is_dist()) or is_dist_ta():
-        sub_folder = broadcast_string(sub_folder)
+        obj_list = [sub_folder]
+        dist.broadcast_object_list(obj_list)
+        sub_folder = obj_list[0]
 
     work_dir = os.path.join(work_dir, sub_folder)
     return work_dir
@@ -193,14 +208,6 @@ def read_multi_line(addi_prompt: str = '') -> str:
     return ''.join(res)
 
 
-def is_pai_training_job() -> bool:
-    return 'PAI_TRAINING_JOB_ID' in os.environ
-
-
-def get_pai_tensorboard_dir() -> Optional[str]:
-    return os.environ.get('PAI_OUTPUT_TENSORBOARD')
-
-
 def subprocess_run(command: List[str], env: Optional[Dict[str, str]] = None, stdout=None, stderr=None):
     # stdoutm stderr: e.g. subprocess.PIPE.
     resp = subprocess.run(command, env=env, stdout=stdout, stderr=stderr)
@@ -208,47 +215,37 @@ def subprocess_run(command: List[str], env: Optional[Dict[str, str]] = None, std
     return resp
 
 
-def split_str_parts_by(text: str, delimiters: List[str]):
-    """Split the text field into parts.
-
-    Args:
-        text: A text to be split.
-        delimiters: The delimiters.
-
-    Returns:
-        The split text in list of dicts.
-    """
-    assert isinstance(text, str), f'text: {text}'
-    all_start_chars = [d[0] for d in delimiters]
-    all_length = [len(d) for d in delimiters]
-
-    text_list = []
-    last_words = ''
-
-    while len(text) > 0:
-        for char_idx, char in enumerate(text):
-            match_index = [idx for idx, start_char in enumerate(all_start_chars) if start_char == char]
-            is_delimiter = False
-            for index in match_index:
-                if text[char_idx:char_idx + all_length[index]] == delimiters[index]:
-                    if text_list:
-                        text_list[-1]['content'] = last_words
-                    elif last_words:
-                        text_list.append({'key': '', 'content': last_words})
-                    last_words = ''
-                    text_list.append({'key': delimiters[index]})
-                    text = text[char_idx + all_length[index]:]
-                    is_delimiter = True
-                    break
-            if not is_delimiter:
-                last_words += char
-            else:
-                break
-        if last_words == text:
-            text = ''
-
-    if len(text_list):
-        text_list[-1]['content'] = last_words
+def get_env_args(args_name: str, type_func: Callable[[str], _T], default_value: Optional[_T]) -> Optional[_T]:
+    args_name_upper = args_name.upper()
+    value = os.getenv(args_name_upper)
+    if value is None:
+        value = default_value
+        log_info = (f'Setting {args_name}: {default_value}. '
+                    f'You can adjust this hyperparameter through the environment variable: `{args_name_upper}`.')
     else:
-        text_list.append({'key': '', 'content': last_words})
-    return text_list
+        value = type_func(value)
+        log_info = f'Using environment variable `{args_name_upper}`, Setting {args_name}: {value}.'
+    logger.info_once(log_info)
+    return value
+
+
+def find_free_port(start_port: Optional[int] = None, retry: int = 100) -> str:
+    if start_port is None:
+        start_port = 0
+    for port in range(start_port, start_port + retry):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            try:
+                sock.bind(('', start_port))
+                port = sock.getsockname()[1]
+                break
+            except OSError:
+                pass
+    return port
+
+
+def split_list(ori_list, num_shards):
+    idx_list = np.linspace(0, len(ori_list), num_shards + 1)
+    shard = []
+    for i in range(len(idx_list) - 1):
+        shard.append(ori_list[int(idx_list[i]):int(idx_list[i + 1])])
+    return shard

@@ -2,7 +2,7 @@
 
 import os
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Optional
 
 import torch
 from transformers.training_args import TrainingArguments as HfTrainingArguments
@@ -10,22 +10,28 @@ from transformers.training_args_seq2seq import Seq2SeqTrainingArguments as HfSeq
 from transformers.utils import is_accelerate_available
 
 from swift.utils import is_dist, use_torchacc
-from .loss import LOSS_MAPPING
 
 
 @dataclass
 class SwiftArgumentsMixin:
-    # ckpt only save model
-    save_only_model: bool = False
+    logging_first_step: bool = True
     acc_strategy: str = field(default='token', metadata={'choices': ['token', 'sentence']})
-    loss_name: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
-    additional_saved_files: Optional[List[str]] = None
-    # torchacc
+    sequence_parallel_size: int = 1
+    check_model: bool = True
     train_sampler_random: bool = True
+    is_encoder_decoder: bool = False
+
+    # torchacc
     metric_warmup_step: Optional[float] = 0
     train_dataset_sample: Optional[int] = -1
+    acc_steps: int = 1
+
+    # Value copied from TrainArguments, Used for external tuners.
+    train_type: Optional[str] = None
 
     def __post_init__(self):
+        if hasattr(self, 'output_dir'):
+            self.output_dir = os.path.abspath(os.path.expanduser(self.output_dir))
         if is_dist() and self.ddp_backend == 'nccl' and torch.cuda.is_available() and is_accelerate_available():
             try:
                 from accelerate.utils import check_cuda_p2p_ib_support
@@ -34,9 +40,11 @@ class SwiftArgumentsMixin:
                     os.environ['NCCL_IB_DISABLE'] = '1'
             except ImportError:
                 pass
-        if self.additional_saved_files is None:
-            self.additional_saved_files = []
         super().__post_init__()
+
+    @property
+    def place_model_on_device(self):
+        return False if use_torchacc() else super().place_model_on_device
 
 
 @dataclass
@@ -46,10 +54,7 @@ class TrainingArguments(SwiftArgumentsMixin, HfTrainingArguments):
 
 @dataclass
 class Seq2SeqTrainingArguments(SwiftArgumentsMixin, HfSeq2SeqTrainingArguments):
-
-    @property
-    def place_model_on_device(self):
-        return False if use_torchacc() else super().place_model_on_device
+    pass
 
 
 try:

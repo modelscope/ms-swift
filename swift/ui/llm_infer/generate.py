@@ -1,4 +1,4 @@
-import os
+# Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Type
 
 import gradio as gr
@@ -15,12 +15,6 @@ class Generate(BaseUI):
             'label': {
                 'zh': '生成序列最大长度',
                 'en': 'Max new tokens'
-            },
-        },
-        'do_sample': {
-            'label': {
-                'zh': 'do_sample',
-                'en': 'do_sample'
             },
         },
         'temperature': {
@@ -41,23 +35,21 @@ class Generate(BaseUI):
                 'en': 'top_p'
             },
         },
-        'infer_backend': {
-            'label': {
-                'zh': '推理框架',
-                'en': 'Infer backend'
-            },
-        },
         'repetition_penalty': {
             'label': {
                 'zh': 'repetition_penalty',
                 'en': 'repetition_penalty'
             },
         },
-        'port': {
+        'system': {
             'label': {
-                'zh': '端口',
-                'en': 'port'
+                'zh': 'system字段',
+                'en': 'system'
             },
+            'info': {
+                'zh': 'system字段支持在加载模型后修改',
+                'en': 'system can be modified after the model weights loaded'
+            }
         },
     }
 
@@ -65,11 +57,9 @@ class Generate(BaseUI):
     def do_build_ui(cls, base_tab: Type['BaseUI']):
         with gr.Row():
             gr.Textbox(elem_id='max_new_tokens', lines=1, value='2048')
-            gr.Checkbox(elem_id='do_sample', value=True)
-            gr.Dropdown(elem_id='infer_backend', value='pt')
             gr.Slider(elem_id='temperature', minimum=0.0, maximum=10, step=0.1, value=0.3)
             gr.Slider(elem_id='top_k', minimum=1, maximum=100, step=5, value=20)
             gr.Slider(elem_id='top_p', minimum=0.0, maximum=1.0, step=0.05, value=0.7)
             gr.Slider(elem_id='repetition_penalty', minimum=0.0, maximum=10, step=0.05, value=1.05)
-            if os.environ.get('MODELSCOPE_ENVIRONMENT') != 'studio':
-                gr.Textbox(elem_id='port', lines=1, value='8000')
+        with gr.Row():
+            gr.Textbox(elem_id='system', lines=4, scale=20)

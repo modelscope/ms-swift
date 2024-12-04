@@ -9,7 +9,6 @@ from .part import Part, PartConfig
 from .prompt import Prompt, PromptConfig
 from .reft import Reft, ReftConfig
 from .restuning import ResTuning, ResTuningConfig
-from .rome import Rome, RomeConfig
 from .scetuning.scetuning import SCETuning, SCETuningConfig
 from .side import Side, SideConfig
 
@@ -20,7 +19,6 @@ class SwiftTuners:
     LORA = 'LORA'
     SIDE = 'SIDE'
     RESTUNING = 'RESTUNING'
-    ROME = 'ROME'
     LONGLORA = 'longlora'
     NEFTUNE = 'neftune'
     LLAMAPRO = 'LLAMAPRO'
@@ -35,7 +33,6 @@ SWIFT_MAPPING = {
     SwiftTuners.LORA: (LoRAConfig, LoRA),
     SwiftTuners.SIDE: (SideConfig, Side),
     SwiftTuners.RESTUNING: (ResTuningConfig, ResTuning),
-    SwiftTuners.ROME: (RomeConfig, Rome),
     SwiftTuners.LONGLORA: (LongLoRAConfig, LongLoRA),
     SwiftTuners.NEFTUNE: (NEFTuneConfig, NEFTune),
     SwiftTuners.SCETUNING: (SCETuningConfig, SCETuning),

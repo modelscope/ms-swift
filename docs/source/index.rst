@@ -10,88 +10,34 @@ Swift DOCUMENTATION
    :caption: Get Started
 
    GetStarted/SWIFT安装.md
-   GetStarted/界面训练推理.md
-   GetStarted/推送模型.md
-   GetStarted/使用tuners.md
-   GetStarted/ResTuning.md
-   GetStarted/SCEdit.md
-   GetStarted/在SWIFT内使用PEFT.md
+   GetStarted/快速开始.md
+   GetStarted/界面使用.md
 
 .. toctree::
    :maxdepth: 2
    :caption: Instruction
 
-   Instruction/index.md
-   Instruction/LLM微调文档.md
-   Instruction/LLM推理文档.md
-   Instruction/LLM评测文档.md
-   Instruction/LLM量化与导出文档.md
-   Instruction/LLM实验文档.md
+   Instruction/预训练及微调.md
+   Instruction/人类对齐.md
+   Instruction/推理和部署.md
+   Instruction/评测.md
+   Instruction/导出.md
    Instruction/命令行参数.md
+   Instruction/NPU支持.md
+   Instruction/使用tuners.md
    Instruction/支持的模型和数据集.md
-   Instruction/自定义与拓展.md
+   Instruction/智能体的支持.md
+   Instruction/推送模型.md
+   Instruction/ReleaseNote3.0.md
    Instruction/常见问题整理.md
 
-
 .. toctree::
    :maxdepth: 2
-   :caption: LLM Training and Inference
+   :caption: Customization
 
-   LLM/index.md
-   LLM/人类偏好对齐训练文档.md
-   LLM/OLLAMA导出文档.md
-   LLM/VLLM推理加速与部署.md
-   LLM/LmDeploy推理加速与部署.md
-   LLM/Megatron训练文档.md
-   LLM/自我认知微调最佳实践.md
-   LLM/Agent微调最佳实践.md
-   LLM/Agent部署最佳实践.md
-   LLM/Qwen1.5全流程最佳实践.md
-   LLM/NPU推理与微调最佳实践.md
-   LLM/Grok训练和推理.md
-   LLM/DPO算法最佳实践.md
-   LLM/ORPO算法最佳实践.md
-   LLM/SimPO算法最佳实践.md
-   LLM/HuggingFace生态兼容.md
-   LLM/Benchmark.md
-
-.. toctree::
-   :maxdepth: 2
-   :caption: Multi-Modal LLM Training and Inference
-
-   Multi-Modal/index.md
-   Multi-Modal/人类偏好对齐训练文档.md
-   Multi-Modal/LmDeploy推理加速文档.md
-   Multi-Modal/vLLM推理加速文档.md
-   Multi-Modal/MLLM部署文档.md
-   Multi-Modal/qwen-vl最佳实践.md
-   Multi-Modal/qwen2-vl最佳实践.md
-   Multi-Modal/qwen-audio最佳实践.md
-   Multi-Modal/llava最佳实践.md
-   Multi-Modal/llava-video最佳实践.md
-   Multi-Modal/internvl最佳实践.md
-   Multi-Modal/deepseek-vl最佳实践.md
-   Multi-Modal/internlm-xcomposer2最佳实践.md
-   Multi-Modal/phi3-vision最佳实践.md
-   Multi-Modal/yi-vl最佳实践.md
-   Multi-Modal/mplug-owl2最佳实践.md
-   Multi-Modal/florence最佳实践.md
-   Multi-Modal/cogvlm最佳实践.md
-   Multi-Modal/cogvlm2最佳实践.md
-   Multi-Modal/glm4v最佳实践.md
-   Multi-Modal/cogvlm2-video最佳实践.md
-   Multi-Modal/minicpm-v最佳实践.md
-   Multi-Modal/minicpm-v-2最佳实践.md
-   Multi-Modal/minicpm-v-2.5最佳实践.md
-
-.. toctree::
-   :maxdepth: 2
-   :caption: API Doc
-
-   Hub <api/swift.hub>
-   Trainer <api/swift.trainers>
-   Tuner <api/swift.tuners>
-
+   Customization/新增数据集.md
+   Customization/新增模型.md
+   Customization/插件.md
 
 Indices and tables
 ==================

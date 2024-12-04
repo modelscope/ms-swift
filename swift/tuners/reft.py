@@ -53,10 +53,9 @@ class Reft(SwiftAdapter):
 
     @staticmethod
     def prepare_model(model: nn.Module, config: ReftConfig, adapter_name: str):
-        from swift.llm.utils.utils import is_pyreft_available
+        from swift.utils.import_utils import is_pyreft_available
         if not is_pyreft_available():
-            raise ImportError('Please install pyreft before using ReFT: '
-                              '`pip install git+https://github.com/stanfordnlp/pyreft.git`')
+            raise ImportError('Please install pyreft before using ReFT: ' '`pip install pyreft`')
 
         import pyreft
         from pyreft import ReftModel
@@ -79,11 +78,13 @@ class Reft(SwiftAdapter):
             'NodireftIntervention': NodireftIntervention,
         }
 
-        def __getattr__(self, name: str):
+        def __getattr__(self, key: str):
             try:
-                return super(ReftModel, self).__getattr__(name)
+                return super(ReftModel, self).__getattr__(key)
             except AttributeError:
-                return getattr(self.model, name)
+                if 'model' in dir(self):
+                    return getattr(self.model, key)
+                raise
 
         ReftModel.__getattr__ = __getattr__
 

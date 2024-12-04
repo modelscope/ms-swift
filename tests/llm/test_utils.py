@@ -1,8 +1,7 @@
-import os
 import unittest
 
-from swift.llm import (ModelType, get_default_template_type, get_model_tokenizer, get_template, inference,
-                       inference_stream, limit_history_length, print_example)
+from swift.llm import (ModelType, get_model_tokenizer, get_template, inference, inference_stream, limit_history_length,
+                       print_example)
 from swift.utils import lower_bound, seed_everything
 
 

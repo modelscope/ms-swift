@@ -1,10 +1,18 @@
 import os
+from typing import Dict, List
 
-from datasets import concatenate_datasets
-
-from swift.llm import (DATASET_MAPPING, DatasetName, ModelType, dataset_map, get_dataset, get_default_template_type,
-                       get_model_tokenizer, get_template)
+from swift.llm import DATASET_MAPPING, EncodePreprocessor, TemplateType, get_model_tokenizer, get_template
+from swift.llm.dataset.loader import load_dataset
 from swift.utils import stat_array
+
+
+def find_dataset_row(dataset: str, ignore_datasets: Dict[str, str]):
+    if not dataset:
+        return None
+    for ignore_dataset in ignore_datasets:
+        if dataset in ignore_dataset:
+            return ignore_datasets[ignore_dataset]
+    return None
 
 
 def write_dataset_info() -> None:
@@ -14,7 +22,7 @@ def write_dataset_info() -> None:
         if os.path.exists(fpath):
             with open(fpath, 'r', encoding='utf-8') as f:
                 text = f.read()
-            idx = text.find('| Dataset Name |')
+            idx = text.find('| MS Dataset ID |')
             pre_texts.append(text[:idx])
 
             text = text[idx:]
@@ -25,67 +33,83 @@ def write_dataset_info() -> None:
 
     res_text_list = []
 
-    res_text_list.append(
-        '| Dataset Name | Dataset ID | Subsets | Dataset Size | Statistic (token) | Tags | HF Dataset ID |')
-    res_text_list.append(
-        '| ------------ | ---------- | ------- |------------- | ----------------- | ---- | ------------- |')
+    res_text_list.append('| MS Dataset ID | HF Dataset ID | Subset name | Real Subset  |'
+                         ' Subset split | Dataset Size | Statistic (token) | Tags |')
+    res_text_list.append('| ------------ | ------------- | ----------- |------------- |'
+                         ' -------------| -------------| ----------------- | ---- |')
     if len(text_list) >= 2:
         text_list = text_list[2:]
     else:
         text_list = []
 
-    ignore_dataset = {text.split('|', 2)[1].lstrip('🔥 '): text for text in text_list}
+    hf_ignore_datasets = {text.split('|', 3)[2].lstrip('🔥 '): text for text in text_list}
+    ms_ignore_datasets = {text.split('|', 3)[1].lstrip('🔥 '): text for text in text_list}
     all_keys = set(DATASET_MAPPING.keys())
-    py_keys = DatasetName.get_dataset_name_list()
-    json_keys = list(all_keys - set(py_keys))
-    json_keys.sort()
-    dataset_name_list = py_keys + json_keys
     mapping = {}
     _iter = zip(
         ['llm', 'vision', 'audio'],
-        [ModelType.qwen_7b_chat, ModelType.qwen_vl_chat, ModelType.qwen_audio_chat],
+        ['qwen/Qwen2-7B-Instruct', 'Qwen/Qwen2-VL-7B-Instruct', 'qwen/Qwen2-Audio-7B-Instruct'],
+        [TemplateType.qwen, TemplateType.qwen2_vl, TemplateType.qwen2_audio],
     )
-    for task_type, model_type in _iter:
-        _, tokenizer = get_model_tokenizer(model_type, load_model=False)
-        template_type = get_default_template_type(model_type)
+    for task_type, model_id, template_type in _iter:
+        _, tokenizer = get_model_tokenizer(model_id, load_model=False)
         template = get_template(template_type, tokenizer)
         mapping[task_type] = template
-
-    for dataset_name in dataset_name_list:
+    all_keys = list(all_keys)
+    all_keys.sort(key=lambda k: k[0] or '')
+    for key in all_keys:
+        ms_id, hf_id, _ = key
+        print(f'Processing {ms_id or hf_id}')
+        ms_dataset = find_dataset_row(ms_id, ms_ignore_datasets)
+        hf_dataset = find_dataset_row(hf_id, hf_ignore_datasets)
+        dataset_info = DATASET_MAPPING[key]
+        tags = dataset_info.tags
+        tags_str = ', '.join(tags)
+        if len(tags_str) == 0:
+            tags_str = '-'
         try:
-            dataset_info = DATASET_MAPPING[dataset_name]
-            tags = dataset_info.get('tags', [])
-            subsets = dataset_info.get('subsets', [])
-            subsets = '<br>'.join(subsets)
-            if 'audio' in tags:
-                template = mapping['audio']
-            elif 'vision' in tags:
-                template = mapping['vision']
+            if ms_id is not None:
+                ms_id = f'[{ms_id}](https://modelscope.cn/datasets/{ms_id}/summary)'
             else:
-                template = mapping['llm']
-            if dataset_name in ignore_dataset:
-                dataset_size, stat_str = ignore_dataset[dataset_name].split('|')[4:6]
+                ms_id = '-'
+            if hf_id is not None:
+                hf_id = f'[{hf_id}](https://huggingface.co/datasets/{hf_id})'
             else:
-                dataset_info = DATASET_MAPPING[dataset_name]
-                if dataset_info.get('huge_dataset', False):
+                hf_id = '-'
+            r = (f'|{ms_id}|{hf_id}|{",".join([s.name for s in dataset_info.subsets])}|'
+                 f'{",".join([s.subset for s in dataset_info.subsets])}|'
+                 f'{",".join(dataset_info.split) or "train"}')
+            if ms_dataset or hf_dataset:
+                dataset_size, stat_str = (ms_dataset or hf_dataset).split('|')[6:8]
+            else:
+                if 'audio' in tags:
+                    template = mapping['audio']
+                elif 'vision' in tags:
+                    template = mapping['vision']
+                else:
+                    template = mapping['llm']
+
+                if dataset_info.huge_dataset:
                     dataset_size = '-'
                     stat_str = 'Dataset is too huge, please click the original link to view the dataset stat.'
                 else:
-                    train_dataset, val_dataset = get_dataset([dataset_name],
-                                                             model_name=['小黄', 'Xiao Huang'],
-                                                             model_author=['魔搭', 'ModelScope'])
+                    train_dataset, val_dataset = load_dataset(
+                        key[0] + ':all',
+                        split_dataset_ratio=0.0,
+                        strict=False,
+                        num_proc=12,
+                        model_name=['小黄', 'Xiao Huang'],
+                        model_author=['魔搭', 'ModelScope'])
                     dataset_size = len(train_dataset)
                     assert val_dataset is None
-
                     raw_dataset = train_dataset
-                    if val_dataset is not None:
-                        raw_dataset = concatenate_datasets([raw_dataset, val_dataset])
                     if len(raw_dataset) < 5000:
                         num_proc = 1
                     else:
                         num_proc = 4
 
-                    dataset = dataset_map(raw_dataset, template.encode, num_proc=num_proc)
+                    dataset = EncodePreprocessor(template)(
+                        raw_dataset.select(range(min(5000, len(raw_dataset)))), num_proc=num_proc)
 
                     _token_len = []
                     input_ids = dataset['input_ids']
@@ -94,34 +118,18 @@ def write_dataset_info() -> None:
                     stat = stat_array(_token_len)[0]
                     stat_str = f"{stat['mean']:.1f}±{stat['std']:.1f}, min={stat['min']}, max={stat['max']}"
 
-            ms_url = f"https://modelscope.cn/datasets/{dataset_info['dataset_id_or_path']}/summary"
-
-            if '🔥' in tags:
-                tags.remove('🔥')
-                dataset_name = '🔥' + dataset_name
-            tags_str = ', '.join(tags)
-            if len(tags_str) == 0:
-                tags_str = '-'
-            hf_dataset_id = dataset_info.get('hf_dataset_id')
-            if hf_dataset_id is None:
-                hf_dataset_id_str = '-'
-            else:
-                hf_url = f'https://huggingface.co/datasets/{hf_dataset_id}'
-                hf_dataset_id_str = f'[{hf_dataset_id}]({hf_url})'
-
-            res_text_list.append(f"|{dataset_name}|[{dataset_info['dataset_id_or_path']}]({ms_url})|{subsets}|"
-                                 f'{dataset_size}|{stat_str}|{tags_str}|{hf_dataset_id_str}|')
+            res_text_list.append(f'{r}|{dataset_size}|{stat_str}|{tags_str}|')
         except Exception:
             import traceback
             print(traceback.format_exc())
             break
-
-    for idx in range(len(fpaths)):
-        text = '\n'.join(res_text_list)
-        text = pre_texts[idx] + text + '\n'
-        with open(fpaths[idx], 'w', encoding='utf-8') as f:
-            f.write(text)
-    print(f'数据集总数: {len(dataset_name_list)}')
+        finally:
+            for idx in range(len(fpaths)):
+                text = '\n'.join(res_text_list)
+                text = pre_texts[idx] + text + '\n'
+                with open(fpaths[idx], 'w', encoding='utf-8') as f:
+                    f.write(text)
+    print(f'数据集总数: {len(all_keys)}, 子数据集总数: {len(res_text_list)}')
 
 
 if __name__ == '__main__':

@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Type
 
 import gradio as gr
@@ -26,7 +27,7 @@ class Quantization(BaseUI):
                 'en': 'Default is bnb if quantization_bit is specified'
             }
         },
-        'quantization_bit': {
+        'quant_bits': {
             'label': {
                 'zh': '量化bit数',
                 'en': 'Quantization bit'
@@ -36,10 +37,10 @@ class Quantization(BaseUI):
                 'en': 'Set the quantization bit, 0 for no quantization'
             }
         },
-        'bnb_4bit_comp_dtype': {
+        'bnb_4bit_compute_dtype': {
             'label': {
-                'zh': 'bnb_4bit_comp_dtype',
-                'en': 'bnb_4bit_comp_dtype'
+                'zh': 'bnb_4bit_compute_dtype',
+                'en': 'bnb_4bit_compute_dtype'
             },
         },
         'bnb_4bit_quant_type': {
@@ -60,8 +61,8 @@ class Quantization(BaseUI):
     def do_build_ui(cls, base_tab: Type['BaseUI']):
         with gr.Accordion(elem_id='quantization_tab', open=False):
             with gr.Row():
-                gr.Dropdown(elem_id='quantization_bit')
-                gr.Dropdown(elem_id='quant_method')
-                gr.Dropdown(elem_id='bnb_4bit_comp_dtype')
-                gr.Dropdown(elem_id='bnb_4bit_quant_type')
-                gr.Checkbox(elem_id='bnb_4bit_use_double_quant')
+                gr.Dropdown(elem_id='quant_bits', value=None)
+                gr.Dropdown(elem_id='quant_method', value=None)
+                gr.Dropdown(elem_id='bnb_4bit_compute_dtype', value=None)
+                gr.Dropdown(elem_id='bnb_4bit_quant_type', value=None)
+                gr.Checkbox(elem_id='bnb_4bit_use_double_quant', value=None)

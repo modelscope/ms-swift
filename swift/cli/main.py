@@ -9,7 +9,6 @@ ROUTE_MAPPING: Dict[str, str] = {
     'pt': 'swift.cli.pt',
     'sft': 'swift.cli.sft',
     'infer': 'swift.cli.infer',
-    'app-ui': 'swift.cli.app_ui',
     'merge-lora': 'swift.cli.merge_lora',
     'web-ui': 'swift.cli.web_ui',
     'deploy': 'swift.cli.deploy',

@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Type
 
 import gradio as gr
@@ -76,26 +77,6 @@ class Advanced(BaseUI):
                 'en': 'Fill in with json format or --xxx xxx cmd format'
             }
         },
-        'custom_train_dataset_path': {
-            'label': {
-                'zh': '自定义训练数据集路径',
-                'en': 'Custom train dataset path'
-            },
-            'info': {
-                'zh': '输入自定义的训练数据集路径，空格分隔',
-                'en': 'Extra train files, split by blank'
-            }
-        },
-        'custom_val_dataset_path': {
-            'label': {
-                'zh': '自定义校验数据集路径',
-                'en': 'Custom val dataset path'
-            },
-            'info': {
-                'zh': '输入自定义的校验数据集路径，逗号分隔',
-                'en': 'Extra val files, split by comma'
-            }
-        },
         'truncation_strategy': {
             'label': {
                 'zh': '数据集超长策略',
@@ -104,16 +85,6 @@ class Advanced(BaseUI):
             'info': {
                 'zh': '如果token超长该如何处理',
                 'en': 'How to deal with the rows exceed the max length'
-            }
-        },
-        'gpu_memory_fraction': {
-            'label': {
-                'zh': 'GPU显存限制',
-                'en': 'GPU memory fraction'
-            },
-            'info': {
-                'zh': '设置使用显存的比例，一般用于显存测试',
-                'en': 'Set the memory fraction ratio of GPU, usually used in memory test'
             }
         },
         'max_steps': {
@@ -126,7 +97,7 @@ class Advanced(BaseUI):
                 'en': 'Set the max steps, if the value > 0 then num_train_epochs has no effects',
             }
         },
-        'eval_batch_size': {
+        'per_device_eval_batch_size': {
             'label': {
                 'zh': '验证batch size',
                 'en': 'Val batch size',
@@ -180,18 +151,13 @@ class Advanced(BaseUI):
                     gr.Textbox(elem_id='max_steps', lines=1, scale=20)
                     gr.Slider(elem_id='warmup_ratio', minimum=0.0, maximum=1.0, step=0.05, scale=20)
                 with gr.Row():
-                    gr.Textbox(elem_id='custom_train_dataset_path', is_list=True, scale=20)
-                    gr.Textbox(elem_id='custom_val_dataset_path', is_list=True, scale=20)
                     gr.Dropdown(elem_id='truncation_strategy', scale=20)
-                    gr.Slider(elem_id='eval_batch_size', minimum=1, maximum=256, step=2, scale=20)
+                    gr.Slider(elem_id='per_device_eval_batch_size', minimum=1, maximum=256, step=2, scale=20)
                     gr.Textbox(elem_id='max_grad_norm', lines=1, scale=20)
-                    gr.Checkbox(elem_id='predict_with_generate', scale=20)
-                with gr.Row():
                     gr.Dropdown(
                         elem_id='deepspeed',
-                        scale=4,
+                        scale=20,
                         allow_custom_value=True,
                         choices=['default-zero2', 'default-zero3', 'zero2-offload', 'zero3-offload'])
-                    gr.Textbox(elem_id='gpu_memory_fraction', scale=4)
                 with gr.Row():
                     gr.Textbox(elem_id='more_params', lines=4, scale=20)

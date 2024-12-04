@@ -10,12 +10,13 @@ from transformers import PreTrainedModel
 from trl import RewardTrainer as HFRewardTrainer
 from trl.trainer.utils import print_rich_table
 
-from swift.trainers import PushToMsHubMixin, RLHFTrainerMixin, SwiftMixin
+from ..mixin import SwiftMixin
+from .rlhf_mixin import RLHFTrainerMixin
 
 del HFRewardTrainer.__init__
 
 
-class RewardTrainer(RLHFTrainerMixin, PushToMsHubMixin, SwiftMixin, HFRewardTrainer):
+class RewardTrainer(RLHFTrainerMixin, SwiftMixin, HFRewardTrainer):
 
     def __init__(self, model: Optional[Union[PreTrainedModel, nn.Module, str]] = None, *_args, **kwargs):
         ref_model = kwargs.pop('ref_model')

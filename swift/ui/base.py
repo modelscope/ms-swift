@@ -1,5 +1,5 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-import shutil
 import sys
 import time
 import typing
@@ -8,11 +8,13 @@ from datetime import datetime
 from functools import wraps
 from typing import Any, Dict, List, OrderedDict, Type
 
+import gradio as gr
 import json
 from gradio import Accordion, Audio, Button, Checkbox, Dropdown, File, Image, Slider, Tab, TabItem, Textbox, Video
 from modelscope.hub.utils.utils import get_cache_dir
 
-from swift.llm.utils.model import MODEL_MAPPING, ModelType
+from swift.llm import TEMPLATE_MAPPING, BaseArguments
+from swift.llm.model.register import get_matched_model_meta
 
 all_langs = ['zh', 'en']
 builder: Type['BaseUI'] = None
@@ -37,11 +39,8 @@ def update_data(fn):
         if 'is_list' in kwargs:
             self.is_list = kwargs.pop('is_list')
 
-        if base_builder and base_builder.default(elem_id) is not None:
-            if os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio' and kwargs.get('value') is not None:
-                pass
-            else:
-                kwargs['value'] = base_builder.default(elem_id)
+        if base_builder and base_builder.default(elem_id) is not None and not kwargs.get('value'):
+            kwargs['value'] = base_builder.default(elem_id)
 
         if builder is not None:
             if elem_id in builder.locales(builder.lang):
@@ -52,6 +51,8 @@ def update_data(fn):
                     kwargs['value'] = values['value']
                 if 'label' in values:
                     kwargs['label'] = values['label']
+                if hasattr(builder, 'visible'):
+                    kwargs['visible'] = builder.visible
                 argument = base_builder.argument(elem_id)
                 if argument and 'label' in kwargs:
                     kwargs['label'] = kwargs['label'] + f'({argument})'
@@ -96,6 +97,7 @@ class BaseUI:
     cache_dir = os.path.join(get_cache_dir(), 'swift-web-ui')
     os.makedirs(cache_dir, exist_ok=True)
     quote = '\'' if sys.platform != 'win32' else '"'
+    visible = True
 
     @classmethod
     def build_ui(cls, base_tab: Type['BaseUI']):
@@ -109,6 +111,13 @@ class BaseUI:
         cls.do_build_ui(base_tab)
         builder = old_builder
         base_builder = old_base_builder
+        if cls is base_tab:
+            for ui in cls.sub_ui:
+                ui.after_build_ui(base_tab)
+
+    @classmethod
+    def after_build_ui(cls, base_tab: Type['BaseUI']):
+        pass
 
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
@@ -118,6 +127,7 @@ class BaseUI:
     @classmethod
     def save_cache(cls, key, value):
         timestamp = str(int(time.time()))
+        key = key.replace('/', '-')
         filename = os.path.join(cls.cache_dir, key + '-' + timestamp)
         with open(filename, 'w') as f:
             json.dump(value, f)
@@ -125,6 +135,7 @@ class BaseUI:
     @classmethod
     def list_cache(cls, key):
         files = []
+        key = key.replace('/', '-')
         for _, _, filenames in os.walk(cls.cache_dir):
             for filename in filenames:
                 if filename.startswith(key):
@@ -136,15 +147,17 @@ class BaseUI:
         return sorted(files, reverse=True)
 
     @classmethod
-    def load_cache(cls, key, timestamp):
+    def load_cache(cls, key, timestamp) -> BaseArguments:
         dt_object = datetime.strptime(timestamp, '%Y/%m/%d %H:%M:%S')
         timestamp = int(dt_object.timestamp())
+        key = key.replace('/', '-')
         filename = key + '-' + str(timestamp)
         with open(os.path.join(cls.cache_dir, filename), 'r') as f:
             return json.load(f)
 
     @classmethod
     def clear_cache(cls, key):
+        key = key.replace('/', '-')
         for _, _, filenames in os.walk(cls.cache_dir):
             for filename in filenames:
                 if filename.startswith(key):
@@ -162,11 +175,13 @@ class BaseUI:
     @classmethod
     def default(cls, elem_id):
         """Get choice by elem_id"""
+        if elem_id in cls.default_dict:
+            return cls.default_dict.get(elem_id)
         for sub_ui in BaseUI.sub_ui:
             _choice = sub_ui.default(elem_id)
             if _choice:
                 return _choice
-        return cls.default_dict.get(elem_id, None)
+        return None
 
     @classmethod
     def locale(cls, elem_id, lang):
@@ -193,6 +208,26 @@ class BaseUI:
             _elements = sub_ui.elements()
             elements.update(_elements)
         return elements
+
+    @classmethod
+    def valid_elements(cls):
+        elements = cls.elements()
+        return {
+            key: value
+            for key, value in elements.items()
+            if isinstance(value, (Textbox, Dropdown, Slider, Checkbox)) and key != 'train_record'
+        }
+
+    @classmethod
+    def element_keys(cls):
+        return list(cls.elements().keys())
+
+    @classmethod
+    def valid_element_keys(cls):
+        return [
+            key for key, value in cls.elements().items()
+            if isinstance(value, (Textbox, Dropdown, Slider, Checkbox)) and key != 'train_record'
+        ]
 
     @classmethod
     def element(cls, elem_id):
@@ -238,6 +273,75 @@ class BaseUI:
             arguments[f.name] = f'--{f.name}'
         return arguments
 
-    @staticmethod
-    def get_custom_name_list():
-        return list(set(MODEL_MAPPING.keys()) - set(ModelType.get_model_name_list()))
+    @classmethod
+    def update_input_model(cls, model, allow_keys=None, has_record=True, arg_cls=BaseArguments):
+        keys = cls.valid_element_keys()
+
+        if os.path.exists(model):
+            local_path = os.path.join(model, 'args.json')
+            if not os.path.exists(local_path):
+                ret = [gr.update()] * (len(keys) + int(has_record))
+                if len(ret) == 1:
+                    return ret[0]
+            try:
+                if hasattr(arg_cls, 'resume_from_checkpoint'):
+                    args = arg_cls(resume_from_checkpoint=model, load_dataset_config=True)
+                else:
+                    args = arg_cls(ckpt_dir=model, load_dataset_config=True)
+            except ValueError:
+                return [gr.update()] * (len(keys) + int(has_record))
+            values = []
+            for key in keys:
+                if allow_keys is not None and key not in allow_keys:
+                    continue
+                arg_value = getattr(args, key, None)
+                if arg_value and key != 'model':
+                    if key in ('torch_dtype', 'bnb_4bit_compute_dtype'):
+                        arg_value = str(arg_value).split('.')[1]
+                    if isinstance(arg_value, list) and key != 'dataset':
+                        try:
+                            arg_value = ' '.join(arg_value)
+                        except Exception:
+                            arg_value = None
+                    values.append(gr.update(value=arg_value))
+                else:
+                    values.append(gr.update())
+            ret = [gr.update(choices=[])] * int(has_record) + values
+            if len(ret) == 1:
+                return ret[0]
+            else:
+                return ret
+        else:
+            values = []
+            model_meta = get_matched_model_meta(model)
+            for key in keys:
+                if allow_keys is not None and key not in allow_keys:
+                    continue
+                if model_meta is None or key not in ('template', 'model_type', 'ref_model_type', 'system'):
+                    values.append(gr.update())
+                elif key in ('template', 'model_type', 'ref_model_type'):
+                    if key == 'ref_model_type':
+                        key = 'model_type'
+                    values.append(gr.update(value=getattr(model_meta, key)))
+                else:
+                    values.append(gr.update(value=TEMPLATE_MAPPING[model_meta.template].default_system))
+
+        if has_record:
+            return [gr.update(choices=cls.list_cache(model))] + values
+        else:
+            if len(values) == 1:
+                return values[0]
+            return values
+
+    @classmethod
+    def update_all_settings(cls, model, train_record, base_tab):
+        if not train_record:
+            return [gr.update()] * len(cls.elements())
+        cache = cls.load_cache(model, train_record)
+        updates = []
+        for key, value in cls.valid_elements().items():
+            if key in cache:
+                updates.append(gr.update(value=cache[key]))
+            else:
+                updates.append(gr.update())
+        return updates
