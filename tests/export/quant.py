@@ -32,8 +32,7 @@ def test_vlm_bnb_quant():
     #         quant_bits=4,
     #         quant_method='bnb'))
 
-    infer_main(
-        InferArguments(ckpt_dir='/mnt/nas2/huangjintao.hjt/.cache/modelscope/hub/qwen/Qwen2-VL-7B-Instruct-bnb-int4'))
+    infer_main(InferArguments(ckpt_dir='qwen/Qwen2-VL-7B-Instruct-bnb-int4'))
 
 
 if __name__ == '__main__':

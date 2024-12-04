@@ -246,11 +246,13 @@ def safe_snapshot_download(model_id_or_path: str,
     if not download_model:
         ignore_file_pattern += ['*.bin', '*.safetensors']
     hub = get_hub(use_hf)
+    if model_id_or_path.startswith('~'):
+        model_id_or_path = os.path.abspath(os.path.expanduser(model_id_or_path))
     with safe_ddp_context(hash_id=model_id_or_path):
         if os.path.exists(model_id_or_path):
             model_dir = model_id_or_path
         else:
-            if model_id_or_path[:1] in {'~', '/'}:  # startswith
+            if model_id_or_path.startswith('/'):  # startswith
                 raise ValueError(f"path: '{model_id_or_path}' not found")
             model_dir = hub.download_model(model_id_or_path, revision, ignore_file_pattern, token=hub_token, **kwargs)
 

@@ -28,17 +28,18 @@ def get_model_and_tokenizer(ms_model_id, model_arch=None):
         raise
 
 
-parser = argparse.ArgumentParser()
-parser.add_argument(
-    '--ms_model_id',
-    type=str,
-    required=True,
-)
-parser.add_argument(
-    '--model_arch',
-    type=str,
-    required=True,
-)
-args = parser.parse_args()
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '--ms_model_id',
+        type=str,
+        required=True,
+    )
+    parser.add_argument(
+        '--model_arch',
+        type=str,
+        required=True,
+    )
+    args = parser.parse_args()
 
-get_model_and_tokenizer(args.ms_model_id, args.model_arch)
+    get_model_and_tokenizer(args.ms_model_id, args.model_arch)

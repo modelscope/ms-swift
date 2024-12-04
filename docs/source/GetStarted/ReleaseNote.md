@@ -2,15 +2,19 @@
 
 ## 新功能
 
-1. 对数据集进行了整体重构，目前数据集加载整体速度提升2~20倍，encode速度提升2~4倍，且完整支持streaming模式
-    - 使用--load_from_cache_file true来支持使用数据前处理缓存
-    - 使用--dataset_num_proc来支持多进程加速处理
-    - 使用--streaming来支持流式加载数据集
-2. 对模型进行了重构，移除了2.x的model_type机制，目前可以直接使用--model xxx/xxx来训练和推理
-    - 如果是新模型，可以直接使用--model xxx/xxx --template xxx --model_type xxx，而无需写python脚本进行模型注册了
-3. template支持了jinja模式进行推理，使用--template_backend jinja来使用transformers官方模板
-4. app-ui合并至web-ui，因此app-ui能力支持了多模态推理
-5. 支持了plugin机制，用于定制训练过程，目前支持的plugin有：
+1. 数据集模块重构。数据集加载速度提升2~20倍，encode速度提升2~4倍，支持streaming模式
+    - 移除了dataset_name机制，采用dataset_id、dataset_dir、dataset_path方式指定数据集
+    - 使用`--dataset_num_proc`支持多进程加速处理、使用`--load_from_cache_file true`支持使用数据前处理缓存
+    - 使用`--streaming`支持流式加载hub端和本地数据集
+    - 支持`--packing`命令以获得更稳定的训练效率
+    - 指定`--dataset <dataset_dir>`支持本地加载开源数据集
+2. 对模型进行了重构：
+    - 移除了model_type机制，使用`--model <model_id>/<model_path>`来训练和推理
+    - 若是新模型，直接使用`--model <model_id>/<model_path> --template xxx --model_type xxx`，无需书写python脚本进行模型注册
+3. template模块重构：
+    - 使用`--template_backend jinja`采用jinja模式推理
+    - 采用messages格式作为入参接口
+4. 支持了plugin机制，用于定制训练过程，目前支持的plugin有：
     - callback 定制训练回调方法
     - custom_trainer 定制trainer
     - loss 定制loss方法
@@ -19,15 +23,21 @@
     - optimizer 定制训练使用的optimizer和lr_scheduler
     - tools 定制agent训练的system格式
     - tuner 定制新的tuner
-6. 支持All-to-All模型，即Emu3-Gen或Janus等文生图或全模态模型的训练和部署等
-7. 对examples进行了功能提升，目前examples可以全面反映SWIFT的能力，易用性更强
-8. 支持了一行命令启动多机训练，详情查看[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/multi-node/deepspeed/README.md).
-9. streaming模式可以高效率运行，并支持了--packing命令以获得更稳定的训练效率
-10. 多模态人类对齐支持KTO算法
-11. 可以使用--use_hf 1/0来切换hf社区和ms社区的数据集模型的下载上传
-12. 更好地支持了以代码形式进行训练、推理，代码结构更清晰，并补充了大量的代码注释
-13. 支持了pt backend下的批量推理和部署
-14. 支持了基于deepspeed框架的多卡推理
+4. 训练模块重构：
+    - 支持了一行命令启动多机训练，详情查看[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/multi-node/deepspeed/README.md)
+    - 支持所有多模态LLM的PreTrain
+    - 训练中的predict_with_generate采用infer模块，支持多模态LLM和多卡
+    - 人类对齐KTO算法支持多模态LLM
+5. 推理与部署模块重构：
+    - 支持pt backend下的batch推理，支持多卡推理
+    - 推理和部署模块统一采用openai格式接口
+    - 支持了异步推理接口
+6. app-ui合并入web-ui，app-ui支持多模态推理
+7. 支持All-to-All模型，即Emu3-Gen或Janus等文生图或全模态模型的训练和部署等
+8. 对examples进行了功能提升，目前examples可以全面反映SWIFT的能力，易用性更强
+9. 使用`--use_hf true/false`来切换HuggingFace社区和ModelScope社区的数据集模型的下载上传
+10. 更好地支持了以代码形式进行训练、推理，代码结构更清晰，并补充了大量的代码注释
+
 
 ## BreakChange
 
@@ -61,7 +71,7 @@
 
 1. 预训练请使用swift pt命令。该命令会默认使用generation template，而swift sft命令默认使用model_type预置的template
 2. 整体移除了2.x版本的examples目录，并添加了按功能类型划分的新examples
-3. 数据集格式完全向`messages`格式兼容，不再支持query/response/history格式的自定义数据集
+3. 数据集格式完全向messages格式兼容，不再支持query/response/history格式
 4. merge_lora的存储目录可以通过`--output_dir`指定了，且merge_lora和量化不能在一个命令中执行，需要最少两个命令
 5. 移除了app-ui界面，并使用`swift web-ui --model xxx`进行替代，并支持了多模态界面部署
 6. 移除了AIGC的依赖以及对应的examples和训练代码

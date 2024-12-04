@@ -83,14 +83,14 @@ def test_got_ocr():
 
 
 def test_llama_vision():
-    pt_engine = PtEngine('/mnt/nas2/huangjintao.hjt/.cache/modelscope/hub/LLM-Research/Llama-3___2-11B-Vision-Instruct')
+    pt_engine = PtEngine('LLM-Research/Llama-3___2-11B-Vision-Instruct')
     _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     _infer_model(pt_engine)
 
 
 def test_llava_hf():
-    pt_engine = PtEngine('/mnt/nas2/huangjintao.hjt/.cache/modelscope/hub/swift/llava-v1.6-mistral-7b-hf')
+    pt_engine = PtEngine('swift/llava-v1.6-mistral-7b-hf')
     _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     _infer_model(pt_engine)
@@ -104,7 +104,7 @@ def test_florence():
 
 
 def test_phi3_vision():
-    pt_engine = PtEngine('/mnt/nas2/huangjintao.hjt/.cache/modelscope/hub/LLM-Research/Phi-3-vision-128k-instruct')
+    pt_engine = PtEngine('LLM-Research/Phi-3-vision-128k-instruct')
     _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     _infer_model(pt_engine)
@@ -161,7 +161,7 @@ def test_paligemma():
 
 
 def test_pixtral():
-    pt_engine = PtEngine('/mnt/nas2/huangjintao.hjt/.cache/modelscope/hub/AI-ModelScope/pixtral-12b')
+    pt_engine = PtEngine('AI-ModelScope/pixtral-12b')
     _infer_model(pt_engine, messages=[{'role': 'user', 'content': '<image>这是什么'}])
 
 
@@ -181,9 +181,9 @@ if __name__ == '__main__':
     # test_paligemma()
     # test_pixtral()
     # test_llama_vision()
+    # test_llava_hf()
     #
-    # test_mplug_owl3()
+    test_mplug_owl3()
     # test_xcomposer2_5()
     # test_florence()
     # test_phi3_vision()
-    test_llava_hf()

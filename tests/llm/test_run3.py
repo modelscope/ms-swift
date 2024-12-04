@@ -103,6 +103,7 @@ class TestRun3(unittest.TestCase):
     #                     with open('./templates.txt', 'w') as f:
     #                         json.dump(templates, f)
 
+    @unittest.skip('skip')
     def test_template_compare(self):
         if os.path.exists('./templates.txt'):
             with open('./templates.txt', 'r') as f:

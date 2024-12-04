@@ -69,60 +69,6 @@ class TestRun2(unittest.TestCase):
         print(f'peft_loss: {losses[1]}')
         self.assertTrue(0.95 <= losses[0] <= 1)
 
-    def test_yi_vl_6b_chat(self):
-        if not __name__ == '__main__':
-            # ignore citest error in github
-            return
-        folder = os.path.join(os.path.dirname(__file__), 'data')
-        torch.cuda.empty_cache()
-        output = sft_main(
-            TrainArguments(
-                model_type=ModelType.yi_vl_6b_chat,
-                #   dataset=DatasetName.capcha_images,
-                lora_target_modules='ALL',
-                train_dataset_sample=100,
-                eval_steps=5,
-                custom_train_dataset_path=[os.path.join(folder, 'multi_modal_2.jsonl')],
-                lazy_tokenize=False))
-        best_model_checkpoint = output['best_model_checkpoint']
-        torch.cuda.empty_cache()
-        infer_main(InferArguments(ckpt_dir=best_model_checkpoint, load_dataset_config=True, val_dataset_sample=2))
-
-    def test_glm4v_9b_chat(self):
-        if not __name__ == '__main__':
-            # ignore citest error in github
-            return
-        folder = os.path.join(os.path.dirname(__file__), 'data')
-        torch.cuda.empty_cache()
-        output = sft_main(
-            TrainArguments(
-                model_type=ModelType.glm4v_9b_chat,
-                # dataset=DatasetName.capcha_images,
-                # lora_target_modules='ALL',
-                train_dataset_sample=100,
-                eval_steps=5,
-                custom_train_dataset_path=[os.path.join(folder, 'multi_modal_3.jsonl')],
-                lazy_tokenize=False))
-        best_model_checkpoint = output['best_model_checkpoint']
-        torch.cuda.empty_cache()
-        infer_main(
-            InferArguments(
-                ckpt_dir=best_model_checkpoint, load_dataset_config=True, val_dataset_sample=2, merge_lora=True))
-
-    def test_baichuan2_chat_int4(self):
-        if not __name__ == '__main__':
-            # ignore citest error in github
-            return
-        from swift.llm import sft_main, infer_main, TrainArguments, InferArguments, ModelType, DatasetName
-        output = sft_main(
-            TrainArguments(
-                model_type=ModelType.baichuan2_7b_chat_int4,
-                dataset=['alpaca-zh'],
-                lora_target_modules=['DEFAULT', 'EMBEDDING'],
-                train_dataset_sample=20))
-        best_model_checkpoint = output['best_model_checkpoint']
-        infer_main(InferArguments(ckpt_dir=best_model_checkpoint, load_dataset_config=True, val_dataset_sample=1))
-
     def test_self_cognition(self):
         if not __name__ == '__main__':
             # ignore citest error in github
