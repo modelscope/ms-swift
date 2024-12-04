@@ -101,7 +101,7 @@ class ModelArguments:
         self.model_info, self.model_meta = get_model_info_meta(**self.get_model_kwargs())
         self.model_dir = self.model_info.model_dir
         self.model_type = self.model_info.model_type
-        if self.rope_scaling is not None:
+        if self.rope_scaling is not None and isinstance(self.rope_scaling, str):
             assert self.max_length is not None
             max_model_len_no_scaling = self.model_info.max_model_len_no_scaling
             rope_scaling = self.model_info.rope_scaling or {}
