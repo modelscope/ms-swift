@@ -34,7 +34,7 @@ def get_model_info_table():
                 r = (f'|{ms_model_id}|'
                      f'|{hf_model_id}|'
                      f'{model_type}|{model_meta.architectures}|{template}|'
-                     f'{requires}|{group.tags}|\n')
+                     f'{requires or "-"}|{group.tags or "-"}|\n')
                 if model_meta.is_multimodal:
                     res_mllm.append(r)
                 else:
