@@ -2,7 +2,7 @@
 
 ## 新功能
 
-1. 对数据集进行了整体重构，目前数据集加载整体速度提升2~20倍，encode速度提升2~4倍，且完整支持streaming模式，GPU算力利用率提升2~8倍
+1. 对数据集进行了整体重构，目前数据集加载整体速度提升2~20倍，encode速度提升2~4倍，且完整支持streaming模式
     - 使用--load_from_cache_file true来支持使用数据前处理缓存
     - 使用--dataset_num_proc来支持多进程加速处理
     - 使用--streaming来支持流式加载数据集
@@ -61,7 +61,7 @@
 
 1. 预训练请使用swift pt命令。该命令会默认使用generation template，而swift sft命令默认使用model_type预置的template
 2. 整体移除了2.x版本的examples目录，并添加了按功能类型划分的新examples
-3. 数据集格式完全向sharegpt格式兼容，不再支持query/response/history格式
+3. 数据集格式完全向`messages`格式兼容，不再支持query/response/history格式的自定义数据集
 4. merge_lora的存储目录可以通过`--output_dir`指定了，且merge_lora和量化不能在一个命令中执行，需要最少两个命令
 5. 移除了app-ui界面，并使用`swift web-ui --model xxx`进行替代，并支持了多模态界面部署
 6. 移除了AIGC的依赖以及对应的examples和训练代码
