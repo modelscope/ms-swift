@@ -36,6 +36,7 @@ class ExportArguments(MergeArguments, BaseArguments):
 
     to_peft_format: bool = False
     # awq/gptq
+    quant_method: Literal['awq', 'gptq'] = None
     quant_n_samples: int = 256
     quant_seqlen: int = 2048
     quant_batch_size: int = 1

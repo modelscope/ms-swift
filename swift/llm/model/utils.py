@@ -56,7 +56,7 @@ class ModelInfo:
     model_dir: str
     torch_dtype: torch.dtype
     max_model_len: int
-    quant_method: Literal['gptq', 'awq', 'bnb', 'aqlm', None]
+    quant_method: Literal['gptq', 'awq', 'bnb', 'aqlm', 'hqq', None]
     quant_bits: int
 
     # extra
