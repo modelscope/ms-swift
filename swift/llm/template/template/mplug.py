@@ -44,11 +44,7 @@ class mPlugOwl2Template(Template):
             res['images'] = images
         return res
 
-    def _data_collator(self,
-                       batch: List[Dict[str, Any]],
-                       *,
-                       padding_to: Optional[int] = None,
-                       model: Optional[nn.Module] = None) -> Dict[str, Any]:
+    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
         images = [b['images'] for b in batch if 'images' in b]
         if images:
@@ -136,12 +132,8 @@ class mPlugOwl3Template(Template):
             inputs['image_embeds'] = model.forward_image(pixel_values)
         return inputs
 
-    def _data_collator(self,
-                       batch: List[Dict[str, Any]],
-                       *,
-                       padding_to: Optional[int] = None,
-                       model: Optional[nn.Module] = None) -> Dict[str, Any]:
-        res = super()._data_collator(batch, padding_to=padding_to, model=model)
+    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super()._data_collator(batch, padding_to=padding_to)
         image_embeds = [b['image_embeds'] for b in batch if 'image_embeds' in b]
         if image_embeds:
             res['image_embeds'] = torch.concat(image_embeds)
@@ -212,12 +204,8 @@ class mPlugOwl3_241101Template(mPlugOwl3Template):
             inputs['image_embeds'] = model.forward_image(pixel_values)
         return inputs
 
-    def _data_collator(self,
-                       batch: List[Dict[str, Any]],
-                       *,
-                       padding_to: Optional[int] = None,
-                       model: Optional[nn.Module] = None) -> Dict[str, Any]:
-        res = super()._data_collator(batch, padding_to=padding_to, model=model)
+    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super()._data_collator(batch, padding_to=padding_to)
         image_embeds = [b['image_embeds'] for b in batch if 'image_embeds' in b]
         if image_embeds:
             res['image_embeds'] = torch.concat(image_embeds)

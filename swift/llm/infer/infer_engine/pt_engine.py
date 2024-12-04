@@ -130,38 +130,38 @@ class PtEngine(InferEngine):
         for logprobs, new_logprobs in zip(batched_logprobs, new_batched_logprobs):
             logprobs += new_logprobs
 
-    def _infer_stream(
-            self,
-            template: Template,
-            inputs: Dict[str, Any],
-            generation_config: GenerationConfig,
-            *,
-            lora_request: Optional[LoRARequest] = None) -> Iterator[List[Optional[ChatCompletionStreamResponse]]]:
-        kwargs = {}
+    def _infer_stream(self,
+                      template: Template,
+                      inputs: Dict[str, Any],
+                      generation_config: GenerationConfig,
+                      *,
+                      lora_request: Optional[LoRARequest] = None,
+                      **kwargs) -> Iterator[List[Optional[ChatCompletionStreamResponse]]]:
+        generate_kwargs = {}
         if lora_request is not None:
-            kwargs['adapter_names'] = self._get_adapter_names(lora_request)
+            generate_kwargs['adapter_names'] = self._get_adapter_names(lora_request)
         if generation_config.num_beams != 1:
             error_msg = 'Streaming generation does not support beam search.'
             raise ValueError(error_msg)
         num_prompt_tokens = self._get_num_tokens(inputs)
 
         streamer = TokensIteratorStreamer()
-        kwargs.update({
+        generate_kwargs.update({
             'generation_config': generation_config,
             'streamer': streamer,
             **inputs,
         })
         logits_streamer = None
         if generation_config.output_logits:
-            kwargs['logits_processor'] = LogitsProcessorList([LogitsStreamer()])
+            generate_kwargs['logits_processor'] = LogitsProcessorList([LogitsStreamer()])
 
         def _model_generate(*args, **kwargs):
             if is_torch_npu_available():
                 torch.npu.set_device(self.model.device)
             self.model.generate(*args, **kwargs)
 
-        kwargs = template.prepare_generate_kwargs(kwargs, model=self.model)
-        thread = Thread(target=_model_generate, kwargs=kwargs)
+        generate_kwargs = template.prepare_generate_kwargs(generate_kwargs, model=self.model)
+        thread = Thread(target=_model_generate, kwargs=generate_kwargs)
         thread.start()
         batch_size = inputs['attention_mask'].shape[0]
         all_is_finished = False
@@ -249,16 +249,17 @@ class PtEngine(InferEngine):
                     inputs: Dict[str, Any],
                     generation_config: GenerationConfig,
                     *,
-                    lora_request: Optional[LoRARequest] = None) -> Union[List[ChatCompletionResponse]]:
+                    lora_request: Optional[LoRARequest] = None,
+                    template_inputs=None) -> Union[List[ChatCompletionResponse]]:
         # bos_token TODO: encoder-decoder
-        kwargs = {}
+        generate_kwargs = {}
         if lora_request is not None:
-            kwargs['adapter_names'] = self._get_adapter_names(lora_request)
-        kwargs.update({'generation_config': generation_config, **inputs})
+            generate_kwargs['adapter_names'] = self._get_adapter_names(lora_request)
+        generate_kwargs.update({'generation_config': generation_config, **inputs})
         num_prompt_tokens = self._get_num_tokens(inputs)
 
-        kwargs = template.prepare_generate_kwargs(kwargs, model=self.model)
-        output = dict(self.model.generate(**kwargs))
+        generate_kwargs = template.prepare_generate_kwargs(generate_kwargs, model=self.model)
+        output = dict(self.model.generate(**generate_kwargs))
         output.pop('past_key_values', None)
         batched_generate_ids = output['sequences']
         batched_generate_ids = template.get_generate_ids(batched_generate_ids, num_prompt_tokens)
@@ -278,7 +279,7 @@ class PtEngine(InferEngine):
 
             logprobs = self._get_logprobs(self.tokenizer, logprobs_list, generate_ids, generation_config.top_logprobs)
             usage_info = self._get_usage_info(num_prompt_tokens, len(generate_ids))
-            response = template.decode(generate_ids)
+            response = template.decode(generate_ids, template_inputs=template_inputs[i])
             finish_reason = self._get_finish_reason(generation_config.max_new_tokens, num_prompt_tokens, True)
             toolcall = self._get_toolcall(response)
             choices = [
@@ -336,14 +337,14 @@ class PtEngine(InferEngine):
 
         template.set_mode('pt')
         batched_inputs = []
+        template_inputs = []
         for infer_request in infer_requests:
-            inputs = template.encode(infer_request)
+            inputs = template.encode(infer_request, return_template_inputs=True)
+            template_inputs.append(inputs.pop('template_inputs'))
             batched_inputs.append(inputs)
+        inputs = to_device(template.data_collator(batched_inputs), self.model.device)
         if self.model.model_meta.is_multimodal:
-            inputs = template.pre_data_collator(batched_inputs, model=self.model)
-            template.pre_forward_hook(self.model, None, inputs)
-        else:
-            inputs = to_device(template.data_collator(batched_inputs, model=self.model), self.model.device)
+            _, inputs = template.pre_forward_hook(self.model, None, inputs)
         self.set_default_max_tokens(request_config, inputs)
         generation_config = self._prepare_generation_config(request_config)
         self._add_stop_words(generation_config, request_config, template)
@@ -352,7 +353,8 @@ class PtEngine(InferEngine):
             'template': template,
             'inputs': inputs,
             'generation_config': generation_config,
-            'lora_request': lora_request
+            'lora_request': lora_request,
+            'template_inputs': template_inputs
         }
         for pre_infer_hook in self.pre_infer_hooks:
             kwargs = pre_infer_hook(kwargs)

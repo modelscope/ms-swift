@@ -186,6 +186,10 @@ class SwiftMixin:
         args_path = os.path.join(os.path.dirname(output_dir), 'args.json')
         if os.path.exists(args_path):
             shutil.copy(args_path, os.path.join(output_dir, 'args.json'))
+        # predict.jsonl
+        predict_jsonl = os.path.join(os.path.dirname(output_dir), 'predict.jsonl')
+        if os.path.exists(predict_jsonl):
+            shutil.move(predict_jsonl, os.path.join(output_dir, 'predict.jsonl'))
 
         is_adapter = isinstance(self.model, (SwiftModel, PeftModel))
         # tokenizer

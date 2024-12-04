@@ -1,7 +1,6 @@
 import unittest
 
-from swift.llm import (ModelType, get_model_tokenizer, get_template, inference, inference_stream, limit_history_length,
-                       print_example)
+from swift.llm import get_model_tokenizer, get_template, limit_history_length, print_example
 from swift.utils import lower_bound, seed_everything
 
 
@@ -16,10 +15,10 @@ class TestLlmUtils(unittest.TestCase):
         self.assertTrue(lower_bound(0, len(arr), lambda i: arr[i] == -100) == 1000)
 
     def test_inference(self):
-        model_type = ModelType.qwen2_7b_instruct
+        model = 'qwen/Qwen2-7B-Instruct'
         model, tokenizer = get_model_tokenizer(model_type, use_flash_attn=False)
-        template_type = get_default_template_type(model_type)
-        template = get_template(template_type, tokenizer)
+        template = get_template(model.model_meta.template, tokenizer)
+
         model.generation_config.max_length = 128
         model.generation_config.do_sample = True
         for query in ['你好', 'hello']:

@@ -102,12 +102,8 @@ class QwenAudioTemplate(Template):
             encoded['tokenizer_kwargs'] = tokenizer_kwargs
         return encoded
 
-    def _data_collator(self,
-                       batch: List[Dict[str, Any]],
-                       *,
-                       padding_to: Optional[int] = None,
-                       model: Optional[nn.Module] = None) -> Dict[str, Any]:
-        res = super()._data_collator(batch, padding_to=padding_to, model=model)
+    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super()._data_collator(batch, padding_to=padding_to)
         if batch[0].get('audio_info') is not None:
             res['audio_info'] = [b['audio_info'] for b in batch]
         return res
@@ -140,12 +136,8 @@ class Qwen2AudioTemplate(Template):
             encoded.update(audio_inputs)
         return encoded
 
-    def _data_collator(self,
-                       batch: List[Dict[str, Any]],
-                       *,
-                       padding_to: Optional[int] = None,
-                       model: Optional[nn.Module] = None) -> Dict[str, Any]:
-        res = super()._data_collator(batch, padding_to=padding_to, model=model)
+    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super()._data_collator(batch, padding_to=padding_to)
         input_features = [b['input_features'] for b in batch if b.get('input_features') is not None]
         feature_attention_mask = [
             b['feature_attention_mask'] for b in batch if b.get('feature_attention_mask') is not None
@@ -260,21 +252,23 @@ class Qwen2VLTemplate(Template):
         return encoded
 
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        if self.mode != 'train':
+        if not self.is_training:
             return inputs
-        input_ids = inputs['input_ids']
+        input_ids = inputs.pop('input_ids')
         _model = model.model
         if not hasattr(_model, 'embed_tokens'):
             _model = _model.model  # LoRA
-        pixel_values = inputs.get('pixel_values')
-        pixel_values_videos = inputs.get('pixel_values_videos')
+        pixel_values = inputs.pop('pixel_values', None)
+        pixel_values_videos = inputs.pop('pixel_values_videos', None)
+        image_grid_thw = inputs.pop('image_grid_thw', None)
+        video_grid_thw = inputs.pop('video_grid_thw', None)
+
         inputs_embeds = _model.embed_tokens(input_ids)
         if pixel_values is None and pixel_values_videos is None:  # plain-text
             if is_deepspeed_enabled():
                 from PIL import Image
                 images = [Image.new('RGB', (32, 32), (0, 0, 0))]
-                processor = self.processor
-                media_inputs = processor.image_processor(images=images, videos=None, return_tensors='pt')
+                media_inputs = self.processor.image_processor(images=images, videos=None, return_tensors='pt')
                 device = input_ids.device
                 pixel_values = media_inputs['pixel_values'].to(device)
 
@@ -283,7 +277,6 @@ class Qwen2VLTemplate(Template):
                 inputs_embeds += image_embeds.mean() * 0.
         else:
             if pixel_values is not None:
-                image_grid_thw = inputs['image_grid_thw']
                 pixel_values = pixel_values.type(model.visual.get_dtype())
                 image_embeds = model.visual(pixel_values, grid_thw=image_grid_thw)
                 image_mask = (input_ids == model.config.image_token_id).unsqueeze(-1).expand_as(inputs_embeds)
@@ -291,36 +284,23 @@ class Qwen2VLTemplate(Template):
                 inputs_embeds = inputs_embeds.masked_scatter(image_mask, image_embeds)
 
             if pixel_values_videos is not None:
-                video_grid_thw = inputs['video_grid_thw']
                 pixel_values_videos = pixel_values_videos.type(model.visual.get_dtype())
                 video_embeds = model.visual(pixel_values_videos, grid_thw=video_grid_thw)
                 video_mask = (input_ids == model.config.video_token_id).unsqueeze(-1).expand_as(inputs_embeds)
                 video_embeds = video_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
                 inputs_embeds = inputs_embeds.masked_scatter(video_mask, video_embeds)
-        res = {'inputs_embeds': inputs_embeds}
-        for key in ['input_ids', 'image_grid_thw', 'video_grid_thw']:
-            value = inputs.get(key, None)
-            if value is not None:
-                res[key] = value
-        return res
 
-    def _data_collator(self,
-                       batch: List[Dict[str, Any]],
-                       *,
-                       padding_to: Optional[int] = None,
-                       model: Optional[nn.Module] = None) -> Dict[str, Any]:
-        res = super()._data_collator(batch, padding_to=padding_to, model=model)
+        # fix https://github.com/huggingface/transformers/pull/33487
+        position_ids, _ = model.get_rope_index(input_ids, image_grid_thw, video_grid_thw, inputs['attention_mask'])
+        inputs.update({'inputs_embeds': inputs_embeds, 'position_ids': position_ids.contiguous()})
+        return inputs
+
+    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super()._data_collator(batch, padding_to=padding_to)
         for media_type in ['image', 'video']:
             grid_thw = [b[f'{media_type}_grid_thw'] for b in batch if b.get(f'{media_type}_grid_thw') is not None]
             if grid_thw:
                 res[f'{media_type}_grid_thw'] = torch.concat(grid_thw)
-        if 'input_ids' in res and self.mode == 'train':
-            image_grid_thw = res.pop('image_grid_thw', None)
-            video_grid_thw = res.pop('video_grid_thw', None)
-            # fix https://github.com/huggingface/transformers/pull/33487
-            position_ids, _ = model.get_rope_index(res['input_ids'], image_grid_thw, video_grid_thw,
-                                                   res['attention_mask'])
-            res['position_ids'] = position_ids.contiguous()
         return res
 
 

@@ -47,7 +47,7 @@ def test_glm4():
 
 
 def test_llama():
-    pt_engine = PtEngine('LLM-Research/Llama-3.2-3B-Instruct')
+    pt_engine = PtEngine('LLM-Research/Llama-3.2-1B-Instruct')
     _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     _infer_model(pt_engine)
@@ -99,6 +99,13 @@ def test_codegeex4():
     _infer_model(pt_engine)
 
 
+def test_telechat():
+    pt_engine = PtEngine('TeleAI/TeleChat2-3B')
+    _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    _infer_model(pt_engine)
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig, get_template, get_model_tokenizer
     from swift.utils import get_logger, seed_everything
@@ -113,5 +120,6 @@ if __name__ == '__main__':
     # test_deepseek_moe()
     # test_codegeex4()
     # test_glm4()
-    # test_llama()
+    test_llama()
     #
+    # test_telechat()

@@ -8,7 +8,6 @@ from dataclasses import asdict
 from functools import wraps
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
-import json
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -185,10 +184,9 @@ class Template(ProcessorMixin):
             'label': inputs.label
         }
 
-    def encode(
-        self,
-        inputs: Union[TemplateInputs, Dict[str, Any], InferRequest],
-    ) -> Dict[str, Any]:
+    def encode(self,
+               inputs: Union[TemplateInputs, Dict[str, Any], InferRequest],
+               return_template_inputs: bool = False) -> Dict[str, Any]:
         """The entrance method of Template!
 
         Returns:
@@ -217,6 +215,8 @@ class Template(ProcessorMixin):
         for key in list(encoded.keys()):
             if encoded[key] is None:
                 encoded.pop(key)
+        if return_template_inputs:
+            encoded['template_inputs'] = inputs
         return encoded
 
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
@@ -233,8 +233,9 @@ class Template(ProcessorMixin):
                     return generate_ids[:-i]
         return generate_ids
 
-    def decode(self, generate_ids: List[int], is_finished: bool = True, **decode_kwargs) -> Any:
-        return self._skip_stop_decode(generate_ids, is_finished, **decode_kwargs)
+    def decode(self, generate_ids: List[int], is_finished: bool = True, tokenizer_kwargs=None, **kwargs) -> Any:
+        tokenizer_kwargs = tokenizer_kwargs or {}
+        return self._skip_stop_decode(generate_ids, is_finished, **tokenizer_kwargs)
 
     def _skip_stop_decode(self, generate_ids: List[int], is_finished: bool, **decode_kwargs) -> Any:
         # Do not print template_meta.suffix[-1] and eos_token.
@@ -662,18 +663,8 @@ class Template(ProcessorMixin):
         return response
 
     def pre_forward_hook(self, model: nn.Module, args, kwargs, *, padding_to: Optional[int] = None) -> Dict[str, Any]:
-        # inplace
         from swift.llm import to_device
-        batched_data = kwargs.pop('_data')
-        extra_inputs = []
-        for data in batched_data:
-            extra_inputs.append(self._post_encode(model, to_device(data, model.device)))
-        new_kwargs = self.data_collator(extra_inputs, padding_to=padding_to, model=model)
-        new_kwargs.pop('labels', None)
-        if 'inputs_embeds' in new_kwargs:
-            new_kwargs.pop('input_ids', None)
-        kwargs.update(to_device(new_kwargs, model.device))
-
+        kwargs = self._post_encode(model, to_device(kwargs, model.device))
         if isinstance(model, PeftModel):
             parameters = inspect.signature(model.base_model.model.forward).parameters
         else:
@@ -725,38 +716,13 @@ class Template(ProcessorMixin):
             deepspeed.initialize = self._deepspeed_initialize
         self._deepspeed_initialize = None
 
-    def pre_data_collator(self,
-                          batch: List[Dict[str, Any]],
-                          *,
-                          padding_to: Optional[int] = None,
-                          model: Optional[nn.Module] = None) -> Dict[str, Any]:
-        """for multimodal LLM"""
-        # compat streaming
-        for data in batch:
-            for key in {'input_ids', 'labels', 'loss_scale'}:
-                for k, v in data.items():
-                    if k.endswith(key) and isinstance(v, (list, tuple)):
-                        data[k] = torch.tensor(v)[None]
-
-        new_batch = []
-        for b in batch:
-            new_batch.append({k: v for k, v in b.items() if k.endswith('labels') or k == 'label'})
-
-        res = self.data_collator(new_batch, padding_to=padding_to, model=model)  # only labels
-        res['_data'] = batch
-        return res
-
-    def data_collator(self,
-                      batch: List[Dict[str, Any]],
-                      *,
-                      padding_to: Optional[int] = None,
-                      model: Optional[nn.Module] = None) -> Dict[str, Any]:
+    def data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         if self.mode == 'rlhf':
-            return self._rlhf_data_collator(batch, padding_to=padding_to, model=model)
+            return self._rlhf_data_collator(batch, padding_to=padding_to)
         elif self.mode == 'kto':
-            return self._kto_data_collator(batch, padding_to=padding_to, model=model)
+            return self._kto_data_collator(batch, padding_to=padding_to)
         elif self.mode in {'pt', 'train'}:
-            return self._data_collator(batch, padding_to=padding_to, model=model)
+            return self._data_collator(batch, padding_to=padding_to)
 
     @staticmethod
     def _fetch_inputs_startswith(batch: List[Dict[str, Any]], prefix: str) -> List[Dict[str, Any]]:
@@ -774,23 +740,18 @@ class Template(ProcessorMixin):
                             *,
                             chosen_prefix: str = 'chosen_',
                             rejected_prefix: str = 'rejected_',
-                            padding_to: Optional[int] = None,
-                            model: Optional[nn.Module] = None) -> Dict[str, Any]:
+                            padding_to: Optional[int] = None) -> Dict[str, Any]:
         new_batch = []
         for prefix in [chosen_prefix, rejected_prefix]:
             new_batch += self._fetch_inputs_startswith(batch, prefix)
-        return self._data_collator(new_batch, padding_to=padding_to, model=model)
+        return self._data_collator(new_batch, padding_to=padding_to)
 
-    def _kto_data_collator(self,
-                           batch: List[Dict[str, Any]],
-                           *,
-                           padding_to: Optional[int] = None,
-                           model: Optional[nn.Module] = None) -> Dict[str, Any]:
+    def _kto_data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         kl_batch = self._fetch_inputs_startswith(batch, 'KL_completion_')
         new_batch = self._fetch_inputs_startswith(batch, 'completion_')
 
-        kl_res = self._data_collator(kl_batch, padding_to=padding_to, model=model)
-        res = self._data_collator(new_batch, padding_to=padding_to, model=model)
+        kl_res = self._data_collator(kl_batch, padding_to=padding_to)
+        res = self._data_collator(new_batch, padding_to=padding_to)
         if res and kl_res:
             res = {f'completion_{k}': v for k, v in res.items()}
             res.update({f'KL_completion_{k}': v for k, v in kl_res.items()})
@@ -802,11 +763,7 @@ class Template(ProcessorMixin):
             res['label'] = label
         return res
 
-    def _data_collator(self,
-                       batch: List[Dict[str, Any]],
-                       *,
-                       padding_to: Optional[int] = None,
-                       model: Optional[nn.Module] = None) -> Dict[str, Any]:
+    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         """
         Args:
             batch(`List[Dict[str, Any]]`): The input data in batch

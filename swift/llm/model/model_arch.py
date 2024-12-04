@@ -413,7 +413,7 @@ register_model_arch(
 register_model_arch(
     MultiModelKeys(
         MLLMModelArch.qwen2_vl,
-        language_model=['model', 'lm_head'],
+        language_model='model',
         aligner='visual.merger',
         vision_tower='visual',
     ))

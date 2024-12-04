@@ -108,12 +108,8 @@ class InternLMXComposer2Template(Template):
         wrap_im_mask = torch.tensor(wrap_im_mask, dtype=torch.bool, device=device)[None]
         return {'inputs_embeds': res_inputs_embeds, 'im_mask': wrap_im_mask, 'labels': res_labels}
 
-    def _data_collator(self,
-                       batch: List[Dict[str, Any]],
-                       *,
-                       padding_to: Optional[int] = None,
-                       model: Optional[nn.Module] = None) -> Dict[str, Any]:
-        res = super()._data_collator(batch, padding_to=padding_to, model=model)
+    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super()._data_collator(batch, padding_to=padding_to)
         if 'im_mask' in batch[0]:
             im_mask = [b['im_mask'][0] for b in batch]
             im_mask = self._pad_sequence(im_mask, 0)

@@ -53,7 +53,7 @@ class QuantEngine(ProcessorMixin):
 
     def _prepare_dataset(self, examples: List[Dict[str, torch.LongTensor]], batch_size: int = 1, *args, **kwargs):
         examples = [
-            self.template.data_collator(examples[start:start + batch_size], model=self.model)
+            self.template.data_collator(examples[start:start + batch_size])
             for start in range(0, len(examples), batch_size)
         ]
         return examples
