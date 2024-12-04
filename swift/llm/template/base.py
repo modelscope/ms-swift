@@ -96,7 +96,10 @@ class Template(ProcessorMixin):
         if self.is_encoder_decoder:
             self.skip_prompt = False
 
-        self.mode: Literal['pt', 'vllm', 'lmdeploy', 'train', 'rlhf', 'kto'] = 'pt'
+        self.mode: Literal[
+            'pt', 'vllm', 'lmdeploy',  # infer
+            'train', 'rlhf', 'kto'  # train
+        ] = 'pt'
         self._handles = []
         self._deepspeed_initialize = None
 
@@ -791,6 +794,10 @@ class Template(ProcessorMixin):
             res.update({f'KL_completion_{k}': v for k, v in kl_res.items()})
         else:
             res = res or kl_res
+
+        label = [b['label'] for b in batch if b.get('label') is not None]
+        if label:
+            res['label'] = label
         return res
 
     def _data_collator(self,
@@ -864,10 +871,11 @@ class Template(ProcessorMixin):
         pixel_values_videos = [b['pixel_values_videos'] for b in batch if b.get('pixel_values_videos') is not None]
         if len(pixel_values_videos) > 0:
             res['pixel_values_videos'] = torch.concat(pixel_values_videos)
-        # kto & sequence_classification
-        label = [b['label'] for b in batch if b.get('label') is not None]
-        if label:
-            res['label'] = label
+        # # sequence_classification
+        if self.is_training:
+            label = [b['label'] for b in batch if b.get('label') is not None]
+            if label:
+                res['label'] = label
         if use_torchacc() or self.sequence_parallel_size > 1:
             res = self._torchacc_xtuner_data_collator(res, padding_to, self.tokenizer, padding_side)
         return res

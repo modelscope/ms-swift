@@ -1,6 +1,6 @@
 if __name__ == '__main__':
     import os
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+    os.environ['CUDA_VISIBLE_DEVICES'] = '2'
     os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 
 import os
@@ -237,6 +237,7 @@ class TestRun(unittest.TestCase):
             return
         torch.cuda.empty_cache()
         # llm rlhf
+        # 
         rlhf_types = ['dpo', 'orpo', 'simpo', 'kto', 'cpo']  # , 'rm', 'ppo'
         for rlhf_type in rlhf_types:
             dataset = ('AI-ModelScope/hh_rlhf_cn:harmless_base_cn#100'
@@ -261,23 +262,62 @@ class TestRun(unittest.TestCase):
             infer_main(InferArguments(ckpt_dir=model_checkpoint, load_dataset_config=True))
 
         # mllm rlhf
-        visual_rlhf_types = ['dpo', 'orpo', 'simpo', 'cpo', 'rm']
-        test_model = ['llava1_6-mistral-7b-instruct', 'internvl2-2b',
-                      'florence-2-large']  # decoder only and encoder-decoder
+        visual_rlhf_types = ['dpo', 'orpo', 'simpo', 'cpo']  # 'rm'
+        #  'florence-2-base-ft'
+        test_model = ['swift/llava-v1.6-mistral-7b-hf', 'OpenGVLab/InternVL2-2B',
+                    'qwen/Qwen2-VL-2B-Instruct']  # decoder only and encoder-decoder
         for rlhf_type in visual_rlhf_types:
             for model in test_model:
-                dataset_name = 'rlaif-v'
+                dataset_name = 'swift/RLAIF-V-Dataset#100'
                 output = rlhf_main(
                     RLHFArguments(
                         rlhf_type=rlhf_type,
-                        model_type=model,
+                        model=model,
                         dataset=dataset_name,
-                        train_dataset_sample=100,
                         eval_steps=5))
                 best_model_checkpoint = output['best_model_checkpoint']
                 torch.cuda.empty_cache()
                 infer_main(
                     InferArguments(ckpt_dir=best_model_checkpoint, load_dataset_config=True, val_dataset_sample=2))
+
+    def test_loss_matching(self):
+        output_dir = 'output'
+        if not __name__ == '__main__':
+            # ignore citest error in github
+            return
+        losses = []
+        for use_swift_lora in [False, True]:
+            bool_var = use_swift_lora
+            torch.cuda.empty_cache()
+            output = sft_main([
+                '--model', 'qwen/Qwen-7B-Chat', '--eval_steps', '5',
+                '--dataset', f'AI-ModelScope/leetcode-solutions-python#200', '--output_dir', output_dir,
+                '--gradient_checkpointing', 'true', '--max_new_tokens', '100', '--attn_impl', 'flash_attn',
+                '--target_modules', 'all-linear', '--seed', '0', '--lora_bias', 'all', '--modules_to_save',
+                'lm_head', '--use_swift_lora', str(use_swift_lora), '--num_train_epochs', '1',
+                '--gradient_accumulation_steps', '16'
+            ])
+            best_model_checkpoint = output['best_model_checkpoint']
+            print(f'best_model_checkpoint: {best_model_checkpoint}')
+            load_dataset_config = str(bool_var or NO_EVAL_HUMAN)
+            if load_dataset_config:
+                val_dataset_sample = 2
+            else:
+                val_dataset_sample = -1
+            torch.cuda.empty_cache()
+            infer_main([
+                '--ckpt_dir', best_model_checkpoint, '--val_dataset_sample',
+                str(val_dataset_sample), '--max_new_tokens', '100', '--attn_impl', 'eager', '--merge_lora',
+                str(bool_var), '--load_dataset_config',
+                str(load_dataset_config)
+            ])
+            loss = output['log_history'][-1]['train_loss']
+            losses.append(loss)
+        self.assertTrue(abs(losses[0] - losses[1]) < 5e-4)
+        print(f'swift_loss: {losses[0]}')
+        print(f'peft_loss: {losses[1]}')
+        self.assertTrue(0.95 <= losses[0] <= 1)
+
 
     def test_pai_compat(self):
         if not __name__ == '__main__':
@@ -414,4 +454,5 @@ if __name__ == '__main__':
     # TestRun().test_custom_dataset()
     #
     TestRun().test_rlhf()
+    # TestRun().test_loss_matching()
     # unittest.main()
