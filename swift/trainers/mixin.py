@@ -68,10 +68,6 @@ class SwiftMixin:
         self.template = template
         self.max_memory = 0
         self.hub = get_hub()
-        if args.predict_with_generate:
-            from swift.llm import PtEngine
-            self.infer_engine = PtEngine.from_model_processor(
-                model, template.processor, max_batch_size=args.per_device_eval_batch_size)
         if args.sequence_parallel_size > 1:
             from swift.trainers.xtuner import init_sequence_parallel_xtuner
             init_sequence_parallel_xtuner(args.sequence_parallel_size)

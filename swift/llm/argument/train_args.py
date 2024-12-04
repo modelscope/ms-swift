@@ -7,7 +7,7 @@ from typing import List, Literal, Optional
 
 import torch
 import torch.distributed as dist
-from transformers import Seq2SeqTrainingArguments, TrainingArguments
+from transformers import Seq2SeqTrainingArguments
 from transformers.utils import is_torch_npu_available
 from transformers.utils.versions import require_version
 

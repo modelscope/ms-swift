@@ -31,6 +31,10 @@ class Seq2SeqTrainer(TorchAccMixin, SwiftMixin, HfSeq2SeqTrainer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        if self.args.predict_with_generate:
+            from swift.llm import PtEngine
+            self.infer_engine = PtEngine.from_model_processor(
+                self.model, self.template.processor, max_batch_size=self.args.per_device_eval_batch_size)
         self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'predict.jsonl'))
         self._custom_metrics['acc'] = MeanMetric(nan_value=None)
 

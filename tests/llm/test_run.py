@@ -239,17 +239,18 @@ class TestRun(unittest.TestCase):
         # llm rlhf
         rlhf_types = ['dpo', 'orpo', 'simpo', 'kto', 'cpo']  # , 'rm', 'ppo'
         for rlhf_type in rlhf_types:
-            dataset_name = 'hh-rlhf-cn-harmless-base-cn' if rlhf_type != 'kto' else 'ultrafeedback-kto'
-            kwargs = {}
+            dataset = ('AI-ModelScope/hh_rlhf_cn:harmless_base_cn#100'
+                       if rlhf_type != 'kto' else 'AI-ModelScope/ultrafeedback-binarized-preferences-cleaned-kto#100')
+            train_kwargs = {}
             if rlhf_type == 'ppo':
-                kwargs['reward_model_type'] = 'qwen2-1_5b-instruct'
+                train_kwargs['reward_model_type'] = 'qwen/Qwen2-1.5B-Instruct'
             output = rlhf_main(
                 RLHFArguments(
                     rlhf_type=rlhf_type,
-                    model_type=ModelType.qwen2_1_5b_instruct,
-                    dataset=dataset_name,
-                    train_dataset_sample=100,
+                    model='qwen/Qwen2-1.5B-Instruct',
+                    dataset=dataset,
                     eval_steps=5,
+                    **train_kwargs,
                     **kwargs))
             if rlhf_type == 'ppo':
                 model_checkpoint = output['last_model_checkpoint']
@@ -257,7 +258,7 @@ class TestRun(unittest.TestCase):
                 model_checkpoint = output['best_model_checkpoint']
 
             torch.cuda.empty_cache()
-            infer_main(InferArguments(ckpt_dir=model_checkpoint, load_dataset_config=True, val_dataset_sample=2))
+            infer_main(InferArguments(ckpt_dir=model_checkpoint, load_dataset_config=True))
 
         # mllm rlhf
         visual_rlhf_types = ['dpo', 'orpo', 'simpo', 'cpo', 'rm']
@@ -410,6 +411,7 @@ if __name__ == '__main__':
     # TestRun().test_template()
     # TestRun().test_hf_hub()
     # TestRun().test_basic()
+    # TestRun().test_custom_dataset()
     #
-    TestRun().test_custom_dataset()
+    TestRun().test_rlhf()
     # unittest.main()

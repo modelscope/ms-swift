@@ -2,7 +2,7 @@ import os
 
 import torch
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ['CUDA_VISIBLE_DEVICES'] = '2'
 
 kwargs = {
     'per_device_train_batch_size': 2,
@@ -275,7 +275,7 @@ if __name__ == '__main__':
     # test_llm_ddp()
     # test_mllm_mp()
     # test_llm_streaming()
-    test_mllm_streaming()
+    # test_mllm_streaming()
     # test_mllm_zero3()
     # test_llm_gptq()
     # test_llm_awq()
@@ -287,7 +287,7 @@ if __name__ == '__main__':
     # test_resume_from_checkpoint()
     # test_resume_only_model()
     # test_llm_transformers_4_33()
-    # test_predict_with_generate()
+    test_predict_with_generate()
     # test_predict_with_generate_zero3()
     # test_template()
     # test_qwen_vl()
