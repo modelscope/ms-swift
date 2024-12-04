@@ -56,8 +56,10 @@ class ModelInfo:
     model_dir: str
     torch_dtype: torch.dtype
     max_model_len: int
+    max_model_len_no_scaling: int
     quant_method: Literal['gptq', 'awq', 'bnb', 'aqlm', 'hqq', None]
     quant_bits: int
+    rope_scaling: Dict[str, Any]
 
     # extra
     config: Optional[PretrainedConfig] = None
@@ -121,7 +123,7 @@ class HfConfigFactory:
                 setattr(config, attr_name, value)
 
     @staticmethod
-    def get_max_model_len(config: Union[PretrainedConfig, Dict[str, Any]]) -> Optional[int]:
+    def get_max_model_len(config: Union[PretrainedConfig, Dict[str, Any]], ignore_rope_scaling=False) -> Optional[int]:
         """Get the max length supported by the model"""
         INF = int(1e9)
         max_model_len = INF
@@ -144,6 +146,9 @@ class HfConfigFactory:
         if max_model_len == INF:
             max_model_len = None
 
+        if (not ignore_rope_scaling and max_model_len and getattr(config, 'rope_scaling', None)
+                and config.rope_scaling.get('factor')):
+            max_model_len = max(int(max_model_len * config.rope_scaling.get('factor')), max_model_len)
         return max_model_len
 
     @staticmethod

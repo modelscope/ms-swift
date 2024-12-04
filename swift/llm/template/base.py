@@ -96,10 +96,9 @@ class Template(ProcessorMixin):
         if self.is_encoder_decoder:
             self.skip_prompt = False
 
-        self.mode: Literal[
-            'pt', 'vllm', 'lmdeploy',  # infer
-            'train', 'rlhf', 'kto'  # train
-        ] = 'pt'
+        self.mode: Literal['pt', 'vllm', 'lmdeploy',  # infer
+                           'train', 'rlhf', 'kto'  # train
+                           ] = 'pt'
         self._handles = []
         self._deepspeed_initialize = None
 

@@ -237,7 +237,7 @@ class TestRun(unittest.TestCase):
             return
         torch.cuda.empty_cache()
         # llm rlhf
-        # 
+        #
         rlhf_types = ['dpo', 'orpo', 'simpo', 'kto', 'cpo']  # , 'rm', 'ppo'
         for rlhf_type in rlhf_types:
             dataset = ('AI-ModelScope/hh_rlhf_cn:harmless_base_cn#100'
@@ -265,16 +265,11 @@ class TestRun(unittest.TestCase):
         visual_rlhf_types = ['dpo', 'orpo', 'simpo', 'cpo']  # 'rm'
         #  'florence-2-base-ft'
         test_model = ['swift/llava-v1.6-mistral-7b-hf', 'OpenGVLab/InternVL2-2B',
-                    'qwen/Qwen2-VL-2B-Instruct']  # decoder only and encoder-decoder
+                      'qwen/Qwen2-VL-2B-Instruct']  # decoder only and encoder-decoder
         for rlhf_type in visual_rlhf_types:
             for model in test_model:
                 dataset_name = 'swift/RLAIF-V-Dataset#100'
-                output = rlhf_main(
-                    RLHFArguments(
-                        rlhf_type=rlhf_type,
-                        model=model,
-                        dataset=dataset_name,
-                        eval_steps=5))
+                output = rlhf_main(RLHFArguments(rlhf_type=rlhf_type, model=model, dataset=dataset_name, eval_steps=5))
                 best_model_checkpoint = output['best_model_checkpoint']
                 torch.cuda.empty_cache()
                 infer_main(
@@ -290,12 +285,11 @@ class TestRun(unittest.TestCase):
             bool_var = use_swift_lora
             torch.cuda.empty_cache()
             output = sft_main([
-                '--model', 'qwen/Qwen-7B-Chat', '--eval_steps', '5',
-                '--dataset', f'AI-ModelScope/leetcode-solutions-python#200', '--output_dir', output_dir,
-                '--gradient_checkpointing', 'true', '--max_new_tokens', '100', '--attn_impl', 'flash_attn',
-                '--target_modules', 'all-linear', '--seed', '0', '--lora_bias', 'all', '--modules_to_save',
-                'lm_head', '--use_swift_lora', str(use_swift_lora), '--num_train_epochs', '1',
-                '--gradient_accumulation_steps', '16'
+                '--model', 'qwen/Qwen-7B-Chat', '--eval_steps', '5', '--dataset',
+                'AI-ModelScope/leetcode-solutions-python#200', '--output_dir', output_dir, '--gradient_checkpointing',
+                'true', '--max_new_tokens', '100', '--attn_impl', 'flash_attn', '--target_modules', 'all-linear',
+                '--seed', '0', '--lora_bias', 'all', '--modules_to_save', 'lm_head', '--use_swift_lora',
+                str(use_swift_lora), '--num_train_epochs', '1', '--gradient_accumulation_steps', '16'
             ])
             best_model_checkpoint = output['best_model_checkpoint']
             print(f'best_model_checkpoint: {best_model_checkpoint}')
@@ -317,7 +311,6 @@ class TestRun(unittest.TestCase):
         print(f'swift_loss: {losses[0]}')
         print(f'peft_loss: {losses[1]}')
         self.assertTrue(0.95 <= losses[0] <= 1)
-
 
     def test_pai_compat(self):
         if not __name__ == '__main__':

@@ -3,9 +3,7 @@ import shutil
 import tempfile
 import unittest
 
-from modelscope import Model
-
-from swift.hub.check_model import check_local_model_is_latest
+from modelscope import Model, check_local_model_is_latest
 
 
 class TestCheckModel(unittest.TestCase):

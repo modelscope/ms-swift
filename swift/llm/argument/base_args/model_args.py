@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import math
 import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional, Union
@@ -39,7 +40,7 @@ class ModelArguments:
     attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None
 
     # extra
-    rope_scaling: Literal['linear', 'dynamic'] = None  # TODO:check
+    rope_scaling: Literal['linear', 'dynamic'] = None
     device_map: Optional[str] = None
     # When some model code needs to be downloaded from GitHub,
     # this parameter specifies the path to the locally downloaded repository.
@@ -100,6 +101,21 @@ class ModelArguments:
         self.model_info, self.model_meta = get_model_info_meta(**self.get_model_kwargs())
         self.model_dir = self.model_info.model_dir
         self.model_type = self.model_info.model_type
+        if self.rope_scaling is not None:
+            assert self.max_length is not None
+            max_model_len_no_scaling = self.model_info.max_model_len_no_scaling
+            rope_scaling = self.model_info.rope_scaling or {}
+            rope_scaling_factor = 1.0
+            if max_model_len_no_scaling:
+                rope_scaling_factor = max(float(math.ceil(self.max_length / max_model_len_no_scaling)), 1.0)
+            if rope_scaling:
+                rope_scaling_factor = max(rope_scaling.get('factor', -1), rope_scaling_factor)
+                rope_scaling['type'] = self.rope_scaling
+                rope_scaling['factor'] = rope_scaling_factor
+            else:
+                rope_scaling = {'type': self.rope_scaling, 'factor': rope_scaling_factor}
+            self.rope_scaling = rope_scaling
+            logger.info(f'rope_scaling is set to type: {self.rope_scaling}')
         return self.model_info.torch_dtype
 
     def __post_init__(self):
