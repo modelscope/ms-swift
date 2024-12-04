@@ -101,8 +101,8 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
         """Load specific attributes from args.json"""
         args_path = os.path.join(checkpoint_dir, 'args.json')
         if not os.path.exists(args_path):
-            logger.warning(f'{args_path} not found')
             return
+        logger.info(f'Successfully loaded {args_path}...')
         with open(args_path, 'r', encoding='utf-8') as f:
             old_args = json.load(f)
         # read settings

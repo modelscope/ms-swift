@@ -1,6 +1,6 @@
 if __name__ == '__main__':
     import os
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1'
     os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 
 import os
@@ -53,7 +53,8 @@ class TestRun(unittest.TestCase):
             TrainArguments(
                 model='qwen/Qwen1.5-0.5B',
                 train_type='full',
-                dataset='DAMO_NLP/jd#100',
+                dataset='DAMO_NLP/jd',
+                val_dataset='DAMO_NLP/jd#20',
                 streaming=True,
                 max_steps=12,
                 **kwargs))
@@ -218,7 +219,7 @@ class TestRun(unittest.TestCase):
             infer_kwargs = {}
             if load_args is False:
                 args_json = os.path.join(best_model_checkpoint, 'args.json')
-                assert os.path.exists()
+                assert os.path.exists(args_json)
                 os.remove(args_json)
                 infer_kwargs = {'model': 'Qwen/Qwen-7B-Chat'}
             infer_args = InferArguments(
@@ -406,9 +407,9 @@ class TestTrainer(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    TestRun().test_template()
+    # TestRun().test_template()
     # TestRun().test_hf_hub()
     # TestRun().test_basic()
     #
-    # TestRun().test_custom_dataset()
+    TestRun().test_custom_dataset()
     # unittest.main()

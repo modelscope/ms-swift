@@ -145,9 +145,7 @@ class StdTemplateInputs:
         tools = inputs.get('tools')
         objects = inputs.get('objects') or []
 
-        assert len(messages) >= 1
-
-        if messages[0]['role'] == 'system':
+        if messages and messages[0]['role'] == 'system':
             message = messages.pop(0)
             system = message['content']
         else:

@@ -510,7 +510,7 @@ class Template(ProcessorMixin):
 
     @staticmethod
     def _get_std_messages(messages):
-        if messages[0]['role'] == 'assistant':
+        if messages and messages[0]['role'] == 'assistant':
             messages.insert(0, {'role': 'user', 'content': ''})  # pretrain
         if len(messages) % 2 == 1:
             messages.append({'role': 'assistant', 'content': None})  # inference
@@ -522,7 +522,8 @@ class Template(ProcessorMixin):
         if messages[-1]['content'] is None:
             messages.pop()
         text = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-        return [text], [1.], 1.
+        answer_len = 1 if self.is_training else 0
+        return [text], [1.], answer_len
 
     def _swift_encode(self, inputs: StdTemplateInputs):
         template_meta = self.template_meta
@@ -584,7 +585,10 @@ class Template(ProcessorMixin):
         from swift.plugin import loss_scale_map
         res_context_list, loss_scale_list = loss_scale_map[self.loss_scale](res_context_list, res_context_types,
                                                                             inputs.messages)
-        answer_len = len(extra_context_list) + bool(response is not None)
+        if self.is_training:
+            answer_len = len(extra_context_list) + bool(response is not None)
+        else:
+            answer_len = 0
         return res_context_list, loss_scale_list, answer_len
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
