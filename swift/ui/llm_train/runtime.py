@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 import collections
 import os.path
 import sys
@@ -10,7 +11,7 @@ import gradio as gr
 import json
 import matplotlib.pyplot as plt
 import psutil
-from gradio import Accordion, Tab
+from packaging import version
 from transformers import is_tensorboard_available
 
 from swift.ui.base import BaseUI
@@ -30,8 +31,6 @@ class Runtime(BaseUI):
     all_plots = None
 
     log_event = None
-
-    is_studio = os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio'
 
     sft_plot = [
         {
@@ -232,20 +231,18 @@ class Runtime(BaseUI):
             with gr.Blocks():
                 with gr.Row():
                     gr.Textbox(elem_id='running_cmd', lines=1, scale=20, interactive=False, max_lines=1)
-                    if not cls.is_studio:
-                        gr.Textbox(elem_id='logging_dir', lines=1, scale=20, max_lines=1)
-                        gr.Button(elem_id='show_log', scale=2, variant='primary')
-                        gr.Button(elem_id='stop_show_log', scale=2)
-                        gr.Textbox(elem_id='tb_url', lines=1, scale=10, interactive=False, max_lines=1)
-                        gr.Button(elem_id='start_tb', scale=2, variant='primary')
-                        gr.Button(elem_id='close_tb', scale=2)
+                    gr.Textbox(elem_id='logging_dir', lines=1, scale=20, max_lines=1)
+                    gr.Button(elem_id='show_log', scale=2, variant='primary')
+                    gr.Button(elem_id='stop_show_log', scale=2)
+                    gr.Textbox(elem_id='tb_url', lines=1, scale=10, interactive=False, max_lines=1)
+                    gr.Button(elem_id='start_tb', scale=2, variant='primary')
+                    gr.Button(elem_id='close_tb', scale=2)
                 with gr.Row():
                     gr.Textbox(elem_id='log', lines=6, visible=False)
-                if not cls.is_studio:
-                    with gr.Row():
-                        gr.Dropdown(elem_id='running_tasks', scale=10)
-                        gr.Button(elem_id='refresh_tasks', scale=1)
-                        gr.Button(elem_id='kill_task', scale=1)
+                with gr.Row():
+                    gr.Dropdown(elem_id='running_tasks', scale=10)
+                    gr.Button(elem_id='refresh_tasks', scale=1)
+                    gr.Button(elem_id='kill_task', scale=1)
 
                 with gr.Row():
                     cls.all_plots = []
@@ -253,36 +250,38 @@ class Runtime(BaseUI):
                         name = k['name']
                         cls.all_plots.append(gr.Plot(elem_id=str(idx), label=name))
 
-                if not cls.is_studio:
-                    cls.log_event = base_tab.element('show_log').click(
-                        Runtime.update_log,
-                        [base_tab.element('running_tasks')], [cls.element('log')] + cls.all_plots).then(
-                            Runtime.wait, [base_tab.element('logging_dir'),
-                                           base_tab.element('running_tasks')], [cls.element('log')] + cls.all_plots)
+                concurrency_limit = {}
+                if version.parse(gr.__version__) >= version.parse('4.0.0'):
+                    concurrency_limit = {'concurrency_limit': 5}
+                cls.log_event = base_tab.element('show_log').click(
+                    Runtime.update_log, [base_tab.element('running_tasks')], [cls.element('log')] + cls.all_plots).then(
+                        Runtime.wait, [base_tab.element('logging_dir'),
+                                       base_tab.element('running_tasks')], [cls.element('log')] + cls.all_plots,
+                        **concurrency_limit)
 
-                    base_tab.element('stop_show_log').click(lambda: None, cancels=cls.log_event)
+                base_tab.element('stop_show_log').click(lambda: None, cancels=cls.log_event)
 
-                    base_tab.element('start_tb').click(
-                        Runtime.start_tb,
-                        [base_tab.element('logging_dir')],
-                        [base_tab.element('tb_url')],
-                    )
+                base_tab.element('start_tb').click(
+                    Runtime.start_tb,
+                    [base_tab.element('logging_dir')],
+                    [base_tab.element('tb_url')],
+                )
 
-                    base_tab.element('close_tb').click(
-                        Runtime.close_tb,
-                        [base_tab.element('logging_dir')],
-                        [],
-                    )
+                base_tab.element('close_tb').click(
+                    Runtime.close_tb,
+                    [base_tab.element('logging_dir')],
+                    [],
+                )
 
-                    base_tab.element('refresh_tasks').click(
-                        Runtime.refresh_tasks,
-                        [base_tab.element('running_tasks')],
-                        [base_tab.element('running_tasks')],
-                    )
+                base_tab.element('refresh_tasks').click(
+                    Runtime.refresh_tasks,
+                    [base_tab.element('running_tasks')],
+                    [base_tab.element('running_tasks')],
+                )
 
     @classmethod
     def get_plot(cls, task):
-        if not task or 'swift sft' in task:
+        if not task or 'swift sft' in task or 'swift pt' in task:
             return cls.sft_plot
 
         args: dict = cls.parse_info_from_cmdline(task)[1]
@@ -394,7 +393,7 @@ class Runtime(BaseUI):
         output_dir = running_task if not running_task or 'pid:' not in running_task else None
         process_name = 'swift'
         negative_name = 'swift.exe'
-        cmd_name = ['sft', 'rlhf']
+        cmd_name = ['pt', 'sft', 'rlhf']
         process = []
         selected = None
         for proc in psutil.process_iter():
@@ -438,6 +437,8 @@ class Runtime(BaseUI):
                 task = task[slash + 1:]
         if 'swift sft' in task:
             args = task.split('swift sft')[1]
+        elif 'swift pt' in task:
+            args = task.split('swift pt')[1]
         elif 'swift rlhf' in task:
             args = task.split('swift rlhf')[1]
         else:
@@ -482,7 +483,7 @@ class Runtime(BaseUI):
             _, all_args = Runtime.parse_info_from_cmdline(task)
         else:
             all_args = {}
-        elements = [value for value in base_tab.elements().values() if not isinstance(value, (Tab, Accordion))]
+        elements = list(base_tab.valid_elements().values())
         ret = []
         for e in elements:
             if e.elem_id in all_args:

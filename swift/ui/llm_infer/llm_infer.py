@@ -1,54 +1,70 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 import re
 import sys
 import time
+from copy import deepcopy
 from datetime import datetime
 from functools import partial
-from typing import Type
+from typing import List, Type
 
 import gradio as gr
 import json
 import torch
-from gradio import Accordion, Tab
 from json import JSONDecodeError
-from modelscope import GenerationConfig, snapshot_download
 
-from swift.llm import (TEMPLATE_MAPPING, DeployArguments, InferArguments, XRequestConfig, inference_client,
-                       inference_stream, prepare_model_template)
+from swift.llm import DeployArguments, InferArguments, InferClient, InferRequest, RequestConfig
 from swift.ui.base import BaseUI
 from swift.ui.llm_infer.model import Model
 from swift.ui.llm_infer.runtime import Runtime
+from swift.utils import get_logger
+
+logger = get_logger()
 
 
 class LLMInfer(BaseUI):
 
     group = 'llm_infer'
 
-    sub_ui = [Model, Runtime]
+    is_gradio_app = False
 
-    is_inference = os.environ.get('USE_INFERENCE') == '1' or os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio'
+    is_multimodal = True
+
+    deployed = False
+
+    sub_ui = [Model, Runtime]
 
     locale_dict = {
         'generate_alert': {
             'value': {
-                'zh': '请先加载模型' if is_inference else '请先部署模型',
-                'en': 'Please load model first' if is_inference else 'Please deploy model first',
+                'zh': '请先部署模型',
+                'en': 'Please deploy model first',
             }
+        },
+        'port': {
+            'label': {
+                'zh': '端口',
+                'en': 'port'
+            },
         },
         'llm_infer': {
             'label': {
-                'zh': 'LLM推理' if is_inference else 'LLM部署',
-                'en': 'LLM Inference' if is_inference else 'LLM Deployment',
+                'zh': 'LLM推理',
+                'en': 'LLM Inference',
             }
         },
         'load_alert': {
             'value': {
-                'zh':
-                '加载中，请等待' if is_inference else '部署中，请点击"展示部署状态"查看',
-                'en':
-                'Start to load model, please wait' if is_inference else 'Start to deploy model, '
+                'zh': '部署中，请点击"展示部署状态"查看',
+                'en': 'Start to deploy model, '
                 'please Click "Show running '
                 'status" to view details',
+            }
+        },
+        'load_alert_gradio_app': {
+            'value': {
+                'zh': '部署中，请查看部署日志',
+                'en': 'Start to deploy model, please check the log',
             }
         },
         'loaded_alert': {
@@ -75,8 +91,8 @@ class LLMInfer(BaseUI):
                 'en': 'Lora module'
             },
             'info': {
-                'zh': '发送给server端哪个LoRA，默认为`default-lora`',
-                'en': 'Which LoRA to use on server, default value is `default-lora`'
+                'zh': '发送给server端哪个LoRA，默认为`default`',
+                'en': 'Which LoRA to use on server, default value is `default`'
             }
         },
         'prompt': {
@@ -122,11 +138,13 @@ class LLMInfer(BaseUI):
                 gpu_count = torch.cuda.device_count()
                 default_device = '0'
             with gr.Blocks():
-                model_and_template = gr.State([])
-                history = gr.State([])
+                infer_request = gr.State(None)
+                if LLMInfer.is_gradio_app:
+                    Model.visible = False
+                    Runtime.visible = False
                 Model.build_ui(base_tab)
                 Runtime.build_ui(base_tab)
-                with gr.Row():
+                with gr.Row(visible=not LLMInfer.is_gradio_app):
                     gr.Dropdown(
                         elem_id='gpu_id',
                         multiselect=True,
@@ -134,10 +152,11 @@ class LLMInfer(BaseUI):
                         value=default_device,
                         scale=8)
                     infer_model_type = gr.Textbox(elem_id='infer_model_type', scale=4)
+                    gr.Textbox(elem_id='port', lines=1, value='8000', scale=4)
                 chatbot = gr.Chatbot(elem_id='chatbot', elem_classes='control-height')
                 with gr.Row():
                     prompt = gr.Textbox(elem_id='prompt', lines=1, interactive=True)
-                    with gr.Tabs():
+                    with gr.Tabs(visible=not cls.is_gradio_app or cls.is_multimodal):
                         with gr.TabItem(label='Image'):
                             image = gr.Image(type='filepath')
                         with gr.TabItem(label='Video'):
@@ -149,66 +168,32 @@ class LLMInfer(BaseUI):
                     clear_history = gr.Button(elem_id='clear_history')
                     submit = gr.Button(elem_id='submit')
 
-                if cls.is_inference:
-                    submit.click(
-                        cls.generate_chat,
-                        inputs=[
-                            model_and_template,
-                            cls.element('template_type'), prompt, image, video, audio, history,
-                            cls.element('system'),
-                            cls.element('max_new_tokens'),
-                            cls.element('temperature'),
-                            cls.element('do_sample'),
-                            cls.element('top_k'),
-                            cls.element('top_p'),
-                            cls.element('repetition_penalty')
-                        ],
-                        outputs=[prompt, chatbot, image, video, audio, history],
-                        queue=True)
-
-                    clear_history.click(
-                        fn=cls.clear_session, inputs=[], outputs=[prompt, chatbot, image, video, audio, history])
-
+                if not LLMInfer.is_gradio_app:
                     cls.element('load_checkpoint').click(
-                        cls.reset_memory, [], [model_and_template]) \
-                        .then(cls.reset_loading_button, [], [cls.element('load_checkpoint')]).then(
-                        cls.prepare_checkpoint, [
-                            value for value in cls.elements().values()
-                            if not isinstance(value, (Tab, Accordion))
-                        ], [model_and_template]).then(cls.change_interactive, [],
-                                                      [prompt, image, video, audio]).then(  # noqa
-                        cls.clear_session,
-                        inputs=[],
-                        outputs=[prompt, chatbot, image, video, audio, history],
-                        queue=True).then(cls.reset_load_button, [], [cls.element('load_checkpoint')])
-                else:
-                    cls.element('load_checkpoint').click(
-                        cls.deploy_model,
-                        [value for value in cls.elements().values() if not isinstance(value, (Tab, Accordion))],
-                        [cls.element('runtime_tab'),
-                         cls.element('running_tasks'), model_and_template])
-                    submit.click(
-                        cls.send_message,
-                        inputs=[
-                            cls.element('running_tasks'), model_and_template,
-                            cls.element('template_type'), prompt, image, video, audio, history, infer_model_type,
-                            cls.element('system'),
-                            cls.element('max_new_tokens'),
-                            cls.element('temperature'),
-                            cls.element('top_k'),
-                            cls.element('top_p'),
-                            cls.element('repetition_penalty')
-                        ],
-                        outputs=[prompt, chatbot, image, video, audio, history],
-                        queue=True)
+                        cls.deploy_model, list(base_tab.valid_elements().values()),
+                        [cls.element('runtime_tab'), cls.element('running_tasks')])
+                submit.click(
+                    cls.send_message,
+                    inputs=[
+                        cls.element('running_tasks'),
+                        cls.element('template'), prompt, image, video, audio, infer_request, infer_model_type,
+                        cls.element('system'),
+                        cls.element('max_new_tokens'),
+                        cls.element('temperature'),
+                        cls.element('top_k'),
+                        cls.element('top_p'),
+                        cls.element('repetition_penalty')
+                    ],
+                    outputs=[prompt, chatbot, image, video, audio, infer_request],
+                    queue=True)
 
-                    clear_history.click(
-                        fn=cls.clear_session, inputs=[], outputs=[prompt, chatbot, image, video, audio, history])
+                clear_history.click(
+                    fn=cls.clear_session, inputs=[], outputs=[prompt, chatbot, image, video, audio, infer_request])
 
+                if not LLMInfer.is_gradio_app:
                     base_tab.element('running_tasks').change(
                         partial(Runtime.task_changed, base_tab=base_tab), [base_tab.element('running_tasks')],
-                        [value for value in base_tab.elements().values() if not isinstance(value, (Tab, Accordion))]
-                        + [cls.element('log'), model_and_template],
+                        list(cls.valid_elements().values()) + [cls.element('log')],
                         cancels=Runtime.log_event)
                     Runtime.element('kill_task').click(
                         Runtime.kill_task,
@@ -225,7 +210,7 @@ class LLMInfer(BaseUI):
         other_kwargs = {}
         more_params = {}
         more_params_cmd = ''
-        keys = [key for key, value in cls.elements().items() if not isinstance(value, (Tab, Accordion))]
+        keys = cls.valid_element_keys()
         for key, value in zip(keys, args):
             compare_value = deploy_args.get(key)
             compare_value_arg = str(compare_value) if not isinstance(compare_value, (list, dict)) else compare_value
@@ -248,17 +233,13 @@ class LLMInfer(BaseUI):
                     more_params_cmd = value
 
         kwargs.update(more_params)
-        if kwargs['model_type'] == cls.locale('checkpoint', cls.lang)['value']:
-            model_dir = kwargs.pop('model_id_or_path')
-            if not os.path.exists(model_dir):
-                model_dir = snapshot_download(model_dir)
-            kwargs['ckpt_dir'] = model_dir
-
-        if 'ckpt_dir' in kwargs:
-            with open(os.path.join(kwargs['ckpt_dir'], 'sft_args.json'), 'r') as f:
+        model = kwargs.get('model')
+        if os.path.exists(model) and os.path.exists(os.path.join(model, 'args.json')):
+            kwargs['ckpt_dir'] = kwargs.pop('model')
+            with open(os.path.join(kwargs['ckpt_dir'], 'args.json'), 'r') as f:
                 _json = json.load(f)
                 kwargs['model_type'] = _json['model_type']
-                kwargs['sft_type'] = _json['sft_type']
+                kwargs['train_type'] = _json['train_type']
         deploy_args = DeployArguments(
             **{
                 key: value.split(' ') if key in kwargs_is_list and kwargs_is_list[key] else value
@@ -305,130 +286,49 @@ class LLMInfer(BaseUI):
 
     @classmethod
     def deploy_model(cls, *args):
+        if cls.is_gradio_app:
+            if cls.deployed:
+                return gr.update(), gr.update()
         run_command, deploy_args, log_file = cls.deploy(*args)
+        logger.info(f'Running deployment command: {run_command}')
         os.system(run_command)
-        gr.Info(cls.locale('load_alert', cls.lang)['value'])
+        if cls.is_gradio_app:
+            gr.Info(cls.locale('load_alert_gradio_app', cls.lang)['value'])
+        else:
+            gr.Info(cls.locale('load_alert', cls.lang)['value'])
         time.sleep(2)
-        return gr.update(open=True), Runtime.refresh_tasks(log_file), [
-            deploy_args.model_type, deploy_args.template_type, deploy_args.sft_type
-        ]
-
-    @classmethod
-    def update_runtime(cls):
-        return gr.update(open=True), gr.update(visible=True)
-
-    @classmethod
-    def reset_load_button(cls):
-        return gr.update(value=cls.locale('load_checkpoint', cls.lang)['value'])
-
-    @classmethod
-    def reset_loading_button(cls):
-        return gr.update(value=cls.locale('load_alert', cls.lang)['value'])
-
-    @classmethod
-    def reset_memory(cls):
-        return []
-
-    @classmethod
-    def prepare_checkpoint(cls, *args):
-        torch.cuda.empty_cache()
-        infer_args = cls.get_default_value_from_dataclass(InferArguments)
-        kwargs = {}
-        kwargs_is_list = {}
-        other_kwargs = {}
-        more_params = {}
-        keys = [key for key, value in cls.elements().items() if not isinstance(value, (Tab, Accordion))]
-        for key, value in zip(keys, args):
-            compare_value = infer_args.get(key)
-            compare_value_arg = str(compare_value) if not isinstance(compare_value, (list, dict)) else compare_value
-            compare_value_ui = str(value) if not isinstance(value, (list, dict)) else value
-            if key in infer_args and compare_value_ui != compare_value_arg and value:
-                if isinstance(value, str) and re.fullmatch(cls.int_regex, value):
-                    value = int(value)
-                elif isinstance(value, str) and re.fullmatch(cls.float_regex, value):
-                    value = float(value)
-                elif isinstance(value, str) and re.fullmatch(cls.bool_regex, value):
-                    value = True if value.lower() == 'true' else False
-                kwargs[key] = value if not isinstance(value, list) else ' '.join(value)
-                kwargs_is_list[key] = isinstance(value, list)
-            else:
-                other_kwargs[key] = value
-            if key == 'more_params' and value:
-                more_params = json.loads(value)
-
-        kwargs.update(more_params)
-        if kwargs['model_type'] == cls.locale('checkpoint', cls.lang)['value']:
-            model_dir = kwargs.pop('model_id_or_path')
-            if not os.path.exists(model_dir):
-                model_dir = snapshot_download(model_dir)
-            kwargs['ckpt_dir'] = model_dir
-        if 'ckpt_dir' in kwargs or ('model_id_or_path' in kwargs and not os.path.exists(kwargs['model_id_or_path'])):
-            kwargs.pop('model_type', None)
-
-        devices = other_kwargs['gpu_id']
-        devices = [d for d in devices if d]
-        assert (len(devices) == 1 or 'cpu' not in devices)
-        gpus = ','.join(devices)
-        if gpus != 'cpu':
-            os.environ['CUDA_VISIBLE_DEVICES'] = gpus
-        infer_args = InferArguments(**kwargs)
-        model, template = prepare_model_template(infer_args)
-        gr.Info(cls.locale('loaded_alert', cls.lang)['value'])
-        return [model, template]
+        cls.deployed = True
+        return gr.update(open=True), Runtime.refresh_tasks(log_file)
 
     @classmethod
     def clear_session(cls):
-        return ('', [], gr.update(value=None, interactive=True), gr.update(value=None, interactive=True),
-                gr.update(value=None, interactive=True), [])
+        return '', [], gr.update(value=None), gr.update(value=None), gr.update(value=None), []
 
     @classmethod
-    def change_interactive(cls):
-        return (gr.update(interactive=True), gr.update(interactive=True), gr.update(interactive=True),
-                gr.update(interactive=True))
-
-    @classmethod
-    def _replace_tag_with_media(cls, history):
+    def _replace_tag_with_media(cls, infer_request: InferRequest):
         total_history = []
-        for h in history:
-            for m in h[2]:
-                total_history.append([(m, ), None])
-            if h[0] and h[0].strip():
-                total_history.append(h[:2])
+        messages = deepcopy(infer_request.messages)
+        if messages[0]['role'] == 'system':
+            messages.pop(0)
+        for i in range(0, len(messages), 2):
+            slices = messages[i:i + 2]
+            if len(slices) == 2:
+                user, assistant = slices
+            else:
+                user = slices[0]
+                assistant = {'role': 'assistant', 'content': None}
+            user['content'] = (user['content'] or '').replace('<image>', '').replace('<video>',
+                                                                                     '').replace('<audio>', '').strip()
+            for media in user['medias']:
+                total_history.append([(media, ), None])
+            if user['content'] or assistant['content']:
+                total_history.append((user['content'], assistant['content']))
         return total_history
 
     @classmethod
-    def _get_text_history(cls, history, prompt):
-        total_history = []
-        for h in history:
-            if h[0]:
-                prefix = ''
-                if h[3]:
-                    prefix = ''.join([f'<{media_type}>' for media_type in h[3]])
-                total_history.append([prefix + h[0], h[1]])
-
-        if not history[-1][0] and history[-1][2]:
-            prefix = ''.join([f'<{media_type}>' for media_type in history[-1][3]])
-            prompt = prefix + prompt
-        return total_history, prompt
-
-    @classmethod
-    def _get_medias(cls, history):
-        images = []
-        videos = []
-        audios = []
-        for h in history:
-            if h[2]:
-                for media, media_type in zip(h[2], h[3]):
-                    if media_type == 'image':
-                        images.append(media)
-                    if media_type == 'video':
-                        videos.append(media)
-                    if media_type == 'audio':
-                        audios.append(media)
-        return images, videos, audios
-
-    @classmethod
     def agent_type(cls, response):
+        if not response:
+            return None
         if response.lower().endswith('observation:'):
             return 'react'
         if 'observation:' not in response.lower() and 'action input:' in response.lower():
@@ -436,143 +336,65 @@ class LLMInfer(BaseUI):
         return None
 
     @classmethod
-    def send_message(cls, running_task, model_and_template, template_type, prompt: str, image, video, audio, history,
+    def send_message(cls, running_task, template_type, prompt: str, image, video, audio, infer_request: InferRequest,
                      infer_model_type, system, max_new_tokens, temperature, top_k, top_p, repetition_penalty):
-        if not model_and_template:
-            gr.Warning(cls.locale('generate_alert', cls.lang)['value'])
-            return '', None, None, []
 
-        if not history or history[-1][1]:
-            history.append([None, None, [], []])
+        if not infer_request:
+            infer_request = InferRequest(messages=[])
+        if system:
+            if not infer_request.messages or infer_request.messages[0]['role'] != 'system':
+                infer_request.messages.insert(0, {'role': 'system', 'content': system})
+            else:
+                infer_request.messages[0]['content'] = system
+        if not infer_request.messages or infer_request.messages[-1]['role'] != 'user':
+            infer_request.messages.append({'role': 'user', 'content': '', 'medias': []})
         media = image or video or audio
-        media_type = 'image' if image else 'video' if video else 'audio'
+        media_type = 'images' if image else 'videos' if video else 'audios'
         if media:
-            if not history[-1][2] or history[-1][2][-1] != media:
-                history[-1][2].append(media)
-                history[-1][3].append(media_type)
+            _saved_medias: List = getattr(infer_request, media_type)
+            if not _saved_medias or _saved_medias[-1] != media:
+                _saved_medias.append(media)
+                infer_request.messages[-1]['content'] = infer_request.messages[-1]['content'] + f'<{media_type[:-1]}>'
+                infer_request.messages[-1]['medias'].append(media)
 
         if not prompt:
-            yield '', cls._replace_tag_with_media(history), None, history
+            yield '', cls._replace_tag_with_media(infer_request), gr.update(value=None), gr.update(
+                value=None), gr.update(value=None), infer_request
             return
+        else:
+            infer_request.messages[-1]['content'] = infer_request.messages[-1]['content'] + prompt
 
         _, args = Runtime.parse_info_from_cmdline(running_task)
-        model_type, template, sft_type = model_and_template
-        if sft_type in ('lora', 'longlora') and not args.get('merge_lora'):
-            model_type = infer_model_type or 'default-lora'
-        old_history, history = history or [], []
-        request_config = XRequestConfig(
+        request_config = RequestConfig(
             temperature=temperature, top_k=top_k, top_p=top_p, repetition_penalty=repetition_penalty)
         request_config.stream = True
         request_config.stop = ['Observation:']
+        request_config.max_tokens = max_new_tokens
         stream_resp_with_history = ''
-        media_infer_type = TEMPLATE_MAPPING[template].get('infer_media_type', 'round')
-        interactive = media_infer_type != 'dialogue'
+        response = ''
+        i = len(infer_request.messages) - 1
+        for i in range(len(infer_request.messages) - 1, -1, -1):
+            if infer_request.messages[i]['role'] == 'assistant':
+                response = infer_request.messages[i]['content']
+        agent_type = cls.agent_type(response)
+        if i != len(infer_request.messages) - 1 and agent_type == 'toolbench':
+            infer_request.messages[i + 1]['role'] = 'tool'
 
-        text_history, new_prompt = cls._get_text_history(old_history, prompt)
-        images, videos, audios = cls._get_medias(old_history)
-        media_kwargs = {}
-        if images:
-            media_kwargs['images'] = images
-        if videos:
-            media_kwargs['videos'] = videos
-        if audios:
-            media_kwargs['audios'] = audios
-        roles = []
-        for i in range(len(text_history) + 1):
-            roles.append(['user', 'assistant'])
-
-        for i, h in enumerate(text_history):
-            agent_type = cls.agent_type(h[1])
-            if i < len(text_history) - 1 and agent_type == 'toolbench':
-                roles[i + 1][0] = 'tool'
-            if i == len(text_history) - 1 and agent_type in ('toolbench', 'react'):
-                roles[i + 1][0] = 'tool'
-
-        if not template_type.endswith('generation'):
-            stream_resp = inference_client(
-                model_type,
-                new_prompt,
-                history=text_history,
-                system=system,
-                port=args['port'],
-                request_config=request_config,
-                roles=roles,
-                **media_kwargs,
-            )
-            for chunk in stream_resp:
-                stream_resp_with_history += chunk.choices[0].delta.content
-                old_history[-1][0] = prompt
-                old_history[-1][1] = stream_resp_with_history
-                yield ('', cls._replace_tag_with_media(old_history), gr.update(value=None, interactive=interactive),
-                       gr.update(value=None, interactive=interactive), gr.update(value=None,
-                                                                                 interactive=interactive), old_history)
-        else:
-            request_config.max_tokens = max_new_tokens
-            stream_resp = inference_client(
-                model_type, prompt, images=old_history[-1][2], port=args['port'], request_config=request_config)
-            for chunk in stream_resp:
-                stream_resp_with_history += chunk.choices[0].text
-                old_history[-1][0] = prompt
-                old_history[-1][1] = stream_resp_with_history
-                yield ('', cls._replace_tag_with_media(old_history), gr.update(value=None, interactive=interactive),
-                       gr.update(value=None, interactive=interactive), gr.update(value=None,
-                                                                                 interactive=interactive), old_history)
-
-    @classmethod
-    def generate_chat(cls, model_and_template, template_type, prompt: str, image, video, audio, history, system,
-                      max_new_tokens, temperature, do_sample, top_k, top_p, repetition_penalty):
-        if not model_and_template:
-            gr.Warning(cls.locale('generate_alert', cls.lang)['value'])
-            return '', None, None, []
-
-        if not history or history[-1][1]:
-            history.append([None, None, [], []])
-        media = image or video or audio
-        media_type = 'image' if image else 'video' if video else 'audio'
-        if media:
-            if not history[-1][2] or history[-1][2][-1] != media:
-                history[-1][2].append(media)
-                history[-1][3].append(media_type)
-
-        if not prompt:
-            yield '', cls._replace_tag_with_media(history), None, history
-            return
-
-        model, template = model_and_template
-
-        if os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio':
-            model.cuda()
-        old_history, history = history or [], []
-
-        generation_config = GenerationConfig(
-            temperature=temperature,
-            top_k=top_k,
-            top_p=top_p,
-            do_sample=do_sample,
-            max_new_tokens=int(max_new_tokens),
-            repetition_penalty=repetition_penalty)
-        text_history, new_prompt = cls._get_text_history(old_history, prompt)
-        images, videos, audios = cls._get_medias(old_history)
-        media_kwargs = {}
-        if images:
-            media_kwargs['images'] = images
-        if videos:
-            media_kwargs['videos'] = videos
-        if audios:
-            media_kwargs['audios'] = audios
-        gen = inference_stream(
-            model,
-            template,
-            new_prompt,
-            history=text_history,
-            system=system,
-            generation_config=generation_config,
-            stop_words=['Observation:'],
-            **media_kwargs,
-        )
-        for _, history in gen:
-            old_history[-1][0] = history[-1][0]
-            old_history[-1][1] = history[-1][1]
-            yield '', cls._replace_tag_with_media(old_history), None, None, None, old_history
-        if os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio':
-            model.cpu()
+        chat = not template_type.endswith('generation')
+        _infer_request = deepcopy(infer_request)
+        for m in _infer_request.messages:
+            if 'medias' in m:
+                m.pop('medias')
+        model_kwargs = {}
+        if infer_model_type:
+            model_kwargs = {'model': infer_model_type}
+        stream_resp = InferClient(
+            port=args['port'], ).infer(
+                infer_requests=[_infer_request], request_config=request_config, **model_kwargs)
+        if infer_request.messages[-1]['role'] != 'assistant':
+            infer_request.messages.append({'role': 'assistant', 'content': ''})
+        for chunk in stream_resp:
+            stream_resp_with_history += chunk[0].choices[0].delta.content if chat else chunk.choices[0].text
+            infer_request.messages[-1]['content'] = stream_resp_with_history
+            yield '', cls._replace_tag_with_media(infer_request), gr.update(value=None), gr.update(
+                value=None), gr.update(value=None), infer_request

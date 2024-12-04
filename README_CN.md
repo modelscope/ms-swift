@@ -56,13 +56,14 @@ SWIFT具有丰富全面的文档，请查看我们的文档网站:
 
 
 ## 🎉 新闻
+- 🎁2024.12.04: SWIFT3.0大版本更新. 请查看[ReleaseNote和BreakChange](./docs/source/Instruction/ReleaseNote3.0.md).
 - 2024.11.29: 支持glm-edge和glm-edge-v系列模型. 使用`swift infer --model_type glm-edge-v-2b`进行体验.
 - 2024.11.28: 支持模型qwq-32b-preview, marco-o1, 支持数据集open-o1. 使用`swift infer --model_type qwq-32b-preview`进行体验.
 - 2024.11.12: 支持qwen2.5-coder系列模型0.5b, 3b, 14b, 32b的训练到部署. 使用`swift infer --model_type qwen2_5-coder-3b-instruct`进行体验.
 - 2024.10.26: 支持aya-expanse系列模型的训练到部署. 使用`swift infer --model_type aya-expanse-32b`进行体验.
 - 2024.10.23: 支持emu3-chat的训练到部署. 使用`swift infer --model_type emu3-chat`进行体验.
 - 2024.10.22: 支持molmo系列模型的训练到部署. 使用`swift infer --model_type molmo-7b-d`进行体验.
-- 2024.10.09: 支持 llm 和 mllm 的 reward modeling 训练, 支持 llm 的 PPO 训练. 参考[文档](docs/source/LLM/人类偏好对齐训练文档.md)
+- 2024.10.09: 支持 llm 和 mllm 的 reward modeling 训练, 支持 llm 的 PPO 训练. 参考[文档](docs/source/Instruction/人类偏好对齐训练文档.md)
 - 2024.10.09: 支持ovis1.6-gemma2的训练到部署. 使用`swift infer --model_type ovis1_6-gemma2-9b`进行体验.
 - 2024.09.26: 支持llama3.2-vision系列模型的训练到部署. 使用`swift infer --model_type llama3_2-11b-vision-instruct`进行体验.
 - 2024.09.26: 支持llama3.2系列模型的训练到部署. 使用`swift infer --model_type llama3_2-1b-instruct`进行体验.
@@ -112,7 +113,7 @@ SWIFT具有丰富全面的文档，请查看我们的文档网站:
 - 🔥2024.06.28: 支持**Florence**系列模型: 可以查看[Florence最佳实践](docs/source/Multi-Modal/florence最佳实践.md).
 - 🔥2024.06.28: 支持**Gemma2**系列模型: gemma2-9b, gemma2-9b-instruct, gemma2-27b, gemma2-27b-instruct.
 - 🔥2024.06.18: 支持**DeepSeek-Coder-v2**系列模型! 使用model_type`deepseek-coder-v2-instruct`和`deepseek-coder-v2-lite-instruct`来开启训练和推理.
-- 🔥2024.06.16: 支持**KTO**和**CPO**训练，使用`swift rlhf --rlhf_type kto`和`swift rlhf --rlhf_type cpo`来开始训练，可以参考[文档](./docs/source/LLM/人类偏好对齐训练文档.md).
+- 🔥2024.06.16: 支持**KTO**和**CPO**训练，使用`swift rlhf --rlhf_type kto`和`swift rlhf --rlhf_type cpo`来开始训练，可以参考[文档](docs/source/Instruction/人类偏好对齐训练文档.md).
 - 2024.06.11: 支持符合OpenAI接口的工具调用Agent部署, 可以查看[Agent部署最佳实践](docs/source/LLM/Agent部署最佳实践.md).
 - 🔥2024.06.07: 支持**Qwen2**系列LLM, 包括0.5B、1.5B、7B、72B的Base和Instruct模型, 以及对应的gptq-int4、gptq-int8、awq-int4量化版本. 使用双卡80GiB A100对Qwen2-72B-Instruct进行自我认知微调并推理部署的最佳实践可以查看[这里](https://github.com/modelscope/swift/issues/1092).
 - 🔥2024.06.05: 支持glm4系列大模型和glm4v-9b-chat多模态大模型, 可以查看[glm4v最佳实践](docs/source/Multi-Modal/glm4v最佳实践.md).

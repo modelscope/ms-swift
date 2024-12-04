@@ -120,7 +120,6 @@ if __name__ == '__main__':
     extra_requires = {}
     all_requires = []
     extra_requires['llm'], _ = parse_requirements('requirements/llm.txt')
-    extra_requires['aigc'], _ = parse_requirements('requirements/aigc.txt')
     extra_requires['eval'], _ = parse_requirements('requirements/eval.txt')
     extra_requires['seq_parallel'], _ = parse_requirements('requirements/seq_parallel.txt')
     all_requires.extend(install_requires)

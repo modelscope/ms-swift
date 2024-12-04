@@ -4,8 +4,7 @@ import json
 import torch
 from modelscope import GenerationConfig
 
-from swift.llm import (TEMPLATE_MAPPING, ModelType, Template, get_default_template_type, get_model_tokenizer,
-                       get_template, inference, messages_to_history)
+from swift.llm import TEMPLATE_MAPPING, ModelType, get_model_tokenizer, get_template, messages_to_history
 
 if __name__ == '__main__':
     import os

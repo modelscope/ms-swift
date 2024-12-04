@@ -1,35 +1,40 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import TYPE_CHECKING
 
+from transformers.trainer_callback import TrainerCallback
+from transformers.trainer_utils import (EvaluationStrategy, FSDPOption, HPSearchBackend, HubStrategy, IntervalStrategy,
+                                        SchedulerType)
+
 from swift.utils.import_utils import _LazyModule
+from . import callback
+
+try:
+    # https://github.com/huggingface/transformers/pull/25702
+    from transformers.trainer_utils import ShardedDDPOption
+except ImportError:
+    ShardedDDPOption = None
 
 if TYPE_CHECKING:
     from .arguments import (Seq2SeqTrainingArguments, TrainingArguments, DPOConfig, CPOConfig, KTOConfig, ORPOConfig,
-                            PPOConfig)
-    from .rlhf_trainer import CPOTrainer, DPOTrainer, KTOTrainer, ORPOTrainer, RewardTrainer, PPOTrainer
+                            PPOConfig, RewardConfig)
+    from .rlhf_trainer import (CPOTrainer, DPOTrainer, KTOTrainer, ORPOTrainer, RLHFTrainerMixin, PPOTrainer,
+                               RewardTrainer)
     from .trainer_factory import TrainerFactory
     from .trainers import Seq2SeqTrainer, Trainer
-    from .mixin import SwiftMixin, RLHFTrainerMixin
-    from .push_to_ms import PushToMsHubMixin
-    from .loss import LOSS_MAPPING, LossName, register_loss_func, get_loss_func
-    from .utils import (EvaluationStrategy, FSDPOption, HPSearchBackend, HubStrategy, IntervalStrategy, SchedulerType,
-                        ShardedDDPOption, TrainerCallback)
+    from .mixin import SwiftMixin
+
 else:
+    _extra_objects = {k: v for k, v in globals().items() if not k.startswith('_')}
     _import_structure = {
         'arguments': [
             'Seq2SeqTrainingArguments', 'TrainingArguments', 'DPOConfig', 'CPOConfig', 'KTOConfig', 'ORPOConfig',
-            'RewardConfig', 'PPOConfig'
+            'PPOConfig', 'RewardConfig'
         ],
-        'rlhf_trainer': ['CPOTrainer', 'DPOTrainer', 'KTOTrainer', 'ORPOTrainer', 'RewardTrainer', 'PPOTrainer'],
+        'rlhf_trainer':
+        ['CPOTrainer', 'DPOTrainer', 'KTOTrainer', 'ORPOTrainer', 'RLHFTrainerMixin', 'PPOTrainer', 'RewardTrainer'],
         'trainer_factory': ['TrainerFactory'],
         'trainers': ['Seq2SeqTrainer', 'Trainer'],
-        'mixin': ['SwiftMixin', 'RLHFTrainerMixin'],
-        'push_to_ms': ['PushToMsHubMixin'],
-        'loss': ['LOSS_MAPPING', 'LossName', 'register_loss_func', 'get_loss_func'],
-        'utils': [
-            'EvaluationStrategy', 'FSDPOption', 'HPSearchBackend', 'HubStrategy', 'IntervalStrategy', 'SchedulerType',
-            'ShardedDDPOption', 'TrainerCallback'
-        ]
+        'mixin': ['SwiftMixin'],
     }
 
     import sys
@@ -39,5 +44,5 @@ else:
         globals()['__file__'],
         _import_structure,
         module_spec=__spec__,
-        extra_objects={},
+        extra_objects=_extra_objects,
     )

@@ -1,12 +1,11 @@
 if __name__ == '__main__':
     import os
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+    os.environ['CUDA_VISIBLE_DEVICES'] = '2'
     os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 
 import os
 import shutil
 import tempfile
-import time
 import unittest
 from functools import partial
 from typing import Any, Dict, List
@@ -17,15 +16,22 @@ from datasets import Dataset as HfDataset
 from modelscope import Model, MsDataset, snapshot_download
 from packaging import version
 from torch.nn.utils.rnn import pad_sequence
-from transformers import AutoConfig, AutoTokenizer
+from transformers import AutoTokenizer
 
 from swift import Trainer, TrainingArguments, get_logger
-from swift.llm import (DatasetName, InferArguments, ModelType, RLHFArguments, SftArguments, infer_main, merge_lora_main,
-                       rlhf_main, sft_main)
+from swift.llm import InferArguments, ModelType, RLHFArguments, TrainArguments, infer_main, rlhf_main, sft_main
 
 NO_EVAL_HUMAN = True
 
 logger = get_logger()
+
+kwargs = {
+    'per_device_train_batch_size': 2,
+    'per_device_eval_batch_size': 2,
+    'save_steps': 10,
+    'gradient_accumulation_steps': 4,
+    'num_train_epochs': 1,
+}
 
 
 class TestRun(unittest.TestCase):
@@ -44,66 +50,77 @@ class TestRun(unittest.TestCase):
             return
         torch.cuda.empty_cache()
         output = sft_main(
-            SftArguments(
-                model_type=ModelType.qwen1half_1_8b,
-                template_type='qwen',
-                sft_type='full',
-                dataset=f'{DatasetName.jd_sentiment_zh}#200',
-                eval_steps=5))
-        best_model_checkpoint = output['best_model_checkpoint']
+            TrainArguments(
+                model='qwen/Qwen1.5-0.5B',
+                train_type='full',
+                dataset='DAMO_NLP/jd',
+                val_dataset='DAMO_NLP/jd#20',
+                streaming=True,
+                max_steps=12,
+                **kwargs))
+        last_model_checkpoint = output['last_model_checkpoint']
         torch.cuda.empty_cache()
         result = infer_main(
-            InferArguments(ckpt_dir=best_model_checkpoint, load_dataset_config=True, val_dataset_sample=2))
-        assert len(result['result'][0]['response']) < 20
+            InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True, val_dataset_sample=2))
+        assert len(result[0]['response']) < 20
 
-    def test_basic(self):
-        output_dir = 'output'
-        quantization_bit_list = [0, 4]
+    def test_hf_hub(self):
+        if not __name__ == '__main__':
+            # ignore citest error in github
+            return
+        torch.cuda.empty_cache()
         train_dataset_fnames = [
             'alpaca.csv', 'chatml.jsonl', 'swift_pre.jsonl', 'swift_single.csv', 'swift_multi.jsonl',
             'swift_multi.json#2'
         ]
         folder = os.path.join(os.path.dirname(__file__), 'data')
         dataset = [
-            f'MS::{DatasetName.alpaca_zh}#20',
-            f'{DatasetName.jd_sentiment_zh}#20',
+            'llm-wizard/alpaca-gpt4-data-zh#20',
+            'shibing624/alpaca-zh#20',
+        ] + [os.path.join(folder, fname) for fname in train_dataset_fnames]
+        output = sft_main(
+            TrainArguments(
+                model='qwen/Qwen1.5-0.5B-Chat-GPTQ-Int4', train_type='lora', dataset=dataset, use_hf=True, **kwargs))
+        last_model_checkpoint = output['last_model_checkpoint']
+        torch.cuda.empty_cache()
+        infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True, val_dataset_sample=2))
+
+    def test_basic(self):
+        output_dir = 'output'
+        quant_bits_list = [0, 4]
+        train_dataset_fnames = [
+            'alpaca.csv', 'chatml.jsonl', 'swift_pre.jsonl', 'swift_single.csv', 'swift_multi.jsonl',
+            'swift_multi.json#2'
+        ]
+        folder = os.path.join(os.path.dirname(__file__), 'data')
+        dataset = [
             'AI-ModelScope/alpaca-gpt4-data-zh#20',
-            'HF::llm-wizard/alpaca-gpt4-data-zh#20',
             'hurner/alpaca-gpt4-data-zh#20',
-            'HF::shibing624/alpaca-zh#20',
         ] + [os.path.join(folder, fname) for fname in train_dataset_fnames]
         if not __name__ == '__main__':
             output_dir = self.tmp_dir
-            quantization_bit_list = [4]
+            quant_bits_list = [4]
             dataset = dataset[:2]
-        import transformers
-        from packaging import version
-        if version.parse(transformers.__version__) >= version.parse('4.42'):
-            model_type = ModelType.qwen2_0_5b_instruct
-        else:
-            model_type = ModelType.chatglm3_6b
-        for quantization_bit in quantization_bit_list:
-            if quantization_bit == 4 and version.parse(transformers.__version__) >= version.parse('4.38'):
-                continue
-            predict_with_generate = True
-            if quantization_bit == 0:
+        for quant_bits in quant_bits_list:
+            if quant_bits == 0:
                 predict_with_generate = False
-            sft_args = SftArguments(
-                model_type=model_type,
-                template_type='AUTO',
-                lora_target_modules=['AUTO', 'EMBEDDING'],
-                quantization_bit=quantization_bit,
-                batch_size=2,
+                quant_method = None
+            else:
+                predict_with_generate = True
+                quant_method = 'bnb'
+            sft_args = TrainArguments(
+                model='qwen/Qwen2-0.5B-Instruct',
+                quant_bits=quant_bits,
                 eval_steps=5,
                 adam_beta2=0.95,
-                check_dataset_strategy='warning',
+                quant_method=quant_method,
                 predict_with_generate=predict_with_generate,
                 dataset=dataset,
-                val_dataset=f'{DatasetName.jd_sentiment_zh}#20',
+                val_dataset='DAMO_NLP/jd#20',
                 output_dir=output_dir,
                 include_num_input_tokens_seen=True,
-                gradient_checkpointing=True)
-            self.assertTrue(sft_args.gradient_accumulation_steps == 8)
+                gradient_checkpointing=True,
+                **kwargs)
             torch.cuda.empty_cache()
             output = sft_main(sft_args)
             print(output)
@@ -115,8 +132,7 @@ class TestRun(unittest.TestCase):
                     merge_lora={
                         0: True,
                         4: False
-                    }[quantization_bit],
-                    merge_device_map='cpu',
+                    }[quant_bits],
                     load_dataset_config=NO_EVAL_HUMAN,
                     val_dataset_sample=5)
                 torch.cuda.empty_cache()
@@ -133,7 +149,7 @@ class TestRun(unittest.TestCase):
         model_type_list = [ModelType.qwen_vl_chat, ModelType.qwen_audio_chat]
         dataset_list = [DatasetName.coco_en_mini, DatasetName.aishell1_zh_mini]
         for model_type, dataset in zip(model_type_list, dataset_list):
-            sft_args = SftArguments(
+            sft_args = TrainArguments(
                 model_type=model_type,
                 template_type='AUTO',
                 eval_steps=5,
@@ -163,53 +179,6 @@ class TestRun(unittest.TestCase):
             result = infer_main(infer_args)
             print(result)
 
-    def test_vqa(self):
-        if not __name__ == '__main__':
-            # ignore citest error in github
-            return
-        train_dataset_fnames = ['science-qa#300', 'a-okvqa#300', 'alpaca-cleaned#300']
-        val_dataset_fnames = ['okvqa']
-
-        sft_args = SftArguments(
-            model_type='yi-vl-6b-chat',
-            dataset=train_dataset_fnames,
-            lora_target_modules='ALL',
-            num_train_epochs=1,
-            check_dataset_strategy='warning')
-
-        torch.cuda.empty_cache()
-        result = sft_main(sft_args)
-        best_model_checkpoint = result['best_model_checkpoint']
-
-        infer_args = InferArguments(
-            ckpt_dir=best_model_checkpoint,
-            load_args_from_ckpt_dir=True,
-            load_dataset_config=True,
-            merge_lora=False,
-            val_dataset_sample=10,
-            dataset=val_dataset_fnames)
-        torch.cuda.empty_cache()
-        infer_main(infer_args)
-
-    def test_gpt4o_image(self):
-        if not __name__ == '__main__':
-            # ignore citest error in github
-            return
-        train_dataset_fnames = ['sharegpt-4o-image']
-
-        sft_args = SftArguments(
-            model_type='yi-vl-6b-chat',
-            dataset=train_dataset_fnames,
-            lora_target_modules='ALL',
-            train_dataset_sample=200,
-            num_train_epochs=1,
-            eval_steps=10,
-            save_steps=10,
-            check_dataset_strategy='warning')
-
-        torch.cuda.empty_cache()
-        self.assertTrue(sft_main(sft_args)['best_model_checkpoint'])
-
     def test_custom_dataset(self):
         if not __name__ == '__main__':
             # ignore citest error in github
@@ -228,74 +197,39 @@ class TestRun(unittest.TestCase):
         ]
         folder = os.path.join(os.path.dirname(__file__), 'data')
         resume_from_checkpoint = None
+        train_kwargs = kwargs.copy()
+        train_kwargs.pop('num_train_epochs')
         for num_train_epochs in [1, 2]:
-            sft_args = SftArguments(
-                model_type='qwen-7b-chat',
-                dataset=['self-cognition#20'],
-                custom_train_dataset_path=[os.path.join(folder, fname) for fname in train_dataset_fnames],
-                custom_val_dataset_path=[os.path.join(folder, fname) for fname in val_dataset_fnames],
-                lora_target_modules='ALL',
+            sft_args = TrainArguments(
+                model='Qwen/Qwen-7B-Chat',
+                dataset=['swift/self-cognition#20'] + [os.path.join(folder, fname) for fname in train_dataset_fnames],
+                val_dataset=[os.path.join(folder, fname) for fname in val_dataset_fnames],
                 resume_from_checkpoint=resume_from_checkpoint,
                 num_train_epochs=num_train_epochs,
                 model_name='小黄',
                 model_author='魔搭',
-                check_dataset_strategy='warning')
+                **train_kwargs)
 
             torch.cuda.empty_cache()
             result = sft_main(sft_args)
             best_model_checkpoint = result['best_model_checkpoint']
             resume_from_checkpoint = result['last_model_checkpoint']
 
-        for load_args_from_ckpt_dir in [True, False]:
-            kwargs = {}
-            if load_args_from_ckpt_dir is False:
-                kwargs = {'model_type': 'qwen-7b-chat'}
+        for load_args in [True, False]:
+            infer_kwargs = {}
+            if load_args is False:
+                args_json = os.path.join(best_model_checkpoint, 'args.json')
+                assert os.path.exists(args_json)
+                os.remove(args_json)
+                infer_kwargs = {'model': 'Qwen/Qwen-7B-Chat'}
             infer_args = InferArguments(
                 ckpt_dir=best_model_checkpoint,
-                load_args_from_ckpt_dir=load_args_from_ckpt_dir,
-                load_dataset_config=load_args_from_ckpt_dir and NO_EVAL_HUMAN,
-                merge_lora=load_args_from_ckpt_dir,
-                val_dataset_sample=-1,
-                custom_val_dataset_path=[os.path.join(folder, fname) for fname in val_dataset_fnames],
-                **kwargs)
+                load_dataset_config=load_args and NO_EVAL_HUMAN,
+                merge_lora=load_args,
+                val_dataset=[os.path.join(folder, fname) for fname in val_dataset_fnames],
+                **infer_kwargs)
             torch.cuda.empty_cache()
             infer_main(infer_args)
-
-    def test_cogagent_instruct(self):
-        if not __name__ == '__main__':
-            # ignore citest error in github
-            return
-        quantization_bit = 4
-        if version.parse(transformers.__version__) >= version.parse('4.38'):
-            quantization_bit = 0
-        torch.cuda.empty_cache()
-        output = sft_main(
-            SftArguments(
-                model_type=ModelType.cogagent_18b_instruct,
-                dataset=DatasetName.coco_en_2_mini,
-                train_dataset_sample=100,
-                lora_target_modules='ALL',
-                eval_steps=5,
-                quantization_bit=quantization_bit))
-        best_model_checkpoint = output['best_model_checkpoint']
-        torch.cuda.empty_cache()
-        infer_main(InferArguments(ckpt_dir=best_model_checkpoint, load_dataset_config=True, val_dataset_sample=2))
-
-    def test_xcomposer_chat(self):
-        if not __name__ == '__main__':
-            # ignore citest error in github
-            return
-        torch.cuda.empty_cache()
-        output = sft_main(
-            SftArguments(
-                model_type=ModelType.internlm_xcomposer2_7b_chat,
-                dataset=DatasetName.coco_en_mini,
-                lora_target_modules='DEFAULT',
-                train_dataset_sample=100,
-                eval_steps=5))
-        best_model_checkpoint = output['best_model_checkpoint']
-        torch.cuda.empty_cache()
-        infer_main(InferArguments(ckpt_dir=best_model_checkpoint, load_dataset_config=True, val_dataset_sample=2))
 
     def test_rlhf(self):
         if not __name__ == '__main__':
@@ -303,19 +237,21 @@ class TestRun(unittest.TestCase):
             return
         torch.cuda.empty_cache()
         # llm rlhf
-        rlhf_types = ['dpo', 'orpo', 'simpo', 'kto', 'cpo', 'rm', 'ppo']
+        #
+        rlhf_types = ['dpo', 'orpo', 'simpo', 'kto', 'cpo']  # , 'rm', 'ppo'
         for rlhf_type in rlhf_types:
-            dataset_name = 'hh-rlhf-cn-harmless-base-cn' if rlhf_type != 'kto' else 'ultrafeedback-kto'
-            kwargs = {}
+            dataset = ('AI-ModelScope/hh_rlhf_cn:harmless_base_cn#100'
+                       if rlhf_type != 'kto' else 'AI-ModelScope/ultrafeedback-binarized-preferences-cleaned-kto#100')
+            train_kwargs = {}
             if rlhf_type == 'ppo':
-                kwargs['reward_model_type'] = 'qwen2-1_5b-instruct'
+                train_kwargs['reward_model_type'] = 'qwen/Qwen2-1.5B-Instruct'
             output = rlhf_main(
                 RLHFArguments(
                     rlhf_type=rlhf_type,
-                    model_type=ModelType.qwen2_1_5b_instruct,
-                    dataset=dataset_name,
-                    train_dataset_sample=100,
+                    model='qwen/Qwen2-1.5B-Instruct',
+                    dataset=dataset,
                     eval_steps=5,
+                    **train_kwargs,
                     **kwargs))
             if rlhf_type == 'ppo':
                 model_checkpoint = output['last_model_checkpoint']
@@ -323,26 +259,58 @@ class TestRun(unittest.TestCase):
                 model_checkpoint = output['best_model_checkpoint']
 
             torch.cuda.empty_cache()
-            infer_main(InferArguments(ckpt_dir=model_checkpoint, load_dataset_config=True, val_dataset_sample=2))
+            infer_main(InferArguments(ckpt_dir=model_checkpoint, load_dataset_config=True))
 
         # mllm rlhf
-        visual_rlhf_types = ['dpo', 'orpo', 'simpo', 'cpo', 'rm']
-        test_model = ['llava1_6-mistral-7b-instruct', 'internvl2-2b',
-                      'florence-2-large']  # decoder only and encoder-decoder
+        visual_rlhf_types = ['dpo', 'orpo', 'simpo', 'cpo']  # 'rm'
+        #  'florence-2-base-ft'
+        test_model = ['swift/llava-v1.6-mistral-7b-hf', 'OpenGVLab/InternVL2-2B',
+                      'qwen/Qwen2-VL-2B-Instruct']  # decoder only and encoder-decoder
         for rlhf_type in visual_rlhf_types:
             for model in test_model:
-                dataset_name = 'rlaif-v'
-                output = rlhf_main(
-                    RLHFArguments(
-                        rlhf_type=rlhf_type,
-                        model_type=model,
-                        dataset=dataset_name,
-                        train_dataset_sample=100,
-                        eval_steps=5))
+                dataset_name = 'swift/RLAIF-V-Dataset#100'
+                output = rlhf_main(RLHFArguments(rlhf_type=rlhf_type, model=model, dataset=dataset_name, eval_steps=5))
                 best_model_checkpoint = output['best_model_checkpoint']
                 torch.cuda.empty_cache()
                 infer_main(
                     InferArguments(ckpt_dir=best_model_checkpoint, load_dataset_config=True, val_dataset_sample=2))
+
+    def test_loss_matching(self):
+        output_dir = 'output'
+        if not __name__ == '__main__':
+            # ignore citest error in github
+            return
+        losses = []
+        for use_swift_lora in [False, True]:
+            bool_var = use_swift_lora
+            torch.cuda.empty_cache()
+            output = sft_main([
+                '--model', 'qwen/Qwen-7B-Chat', '--eval_steps', '5', '--dataset',
+                'AI-ModelScope/leetcode-solutions-python#200', '--output_dir', output_dir, '--gradient_checkpointing',
+                'true', '--max_new_tokens', '100', '--attn_impl', 'flash_attn', '--target_modules', 'all-linear',
+                '--seed', '0', '--lora_bias', 'all', '--modules_to_save', 'lm_head', '--use_swift_lora',
+                str(use_swift_lora), '--num_train_epochs', '1', '--gradient_accumulation_steps', '16'
+            ])
+            best_model_checkpoint = output['best_model_checkpoint']
+            print(f'best_model_checkpoint: {best_model_checkpoint}')
+            load_dataset_config = str(bool_var or NO_EVAL_HUMAN)
+            if load_dataset_config:
+                val_dataset_sample = 2
+            else:
+                val_dataset_sample = -1
+            torch.cuda.empty_cache()
+            infer_main([
+                '--ckpt_dir', best_model_checkpoint, '--val_dataset_sample',
+                str(val_dataset_sample), '--max_new_tokens', '100', '--attn_impl', 'eager', '--merge_lora',
+                str(bool_var), '--load_dataset_config',
+                str(load_dataset_config)
+            ])
+            loss = output['log_history'][-1]['train_loss']
+            losses.append(loss)
+        self.assertTrue(abs(losses[0] - losses[1]) < 5e-4)
+        print(f'swift_loss: {losses[0]}')
+        print(f'peft_loss: {losses[1]}')
+        self.assertTrue(0.95 <= losses[0] <= 1)
 
     def test_pai_compat(self):
         if not __name__ == '__main__':
@@ -369,22 +337,6 @@ class TestRun(unittest.TestCase):
         torch.cuda.empty_cache()
         infer_main([infer_json])
         os.environ.pop('PAI_TRAINING_JOB_ID')
-
-    def test_deepseek_vl_chat(self):
-        if not __name__ == '__main__':
-            # ignore citest error in github
-            return
-        folder = os.path.join(os.path.dirname(__file__), 'data')
-        torch.cuda.empty_cache()
-        sft_main(
-            SftArguments(
-                model_type=ModelType.deepseek_vl_1_3b_chat,
-                #   dataset=DatasetName.capcha_images,
-                lora_target_modules='ALL',
-                train_dataset_sample=100,
-                eval_steps=5,
-                custom_train_dataset_path=[os.path.join(folder, 'multi_modal_1.jsonl')],
-                lazy_tokenize=False))
 
 
 def data_collate_fn(batch: List[Dict[str, Any]], tokenizer) -> Dict[str, torch.Tensor]:
@@ -489,4 +441,11 @@ class TestTrainer(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main()
+    # TestRun().test_template()
+    # TestRun().test_hf_hub()
+    # TestRun().test_basic()
+    # TestRun().test_custom_dataset()
+    #
+    TestRun().test_rlhf()
+    # TestRun().test_loss_matching()
+    # unittest.main()

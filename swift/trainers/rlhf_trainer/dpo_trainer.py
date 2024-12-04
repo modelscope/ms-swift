@@ -6,13 +6,14 @@ from peft import PeftModel
 from transformers import PreTrainedModel
 from trl import DPOTrainer as HFDPOTrainer
 
-from swift.trainers import PushToMsHubMixin, RLHFTrainerMixin, SwiftMixin
+from ..mixin import SwiftMixin
+from .rlhf_mixin import RLHFTrainerMixin
 
 del HFDPOTrainer.__init__
 del HFDPOTrainer.get_batch_samples
 
 
-class DPOTrainer(RLHFTrainerMixin, PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
+class DPOTrainer(RLHFTrainerMixin, SwiftMixin, HFDPOTrainer):
 
     def __init__(self,
                  model: Optional[Union[PreTrainedModel, nn.Module, str]] = None,

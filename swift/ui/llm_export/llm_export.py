@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 import re
 import sys
@@ -9,9 +10,7 @@ from typing import Type
 import gradio as gr
 import json
 import torch
-from gradio import Accordion, Tab
 from json import JSONDecodeError
-from modelscope import snapshot_download
 
 from swift.llm import ExportArguments
 from swift.ui.base import BaseUI
@@ -73,7 +72,6 @@ class LLMExport(BaseUI):
                 gpu_count = torch.cuda.device_count()
                 default_device = '0'
             with gr.Blocks():
-                model_and_template = gr.State([])
                 Model.build_ui(base_tab)
                 Export.build_ui(base_tab)
                 ExportRuntime.build_ui(base_tab)
@@ -88,15 +86,12 @@ class LLMExport(BaseUI):
                     scale=8)
 
                 cls.element('export').click(
-                    cls.export_model,
-                    [value for value in cls.elements().values() if not isinstance(value, (Tab, Accordion))],
-                    [cls.element('runtime_tab'),
-                     cls.element('running_tasks'), model_and_template])
+                    cls.export_model, list(base_tab.valid_elements().values()),
+                    [cls.element('runtime_tab'), cls.element('running_tasks')])
 
                 base_tab.element('running_tasks').change(
                     partial(ExportRuntime.task_changed, base_tab=base_tab), [base_tab.element('running_tasks')],
-                    [value for value in base_tab.elements().values() if not isinstance(value, (Tab, Accordion))]
-                    + [cls.element('log'), model_and_template],
+                    list(base_tab.valid_elements().values()) + [cls.element('log')],
                     cancels=ExportRuntime.log_event)
                 ExportRuntime.element('kill_task').click(
                     ExportRuntime.kill_task,
@@ -113,7 +108,7 @@ class LLMExport(BaseUI):
         other_kwargs = {}
         more_params = {}
         more_params_cmd = ''
-        keys = [key for key, value in cls.elements().items() if not isinstance(value, (Tab, Accordion))]
+        keys = cls.valid_element_keys()
         for key, value in zip(keys, args):
             compare_value = export_args.get(key)
             compare_value_arg = str(compare_value) if not isinstance(compare_value, (list, dict)) else compare_value
@@ -136,13 +131,9 @@ class LLMExport(BaseUI):
                     more_params_cmd = value
 
         kwargs.update(more_params)
-        if kwargs['model_type'] == cls.locale('checkpoint', cls.lang)['value']:
-            model_dir = kwargs.pop('model_id_or_path')
-            if not os.path.exists(model_dir):
-                model_dir = snapshot_download(model_dir)
-            kwargs['ckpt_dir'] = model_dir
-            kwargs.pop('model_type')
-
+        model = kwargs.get('model')
+        if os.path.exists(model) and os.path.exists(os.path.join(model, 'args.json')):
+            kwargs['ckpt_dir'] = kwargs.pop('model')
         export_args = ExportArguments(
             **{
                 key: value.split(' ') if key in kwargs_is_list and kwargs_is_list[key] else value
@@ -193,4 +184,4 @@ class LLMExport(BaseUI):
         run_command, export_args, log_file = cls.export(*args)
         os.system(run_command)
         time.sleep(2)
-        return gr.update(open=True), ExportRuntime.refresh_tasks(log_file), [export_args.sft_type]
+        return gr.update(open=True), ExportRuntime.refresh_tasks(log_file), [None]

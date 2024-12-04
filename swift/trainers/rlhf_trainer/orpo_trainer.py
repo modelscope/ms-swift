@@ -1,18 +1,18 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Optional, Union
 
-import torch
 import torch.nn as nn
 from transformers import PreTrainedModel
 from trl import ORPOTrainer as HFORPOTrainer
 
-from swift.trainers import PushToMsHubMixin, RLHFTrainerMixin, SwiftMixin
+from ..mixin import SwiftMixin
+from .rlhf_mixin import RLHFTrainerMixin
 
 del HFORPOTrainer.__init__
 del HFORPOTrainer.get_batch_samples
 
 
-class ORPOTrainer(RLHFTrainerMixin, PushToMsHubMixin, SwiftMixin, HFORPOTrainer):
+class ORPOTrainer(RLHFTrainerMixin, SwiftMixin, HFORPOTrainer):
 
     def __init__(self, model: Optional[Union[PreTrainedModel, nn.Module, str]] = None, *_args, **kwargs):
         ref_model = kwargs.get('ref_model')

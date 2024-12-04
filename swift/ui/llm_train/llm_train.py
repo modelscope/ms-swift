@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 import collections
 import os
 import re
@@ -10,10 +11,10 @@ from typing import Dict, Type
 import gradio as gr
 import json
 import torch
-from gradio import Accordion, Checkbox, Dropdown, Slider, Tab, Textbox
 from json import JSONDecodeError
 
 from swift.llm import RLHFArguments
+from swift.llm.argument.base_args.base_args import get_supported_tuners
 from swift.ui.base import BaseUI
 from swift.ui.llm_train.advanced import Advanced
 from swift.ui.llm_train.dataset import Dataset
@@ -32,17 +33,9 @@ from swift.utils import get_logger
 
 logger = get_logger()
 
-is_spaces = True if 'SPACE_ID' in os.environ else False
-if is_spaces:
-    is_shared_ui = True if 'modelscope/swift' in os.environ['SPACE_ID'] else False
-else:
-    is_shared_ui = False
-
 
 class LLMTrain(BaseUI):
     group = 'llm_train'
-
-    is_studio = os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio'
 
     sub_ui = [
         Model,
@@ -67,13 +60,13 @@ class LLMTrain(BaseUI):
                 'en': 'LLM Training',
             }
         },
-        'train_type': {
+        'train_stage': {
             'label': {
                 'zh': '训练Stage',
                 'en': 'Train Stage'
             },
             'info': {
-                'zh': '请注意选择于此匹配的数据集，人类对齐配置在页面下方',
+                'zh': '请注意选择与此匹配的数据集，人类对齐配置在页面下方',
                 'en': 'Please choose matched dataset, RLHF settings is at the bottom of the page'
             }
         },
@@ -118,7 +111,7 @@ class LLMTrain(BaseUI):
                 'en': 'Select GPU to train'
             }
         },
-        'sft_type': {
+        'train_type': {
             'label': {
                 'zh': '训练方式',
                 'en': 'Train type'
@@ -138,7 +131,7 @@ class LLMTrain(BaseUI):
                 'en': 'Select a random seed'
             }
         },
-        'dtype': {
+        'torch_dtype': {
             'label': {
                 'zh': '训练精度',
                 'en': 'Training Precision'
@@ -174,8 +167,8 @@ class LLMTrain(BaseUI):
                 'en': 'Tuner backend'
             },
             'info': {
-                'zh': 'tuner实现框架，建议peft或者unsloth',
-                'en': 'The tuner backend, suggest to use peft or unsloth'
+                'zh': 'tuner实现框架',
+                'en': 'The tuner backend'
             }
         },
         'use_liger': {
@@ -223,14 +216,13 @@ class LLMTrain(BaseUI):
                 Dataset.build_ui(base_tab)
                 with gr.Accordion(elem_id='train_param', open=True):
                     with gr.Row():
-                        gr.Dropdown(
-                            elem_id='train_type', choices=['pretrain/sft', 'rlhf'], value='pretrain/sft', scale=3)
-                        gr.Dropdown(elem_id='sft_type', scale=2)
+                        gr.Dropdown(elem_id='train_stage', choices=['pt', 'sft', 'rlhf'], value='sft', scale=3)
+                        gr.Dropdown(elem_id='train_type', scale=2, choices=list(get_supported_tuners()))
                         gr.Dropdown(elem_id='tuner_backend', scale=2)
                         gr.Textbox(elem_id='sequence_parallel_size', scale=3)
                     with gr.Row():
                         gr.Textbox(elem_id='seed', scale=4)
-                        gr.Dropdown(elem_id='dtype', scale=4)
+                        gr.Dropdown(elem_id='torch_dtype', scale=4)
                         gr.Checkbox(elem_id='use_liger', scale=4)
                         gr.Checkbox(elem_id='use_ddp', value=False, scale=4)
                         gr.Textbox(elem_id='ddp_num', value='2', scale=4)
@@ -243,10 +235,7 @@ class LLMTrain(BaseUI):
                         choices=[str(i) for i in range(gpu_count)] + ['cpu'],
                         value=default_device,
                         scale=8)
-                    if is_shared_ui:
-                        gr.Checkbox(elem_id='dry_run', value=True, interactive=False, scale=4)
-                    else:
-                        gr.Checkbox(elem_id='dry_run', value=False, scale=4)
+                    gr.Checkbox(elem_id='dry_run', value=False, scale=4)
                     submit = gr.Button(elem_id='submit', scale=4, variant='primary')
 
                 LoRA.build_ui(base_tab)
@@ -259,76 +248,46 @@ class LLMTrain(BaseUI):
                 Save.build_ui(base_tab)
                 Advanced.build_ui(base_tab)
 
-                cls.element('sft_type').change(
-                    Hyper.update_lr, inputs=[base_tab.element('sft_type')], outputs=[cls.element('learning_rate')])
+                cls.element('train_type').change(
+                    Hyper.update_lr, inputs=[base_tab.element('train_type')], outputs=[cls.element('learning_rate')])
 
-                cls.element('train_record').change(
-                    partial(cls.update_all_settings, base_tab=base_tab),
-                    inputs=[cls.element('model_type'), cls.element('train_record')],
-                    outputs=[value for value in cls.elements().values() if not isinstance(value, (Tab, Accordion))])
-                if cls.is_studio:
-                    submit.click(
-                        cls.update_runtime, [],
-                        [cls.element('runtime_tab'), cls.element('log')]).then(
-                            cls.train_studio,
-                            [value for value in cls.elements().values() if not isinstance(value, (Tab, Accordion))],
-                            [cls.element('log')] + Runtime.all_plots + [cls.element('running_cmd')],
-                            queue=True)
-                else:
-                    submit.click(
-                        cls.train_local,
-                        [value for value in cls.elements().values() if not isinstance(value, (Tab, Accordion))], [
-                            cls.element('running_cmd'),
-                            cls.element('logging_dir'),
-                            cls.element('runtime_tab'),
-                            cls.element('running_tasks'),
-                            cls.element('train_record'),
-                        ],
-                        queue=True)
-                if not cls.is_studio:
-                    base_tab.element('running_tasks').change(
-                        partial(Runtime.task_changed, base_tab=base_tab), [base_tab.element('running_tasks')],
-                        [value for value in base_tab.elements().values() if not isinstance(value, (Tab, Accordion))]
-                        + [cls.element('log')] + Runtime.all_plots,
-                        cancels=Runtime.log_event)
-                    Runtime.element('kill_task').click(
-                        Runtime.kill_task,
-                        [Runtime.element('running_tasks')],
-                        [Runtime.element('running_tasks')] + [Runtime.element('log')] + Runtime.all_plots,
-                        cancels=[Runtime.log_event],
-                    ).then(Runtime.reset, [], [Runtime.element('logging_dir')] + [Hyper.element('output_dir')])
+                submit.click(
+                    cls.train_local,
+                    list(cls.valid_elements().values()), [
+                        cls.element('running_cmd'),
+                        cls.element('logging_dir'),
+                        cls.element('runtime_tab'),
+                        cls.element('running_tasks'),
+                        cls.element('train_record'),
+                    ],
+                    queue=True)
+
+                base_tab.element('running_tasks').change(
+                    partial(Runtime.task_changed, base_tab=base_tab), [base_tab.element('running_tasks')],
+                    list(base_tab.valid_elements().values()) + [cls.element('log')] + Runtime.all_plots,
+                    cancels=Runtime.log_event)
+                Runtime.element('kill_task').click(
+                    Runtime.kill_task,
+                    [Runtime.element('running_tasks')],
+                    [Runtime.element('running_tasks')] + [Runtime.element('log')] + Runtime.all_plots,
+                    cancels=[Runtime.log_event],
+                ).then(Runtime.reset, [], [Runtime.element('logging_dir')] + [Hyper.element('output_dir')])
 
     @classmethod
     def update_runtime(cls):
         return gr.update(open=True), gr.update(visible=True)
 
     @classmethod
-    def update_all_settings(cls, model_type, train_record, base_tab):
-        if not train_record:
-            return [gr.update()] * len(base_tab.elements())
-        cache = cls.load_cache(model_type, train_record)
-        updates = []
-        for key, value in base_tab.elements().items():
-            if isinstance(value, (Tab, Accordion)):
-                continue
-            if (key in cache and isinstance(value, (Textbox, Dropdown, Slider, Checkbox)) and key != 'train_record'):
-                updates.append(gr.update(value=cache[key]))
-            else:
-                updates.append(gr.update())
-        return updates
-
-    @classmethod
     def train(cls, *args):
-        ignore_elements = ('model_type', 'logging_dir', 'more_params', 'train_type')
+        ignore_elements = ('logging_dir', 'more_params', 'train_stage')
         default_args = cls.get_default_value_from_dataclass(RLHFArguments)
         kwargs = {}
         kwargs_is_list = {}
         other_kwargs = {}
         more_params = {}
         more_params_cmd = ''
-        keys = [key for key, value in cls.elements().items() if not isinstance(value, (Tab, Accordion))]
-        model_type = None
-        do_rlhf = False
+        keys = cls.valid_element_keys()
+        train_stage = 'sft'
         for key, value in zip(keys, args):
             compare_value = default_args.get(key)
             if isinstance(value, str) and re.fullmatch(cls.int_regex, value):
@@ -348,20 +307,18 @@ class LLMTrain(BaseUI):
                 except (JSONDecodeError or TypeError):
                     more_params_cmd = value
 
-            if key == 'model_type':
-                model_type = value
-
-            if key == 'train_type':
-                do_rlhf = value == 'rlhf'
-
-        if os.path.exists(kwargs['model_id_or_path']):
-            kwargs['model_type'] = model_type
+            if key == 'train_stage':
+                train_stage = value
 
         kwargs.update(more_params)
         if 'dataset' not in kwargs and 'custom_train_dataset_path' not in kwargs:
             raise gr.Error(cls.locale('dataset_alert', cls.lang)['value'])
 
-        cmd = 'rlhf' if do_rlhf else 'sft'
+        model = kwargs.get('model')
+        if os.path.exists(model) and os.path.exists(os.path.join(model, 'args.json')):
+            kwargs['resume_from_checkpoint'] = kwargs.pop('model')
+
+        cmd = train_stage
         if kwargs.get('deepspeed'):
             more_params_cmd += f' --deepspeed {kwargs.pop("deepspeed")} '
         sft_args = RLHFArguments(
@@ -381,7 +338,7 @@ class LLMTrain(BaseUI):
             else:
                 params += f'--{e} {cls.quote}{kwargs[e]}{cls.quote} '
         params += more_params_cmd + ' '
-        params += f'--add_output_dir_suffix False --output_dir {sft_args.output_dir} ' \
+        params += f'--add_version False --output_dir {sft_args.output_dir} ' \
                   f'--logging_dir {sft_args.logging_dir} --ignore_args_error True'
         ddp_param = ''
         devices = other_kwargs['gpu_id']
@@ -402,17 +359,15 @@ class LLMTrain(BaseUI):
             if ddp_param:
                 ddp_param = f'set {ddp_param} && '
             run_command = f'{cuda_param}{ddp_param}start /b swift sft {params} > {log_file} 2>&1'
-        elif cls.is_studio:
-            run_command = f'{cuda_param} {ddp_param} swift {cmd} {params}'
         else:
             run_command = f'{cuda_param} {ddp_param} nohup swift {cmd} {params} > {log_file} 2>&1 &'
         logger.info(f'Run training: {run_command}')
-        if model_type:
+        if model:
             record = {}
             for key, value in zip(keys, args):
-                if key in default_args or key in ('more_params', 'train_type', 'use_ddp', 'ddp_num', 'gpu_id'):
+                if key in default_args or key in ('more_params', 'train_stage', 'use_ddp', 'ddp_num', 'gpu_id'):
                     record[key] = value or None
-            cls.save_cache(model_type, record)
+            cls.save_cache(model, record)
         return run_command, sft_args, other_kwargs
 
     @classmethod
@@ -441,4 +396,4 @@ class LLMTrain(BaseUI):
             time.sleep(1)  # to make sure the log file has been created.
             gr.Info(cls.locale('submit_alert', cls.lang)['value'])
         return run_command, sft_args.logging_dir, gr.update(open=True), Runtime.refresh_tasks(
-            sft_args.output_dir), gr.update(choices=cls.list_cache(sft_args.model_type))
+            sft_args.output_dir), gr.update(choices=cls.list_cache(sft_args.model))

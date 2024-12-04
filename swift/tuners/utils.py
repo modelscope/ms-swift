@@ -20,9 +20,9 @@ from peft.utils import CONFIG_NAME
 from peft.utils import ModulesToSaveWrapper as _ModulesToSaveWrapper
 from peft.utils import _get_submodules
 
+from swift.llm import MODEL_ARCH_MAPPING, ModelKeys
 from swift.utils.constants import BIN_EXTENSIONS
 from swift.utils.logger import get_logger
-from swift.utils.module_mapping import MODEL_KEYS_MAPPING, ModelKeys
 
 logger = get_logger()
 
@@ -333,8 +333,9 @@ class SwiftAdapter:
 
     @classmethod
     def get_model_key_mapping(cls, model_type, config) -> ModelKeys:
-        if model_type in MODEL_KEYS_MAPPING.keys():
-            model_key_mapping = MODEL_KEYS_MAPPING[model_type]
+
+        if model_type in MODEL_ARCH_MAPPING.keys():
+            model_key_mapping = MODEL_ARCH_MAPPING[model_type]
         else:
             model_key_mapping = config.model_key_mapping
 
@@ -418,3 +419,14 @@ def set_trainable(model, adapter_name):
                 new_module = ModulesToSaveWrapper(target, module_key=key, adapter_name=adapter_name)
                 new_module.set_adapter(adapter_name)
                 setattr(parent, target_name, new_module)
+
+
+def swift_to_peft_format(ckpt_dir: str, output_dir: str) -> str:
+    if 'default' in os.listdir(ckpt_dir):  # swift_backend
+        from swift import Swift
+        Swift.save_to_peft_format(ckpt_dir, output_dir)
+        ckpt_dir = output_dir
+        logger.info(f'Converting the swift format checkpoint to peft format, and saving it to: `{output_dir}`')
+    else:
+        logger.info('The format of the checkpoint is already in peft format.')
+    return ckpt_dir

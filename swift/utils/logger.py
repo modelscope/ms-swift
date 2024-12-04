@@ -2,6 +2,7 @@
 import importlib.util
 import logging
 import os
+from types import MethodType
 from typing import Optional
 
 from modelscope.utils.logger import get_logger as get_ms_logger
@@ -18,6 +19,23 @@ init_loggers = {}
 # old format
 # formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger_format = logging.Formatter('[%(levelname)s:%(name)s] %(message)s')
+
+info_set = set()
+warning_set = set()
+
+
+def info_once(self, msg, *args, **kwargs):
+    if msg in info_set:
+        return
+    info_set.add(msg)
+    self.info(msg)
+
+
+def warning_once(self, msg, *args, **kwargs):
+    if msg in warning_set:
+        return
+    warning_set.add(msg)
+    self.warning(msg)
 
 
 def get_logger(log_file: Optional[str] = None, log_level: Optional[int] = None, file_mode: str = 'w'):
@@ -72,6 +90,8 @@ def get_logger(log_file: Optional[str] = None, log_level: Optional[int] = None, 
 
     init_loggers[logger_name] = True
 
+    logger.info_once = MethodType(info_once, logger)
+    logger.warning_once = MethodType(warning_once, logger)
     return logger
 
 

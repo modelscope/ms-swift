@@ -3,10 +3,11 @@ from torch.utils.data import DataLoader
 from transformers import PreTrainedModel
 from trl import PPOv2Trainer as HFPPOTrainer
 
-from swift.trainers import PushToMsHubMixin, RLHFTrainerMixin, SwiftMixin
+from ..mixin import SwiftMixin
+from .rlhf_mixin import RLHFTrainerMixin
 
 
-class PPOTrainer(RLHFTrainerMixin, PushToMsHubMixin, SwiftMixin, HFPPOTrainer):
+class PPOTrainer(RLHFTrainerMixin, SwiftMixin, HFPPOTrainer):
 
     def __init__(self, model: PreTrainedModel, ref_model: PreTrainedModel, *_args, **kwargs):
         kwargs['policy'] = model

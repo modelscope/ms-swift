@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 import re
 import sys
@@ -9,9 +10,7 @@ from typing import Type
 import gradio as gr
 import json
 import torch
-from gradio import Accordion, Tab
 from json import JSONDecodeError
-from modelscope import snapshot_download
 
 from swift.llm import EvalArguments
 from swift.ui.base import BaseUI
@@ -75,7 +74,6 @@ class LLMEval(BaseUI):
                 gpu_count = torch.cuda.device_count()
                 default_device = '0'
             with gr.Blocks():
-                model_and_template = gr.State([])
                 Model.build_ui(base_tab)
                 Eval.build_ui(base_tab)
                 EvalRuntime.build_ui(base_tab)
@@ -90,15 +88,12 @@ class LLMEval(BaseUI):
                     scale=8)
 
                 cls.element('evaluate').click(
-                    cls.eval_model,
-                    [value for value in cls.elements().values() if not isinstance(value, (Tab, Accordion))],
-                    [cls.element('runtime_tab'),
-                     cls.element('running_tasks'), model_and_template])
+                    cls.eval_model, list(base_tab.valid_elements().values()),
+                    [cls.element('runtime_tab'), cls.element('running_tasks')])
 
                 base_tab.element('running_tasks').change(
                     partial(EvalRuntime.task_changed, base_tab=base_tab), [base_tab.element('running_tasks')],
-                    [value for value in base_tab.elements().values() if not isinstance(value, (Tab, Accordion))]
-                    + [cls.element('log'), model_and_template],
+                    list(base_tab.valid_elements().values()) + [cls.element('log')],
                     cancels=EvalRuntime.log_event)
                 EvalRuntime.element('kill_task').click(
                     EvalRuntime.kill_task,
@@ -115,7 +110,7 @@ class LLMEval(BaseUI):
         other_kwargs = {}
         more_params = {}
         more_params_cmd = ''
-        keys = [key for key, value in cls.elements().items() if not isinstance(value, (Tab, Accordion))]
+        keys = cls.valid_element_keys()
         for key, value in zip(keys, args):
             compare_value = eval_args.get(key)
             compare_value_arg = str(compare_value) if not isinstance(compare_value, (list, dict)) else compare_value
@@ -138,11 +133,9 @@ class LLMEval(BaseUI):
                     more_params_cmd = value
 
         kwargs.update(more_params)
-        if kwargs['model_type'] == cls.locale('checkpoint', cls.lang)['value']:
-            model_dir = kwargs.pop('model_id_or_path')
-            if not os.path.exists(model_dir):
-                model_dir = snapshot_download(model_dir)
-            kwargs['ckpt_dir'] = model_dir
+        model = kwargs.get('model')
+        if model and os.path.exists(model) and os.path.exists(os.path.join(model, 'args.json')):
+            kwargs['ckpt_dir'] = kwargs.pop('model')
 
         eval_args = EvalArguments(
             **{
@@ -189,4 +182,4 @@ class LLMEval(BaseUI):
         run_command, eval_args, log_file = cls.eval(*args)
         os.system(run_command)
         time.sleep(2)
-        return gr.update(open=True), EvalRuntime.refresh_tasks(log_file), [eval_args.sft_type]
+        return gr.update(open=True), EvalRuntime.refresh_tasks(log_file)

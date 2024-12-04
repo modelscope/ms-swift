@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 import collections
 import os.path
 import sys
@@ -8,7 +9,6 @@ from typing import Dict, List, Tuple, Type
 import gradio as gr
 import json
 import psutil
-from gradio import Accordion, Tab
 from packaging import version
 
 from swift.ui.base import BaseUI
@@ -104,8 +104,7 @@ class Runtime(BaseUI):
                     gr.Textbox(elem_id='log', lines=6, visible=False)
 
                 concurrency_limit = {}
-                if version.parse(gr.__version__) >= version.parse('4.0.0') and os.environ.get(
-                        'MODELSCOPE_ENVIRONMENT') != 'studio':
+                if version.parse(gr.__version__) >= version.parse('4.0.0'):
                     concurrency_limit = {'concurrency_limit': 5}
                 cls.log_event = base_tab.element('show_log').click(cls.update_log, [], [cls.element('log')]).then(
                     cls.wait, [base_tab.element('running_tasks')], [cls.element('log')], **concurrency_limit)
@@ -249,7 +248,7 @@ class Runtime(BaseUI):
             _, all_args = cls.parse_info_from_cmdline(task)
         else:
             all_args = {}
-        elements = [value for value in base_tab.elements().values() if not isinstance(value, (Tab, Accordion))]
+        elements = list(base_tab.valid_elements().values())
         ret = []
         is_custom_path = 'ckpt_dir' in all_args
         for e in elements:
@@ -257,24 +256,19 @@ class Runtime(BaseUI):
                 if isinstance(e, gr.Dropdown) and e.multiselect:
                     arg = all_args[e.elem_id].split(' ')
                 else:
-                    if e.elem_id == 'model_type':
-                        if is_custom_path:
-                            arg = base_tab.locale('checkpoint', base_tab.lang)['value']
-                        else:
-                            arg = all_args[e.elem_id]
-                    elif e.elem_id == 'model_id_or_path':
+                    if e.elem_id == 'model':
                         if is_custom_path:
                             arg = all_args['ckpt_dir']
                         else:
-                            arg = all_args['model_id_or_path']
+                            arg = all_args[e.elem_id]
                     else:
                         arg = all_args[e.elem_id]
                 ret.append(gr.update(value=arg))
             else:
                 ret.append(gr.update())
-        sft_type = None
+        train_type = None
         if is_custom_path:
-            with open(os.path.join(all_args['ckpt_dir'], 'sft_args.json'), 'r') as f:
+            with open(os.path.join(all_args['ckpt_dir'], 'args.json'), 'r') as f:
                 _json = json.load(f)
-                sft_type = _json['sft_type']
-        return ret + [gr.update(value=None), [all_args.get('model_type'), all_args.get('template_type'), sft_type]]
+                train_type = _json.get('train_type')
+        return ret + [gr.update(value=None), [all_args.get('model_type'), all_args.get('template_type'), train_type]]

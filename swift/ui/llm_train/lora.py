@@ -1,8 +1,8 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Type
 
 import gradio as gr
 
-from swift.llm import MODEL_MAPPING, get_default_lora_target_modules
 from swift.ui.base import BaseUI
 
 
@@ -17,7 +17,7 @@ class LoRA(BaseUI):
                 'en': 'LoRA settings'
             },
         },
-        'lora_target_modules': {
+        'target_modules': {
             'label': {
                 'zh': 'LoRA目标模块',
                 'en': 'LoRA target modules'
@@ -73,7 +73,7 @@ class LoRA(BaseUI):
                 'en': 'gaussian/pissa/pissa_niter_[n]/olora/loftq/true/false',
             }
         },
-        'lora_lr_ratio': {
+        'lorap_lr_ratio': {
             'label': {
                 'zh': 'Lora+学习率倍率',
                 'en': 'The lr ratio of Lora+'
@@ -90,25 +90,13 @@ class LoRA(BaseUI):
         with gr.Accordion(elem_id='lora_tab', open=True):
             with gr.Blocks():
                 with gr.Row():
-                    lora_target_modules = gr.Textbox(
-                        elem_id='lora_target_modules', lines=1, scale=5, value='ALL', is_list=True)
+                    gr.Textbox(elem_id='target_modules', lines=1, scale=5, value='all-linear', is_list=True)
                     gr.Slider(elem_id='lora_rank', value=32, minimum=1, maximum=512, step=8, scale=2)
                     gr.Slider(elem_id='lora_alpha', value=8, minimum=1, maximum=512, step=8, scale=2)
                     gr.Textbox(elem_id='lora_dropout', scale=2)
                 with gr.Row():
-                    gr.Dropdown(elem_id='lora_dtype', scale=2)
-                    gr.Textbox(elem_id='lora_lr_ratio', scale=2)
+                    gr.Dropdown(elem_id='lora_dtype', scale=2, value=None)
+                    gr.Textbox(elem_id='lorap_lr_ratio', scale=2)
                     gr.Checkbox(elem_id='use_rslora', scale=2)
                     gr.Checkbox(elem_id='use_dora', scale=2)
                     gr.Textbox(elem_id='init_lora_weights', scale=4)
-
-            def update_lora(choice):
-                if choice is not None:
-                    target_modules = get_default_lora_target_modules(choice)
-                    if isinstance(target_modules, list):
-                        target_modules = 'ALL'  # llm
-                    return target_modules
-                return None
-
-            base_tab.element('model_type').change(
-                update_lora, inputs=[base_tab.element('model_type')], outputs=[lora_target_modules])

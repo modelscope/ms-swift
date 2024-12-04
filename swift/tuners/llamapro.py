@@ -6,8 +6,8 @@ from typing import Optional
 import torch
 from torch import nn
 
+from swift.llm import MODEL_ARCH_MAPPING, ModelKeys
 from swift.utils.logger import get_logger
-from swift.utils.module_mapping import MODEL_KEYS_MAPPING, ModelKeys
 from .utils import ActivationMixin, SwiftAdapter, SwiftConfig, SwiftOutput
 
 logger = get_logger()
@@ -29,7 +29,7 @@ class LLaMAProConfig(SwiftConfig):
     """
     model_type: str = field(
         default=None, metadata={
-            'choices': list(MODEL_KEYS_MAPPING.keys()),
+            'choices': list(MODEL_ARCH_MAPPING.keys()),
         })
 
     num_new_blocks: int = None
@@ -129,6 +129,7 @@ class LLaMAPro(SwiftAdapter):
 
     @classmethod
     def get_model_key_mapping(cls, model_type, config) -> ModelKeys:
+
         model_key_mapping = SwiftAdapter.get_model_key_mapping(model_type, config)
         assert model_key_mapping.o_proj is not None and model_key_mapping.down_proj is not None, \
             'LLaMAPro only support models with o_proj and down_proj components.'

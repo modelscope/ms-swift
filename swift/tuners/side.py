@@ -135,7 +135,7 @@ class SideModule(nn.Module, ActivationMixin):
     by Zhang et al.(2019)
     See https://arxiv.org/abs/1912.13503
 
-    Attributes:
+    Args:
         side_module_name: The name of the additive side networks.
     """
 

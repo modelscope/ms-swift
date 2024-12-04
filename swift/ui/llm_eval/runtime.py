@@ -1,4 +1,4 @@
-import os.path
+# Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Type
 
 import gradio as gr
@@ -94,8 +94,7 @@ class EvalRuntime(Runtime):
                     gr.Textbox(elem_id='log', lines=6, visible=False)
 
                 concurrency_limit = {}
-                if version.parse(gr.__version__) >= version.parse('4.0.0') and os.environ.get(
-                        'MODELSCOPE_ENVIRONMENT') != 'studio':
+                if version.parse(gr.__version__) >= version.parse('4.0.0'):
                     concurrency_limit = {'concurrency_limit': 5}
                 cls.log_event = base_tab.element('show_log').click(cls.update_log, [], [cls.element('log')]).then(
                     cls.wait, [base_tab.element('running_tasks')], [cls.element('log')], **concurrency_limit)

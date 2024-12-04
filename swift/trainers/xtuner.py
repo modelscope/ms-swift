@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Any
 
 import datasets
@@ -9,7 +10,7 @@ from transformers.trainer_utils import seed_worker
 
 
 def assert_xtuner_runtime_condition():
-    from swift.llm.utils.utils import is_xtuner_available
+    from swift.utils import is_xtuner_available
     assert is_xtuner_available(), \
         ('Please install XTuner first to pack dataset to `max_length`.'
          '`pip install -U \'xtuner[deepspeed]\'`')

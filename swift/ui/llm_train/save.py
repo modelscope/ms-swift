@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Type
 
 import gradio as gr
@@ -76,5 +77,8 @@ class Save(BaseUI):
                     gr.Checkbox(elem_id='push_to_hub', scale=20)
                     gr.Textbox(elem_id='hub_model_id', lines=1, scale=20)
                     gr.Checkbox(elem_id='hub_private_repo', scale=20)
-                    gr.Dropdown(elem_id='hub_strategy', scale=20)
+                    gr.Dropdown(
+                        elem_id='hub_strategy',
+                        scale=20,
+                        choices=['end', 'every_save', 'checkpoint', 'all_checkpoints'])
                     gr.Textbox(elem_id='hub_token', lines=1, scale=20)
