@@ -8,6 +8,7 @@ from dataclasses import asdict
 from functools import wraps
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
+import json
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -137,6 +138,8 @@ class Template(ProcessorMixin):
             assert self.grounding_type != 'real', 'not support'  # TODO:check
             images = [rescale_image(img, max_pixels) for img in images]
         if inputs.objects:
+            if isinstance(inputs.objects, str):
+                inputs.objects = json.loads(inputs.objects)
             normalize_bbox(inputs.objects, inputs.images, to_type=self.grounding_type)
         if images and not load_images_origin:  # fix pt & qwen-vl
             for i, image in enumerate(images):
