@@ -258,7 +258,7 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
 
 def get_model_tokenizer_multimodal(model_dir: str, *args, **kwargs):
     from transformers import AutoProcessor
-    processor = AutoProcessor.from_pretrained(model_dir)
+    processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
     kwargs['tokenizer'] = processor.tokenizer
     model, _ = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
     return model, processor

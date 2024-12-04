@@ -1,12 +1,5 @@
 # NPU训练最佳实践
-作者: [chuanzhubin](https://github.com/chuanzhubin), [jintao](https://github.com/Jintao-Huang)
-
-## 目录
-- [环境准备](#环境准备)
-- [微调](#微调)
-- [推理](#推理)
-- [部署](#部署)
-
+作者: [chuanzhubin](https://github.com/chuanzhubin)
 
 ## 环境准备
 
@@ -19,20 +12,12 @@ conda activate swift-npu
 
 # 设置pip全局镜像 (可选,加速下载)
 pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
-
-# 安装ms-swift(当前推荐从源码安装, 待发版后可直接pip安装)
-git clone https://github.com/modelscope/ms-swift.git
-cd swift
-pip install -e '.[llm]'
+pip install 'ms-swift[llm]' -U
 
 # 安装torch-npu
 pip install torch-npu decorator
 # 如果你想要使用deepspeed (控制显存占用,训练速度会有一定下降)
 pip install deepspeed
-
-# 环境对齐 (通常不需要运行. 如果你运行错误, 可以跑下面的代码, 仓库使用最新环境测试)
-pip install -r requirements/framework.txt  -U
-pip install -r requirements/llm.txt  -U
 ```
 
 测试环境是否安装正确，NPU能否被正常加载：
@@ -133,7 +118,12 @@ swift sft \
     --dataset AI-ModelScope/blossom-math-v2 \
     --num_train_epochs 5 \
     --train_type lora \
-    --output_dir output
+    --output_dir output \
+    --learning_rate 1e-4 \
+    --gradient_accumulation_steps 16 \
+    --save_steps 100 \
+    --eval_steps 100
+
 ```
 
 
@@ -151,7 +141,8 @@ swift sft \
     --dataset AI-ModelScope/blossom-math-v2 \
     --num_train_epochs 5 \
     --train_type lora \
-    --output_dir output
+    --output_dir output \
+    ...
 ```
 
 
@@ -170,7 +161,8 @@ swift sft \
     --num_train_epochs 5 \
     --train_type lora \
     --output_dir output \
-    --deepspeed zero2
+    --deepspeed zero2 \
+    ...
 ```
 
 ZeRO3:
@@ -186,7 +178,8 @@ swift sft \
     --num_train_epochs 5 \
     --train_type lora \
     --output_dir output \
-    --deepspeed zero3
+    --deepspeed zero3 \
+    ...
 ```
 
 

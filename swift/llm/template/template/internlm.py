@@ -64,7 +64,7 @@ class InternLMXComposer2Template(Template):
 
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
         input_ids = inputs['input_ids'][0].tolist()
-        labels = inputs['labels']
+        labels = inputs.get('labels')
         images = inputs['images']
         if len(images) > 0:  # ignore <s>
             input_ids = input_ids[1:]
