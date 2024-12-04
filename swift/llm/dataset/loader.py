@@ -16,13 +16,11 @@ from modelscope.utils.config_ds import MS_CACHE_HOME
 
 from swift.hub import get_hub
 from swift.utils import download_ms_file, get_logger, get_seed, safe_ddp_context, use_hf_hub
-from .preprocessor import get_features_dataset
+from .preprocessor import get_features_dataset, standard_keys
 from .register import DATASET_MAPPING, DATASET_TYPE, DatasetMeta, SubsetDataset, register_dataset_info
 from .utils import sample_dataset
 
 logger = get_logger()
-
-standard_keys = ['messages', 'rejected_response', 'label', 'images', 'videos', 'audios', 'tools', 'objects']
 
 _dataset_meta_mapping = None
 
@@ -326,8 +324,8 @@ class DatasetLoader:
 
     def _remove_useless_columns(dataset: DATASET_TYPE) -> DATASET_TYPE:
         dataset = get_features_dataset(dataset)
-        features = dataset.features.keys()
-        k_list = [k for k in features if k in standard_keys]
+        features = dataset.features
+        k_list = [k for k in standard_keys if k in features]
         if len(k_list) != len(features):
             dataset = dataset.select_columns(k_list)
         return dataset

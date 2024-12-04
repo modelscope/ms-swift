@@ -20,12 +20,18 @@ def test_sft():
 
 
 def test_mllm():
-    _test_dataset(['AI-ModelScope/ShareGPT4V:all'])
-    _test_dataset(['AI-ModelScope/LLaVA-Pretrain'])
+    # _test_dataset(['AI-ModelScope/ShareGPT4V:all'])
+    # _test_dataset(['AI-ModelScope/LLaVA-Pretrain'])
     # _test_dataset(['swift/RLAIF-V-Dataset:all'], strict=False)
-    _test_dataset(['swift/OK-VQA_train'], strict=False)
-    _test_dataset(['swift/A-OKVQA'], strict=False)
-    # _test_dataset(['AI-ModelScope/LaTeX_OCR:all'], strict=False)
+    # _test_dataset(['swift/OK-VQA_train'], strict=False)
+    # _test_dataset(['swift/OCR-VQA'], strict=False)
+    # _test_dataset(['swift/A-OKVQA'], strict=False)
+    _test_dataset([
+        'AI-ModelScope/LaTeX_OCR:all',
+        '/mnt/nas2/huangjintao.hjt/work/modelscope_swift/tests/llm/data/multi_modal_3.jsonl',
+        'modelscope/coco_2014_caption:validation', 'speech_asr/speech_asr_aishell1_trainsets:validation'
+    ],
+                  strict=False)
     # _test_dataset(['swift/VideoChatGPT:all'])
     # _test_dataset(['speech_asr/speech_asr_aishell1_trainsets:validation'])
     # _test_dataset(['AI-ModelScope/captcha-images'])
@@ -69,7 +75,7 @@ if __name__ == '__main__':
     # test_agent()
     # test_dpo()
     # test_kto()
-    # test_mllm()
+    test_mllm()
     # test_pretrain()
     # test_dataset_info()
-    test_cls()
+    # test_cls()

@@ -15,6 +15,8 @@ from swift.utils import get_logger
 
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
+standard_keys = ['messages', 'rejected_response', 'label', 'images', 'videos', 'audios', 'tools', 'objects']
+
 logger = get_logger()
 
 
@@ -116,10 +118,18 @@ class RowPreprocessor:
                 batched[k].append(v)
         return batched
 
+    @staticmethod
+    def _fix_streaming_keys(row):
+        for k in list(row.keys()):
+            if k.startswith('__@'):
+                new_k = k[len('__@'):]
+                row[new_k] = row.pop(k)
+
     def batched_preprocess(self, batched_row: Dict[str, Any], *, strict: bool) -> Dict[str, Any]:
         batched_row = dict(batched_row)
         assert len(batched_row) > 0
         self.row_keys_map(batched_row, self.row_mapping)
+        self._fix_streaming_keys(batched_row)
         rows = self.batched_to_rows(batched_row)
 
         new_rows = []
@@ -155,10 +165,16 @@ class RowPreprocessor:
 
     @staticmethod
     def safe_rename_columns(dataset: HfDataset, columns_mapping: Dict[str, Any]) -> HfDataset:
-        features = dataset.features.keys()
-        safe_columns_mapping = {k: v for k, v in columns_mapping.items() if k in features}
+        safe_columns_mapping = {k: v for k, v in columns_mapping.items() if k in dataset.features}
         if safe_columns_mapping:
             dataset = dataset.rename_columns(safe_columns_mapping)
+
+        if isinstance(dataset, HfIterableDataset):
+            # fix: https://github.com/huggingface/datasets/issues/6408
+            columns_mapping = {k: f'__@{k}' for k in standard_keys if k in dataset.features}
+            if columns_mapping:
+                dataset = dataset.rename_columns(columns_mapping)
+
         return dataset
 
     @staticmethod
@@ -223,11 +239,7 @@ class RowPreprocessor:
         dataset = self._cast_pil_image(dataset)
         map_kwargs = {}
         if isinstance(dataset, HfDataset):
-            map_kwargs.update({
-                'num_proc': num_proc,
-                'load_from_cache_file': load_from_cache_file,
-                'remove_columns': list(dataset.features.keys())
-            })
+            map_kwargs.update({'num_proc': num_proc, 'load_from_cache_file': load_from_cache_file})
         with self._patch_arrow_writer():
             try:
                 dataset_mapped = dataset.map(
@@ -235,6 +247,7 @@ class RowPreprocessor:
                     batched=True,
                     batch_size=batch_size,
                     fn_kwargs={'strict': strict},
+                    remove_columns=list(dataset.features.keys()),
                     **map_kwargs)
             except NotImplementedError:
                 pass
@@ -431,7 +444,7 @@ class AutoPreprocessor:
 
     def _get_preprocessor(self, dataset: DATASET_TYPE) -> RowPreprocessor:
         dataset = get_features_dataset(dataset)
-        features = dataset.features.keys()
+        features = dataset.features
         for key in ['conversation', 'conversations', 'messages']:
             if key in features:
                 return MessagesPreprocessor(**self.kwargs)

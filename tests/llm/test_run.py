@@ -50,7 +50,13 @@ class TestRun(unittest.TestCase):
             return
         torch.cuda.empty_cache()
         output = sft_main(
-            TrainArguments(model='qwen/Qwen1.5-0.5B', train_type='full', dataset='DAMO_NLP/jd#100', **kwargs))
+            TrainArguments(
+                model='qwen/Qwen1.5-0.5B',
+                train_type='full',
+                dataset='DAMO_NLP/jd#100',
+                streaming=True,
+                max_steps=12,
+                **kwargs))
         last_model_checkpoint = output['last_model_checkpoint']
         torch.cuda.empty_cache()
         result = infer_main(
@@ -73,13 +79,7 @@ class TestRun(unittest.TestCase):
         ] + [os.path.join(folder, fname) for fname in train_dataset_fnames]
         output = sft_main(
             TrainArguments(
-                model='qwen/Qwen1.5-0.5B-Chat-GPTQ-Int4',
-                train_type='lora',
-                dataset=dataset,
-                use_hf=True,
-                streaming=True,
-                max_steps=12,
-                **kwargs))
+                model='qwen/Qwen1.5-0.5B-Chat-GPTQ-Int4', train_type='lora', dataset=dataset, use_hf=True, **kwargs))
         last_model_checkpoint = output['last_model_checkpoint']
         torch.cuda.empty_cache()
         infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True, val_dataset_sample=2))
@@ -406,8 +406,8 @@ class TestTrainer(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    # TestRun().test_template()
-    TestRun().test_hf_hub()
+    TestRun().test_template()
+    # TestRun().test_hf_hub()
     # TestRun().test_basic()
     #
     # TestRun().test_custom_dataset()
