@@ -8,6 +8,7 @@ from dataclasses import asdict
 from functools import wraps
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
+import json
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -123,19 +124,17 @@ class Template(ProcessorMixin):
     def _preprocess_inputs(
         self,
         inputs: StdTemplateInputs,
-        *,
-        max_pixels: Optional[int] = None,
     ) -> None:
         images = inputs.images
         load_images = self.load_images or self.mode in {'vllm', 'lmdeploy'}
         load_images_origin = load_images
-        if max_pixels is not None or inputs.objects:
+        if self.max_pixels is not None or inputs.objects:
             load_images = True
         if images:
             self._load_images(images, load_images)
-        if max_pixels is not None:
+        if self.max_pixels is not None:
             assert self.grounding_type != 'real', 'not support'  # TODO:check
-            images = [rescale_image(img, max_pixels) for img in images]
+            images = [rescale_image(img, self.max_pixels) for img in images]
         if inputs.objects:
             if isinstance(inputs.objects, str):
                 inputs.objects = json.loads(inputs.objects)

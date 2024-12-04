@@ -127,6 +127,8 @@ class ModelArguments:
         self._init_torch_dtype()
 
     def get_model_kwargs(self):
+        if self.model is None:
+            raise ValueError('Please set --model <model_id_or_path>`')
         return {
             'model_id_or_path': self.model,
             'torch_dtype': self.torch_dtype,

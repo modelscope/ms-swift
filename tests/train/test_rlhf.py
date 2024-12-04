@@ -30,6 +30,7 @@ def test_mllm():
             model='qwen/Qwen2-VL-7B-Instruct',
             dataset=['swift/RLAIF-V-Dataset#100'],
             dataset_num_proc=8,
+            max_pixels=512 * 512,
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
     infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True, merge_lora=True))
@@ -44,11 +45,12 @@ def test_mllm_zero3():
             model='qwen/Qwen2-VL-7B-Instruct',
             dataset=['swift/RLAIF-V-Dataset#100'],
             dataset_num_proc=8,
+            max_pixels=512 * 512,
             deepspeed='zero3',
             **kwargs))
 
 
 if __name__ == '__main__':
-    test_llm()
-    # test_mllm()
+    # test_llm()
+    test_mllm()
     # test_mllm_zero3()
