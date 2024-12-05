@@ -10,7 +10,7 @@ from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
-from ..utils import Context, Prompt, findall, gather_list
+from ..utils import Context, Prompt, findall
 from ..vision_utils import load_image
 
 
@@ -18,35 +18,13 @@ class FlorenceTemplate(Template):
     # loss_scale = 'last_round'
     is_encoder_decoder = True
 
-    def __init__(self, *args, **kwargs):
-        self.task_prompts_without_inputs = {
-            '<OCR>': 'What is the text in the image?',
-            '<OCR_WITH_REGION>': 'What is the text in the image, with regions?',
-            '<CAPTION>': 'What does the image describe?',
-            '<DETAILED_CAPTION>': 'Describe in detail what is shown in the image.',
-            '<MORE_DETAILED_CAPTION>': 'Describe with a paragraph what is shown in the image.',
-            '<OD>': 'Locate the objects with category name in the image.',
-            '<DENSE_REGION_CAPTION>': 'Locate the objects in the image, with their descriptions.',
-            '<REGION_PROPOSAL>': 'Locate the region proposals in the image.'
-        }
-        self.task_prompts_with_input = {
-            '<CAPTION_TO_PHRASE_GROUNDING>': 'Locate the phrases in the caption: {input}',
-            '<REFERRING_EXPRESSION_SEGMENTATION>': 'Locate {input} in the image with mask',
-            '<REGION_TO_SEGMENTATION>': 'What is the polygon mask of region {input}',
-            '<OPEN_VOCABULARY_DETECTION>': 'Locate {input} in the image.',
-            '<REGION_TO_CATEGORY>': 'What is the region {input}?',
-            '<REGION_TO_DESCRIPTION>': 'What does the region {input} describe?',
-            '<REGION_TO_OCR>': 'What text is in the region {input}?',
-        }
-        super().__init__(*args, **kwargs)
-
     @staticmethod
     def _add_default_tags(inputs: StdTemplateInputs) -> None:
         return
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
-        return ['']
+        return []
 
     def replace_box(self, object_: Dict[str, Any], index: int, inputs: StdTemplateInputs) -> List[Context]:
         object_ = inputs.objects[index]
@@ -62,7 +40,8 @@ class FlorenceTemplate(Template):
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         processor = self.processor
-        new_query = processor._construct_prompts([inputs.to_history()['query']])[0]
+        inputs.query = inputs.to_history()['query']
+        new_query = processor._construct_prompts([inputs.query])[0]
         for i in reversed(range(len(inputs.messages))):
             if inputs.messages[i]['role'] == 'user':
                 inputs.messages[i]['content'] = new_query
@@ -88,15 +67,15 @@ class FlorenceTemplate(Template):
         inputs_embeds = model.get_input_embeddings()(inputs['input_ids'])
         image_features = model._encode_image(inputs['pixel_values'])
         inputs_embeds, _ = model._merge_input_ids_with_image_features(image_features, inputs_embeds)
-        return {'inputs_embeds': inputs_embeds[0]}
+        return {'inputs_embeds': inputs_embeds}
 
-    def post_process_generate_response(self, response, example):
-        if isinstance(example['images'], list):
-            example['images'] = example['images'][0]
-        image = load_image(example['images'])
+    def decode(self, generate_ids: List[int], **kwargs) -> Any:
+        response = super().decode(generate_ids, **kwargs)
+        template_inputs = kwargs.get('template_inputs')
+        images = template_inputs.images
         return json.dumps(
             self.processor.post_process_generation(
-                response, task=example['query'], image_size=(image.width, image.height)))
+                response, task=template_inputs.query, image_size=(images[0].width, images[0].height)))
 
 
 register_template(

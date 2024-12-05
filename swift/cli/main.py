@@ -12,9 +12,6 @@ ROUTE_MAPPING: Dict[str, str] = {
     'merge-lora': 'swift.cli.merge_lora',
     'web-ui': 'swift.cli.web_ui',
     'deploy': 'swift.cli.deploy',
-    'dpo': 'swift.cli.rlhf',
-    'orpo': 'swift.cli.rlhf',
-    'simpo': 'swift.cli.rlhf',
     'rlhf': 'swift.cli.rlhf',
     'export': 'swift.cli.export',
     'eval': 'swift.cli.eval'
@@ -47,13 +44,10 @@ def cli_main() -> None:
     argv = sys.argv[1:]
     method_name = argv[0]
     argv = argv[1:]
-    # rlhf compatibility
-    if method_name in ['dpo', 'simpo', 'orpo']:
-        argv = ['--rlhf_type', method_name] + argv
     file_path = importlib.util.find_spec(ROUTE_MAPPING[method_name]).origin
     torchrun_args = get_torchrun_args()
     python_cmd = sys.executable
-    if torchrun_args is None or method_name not in ('pt', 'sft', 'dpo', 'orpo', 'simpo', 'rlhf'):
+    if torchrun_args is None or method_name not in ('pt', 'sft', 'rlhf'):
         args = [python_cmd, file_path, *argv]
     else:
         args = [python_cmd, '-m', 'torch.distributed.run', *torchrun_args, file_path, *argv]

@@ -1,6 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+from dataclasses import dataclass, field
+from typing import Optional
+
 from ..constant import LLMTemplateType
 from ..register import TemplateMeta, register_template
+from ..utils import Prompt
 from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
 
 register_template(
@@ -113,13 +117,24 @@ register_template(
         chat_sep=['</s>'],
         suffix=['</s>']))
 
-register_template(
-    TemplateMeta(
-        LLMTemplateType.telechat, prefix=[], prompt=['<_user>{{QUERY}}<_bot>'], chat_sep=['<_end>'], suffix=['<_end>']))
+
+@dataclass
+class TeleChatTemplateMeta(TemplateMeta):
+    prefix: Prompt = field(default_factory=list)
+    prompt: Prompt = field(default_factory=lambda: ['<_user>{{QUERY}}<_bot>'])
+    chat_sep: Optional[Prompt] = field(default_factory=lambda: ['<_end>'])
+    suffix: Prompt = field(default_factory=lambda: ['<_end>'])
+    system_prefix: Optional[Prompt] = field(default_factory=lambda: ['<_system>{{SYSTEM}}'])
+
+
+register_template(TeleChatTemplateMeta(LLMTemplateType.telechat))
+
+telechat2_system = '你是中国电信星辰语义大模型，英文名是TeleChat，你是由中电信人工智能科技有限公司和中国电信人工智能研究院（TeleAI）研发的人工智能助手。\n'
+register_template(TeleChatTemplateMeta(LLMTemplateType.telechat2, default_system=telechat2_system))
 
 register_template(
     TemplateMeta(
-        LLMTemplateType.telechat2,
+        LLMTemplateType.telechat2_115b,
         prefix=['<_start>'],
         prompt=[[4], '{{QUERY}}', [5]],
         chat_sep=['<_end>'],

@@ -94,7 +94,7 @@ def rescale_image(img: Image.Image, max_pixels: int) -> Image.Image:
         return img
 
     ratio = width / height
-    height_scaled = math.pow(rescale_image / ratio, 0.5)
+    height_scaled = math.sqrt(max_pixels / ratio)
     width_scaled = height_scaled * ratio
     return T.Resize((int(height_scaled), int(width_scaled)))(img)
 

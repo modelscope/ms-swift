@@ -12,6 +12,7 @@ import torch
 import torch.distributed as dist
 import transformers
 from accelerate.utils import find_device
+from modelscope.hub.utils.utils import get_cache_dir
 from packaging import version
 from transformers import AutoConfig, PretrainedConfig
 
@@ -58,7 +59,6 @@ class ModelInfo:
     max_model_len: int
     quant_method: Literal['gptq', 'awq', 'bnb', 'aqlm', 'hqq', None]
     quant_bits: int
-    rope_scaling: Dict[str, Any]
 
     # extra
     config: Optional[PretrainedConfig] = None

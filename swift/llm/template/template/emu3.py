@@ -96,7 +96,7 @@ class Emu3GenTemplate(Template):
         generate_kwargs['logits_processor'] += logits_processor
         return generate_kwargs
 
-    def decode(self, input_ids: List[int], **tokenizer_kwargs) -> Image.Image:
+    def decode(self, input_ids: List[int], **kwargs) -> Image.Image:
         mm_list = self.processor.decode(input_ids)
         for idx, im in enumerate(mm_list):
             if not isinstance(im, Image.Image):

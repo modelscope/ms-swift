@@ -2,7 +2,8 @@
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-from ..register import TemplateMeta
+from ..constant import LLMTemplateType
+from ..register import TemplateMeta, register_template
 from ..utils import Prompt
 
 DEFAULT_SYSTEM = 'You are a helpful assistant.'
@@ -23,4 +24,7 @@ class EmptyTemplateMeta(TemplateMeta):
     prefix: Prompt = field(default_factory=list)
     prompt: Prompt = field(default_factory=list)
     chat_sep: Optional[Prompt] = field(default_factory=list)
-    suffix: Prompt = field(default_factory=list)
+
+
+register_template(ChatmlTemplateMeta(LLMTemplateType.chatml))
+register_template(EmptyTemplateMeta(LLMTemplateType.dummy))

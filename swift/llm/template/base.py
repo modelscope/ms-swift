@@ -17,6 +17,7 @@ from PIL import Image
 from torch.nn.utils.rnn import pad_sequence
 from transformers import StoppingCriteriaList
 from transformers.integrations import is_deepspeed_zero3_enabled
+from transformers.utils import strtobool
 
 from swift.utils import get_dist_setting, get_logger, use_torchacc
 from ..utils import Processor, ProcessorMixin
@@ -124,19 +125,17 @@ class Template(ProcessorMixin):
     def _preprocess_inputs(
         self,
         inputs: StdTemplateInputs,
-        *,
-        max_pixels: Optional[int] = None,
     ) -> None:
         images = inputs.images
         load_images = self.load_images or self.mode in {'vllm', 'lmdeploy'}
         load_images_origin = load_images
-        if max_pixels is not None or inputs.objects:
+        if self.max_pixels is not None or inputs.objects:
             load_images = True
         if images:
             self._load_images(images, load_images)
-        if max_pixels is not None:
+        if self.max_pixels is not None:
             assert self.grounding_type != 'real', 'not support'  # TODO:check
-            images = [rescale_image(img, max_pixels) for img in images]
+            images = [rescale_image(img, self.max_pixels) for img in images]
         if inputs.objects:
             if isinstance(inputs.objects, str):
                 inputs.objects = json.loads(inputs.objects)
@@ -174,21 +173,16 @@ class Template(ProcessorMixin):
         return encoded
 
     def _kto_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        label, inputs.label = inputs.label, None
         encoded = self._rlhf_encode(inputs)
         if len(encoded) == 0:
             return {}
-        return {
-            'completion_input_ids': encoded['chosen_input_ids'],
-            'completion_labels': encoded['chosen_labels'],
-            'KL_completion_input_ids': encoded['rejected_input_ids'],
-            'KL_completion_labels': encoded['rejected_labels'],
-            'label': inputs.label
-        }
+        encoded['label'] = label
+        return encoded
 
-    def encode(
-        self,
-        inputs: Union[TemplateInputs, Dict[str, Any], InferRequest],
-    ) -> Dict[str, Any]:
+    def encode(self,
+               inputs: Union[TemplateInputs, Dict[str, Any], InferRequest],
+               return_template_inputs: bool = False) -> Dict[str, Any]:
         """The entrance method of Template!
 
         Returns:
@@ -217,6 +211,8 @@ class Template(ProcessorMixin):
         for key in list(encoded.keys()):
             if encoded[key] is None:
                 encoded.pop(key)
+        if return_template_inputs:
+            encoded['template_inputs'] = inputs
         return encoded
 
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
@@ -233,8 +229,9 @@ class Template(ProcessorMixin):
                     return generate_ids[:-i]
         return generate_ids
 
-    def decode(self, generate_ids: List[int], is_finished: bool = True, **decode_kwargs) -> Any:
-        return self._skip_stop_decode(generate_ids, is_finished, **decode_kwargs)
+    def decode(self, generate_ids: List[int], is_finished: bool = True, tokenizer_kwargs=None, **kwargs) -> Any:
+        tokenizer_kwargs = tokenizer_kwargs or {}
+        return self._skip_stop_decode(generate_ids, is_finished, **tokenizer_kwargs)
 
     def _skip_stop_decode(self, generate_ids: List[int], is_finished: bool, **decode_kwargs) -> Any:
         # Do not print template_meta.suffix[-1] and eos_token.
@@ -540,10 +537,9 @@ class Template(ProcessorMixin):
         res_context_list: List[Context] = []
         res_context_types: List[ContextType] = []
         if template_meta.auto_add_bos:
-            bos_token_id = self.tokenizer.bos_token_id
-            if isinstance(bos_token_id, int) and bos_token_id in self.tokenizer.encode(''):
-                res_context_list.append([bos_token_id])
-                res_context_types.append(ContextType.OTHER)
+            bos_tokens = self.tokenizer.encode('')
+            res_context_list.append(bos_tokens)
+            res_context_types.append(ContextType.OTHER)
 
         prefix = template_meta.system_prefix if system else template_meta.prefix
         self._concat_context_list(prefix, res_context_list, res_context_types, system=system)
@@ -597,8 +593,11 @@ class Template(ProcessorMixin):
         return res_context_list, loss_scale_list, answer_len
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        template_backend = self.template_backend
+        if self.template_meta.template_type == 'dummy' and self.use_chat_template and not self.is_training:
+            template_backend = 'jinja'
         res_context_list, loss_scale_list, answer_len = (
-            self._swift_encode(inputs) if self.template_backend == 'swift' else self._jinja_encode(inputs))
+            self._swift_encode(inputs) if template_backend == 'swift' else self._jinja_encode(inputs))
         encoded = {}
         if self.is_encoder_decoder:
             # tokenizer_kwargs: use prompt (qwen-audio)
@@ -639,8 +638,6 @@ class Template(ProcessorMixin):
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
         encoded['loss_scale'] = loss_scale
-        if inputs.label is not None:
-            encoded['label'] = inputs.label
         if not self.is_training:
             for k in list(encoded.keys()):
                 if k.endswith('labels'):
@@ -649,10 +646,23 @@ class Template(ProcessorMixin):
             for k in list(encoded.keys()):
                 if k.endswith('loss_scale'):
                     encoded[k] = None
+
+        # sequence_classification
+        if inputs.label is not None:
+            encoded['label'] = inputs.label
         return encoded
+
+    def _debug_logger(self, generate_ids):
+        if isinstance(generate_ids, list) or isinstance(generate_ids, torch.Tensor) and generate_ids.ndim == 1:
+            generate_ids = [generate_ids]
+        for tokens in generate_ids:
+            logger.info(f'[GENERATE_IDS] {tokens}')
+            logger.info(f'[GENERATE] {self.safe_decode(tokens)}\n' + '-' * 50)
 
     def get_generate_ids(self, generate_ids: Union[torch.Tensor, List[int]],
                          num_prompt_tokens: int) -> Union[torch.Tensor, List[int]]:
+        if strtobool(os.getenv('SWIFT_DEBUG', 'false')):
+            self._debug_logger(generate_ids)
         if self.skip_prompt:
             return generate_ids[..., num_prompt_tokens:]
         else:
@@ -662,23 +672,20 @@ class Template(ProcessorMixin):
         return response
 
     def pre_forward_hook(self, model: nn.Module, args, kwargs, *, padding_to: Optional[int] = None) -> Dict[str, Any]:
-        # inplace
         from swift.llm import to_device
-        batched_data = kwargs.pop('_data')
-        extra_inputs = []
-        for data in batched_data:
-            extra_inputs.append(self._post_encode(model, to_device(data, model.device)))
-        new_kwargs = self.data_collator(extra_inputs, padding_to=padding_to, model=model)
-        new_kwargs.pop('labels', None)
-        if 'inputs_embeds' in new_kwargs:
-            new_kwargs.pop('input_ids', None)
-        kwargs.update(to_device(new_kwargs, model.device))
+        keep_kwargs = {
+            k: v
+            for k, v in kwargs.items() if k in {'input_ids', 'labels', 'attention_mask', 'position_ids'}
+        }
+        keep_kwargs.update(self._post_encode(model, to_device(kwargs, model.device)))
+        kwargs = keep_kwargs
+        if 'inputs_embeds' in kwargs:
+            kwargs.pop('input_ids', None)
 
         if isinstance(model, PeftModel):
             parameters = inspect.signature(model.base_model.model.forward).parameters
         else:
             parameters = inspect.signature(model.forward).parameters
-
         if 'position_ids' not in parameters:
             kwargs.pop('position_ids', None)
         return args, kwargs
@@ -725,38 +732,13 @@ class Template(ProcessorMixin):
             deepspeed.initialize = self._deepspeed_initialize
         self._deepspeed_initialize = None
 
-    def pre_data_collator(self,
-                          batch: List[Dict[str, Any]],
-                          *,
-                          padding_to: Optional[int] = None,
-                          model: Optional[nn.Module] = None) -> Dict[str, Any]:
-        """for multimodal LLM"""
-        # compat streaming
-        for data in batch:
-            for key in {'input_ids', 'labels', 'loss_scale'}:
-                for k, v in data.items():
-                    if k.endswith(key) and isinstance(v, (list, tuple)):
-                        data[k] = torch.tensor(v)[None]
-
-        new_batch = []
-        for b in batch:
-            new_batch.append({k: v for k, v in b.items() if k.endswith('labels') or k == 'label'})
-
-        res = self.data_collator(new_batch, padding_to=padding_to, model=model)  # only labels
-        res['_data'] = batch
-        return res
-
-    def data_collator(self,
-                      batch: List[Dict[str, Any]],
-                      *,
-                      padding_to: Optional[int] = None,
-                      model: Optional[nn.Module] = None) -> Dict[str, Any]:
+    def data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         if self.mode == 'rlhf':
-            return self._rlhf_data_collator(batch, padding_to=padding_to, model=model)
+            return self._rlhf_data_collator(batch, padding_to=padding_to)
         elif self.mode == 'kto':
-            return self._kto_data_collator(batch, padding_to=padding_to, model=model)
+            return self._kto_data_collator(batch, padding_to=padding_to)
         elif self.mode in {'pt', 'train'}:
-            return self._data_collator(batch, padding_to=padding_to, model=model)
+            return self._data_collator(batch, padding_to=padding_to)
 
     @staticmethod
     def _fetch_inputs_startswith(batch: List[Dict[str, Any]], prefix: str) -> List[Dict[str, Any]]:
@@ -769,44 +751,52 @@ class Template(ProcessorMixin):
             new_batch.append(new_inputs)
         return new_batch
 
+    @staticmethod
+    def fetch_inputs(batch: List[Dict[str, Any]], keys: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+        from swift.llm import RowPreprocessor
+        rows = RowPreprocessor.rows_to_batched(batch)
+        if keys is not None:
+            rows = {k: rows[k] for k in keys}
+        return rows
+
+    @staticmethod
+    def gather_list(batch: List[Dict[str, Any]], attr_name: str) -> Optional[List[Any]]:
+        # List[Tensor] ->  List[Tensor]
+        res = []
+        for b in batch:
+            if b.get(attr_name) is not None:
+                res += b.pop(attr_name)
+        return res
+
     def _rlhf_data_collator(self,
                             batch: List[Dict[str, Any]],
                             *,
                             chosen_prefix: str = 'chosen_',
                             rejected_prefix: str = 'rejected_',
-                            padding_to: Optional[int] = None,
-                            model: Optional[nn.Module] = None) -> Dict[str, Any]:
+                            padding_to: Optional[int] = None) -> Dict[str, Any]:
         new_batch = []
         for prefix in [chosen_prefix, rejected_prefix]:
             new_batch += self._fetch_inputs_startswith(batch, prefix)
-        return self._data_collator(new_batch, padding_to=padding_to, model=model)
+        return self._data_collator(new_batch, padding_to=padding_to)
 
-    def _kto_data_collator(self,
-                           batch: List[Dict[str, Any]],
-                           *,
-                           padding_to: Optional[int] = None,
-                           model: Optional[nn.Module] = None) -> Dict[str, Any]:
-        kl_batch = self._fetch_inputs_startswith(batch, 'KL_completion_')
-        new_batch = self._fetch_inputs_startswith(batch, 'completion_')
+    def _kto_data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        new_batch = self._fetch_inputs_startswith(batch, 'chosen_')
+        kl_batch = self._fetch_inputs_startswith(batch, 'rejected_')
 
-        kl_res = self._data_collator(kl_batch, padding_to=padding_to, model=model)
-        res = self._data_collator(new_batch, padding_to=padding_to, model=model)
-        if res and kl_res:
-            res = {f'completion_{k}': v for k, v in res.items()}
-            res.update({f'KL_completion_{k}': v for k, v in kl_res.items()})
-        else:
-            res = res or kl_res
-
+        res = self._data_collator(new_batch, padding_to=padding_to)
+        kl_res = self._data_collator(kl_batch, padding_to=padding_to)
+        res = {
+            **{f'completion_{k}': v
+               for k, v in res.items()},
+            **{f'KL_completion_{k}': v
+               for k, v in kl_res.items()},
+        }
         label = [b['label'] for b in batch if b.get('label') is not None]
         if label:
             res['label'] = label
         return res
 
-    def _data_collator(self,
-                       batch: List[Dict[str, Any]],
-                       *,
-                       padding_to: Optional[int] = None,
-                       model: Optional[nn.Module] = None) -> Dict[str, Any]:
+    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         """
         Args:
             batch(`List[Dict[str, Any]]`): The input data in batch
@@ -873,7 +863,7 @@ class Template(ProcessorMixin):
         pixel_values_videos = [b['pixel_values_videos'] for b in batch if b.get('pixel_values_videos') is not None]
         if len(pixel_values_videos) > 0:
             res['pixel_values_videos'] = torch.concat(pixel_values_videos)
-        # # sequence_classification
+        # sequence_classification
         if self.is_training:
             label = [b['label'] for b in batch if b.get('label') is not None]
             if label:

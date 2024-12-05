@@ -14,33 +14,25 @@ from ..utils import Context, Prompt, Word, findall
 from ..vision_utils import load_batch, load_video_cogvlm2
 
 
-class GLMTemplate(Template):
-
-    def __init__(self, tokenizer: PreTrainedTokenizerBase, *args, **kwargs) -> None:
-        super().__init__(tokenizer, *args, **kwargs)
-        token_list = tokenizer.encode('')
-        template_meta = self.template_meta
-        template_meta.prefix.insert(0, token_list)
-        if template_meta.system_prefix is not None:
-            template_meta.system_prefix.insert(0, token_list)
+@dataclass
+class GLMTemplateMeta(TemplateMeta):
+    auto_add_bos: bool = True
 
 
 register_template(
-    TemplateMeta(
+    GLMTemplateMeta(
         LLMTemplateType.chatglm2,
         prefix=['{{SYSTEM}}'],
         prompt=['[Round {{ROUND1}}]\n\n问：{{QUERY}}\n\n答：'],
-        chat_sep=['\n\n'],
-        template_cls=GLMTemplate))
+        chat_sep=['\n\n']))
 
 
 @dataclass
-class GLM4TemplateMeta(TemplateMeta):
+class GLM4TemplateMeta(GLMTemplateMeta):
     prefix: Prompt = field(default_factory=lambda: [])
     prompt: Prompt = field(default_factory=lambda: ['<|user|>\n{{QUERY}}<|assistant|>\n'])
     chat_sep: Optional[Prompt] = field(default_factory=lambda: [])
     suffix: Prompt = field(default_factory=lambda: ['<|user|>'])
-    template_cls: Type[Template] = GLMTemplate
     system_prefix: Optional[Prompt] = field(default_factory=lambda: ['<|system|>\n{{SYSTEM}}'])
 
     default_tools_prompt: str = 'glm4'
@@ -48,7 +40,7 @@ class GLM4TemplateMeta(TemplateMeta):
     stop_words: List[Word] = field(default_factory=lambda: ['<|endoftext|>', '<|user|>', '<|observation|>'])
 
 
-class GLM4VTemplate(GLMTemplate):
+class GLM4VTemplate(Template):
 
     def check_example(self, example):
         images = example.get('images') or []
@@ -82,12 +74,8 @@ class GLM4VTemplate(GLMTemplate):
         encoded['labels'] = labels
         return encoded
 
-    def _data_collator(self,
-                       batch: List[Dict[str, Any]],
-                       *,
-                       padding_to: Optional[int] = None,
-                       model: Optional[nn.Module] = None) -> Dict[str, Any]:
-        res = super()._data_collator(batch, padding_to=padding_to, model=model)
+    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super()._data_collator(batch, padding_to=padding_to)
         images = [b['images'] for b in batch if 'images' in b]
         if images:
             res['images'] = torch.concat(images)
@@ -145,12 +133,8 @@ class CogTemplate(Template):
                                            for cross_img in inputs2['cross_images']]
         return encoded
 
-    def _data_collator(self,
-                       batch: List[Dict[str, Any]],
-                       *,
-                       padding_to: Optional[int] = None,
-                       model: Optional[nn.Module] = None) -> Dict[str, Any]:
-        res = super()._data_collator(batch, padding_to=padding_to, model=model)
+    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super()._data_collator(batch, padding_to=padding_to)
         keys = ['images', 'cross_images']
         for key in keys:
             if key in batch[0]:
@@ -231,4 +215,33 @@ register_template(
         MLLMTemplateType.cogvlm2_video,
         template_cls=Cog2VideoTemplate,
         placeholder_tokens=['<|reserved_special_token_0|>'],
+    ))
+
+
+class GLMEdgeVTemplate(Template):
+
+    def __init__(self):
+        super().__init__([], ['<|user|>\\n{{QUERY}}\\n<|assistant|>\\n'], ['\\n'], ['<|endoftext|>'], None,
+                         ['<|system|>\\n{{SYSTEM}}\\n'])
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    inputs: StdTemplateInputs) -> List[Context]:
+        assert media_type == 'image'
+        return ['<|begin_of_image|>' * 578]
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded, _ = super()._encode(inputs)
+        if len(encoded) == 0:
+            return encoded
+        images = inputs.images
+        if images:
+            inputs['pixel_values'] = torch.tensor(self.processor(images).pixel_values)
+        return inputs
+
+
+register_template(
+    GLM4TemplateMeta(
+        MLLMTemplateType.glm_edge_v,
+        template_cls=GLMEdgeVTemplate,
+        placeholder_tokens=['<|begin_of_image|>'],
     ))

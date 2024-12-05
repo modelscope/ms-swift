@@ -4,11 +4,13 @@ from typing import List
 
 
 class LLMTemplateType:
+    chatml = 'chatml'
     default = 'default'
+    dummy = 'dummy'
+
     qwen = 'qwen'
     qwen2_5 = 'qwen2_5'
     qwq = 'qwq'
-    chatml = 'chatml'
     marco_o1 = 'marco_o1'
     modelscope_agent = 'modelscope_agent'
 
@@ -42,6 +44,7 @@ class LLMTemplateType:
     minicpm = 'minicpm'
     telechat = 'telechat'
     telechat2 = 'telechat2'
+    telechat2_115b = 'telechat2_115b'
 
     codefuse = 'codefuse'
     codefuse_codellama = 'codefuse_codellama'
@@ -108,6 +111,7 @@ class MLLMTemplateType:
     cogvlm2 = 'cogvlm2'
     cogvlm2_video = 'cogvlm2_video'
     glm4v = 'glm4v'
+    glm_edge_v = 'glm_edge_v'
 
     minicpmv = 'minicpmv'
     minicpmv2_5 = 'minicpmv2_5'

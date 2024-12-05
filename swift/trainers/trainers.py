@@ -38,21 +38,24 @@ class Seq2SeqTrainer(TorchAccMixin, SwiftMixin, HfSeq2SeqTrainer):
         self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'predict.jsonl'))
         self._custom_metrics['acc'] = MeanMetric(nan_value=None)
 
+    @staticmethod
+    def _predict_data_collator(batch):
+        return {'_data': batch}
+
     @contextmanager
     def _patch_predict_with_generate(self):
         origin_mode = self.template.mode
         self.template.set_mode('pt')
-        has_hook = self.template._handles
+        is_multimodal = self.model.model_meta.is_multimodal
         origin_data_collator = self.data_collator
 
-        if has_hook:  # multimodal
+        if is_multimodal:
             self.template.remove_post_encode_hook()
-        else:
-            self.data_collator = partial(self.template.pre_data_collator, model=self.model)
+        self.data_collator = self._predict_data_collator
         try:
             yield
         finally:
-            if has_hook:
+            if is_multimodal:
                 self.template.register_post_encode_hook([self.model])
             self.data_collator = origin_data_collator
             self.template.set_mode(origin_mode)

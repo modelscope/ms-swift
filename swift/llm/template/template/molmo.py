@@ -159,12 +159,8 @@ class MolmoTemplate(Template):
             data['images'] = data['images'].to(self.model.dtype)
         return data
 
-    def _data_collator(self,
-                       batch: List[Dict[str, Any]],
-                       *,
-                       padding_to: Optional[int] = None,
-                       model: Optional[nn.Module] = None) -> Dict[str, Any]:
-        res = super().data_collator(batch, padding_to=padding_to, model=model)
+    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super().data_collator(batch, padding_to=padding_to)
         # prepare batchfy inputs
         keys = ['images', 'image_input_idx', 'image_masks', 'append_last_valid_logits']
         for key in keys:

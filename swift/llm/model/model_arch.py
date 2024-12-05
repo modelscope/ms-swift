@@ -28,6 +28,7 @@ class MLLMModelArch:
 
     cogvlm = 'cogvlm'
     glm4v = 'glm4v'
+    glm_edge_v = 'glm_edge_v'
 
     llama3_1_omni = 'llama3_1_omni'
     llama3_2_vision = 'llama3_2_vision'
@@ -413,7 +414,7 @@ register_model_arch(
 register_model_arch(
     MultiModelKeys(
         MLLMModelArch.qwen2_vl,
-        language_model=['model', 'lm_head'],
+        language_model='model',
         aligner='visual.merger',
         vision_tower='visual',
     ))
@@ -480,6 +481,9 @@ register_model_arch(
         generator=['gen_vision_model', 'gen_aligner', 'gen_head', 'gen_embed']))
 
 register_model_arch(MultiModelKeys(MLLMModelArch.emu3_chat, language_model='model'))
+
+register_model_arch(
+    MultiModelKeys(MLLMModelArch.glm_edge_v, language_model='model.layers', vision_tower='model.vision'))
 
 
 def get_model_arch(arch_name: Optional[str]) -> Optional[ModelKeys]:

@@ -7,7 +7,7 @@ from ..base import Template
 from ..constant import MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
-from ..utils import Context, findall, gather_list
+from ..utils import Context, findall
 from .utils import DEFAULT_SYSTEM
 
 
@@ -48,13 +48,9 @@ class PixtralTemplate(Template):
 
         return encoded
 
-    def _data_collator(self,
-                       batch: List[Dict[str, Any]],
-                       *,
-                       padding_to: Optional[int] = None,
-                       model: Optional[nn.Module] = None) -> Dict[str, Any]:
-        pixel_values = gather_list(batch, 'pixel_values')
-        res = super()._data_collator(batch, padding_to=padding_to, model=model)
+    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        pixel_values = self.gather_list(batch, 'pixel_values')
+        res = super()._data_collator(batch, padding_to=padding_to)
         if pixel_values:
             res['pixel_values'] = pixel_values
         return res

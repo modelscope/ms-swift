@@ -81,12 +81,20 @@ class DeepseekVLTemplate(Template):
             num_image_tokens=torch.tensor([processor.num_image_tokens] * len(idx_list)))
         batched_output = dict(processor.batchify([output]))
         batched_output['pixel_values'] = batched_output['pixel_values'].to(dtype=self.config.torch_dtype)
-        encoded = {'input_ids': new_input_ids, 'labels': new_labels, **batched_output}
+        encoded = {**batched_output, 'input_ids': new_input_ids, 'labels': new_labels}
         return encoded
 
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        inputs_embeds = model.prepare_inputs_embeds(**inputs)[0]
+        inputs_embeds = model.prepare_inputs_embeds(**inputs)
         return {'inputs_embeds': inputs_embeds}
+
+    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super()._data_collator(batch, padding_to=padding_to)
+        new_batch = self.fetch_inputs(batch, ['images_seq_mask', 'images_emb_mask'])
+        res['images_emb_mask'] = torch.concat(new_batch['images_emb_mask'])
+        res['images_seq_mask'] = self._pad_sequence(
+            [images_seq_mask[0] for images_seq_mask in new_batch['images_seq_mask']], 0)
+        return res
 
 
 @dataclass

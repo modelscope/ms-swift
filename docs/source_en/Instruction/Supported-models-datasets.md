@@ -16,7 +16,7 @@ The table below introcudes all models supported by SWIFT:
 
 
 ### LLM
-| Model ID | HF Model ID | Model Type | Architectures | Default Template(for sft) | Requires | Tags |
+| Model ID | HF Model ID | Model Type | Architectures | Default Template | Requires | Tags |
 | -------- | ----------- | -----------| ------------  | ------------------------- | -------- | ---- |
 |[baichuan-inc/Baichuan-13B-Chat](https://modelscope.cn/models/baichuan-inc/Baichuan-13B-Chat/summary)||[baichuan-inc/Baichuan-13B-Chat](https://huggingface.co/baichuan-inc/Baichuan-13B-Chat)|baichuan|['BaichuanForCausalLM', 'BaiChuanForCausalLM']|baichuan|['transformers<4.34']|-|
 |[baichuan-inc/Baichuan-13B-Base](https://modelscope.cn/models/baichuan-inc/Baichuan-13B-Base/summary)||[baichuan-inc/Baichuan-13B-Base](https://huggingface.co/baichuan-inc/Baichuan-13B-Base)|baichuan|['BaichuanForCausalLM', 'BaiChuanForCausalLM']|baichuan|['transformers<4.34']|-|
@@ -74,6 +74,8 @@ The table below introcudes all models supported by SWIFT:
 |[ZhipuAI/LongWriter-glm4-9b](https://modelscope.cn/models/ZhipuAI/LongWriter-glm4-9b/summary)||[THUDM/LongWriter-glm4-9b](https://huggingface.co/THUDM/LongWriter-glm4-9b)|glm4|['ChatGLMModel', 'ChatGLMForConditionalGeneration']|glm4|['transformers>=4.42']|-|
 |[ZhipuAI/LongWriter-llama3.1-8b](https://modelscope.cn/models/ZhipuAI/LongWriter-llama3.1-8b/summary)||[THUDM/LongWriter-llama3.1-8b](https://huggingface.co/THUDM/LongWriter-llama3.1-8b)|longwriter_llama3_1|['LlamaForCausalLM']|longwriter_llama|['transformers>=4.43']|-|
 |[ZhipuAI/codegeex4-all-9b](https://modelscope.cn/models/ZhipuAI/codegeex4-all-9b/summary)||[THUDM/codegeex4-all-9b](https://huggingface.co/THUDM/codegeex4-all-9b)|codegeex4|['ChatGLMModel', 'ChatGLMForConditionalGeneration']|codegeex4|['transformers<4.42']|-|
+|[ZhipuAI/glm-edge-1.5b-chat](https://modelscope.cn/models/ZhipuAI/glm-edge-1.5b-chat/summary)||[THUDM/glm-edge-1.5b-chat](https://huggingface.co/THUDM/glm-edge-1.5b-chat)|glm_edge|['GlmForCausalLM']|glm4|['transformers>=4.46']|-|
+|[ZhipuAI/glm-edge-4b-chat](https://modelscope.cn/models/ZhipuAI/glm-edge-4b-chat/summary)||[THUDM/glm-edge-4b-chat](https://huggingface.co/THUDM/glm-edge-4b-chat)|glm_edge|['GlmForCausalLM']|glm4|['transformers>=4.46']|-|
 |[Shanghai_AI_Laboratory/internlm-chat-7b](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-chat-7b/summary)||[internlm/internlm-chat-7b](https://huggingface.co/internlm/internlm-chat-7b)|internlm|['InternLMForCausalLM']|internlm|-|-|
 |[Shanghai_AI_Laboratory/internlm-7b](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-7b/summary)||[internlm/internlm-7b](https://huggingface.co/internlm/internlm-7b)|internlm|['InternLMForCausalLM']|internlm|-|-|
 |[Shanghai_AI_Laboratory/internlm-chat-7b-8k](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-chat-7b-8k/summary)||-|internlm|['InternLMForCausalLM']|internlm|-|-|
@@ -412,7 +414,11 @@ The table below introcudes all models supported by SWIFT:
 |[TeleAI/TeleChat-12B](https://modelscope.cn/models/TeleAI/TeleChat-12B/summary)||[Tele-AI/TeleChat-12B](https://huggingface.co/Tele-AI/TeleChat-12B)|telechat|['TelechatForCausalLM']|telechat|-|-|
 |[TeleAI/TeleChat-12B-v2](https://modelscope.cn/models/TeleAI/TeleChat-12B-v2/summary)||[Tele-AI/TeleChat-12B-v2](https://huggingface.co/Tele-AI/TeleChat-12B-v2)|telechat|['TelechatForCausalLM']|telechat|-|-|
 |[swift/TeleChat-12B-V2-GPTQ-Int4](https://modelscope.cn/models/swift/TeleChat-12B-V2-GPTQ-Int4/summary)||-|telechat|['TelechatForCausalLM']|telechat|-|-|
-|[TeleAI/TeleChat2-115B](https://modelscope.cn/models/TeleAI/TeleChat2-115B/summary)||[Tele-AI/TeleChat2-115B](https://huggingface.co/Tele-AI/TeleChat2-115B)|telechat2|['TelechatForCausalLM']|telechat2|-|-|
+|[TeleAI/TeleChat2-35B](https://modelscope.cn/models/TeleAI/TeleChat2-35B/summary)||[Tele-AI/TeleChat2-35B](https://huggingface.co/Tele-AI/TeleChat2-35B)|telechat2_115b|['TelechatForCausalLM']|telechat2_115b|-|-|
+|[TeleAI/TeleChat2-115B](https://modelscope.cn/models/TeleAI/TeleChat2-115B/summary)||[Tele-AI/TeleChat2-115B](https://huggingface.co/Tele-AI/TeleChat2-115B)|telechat2_115b|['TelechatForCausalLM']|telechat2_115b|-|-|
+|[TeleAI/TeleChat2-3B](https://modelscope.cn/models/TeleAI/TeleChat2-3B/summary)||[Tele-AI/TeleChat2-3B](https://huggingface.co/Tele-AI/TeleChat2-3B)|telechat2|['TeleChat2ForCausalLM']|telechat2|-|-|
+|[TeleAI/TeleChat2-7B](https://modelscope.cn/models/TeleAI/TeleChat2-7B/summary)||[Tele-AI/TeleChat2-7B](https://huggingface.co/Tele-AI/TeleChat2-7B)|telechat2|['TeleChat2ForCausalLM']|telechat2|-|-|
+|[TeleAI/TeleChat2-35B-Nov](https://modelscope.cn/models/TeleAI/TeleChat2-35B-Nov/summary)||[Tele-AI/TeleChat2-35B-Nov](https://huggingface.co/Tele-AI/TeleChat2-35B-Nov)|telechat2|['TeleChat2ForCausalLM']|telechat2|-|-|
 |[01ai/Yi-6B](https://modelscope.cn/models/01ai/Yi-6B/summary)||[01-ai/Yi-6B](https://huggingface.co/01-ai/Yi-6B)|yi|['LlamaForCausalLM']|chatml|-|-|
 |[01ai/Yi-6B-200K](https://modelscope.cn/models/01ai/Yi-6B-200K/summary)||[01-ai/Yi-6B-200K](https://huggingface.co/01-ai/Yi-6B-200K)|yi|['LlamaForCausalLM']|chatml|-|-|
 |[01ai/Yi-6B-Chat](https://modelscope.cn/models/01ai/Yi-6B-Chat/summary)||[01-ai/Yi-6B-Chat](https://huggingface.co/01-ai/Yi-6B-Chat)|yi|['LlamaForCausalLM']|chatml|-|-|
@@ -447,7 +453,7 @@ The table below introcudes all models supported by SWIFT:
 
 
 ### MLLM
-| Model ID | HF Model ID | Model Type | Architectures | Default Template(for sft) | Requires | Tags |
+| Model ID | HF Model ID | Model Type | Architectures | Default Template | Requires | Tags |
 | -------- | ----------- | -----------| ------------  | ------------------------- | -------- | ---- |
 |[BAAI/Emu3-Gen](https://modelscope.cn/models/BAAI/Emu3-Gen/summary)||[BAAI/Emu3-Gen](https://huggingface.co/BAAI/Emu3-Gen)|emu3_gen|['Emu3ForCausalLM']|emu3_gen|-|-|
 |[BAAI/Emu3-Chat](https://modelscope.cn/models/BAAI/Emu3-Chat/summary)||[BAAI/Emu3-Chat](https://huggingface.co/BAAI/Emu3-Chat)|emu3_chat|['Emu3ForCausalLM']|emu3_chat|['transformers>=4.44.0']|-|
@@ -466,6 +472,8 @@ The table below introcudes all models supported by SWIFT:
 |[ZhipuAI/cogvlm2-llama3-chat-19B](https://modelscope.cn/models/ZhipuAI/cogvlm2-llama3-chat-19B/summary)||[THUDM/cogvlm2-llama3-chat-19B](https://huggingface.co/THUDM/cogvlm2-llama3-chat-19B)|cogvlm2|['CogVLMForCausalLM']|cogvlm2|['transformers<4.42']|-|
 |[ZhipuAI/cogvlm2-llama3-chinese-chat-19B](https://modelscope.cn/models/ZhipuAI/cogvlm2-llama3-chinese-chat-19B/summary)||[THUDM/cogvlm2-llama3-chinese-chat-19B](https://huggingface.co/THUDM/cogvlm2-llama3-chinese-chat-19B)|cogvlm2|['CogVLMForCausalLM']|cogvlm2|['transformers<4.42']|-|
 |[ZhipuAI/cogvlm2-video-llama3-chat](https://modelscope.cn/models/ZhipuAI/cogvlm2-video-llama3-chat/summary)||[THUDM/cogvlm2-video-llama3-chat](https://huggingface.co/THUDM/cogvlm2-video-llama3-chat)|cogvlm2_video|['CogVLMVideoForCausalLM']|cogvlm2_video|['decord', 'pytorchvideo', 'transformers>=4.42']|-|
+|[ZhipuAI/glm-edge-v-2b](https://modelscope.cn/models/ZhipuAI/glm-edge-v-2b/summary)||[THUDM/glm-edge-v-2b](https://huggingface.co/THUDM/glm-edge-v-2b)|glm_edge_v|['GlmForCausalLM']|glm_edge_v|['transformers>=4.46']|-|
+|[ZhipuAI/glm-edge-4b-chat](https://modelscope.cn/models/ZhipuAI/glm-edge-4b-chat/summary)||[THUDM/glm-edge-4b-chat](https://huggingface.co/THUDM/glm-edge-4b-chat)|glm_edge_v|['GlmForCausalLM']|glm_edge_v|['transformers>=4.46']|-|
 |[OpenGVLab/Mini-InternVL-Chat-2B-V1-5](https://modelscope.cn/models/OpenGVLab/Mini-InternVL-Chat-2B-V1-5/summary)||[OpenGVLab/Mini-InternVL-Chat-2B-V1-5](https://huggingface.co/OpenGVLab/Mini-InternVL-Chat-2B-V1-5)|internvl|['InternVLChatModel']|internvl|['transformers>=4.35', 'timm']|-|
 |[AI-ModelScope/InternVL-Chat-V1-5](https://modelscope.cn/models/AI-ModelScope/InternVL-Chat-V1-5/summary)||[OpenGVLab/InternVL-Chat-V1-5](https://huggingface.co/OpenGVLab/InternVL-Chat-V1-5)|internvl|['InternVLChatModel']|internvl|['transformers>=4.35', 'timm']|-|
 |[AI-ModelScope/InternVL-Chat-V1-5-int8](https://modelscope.cn/models/AI-ModelScope/InternVL-Chat-V1-5-int8/summary)||[OpenGVLab/InternVL-Chat-V1-5-int8](https://huggingface.co/OpenGVLab/InternVL-Chat-V1-5-int8)|internvl|['InternVLChatModel']|internvl|['transformers>=4.35', 'timm']|-|
