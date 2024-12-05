@@ -230,7 +230,7 @@ class PtEngine(InferEngine):
                 ]
                 res.append(
                     ChatCompletionStreamResponse(
-                        model=self.model_dir, choices=choices, usage=usage_info, id=request_id_list[i]))
+                        model=self.model_name, choices=choices, usage=usage_info, id=request_id_list[i]))
             if any(res):
                 yield res
 
@@ -289,7 +289,7 @@ class PtEngine(InferEngine):
                     finish_reason=finish_reason,
                     logprobs=logprobs)
             ]
-            res.append(ChatCompletionResponse(model=self.model_dir, choices=choices, usage=usage_info))
+            res.append(ChatCompletionResponse(model=self.model_name, choices=choices, usage=usage_info))
         return res
 
     @torch.inference_mode()

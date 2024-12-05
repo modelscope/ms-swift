@@ -291,6 +291,7 @@ class VllmEngine(InferEngine):
                 logprobs = self._get_logprobs(template.tokenizer, output.logprobs,
                                               output.token_ids[token_idxs[output.index]:], generation_config.logprobs)
                 token_idxs[output.index] = len(output.token_ids)
+                toolcall = None
                 if output.is_finished:
                     toolcall = self._get_toolcall(template.decode(output.token_ids))
                 choice = ChatCompletionResponseStreamChoice(
@@ -299,7 +300,7 @@ class VllmEngine(InferEngine):
                     finish_reason=output.finish_reason,
                     logprobs=logprobs)
                 choices.append(choice)
-            yield ChatCompletionStreamResponse(model=self.model_dir, choices=choices, usage=usage_info, id=request_id)
+            yield ChatCompletionStreamResponse(model=self.model_name, choices=choices, usage=usage_info, id=request_id)
 
     async def _infer_full_async(self,
                                 template: Template,
@@ -327,7 +328,7 @@ class VllmEngine(InferEngine):
                 finish_reason=output.finish_reason,
                 logprobs=logprobs)
             choices.append(choice)
-        return ChatCompletionResponse(model=self.model_dir, choices=choices, usage=usage_info, id=request_id)
+        return ChatCompletionResponse(model=self.model_name, choices=choices, usage=usage_info, id=request_id)
 
     @torch.inference_mode()
     def infer(
