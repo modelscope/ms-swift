@@ -667,6 +667,8 @@ class Template(ProcessorMixin):
         }
         keep_kwargs.update(self._post_encode(model, to_device(kwargs, model.device)))
         kwargs = keep_kwargs
+        if 'inputs_embeds' in kwargs:
+            kwargs.pop('input_ids', None)
 
         if isinstance(model, PeftModel):
             parameters = inspect.signature(model.base_model.model.forward).parameters
@@ -744,6 +746,15 @@ class Template(ProcessorMixin):
         if keys is not None:
             rows = {k: rows[k] for k in keys}
         return rows
+
+    @staticmethod
+    def gather_list(batch: List[Dict[str, Any]], attr_name: str) -> Optional[List[Any]]:
+        # List[Tensor] ->  List[Tensor]
+        res = []
+        for b in batch:
+            if b.get(attr_name) is not None:
+                res += b.pop(attr_name)
+        return res
 
     def _rlhf_data_collator(self,
                             batch: List[Dict[str, Any]],

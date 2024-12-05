@@ -10,7 +10,7 @@ from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
-from ..utils import Context, Prompt, findall, gather_list
+from ..utils import Context, Prompt, findall
 from ..vision_utils import load_image
 
 

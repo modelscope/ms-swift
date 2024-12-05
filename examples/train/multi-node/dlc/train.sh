@@ -14,6 +14,6 @@ swift sft \
     --save_steps 100 \
     --save_total_limit 2 \
     --logging_steps 5 \
-    --deepspeed default-zero3 \
+    --deepspeed zero3 \
     --model_author swift \
     --model_name swift-robot

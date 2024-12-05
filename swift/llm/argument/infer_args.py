@@ -143,7 +143,8 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
             return
         assert not self.eval_human and not self.stream
         self._init_device()
-        dist.init_process_group(backend='nccl')
+        if not dist.is_initialized():
+            dist.init_process_group(backend='nccl')
 
     def __post_init__(self) -> None:
         if self.ckpt_dir:
