@@ -19,7 +19,7 @@ pip install 'ms-swift[seq_parallel]' -U
 
 ```shell
 git clone https://github.com/modelscope/ms-swift.git
-cd swift
+cd ms-swift
 pip install -e '.[all]'
 ```
 
