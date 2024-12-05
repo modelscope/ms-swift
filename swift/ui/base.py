@@ -283,6 +283,8 @@ class BaseUI:
                 ret = [gr.update()] * (len(keys) + int(has_record))
                 if len(ret) == 1:
                     return ret[0]
+                else:
+                    return ret
             try:
                 if hasattr(arg_cls, 'resume_from_checkpoint'):
                     args = arg_cls(resume_from_checkpoint=model, load_dataset_config=True)
