@@ -537,10 +537,9 @@ class Template(ProcessorMixin):
         res_context_list: List[Context] = []
         res_context_types: List[ContextType] = []
         if template_meta.auto_add_bos:
-            bos_token_id = self.tokenizer.bos_token_id
-            if isinstance(bos_token_id, int) and bos_token_id in self.tokenizer.encode(''):
-                res_context_list.append([bos_token_id])
-                res_context_types.append(ContextType.OTHER)
+            bos_tokens = self.tokenizer.encode('')
+            res_context_list.append(bos_tokens)
+            res_context_types.append(ContextType.OTHER)
 
         prefix = template_meta.system_prefix if system else template_meta.prefix
         self._concat_context_list(prefix, res_context_list, res_context_types, system=system)

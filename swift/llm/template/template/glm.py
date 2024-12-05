@@ -14,33 +14,25 @@ from ..utils import Context, Prompt, Word, findall
 from ..vision_utils import load_batch, load_video_cogvlm2
 
 
-class GLMTemplate(Template):
-
-    def __init__(self, tokenizer: PreTrainedTokenizerBase, *args, **kwargs) -> None:
-        super().__init__(tokenizer, *args, **kwargs)
-        token_list = tokenizer.encode('')
-        template_meta = self.template_meta
-        template_meta.prefix.insert(0, token_list)
-        if template_meta.system_prefix is not None:
-            template_meta.system_prefix.insert(0, token_list)
+@dataclass
+class GLMTemplateMeta(TemplateMeta):
+    auto_add_bos: bool = True
 
 
 register_template(
-    TemplateMeta(
+    GLMTemplateMeta(
         LLMTemplateType.chatglm2,
         prefix=['{{SYSTEM}}'],
         prompt=['[Round {{ROUND1}}]\n\n问：{{QUERY}}\n\n答：'],
-        chat_sep=['\n\n'],
-        template_cls=GLMTemplate))
+        chat_sep=['\n\n']))
 
 
 @dataclass
-class GLM4TemplateMeta(TemplateMeta):
+class GLM4TemplateMeta(GLMTemplateMeta):
     prefix: Prompt = field(default_factory=lambda: [])
     prompt: Prompt = field(default_factory=lambda: ['<|user|>\n{{QUERY}}<|assistant|>\n'])
     chat_sep: Optional[Prompt] = field(default_factory=lambda: [])
     suffix: Prompt = field(default_factory=lambda: ['<|user|>'])
-    template_cls: Type[Template] = GLMTemplate
     system_prefix: Optional[Prompt] = field(default_factory=lambda: ['<|system|>\n{{SYSTEM}}'])
 
     default_tools_prompt: str = 'glm4'
@@ -48,7 +40,7 @@ class GLM4TemplateMeta(TemplateMeta):
     stop_words: List[Word] = field(default_factory=lambda: ['<|endoftext|>', '<|user|>', '<|observation|>'])
 
 
-class GLM4VTemplate(GLMTemplate):
+class GLM4VTemplate(Template):
 
     def check_example(self, example):
         images = example.get('images') or []
@@ -226,7 +218,7 @@ register_template(
     ))
 
 
-class GLMEdgeVTemplate(GLMTemplate):
+class GLMEdgeVTemplate(Template):
 
     def __init__(self):
         super().__init__([], ['<|user|>\\n{{QUERY}}\\n<|assistant|>\\n'], ['\\n'], ['<|endoftext|>'], None,
