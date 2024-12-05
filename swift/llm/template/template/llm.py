@@ -129,7 +129,7 @@ class TeleChatTemplateMeta(TemplateMeta):
 
 register_template(TeleChatTemplateMeta(LLMTemplateType.telechat))
 
-telechat2_system = ('你是中国电信星辰语义大模型，英文名是TeleChat，你是由中电信人工智能科技有限公司和中国电信人工智能研究院（TeleAI）研发的人工智能助手。')
+telechat2_system = '你是中国电信星辰语义大模型，英文名是TeleChat，你是由中电信人工智能科技有限公司和中国电信人工智能研究院（TeleAI）研发的人工智能助手。\n'
 register_template(TeleChatTemplateMeta(LLMTemplateType.telechat2, default_system=telechat2_system))
 
 register_template(
