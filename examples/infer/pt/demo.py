@@ -19,7 +19,7 @@ def stream_infer(engine: InferEngine, messages: List[Dict[str, str]]):
     gen = engine.infer([InferRequest(messages)], request_config)
     print(f'messages: {messages}\nresponse: ', end='')
     for response in gen:
-        print(response.choices[0].message.delta, end='', flush=True)
+        print(response[0].choices[0].message.delta, end='', flush=True)
     print()
 
 
