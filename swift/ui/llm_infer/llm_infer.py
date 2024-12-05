@@ -298,7 +298,10 @@ class LLMInfer(BaseUI):
             gr.Info(cls.locale('load_alert', cls.lang)['value'])
         time.sleep(2)
         cls.deployed = True
-        return gr.update(open=True), Runtime.refresh_tasks(log_file)
+        running_task = Runtime.refresh_tasks(log_file)
+        if cls.is_gradio_app:
+            cls.running_task = running_task['value']
+        return gr.update(open=True), running_task
 
     @classmethod
     def clear_session(cls):
@@ -364,6 +367,8 @@ class LLMInfer(BaseUI):
         else:
             infer_request.messages[-1]['content'] = infer_request.messages[-1]['content'] + prompt
 
+        if cls.is_gradio_app:
+            running_task = cls.running_task
         _, args = Runtime.parse_info_from_cmdline(running_task)
         request_config = RequestConfig(
             temperature=temperature, top_k=top_k, top_p=top_p, repetition_penalty=repetition_penalty)
