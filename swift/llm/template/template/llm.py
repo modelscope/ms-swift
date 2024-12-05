@@ -124,11 +124,13 @@ class TeleChatTemplateMeta(TemplateMeta):
     prompt: Prompt = field(default_factory=lambda: ['<_user>{{QUERY}}<_bot>'])
     chat_sep: Optional[Prompt] = field(default_factory=lambda: ['<_end>'])
     suffix: Prompt = field(default_factory=lambda: ['<_end>'])
+    system_prefix: Optional[Prompt] = field(default_factory=lambda: ['<_system>{{SYSTEM}}'])
 
 
 register_template(TeleChatTemplateMeta(LLMTemplateType.telechat))
 
-register_template(TeleChatTemplateMeta(LLMTemplateType.telechat2))
+telechat2_system = ('你是中国电信星辰语义大模型，英文名是TeleChat，你是由中电信人工智能科技有限公司和中国电信人工智能研究院（TeleAI）研发的人工智能助手。')
+register_template(TeleChatTemplateMeta(LLMTemplateType.telechat2, default_system=telechat2_system))
 
 register_template(
     TemplateMeta(

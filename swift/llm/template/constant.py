@@ -111,6 +111,7 @@ class MLLMTemplateType:
     cogvlm2 = 'cogvlm2'
     cogvlm2_video = 'cogvlm2_video'
     glm4v = 'glm4v'
+    glm_edge_v = 'glm_edge_v'
 
     minicpmv = 'minicpmv'
     minicpmv2_5 = 'minicpmv2_5'

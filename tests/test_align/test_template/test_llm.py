@@ -1,6 +1,9 @@
 import os
 
+import torch
+
 os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
+os.environ['SWIFT_DEBUG'] = '1'
 
 
 def _infer_model(pt_engine, system=None):
@@ -100,7 +103,7 @@ def test_codegeex4():
 
 
 def test_telechat():
-    pt_engine = PtEngine('TeleAI/TeleChat2-3B')
+    pt_engine = PtEngine('TeleAI/TeleChat2-7B', torch_dtype=torch.float16)
     _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     _infer_model(pt_engine)
@@ -120,6 +123,5 @@ if __name__ == '__main__':
     # test_deepseek_moe()
     # test_codegeex4()
     # test_glm4()
-    test_llama()
-    #
-    # test_telechat()
+    # test_llama()
+    test_telechat()
