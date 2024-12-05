@@ -10,6 +10,7 @@ if TYPE_CHECKING:
         RequestConfig,
         LmdeployEngine,
         PtEngine,
+        InferEngine,
         infer_main,
         deploy_main,
         LoRARequest,
@@ -42,7 +43,7 @@ else:
         'rlhf': ['rlhf_main'],
         'infer': [
             'deploy_main', 'VllmEngine', 'RequestConfig', 'LmdeployEngine', 'PtEngine', 'infer_main', 'LoRARequest',
-            'InferClient', 'SwiftInfer', 'SwiftDeploy', 'run_deploy', 'prepare_pt_engine_template'
+            'InferClient', 'SwiftInfer', 'SwiftDeploy', 'run_deploy', 'prepare_pt_engine_template', 'InferEngine'
         ],
         'export': ['export_main', 'merge_lora', 'quantize_model', 'export_to_ollama'],
         'eval': ['eval_main', 'SwiftEval'],

@@ -13,8 +13,7 @@ from swift.utils import get_dist_setting, get_logger
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
 from ..patcher import patch_output_to_input_device
-from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,
-                        get_model_tokenizer_with_flash_attn, register_model)
+from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
 from ..utils import AttnImpl, ModelInfo, safe_snapshot_download
 
 logger = get_logger()
@@ -303,6 +302,15 @@ register_model(
         requires=['transformers>=4.46'],
     ))
 
+
+def get_model_tokenizer_glm_edge_v(model_dir: str, *args, **kwargs):
+    from transformers import AutoImageProcessor
+    processor = AutoImageProcessor.from_pretrained(model_dir)
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
+    processor.tokenizer = tokenizer
+    return model, processor
+
+
 register_model(
     ModelMeta(
         MLLMModelType.glm_edge_v,
@@ -313,7 +321,7 @@ register_model(
             ]),
         ],
         TemplateType.glm_edge_v,
-        get_model_tokenizer_multimodal,
+        get_model_tokenizer_glm_edge_v,
         architectures=['GlmForCausalLM'],
         requires=['transformers>=4.46'],
         model_arch=ModelArch.glm_edge_v,

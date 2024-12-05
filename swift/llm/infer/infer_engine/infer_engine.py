@@ -27,6 +27,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         self.model_info = processor.model_info
         self.model_meta = processor.model_meta
         self.model_dir = self.model_info.model_dir
+        self.model_name = self.model_info.model_name
         self.max_model_len = self.model_info.max_model_len
         self.config = self.model_info.config
         self.pre_infer_hooks = []
