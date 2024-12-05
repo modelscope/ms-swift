@@ -130,6 +130,7 @@ if __name__ == '__main__':
     # test_yi()
     # test_deepseek_moe()
     # test_codegeex4()
-    test_glm4()
+    # test_glm4()
     # test_llama()
     # test_telechat()
+    test_glm_edge()
