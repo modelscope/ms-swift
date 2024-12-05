@@ -1,8 +1,7 @@
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+from typing import Dict, List
 
-from typing import List, Dict
-from swift.llm import PtEngine, VllmEngine, LmdeployEngine, InferRequest, load_dataset, RequestConfig, InferEngine
+from swift.llm import InferEngine, InferRequest, LmdeployEngine, PtEngine, RequestConfig, VllmEngine, load_dataset
 
 
 def batch_infer(engine: InferEngine, dataset: str):
@@ -19,7 +18,7 @@ def stream_infer(engine: InferEngine, messages: List[Dict[str, str]]):
     gen = engine.infer([InferRequest(messages)], request_config)
     print(f'messages: {messages}\nresponse: ', end='')
     for response in gen:
-        print(response[0].choices[0].message.delta, end='', flush=True)
+        print(response[0].choices[0].delta.content, end='', flush=True)
     print()
 
 
