@@ -159,7 +159,7 @@ class Llama3_1OmniTemplate(Template):
                                                                                     speech, speech_lengths)[4:]
         else:
             inputs_embeds = model.get_model().embed_tokens(input_ids)
-        res = {'inputs_embeds': inputs_embeds[0]}
+        res = {'inputs_embeds': inputs_embeds}
         if labels is not None:
             res['labels'] = labels[0]
         return res

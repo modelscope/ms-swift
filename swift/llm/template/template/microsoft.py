@@ -67,7 +67,7 @@ class FlorenceTemplate(Template):
         inputs_embeds = model.get_input_embeddings()(inputs['input_ids'])
         image_features = model._encode_image(inputs['pixel_values'])
         inputs_embeds, _ = model._merge_input_ids_with_image_features(image_features, inputs_embeds)
-        return {'inputs_embeds': inputs_embeds[0]}
+        return {'inputs_embeds': inputs_embeds}
 
     def decode(self, generate_ids: List[int], **kwargs) -> Any:
         response = super().decode(generate_ids, **kwargs)
