@@ -33,17 +33,17 @@ def write_dataset_info() -> None:
 
     res_text_list = []
 
-    res_text_list.append('| MS Dataset ID | HF Dataset ID | Subset name | Real Subset  |'
-                         ' Subset split | Dataset Size | Statistic (token) | Tags |')
-    res_text_list.append('| ------------ | ------------- | ----------- |------------- |'
-                         ' -------------| -------------| ----------------- | ---- |')
+    res_text_list.append('| Dataset ID | HF Dataset ID | Subset name |' ' Dataset Size | Statistic (token) | Tags |')
+    res_text_list.append('| ---------- | ------------- | ----------- |' ' -------------| ------------------| ---- |')
     if len(text_list) >= 2:
         text_list = text_list[2:]
     else:
         text_list = []
 
-    hf_ignore_datasets = {text.split('|', 3)[2].lstrip('🔥 '): text for text in text_list}
-    ms_ignore_datasets = {text.split('|', 3)[1].lstrip('🔥 '): text for text in text_list}
+    stat_mapping = {}
+    for text in text_list:
+        text.split('|')
+
     all_keys = set(DATASET_MAPPING.keys())
     mapping = {}
     _iter = zip(
