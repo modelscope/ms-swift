@@ -98,6 +98,14 @@ class BaseUI:
     os.makedirs(cache_dir, exist_ok=True)
     quote = '\'' if sys.platform != 'win32' else '"'
     visible = True
+    _locale = {
+        'local_dir_alert': {
+            'value': {
+                'zh': '本地路径无法识别model_type和template，请手动选择',
+                'en': 'Cannot recognize the model_type and template of a local dir, please choose manully'
+            }
+        },
+    }
 
     @classmethod
     def build_ui(cls, base_tab: Type['BaseUI']):
@@ -280,6 +288,7 @@ class BaseUI:
         if os.path.exists(model):
             local_path = os.path.join(model, 'args.json')
             if not os.path.exists(local_path):
+                gr.Info(cls._locale['local_dir_alert']['value'][cls.lang])
                 ret = [gr.update()] * (len(keys) + int(has_record))
                 if len(ret) == 1:
                     return ret[0]
