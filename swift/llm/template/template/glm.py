@@ -220,28 +220,27 @@ register_template(
 
 class GLMEdgeVTemplate(Template):
 
-    def __init__(self):
-        super().__init__([], ['<|user|>\\n{{QUERY}}\\n<|assistant|>\\n'], ['\\n'], ['<|endoftext|>'], None,
-                         ['<|system|>\\n{{SYSTEM}}\\n'])
-
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         assert media_type == 'image'
         return ['<|begin_of_image|>' * 578]
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        encoded, _ = super()._encode(inputs)
+        encoded = super()._encode(inputs)
         if len(encoded) == 0:
             return encoded
         images = inputs.images
         if images:
-            inputs['pixel_values'] = torch.tensor(self.processor(images).pixel_values)
-        return inputs
+            encoded['pixel_values'] = torch.tensor(self.processor(images).pixel_values)
+        return encoded
 
 
 register_template(
     GLM4TemplateMeta(
         MLLMTemplateType.glm_edge_v,
+        prompt=['<|user|>\\n{{QUERY}}\\n<|assistant|>\\n'],
+        chat_sep=['\\n'],
+        system_prefix=['<|system|>\\n{{SYSTEM}}\\n'],
         template_cls=GLMEdgeVTemplate,
         placeholder_tokens=['<|begin_of_image|>'],
     ))
