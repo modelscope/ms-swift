@@ -101,8 +101,8 @@ class BaseUI:
     _locale = {
         'local_dir_alert': {
             'value': {
-                'zh': '本地路径无法识别model_type和template，请手动选择',
-                'en': 'Cannot recognize the model_type and template of a local dir, please choose manully'
+                'zh': '无法识别model_type和template,请手动选择',
+                'en': 'Cannot recognize the model_type and template, please choose manully'
             }
         },
     }
