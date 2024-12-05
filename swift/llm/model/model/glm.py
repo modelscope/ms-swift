@@ -13,7 +13,8 @@ from swift.utils import get_dist_setting, get_logger
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
 from ..patcher import patch_output_to_input_device
-from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
+from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,
+                        get_model_tokenizer_with_flash_attn, register_model)
 from ..utils import AttnImpl, ModelInfo, safe_snapshot_download
 
 logger = get_logger()
@@ -285,4 +286,36 @@ register_model(
         requires=['decord', 'pytorchvideo', 'transformers>=4.42'],
         model_arch=ModelArch.cogvlm,
         tags=['video'],
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.glm_edge,
+        [
+            ModelGroup([
+                Model('ZhipuAI/glm-edge-1.5b-chat', 'THUDM/glm-edge-1.5b-chat'),
+                Model('ZhipuAI/glm-edge-4b-chat', 'THUDM/glm-edge-4b-chat'),
+            ]),
+        ],
+        TemplateType.glm4,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['GlmForCausalLM'],
+        requires=['transformers>=4.46'],
+    ))
+
+register_model(
+    ModelMeta(
+        MLLMModelType.glm_edge_v,
+        [
+            ModelGroup([
+                Model('ZhipuAI/glm-edge-v-2b', 'THUDM/glm-edge-v-2b'),
+                Model('ZhipuAI/glm-edge-4b-chat', 'THUDM/glm-edge-4b-chat'),
+            ]),
+        ],
+        TemplateType.glm_edge_v,
+        get_model_tokenizer_multimodal,
+        architectures=['GlmForCausalLM'],
+        requires=['transformers>=4.46'],
+        model_arch=ModelArch.glm_edge_v,
+        tags=['vision'],
     ))

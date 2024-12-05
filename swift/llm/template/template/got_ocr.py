@@ -7,7 +7,7 @@ from ..base import Template
 from ..constant import MLLMTemplateType
 from ..register import register_template
 from ..template_inputs import StdTemplateInputs
-from ..utils import Context, gather_list
+from ..utils import Context
 from .qwen import QwenTemplateMeta
 
 
@@ -55,13 +55,9 @@ class GOT_OCR2Template(Template):
             encoded['images'] = images
         return encoded
 
-    def _data_collator(self,
-                       batch: List[Dict[str, Any]],
-                       *,
-                       padding_to: Optional[int] = None,
-                       model: Optional[nn.Module] = None) -> Dict[str, Any]:
-        res = super()._data_collator(batch, padding_to=padding_to, model=model)
-        images = gather_list(batch, 'images')
+    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super()._data_collator(batch, padding_to=padding_to)
+        images = self.gather_list(batch, 'images')
         if images:
             res['images'] = images
         return res

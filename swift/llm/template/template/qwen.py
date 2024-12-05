@@ -35,7 +35,6 @@ class QwqTemplateMeta(QwenTemplateMeta):
                                      'You should think step-by-step.')
 
 
-register_template(ChatmlTemplateMeta(LLMTemplateType.chatml))
 register_template(QwenTemplateMeta(LLMTemplateType.qwen))
 register_template(Qwen2_5TemplateMeta(LLMTemplateType.qwen2_5))
 register_template(QwqTemplateMeta(LLMTemplateType.qwq))
@@ -102,12 +101,8 @@ class QwenAudioTemplate(Template):
             encoded['tokenizer_kwargs'] = tokenizer_kwargs
         return encoded
 
-    def _data_collator(self,
-                       batch: List[Dict[str, Any]],
-                       *,
-                       padding_to: Optional[int] = None,
-                       model: Optional[nn.Module] = None) -> Dict[str, Any]:
-        res = super()._data_collator(batch, padding_to=padding_to, model=model)
+    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super()._data_collator(batch, padding_to=padding_to)
         if batch[0].get('audio_info') is not None:
             res['audio_info'] = [b['audio_info'] for b in batch]
         return res
@@ -140,12 +135,8 @@ class Qwen2AudioTemplate(Template):
             encoded.update(audio_inputs)
         return encoded
 
-    def _data_collator(self,
-                       batch: List[Dict[str, Any]],
-                       *,
-                       padding_to: Optional[int] = None,
-                       model: Optional[nn.Module] = None) -> Dict[str, Any]:
-        res = super()._data_collator(batch, padding_to=padding_to, model=model)
+    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super()._data_collator(batch, padding_to=padding_to)
         input_features = [b['input_features'] for b in batch if b.get('input_features') is not None]
         feature_attention_mask = [
             b['feature_attention_mask'] for b in batch if b.get('feature_attention_mask') is not None
@@ -260,7 +251,7 @@ class Qwen2VLTemplate(Template):
         return encoded
 
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        if self.mode != 'train':
+        if not self.is_training:
             return inputs
         input_ids = inputs['input_ids']
         _model = model.model
@@ -268,13 +259,15 @@ class Qwen2VLTemplate(Template):
             _model = _model.model  # LoRA
         pixel_values = inputs.get('pixel_values')
         pixel_values_videos = inputs.get('pixel_values_videos')
+        image_grid_thw = inputs.get('image_grid_thw')
+        video_grid_thw = inputs.get('video_grid_thw')
+
         inputs_embeds = _model.embed_tokens(input_ids)
         if pixel_values is None and pixel_values_videos is None:  # plain-text
             if is_deepspeed_enabled():
                 from PIL import Image
                 images = [Image.new('RGB', (32, 32), (0, 0, 0))]
-                processor = self.processor
-                media_inputs = processor.image_processor(images=images, videos=None, return_tensors='pt')
+                media_inputs = self.processor.image_processor(images=images, videos=None, return_tensors='pt')
                 device = input_ids.device
                 pixel_values = media_inputs['pixel_values'].to(device)
 
@@ -283,7 +276,6 @@ class Qwen2VLTemplate(Template):
                 inputs_embeds += image_embeds.mean() * 0.
         else:
             if pixel_values is not None:
-                image_grid_thw = inputs['image_grid_thw']
                 pixel_values = pixel_values.type(model.visual.get_dtype())
                 image_embeds = model.visual(pixel_values, grid_thw=image_grid_thw)
                 image_mask = (input_ids == model.config.image_token_id).unsqueeze(-1).expand_as(inputs_embeds)
@@ -291,36 +283,22 @@ class Qwen2VLTemplate(Template):
                 inputs_embeds = inputs_embeds.masked_scatter(image_mask, image_embeds)
 
             if pixel_values_videos is not None:
-                video_grid_thw = inputs['video_grid_thw']
                 pixel_values_videos = pixel_values_videos.type(model.visual.get_dtype())
                 video_embeds = model.visual(pixel_values_videos, grid_thw=video_grid_thw)
                 video_mask = (input_ids == model.config.video_token_id).unsqueeze(-1).expand_as(inputs_embeds)
                 video_embeds = video_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
                 inputs_embeds = inputs_embeds.masked_scatter(video_mask, video_embeds)
-        res = {'inputs_embeds': inputs_embeds}
-        for key in ['input_ids', 'image_grid_thw', 'video_grid_thw']:
-            value = inputs.get(key, None)
-            if value is not None:
-                res[key] = value
-        return res
 
-    def _data_collator(self,
-                       batch: List[Dict[str, Any]],
-                       *,
-                       padding_to: Optional[int] = None,
-                       model: Optional[nn.Module] = None) -> Dict[str, Any]:
-        res = super()._data_collator(batch, padding_to=padding_to, model=model)
+        # fix https://github.com/huggingface/transformers/pull/33487
+        position_ids, _ = model.get_rope_index(input_ids, image_grid_thw, video_grid_thw, inputs['attention_mask'])
+        return {'inputs_embeds': inputs_embeds, 'position_ids': position_ids.contiguous()}
+
+    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super()._data_collator(batch, padding_to=padding_to)
         for media_type in ['image', 'video']:
             grid_thw = [b[f'{media_type}_grid_thw'] for b in batch if b.get(f'{media_type}_grid_thw') is not None]
             if grid_thw:
                 res[f'{media_type}_grid_thw'] = torch.concat(grid_thw)
-        if 'input_ids' in res and self.mode == 'train':
-            image_grid_thw = res.pop('image_grid_thw', None)
-            video_grid_thw = res.pop('video_grid_thw', None)
-            # fix https://github.com/huggingface/transformers/pull/33487
-            position_ids, _ = model.get_rope_index(res['input_ids'], image_grid_thw, video_grid_thw,
-                                                   res['attention_mask'])
-            res['position_ids'] = position_ids.contiguous()
         return res
 
 
@@ -357,22 +335,31 @@ class Ovis1_6Template(Template):
                 labels = labels[:idx] + [-100] * len(image_placeholders) + labels[idx + 1:]
             pixel_values.append(raw_pixel_values)
             added_tokens_len += len(image_placeholders) - 1
+        dtype = self.model.visual_tokenizer.dtype
         if pixel_values:
-            pixel_values = torch.cat(pixel_values, dim=0).to(self.model.visual_tokenizer.dtype)
+            pixel_values = torch.cat(pixel_values, dim=0).to(dtype)
         else:
-            pixel_values = None
+            pixel_values = torch.zeros((1, 3, 384, 384), dtype=dtype)  # dummpy
         encoded.update({'input_ids': input_ids, 'labels': labels})
         encoded['pixel_values'] = [pixel_values]
         return encoded
 
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        _, inputs_embeds, labels, _ = self.model.merge_multimodal(
+        padding_side = self.padding_side if self.is_training else 'left'
+        _, inputs_embeds, labels, attention_mask = self.model.merge_multimodal(
             text_input_ids=inputs['input_ids'],
             text_attention_masks=torch.ones_like(inputs['input_ids']),  # not use, only compat
             text_labels=inputs.get('labels'),
             pixel_values=inputs['pixel_values'],
-            left_padding=True)
-        return {'inputs_embeds': inputs_embeds[0], 'labels': labels}
+            left_padding=padding_side == 'left')
+
+        return {'inputs_embeds': inputs_embeds, 'labels': labels, 'attention_mask': attention_mask}
+
+    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        pixel_values = self.gather_list(batch, 'pixel_values')
+        res = super()._data_collator(batch, padding_to=padding_to)
+        res['pixel_values'] = pixel_values
+        return res
 
 
 register_template(

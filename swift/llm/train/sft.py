@@ -145,11 +145,7 @@ class SwiftSft(SwiftPipeline):
         args = self.args
         template = self.template
         padding_to = args.max_length if args.train_type == 'longlora' else None
-        if self.model.model_meta.is_multimodal:
-            data_collator = template.pre_data_collator
-        else:
-            data_collator = template.data_collator
-        return partial(data_collator, padding_to=padding_to, model=self.model)
+        return partial(template.data_collator, padding_to=padding_to)
 
     def run(self):
         args = self.args

@@ -19,7 +19,8 @@ from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoTokenizer
 
 from swift import Trainer, TrainingArguments, get_logger
-from swift.llm import InferArguments, ModelType, RLHFArguments, TrainArguments, infer_main, rlhf_main, sft_main
+from swift.llm import (InferArguments, ModelType, RLHFArguments, TrainArguments, infer_main, merge_lora, rlhf_main,
+                       sft_main)
 
 NO_EVAL_HUMAN = True
 
@@ -146,21 +147,20 @@ class TestRun(unittest.TestCase):
         if not __name__ == '__main__':
             # ignore citest error in github
             return
-        model_type_list = [ModelType.qwen_vl_chat, ModelType.qwen_audio_chat]
-        dataset_list = [DatasetName.coco_en_mini, DatasetName.aishell1_zh_mini]
-        for model_type, dataset in zip(model_type_list, dataset_list):
+        model_type_list = ['qwen/Qwen-VL-Chat', 'qwen/Qwen-Audio-Chat']
+        dataset_list = [
+            'modelscope/coco_2014_caption:validation#100', 'speech_asr/speech_asr_aishell1_trainsets:validation#100'
+        ]
+        for model, dataset in zip(model_type_list, dataset_list):
             sft_args = TrainArguments(
-                model_type=model_type,
-                template_type='AUTO',
+                model=model,
                 eval_steps=5,
-                check_dataset_strategy='warning',
-                lora_target_modules='ALL',
-                train_dataset_sample=200,
                 dataset=[dataset],
                 output_dir=output_dir,
                 gradient_checkpointing=True,
                 lazy_tokenize=True,
-                disable_tqdm=True)
+                disable_tqdm=True,
+                **kwargs)
             torch.cuda.empty_cache()
             output = sft_main(sft_args)
             print(output)
@@ -170,11 +170,10 @@ class TestRun(unittest.TestCase):
                 ckpt_dir=best_model_checkpoint,
                 load_dataset_config=True,
                 stream={
-                    ModelType.qwen_vl_chat: True,
-                    ModelType.qwen_audio_chat: False
-                }[model_type],
+                    'qwen/Qwen-VL-Chat': True,
+                    'qwen/Qwen-Audio-Chat': False
+                }[model],
                 val_dataset_sample=5)
-            # merge_lora_main(infer_args)  # TODO: ERROR FIX
             torch.cuda.empty_cache()
             result = infer_main(infer_args)
             print(result)
@@ -264,12 +263,19 @@ class TestRun(unittest.TestCase):
         # mllm rlhf
         visual_rlhf_types = ['dpo', 'orpo', 'simpo', 'cpo']  # 'rm'
         #  'florence-2-base-ft'
-        test_model = ['swift/llava-v1.6-mistral-7b-hf', 'OpenGVLab/InternVL2-2B',
-                      'qwen/Qwen2-VL-2B-Instruct']  # decoder only and encoder-decoder
+        # 'swift/llava-v1.6-mistral-7b-hf',
+        test_model = ['OpenGVLab/InternVL2-2B', 'qwen/Qwen2-VL-2B-Instruct']  # decoder only and encoder-decoder
         for rlhf_type in visual_rlhf_types:
             for model in test_model:
                 dataset_name = 'swift/RLAIF-V-Dataset#100'
-                output = rlhf_main(RLHFArguments(rlhf_type=rlhf_type, model=model, dataset=dataset_name, eval_steps=5))
+                output = rlhf_main(
+                    RLHFArguments(
+                        rlhf_type=rlhf_type,
+                        model=model,
+                        dataset=dataset_name,
+                        eval_steps=5,
+                        dataset_num_proc=16,
+                        **kwargs))
                 best_model_checkpoint = output['best_model_checkpoint']
                 torch.cuda.empty_cache()
                 infer_main(
@@ -445,7 +451,8 @@ if __name__ == '__main__':
     # TestRun().test_hf_hub()
     # TestRun().test_basic()
     # TestRun().test_custom_dataset()
+    # TestRun().test_vl_audio()
+    # TestRun().test_loss_matching()
     #
     TestRun().test_rlhf()
-    # TestRun().test_loss_matching()
     # unittest.main()

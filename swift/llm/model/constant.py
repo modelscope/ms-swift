@@ -31,6 +31,7 @@ class LLMModelType:
     chatglm2 = 'chatglm2'
     chatglm3 = 'chatglm3'
     glm4 = 'glm4'
+    glm_edge = 'glm_edge'
     codefuse_codegeex2 = 'codefuse_codegeex2'
     codegeex4 = 'codegeex4'
     longwriter_llama3_1 = 'longwriter_llama3_1'
@@ -59,6 +60,7 @@ class LLMModelType:
 
     telechat = 'telechat'
     telechat2 = 'telechat2'
+    telechat2_115b = 'telechat2_115b'
 
     mistral = 'mistral'
     zephyr = 'zephyr'
@@ -98,6 +100,7 @@ class MLLMModelType:
     ovis1_6 = 'ovis1_6'
 
     glm4v = 'glm4v'
+    glm_edge_v = 'glm_edge_v'
     cogvlm = 'cogvlm'
     cogagent_vqa = 'cogagent_vqa'
     cogagent_chat = 'cogagent_chat'

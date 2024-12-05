@@ -46,37 +46,26 @@ class KTOTrainer(RLHFTrainerMixin, SwiftMixin, HFKTOTrainer):
     def forward(
         self, model: nn.Module, batch: Dict[str, Union[List, torch.LongTensor]]
     ) -> Tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
-        for key in [
-                'completion_input_ids', 'completion_attention_mask', 'KL_completion_input_ids',
-                'KL_completion_attention_mask'
-        ]:
-            if key not in batch:
-                batch[key] = None
         is_kl = True
 
         def _add_data_hook(model: nn.Module, args, kwargs):
+            from swift.llm import Template
             nonlocal is_kl
-            _data = batch['_data']
             if is_kl:
-                data = [{k[len('KL_'):]: v
-                         for k, v in inputs.items() if k.startswith('KL_completion_')} for inputs in _data]
+                kwargs = {k[len('KL_completion_'):]: v for k, v in batch.items() if k.startswith('KL_completion_')}
             else:
-                data = [{k: v for k, v in inputs.items() if k.startswith('completion_')} for inputs in _data]
+                kwargs = {k[len('completion_'):]: v for k, v in batch.items() if k.startswith('completion_')}
             is_kl = not is_kl
-            kwargs['_data'] = data
             return (), kwargs
 
         @contextmanager
         def _patch_model_call():
-            handle = None
-            if '_data' in batch:
-                handle = model.register_forward_pre_hook(_add_data_hook, with_kwargs=True, prepend=True)
+            handle = model.register_forward_pre_hook(_add_data_hook, with_kwargs=True, prepend=True)
 
             try:
                 yield
             finally:
-                if handle:
-                    handle.remove()
+                handle.remove()
 
         with _patch_model_call():
             return super().forward(model, batch)

@@ -7,8 +7,7 @@ from typing import Any, Dict, List, Literal, Optional, Union
 import json
 import torch
 
-from swift.llm import MODEL_MAPPING, HfConfigFactory
-from swift.llm.model import get_model_name
+from swift.llm import MODEL_MAPPING, HfConfigFactory, get_model_info_meta, get_model_name
 from swift.utils import get_dist_setting, get_logger
 
 logger = get_logger()
@@ -39,7 +38,6 @@ class ModelArguments:
     # None: It will be automatically selected between sdpa and eager.
     attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None
 
-    # extra
     rope_scaling: Literal['linear', 'dynamic'] = None
     device_map: Optional[str] = None
     # When some model code needs to be downloaded from GitHub,
@@ -96,37 +94,38 @@ class ModelArguments:
             else:
                 raise ValueError(f'args.torch_dtype: {self.torch_dtype}')
 
+    def _init_rope_scaling(self):
+        assert self.max_length is not None, 'Use max_model_len together with rope_scaling'
+        rope_scaling = self.model_info.rope_scaling or {}
+        max_model_len = self.model_info.max_model_len
+        rope_scaling_factor = 1.0
+        if max_model_len:
+            rope_scaling_factor = max(float(math.ceil(self.max_length / max_model_len)), 1.0)
+        if rope_scaling:
+            rope_scaling_factor = max(rope_scaling.get('factor', -1), rope_scaling_factor)
+            rope_scaling['type'] = self.rope_scaling
+            rope_scaling['factor'] = rope_scaling_factor
+        else:
+            rope_scaling = {'type': self.rope_scaling, 'factor': rope_scaling_factor}
+        self.rope_scaling = rope_scaling
+        logger.info(f'rope_scaling is set to type: {self.rope_scaling}')
+
     def _init_model_info(self) -> torch.dtype:
-        from swift.llm import get_model_info_meta
         self.model_info, self.model_meta = get_model_info_meta(**self.get_model_kwargs())
         self.model_dir = self.model_info.model_dir
         self.model_type = self.model_info.model_type
-        if self.rope_scaling is not None and isinstance(self.rope_scaling, str):
-            assert self.max_length is not None, 'Use max_model_len together with rope_scaling'
-            rope_scaling = self.model_info.rope_scaling or {}
-            max_model_len = self.model_info.max_model_len
-            rope_scaling_factor = 1.0
-            if max_model_len:
-                rope_scaling_factor = max(float(math.ceil(self.max_length / max_model_len)), 1.0)
-            if rope_scaling:
-                rope_scaling_factor = max(rope_scaling.get('factor', -1), rope_scaling_factor)
-                rope_scaling['type'] = self.rope_scaling
-                rope_scaling['factor'] = rope_scaling_factor
-            else:
-                rope_scaling = {'type': self.rope_scaling, 'factor': rope_scaling_factor}
-            self.rope_scaling = rope_scaling
-            logger.info(f'rope_scaling is set to type: {self.rope_scaling}')
+        if isinstance(self.rope_scaling, str):
+            self._init_rope_scaling()
         return self.model_info.torch_dtype
 
     def __post_init__(self):
         self.model_suffix = get_model_name(self.model)
-
-        if self.rope_scaling:  # TODO: check
-            logger.info(f'rope_scaling is set to {self.rope_scaling}, please remember to set max_length')
         self._init_device_map()
         self._init_torch_dtype()
 
     def get_model_kwargs(self):
+        if self.model is None:
+            raise ValueError('Please set --model <model_id_or_path>`')
         return {
             'model_id_or_path': self.model,
             'torch_dtype': self.torch_dtype,

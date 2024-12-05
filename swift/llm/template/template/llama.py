@@ -101,12 +101,8 @@ class Llama3_2VisionTemplate(Template):
 
         return encoded
 
-    def _data_collator(self,
-                       batch: List[Dict[str, Any]],
-                       *,
-                       padding_to: Optional[int] = None,
-                       model: Optional[nn.Module] = None) -> Dict[str, Any]:
-        res = super()._data_collator(batch, padding_to=padding_to, model=model)
+    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super()._data_collator(batch, padding_to=padding_to)
         for key in ['aspect_ratio_ids', 'aspect_ratio_mask']:
             value = [b[key] for b in batch if b.get(key) is not None]
             if value:
@@ -163,7 +159,7 @@ class Llama3_1OmniTemplate(Template):
                                                                                     speech, speech_lengths)[4:]
         else:
             inputs_embeds = model.get_model().embed_tokens(input_ids)
-        res = {'inputs_embeds': inputs_embeds[0]}
+        res = {'inputs_embeds': inputs_embeds}
         if labels is not None:
             res['labels'] = labels[0]
         return res

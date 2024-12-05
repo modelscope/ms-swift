@@ -24,14 +24,31 @@ register_model(
 
 register_model(
     ModelMeta(
+        LLMModelType.telechat2_115b,
+        [
+            ModelGroup([
+                Model('TeleAI/TeleChat2-35B', 'Tele-AI/TeleChat2-35B'),
+                Model('TeleAI/TeleChat2-115B', 'Tele-AI/TeleChat2-115B'),
+            ]),
+        ],
+        TemplateType.telechat2_115b,
+        get_model_tokenizer_with_flash_attn,
+        model_arch=ModelArch.telechat,
+        architectures=['TelechatForCausalLM'],
+    ))
+
+register_model(
+    ModelMeta(
         LLMModelType.telechat2,
         [
             ModelGroup([
-                Model('TeleAI/TeleChat2-115B', 'Tele-AI/TeleChat2-115B'),
+                Model('TeleAI/TeleChat2-3B', 'Tele-AI/TeleChat2-3B'),
+                Model('TeleAI/TeleChat2-7B', 'Tele-AI/TeleChat2-7B'),
+                Model('TeleAI/TeleChat2-35B-Nov', 'Tele-AI/TeleChat2-35B-Nov'),
             ]),
         ],
         TemplateType.telechat2,
         get_model_tokenizer_with_flash_attn,
         model_arch=ModelArch.telechat,
-        architectures=['TelechatForCausalLM'],
+        architectures=['TeleChat2ForCausalLM'],
     ))

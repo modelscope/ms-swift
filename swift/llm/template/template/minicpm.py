@@ -11,7 +11,7 @@ from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
-from ..utils import Context, Prompt, findall, gather_list
+from ..utils import Context, Prompt, findall
 from ..vision_utils import load_video_minicpmv_mplug_owl3, replace_video2image
 from .llama import Llama3TemplateMeta
 from .qwen import QwenTemplateMeta
@@ -133,7 +133,14 @@ class MiniCPMVTemplate(Template):
 
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
         inputs_embeds, _ = model.get_vllm_embedding(inputs)
-        return {'inputs_embeds': inputs_embeds[0]}
+        return {'inputs_embeds': inputs_embeds}
+
+    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = {}
+        for k in ['pixel_values', 'image_bound', 'tgt_sizes']:
+            res[k] = self.gather_list(batch, k)
+        res.update(super()._data_collator(batch, padding_to=padding_to))
+        return res
 
 
 register_template(MinicpmTemplateMeta(MLLMTemplateType.minicpmv, template_cls=MiniCPMVTemplate))

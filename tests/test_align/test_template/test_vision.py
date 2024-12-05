@@ -1,7 +1,6 @@
-from swift.llm import PtEngine, RequestConfig, get_template
-from swift.utils import get_logger, seed_everything
+import os
 
-logger = get_logger()
+os.environ['CUDA_VISIBLE_DEVICES'] = '2'
 
 
 def _infer_model(pt_engine, system=None, messages=None, images=None):
@@ -83,7 +82,7 @@ def test_got_ocr():
 
 
 def test_llama_vision():
-    pt_engine = PtEngine('LLM-Research/Llama-3___2-11B-Vision-Instruct')
+    pt_engine = PtEngine('LLM-Research/Llama-3.2-11B-Vision-Instruct')
     _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     _infer_model(pt_engine)
@@ -98,9 +97,13 @@ def test_llava_hf():
 
 def test_florence():
     pt_engine = PtEngine('AI-ModelScope/Florence-2-base-ft')
-    _infer_model(pt_engine)
-    pt_engine.default_template.template_backend = 'jinja'
-    _infer_model(pt_engine)
+    _infer_model(
+        pt_engine,
+        messages=[{
+            'role': 'user',
+            'content': '<OD>'
+        }],
+        images=['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png'])
 
 
 def test_phi3_vision():
@@ -121,9 +124,9 @@ def test_llava_onevision_hf():
 
 def test_xcomposer2_5():
     pt_engine = PtEngine('Shanghai_AI_Laboratory/internlm-xcomposer2d5-7b')
-    _infer_model(pt_engine)
+    _infer_model(pt_engine, system='')
     pt_engine.default_template.template_backend = 'jinja'
-    _infer_model(pt_engine)
+    _infer_model(pt_engine, system='')
 
 
 def test_deepseek_vl():
@@ -166,6 +169,10 @@ def test_pixtral():
 
 
 if __name__ == '__main__':
+    from swift.llm import PtEngine, RequestConfig, get_template
+    from swift.utils import get_logger, seed_everything
+
+    logger = get_logger()
     # test_qwen2_vl()
     # test_internvl2()
     # test_internvl2_phi3()
@@ -182,8 +189,8 @@ if __name__ == '__main__':
     # test_pixtral()
     # test_llama_vision()
     # test_llava_hf()
-    #
-    test_mplug_owl3()
     # test_xcomposer2_5()
-    # test_florence()
+    #
+    # test_mplug_owl3()
+    test_florence()
     # test_phi3_vision()

@@ -74,7 +74,7 @@ class InferStreamer(InferTools):
 
     def get_printable_text(self, raw_tokens: List[int], is_finished: bool) -> str:
         self.token_cache = raw_tokens[self.cache_idx:]
-        response = self.template.decode(self.token_cache, is_finished, **self.decode_kwargs)
+        response = self.template.decode(self.token_cache, is_finished, tokenizer_kwargs=self.decode_kwargs)
         response = self._align_blank_suffix(response)
         return self._get_response(response, is_finished)
 
