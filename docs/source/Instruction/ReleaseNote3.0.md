@@ -66,6 +66,7 @@
 - add_output_dir_suffix更名为add_version
 - 移除了eval_token，使用api_key支持
 - target_modules(lora_target_modules)的ALL改为了all-linear，含义相同
+- deepspeed的配置更改为`default-zero2`->`zero2`, `default-zero3`->`zero3`
 
 2.0标记为compatible参数的部分整体移除了。
 
