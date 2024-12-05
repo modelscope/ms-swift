@@ -336,22 +336,31 @@ class Ovis1_6Template(Template):
                 labels = labels[:idx] + [-100] * len(image_placeholders) + labels[idx + 1:]
             pixel_values.append(raw_pixel_values)
             added_tokens_len += len(image_placeholders) - 1
+        dtype = self.model.visual_tokenizer.dtype
         if pixel_values:
-            pixel_values = torch.cat(pixel_values, dim=0).to(self.model.visual_tokenizer.dtype)
+            pixel_values = torch.cat(pixel_values, dim=0).to(dtype)
         else:
-            pixel_values = None
+            pixel_values = torch.zeros((1, 3, 384, 384), dtype=dtype)  # dummpy
         encoded.update({'input_ids': input_ids, 'labels': labels})
         encoded['pixel_values'] = [pixel_values]
         return encoded
 
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        _, inputs_embeds, labels, _ = self.model.merge_multimodal(
+        padding_side = self.padding_side if self.is_training else 'left'
+        _, inputs_embeds, labels, attention_mask = self.model.merge_multimodal(
             text_input_ids=inputs['input_ids'],
             text_attention_masks=torch.ones_like(inputs['input_ids']),  # not use, only compat
             text_labels=inputs.get('labels'),
             pixel_values=inputs['pixel_values'],
-            left_padding=True)
-        return {'inputs_embeds': inputs_embeds[0], 'labels': labels}
+            left_padding=padding_side == 'left')
+
+        return {'inputs_embeds': inputs_embeds, 'labels': labels, 'attention_mask': attention_mask}
+
+    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        pixel_values = self.gather_list(batch, 'pixel_values')
+        res = super()._data_collator(batch, padding_to=padding_to)
+        res['pixel_values'] = pixel_values
+        return res
 
 
 register_template(
