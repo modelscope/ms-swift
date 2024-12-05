@@ -17,6 +17,7 @@ from PIL import Image
 from torch.nn.utils.rnn import pad_sequence
 from transformers import StoppingCriteriaList
 from transformers.integrations import is_deepspeed_zero3_enabled
+from transformers.utils import strtobool
 
 from swift.utils import get_dist_setting, get_logger, use_torchacc
 from ..utils import Processor, ProcessorMixin
@@ -593,8 +594,11 @@ class Template(ProcessorMixin):
         return res_context_list, loss_scale_list, answer_len
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        template_backend = self.template_backend
+        if self.template_meta.template_type == 'dummy' and self.use_chat_template and not self.is_training:
+            template_backend = 'jinja'
         res_context_list, loss_scale_list, answer_len = (
-            self._swift_encode(inputs) if self.template_backend == 'swift' else self._jinja_encode(inputs))
+            self._swift_encode(inputs) if template_backend == 'swift' else self._jinja_encode(inputs))
         encoded = {}
         if self.is_encoder_decoder:
             # tokenizer_kwargs: use prompt (qwen-audio)
@@ -649,8 +653,16 @@ class Template(ProcessorMixin):
             encoded['label'] = inputs.label
         return encoded
 
+    def _debug_logger(self, generate_ids):
+        if isinstance(generate_ids, list) or isinstance(generate_ids, torch.Tensor) and generate_ids.ndim == 1:
+            generate_ids = [generate_ids]
+        for tokens in generate_ids:
+            logger.info(self.safe_decode(tokens) + '\n' + '-' * 50)
+
     def get_generate_ids(self, generate_ids: Union[torch.Tensor, List[int]],
                          num_prompt_tokens: int) -> Union[torch.Tensor, List[int]]:
+        if strtobool(os.getenv('SWIFT_DEBUG', 'false')):
+            self._debug_logger(generate_ids)
         if self.skip_prompt:
             return generate_ids[..., num_prompt_tokens:]
         else:

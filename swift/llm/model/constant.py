@@ -59,6 +59,7 @@ class LLMModelType:
 
     telechat = 'telechat'
     telechat2 = 'telechat2'
+    telechat2_115b = 'telechat2_115b'
 
     mistral = 'mistral'
     zephyr = 'zephyr'

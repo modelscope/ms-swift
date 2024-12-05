@@ -35,7 +35,6 @@ class QwqTemplateMeta(QwenTemplateMeta):
                                      'You should think step-by-step.')
 
 
-register_template(ChatmlTemplateMeta(LLMTemplateType.chatml))
 register_template(QwenTemplateMeta(LLMTemplateType.qwen))
 register_template(Qwen2_5TemplateMeta(LLMTemplateType.qwen2_5))
 register_template(QwqTemplateMeta(LLMTemplateType.qwq))

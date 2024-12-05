@@ -431,7 +431,7 @@ def get_model_info_meta(
     if model_meta is None and model_type is not None:
         model_meta = MODEL_MAPPING[model_type]
     if model_meta is None:
-        model_meta = ModelMeta('', [], '', get_model_tokenizer_from_local, model_arch=None)
+        model_meta = ModelMeta('', [], 'dummy', get_model_tokenizer_from_local, model_arch=None)
         logger.info(f'Temporarily create model_meta: {model_meta}')
 
     if torch_dtype is None:

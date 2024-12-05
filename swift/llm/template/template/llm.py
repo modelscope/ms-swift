@@ -1,6 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+from dataclasses import dataclass, field
+from typing import Optional
+
 from ..constant import LLMTemplateType
 from ..register import TemplateMeta, register_template
+from ..utils import Prompt
 from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
 
 register_template(
@@ -113,13 +117,22 @@ register_template(
         chat_sep=['</s>'],
         suffix=['</s>']))
 
-register_template(
-    TemplateMeta(
-        LLMTemplateType.telechat, prefix=[], prompt=['<_user>{{QUERY}}<_bot>'], chat_sep=['<_end>'], suffix=['<_end>']))
+
+@dataclass
+class TeleChatTemplateMeta(TemplateMeta):
+    prefix: Prompt = field(default_factory=list)
+    prompt: Prompt = field(default_factory=lambda: ['<_user>{{QUERY}}<_bot>'])
+    chat_sep: Optional[Prompt] = field(default_factory=lambda: ['<_end>'])
+    suffix: Prompt = field(default_factory=lambda: ['<_end>'])
+
+
+register_template(TeleChatTemplateMeta(LLMTemplateType.telechat))
+
+register_template(TeleChatTemplateMeta(LLMTemplateType.telechat2))
 
 register_template(
     TemplateMeta(
-        LLMTemplateType.telechat2,
+        LLMTemplateType.telechat2_115b,
         prefix=['<_start>'],
         prompt=[[4], '{{QUERY}}', [5]],
         chat_sep=['<_end>'],
