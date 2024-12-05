@@ -98,6 +98,14 @@ class BaseUI:
     os.makedirs(cache_dir, exist_ok=True)
     quote = '\'' if sys.platform != 'win32' else '"'
     visible = True
+    _locale = {
+        'local_dir_alert': {
+            'value': {
+                'zh': '无法识别model_type和template,请手动选择',
+                'en': 'Cannot recognize the model_type and template, please choose manully'
+            }
+        },
+    }
 
     @classmethod
     def build_ui(cls, base_tab: Type['BaseUI']):
@@ -277,14 +285,24 @@ class BaseUI:
     def update_input_model(cls, model, allow_keys=None, has_record=True, arg_cls=BaseArguments):
         keys = cls.valid_element_keys()
 
-        if os.path.exists(model):
-            local_path = os.path.join(model, 'args.json')
-            if not os.path.exists(local_path):
-                ret = [gr.update()] * (len(keys) + int(has_record))
-                if len(ret) == 1:
-                    return ret[0]
-                else:
-                    return ret
+        if not model:
+            ret = [gr.update()] * (len(keys) + int(has_record))
+            if len(ret) == 1:
+                return ret[0]
+            else:
+                return ret
+
+        model_meta = get_matched_model_meta(model)
+        local_args_path = os.path.join(model, 'args.json')
+        if model_meta is None and not os.path.exists(local_args_path):
+            gr.Info(cls._locale['local_dir_alert']['value'][cls.lang])
+            ret = [gr.update()] * (len(keys) + int(has_record))
+            if len(ret) == 1:
+                return ret[0]
+            else:
+                return ret
+
+        if os.path.exists(local_args_path):
             try:
                 if hasattr(arg_cls, 'resume_from_checkpoint'):
                     args = arg_cls(resume_from_checkpoint=model, load_dataset_config=True)
@@ -315,11 +333,10 @@ class BaseUI:
                 return ret
         else:
             values = []
-            model_meta = get_matched_model_meta(model)
             for key in keys:
                 if allow_keys is not None and key not in allow_keys:
                     continue
-                if model_meta is None or key not in ('template', 'model_type', 'ref_model_type', 'system'):
+                if key not in ('template', 'model_type', 'ref_model_type', 'system'):
                     values.append(gr.update())
                 elif key in ('template', 'model_type', 'ref_model_type'):
                     if key == 'ref_model_type':
