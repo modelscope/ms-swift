@@ -4,7 +4,6 @@ swift sft \
     --model Qwen/Qwen2-7B-Instruct \
     --tuner_backend unsloth \
     --train_type lora \
-    --lorap_lr_ratio 16 \
     --dataset swift/self-cognition#1000 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \

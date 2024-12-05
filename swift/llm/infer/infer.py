@@ -107,6 +107,7 @@ class SwiftInfer(SwiftPipeline):
         else:
             response = res_or_gen[0].choices[0].message.content
             print(response)
+        print('-' * 50)
         return response
 
     def infer_cli(self) -> List[Dict[str, Any]]:
@@ -172,7 +173,6 @@ class SwiftInfer(SwiftPipeline):
                 query = data['messages'][-1]['content']
                 print(f'[QUERY] {query}\n[RESPONSE] ', end='')
                 response = self.infer_single(data, request_config)
-                print('-' * 50)
                 data = {'response': response, 'labels': labels, **data}
                 result_list.append(data)
                 if self.jsonl_writer:
