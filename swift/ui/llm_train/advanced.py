@@ -158,6 +158,7 @@ class Advanced(BaseUI):
                         elem_id='deepspeed',
                         scale=20,
                         allow_custom_value=True,
-                        choices=['default-zero2', 'default-zero3', 'zero2-offload', 'zero3-offload'])
+                        value=None,
+                        choices=['zero2', 'zero3', 'zero2-offload', 'zero3-offload'])
                 with gr.Row():
                     gr.Textbox(elem_id='more_params', lines=4, scale=20)

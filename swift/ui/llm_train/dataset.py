@@ -88,4 +88,4 @@ class Dataset(BaseUI):
                     elem_id='dataset', multiselect=True, choices=get_dataset_list(), scale=20, allow_custom_value=True)
                 gr.Textbox(elem_id='custom_dataset_info', is_list=False, scale=20)
                 gr.Slider(elem_id='split_dataset_ratio', minimum=0.0, maximum=1.0, step=0.05, scale=10)
-                gr.Slider(elem_id='max_length', minimum=32, maximum=32768, step=1, scale=10)
+                gr.Slider(elem_id='max_length', minimum=32, maximum=32768, value=1024, step=1, scale=10)
