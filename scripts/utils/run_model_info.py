@@ -7,10 +7,10 @@ def get_model_info_table():
     fpaths = ['docs/source/Instruction/支持的模型和数据集.md', 'docs/source_en/Instruction/Supported-models-datasets.md']
     end_words = [['### 多模态大模型', '## 数据集'], ['### MLLM', '## Datasets']]
     result = [
-        '| Model ID | HF Model ID | Model Type | Default Template | '
-        'Requires | Tags |\n'
-        '| -------- | ----------- | -----------| ---------------- | '
-        '-------- | ---- |\n'
+        '| Model ID | Model Type | Default Template | '
+        'Requires | Tags | HF Model ID |\n'
+        '| -------- | -----------| ---------------- | '
+        '-------- | ---- | ----------- |\n'
     ] * 2
     res_llm: List[Any] = []
     res_mllm: List[Any] = []
@@ -35,7 +35,7 @@ def get_model_info_table():
                     hf_model_id = '-'
                 tags = ''.join(group.tags or model_meta.tags) or '-'
                 requires = ''.join(model_meta.requires or model_meta.requires) or '-'
-                r = (f'|{ms_model_id}' f'|{hf_model_id}' f'|{model_type}|{template}' f'|{requires}|{tags}|\n')
+                r = (f'|{ms_model_id}|{model_type}|{template}|{requires}|{tags}|{hf_model_id}|\n')
                 if model_meta.is_multimodal:
                     res_mllm.append(r)
                 else:
