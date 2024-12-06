@@ -26,6 +26,14 @@
 <a href="https://trendshift.io/repositories/6427" target="_blank"><img src="https://trendshift.io/api/badge/repositories/6427" alt="modelscope%2Fswift | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 </p>
 
+<p align="center">
+        <a href="https://arxiv.org/abs/2408.05517">论文</a> &nbsp ｜ <a href="https://swift.readthedocs.io/en/latest/">English Documentation</a> &nbsp ｜ &nbsp <a href="https://swift.readthedocs.io/zh-cn/latest/">中文文档</a> &nbsp
+</p>
+<p align="center">
+        <a href="https://swift2x-en.readthedocs.io/en/latest/">Swift2.x En Doc</a> &nbsp ｜ &nbsp <a href="https://swift2x.readthedocs.io/zh-cn/latest/">Swift2.x中文文档</a> &nbsp
+</p>
+
+
 ##  📖 目录
 - [简介](#-简介)
 - [用户群](#-用户群)
@@ -39,14 +47,6 @@
 
 🍔 除此之外，ms-swift汇集了最新的训练技术，包括LoRA、QLoRA、Llama-Pro、LongLoRA、GaLore、Q-GaLore、LoRA+、LISA、DoRA、FourierFt、ReFT、UnSloth、Megatron和Liger等。ms-swift支持使用vLLM和LMDeploy对推理、评测和部署模块进行加速。为了帮助研究者和开发者更轻松地微调和应用大模型，ms-swift还提供了基于Gradio的Web-UI界面及丰富的最佳实践。
 
-SWIFT具有丰富全面的文档，请查看我们的文档网站:
-<p align="center">
-        <a href="https://arxiv.org/abs/2408.05517">论文</a> &nbsp ｜ <a href="https://swift.readthedocs.io/en/latest/">English Documentation</a> &nbsp ｜ &nbsp <a href="https://swift.readthedocs.io/zh-cn/latest/">中文文档</a> &nbsp
-</p>
-<p align="center">
-        <a href="https://swift2x-en.readthedocs.io/en/latest/">Swift2.x En Doc</a> &nbsp ｜ &nbsp <a href="https://swift2x.readthedocs.io/zh-cn/latest/">Swift2.x中文文档</a> &nbsp
-</p>
-
 ## ☎ 用户群
 
 请扫描下面的二维码来加入我们的交流群：
@@ -58,6 +58,9 @@ SWIFT具有丰富全面的文档，请查看我们的文档网站:
 
 ## 🎉 新闻
 - 🎁2024.12.04: SWIFT3.0大版本更新. 请查看[ReleaseNote和BreakChange](./docs/source/Instruction/ReleaseNote3.0.md).
+- 🔥2024.08.12: 🎉SWIFT论文已经发布到arXiv上，可以点击[这个链接](https://arxiv.org/abs/2408.05517)阅读.
+<details><summary>More</summary>
+
 - 2024.11.28: 支持模型qwq-32b-preview, marco-o1, 支持数据集open-o1.
 - 2024.10.09: 支持LLM和MLLM的reward modeling、PPO训练.
 - 2024.09.26: 支持llama3.2、llama3.2-vision系列模型的训练到部署.
@@ -65,9 +68,6 @@ SWIFT具有丰富全面的文档，请查看我们的文档网站:
 - 🔥2024.08.30: 支持qwen2-vl系列模型的推理与微调: qwen2-vl-2b-instruct, qwen2-vl-7b-instruct.
 - 🔥2024.08.26: 支持[Liger](https://github.com/linkedin/Liger-Kernel), 该内核支持LLaMA、Qwen、Mistral等模型, 并大幅减少显存使用(10%~60%), 使用`--use_liger true`开启训练.
 - 🔥2024.08.22: 支持[ReFT](https://github.com/stanfordnlp/pyreft), 该tuner可以以LoRA的1/15~1/65的参数量达到和LoRA匹配或更好的效果, 使用`--sft_type reft`开始训练!
-- 🔥2024.08.12: 🎉 SWIFT论文已经发布到arXiv上，可以点击[这个链接](https://arxiv.org/abs/2408.05517)阅读.
-<details><summary>More</summary>
-
 - 🔥2024.08.12: 支持packing和flash-attention时不污染attention_mask, 使用`--packing`开启。详情见[PR](https://github.com/huggingface/transformers/pull/31629/files).
 - 🔥2024.08.09: 支持qwen2-audio模型的推理与微调. 最佳实践可以查看[这里](https://github.com/modelscope/ms-swift/issues/1653).
 - 🔥2024.08.05: 支持多模态数据集的评测！命令行完全一致，新增了许多[多模态数据集](https://swift.readthedocs.io/zh-cn/latest/Instruction/LLM%E8%AF%84%E6%B5%8B%E6%96%87%E6%A1%A3.html#id2).
@@ -78,7 +78,19 @@ SWIFT具有丰富全面的文档，请查看我们的文档网站:
 </details>
 
 ## 🛠️ 安装
+使用pip进行安装：
+```shell
+pip install ms-swift -U
+```
 
+从源代码安装：
+```shell
+# pip install git+https://github.com/modelscope/ms-swift.git
+
+git clone https://github.com/modelscope/ms-swift.git
+cd ms-swift
+pip install -e .
+```
 
 ## 🚀 快速开始
 
@@ -93,7 +105,39 @@ swift web-ui
 ```
 ![image.png](./docs/resources/web-ui.png)
 
-### 训练
+### 命令行
+
+#### 训练
+```shell
+swift sft \
+    --model <model_id_or_path> \
+    --dataset <dataset_id_or_path> \
+    --train_type lora \
+    --output_dir output \
+    ...
+```
+
+#### RLHF
+```shell
+swift sft \
+    --model <model_id_or_path> \
+    --dataset <dataset_id_or_path> \
+    --train_type lora \
+    --rlhf_type lora \
+    --output_dir output \
+    ...
+```
+
+#### 推理
+
+
+#### 部署
+
+
+#### 评测
+
+
+### 使用Python
 
 
 
