@@ -64,7 +64,7 @@ class QuantEngine(ProcessorMixin):
         template = self.template
         data = args.dataset
         n_samples = args.quant_n_samples
-        block_size = args.quant_seqlen
+        block_size = args.max_length
 
         # only use train_dataset
         dataset = load_dataset(data, split_dataset_ratio=0, **args.get_dataset_kwargs())[0]

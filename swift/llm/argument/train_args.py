@@ -48,6 +48,8 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
         self._init_output_dir()
         if self.metric_for_best_model is None:
             self.metric_for_best_model = 'rouge-l' if self.predict_with_generate else 'loss'
+        if self.greater_is_better is None:
+            self.greater_is_better = 'loss' not in self.metric_for_best_model
 
         if self.learning_rate is None:
             if self.train_type == 'full':
