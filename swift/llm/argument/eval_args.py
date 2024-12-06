@@ -2,9 +2,7 @@
 import datetime as dt
 import os
 from dataclasses import dataclass, field
-from typing import List, Literal, Optional
-
-import torch
+from typing import List, Optional
 
 from swift.utils import get_logger
 from .base_args import to_abspath
@@ -16,7 +14,7 @@ logger = get_logger()
 @dataclass
 class EvalArguments(DeployArguments):
     """
-    EvalArguments is a dataclass that extends InferArguments and is used to define
+    EvalArguments is a dataclass that extends DeployArguments and is used to define
     the arguments required for evaluating a model.
 
     Args:

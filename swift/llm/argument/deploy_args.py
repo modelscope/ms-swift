@@ -23,8 +23,8 @@ class DeployArguments(InferArguments):
         owned_by (str): The owner of the deployment. Default is 'swift'.
         served_model_name (Optional[str]): The name of the model being served. Default is None.
         verbose (bool): Whether to log request information. Default is True.
-        log_interval (int): The interval for printing global statistics. Default is 10.
-        max_logprobs(int): Max number of tokens' log probs to return
+        log_interval (int): The interval for printing global statistics. Default is 20.
+        max_logprobs(int): Max number of logprobs to return
     """
     host: str = '0.0.0.0'
     port: int = 8000

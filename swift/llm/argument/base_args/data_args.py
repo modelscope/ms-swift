@@ -17,17 +17,17 @@ class DataArguments:
     DataArguments class is a dataclass that holds various arguments related to dataset handling and processing.
 
     Args:
-        dataset (List[str]): List of dataset identifiers or paths.
-        val_dataset (List[str]): List of validation dataset identifiers or paths.
+        dataset (List[str]): List of dataset_id, dataset_path or dataset_dir
+        val_dataset (List[str]): List of validation dataset_id, dataset_path or dataset_dir
         split_dataset_ratio (float): Ratio to split the dataset for validation if val_dataset is empty. Default is 0.01.
         data_seed (Optional[int]): Seed for dataset shuffling. Default is None.
         dataset_num_proc (int): Number of processes to use for data loading and preprocessing. Default is 1.
+        streaming (bool): Flag to enable streaming of datasets. Default is False.
         load_from_cache_file (bool): Flag to load dataset from cache file. Default is False.
         download_mode (Literal): Mode for downloading datasets. Default is 'reuse_dataset_if_exists'.
         model_name (List[str]): List containing Chinese and English names of the model. Default is [None, None].
         model_author (List[str]): List containing Chinese and English names of the model author.
             Default is [None, None].
-        streaming (bool): Flag to enable streaming of datasets. Default is False.
         custom_register_path (Optional[str]): Path to custom .py file for dataset registration. Default is None.
         custom_dataset_info (Optional[str]): Path to custom dataset_info.json file. Default is None.
     """

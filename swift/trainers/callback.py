@@ -4,7 +4,7 @@ import time
 
 from tqdm import tqdm
 from transformers import trainer
-from transformers.trainer_callback import (DefaultFlowCallback, PrinterCallback, ProgressCallback, TrainerCallback,
+from transformers.trainer_callback import (DefaultFlowCallback, PrinterCallback, ProgressCallback,
                                            TrainerControl, TrainerState)
 from transformers.trainer_utils import IntervalStrategy, has_length, speed_metrics
 

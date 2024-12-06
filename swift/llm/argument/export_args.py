@@ -3,9 +3,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Literal, Optional
 
-import torch.distributed as dist
-
-from swift.utils import get_logger, is_dist
+from swift.utils import get_logger
 from .base_args import BaseArguments, to_abspath
 from .merge_args import MergeArguments
 
@@ -19,8 +17,6 @@ class ExportArguments(MergeArguments, BaseArguments):
 
     Args:
         output_dir (Optional[str]): Directory where the output will be saved.
-        to_peft_format (bool): Flag to indicate if the output should be in PEFT format.
-            This argument is useless for now.
         quant_n_samples (int): Number of samples for quantization.
         max_length (int): Sequence length for quantization.
         quant_batch_size (int): Batch size for quantization.
@@ -30,11 +26,12 @@ class ExportArguments(MergeArguments, BaseArguments):
         hub_model_id (Optional[str]): Model ID for the hub.
         hub_private_repo (bool): Flag to indicate if the hub repository is private.
         commit_message (str): Commit message for pushing to the hub.
+        to_peft_format (bool): Flag to indicate if the output should be in PEFT format.
+            This argument is useless for now.
     """
     ckpt_dir: Optional[str] = field(default=None, metadata={'help': '/path/to/your/vx-xxx/checkpoint-xxx'})
     output_dir: Optional[str] = None
 
-    to_peft_format: bool = False
     # awq/gptq
     quant_method: Literal['awq', 'gptq'] = None
     quant_n_samples: int = 256
@@ -52,6 +49,8 @@ class ExportArguments(MergeArguments, BaseArguments):
     hub_model_id: Optional[str] = None
     hub_private_repo: bool = False
     commit_message: str = 'update files'
+    # compat
+    to_peft_format: bool = False
 
     def _init_quant(self):
 
