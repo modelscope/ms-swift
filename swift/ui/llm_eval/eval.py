@@ -92,8 +92,12 @@ class Eval(BaseUI):
             from evalscope.backend.vlm_eval_kit import VLMEvalKitBackendManager
             eval_dataset_list = (
                 OpenCompassBackendManager.list_datasets() + VLMEvalKitBackendManager.list_supported_datasets())
+            logger.warn('If you encounter an error message👆🏻👆🏻👆🏻 of `.env` file, please ignore.')
         except Exception as e:
-            logger.error(e)
+            logger.warn(e)
+            logger.warn(
+                ('The error message 👆🏻👆🏻👆🏻above will have no bad effects, '
+                 'only means evalscope is not installed, and default eval datasets will be listed in the web-ui.'))
             eval_dataset_list = [
                 'AX_b', 'cmb', 'winogrande', 'mmlu', 'afqmc', 'COPA', 'commonsenseqa', 'CMRC', 'lcsts', 'nq',
                 'ocnli_fc', 'math', 'mbpp', 'DRCD', 'TheoremQA', 'CB', 'ReCoRD', 'lambada', 'tnews', 'flores',
