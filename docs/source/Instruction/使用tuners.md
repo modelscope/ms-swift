@@ -1,4 +1,4 @@
-# 使用tuners
+# 使用Tuners
 
 tuner是指附加在模型上的额外结构部分，用于减少训练参数量或者提高训练精度。目前SWIFT支持的tuners有：
 

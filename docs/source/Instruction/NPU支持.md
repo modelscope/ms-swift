@@ -1,4 +1,4 @@
-# NPU训练最佳实践
+# NPU支持
 作者: [chuanzhubin](https://github.com/chuanzhubin)
 
 ## 环境准备
