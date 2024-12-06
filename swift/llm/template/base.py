@@ -656,6 +656,8 @@ class Template(ProcessorMixin):
         if isinstance(generate_ids, list) or isinstance(generate_ids, torch.Tensor) and generate_ids.ndim == 1:
             generate_ids = [generate_ids]
         for tokens in generate_ids:
+            if isinstance(tokens, torch.Tensor):
+                tokens = tokens.tolist()
             logger.info(f'[GENERATE_IDS] {tokens}')
             logger.info(f'[GENERATE] {self.safe_decode(tokens)}\n' + '-' * 50)
 
