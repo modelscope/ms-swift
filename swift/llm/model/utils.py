@@ -1,7 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import hashlib
 import os
-import re
 from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import wraps
@@ -9,16 +7,15 @@ from types import MethodType
 from typing import Any, Dict, List, Literal, Optional, Tuple, TypeVar, Union
 
 import torch
-import torch.distributed as dist
 import transformers
 from accelerate.utils import find_device
 from modelscope.hub.utils.utils import get_cache_dir
 from packaging import version
-from transformers import AutoConfig, PretrainedConfig
+from transformers import PretrainedConfig
 
 from swift.hub import get_hub
 from swift.llm import to_device
-from swift.utils import deep_getattr, get_logger, is_dist, is_dist_ta, safe_ddp_context, subprocess_run
+from swift.utils import deep_getattr, get_logger,  safe_ddp_context, subprocess_run
 
 logger = get_logger()
 
@@ -331,9 +328,9 @@ def ignore_check_imports():
     def _check_imports(filename) -> List[str]:
         return td.get_relative_imports(filename)
 
-    td._old_check_imports = td.check_imports
+    _old_check_imports = td.check_imports
     td.check_imports = _check_imports
     try:
         yield
     finally:
-        td.check_imports = td._old_check_imports
+        td.check_imports = _old_check_imports

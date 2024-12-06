@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from dataclasses import dataclass, field
 from functools import partial
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional
 
 import torch
 from torch import nn
@@ -15,8 +15,6 @@ from ..utils import Context, Prompt, findall
 from ..vision_utils import load_video_minicpmv_mplug_owl3, replace_video2image
 from .llama import Llama3TemplateMeta
 from .qwen import QwenTemplateMeta
-from .utils import DEFAULT_SYSTEM
-
 
 @dataclass
 class MinicpmTemplateMeta(TemplateMeta):

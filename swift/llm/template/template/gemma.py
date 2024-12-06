@@ -1,8 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import Any, Dict, List, Literal, Optional, Tuple
-
-import torch
-import torch.nn as nn
+from typing import Any, Dict, List, Literal
 
 from swift.utils import upper_bound
 from ..base import Template

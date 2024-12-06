@@ -4,7 +4,6 @@ from functools import partial
 from typing import Any, Dict, List, Literal, Optional
 
 import torch
-import torch.nn as nn
 
 from swift.utils import get_env_args, is_deepspeed_enabled
 from ..base import Template

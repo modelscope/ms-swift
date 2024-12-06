@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
-from typing import Any, Dict, List, Literal, Optional, Tuple, Type, Union
+from typing import Dict, Literal, Optional
 
 from ..utils import Processor
 from .base import Template

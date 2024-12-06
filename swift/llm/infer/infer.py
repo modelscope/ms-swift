@@ -1,5 +1,4 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import re
 from contextlib import nullcontext
 from itertools import chain
 from typing import Any, Dict, List, Union

@@ -117,11 +117,11 @@ class StdTemplateInputs:
         self.video_idx = 0
         self.object_idx = 0
         self.box_idx = 0
-        if self.images and not isinstance(self.images, list):
+        if self.images and not isinstance(self.images, (list, tuple)):
             self.images = [self.images]
-        if self.videos and not isinstance(self.videos, list):
+        if self.videos and not isinstance(self.videos, (list, tuple)):
             self.videos = [self.videos]
-        if self.audios and not isinstance(self.audios, list):
+        if self.audios and not isinstance(self.audios, (list, tuple)):
             self.audios = [self.audios]
 
     def to_history(self):

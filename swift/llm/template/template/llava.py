@@ -1,11 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional
 
 import torch
 import transformers
 from packaging import version
-from torch import nn
 
 from ..base import Template
 from ..constant import MLLMTemplateType

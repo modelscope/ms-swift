@@ -30,7 +30,7 @@ class StopWordsCriteria(StoppingCriteria):
         self.start_idx = -1
         self.is_done = None
 
-    def __call__(self, input_ids: torch.Tensor, scores: torch.Tensor, **kwargs) -> bool:
+    def __call__(self, input_ids: torch.Tensor, scores: torch.Tensor, **kwargs) -> torch.Tensor:
         if self.start_idx == -1:
             self.start_idx = len(input_ids[0]) - 1
             self.is_done = torch.full((input_ids.shape[0], ), False, device=input_ids.device, dtype=torch.bool)
@@ -76,27 +76,6 @@ def findall(token_list: List[int], sub_token_list: Union[int, List[int]]) -> Lis
     except ValueError:
         pass
     return res
-
-
-def replace_img_tag(query: str,
-                    response: Optional[str],
-                    history: History,
-                    replace_token: str,
-                    pattern=r'<img>(.+?)</img>') -> Tuple[str, Optional[str], History, List[str]]:
-    images_path = []
-    new_history = []
-    history = history.copy()
-    history.append([query, response])
-    for i, h in enumerate(history):
-        new_h = []
-        for content in h:
-            if content is None:
-                new_h.append(content)
-            else:
-                images_path += re.findall(pattern, content)
-                new_h.append(re.sub(pattern, replace_token, content))
-        new_history.append(new_h)
-    return (*new_history[-1], new_history[:-1], images_path)
 
 
 def align_image_inputs(input_ids: List[int], labels: List[int], new_input_ids,

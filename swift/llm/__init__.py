@@ -15,13 +15,11 @@ if TYPE_CHECKING:
         deploy_main,
         LoRARequest,
         InferClient,
-        SwiftInfer,
-        SwiftDeploy,
         run_deploy,
         prepare_pt_engine_template,
     )
     from .export import (export_main, merge_lora, quantize_model, export_to_ollama)
-    from .eval import eval_main, SwiftEval
+    from .eval import eval_main
     from .train import sft_main, pt_main, rlhf_main
     from .argument import (EvalArguments, InferArguments, TrainArguments, ExportArguments, DeployArguments,
                            RLHFArguments, WebUIArguments, BaseArguments)
@@ -43,10 +41,10 @@ else:
         'rlhf': ['rlhf_main'],
         'infer': [
             'deploy_main', 'VllmEngine', 'RequestConfig', 'LmdeployEngine', 'PtEngine', 'infer_main', 'LoRARequest',
-            'InferClient', 'SwiftInfer', 'SwiftDeploy', 'run_deploy', 'prepare_pt_engine_template', 'InferEngine'
+            'InferClient', 'run_deploy', 'prepare_pt_engine_template', 'InferEngine'
         ],
         'export': ['export_main', 'merge_lora', 'quantize_model', 'export_to_ollama'],
-        'eval': ['eval_main', 'SwiftEval'],
+        'eval': ['eval_main'],
         'train': ['sft_main', 'pt_main', 'rlhf_main'],
         'argument': [
             'EvalArguments', 'InferArguments', 'TrainArguments', 'ExportArguments', 'WebUIArguments', 'DeployArguments',
