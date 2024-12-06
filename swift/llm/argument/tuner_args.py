@@ -16,7 +16,7 @@ class TunerArguments:
     TunerArguments is a dataclass that holds configuration for various tuners.
 
     Args:
-        target_modules (List[str]): List of target modules for tuning. Default is ['ALL'].
+        target_modules (List[str]): List of target modules for tuning. Default is ['all-linear'].
         target_regex (Optional[str]): Regular expression to match target modules. Default is None.
         modules_to_save (List[str]): List of modules to save. Default is an empty list.
 

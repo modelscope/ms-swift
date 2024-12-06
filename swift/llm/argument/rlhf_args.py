@@ -19,7 +19,6 @@ class RLHFArguments(TrainArguments):
         ref_model_revision (Optional[str]): Revision of the reference model. Default is None.
         beta (Optional[float]): Beta parameter for RLHF. Default is None.
         label_smoothing (float): Label smoothing value. Default is 0.
-        loss_type (Optional[str]): Type of loss function. Default is None.
         rpo_alpha (float): Alpha parameter for RPO. Default is 1.
         cpo_alpha (float): Alpha parameter for CPO. Default is 1.
         simpo_gamma (float): Gamma parameter for SimPO. Default is 1.

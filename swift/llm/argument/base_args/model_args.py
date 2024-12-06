@@ -2,7 +2,7 @@
 import math
 import os
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Dict, Literal, Optional, Union
 
 import json
 import torch
@@ -19,14 +19,14 @@ class ModelArguments:
     ModelArguments class is a dataclass that holds various arguments related to model configuration and usage.
 
     Args:
-        model (Optional[str]): Model identifier or path. Default is None.
+        model (Optional[str]): model_id or model_path. Default is None.
         model_type (Optional[str]): Type of the model group. Default is None.
         model_revision (Optional[str]): Revision of the model. Default is None.
-        torch_dtype (Literal): Model data type. Default is None.
+        torch_dtype (Literal): Model parameter dtype. Default is None.
         attn_impl (Literal): Attention implementation to use. Default is None.
         rope_scaling (Literal): Type of rope scaling to use. Default is None.
         device_map (Optional[str]): Configuration for device mapping. Default is None.
-        local_repo_path (Optional[str]): Path to the local repository for model code. Default is None.
+        local_repo_path (Optional[str]): Path to the local github repository for model. Default is None.
     """
     model: Optional[str] = None  # model id or model path
     model_type: Optional[str] = field(

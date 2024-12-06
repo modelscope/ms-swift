@@ -21,7 +21,7 @@ def get_cache_mapping(fpath):
             continue
         items = text.split('|')
         key = items[1] if items[1] != '-' else items[6]
-        key = re.search(r'\[(.+)\]', key).group(1)
+        key = re.search(r'\[(.+?)\]', key).group(1)
         stat = items[3:5]
         if stat[0] == '-':
             stat = ('huge dataset', '-')

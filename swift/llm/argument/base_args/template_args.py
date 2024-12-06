@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from dataclasses import dataclass, field
-from typing import List, Literal, Optional
+from typing import Literal, Optional
 
 from swift.llm import TEMPLATE_MAPPING
 from swift.utils import get_logger
@@ -14,14 +14,14 @@ class TemplateArguments:
     TemplateArguments class is a dataclass that holds various arguments related to template configuration and usage.
 
     Args:
-        template (Optional[str]): Template identifier. Default is None, meaning use the template of the model_type.
+        template (Optional[str]): Template type. Default is None, meaning use the template of the model_type.
         system (Optional[str]): Override the default system in the template. Default is None.
         max_length (Optional[int]): Maximum length for the template. Default is None.
         truncation_strategy (Literal): Strategy for truncating the template. Default is 'left'.
-        tools_prompt (str): Override the default tools prompt in the template. Default is 'react_en'.
         max_pixels (Optional[int]): Maximum number of pixels for the template. Default is None.
+        tools_prompt (str): Override the default tools prompt in the template. Default is 'react_en'.
         loss_scale (str): Loss scale for training. Default is 'default',
-            meaning only calculate the loss of the response.
+            meaning only calculate the loss of the assistant.
         sequence_parallel_size (int): Size of sequence parallelism. Default is 1.
         use_chat_template (str): Use chat template or default generation template, default True
         template_backend (str): Use swift template or jinja

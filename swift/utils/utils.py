@@ -231,7 +231,7 @@ def get_env_args(args_name: str, type_func: Callable[[str], _T], default_value: 
     return value
 
 
-def find_free_port(start_port: Optional[int] = None, retry: int = 100) -> str:
+def find_free_port(start_port: Optional[int] = None, retry: int = 100) -> int:
     if start_port is None:
         start_port = 0
     for port in range(start_port, start_port + retry):

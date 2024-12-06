@@ -14,8 +14,8 @@ class QuantizeArguments:
     QuantizeArguments is a dataclass that holds the configuration for model quantization.
 
     Args:
-        quant_method (Literal['bnb', 'hqq', 'eetq', 'awq', 'gptq']): The quantization method to be used.
-        quant_bits (Literal[0, 1, 2, 3, 4, 8]): The number of bits to use for quantization.
+        quant_method (Literal['bnb', 'hqq', 'eetq']): The quantization method to be used.
+        quant_bits (Literal[1, 2, 3, 4, 8]): The number of bits to use for quantization.
         hqq_axis (Optional[int]): The axis for hqq quantization.
         bnb_4bit_compute_dtype (Literal['float16', 'bfloat16', 'float32', None]):
             The compute dtype for bnb 4-bit quantization.
@@ -49,6 +49,8 @@ class QuantizeArguments:
                 load_in_4bit, load_in_8bit = True, False
             elif self.quant_bits == 8:
                 load_in_4bit, load_in_8bit = False, True
+            else:
+                raise ValueError(f'bnb not support quant_bits: {self.quant_bits}')
 
             from transformers import BitsAndBytesConfig
             quantization_config = BitsAndBytesConfig(
