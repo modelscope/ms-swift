@@ -31,18 +31,18 @@ Basic parameters are included in the various capabilities of SWIFT.
 - strict: If True, an error is thrown whenever there is an issue in a dataset row; otherwise, the erroneous row is discarded. Defaults to False.
 - model_name: For self-recognition tasks, pass in the model's name in Chinese and English, separated by a space.
 - model_author: For self-recognition tasks, pass in the model author's name in Chinese and English, separated by a space.
-- custom_register_path: Custom registration of complex datasets. Refer to [Adding a Dataset](../Customization/New Dataset).
-- custom_dataset_info: Custom registration of simple datasets. Refer to [Adding a Dataset](../Customization/New Dataset).
+- custom_register_path: Custom registration of complex datasets. Refer to [Adding a Dataset](../Customization/New-dataset.md).
+- custom_dataset_info: Custom registration of simple datasets. Refer to [Adding a Dataset](../Customization/New-dataset/md).
 
 ### Template Parameters
 
-- template: Template type. Refer to [Supported Models and Datasets](./Supported-models-datasets). Defaults to the template type associated with the model. If the model is custom, this field must be set manually.
+- template: Template type. Refer to [Supported Models and Datasets](./Supported-models-datasets.md). Defaults to the template type associated with the model. If the model is custom, this field must be set manually.
 - system: Custom system field. Defaults to the system defined by the template.
 - max_length: Maximum length of tokens for a single sample.
 - truncation_strategy: How to handle overly long inputs. Supports `delete` and `left`, indicating deletion and left truncation, respectively. Defaults to left.
 - max_pixels: Maximum number of pixels for image preprocessing in multimodal models. Defaults to no scaling.
-- tools_prompt: List of tools for agent training formatted for the system. Refer to [Agent Training](./Agent Support).
-- loss_scale: How to adjust the loss weight for added tokens during training. Defaults to `default`, where all responses are calculated as 1 for cross-entropy loss. Specific details can be found in [Pluginization](../Customization/Plugin) and [Agent Training](./Agent Support).
+- tools_prompt: List of tools for agent training formatted for the system. Refer to [Agent Training](./Agent-support.md).
+- loss_scale: How to adjust the loss weight for added tokens during training. Defaults to `default`, where all responses are calculated as 1 for cross-entropy loss. Specific details can be found in [Pluginization](../Customization/Plugin.md) and [Agent Training](./Agent-support.md).
 - sequence_parallel_size: Number of sequences for parallel processing. Refer to [example](https://github.com/modelscope/ms-swift/tree/main/examples/train/sequence_parallel/train.sh).
 - use_chat_template: Whether to use the chat template or generation template. Defaults to `True`.
 - template_backend: Use Swift or Jinja for inference. If using Jinja, the Transformers `apply_chat_template` is employed. Defaults to Swift.
@@ -245,7 +245,7 @@ Human alignment parameters include the above [training parameters](#预训练和
 - ref_model_type: Same as model_type.
 - ref_model_revision: Same as model_revision.
 
-- beta: Coefficient for the KL regularization term. Defaults to `None`. The `simpo` algorithm defaults to `2.`, and other algorithms to `0.1`. See the [documentation](./Human Alignment) for details.
+- beta: Coefficient for the KL regularization term. Defaults to `None`. The `simpo` algorithm defaults to `2.`, and other algorithms to `0.1`. See the [documentation](./Human-alignment) for details.
 - label_smoothing: Whether to use DPO smoothing. Defaults to `0`, generally set between 0 and 0.5.
 
 - rpo_alpha: Controls the weight of adding sft_loss in DPO. Defaults to `1`. The final loss is `KL_loss + rpo_alpha * sft_loss`.
@@ -321,7 +321,7 @@ Deployment parameters inherit from [inference parameters](#推理参数).
 
 Evaluation parameters inherit from [deployment parameters](#评测参数).
 
-- eval_dataset: Evaluation dataset. Please see [Evaluation](./Evaluation).
+- eval_dataset: Evaluation dataset. Please see [Evaluation](./Evaluation.md).
 - eval_limit: Sample size for each evaluation set.
 - eval_output_dir: Directory to store evaluation results. Defaults to a subfolder named `eval_output` in the current folder.
 - temperature: Overrides the base class parameter, using `0` as the default.

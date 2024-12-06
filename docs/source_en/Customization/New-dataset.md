@@ -75,7 +75,7 @@ This format contains an additional `objects` field that includes:
 
 ### Agent Format
 
-The Agent format is more complex. Please refer to the [Agent Documentation](../Instruction/Agent Support).
+The Agent format is more complex. Please refer to the [Agent Documentation](../Instruction/Agent-support.md).
 
 ## Register Hub Dataset
 

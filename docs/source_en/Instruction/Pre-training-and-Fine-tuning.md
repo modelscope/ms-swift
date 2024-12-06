@@ -2,7 +2,7 @@
 
 Since pre-training and fine-tuning are quite similar, they will be discussed together in this section.
 
-For the data format requirements for pre-training and fine-tuning, please refer to the section on [Adding Datasets](../Customization/New Dataset).
+For the data format requirements for pre-training and fine-tuning, please refer to the section on [Adding Datasets](../Customization/New-dataset.md).
 
 In terms of data requirements, the amount needed for continued pre-training can range from hundreds of thousands to millions of rows. Starting pre-training from scratch requires significantly more resources and data, which is beyond the scope of this article. 
 The data needed for fine-tuning can vary from a few thousand to a million rows. For lower data requirements, consider using RAG methods.
@@ -38,6 +38,6 @@ Additionally, other technologies and examples supported by SWIFT include:
 - We recommend setting `--gradient_checkpointing true` during training to **save GPU memory**; this may slightly reduce training speed.
 - If you wish to use DeepSpeed, you need to run `pip install deepspeed -U`. Using deepSpeed can **save GPU memory**, although it may slightly lower training speed.
 - If your machine has high-performance GPUs like A100 and the model supports flash-attn, we recommend installing [**flash-attn**](https://github.com/Dao-AILab/flash-attention) to enhance training and inference speed and reduce memory consumption.
-- If you need to train while **offline**, use `--model <model_dir>` and set `--check_model false`. Please check the [command line parameters](Commend-line Parameters) for details.
+- If you need to train while **offline**, use `--model <model_dir>` and set `--check_model false`. Please check the [command line parameters](Commend-line-parameters.md) for details.
 - If you want to push weights to the ModelScope Hub during training, you need to set `--push_to_hub true`.
 - If you want to merge and save LoRA weights during inference, set `--merge_lora true`. **Currently, it is not possible to merge models trained with qlora.**, and thus **qlora is not recommended for fine-tuning** due to poor deployment ecology.
