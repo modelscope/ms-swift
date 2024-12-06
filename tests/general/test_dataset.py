@@ -27,9 +27,8 @@ def test_mllm():
     # _test_dataset(['swift/OCR-VQA'], strict=False)
     # _test_dataset(['swift/A-OKVQA'], strict=False)
     _test_dataset([
-        'AI-ModelScope/LaTeX_OCR:all',
-        '/mnt/nas2/huangjintao.hjt/work/modelscope_swift/tests/llm/data/multi_modal_3.jsonl',
-        'modelscope/coco_2014_caption:validation', 'speech_asr/speech_asr_aishell1_trainsets:validation'
+        'AI-ModelScope/LaTeX_OCR:all', 'modelscope/coco_2014_caption:validation',
+        'speech_asr/speech_asr_aishell1_trainsets:validation'
     ],
                   strict=False)
     # _test_dataset(['swift/VideoChatGPT:all'])

@@ -1,40 +1,41 @@
 from typing import Any, List
 
-from swift.llm import MODEL_MAPPING
+from swift.llm import MODEL_MAPPING, TEMPLATE_MAPPING, ModelType, TemplateType
 
 
 def get_model_info_table():
     fpaths = ['docs/source/Instruction/支持的模型和数据集.md', 'docs/source_en/Instruction/Supported-models-datasets.md']
     end_words = [['### 多模态大模型', '## 数据集'], ['### MLLM', '## Datasets']]
     result = [
-        '| Model ID | HF Model ID | Model Type | Architectures | Default Template | '
-        'Requires | Tags |\n'
-        '| -------- | ----------- | -----------| ------------  | ------------------------- | '
-        '-------- | ---- |\n'
+        '| Model ID | Model Type | Default Template | '
+        'Requires | Tags | HF Model ID |\n'
+        '| -------- | -----------| ---------------- | '
+        '-------- | ---- | ----------- |\n'
     ] * 2
     res_llm: List[Any] = []
     res_mllm: List[Any] = []
-    for model_name, model_meta in MODEL_MAPPING.items():
-        model_type = model_meta.model_type
+    for template in TemplateType.get_template_name_list():
+        assert template in TEMPLATE_MAPPING
+
+    for model_type in ModelType.get_model_name_list():
+        model_meta = MODEL_MAPPING[model_type]
         template = model_meta.template
-        requires = model_meta.requires
         r = ''
         for group in model_meta.model_groups:
             for model in group.models:
                 ms_model_id = model.ms_model_id
                 hf_model_id = model.hf_model_id
                 if ms_model_id:
-                    ms_model_id = f'[{ms_model_id}](https://modelscope.cn/models/{ms_model_id}/summary)'
+                    ms_model_id = f'[{ms_model_id}](https://modelscope.cn/models/{ms_model_id})'
                 else:
                     ms_model_id = '-'
                 if hf_model_id:
                     hf_model_id = f'[{hf_model_id}](https://huggingface.co/{hf_model_id})'
                 else:
                     hf_model_id = '-'
-                r = (f'|{ms_model_id}|'
-                     f'|{hf_model_id}|'
-                     f'{model_type}|{model_meta.architectures}|{template}|'
-                     f'{requires or "-"}|{group.tags or "-"}|\n')
+                tags = ', '.join(group.tags or model_meta.tags) or '-'
+                requires = ', '.join(model_meta.requires or model_meta.requires) or '-'
+                r = (f'|{ms_model_id}|{model_type}|{template}|{requires}|{tags}|{hf_model_id}|\n')
                 if model_meta.is_multimodal:
                     res_mllm.append(r)
                 else:

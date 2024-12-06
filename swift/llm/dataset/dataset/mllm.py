@@ -63,6 +63,7 @@ register_dataset(
         }),
         split=['train'],
         tags=['en', 'caption', 'multi-modal', 'quality'],
+        huge_dataset=True,
     ))
 
 register_dataset(
@@ -440,10 +441,7 @@ for subset in [
 
 register_dataset(
     DatasetMeta(
-        ms_dataset_id='lmms-lab/LLaVA-Video-178K',
-        hf_dataset_id='lmms-lab/LLaVA-Video-178K',
-        subsets=llava_video_subsets,
-        tags=['chat', 'multi-modal', 'video']))
+        hf_dataset_id='lmms-lab/LLaVA-Video-178K', subsets=llava_video_subsets, tags=['chat', 'multi-modal', 'video']))
 
 
 class MovieChat1KPreprocessor(ResponsePreprocessor):

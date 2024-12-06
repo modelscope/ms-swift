@@ -1,6 +1,7 @@
 import os
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '2'
+os.environ['SWIFT_DEBUG'] = '1'
 
 
 def _infer_model(pt_engine, system=None, messages=None, images=None):
@@ -168,6 +169,11 @@ def test_pixtral():
     _infer_model(pt_engine, messages=[{'role': 'user', 'content': '<image>这是什么'}])
 
 
+def test_glm_edge_v():
+    pt_engine = PtEngine('ZhipuAI/glm-edge-v-2b')
+    _infer_model(pt_engine, messages=[{'role': 'user', 'content': '<image>这是什么'}])
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig, get_template
     from swift.utils import get_logger, seed_everything
@@ -190,7 +196,8 @@ if __name__ == '__main__':
     # test_llama_vision()
     # test_llava_hf()
     # test_xcomposer2_5()
+    # test_florence()
+    # test_glm_edge_v()
     #
     # test_mplug_owl3()
-    test_florence()
     # test_phi3_vision()

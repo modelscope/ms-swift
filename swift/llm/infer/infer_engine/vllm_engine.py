@@ -41,7 +41,7 @@ class VllmEngine(InferEngine):
             pipeline_parallel_size: int = 1,
             max_model_len: Optional[int] = None,
             max_num_seqs: int = 256,
-            disable_custom_all_reduce: bool = True,  # Default values different from vllm
+            disable_custom_all_reduce: bool = False,
             enforce_eager: bool = False,
             limit_mm_per_prompt: Optional[Dict[str, Any]] = None,
             # lora
@@ -85,20 +85,19 @@ class VllmEngine(InferEngine):
             engine = AsyncLLMEngine.from_engine_args(self.engine_args)
         self.engine = engine
 
-    def _prepare_engine_kwargs(
-            self,
-            gpu_memory_utilization: float = 0.9,
-            tensor_parallel_size: int = 1,
-            pipeline_parallel_size: int = 1,
-            max_model_len: Optional[int] = None,
-            max_num_seqs: int = 256,
-            disable_custom_all_reduce: bool = True,  # Default values different from vllm
-            enforce_eager: bool = False,
-            limit_mm_per_prompt: Optional[Dict[str, Any]] = None,
-            enable_lora: bool = False,
-            max_loras: int = 1,
-            max_lora_rank: int = 16,
-            engine_kwargs: Optional[Dict[str, Any]] = None) -> AsyncEngineArgs:
+    def _prepare_engine_kwargs(self,
+                               gpu_memory_utilization: float = 0.9,
+                               tensor_parallel_size: int = 1,
+                               pipeline_parallel_size: int = 1,
+                               max_model_len: Optional[int] = None,
+                               max_num_seqs: int = 256,
+                               disable_custom_all_reduce: bool = False,
+                               enforce_eager: bool = False,
+                               limit_mm_per_prompt: Optional[Dict[str, Any]] = None,
+                               enable_lora: bool = False,
+                               max_loras: int = 1,
+                               max_lora_rank: int = 16,
+                               engine_kwargs: Optional[Dict[str, Any]] = None) -> AsyncEngineArgs:
         if engine_kwargs is None:
             engine_kwargs = {}
         disable_log_stats = engine_kwargs.pop('disable_log_stats', True)
@@ -292,6 +291,7 @@ class VllmEngine(InferEngine):
                 logprobs = self._get_logprobs(template.tokenizer, output.logprobs,
                                               output.token_ids[token_idxs[output.index]:], generation_config.logprobs)
                 token_idxs[output.index] = len(output.token_ids)
+                toolcall = None
                 if output.is_finished:
                     toolcall = self._get_toolcall(template.decode(output.token_ids))
                 choice = ChatCompletionResponseStreamChoice(
@@ -300,7 +300,7 @@ class VllmEngine(InferEngine):
                     finish_reason=output.finish_reason,
                     logprobs=logprobs)
                 choices.append(choice)
-            yield ChatCompletionStreamResponse(model=self.model_dir, choices=choices, usage=usage_info, id=request_id)
+            yield ChatCompletionStreamResponse(model=self.model_name, choices=choices, usage=usage_info, id=request_id)
 
     async def _infer_full_async(self,
                                 template: Template,
@@ -328,7 +328,7 @@ class VllmEngine(InferEngine):
                 finish_reason=output.finish_reason,
                 logprobs=logprobs)
             choices.append(choice)
-        return ChatCompletionResponse(model=self.model_dir, choices=choices, usage=usage_info, id=request_id)
+        return ChatCompletionResponse(model=self.model_name, choices=choices, usage=usage_info, id=request_id)
 
     @torch.inference_mode()
     def infer(

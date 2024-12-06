@@ -211,7 +211,7 @@ class LmdeployEngine(InferEngine):
                         finish_reason=finish_reason,
                         logprobs=logprobs)
                 ]
-                yield ChatCompletionStreamResponse(model=self.model_dir, choices=choices, usage=usage_info)
+                yield ChatCompletionStreamResponse(model=self.model_name, choices=choices, usage=usage_info)
 
     async def _infer_full_async(self, template: Template, inputs: Dict[str, Any],
                                 generation_config: LmdeployGenerationConfig) -> ChatCompletionResponse:
@@ -237,7 +237,7 @@ class LmdeployEngine(InferEngine):
                 finish_reason=finish_reason,
                 logprobs=logprobs)
         ]
-        return ChatCompletionResponse(model=self.model_dir, choices=choices, usage=usage_info)
+        return ChatCompletionResponse(model=self.model_name, choices=choices, usage=usage_info)
 
     @torch.inference_mode()
     async def infer_async(self,

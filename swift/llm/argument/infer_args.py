@@ -9,6 +9,7 @@ import torch.distributed as dist
 from swift.llm import LoRARequest, get_template_meta
 from swift.utils import get_logger, is_dist
 from .base_args import BaseArguments, to_abspath
+from .base_args.model_args import ModelArguments
 from .merge_args import MergeArguments
 
 logger = get_logger()
@@ -67,12 +68,15 @@ class VllmArguments:
     pipeline_parallel_size: int = 1
     max_num_seqs: int = 256
     max_model_len: Optional[int] = None
-    disable_custom_all_reduce: bool = True  # Default values different from vllm
+    disable_custom_all_reduce: bool = False
     enforce_eager: bool = False
     limit_mm_per_prompt: Optional[str] = None  # '{"image": 10, "video": 5}'
     vllm_max_lora_rank: int = 16
 
     lora_modules: List[str] = field(default_factory=list)
+
+    def __post_init__(self):
+        self.limit_mm_per_prompt = ModelArguments.parse_to_dict(self.limit_mm_per_prompt)
 
     def get_vllm_engine_kwargs(self):
         return {
@@ -153,6 +157,7 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
         self._init_weight_type(self.ckpt_dir)
         BaseArguments.__post_init__(self)
         MergeArguments.__post_init__(self)
+        VllmArguments.__post_init__(self)
         self._parse_lora_modules()
 
         self._init_result_path()

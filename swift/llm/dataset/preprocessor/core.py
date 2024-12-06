@@ -165,6 +165,7 @@ class RowPreprocessor:
 
     @staticmethod
     def safe_rename_columns(dataset: HfDataset, columns_mapping: Dict[str, Any]) -> HfDataset:
+        dataset = get_features_dataset(dataset)
         safe_columns_mapping = {k: v for k, v in columns_mapping.items() if k in dataset.features}
         if safe_columns_mapping:
             dataset = dataset.rename_columns(safe_columns_mapping)
@@ -233,7 +234,6 @@ class RowPreprocessor:
         if self.dataset_sample is not None:
             dataset = sample_dataset(dataset, self.dataset_sample, self.random_state)
 
-        dataset = get_features_dataset(dataset)
         dataset = self.safe_rename_columns(dataset, self.columns_mapping)
         dataset = self.prepare_dataset(dataset)
         dataset = self._cast_pil_image(dataset)
@@ -443,7 +443,6 @@ class AutoPreprocessor:
         self.kwargs = kwargs
 
     def _get_preprocessor(self, dataset: DATASET_TYPE) -> RowPreprocessor:
-        dataset = get_features_dataset(dataset)
         features = dataset.features
         for key in ['conversation', 'conversations', 'messages']:
             if key in features:
