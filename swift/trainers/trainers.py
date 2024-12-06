@@ -16,8 +16,8 @@ from transformers.utils import is_peft_available
 from swift.plugin import MeanMetric, compute_acc
 from swift.utils import JsonlWriter, Serializer, use_torchacc
 from swift.utils.torchacc_utils import ta_trim_graph
-from .mixin import SwiftMixin
 from .arguments import Seq2SeqTrainingArguments
+from .mixin import SwiftMixin
 from .torchacc_mixin import TorchAccMixin
 
 
@@ -27,6 +27,7 @@ class Trainer(SwiftMixin, HfTrainer):
 
 class Seq2SeqTrainer(TorchAccMixin, SwiftMixin, HfSeq2SeqTrainer):
     args: Seq2SeqTrainingArguments
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if self.args.predict_with_generate:

@@ -14,9 +14,9 @@ import torch
 import torch.distributed as dist
 from transformers import HfArgumentParser, enable_full_determinism, set_seed
 
+from .env import is_dist, is_dist_ta
 from .logger import get_logger
 from .np_utils import stat_array
-from .env import is_dist, is_dist_ta
 
 logger = get_logger()
 

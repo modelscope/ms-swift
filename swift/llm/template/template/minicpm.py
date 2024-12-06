@@ -16,6 +16,7 @@ from ..vision_utils import load_video_minicpmv_mplug_owl3, replace_video2image
 from .llama import Llama3TemplateMeta
 from .qwen import QwenTemplateMeta
 
+
 @dataclass
 class MinicpmTemplateMeta(TemplateMeta):
     prefix: Prompt = field(default_factory=lambda: ['<s>{{SYSTEM}}'])
