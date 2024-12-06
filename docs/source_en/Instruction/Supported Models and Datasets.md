@@ -1,21 +1,21 @@
-# Supported models and datasets
+# Supported Models and Datasets
 ## Table of Contents
-- [Models](#Models)
-  - [LLM](#LLM)
-  - [MLLM](#MLLM)
-- [Datasets](#Datasets)
+- [Models](#models)
+  - [Large Language Models](#large-language-models)
+  - [Multimodal Large Models](#multimodal-large-models)
+- [Datasets](#datasets)
 
 ## Models
-The table below introcudes all models supported by SWIFT:
-- Model List: The model_type information registered in SWIFT.
-- Default Lora Target Modules: Default lora_target_modules used by the model.
-- Default Template: Default template used by the model.
-- Support Flash Attn: Whether the model supports [flash attention](https://github.com/Dao-AILab/flash-attention) to accelerate sft and infer.
-- Support VLLM: Whether the model supports [vllm](https://github.com/vllm-project/vllm) to accelerate infer and deployment.
-- Requires: The extra requirements used by the model.
+The table below provides information about the models involved with Swift:
+- Model ID: The model ID registered in Swift
+- HF Model ID: The HF model ID registered in Swift
+- Model Type: The type of model
+- Default Template: The default template
+- Requires: Additional requirements for using the model
+- Tags: Tags associated with the model
 
 
-### LLM
+### Large Language Models
 | Model ID | HF Model ID | Model Type | Architectures | Default Template(for sft) | Requires | Tags |
 | -------- | ----------- | -----------| ------------  | ------------------------- | -------- | ---- |
 |[baichuan-inc/Baichuan-13B-Chat](https://modelscope.cn/models/baichuan-inc/Baichuan-13B-Chat/summary)||[baichuan-inc/Baichuan-13B-Chat](https://huggingface.co/baichuan-inc/Baichuan-13B-Chat)|baichuan|['BaichuanForCausalLM', 'BaiChuanForCausalLM']|baichuan|['transformers<4.34']|-|
@@ -446,7 +446,7 @@ The table below introcudes all models supported by SWIFT:
 |[SUSTC/SUS-Chat-34B](https://modelscope.cn/models/SUSTC/SUS-Chat-34B/summary)||[SUSTech/SUS-Chat-34B](https://huggingface.co/SUSTech/SUS-Chat-34B)|sus|['LlamaForCausalLM']|sus|-|-|
 
 
-### MLLM
+### multimodal large model
 | Model ID | HF Model ID | Model Type | Architectures | Default Template(for sft) | Requires | Tags |
 | -------- | ----------- | -----------| ------------  | ------------------------- | -------- | ---- |
 |[BAAI/Emu3-Gen](https://modelscope.cn/models/BAAI/Emu3-Gen/summary)||[BAAI/Emu3-Gen](https://huggingface.co/BAAI/Emu3-Gen)|emu3_gen|['Emu3ForCausalLM']|emu3_gen|-|-|
@@ -564,12 +564,16 @@ The table below introcudes all models supported by SWIFT:
 |[01ai/Yi-VL-34B](https://modelscope.cn/models/01ai/Yi-VL-34B/summary)||[01-ai/Yi-VL-34B](https://huggingface.co/01-ai/Yi-VL-34B)|yi_vl|['LlavaLlamaForCausalLM']|yi_vl|['transformers>=4.34']|-|
 
 
-## Datasets
-The table below introduces the datasets supported by SWIFT:
-- Dataset Name: The dataset name registered in SWIFT.
-- Dataset ID: The dataset id in [ModelScope](https://www.modelscope.cn/my/overview).
-- Size: The data row count of the dataset.
-- Statistic: Dataset statistics. We use the number of tokens for statistics, which helps adjust the max_length hyperparameter. We concatenate the training and validation sets of the dataset and then compute the statistics. We use qwen's tokenizer to tokenize the dataset. Different tokenizers produce different statistics. If you want to obtain token statistics for tokenizers of other models, you can use the script to get them yourself.
+## Dataset
+The table below provides information about the datasets integrated with Swift:
+- MS Dataset ID: ModelScope data set ID
+- HF Dataset ID: HF data set ID
+- Subset name: Subdata set name (this name is used in the command line)
+  - Real Subset: Actual subdata set name (this name is the real subdata set name)
+- Subset split: Split of the subdata set
+- Dataset Size: Size of the subdata set
+- Statistic: Statistics of the dataset. We use the number of tokens for statistics, which helps adjust the `max_length` hyperparameter. We concatenate the training and validation sets and then perform statistics. We use Qwen's tokenizer for tokenization. Different tokenizers produce different statistics. If you need token statistics for other models' tokenizers, you can obtain them yourself through [the script](https://github.com/modelscope/swift/tree/main/scripts/utils/run_dataset_info.py).
+- Tags: Tags of the dataset
 
 | MS Dataset ID | HF Dataset ID | Subset name | Real Subset  | Subset split | Dataset Size | Statistic (token) | Tags |
 | ------------ | ------------- | ----------- |------------- | -------------| -------------| ----------------- | ---- |
