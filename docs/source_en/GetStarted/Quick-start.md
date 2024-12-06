@@ -18,7 +18,7 @@ SWIFT is an integrated framework that encompasses model training, inference depl
 
 # Installation
 
-Installing SWIFT is straightforward. Please refer to the [installation documentation](./SWIFT Installation).
+Installing SWIFT is straightforward. Please refer to the [installation documentation](./SWIFT-installation.md).
 
 # Some Key Concepts
 

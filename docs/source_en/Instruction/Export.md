@@ -100,6 +100,6 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
 ```
 
 **Note**
-- hqq supports more custom parameters, such as specifying different quantization configurations for various network layers. Please refer to [command line parameters](Commend-line Parameters).
+- hqq supports more custom parameters, such as specifying different quantization configurations for various network layers. Please refer to [command line parameters](Commend-line-parameters.md).
 - eetq quantization is 8bit quantization; you do not need to specify quantization bits. Currently, bf16 is not supported; set dtype to fp16.
 - Currently, qlora speed is relatively slow for eetq. It is recommended to use hqq instead. See [issue](https://github.com/NetEase-FuXi/EETQ/issues/17).

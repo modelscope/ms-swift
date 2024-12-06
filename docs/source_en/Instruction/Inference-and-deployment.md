@@ -9,7 +9,7 @@ SWIFT supports three ways of model inference:
 - Use the example provided for command line inference: https://github.com/modelscope/ms-swift/tree/main/examples/infer/infer/infer.sh
 - Deploy with `swift deploy --model xxx` and call it afterward
 
-The first method is straightforward and will not be elaborated here. You can view the detailed instructions [here](../GetStarted/Interface Usage).
+The first method is straightforward and will not be elaborated here. You can view the detailed instructions [here](../GetStarted/Interface-usage.md).
 
 ## Command Line Inference
 

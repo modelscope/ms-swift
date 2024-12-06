@@ -61,7 +61,7 @@ We support four types of evaluation: pure text evaluation, multimodal evaluation
 
 For sample evaluations, please refer to [examples](https://github.com/modelscope/ms-swift/tree/main/examples/eval).
 
-The list of evaluation parameters can be found [here](Commend-line Parameters#评测参数).
+The list of evaluation parameters can be found [here](Commend-line-parameters#评测参数).
 
 ## Custom Evaluation Sets
 
