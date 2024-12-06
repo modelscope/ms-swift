@@ -271,6 +271,7 @@ class MSHub(HubOperation):
             repo_id,
             folder_path,
             token or cls.ms_token,
+            private,
             commit_message=commit_message,
             ignore_file_pattern=ignore_patterns,
             revision=revision,

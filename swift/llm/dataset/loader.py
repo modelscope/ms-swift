@@ -5,12 +5,11 @@ from contextlib import nullcontext
 from dataclasses import dataclass, field
 from functools import partial
 from tempfile import TemporaryDirectory
-from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
+from typing import Dict, List, Literal, Optional, Tuple, Union
 
 import numpy as np
 from datasets import Dataset as HfDataset
-from datasets import IterableDataset as HfIterableDataset
-from datasets import concatenate_datasets, interleave_datasets
+from datasets import concatenate_datasets
 from datasets import load_dataset as hf_load_dataset
 from modelscope.hub.api import ModelScopeConfig
 from modelscope.utils.config_ds import MS_CACHE_HOME
@@ -18,7 +17,7 @@ from modelscope.utils.config_ds import MS_CACHE_HOME
 from swift.hub import get_hub
 from swift.utils import download_ms_file, get_logger, get_seed, safe_ddp_context, use_hf_hub
 from .preprocessor import get_features_dataset, standard_keys
-from .register import DATASET_MAPPING, DATASET_TYPE, DatasetMeta, SubsetDataset, register_dataset_info
+from .register import DATASET_MAPPING, DATASET_TYPE, DatasetMeta, SubsetDataset
 from .utils import sample_dataset
 
 logger = get_logger()
@@ -106,7 +105,7 @@ class DatasetSyntax:
         return dataset_meta
 
     @staticmethod
-    def _get_dataset_meta_mapping() -> Dict[str, str]:
+    def _get_dataset_meta_mapping() -> Dict[Tuple[str, str], DatasetMeta]:
         global _dataset_meta_mapping
         if _dataset_meta_mapping is not None:
             return _dataset_meta_mapping
@@ -323,6 +322,7 @@ class DatasetLoader:
                 train_dataset = sample_dataset(train_dataset, train_sample, random_state)
         return train_dataset, val_dataset
 
+    @staticmethod
     def _remove_useless_columns(dataset: DATASET_TYPE) -> DATASET_TYPE:
         dataset = get_features_dataset(dataset)
         features = dataset.features
@@ -397,7 +397,7 @@ def init_self_cognition_preprocessor(
 
 
 def load_dataset(
-    datasets: List[str],
+    datasets: Union[List[str], str],
     *,
     split_dataset_ratio: float = 0.,
     seed: Union[int, np.random.RandomState, None] = None,
