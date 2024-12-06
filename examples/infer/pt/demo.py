@@ -1,7 +1,7 @@
 import os
 from typing import Dict, List
 
-from swift.llm import InferEngine, InferRequest, LmdeployEngine, PtEngine, RequestConfig, VllmEngine, load_dataset
+from swift.llm import InferEngine, InferRequest, PtEngine, RequestConfig, load_dataset
 
 
 def batch_infer(engine: InferEngine, dataset: str):
@@ -24,9 +24,16 @@ def stream_infer(engine: InferEngine, messages: List[Dict[str, str]]):
 
 if __name__ == '__main__':
     model = 'Qwen/Qwen2.5-1.5B-Instruct'
-    # engine = PtEngine(model, max_batch_size=64)
-    # engine = VllmEngine(model)
-    engine = LmdeployEngine(model)
+    infer_backend = 'pt'
+
+    if infer_backend == 'pt':
+        engine = PtEngine(model, max_batch_size=64)
+    elif infer_backend == 'vllm':
+        from swift.llm import VllmEngine
+        engine = VllmEngine(model)
+    else:
+        from swift.llm import LmdeployEngine
+        engine = LmdeployEngine(model)
     batch_infer(engine, 'lvjianjin/AdvertiseGen#1000')
     messages = [{'role': 'user', 'content': '你是谁'}]
     stream_infer(engine, messages)
