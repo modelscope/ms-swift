@@ -4,7 +4,7 @@ from swift.llm import MODEL_MAPPING, TEMPLATE_MAPPING, ModelType, TemplateType
 
 
 def get_model_info_table():
-    fpaths = ['docs/source/Instruction/支持的模型和数据集.md', 'docs/source_en/Instruction/Supported-models-datasets.md']
+    fpaths = ['docs/source/Instruction/支持的模型和数据集.md', 'docs/source_en/Instruction/Supported-models-and-datasets.md']
     end_words = [['### 多模态大模型', '## 数据集'], ['### MLLM', '## Datasets']]
     result = [
         '| Model ID | Model Type | Default Template | '

@@ -1,4 +1,3 @@
-<<<<<<< HEAD:docs/source_en/Instruction/Supported-models-datasets.md
 # Supported models and datasets
 
 ## Models
@@ -1155,7 +1154,6 @@ The table below provides information about the datasets integrated with Swift:
 - Dataset Size: Size of the subdata set
 - Statistic: Statistics of the dataset. We use the number of tokens for statistics, which helps adjust the `max_length` hyperparameter. We concatenate the training and validation sets and then perform statistics. We use Qwen's tokenizer for tokenization. Different tokenizers produce different statistics. If you need token statistics for other models' tokenizers, you can obtain them yourself through [the script](https://github.com/modelscope/swift/tree/main/scripts/utils/run_dataset_info.py).
 - Tags: Tags of the dataset
->>>>>>> e0e1aaa0 (Translation):docs/source_en/Instruction/Supported Models and Datasets.md
 
 
 | Dataset ID | Subset name | Dataset Size | Statistic (token) | Tags | HF Dataset ID |

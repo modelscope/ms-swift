@@ -42,7 +42,7 @@ The introduction to command line parameters will cover basic parameters, atomic 
 
 ### Template Parameters
 
-- 🔥template: Template type, default uses the corresponding template type of the model. If it is a custom model, please refer to [Supported Models and Datasets](./Supported-models-datasets.md) and manually input this field.
+- 🔥template: Template type, default uses the corresponding template type of the model. If it is a custom model, please refer to [Supported Models and Datasets](./Supported-models-and-datasets) and manually input this field.
 - 🔥system: Custom system field, default is None, uses the default system of the template.
 - 🔥max_length: Maximum length of tokens for a single sample, default is None (no limit).
 - truncation_strategy: How to handle overly long tokens, supports `delete` and `left`, representing deletion and left trimming, default is left.
