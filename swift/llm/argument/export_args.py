@@ -22,7 +22,7 @@ class ExportArguments(MergeArguments, BaseArguments):
         to_peft_format (bool): Flag to indicate if the output should be in PEFT format.
             This argument is useless for now.
         quant_n_samples (int): Number of samples for quantization.
-        quant_seqlen (int): Sequence length for quantization.
+        max_length (int): Sequence length for quantization.
         quant_batch_size (int): Batch size for quantization.
         to_ollama (bool): Flag to indicate export model to ollama format.
         gguf_file (Optional[str]): Path to the GGUF file when exporting to ollama format.
@@ -38,7 +38,7 @@ class ExportArguments(MergeArguments, BaseArguments):
     # awq/gptq
     quant_method: Literal['awq', 'gptq'] = None
     quant_n_samples: int = 256
-    quant_seqlen: int = 2048
+    max_length: int = 2048
     quant_batch_size: int = 1
     group_size: int = 128
 

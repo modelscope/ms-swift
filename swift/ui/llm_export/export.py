@@ -53,7 +53,7 @@ class Export(BaseUI):
                 'en': 'Sampled rows from calibration dataset'
             },
         },
-        'quant_seqlen': {
+        'max_length': {
             'label': {
                 'zh': '量化集的max-length',
                 'en': 'The quantize sequence length'
@@ -82,7 +82,7 @@ class Export(BaseUI):
             gr.Dropdown(elem_id='quant_bits', scale=20)
             gr.Dropdown(elem_id='quant_method', scale=20)
             gr.Textbox(elem_id='quant_n_samples', scale=20)
-            gr.Textbox(elem_id='quant_seqlen', scale=20)
+            gr.Textbox(elem_id='max_length', scale=20)
         with gr.Row():
             gr.Textbox(elem_id='output_dir', scale=20)
             gr.Dropdown(
