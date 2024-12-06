@@ -526,8 +526,11 @@ register_dataset(
 
 register_dataset(
     DatasetMeta(
-        ms_dataset_id='OmniData/Zhihu-KOL', hf_dataset_id='wangrui6/Zhihu-KOL', huge_dataset=True, tags=['zhihu',
-                                                                                                         'qa']))
+        ms_dataset_id='OmniData/Zhihu-KOL',
+        hf_dataset_id='wangrui6/Zhihu-KOL',
+        huge_dataset=True,
+        tags=['zhihu', 'qa'],
+    ))
 
 
 class GuanacoPreprocessor(RowPreprocessor):

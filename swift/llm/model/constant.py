@@ -48,7 +48,6 @@ class LLMModelType:
     openbuddy_llama3 = 'openbuddy_llama3'
     openbuddy_mistral = 'openbuddy_mistral'
     openbuddy_mixtral = 'openbuddy_mixtral'
-    openbuddy_zephyr = 'openbuddy_zephyr'
 
     baichuan = 'baichuan'
     baichuan2 = 'baichuan2'
@@ -152,8 +151,6 @@ class MLLMModelType:
     emu3_gen = 'emu3_gen'
     emu3_chat = 'emu3_chat'
     got_ocr2 = 'got_ocr2'
-
-    idefics3_llama3 = 'idefics3_llama3'
 
     phi3_vision = 'phi3_vision'
     florence = 'florence'
