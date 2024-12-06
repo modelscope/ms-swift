@@ -1,19 +1,13 @@
 # Supported models and datasets
-## Table of Contents
-- [Models](#Models)
-  - [LLM](#LLM)
-  - [MLLM](#MLLM)
-- [Datasets](#Datasets)
 
 ## Models
-The table below introcudes all models supported by SWIFT:
-- Model List: The model_type information registered in SWIFT.
-- Default Lora Target Modules: Default lora_target_modules used by the model.
-- Default Template: Default template used by the model.
-- Support Flash Attn: Whether the model supports [flash attention](https://github.com/Dao-AILab/flash-attention) to accelerate sft and infer.
-- Support VLLM: Whether the model supports [vllm](https://github.com/vllm-project/vllm) to accelerate infer and deployment.
-- Requires: The extra requirements used by the model.
-
+The table below provides relevant information about the models accessed by ms-swift:
+- Model ID: ModelScope Model ID
+- HF Model ID: Huggingface Model ID
+- Model Type: Model Type
+- Default Template: Default chat template
+- Requires: Additional requirements for using this model
+- Tags: Tags associated with the model
 
 ### LLM
 | Model ID | Model Type | Default Template | Requires | Tags | HF Model ID |
@@ -576,11 +570,14 @@ The table below introcudes all models supported by SWIFT:
 
 
 ## Datasets
-The table below introduces the datasets supported by SWIFT:
-- Dataset Name: The dataset name registered in SWIFT.
-- Dataset ID: The dataset id in [ModelScope](https://www.modelscope.cn/my/overview).
-- Size: The data row count of the dataset.
-- Statistic: Dataset statistics. We use the number of tokens for statistics, which helps adjust the max_length hyperparameter. We concatenate the training and validation sets of the dataset and then compute the statistics. We use qwen's tokenizer to tokenize the dataset. Different tokenizers produce different statistics. If you want to obtain token statistics for tokenizers of other models, you can use the script to get them yourself.
+The table below provides relevant information about the datasets accessed through ms-swift:
+- Dataset ID: ModelScope Dataset ID
+- HF Dataset ID: Huggingface Dataset ID
+- Subset Name: Sub-dataset Name
+- Dataset Size: dataset Size
+- Statistic: Statistics of the dataset. We use token counts for this statistic, which helps in adjusting the max_length hyperparameter. We use the tokenizer from Qwen2.5 to tokenize the dataset. The statistics will differ across different tokenizers. If you wish to obtain token statistics for other models' tokenizers, you can do so using the [script](https://github.com/modelscope/swift/tree/main/scripts/utils/run_dataset_info.py).
+- Tags: Tags of the dataset.
+
 
 | Dataset ID | Subset name | Dataset Size | Statistic (token) | Tags | HF Dataset ID |
 | ---------- | ----------- | -------------| ------------------| ---- | ------------- |
