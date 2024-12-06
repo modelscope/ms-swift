@@ -245,7 +245,7 @@ Human alignment parameters include the above [training parameters](#预训练和
 - ref_model_type: Same as model_type.
 - ref_model_revision: Same as model_revision.
 
-- beta: Coefficient for the KL regularization term. Defaults to `None`. The `simpo` algorithm defaults to `2.`, and other algorithms to `0.1`. See the [documentation](./Human-alignment) for details.
+- beta: Coefficient for the KL regularization term. Defaults to `None`. The `simpo` algorithm defaults to `2.`, and other algorithms to `0.1`. See the [documentation](./Human-alignment.md) for details.
 - label_smoothing: Whether to use DPO smoothing. Defaults to `0`, generally set between 0 and 0.5.
 
 - rpo_alpha: Controls the weight of adding sft_loss in DPO. Defaults to `1`. The final loss is `KL_loss + rpo_alpha * sft_loss`.
