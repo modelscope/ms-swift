@@ -1,11 +1,9 @@
-import concurrent.futures
 import os
 import re
 
 import numpy as np
 
-from swift.llm import DATASET_MAPPING, EncodePreprocessor, get_model_tokenizer, get_template
-from swift.llm.dataset.loader import load_dataset
+from swift.llm import DATASET_MAPPING, EncodePreprocessor, get_model_tokenizer, get_template, load_dataset
 from swift.utils import stat_array
 
 os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
