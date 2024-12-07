@@ -28,7 +28,6 @@ class DataArguments:
         model_name (List[str]): List containing Chinese and English names of the model. Default is [None, None].
         model_author (List[str]): List containing Chinese and English names of the model author.
             Default is [None, None].
-        custom_register_path (Optional[str]): Path to custom .py file for dataset registration. Default is None.
         custom_dataset_info (Optional[str]): Path to custom dataset_info.json file. Default is None.
     """
     # dataset_id or dataset_dir or dataset_path
@@ -50,17 +49,7 @@ class DataArguments:
     model_author: List[str] = field(
         default_factory=lambda: [None, None], metadata={'help': "e.g. ['魔搭', 'ModelScope']"})
 
-    custom_register_path: Optional[str] = None  # .py
     custom_dataset_info: Optional[str] = None  # .json
-
-    def _init_custom_register(self) -> None:
-        """Register custom .py file to datasets"""
-        if self.custom_register_path is None:
-            return
-        self.custom_register_path = to_abspath(self.custom_register_path, True)
-        folder, fname = os.path.split(self.custom_register_path)
-        sys.path.append(folder)
-        __import__(fname.rstrip('.py'))
 
     def _init_custom_dataset_info(self):
         """register custom dataset_info.json to datasets"""
@@ -78,7 +67,6 @@ class DataArguments:
             else:
                 msg = 'args.streaming is True'
             logger.info(f'Because {msg}, setting split_dataset_ratio: {self.split_dataset_ratio}')
-        self._init_custom_register()
         self._init_custom_dataset_info()
 
     def get_dataset_kwargs(self):
