@@ -39,6 +39,10 @@ class ModelGroup:
     requires: Optional[List[str]] = None
     tags: List[str] = field(default_factory=list)
 
+    def __post_init__(self):
+        if not isinstance(self.models, (tuple, list)):
+            self.models = [self.models]
+
 
 @dataclass
 class ModelMeta:
@@ -61,6 +65,10 @@ class ModelMeta:
     # Usually specifies the version limits of transformers.
     requires: List[str] = field(default_factory=list)
     tags: List[str] = field(default_factory=list)
+
+    def __post_init__(self):
+        if not isinstance(self.model_groups, (list, tuple)):
+            self.model_groups = [self.model_groups]
 
     def get_matched_model_group(self, model_name: str) -> Optional[ModelGroup]:
         for model_group in self.model_groups:

@@ -25,13 +25,14 @@ if TYPE_CHECKING:
                            RLHFArguments, WebUIArguments, BaseArguments)
     from .template import (TEMPLATE_MAPPING, Template, Word, get_template, TemplateType, register_template,
                            TemplateInputs, Messages, TemplateMeta, get_template_meta, InferRequest)
-    from .model import (MODEL_MAPPING, ModelType, get_model_tokenizer, safe_snapshot_download, HfConfigFactory,
-                        ModelInfo, ModelMeta, ModelKeys, register_model_arch, MultiModelKeys, ModelArch, get_model_arch,
-                        MODEL_ARCH_MAPPING, get_model_info_meta, get_model_name)
+    from .model import (register_model, MODEL_MAPPING, ModelType, get_model_tokenizer, safe_snapshot_download,
+                        HfConfigFactory, ModelInfo, ModelMeta, ModelKeys, register_model_arch, MultiModelKeys,
+                        ModelArch, get_model_arch, MODEL_ARCH_MAPPING, get_model_info_meta, get_model_name, ModelGroup,
+                        Model, get_model_tokenizer_with_flash_attn, get_model_tokenizer_multimodal)
     from .dataset import (AlpacaPreprocessor, ResponsePreprocessor, MessagesPreprocessor, AutoPreprocessor,
                           DATASET_MAPPING, MediaResource, register_dataset, register_dataset_info, EncodePreprocessor,
                           LazyLLMDataset, ConstantLengthDataset, standard_keys, load_dataset, DATASET_TYPE,
-                          sample_dataset, RowPreprocessor)
+                          sample_dataset, RowPreprocessor, DatasetMeta)
     from .utils import (deep_getattr, to_device, History, history_to_messages, messages_to_history, Processor,
                         save_checkpoint, ProcessorMixin)
     from .base import SwiftPipeline
@@ -66,13 +67,14 @@ else:
         'model': [
             'MODEL_MAPPING', 'ModelType', 'get_model_tokenizer', 'safe_snapshot_download', 'HfConfigFactory',
             'ModelInfo', 'ModelMeta', 'ModelKeys', 'register_model_arch', 'MultiModelKeys', 'ModelArch',
-            'MODEL_ARCH_MAPPING', 'get_model_arch', 'get_model_info_meta', 'get_model_name'
+            'MODEL_ARCH_MAPPING', 'get_model_arch', 'get_model_info_meta', 'get_model_name', 'register_model',
+            'ModelGroup', 'Model', 'get_model_tokenizer_with_flash_attn', 'get_model_tokenizer_multimodal'
         ],
         'dataset': [
             'AlpacaPreprocessor', 'ClsPreprocessor', 'ComposePreprocessor', 'MessagesPreprocessor', 'DATASET_MAPPING',
             'MediaResource', 'register_dataset', 'register_dataset_info', 'EncodePreprocessor', 'LazyLLMDataset',
             'ConstantLengthDataset', 'standard_keys', 'load_dataset', 'DATASET_TYPE', 'sample_dataset',
-            'RowPreprocessor', 'ResponsePreprocessor'
+            'RowPreprocessor', 'ResponsePreprocessor', 'DatasetMeta'
         ],
         'utils': [
             'deep_getattr', 'to_device', 'History', 'history_to_messages', 'messages_to_history', 'Processor',
