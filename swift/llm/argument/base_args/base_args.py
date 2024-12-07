@@ -72,13 +72,12 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
         __import__(fname.rstrip('.py'))
         logger.info(f'Successfully registered `{self.custom_register_path}`')
 
-    def _load_ckpt_dir(self):
-        if self.ckpt_dir.startswith('hub:'):
-            self.ckpt_dir = safe_snapshot_download(
-                self.ckpt_dir[len('hub:'):], use_hf=self.use_hf, hub_token=self.hub_token)
+    def _get_ckpt_dir(self, ckpt_dir: str) -> str:
+        if ckpt_dir.startswith('hub:'):
+            ckpt_dir = safe_snapshot_download(ckpt_dir[len('hub:'):], use_hf=self.use_hf, hub_token=self.hub_token)
         else:
-            self.ckpt_dir = to_abspath(self.ckpt_dir, True)
-        self.load_args_from_ckpt(self.ckpt_dir)
+            ckpt_dir = to_abspath(ckpt_dir, True)
+        return ckpt_dir
 
     def __post_init__(self):
         if self.use_hf or use_hf_hub():
