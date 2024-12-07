@@ -5,8 +5,6 @@ import inspect
 from types import FunctionType, MethodType
 from typing import List, Union
 
-from datasets import Dataset as HfDataset
-from datasets import IterableDataset as HFIterableDataset
 from torch.nn import Module
 
 from swift.utils import get_logger

@@ -1,8 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Any, Dict, List, Literal, Optional
 
-import torch.nn as nn
-
 from ..base import Template
 from ..constant import MLLMTemplateType
 from ..register import register_template

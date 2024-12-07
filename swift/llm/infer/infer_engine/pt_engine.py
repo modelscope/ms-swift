@@ -121,7 +121,7 @@ class PtEngine(InferEngine):
                                  generate_ids: torch.Tensor, top_logprobs: int) -> None:
         seq_len = generate_ids.shape[1] - len(batched_logprobs[0])
         if logits_streamer is None or seq_len == 0:
-            return batched_logprobs
+            return
 
         res = []
         for i in range(seq_len):
@@ -188,7 +188,7 @@ class PtEngine(InferEngine):
             batched_generate_ids = template.get_generate_ids(raw_batched_generate_ids, num_prompt_tokens)
             self._update_batched_logprobs(batched_logprobs, logits_streamer, batched_generate_ids,
                                           generation_config.top_logprobs or 1)
-            # TODO: MLLM
+
             res = []
             for i in range(batched_generate_ids.shape[0]):
                 if is_finished[i]:
@@ -234,7 +234,7 @@ class PtEngine(InferEngine):
             if any(res):
                 yield res
 
-    def _get_adapter_names(self, lora_request: LoRARequest) -> str:
+    def _get_adapter_names(self, lora_request: LoRARequest) -> List[str]:
         lora_name = lora_request.lora_name
         lora_path = lora_request.lora_path
         if lora_name in self._lora_request_pool:

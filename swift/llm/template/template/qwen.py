@@ -4,7 +4,6 @@ from functools import partial
 from typing import Any, Dict, List, Literal, Optional
 
 import torch
-import torch.nn as nn
 
 from swift.utils import get_env_args, is_deepspeed_enabled
 from ..base import Template
@@ -312,7 +311,7 @@ class Ovis1_6Template(Template):
     use_model = True
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
-                    example: Dict[str, Any]) -> List[Context]:
+                    inputs: StdTemplateInputs) -> List[Context]:
         assert media_type == 'image'
         return [[-200], '\n']
 

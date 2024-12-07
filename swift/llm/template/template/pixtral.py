@@ -1,14 +1,11 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import Any, Dict, List, Literal, Optional, Tuple
-
-from torch import nn
+from typing import Any, Dict, List, Optional
 
 from ..base import Template
 from ..constant import MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
-from ..utils import Context, findall
-from .utils import DEFAULT_SYSTEM
+from ..utils import findall
 
 
 class PixtralTemplate(Template):

@@ -202,7 +202,6 @@ def load_video_internvl(video_io: BytesIO, bound=None, num_segments=32):
 
 
 def draw_plot(img_dir: str, bbox: List[int], bbox_type: str, output_file: str):
-    from swift.llm.template import Template
     image = Image.open(img_dir)
 
     objects = [{'bbox': bbox, 'bbox_type': bbox_type, 'image': 0}]
@@ -293,7 +292,7 @@ def load_video_qwen2(video_path: str):
     )
     nframes = get_env_args('nframes', int, None)
     fps = get_env_args('fps', int, None)
-    size_factor = get_env_args('frame_factor', int, FRAME_FACTOR, ['size_factor'])
+    size_factor = get_env_args('frame_factor', int, FRAME_FACTOR)
     assert not (fps and nframes), 'Only accept either `fps` or `nframes`'
     if nframes is not None:
         nframes = round_by_factor(nframes, size_factor)
@@ -302,8 +301,8 @@ def load_video_qwen2(video_path: str):
             fps = FPS
         nframes = video.size(0) / info['video_fps'] * fps
         nframes = round_by_factor(nframes, size_factor)
-        min_frames = get_env_args('fps_min_frames', int, FPS_MIN_FRAMES, ['min_frames'])
-        max_frames = get_env_args('fps_max_frames', int, FPS_MAX_FRAMES, ['max_frames'])
+        min_frames = get_env_args('fps_min_frames', int, FPS_MIN_FRAMES)
+        max_frames = get_env_args('fps_max_frames', int, FPS_MAX_FRAMES)
         if nframes < min_frames:
             nframes = ceil_by_factor(min_frames, size_factor)
         if nframes > max_frames:
@@ -316,9 +315,9 @@ def load_video_qwen2(video_path: str):
     height, width = video.shape[2:]
     video = video[idx]
 
-    min_pixels = get_env_args('video_min_pixels', int, VIDEO_MIN_PIXELS, ['min_pixels'])
-    total_pixels = get_env_args('video_total_pixels', int, VIDEO_TOTAL_PIXELS, ['total_pixels'])
-    max_pixels = get_env_args('video_max_pixels', int, None, ['max_pixels'])
+    min_pixels = get_env_args('video_min_pixels', int, VIDEO_MIN_PIXELS)
+    total_pixels = get_env_args('video_total_pixels', int, VIDEO_TOTAL_PIXELS)
+    max_pixels = get_env_args('video_max_pixels', int, None)
     if max_pixels is None:
         max_pixels = VIDEO_MAX_PIXELS
         max_pixels = max(min(max_pixels, total_pixels / nframes * size_factor), min_pixels * 1.05)
@@ -406,17 +405,17 @@ def normalize_bbox(objects: List[Dict[str, Any]], images: List[Image.Image], to_
             object_['bbox_type'] = to_type
 
 
-def replace_video2image(load_video_func, example, replace_tag: Callable) -> List[Context]:
+def replace_video2image(load_video_func, inputs, replace_tag: Callable) -> List[Context]:
     context_list = []
-    video_index = example['video_index']
-    video = example['videos'][video_index]
-    images = example['images']
-    image_index = example['image_index']
+    video_idx = inputs.video_idx
+    video = inputs.videos[video_idx]
+    images = inputs.images
+    image_idx = inputs.image_idx
     new_images = load_video_func(video)
-    example['images'] = images[:image_index] + new_images + images[image_index:]
+    inputs.images = images[:image_idx] + new_images + images[image_idx:]
     for i in range(len(new_images)):
         context_list += replace_tag(i)
-    example['image_index'] += len(new_images)
+    inputs.image_idx += len(new_images)
     return context_list
 
 

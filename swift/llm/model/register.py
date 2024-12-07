@@ -86,12 +86,6 @@ class ModelMeta:
             requires = ' '.join(requires)
             logger.warning(f'Please install the package: `pip install {requires} -U`.')
 
-    def check_infer_backend(self, infer_backend: str) -> None:
-        if infer_backend == 'vllm' and not self.support_vllm:
-            logger.warning(f'infer_backend: {infer_backend}, but support_vllm: {self.support_vllm}')
-        elif infer_backend == 'lmdeploy' and not self.support_lmdeploy:
-            logger.warning(f'infer_backend: {infer_backend}, but support_lmdeploy: {self.support_lmdeploy}')
-
 
 MODEL_MAPPING: Dict[str, ModelMeta] = {}
 
@@ -350,7 +344,6 @@ def get_all_models() -> List[str]:
 
 
 def get_matched_model_meta(model_id_or_path: str) -> Optional[ModelMeta]:
-    # TODO: Case insensitive
     model_name = get_model_name(model_id_or_path).lower()
     for model_type, model_meta in MODEL_MAPPING.items():
         model_group = model_meta.get_matched_model_group(model_name)

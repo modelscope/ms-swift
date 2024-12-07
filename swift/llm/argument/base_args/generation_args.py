@@ -19,6 +19,7 @@ class GenerationArguments:
         top_p (Optional[float]): Top-p (nucleus) sampling parameter. Default is None.
         repetition_penalty (Optional[float]): Penalty for repeated tokens. Default is None.
         num_beams (int): Number of beams for beam search. Default is 1.
+        stream (bool): Flag to indicate if streaming output should be enabled. Default is None.
         stop_words (List[str]): List of stop words to end generation. Default is an empty list.
     """
 

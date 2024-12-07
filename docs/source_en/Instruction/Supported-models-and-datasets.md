@@ -1,15 +1,16 @@
-# Supported models and datasets
+# Supported Models and Datasets
 
-## Models
-The table below provides relevant information about the models accessed by ms-swift:
-- Model ID: ModelScope Model ID
-- HF Model ID: Huggingface Model ID
-- Model Type: Model Type
+The table below introduces the models integrated with ms-swift:
+
+- Model ID: Model ID for the ModelScope Model
+- HF Model ID: Hugging Face Model ID
+- Model Type: Type of the model
 - Default Template: Default chat template
-- Requires: Additional requirements for using this model
+- Requires: Additional dependencies required to use the model
 - Tags: Tags associated with the model
 
-### LLM
+
+## Large Language Models
 | Model ID | Model Type | Default Template | Requires | Tags | HF Model ID |
 | -------- | -----------| ---------------- | -------- | ---- | ----------- |
 |[Qwen/Qwen-1_8B-Chat](https://modelscope.cn/models/Qwen/Qwen-1_8B-Chat)|qwen|qwen|-|-|[Qwen/Qwen-1_8B-Chat](https://huggingface.co/Qwen/Qwen-1_8B-Chat)|
@@ -449,7 +450,7 @@ The table below provides relevant information about the models accessed by ms-sw
 |[AI-ModelScope/aya-expanse-32b](https://modelscope.cn/models/AI-ModelScope/aya-expanse-32b)|aya|aya|transformers>=4.44.0|-|[CohereForAI/aya-expanse-32b](https://huggingface.co/CohereForAI/aya-expanse-32b)|
 
 
-### MLLM
+### Multimodal large models
 | Model ID | Model Type | Default Template | Requires | Tags | HF Model ID |
 | -------- | -----------| ---------------- | -------- | ---- | ----------- |
 |[Qwen/Qwen-VL-Chat](https://modelscope.cn/models/Qwen/Qwen-VL-Chat)|qwen_vl|qwen_vl|-|vision|[Qwen/Qwen-VL-Chat](https://huggingface.co/Qwen/Qwen-VL-Chat)|
@@ -501,6 +502,13 @@ The table below provides relevant information about the models accessed by ms-sw
 |[OpenGVLab/InternVL2-40B-AWQ](https://modelscope.cn/models/OpenGVLab/InternVL2-40B-AWQ)|internvl2|internvl2|transformers>=4.36, timm|vision, video|[OpenGVLab/InternVL2-40B-AWQ](https://huggingface.co/OpenGVLab/InternVL2-40B-AWQ)|
 |[OpenGVLab/InternVL2-Llama3-76B-AWQ](https://modelscope.cn/models/OpenGVLab/InternVL2-Llama3-76B-AWQ)|internvl2|internvl2|transformers>=4.36, timm|vision, video|[OpenGVLab/InternVL2-Llama3-76B-AWQ](https://huggingface.co/OpenGVLab/InternVL2-Llama3-76B-AWQ)|
 |[OpenGVLab/InternVL2-4B](https://modelscope.cn/models/OpenGVLab/InternVL2-4B)|internvl2_phi3|internvl2_phi3|transformers>=4.36,<4.42, timm|vision, video|[OpenGVLab/InternVL2-4B](https://huggingface.co/OpenGVLab/InternVL2-4B)|
+|[OpenGVLab/InternVL2_5-1B](https://modelscope.cn/models/OpenGVLab/InternVL2_5-1B)|internvl2_5|internvl2_5|transformers>=4.36, timm|vision, video|[OpenGVLab/InternVL2_5-1B](https://huggingface.co/OpenGVLab/InternVL2_5-1B)|
+|[OpenGVLab/InternVL2_5-2B](https://modelscope.cn/models/OpenGVLab/InternVL2_5-2B)|internvl2_5|internvl2_5|transformers>=4.36, timm|vision, video|[OpenGVLab/InternVL2_5-2B](https://huggingface.co/OpenGVLab/InternVL2_5-2B)|
+|[OpenGVLab/InternVL2_5-4B](https://modelscope.cn/models/OpenGVLab/InternVL2_5-4B)|internvl2_5|internvl2_5|transformers>=4.36, timm|vision, video|[OpenGVLab/InternVL2_5-4B](https://huggingface.co/OpenGVLab/InternVL2_5-4B)|
+|[OpenGVLab/InternVL2_5-8B](https://modelscope.cn/models/OpenGVLab/InternVL2_5-8B)|internvl2_5|internvl2_5|transformers>=4.36, timm|vision, video|[OpenGVLab/InternVL2_5-8B](https://huggingface.co/OpenGVLab/InternVL2_5-8B)|
+|[OpenGVLab/InternVL2_5-26B](https://modelscope.cn/models/OpenGVLab/InternVL2_5-26B)|internvl2_5|internvl2_5|transformers>=4.36, timm|vision, video|[OpenGVLab/InternVL2_5-26B](https://huggingface.co/OpenGVLab/InternVL2_5-26B)|
+|[OpenGVLab/InternVL2_5-38B](https://modelscope.cn/models/OpenGVLab/InternVL2_5-38B)|internvl2_5|internvl2_5|transformers>=4.36, timm|vision, video|[OpenGVLab/InternVL2_5-38B](https://huggingface.co/OpenGVLab/InternVL2_5-38B)|
+|[OpenGVLab/InternVL2_5-78B](https://modelscope.cn/models/OpenGVLab/InternVL2_5-78B)|internvl2_5|internvl2_5|transformers>=4.36, timm|vision, video|[OpenGVLab/InternVL2_5-78B](https://huggingface.co/OpenGVLab/InternVL2_5-78B)|
 |[Shanghai_AI_Laboratory/internlm-xcomposer2-7b](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-xcomposer2-7b)|xcomposer2|ixcomposer2|-|vision|[internlm/internlm-xcomposer2-7b](https://huggingface.co/internlm/internlm-xcomposer2-7b)|
 |[Shanghai_AI_Laboratory/internlm-xcomposer2-4khd-7b](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-xcomposer2-4khd-7b)|xcomposer2_4khd|ixcomposer2|-|vision|[internlm/internlm-xcomposer2-4khd-7b](https://huggingface.co/internlm/internlm-xcomposer2-4khd-7b)|
 |[Shanghai_AI_Laboratory/internlm-xcomposer2d5-7b](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-xcomposer2d5-7b)|xcomposer2_5|xcomposer2_5|decord|vision|[internlm/internlm-xcomposer2d5-7b](https://huggingface.co/internlm/internlm-xcomposer2d5-7b)|
@@ -570,16 +578,16 @@ The table below provides relevant information about the models accessed by ms-sw
 
 
 ## Datasets
-The table below provides relevant information about the datasets accessed through ms-swift:
-- Dataset ID: ModelScope Dataset ID
-- HF Dataset ID: Huggingface Dataset ID
-- Subset Name: Sub-dataset Name
-- Dataset Size: dataset Size
-- Statistic: Statistics of the dataset. We use token counts for this statistic, which helps in adjusting the max_length hyperparameter. We use the tokenizer from Qwen2.5 to tokenize the dataset. The statistics will differ across different tokenizers. If you wish to obtain token statistics for other models' tokenizers, you can do so using the [script](https://github.com/modelscope/swift/tree/main/scripts/utils/run_dataset_info.py).
-- Tags: Tags of the dataset.
+The table below introduces information about the datasets integrated with ms-swift:
+- Dataset ID: ModelScope dataset ID
+- HF Dataset ID: Hugging Face dataset ID
+- Subset Name: Name of the subset
+- Dataset Size: Size of the dataset
+- Statistic: The statistical count of the dataset. We use the number of tokens for statistics, which helps in adjusting the `max_length` hyperparameter. We tokenize the dataset using the tokenizer of qwen2.5. The token count varies with different tokenizers. If you need to obtain token statistics for tokenizers of other models, you can acquire it using the [script](https://github.com/modelscope/swift/tree/main/scripts/utils/run_dataset_info.py).
+- Tags: Tags associated with the dataset
 
 
-| Dataset ID | Subset name | Dataset Size | Statistic (token) | Tags | HF Dataset ID |
+| Dataset ID | Subset Name | Dataset Size | Statistic (token) | Tags | HF Dataset ID |
 | ---------- | ----------- | -------------| ------------------| ---- | ------------- |
 |[AI-ModelScope/COIG-CQIA](https://modelscope.cn/datasets/AI-ModelScope/COIG-CQIA)|chinese_traditional<br>coig_pc<br>exam<br>finance<br>douban<br>human_value<br>logi_qa<br>ruozhiba<br>segmentfault<br>wiki<br>wikihow<br>xhs<br>zhihu|44694|331.2±693.8, min=34, max=19288|general, 🔥|-|
 |[AI-ModelScope/CodeAlpaca-20k](https://modelscope.cn/datasets/AI-ModelScope/CodeAlpaca-20k)|default|20022|99.3±57.6, min=30, max=857|code, en|[HuggingFaceH4/CodeAlpaca_20K](https://huggingface.co/datasets/HuggingFaceH4/CodeAlpaca_20K)|

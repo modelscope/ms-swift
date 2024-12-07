@@ -3,7 +3,6 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 import torch
-from torch import nn
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.utils import get_env_args
@@ -41,6 +40,7 @@ class InternLMXComposer2Template(Template):
     use_model = True
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        model = self.model
         encoded = super()._encode(inputs)
         if len(encoded) == 0:
             return encoded
@@ -51,14 +51,14 @@ class InternLMXComposer2Template(Template):
             if len(images) > 1:
                 hd_num = 6
             hd_num = get_env_args('hd_num', int, hd_num)
-            Image_transform = get_class_from_dynamic_module('ixc_utils.Image_transform', self.model.model_dir)
+            Image_transform = get_class_from_dynamic_module('ixc_utils.Image_transform', model.model_dir)
             images = [Image_transform(image, hd_num=hd_num) for image in images]
         elif self.version == 'v2-4khd':
             hd_num = 55
             hd_num = get_env_args('hd_num', int, hd_num)
-            HD_transform = get_class_from_dynamic_module('ixc_utils.HD_transform', self.model.model_dir)
+            HD_transform = get_class_from_dynamic_module('ixc_utils.HD_transform', model.model_dir)
             images = [HD_transform(image, hd_num=hd_num) for image in images]
-        images = [self.model.vis_processor(image).to(self.model.dtype) for image in images]
+        images = [model.vis_processor(image).to(model.dtype) for image in images]
         encoded['images'] = images
         return encoded
 

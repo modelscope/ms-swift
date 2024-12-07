@@ -174,6 +174,13 @@ def test_glm_edge_v():
     _infer_model(pt_engine, messages=[{'role': 'user', 'content': '<image>这是什么'}])
 
 
+def test_internvl2_5():
+    pt_engine = PtEngine('OpenGVLab/InternVL2_5-26B')
+    _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    _infer_model(pt_engine, system='你是书生·万象，英文名是InternVL，是由上海人工智能实验室、清华大学及多家合作单位联合开发的多模态大语言模型。')
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig, get_template
     from swift.utils import get_logger, seed_everything
@@ -201,3 +208,4 @@ if __name__ == '__main__':
     #
     # test_mplug_owl3()
     # test_phi3_vision()
+    test_internvl2_5()

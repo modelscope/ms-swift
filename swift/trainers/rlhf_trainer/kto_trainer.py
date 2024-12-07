@@ -48,8 +48,7 @@ class KTOTrainer(RLHFTrainerMixin, SwiftMixin, HFKTOTrainer):
     ) -> Tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
         is_kl = True
 
-        def _add_data_hook(model: nn.Module, args, kwargs):
-            from swift.llm import Template
+        def _add_data_hook(model, args, kwargs):
             nonlocal is_kl
             if is_kl:
                 kwargs = {k[len('KL_completion_'):]: v for k, v in batch.items() if k.startswith('KL_completion_')}

@@ -4,8 +4,8 @@ import time
 
 from tqdm import tqdm
 from transformers import trainer
-from transformers.trainer_callback import (DefaultFlowCallback, PrinterCallback, ProgressCallback, TrainerCallback,
-                                           TrainerControl, TrainerState)
+from transformers.trainer_callback import (DefaultFlowCallback, PrinterCallback, ProgressCallback, TrainerControl,
+                                           TrainerState)
 from transformers.trainer_utils import IntervalStrategy, has_length, speed_metrics
 
 from swift.utils import append_to_jsonl, is_pai_training_job, use_torchacc

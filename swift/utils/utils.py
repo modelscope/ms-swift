@@ -7,18 +7,16 @@ import socket
 import subprocess
 import sys
 import time
-from dataclasses import fields, is_dataclass
-from typing import Any, Callable, Dict, List, Literal, Mapping, Optional, Sequence, Set, Tuple, Type, TypeVar, Union
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple, Type, TypeVar
 
 import numpy as np
 import torch
 import torch.distributed as dist
 from transformers import HfArgumentParser, enable_full_determinism, set_seed
-from transformers.trainer import TrainingArguments
 
+from .env import is_dist, is_dist_ta
 from .logger import get_logger
 from .np_utils import stat_array
-from .torch_utils import is_dist, is_dist_ta, is_local_master
 
 logger = get_logger()
 
@@ -231,7 +229,7 @@ def get_env_args(args_name: str, type_func: Callable[[str], _T], default_value: 
     return value
 
 
-def find_free_port(start_port: Optional[int] = None, retry: int = 100) -> str:
+def find_free_port(start_port: Optional[int] = None, retry: int = 100) -> int:
     if start_port is None:
         start_port = 0
     for port in range(start_port, start_port + retry):

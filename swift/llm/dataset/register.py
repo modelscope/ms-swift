@@ -2,7 +2,6 @@
 import os
 from copy import deepcopy
 from dataclasses import dataclass, field
-from functools import partial
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import json
@@ -70,7 +69,7 @@ class DatasetMeta:
                 self.subsets[i] = SubsetDataset(subset=subset)
 
 
-DATASET_MAPPING: Dict[str, DatasetMeta] = {}
+DATASET_MAPPING: Dict[Tuple[str, str, str], DatasetMeta] = {}
 
 
 def get_dataset_list():
@@ -92,7 +91,6 @@ def register_dataset(dataset_meta: DatasetMeta, *, exist_ok: bool = False) -> No
         dataset_meta: The `DatasetMeta` info of the dataset.
         exist_ok: If the dataset id exists, raise error or update it.
     """
-    from .loader import DatasetLoader
     dataset_id = dataset_meta.ms_dataset_id, dataset_meta.hf_dataset_id, dataset_meta.dataset_path
     if not exist_ok and dataset_id in DATASET_MAPPING:
         raise ValueError(f'The `{dataset_id}` has already been registered in the DATASET_MAPPING.')
@@ -164,7 +162,7 @@ def register_dataset_info(dataset_info: Union[str, List[str], None] = None) -> L
         else:
             dataset_info = json.loads(dataset_info)  # json
     if len(dataset_info) == 0:
-        return
+        return []
     res = []
     for d_info in dataset_info:
         res.append(_register_d_info(d_info, base_dir=base_dir))

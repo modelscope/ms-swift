@@ -1,8 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
 import os
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
+from typing import Literal, Optional
 
 import torch
 from transformers.training_args import TrainingArguments as HfTrainingArguments
@@ -15,7 +15,7 @@ from swift.utils import is_dist, use_torchacc
 @dataclass
 class SwiftArgumentsMixin:
     logging_first_step: bool = True
-    acc_strategy: str = field(default='token', metadata={'choices': ['token', 'sentence']})
+    acc_strategy: Literal['token', 'sentence'] = 'token'
     sequence_parallel_size: int = 1
     check_model: bool = True
     train_sampler_random: bool = True
@@ -24,6 +24,7 @@ class SwiftArgumentsMixin:
     # torchacc
     metric_warmup_step: Optional[float] = 0
     train_dataset_sample: Optional[int] = -1
+    fsdp_num: int = 1
     acc_steps: int = 1
 
     # Value copied from TrainArguments, Used for external tuners.

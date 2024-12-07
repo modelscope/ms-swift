@@ -97,7 +97,7 @@ class VllmEngine(InferEngine):
                                enable_lora: bool = False,
                                max_loras: int = 1,
                                max_lora_rank: int = 16,
-                               engine_kwargs: Optional[Dict[str, Any]] = None) -> AsyncEngineArgs:
+                               engine_kwargs: Optional[Dict[str, Any]] = None) -> None:
         if engine_kwargs is None:
             engine_kwargs = {}
         disable_log_stats = engine_kwargs.pop('disable_log_stats', True)

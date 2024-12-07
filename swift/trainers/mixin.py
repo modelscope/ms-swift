@@ -230,7 +230,7 @@ class SwiftMixin:
         with self.hub.patch_hub():
             return super().train(*args, **kwargs)
 
-    def push_to_hub(*args, **kwargs):
+    def push_to_hub(self, *args, **kwargs):
         with self.hub.patch_hub():
             return super().push_to_hub(*args, **kwargs)
 

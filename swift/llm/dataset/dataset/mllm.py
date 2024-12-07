@@ -3,7 +3,6 @@ import ast
 import os
 from typing import Any, Dict, Optional
 
-import json
 import numpy as np
 from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HfIterableDataset
@@ -16,7 +15,7 @@ from ..register import DatasetMeta, SubsetDataset, register_dataset
 
 class ShareGPT4oPreprocessor(MessagesPreprocessor):
 
-    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         row = super().preprocess(row)
         image = row['images']
         if not image:
@@ -175,7 +174,7 @@ class MantisPreprocessor(MessagesPreprocessor):
         self.local_dir = MediaResource.download(url, f'mantis_{self.subset}')
         return super().prepare_dataset(dataset)
 
-    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         images = [os.path.join(self.local_dir, p['path']) for p in row['images']]
         if not all([os.path.exists(d) for d in images]):
             images = []
@@ -213,7 +212,7 @@ class LLaVADataPreprocessor(MessagesPreprocessor):
             self.all_folders[media_type] = MediaResource.download(media_type)
         return super().prepare_dataset(dataset)
 
-    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         if not row['images']:
             return
         row = super().preprocess(row)
@@ -497,7 +496,7 @@ class VideoChatGPTPreprocessor(ResponsePreprocessor):
         self.local_dir = os.path.join(local_dir, 'Test_Videos')
         return super().prepare_dataset(dataset)
 
-    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         # only `.mp4`
         mp4_set = [file[:-4] for file in os.listdir(self.local_dir) if file.endswith('mp4')]
         if row['video_name'] not in mp4_set:
@@ -670,7 +669,7 @@ class ShareGPT4VPreprocessor(MessagesPreprocessor):
                 self.all_folders[media_type] = MediaResource.download(media_type)
         return super().prepare_dataset(dataset)
 
-    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         image = row['image']
         row.update(super().preprocess(row))
         if 'coco/' in image:
@@ -708,7 +707,7 @@ register_dataset(
 
 class TextCapsPreprocessor(RowPreprocessor):
 
-    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         try:
             image = row['image']
             query = 'What is the caption of this image?'
@@ -754,7 +753,7 @@ class RefCOCOPreprocessor(ResponsePreprocessor, GroundingMixin):
             'coco_res/repo?Revision=master&FilePath=coco_2014.zip', 'coco2014')
         return dataset
 
-    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         caption = row['captions'][0]
         bbox = row['bbox']
         image_path = os.path.join(self.cache_dir, row['image_path'].replace('coco/train2014', 'train2014'))
@@ -831,7 +830,7 @@ class LLaVAInstructPreprocessor(MessagesPreprocessor):
             self.all_folders[media_type] = MediaResource.download(media_type)
         return super().prepare_dataset(dataset)
 
-    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         image = row['images']
         if 'coco/' in image:
             image = os.path.join(self.all_folders['coco'], image.replace('coco/', ''))
@@ -848,7 +847,7 @@ class LLaVAInstructPreprocessor(MessagesPreprocessor):
         if os.path.exists(image):
             row['images'] = image
         else:
-            return None
+            return
 
         return super().preprocess(row)
 
@@ -872,7 +871,7 @@ class LLaVAPretrainPreprocessor(MessagesPreprocessor):
             'llava_pretrain')
         return super().prepare_dataset(dataset)
 
-    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         row.update(super().preprocess(row))
         if row['image']:
             file_path = os.path.join(self.media_dir, row['image'])
@@ -991,7 +990,7 @@ class GritPreprocessor(RowPreprocessor, GroundingMixin):
         result.append(response[int(last_end):])
         return ''.join(result)
 
-    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         images = row['url']
         caption = row['caption']
         ref_exps = row['ref_exps']
@@ -1056,7 +1055,7 @@ class GQAPreprocessor(RowPreprocessor):
         self.local_cache = MediaResource.download('gqa')
         return super().prepare_dataset(dataset)
 
-    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         if os.path.join(self.local_cache, 'images', row['imageId'] + '.jpg'):
             return {
                 'messages': [{
