@@ -40,10 +40,6 @@ class GLM4TemplateMeta(GLMTemplateMeta):
 
 class GLM4VTemplate(Template):
 
-    def check_example(self, example):
-        images = example.get('images') or []
-        assert len(images) <= 1
-
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         assert media_type == 'image'
@@ -98,10 +94,6 @@ register_template(
 class CogTemplate(Template):
 
     use_model = True
-
-    def check_example(self, example):
-        images = example.get('images') or []
-        assert len(images) <= 1
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -176,10 +168,6 @@ register_template(
 
 class Cog2VideoTemplate(CogTemplate):
     use_model = True
-
-    def check_example(self, example):
-        videos = example.get('videos') or []
-        assert len(videos) <= 1
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         model = self.model
