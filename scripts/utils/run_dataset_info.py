@@ -63,7 +63,7 @@ def run_dataset(key, template, cache_mapping):
             f'{dataset_id}:all', strict=False, num_proc=num_proc, use_hf=use_hf, download_mode='force_redownload')
         dataset_size = len(dataset)
         random_state = np.random.RandomState(42)
-        idx_list = random_state.choice(dataset_size, size=min(dataset_size, 5000), replace=False)
+        idx_list = random_state.choice(dataset_size, size=min(dataset_size, 100000), replace=False)
         encoded_dataset = EncodePreprocessor(template)(dataset.select(idx_list), num_proc=num_proc)
 
         input_ids = encoded_dataset['input_ids']

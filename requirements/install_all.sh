@@ -1,4 +1,5 @@
 # please use python=3.10, cuda12.*
+# sh requirements/install_all.sh
 pip install vllm -U
 pip install lmdeploy -U --no-deps
 pip install autoawq -U --no-deps
