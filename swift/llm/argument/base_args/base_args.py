@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
+import sys
 from dataclasses import dataclass, field, fields
 from typing import Any, Dict, Literal, Optional
 
@@ -15,6 +16,7 @@ from .generation_args import GenerationArguments
 from .model_args import ModelArguments
 from .quant_args import QuantizeArguments
 from .template_args import TemplateArguments
+from .utils import to_abspath
 
 logger = get_logger()
 
@@ -38,6 +40,7 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
         load_dataset_config (bool): Flag to determine if dataset configuration should be loaded. Default is False.
         use_hf (bool): Flag to determine if Hugging Face should be used. Default is False.
         hub_token (Optional[str]): SDK token for authentication. Default is None.
+        custom_register_path (Optional[str]): Path to custom .py file for dataset registration. Default is None.
         ignore_args_error (bool): Flag to ignore argument errors for notebook compatibility. Default is False.
         use_swift_lora (bool): Use swift lora, a compatible argument
     """
@@ -52,15 +55,27 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
     # None: use env var `MODELSCOPE_API_TOKEN`
     hub_token: Optional[str] = field(
         default=None, metadata={'help': 'SDK token can be found in https://modelscope.cn/my/myaccesstoken'})
+    custom_register_path: Optional[str] = None  # .py
 
     # extra
     ignore_args_error: bool = False  # True: notebook compatibility
     use_swift_lora: bool = False  # True for using tuner_backend == swift, don't specify this unless you know what you are doing # noqa
 
+    def _init_custom_register(self) -> None:
+        """Register custom .py file to datasets"""
+        if self.custom_register_path is None:
+            return
+        self.custom_register_path = to_abspath(self.custom_register_path, True)
+        folder, fname = os.path.split(self.custom_register_path)
+        sys.path.append(folder)
+        __import__(fname.rstrip('.py'))
+        logger.info(f'Successfully registered `{self.custom_register_path}`')
+
     def __post_init__(self):
         if self.use_hf or use_hf_hub():
             self.use_hf = True
             os.environ['USE_HF'] = '1'
+        self._init_custom_register()
         self._init_model_kwargs()
         self.rank, self.local_rank, world_size, self.local_world_size = get_dist_setting()
         # The Seq2SeqTrainingArguments has a property called world_size, which cannot be assigned a value.

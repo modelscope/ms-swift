@@ -25,7 +25,7 @@ def _infer_model(pt_engine, system=None, messages=None):
     response = resp[0].choices[0].message.content
     messages += [{'role': 'assistant', 'content': response}]
     logger.info(f'model: {pt_engine.model_info.model_name}, messages: {messages}')
-    return messages
+    return response
 
 
 def test_qwen2_5():
@@ -45,13 +45,6 @@ def test_qwen1half():
 def test_glm4():
     # The Jinja prompt is missing \n.
     pt_engine = PtEngine('ZhipuAI/glm-4-9b-chat')
-    _infer_model(pt_engine)
-    pt_engine.default_template.template_backend = 'jinja'
-    _infer_model(pt_engine)
-
-
-def test_llama():
-    pt_engine = PtEngine('LLM-Research/Llama-3.2-1B-Instruct')
     _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     _infer_model(pt_engine)
@@ -117,6 +110,18 @@ def test_glm_edge():
     _infer_model(pt_engine)
 
 
+def test_llama():
+    # pt_engine = PtEngine('LLM-Research/Meta-Llama-3.1-8B-Instruct-BNB-NF4')
+    # pt_engine = PtEngine('LLM-Research/Meta-Llama-3.1-8B-Instruct')
+    # pt_engine = PtEngine('LLM-Research/Meta-Llama-3-8B-Instruct')
+    # pt_engine = PtEngine('LLM-Research/Llama-3.2-1B-Instruct')
+    pt_engine = PtEngine('AI-ModelScope/Llama-3.1-Nemotron-70B-Instruct-HF')
+    res = _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    res2 = _infer_model(pt_engine)
+    assert res == res2, f'res: {res}, res2: {res2}'
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig, get_template, get_model_tokenizer
     from swift.utils import get_logger, seed_everything
@@ -131,6 +136,6 @@ if __name__ == '__main__':
     # test_deepseek_moe()
     # test_codegeex4()
     # test_glm4()
-    # test_llama()
     # test_telechat()
-    test_glm_edge()
+    # test_glm_edge()
+    test_llama()

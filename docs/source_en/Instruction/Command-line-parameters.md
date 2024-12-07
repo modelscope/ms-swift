@@ -11,6 +11,7 @@ The introduction to command line parameters will cover base arguments, atomic ar
 - load_dataset_config: When specifying resume_from_checkpoint/ckpt_dir, it will read the `args.json` in the saved file and assign values to any parameters that are None (can be overridden by manual input). If this parameter is set to True, it will read the data parameters as well. Default is False.
 - use_hf: Default is False. Controls model and dataset downloading, and model pushing to the hub.
 - hub_token: Hub token. You can check the modelscope hub token [here](https://modelscope.cn/my/myaccesstoken).
+- custom_register_path: The file path for the custom model, chat template, and dataset registration `.py` files.
 
 ### Model Arguments
 
@@ -38,7 +39,6 @@ The introduction to command line parameters will cover base arguments, atomic ar
 - 🔥model_name: For self-awareness tasks, input the model's Chinese and English names separated by space.
 - 🔥model_author: For self-awareness tasks, input the model author's Chinese and English names separated by space.
 - custom_dataset_info: Custom simple dataset registration, refer to [Add New Dataset](../Customization/New-dataset.md).
-- custom_register_path: Custom complex dataset registration, refer to [Add New Dataset](../Customization/New-dataset.md).
 
 ### Template Arguments
 

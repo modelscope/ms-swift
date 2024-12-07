@@ -19,7 +19,7 @@ register_model(
         TemplateType.telechat,
         get_model_tokenizer_with_flash_attn,
         model_arch=ModelArch.telechat,
-        architectures=['TelechatForCausalLM'],
+        architectures=['TelechatForCausalLM', 'TeleChatForCausalLM'],
     ))
 
 register_model(
@@ -34,7 +34,7 @@ register_model(
         TemplateType.telechat2_115b,
         get_model_tokenizer_with_flash_attn,
         model_arch=ModelArch.telechat,
-        architectures=['TelechatForCausalLM'],
+        architectures=['TelechatForCausalLM', 'TeleChatForCausalLM'],
     ))
 
 register_model(
