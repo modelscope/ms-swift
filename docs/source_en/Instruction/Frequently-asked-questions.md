@@ -1,4 +1,4 @@
-# Common Questions About LLM&VLM Training, Inference, Deployment, and Evaluation
+# Frequently-asked-questions
 
 Here are some common questions encountered during the use of Swift.
 

@@ -371,6 +371,8 @@ def _get_model_info(model_dir: str, model_type: Optional[str], quantization_conf
                              f'the available model_types: {model_types}.')
         elif len(model_types) == 1:
             model_type = model_types[0]
+    elif model_type not in MODEL_MAPPING:
+        raise ValueError(f"model_type: '{model_type}' not in {list(MODEL_MAPPING.keys())}")
 
     res = ModelInfo(model_type, model_dir, torch_dtype, max_model_len, quant_info.get('quant_method'),
                     quant_info.get('quant_bits'), rope_scaling)

@@ -16,13 +16,13 @@ SWIFT is an integrated framework that encompasses model training, inference depl
 - User Interface: Supports interface operations based on the Gradio framework and allows for the deployment of single model applications in space or demo environments.
 - Plug-in System: Supports customizable definitions for loss, metrics, trainer, loss-scale, callback, optimizer, etc., making it easier for users to customize the training process.
 
-# Installation
+## Installation
 
 Installing SWIFT is straightforward. Please refer to the [installation documentation](./SWIFT-installation.md).
 
-# Some Key Concepts
+## Some Key Concepts
 
-## Model Type
+### Model Type
 
 In SWIFT 3.0, the model_type is different from that in 2.0. The model_type in 3.x refers to a collection of models that share the following identical characteristics:
 1. The same model architecture, such as the typical LLaMA structure.
@@ -31,7 +31,7 @@ In SWIFT 3.0, the model_type is different from that in 2.0. The model_type in 3.
 
 When all three points are identical, the models are classified into one group, and the type of this group is referred to as model_type.
 
-# Usage Example
+## Usage Example
 
 Comprehensive usage examples can be found in the [examples](https://github.com/modelscope/ms-swift/tree/main/examples) section. Below are some basic examples:
 
@@ -39,21 +39,25 @@ Command line method for LoRA training.
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
-    --model Qwen/Qwen2-7B-Instruct \
+    --model Qwen/Qwen2.5-7B-Instruct \
     --train_type lora \
-    --lorap_lr_ratio 16 \
-    --dataset swift/self-cognition#1000 \
+    --dataset AI-ModelScope/alpaca-gpt4-data-zh#500 \
+              AI-ModelScope/alpaca-gpt4-data-en#500 \
+              swift/self-cognition#500 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \
     --learning_rate 1e-4 \
     --lora_rank 8 \
     --lora_alpha 32 \
+    --target_modules all-linear \
     --gradient_accumulation_steps 16 \
-    --eval_steps 100 \
-    --save_steps 100 \
+    --eval_steps 50 \
+    --save_steps 50 \
     --save_total_limit 2 \
     --logging_steps 5 \
+    --max_length 2048 \
     --model_author swift \
+    --output_dir output \
     --model_name swift-robot
 ```
 
@@ -107,7 +111,7 @@ for chunk in stream_resp:
 print()
 ```
 
-# Evaluation
+## Evaluation
 ```shell
 swift eval \
   --model Qwen/Qwen2-7B-Instruct \
@@ -115,7 +119,7 @@ swift eval \
   --eval_dataset gsm8k
 ```
 
-# Quantization
+## Quantization
 ```shell
 swift export \
   --model Qwen/Qwen2-7B-Instruct \

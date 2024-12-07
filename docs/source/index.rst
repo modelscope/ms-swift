@@ -37,7 +37,7 @@ Swift DOCUMENTATION
 
    Customization/新增数据集.md
    Customization/新增模型.md
-   Customization/插件.md
+   Customization/插件化.md
 
 Indices and tables
 ==================

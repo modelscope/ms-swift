@@ -1,4 +1,4 @@
-# Pushing Model to the Community
+# Pushing Model
 
 When using SWIFT, users can choose to push their trained model to the community.
 
@@ -15,10 +15,10 @@ swift sft/export/pt/rlhf \
     ...
 ```
 
-# Pushing to ModelScope
+## Pushing to ModelScope
 To use the model pushing feature, first ensure you have registered for a ModelScope official account and obtained your sdk token from the [page](https://www.modelscope.cn/my/myaccesstoken).
 
-## Pushing Model During Training
+### Pushing Model During Training
 
 To push the model during training, you need to add the following parameters in the command line:
 ```shell
@@ -35,7 +35,7 @@ Once these parameters are added, the trained checkpoint and parameters will be p
 
 This way, only individuals with permissions from the organization can see the model.
 
-## Pushing Model During Export
+### Pushing Model During Export
 
 The parameters for pushing the model during export are the same as those for training:
 ```shell

@@ -1,4 +1,4 @@
-# Best Practices for NPU Training
+# NPU Support
 Author: [chuanzhubin](https://github.com/chuanzhubin)
 
 ## Environment Preparation

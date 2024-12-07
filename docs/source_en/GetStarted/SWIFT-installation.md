@@ -1,4 +1,4 @@
-# Installation and Usage
+# SWIFT Installation
 
 ## Wheel Packages Installation
 
@@ -42,13 +42,3 @@ Most models that Swift supports for training can be used on A10 GPUs. Users can 
 1. Visit the [ModelScope](https://www.modelscope.cn) official website and log in.
 2. Click on `My Notebook` on the left and start a free GPU instance.
 3. Enjoy utilizing the A10 GPU resources.
-
-## Build Documentation
-
-Swift supports complete API documentation. Execute the following in the root directory of Swift:
-
-```shell
-make docs
-```
-
-After the execution is complete, you can view the documentation at `docs/build/html/index.html`.

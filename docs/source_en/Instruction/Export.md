@@ -1,4 +1,4 @@
-# LLM Quantization and Export Documentation
+# Export
 Swift supports quantization of models using technologies like awq, gptq, bnb, hqq, and eetq. The awq and gptq quantization methods are compatible with vllm/lmdeploy for inference acceleration. They require a calibration dataset, which improves quantization performance, but slows down the quantization speed. In contrast, bnb, hqq, and eetq do not require calibration data, allowing for faster quantization. All five quantization methods support qlora fine-tuning.
 
 awq, gptq, and bnb (8bit) can use `swift export` for quantization. Meanwhile, bnb, hqq, and eetq allow for quick quantization directly during sft and inference.
