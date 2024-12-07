@@ -157,10 +157,9 @@ class MSHub(HubOperation):
         token: Union[str, bool, None] = None,
         revision: Optional[str] = 'master',
         ignore_patterns: Optional[Union[List[str], str]] = None,
-        run_as_future: bool = False,
         **kwargs,
     ):
-        cls.push_to_hub(repo_id, folder_path, path_in_repo, commit_message, commit_description, token, revision,
+        cls.push_to_hub(repo_id, folder_path, path_in_repo, commit_message, commit_description, token, True, revision,
                         ignore_patterns)
         return CommitInfo(
             commit_url=f'https://www.modelscope.cn/models/{repo_id}/files',
