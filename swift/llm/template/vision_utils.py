@@ -405,17 +405,17 @@ def normalize_bbox(objects: List[Dict[str, Any]], images: List[Image.Image], to_
             object_['bbox_type'] = to_type
 
 
-def replace_video2image(load_video_func, example, replace_tag: Callable) -> List[Context]:
+def replace_video2image(load_video_func, inputs, replace_tag: Callable) -> List[Context]:
     context_list = []
-    video_index = example['video_index']
-    video = example['videos'][video_index]
-    images = example['images']
-    image_index = example['image_index']
+    video_idx = inputs.video_idx
+    video = inputs.videos[video_idx]
+    images = inputs.images
+    image_idx = inputs.image_idx
     new_images = load_video_func(video)
-    example['images'] = images[:image_index] + new_images + images[image_index:]
+    inputs.images = images[:image_idx] + new_images + images[image_idx:]
     for i in range(len(new_images)):
         context_list += replace_tag(i)
-    example['image_index'] += len(new_images)
+    inputs.image_idx += len(new_images)
     return context_list
 
 

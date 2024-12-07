@@ -78,7 +78,7 @@ def write_dataset_info() -> None:
     fpaths = ['docs/source/Instruction/支持的模型和数据集.md', 'docs/source_en/Instruction/Supported-models-datasets.md']
     cache_mapping = get_cache_mapping(fpaths[0])
     res_text_list = []
-    res_text_list.append('| Dataset ID | Subset name | Dataset Size | Statistic (token) | Tags | HF Dataset ID |')
+    res_text_list.append('| Dataset ID | Subset Name | Dataset Size | Statistic (token) | Tags | HF Dataset ID |')
     res_text_list.append('| ---------- | ----------- | -------------| ------------------| ---- | ------------- |')
 
     all_keys = list(DATASET_MAPPING.keys())

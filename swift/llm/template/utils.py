@@ -162,7 +162,6 @@ def split_str_parts_by(text: str, delimiters: List[str]):
 
 
 def split_parts_by_regex(text_list: list, regex_delimiters: Dict[str, List[float]]) -> None:
-    import re
     compiled_patterns = [(re.compile(pattern), scale) for pattern, scale in regex_delimiters.items()]
     for i in range(len(text_list) - 1, -1, -1):
         item = text_list[i]
