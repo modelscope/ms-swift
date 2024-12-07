@@ -3,8 +3,11 @@ from swift.llm import (InferRequest, Model, ModelGroup, ModelMeta, PtEngine, Req
                        get_model_tokenizer_with_flash_attn, register_model, register_template)
 
 register_template(
-    TemplateMeta('custom', ['<extra_id_0>System\n{{SYSTEM}}\n'],
-                 ['<extra_id_1>User\n{{QUERY}}\n<extra_id_1>Assistant\n'], ['\n']))
+    TemplateMeta(
+        template_type='custom',
+        prefix=['<extra_id_0>System\n{{SYSTEM}}\n'],
+        prompt=['<extra_id_1>User\n{{QUERY}}\n<extra_id_1>Assistant\n'],
+        chat_sep=['\n']))
 
 register_model(
     ModelMeta(
@@ -17,7 +20,7 @@ register_model(
         ignore_file_pattern=['nemo']))
 
 if __name__ == '__main__':
-    infer_request = InferRequest(messages=[{'role': 'user', 'content': '你是谁'}])
+    infer_request = InferRequest(messages=[{'role': 'user', 'content': 'who are you?'}])
     request_config = RequestConfig(max_tokens=512, temperature=0)
     engine = PtEngine('AI-ModelScope/Nemotron-Mini-4B-Instruct')
     response = engine.infer([infer_request], request_config)
@@ -27,3 +30,4 @@ if __name__ == '__main__':
     response = engine.infer([infer_request], request_config)
     jinja_response = response[0].choices[0].message.content
     assert swift_response == jinja_response, (f'swift_response: {swift_response}\njinja_response: {jinja_response}')
+    print(f'response: {swift_response}')
