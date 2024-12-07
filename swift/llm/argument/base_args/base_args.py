@@ -126,7 +126,12 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
             'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant', 'split_dataset_ratio', 'model_name', 'model_author',
             'train_type', 'tuner_backend'
         ]
-        skip_keys = ['output_dir', 'deepspeed', 'temperature', 'max_new_tokens',]
+        skip_keys = [
+            'output_dir',
+            'deepspeed',
+            'temperature',
+            'max_new_tokens',
+        ]
         for key in all_keys:
             if key in skip_keys:
                 continue

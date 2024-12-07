@@ -159,8 +159,8 @@ class Seq2SeqTrainer(TorchAccMixin, SwiftMixin, HfSeq2SeqTrainer):
                 ta_trim_graph()
                 preds = preds.to('cpu')
                 labels = labels.to('cpu')
-            metrics = compute_acc(preds, labels, acc_strategy=self.args.acc_strategy, 
-                                  is_encoder_decoder=self.args.is_encoder_decoder)
+            metrics = compute_acc(
+                preds, labels, acc_strategy=self.args.acc_strategy, is_encoder_decoder=self.args.is_encoder_decoder)
             for k, v in metrics.items():
                 if k not in self._custom_metrics:
                     self._custom_metrics[k] = MeanMetric(nan_value=None)
