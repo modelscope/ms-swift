@@ -9,85 +9,36 @@ Swift DOCUMENTATION
    :maxdepth: 2
    :caption: Get Started
 
-   GetStarted/Installation.md
-   GetStarted/Web-ui.md
-   GetStarted/Push-Model.md
-   GetStarted/Tuners.md
-   GetStarted/ResTuning.md
-   GetStarted/SCEdit.md
-   GetStarted/Use-PEFT.md
+   GetStarted/SWIFT-installation.md
+   GetStarted/Quick-start.md
+   GetStarted/Interface-usage.md
 
 .. toctree::
    :maxdepth: 2
    :caption: Instruction
 
-   Instruction/index.md
-   Instruction/LLM-fine-tuning.md
-   Instruction/LLM-inference.md
-   Instruction/LLM-eval.md
-   Instruction/LLM-quantization-and-export.md
-   Instruction/LLM-exp.md
+   Instruction/Pre-training-and-Fine-tuning.md
+   Instruction/RLHF.md
+   Instruction/Inference-and-deployment.md
+   Instruction/Evaluation.md
+   Instruction/Export.md
    Instruction/Command-line-parameters.md
-   Instruction/Supported-models-datasets.md
-   Instruction/Customization.md
-   Instruction/Common-QA.md
-
-.. toctree::
-   :maxdepth: 2
-   :caption: LLM Training and Inference
-
-   LLM/index.md
-   LLM/Human-Preference-Alignment-Training-Documentation.md
-   LLM/OLLaMA-Export.md
-   LLM/VLLM-inference-acceleration-and-deployment.md
-   LLM/LmDeploy-inference-acceleration-and-deployment.md
-   LLM/Megatron-training.md
-   LLM/Self-cognition-best-practice.md
-   LLM/Agent-fine-tuning-best-practice.md
-   LLM/Agent-deployment-best-practice.md
-   LLM/Qwen1.5-best-practice.md
-   LLM/NPU-best-practice.md
-   LLM/Grok-1-best-practice.md
-   LLM/DPO.md
-   LLM/ORPO.md
-   LLM/SimPO.md
-   LLM/Compat-HF.md
-   LLM/Benchmark.md
+   Instruction/Supported-models-and-datasets.md
+   Instruction/Use-tuners.md
+   Instruction/Agent-support.md
+   Instruction/NPU-support.md
+   Instruction/Push-model.md
+   Instruction/ReleaseNote3.0
+   Instruction/Frequently-asked-questions.md
 
 
 .. toctree::
    :maxdepth: 2
-   :caption: Multi-Modal LLM Training and Inference
+   :caption: Customization
 
-   Multi-Modal/index.md
-   Multi-Modal/human-preference-alignment-training-documentation.md
-   Multi-Modal/LmDeploy-inference-acceleration.md
-   Multi-Modal/vllm-inference-acceleration.md
-   Multi-Modal/mutlimodal-deployment.md
-   Multi-Modal/qwen-vl-best-practice.md
-   Multi-Modal/qwen2-vl-best-practice.md
-   Multi-Modal/qwen-audio-best-practice.md
-   Multi-Modal/llava-best-practice.md
-   Multi-Modal/llava-video-best-practice.md
-   Multi-Modal/internvl-best-practice.md
-   Multi-Modal/deepseek-vl-best-practice.md
-   Multi-Modal/internlm-xcomposer2-best-practice.md
-   Multi-Modal/phi3-vision-best-practice.md
-   Multi-Modal/yi-vl-best-practice.md
-   Multi-Modal/florence-best-pratice.md
-   Multi-Modal/cogvlm-best-practice.md
-   Multi-Modal/cogvlm2-best-practice.md
-   Multi-Modal/glm4v-best-practice.md
-   Multi-Modal/cogvlm2-video-best-practice.md
-   Multi-Modal/minicpm-v-best-practice.md
-
-.. toctree::
-   :maxdepth: 2
-   :caption: API Doc
-
-   Hub <api/swift.hub>
-   Trainer <api/swift.trainers>
-   Tuner <api/swift.tuners>
+   Multi-Modal/New-dataset.md
+   Multi-Modal/New-model.md
+   Multi-Modal/Plugin.md
 
 
 Indices and tables
