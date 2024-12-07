@@ -1,15 +1,16 @@
-# Supported models and datasets
+# Supported Models and Datasets
 
-## Models
-The table below provides relevant information about the models accessed by ms-swift:
-- Model ID: ModelScope Model ID
-- HF Model ID: Huggingface Model ID
-- Model Type: Model Type
+The table below introduces the models integrated with ms-swift:
+
+- Model ID: Model ID for the ModelScope Model
+- HF Model ID: Hugging Face Model ID
+- Model Type: Type of the model
 - Default Template: Default chat template
-- Requires: Additional requirements for using this model
+- Requires: Additional dependencies required to use the model
 - Tags: Tags associated with the model
 
-### LLM
+
+## Large Language Models
 | Model ID | Model Type | Default Template | Requires | Tags | HF Model ID |
 | -------- | -----------| ---------------- | -------- | ---- | ----------- |
 |[Qwen/Qwen-1_8B-Chat](https://modelscope.cn/models/Qwen/Qwen-1_8B-Chat)|qwen|qwen|-|-|[Qwen/Qwen-1_8B-Chat](https://huggingface.co/Qwen/Qwen-1_8B-Chat)|
@@ -449,7 +450,7 @@ The table below provides relevant information about the models accessed by ms-sw
 |[AI-ModelScope/aya-expanse-32b](https://modelscope.cn/models/AI-ModelScope/aya-expanse-32b)|aya|aya|transformers>=4.44.0|-|[CohereForAI/aya-expanse-32b](https://huggingface.co/CohereForAI/aya-expanse-32b)|
 
 
-### MLLM
+### Multimodal large models
 | Model ID | Model Type | Default Template | Requires | Tags | HF Model ID |
 | -------- | -----------| ---------------- | -------- | ---- | ----------- |
 |[Qwen/Qwen-VL-Chat](https://modelscope.cn/models/Qwen/Qwen-VL-Chat)|qwen_vl|qwen_vl|-|vision|[Qwen/Qwen-VL-Chat](https://huggingface.co/Qwen/Qwen-VL-Chat)|
@@ -577,13 +578,13 @@ The table below provides relevant information about the models accessed by ms-sw
 
 
 ## Datasets
-The table below provides relevant information about the datasets accessed through ms-swift:
-- Dataset ID: ModelScope Dataset ID
-- HF Dataset ID: Huggingface Dataset ID
-- Subset Name: Sub-dataset Name
-- Dataset Size: dataset Size
-- Statistic: Statistics of the dataset. We use token counts for this statistic, which helps in adjusting the max_length hyperparameter. We use the tokenizer from Qwen2.5 to tokenize the dataset. The statistics will differ across different tokenizers. If you wish to obtain token statistics for other models' tokenizers, you can do so using the [script](https://github.com/modelscope/swift/tree/main/scripts/utils/run_dataset_info.py).
-- Tags: Tags of the dataset.
+The table below introduces information about the datasets integrated with ms-swift:
+- Dataset ID: ModelScope dataset ID
+- HF Dataset ID: Hugging Face dataset ID
+- Subset Name: Name of the subset
+- Dataset Size: Size of the dataset
+- Statistic: The statistical count of the dataset. We use the number of tokens for statistics, which helps in adjusting the `max_length` hyperparameter. We tokenize the dataset using the tokenizer of qwen2.5. The token count varies with different tokenizers. If you need to obtain token statistics for tokenizers of other models, you can acquire it using the [script](https://github.com/modelscope/swift/tree/main/scripts/utils/run_dataset_info.py).
+- Tags: Tags associated with the dataset
 
 
 | Dataset ID | Subset Name | Dataset Size | Statistic (token) | Tags | HF Dataset ID |

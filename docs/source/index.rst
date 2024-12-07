@@ -23,10 +23,10 @@ Swift DOCUMENTATION
    Instruction/评测.md
    Instruction/导出.md
    Instruction/命令行参数.md
-   Instruction/NPU支持.md
-   Instruction/使用tuners.md
    Instruction/支持的模型和数据集.md
+   Instruction/使用tuners.md
    Instruction/智能体的支持.md
+   Instruction/NPU支持.md
    Instruction/推送模型.md
    Instruction/ReleaseNote3.0.md
    Instruction/常见问题整理.md
