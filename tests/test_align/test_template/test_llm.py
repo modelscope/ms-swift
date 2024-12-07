@@ -19,7 +19,6 @@ def _infer_model(pt_engine, system=None, messages=None):
         messages += [{'role': 'assistant', 'content': response}, {'role': 'user', 'content': '<image>这是什么'}]
     resp = pt_engine.infer([{
         'messages': messages,
-        'images': ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png']
     }],
                            request_config=request_config)
     response = resp[0].choices[0].message.content
