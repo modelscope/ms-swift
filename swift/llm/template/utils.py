@@ -5,8 +5,6 @@ from typing import Any, Dict, List, Optional, Set, Tuple, Type, Union
 import torch
 from transformers import PreTrainedTokenizerBase, StoppingCriteria
 
-from swift.llm import History
-
 Prompt = List[Union[str, List[int], List[str]]]
 Word = Union[str, List[int]]
 Context = Word

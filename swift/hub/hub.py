@@ -154,14 +154,14 @@ class MSHub(HubOperation):
         path_in_repo: Optional[str] = None,
         commit_message: Optional[str] = None,
         commit_description: Optional[str] = None,
+        private: bool = False,
         token: Union[str, bool, None] = None,
         revision: Optional[str] = 'master',
         ignore_patterns: Optional[Union[List[str], str]] = None,
-        run_as_future: bool = False,
         **kwargs,
     ):
-        cls.push_to_hub(repo_id, folder_path, path_in_repo, commit_message, commit_description, token, revision,
-                        ignore_patterns)
+        cls.push_to_hub(repo_id, folder_path, path_in_repo, commit_message, commit_description, token, private,
+                        revision, ignore_patterns)
         return CommitInfo(
             commit_url=f'https://www.modelscope.cn/models/{repo_id}/files',
             commit_message=commit_message,
