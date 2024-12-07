@@ -16,6 +16,7 @@ class LLMModelType:
 
     llama = 'llama'
     llama3 = 'llama3'
+    llama3_1 = 'llama3_1'
     llama3_2 = 'llama3_2'
     reflection = 'reflection'
     yi = 'yi'

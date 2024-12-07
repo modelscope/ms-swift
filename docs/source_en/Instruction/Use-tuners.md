@@ -18,9 +18,9 @@ Tuners refer to additional structural components attached to a model, aimed at r
 - Res-Tuning: [Res-Tuning: A Flexible and Efficient Tuning Paradigm via Unbinding Tuner from Backbone](https://arxiv.org/abs/2310.19859)  < [arXiv](https://arxiv.org/abs/2310.19859)  |  [Project Page](https://res-tuning.github.io/)  |  [Usage](ResTuning.md) >
 - Tuners provided by [PEFT](https://github.com/huggingface/peft), such as AdaLoRA, DoRA, Fourierft, etc.
 
-# Interface List
+## Interface List
 
-## Swift Class Static Interfaces
+### Swift Class Static Interfaces
 
 - `Swift.prepare_model(model, config, **kwargs)`
   - Function: Loads a tuner into a model. If it is a subclass of `PeftConfig`, it uses the corresponding interface from the Peft library to load the tuner. When using `SwiftConfig`, this interface can accept `SwiftModel` instances and can be called repeatedly, functioning similarly to passing a dictionary of configs.
@@ -67,7 +67,7 @@ Tuners refer to additional structural components attached to a model, aimed at r
     - `adapter_name`: Can be of type `str`, `List[str]`, `Dict[str, str]`, or `None`. If `None`, all tuners in the specified directory will be loaded. If it is a `str` or `List[str]`, only specific tuners will be loaded. If it is a `Dict`, the key represents the tuner to load, which will be renamed to the corresponding value.
     - `revision`: If `model_id` is an ID from the model hub, `revision` can specify the corresponding version number.
 
-## SwiftModel Interfaces
+### SwiftModel Interfaces
 
 Below is a list of interfaces that users may call. Other internal or less recommended interfaces can be viewed by running the `make docs` command to access the API Doc.
 

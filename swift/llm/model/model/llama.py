@@ -97,61 +97,64 @@ register_model(
                 Model('ChineseAlpacaGroup/llama-3-chinese-8b-instruct', 'hfl/llama-3-chinese-8b-instruct'),
                 Model('ChineseAlpacaGroup/llama-3-chinese-8b', 'hfl/llama-3-chinese-8b'),
             ]),
-            # llama3.1
-            ModelGroup(
-                [
-                    # chat
-                    Model('LLM-Research/Meta-Llama-3.1-8B-Instruct', 'meta-llama/Meta-Llama-3.1-8B-Instruct'),
-                    Model('LLM-Research/Meta-Llama-3.1-70B-Instruct', 'meta-llama/Meta-Llama-3.1-70B-Instruct'),
-                    Model('LLM-Research/Meta-Llama-3.1-405B-Instruct', 'meta-llama/Meta-Llama-3.1-405B-Instruct'),
-                    # base
-                    Model('LLM-Research/Meta-Llama-3.1-8B', 'meta-llama/Meta-Llama-3.1-8B'),
-                    Model('LLM-Research/Meta-Llama-3.1-70B', 'meta-llama/Meta-Llama-3.1-70B'),
-                    Model('LLM-Research/Meta-Llama-3.1-405B', 'meta-llama/Meta-Llama-3.1-405B'),
-                    # fp8
-                    Model('LLM-Research/Meta-Llama-3.1-70B-Instruct-FP8', 'meta-llama/Meta-Llama-3.1-70B-Instruct-FP8'),
-                    Model('LLM-Research/Meta-Llama-3.1-405B-Instruct-FP8',
-                          'meta-llama/Meta-Llama-3.1-405B-Instruct-FP8'),
-                ],
-                requires=['transformers>=4.43']),
-            # llama3.1-quant
-            ModelGroup(
-                [
-                    # bnb-nf4
-                    Model('LLM-Research/Meta-Llama-3.1-8B-Instruct-BNB-NF4',
-                          'hugging-quants/Meta-Llama-3.1-8B-Instruct-BNB-NF4'),
-                    Model('LLM-Research/Meta-Llama-3.1-70B-Instruct-bnb-4bit',
-                          'unsloth/Meta-Llama-3.1-70B-Instruct-bnb-4bit'),
-                    Model('LLM-Research/Meta-Llama-3.1-405B-Instruct-BNB-NF4',
-                          'hugging-quants/Meta-Llama-3.1-405B-Instruct-BNB-NF4'),
-                    # gptq-int4
-                    Model('LLM-Research/Meta-Llama-3.1-8B-Instruct-GPTQ-INT4',
-                          'hugging-quants/Meta-Llama-3.1-8B-Instruct-GPTQ-INT4'),
-                    Model('LLM-Research/Meta-Llama-3.1-70B-Instruct-GPTQ-INT4',
-                          'hugging-quants/Meta-Llama-3.1-70B-Instruct-GPTQ-INT4'),
-                    Model('LLM-Research/Meta-Llama-3.1-405B-Instruct-GPTQ-INT4',
-                          'hugging-quants/Meta-Llama-3.1-405B-Instruct-GPTQ-INT4'),
-                    # awq-int4
-                    Model('LLM-Research/Meta-Llama-3.1-8B-Instruct-AWQ-INT4',
-                          'hugging-quants/Meta-Llama-3.1-8B-Instruct-AWQ-INT4'),
-                    Model('LLM-Research/Meta-Llama-3.1-70B-Instruct-AWQ-INT4',
-                          'hugging-quants/Meta-Llama-3.1-70B-Instruct-AWQ-INT4'),
-                    Model('LLM-Research/Meta-Llama-3.1-405B-Instruct-AWQ-INT4',
-                          'hugging-quants/Meta-Llama-3.1-405B-Instruct-AWQ-INT4'),
-                ],
-                requires=['transformers>=4.43']),
-            # nvidia Nemotron
-            ModelGroup(
-                [
-                    Model('AI-ModelScope/Llama-3.1-Nemotron-70B-Instruct-HF',
-                          'nvidia/Llama-3.1-Nemotron-70B-Instruct-HF'),
-                ],
-                requires=['transformers>=4.43'],
-            )
         ],
         TemplateType.llama3,
         get_model_tokenizer_with_flash_attn,
         architectures=['LlamaForCausalLM'],
+        model_arch=ModelArch.llama,
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.llama3_1,
+        [
+            # llama3.1
+            ModelGroup([
+                # chat
+                Model('LLM-Research/Meta-Llama-3.1-8B-Instruct', 'meta-llama/Meta-Llama-3.1-8B-Instruct'),
+                Model('LLM-Research/Meta-Llama-3.1-70B-Instruct', 'meta-llama/Meta-Llama-3.1-70B-Instruct'),
+                Model('LLM-Research/Meta-Llama-3.1-405B-Instruct', 'meta-llama/Meta-Llama-3.1-405B-Instruct'),
+                # base
+                Model('LLM-Research/Meta-Llama-3.1-8B', 'meta-llama/Meta-Llama-3.1-8B'),
+                Model('LLM-Research/Meta-Llama-3.1-70B', 'meta-llama/Meta-Llama-3.1-70B'),
+                Model('LLM-Research/Meta-Llama-3.1-405B', 'meta-llama/Meta-Llama-3.1-405B'),
+                # fp8
+                Model('LLM-Research/Meta-Llama-3.1-70B-Instruct-FP8', 'meta-llama/Meta-Llama-3.1-70B-Instruct-FP8'),
+                Model('LLM-Research/Meta-Llama-3.1-405B-Instruct-FP8', 'meta-llama/Meta-Llama-3.1-405B-Instruct-FP8'),
+            ]),
+            # llama3.1-quant
+            ModelGroup([
+                # bnb-nf4
+                Model('LLM-Research/Meta-Llama-3.1-8B-Instruct-BNB-NF4',
+                      'hugging-quants/Meta-Llama-3.1-8B-Instruct-BNB-NF4'),
+                Model('LLM-Research/Meta-Llama-3.1-70B-Instruct-bnb-4bit',
+                      'unsloth/Meta-Llama-3.1-70B-Instruct-bnb-4bit'),
+                Model('LLM-Research/Meta-Llama-3.1-405B-Instruct-BNB-NF4',
+                      'hugging-quants/Meta-Llama-3.1-405B-Instruct-BNB-NF4'),
+                # gptq-int4
+                Model('LLM-Research/Meta-Llama-3.1-8B-Instruct-GPTQ-INT4',
+                      'hugging-quants/Meta-Llama-3.1-8B-Instruct-GPTQ-INT4'),
+                Model('LLM-Research/Meta-Llama-3.1-70B-Instruct-GPTQ-INT4',
+                      'hugging-quants/Meta-Llama-3.1-70B-Instruct-GPTQ-INT4'),
+                Model('LLM-Research/Meta-Llama-3.1-405B-Instruct-GPTQ-INT4',
+                      'hugging-quants/Meta-Llama-3.1-405B-Instruct-GPTQ-INT4'),
+                # awq-int4
+                Model('LLM-Research/Meta-Llama-3.1-8B-Instruct-AWQ-INT4',
+                      'hugging-quants/Meta-Llama-3.1-8B-Instruct-AWQ-INT4'),
+                Model('LLM-Research/Meta-Llama-3.1-70B-Instruct-AWQ-INT4',
+                      'hugging-quants/Meta-Llama-3.1-70B-Instruct-AWQ-INT4'),
+                Model('LLM-Research/Meta-Llama-3.1-405B-Instruct-AWQ-INT4',
+                      'hugging-quants/Meta-Llama-3.1-405B-Instruct-AWQ-INT4'),
+            ]),
+            # nvidia Nemotron
+            ModelGroup([
+                Model('AI-ModelScope/Llama-3.1-Nemotron-70B-Instruct-HF', 'nvidia/Llama-3.1-Nemotron-70B-Instruct-HF'),
+            ])
+        ],
+        TemplateType.llama3_2,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['LlamaForCausalLM'],
+        requires=['transformers>=4.43'],
         model_arch=ModelArch.llama,
     ))
 
