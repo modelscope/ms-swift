@@ -69,6 +69,7 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
         folder, fname = os.path.split(self.custom_register_path)
         sys.path.append(folder)
         __import__(fname.rstrip('.py'))
+        logger.info(f'Successfully registered `{self.custom_register_path}`')
 
     def __post_init__(self):
         if self.use_hf or use_hf_hub():
