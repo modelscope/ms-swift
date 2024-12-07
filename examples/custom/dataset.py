@@ -1,10 +1,10 @@
 from typing import Any, Dict, Optional
 
-from swift.llm import AlpacaPreprocessor, register_dataset
+from swift.llm import ResponsePreprocessor, register_dataset
 from swift.llm.dataset.register import DatasetMeta
 
 
-class CustomPreprocessor(AlpacaPreprocessor):
+class CustomPreprocessor(ResponsePreprocessor):
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         response = row['response']
@@ -17,7 +17,7 @@ class CustomPreprocessor(AlpacaPreprocessor):
 
 register_dataset(
     DatasetMeta(
-        ms_dataset_id='AI-ModelScope/LongAlpaca-12k',
-        hf_dataset_id='Yukang/LongAlpaca-12k',
+        ms_dataset_id='swift/stsb',
+        hf_dataset_id='YSetFit/stsb',
         preprocess_func=CustomPreprocessor(),
     ))
