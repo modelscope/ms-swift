@@ -413,7 +413,7 @@ class Template(ProcessorMixin):
             all_objects = all_objects[:-1]
             return [all_objects]
         else:
-            return [f'[({object_['bbox'][0]},{object_['bbox'][1]}),({object_['bbox'][2]},{object_['bbox'][3]})]']
+            return [f'[({object_["bbox"][0]},{object_["bbox"][1]}),({object_["bbox"][2]},{object_["bbox"][3]})]']
 
     def _pre_tokenize(self, context_list: List[Context], loss_scale_list: List[float],
                       inputs: StdTemplateInputs) -> Tuple[List[Context], List[float]]:

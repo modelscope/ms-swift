@@ -212,7 +212,7 @@ class Runtime(BaseUI):
         create_time_formatted = datetime.fromtimestamp(create_time).strftime('%Y-%m-%d, %H:%M')
 
         return f'pid:{pid}/create:{create_time_formatted}' \
-               f'/running:{format_time(ts - create_time)}/cmd:{' '.join(proc.cmdline())}'
+               f'/running:{format_time(ts - create_time)}/cmd:{" ".join(proc.cmdline())}'
 
     @classmethod
     def parse_info_from_cmdline(cls, task):

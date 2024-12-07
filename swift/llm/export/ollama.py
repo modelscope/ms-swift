@@ -38,15 +38,15 @@ def export_to_ollama(args: ExportArguments):
     with open(os.path.join(args.output_dir, 'Modelfile'), 'w') as f:
         f.write(f'FROM {pt_engine.model_dir}\n')
         f.write(f'TEMPLATE """{{{{ if .System }}}}'
-                f'{replace_and_concat(template, template_meta.system_prefix, '{{SYSTEM}}', '{{ .System }}')}'
-                f'{{{{ else }}}}{replace_and_concat(template, template_meta.prefix, '', '')}'
+                f'{replace_and_concat(template, template_meta.system_prefix, "{{SYSTEM}}", "{{ .System }}")}'
+                f'{{{{ else }}}}{replace_and_concat(template, template_meta.prefix, "", "")}'
                 f'{{{{ end }}}}')
         f.write(f'{{{{ if .Prompt }}}}'
-                f'{replace_and_concat(template, template_meta.prompt, '{{QUERY}}', '{{ .Prompt }}')}'
+                f'{replace_and_concat(template, template_meta.prompt, "{{QUERY}}", "{{ .Prompt }}")}'
                 f'{{{{ end }}}}')
         f.write('{{ .Response }}')
         f.write(replace_and_concat(template, template_meta.suffix, '', '') + '"""\n')
-        f.write(f'PARAMETER stop "{replace_and_concat(template, template_meta.suffix, '', '')}"\n')
+        f.write(f'PARAMETER stop "{replace_and_concat(template, template_meta.suffix, "", "")}"\n')
 
         request_config = RequestConfig(
             temperature=args.temperature,
@@ -65,5 +65,5 @@ def export_to_ollama(args: ExportArguments):
     logger.info('Save Modelfile done, you can start ollama by:')
     logger.info('> ollama serve')
     logger.info('In another terminal:')
-    logger.info('> ollama create my-custom-model ' f'-f {os.path.join(args.output_dir, 'Modelfile')}')
+    logger.info('> ollama create my-custom-model ' f'-f {os.path.join(args.output_dir, "Modelfile")}')
     logger.info('> ollama run my-custom-model')
