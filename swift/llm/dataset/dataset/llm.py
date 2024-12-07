@@ -246,7 +246,7 @@ class TigerBotLawPreprocessor(ResponsePreprocessor):
             chapter = row[f'chapter{i}']
             if chapter is not None:
                 cur_prompt += f'{chapter}'
-        cur_prompt += f'{row['response']}'
+        cur_prompt += f'{row["response"]}'
         return super().preprocess({'response': cur_prompt})
 
 

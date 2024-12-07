@@ -313,7 +313,7 @@ def hot_patch_peft_module():
 
     # Compatible with SwiftModel
     def dummy_function(*args, **kwargs):
-        logger.warn(f'The function {kwargs['func']} has no effects, consider using other functions.')
+        logger.warn(f'The function {kwargs["func"]} has no effects, consider using other functions.')
 
     PeftModel.activate_adapter = PeftModel.set_adapter
     PeftModel.deactivate_adapter = partial(dummy_function, func='deactivate_adapter')
