@@ -5,7 +5,7 @@ The table below introduces the models integrated with ms-swift:
 - Model ID: Model ID for the ModelScope Model
 - HF Model ID: Hugging Face Model ID
 - Model Type: Type of the model
-- Default Template: Default conversation template
+- Default Template: Default chat template
 - Requires: Additional dependencies required to use the model
 - Tags: Tags associated with the model
 
