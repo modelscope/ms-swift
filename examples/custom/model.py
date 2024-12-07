@@ -1,4 +1,5 @@
-from swift.llm import (InferRequest, Model, ModelGroup, ModelMeta, PtEngine, RequestConfig, TemplateMeta, TemplateType,
+# Copyright (c) Alibaba, Inc. and its affiliates.
+from swift.llm import (InferRequest, Model, ModelGroup, ModelMeta, PtEngine, RequestConfig, TemplateMeta,
                        get_model_tokenizer_with_flash_attn, register_model, register_template)
 
 register_template(
