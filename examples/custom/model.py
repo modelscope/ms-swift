@@ -2,8 +2,8 @@ from swift.llm import (InferRequest, Model, ModelGroup, ModelMeta, PtEngine, Req
                        get_model_tokenizer_with_flash_attn, register_model, register_template)
 
 register_template(
-    TemplateMeta('custom', ['<extra_id_0>System\n{{SYSTEM}}\n'], ['<extra_id_1>User\n{{QUERY}}\n<extra_id_1>Assistant'],
-                 ['\n']))
+    TemplateMeta('custom', ['<extra_id_0>System\n{{SYSTEM}}\n'],
+                 ['<extra_id_1>User\n{{QUERY}}\n<extra_id_1>Assistant\n'], ['\n']))
 
 register_model(
     ModelMeta(
