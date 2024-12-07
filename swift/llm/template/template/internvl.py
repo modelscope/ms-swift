@@ -106,7 +106,7 @@ class Internvl2Template(InternvlTemplate):
         objects = inputs.objects
         if objects:
             object_ = objects[index]
-            return [f'<ref>{object_['caption']}</ref>']
+            return [f'<ref>{object_["caption"]}</ref>']
         else:
             return ['<ref-object>']
 
@@ -123,8 +123,8 @@ class Internvl2Template(InternvlTemplate):
                 return [all_objects]
             else:
                 return [
-                    f'<box> [[{object_['bbox'][0]}, {object_['bbox'][1]}, '
-                    f'{object_['bbox'][2]}, {object_['bbox'][3]}]] </box>'
+                    f'<box> [[{object_["bbox"][0]}, {object_["bbox"][1]}, '
+                    f'{object_["bbox"][2]}, {object_["bbox"][3]}]] </box>'
                 ]
         else:
             return ['<bbox>']

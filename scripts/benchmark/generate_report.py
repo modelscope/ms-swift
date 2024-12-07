@@ -69,23 +69,23 @@ class ModelOutput:
             return ''
         if args['sft_type'] in ('lora', 'adalora', 'longlora'):
             if 'lora_rank' in args:
-                hyper_params += f'rank={args['lora_rank']}/' \
-                                f'target={args['lora_target_modules']}/' \
-                                f'alpha={args['lora_alpha']}/' \
-                                f'lr_ratio={args.get('lora_lr_ratio', None)}/' \
-                                f'use_rslora={args.get('use_rslora', False)}/' \
-                                f'use_dora={args.get('use_dora', False)}'
+                hyper_params += f'rank={args["lora_rank"]}/' \
+                                f'target={args["lora_target_modules"]}/' \
+                                f'alpha={args["lora_alpha"]}/' \
+                                f'lr_ratio={args.get("lora_lr_ratio", None)}/' \
+                                f'use_rslora={args.get("use_rslora", False)}/' \
+                                f'use_dora={args.get("use_dora", False)}'
             else:
                 hyper_params = ''
         if args['sft_type'] == 'full':
             if 'use_galore' in args and args['use_galore'] == 'true':
-                hyper_params += f'galore_rank={args['galore_rank']}/' \
-                                f'galore_per_parameter={args['galore_optim_per_parameter']}/' \
-                                f'galore_with_embedding={args['galore_with_embedding']}/'
+                hyper_params += f'galore_rank={args["galore_rank"]}/' \
+                                f'galore_per_parameter={args["galore_optim_per_parameter"]}/' \
+                                f'galore_with_embedding={args["galore_with_embedding"]}/'
         if args['sft_type'] == 'llamapro':
-            hyper_params += f'num_blocks={args['llamapro_num_new_blocks']}/'
+            hyper_params += f'num_blocks={args["llamapro_num_new_blocks"]}/'
         if 'neftune_noise_alpha' in args and args['neftune_noise_alpha']:
-            hyper_params += f'neftune_noise_alpha={args['neftune_noise_alpha']}/'
+            hyper_params += f'neftune_noise_alpha={args["neftune_noise_alpha"]}/'
 
         if hyper_params.endswith('/'):
             hyper_params = hyper_params[:-1]
@@ -95,8 +95,8 @@ class ModelOutput:
     def hyper_paramters(self):
         if 'learning_rate' not in self.args:
             return ''
-        return f'lr={self.args['learning_rate']}/' \
-               f'epoch={self.args['num_train_epochs']}'
+        return f'lr={self.args["learning_rate"]}/' \
+               f'epoch={self.args["num_train_epochs"]}'
 
     @property
     def train_speed(self):
@@ -190,10 +190,10 @@ def generate_sft_report(outputs: List[ModelOutput]):
             ceval_acc = '' if not ceval_acc else f'**{ceval_acc:.3f}**'
 
         line = f'|{output.name}|' \
-               f'{output.args['model_type']}|' \
-               f'{output.args.get('dataset')}|' \
-               f'{output.args.get('train_dataset_mix_ratio', 0.)}|' \
-               f'{output.args.get('sft_type')}|' \
+               f'{output.args["model_type"]}|' \
+               f'{output.args.get("dataset")}|' \
+               f'{output.args.get("train_dataset_mix_ratio", 0.)}|' \
+               f'{output.args.get("sft_type")}|' \
                f'{output.tuner_hyper_params}|' \
                f'{output.num_trainable_parameters}({output.trainable_parameters_percentage})|' \
                f'{use_flash_attn}|' \
@@ -267,14 +267,14 @@ def generate_export_report(outputs: List[ModelOutput]):
             ceval_acc = '' if not ceval_acc else f'**{ceval_acc:.3f}**'
 
         if output.train_dataset_info:
-            dataset_info = f'{output.args['dataset']}/{output.train_dataset_info}'
+            dataset_info = f'{output.args["dataset"]}/{output.train_dataset_info}'
         else:
-            dataset_info = f'{output.args['dataset']}'
+            dataset_info = f'{output.args["dataset"]}'
         line = f'|{output.name}|' \
-               f'{output.args['model_type']}|' \
+               f'{output.args["model_type"]}|' \
                f'{dataset_info}|' \
-               f'{output.args['quant_method']}|' \
-               f'{output.args['quant_bits']}|' \
+               f'{output.args["quant_method"]}|' \
+               f'{output.args["quant_bits"]}|' \
                f'{infer_speed}|' \
                f'{gsm8k_acc}|' \
                f'{arc_acc}|' \
