@@ -320,7 +320,7 @@ class LLMTrain(BaseUI):
 
         cmd = train_stage
         if kwargs.get('deepspeed'):
-            more_params_cmd += f' --deepspeed {kwargs.pop("deepspeed")} '
+            more_params_cmd += f' --deepspeed {kwargs.pop('deepspeed')} '
         sft_args = RLHFArguments(
             **{
                 key: value.split(' ') if kwargs_is_list.get(key, False) and isinstance(value, str) else value
@@ -345,7 +345,7 @@ class LLMTrain(BaseUI):
         devices = [d for d in devices if d]
         if other_kwargs['use_ddp']:
             assert int(other_kwargs['ddp_num']) > 0
-            ddp_param = f'NPROC_PER_NODE={int(other_kwargs["ddp_num"])}'
+            ddp_param = f'NPROC_PER_NODE={int(other_kwargs['ddp_num'])}'
         assert (len(devices) == 1 or 'cpu' not in devices)
         gpus = ','.join(devices)
         cuda_param = ''

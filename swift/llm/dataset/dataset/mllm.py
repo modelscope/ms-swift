@@ -536,7 +536,7 @@ def preprocess_mind2web(dataset, **kwargs):
         what = ''
         if ':' in action:
             action, what = action[:action.find(':')], action[action.find(':') + 1:]
-        row['response'] = f'Action: {action.strip()}\nAction Input: {where.strip()}{"," + what.strip()}'
+        row['response'] = f'Action: {action.strip()}\nAction Input: {where.strip()}{',' + what.strip()}'
         return row
 
     conversations = []
