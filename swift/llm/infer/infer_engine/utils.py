@@ -82,12 +82,12 @@ class InferStreamer(InferTools):
 class StreamerMixin:
 
     def __init__(self):
-        self.queue = Queue()  # Queue[int]
+        self.queue = Queue()
 
     def __iter__(self):
         return self
 
-    def __next__(self) -> List[int]:
+    def __next__(self) -> torch.Tensor:
         value = self.queue.get()
         if value is None:
             raise StopIteration()

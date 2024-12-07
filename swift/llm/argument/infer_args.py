@@ -21,7 +21,7 @@ class LmdeployArguments:
     LmdeployArguments is a dataclass that holds the configuration for lmdeploy.
 
     Args:
-        tp (int): Tensor parallelism degree. Default is 1.
+        tp (int): Tensor parallelism size. Default is 1.
         session_len(Optional[int]): The session length, default None.
         cache_max_entry_count (float): Maximum entry count for cache. Default is 0.8.
         quant_policy (int): Quantization policy, e.g., 4, 8. Default is 0.
@@ -56,7 +56,7 @@ class VllmArguments:
         pipeline_parallel_size(int): Pipeline parallelism size. Default is 1.
         max_num_seqs (int): Maximum number of sequences. Default is 256.
         max_model_len (Optional[int]): Maximum model length. Default is None.
-        disable_custom_all_reduce (bool): Flag to disable custom all-reduce. Default is True.
+        disable_custom_all_reduce (bool): Flag to disable custom all-reduce. Default is False.
         enforce_eager (bool): Flag to enforce eager execution. Default is False.
         limit_mm_per_prompt (Optional[str]): Limit multimedia per prompt. Default is None.
         vllm_max_lora_rank (int): Maximum LoRA rank. Default is 16.
@@ -101,26 +101,25 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
     It is used to define the arguments required for model inference.
 
     Args:
+        ckpt_dir (Optional[str]): Directory to the checkpoint. Default is None.
         infer_backend (Literal): Backend to use for inference. Default is 'pt'.
             Allowed values are 'vllm', 'pt', 'lmdeploy'.
-        ckpt_dir (Optional[str]): Directory to the checkpoint. Default is None.
+        result_path (Optional[str]): Directory to store inference results. Default is None.
         max_batch_size (int): Maximum batch size for the pt engine. Default is 1.
         val_dataset_sample (Optional[int]): Sample size for validation dataset. Default is None.
-        result_dir (Optional[str]): Directory to store inference results. Default is None.
-        stream (Optional[bool]): Flag to indicate if streaming should be enabled. Default is None.
     """
     ckpt_dir: Optional[str] = field(default=None, metadata={'help': '/path/to/your/vx-xxx/checkpoint-xxx'})
     infer_backend: Literal['vllm', 'pt', 'lmdeploy'] = 'pt'
 
     result_path: Optional[str] = None
-    writer_buffer_size: int = 65536  # B
+    writer_buffer_size: int = 65536
     # for pt engine
     max_batch_size: int = 1
 
     # only for inference
     val_dataset_sample: Optional[int] = None
 
-    def get_result_path(self, folder_name, suffix: str = '.jsonl') -> str:
+    def get_result_path(self, folder_name: str, suffix: str = '.jsonl') -> str:
         result_dir = self.ckpt_dir or self.model_dir
         result_dir = to_abspath(os.path.join(result_dir, folder_name))
         os.makedirs(result_dir, exist_ok=True)
@@ -181,5 +180,5 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
         lora_request_list = []
         for i, lora_module in enumerate(self.lora_modules):
             lora_name, lora_path = lora_module.split('=')
-            lora_request_list.append(LoRARequest(lora_name, i + 1, lora_path))
+            lora_request_list.append(LoRARequest(lora_name, lora_path))
         self.lora_request_list = lora_request_list

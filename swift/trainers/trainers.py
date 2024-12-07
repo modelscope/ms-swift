@@ -1,9 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+# Part of the implementation is borrowed from huggingface/transformers.
 import os
-import pickle
-import time
 from contextlib import contextmanager, nullcontext
-from functools import partial
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -12,13 +10,13 @@ from torch import nn
 from torch.nn.utils.rnn import pad_sequence
 from transformers import Seq2SeqTrainer as HfSeq2SeqTrainer
 from transformers import Trainer as HfTrainer
-from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
 from transformers.utils import is_peft_available
 
 from swift.plugin import MeanMetric, compute_acc
 from swift.utils import JsonlWriter, Serializer, use_torchacc
 from swift.utils.torchacc_utils import ta_trim_graph
+from .arguments import Seq2SeqTrainingArguments
 from .mixin import SwiftMixin
 from .torchacc_mixin import TorchAccMixin
 
@@ -28,6 +26,7 @@ class Trainer(SwiftMixin, HfTrainer):
 
 
 class Seq2SeqTrainer(TorchAccMixin, SwiftMixin, HfSeq2SeqTrainer):
+    args: Seq2SeqTrainingArguments
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

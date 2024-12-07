@@ -1,14 +1,13 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import torch
-from torch import nn
 
 from ..base import Template
 from ..constant import MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
-from ..utils import Context, Prompt, findall
+from ..utils import findall
 
 
 class MolmoTemplate(Template):
@@ -74,7 +73,6 @@ class MolmoTemplate(Template):
         return encoded
 
     def _process_images(self, images: List, tokens: List, idx_list: List = None, labels: List = None) -> torch.Tensor:
-        from PIL import ImageOps
         from PIL.Image import Image
         import numpy as np
         if images is not None:

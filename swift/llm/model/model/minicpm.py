@@ -3,7 +3,6 @@ from functools import partial
 from types import MethodType
 from typing import Any, Dict
 
-from transformers import PretrainedConfig
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.llm import TemplateType

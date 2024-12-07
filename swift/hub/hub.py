@@ -157,7 +157,6 @@ class MSHub(HubOperation):
         token: Union[str, bool, None] = None,
         revision: Optional[str] = 'master',
         ignore_patterns: Optional[Union[List[str], str]] = None,
-        run_as_future: bool = False,
         **kwargs,
     ):
         cls.push_to_hub(repo_id, folder_path, path_in_repo, commit_message, commit_description, token, True, revision,
@@ -271,6 +270,7 @@ class MSHub(HubOperation):
             repo_id,
             folder_path,
             token or cls.ms_token,
+            private,
             commit_message=commit_message,
             ignore_file_pattern=ignore_patterns,
             revision=revision,

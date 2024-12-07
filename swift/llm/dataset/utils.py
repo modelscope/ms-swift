@@ -1,22 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Part of the implementation is borrowed from huggingface/transformers.
-import heapq
-import os
-from copy import deepcopy
-from functools import partial
-from queue import Empty, Queue
-from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
-import multiprocess
 import numpy as np
-import torch
 from datasets import Dataset as HfDataset
-from datasets import IterableDataset as HFIterableDataset
-from datasets.arrow_dataset import iflatmap_unordered
 from torch.utils.data import Dataset, IterableDataset
-from transformers import PreTrainedTokenizerBase
 
-from swift.utils import get_logger, stat_array
+from swift.utils import get_logger
 from .preprocessor import DATASET_TYPE, RowPreprocessor
 
 logger = get_logger()
@@ -96,7 +86,7 @@ class ConstantLengthDataset(IterableDataset):
         dataset_list = []
         for item in constant_length_iterator:
             dataset_list.append(item)
-        return HfDataset.from_list(dataset_list)
+        return dataset_list
 
     def __len__(self):
         return len(self.dataset)
@@ -233,7 +223,7 @@ class PackingPreprocessor(EncodePreprocessor):
 class GetLengthPreprocessor(RowPreprocessor):
 
     def __init__(self):
-        return super().__init__()
+        super().__init__()
 
     def preprocess(self, row):
         length = max([len(row[k]) for k in row.keys() if k.endswith('input_ids')])

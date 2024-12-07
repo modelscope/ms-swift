@@ -579,7 +579,7 @@ The table below provides relevant information about the datasets accessed throug
 - Tags: Tags of the dataset.
 
 
-| Dataset ID | Subset name | Dataset Size | Statistic (token) | Tags | HF Dataset ID |
+| Dataset ID | Subset Name | Dataset Size | Statistic (token) | Tags | HF Dataset ID |
 | ---------- | ----------- | -------------| ------------------| ---- | ------------- |
 |[AI-ModelScope/COIG-CQIA](https://modelscope.cn/datasets/AI-ModelScope/COIG-CQIA)|chinese_traditional<br>coig_pc<br>exam<br>finance<br>douban<br>human_value<br>logi_qa<br>ruozhiba<br>segmentfault<br>wiki<br>wikihow<br>xhs<br>zhihu|44694|331.2±693.8, min=34, max=19288|general, 🔥|-|
 |[AI-ModelScope/CodeAlpaca-20k](https://modelscope.cn/datasets/AI-ModelScope/CodeAlpaca-20k)|default|20022|99.3±57.6, min=30, max=857|code, en|[HuggingFaceH4/CodeAlpaca_20K](https://huggingface.co/datasets/HuggingFaceH4/CodeAlpaca_20K)|

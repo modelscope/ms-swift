@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from dataclasses import dataclass, field
 from functools import partial
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional
 
 import torch
 from torch import nn
@@ -15,7 +15,6 @@ from ..utils import Context, Prompt, findall
 from ..vision_utils import load_video_minicpmv_mplug_owl3, replace_video2image
 from .llama import Llama3TemplateMeta
 from .qwen import QwenTemplateMeta
-from .utils import DEFAULT_SYSTEM
 
 
 @dataclass
@@ -160,15 +159,16 @@ register_template(
 
 class MiniCPMV2_6Template(MiniCPMVTemplate):
 
-    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index,
+                    inputs: StdTemplateInputs) -> List[Context]:
         assert media_type in {'image', 'video'}
         max_num_frames = get_env_args('max_num_frames', int, 64)
         load_video = partial(load_video_minicpmv_mplug_owl3, max_num_frames=max_num_frames)
-        image_context = super().replace_tag('image', index, example)
+        image_context = super().replace_tag('image', index, inputs)
         if media_type == 'image':
             return image_context
         elif media_type == 'video':
-            return replace_video2image(load_video, example, lambda i: image_context)
+            return replace_video2image(load_video, inputs, lambda i: image_context)
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = Template._encode(self, inputs)

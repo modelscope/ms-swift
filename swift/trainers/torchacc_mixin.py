@@ -105,15 +105,14 @@ class TorchAccMixin:
                 generation_config.save_pretrained(output_dir)
 
         # model
-        if self.sft_args.fsdp_num > 1:
+        if self.args.fsdp_num > 1:
             save_ta_fsdp_checkpoint(self.model, self.tokenizer, self.args, output_dir)
         else:
             save_ta_ddp_checkpoint(self.model, self.tokenizer, self.args, output_dir)
-        sft_args = getattr(self, 'sft_args', None)
 
         # additional files
         if xm.is_master_ordinal(local=False):
-            if sft_args is not None and sft_args.sft_type == 'full':
+            if self.args is not None and self.args.sft_type == 'full':
                 additional_files = getattr(self.args, 'additional_saved_files',
                                            None) or [] + ['preprocessor_config.json']
                 if model_dir is not None:
@@ -127,14 +126,14 @@ class TorchAccMixin:
 
     def _load_optimizer_and_scheduler(self, checkpoint):
 
-        if not use_torchacc() or self.sft_args.fsdp_num == 1:
+        if not use_torchacc() or self.args.fsdp_num == 1:
             return super()._load_optimizer_and_scheduler(checkpoint)
 
         self.optimizer, self.lr_scheduler = ta_load_optimizer_and_scheduler(self.optimizer, self.lr_scheduler,
                                                                             checkpoint, self.args.device)
 
     def _save_optimizer_and_scheduler(self, output_dir):
-        if not use_torchacc() or not self.sft_args.fsdp_num == 1:
+        if not use_torchacc() or not self.args.fsdp_num == 1:
             return super()._save_optimizer_and_scheduler(output_dir)
 
         return ta_save_optimizer_and_scheduler(self.optimizer, self.lr_scheduler, output_dir)
@@ -150,7 +149,7 @@ class TorchAccMixin:
                 model = self.model
             # Loading checkpoint of TorchAcc has been done in tuner.py when
             # sft_type is 'full'.
-            if self.sft_args.fsdp_num > 1:
+            if self.args.fsdp_num > 1:
                 model = model._get_underlay_model().module.module
             if isinstance(model, PreTrainedModel):
                 return

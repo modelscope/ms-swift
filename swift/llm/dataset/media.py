@@ -1,5 +1,4 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import hashlib
 import os
 import shutil
 from typing import List, Literal, Optional, Union

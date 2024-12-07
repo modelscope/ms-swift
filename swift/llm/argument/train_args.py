@@ -1,21 +1,16 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import inspect
 import os
-import platform
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional
 
 import torch
-import torch.distributed as dist
 from transformers import Seq2SeqTrainingArguments
-from transformers.utils import is_torch_npu_available
 from transformers.utils.versions import require_version
 
-from swift.llm import MODEL_ARCH_MAPPING, MODEL_MAPPING
-from swift.plugin import LOSS_MAPPING, extra_tuners
+from swift.plugin import LOSS_MAPPING
 from swift.trainers import IntervalStrategy, TrainerFactory
-from swift.utils import (add_version_to_work_dir, get_dist_setting, get_logger, get_pai_tensorboard_dir, is_dist,
-                         is_liger_available, is_local_master, is_mp, is_pai_training_job, use_torchacc)
+from swift.utils import (add_version_to_work_dir, get_logger, get_pai_tensorboard_dir, is_liger_available,
+                         is_local_master, is_mp, is_pai_training_job, use_torchacc)
 from .base_args import BaseArguments, to_abspath
 from .tuner_args import TunerArguments
 
@@ -94,7 +89,7 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
     TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideArguments, and BaseArguments.
 
     Args:
-        add_version (bool): Flag to add version information. Default is True.
+        add_version (bool): Flag to add version information to output_dir. Default is True.
         resume_only_model (bool): Flag to resume training only the model. Default is False.
         check_model (bool): Flag to check the model is latest. Default is True.
         loss_type (Optional[str]): Type of loss function to use. Default is None.
@@ -153,7 +148,6 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
         self._add_version()
 
     def _init_deepspeed(self):
-        """Prepare deepspeed settings"""
         if self.deepspeed:
             require_version('deepspeed')
             if is_mp():
@@ -172,7 +166,6 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
             logger.info(f'Using deepspeed: {self.deepspeed}')
 
     def _init_liger(self):
-        """Liger kernel"""
         if self.use_liger:
             assert is_liger_available(), 'use_liger requires liger_kernels, try `pip install liger-kernel`'
             if self.loss_scale != 'default':
@@ -192,7 +185,7 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
         logger.info(f'Setting args.add_version: {self.add_version}')
 
     def _add_version(self):
-        """Prepare the output folder"""
+        """Prepare the output_dir"""
         if self.add_version:
             self.output_dir = add_version_to_work_dir(self.output_dir)
             logger.info(f'output_dir: {self.output_dir}')

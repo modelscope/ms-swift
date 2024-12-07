@@ -17,7 +17,7 @@ from modelscope.hub.utils.utils import get_cache_dir
 from torch.nn import Linear, Module
 from transformers.integrations import is_deepspeed_zero3_enabled
 
-from .env import get_dist_setting, is_dist, is_dist_ta, is_local_master
+from .env import get_dist_setting
 from .logger import get_logger
 
 logger = get_logger()

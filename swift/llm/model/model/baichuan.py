@@ -4,7 +4,7 @@ from typing import Any, Dict
 
 import torch.nn.functional as F
 from torch import Tensor
-from transformers import AutoConfig, PretrainedConfig
+from transformers import AutoConfig
 
 from swift.llm import TemplateType
 from swift.utils import get_logger
@@ -17,11 +17,11 @@ logger = get_logger()
 
 
 def get_model_tokenizer_baichuan(model_dir: str,
-                                 model_config: PretrainedConfig,
+                                 model_info: ModelInfo,
                                  model_kwargs: Dict[str, Any],
                                  load_model: bool = True,
                                  **kwargs):
-    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_config, model_kwargs, load_model, **kwargs)
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
     # baichuan-13b does not implement the `get_input_embeddings` function
     # fix gradient_checkpointing bug
     try:

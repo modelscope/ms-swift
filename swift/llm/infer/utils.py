@@ -5,7 +5,7 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional, Tuple
 
-from swift.llm import ExportArguments, Template
+from swift.llm import InferArguments, Template
 from swift.plugin import extra_tuners
 from swift.tuners import Swift
 from swift.utils import get_logger
@@ -122,7 +122,7 @@ class InferCliState:
         return query
 
 
-def _prepare_pt_engine(args: ExportArguments, pt_engine):
+def _prepare_pt_engine(args: InferArguments, pt_engine):
     if args.train_type in extra_tuners:
         extra_tuners[args.train_type].from_pretrained(pt_engine.model, args.ckpt_dir, inference_mode=True)
     else:
@@ -149,7 +149,7 @@ def _prepare_pt_engine(args: ExportArguments, pt_engine):
             pt_engine.model = Swift.from_pretrained(pt_engine.model, args.ckpt_dir, inference_mode=True)
 
 
-def prepare_pt_engine_template(args: ExportArguments, load_model: bool = True, **kwargs) -> Tuple[PtEngine, Template]:
+def prepare_pt_engine_template(args: InferArguments, load_model: bool = True, **kwargs) -> Tuple[PtEngine, Template]:
     from .infer import SwiftInfer
     if args.tuner_backend == 'unsloth' and args.weight_type == 'adapter':
         kwargs['load_model'] = False

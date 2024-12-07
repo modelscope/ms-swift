@@ -1,11 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional
 
 import torch
 import transformers
 from packaging import version
-from torch import nn
 
 from ..base import Template
 from ..constant import MLLMTemplateType
@@ -57,15 +56,16 @@ register_template(
 
 class LlavaVideoHfTemplate(Template):
 
-    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index,
+                    inputs: StdTemplateInputs) -> List[Context]:
         if media_type == 'image':
             return ['<image>\n']
         assert media_type == 'video'
-        media_file = example['videos'][index]
+        media_file = inputs.videos[index]
         if media_file.rsplit('.', 1)[-1] in {'jpg', 'png'}:
             return ['<image>\n']
         else:
-            example['videos'][index] = load_video_llava(example['videos'][index])
+            inputs.videos[index] = load_video_llava(inputs.videos[index])
             return ['<video>\n']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
@@ -136,11 +136,12 @@ register_template(
 
 class LLava1_6YiHfTemplate(Llava1_6HfTemplate):
 
-    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index,
+                    inputs: StdTemplateInputs) -> List[Context]:
         if self.mode == 'vllm':
             return [[64000], '\n']
         else:
-            return super().replace_tag(media_type, index, example)
+            return super().replace_tag(media_type, index, inputs)
 
 
 register_template(ChatmlTemplateMeta(
@@ -244,7 +245,8 @@ class LLavaTemplate(Template):
     skip_prompt = False
     use_model = True
 
-    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index,
+                    inputs: StdTemplateInputs) -> List[Context]:
         assert media_type == 'image'
         return [[-200], '\n']
 

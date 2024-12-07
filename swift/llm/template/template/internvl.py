@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from functools import partial
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal
 
 import torch
 from torch import nn
@@ -166,7 +166,7 @@ class Internvl2Template(InternvlTemplate):
 
 # TODO: self.padding_side = 'left'
 
-_internvl2_system = ('你是由上海人工智能实验室联合商汤科技开发的书生多模态大模型，英文名叫InternVL, 是一个有用无害的人工智能助手。')
+_internvl2_system = '你是由上海人工智能实验室联合商汤科技开发的书生多模态大模型，英文名叫InternVL, 是一个有用无害的人工智能助手。'
 register_template(
     ChatmlTemplateMeta(
         MLLMTemplateType.internvl2,

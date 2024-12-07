@@ -4,12 +4,13 @@ import sys
 from functools import partial, wraps
 from typing import Any, Dict
 
-from transformers import AutoConfig, PretrainedConfig
+from transformers import AutoConfig
 
 from swift.llm import TemplateType
 from ..constant import MLLMModelType
 from ..model_arch import ModelArch
-from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal, register_model
+from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,
+                        get_model_tokenizer_with_flash_attn, register_model)
 from ..utils import ModelInfo, git_clone_github, safe_snapshot_download
 
 
@@ -22,7 +23,7 @@ def get_model_tokenizer_llava_llama(model_dir: str,
 
     kwargs['model_config'] = LlavaConfig.from_pretrained(model_dir)
     kwargs['automodel_class'] = kwargs['automodel_class'] or LlavaForConditionalGeneration
-    model, tokenizer = get_model_tokenizer_multimodal(model_dir, model_info, model_kwargs, load_model, **kwargs)
+    model, processor = get_model_tokenizer_multimodal(model_dir, model_info, model_kwargs, load_model, **kwargs)
     return model, processor
 
 

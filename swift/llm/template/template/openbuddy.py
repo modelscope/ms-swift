@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
-from ..constant import LLMTemplateType, MLLMTemplateType
+from ..constant import LLMTemplateType
 from ..register import TemplateMeta, register_template
 
 OPENBUDDY_DEFAULT_SYSTEM = (

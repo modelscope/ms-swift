@@ -301,7 +301,7 @@ register_dataset(
 
 class MultiRoleAgentPreprocessor(RowPreprocessor):
 
-    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         conv = row['conversations']
         res_prompt = """\n\n【注意事项】\n1. 这是聊天室，不要发送私信给任何人\n2. 仅代表你个人说话,不要扮演其他人，
         只根据对话历史进行回复\n3. 长话短说，不要说太多话，不要超过50字 """
@@ -535,7 +535,7 @@ register_dataset(
 
 class GuanacoPreprocessor(RowPreprocessor):
 
-    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         instruction = row['instruction']
         input = row['input']
         output = row['output']
@@ -579,7 +579,7 @@ register_dataset(
 
 class Dolly15kPreprocessor(RowPreprocessor):
 
-    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         instruction = row['instruction']
         context = row['context']
         response = row['response']
@@ -610,7 +610,7 @@ register_dataset(
 
 class OrpoDPOMix40kPreprocessor(MessagesPreprocessor):
 
-    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         if row['source'] == 'toxic-dpo-v0.2':
             return
         return super().preprocess(row)

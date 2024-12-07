@@ -673,7 +673,7 @@ class Template(ProcessorMixin):
     def post_process_generate_response(self, response: str, inputs: StdTemplateInputs) -> str:
         return response
 
-    def pre_forward_hook(self, model: nn.Module, args, kwargs, *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+    def pre_forward_hook(self, model: nn.Module, args, kwargs):
         from swift.llm import to_device
         keep_kwargs = {
             k: v
@@ -754,7 +754,7 @@ class Template(ProcessorMixin):
         return new_batch
 
     @staticmethod
-    def fetch_inputs(batch: List[Dict[str, Any]], keys: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+    def fetch_inputs(batch: List[Dict[str, Any]], keys: Optional[List[str]] = None) -> Dict[str, Any]:
         from swift.llm import RowPreprocessor
         rows = RowPreprocessor.rows_to_batched(batch)
         if keys is not None:

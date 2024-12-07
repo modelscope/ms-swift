@@ -28,15 +28,15 @@ def get_supported_tuners():
 class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, TemplateArguments, ModelArguments):
     """
     BaseArguments class is a dataclass that inherits from multiple argument classes:
-    ModelArguments, TemplateArguments, and DataArguments.
+    GenerationArguments, QuantizeArguments, DataArguments, TemplateArguments, ModelArguments.
 
     Args:
         tuner_backend(str): Support peft or unsloth.
         train_type(str): The training type, support all supported tuners and `full`.
         seed (int): Random seed for reproducibility. Default is 42.
         model_kwargs (Optional[str]): Additional keyword arguments for the model. Default is None.
-        use_hf (bool): Flag to determine if Hugging Face should be used. Default is False.
         load_dataset_config (bool): Flag to determine if dataset configuration should be loaded. Default is False.
+        use_hf (bool): Flag to determine if Hugging Face should be used. Default is False.
         hub_token (Optional[str]): SDK token for authentication. Default is None.
         ignore_args_error (bool): Flag to ignore argument errors for notebook compatibility. Default is False.
         use_swift_lora (bool): Use swift lora, a compatible argument
@@ -143,7 +143,6 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
             self.model = ckpt_dir or self.model
 
     def _init_device(self):
-        """Prepare ddp of course"""
         if is_dist():
             if is_torch_npu_available():
                 torch.npu.set_device(self.local_rank)

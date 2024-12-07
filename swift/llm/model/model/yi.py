@@ -3,7 +3,7 @@ import os
 import sys
 from typing import Any, Dict
 
-from transformers import AutoTokenizer, PretrainedConfig
+from transformers import AutoTokenizer
 
 from swift.llm import TemplateType
 from swift.utils import get_logger
