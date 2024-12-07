@@ -22,7 +22,7 @@ For command line inference, you can refer to the link mentioned in the second po
 
 ## Deployment
 
-You can execute deployment using `swift deploy`. Currently, SWIFT supports three inference frameworks: pt (native torch), vLLM, and LMDeploy. You can switch between them using `--infer_backend pt/vllm/lmdeploy`. 
+You can execute deployment using `swift deploy`. Currently, SWIFT supports three inference frameworks: pt (native torch), vLLM, and LMDeploy. You can switch between them using `--infer_backend pt/vllm/lmdeploy`.
 Apart from pt, vllm and lmdeploy have their own model support ranges, so please refer to the official documentation of each to determine availability and prevent runtime errors.
 
 You can find deployment examples [here](https://github.com/modelscope/ms-swift/tree/main/examples/infer).

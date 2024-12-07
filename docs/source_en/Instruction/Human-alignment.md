@@ -14,7 +14,7 @@ The KTO algorithm has a special data format that only requires $(x,y,\text{label
 Hyperparameters:
 - `beta`: KL regularization coefficient. A larger value imposes a stronger penalty for deviation from the reference model. Default is 0.1.
 
-It is recommended to perform SFT training on the preferred answers from the preference dataset before starting DPO training to ensure the data meets the distribution requirements of the DPO algorithm. 
+It is recommended to perform SFT training on the preferred answers from the preference dataset before starting DPO training to ensure the data meets the distribution requirements of the DPO algorithm.
 We also mixed SFT loss into the DPO loss for stable training. You can adjust the coefficient of SFT loss with the hyperparameter `rpo_alpha`, which defaults to `1.`.
 
 Reference the training script [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf/dpo.sh).
@@ -94,7 +94,7 @@ Reference the training script [here](https://github.com/modelscope/ms-swift/tree
 [Paper on arXiv](https://arxiv.org/abs/2405.14734)
 
 Hyperparameters:
-- beta: Coefficient before the implicit reward, default is 2.0. 
+- beta: Coefficient before the implicit reward, default is 2.0.
 - simpo_gamma: Reward margin term, default is 1.0.
 - cpo_alpha: The mixed CPO NLL loss for improving training stability; defaults to 1.0, set to 0.0 to use the original SimPO algorithm.
 

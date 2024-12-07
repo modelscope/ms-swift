@@ -293,7 +293,7 @@ Training parameters include the [basic parameters](#基本参数), [Seq2SeqTrain
 - check_model: Check local model files for corruption or modification and give a prompt, default is True. If in an offline environment, please set to False.
 - loss_type: Type of loss, default uses the model's built-in loss function.
 - num_labels: To be specified for classification models, representing the number of labels, default is None.
-- 
+-
 - packing: Whether to use packing, default is False.
 - 🔥lazy_tokenize: Whether to use lazy_tokenize, default is False during LLM training, default is True during MLLM training.
 
@@ -314,13 +314,13 @@ RLHF parameters include the [training parameters](#training parameters) and also
 
 - 🔥beta: KL regularization term coefficient, default is `None`, i.e., for `simpo` algorithm default is `2.`, for other algorithms default is `0.1`. Refer to the [documentation](./Human-alignment.md) for specifics.
 - label_smoothing: Whether to use DPO smoothing, default value is `0`, generally set between 0~0.5.
-- 
+-
 - 🔥rpo_alpha: Weight for adding sft_loss in DPO, default is `1`. The final loss is `KL_loss + rpo_alpha * sft_loss`.
-- 
+-
 - cpo_alpha: The coefficient of nll loss in CPO/SimPO loss, default is `1.`.
-- 
+-
 - simpo_gamma: Reward margin term in SimPO algorithm, recommended to set between 0.5-1.5 in the paper, default is `1.`.
-- 
+-
 - desirable_weight: Loss weight for desirable response in KTO algorithm $\lambda_D$, default is `1.`.
 - undesirable_weight: Loss weight for undesirable response in KTO paper $\lambda_U$, default is `1.`.
 

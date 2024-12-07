@@ -57,7 +57,7 @@ class QwenVLTemplate(Template):
                 return [f'Picture {index + 1}: <img>{image}</img>\n']
 
     def replace_object(self, object_: Dict[str, Any], index: int, inputs: StdTemplateInputs) -> List[Context]:
-        return [f'<ref>{object_["caption"]}</ref>']
+        return [f'<ref>{object_['caption']}</ref>']
 
     def replace_box(self, object_: Dict[str, Any], index: int, inputs: StdTemplateInputs) -> List[Context]:
         if isinstance(object_['bbox'][0], list):
@@ -67,8 +67,8 @@ class QwenVLTemplate(Template):
             return [all_objects]
         else:
             return [
-                f'<box>({object_["bbox"][0]},{object_["bbox"][1]}),'
-                f'({object_["bbox"][2]},{object_["bbox"][3]})</box>'
+                f'<box>({object_['bbox'][0]},{object_['bbox'][1]}),'
+                f'({object_['bbox'][2]},{object_['bbox'][3]})</box>'
             ]
 
 
@@ -207,8 +207,8 @@ class Qwen2VLTemplate(Template):
                 return [all_objects]
             else:
                 return [
-                    f'<|box_start|>({object_["bbox"][0]},{object_["bbox"][1]}),'
-                    f'({object_["bbox"][2]},{object_["bbox"][3]})<|box_end|>'
+                    f'<|box_start|>({object_['bbox'][0]},{object_['bbox'][1]}),'
+                    f'({object_['bbox'][2]},{object_['bbox'][3]})<|box_end|>'
                 ]
         else:
             return ['<bbox>']

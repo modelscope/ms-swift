@@ -2,7 +2,7 @@
 
 The table below introduces the models integrated with ms-swift:
 
-- Model ID: Model ID for the Magic Tower Model
+- Model ID: Model ID for the ModelScope Model
 - HF Model ID: Hugging Face Model ID
 - Model Type: Type of the model
 - Default Template: Default conversation template
@@ -572,7 +572,7 @@ The table below introduces the models integrated with ms-swift:
 
 ## Datasets
 The table below introduces information about the datasets integrated with ms-swift:
-- Dataset ID: Magic Tower dataset ID
+- Dataset ID: ModelScope dataset ID
 - HF Dataset ID: Hugging Face dataset ID
 - Subset Name: Name of the subset
 - Dataset Size: Size of the dataset

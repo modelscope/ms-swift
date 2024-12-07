@@ -29,7 +29,7 @@ Tuners refer to additional structural components attached to a model, aimed at r
     - `model`: An instance of `torch.nn.Module` or `SwiftModel`, the model to be loaded.
     - `config`: An instance of `SwiftConfig` or `PeftConfig`, or a dictionary of custom tuner names paired with their respective configs.
   - Return Value: An instance of `SwiftModel` or `PeftModel`.
-  
+
 - `Swift.merge_and_unload(model)`
   - Function: Merges LoRA weights back into the original model and completely unloads the LoRA component.
   - Parameters:
@@ -75,7 +75,7 @@ Below is a list of interfaces that users may call. Other internal or less recomm
   - Function: Creates parameter groups based on the loaded tuners; currently, this only applies to the `LoRA+` algorithm.
   - Parameters:
     - `defaults`: Default parameters for the `optimizer_groups`, such as `lr` and `weight_decay`.
-  - Return Value: 
+  - Return Value:
     - The created `optimizer_groups`.
 
 - `SwiftModel.add_weighted_adapter(self, ...)`

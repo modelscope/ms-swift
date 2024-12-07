@@ -255,7 +255,7 @@ pip install git+https://github.com/huggingface/transformers@21fac7abba2a37fae861
 Models do not have to be merged. See the documentation on [VLLM Inference Acceleration and Deployment](https://swift.readthedocs.io/zh-cn/latest/LLM/VLLM%E6%8E%A8%E7%90%86%E5%8A%A0%E9%80%9F%E4%B8%8E%E9%83%A8%E7%BD%B2.html#id11).
 
 ### Q13: When using inference, can I get the predicted probabilities without using inference_client functions? Can I obtain results using the inference function from the single sample inference demo?
-Modify `generation_config.output_logits`. 
+Modify `generation_config.output_logits`.
 `model.generation_config.output_logits = True`
 `model.generation_config.return_dict_in_generate = True`
 
@@ -375,9 +375,9 @@ See the document [LLM Evaluation Documentation](https://swift.readthedocs.io/zh-
 Custom evaluation datasets, both plain text and multimodal, must match the data format (pattern) of an official dataset. See the document [LLM Evaluation Documentation](https://swift.readthedocs.io/zh-cn/latest/Instruction/LLM%E8%AF%84%E6%B5%8B%E6%96%87%E6%A1%A3.html) for details.
 
 ### Q3: Error with mmengine in python3.11 environment during evaluation
-Try using the Python 3.10 environment. Or first install all dependencies: 
-`pip3 install evalscope[all]`, 
-then apply the patch: 
+Try using the Python 3.10 environment. Or first install all dependencies:
+`pip3 install evalscope[all]`,
+then apply the patch:
 `pip3 install https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/package/evalscope-0.5.3.post1-py3-none-any.whl`.
 
 ### Q4: After manually downloading the official evaluation dataset, can Swift eval be configured for local path evaluation?

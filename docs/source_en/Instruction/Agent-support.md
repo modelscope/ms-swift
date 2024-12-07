@@ -22,7 +22,7 @@ The ToolBench format mainly consists of:
 1. System part with the API list (tools/system)
 2. User request part (user)
 3. Model response part (assistant)
-   - Note: The model response needs to include the fields `Action: some-api-to-call Action Input: some-parameter-to-input` for API parsing. SWIFT does not support automatic generation of this part. Because the model's responses may contain additional information, please refer to the second point below for details. 
+   - Note: The model response needs to include the fields `Action: some-api-to-call Action Input: some-parameter-to-input` for API parsing. SWIFT does not support automatic generation of this part. Because the model's responses may contain additional information, please refer to the second point below for details.
    - It is advisable to include a CoT (Chain of Thought) process in the `Thought:` section to improve learning effectiveness, for example: `Thought: I think I know how to complete this task. Since the user needs xxx, the first step is xxx, the second step...`, followed by the Action section.
 4. Call part (tool) - This part is actually called by the user and returned to the model (or called by the agent framework instead). It represents the actual API return value.
 5. The model's response section (assistant) analyzes the API return values and provides conclusions based on that analysis.
@@ -48,7 +48,7 @@ The ReACT format mainly consists of:
 1. System part containing the API list (tools/system)
 2. User request part (user)
 3. Model response part (assistant)
-   - Note: The model response needs to include the fields `Action: some-api-to-call Action Input: some-parameter-to-input Observation: api-response` for API parsing and execution. SWIFT does not support automatic generation of this part as well, due to the inclusion of potentially extra information. 
+   - Note: The model response needs to include the fields `Action: some-api-to-call Action Input: some-parameter-to-input Observation: api-response` for API parsing and execution. SWIFT does not support automatic generation of this part as well, due to the inclusion of potentially extra information.
    - It is advisable to include a CoT process in the `Thought:` section for better learning, such as `Thought: I think I know how to complete this task. Since the user needs xxx, the first step is xxx, the second step...`, followed by the Action part.
    - The difference between the ReACT format and the ToolBench format is that there is no `tool` role in the ReACT format. After `Observation:`, the user needs to concatenate the API call results, and then the model provides feedback based on that content. Therefore, in the model's response section, it may include multiple calls (multiple Thought/Action/Action Input/Observation).
    - ReACT requires at least one round of conversation to fulfill a user request.
