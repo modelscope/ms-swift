@@ -239,7 +239,10 @@ def safe_snapshot_download(model_id_or_path: str,
     """
     if ignore_file_pattern is None:
         ignore_file_pattern = []
-    ignore_file_pattern += ['*.zip', '*.gguf', '*.pth', '*.pt', 'consolidated*', 'onnx', 'safetensors.md']
+    ignore_file_pattern += [
+        '*.zip', '*.gguf', '*.pth', '*.pt', 'consolidated*', 'onnx', '*.safetensors.md', '*.msgpack', '*.onnx', '*.ot',
+        '*.h5'
+    ]
     if not download_model:
         ignore_file_pattern += ['*.bin', '*.safetensors']
     hub = get_hub(use_hf)
