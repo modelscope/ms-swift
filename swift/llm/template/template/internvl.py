@@ -182,3 +182,10 @@ register_template(
         template_cls=Internvl2Template,
         placeholder_tokens=['<IMG_CONTEXT>'],
     ))
+
+register_template(
+    ChatmlTemplateMeta(
+        MLLMTemplateType.internvl2_5,
+        template_cls=Internvl2Template,
+        placeholder_tokens=['<IMG_CONTEXT>'],
+        default_system='你是书生·万象，英文名是InternVL，是由上海人工智能实验室、清华大学及多家合作单位联合开发的多模态大语言模型。'))

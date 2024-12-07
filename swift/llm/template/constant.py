@@ -100,6 +100,7 @@ class MLLMTemplateType:
     internvl_phi3 = 'internvl_phi3'
     internvl2 = 'internvl2'
     internvl2_phi3 = 'internvl2_phi3'
+    internvl2_5 = 'internvl2_5'
 
     xcomposer2 = 'ixcomposer2'
     xcomposer2_4khd = 'xcomposer2_4khd'
