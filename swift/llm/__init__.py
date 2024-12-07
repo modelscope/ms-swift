@@ -28,10 +28,10 @@ if TYPE_CHECKING:
     from .model import (MODEL_MAPPING, ModelType, get_model_tokenizer, safe_snapshot_download, HfConfigFactory,
                         ModelInfo, ModelMeta, ModelKeys, register_model_arch, MultiModelKeys, ModelArch, get_model_arch,
                         MODEL_ARCH_MAPPING, get_model_info_meta, get_model_name)
-    from .dataset import (AlpacaPreprocessor, MessagesPreprocessor, AutoPreprocessor, DATASET_MAPPING, MediaResource,
-                          register_dataset, register_dataset_info, EncodePreprocessor, LazyLLMDataset,
-                          ConstantLengthDataset, standard_keys, load_dataset, DATASET_TYPE, sample_dataset,
-                          RowPreprocessor)
+    from .dataset import (AlpacaPreprocessor, ResponsePreprocessor, MessagesPreprocessor, AutoPreprocessor,
+                          DATASET_MAPPING, MediaResource, register_dataset, register_dataset_info, EncodePreprocessor,
+                          LazyLLMDataset, ConstantLengthDataset, standard_keys, load_dataset, DATASET_TYPE,
+                          sample_dataset, RowPreprocessor)
     from .utils import (deep_getattr, to_device, History, history_to_messages, messages_to_history, Processor,
                         save_checkpoint, ProcessorMixin)
     from .base import SwiftPipeline
@@ -72,7 +72,7 @@ else:
             'AlpacaPreprocessor', 'ClsPreprocessor', 'ComposePreprocessor', 'MessagesPreprocessor', 'DATASET_MAPPING',
             'MediaResource', 'register_dataset', 'register_dataset_info', 'EncodePreprocessor', 'LazyLLMDataset',
             'ConstantLengthDataset', 'standard_keys', 'load_dataset', 'DATASET_TYPE', 'sample_dataset',
-            'RowPreprocessor'
+            'RowPreprocessor', 'ResponsePreprocessor'
         ],
         'utils': [
             'deep_getattr', 'to_device', 'History', 'history_to_messages', 'messages_to_history', 'Processor',

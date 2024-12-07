@@ -1,8 +1,8 @@
 # Command Line Parameters
 
-The introduction to command line parameters will cover basic parameters, atomic parameters, and integration parameters. The final list of parameters used in the command line is the integration parameters. The integration parameters inherit from the basic parameters and some atomic parameters.
+The introduction to command line parameters will cover base arguments, atomic arguments, and integration arguments. The final list of arguments used in the command line is the integration arguments. The integration arguments inherit from the base arguments and some atomic arguments.
 
-## Basic Parameters
+## Base Arguments
 
 - 🔥tuner_backend: Optional values are 'peft' and 'unsloth', default is 'peft'
 - 🔥train_type: Default is 'lora'. Optional values: 'lora', 'full', 'longlora', 'adalora', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft', 'reft'
@@ -12,10 +12,10 @@ The introduction to command line parameters will cover basic parameters, atomic 
 - use_hf: Default is False. Controls model and dataset downloading, and model pushing to the hub.
 - hub_token: Hub token. You can check the modelscope hub token [here](https://modelscope.cn/my/myaccesstoken).
 
-### Model Parameters
+### Model Arguments
 
 - 🔥model: Model ID or local path to the model. If it's a custom model, please use it with `model_type` and `template`.
-- 🔥model_type: Model type. The same model architecture, template, and loading process define a model type.
+- model_type: Model type. The same model architecture, template, and loading process define a model type.
 - model_revision: Model version.
 - 🔥torch_dtype: Data type for model weights, supports `float16`, `bfloat16`, `float32`, default is read from the config file.
 - attn_impl: Attention type, supports `flash_attn`, `sdpa`, `eager`, default is sdpa.
@@ -23,9 +23,9 @@ The introduction to command line parameters will cover basic parameters, atomic 
 - device_map: Configuration of the device map used by the model, e.g., 'auto', 'cpu', json string, json file path.
 - local_repo_path: Some models require a GitHub repo when loading. To avoid network issues during `git clone`, you can directly use a local repo. This parameter needs to pass the local repo path, default is `None`.
 
-### Data Parameters
+### Data Arguments
 
-- 🔥dataset: Dataset ID or path. The format is `dataset_id or dataset_path:sub_dataset#sample_count`, where sub_dataset and sample_count are optional. Use spaces to pass multiple datasets. Local datasets support jsonl, csv, json, and folders.
+- 🔥dataset: Dataset ID or path. The format is `dataset_id or dataset_path:sub_dataset#sample_count`, where sub_dataset and sample_count are optional. Use spaces to pass multiple datasets. Local datasets support jsonl, csv, json, and folders, etc.
 - 🔥val_dataset: Validation dataset ID or path.
 - 🔥split_dataset_ratio: How to split the training and validation sets when val_dataset is not specified, default is 0.01.
 - data_seed: Random seed for the dataset, default is 42.
@@ -40,7 +40,7 @@ The introduction to command line parameters will cover basic parameters, atomic 
 - custom_dataset_info: Custom simple dataset registration, refer to [Add New Dataset](../Customization/New-dataset.md).
 - custom_register_path: Custom complex dataset registration, refer to [Add New Dataset](../Customization/New-dataset.md).
 
-### Template Parameters
+### Template Arguments
 
 - 🔥template: Template type, default uses the corresponding template type of the model. If it is a custom model, please refer to [Supported Models and Datasets](./Supported-models-and-datasets) and manually input this field.
 - 🔥system: Custom system field, default is None, uses the default system of the template.
@@ -53,21 +53,21 @@ The introduction to command line parameters will cover basic parameters, atomic 
 - use_chat_template: Use chat template or generation template, default is `True`. `swift pt` is automatically set to the generation template.
 - template_backend: Use swift or jinja for inference. If using jinja, it will utilize transformers' `apply_chat_template`. Default is swift.
 
-### Generation Parameters
+### Generation Arguments
 
 Refer to the [generation_config](https://huggingface.co/docs/transformers/main_classes/text_generation#transformers.GenerationConfig) documentation.
 
 - 🔥max_new_tokens: Maximum new token count supported during inference, default is None (no limit).
 - temperature: Temperature parameter, default is None, read from generation_config.json.
   - Note: The do_sample parameter has been removed in this version; set temperature to 0 for the same effect.
-- top_k: Top_k parameter, read from generation_config.json.
-- top_p: Top_p parameter, read from generation_config.json.
+- top_k: Top_k parameter, default is None, read from generation_config.json.
+- top_p: Top_p parameter, default is None, read from generation_config.json.
 - repetition_penalty: Penalty for repetition, default is None, read from generation_config.json.
 - num_beams: Number of beams for beam search, default is 1.
 - 🔥stream: Stream output, default is `False`.
 - stop_words: Additional stop words, default is `[]`.
 
-### Quantization Parameters
+### Quantization Arguments
 
 The following are quantization parameters for loading models. For specific meanings, see the [Quantization](https://huggingface.co/docs/transformers/main/en/main_classes/quantization) documentation. This does not include quantization parameters related to `swift export`, such as `gptq` and `awq`.
 
@@ -79,9 +79,9 @@ The following are quantization parameters for loading models. For specific meani
 - bnb_4bit_use_double_quant: Whether to use double quantization, default is `True`.
 - bnb_4bit_quant_storage: BNB quantization storage type, default is None.
 
-## Atomic Parameters
+## Atomic Arguments
 
-### Seq2SeqTrainer Parameters
+### Seq2SeqTrainer Arguments
 
 This parameter list inherits from transformers `Seq2SeqTrainingArguments`, with default values overridden by ms-swift. For unlisted items, refer to the [HF Official Documentation](https://huggingface.co/docs/transformers/main/en/main_classes/trainer#transformers.Seq2SeqTrainingArguments).
 
@@ -105,7 +105,7 @@ Other important parameters:
 - 🔥num_train_epochs: Number of training epochs, default is 3.
 - 🔥gradient_accumulation_steps: Gradient accumulation, default is 1.
 - 🔥gradient_checkpointing_kwargs: Parameters passed to `torch.utils.checkpoint`. For example, set to `{"use_reentrant": false}`.
-- save_strategy: Strategy for saving the model, options are 'no', 'steps', 'epoch', default is 'steps'.
+- 🔥save_strategy: Strategy for saving the model, options are 'no', 'steps', 'epoch', default is 'steps'.
 - 🔥save_steps: Default is 500.
 - 🔥save_total_limit: Default is None, saving all checkpoints.
 - 🔥eval_strategy: Evaluation strategy, follows `save_strategy`.
@@ -115,7 +115,7 @@ Other important parameters:
 - save_on_each_node: Default is False. To be considered in multi-machine training.
 - save_only_model: Default is False. Whether to save only model weights.
 - 🔥resume_from_checkpoint: Checkpoint resume parameter, default is None.
-- 🔥ddp_backend: Default is None.
+- 🔥ddp_backend: Default is None, optional values are "nccl", "gloo", "mpi", "ccl", "hccl", "cncl", "mccl".
 - 🔥ddp_find_unused_parameters: Default is None.
 - 🔥dataloader_num_workers: Default is 0.
 - 🔥neftune_noise_alpha: Noise coefficient added by neftune, default is 0. Generally can be set to 5, 10, 15.
@@ -123,7 +123,7 @@ Other important parameters:
 - hub_model_id: Default is None.
 - hub_private_repo: Default is False.
 
-### Tuner Parameters
+### Tuner Arguments
 
 - 🔥freeze_vit: Freeze ViT. Default is True. Applicable for full parameters and LoRA.
 - 🔥freeze_aligner: Freeze aligner. Default is True, applicable for full parameters and LoRA.
@@ -132,7 +132,7 @@ Other important parameters:
 - 🔥target_regex: Specify a regex expression for the LoRA module. Default is `None`, if this value is provided, target_modules does not take effect. This parameter is not limited to LoRA.
 - modules_to_save: After the tuner is attached, the original model's modules used during training and storage, default is `[]`. This parameter is not limited to LoRA.
 
-#### Full Parameters
+#### Full Arguments
 
 - freeze_parameters: Prefix of parameters to be frozen, default is `[]`.
 - freeze_parameters_ratio: Ratio of parameters to freeze from the bottom up, default is 0. Setting it to 1 will freeze all parameters. Combine with `trainable_parameters` to set trainable parameters.
@@ -244,14 +244,14 @@ The following parameters are effective when `train_type` is set to `reft`.
 
 - use_liger: Use liger-kernel for training.
 
-#### TorchAcc
+### TorchAcc Arguments
 
 - model_layer_cls_name: Class name of Decoder layer.
 - metric_warmup_step: Warmup steps for TorchAcc, default is 1.
 - fsdp_num: Number of FSDP, default is 1.
 - acc_steps: Number of steps for evaluating accuracy during training, default is 1.
 
-### LMDeploy Parameters
+### LMDeploy Arguments
 
 Parameter meanings can be found in the [lmdeploy documentation](https://lmdeploy.readthedocs.io/en/latest/api/pipeline.html#turbomindengineconfig).
 
@@ -261,7 +261,7 @@ Parameter meanings can be found in the [lmdeploy documentation](https://lmdeploy
 - quant_policy: Default value is `0`.
 - vision_batch_size: Default value is `1`.
 
-### vLLM Parameters
+### vLLM Arguments
 
 Parameter meanings can be found in the [vllm documentation](https://docs.vllm.ai/en/latest/models/engine_args.html).
 
@@ -276,17 +276,17 @@ Parameter meanings can be found in the [vllm documentation](https://docs.vllm.ai
 - vllm_max_lora_rank: Default value is `16`. Parameters supported by vllm for LoRA.
 - lora_modules: Used to support dynamic switching between multiple LoRAs, default is `[]`.
 
-### Merge Parameters
+### Merge Arguments
 
 - 🔥merge_lora: Whether to merge LoRA. This parameter supports LoRA, llmpro, longlora, default is False.
 - safe_serialization: Whether to store safetensors, default is True.
 - max_shard_size: Maximum size of a single storage file, default is '5GB'.
 
-## Integration Parameters
+## Integration Arguments
 
-### Training Parameters
+### Training Arguments
 
-Training parameters include the [basic parameters](#基本参数), [Seq2SeqTrainer parameters](#Seq2SeqTrainer参数), [tuner parameters](#tuner参数), [torchacc parameters](#torchacc参数), and also include the following部分:
+Training arguments include the [base arguments](#base-arguments), [Seq2SeqTrainer arguments](#Seq2SeqTrainer-arguments), [tuner arguments](#tuner-arguments), [torchacc arguments](#torchacc-arguments), and also include the following parts:
 
 - add_version: Add directory to output_dir with `'<version>-<timestamp>'` to prevent weight overwrite, default is True.
 - resume_only_model: If resume_from_checkpoint, only resume model weights, default is False.
@@ -303,9 +303,9 @@ Training parameters include the [basic parameters](#基本参数), [Seq2SeqTrain
 - optimizer: Custom optimizer name for plugin.
 - metric: Custom metric name for plugin.
 
-### RLHF Parameters
+### RLHF Arguments
 
-RLHF parameters include the [training parameters](#training parameters) and also contain the following:
+RLHF arguments inherit from the [training arguments](#training-arguments).
 
 - 🔥rlhf_type: Alignment algorithm type, supports `dpo`, `orpo`, `simpo`, `kto`, `cpo`.
 - ref_model: Original comparison model in algorithms like DPO.
@@ -324,19 +324,19 @@ RLHF parameters include the [training parameters](#training parameters) and also
 - desirable_weight: Loss weight for desirable response in KTO algorithm $\lambda_D$, default is `1.`.
 - undesirable_weight: Loss weight for undesirable response in KTO paper $\lambda_U$, default is `1.`.
 
-### Inference Parameters
+### Inference Arguments
 
-Inference parameters include the [basic parameters](#basic parameters), [merge parameters](#merge parameters), [vLLM parameters](#vllm parameters), [LMDeploy parameters](#LMDeploy parameters), and also contain the following:
+Inference arguments include the [base arguments](#base-arguments), [merge arguments](#merge-arguments), [vLLM arguments](#vllm-arguments), [LMDeploy arguments](#LMDeploy-arguments), and also contain the following:
 
 - 🔥ckpt_dir: Path to the model checkpoint folder, default is None.
 - 🔥infer_backend: Inference backend, supports 'pt', 'vllm', 'lmdeploy', default is 'pt'.
 - 🔥max_batch_size: Batch size for pt backend, default is 1.
-- result_path: Path to store inference results, default is None.
+- result_path: Path to store inference results (jsonl), default is None.
 - val_dataset_sample: Number of samples from the inference dataset, default is None.
 
-### Deployment Parameters
+### Deployment Arguments
 
-Deployment parameters inherit from the [inference parameters](#inference parameters).
+Deployment Arguments inherit from the [inference arguments](#inference-arguments).
 
 - host: Service host, default is '0.0.0.0'.
 - port: Port number, default is 8000.
@@ -347,11 +347,11 @@ Deployment parameters inherit from the [inference parameters](#inference paramet
 - log_interval: Interval for printing tokens/s statistics, default is 20 seconds.
 - max_logprobs: Maximum number of logprobs to return, default is 20.
 
-### Evaluation Parameters
+### Evaluation Arguments
 
-Evaluation parameters inherit from the [deployment parameters](#deployment parameters).
+Evaluation Arguments inherit from the [deployment arguments](#deployment-arguments).
 
-- 🔥eval_dataset: Evaluation dataset, refer to [Evaluation](./Evaluation.md).
+- 🔥eval_dataset: Evaluation dataset, refer to [Evaluation documentation](./Evaluation.md).
 - eval_limit: Number of samples for each evaluation set, default is None.
 - eval_output_dir: Folder for storing evaluation results, default is 'eval_output'.
 - temperature: Default is 0.
@@ -359,9 +359,9 @@ Evaluation parameters inherit from the [deployment parameters](#deployment param
 - max_batch_size: Maximum batch size, default is 256 for text evaluation, 16 for multimodal.
 - 🔥eval_url: Evaluation URL. Default is None, uses local deployment for evaluation.
 
-### Export Parameters
+### Export Arguments
 
-Export parameters include the [basic parameters](#basic parameters) and [merge parameters](#merge parameters), and also contain the following:
+Export Arguments include the [basic arguments](#base-arguments) and [merge arguments](#merge-arguments), and also contain the following:
 
 - 🔥ckpt_dir: Checkpoint path, default is None.
 - 🔥output_dir: Path for storing export results, default is None.

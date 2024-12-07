@@ -1,4 +1,4 @@
-# ReleaseNote
+# ReleaseNote 3.0
 
 > If you encounter any issues while using version 3.x, please submit an issue to us. If something works in version 2.x but not in 3.x, please use version 2.x temporarily while we complete the fixes.
 

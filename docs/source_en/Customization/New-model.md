@@ -1,4 +1,4 @@
-# Add New Model
+# New Model
 
 It is generally recommended to specify the model ID directly using `--model`, in conjunction with `--model_type` and `--template`. For example:
 

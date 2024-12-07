@@ -36,9 +36,9 @@ Swift DOCUMENTATION
    :maxdepth: 2
    :caption: Customization
 
-   Multi-Modal/New-dataset.md
-   Multi-Modal/New-model.md
-   Multi-Modal/Plugin.md
+   Customization/New-dataset.md
+   Customization/New-model.md
+   Customization/Plugin.md
 
 
 Indices and tables

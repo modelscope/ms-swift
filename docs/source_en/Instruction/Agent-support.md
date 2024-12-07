@@ -1,4 +1,4 @@
-# Support for Intelligent Agents
+# Agent Support
 
 SWIFT supports open-source models, particularly for training medium and small models (like 7B and 14B) in agent scenarios. It applies the [loss-scale technique](https://arxiv.org/pdf/2309.00986.pdf) in agent training for more stable API call capabilities, enabling Agent inference and deployment with a single commercial-grade GPU. It can be directly implemented in a full-cycle, closed-loop manner in production scenarios
 
