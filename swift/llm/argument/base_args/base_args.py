@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
+import sys
 from dataclasses import dataclass, field, fields
 from typing import Any, Dict, Literal, Optional
 
@@ -15,6 +16,7 @@ from .generation_args import GenerationArguments
 from .model_args import ModelArguments
 from .quant_args import QuantizeArguments
 from .template_args import TemplateArguments
+from .utils import to_abspath
 
 logger = get_logger()
 
