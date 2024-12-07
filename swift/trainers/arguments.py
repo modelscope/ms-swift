@@ -15,7 +15,7 @@ from swift.utils import is_dist, use_torchacc
 @dataclass
 class SwiftArgumentsMixin:
     logging_first_step: bool = True
-    acc_strategy: Literal['token', 'sentence'] = 'token'
+    acc_strategy: Literal['token', 'seq'] = 'token'
     sequence_parallel_size: int = 1
     check_model: bool = True
     train_sampler_random: bool = True

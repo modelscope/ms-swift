@@ -297,7 +297,7 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
 - packing: Whether to use packing, default is False.
 - 🔥lazy_tokenize: Whether to use lazy_tokenize, default is False during LLM training, default is True during MLLM training.
 
-- acc_strategy: Strategy for training accuracy, can be `sentence` or `token` level accuracy, default is `token`.
+- acc_strategy: Strategy for training accuracy, can be `seq` or `token` level accuracy, default is `token`.
 - max_new_tokens: Maximum generated token count when `predict_with_generate=True`, default 64.
 - temperature: Temperature when `predict_with_generate=True`, default 0.
 - optimizer: Custom optimizer name for plugin.

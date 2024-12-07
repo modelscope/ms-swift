@@ -126,8 +126,8 @@ def compute_nlg_metrics(prediction):
 def compute_acc(preds,
                 labels,
                 *,
-                acc_strategy: Literal['token', 'sentence'] = 'token',
-                is_encoder_decoder: bool = False) -> Optional[List[float]]:
+                acc_strategy: Literal['token', 'seq'] = 'token',
+                is_encoder_decoder: bool = False) -> Dict[str, List[float]]:
 
     if isinstance(preds, torch.Tensor):
         preds = preds.cpu().numpy()
@@ -140,31 +140,31 @@ def compute_acc(preds,
         labels = labels[..., 1:]
         preds = preds[..., :-1]
     if preds.shape != labels.shape:
-        return None
+        return {}
 
     masks = labels != -100
-    if acc_strategy == 'sentence':
+    if acc_strategy == 'seq':
         acc_list = []
         for i, m in enumerate(masks):
             acc_list.append(np.all(preds[i, m] == labels[i, m]))
     else:
         acc_list = (preds[masks] == labels[masks]).tolist()
-    return acc_list
+    return {f'{acc_strategy}_acc': acc_list}
 
 
 def compute_acc_metrics(eval_prediction: EvalPrediction,
                         *,
-                        acc_strategy: Literal['token', 'sentence'] = 'token',
+                        acc_strategy: Literal['token', 'seq'] = 'token',
                         is_encoder_decoder: bool = False) -> Dict[str, torch.Tensor]:
 
-    acc_list = compute_acc(
+    metric = compute_acc(
         eval_prediction.predictions,
         eval_prediction.label_ids,
         acc_strategy=acc_strategy,
         is_encoder_decoder=is_encoder_decoder)
-    if acc_list is None:
+    if len(metric) == 0:
         return {}
-    return {'acc': sum(acc_list) / len(acc_list)}
+    return {k: sum(v) / len(v) for k, v in metric.items()}
 
 
 def preprocess_logits_for_acc(logits: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
