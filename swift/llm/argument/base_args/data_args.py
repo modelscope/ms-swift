@@ -1,12 +1,9 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import os
-import sys
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional
 
 from swift.llm import DATASET_MAPPING, register_dataset_info
 from swift.utils import get_logger
-from .utils import to_abspath
 
 logger = get_logger()
 
