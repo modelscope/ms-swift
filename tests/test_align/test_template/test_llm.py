@@ -114,16 +114,18 @@ def test_llama():
     # pt_engine = PtEngine('LLM-Research/Meta-Llama-3.1-8B-Instruct-BNB-NF4')
     # pt_engine = PtEngine('LLM-Research/Meta-Llama-3.1-8B-Instruct')
     # pt_engine = PtEngine('LLM-Research/Meta-Llama-3-8B-Instruct')
-    # pt_engine = PtEngine('LLM-Research/Llama-3.2-1B-Instruct')
-    pt_engine = PtEngine('AI-ModelScope/Llama-3.1-Nemotron-70B-Instruct-HF')
-    res = _infer_model(pt_engine)
+    pt_engine = VllmEngine('LLM-Research/Llama-3.2-1B-Instruct')
+    # pt_engine = PtEngine('AI-ModelScope/Llama-3.1-Nemotron-70B-Instruct-HF')
+    # pt_engine = PtEngine('unsloth/Llama-3.3-70B-Instruct-bnb-4bit')
+
+    res = _infer_model(pt_engine, system='')
     pt_engine.default_template.template_backend = 'jinja'
-    res2 = _infer_model(pt_engine)
+    res2 = _infer_model(pt_engine, system='')
     assert res == res2, f'res: {res}, res2: {res2}'
 
 
 if __name__ == '__main__':
-    from swift.llm import PtEngine, RequestConfig, get_template, get_model_tokenizer
+    from swift.llm import PtEngine, RequestConfig, get_template, get_model_tokenizer, VllmEngine
     from swift.utils import get_logger, seed_everything
     logger = get_logger()
     # test_qwen2_5()
