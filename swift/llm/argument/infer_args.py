@@ -151,8 +151,7 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
 
     def __post_init__(self) -> None:
         if self.ckpt_dir:
-            self.ckpt_dir = to_abspath(self.ckpt_dir, True)
-            self.load_args_from_ckpt(self.ckpt_dir)
+            self._load_ckpt_dir()
         self._init_weight_type(self.ckpt_dir)
         BaseArguments.__post_init__(self)
         MergeArguments.__post_init__(self)
