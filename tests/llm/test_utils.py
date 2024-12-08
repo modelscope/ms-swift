@@ -1,7 +1,7 @@
 import unittest
 
-from swift.utils import lower_bound
 from swift.llm import load_dataset
+from swift.utils import lower_bound
 
 
 class TestLlmUtils(unittest.TestCase):
@@ -15,9 +15,12 @@ class TestLlmUtils(unittest.TestCase):
         self.assertTrue(lower_bound(0, len(arr), lambda i: arr[i] == -100) == 1000)
 
     def test_dataset(self):
-        dataset = load_dataset(['AI-ModelScope/alpaca-gpt4-data-zh#1000', 'AI-ModelScope/alpaca-gpt4-data-en#200'], num_proc=4, strict=True)
+        dataset = load_dataset(['AI-ModelScope/alpaca-gpt4-data-zh#1000', 'AI-ModelScope/alpaca-gpt4-data-en#200'],
+                               num_proc=4,
+                               strict=True)
         print(f'dataset[0]: {dataset[0]}')
         print(f'dataset[1]: {dataset[1]}')
+
 
 if __name__ == '__main__':
     unittest.main()

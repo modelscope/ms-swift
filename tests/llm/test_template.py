@@ -1,7 +1,8 @@
 import unittest
 
-from swift.llm import PtEngine, RequestConfig, get_template, get_model_tokenizer, VllmEngine
+from swift.llm import PtEngine, RequestConfig, VllmEngine, get_model_tokenizer, get_template
 from swift.utils import get_logger, seed_everything
+
 logger = get_logger()
 os.environ['SWIFT_DEBUG'] = '1'
 
@@ -40,6 +41,7 @@ class TestTemplate(unittest.TestCase):
         pt_engine.default_template.template_backend = 'jinja'
         response2 = _infer_model(pt_engine)
         print()
+
 
 if __name__ == '__main__':
     unittest.main()
