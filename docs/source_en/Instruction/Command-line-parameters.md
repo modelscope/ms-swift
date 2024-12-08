@@ -130,6 +130,7 @@ Other important parameters:
 - 🔥freeze_llm: Freeze LLM. Default is False. Applicable for full parameters and LoRA.
 - 🔥target_modules: Specify the LoRA module, default is `all-linear`, automatically finds linear layers except for lm_head and attaches the tuner. This parameter is not limited to LoRA.
 - 🔥target_regex: Specify a regex expression for the LoRA module. Default is `None`, if this value is provided, target_modules does not take effect. This parameter is not limited to LoRA.
+- 🔥init_weights: The method of init tuner weights, For lora the accepted values are `true`, `false`, `guassian`, `pissa`, `pissa_niter_[number of iters]`, for bone are `true`, `false`, `bat`, default is `true`
 - modules_to_save: After the tuner is attached, the original model's modules used during training and storage, default is `[]`. This parameter is not limited to LoRA.
 
 #### Full Arguments
@@ -143,7 +144,6 @@ Other important parameters:
 - 🔥lora_rank: Default is `8`.
 - 🔥lora_alpha: Default is `32`.
 - lora_dropout: Default is `0.05`.
-- 🔥init_lora_weights: Method to initialize LoRA weights, can be specified as `true`, `false`, `gaussian`, `pissa`, `pissa_niter_[number of iters]`, default is `true`.
 - lora_bias: Default is `'none'`, selectable values are: 'none', 'all'. If you want to set all biases as trainable, you can set it to `'all'`.
 - lora_dtype: Specify the dtype of the LoRA module. Supports 'float16', 'bfloat16', 'float32', defaults to the original model type.
 - 🔥use_dora: Default is `False`, whether to use `DoRA`.

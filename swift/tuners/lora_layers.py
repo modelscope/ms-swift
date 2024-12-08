@@ -134,7 +134,6 @@ if is_bnb_available():
             eightbit_kwargs = kwargs.copy()
             eightbit_kwargs.update({
                 'has_fp16_weights': target.state.has_fp16_weights,
-                'memory_efficient_backward': target.state.memory_efficient_backward,
                 'threshold': target.state.threshold,
                 'index': target.index,
             })
@@ -590,7 +589,11 @@ class LoraModel(_LoraModel):
             else:
                 raise NotImplementedError(f'Requested bias: {bias}, is not implemented.')
 
-    def inject_adapter(self, model: nn.Module, adapter_name: str):
+    def inject_adapter(self,
+                       model: nn.Module,
+                       adapter_name: str,
+                       autocast_adapter_dtype: bool = True,
+                       low_cpu_mem_usage: bool = False):
         r"""
         Override code:
         1. ModulesToSaveWrapper construction method: add module_key=key argument to offload to cpu
@@ -789,13 +792,15 @@ class LoraModel(_LoraModel):
                 new_module.state = child.state
             new_module.to(child.weight.device)
 
+        meta = torch.device('meta')
         # dispatch to correct device
         for name, module in new_module.named_modules():
             if (self.prefix in name) or ('ranknum' in name):
                 weight = (
                     child.qweight if hasattr(child, 'qweight') else child.W_q if hasattr(child, 'W_q') else
                     child.weight if hasattr(child, 'weight') else next(child.parameters()))
-                module.to(weight.device)
+                if not any(p.device == meta for p in module.parameters()):
+                    module.to(weight.device)
 
     @staticmethod
     def _create_new_module(lora_config, adapter_name, target, **kwargs):

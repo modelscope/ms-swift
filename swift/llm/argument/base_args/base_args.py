@@ -22,8 +22,8 @@ logger = get_logger()
 
 
 def get_supported_tuners():
-    return {'lora', 'full', 'longlora', 'adalora', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft', 'reft'} | set(
-        extra_tuners.keys())
+    return {'lora', 'full', 'longlora', 'adalora', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft', 'reft', 'bone'
+            } | set(extra_tuners.keys())
 
 
 @dataclass

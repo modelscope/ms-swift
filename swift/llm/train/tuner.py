@@ -18,17 +18,26 @@ logger = get_logger()
 def apply_liger(model_type: str):
     from liger_kernel.transformers import (apply_liger_kernel_to_llama, apply_liger_kernel_to_mistral,
                                            apply_liger_kernel_to_mixtral, apply_liger_kernel_to_gemma,
-                                           apply_liger_kernel_to_qwen2)
-    if 'llama3' in model_type:
+                                           apply_liger_kernel_to_qwen2, apply_liger_kernel_to_qwen2_vl,
+                                           apply_liger_kernel_to_gemma2, apply_liger_kernel_to_phi3,
+                                           apply_liger_kernel_to_mllama)
+    from swift.llm import ModelType
+    if model_type in (ModelType.llama, ModelType.llama3, ModelType.llama3_1, ModelType.llama3_2):
         apply_liger_kernel_to_llama()
-    elif 'mistral' in model_type:
+    elif model_type in (ModelType.mistral):
         apply_liger_kernel_to_mistral()
-    elif 'mixtral' in model_type:
+    elif model_type in (ModelType.mixtral):
         apply_liger_kernel_to_mixtral()
-    elif 'gemma' in model_type:
+    elif model_type in (ModelType.gemma):
         apply_liger_kernel_to_gemma()
-    elif 'qwen2' in model_type:
+    elif model_type in (ModelType.gemma2):
         apply_liger_kernel_to_qwen2()
+    elif model_type in (ModelType.phi3):
+        apply_liger_kernel_to_phi3()
+    elif model_type in (ModelType.llama3_2_vision):
+        apply_liger_kernel_to_mllama()
+    elif model_type in (ModelType.qwen2_vl):
+        apply_liger_kernel_to_qwen2_vl()
     else:
         raise ValueError(f'Unsupported liger model_type: {model_type}')
 
@@ -111,7 +120,7 @@ def prepare_adapter(args: TrainArguments, model):
         'use_rslora': args.use_rslora,
         'use_dora': args.use_dora,
         'lorap_lr_ratio': args.lorap_lr_ratio,
-        'init_lora_weights': args.init_lora_weights,
+        'init_lora_weights': args.init_weights,
     }
 
     if args.train_type in ('lora', 'longlora'):
@@ -224,6 +233,16 @@ def prepare_adapter(args: TrainArguments, model):
         )
         logger.info(f'reft config: {reft_config}')
         model = Swift.prepare_model(model, {'reft': reft_config})
+    elif args.train_type == 'bone':
+        # Version loosing
+        from peft import BoneConfig
+        bone_config = BoneConfig(
+            target_modules=target_modules,
+            r=args.reft_rank,
+            init_weights=args.init_weights,
+        )
+        logger.info(f'bone config: {bone_config}')
+        model = Swift.prepare_model(model, bone_config)
     return model
 
 
