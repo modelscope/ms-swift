@@ -136,6 +136,7 @@ transformers/
 vlmeval/
 my_model/
 /data
+result/
 
 # Pytorch
 *.pth

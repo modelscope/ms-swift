@@ -105,6 +105,8 @@ class MultiModalRequestMixin:
         if isinstance(mm_data, str) and not os.path.isfile(mm_data):
             # base64 or url
             return mm_data
+        if isinstance(mm_data, dict) and 'bytes' in mm_data:
+            mm_data = mm_data['bytes'] or mm_data['path']
         if isinstance(mm_data, str):
             # local_path
             with open(mm_data, 'rb') as f:
@@ -227,7 +229,7 @@ class ChatMessage:
 class ChatCompletionResponseChoice:
     index: int
     message: ChatMessage
-    finish_reason: Literal['stop', 'length', None]  # None: for infer_backend='pt'
+    finish_reason: Literal['stop', 'length', None]
     logprobs: Optional[Dict[str, List[Dict[str, Any]]]] = None
 
     def to_cmpl_choice(self) -> 'CompletionResponseChoice':
@@ -240,7 +242,7 @@ class ChatCompletionResponseChoice:
 class CompletionResponseChoice:
     index: int
     text: str
-    finish_reason: Literal['stop', 'length', None]  # None: for infer_backend='pt'
+    finish_reason: Literal['stop', 'length', None]
     logprobs: Optional[Dict[str, List[Dict[str, Any]]]] = None
 
 

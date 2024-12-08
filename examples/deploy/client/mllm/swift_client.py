@@ -1,0 +1,101 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
+import os
+from typing import Literal
+
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
+
+def infer_batch(engine: 'InferEngine', dataset: str):
+    request_config = RequestConfig(max_tokens=512, temperature=0)
+    dataset = load_dataset([dataset], strict=False, seed=42)[0]
+    print(f'dataset: {dataset}')
+    metric = InferStats()
+    resp_list = engine.infer([InferRequest(**data) for data in dataset], request_config, metrics=[metric])
+    query0 = dataset[0]['messages'][0]['content']
+    print(f'query0: {query0}')
+    print(f'response0: {resp_list[0].choices[0].message.content}')
+    print(f'metric: {metric.compute()}')
+
+
+def infer_stream(engine: 'InferEngine', infer_request: 'InferRequest'):
+    request_config = RequestConfig(max_tokens=512, temperature=0, stream=True)
+    metric = InferStats()
+    gen = engine.infer([infer_request], request_config, metrics=[metric])
+    query = infer_request.messages[0]['content']
+    print(f'query: {query}\nresponse: ', end='')
+    for resp_list in gen:
+        print(resp_list[0].choices[0].delta.content, end='', flush=True)
+    print()
+    print(f'metric: {metric.compute()}')
+
+
+def get_message(mm_type: Literal['text', 'image', 'video', 'audio']):
+    if mm_type == 'text':
+        message = {'role': 'user', 'content': 'who are you?'}
+    elif mm_type == 'image':
+        message = {
+            'role':
+            'user',
+            'content': [
+                {
+                    'type': 'image',
+                    # url or local_path or PIL.Image or base64
+                    'image': 'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png'
+                },
+                {
+                    'type': 'text',
+                    'text': 'How many sheep are there in the picture?'
+                }
+            ]
+        }
+
+    elif mm_type == 'video':
+        # # use base64
+        # import base64
+        # with open('baby.mp4', 'rb') as f:
+        #     vid_base64 = base64.b64encode(f.read()).decode('utf-8')
+        # video = f'data:video/mp4;base64,{vid_base64}'
+
+        # use url
+        video = 'https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4'
+        message = {
+            'role': 'user',
+            'content': [{
+                'type': 'video',
+                'video': video
+            }, {
+                'type': 'text',
+                'text': 'Describe this video.'
+            }]
+        }
+    elif mm_type == 'audio':
+        message = {
+            'role':
+            'user',
+            'content': [{
+                'type': 'audio',
+                'audio': 'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/weather.wav'
+            }, {
+                'type': 'text',
+                'text': 'What does this audio say?'
+            }]
+        }
+    return message
+
+
+def run_client(host: str = '127.0.0.1', port: int = 8000):
+    engine = InferClient(host=host, port=port)
+    print(f'models: {engine.models}')
+    infer_batch(engine, 'AI-ModelScope/LaTeX_OCR#1000')
+    infer_stream(engine, InferRequest(messages=[get_message(mm_type='video')]))
+
+
+if __name__ == '__main__':
+    from swift.llm import (InferEngine, InferRequest, InferClient, RequestConfig, load_dataset, run_deploy,
+                           DeployArguments)
+    from swift.plugin import InferStats
+    # TODO: The current 'pt' deployment does not support automatic batch.
+    with run_deploy(
+            DeployArguments(model='Qwen/Qwen2-VL-2B-Instruct', verbose=False, log_interval=-1,
+                            infer_backend='vllm')) as port:
+        run_client(port=port)

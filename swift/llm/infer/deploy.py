@@ -61,7 +61,8 @@ class SwiftDeploy(SwiftInfer):
         try:
             yield
         finally:
-            self._compute_infer_stats()
+            if args.log_interval > 0:
+                self._compute_infer_stats()
 
     def _get_model_list(self):
         args = self.args
@@ -179,7 +180,7 @@ def is_accessible(port: int):
 
 
 @contextmanager
-def run_deploy(args, return_url: bool = False):
+def run_deploy(args: DeployArguments, return_url: bool = False):
     if isinstance(args, DeployArguments) and args.__class__.__name__ == 'DeployArguments':
         deploy_args = args
     else:

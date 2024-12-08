@@ -14,7 +14,6 @@ def infer_batch(engine: 'InferEngine', dataset: str):
     print(f'query0: {query0}')
     print(f'response0: {resp_list[0].choices[0].message.content}')
     print(f'metric: {metric.compute()}')
-    # metric.reset()  # reuse
 
 
 def infer_stream(engine: 'InferEngine', infer_request: 'InferRequest'):
@@ -29,21 +28,20 @@ def infer_stream(engine: 'InferEngine', infer_request: 'InferRequest'):
     print(f'metric: {metric.compute()}')
 
 
-if __name__ == '__main__':
-    from swift.llm import InferEngine, InferRequest, PtEngine, RequestConfig, load_dataset
-    from swift.plugin import InferStats
-    model = 'Qwen/Qwen2.5-1.5B-Instruct'
-    infer_backend = 'pt'
-
-    if infer_backend == 'pt':
-        engine = PtEngine(model, max_batch_size=64)
-    elif infer_backend == 'vllm':
-        from swift.llm import VllmEngine
-        engine = VllmEngine(model, max_model_len=32768)
-    elif infer_backend == 'lmdeploy':
-        from swift.llm import LmdeployEngine
-        engine = LmdeployEngine(model)
-
+def run_client(host: str = '127.0.0.1', port: int = 8000):
+    engine = InferClient(host=host, port=port)
+    print(f'models: {engine.models}')
     infer_batch(engine, 'AI-ModelScope/alpaca-gpt4-data-zh#1000')
     messages = [{'role': 'user', 'content': 'who are you?'}]
     infer_stream(engine, InferRequest(messages=messages))
+
+
+if __name__ == '__main__':
+    from swift.llm import (InferEngine, InferRequest, InferClient, RequestConfig, load_dataset, run_deploy,
+                           DeployArguments)
+    from swift.plugin import InferStats
+    # TODO: The current 'pt' deployment does not support automatic batch.
+    with run_deploy(
+            DeployArguments(model='Qwen/Qwen2.5-1.5B-Instruct', verbose=False, log_interval=-1,
+                            infer_backend='vllm')) as port:
+        run_client(port=port)

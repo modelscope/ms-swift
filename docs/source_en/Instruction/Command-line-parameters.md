@@ -331,7 +331,7 @@ Inference arguments include the [base arguments](#base-arguments), [merge argume
 - 🔥ckpt_dir: Path to the model checkpoint folder, default is None.
 - 🔥infer_backend: Inference backend, supports 'pt', 'vllm', 'lmdeploy', default is 'pt'.
 - 🔥max_batch_size: Batch size for pt backend, default is 1.
-- result_path: Path to store inference results (jsonl), default is None.
+- result_path: Path to store inference results (jsonl), default is None, saved in the checkpoint directory or './result' directory.
 - val_dataset_sample: Number of samples from the inference dataset, default is None.
 
 ### Deployment Arguments
@@ -344,7 +344,7 @@ Deployment Arguments inherit from the [inference arguments](#inference-arguments
 - owned_by: Default is `swift`.
 - 🔥served_model_name: Model name for serving, defaults to the model's suffix.
 - verbose: Print access logs, default is True.
-- log_interval: Interval for printing tokens/s statistics, default is 20 seconds.
+- log_interval: Interval for printing tokens/s statistics, default is 20 seconds. If set to -1, it will not be printed.
 - max_logprobs: Maximum number of logprobs to return, default is 20.
 
 ### Evaluation Arguments

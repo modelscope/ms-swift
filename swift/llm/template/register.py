@@ -11,8 +11,6 @@ TEMPLATE_MAPPING: Dict[str, TemplateMeta] = {}
 
 def register_template(template_meta: TemplateMeta, *, exist_ok: bool = False) -> None:
     template_type = template_meta.template_type
-    if template_type == 'default':
-        print()
     if not exist_ok and template_type in TEMPLATE_MAPPING:
         raise ValueError(f'The `{template_type}` has already been registered in the TEMPLATE_MAPPING.')
     TEMPLATE_MAPPING[template_type] = template_meta

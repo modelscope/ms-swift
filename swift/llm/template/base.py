@@ -107,7 +107,7 @@ class Template(ProcessorMixin):
     def _load_images(images, load_images: bool) -> None:
         for i, image in enumerate(images):
             if load_images:
-                if isinstance(image, dict):
+                if isinstance(image, dict) and 'bytes' in image:
                     image = image['bytes'] or image['path']
                 image = load_image(image)
             else:
@@ -199,8 +199,8 @@ class Template(ProcessorMixin):
         self._preprocess_inputs(inputs)
         if self.mode in {'vllm', 'lmdeploy'}:
             encoded = Template._encode(self, inputs)
-            if inputs.images:
-                encoded['images'] = inputs.images
+            for key in ['images', 'audios', 'videos']:
+                encoded[key] = getattr(inputs, key)
         elif self.mode in {'pt', 'train'}:
             encoded = self._encode(inputs)
         elif self.mode == 'rlhf':
