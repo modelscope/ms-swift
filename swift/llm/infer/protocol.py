@@ -105,6 +105,8 @@ class MultiModalRequestMixin:
         if isinstance(mm_data, str) and not os.path.isfile(mm_data):
             # base64 or url
             return mm_data
+        if isinstance(mm_data, dict) and 'bytes' in mm_data:
+            mm_data = mm_data['bytes'] or mm_data['path']
         if isinstance(mm_data, str):
             # local_path
             with open(mm_data, 'rb') as f:

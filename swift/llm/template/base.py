@@ -107,7 +107,7 @@ class Template(ProcessorMixin):
     def _load_images(images, load_images: bool) -> None:
         for i, image in enumerate(images):
             if load_images:
-                if isinstance(image, dict):
+                if isinstance(image, dict) and 'bytes' in image:
                     image = image['bytes'] or image['path']
                 image = load_image(image)
             else:

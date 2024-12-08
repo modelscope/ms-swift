@@ -344,7 +344,7 @@ Deployment Arguments inherit from the [inference arguments](#inference-arguments
 - owned_by: Default is `swift`.
 - 🔥served_model_name: Model name for serving, defaults to the model's suffix.
 - verbose: Print access logs, default is True.
-- log_interval: Interval for printing tokens/s statistics, default is 20 seconds.
+- log_interval: Interval for printing tokens/s statistics, default is 20 seconds. If set to -1, it will not be printed.
 - max_logprobs: Maximum number of logprobs to return, default is 20.
 
 ### Evaluation Arguments
