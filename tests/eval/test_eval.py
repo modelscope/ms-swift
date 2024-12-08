@@ -1,7 +1,5 @@
 import os
 
-from swift.llm import SwiftEval
-
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 

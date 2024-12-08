@@ -331,7 +331,7 @@ Inference arguments include the [base arguments](#base-arguments), [merge argume
 - 🔥ckpt_dir: Path to the model checkpoint folder, default is None.
 - 🔥infer_backend: Inference backend, supports 'pt', 'vllm', 'lmdeploy', default is 'pt'.
 - 🔥max_batch_size: Batch size for pt backend, default is 1.
-- result_path: Path to store inference results (jsonl), default is None.
+- result_path: Path to store inference results (jsonl), default is None, saved in the checkpoint directory or './result' directory.
 - val_dataset_sample: Number of samples from the inference dataset, default is None.
 
 ### Deployment Arguments
