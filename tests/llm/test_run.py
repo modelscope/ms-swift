@@ -118,6 +118,7 @@ class TestRun(unittest.TestCase):
                 predict_with_generate=predict_with_generate,
                 dataset=dataset,
                 val_dataset='DAMO_NLP/jd#20',
+                download_mode='force_redownload',
                 output_dir=output_dir,
                 include_num_input_tokens_seen=True,
                 gradient_checkpointing=True,
@@ -454,5 +455,5 @@ if __name__ == '__main__':
     # TestRun().test_vl_audio()
     # TestRun().test_loss_matching()
     #
-    TestRun().test_rlhf()
-    # unittest.main()
+    # TestRun().test_rlhf()
+    unittest.main()
