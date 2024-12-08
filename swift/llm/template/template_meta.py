@@ -94,7 +94,7 @@ class TemplateMeta:
             self.support_system = False
         else:
             self.support_system = True
-        self.default_system = self.check_system(self.default_system)
+        self.check_system(self.default_system)
 
         self.support_multi_round = self.chat_sep is not None
         if self.tool_prompt is None:
@@ -130,9 +130,7 @@ class TemplateMeta:
         if tokenizer.eos_token not in self.stop_words:
             self.stop_words.append(tokenizer.eos_token)
 
-    def check_system(self, system: str) -> str:
-        if system is None:
-            system = ''
-        if system:
-            assert self.support_system, f'The template does not support `system`, template_type: {self.template_type}'
-        return system
+    def check_system(self, system: Optional[str]) -> None:
+        if system is not None:
+            assert self.support_system, (
+                f'The template does not support `system`, template_type: {self.template_type}, system: {system}')

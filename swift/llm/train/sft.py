@@ -115,7 +115,7 @@ class SwiftSft(SwiftPipeline):
         args = self.args
         template_kwargs = args.get_template_kwargs()
         template = get_template(args.template, self.processor, use_chat_template=use_chat_template, **template_kwargs)
-        logger.info(f'default_system: {template.default_system}')
+        logger.info(f'default_system: {template.template_meta.default_system}')
         if template.use_model:
             template.model = self.model
         self.template = template
