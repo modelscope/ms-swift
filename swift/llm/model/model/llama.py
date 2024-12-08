@@ -167,6 +167,10 @@ register_model(
                 Model('LLM-Research/Llama-3.2-3B', 'meta-llama/Llama-3.2-3B'),
                 Model('LLM-Research/Llama-3.2-1B-Instruct', 'meta-llama/Llama-3.2-1B-Instruct'),
                 Model('LLM-Research/Llama-3.2-3B-Instruct', 'meta-llama/Llama-3.2-3B-Instruct'),
+            ]),
+            ModelGroup([
+                Model('LLM-Research/Llama-3.3-70B-Instruct', 'meta-llama/Llama-3.3-70B-Instruct'),
+                Model('unsloth/Llama-3.3-70B-Instruct-bnb-4bit', 'unsloth/Llama-3.3-70B-Instruct-bnb-4bit'),
             ])
         ],
         TemplateType.llama3_2,
