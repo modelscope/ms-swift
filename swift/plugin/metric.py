@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import time
 from abc import ABC, abstractmethod
-from typing import Dict, List, Literal, Optional
+from typing import Dict, List, Literal
 
 import numpy as np
 import torch
@@ -99,7 +99,7 @@ class MeanMetric(Metric):
         }
 
 
-def compute_nlg_metrics(prediction):
+def compute_nlg_metrics(prediction) -> Dict[str, float]:
     import jieba
     from nltk.translate.bleu_score import SmoothingFunction, sentence_bleu
     from rouge.rouge import Rouge
@@ -155,7 +155,7 @@ def compute_acc(preds,
 def compute_acc_metrics(eval_prediction: EvalPrediction,
                         *,
                         acc_strategy: Literal['token', 'seq'] = 'token',
-                        is_encoder_decoder: bool = False) -> Dict[str, torch.Tensor]:
+                        is_encoder_decoder: bool = False) -> Dict[str, float]:
 
     metric = compute_acc(
         eval_prediction.predictions,

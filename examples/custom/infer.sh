@@ -1,3 +1,4 @@
+# sh examples/custom/infer.sh
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
     --ckpt_dir output/vx-xxx/checkpoint-xxx \
