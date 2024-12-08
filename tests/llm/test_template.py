@@ -1,3 +1,4 @@
+import os
 import unittest
 
 from swift.llm import PtEngine, RequestConfig, VllmEngine, get_model_tokenizer, get_template
@@ -36,11 +37,11 @@ def _infer_model(pt_engine, system=None, messages=None):
 class TestTemplate(unittest.TestCase):
 
     def test_template(self):
-        pt_engine = PtEngine('Qwen/Qwen2.5-3B')
+        pt_engine = PtEngine('Qwen/Qwen2.5-3B-Instruct')
         response = _infer_model(pt_engine)
         pt_engine.default_template.template_backend = 'jinja'
         response2 = _infer_model(pt_engine)
-        print()
+        assert response == response2
 
 
 if __name__ == '__main__':
