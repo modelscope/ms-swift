@@ -274,7 +274,7 @@ Parameter meanings can be found in the [vllm documentation](https://docs.vllm.ai
 - enforce_eager: Whether vllm uses pytorch eager mode or establishes a cuda graph. Default is `False`. Setting to True can save memory but may affect efficiency.
 - 🔥limit_mm_per_prompt: Controls vllm using multiple images, default is `None`. For example, use `--limit_mm_per_prompt '{"image": 10, "video": 5}'`.
 - vllm_max_lora_rank: Default value is `16`. Parameters supported by vllm for LoRA.
-- lora_modules: Used to support dynamic switching between multiple LoRAs, default is `[]`.
+- lora_modules: Used to support dynamic switching of multiple LoRa during deployment, default is `[]`.
 
 ### Merge Arguments
 
