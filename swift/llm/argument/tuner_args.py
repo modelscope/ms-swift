@@ -28,8 +28,7 @@ class TunerArguments:
         lorap_lr_ratio (float): Learning rate ratio for LoRA. Default is None.
         use_rslora (bool): Flag to indicate if RSLora is used. Default is False.
         use_dora (bool): Flag to indicate if Dora is used. Default is False.
-        init_lora_weights (str): Initialization method for LoRA weights. Default is 'true'.
-            Allowed values are 'gaussian', 'pissa', 'pissa_niter_[number of iters]', 'olora', 'loftq', 'true', 'false'.
+        init_weights (str): Initialization method for weights of supported tuners. Default is 'true'.
 
         fourier_n_frequency (int): Number of frequencies for FourierFT. Default is 2000.
         fourier_scaling (float): Scaling factor for FourierFT. Default is 300.0.
@@ -110,8 +109,10 @@ class TunerArguments:
     lorap_lr_ratio: Optional[float] = None
     use_rslora: bool = False
     use_dora: bool = False
-    # Literal['gaussian', 'pissa', 'pissa_niter_[number of iters]', 'olora', 'loftq', 'true', 'false']
-    init_lora_weights: str = 'true'
+    # Lora: Literal['gaussian', 'pissa', 'pissa_niter_[number of iters]', 'olora', 'loftq', 'true', 'false']
+
+    # Bone: Literal['bat', 'true', 'false']
+    init_weights: str = 'true'
 
     # fourierft
     fourier_n_frequency: int = 2000
@@ -181,8 +182,8 @@ class TunerArguments:
     use_liger: bool = False
 
     def __post_init__(self):
-        if isinstance(self.init_lora_weights, str) and self.init_lora_weights.lower() in {'true', 'false'}:
-            self.init_lora_weights = bool(strtobool(self.init_lora_weights))
+        if isinstance(self.init_weights, str) and self.init_weights.lower() in {'true', 'false'}:
+            self.init_weights = bool(strtobool(self.init_weights))
         self._init_multimodal_full()
         if self.target_regex:
             self.target_modules = self.target_regex
