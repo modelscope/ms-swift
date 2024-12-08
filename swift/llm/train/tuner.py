@@ -237,7 +237,7 @@ def prepare_adapter(args: TrainArguments, model):
         # Version loosing
         from peft import BoneConfig
         bone_config = BoneConfig(
-            target_modules=args.target_modules,
+            target_modules=target_modules,
             r=args.reft_rank,
             init_weights=args.init_weights,
         )

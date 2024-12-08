@@ -12,7 +12,7 @@ import torch
 import torch.nn
 import transformers
 from modelscope import snapshot_download
-from peft import (AdaLoraConfig, AdaLoraModel, BOFTConfig, BOFTModel, IA3Config, LoftQConfig, LoHaConfig, LoKrConfig,
+from peft import (AdaLoraConfig, BOFTConfig, BOFTModel, LoftQConfig, LoHaConfig, LoKrConfig,
                   LoraModel, OFTConfig, PeftConfig, PeftModel, PeftModelForCausalLM, PeftModelForSeq2SeqLM,
                   PeftModelForSequenceClassification, PeftModelForTokenClassification, PrefixTuningConfig,
                   PromptEncoderConfig, PromptLearningConfig, PromptTuningConfig, VeraConfig, VeraModel, get_peft_config,
@@ -285,8 +285,6 @@ def hot_patch_peft_module():
     VeraModel._create_and_replace = _create_and_replace_hook
     BOFTModel._create_and_replace_origin = BOFTModel._create_and_replace
     BOFTModel._create_and_replace = _create_and_replace_hook
-    AdaLoraModel._create_and_replace_origin = AdaLoraModel._create_and_replace
-    AdaLoraModel._create_and_replace = _create_and_replace_hook
     if FourierFTModel is not None:
         FourierFTModel._create_and_replace_origin = FourierFTModel._create_and_replace
         FourierFTModel._create_and_replace = _create_and_replace_hook
