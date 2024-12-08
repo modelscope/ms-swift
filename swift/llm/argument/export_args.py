@@ -61,7 +61,7 @@ class ExportArguments(MergeArguments, BaseArguments):
                 raise ValueError(f'self.dataset: {self.dataset}, Please input the quant dataset.')
 
     def _init_output_dir(self):
-        ckpt_dir = self.ckpt_dir or self.model_dir
+        ckpt_dir = self.ckpt_dir or f'./{self.model_suffix}'
         ckpt_dir, ckpt_name = os.path.split(ckpt_dir)
         if self.to_peft_format:
             suffix = 'peft'

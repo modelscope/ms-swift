@@ -69,11 +69,9 @@ class EvalArguments(DeployArguments):
         logger.info(f'vlmeval dataset: {self.eval_dataset_vlm}')
 
     def _init_result_path(self) -> None:
-        if not self.model and not self.ckpt_dir:
-            self.result_jsonl = to_abspath('./eval_result.jsonl')
-            return
         self.time = dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')
-        result_dir = self.ckpt_dir or self.model_dir
+        result_dir = self.ckpt_dir or f'result/{self.model_suffix}'
+        os.makedirs(result_dir, exist_ok=True)
         self.result_jsonl = to_abspath(os.path.join(result_dir, 'eval_result.jsonl'))
         super()._init_result_path()
 

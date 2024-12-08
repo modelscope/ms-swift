@@ -50,7 +50,7 @@ class JsonlWriter:
         self._cache_text = ''
 
     def append(self, obj: Union[Dict, List[Dict]]):
-        if isinstance(obj, (list, tuple)) and obj and isinstance(obj[0], dict):
+        if isinstance(obj, (list, tuple)) and all(isinstance(item, dict) for item in obj):
             obj_list = obj
         else:
             obj_list = [obj]
