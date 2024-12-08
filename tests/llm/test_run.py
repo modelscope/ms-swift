@@ -118,7 +118,6 @@ class TestRun(unittest.TestCase):
                 predict_with_generate=predict_with_generate,
                 dataset=dataset,
                 val_dataset='DAMO_NLP/jd#20',
-                download_mode='force_redownload',
                 output_dir=output_dir,
                 include_num_input_tokens_seen=True,
                 gradient_checkpointing=True,
