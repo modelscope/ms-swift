@@ -96,7 +96,7 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
         num_labels (Optional[int]): Number of labels for classification tasks. Default is None.
         packing (bool): Flag to enable packing of datasets. Default is False.
         lazy_tokenize (Optional[bool]): Flag to enable lazy tokenization. Default is None.
-        acc_strategy (Literal['token', 'sentence']): Strategy for accumulation. Default is 'token'.
+        acc_strategy (Literal['token', 'seq']): Strategy for accumulation. Default is 'token'.
         max_new_tokens (int): Maximum number of new tokens to generate. Default is 64.
         temperature (float): Temperature for sampling. Default is 0.
         optimizer (Optional[str]): Optimizer type to use, define it in the plugin package. Default is None.
@@ -113,7 +113,7 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
     lazy_tokenize: Optional[bool] = None
 
     # extra
-    acc_strategy: Literal['token', 'sentence'] = 'token'
+    acc_strategy: Literal['token', 'seq'] = 'token'
     max_new_tokens: int = 64
     temperature: float = 0.
     optimizer: Optional[str] = None
@@ -139,6 +139,10 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
         self._init_deepspeed()
         self._init_device()
 
+        if self.streaming and self.lazy_tokenize:
+            self.lazy_tokenize = False
+            logger.warning('Streaming and lazy_tokenize are incompatible. '
+                           f'Setting args.lazy_tokenize: {self.lazy_tokenize}.')
         if self.lazy_tokenize is None:
             self.lazy_tokenize = self.model_meta.is_multimodal and not self.streaming
             logger.info(f'Setting args.lazy_tokenize: {self.lazy_tokenize}')

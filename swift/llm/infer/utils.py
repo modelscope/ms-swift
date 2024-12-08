@@ -147,6 +147,9 @@ def _prepare_pt_engine(args: InferArguments, pt_engine):
             pt_engine.processor = processor
         else:
             pt_engine.model = Swift.from_pretrained(pt_engine.model, args.ckpt_dir, inference_mode=True)
+            if args.train_type == 'bone':
+                # Bone has a problem of float32 matmul with bloat16 in `peft==0.14.0`
+                pt_engine.model.to(pt_engine.model.dtype)
 
 
 def prepare_pt_engine_template(args: InferArguments, load_model: bool = True, **kwargs) -> Tuple[PtEngine, Template]:

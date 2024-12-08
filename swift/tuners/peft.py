@@ -12,8 +12,8 @@ import torch
 import torch.nn
 import transformers
 from modelscope import snapshot_download
-from peft import (AdaLoraConfig, BOFTConfig, BOFTModel, IA3Config, IA3Model, LoftQConfig, LoHaConfig, LoKrConfig,
-                  LoraModel, OFTConfig, PeftConfig, PeftModel, PeftModelForCausalLM, PeftModelForSeq2SeqLM,
+from peft import (AdaLoraConfig, BOFTConfig, BOFTModel, LoftQConfig, LoHaConfig, LoKrConfig, LoraModel, OFTConfig,
+                  PeftConfig, PeftModel, PeftModelForCausalLM, PeftModelForSeq2SeqLM,
                   PeftModelForSequenceClassification, PeftModelForTokenClassification, PrefixTuningConfig,
                   PromptEncoderConfig, PromptLearningConfig, PromptTuningConfig, VeraConfig, VeraModel, get_peft_config,
                   get_peft_model, get_peft_model_state_dict)
@@ -27,6 +27,11 @@ try:
     from peft import FourierFTModel
 except ImportError:
     FourierFTModel = None
+
+try:
+    from peft import BoneModel
+except ImportError:
+    BoneModel = None
 
 logger = get_logger()
 dispatchers = []
@@ -280,11 +285,12 @@ def hot_patch_peft_module():
     VeraModel._create_and_replace = _create_and_replace_hook
     BOFTModel._create_and_replace_origin = BOFTModel._create_and_replace
     BOFTModel._create_and_replace = _create_and_replace_hook
-    IA3Model._create_and_replace_origin = IA3Model._create_and_replace
-    IA3Model._create_and_replace = _create_and_replace_hook
     if FourierFTModel is not None:
         FourierFTModel._create_and_replace_origin = FourierFTModel._create_and_replace
         FourierFTModel._create_and_replace = _create_and_replace_hook
+    if BoneModel is not None:
+        BoneModel._create_and_replace_origin = BoneModel._create_and_replace
+        BoneModel._create_and_replace = _create_and_replace_hook
 
     # Support type conversion
     def __new_init__(self, model: torch.nn.Module, config: Dict[str, LoraConfig], adapter_name: str):
@@ -367,7 +373,6 @@ PrefixTuningConfig = wrap_module(PrefixTuningConfig)
 PromptLearningConfig = wrap_module(PromptLearningConfig)
 LoraConfig = wrap_module(LoraConfig)
 AdaLoraConfig = wrap_module(AdaLoraConfig)
-IA3Config = wrap_module(IA3Config)
 LoHaConfig = wrap_module(LoHaConfig)
 LoKrConfig = wrap_module(LoKrConfig)
 LoftQConfig = wrap_module(LoftQConfig)

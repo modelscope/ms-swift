@@ -63,7 +63,7 @@ class LoRA(BaseUI):
                 'en': 'The dtype of lora parameters'
             }
         },
-        'init_lora_weights': {
+        'init_weights': {
             'label': {
                 'zh': 'lora初始化方法',
                 'en': 'init lora weights'
@@ -99,4 +99,4 @@ class LoRA(BaseUI):
                     gr.Textbox(elem_id='lorap_lr_ratio', scale=2)
                     gr.Checkbox(elem_id='use_rslora', scale=2)
                     gr.Checkbox(elem_id='use_dora', scale=2)
-                    gr.Textbox(elem_id='init_lora_weights', scale=4)
+                    gr.Textbox(elem_id='init_weights', scale=4)
