@@ -229,7 +229,7 @@ class ChatMessage:
 class ChatCompletionResponseChoice:
     index: int
     message: ChatMessage
-    finish_reason: Literal['stop', 'length', None]  # None: for infer_backend='pt'
+    finish_reason: Literal['stop', 'length', None]
     logprobs: Optional[Dict[str, List[Dict[str, Any]]]] = None
 
     def to_cmpl_choice(self) -> 'CompletionResponseChoice':
@@ -242,7 +242,7 @@ class ChatCompletionResponseChoice:
 class CompletionResponseChoice:
     index: int
     text: str
-    finish_reason: Literal['stop', 'length', None]  # None: for infer_backend='pt'
+    finish_reason: Literal['stop', 'length', None]
     logprobs: Optional[Dict[str, List[Dict[str, Any]]]] = None
 
 
