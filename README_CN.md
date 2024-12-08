@@ -256,8 +256,8 @@ pip install ms-swift -U
 - 方法2：通过源代码安装SWIFT（方便运行训练推理脚本），请运行以下命令：
 
 ```shell
-git clone https://github.com/modelscope/swift.git
-cd swift
+git clone https://github.com/modelscope/ms-swift.git
+cd ms-swift
 pip install -e '.[llm]'
 ```
 

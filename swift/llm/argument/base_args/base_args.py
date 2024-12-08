@@ -2,7 +2,7 @@
 import os
 import sys
 from dataclasses import dataclass, field, fields
-from typing import Any, Dict, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 import json
 import torch
@@ -40,7 +40,7 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
         load_dataset_config (bool): Flag to determine if dataset configuration should be loaded. Default is False.
         use_hf (bool): Flag to determine if Hugging Face should be used. Default is False.
         hub_token (Optional[str]): SDK token for authentication. Default is None.
-        custom_register_path (Optional[str]): Path to custom .py file for dataset registration. Default is None.
+        custom_register_path (List[str]): Path to custom .py file for dataset registration. Default is None.
         ignore_args_error (bool): Flag to ignore argument errors for notebook compatibility. Default is False.
         use_swift_lora (bool): Use swift lora, a compatible argument
     """
@@ -55,7 +55,7 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
     # None: use env var `MODELSCOPE_API_TOKEN`
     hub_token: Optional[str] = field(
         default=None, metadata={'help': 'SDK token can be found in https://modelscope.cn/my/myaccesstoken'})
-    custom_register_path: Optional[str] = None  # .py
+    custom_register_path: List[str] = field(default_factory=list)  # .py
 
     # extra
     ignore_args_error: bool = False  # True: notebook compatibility
@@ -63,12 +63,11 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
 
     def _init_custom_register(self) -> None:
         """Register custom .py file to datasets"""
-        if self.custom_register_path is None:
-            return
         self.custom_register_path = to_abspath(self.custom_register_path, True)
-        folder, fname = os.path.split(self.custom_register_path)
-        sys.path.append(folder)
-        __import__(fname.rstrip('.py'))
+        for path in self.custom_register_path:
+            folder, fname = os.path.split(path)
+            sys.path.append(folder)
+            __import__(fname.rstrip('.py'))
         logger.info(f'Successfully registered `{self.custom_register_path}`')
 
     def __post_init__(self):
@@ -127,7 +126,12 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
             'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant', 'split_dataset_ratio', 'model_name', 'model_author',
             'train_type', 'tuner_backend'
         ]
-        skip_keys = ['output_dir', 'deepspeed']
+        skip_keys = [
+            'output_dir',
+            'deepspeed',
+            'temperature',
+            'max_new_tokens',
+        ]
         for key in all_keys:
             if key in skip_keys:
                 continue

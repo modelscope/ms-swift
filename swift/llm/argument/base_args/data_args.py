@@ -46,13 +46,12 @@ class DataArguments:
     model_author: List[str] = field(
         default_factory=lambda: [None, None], metadata={'help': "e.g. ['魔搭', 'ModelScope']"})
 
-    custom_dataset_info: Optional[str] = None  # .json
+    custom_dataset_info: List[str] = field(default_factory=list)  # .json
 
     def _init_custom_dataset_info(self):
         """register custom dataset_info.json to datasets"""
-        if self.custom_dataset_info is None:
-            return
-        register_dataset_info(self.custom_dataset_info)
+        for path in self.custom_dataset_info:
+            register_dataset_info(path)
 
     def __post_init__(self):
         if self.data_seed is None:
