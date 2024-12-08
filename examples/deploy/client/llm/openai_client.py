@@ -1,3 +1,6 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
+import os
+
 from openai import OpenAI
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'

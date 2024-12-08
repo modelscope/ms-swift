@@ -1,5 +1,5 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-from typing import Dict, List
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
