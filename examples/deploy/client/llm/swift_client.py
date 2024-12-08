@@ -28,8 +28,8 @@ def infer_stream(engine: 'InferEngine', infer_request: 'InferRequest'):
     print(f'metric: {metric.compute()}')
 
 
-def run_client(port):
-    engine = InferClient(port=port)
+def run_client(host: str = '127.0.0.1', port: int = 8000):
+    engine = InferClient(host=host, port=port)
     print(f'models: {engine.models}')
     infer_batch(engine, 'AI-ModelScope/alpaca-gpt4-data-zh#1000')
     messages = [{'role': 'user', 'content': 'who are you?'}]
@@ -44,4 +44,4 @@ if __name__ == '__main__':
     with run_deploy(
             DeployArguments(model='Qwen/Qwen2.5-1.5B-Instruct', verbose=False, log_interval=-1,
                             infer_backend='vllm')) as port:
-        run_client(port)
+        run_client(port=port)

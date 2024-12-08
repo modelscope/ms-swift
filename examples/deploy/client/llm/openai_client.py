@@ -21,10 +21,10 @@ def infer_stream(client, model: str, messages):
     print()
 
 
-def run_client(port: str):
+def run_client(host: str = '127.0.0.1', port: int = 8000):
     client = OpenAI(
         api_key='EMPTY',
-        base_url=f'http://localhost:{port}/v1',
+        base_url=f'http://{host}:{port}/v1',
     )
     model = client.models.list().data[0].id
     print(f'model: {model}')
@@ -40,4 +40,4 @@ def run_client(port: str):
 if __name__ == '__main__':
     from swift.llm import run_deploy, DeployArguments
     with run_deploy(DeployArguments(model='Qwen/Qwen2.5-1.5B-Instruct', verbose=False, log_interval=-1)) as port:
-        run_client(port)
+        run_client(port=port)

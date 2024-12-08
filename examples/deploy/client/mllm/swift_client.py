@@ -82,8 +82,8 @@ def get_message(mm_type: Literal['text', 'image', 'video', 'audio']):
     return message
 
 
-def run_client(port):
-    engine = InferClient(port=port)
+def run_client(host: str = '127.0.0.1', port: int = 8000):
+    engine = InferClient(host=host, port=port)
     print(f'models: {engine.models}')
     infer_batch(engine, 'AI-ModelScope/LaTeX_OCR#1000')
     infer_stream(engine, InferRequest(messages=[get_message(mm_type='video')]))
@@ -97,4 +97,4 @@ if __name__ == '__main__':
     with run_deploy(
             DeployArguments(model='Qwen/Qwen2-VL-2B-Instruct', verbose=False, log_interval=-1,
                             infer_backend='vllm')) as port:
-        run_client(port)
+        run_client(port=port)
