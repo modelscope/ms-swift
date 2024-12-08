@@ -31,10 +31,15 @@ class QuantEngine(ProcessorMixin):
             raise ValueError(f'Please set the quant_bits. args.quant_bits: {args.quant_bits}')
         if args.quant_method == 'awq':
             self.awq_model_quantize()
-            self.model.save_quantized(args.output_dir)
+            self.model.save_quantized(
+                args.output_dir, safetensors=args.safe_serialization, shard_size=args.max_shard_size)
         elif args.quant_method == 'gptq':
             gptq_quantizer = self.gptq_model_quantize()
-            gptq_quantizer.save(self.model, args.output_dir)
+            gptq_quantizer.save(
+                self.model,
+                args.output_dir,
+                safe_serialization=args.safe_serialization,
+                max_shard_size=args.max_shard_size)
         elif args.quant_method == 'bnb':
             self.model.save_pretrained(
                 args.output_dir, safe_serialization=args.safe_serialization, max_shard_size=args.max_shard_size)
