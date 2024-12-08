@@ -33,7 +33,6 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
     report_to: List[str] = field(default_factory=lambda: ['tensorboard'])
     remove_unused_columns: bool = False
     logging_first_step: bool = True
-    label_names: List[str] = field(default_factory=lambda: ['labels'])
 
     def _init_output_dir(self):
         if self.output_dir is not None:
