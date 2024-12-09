@@ -38,7 +38,7 @@ register_dataset(
     DatasetMeta(
         ms_dataset_id='AI-ModelScope/ShareGPT-4o',
         hf_dataset_id='OpenGVLab/ShareGPT-4o',
-        preprocess_func=ShareGPT4oPreprocessor(columns_mapping={'image': 'images'}),
+        preprocess_func=ShareGPT4oPreprocessor(),
         subsets=['image_caption'],
         split=['images'],
         tags=['vqa', 'multi-modal'],
@@ -70,7 +70,6 @@ register_dataset(
         ms_dataset_id='swift/RLAIF-V-Dataset',
         hf_dataset_id='openbmb/RLAIF-V-Dataset',
         preprocess_func=ResponsePreprocessor(columns_mapping={
-            'image': 'images',
             'question': 'query',
             'chosen': 'response',
             'rejected': 'rejected_response'
@@ -153,7 +152,7 @@ class COCO2014Preprocess(ResponsePreprocessor):
 register_dataset(
     DatasetMeta(
         ms_dataset_id='modelscope/coco_2014_caption',
-        preprocess_func=COCO2014Preprocess(columns_mapping={'image': 'images'}),
+        preprocess_func=COCO2014Preprocess(),
         subsets=[
             SubsetDataset('train', 'coco_2014_caption', ['train']),
             SubsetDataset('validation', 'coco_2014_caption', ['validation']),
@@ -434,7 +433,7 @@ for subset in [
     subset = SubsetDataset(
         subset=subset,
         split=['caption', 'open_ended', 'multi_choice'],
-        preprocess_func=LLaVAVideo178KPreprocessor(subset=subset, columns_mapping={'video': 'videos'}),
+        preprocess_func=LLaVAVideo178KPreprocessor(subset=subset),
     )
     llava_video_subsets.append(subset)
 
@@ -856,7 +855,7 @@ register_dataset(
     DatasetMeta(
         ms_dataset_id='AI-ModelScope/LLaVA-Instruct-150K',
         ms_revision='d5db3806e395c60496630a206c336932e85a2d00',
-        preprocess_func=LLaVAInstructPreprocessor(columns_mapping={'image': 'images'}),
+        preprocess_func=LLaVAInstructPreprocessor(),
         split=['train'],
         tags=['chat', 'multi-modal', 'vision']))
 
@@ -896,17 +895,14 @@ register_dataset(
     DatasetMeta(
         ms_dataset_id='swift/MideficsDataset',
         hf_dataset_id='WinterSchool/MideficsDataset',
-        preprocess_func=MessagesPreprocessor(
-            columns_mapping={'image': 'images'}, inner_key='data', user_role='question', assistant_role='answer'),
+        preprocess_func=MessagesPreprocessor(inner_key='data', user_role='question', assistant_role='answer'),
         tags=['medical', 'en', 'vqa']))
 
 register_dataset(
     DatasetMeta(
         ms_dataset_id='swift/OK-VQA_train',
         hf_dataset_id='Multimodal-Fatima/OK-VQA_train',
-        preprocess_func=ResponsePreprocessor(columns_mapping={
-            'image': 'images',
-        }),
+        preprocess_func=ResponsePreprocessor(),
         tags=['multi-modal', 'en', 'vqa', 'quality']))
 
 register_dataset(
@@ -914,10 +910,7 @@ register_dataset(
         ms_dataset_id='swift/A-OKVQA',
         hf_dataset_id='HuggingFaceM4/A-OKVQA',
         split=['train', 'validation'],
-        preprocess_func=ResponsePreprocessor(columns_mapping={
-            'image': 'images',
-            'rationales': 'response'
-        }),
+        preprocess_func=ResponsePreprocessor(columns_mapping={'rationales': 'response'}),
         tags=['multi-modal', 'en', 'vqa', 'quality']))
 
 
@@ -943,7 +936,7 @@ register_dataset(
         ms_dataset_id='swift/OCR-VQA',
         hf_dataset_id='howard-hou/OCR-VQA',
         split=['train', 'validation'],
-        preprocess_func=OcrvqaPreprocessor(columns_mapping={'image': 'images'}),
+        preprocess_func=OcrvqaPreprocessor(),
         tags=['multi-modal', 'en', 'ocr-vqa']))
 
 
@@ -962,7 +955,7 @@ register_dataset(
         ms_dataset_id='swift/ScienceQA',
         hf_dataset_id='derek-thomas/ScienceQA',
         split=['train', 'validation'],
-        preprocess_func=ScienceQAPreprocessor(columns_mapping={'image': 'images'}),
+        preprocess_func=ScienceQAPreprocessor(),
         tags=['multi-modal', 'science', 'vqa', 'quality']))
 
 
@@ -1124,18 +1117,12 @@ register_dataset(
         subsets=[
             SubsetDataset(
                 split=['train'],
-                preprocess_func=LatexocrPreprocessor(columns_mapping={
-                    'image': 'images',
-                    'text': 'response'
-                }),
+                preprocess_func=LatexocrPreprocessor(),
             ),
             SubsetDataset(
                 subset='synthetic_handwrite',
                 split=['train'],
-                preprocess_func=LatexocrPreprocessor(columns_mapping={
-                    'image': 'images',
-                    'text': 'response'
-                }),
+                preprocess_func=LatexocrPreprocessor(),
             )
         ],
         tags=['chat', 'ocr', 'multi-modal', 'vision']))
@@ -1152,5 +1139,5 @@ register_dataset(
     DatasetMeta(
         ms_dataset_id='AI-ModelScope/captcha-images',
         split=['train', 'validation'],
-        preprocess_func=CapchaImagesPreprocessor(columns_mapping={'image': 'images'}),
+        preprocess_func=CapchaImagesPreprocessor(),
         tags=['chat', 'multi-modal', 'vision']))

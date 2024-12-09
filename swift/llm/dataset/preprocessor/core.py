@@ -36,7 +36,7 @@ class RowPreprocessor:
                  random_state: Union[np.random.RandomState, int, None] = None,
                  traceback_limit: int = 10) -> None:
         self.columns_mapping = columns_mapping or {}
-        self.row_mapping = {}
+        self.columns_mapping.update({'image': 'images', 'video': 'videos', 'audio': 'audios'})
         self.traceback_limit = traceback_limit
         self._traceback_counter = 0
         self.dataset_sample = dataset_sample
@@ -128,7 +128,6 @@ class RowPreprocessor:
     def batched_preprocess(self, batched_row: Dict[str, Any], *, strict: bool) -> Dict[str, Any]:
         batched_row = dict(batched_row)
         assert len(batched_row) > 0
-        self.row_keys_map(batched_row, self.row_mapping)
         self._fix_streaming_keys(batched_row)
         rows = self.batched_to_rows(batched_row)
 
@@ -166,7 +165,17 @@ class RowPreprocessor:
     @staticmethod
     def safe_rename_columns(dataset: HfDataset, columns_mapping: Dict[str, Any]) -> HfDataset:
         dataset = get_features_dataset(dataset)
-        safe_columns_mapping = {k: v for k, v in columns_mapping.items() if k in dataset.features}
+        columns_keys = {k.lower(): k for k in dataset.features.keys()}  # lower -> lower/upper
+        safe_columns_mapping = {columns_keys[k]: v for k, v in columns_mapping.items() if k in columns_keys}
+
+        counter = Counter(safe_columns_mapping.values())
+
+        for k, new_k in list(safe_columns_mapping.items()):
+            if counter[new_k] > 1:
+                # For example, if "response" and "answer" match, then no processing is done.
+                safe_columns_mapping.pop(k)
+                continue
+
         if safe_columns_mapping:
             dataset = dataset.rename_columns(safe_columns_mapping)
 
@@ -177,19 +186,6 @@ class RowPreprocessor:
                 dataset = dataset.rename_columns(columns_mapping)
 
         return dataset
-
-    @staticmethod
-    def row_keys_map(row: Dict[str, Any], row_mapping: Dict[str, str]) -> None:
-        # If there are multiple mappings to the same keys, then delete them.
-        row_keys = {k.lower(): k for k in row.keys()}
-        row_mapping = {row_keys[k]: v for k, v in row_mapping.items() if k in row_keys}
-        counter = Counter(row_mapping.values())
-
-        for k, new_k in row_mapping.items():
-            if counter[new_k] > 1:
-                # For example, if "response" and "answer" match, then no processing is done.
-                continue
-            row[new_k] = row.pop(k)
 
     @staticmethod
     @contextmanager
@@ -268,11 +264,11 @@ class ResponsePreprocessor(RowPreprocessor):
         response_keys = ['response', 'answer', 'output', 'targets', 'target', 'answer_key', 'solution', 'answers'
                          ] + ['text', 'completion', 'content']
         for key in system_keys:
-            self.row_mapping[key] = 'system'
+            self.columns_mapping[key] = 'system'
         for key in query_keys:
-            self.row_mapping[key] = 'query'
+            self.columns_mapping[key] = 'query'
         for key in response_keys:
-            self.row_mapping[key] = 'response'
+            self.columns_mapping[key] = 'response'
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         response = row.pop('response', None)
@@ -361,13 +357,13 @@ class MessagesPreprocessor(RowPreprocessor):
 
         message_keys = ['messages', 'conversation', 'conversations']
         for key in message_keys:
-            self.row_mapping[key] = 'messages'
+            self.columns_mapping[key] = 'messages'
         # sharegptq
         system_keys = ['system', 'system_prompt']
         if system_role not in system_keys:
             system_keys.append(system_role)
         for key in system_keys:
-            self.row_mapping[key] = 'system'
+            self.columns_mapping[key] = 'system'
 
     @staticmethod
     def _is_sharegpt_format(message: Dict[str, str]) -> bool:
