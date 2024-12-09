@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import torch
 from PIL import Image
@@ -21,87 +21,92 @@ class Emu3GenTemplate(Template):
     COOKBOOK_SIZE = 32768
 
     APPLY_LOSS_ON_ONLY_VISION = True
-    NEGATIVE_PROMPT = os.environ.get('NEGATIVE_PROMPT')
+    NEGATIVE_PROMPT = os.environ.get(
+        'NEGATIVE_PROMPT',
+        'lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, '
+        'low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry.')
+    CFG_SCALE = os.environ.get('CFG_SCALE', 3.0)
+    GENERATION_RATIO = '1:1'
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.bov = self.processor.tokenizer.encode(self.processor.visual_template[0].format(token_id=0))[0]
         self.eov = self.processor.tokenizer.encode(self.processor.visual_template[0].format(token_id=self.COOKBOOK_SIZE
                                                                                             - 1))[0]
+        self.h, self.w = self.processor.calculate_generate_size(self.GENERATION_RATIO, self.processor.image_area,
+                                                                self.processor.vision_tokenizer.spatial_scale_factor)
+        self.skip_prompt = False
+
+    def _process_prompt(self, raw_prompt: Optional[str | List[str]]):
+        if isinstance(raw_prompt, str):
+            raw_prompt = [raw_prompt]
+        prompt_list = []
+        size_list = []
+        for text_prompt in raw_prompt:
+            prompt = self.processor.tokenizer.bos_token
+            image_prompt = (
+                self.processor.tokenizer.boi_token + self.processor.prefix_template.format(H=self.h, W=self.w)
+                + self.processor.tokenizer.img_token)
+            prompt += (text_prompt + image_prompt)
+            prompt_list.append(prompt)
+            size_list.append([self.h, self.w])
+        prompt_list = self.processor.tokenizer(prompt_list, padding='longest')
+        return prompt_list
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        query = inputs.to_history()['query']
+        prompt = inputs.to_history()['query']
+        encoded = self._process_prompt(prompt)
+        encoded = {key: encoded[key][0] for key in encoded.keys()}  # [1, L] -> [L]
+        encoded.pop('token_type_ids')
 
-        kwargs = dict(
-            mode='U' if self.mode == 'train' else 'G',
-            ratio='1:1',
-            image_area=self.config.image_area,
-            return_tensors='pt',
-            padding='longest',
-        )
+        # query = inputs.to_history()['query']
+        # labels = encoded['input_ids']
+        # if self.APPLY_LOSS_ON_ONLY_VISION:
+        #     labels = torch.where(torch.logical_and(labels >= self.bov, labels <= self.eov), labels, -100)
 
-        # image
-        raw_image = inputs.images
-        encoded = self.processor(query, raw_image, **kwargs)
-        labels = encoded['input_ids']
-        if self.APPLY_LOSS_ON_ONLY_VISION:
-            labels = torch.where(torch.logical_and(labels >= self.bov, labels <= self.eov), labels, -100)
-
-        encoded['labels'] = labels
-        for k, v in encoded.items():
-            encoded[k] = v.squeeze(0)
+        # encoded['labels'] = labels
+        # for k, v in encoded.items():
+        #     encoded[k] = v.squeeze(0)
         return encoded
 
     def prepare_for_output(self, output: str) -> str:
         return output
 
     def prepare_generate_kwargs(self, generate_kwargs: Dict[str, Any], *, model=None) -> Dict[str, Any]:
-
         from transformers import UnbatchedClassifierFreeGuidanceLogitsProcessor
         from transformers import PrefixConstrainedLogitsProcessor
         from transformers import LogitsProcessorList
-        generate_kwargs = generate_kwargs.prepare_generate_kwargs(generate_kwargs, model=model)
-        inputs = generate_kwargs['inputs']
-        kwargs = dict(
-            mode='G',
-            ratio='1:1',
-            image_area=self.config.image_area,
-            return_tensors='pt',
-            padding='longest',
-        )
-        negative_prompt = self.NEGATIVE_PROMPT
-        if 'negative_prompt' in inputs:
-            negative_prompt = inputs['negative_prompt']
 
-        classifier_free_guidance = 3.0
-        h, w = self.processor.calculate_generate_size('1:1', self.config.image_area,
-                                                      self.processor.vision_tokenizer.spatial_scale_factor)
-        # h = pos_inputs.image_size[:, 0]
-        # w = pos_inputs.image_size[:, 1]
-        neg_inputs = self.processor(text=negative_prompt, **kwargs)
+        negative_prompt = self.NEGATIVE_PROMPT
+        neg_inputs = self._process_prompt(negative_prompt)
+        neg_inputs = {key: torch.tensor(val) for key, val in neg_inputs.items()}
+        batch_size = generate_kwargs['input_ids'].shape[0]
+        h = torch.tensor([self.h] * batch_size)
+        w = torch.tensor([self.w] * batch_size)
+
         constrained_fn = self.processor.build_prefix_constrained_fn(h, w)
         logits_processor = LogitsProcessorList([
             UnbatchedClassifierFreeGuidanceLogitsProcessor(
-                classifier_free_guidance,
+                self.CFG_SCALE,
                 model,
-                unconditional_ids=neg_inputs.input_ids.to('cuda:0'),
+                unconditional_ids=neg_inputs['input_ids'].to('cuda:0'),
             ),
             PrefixConstrainedLogitsProcessor(
                 constrained_fn,
                 num_beams=1,
             ),
         ])
-        if 'logits_processor' not in generate_kwargs:
-            generate_kwargs['logits_processor'] = LogitsProcessorList()
-        generate_kwargs['logits_processor'] += logits_processor
-        return generate_kwargs
+        res = super().prepare_generate_kwargs(generate_kwargs, model=model)
+        res['logits_processor'] = logits_processor
+        return res
 
-    def decode(self, input_ids: List[int], **kwargs) -> Image.Image:
-        mm_list = self.processor.decode(input_ids)
-        for idx, im in enumerate(mm_list):
+    def decode(self, generate_ids: List[int], is_finished: bool = True, **decode_kwargs) -> Any:
+        mm_list = self.processor.decode(generate_ids)
+        for im in mm_list:
             if not isinstance(im, Image.Image):
                 continue
-            return im
+            im.save('test1.png')
+            return [{'type': 'image', 'image': im}]
 
     def format_image_prompt(self, image_tokens):
         h, w = image_tokens.shape
