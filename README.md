@@ -58,6 +58,7 @@ You can contact us and communicate with us by adding our group:
 <img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
 ## 🎉 News
+- 2024.12.09: Support for training and inference of emu3-gen. Use `swift infer --model BAAI/Emu3-Gen --stream False --use_chat_template False --top_k 2048 --max_new_tokens 40960` for the experience.
 - 🎁2024.12.04: We bump the version to SWIFT3.0 . Please check [ReleaseNote and BreakChange](./docs/source/Instruction/ReleaseNote3.0.md) for details.
 - 2024.11.29: Support for glm-edge and glm-edge-v series models. Use `swift infer --model_type glm-edge-v-2b` for the experience.
 - 2024.11.28: Supports the model qwq-32b-preview, marco-o1, and the dataset open-o1. Use `swift infer --model_type qwq-32b-preview` for the experience.

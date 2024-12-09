@@ -271,6 +271,24 @@ def test_template():
     infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True, merge_lora=True))
 
 
+def test_emu3_gen():
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+    os.environ['max_position_embeddings'] = '10240'
+    os.environ['image_area'] = '518400'
+    from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
+    kwargs['num_train_epochs'] = 100
+    result = sft_main(TrainArguments(model='BAAI/Emu3-Gen', dataset=['swift/TextCaps#2'], **kwargs))
+    last_model_checkpoint = result['last_model_checkpoint']
+    args = InferArguments(
+        ckpt_dir=last_model_checkpoint,
+        infer_backend='pt',
+        stream=False,
+        use_chat_template=False,
+        top_k=2048,
+        max_new_tokens=40960)
+    infer_main(args)
+
+
 if __name__ == '__main__':
     # test_llm_ddp()
     # test_mllm_mp()
@@ -287,8 +305,9 @@ if __name__ == '__main__':
     # test_resume_from_checkpoint()
     # test_resume_only_model()
     # test_llm_transformers_4_33()
-    test_predict_with_generate()
+    # test_predict_with_generate()
     # test_predict_with_generate_zero3()
     # test_template()
     # test_qwen_vl()
     # test_qwen2_audio()
+    test_emu3_gen()
