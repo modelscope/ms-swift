@@ -91,9 +91,9 @@ class TunerArguments:
     freeze_parameters_ratio: float = 0.  # 0 ~ 1
     trainable_parameters: List[str] = field(default_factory=list)
     # lora or full
+    freeze_llm: bool = False
     freeze_vit: bool = True
     freeze_aligner: bool = True
-    freeze_llm: bool = False
     # tuners
     target_modules: List[str] = field(default_factory=lambda: ['all-linear'])
     target_regex: Optional[str] = None
