@@ -100,7 +100,6 @@
         "ms_dataset_id": "swift/path-vqa",
         "hf_dataset_id": "flaviagiammarino/path-vqa",
         "columns": {
-            "image": "images",
             "question": "query",
             "answer": "response"
         },
@@ -183,8 +182,7 @@
         "hf_dataset_id": "HuggingFaceM4/VQAv2",
         "columns": {
             "question": "query",
-            "multiple_choice_answer": "response",
-            "image": "images"
+            "multiple_choice_answer": "response"
         },
         "split": ["train"],
         "tags": ["en", "vqa", "quality"],

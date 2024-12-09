@@ -704,36 +704,18 @@ register_dataset(
         tags=['chat', 'multi-modal', 'vision']))
 
 
-class TextCapsPreprocessor(RowPreprocessor):
+class TextCapsPreprocessor(ResponsePreprocessor):
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        try:
-            image = row['image']
-            query = 'What is the caption of this image?'
-            response = row['reference_strs']
-            return {
-                'messages': [
-                    {
-                        'role': 'user',
-                        'content': query
-                    },
-                    {
-                        'role': 'assistant',
-                        'content': response[np.random.choice(range(len(response)))]
-                    },
-                ],
-                'image':
-                image
-            }
-        except Exception:
-            return
+        row['query'] = 'What is the caption of this image?'
+        return super().preprocess(row)
 
 
 register_dataset(
     DatasetMeta(
         ms_dataset_id='swift/TextCaps',
         hf_dataset_id='HuggingFaceM4/TextCaps',
-        preprocess_func=TextCapsPreprocessor(),
+        preprocess_func=TextCapsPreprocessor(columns_mapping={'reference_strs': 'response'}),
         split=['train', 'validation'],
         huge_dataset=True,
         tags=['multi-modal', 'en', 'caption', 'quality']))
