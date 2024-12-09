@@ -36,7 +36,14 @@ class RowPreprocessor:
                  random_state: Union[np.random.RandomState, int, None] = None,
                  traceback_limit: int = 10) -> None:
         self.columns_mapping = columns_mapping or {}
-        self.columns_mapping.update({'image': 'images', 'video': 'videos', 'audio': 'audios'})
+        images_keys = ['images', 'image']
+        audios_keys = ['audios', 'audio']
+        videos_keys = ['videos', 'video']
+        for mm_type in ['images', 'audios', 'videos']:
+            keys = locals()[f'{mm_type}_keys']
+            for key in keys:
+                self.columns_mapping[key] = mm_type
+
         self.traceback_limit = traceback_limit
         self._traceback_counter = 0
         self.dataset_sample = dataset_sample
@@ -179,6 +186,7 @@ class RowPreprocessor:
                 safe_columns_mapping.pop(k)
                 continue
 
+        # e.g. Keep {'query': 'query'} to ensure that the query has the highest priority.
         safe_columns_mapping = {k: v for k, v in safe_columns_mapping.items() if k != v}
         if safe_columns_mapping:
             dataset = dataset.rename_columns(safe_columns_mapping)
