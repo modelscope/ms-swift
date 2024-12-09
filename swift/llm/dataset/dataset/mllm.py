@@ -722,7 +722,7 @@ class TextCapsPreprocessor(RowPreprocessor):
                         'content': response[np.random.choice(range(len(response)))]
                     },
                 ],
-                'image':
+                'images':
                 image
             }
         except Exception:

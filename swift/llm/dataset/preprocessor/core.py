@@ -166,7 +166,10 @@ class RowPreprocessor:
     def safe_rename_columns(dataset: DATASET_TYPE, columns_mapping: Dict[str, Any]) -> DATASET_TYPE:
         dataset = get_features_dataset(dataset)
         columns_keys = {k.lower(): k for k in dataset.features.keys()}  # lower -> lower/upper
-        safe_columns_mapping = {columns_keys[k]: v for k, v in columns_mapping.items() if k in columns_keys}
+        safe_columns_mapping = {
+            columns_keys[k.lower()]: v
+            for k, v in columns_mapping.items() if k.lower() in columns_keys
+        }
 
         counter = Counter(safe_columns_mapping.values())
 
