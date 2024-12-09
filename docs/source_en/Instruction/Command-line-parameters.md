@@ -87,7 +87,7 @@ This parameter list inherits from transformers `Seq2SeqTrainingArguments`, with 
 
 - 🔥output_dir: Default is `output/<model_name>`.
 - 🔥gradient_checkpointing: Whether to use gradient checkpointing, default is True.
-- 🔥deepspeed: Default is None. Can be set to 'zero2', 'zero3', 'zero2-offload', 'zero3-offload' to use the built-in deepspeed configuration files from ms-swift.
+- 🔥deepspeed: Default is None. Can be set to 'zero2', 'zero3', 'zero2_offload', 'zero3_offload' to use the built-in deepspeed configuration files from ms-swift.
 - 🔥per_device_train_batch_size: Default is 1.
 - 🔥per_device_eval_batch_size: Default is 1.
 - weight_decay: Weight decay coefficient, default value is 0.1.
