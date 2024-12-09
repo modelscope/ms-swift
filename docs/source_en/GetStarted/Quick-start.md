@@ -7,10 +7,8 @@ SWIFT is an integrated framework that encompasses model training, inference depl
 - Task Types: Besides general generative tasks, it supports training for classification tasks.
 - Lightweight Fine-tuning: Supports various lightweight fine-tuning methods such as LoRA, QLoRA, DoRA, ReFT, LLaMAPro, Adapter, SCEdit, GaLore, and Liger-Kernel.
 - Training stages: Covering the entire stages of pre-training, fine-tuning, and human alignment.
-- Training Parallelism: Covers single machine single card, single machine multiple card device mapping, distributed data parallelism (DDP), multi-machine multi-card, DeepSpeed, FSDP, PAI DLC, and supports training for models based on the Megatron architecture.
-  - Extra support for [TorchAcc](https://github.imc.re/AlibabaPAI/torchacc) training acceleration.
-  - Extra support for sequence parallelism based on [XTuner](https://github.com/InternLM/xtuner).
-- Inference Deployment: Supports inference deployment on multiple frameworks such as PyTorch, vLLM, LmDeploy, which can be directly applied in Docker images or Kubernetes environments.
+- Training Parallelism: Covers single machine single card, single machine multiple card device mapping, distributed data parallelism (DDP), multi-machine multi-card, DeepSpeed, FSDP, PAI DLC.
+- Inference Deployment: Supports inference deployment on multiple frameworks such as PyTorch, vLLM, LmDeploy.
 - Evaluation: Supports pure text and multi-modal evaluation capabilities based on the EvalScope framework, and allows for customized evaluation.
 - Export: Supports quantization methods like awq, gptq, bnb, and operations for merging lora and llamapro.
 - User Interface: Supports interface operations based on the Gradio framework and allows for the deployment of single model applications in space or demo environments.
