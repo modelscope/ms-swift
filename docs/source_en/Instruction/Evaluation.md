@@ -50,8 +50,8 @@ pip install ms-swift[eval] -U
 Or install from the source code:
 
 ```shell
-git clone https://github.com/modelscope/swift.git
-cd swift
+git clone https://github.com/modelscope/ms-swift.git
+cd ms-swift
 pip install -e '.[eval]'
 ```
 

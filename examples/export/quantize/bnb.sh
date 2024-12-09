@@ -1,4 +1,8 @@
+CUDA_VISIBLE_DEVICES=0 \
 swift export \
-  --ckpt_dir /mnt/workspace/yzhao/modelscope/swift/output/Qwen2-7B/v0-20241129-171625/checkpoint-100-merged \
-  --quant_method bnb \
-  --quant_bits 8
+    --model Qwen/Qwen2.5-1.5B-Instruct \
+    --quant_method bnb \
+    --quant_bits 4 \
+    --bnb_4bit_quant_type nf4 \
+    --bnb_4bit_use_double_quant true \
+    --output_dir Qwen2.5-1.5B-Instruct-BNB-NF4

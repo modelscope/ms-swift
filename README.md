@@ -255,8 +255,8 @@ pip install ms-swift -U
 - Method 2: Install SWIFT through source code (convenient for running training and inference scripts), please run the following commands:
 
 ```shell
-git clone https://github.com/modelscope/swift.git
-cd swift
+git clone https://github.com/modelscope/ms-swift.git
+cd ms-swift
 pip install -e '.[llm]'
 ```
 

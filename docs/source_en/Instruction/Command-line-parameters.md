@@ -130,6 +130,7 @@ Other important parameters:
 - 🔥freeze_llm: Freeze LLM. Default is False. Applicable for full parameters and LoRA.
 - 🔥target_modules: Specify the LoRA module, default is `all-linear`, automatically finds linear layers except for lm_head and attaches the tuner. This parameter is not limited to LoRA.
 - 🔥target_regex: Specify a regex expression for the LoRA module. Default is `None`, if this value is provided, target_modules does not take effect. This parameter is not limited to LoRA.
+- 🔥init_weights: The method of init tuner weights, For lora the accepted values are `true`, `false`, `guassian`, `pissa`, `pissa_niter_[number of iters]`, for bone are `true`, `false`, `bat`, default is `true`
 - modules_to_save: After the tuner is attached, the original model's modules used during training and storage, default is `[]`. This parameter is not limited to LoRA.
 
 #### Full Arguments
@@ -143,7 +144,6 @@ Other important parameters:
 - 🔥lora_rank: Default is `8`.
 - 🔥lora_alpha: Default is `32`.
 - lora_dropout: Default is `0.05`.
-- 🔥init_lora_weights: Method to initialize LoRA weights, can be specified as `true`, `false`, `gaussian`, `pissa`, `pissa_niter_[number of iters]`, default is `true`.
 - lora_bias: Default is `'none'`, selectable values are: 'none', 'all'. If you want to set all biases as trainable, you can set it to `'all'`.
 - lora_dtype: Specify the dtype of the LoRA module. Supports 'float16', 'bfloat16', 'float32', defaults to the original model type.
 - 🔥use_dora: Default is `False`, whether to use `DoRA`.
@@ -297,7 +297,7 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
 - packing: Whether to use packing, default is False.
 - 🔥lazy_tokenize: Whether to use lazy_tokenize, default is False during LLM training, default is True during MLLM training.
 
-- acc_strategy: Strategy for training accuracy, can be `sentence` or `token` level accuracy, default is `token`.
+- acc_strategy: Strategy for training accuracy, can be `seq` or `token` level accuracy, default is `token`.
 - max_new_tokens: Maximum generated token count when `predict_with_generate=True`, default 64.
 - temperature: Temperature when `predict_with_generate=True`, default 0.
 - optimizer: Custom optimizer name for plugin.
@@ -331,7 +331,7 @@ Inference arguments include the [base arguments](#base-arguments), [merge argume
 - 🔥ckpt_dir: Path to the model checkpoint folder, default is None.
 - 🔥infer_backend: Inference backend, supports 'pt', 'vllm', 'lmdeploy', default is 'pt'.
 - 🔥max_batch_size: Batch size for pt backend, default is 1.
-- result_path: Path to store inference results (jsonl), default is None.
+- result_path: Path to store inference results (jsonl), default is None, saved in the checkpoint directory or './result' directory.
 - val_dataset_sample: Number of samples from the inference dataset, default is None.
 
 ### Deployment Arguments
@@ -344,7 +344,7 @@ Deployment Arguments inherit from the [inference arguments](#inference-arguments
 - owned_by: Default is `swift`.
 - 🔥served_model_name: Model name for serving, defaults to the model's suffix.
 - verbose: Print access logs, default is True.
-- log_interval: Interval for printing tokens/s statistics, default is 20 seconds.
+- log_interval: Interval for printing tokens/s statistics, default is 20 seconds. If set to -1, it will not be printed.
 - max_logprobs: Maximum number of logprobs to return, default is 20.
 
 ### Evaluation Arguments

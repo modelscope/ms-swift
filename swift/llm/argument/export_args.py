@@ -33,7 +33,7 @@ class ExportArguments(MergeArguments, BaseArguments):
     output_dir: Optional[str] = None
 
     # awq/gptq
-    quant_method: Literal['awq', 'gptq'] = None
+    quant_method: Literal['awq', 'gptq', 'bnb'] = None
     quant_n_samples: int = 256
     max_length: int = 2048
     quant_batch_size: int = 1
@@ -61,24 +61,27 @@ class ExportArguments(MergeArguments, BaseArguments):
                 raise ValueError(f'self.dataset: {self.dataset}, Please input the quant dataset.')
 
     def _init_output_dir(self):
-        ckpt_dir = self.ckpt_dir or self.model_dir
-        ckpt_dir, ckpt_name = os.path.split(ckpt_dir)
-        if self.to_peft_format:
-            suffix = 'peft'
-        elif self.merge_lora:
-            suffix = 'merged'
-        elif self.quant_bits:
-            suffix = f'{self.quant_method}-int{self.quant_bits}'
-        elif self.to_ollama:
-            suffix = 'ollama'
-        else:
-            suffix = 'dummy'
-            logger.warn(f'Not a valid export argument: {self}')
-        self.output_dir = os.path.join(ckpt_dir, f'{ckpt_name}-{suffix}')
+        suffix = None
+        if self.output_dir is None:
+            ckpt_dir = self.ckpt_dir or f'./{self.model_suffix}'
+            ckpt_dir, ckpt_name = os.path.split(ckpt_dir)
+            if self.to_peft_format:
+                suffix = 'peft'
+            elif self.merge_lora:
+                suffix = 'merged'
+            elif self.quant_bits:
+                suffix = f'{self.quant_method}-int{self.quant_bits}'
+            elif self.to_ollama:
+                suffix = 'ollama'
+            else:
+                suffix = 'dummy'
+                logger.warn(f'Not a valid export argument: {self}')
+            self.output_dir = os.path.join(ckpt_dir, f'{ckpt_name}-{suffix}')
 
-        logger.info(f'Setting args.output_dir: {self.output_dir}')
+            logger.info(f'Setting args.output_dir: {self.output_dir}')
 
         self.output_dir = to_abspath(self.output_dir)
+        # TODO: logic optimization
         if suffix != 'dummy':
             assert not os.path.exists(self.output_dir), f'args.output_dir: {self.output_dir} already exists.'
 

@@ -35,7 +35,6 @@ class Seq2SeqTrainer(TorchAccMixin, SwiftMixin, HfSeq2SeqTrainer):
             self.infer_engine = PtEngine.from_model_processor(
                 self.model, self.template.processor, max_batch_size=self.args.per_device_eval_batch_size)
         self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'predict.jsonl'))
-        self._custom_metrics['acc'] = MeanMetric(nan_value=None)
 
     @staticmethod
     def _predict_data_collator(batch):
@@ -160,7 +159,9 @@ class Seq2SeqTrainer(TorchAccMixin, SwiftMixin, HfSeq2SeqTrainer):
                 ta_trim_graph()
                 preds = preds.to('cpu')
                 labels = labels.to('cpu')
-            acc_list = compute_acc(
+            metrics = compute_acc(
                 preds, labels, acc_strategy=self.args.acc_strategy, is_encoder_decoder=self.args.is_encoder_decoder)
-            if acc_list:
-                self._custom_metrics['acc'].update(acc_list)
+            for k, v in metrics.items():
+                if k not in self._custom_metrics:
+                    self._custom_metrics[k] = MeanMetric(nan_value=None)
+                self._custom_metrics[k].update(v)
