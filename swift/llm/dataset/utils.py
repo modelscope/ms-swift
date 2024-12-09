@@ -208,14 +208,10 @@ class EncodePreprocessor(RowPreprocessor):
 
 class PackingPreprocessor(EncodePreprocessor):
 
-    def __init__(self, *, max_length, **kwargs):
-        self.max_length = max_length
-        super().__init__(**kwargs)
-
     def batched_preprocess(self, batched_row: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         subset = self.batched_to_rows(batched_row)
         packed_dataset = ConstantLengthDataset.get_packed_dataset(
-            self.template, dataset=subset, seq_length=self.max_length, num_of_sequences=4096)
+            self.template, dataset=subset, seq_length=self.template.max_length, num_of_sequences=4096)
         batched_row = self.rows_to_batched(packed_dataset)
         return batched_row
 

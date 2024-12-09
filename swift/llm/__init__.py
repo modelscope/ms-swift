@@ -20,11 +20,11 @@ if TYPE_CHECKING:
     )
     from .export import (export_main, merge_lora, quantize_model, export_to_ollama)
     from .eval import eval_main
-    from .train import sft_main, pt_main, rlhf_main
+    from .train import sft_main, pt_main, rlhf_main, get_multimodal_target_regex
     from .argument import (EvalArguments, InferArguments, TrainArguments, ExportArguments, DeployArguments,
                            RLHFArguments, WebUIArguments, BaseArguments)
     from .template import (TEMPLATE_MAPPING, Template, Word, get_template, TemplateType, register_template,
-                           TemplateInputs, Messages, TemplateMeta, get_template_meta, InferRequest)
+                           TemplateInputs, Messages, TemplateMeta, get_template_meta, InferRequest, load_image)
     from .model import (register_model, MODEL_MAPPING, ModelType, get_model_tokenizer, safe_snapshot_download,
                         HfConfigFactory, ModelInfo, ModelMeta, ModelKeys, register_model_arch, MultiModelKeys,
                         ModelArch, get_model_arch, MODEL_ARCH_MAPPING, get_model_info_meta, get_model_name, ModelGroup,
@@ -46,23 +46,14 @@ else:
         ],
         'export': ['export_main', 'merge_lora', 'quantize_model', 'export_to_ollama'],
         'eval': ['eval_main'],
-        'train': ['sft_main', 'pt_main', 'rlhf_main'],
+        'train': ['sft_main', 'pt_main', 'rlhf_main', 'get_multimodal_target_regex'],
         'argument': [
             'EvalArguments', 'InferArguments', 'TrainArguments', 'ExportArguments', 'WebUIArguments', 'DeployArguments',
             'RLHFArguments', 'BaseArguments'
         ],
         'template': [
-            'TEMPLATE_MAPPING',
-            'Template',
-            'Word',
-            'get_template',
-            'TemplateType',
-            'register_template',
-            'TemplateInputs',
-            'Messages',
-            'TemplateMeta',
-            'get_template_meta',
-            'InferRequest',
+            'TEMPLATE_MAPPING', 'Template', 'Word', 'get_template', 'TemplateType', 'register_template',
+            'TemplateInputs', 'Messages', 'TemplateMeta', 'get_template_meta', 'InferRequest', 'load_image'
         ],
         'model': [
             'MODEL_MAPPING', 'ModelType', 'get_model_tokenizer', 'safe_snapshot_download', 'HfConfigFactory',

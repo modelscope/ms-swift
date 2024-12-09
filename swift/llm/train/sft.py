@@ -278,14 +278,12 @@ class SwiftSft(SwiftPipeline):
             kwargs = {}
             if isinstance(train_dataset, HfIterableDataset) and args.model_meta.is_multimodal:
                 kwargs['batch_size'] = 64
-            if args.packing:
-                preprocessor_cls = PackingPreprocessor(max_length=args.max_length, template=template)
-            else:
-                preprocessor_cls = EncodePreprocessor(template=template)
-            train_dataset = preprocessor_cls(
+            preprocessor_cls = PackingPreprocessor if args.packing else EncodePreprocessor
+            preprocessor = preprocessor_cls(template=template)
+            train_dataset = preprocessor(
                 train_dataset, num_proc=args.dataset_num_proc, load_from_cache_file=args.load_from_cache_file, **kwargs)
             if val_dataset is not None and not args.predict_with_generate:
-                val_dataset = preprocessor_cls(
+                val_dataset = preprocessor(
                     val_dataset,
                     num_proc=args.dataset_num_proc,
                     load_from_cache_file=args.load_from_cache_file,
