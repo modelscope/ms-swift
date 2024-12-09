@@ -6,3 +6,4 @@ from .register import TEMPLATE_MAPPING, get_template, get_template_meta, registe
 from .template_inputs import InferRequest, Messages, TemplateInputs, Tool
 from .template_meta import TemplateMeta
 from .utils import Word, split_action_action_input, split_parts_by_regex, split_str_parts_by
+from .vision_utils import load_image
