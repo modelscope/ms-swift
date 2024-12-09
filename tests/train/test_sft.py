@@ -277,11 +277,7 @@ def test_emu3_gen():
     os.environ['image_area'] = '518400'
     from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
     kwargs['num_train_epochs'] = 100
-    result = sft_main(
-        TrainArguments(
-            model='BAAI/Emu3-Gen',
-            dataset=['swift/TextCaps#2'],
-            **kwargs))
+    result = sft_main(TrainArguments(model='BAAI/Emu3-Gen', dataset=['swift/TextCaps#2'], **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
     args = InferArguments(
         ckpt_dir=last_model_checkpoint,
