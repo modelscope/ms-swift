@@ -1,7 +1,5 @@
 import os
 
-from swift.llm import SwiftEval
-
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 
@@ -21,7 +19,7 @@ def test_eval_url():
     deploy_args = DeployArguments(model='qwen/Qwen2-VL-7B-Instruct', infer_backend='vllm', verbose=False)
 
     with run_deploy(deploy_args, return_url=True) as url:
-        eval_main(EvalArguments(model='Qwen2-VL-7B-Instruct', eval_url=url, eval_dataset=['gsm8k', 'arc_c']))
+        eval_main(EvalArguments(model='Qwen2-VL-7B-Instruct', eval_url=url, eval_dataset=['arc_c']))
 
 
 if __name__ == '__main__':

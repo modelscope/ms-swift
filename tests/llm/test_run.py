@@ -454,5 +454,5 @@ if __name__ == '__main__':
     # TestRun().test_vl_audio()
     # TestRun().test_loss_matching()
     #
-    TestRun().test_rlhf()
-    # unittest.main()
+    # TestRun().test_rlhf()
+    unittest.main()

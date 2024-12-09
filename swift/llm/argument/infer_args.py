@@ -119,17 +119,18 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
     # only for inference
     val_dataset_sample: Optional[int] = None
 
-    def get_result_path(self, folder_name: str, suffix: str = '.jsonl') -> str:
-        result_dir = self.ckpt_dir or self.model_dir
+    def _get_result_path(self, folder_name: str) -> str:
+        result_dir = self.ckpt_dir or f'result/{self.model_suffix}'
+        os.makedirs(result_dir, exist_ok=True)
         result_dir = to_abspath(os.path.join(result_dir, folder_name))
         os.makedirs(result_dir, exist_ok=True)
         time = dt.datetime.now().strftime('%Y%m%d-%H%M%S')
-        return os.path.join(result_dir, f'{time}{suffix}')
+        return os.path.join(result_dir, f'{time}.jsonl')
 
-    def _init_result_path(self) -> None:
+    def _init_result_path(self, folder_name: str) -> None:
         if self.result_path is not None:
             return
-        self.result_path = self.get_result_path('infer_result')
+        self.result_path = self._get_result_path(folder_name)
         logger.info(f'args.result_path: {self.result_path}')
 
     def _init_stream(self):
@@ -159,7 +160,7 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
         VllmArguments.__post_init__(self)
         self._parse_lora_modules()
 
-        self._init_result_path()
+        self._init_result_path('infer_result')
         self._init_eval_human()
         self._init_stream()
         self._init_pt_ddp()

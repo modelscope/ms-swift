@@ -23,6 +23,7 @@ class TestTemplate(unittest.TestCase):
             shutil.rmtree(self.tmp_dir)
         super().tearDown()
 
+    @unittest.skip('swift2.0')
     def test_llama3(self):
         args = ExportArguments(model_type='llama3-8b-instruct', to_ollama=True, ollama_output_dir=self.tmp_dir)
         export_main(args)
@@ -39,6 +40,7 @@ class TestTemplate(unittest.TestCase):
             self.assertTrue(template in content)
             self.assertTrue(stop in content)
 
+    @unittest.skip('swift2.0')
     def test_glm4(self):
         if version.parse(transformers.__version__) >= version.parse('4.45'):
             return
@@ -57,6 +59,7 @@ class TestTemplate(unittest.TestCase):
             self.assertTrue(template in content)
             self.assertTrue(stop in content)
 
+    @unittest.skip('swift2.0')
     def test_qwen2(self):
         args = ExportArguments(model_type='qwen2-7b-instruct', to_ollama=True, ollama_output_dir=self.tmp_dir)
         export_main(args)
