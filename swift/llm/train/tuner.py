@@ -42,7 +42,11 @@ def apply_liger(model_type: str):
         raise ValueError(f'Unsupported liger model_type: {model_type}')
 
 
-def get_multimodal_target_regex(model_arch, freeze_llm: bool, freeze_vit: bool, freeze_aligner: bool) -> str:
+def get_multimodal_target_regex(model_arch,
+                                *,
+                                freeze_llm: bool = False,
+                                freeze_vit: bool = True,
+                                freeze_aligner: bool = True) -> str:
     modules = []
     rejected_modules = []
     if not freeze_llm:
@@ -76,7 +80,8 @@ def get_target_modules(args, model) -> Union[str, List[str]]:
     elif 'all-linear' in args.target_modules:
         if model_meta.is_multimodal:
             model_arch = get_model_arch(args.model_meta.model_arch)
-            return get_multimodal_target_regex(model_arch, args.freeze_llm, args.freeze_vit, args.freeze_aligner)
+            return get_multimodal_target_regex(
+                model_arch, freeze_llm=args.freeze_llm, freeze_vit=args.freeze_vit, freeze_aligner=args.freeze_aligner)
         else:
             target_modules = args.target_modules.copy()
             target_modules.remove('all-linear')
