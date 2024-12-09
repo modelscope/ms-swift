@@ -179,6 +179,7 @@ class RowPreprocessor:
                 safe_columns_mapping.pop(k)
                 continue
 
+        safe_columns_mapping = {k: v for k, v in safe_columns_mapping.items() if k != v}
         if safe_columns_mapping:
             dataset = dataset.rename_columns(safe_columns_mapping)
 
