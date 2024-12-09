@@ -179,7 +179,6 @@ class RowPreprocessor:
         }
 
         counter = Counter(safe_columns_mapping.values())
-
         for k, new_k in list(safe_columns_mapping.items()):
             if counter[new_k] > 1:
                 # For example, if "response" and "answer" match, then no processing is done.
