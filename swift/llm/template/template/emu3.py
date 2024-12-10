@@ -45,7 +45,8 @@ class Emu3GenTemplate(Template):
                 prompt = inputs.to_history()['response']
             image = self.smart_resize(inputs.images[0].convert('RGB'))
             with torch.no_grad():
-                image = self.processor.image_processor(image, return_tensors='pt')['pixel_values'].cuda()
+                image = self.processor.image_processor(
+                    image, return_tensors='pt')['pixel_values'].to(device=self.processor.vision_tokenizer.device)
                 image_token_ids = self.processor.vision_tokenizer.encode(image).squeeze(0)
             encoded = self._process_prompt_train(prompt, image_token_ids)
         else:

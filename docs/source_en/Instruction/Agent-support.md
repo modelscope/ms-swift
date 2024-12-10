@@ -236,11 +236,11 @@ This technique adjusts the training weights for portions of model output. For ex
 
 Weights for the Thought and Final Answer sections are set to 1; weights for Action and Action Input sections are set to 2; the weight for the Observation: field itself is 2, while the weight for the actual API call response following Observation: is 0.
 
-For a detailed explanation of the loss_scale plugin design, please refer to the [plugin](../Customization/Plugin) documentation.
+For a detailed explanation of the loss_scale plugin design, please refer to the [pluginization](../Customization/Pluginization.md) documentation.
 
 ### tools(--tools_prompt)
 
-The tools section corresponds to the format of the system field after assembly. In addition to the previously mentioned react_en/react_zh/toolbench, it also supports glm4 format. Furthermore, users can define their own format, tools_prompt, which can also refer to the documentation in the [Plugins](../Customization/Plugin) section.
+The tools section corresponds to the format of the system field after assembly. In addition to the previously mentioned react_en/react_zh/toolbench, it also supports glm4 format. Furthermore, users can define their own format, tools_prompt, which can also refer to the documentation in the [Pluginization](../Customization/Pluginization.md) section.
 
 For a complete agent training script, see [this link](https://github.com/modelscope/ms-swift/tree/main/examples/train/agent/train.sh).
 
