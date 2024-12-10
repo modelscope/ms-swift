@@ -25,6 +25,7 @@ For the installation of ms-swift, please refer to the [installation documentatio
 10 minutes of self-cognition fine-tuning of Qwen2.5-7B-Instruct on a single 3090 GPU:
 
 ```shell
+# 22GB
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen2.5-7B-Instruct \
