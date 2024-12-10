@@ -75,4 +75,5 @@ swift infer \
 
 > [!TIP]
 > More examples can be found here: [examples](https://github.com/modelscope/ms-swift/tree/main/examples).
+>
 > Examples of training and inference using Python can be found in the [notebook](https://github.com/modelscope/ms-swift/tree/main/examples/notebook).
