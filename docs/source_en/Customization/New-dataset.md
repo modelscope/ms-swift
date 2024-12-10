@@ -36,7 +36,7 @@
 For multimodal datasets, the format remains the same as above, with the addition of several keys like `images`, `videos`, and `audios`, which represent multimodal resources. For example:
 
 ```jsonl
-{"messages": [{"role": "system", "content": "You are a useful and harmless assistant"}, {"role": "user", "content": "<image> What is in the picture? <video> What is in the video?"}, {"role": "assistant", "content": "An elephant, a lion"}], "images": ['/xxx/x.jpg'], "videos": ['/xxx/x.mov']}
+{"messages": [{"role": "system", "content": "You are a useful and harmless assistant"}, {"role": "user", "content": "<image> What is in the picture? <video> What is in the video?"}, {"role": "assistant", "content": "An elephant, a lion"}], "images": ['/xxx/x.jpg'], "videos": ['/xxx/x.mp4']}
 ```
 
 In which the `<image>` and `<video>` tags represent the insertion points for images. The multimodal training of SWIFT supports the mixed use of multiple resources and modalities.
