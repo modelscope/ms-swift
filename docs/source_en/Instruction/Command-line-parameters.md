@@ -37,7 +37,7 @@ The introduction to command line parameters will cover base arguments, atomic ar
 - strict: If True, the dataset will throw an error if any row has a problem; otherwise, it will discard the erroneous row. Default is False.
 - 🔥model_name: For self-awareness tasks, input the model's Chinese and English names separated by space.
 - 🔥model_author: For self-awareness tasks, input the model author's Chinese and English names separated by space.
-- custom_dataset_info: Custom simple dataset registration, refer to the [Custom Dataset Documentation](../Customization/Custom-dataset.md).
+- custom_dataset_info: Custom simple dataset registration, refer to the [Custom Dataset](../Customization/Custom-dataset.md) Documentation.
 
 ### Template Arguments
 - 🔥template: Type of dialogue template, which defaults to the template type corresponding to the model. `swift pt` will convert the dialogue template into a generation template for use.
@@ -46,7 +46,7 @@ The introduction to command line parameters will cover base arguments, atomic ar
 - truncation_strategy: How to handle overly long tokens, supports `delete` and `left`, representing deletion and left trimming, default is left.
 - 🔥max_pixels: Maximum pixel count for pre-processing images in multimodal models (H*W), default is no scaling.
 - tools_prompt: The list of tools for agent training converted to system format, refer to [Agent Training](./Agent-support.md), default is 'react_en'.
-- loss_scale: How to add token loss weight during training. Default is `'default'`, meaning all responses (including history) are treated as 1 for cross-entropy loss. For specifics, see [Plugin](../Customization/plugin.md) and [Agent Training](./Agent-support.md).
+- loss_scale: How to add token loss weight during training. Default is `'default'`, meaning all responses (including history) are treated as 1 for cross-entropy loss. For specifics, see [Pluginization](../Customization/Pluginization.md) and [Agent Training](./Agent-support.md).
 - sequence_parallel_size: Number of sequence parallelism. Refer to [example](https://github.com/modelscope/ms-swift/tree/main/examples/train/sequence_parallel/train.sh).
 - use_chat_template: Use chat template or generation template, default is `True`. `swift pt` is automatically set to the generation template.
 - template_backend: Use swift or jinja for inference. If using jinja, it will utilize transformers' `apply_chat_template`. Default is swift.
