@@ -5,14 +5,14 @@
 可以使用pip进行安装：
 
 ```shell
-# 全量能力
-pip install 'ms-swift[all]' -U
-# 仅使用LLM
+# LLM和MLLM能力
 pip install 'ms-swift[llm]' -U
-# 仅使用评测
+# 使用评测
 pip install 'ms-swift[eval]' -U
 # 支持序列并行
 pip install 'ms-swift[seq_parallel]' -U
+# 全量能力
+pip install 'ms-swift[all]' -U
 ```
 
 ## 源代码安装
@@ -20,7 +20,7 @@ pip install 'ms-swift[seq_parallel]' -U
 ```shell
 git clone https://github.com/modelscope/ms-swift.git
 cd ms-swift
-pip install -e '.[all]'
+pip install -e '.[llm]'
 ```
 
 ## 旧版本

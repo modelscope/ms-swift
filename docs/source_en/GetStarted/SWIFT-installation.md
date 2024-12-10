@@ -5,14 +5,14 @@
 You can install it using pip:
 
 ```shell
-# Full capabilities
-pip install 'ms-swift[all]' -U
-# For LLM only
+# The abilities of LLM and MLLM
 pip install 'ms-swift[llm]' -U
-# For evaluation only
+# For evaluation
 pip install 'ms-swift[eval]' -U
 # For sequence parallel support
 pip install 'ms-swift[seq_parallel]' -U
+# Full capabilities
+pip install 'ms-swift[all]' -U
 ```
 
 ## Source Code Installation
@@ -20,7 +20,7 @@ pip install 'ms-swift[seq_parallel]' -U
 ```shell
 git clone https://github.com/modelscope/ms-swift.git
 cd ms-swift
-pip install -e '.[all]'
+pip install -e '.[llm]'
 ```
 
 ## Older Versions

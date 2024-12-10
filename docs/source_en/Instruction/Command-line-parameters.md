@@ -244,13 +244,6 @@ The following parameters are effective when `train_type` is set to `reft`.
 
 - use_liger: Use liger-kernel for training.
 
-### TorchAcc Arguments
-
-- model_layer_cls_name: Class name of Decoder layer.
-- metric_warmup_step: Warmup steps for TorchAcc, default is 1.
-- fsdp_num: Number of FSDP, default is 1.
-- acc_steps: Number of steps for evaluating accuracy during training, default is 1.
-
 ### LMDeploy Arguments
 
 Parameter meanings can be found in the [lmdeploy documentation](https://lmdeploy.readthedocs.io/en/latest/api/pipeline.html#turbomindengineconfig).
@@ -286,7 +279,7 @@ Parameter meanings can be found in the [vllm documentation](https://docs.vllm.ai
 
 ### Training Arguments
 
-Training arguments include the [base arguments](#base-arguments), [Seq2SeqTrainer arguments](#Seq2SeqTrainer-arguments), [tuner arguments](#tuner-arguments), [torchacc arguments](#torchacc-arguments), and also include the following parts:
+Training arguments include the [base arguments](#base-arguments), [Seq2SeqTrainer arguments](#Seq2SeqTrainer-arguments), [tuner arguments](#tuner-arguments), and also include the following parts:
 
 - add_version: Add directory to output_dir with `'<version>-<timestamp>'` to prevent weight overwrite, default is True.
 - resume_only_model: If resume_from_checkpoint, only resume model weights, default is False.

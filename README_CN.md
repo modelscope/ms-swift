@@ -59,6 +59,7 @@ SWIFT具有丰富全面的文档，请查看我们的文档网站:
 
 
 ## 🎉 新闻
+- 2024.12.09: 支持emu3-gen的部署. 使用`swift infer --model BAAI/Emu3-Gen --stream False --use_chat_template False --top_k 2048 --max_new_tokens 40960`进行体验.
 - 🎁2024.12.04: SWIFT3.0大版本更新. 请查看[ReleaseNote和BreakChange](./docs/source/Instruction/ReleaseNote3.0.md).
 - 2024.11.29: 支持glm-edge和glm-edge-v系列模型. 使用`swift infer --model_type glm-edge-v-2b`进行体验.
 - 2024.11.28: 支持模型qwq-32b-preview, marco-o1, 支持数据集open-o1. 使用`swift infer --model_type qwq-32b-preview`进行体验.

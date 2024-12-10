@@ -26,13 +26,9 @@ def test_vlm_quant(quant_method: Literal['gptq', 'awq'] = 'awq'):
 
 def test_vlm_bnb_quant():
     from swift.llm import export_main, ExportArguments, infer_main, InferArguments
-    # export_main(
-    #     ExportArguments(
-    #         model='qwen/Qwen2-VL-7B-Instruct',
-    #         quant_bits=4,
-    #         quant_method='bnb'))
+    export_main(ExportArguments(model='qwen/Qwen2-VL-7B-Instruct', quant_bits=4, quant_method='bnb'))
 
-    infer_main(InferArguments(ckpt_dir='qwen/Qwen2-VL-7B-Instruct-bnb-int4'))
+    # infer_main(InferArguments(ckpt_dir='qwen/Qwen2-VL-7B-Instruct-bnb-int4'))
 
 
 if __name__ == '__main__':
