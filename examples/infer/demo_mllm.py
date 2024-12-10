@@ -1,14 +1,14 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-from typing import Any, Dict, List, Literal, Union
-
-from datasets import Dataset as HfDataset
+from typing import Literal
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 
-def infer_batch(engine: 'InferEngine', dataset: Union[HfDataset, List[Dict[str, Any]]]):
+def infer_batch(engine: 'InferEngine', dataset: str):
     request_config = RequestConfig(max_tokens=512, temperature=0)
+    dataset = load_dataset([dataset], strict=False, seed=42)[0]
+    print(f'dataset: {dataset}')
     metric = InferStats()
     resp_list = engine.infer([InferRequest(**data) for data in dataset], request_config, metrics=[metric])
     query0 = dataset[0]['messages'][0]['content']
@@ -85,7 +85,7 @@ def get_data(mm_type: Literal['text', 'image', 'video', 'audio']):
         # The number of <image> tags must be the same as len(images).
         messages = [{'role': 'user', 'content': '<image>How many sheep are there in the picture?'}]
         # Support URL/Path/base64/PIL.Image
-        data['images'] = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png']
+        data['images'] = ['animal.png']
     elif mm_type == 'video':
         messages = [{'role': 'user', 'content': '<video>Describe this video.'}]
         data['videos'] = 'https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4'
@@ -101,7 +101,7 @@ if __name__ == '__main__':
     # https://github.com/modelscope/ms-swift/tree/main/examples/train/notebook
     from swift.llm import InferEngine, InferRequest, PtEngine, RequestConfig, load_dataset
     from swift.plugin import InferStats
-    infer_backend = 'pt'
+    infer_backend = 'vllm'
 
     if infer_backend == 'pt':
         model = 'Qwen/Qwen2-Audio-7B-Instruct'
@@ -112,24 +112,15 @@ if __name__ == '__main__':
         from swift.llm import VllmEngine
         model = 'Qwen/Qwen2-VL-2B-Instruct'
         mm_type = 'video'
-        dataset = 'AI-ModelScope/LaTeX_OCR#1000'
+        dataset = 'AI-ModelScope/LaTeX_OCR:small#1000'
         engine = VllmEngine(model, max_model_len=32768, limit_mm_per_prompt={'image': 5, 'video': 2})
     elif infer_backend == 'lmdeploy':
         from swift.llm import LmdeployEngine
         model = 'OpenGVLab/InternVL2_5-1B'
         mm_type = 'video'
-        dataset = 'AI-ModelScope/LaTeX_OCR#1000'
+        dataset = 'AI-ModelScope/LaTeX_OCR:small#1000'
         engine = LmdeployEngine(model, vision_batch_size=8)
 
-    # If you don't want to download the large dataset, you can set offline to True.
-    offline = False
-    if offline:
-        # dummy dataset
-        # To improve inference speed, please download the multimodal resources locally.
-        dataset = [get_data('audio' if mm_type == 'audio' else 'image') for _ in range(1000)]
-    else:
-        dataset = load_dataset([dataset], strict=False, seed=42)[0]
-        print(f'dataset: {dataset}')
     infer_batch(engine, dataset)
 
     infer_stream(engine, InferRequest(messages=[get_message(mm_type)]))

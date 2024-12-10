@@ -22,6 +22,8 @@ def test_llm_ddp():
             dataset=['AI-ModelScope/alpaca-gpt4-data-zh#100', 'AI-ModelScope/alpaca-gpt4-data-en#100'],
             # ddp_find_unused_parameters=False,
             gradient_checkpointing_kwargs={'use_reentrant': False},
+            target_modules=['all-linear', 'all-embedding'],
+            modules_to_save=['all-embedding', 'all-norm'],
             **kwargs))
 
 
@@ -35,6 +37,8 @@ def test_mllm_mp():
             model='qwen/Qwen2-VL-7B-Instruct',
             dataset=['modelscope/coco_2014_caption:validation#20', 'AI-ModelScope/alpaca-gpt4-data-en#20'],
             train_type='lora',
+            target_modules=['all-linear', 'all-embedding'],
+            modules_to_save=['all-embedding', 'all-norm'],
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
     infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True, merge_lora=True))
