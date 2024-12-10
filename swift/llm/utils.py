@@ -22,6 +22,8 @@ logger = get_logger()
 
 History = List[Union[Tuple[str, str], List[str]]]
 
+os.environ['TOKENIZERS_PARALLELISM'] = 'true'
+
 
 class ProcessorMixin:
 

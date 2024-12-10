@@ -36,7 +36,7 @@
 For multimodal datasets, the format remains the same as above, with the addition of several keys like `images`, `videos`, and `audios`, which represent multimodal resources. For example:
 
 ```jsonl
-{"messages": [{"role": "system", "content": "You are a useful and harmless assistant"}, {"role": "user", "content": "<image> What is in the picture? <video> What is in the video?"}, {"role": "assistant", "content": "An elephant, a lion"}], "images": ['/xxx/x.jpg'], "videos": ['/xxx/x.mov']}
+{"messages": [{"role": "system", "content": "You are a useful and harmless assistant"}, {"role": "user", "content": "<image> What is in the picture? <video> What is in the video?"}, {"role": "assistant", "content": "An elephant, a lion"}], "images": ["/xxx/x.jpg"], "videos": ["/xxx/x.mp4"]}
 ```
 
 In which the `<image>` and `<video>` tags represent the insertion points for images. The multimodal training of SWIFT supports the mixed use of multiple resources and modalities.
@@ -45,7 +45,7 @@ For grounding (object detection) tasks, SWIFT supports two methods:
 1. Keeping the format consistent with the above multimodal dataset format while adding special characters to the dataset, for instance:
 
 ```jsonl
-{"messages": [{"role": "system", "content": "You are a useful and harmless assistant"}, {"role": "user", "content": "<image> Find <ref> an elephant </ref>"}, {"role": "assistant", "content": "<box>(200,450),(500, 800)</box>"}], "images": ['/xxx/x.jpg']}
+{"messages": [{"role": "system", "content": "You are a useful and harmless assistant"}, {"role": "user", "content": "<image> Find <ref> an elephant </ref>"}, {"role": "assistant", "content": "<box>(200,450),(500, 800)</box>"}], "images": ["/xxx/x.jpg"]}
 ```
 When using this type of data, please be mindful of:
   - Grounding tasks often require special characters; you need to determine which model to use and read the model paper to confirm which special characters are used for grounding tasks and how to merge data.

@@ -1,40 +1,31 @@
 # Quick Start
 
-SWIFT is an integrated framework that encompasses model training, inference deployment, evaluation, and quantization, allowing model developers to meet various needs around their models in one-stop within the SWIFT framework. Currently, the main capabilities of SWIFT include:
+ms-swift is a comprehensive training and deployment framework for large language models and multimodal large models, provided by the ModelScope Community. It currently supports the training (CPT, SFT, RLHF), inference, evaluation, quantization, and deployment of over 400 LLM and over 100 MLLM. Model developers can fulfill all kinds of needs related to large models in a single platform within the ms-swift framework. The main capabilities of ms-swift include:
 
-- Model Types: Supporting training and post-training for large models ranging from pure text models, multi-modal large models, to All-to-All fully modal models.
-- Dataset Types: Covering pure text datasets, multi-modal datasets, and text-to-image datasets, suitable for different tasks.
-- Task Types: Besides general generative tasks, it supports training for classification tasks.
-- Lightweight Fine-tuning: Supports various lightweight fine-tuning methods such as LoRA, QLoRA, DoRA, ReFT, LLaMAPro, Adapter, SCEdit, GaLore, and Liger-Kernel.
-- Training stages: Covering the entire stages of pre-training, fine-tuning, and human alignment.
-- Training Parallelism: Covers single machine single card, single machine multiple card device mapping, distributed data parallelism (DDP), multi-machine multi-card, DeepSpeed, FSDP, PAI DLC.
-- Inference Deployment: Supports inference deployment on multiple frameworks such as PyTorch, vLLM, LmDeploy.
-- Evaluation: Supports pure text and multi-modal evaluation capabilities based on the EvalScope framework, and allows for customized evaluation.
-- Export: Supports quantization methods like awq, gptq, bnb, and operations for merging lora and llamapro.
-- User Interface: Supports interface operations based on the Gradio framework and allows for the deployment of single model applications in space or demo environments.
-- Plug-in System: Supports customizable definitions for loss, metrics, trainer, loss-scale, callback, optimizer, etc., making it easier for users to customize the training process.
+- Model Types: Supports the full process from training to deployment of over 400 text-based large models and over 100 multimodal large models, including All-to-All all-modality models.
+- Dataset Types: Comes with more than 150 pre-built datasets for pre-training, fine-tuning, human alignment, multimodal, and supports custom datasets.
+- Hardware Support: Compatible with CPU, RTX series, T4/V100, A10/A100/H100, Ascend NPU, and others.
+- Lightweight Training: Supports lightweight fine-tuning methods like LoRA, QLoRA, DoRA, LoRA+, ReFT, RS-LoRA, LLaMAPro, Adapter, GaLore, Q-Galore, LISA, UnSloth, Liger-Kernel, and more.
+- Distributed Training: Supports distributed data parallel (DDP), simple model parallelism via device_map, DeepSpeed ZeRO2 ZeRO3, FSDP, and other distributed training technologies.
+- Quantization Training: Provides training for quantized models like BNB, AWQ, GPTQ, AQLM, HQQ, EETQ.
+- RLHF Training: Supports human alignment training methods like DPO, CPO, SimPO, ORPO, KTO for both text-based and multimodal large models.
+- Multimodal Training: Capable of training models for different modalities such as images, videos, and audios; supports tasks like VQA (Visual Question Answering), Captioning, OCR (Optical Character Recognition), and Grounding.
+- Interface-driven Training: Offers training, inference, evaluation, and quantization capabilities through an interface, enabling a complete workflow for large models.
+- Plugins and Extensions: Allows customization and extension of models and datasets, and supports customizations for components like loss, metric, trainer, loss-scale, callback, optimizer, etc.
+- Inference Acceleration: Supports inference acceleration engines like PyTorch, vLLM, LmDeploy, and provides OpenAI interface, accelerating inference, deployment, and evaluation modules.
+- Model Evaluation: Uses EvalScope as the evaluation backend and supports evaluation of text-based and multimodal models with over 100 evaluation datasets.
+- Model Quantization: Supports the export of quantized models in AWQ, GPTQ, and BNB formats, which can be accelerated using vLLM/LmDeploy for inference and support continued training.
 
 ## Installation
 
-Installing SWIFT is straightforward. Please refer to the [installation documentation](./SWIFT-installation.md).
-
-## Some Key Concepts
-
-### Model Type
-
-In SWIFT 3.0, the model_type is different from that in 2.0. The model_type in 3.x refers to a collection of models that share the following identical characteristics:
-1. The same model architecture, such as the typical LLaMA structure.
-2. The same template, such as those using the chatml format.
-3. The same model loading method, like using get_model_tokenizer_flash_attn.
-
-When all three points are identical, the models are classified into one group, and the type of this group is referred to as model_type.
+For the installation of ms-swift, please refer to the [installation documentation](./SWIFT-installation.md).
 
 ## Usage Example
 
-Comprehensive usage examples can be found in the [examples](https://github.com/modelscope/ms-swift/tree/main/examples) section. Below are some basic examples:
+10 minutes of self-cognition fine-tuning of Qwen2.5-7B-Instruct on a single 3090 GPU:
 
-Command line method for LoRA training.
 ```shell
+# 22GB
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen2.5-7B-Instruct \
@@ -63,68 +54,26 @@ swift sft \
     --model_name swift-robot
 ```
 
-You can check examples of training using code at [examples/notebook](https://github.com/modelscope/ms-swift/tree/main/examples/notebook).
+After completing the training, use the following command to perform inference with the trained weights. Replace ckpt_dir with the folder of the last checkpoint generated during training:
 
-Inference and deployment using the command line
 ```shell
-# Inference
-CUDA_VISIBLE_DEVICES=0 \
+# Using an interactive command line for inference.
+NPROC_PER_NODE=0
 swift infer \
-    --model Qwen/Qwen2.5-7B-Instruct \
-    --infer_backend pt
+    --ckpt_dir output/vx-xxx/checkpoint-xxx \
+    --stream true
+
+# merge-lora and use vLLM for inference acceleration
+NPROC_PER_NODE=0
+swift infer \
+    --ckpt_dir output/vx-xxx/checkpoint-xxx \
+    --stream true \
+    --merge_lora true \
+    --infer_backend vllm \
+    --max_model_len 8192
 ```
 
-```shell
-# Deployment
-CUDA_VISIBLE_DEVICES=0 \
-swift deploy \
-    --model Qwen/Qwen2-7B-Instruct \
-    --infer_backend pt
-```
-
-```python
-# Client-side deployment code
-from openai import OpenAI
-
-client = OpenAI(
-    api_key='EMPTY',
-    base_url='http://localhost:8000/v1',
-)
-model_type = client.models.list().data[0].id
-print(f'model_type: {model_type}')
-
-query = 'Where is the capital of Zhejiang?'
-messages = [{'role': 'user', 'content': query}]
-resp = client.chat.completions.create(model=model_type, messages=messages, seed=42)
-response = resp.choices[0].message.content
-print(f'query: {query}')
-print(f'response: {response}')
-
-# Streaming
-messages.append({'role': 'assistant', 'content': response})
-query = 'What delicious food is there?'
-messages.append({'role': 'user', 'content': query})
-stream_resp = client.chat.completions.create(model=model_type, messages=messages, stream=True, seed=42)
-
-print(f'query: {query}')
-print('response: ', end='')
-for chunk in stream_resp:
-    print(chunk.choices[0].delta.content, end='', flush=True)
-print()
-```
-
-## Evaluation
-```shell
-swift eval \
-  --model Qwen/Qwen2-7B-Instruct \
-  --eval_limit 10 \
-  --eval_dataset gsm8k
-```
-
-## Quantization
-```shell
-swift export \
-  --model Qwen/Qwen2-7B-Instruct \
-  --quant_method bnb \
-  --quant_bits 8
-```
+> [!TIP]
+> More examples can be found here: [examples](https://github.com/modelscope/ms-swift/tree/main/examples).
+>
+> Examples of training and inference using Python can be found in the [notebook](https://github.com/modelscope/ms-swift/tree/main/examples/notebook).
