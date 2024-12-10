@@ -160,12 +160,22 @@ def _find_layers(model: Module, module_cls: type) -> List[str]:
     return list(module_names)
 
 
+def find_norm(model: Module) -> List[str]:
+    # find_layer_norm
+    module_names = set()
+    for name, module in model.named_modules():
+        module_cls_name = module.__class__.__name__.lower()
+        if isinstance(module, torch.nn.LayerNorm) or 'rmsnorm' in module_cls_name:
+            module_name = '.'.join(name.split('.')[-1:])
+            module_names.add(module_name)
+    return list(module_names)
+
+
 def find_embedding(model: Module) -> List[str]:
     return _find_layers(model, torch.nn.Embedding)
 
 
 def find_all_linears(model: Module) -> List[str]:
-    """ref: https://github.com/artidoro/qlora"""
     from swift.llm import get_model_arch
     model_info = model.model_info
     model_arch = get_model_arch(model.model_meta.model_arch)

@@ -59,6 +59,10 @@ class RowPreprocessor:
         assert len(messages) > 0, f'messages: {messages}'
         if messages[0]['role'] == 'system':
             messages = messages[1:]
+        if messages and messages[0]['role'] == 'assistant':
+            messages = [{'role': 'user', 'content': ''}] + messages  # pretrain
+        if len(messages) % 2 == 1:
+            raise ValueError(f'len(messages): {len(messages)}')
         for user_message, assistant_message in zip(messages[::2], messages[1::2]):
             if (user_message['role'] not in {'user', 'tool'} or 'content' not in user_message
                     or user_message['content'] is None):
@@ -403,8 +407,6 @@ class MessagesPreprocessor(RowPreprocessor):
         if messages[0]['role'] == self.system_role:
             messages[0]['role'] = 'system'
             start_idx = 1
-        if start_idx == 1 and len(messages) % 2 == 0:
-            raise ValueError(f'The messages length is not even: {messages}')
         for user_message, assistant_message in zip(messages[start_idx::2], messages[start_idx + 1::2]):
             user_role = user_message['role']
             assistant_role = assistant_message['role']

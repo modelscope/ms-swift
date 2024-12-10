@@ -9,8 +9,8 @@ from packaging import version
 from swift.llm import TrainArguments, get_model_arch
 from swift.plugin import Tuner, extra_tuners
 from swift.tuners import Swift
-from swift.utils import (activate_parameters, find_all_linears, find_embedding, freeze_parameters, get_logger,
-                         use_torchacc)
+from swift.utils import (activate_parameters, find_all_linears, find_embedding, find_norm, freeze_parameters,
+                         get_logger, use_torchacc)
 
 logger = get_logger()
 
@@ -46,7 +46,9 @@ def get_multimodal_target_regex(model_arch,
                                 *,
                                 freeze_llm: bool = False,
                                 freeze_vit: bool = True,
-                                freeze_aligner: bool = True) -> str:
+                                freeze_aligner: bool = True,
+                                ignore_embedding: bool = True,
+                                ignore_lm_head: bool = True) -> str:
     modules = []
     rejected_modules = []
     if not freeze_llm:
@@ -60,10 +62,14 @@ def get_multimodal_target_regex(model_arch,
 
     prefix_pattern = '|'.join(modules)
     rejected_pattern = '|'.join(rejected_modules)
-    # ignore embedding/lm_head
-    ignore_pattern = ['lm_head', 'output', 'emb', 'wte', 'shared']
-    ignore_pattern += model_arch.lm_head or []
-    ignore_pattern += model_arch.embedding or []
+
+    ignore_pattern = []
+    if ignore_embedding:
+        ignore_pattern += ['emb', 'wte', 'shared']
+        ignore_pattern += model_arch.embedding or []
+    if ignore_lm_head:
+        ignore_pattern += ['lm_head', 'output']
+        ignore_pattern += model_arch.lm_head or []
     ignore_pattern = '|'.join(ignore_pattern)
 
     target_regex = f'^({prefix_pattern})(?!.*({ignore_pattern})).*'
@@ -77,18 +83,34 @@ def get_target_modules(args, model) -> Union[str, List[str]]:
     model_meta = model.model_meta
     if isinstance(args.target_modules, str):
         return args.target_modules
-    elif 'all-linear' in args.target_modules:
+    target_modules = args.target_modules.copy()
+    if 'all-linear' in target_modules:
         if model_meta.is_multimodal:
             model_arch = get_model_arch(args.model_meta.model_arch)
             return get_multimodal_target_regex(
-                model_arch, freeze_llm=args.freeze_llm, freeze_vit=args.freeze_vit, freeze_aligner=args.freeze_aligner)
+                model_arch,
+                freeze_llm=args.freeze_llm,
+                freeze_vit=args.freeze_vit,
+                freeze_aligner=args.freeze_aligner,
+                ignore_embedding='all-embedding' not in target_modules)
         else:
-            target_modules = args.target_modules.copy()
             target_modules.remove('all-linear')
             target_modules += find_all_linears(model)
-    else:
-        target_modules = args.target_modules
+    if 'all-embedding' in target_modules:
+        target_modules.remove('all-embedding')
+        target_modules += find_embedding(model)
     return target_modules
+
+
+def get_modules_to_save(args, model):
+    modules_to_save = args.modules_to_save.copy()
+    if 'all-embedding' in args.modules_to_save:
+        modules_to_save.remove('all-embedding')
+        modules_to_save += find_embedding(model)
+    if 'all-norm' in args.modules_to_save:
+        modules_to_save.remove('all-norm')
+        modules_to_save += find_norm(model)
+    return modules_to_save
 
 
 def get_vera_target_modules(model, config):
@@ -115,13 +137,14 @@ def prepare_adapter(args: TrainArguments, model):
     from swift.tuners import (AdaLoraConfig, AdapterConfig, BOFTConfig, LLaMAProConfig, LongLoRAModelType, LoraConfig,
                               LoRAConfig, ReftConfig, Swift, VeraConfig)
     target_modules = get_target_modules(args, model)
+    modules_to_save = get_modules_to_save(args, model)
     lora_kwargs = {
         'r': args.lora_rank,
         'target_modules': target_modules,
         'lora_alpha': args.lora_alpha,
         'lora_dropout': args.lora_dropout,
         'bias': args.lora_bias,
-        'modules_to_save': args.modules_to_save,
+        'modules_to_save': modules_to_save,
         'use_rslora': args.use_rslora,
         'use_dora': args.use_dora,
         'lorap_lr_ratio': args.lorap_lr_ratio,
