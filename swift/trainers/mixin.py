@@ -196,8 +196,7 @@ class SwiftMixin:
         # tokenizer
         if not is_adapter:
             from swift.llm import save_checkpoint
-            additional_saved_files = self.model.model_meta.additional_saved_files if hasattr(self.model,
-                                                                                             'model_meta') else []
+            additional_saved_files = self.model.model_meta.additional_saved_files
             save_checkpoint(None, self.template.processor, output_dir, additional_saved_files=additional_saved_files)
 
     def _fix_zero3_gather_all_parameters(self) -> None:
