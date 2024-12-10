@@ -10,6 +10,7 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import safetensors
 import torch
+import torch.nn as nn
 import transformers
 from datasets import Dataset as HfDataset
 from modelscope import check_local_model_is_latest
@@ -226,9 +227,19 @@ class SwiftMixin:
         return result
 
     def train(self, *args, **kwargs):
+        if self.model.model_meta.is_multimodal:
+            models = list(
+                set([
+                    v for k, v in self.__dict__.items()
+                    if isinstance(v, nn.Module) and k in {'model', 'ref_model', 'reward_model', 'value_model'}
+                ]))
+            self.template.register_post_encode_hook(models)
+            logger.info(f'Successfully registered post_encode hooks: {[model.__class__.__name__ for model in models]}')
+        self.model_accepts_loss_kwargs = True  # fix transformers>=4.46.2
         self._save_initial_model(self.args.output_dir)
         with self.hub.patch_hub():
             return super().train(*args, **kwargs)
+        self.template.remove_post_encode_hook()
 
     def push_to_hub(self, *args, **kwargs):
         with self.hub.patch_hub():
