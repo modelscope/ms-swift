@@ -5,9 +5,9 @@
 You can install it using pip:
 
 ```shell
-# For LLM only
+# The abilities of LLM and MLLM
 pip install 'ms-swift[llm]' -U
-# For evaluation only
+# For evaluation
 pip install 'ms-swift[eval]' -U
 # For sequence parallel support
 pip install 'ms-swift[seq_parallel]' -U

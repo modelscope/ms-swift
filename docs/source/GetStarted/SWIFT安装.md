@@ -5,9 +5,9 @@
 可以使用pip进行安装：
 
 ```shell
-# 仅使用LLM
+# LLM和MLLM能力
 pip install 'ms-swift[llm]' -U
-# 仅使用评测
+# 使用评测
 pip install 'ms-swift[eval]' -U
 # 支持序列并行
 pip install 'ms-swift[seq_parallel]' -U
