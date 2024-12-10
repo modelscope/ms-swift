@@ -2,7 +2,7 @@
 
 Since pre-training and fine-tuning are quite similar, they will be discussed together in this section.
 
-For the data format requirements for pre-training and fine-tuning, please refer to the section on [Adding Datasets](../Customization/New-dataset.md).
+For the data format requirements for pre-training and fine-tuning, please refer to the section on [Custom Dataset](../Customization/Custom-dataset.md).
 
 In terms of data requirements, the amount needed for continued pre-training can range from hundreds of thousands to millions of rows. Starting pre-training from scratch requires significantly more resources and data, which is beyond the scope of this article.
 The data needed for fine-tuning can vary from a few thousand to a million rows. For lower data requirements, consider using RAG methods.

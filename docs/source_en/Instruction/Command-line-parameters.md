@@ -15,8 +15,8 @@ The introduction to command line parameters will cover base arguments, atomic ar
 
 ### Model Arguments
 
-- 🔥model: Model ID or local path to the model. If it's a custom model, please use it with `model_type` and `template`.
-- model_type: Model type. The same model architecture, template, and loading process define a model type.
+- 🔥model: Model ID or local path to the model. If it's a custom model, please use it with `model_type` and `template`. The specific details can be referred to in the [Custom Model](../Customization/Custom-model.md).
+- model_type: Model type. The same model architecture, template, and loading process define a model_type.
 - model_revision: Model version.
 - 🔥torch_dtype: Data type for model weights, supports `float16`, `bfloat16`, `float32`, default is read from the config file.
 - attn_impl: Attention type, supports `flash_attn`, `sdpa`, `eager`, default is sdpa.
@@ -25,8 +25,7 @@ The introduction to command line parameters will cover base arguments, atomic ar
 - local_repo_path: Some models require a GitHub repo when loading. To avoid network issues during `git clone`, you can directly use a local repo. This parameter needs to pass the local repo path, default is `None`.
 
 ### Data Arguments
-
-- 🔥dataset: Dataset ID or path. The format is `dataset_id or dataset_path:sub_dataset#sample_count`, where sub_dataset and sample_count are optional. Use spaces to pass multiple datasets. Local datasets support jsonl, csv, json, and folders, etc.
+- 🔥dataset: Dataset ID or path. The format is `dataset_id or dataset_path:sub_dataset#sample_count`, where sub_dataset and sample_count are optional. Use spaces to pass multiple datasets. Local datasets support jsonl, csv, json, and folders, etc. For custom datasets, you can refer to [Custom Dataset](../Customization/Custom-dataset.md).
 - 🔥val_dataset: Validation dataset ID or path.
 - 🔥split_dataset_ratio: How to split the training and validation sets when val_dataset is not specified, default is 0.01.
 - data_seed: Random seed for the dataset, default is 42.
@@ -38,17 +37,16 @@ The introduction to command line parameters will cover base arguments, atomic ar
 - strict: If True, the dataset will throw an error if any row has a problem; otherwise, it will discard the erroneous row. Default is False.
 - 🔥model_name: For self-awareness tasks, input the model's Chinese and English names separated by space.
 - 🔥model_author: For self-awareness tasks, input the model author's Chinese and English names separated by space.
-- custom_dataset_info: Custom simple dataset registration, refer to [Add New Dataset](../Customization/New-dataset.md).
+- custom_dataset_info: Custom simple dataset registration, refer to the [Custom Dataset](../Customization/Custom-dataset.md) Documentation.
 
 ### Template Arguments
-
-- 🔥template: Template type, default uses the corresponding template type of the model. If it is a custom model, please refer to [Supported Models and Datasets](./Supported-models-and-datasets) and manually input this field.
+- 🔥template: Type of dialogue template, which defaults to the template type corresponding to the model. `swift pt` will convert the dialogue template into a generation template for use.
 - 🔥system: Custom system field, default is None, uses the default system of the template.
 - 🔥max_length: Maximum length of tokens for a single sample, default is None (no limit).
 - truncation_strategy: How to handle overly long tokens, supports `delete` and `left`, representing deletion and left trimming, default is left.
 - 🔥max_pixels: Maximum pixel count for pre-processing images in multimodal models (H*W), default is no scaling.
 - tools_prompt: The list of tools for agent training converted to system format, refer to [Agent Training](./Agent-support.md), default is 'react_en'.
-- loss_scale: How to add token loss weight during training. Default is `'default'`, meaning all responses (including history) are treated as 1 for cross-entropy loss. For specifics, see [Plugin](../Customization/plugin.md) and [Agent Training](./Agent-support.md).
+- loss_scale: How to add token loss weight during training. Default is `'default'`, meaning all responses (including history) are treated as 1 for cross-entropy loss. For specifics, see [Pluginization](../Customization/Pluginization.md) and [Agent Training](./Agent-support.md).
 - sequence_parallel_size: Number of sequence parallelism. Refer to [example](https://github.com/modelscope/ms-swift/tree/main/examples/train/sequence_parallel/train.sh).
 - use_chat_template: Use chat template or generation template, default is `True`. `swift pt` is automatically set to the generation template.
 - template_backend: Use swift or jinja for inference. If using jinja, it will utilize transformers' `apply_chat_template`. Default is swift.
