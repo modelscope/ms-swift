@@ -1098,8 +1098,8 @@ register_dataset(
         hf_dataset_id='linxy/LaTeX_OCR',
         subsets=['default', 'human_handwrite', 'human_handwrite_print', 'synthetic_handwrite', 'small'],
         preprocess_func=LatexocrPreprocessor(),
-        tags=['chat', 'ocr', 'multi-modal', 'vision'],
         split=['train'],
+        tags=['chat', 'ocr', 'multi-modal', 'vision'],
     ))
 
 
