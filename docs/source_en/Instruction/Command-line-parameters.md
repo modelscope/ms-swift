@@ -15,7 +15,7 @@ The introduction to command line parameters will cover base arguments, atomic ar
 
 ### Model Arguments
 
-- 🔥model: Model ID or local path to the model. If it's a custom model, please use it with `model_type` and `template`.The specific details can be referred to in the [Custom Model](../Customization/Custom-model.md).
+- 🔥model: Model ID or local path to the model. If it's a custom model, please use it with `model_type` and `template`. The specific details can be referred to in the [Custom Model](../Customization/Custom-model.md).
 - model_type: Model type. The same model architecture, template, and loading process define a model_type.
 - model_revision: Model version.
 - 🔥torch_dtype: Data type for model weights, supports `float16`, `bfloat16`, `float32`, default is read from the config file.

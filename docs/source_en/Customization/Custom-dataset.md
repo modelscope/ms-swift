@@ -40,7 +40,7 @@ Here is the recommended dataset format for ms-swift:
 ```jsonl
 {"messages": [{"role": "assistant", "content": "I love music"}]}
 {"messages": [{"role": "assistant", "content": "Coach, I want to play basketball"}]}
-{"messages": [{"role": "assistant", "content": "Which is more authoritative, tomato and egg rice or the third fresh stir-fry?"}]
+{"messages": [{"role": "assistant", "content": "Which is more authoritative, tomato and egg rice or the third fresh stir-fry?"}]}
 ```
 
 ### Supervised Fine-tuning
