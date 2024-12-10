@@ -28,7 +28,7 @@ def patch_output_clone(module: torch.nn.Module):
         if module.training:
             return output.requires_grad_(True).clone()
         else:
-            return output
+            return output.detach()
 
     module.register_forward_hook(_clone_hook)
 

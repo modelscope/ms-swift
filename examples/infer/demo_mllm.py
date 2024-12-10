@@ -77,7 +77,28 @@ def get_message(mm_type: Literal['text', 'image', 'video', 'audio']):
     return message
 
 
+def get_data(mm_type: Literal['text', 'image', 'video', 'audio']):
+    data = {}
+    if mm_type == 'text':
+        messages = [{'role': 'user', 'content': 'who are you?'}]
+    elif mm_type == 'image':
+        # The number of <image> tags must be the same as len(images).
+        messages = [{'role': 'user', 'content': '<image>How many sheep are there in the picture?'}]
+        # Support URL/Path/base64/PIL.Image
+        data['images'] = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png']
+    elif mm_type == 'video':
+        messages = [{'role': 'user', 'content': '<video>Describe this video.'}]
+        data['videos'] = 'https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4'
+    elif mm_type == 'audio':
+        messages = [{'role': 'user', 'content': '<audio>What does this audio say?'}]
+        data['audios'] = 'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/weather.wav'
+    data['messages'] = messages
+    return data
+
+
 if __name__ == '__main__':
+    # The inference of the trained model can be referred to as:
+    # https://github.com/modelscope/ms-swift/tree/main/examples/train/notebook
     from swift.llm import InferEngine, InferRequest, PtEngine, RequestConfig, load_dataset
     from swift.plugin import InferStats
     infer_backend = 'pt'
@@ -101,5 +122,7 @@ if __name__ == '__main__':
         engine = LmdeployEngine(model, vision_batch_size=8)
 
     infer_batch(engine, dataset)
-    messages = InferRequest(messages=[get_message(mm_type)])
-    infer_stream(engine, messages)
+
+    infer_stream(engine, InferRequest(messages=[get_message(mm_type)]))
+    # This writing is equivalent to the above writing.
+    infer_stream(engine, InferRequest(**get_data(mm_type)))

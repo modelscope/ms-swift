@@ -79,7 +79,7 @@ class PtEngine(InferEngine):
     def from_model_processor(cls, model, processor, *, max_batch_size: int = 1):
         self = super().__new__(cls)
         self.model = model
-        self.processor = processor
+        self.processor = processor  # processor or tokenizer
         self.max_batch_size = max_batch_size
         self._post_init()
         return self
@@ -241,7 +241,7 @@ class PtEngine(InferEngine):
             assert lora_path == self._lora_request_pool[lora_name].lora_path
         else:
             self._lora_request_pool[lora_name] = lora_request
-            self.model = Swift.from_pretrained(self.model, lora_path, lora_name, inference_mode=True)
+            self.model = Swift.from_pretrained(self.model, lora_path, lora_name)
         return [lora_name]
 
     def _infer_full(self,
