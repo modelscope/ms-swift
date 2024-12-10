@@ -117,6 +117,7 @@ Other important parameters:
 - 🔥ddp_find_unused_parameters: Default is None.
 - 🔥dataloader_num_workers: Default is 0.
 - 🔥neftune_noise_alpha: Noise coefficient added by neftune, default is 0. Generally can be set to 5, 10, 15.
+- max_grad_norm: Gradient clipping. The default value is 1.
 - push_to_hub: Push training weights to hub, default is False.
 - hub_model_id: Default is None.
 - hub_private_repo: Default is False.
@@ -126,10 +127,10 @@ Other important parameters:
 - 🔥freeze_llm: Freeze LLM. Default is False. Applicable for full parameters and LoRA.
 - 🔥freeze_vit: Freeze ViT. Default is True. Applicable for full parameters and LoRA.
 - 🔥freeze_aligner: Freeze aligner. Default is True, applicable for full parameters and LoRA.
-- 🔥target_modules: Specify the LoRA module, default is `all-linear`, automatically finds linear layers except for lm_head and attaches the tuner. This parameter is not limited to LoRA.
+- 🔥target_modules: Specify the LoRA module, default is `all-linear`, automatically finds linear layers except for lm_head and attaches the tuner. You can also specify `--target_modules all-linear all-embedding` to select the linear and embedding layers. This parameter is not limited to LoRA.
 - 🔥target_regex: Specify a regex expression for the LoRA module. Default is `None`, if this value is provided, target_modules does not take effect. This parameter is not limited to LoRA.
 - 🔥init_weights: The method of init tuner weights, For lora the accepted values are `true`, `false`, `guassian`, `pissa`, `pissa_niter_[number of iters]`, for bone are `true`, `false`, `bat`, default is `true`
-- modules_to_save: After the tuner is attached, the original model's modules used during training and storage, default is `[]`. This parameter is not limited to LoRA.
+- modules_to_save: After the tuner is attached, the original model's modules used during training and storage, default is `[]`. You can specify `all-embedding` to select the embedding layers, and `all-norm` to select the layer normalization and RMS normalization layers. This parameter is not limited to LoRA.
 
 #### Full Arguments
 
