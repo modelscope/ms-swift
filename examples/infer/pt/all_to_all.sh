@@ -1,4 +1,4 @@
-# Emu3-Gen
+# 18GiB
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
     --model BAAI/Emu3-Gen \

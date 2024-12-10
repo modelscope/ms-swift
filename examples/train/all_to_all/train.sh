@@ -1,3 +1,4 @@
+# 70 GiB * 2
 nproc_per_node=2
 NPROC_PER_NODE=$nproc_per_node \
 CUDA_VISIBLE_DEVICES=0,2 \
