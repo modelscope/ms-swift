@@ -41,6 +41,7 @@ class DeployArguments(InferArguments):
 
     def __post_init__(self):
         super().__post_init__()
+        self._parse_lora_modules()
         self.port = find_free_port(self.port)
 
     def _init_stream(self):
@@ -53,3 +54,16 @@ class DeployArguments(InferArguments):
         if folder_name == 'infer_result':
             folder_name = 'deploy_result'
         return super()._init_result_path(folder_name)
+
+    def _parse_lora_modules(self) -> None:
+        from swift.llm import LoRARequest
+        if len(self.lora_modules) == 0:
+            self.lora_request_list = []
+            return
+        assert self.infer_backend in {'vllm', 'pt'}
+        lora_request_list = []
+        for i, lora_module in enumerate(self.lora_modules):
+            lora_name, lora_path = lora_module.split('=')
+            lora_path = self._get_ckpt_dir(lora_path)
+            lora_request_list.append(LoRARequest(lora_name, lora_path))
+        self.lora_request_list = lora_request_list
