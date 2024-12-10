@@ -34,18 +34,6 @@ class SwiftSft(SwiftPipeline):
         self._prepare_model_tokenizer()
         self._prepare_template(True)
         self._prepare_callbacks()
-        self.model = prepare_model(self.args, self.model)
-        logger.info(f'model: {self.model}')
-        model_parameter_info = get_model_parameter_info(self.model)
-        self.train_msg['model_parameter_info'] = model_parameter_info
-        logger.info(f'model_parameter_info: {model_parameter_info}')
-
-        self._prepare_train()
-
-    def _prepare_train(self):
-        self.template.set_mode('train')
-        if self.model.model_meta.is_multimodal:
-            self.template.register_post_encode_hook([self.model])
 
     def _prepare_gradient_checkpointing(self):
         args = self.args
@@ -118,6 +106,7 @@ class SwiftSft(SwiftPipeline):
         logger.info(f'default_system: {template.template_meta.default_system}')
         if template.use_model:
             template.model = self.model
+        template.set_mode('train')
         self.template = template
 
     def _get_dataset(self):
@@ -152,9 +141,14 @@ class SwiftSft(SwiftPipeline):
 
         train_dataset, val_dataset = self._get_dataset()
         train_dataset, val_dataset = self._encode_dataset(train_dataset, val_dataset)
+        # Some tuners require train_dataset for preparation: LoRA-GA
+        self.model = prepare_model(self.args, self.model)
+        logger.info(f'model: {self.model}')
+        model_parameter_info = get_model_parameter_info(self.model)
+        self.train_msg['model_parameter_info'] = model_parameter_info
+        logger.info(f'model_parameter_info: {model_parameter_info}')
 
         data_collator = self._get_data_collator()
-
         optimizers = self._get_optimizers(train_dataset)
 
         trainer_cls = TrainerFactory.get_trainer_cls(args)
@@ -221,7 +215,6 @@ class SwiftSft(SwiftPipeline):
     def train(self, trainer):
         logging_path = os.path.join(trainer.args.output_dir, 'logging.jsonl')
         logger.info(f'The logging file will be saved in: {logging_path}')
-        trainer.model_accepts_loss_kwargs = True  # fix transformers>=4.46.2
         trainer.train(trainer.args.resume_from_checkpoint)
 
         return self._save_trainer_state(trainer)

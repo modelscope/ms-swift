@@ -35,8 +35,8 @@ Swift DOCUMENTATION
    :maxdepth: 2
    :caption: Customization
 
-   Customization/新增数据集.md
-   Customization/新增模型.md
+   Customization/自定义数据集.md
+   Customization/自定义模型.md
    Customization/插件化.md
 
 Indices and tables

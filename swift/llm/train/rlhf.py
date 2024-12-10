@@ -20,20 +20,15 @@ class SwiftRLHF(SwiftSft):
 
         super()._prepare_model_tokenizer()
 
-    def _prepare_train(self):
+    def _prepare_template(self, use_chat_template: bool) -> None:
         args = self.args
+        super()._prepare_template(use_chat_template=use_chat_template)
         mode = 'kto' if args.rlhf_type == 'kto' else 'rlhf'
         self.template.set_mode(mode)
 
         if args.rlhf_type != 'orpo' or args.model_meta.is_multimodal:
             # Avoid padding labels during the model's forward pass in multimodal models.
             self.template.loss_scale = 'last_round'
-
-        if self.model.model_meta.is_multimodal:
-            models = [self.model]
-            if self.ref_model:
-                models.append(self.ref_model)
-            self.template.register_post_encode_hook(models)
 
     def _get_dataset(self):
         args = self.args
