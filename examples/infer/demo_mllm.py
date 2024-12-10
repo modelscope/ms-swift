@@ -1,14 +1,14 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-from typing import Literal
+from typing import Any, Dict, List, Literal, Union
+
+from datasets import Dataset as HfDataset
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 
-def infer_batch(engine: 'InferEngine', dataset: str):
+def infer_batch(engine: 'InferEngine', dataset: Union[HfDataset, List[Dict[str, Any]]]):
     request_config = RequestConfig(max_tokens=512, temperature=0)
-    dataset = load_dataset([dataset], strict=False, seed=42)[0]
-    print(f'dataset: {dataset}')
     metric = InferStats()
     resp_list = engine.infer([InferRequest(**data) for data in dataset], request_config, metrics=[metric])
     query0 = dataset[0]['messages'][0]['content']
@@ -121,6 +121,15 @@ if __name__ == '__main__':
         dataset = 'AI-ModelScope/LaTeX_OCR#1000'
         engine = LmdeployEngine(model, vision_batch_size=8)
 
+    # If you don't want to download the large dataset, you can set offline to True.
+    offline = False
+    if offline:
+        # dummy dataset
+        # To improve inference speed, please download the images locally.
+        dataset = [{'messages': [get_message('audio' if mm_type == 'audio' else 'image')]} for _ in range(1000)]
+    else:
+        dataset = load_dataset([dataset], strict=False, seed=42)[0]
+        print(f'dataset: {dataset}')
     infer_batch(engine, dataset)
 
     infer_stream(engine, InferRequest(messages=[get_message(mm_type)]))

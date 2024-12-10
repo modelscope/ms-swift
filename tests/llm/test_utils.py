@@ -17,7 +17,8 @@ class TestLlmUtils(unittest.TestCase):
     def test_dataset(self):
         dataset = load_dataset(['AI-ModelScope/alpaca-gpt4-data-zh#1000', 'AI-ModelScope/alpaca-gpt4-data-en#200'],
                                num_proc=4,
-                               strict=True)
+                               strict=True,
+                               download_mode='force_redownload')
         print(f'dataset[0]: {dataset[0]}')
         print(f'dataset[1]: {dataset[1]}')
 

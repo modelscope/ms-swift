@@ -1,5 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import concurrent.futures
 import inspect
+import os
 from copy import deepcopy
 from threading import Thread
 from typing import Any, AsyncIterator, Dict, Iterator, List, Literal, Optional, Union
@@ -336,12 +338,15 @@ class PtEngine(InferEngine):
             template.model = self.model
 
         template.set_mode('pt')
-        batched_inputs = []
-        template_inputs = []
-        for infer_request in infer_requests:
-            inputs = template.encode(infer_request, return_template_inputs=True)
-            template_inputs.append(inputs.pop('template_inputs'))
-            batched_inputs.append(inputs)
+        max_workers = min(32, os.cpu_count(), len(infer_requests))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [
+                executor.submit(template.encode, infer_request, return_template_inputs=True)
+                for infer_request in infer_requests
+            ]
+            concurrent.futures.wait(futures)
+            batched_inputs = [future.result() for future in futures]
+        template_inputs = [inputs.pop('template_inputs') for inputs in batched_inputs]
         inputs = to_device(template.data_collator(batched_inputs), self.model.device)
         if self.model.model_meta.is_multimodal:
             _, inputs = template.pre_forward_hook(self.model, None, inputs)
