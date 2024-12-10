@@ -88,10 +88,10 @@ def get_data(mm_type: Literal['text', 'image', 'video', 'audio']):
         data['images'] = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png']
     elif mm_type == 'video':
         messages = [{'role': 'user', 'content': '<video>Describe this video.'}]
-        data['videos'] = 'https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4'
+        data['videos'] = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4']
     elif mm_type == 'audio':
         messages = [{'role': 'user', 'content': '<audio>What does this audio say?'}]
-        data['audios'] = 'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/weather.wav'
+        data['audios'] = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/weather.wav']
     data['messages'] = messages
     return data
 
@@ -112,13 +112,13 @@ if __name__ == '__main__':
         from swift.llm import VllmEngine
         model = 'Qwen/Qwen2-VL-2B-Instruct'
         mm_type = 'video'
-        dataset = 'AI-ModelScope/LaTeX_OCR#1000'
+        dataset = 'AI-ModelScope/LaTeX_OCR:small#1000'
         engine = VllmEngine(model, max_model_len=32768, limit_mm_per_prompt={'image': 5, 'video': 2})
     elif infer_backend == 'lmdeploy':
         from swift.llm import LmdeployEngine
         model = 'OpenGVLab/InternVL2_5-1B'
         mm_type = 'video'
-        dataset = 'AI-ModelScope/LaTeX_OCR#1000'
+        dataset = 'AI-ModelScope/LaTeX_OCR:small#1000'
         engine = LmdeployEngine(model, vision_batch_size=8)
 
     infer_batch(engine, dataset)

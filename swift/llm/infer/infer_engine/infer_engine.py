@@ -219,8 +219,23 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         return finish_reason
 
     @staticmethod
-    def _thread_run(queue, coro):
-        queue.put(asyncio.run(coro))
+    def thread_run(target, args=(), kwargs=None):
+        kwargs = kwargs or {}
+
+        def func(target, queue, args, kwargs):
+            try:
+                queue.put(target(*args, **kwargs))
+            except Exception as e:
+                queue.put(e)
+
+        queue = Queue()
+        thread = Thread(target=func, args=(target, queue, args, kwargs))
+        thread.start()
+        thread.join()
+        result = queue.get()
+        if isinstance(result, Exception):
+            raise result
+        return result
 
     @staticmethod
     def safe_asyncio_run(coro):
@@ -228,13 +243,8 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
             loop = asyncio.get_running_loop()
         except RuntimeError:
             loop = None
-
         if loop:
-            queue = Queue()
-            thread = Thread(target=InferEngine._thread_run, args=(queue, coro))
-            thread.start()
-            thread.join()
-            result = queue.get()
+            result = InferEngine.thread_run(asyncio.run, args=(coro, ))
         else:
             result = asyncio.run(coro)
         return result

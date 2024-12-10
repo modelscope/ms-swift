@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import asyncio
 import inspect
 import os
 import time
@@ -7,7 +8,6 @@ from copy import deepcopy
 from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
 
 import torch
-from lmdeploy import GenerationConfig as LmdeployGenerationConfig
 from lmdeploy import PytorchEngineConfig, TurbomindEngineConfig, VisionConfig, pipeline
 from lmdeploy.api import autoget_backend_config
 from lmdeploy.serve import async_engine
@@ -21,6 +21,12 @@ from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, Ch
 from .infer_engine import InferEngine
 from .patch import patch_auto_config, patch_auto_tokenizer
 from .utils import InferStreamer
+
+try:
+    from lmdeploy import EngineGenerationConfig as LmdeployGenerationConfig
+except ImportError:
+    # compat lmdeploy >= 0.6.*
+    from lmdeploy import GenerationConfig as LmdeployGenerationConfig
 
 logger = get_logger()
 
@@ -152,7 +158,9 @@ class LmdeployEngine(InferEngine):
     def _add_stop_words(self, generation_config: LmdeployGenerationConfig, request_config: RequestConfig,
                         template_meta: TemplateMeta) -> None:
         stop_words = (request_config.stop or []) + (self.generation_config.stop_words or []) + template_meta.stop_words
-        generation_config.stop_token_ids = self._get_stop_token_ids(stop_words)
+        generation_config.stop_words = self._get_stop_token_ids(stop_words)
+        # compat lmdeploy >= 0.6.*
+        generation_config.stop_token_ids = generation_config.stop_words
 
     def _prepare_generation_config(self, request_config: RequestConfig) -> LmdeployGenerationConfig:
         kwargs = {'max_new_tokens': request_config.max_tokens}
@@ -254,7 +262,8 @@ class LmdeployEngine(InferEngine):
         if request_config.seed is None:
             request_config.seed = get_seed()
 
-        inputs = template.encode(infer_request)
+        loop = asyncio.get_running_loop()
+        inputs = await loop.run_in_executor(None, template.encode, infer_request)
         images = inputs.pop('images', None)
         if images:
             inputs['images'] = await self.engine.vl_encoder.async_infer(images)

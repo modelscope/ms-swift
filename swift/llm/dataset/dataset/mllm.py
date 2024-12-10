@@ -1096,18 +1096,11 @@ register_dataset(
     DatasetMeta(
         ms_dataset_id='AI-ModelScope/LaTeX_OCR',
         hf_dataset_id='linxy/LaTeX_OCR',
-        subsets=[
-            SubsetDataset(
-                split=['train'],
-                preprocess_func=LatexocrPreprocessor(),
-            ),
-            SubsetDataset(
-                subset='synthetic_handwrite',
-                split=['train'],
-                preprocess_func=LatexocrPreprocessor(),
-            )
-        ],
-        tags=['chat', 'ocr', 'multi-modal', 'vision']))
+        subsets=['default', 'human_handwrite', 'human_handwrite_print', 'synthetic_handwrite', 'small'],
+        preprocess_func=LatexocrPreprocessor(),
+        split=['train'],
+        tags=['chat', 'ocr', 'multi-modal', 'vision'],
+    ))
 
 
 class CapchaImagesPreprocessor(ResponsePreprocessor):

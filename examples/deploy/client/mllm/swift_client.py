@@ -86,7 +86,7 @@ def get_message(mm_type: Literal['text', 'image', 'video', 'audio']):
 def run_client(host: str = '127.0.0.1', port: int = 8000):
     engine = InferClient(host=host, port=port)
     print(f'models: {engine.models}')
-    infer_batch(engine, 'AI-ModelScope/LaTeX_OCR#1000')
+    infer_batch(engine, 'AI-ModelScope/LaTeX_OCR:small#1000')
     infer_stream(engine, InferRequest(messages=[get_message(mm_type='video')]))
 
 

@@ -119,6 +119,7 @@ class TestRun(unittest.TestCase):
                 dataset=dataset,
                 val_dataset='DAMO_NLP/jd#20',
                 output_dir=output_dir,
+                download_mode='force_redownload',
                 include_num_input_tokens_seen=True,
                 gradient_checkpointing=True,
                 **kwargs)
