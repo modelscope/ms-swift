@@ -25,12 +25,14 @@ class InferRequest:
             "content": [  # str or List[Dict[str, Any]]
                 {
                     "type": "image",  # or audio/video
-                    # This content is usually written in the `images` field (recommended).
                     "image": "<url/path/base64/PIL.Image>",
                 },
-                {"type": "text", "text": "<text>"},
+                {"type": "text", "text": "Please describe the picture."},
             ],
         }]
+        The above content is equivalent to:
+        [{"role": "user", "content": "<image>Please describe the picture."}]
+        and additionally passing in images: ["<url/path/base64/PIL.Image>"].
     tools: Organize tools into the format of tools_prompt for system. for example, 'react_en'.
         Specifying this parameter will override system.
     """

@@ -124,7 +124,7 @@ class InferCliState:
 
 def _prepare_pt_engine(args: InferArguments, pt_engine):
     if args.train_type in extra_tuners:
-        extra_tuners[args.train_type].from_pretrained(pt_engine.model, args.ckpt_dir, inference_mode=True)
+        extra_tuners[args.train_type].from_pretrained(pt_engine.model, args.ckpt_dir)
     else:
         if args.tuner_backend == 'unsloth':
             model, processor = load_by_unsloth(args.ckpt_dir, args.torch_dtype, args.max_length, args.quant_bits == 4,
@@ -146,7 +146,7 @@ def _prepare_pt_engine(args: InferArguments, pt_engine):
             pt_engine.generation_config = model.generation_config
             pt_engine.processor = processor
         else:
-            pt_engine.model = Swift.from_pretrained(pt_engine.model, args.ckpt_dir, inference_mode=True)
+            pt_engine.model = Swift.from_pretrained(pt_engine.model, args.ckpt_dir)
             if args.train_type == 'bone':
                 # Bone has a problem of float32 matmul with bloat16 in `peft==0.14.0`
                 pt_engine.model.to(pt_engine.model.dtype)

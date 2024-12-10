@@ -295,7 +295,7 @@ class SwiftModel(nn.Module):
                         model: Union[nn.Module, 'SwiftModel'],
                         model_id: str = None,
                         adapter_name: Union[str, List[str], Dict[str, str]] = None,
-                        inference_mode: bool = False,
+                        inference_mode: bool = True,
                         revision: str = None,
                         **kwargs):
         """Load a set of tuners and corresponding weights by a model_id.

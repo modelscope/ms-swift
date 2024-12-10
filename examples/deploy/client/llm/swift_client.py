@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import asyncio
 import os
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
@@ -9,7 +10,15 @@ def infer_batch(engine: 'InferEngine', dataset: str):
     dataset = load_dataset([dataset], strict=False, seed=42)[0]
     print(f'dataset: {dataset}')
     metric = InferStats()
-    resp_list = engine.infer([InferRequest(**data) for data in dataset], request_config, metrics=[metric])
+
+    # resp_list = engine.infer([InferRequest(**data) for data in dataset], request_config, metrics=[metric])
+    # The asynchronous interface below is equivalent to the synchronous interface above.
+    async def _run():
+        tasks = [engine.infer_async(InferRequest(**data), request_config) for data in dataset]
+        return await asyncio.gather(*tasks)
+
+    resp_list = asyncio.run(_run())
+
     query0 = dataset[0]['messages'][0]['content']
     print(f'query0: {query0}')
     print(f'response0: {resp_list[0].choices[0].message.content}')
