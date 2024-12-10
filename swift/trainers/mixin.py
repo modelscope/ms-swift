@@ -233,7 +233,7 @@ class SwiftMixin:
                     if isinstance(v, nn.Module) and k in {'model', 'ref_model', 'reward_model', 'value_model'}
                 ]))
             self.template.register_post_encode_hook(models)
-            logger.info(f'Successfully registered post_encode hooks: {[model.__class__.__name__ for model in models]}')
+            logger.info(f'Successfully registered post_encode hook: {[model.__class__.__name__ for model in models]}')
         self.model_accepts_loss_kwargs = True  # fix transformers>=4.46.2
         self._save_initial_model(self.args.output_dir)
         with self.hub.patch_hub():
