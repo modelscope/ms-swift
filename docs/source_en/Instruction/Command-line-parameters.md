@@ -37,7 +37,7 @@ The introduction to command line parameters will cover base arguments, atomic ar
 - strict: If True, the dataset will throw an error if any row has a problem; otherwise, it will discard the erroneous row. Default is False.
 - 🔥model_name: For self-awareness tasks, input the model's Chinese and English names separated by space.
 - 🔥model_author: For self-awareness tasks, input the model author's Chinese and English names separated by space.
-- custom_dataset_info: Custom simple dataset registration, refer to [Add New Dataset](../Customization/Custom-dataset).
+- custom_dataset_info: Custom simple dataset registration, refer to [Add New Dataset](../Customization/Custom-dataset.md).
 
 ### Template Arguments
 - 🔥template: Type of dialogue template, which defaults to the template type corresponding to the model. `swift pt` will convert the dialogue template into a generation template for use.
