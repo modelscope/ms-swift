@@ -126,7 +126,7 @@ if __name__ == '__main__':
     if offline:
         # dummy dataset
         # To improve inference speed, please download the multimodal resources locally.
-        dataset = [{'messages': [get_message('audio' if mm_type == 'audio' else 'image')]} for _ in range(1000)]
+        dataset = [get_data('audio' if mm_type == 'audio' else 'image') for _ in range(1000)]
     else:
         dataset = load_dataset([dataset], strict=False, seed=42)[0]
         print(f'dataset: {dataset}')

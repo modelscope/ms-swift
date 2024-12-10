@@ -263,7 +263,7 @@ class LmdeployEngine(InferEngine):
             request_config.seed = get_seed()
 
         loop = asyncio.get_running_loop()
-        inputs = (await loop.run_in_executor(None, template.encode, infer_request))
+        inputs = await loop.run_in_executor(None, template.encode, infer_request)
         images = inputs.pop('images', None)
         if images:
             inputs['images'] = await self.engine.vl_encoder.async_infer(images)

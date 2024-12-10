@@ -359,7 +359,7 @@ class VllmEngine(InferEngine):
 
         template.set_mode('vllm')
         loop = asyncio.get_running_loop()
-        inputs = (await loop.run_in_executor(None, template.encode, infer_request))
+        inputs = await loop.run_in_executor(None, template.encode, infer_request)
         self.set_default_max_tokens(request_config, inputs)
         generation_config = self._prepare_generation_config(request_config)
         self._add_stop_words(generation_config, request_config, template.template_meta)
