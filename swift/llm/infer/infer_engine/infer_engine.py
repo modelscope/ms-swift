@@ -32,6 +32,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         self.config = self.model_info.config
         self.pre_infer_hooks = []
         self.default_template = get_template(self.model_meta.template, self.processor)
+        self._adapters_pool = {}
 
     def _get_stop_words(self, stop_words: List[Union[str, List[int], None]]) -> List[str]:
         stop: List[str] = []

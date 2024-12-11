@@ -152,15 +152,6 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
             with open(fpath, 'w', encoding='utf-8') as f:
                 json.dump(check_json_format(self.__dict__), f, ensure_ascii=False, indent=2)
 
-    def _init_weight_type(self, ckpt_dir):
-        if ckpt_dir and (os.path.exists(os.path.join(ckpt_dir, 'adapter_config.json'))
-                         or os.path.exists(os.path.join(ckpt_dir, 'default', 'adapter_config.json'))
-                         or os.path.exists(os.path.join(ckpt_dir, 'reft'))):
-            self.weight_type = 'adapter'
-        else:
-            self.weight_type = 'full'
-            self.model = ckpt_dir or self.model
-
     def _init_device(self):
         if is_dist():
             if is_torch_npu_available():

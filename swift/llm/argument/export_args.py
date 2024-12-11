@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Literal, Optional
 
 from swift.utils import get_logger
+from .adapters_args import AdaptersArguments
 from .base_args import BaseArguments, to_abspath
 from .merge_args import MergeArguments
 
@@ -11,7 +12,7 @@ logger = get_logger()
 
 
 @dataclass
-class ExportArguments(MergeArguments, BaseArguments):
+class ExportArguments(AdaptersArguments, MergeArguments, BaseArguments):
     """
     ExportArguments is a dataclass that inherits from BaseArguments and MergeArguments.
 
@@ -29,7 +30,6 @@ class ExportArguments(MergeArguments, BaseArguments):
         to_peft_format (bool): Flag to indicate if the output should be in PEFT format.
             This argument is useless for now.
     """
-    ckpt_dir: Optional[str] = field(default=None, metadata={'help': '/path/to/your/vx-xxx/checkpoint-xxx'})
     output_dir: Optional[str] = None
 
     # awq/gptq
@@ -89,7 +89,6 @@ class ExportArguments(MergeArguments, BaseArguments):
         if self.ckpt_dir:
             self.ckpt_dir = to_abspath(self.ckpt_dir, True)
             self.load_args_from_ckpt(self.ckpt_dir)
-        self._init_weight_type(self.ckpt_dir)
         MergeArguments.__post_init__(self)
         BaseArguments.__post_init__(self)
         self._init_output_dir()

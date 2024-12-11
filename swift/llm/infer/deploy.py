@@ -67,8 +67,8 @@ class SwiftDeploy(SwiftInfer):
     def _get_model_list(self):
         args = self.args
         model_list = [args.served_model_name or args.model_suffix]
-        if args.lora_request_list is not None:
-            model_list += [lora_request.lora_name for lora_request in args.lora_request_list]
+        if args.adapters:
+            model_list += [adapter.name for adapter in args.adapters]
         return model_list
 
     async def get_available_models(self):
