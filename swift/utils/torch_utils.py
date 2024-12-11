@@ -3,18 +3,19 @@
 import hashlib
 import os
 import pickle
+import re
 import time
 import uuid
 from bisect import bisect_right
 from contextlib import contextmanager, nullcontext
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
 import torch.distributed as dist
+import torch.nn as nn
 from datasets.utils.filelock import FileLock
 from modelscope.hub.utils.utils import get_cache_dir
-from torch.nn import Linear, Module
 from transformers.integrations import is_deepspeed_zero3_enabled
 
 from .env import get_dist_setting
@@ -43,7 +44,7 @@ def get_n_params_grads(model) -> Tuple[List[int], List[int]]:
     return n_params, n_grads
 
 
-def get_model_parameter_info(model: Module, name: Optional[str] = None) -> str:
+def get_model_parameter_info(model: nn.Module, name: Optional[str] = None) -> str:
     n_params, n_grads = get_n_params_grads(model)
     n_params = sum(n_params)
     n_grads = sum(n_grads)
@@ -72,7 +73,7 @@ def find_sub_module(module: torch.nn.Module, module_name: str) -> List[torch.nn.
     return _modules
 
 
-def show_layers(model: Module, max_lines: Optional[int] = 20) -> None:
+def show_layers(model: nn.Module, max_lines: Optional[int] = 20) -> None:
     named_p = list(model.named_parameters())
     for i, (n, p) in enumerate(named_p):
         if max_lines is not None and i >= max_lines:
@@ -81,7 +82,7 @@ def show_layers(model: Module, max_lines: Optional[int] = 20) -> None:
         logger.info(f'[{n}]: requires_grad={p.requires_grad}, dtype={p.dtype}, device={p.device}')
 
 
-def freeze_parameters(model: Module, freeze_parameters_ratio: float, freeze_parameters: List[str]) -> None:
+def freeze_parameters(model: nn.Module, freeze_parameters_ratio: float, freeze_parameters: List[str]) -> None:
     if freeze_parameters_ratio > 0:
         n_parameters = get_n_params_grads(model)[0]
         n_parameters = np.array(n_parameters, dtype=np.int64)
@@ -98,7 +99,7 @@ def freeze_parameters(model: Module, freeze_parameters_ratio: float, freeze_para
                     p.requires_grad = False
 
 
-def activate_parameters(model: Module, additional_trainable_parameters: List[str]) -> None:
+def activate_parameters(model: nn.Module, additional_trainable_parameters: List[str]) -> None:
     if len(additional_trainable_parameters) == 0:
         return
     has_activate = False
@@ -151,31 +152,38 @@ def _sync_max_memory(max_memory: Dict[Union[int, str], int]) -> Dict[Union[int, 
     return new_max_memory
 
 
-def _find_layers(model: Module, module_cls: type) -> List[str]:
-    module_names = set()
+def _find_layers(model: nn.Module, cond: Callable[[str, nn.Module], bool]) -> List[str]:
+    # The content of target_module_names cannot exist in inner_nodes.
+    inner_nodes = set()
     for name, module in model.named_modules():
-        if isinstance(module, module_cls):
-            module_name = '.'.join(name.split('.')[-2:])
-            module_names.add(module_name)
-    return list(module_names)
+        name = re.sub(r'\d+', '{}', name)
+        if not cond(name, module):
+            inner_nodes.add(name)
+    target_module_names = set()
+    for name, module in model.named_modules():
+        if cond(name, module):
+            name = re.sub(r'\d+', '{}', name)
+            module_name_list = name.split('.')
+            module_name = module_name_list.pop()
+            for inner_node in inner_nodes:
+                while inner_node.endswith(module_name):
+                    module_name = f'{module_name_list.pop()}.{module_name}'
+            target_module_names.add(module_name)
+    return list(target_module_names)
 
 
-def find_norm(model: Module) -> List[str]:
+def find_norm(model: nn.Module) -> List[str]:
     # find_layer_norm
-    module_names = set()
-    for name, module in model.named_modules():
-        module_cls_name = module.__class__.__name__.lower()
-        if isinstance(module, torch.nn.LayerNorm) or 'rmsnorm' in module_cls_name:
-            module_name = '.'.join(name.split('.')[-1:])
-            module_names.add(module_name)
-    return list(module_names)
+    return _find_layers(
+        model,
+        lambda name, module: isinstance(module, torch.nn.LayerNorm) or 'rmsnorm' in module.__class__.__name__.lower())
 
 
-def find_embedding(model: Module) -> List[str]:
-    return _find_layers(model, torch.nn.Embedding)
+def find_embedding(model: nn.Module) -> List[str]:
+    return _find_layers(model, lambda name, module: isinstance(module, torch.nn.Embedding))
 
 
-def find_all_linears(model: Module) -> List[str]:
+def find_all_linears(model: nn.Module) -> List[str]:
     from swift.llm import get_model_arch
     model_info = model.model_info
     model_arch = get_model_arch(model.model_meta.model_arch)
@@ -212,24 +220,12 @@ def find_all_linears(model: Module) -> List[str]:
         from aqlm import QuantizedLinear
         linear_cls = [QuantizedLinear]
     else:
-        linear_cls = [Linear]
+        linear_cls = [nn.Linear]
 
-    # The content of target_module_names cannot exist in inner_nodes.
-    # O(n^2logn), n represents the number of nodes, n<1000.
-    inner_nodes = set()
-    for name, module in model.named_modules():
-        if not isinstance(module, tuple(linear_cls)):
-            inner_nodes.add(name)
-    target_module_names = set()
-    for name, module in model.named_modules():
-        if isinstance(module, tuple(linear_cls)) and lm_head_name not in name and 'score' not in name:
-            module_name_list = name.split('.')
-            module_name = module_name_list.pop()
-            for inner_node in inner_nodes:
-                while inner_node.endswith(module_name):
-                    module_name = f'{module_name_list.pop()}.{module_name}'
-            target_module_names.add(module_name)
-    return list(target_module_names)
+    # 'score': classification model and reward model
+    return _find_layers(
+        model, lambda name, module: isinstance(module, tuple(linear_cls)) and all(layer not in name
+                                                                                  for layer in [lm_head_name, 'score']))
 
 
 @contextmanager

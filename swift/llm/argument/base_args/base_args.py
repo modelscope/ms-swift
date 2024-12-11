@@ -2,7 +2,7 @@
 import os
 import sys
 from dataclasses import dataclass, field, fields
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Union
 
 import json
 import torch
@@ -48,7 +48,7 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
     train_type: str = field(default='lora', metadata={'help': f'train_type choices: {list(get_supported_tuners())}'})
 
     seed: int = 42
-    model_kwargs: Optional[str] = None
+    model_kwargs: Optional[Union[dict, str]] = None
     load_dataset_config: bool = False
 
     use_hf: bool = False

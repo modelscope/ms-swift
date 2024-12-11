@@ -39,7 +39,7 @@ class ModelArguments:
     attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None
 
     rope_scaling: Literal['linear', 'dynamic'] = None
-    device_map: Optional[str] = None
+    device_map: Optional[Union[dict, str]] = None
     # When some model code needs to be downloaded from GitHub,
     # this parameter specifies the path to the locally downloaded repository.
     local_repo_path: Optional[str] = None
@@ -59,6 +59,7 @@ class ModelArguments:
                     value = json.loads(value)
                 except json.JSONDecodeError:
                     if strict:
+                        logger.error(f"Unable to parse string: '{value}'")
                         raise
         return value
 
