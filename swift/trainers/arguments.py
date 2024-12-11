@@ -36,6 +36,7 @@ class SwiftArgumentsMixin:
         # fix use_reentrant
         if hasattr(torch.utils.checkpoint, '_old_checkpoint'):  # avoid double patching
             return
+        # Consistent with the default behavior of transformers.
         default_use_reentrant = (
             self.gradient_checkpointing_kwargs.get('use_reentrant', True)
             if self.gradient_checkpointing_kwargs else True)
