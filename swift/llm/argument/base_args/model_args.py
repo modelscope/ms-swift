@@ -59,6 +59,7 @@ class ModelArguments:
                     value = json.loads(value)
                 except json.JSONDecodeError:
                     if strict:
+                        logger.error(f"Unable to parse string: '{value}'")
                         raise
         return value
 
