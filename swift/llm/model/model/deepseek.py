@@ -107,6 +107,7 @@ register_model(
         [
             ModelGroup([
                 Model('deepseek-ai/DeepSeek-V2.5', 'deepseek-ai/DeepSeek-V2.5'),
+                Model('deepseek-ai/DeepSeek-V2.5-1210', 'deepseek-ai/DeepSeek-V2.5-1210'),
             ]),
         ],
         TemplateType.deepseek_v2_5,
