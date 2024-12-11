@@ -145,15 +145,15 @@ class Template(ProcessorMixin):
                     images[i] = self._save_pil_image(image)
         inputs.images = images
 
-        if inputs.is_multimodal:
-            self._add_default_tags(inputs)
-
         self._get_std_messages(inputs.messages)
         n_round = len(inputs.messages) // 2
         if n_round > 1 and not self.template_meta.support_multi_round:
             logger.warning_once(
                 'The template does not support multi-round chat. Only use the last round of the conversation.')
             inputs.messages = inputs.messages[-2:]
+
+        if inputs.is_multimodal:
+            self._add_default_tags(inputs)
 
     def _rlhf_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         chosen_inputs, rejected_inputs = inputs, deepcopy(inputs)

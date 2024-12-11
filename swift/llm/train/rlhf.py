@@ -36,6 +36,9 @@ class SwiftRLHF(SwiftSft):
         model = super().prepare_model(args, model)
         if args.rlhf_type == 'rm':
             from trl import AutoModelForCausalLMWithValueHead
+            lm_head_namings = ['lm_head', 'embed_out']
+            if not any(hasattr(model, attribute) for attribute in lm_head_namings):
+                model.lm_head = None  # avoid error
             model = AutoModelForCausalLMWithValueHead.from_pretrained(model)
             patch_getattr(AutoModelForCausalLMWithValueHead, 'pretrained_model')
         return model
