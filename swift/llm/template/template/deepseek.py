@@ -123,6 +123,6 @@ register_template(
         LLMTemplateType.deepseek_v2_5,
         prefix=['<｜begin▁of▁sentence｜>'],
         prompt=['<｜User｜>{{QUERY}}<｜Assistant｜>'],
-        chat_sep=['<｜end_of_sentense｜>'],
-        suffix=['<｜end_of_sentense｜>'],
+        chat_sep=['<｜end▁of▁sentence｜>'],
+        suffix=['<｜end▁of▁sentence｜>'],
         system_prefix=['<｜begin▁of▁sentence｜>{{SYSTEM}}']))
