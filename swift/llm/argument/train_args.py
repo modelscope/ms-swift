@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 from dataclasses import dataclass, field
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Union
 
 import torch
 from transformers import Seq2SeqTrainingArguments
@@ -29,7 +29,8 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
     learning_rate: Optional[float] = None
     weight_decay: float = 0.1
     lr_scheduler_type: str = 'cosine'
-    lr_scheduler_kwargs: Optional[str] = None  # json
+    lr_scheduler_kwargs: Optional[Union[dict, str]] = None
+    gradient_checkpointing_kwargs: Optional[Union[dict, str]] = None
     report_to: List[str] = field(default_factory=lambda: ['tensorboard'])
     remove_unused_columns: bool = False
     logging_first_step: bool = True

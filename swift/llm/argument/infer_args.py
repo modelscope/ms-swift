@@ -2,7 +2,7 @@
 import datetime as dt
 import os
 from dataclasses import dataclass, field
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Union
 
 import torch.distributed as dist
 
@@ -70,7 +70,7 @@ class VllmArguments:
     max_model_len: Optional[int] = None
     disable_custom_all_reduce: bool = False
     enforce_eager: bool = False
-    limit_mm_per_prompt: Optional[str] = None  # '{"image": 10, "video": 5}'
+    limit_mm_per_prompt: Optional[Union[dict, str]] = None  # '{"image": 10, "video": 5}'
     vllm_max_lora_rank: int = 16
 
     lora_modules: List[str] = field(default_factory=list)
