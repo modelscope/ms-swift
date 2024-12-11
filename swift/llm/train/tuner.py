@@ -302,6 +302,7 @@ def torchacc_resume_from_checkpoint(args, model):
 
 class TunerMixin:
 
+    @classmethod
     def prepare_model(cls, args: TrainArguments, model):
         if args.use_liger:
             # Apply liger
