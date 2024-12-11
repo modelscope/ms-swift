@@ -249,3 +249,20 @@ def split_list(ori_list, num_shards):
     for i in range(len(idx_list) - 1):
         shard.append(ori_list[int(idx_list[i]):int(idx_list[i + 1])])
     return shard
+
+
+def patch_getattr(obj_cls, item_name: str):
+    if hasattr(obj_cls, '_patch'):  # avoid double patch
+        return
+
+    def __new_getattr__(self, key: str):
+        try:
+            return super(self.__class__, self).__getattr__(key)
+        except AttributeError:
+            if item_name in dir(self):
+                item = getattr(self, item_name)
+                return getattr(item, key)
+            raise
+
+    obj_cls.__getattr__ = __new_getattr__
+    obj_cls._patch = True

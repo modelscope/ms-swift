@@ -59,14 +59,6 @@ class SwiftArgumentsMixin:
         if hasattr(self, 'output_dir'):
             self.output_dir = os.path.abspath(os.path.expanduser(self.output_dir))
         self._fix_gradient_checkpointing()
-        if is_dist() and self.ddp_backend == 'nccl' and torch.cuda.is_available() and is_accelerate_available():
-            try:
-                from accelerate.utils import check_cuda_p2p_ib_support
-                if not check_cuda_p2p_ib_support():
-                    os.environ['NCCL_P2P_DISABLE'] = '1'
-                    os.environ['NCCL_IB_DISABLE'] = '1'
-            except ImportError:
-                pass
         super().__post_init__()
 
     @property

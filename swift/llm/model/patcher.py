@@ -2,8 +2,8 @@
 import torch
 from accelerate.utils import find_device
 
-from swift import get_logger
 from swift.llm import to_device
+from swift.utils import get_logger
 
 logger = get_logger()
 

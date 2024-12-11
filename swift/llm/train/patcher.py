@@ -9,8 +9,7 @@ from torch.nn import Module
 from torch.nn.parallel import DistributedDataParallel as DDP
 from transformers import trainer
 
-from swift import get_logger
-from swift.utils import get_dist_setting, is_mp_ddp, use_torchacc
+from swift.utils import get_dist_setting, get_logger, is_mp_ddp, use_torchacc
 from swift.utils.torch_utils import _get_max_memory, _sync_max_memory
 
 logger = get_logger()
