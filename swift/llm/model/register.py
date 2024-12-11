@@ -12,7 +12,8 @@ from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import is_torch_bf16_gpu_available, is_torch_cuda_available, is_torch_npu_available, strtobool
 from transformers.utils.versions import require_version
 
-from swift.utils import get_dist_setting, get_logger, is_dist, is_mp_ddp, is_unsloth_available, use_torchacc
+from swift.utils import (get_dist_setting, get_logger, is_dist, is_mp_ddp, is_unsloth_available, patch_getattr,
+                         use_torchacc)
 from .constant import ModelType
 from .utils import AttnImpl, HfConfigFactory, ModelInfo, safe_snapshot_download
 
@@ -387,22 +388,6 @@ def _get_model_info(model_dir: str, model_type: Optional[str], quantization_conf
     return res
 
 
-def patch_processor(processor):
-    if hasattr(processor, '_patch'):
-        return
-
-    def __getattr__(self, key: str):
-        try:
-            return super(processor.__class__, self).__getattr__(key)
-        except AttributeError:
-            if 'tokenizer' in self.__dict__:
-                return getattr(self.tokenizer, key)
-            raise
-
-    processor.__class__.__getattr__ = __getattr__
-    processor.__class__._patch = True
-
-
 def get_model_info_meta(
         model_id_or_path: str,
         torch_dtype: Optional[torch.dtype] = None,
@@ -510,7 +495,7 @@ def get_model_tokenizer(
 
     if not isinstance(processor, PreTrainedTokenizerBase) and hasattr(processor, 'tokenizer'):
         tokenizer = processor.tokenizer
-        patch_processor(processor)
+        patch_getattr(processor.__class__, 'tokenizer')
     else:
         tokenizer = processor
     tokenizer.model_info = model_info

@@ -300,73 +300,76 @@ def torchacc_resume_from_checkpoint(args, model):
             logger.warning(f'There were unexpected keys in the checkpoint model loaded: {load_result.unexpected_keys}.')
 
 
-def prepare_model(args: TrainArguments, model):
-    if args.use_liger:
-        # Apply liger
-        apply_liger(args.model_type)
+class TunerMixin:
 
-    if args.is_adapter:
-        # Fix the name of the layer in xcomposer that contains Plora.
-        model.requires_grad_(False)
-        if args.resume_from_checkpoint:
-            if args.train_type in extra_tuners:
-                tuner: Tuner = extra_tuners[args.train_type]
-                model = tuner.from_pretrained(model, args.resume_from_checkpoint)
+    @classmethod
+    def prepare_model(cls, args: TrainArguments, model):
+        if args.use_liger:
+            # Apply liger
+            apply_liger(args.model_type)
+
+        if args.is_adapter:
+            # Fix the name of the layer in xcomposer that contains Plora.
+            model.requires_grad_(False)
+            if args.resume_from_checkpoint:
+                if args.train_type in extra_tuners:
+                    tuner: Tuner = extra_tuners[args.train_type]
+                    model = tuner.from_pretrained(model, args.resume_from_checkpoint)
+                else:
+                    kwargs = {}
+                    if use_torchacc():
+                        kwargs = {'adapter_name': 'default'}
+                    model = Swift.from_pretrained(model, args.resume_from_checkpoint, is_trainable=True, **kwargs)
             else:
-                kwargs = {}
-                if use_torchacc():
-                    kwargs = {'adapter_name': 'default'}
-                model = Swift.from_pretrained(model, args.resume_from_checkpoint, is_trainable=True, **kwargs)
+                if args.train_type in extra_tuners:
+                    tuner: Tuner = extra_tuners[args.train_type]
+                    model = tuner.prepare_model(args, model)
+                else:
+                    model = prepare_adapter(args, model)
+            # fix bug: Attempting to unscale FP16 gradients.
+            #   peft: https://github.com/huggingface/peft/issues/1249
+            for p in model.parameters():
+                if p.requires_grad and p.dtype == torch.float16:
+                    logger.info_once('Convert trainable parameters from fp16 to fp32.')
+                    p.data = p.data.to(dtype=torch.float32)
+        elif args.train_type == 'full':
+            model.train()
+            model.requires_grad_(True)
+
+            freeze_parameters(model, args.freeze_parameters_ratio, args.freeze_parameters)
+            if len(args.trainable_parameters) > 0:
+                activate_parameters(model, args.trainable_parameters)
+            if use_torchacc() and args.resume_from_checkpoint:
+                torchacc_resume_from_checkpoint(args, model)
         else:
-            if args.train_type in extra_tuners:
-                tuner: Tuner = extra_tuners[args.train_type]
-                model = tuner.prepare_model(args, model)
-            else:
-                model = prepare_adapter(args, model)
-        # fix bug: Attempting to unscale FP16 gradients.
-        #   peft: https://github.com/huggingface/peft/issues/1249
-        for p in model.parameters():
-            if p.requires_grad and p.dtype == torch.float16:
-                logger.info_once('Convert trainable parameters from fp16 to fp32.')
-                p.data = p.data.to(dtype=torch.float32)
-    elif args.train_type == 'full':
-        model.train()
-        model.requires_grad_(True)
+            raise ValueError(f'args.train_type: {args.train_type}')
 
-        freeze_parameters(model, args.freeze_parameters_ratio, args.freeze_parameters)
-        if len(args.trainable_parameters) > 0:
-            activate_parameters(model, args.trainable_parameters)
-        if use_torchacc() and args.resume_from_checkpoint:
-            torchacc_resume_from_checkpoint(args, model)
-    else:
-        raise ValueError(f'args.train_type: {args.train_type}')
+        if args.resume_only_model:
+            args.training_args.resume_from_checkpoint = None
+        if args.use_galore:
+            from swift.trainers.optimizers.galore import GaLoreConfig
+            if args.galore_target_modules is None:
+                args.galore_target_modules = find_all_linears(model)
+            if args.galore_with_embedding:
+                args.galore_target_modules += find_embedding(model)
+            args.galore_config = GaLoreConfig(
+                target_modules=args.galore_target_modules,
+                rank=args.galore_rank,
+                update_proj_gap=args.galore_update_proj_gap,
+                galore_scale=args.galore_scale,
+                proj_type=args.galore_proj_type,
+                optim_per_parameter=args.galore_optim_per_parameter,
+                quantize=args.galore_quantization,
+                proj_quant=args.galore_proj_quant,
+                proj_bits=args.galore_proj_bits,
+                proj_group_size=args.galore_proj_group_size,
+                cos_threshold=args.galore_cos_threshold,
+                gamma_proj=args.galore_gamma_proj,
+                queue_size=args.galore_queue_size,
+            )
 
-    if args.resume_only_model:
-        args.training_args.resume_from_checkpoint = None
-    if args.use_galore:
-        from swift.trainers.optimizers.galore import GaLoreConfig
-        if args.galore_target_modules is None:
-            args.galore_target_modules = find_all_linears(model)
-        if args.galore_with_embedding:
-            args.galore_target_modules += find_embedding(model)
-        args.galore_config = GaLoreConfig(
-            target_modules=args.galore_target_modules,
-            rank=args.galore_rank,
-            update_proj_gap=args.galore_update_proj_gap,
-            galore_scale=args.galore_scale,
-            proj_type=args.galore_proj_type,
-            optim_per_parameter=args.galore_optim_per_parameter,
-            quantize=args.galore_quantization,
-            proj_quant=args.galore_proj_quant,
-            proj_bits=args.galore_proj_bits,
-            proj_group_size=args.galore_proj_group_size,
-            cos_threshold=args.galore_cos_threshold,
-            gamma_proj=args.galore_gamma_proj,
-            queue_size=args.galore_queue_size,
-        )
+        if args.sequence_parallel_size > 1:
+            from swift.trainers.xtuner import dispatch_module_xtuner
+            dispatch_module_xtuner(model)
 
-    if args.sequence_parallel_size > 1:
-        from swift.trainers.xtuner import dispatch_module_xtuner
-        dispatch_module_xtuner(model)
-
-    return model
+        return model

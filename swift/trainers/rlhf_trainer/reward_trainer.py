@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from collections import defaultdict
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, Tuple, Union
 
 import pandas as pd
 import torch
@@ -18,38 +18,32 @@ del HFRewardTrainer.__init__
 
 class RewardTrainer(RLHFTrainerMixin, SwiftMixin, HFRewardTrainer):
 
-    def __init__(self, model: Optional[Union[PreTrainedModel, nn.Module, str]] = None, *_args, **kwargs):
-        ref_model = kwargs.pop('ref_model')
-        assert ref_model is None, 'RM does not require a ref_model.'
-        self.args = kwargs['args']
-        self.use_reward_data_collator = True  # disable warning
-        super().__init__(model, *_args, **kwargs)
-
     def compute_loss(self,
                      model: Union[PreTrainedModel, nn.Module],
                      inputs: Dict[str, Union[torch.Tensor, Any]],
                      return_outputs=False,
                      num_items_in_batch=None) -> Union[torch.Tensor, Tuple[torch.Tensor, Dict[str, torch.Tensor]]]:
-        model_kwargs = inputs.copy()
-        labels = model_kwargs.pop('labels', None)
-        if self.is_encoder_decoder:
-            model_kwargs['labels'] = labels
-        _, _, values = model(**model_kwargs, use_cache=False, return_dict=True)
-        batch_size = model_kwargs['input_ids'].shape[0] // 2
-        chosen_masks, rejected_masks = torch.split(model_kwargs['attention_mask'], batch_size, dim=0)
-        chosen_rewards, rejected_rewards = torch.split(values, batch_size, dim=0)
-        chosen_scores = chosen_rewards.gather(dim=-1, index=(chosen_masks.sum(dim=-1, keepdim=True) - 1)).squeeze()
-        rejected_scores = rejected_rewards.gather(
-            dim=-1, index=(rejected_masks.sum(dim=-1, keepdim=True) - 1)).squeeze()
-        loss = -torch.nn.functional.logsigmoid(chosen_scores.float() - rejected_scores.float()).mean().to(
-            self.args.device)
+        inputs.pop('labels', None)  # not use
+        attention_mask = inputs['attention_mask']
+        batch_size = attention_mask.shape[0] // 2
+        values = model(**inputs)[2]
+
+        sequence_lengths = (torch.eq(attention_mask, 0).int().argmax(-1) - 1) % attention_mask.shape[1]
+        rewards = values.gather(dim=-1, index=sequence_lengths[:, None])
+        rewards_chosen, rewards_rejected = torch.split(rewards, batch_size, dim=0)
+        if 'margin' in inputs:
+            loss = -nn.functional.logsigmoid(rewards_chosen - rewards_rejected - inputs['margin']).mean()
+        else:
+            loss = -nn.functional.logsigmoid(rewards_chosen - rewards_rejected).mean()
+        if self.args.center_rewards_coefficient is not None:
+            loss += self.args.center_rewards_coefficient * torch.mean((rewards_chosen + rewards_rejected)**2)
         # compat transformers>=4.46.*
         if num_items_in_batch is not None:
             loss /= self.args.gradient_accumulation_steps
         if return_outputs:
             return loss, {
-                'rewards_chosen': chosen_rewards,
-                'rewards_rejected': rejected_rewards,
+                'rewards_chosen': rewards_chosen,
+                'rewards_rejected': rewards_rejected,
             }
         return loss
 
@@ -65,8 +59,11 @@ class RewardTrainer(RLHFTrainerMixin, SwiftMixin, HFRewardTrainer):
         table = defaultdict(list)
         for _, inputs in enumerate(eval_dataloader):
             _, logits, _ = self.prediction_step(self.model, inputs, prediction_loss_only=False)
-            batch_size = inputs['input_ids'].shape[0] // 2
-            text = self.tokenizer.batch_decode(inputs['input_ids'], skip_special_tokens=True)
+            input_ids = inputs['input_ids']
+            attention_mask = inputs['attention_mask']
+            sequence_lengths = ((torch.eq(attention_mask, 0).int().argmax(-1) - 1) % attention_mask.shape[1]).tolist()
+            text = [self.template.safe_decode(tokens[:sequence_lengths[i]]) for i, tokens in enumerate(input_ids)]
+            batch_size = input_ids.shape[0] // 2
             chosen_text, rejected_text = text[:batch_size], text[batch_size:]
             table['chosen_text'].extend(gather_object(chosen_text))
             table['rejected_text'].extend(gather_object(rejected_text))

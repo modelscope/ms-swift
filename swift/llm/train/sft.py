@@ -18,12 +18,12 @@ from ..infer import prepare_generation_config
 from ..model import get_model_arch, get_model_tokenizer
 from ..template import get_template
 from ..utils import deep_getattr, dynamic_gradient_checkpointing
-from .tuner import prepare_model
+from .tuner import TunerMixin
 
 logger = get_logger()
 
 
-class SwiftSft(SwiftPipeline):
+class SwiftSft(SwiftPipeline, TunerMixin):
     args_class = TrainArguments
     args: args_class
 
@@ -142,7 +142,7 @@ class SwiftSft(SwiftPipeline):
         train_dataset, val_dataset = self._get_dataset()
         train_dataset, val_dataset = self._encode_dataset(train_dataset, val_dataset)
         # Some tuners require train_dataset for preparation: LoRA-GA
-        self.model = prepare_model(self.args, self.model)
+        self.model = self.prepare_model(self.args, self.model)
         logger.info(f'model: {self.model}')
         model_parameter_info = get_model_parameter_info(self.model)
         self.train_msg['model_parameter_info'] = model_parameter_info

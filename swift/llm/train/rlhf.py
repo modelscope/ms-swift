@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import List, Union
 
+from swift.utils import patch_getattr
 from ..argument import RLHFArguments
 from .kto import prepare_kto_dataset
 from .sft import SwiftSft
@@ -29,6 +30,15 @@ class SwiftRLHF(SwiftSft):
         if args.rlhf_type != 'orpo' or args.model_meta.is_multimodal:
             # Avoid padding labels during the model's forward pass in multimodal models.
             self.template.loss_scale = 'last_round'
+
+    @classmethod
+    def prepare_model(cls, args, model):
+        model = super().prepare_model(args, model)
+        if args.rlhf_type == 'rm':
+            from trl import AutoModelForCausalLMWithValueHead
+            model = AutoModelForCausalLMWithValueHead.from_pretrained(model)
+            patch_getattr(AutoModelForCausalLMWithValueHead, 'pretrained_model')
+        return model
 
     def _get_dataset(self):
         args = self.args

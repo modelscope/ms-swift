@@ -9,8 +9,7 @@ import torch
 from torch import nn
 from transformers.activations import ACT2CLS
 
-from swift import get_logger
-from swift.utils.torch_utils import find_sub_module
+from swift.utils.torch_utils import find_sub_module, get_logger
 from .utils import ActivationMixin, SwiftAdapter, SwiftConfig, SwiftOutput
 
 logger = get_logger()
