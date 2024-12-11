@@ -19,6 +19,7 @@ class TrainerFactory:
         'cpo': 'swift.trainers.CPOTrainer',
         'rm': 'swift.trainers.RewardTrainer',
         'ppo': 'swift.trainers.PPOTrainer',
+        'rlft': 'swift.trainers.RLFTTrainer',
     }
 
     TRAINING_ARGS_MAPPING = {
@@ -29,6 +30,7 @@ class TrainerFactory:
         'cpo': 'swift.trainers.CPOConfig',
         'rm': 'swift.trainers.RewardConfig',
         'ppo': 'swift.trainers.PPOConfig',
+        'rlft': 'swift.trainers.PPOConfig',
     }
 
     custom_trainer_class(TRAINER_MAPPING, TRAINING_ARGS_MAPPING)
