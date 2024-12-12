@@ -113,14 +113,19 @@ class SwiftMixin:
                 config = copy(config)
                 os.makedirs(os.path.join(output_dir, 'converted'), exist_ok=True)
                 if 'lora-ga' in init_lora_weights:
-                    from lora_ga.entrypoint import LoraGAContext
-                    with LoraGAContext(model):
-                        model.save_pretrained(
-                            os.path.join(output_dir, 'converted', 'default'),
-                            path_initial_model_for_weight_conversion=os.path.join(os.path.dirname(output_dir),
-                                                                                  'initial_model'),
-                        )
-                        model.peft_config['default'] = config
+                    try:
+                        from lora_ga.entrypoint import LoraGAContext
+                        with LoraGAContext(model):
+                            model.save_pretrained(
+                                os.path.join(output_dir, 'converted', 'default'),
+                                path_initial_model_for_weight_conversion=os.path.join(os.path.dirname(output_dir),
+                                                                                      'initial_model'),
+                            )
+                            model.peft_config['default'] = config
+                    except ImportError as e:
+                        ErrorMessage = "Since 'LoRA-GA' is not implemented by PEFT, you will need to install it directly from GitHub repository using the following command: 'pip install git+https://github.com/lxline/LoRA-GA.git'."
+                        logger.info(ErrorMessage)
+                        raise RuntimeError(ErrorMessage) from e
                 elif 'pissa' in init_lora_weights or 'olora' in init_lora_weights:
                     model.save_pretrained(
                         os.path.join(output_dir, 'converted', 'default'),
