@@ -678,7 +678,7 @@ class Template(ProcessorMixin):
             k: v
             for k, v in kwargs.items() if k in {'input_ids', 'labels', 'attention_mask', 'position_ids'}
         }
-        keep_kwargs.update(self._post_encode(model, to_device(kwargs, model.device)))
+        keep_kwargs.update(to_device(self._post_encode(model, to_device(kwargs, model.device)), model.device))
         kwargs = keep_kwargs
         if 'inputs_embeds' in kwargs:
             kwargs.pop('input_ids', None)

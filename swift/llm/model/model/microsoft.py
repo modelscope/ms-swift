@@ -1,8 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+from functools import partial
 from types import MethodType
 from typing import Any, Dict
 
-from functools import partial
 from swift.llm import TemplateType
 from swift.utils import get_env_args
 from ..constant import LLMModelType, MLLMModelType
