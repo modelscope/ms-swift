@@ -165,7 +165,7 @@ def _find_layers(model: nn.Module, cond: Callable[[str, nn.Module], bool]) -> Li
             module_name_list = name.split('.')
             module_name = module_name_list.pop()
             for inner_node in inner_nodes:
-                while module_name_list and inner_node.endswith(re.sub(r'\d+\.', '.{}.', module_name)):
+                while module_name_list and inner_node.endswith(re.sub(r'\d+\.', '{}.', module_name)):
                     module_name = f'{module_name_list.pop()}.{module_name}'
             target_module_names.add(module_name)
     return list(target_module_names)
