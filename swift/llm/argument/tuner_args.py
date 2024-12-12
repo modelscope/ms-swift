@@ -29,6 +29,12 @@ class TunerArguments:
         use_rslora (bool): Flag to indicate if RSLora is used. Default is False.
         use_dora (bool): Flag to indicate if Dora is used. Default is False.
         init_weights (str): Initialization method for weights of supported tuners. Default is 'true'.
+        lora_ga_batch_size (int): Batch size when estimate gradient for LoRA GA. Default is 2.
+        lora_ga_iters (int): Number of iterations when estimate gradient for LoRA GA. Default is 2.
+        lora_ga_max_length (int): Maximum length when estimate gradient for LoRA GA. Default is 1024.
+        lora_ga_direction (str): Initial direction with estimated gradient for LoRA GA. Default is 'ArB2r'. Allowed values are 'ArBr', 'A2rBr', 'ArB2r', 'random'.
+        lora_ga_scale (str): 'stable'
+        lora_ga_stable_gamma (int): 16
 
         fourier_n_frequency (int): Number of frequencies for FourierFT. Default is 2000.
         fourier_scaling (float): Scaling factor for FourierFT. Default is 300.0.
@@ -110,6 +116,12 @@ class TunerArguments:
     use_rslora: bool = False
     use_dora: bool = False
     # Lora: Literal['gaussian', 'pissa', 'pissa_niter_[number of iters]', 'olora', 'loftq', 'true', 'false']
+    lora_ga_batch_size: int = 2
+    lora_ga_iters: int = 2
+    lora_ga_max_length: int = 1024
+    lora_ga_direction: str = 'ArB2r'
+    lora_ga_scale: str = 'stable'
+    lora_ga_stable_gamma: int = 16
 
     # Bone: Literal['bat', 'true', 'false']
     init_weights: str = 'true'
