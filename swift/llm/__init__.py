@@ -13,7 +13,6 @@ if TYPE_CHECKING:
         InferEngine,
         infer_main,
         deploy_main,
-        LoRARequest,
         InferClient,
         run_deploy,
         prepare_pt_engine_template,
@@ -34,15 +33,15 @@ if TYPE_CHECKING:
                           LazyLLMDataset, ConstantLengthDataset, standard_keys, load_dataset, DATASET_TYPE,
                           sample_dataset, RowPreprocessor, DatasetMeta)
     from .utils import (deep_getattr, to_device, History, history_to_messages, messages_to_history, Processor,
-                        save_checkpoint, ProcessorMixin)
+                        save_checkpoint, ProcessorMixin, Adapter)
     from .base import SwiftPipeline
 else:
     _extra_objects = {k: v for k, v in globals().items() if not k.startswith('_')}
     _import_structure = {
         'rlhf': ['rlhf_main'],
         'infer': [
-            'deploy_main', 'VllmEngine', 'RequestConfig', 'LmdeployEngine', 'PtEngine', 'infer_main', 'LoRARequest',
-            'InferClient', 'run_deploy', 'prepare_pt_engine_template', 'InferEngine'
+            'deploy_main', 'VllmEngine', 'RequestConfig', 'LmdeployEngine', 'PtEngine', 'infer_main', 'InferClient',
+            'run_deploy', 'prepare_pt_engine_template', 'InferEngine'
         ],
         'export': ['export_main', 'merge_lora', 'quantize_model', 'export_to_ollama'],
         'eval': ['eval_main'],
@@ -69,7 +68,7 @@ else:
         ],
         'utils': [
             'deep_getattr', 'to_device', 'History', 'history_to_messages', 'messages_to_history', 'Processor',
-            'save_checkpoint', 'ProcessorMixin'
+            'save_checkpoint', 'ProcessorMixin', 'Adapter'
         ],
         'base': ['SwiftPipeline']
     }

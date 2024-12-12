@@ -12,12 +12,6 @@ from swift.llm.model.register import fix_do_sample_warning
 from ..protocol import RequestConfig
 
 
-@dataclass
-class LoRARequest:
-    lora_name: str
-    lora_path: str
-
-
 class InferTools:
 
     @staticmethod

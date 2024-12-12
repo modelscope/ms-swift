@@ -13,8 +13,7 @@ logger = get_logger()
 def merge_lora(args: ExportArguments, device_map=None, replace_if_exists=False) -> None:
     if replace_if_exists:
         logger.info(f'replace_if_exists: {replace_if_exists}')
-    assert args.ckpt_dir is not None, f'args.ckpt_dir: {args.ckpt_dir}'
-    assert args.weight_type == 'adapter', f'args.weight_type: {args.weight_type}'
+    assert args.adapters, f'args.adapters: {args.adapters}'
     assert args.quant_method is None, (f'args.quant_method: {args.quant_method}, '
                                        'quantized model and does not support merge-lora.')
 
@@ -47,7 +46,7 @@ def merge_lora(args: ExportArguments, device_map=None, replace_if_exists=False) 
             template.processor,
             output_dir,
             safe_serialization=args.safe_serialization,
-            ckpt_dir=args.ckpt_dir,
+            adapters=args.adapters,
             max_shard_size=args.max_shard_size,
             additional_saved_files=model.model_meta.additional_saved_files)
         logger.info(f'Successfully merged LoRA and saved in {output_dir}.')

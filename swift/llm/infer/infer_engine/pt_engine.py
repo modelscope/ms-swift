@@ -19,7 +19,7 @@ from swift.utils import get_logger
 from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                         ChatCompletionStreamResponse, ChatMessage, DeltaMessage, RequestConfig, random_uuid)
 from .infer_engine import InferEngine
-from .utils import InferStreamer, LogitsStreamer, LoRARequest, TokensIteratorStreamer, prepare_generation_config
+from .utils import Adapter, InferStreamer, LogitsStreamer, TokensIteratorStreamer, prepare_generation_config
 
 logger = get_logger()
 
@@ -75,7 +75,6 @@ class PtEngine(InferEngine):
         super()._post_init()
         self.engine = self.model  # dummy
         self.generation_config = self.model.generation_config
-        self._lora_request_pool = {}
 
     @classmethod
     def from_model_processor(cls, model, processor, *, max_batch_size: int = 1):
@@ -137,11 +136,11 @@ class PtEngine(InferEngine):
                       inputs: Dict[str, Any],
                       generation_config: GenerationConfig,
                       *,
-                      lora_request: Optional[LoRARequest] = None,
+                      adapter: Optional[Adapter] = None,
                       **kwargs) -> Iterator[List[Optional[ChatCompletionStreamResponse]]]:
         generate_kwargs = {}
-        if lora_request is not None:
-            generate_kwargs['adapter_names'] = self._get_adapter_names(lora_request)
+        if adapter is not None:
+            generate_kwargs['adapter_names'] = self._get_adapter_names(adapter)
         if generation_config.num_beams != 1:
             error_msg = 'Streaming generation does not support beam search.'
             raise ValueError(error_msg)
@@ -236,27 +235,27 @@ class PtEngine(InferEngine):
             if any(res):
                 yield res
 
-    def _get_adapter_names(self, lora_request: LoRARequest) -> List[str]:
-        lora_name = lora_request.lora_name
-        lora_path = lora_request.lora_path
-        if lora_name in self._lora_request_pool:
-            assert lora_path == self._lora_request_pool[lora_name].lora_path
+    def _get_adapter_names(self, adapter: Adapter) -> List[str]:
+        adapter_name = adapter.name
+        adapter_path = adapter.path
+        if adapter_name in self._adapters_pool:
+            assert adapter_path == self._adapters_pool[adapter_name].adapter_path
         else:
-            self._lora_request_pool[lora_name] = lora_request
-            self.model = Swift.from_pretrained(self.model, lora_path, lora_name)
-        return [lora_name]
+            self._adapters_pool[adapter_name] = adapter
+            self.model = Swift.from_pretrained(self.model, adapter_path, adapter_name)
+        return [adapter_name]
 
     def _infer_full(self,
                     template: Template,
                     inputs: Dict[str, Any],
                     generation_config: GenerationConfig,
                     *,
-                    lora_request: Optional[LoRARequest] = None,
+                    adapter: Optional[Adapter] = None,
                     template_inputs=None) -> Union[List[ChatCompletionResponse]]:
         # bos_token TODO: encoder-decoder
         generate_kwargs = {}
-        if lora_request is not None:
-            generate_kwargs['adapter_names'] = self._get_adapter_names(lora_request)
+        if adapter is not None:
+            generate_kwargs['adapter_names'] = self._get_adapter_names(adapter)
         generate_kwargs.update({'generation_config': generation_config, **inputs})
         num_prompt_tokens = self._get_num_tokens(inputs)
 
@@ -301,16 +300,12 @@ class PtEngine(InferEngine):
         request_config: Optional[RequestConfig] = None,
         *,
         template: Optional[Template] = None,
-        lora_request: Optional[LoRARequest] = None,
+        adapter: Optional[Adapter] = None,
     ) -> Union[ChatCompletionResponse, AsyncIterator[ChatCompletionStreamResponse]]:
         # TODO:auto batch
         if request_config is None:
             request_config = RequestConfig()
-        res_or_gen = self.infer([infer_request],
-                                request_config,
-                                template=template,
-                                use_tqdm=False,
-                                lora_request=lora_request)
+        res_or_gen = self.infer([infer_request], request_config, template=template, use_tqdm=False, adapter=adapter)
         if request_config.stream:
 
             async def _gen_wrapper():
@@ -328,7 +323,7 @@ class PtEngine(InferEngine):
         metrics: Optional[List[Metric]] = None,
         *,
         template: Optional[Template] = None,
-        lora_request: Optional[LoRARequest] = None,
+        adapter: Optional[Adapter] = None,
     ) -> Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
         self.model.eval()
         request_config = deepcopy(request_config)
@@ -358,7 +353,7 @@ class PtEngine(InferEngine):
             'template': template,
             'inputs': inputs,
             'generation_config': generation_config,
-            'lora_request': lora_request,
+            'adapter': adapter,
             'template_inputs': template_inputs
         }
         for pre_infer_hook in self.pre_infer_hooks:
@@ -383,7 +378,7 @@ class PtEngine(InferEngine):
         *,
         template: Optional[Template] = None,
         use_tqdm: Optional[bool] = None,
-        lora_request: Optional[LoRARequest] = None
+        adapter: Optional[Adapter] = None
     ) -> Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
         if request_config is None:
             request_config = RequestConfig()
@@ -398,7 +393,7 @@ class PtEngine(InferEngine):
                 while i < len(infer_requests):
                     infer_requests_samples = infer_requests[i:i + self.max_batch_size]
                     gen = self._infer(
-                        infer_requests_samples, request_config, metrics, template=template, lora_request=lora_request)
+                        infer_requests_samples, request_config, metrics, template=template, adapter=adapter)
                     for response in gen:
                         res = [None] * len(infer_requests)
                         res[i:i + self.max_batch_size] = response
@@ -412,8 +407,7 @@ class PtEngine(InferEngine):
             i = 0
             while i < len(infer_requests):
                 infer_requests_samples = infer_requests[i:i + self.max_batch_size]
-                res += self._infer(
-                    infer_requests_samples, request_config, metrics, template=template, lora_request=lora_request)
+                res += self._infer(infer_requests_samples, request_config, metrics, template=template, adapter=adapter)
                 i += self.max_batch_size
                 prog_bar.update(len(infer_requests_samples))
             return res
