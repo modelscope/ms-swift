@@ -80,8 +80,9 @@ def get_model_tokenizer_mplug_owl3(model_dir: str,
     model_cls._no_split_modules = ['SiglipEncoderLayer']
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
     processor = model.init_processor(tokenizer)
-    func_list = ['generate', 'forward']
-    use_submodel_func(model, 'language_model', func_list)
+    if model is not None:
+        func_list = ['generate', 'forward']
+        _use_submodel_func(model, 'language_model', func_list)
     return model, processor
 
 

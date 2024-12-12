@@ -14,6 +14,7 @@ from ..utils import Context, Prompt, findall
 
 class FlorenceTemplate(Template):
     # loss_scale = 'last_round'
+    # skip_prompt = False
     is_encoder_decoder = True
 
     @staticmethod
