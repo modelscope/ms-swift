@@ -113,8 +113,8 @@ class SwiftMixin:
                 config = copy(config)
                 os.makedirs(os.path.join(output_dir, 'converted'), exist_ok=True)
                 if 'lora-ga' in init_lora_weights:
-                    import lora_ga.entrypoint.LoraGAContext
-                    with LoraGAContext(model, named_grads=None):
+                    from lora_ga.entrypoint import LoraGAContext
+                    with LoraGAContext(model):
                         model.save_pretrained(
                             os.path.join(output_dir, 'converted', 'default'),
                             path_initial_model_for_weight_conversion=os.path.join(os.path.dirname(output_dir),
