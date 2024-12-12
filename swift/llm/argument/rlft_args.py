@@ -8,3 +8,8 @@ from swift.llm import RLHFArguments
 class RLFTArguments(RLHFArguments):
 
     reward_type: str = 'agent'
+
+    def __post_init__(self):
+        self.rlhf_type = 'ppo'
+        super().__post_init__()
+        self.rlhf_type = 'rlft'

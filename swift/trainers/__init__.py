@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from .arguments import (Seq2SeqTrainingArguments, TrainingArguments, DPOConfig, CPOConfig, KTOConfig, ORPOConfig,
                             PPOConfig, RewardConfig)
     from .rlhf_trainer import (CPOTrainer, DPOTrainer, KTOTrainer, ORPOTrainer, RLHFTrainerMixin, PPOTrainer,
-                               RewardTrainer)
+                               RewardTrainer, RLFTTrainer)
     from .trainer_factory import TrainerFactory
     from .trainers import Seq2SeqTrainer, Trainer
     from .mixin import SwiftMixin
@@ -31,7 +31,7 @@ else:
             'PPOConfig', 'RewardConfig'
         ],
         'rlhf_trainer':
-        ['CPOTrainer', 'DPOTrainer', 'KTOTrainer', 'ORPOTrainer', 'RLHFTrainerMixin', 'PPOTrainer', 'RewardTrainer'],
+        ['CPOTrainer', 'DPOTrainer', 'KTOTrainer', 'ORPOTrainer', 'RLHFTrainerMixin', 'PPOTrainer', 'RewardTrainer', 'RLFTTrainer'],
         'trainer_factory': ['TrainerFactory'],
         'trainers': ['Seq2SeqTrainer', 'Trainer'],
         'mixin': ['SwiftMixin'],

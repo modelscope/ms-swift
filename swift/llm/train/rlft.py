@@ -139,8 +139,10 @@ class SwiftRLFT(SwiftSft):
         reward_func_kwargs = {}
         if args.reward_type == 'agent':
             reward_func_kwargs = {'reward_func': self.get_reward}
+        from copy import deepcopy
         trainer = trainer_cls(
             model=self.model,
+            ref_model = deepcopy(self.model),
             args=self.args.training_args,
             data_collator=data_collator,
             train_dataset=train_dataset,
@@ -154,5 +156,5 @@ class SwiftRLFT(SwiftSft):
         return self.train(trainer)
 
 
-def rlhf_main(args: Union[List[str], RLFTArguments, None] = None):
+def rlft_main(args: Union[List[str], RLFTArguments, None] = None):
     return SwiftRLFT(args).main()

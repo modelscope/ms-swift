@@ -39,7 +39,6 @@ if TYPE_CHECKING:
 else:
     _extra_objects = {k: v for k, v in globals().items() if not k.startswith('_')}
     _import_structure = {
-        'rlhf': ['rlhf_main'],
         'infer': [
             'deploy_main', 'VllmEngine', 'RequestConfig', 'LmdeployEngine', 'PtEngine', 'infer_main', 'LoRARequest',
             'InferClient', 'run_deploy', 'prepare_pt_engine_template', 'InferEngine'

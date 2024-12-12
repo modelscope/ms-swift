@@ -58,7 +58,8 @@ class SwiftMixin:
             callbacks: Optional[List[TrainerCallback]] = None,
             optimizers: Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR] = (None, None),
             preprocess_logits_for_metrics: Optional[Callable[[torch.Tensor, torch.Tensor],
-                                                             torch.Tensor]] = None) -> None:
+                                                             torch.Tensor]] = None,
+                                                             **kwargs) -> None:
         if args.check_model and hasattr(model, 'model_dir'):
             check_local_model_is_latest(
                 model.model_dir, user_agent={
@@ -84,7 +85,8 @@ class SwiftMixin:
             compute_metrics=compute_metrics,
             callbacks=callbacks,
             optimizers=optimizers,
-            preprocess_logits_for_metrics=preprocess_logits_for_metrics)
+            preprocess_logits_for_metrics=preprocess_logits_for_metrics,
+            **kwargs)
 
         self.compute_loss_func = compute_loss_func
         if get_function(model.__class__.forward) is not get_function(model.forward):

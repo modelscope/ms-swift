@@ -54,6 +54,8 @@ class RLFTTrainer(PPOTrainer):
                  *args,
                  reward_func=None,
                  **kwargs):
+        if 'reward_model' not in kwargs:
+            kwargs['reward_model'] = None
         super().__init__(*args, **kwargs)
         self.reward_func = reward_func
 
