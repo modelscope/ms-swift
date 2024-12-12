@@ -93,30 +93,40 @@ class SwiftMixin:
         self.start_time = time.time()
 
     def _save_initial_model(self, output_dir):
-        # pissa/olora
+        # pissa/olora/lora-ga
         model = unwrap_model(self.model)
         if isinstance(model, PeftModel):
             config = model.peft_config.get('default')
             init_lora_weights = getattr(config, 'init_lora_weights', None)
-            if isinstance(init_lora_weights, str) and ('pissa' in init_lora_weights or 'olora' in init_lora_weights):
+            if isinstance(init_lora_weights, str) and ('pissa' in init_lora_weights or 'olora' in init_lora_weights or 'lora-ga' in init_lora_weights):
                 config.init_lora_weights = True
                 model.save_pretrained(os.path.join(output_dir, 'initial_model'))
                 config.init_lora_weights = init_lora_weights
 
     def _save_converted_model(self, output_dir):
-        # pissa/olora
+        # pissa/olora/lora-ga
         model = unwrap_model(self.model)
         if isinstance(model, PeftModel):
             config = model.peft_config.get('default')
             init_lora_weights = getattr(config, 'init_lora_weights', None)
-            if isinstance(init_lora_weights, str) and ('pissa' in init_lora_weights or 'olora' in init_lora_weights):
+            if isinstance(init_lora_weights, str):
                 config = copy(config)
                 os.makedirs(os.path.join(output_dir, 'converted'), exist_ok=True)
-                model.save_pretrained(
-                    os.path.join(output_dir, 'converted', 'default'),
-                    path_initial_model_for_weight_conversion=os.path.join(os.path.dirname(output_dir), 'initial_model'),
-                )
-                model.peft_config['default'] = config
+                if 'lora-ga' in init_lora_weights:
+                    import lora_ga.entrypoint.LoraGAContext
+                    with LoraGAContext(model, named_grads=None):
+                        model.save_pretrained(
+                            os.path.join(output_dir, 'converted', 'default'),
+                            path_initial_model_for_weight_conversion=os.path.join(os.path.dirname(output_dir),
+                                                                                  'initial_model'),
+                        )
+                        model.peft_config['default'] = config
+                elif 'pissa' in init_lora_weights or 'olora' in init_lora_weights:
+                    model.save_pretrained(
+                        os.path.join(output_dir, 'converted', 'default'),
+                        path_initial_model_for_weight_conversion=os.path.join(os.path.dirname(output_dir), 'initial_model'),
+                    )
+                    model.peft_config['default'] = config
 
     def _load_optimizer_and_scheduler(self, *args, **kwargs):
         super()._load_optimizer_and_scheduler(*args, **kwargs)

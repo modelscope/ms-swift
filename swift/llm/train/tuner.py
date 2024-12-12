@@ -165,7 +165,7 @@ def prepare_adapter(args: TrainArguments, model, template=None, train_dataset=No
                     ErrorMessage = "Since 'LoRA-GA' is not implemented by PEFT, you will need to install it directly from GitHub repository using the following command: 'pip install git+https://github.com/lxline/LoRA-GA.git'."
                     logger.info(ErrorMessage)
                     raise RuntimeError(ErrorMessage) from e
-                model = lora_ga.entrypoint.lora_ga_init(
+                model = lora_ga.entrypoint.get_lora_ga_model(
                     model=model,
                     data_collator=template.data_collator,
                     dataset=train_dataset,
