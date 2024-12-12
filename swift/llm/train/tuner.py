@@ -157,16 +157,17 @@ def prepare_adapter(args: TrainArguments, model, template=None, train_dataset=No
             model = Swift.prepare_model(model, lora_config)
             logger.info(f'lora_config: {lora_config}')
         elif args.tuner_backend == 'peft':
+            lora_config = LoraConfig(task_type='CAUSAL_LM', lora_dtype=args.lora_dtype, **lora_kwargs)
             if args.init_weights == 'lora-ga':
                 try:
-                    import lora_ga_init
+                    import lora_ga
                 except ImportError as e:
                     ErrorMessage = "Since 'LoRA-GA' is not implemented by PEFT, you will need to install it directly from GitHub repository using the following command: 'pip install git+https://github.com/lxline/LoRA-GA.git'."
                     logger.info(ErrorMessage)
                     raise RuntimeError(ErrorMessage) from e
-                model = lora_ga_init.entrypoint.lora_ga_init(
+                model = lora_ga.entrypoint.lora_ga_init(
                     model=model,
-                    tokenizer=template.tokenizer,
+                    data_collator=template.data_collator,
                     dataset=train_dataset,
                     batch_size=args.lora_ga_batch_size,
                     num_iters=args.lora_ga_iters,
@@ -177,7 +178,6 @@ def prepare_adapter(args: TrainArguments, model, template=None, train_dataset=No
                     stable_gamma=args.lora_ga_stable_gamma,
                 )
             else:
-                lora_config = LoraConfig(task_type='CAUSAL_LM', lora_dtype=args.lora_dtype, **lora_kwargs)
                 model = Swift.prepare_model(model, lora_config)
             logger.info(f'lora_config: {lora_config}')
         elif args.tuner_backend == 'unsloth':
@@ -323,7 +323,7 @@ def torchacc_resume_from_checkpoint(args, model):
 class TunerMixin:
 
     @classmethod
-    def prepare_model(cls, args: TrainArguments, model):
+    def prepare_model(cls, args: TrainArguments, model, template=None, train_dataset=None):
         if args.use_liger:
             # Apply liger
             apply_liger(args.model_type)
