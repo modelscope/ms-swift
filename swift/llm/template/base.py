@@ -540,7 +540,7 @@ class Template(ProcessorMixin):
             res_context_list.append(bos_tokens)
             res_context_types.append(ContextType.OTHER)
 
-        prefix = template_meta.prefix if system is None else template_meta.system_prefix
+        prefix = template_meta.system_prefix if system else template_meta.prefix
         self._concat_context_list(prefix, res_context_list, res_context_types, system=system)
 
         n_round = len(inputs.messages) // 2
