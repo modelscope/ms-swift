@@ -147,7 +147,8 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
         if self.lazy_tokenize is None:
             self.lazy_tokenize = self.model_meta.is_multimodal and not self.streaming
             logger.info(f'Setting args.lazy_tokenize: {self.lazy_tokenize}')
-        self.accelerator_config = {'dispatch_batches': False}
+        if getattr(self, 'accelerator_config', None) is None:
+            self.accelerator_config = {'dispatch_batches': False}
         self.training_args = TrainerFactory.get_training_args(self)
 
         self._add_version()
