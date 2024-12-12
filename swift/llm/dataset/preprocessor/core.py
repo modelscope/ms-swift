@@ -125,6 +125,8 @@ class RowPreprocessor:
                 if k not in batched:
                     batched[k] = [None] * i
                 batched[k].append(v)
+        # Make all the lengths of v the same.
+        batched = {k: v + [None] * (len(rows) - len(v)) for k, v in batched.items()}
         return batched
 
     @staticmethod

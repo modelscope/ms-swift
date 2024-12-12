@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+from functools import partial
 from types import MethodType
 from typing import Any, Dict
 
@@ -18,8 +19,6 @@ def get_model_tokenizer_phi3_vision(model_dir: str,
                                     load_model: bool = True,
                                     **kwargs):
     processor_kwargs = {}
-    if 'Phi-3.5-vision-instruct' in model_dir:
-        kwargs['num_crops'] = kwargs.get('num_crops') or 4
     if 'num_crops' in kwargs:
         processor_kwargs['num_crops'] = get_env_args('num_crops', int, kwargs['num_crops'])
     from transformers import AutoProcessor
@@ -43,7 +42,7 @@ register_model(
             ])
         ],
         TemplateType.phi3_vision,
-        get_model_tokenizer_phi3_vision,
+        partial(get_model_tokenizer_phi3_vision, num_crops=4),
         architectures=['Phi3VForCausalLM'],
         model_arch=ModelArch.phi3v,
         requires=['transformers>=4.36'],
