@@ -61,8 +61,6 @@ class RowPreprocessor:
             messages = messages[1:]
         if messages and messages[0]['role'] == 'assistant':
             messages = [{'role': 'user', 'content': ''}] + messages  # pretrain
-        if len(messages) % 2 == 1:
-            raise ValueError(f'len(messages): {len(messages)}')
         for user_message, assistant_message in zip(messages[::2], messages[1::2]):
             if (user_message['role'] not in {'user', 'tool'} or 'content' not in user_message
                     or user_message['content'] is None):
