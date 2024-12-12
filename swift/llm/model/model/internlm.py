@@ -232,7 +232,7 @@ register_model(
             ], ),
         ],
         TemplateType.xcomposer2_5,
-        get_model_tokenizer_internlm_xcomposer2,
+        partial(get_model_tokenizer_internlm_xcomposer2, version='v2.5'),
         architectures=['InternLMXComposer2ForCausalLM'],
         model_arch=ModelArch.internlm_xcomposer,
         tags=['vision'],

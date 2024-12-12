@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import partial
 from typing import Any, Dict, List, Literal, Optional
 
@@ -11,7 +11,7 @@ from ..base import Template
 from ..constant import MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
-from ..utils import Context, findall
+from ..utils import Context, Prompt, findall
 from ..vision_utils import load_video_minicpmv_mplug_owl3, replace_video2image
 from .qwen import QwenTemplateMeta
 
@@ -127,35 +127,32 @@ class mPlugOwl3Template(Template):
         return encoded
 
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        if 'pixel_values' in inputs:
+        if 'media_offset' in inputs:
+            media_offset = []
+            cusum_offset = 0
+            image_embeds = []
             pixel_values = inputs.pop('pixel_values')
-            inputs['image_embeds'] = model.forward_image(pixel_values)
-        return inputs
-
-    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
-        res = super()._data_collator(batch, padding_to=padding_to)
-        image_embeds = [b['image_embeds'] for b in batch if 'image_embeds' in b]
-        if image_embeds:
-            res['image_embeds'] = torch.concat(image_embeds)
-        media_offset = []
-        cusum_offset = 0
-
-        for bi, b in enumerate(batch):
-            if 'media_offset' in b:
-                max_sequence_length = res['input_ids'].shape[1]
-                curr_media_offset = b['media_offset']
+            max_sequence_length = inputs['input_ids'].shape[1]
+            for i, curr_media_offset in enumerate(inputs['media_offset']):
+                if curr_media_offset is None:
+                    continue
                 if curr_media_offset.shape[1] < max_sequence_length:
                     padding = curr_media_offset[:, -1:, :].expand(curr_media_offset.shape[0],
                                                                   max_sequence_length - curr_media_offset.shape[1],
                                                                   curr_media_offset.shape[2])
                     curr_media_offset = torch.concat([curr_media_offset, padding], dim=1)
                 media_offset.append(curr_media_offset + cusum_offset)
-                cusum_offset += image_embeds[bi].shape[0]
+                image_embeds.append(model.forward_image(pixel_values[i]))
+                cusum_offset += image_embeds[-1].shape[0]
+            inputs['media_offset'] = torch.concat(media_offset)
+            inputs['image_embeds'] = torch.concat(image_embeds)
+        return inputs
 
-        # media_offset = [b['media_offset'] for b in batch if 'media_offset' in b]
-
-        if media_offset:
-            res['media_offset'] = torch.concat(media_offset)
+    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = self.fetch_inputs(batch, ['media_offset', 'pixel_values'])
+        for b in batch:
+            b.pop('pixel_values', None)
+        res.update(super()._data_collator(batch, padding_to=padding_to))
         return res
 
 
@@ -221,7 +218,9 @@ class mPlugOwl3_241101Template(mPlugOwl3Template):
 
 @dataclass
 class mPlugOwl3TemplateMeta(QwenTemplateMeta):
+    prefix: Prompt = field(default_factory=lambda: ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n'])
     default_system: Optional[str] = None
+    system_prefix: Optional[Prompt] = None
 
 
 register_template(mPlugOwl3TemplateMeta(MLLMTemplateType.mplug_owl3, template_cls=mPlugOwl3Template))
