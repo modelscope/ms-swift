@@ -63,57 +63,61 @@ class InternLMXComposer2Template(Template):
         return encoded
 
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        input_ids = inputs['input_ids'][0].tolist()
-        labels = inputs.get('labels')
-        images = inputs['images']
-        if len(images) > 0:  # ignore <s>
-            input_ids = input_ids[1:]
+        batch_size = len(inputs['input_ids'])
+        res = []
+        im_mask = []
+        length = inputs['length']
+        for i in range(batch_size):
+            input_ids = inputs['input_ids'][i].tolist()[:length[i]]
+            input_ids.append(2)  # add dummy </s>
+            labels = inputs.get('labels')
             if labels is not None:
-                labels = labels[1:]
-        input_ids.append(2)  # add dummy </s>
-        if labels is not None:
-            labels = labels[0].tolist()
-            labels.append(2)
-        else:
-            labels = []
-        res_inputs_embeds = []
-        res_labels = []
-        wrap_im_mask = []
-        pre_i, i, idx = 0, 0, 0
-        device = model.device
-        internlm2_model = model.model
-        if not hasattr(internlm2_model, 'tok_embeddings'):
-            internlm2_model = internlm2_model.model
-        tok_embeddings = internlm2_model.tok_embeddings
-        if len(images) > 0:
-            images = torch.concat([model.img2emb(image[None])[0] for image in images], dim=0)
-        while i < len(input_ids):
-            if input_ids[i] == 2:  # replace_token
-                res_input_ids = torch.tensor([1] + input_ids[pre_i:i], device=device)
-                res_inputs_embeds.append(tok_embeddings(res_input_ids[None])[0])
-                wrap_im_mask += [0] * len(res_input_ids)
-                res_labels += [-100] + labels[pre_i:i]
-                if len(images) > 0 and idx < images.shape[0]:
-                    res_inputs_embeds.append(images[idx].to(device))
-                    wrap_im_mask += [1] * images.shape[1]
-                    res_labels += [-100] * images.shape[1]
-                idx += 1
+                labels = labels[i].tolist()[:length[i]]
+                labels.append(2)
+            else:
+                labels = []
+            images = inputs['images'][i]
+            res_inputs_embeds = []
+            res_labels = []
+            wrap_im_mask = []
+            pre_i, i, idx = 0, 0, 0
+            device = model.device
+            internlm2_model = model.model
+            if not hasattr(internlm2_model, 'tok_embeddings'):
+                internlm2_model = internlm2_model.model
+            tok_embeddings = internlm2_model.tok_embeddings
+            if len(images) > 0:
+                images = torch.concat([model.img2emb(image[None])[0] for image in images], dim=0)
+            add_bos = False
+            while i < len(input_ids):
+                if input_ids[i] == 2:  # replace_token
+                    res_input_ids = torch.tensor(([1] if add_bos else []) + input_ids[pre_i:i], device=device)
+                    if not add_bos and self.version != 'v2.5':
+                        add_bos = True
+                    res_inputs_embeds.append(tok_embeddings(res_input_ids[None])[0])
+                    wrap_im_mask += [0] * len(res_input_ids)
+                    res_labels += ([-100] if add_bos else []) + labels[pre_i:i]
+                    if len(images) > 0 and idx < images.shape[0]:
+                        res_inputs_embeds.append(images[idx].to(device))
+                        wrap_im_mask += [1] * images.shape[1]
+                        res_labels += [-100] * images.shape[1]
+                    idx += 1
+                    i += 1
+                    pre_i = i
+                    continue
                 i += 1
-                pre_i = i
-                continue
-            i += 1
-        if len(labels) == 0:
-            res_labels = None
-        res_inputs_embeds = torch.concat(res_inputs_embeds, dim=0)
-        wrap_im_mask = torch.tensor(wrap_im_mask, dtype=torch.bool, device=device)[None]
-        return {'inputs_embeds': res_inputs_embeds, 'im_mask': wrap_im_mask, 'labels': res_labels}
+            if len(labels) == 0:
+                res_labels = None
+            im_mask.append(torch.tensor(wrap_im_mask, dtype=torch.bool, device=device))
+            res.append({'inputs_embeds': torch.concat(res_inputs_embeds, dim=0), 'labels': res_labels})
+        res = Template._data_collator(self, res)
+        res['im_mask'] = self._pad_sequence(im_mask, 0)
+        return res
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super()._data_collator(batch, padding_to=padding_to)
-        if 'im_mask' in batch[0]:
-            im_mask = [b['im_mask'][0] for b in batch]
-            im_mask = self._pad_sequence(im_mask, 0)
-            res['im_mask'] = im_mask
+        res['length'] = [len(b['input_ids']) for b in batch]
+        res.update(self.fetch_inputs(batch, ['images']))
         return res
 
 

@@ -678,7 +678,7 @@ class Template(ProcessorMixin):
             k: v
             for k, v in kwargs.items() if k in {'input_ids', 'labels', 'attention_mask', 'position_ids'}
         }
-        keep_kwargs.update(self._post_encode(model, to_device(kwargs, model.device)))
+        keep_kwargs.update(to_device(self._post_encode(model, to_device(kwargs, model.device)), model.device))
         kwargs = keep_kwargs
         if 'inputs_embeds' in kwargs:
             kwargs.pop('input_ids', None)
@@ -755,10 +755,9 @@ class Template(ProcessorMixin):
     @staticmethod
     def fetch_inputs(batch: List[Dict[str, Any]], keys: Optional[List[str]] = None) -> Dict[str, Any]:
         from swift.llm import RowPreprocessor
+        keys = keys or []
         rows = RowPreprocessor.rows_to_batched(batch)
-        if keys is not None:
-            rows = {k: rows[k] for k in keys}
-        return rows
+        return {k: rows[k] for k in keys if rows.get(k) is not None}
 
     @staticmethod
     def gather_list(batch: List[Dict[str, Any]], attr_name: str) -> Optional[List[Any]]:
