@@ -60,6 +60,7 @@ def get_multimodal_target_regex(model_arch,
     else:
         modules += model_arch.aligner
 
+    assert len(modules) > 0, f'modules: {modules}'
     prefix_pattern = '|'.join(modules)
     rejected_pattern = '|'.join(rejected_modules)
 
@@ -72,7 +73,9 @@ def get_multimodal_target_regex(model_arch,
         ignore_pattern += model_arch.lm_head or []
     ignore_pattern = '|'.join(ignore_pattern)
 
-    target_regex = f'^({prefix_pattern})(?!.*({ignore_pattern})).*'
+    target_regex = f'^({prefix_pattern})'
+    if ignore_pattern:
+        target_regex += f'(?!.*({ignore_pattern})).*'
     if rejected_pattern:
         target_regex = f'(?!^({rejected_pattern}))' + target_regex
     return target_regex
