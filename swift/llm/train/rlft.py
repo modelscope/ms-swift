@@ -134,7 +134,13 @@ class SwiftRLFT(SwiftSft):
 
         data_collator = self._get_data_collator()
         optimizers = self._get_optimizers(train_dataset)
-
+        from modelscope import AutoModelForSequenceClassification
+        value_model = AutoModelForSequenceClassification.from_pretrained(
+                args.model, trust_remote_code=True, num_labels=1
+            )
+        value_model.model_meta = self.model.model_meta
+        value_model.model_info = self.model.model_info
+        value_model = prepare_model(self.args, value_model)
         trainer_cls = TrainerFactory.get_trainer_cls(args)
         reward_func_kwargs = {}
         if args.reward_type == 'agent':
@@ -147,6 +153,7 @@ class SwiftRLFT(SwiftSft):
             data_collator=data_collator,
             train_dataset=train_dataset,
             eval_dataset=val_dataset,
+            value_model=value_model,
             callbacks=self.callbacks,
             optimizers=optimizers,
             template=self.template,

@@ -40,7 +40,7 @@ HFPPOTrainer.__init_origin__ = HFPPOTrainer.__init__
 
 def init_v2(
         self,
-        config: PPOv2Config,
+        args: PPOv2Config,
         tokenizer: PreTrainedTokenizer,
         policy: nn.Module,
         ref_policy: nn.Module,
@@ -52,6 +52,7 @@ def init_v2(
         # less commonly used
         optimizers: Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR] = (None, None),
         callbacks: Optional[List[TrainerCallback]] = None,
+        **kwargs
 ) -> None:
     if ref_policy is policy:
         raise ValueError(
@@ -59,8 +60,8 @@ def init_v2(
             "same as `policy`, you must mass a copy of it, or `None` if you use peft."
         )
 
-    self.args = config
-    args = config
+    self.args = args
+    args = args
     self.tokenizer = tokenizer
     self.policy = policy
 
@@ -189,7 +190,8 @@ def init_v2(
         )
     else:
         self.ref_policy = self.ref_policy.to(self.accelerator.device)
-        self.reward_model = self.reward_model.to(self.accelerator.device)
+        if self.reward_model is not None:
+            self.reward_model = self.reward_model.to(self.accelerator.device)
 
 
 HFPPOTrainer.__init__ = init_v2
@@ -415,12 +417,12 @@ class RLFTTrainer(PPOTrainer):
                 postprocessed_query_response = torch.cat((query, postprocessed_response), 1)
                 sequence_length = first_true_indices(postprocessed_response == tokenizer.pad_token_id) - 1
                 unwrapped_value_model = accelerator.unwrap_model(model).value_model
-                full_value, _, _ = self.get_reward(
+                full_value, _, _ = get_reward(
                     unwrapped_value_model, query_response, tokenizer.pad_token_id, context_length
                 )
                 value = full_value[:, context_length - 1: -1].squeeze(-1)
                 _, score, _ = self.get_reward(
-                    reward_model, postprocessed_query_response, tokenizer.pad_token_id, context_length
+                    reward_model, data, postprocessed_query_response, tokenizer.pad_token_id, context_length
                 )
 
                 responses.append(response)
@@ -510,14 +512,14 @@ class RLFTTrainer(PPOTrainer):
         )
 
     def get_reward(
-            self, model: torch.nn.Module, query_responses: torch.Tensor, pad_token_id: int, context_length: int
+            self, model: torch.nn.Module, batch, query_responses: torch.Tensor, pad_token_id: int, context_length: int
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         if self.reward_func:
-            return self.reward_func(model, query_responses, pad_token_id, context_length)
+            return self.reward_func(model, batch, query_responses, pad_token_id, context_length)
         else:
             return get_reward(model, query_responses, pad_token_id, context_length)
 
-    def train(self):
+    def train(self, *args, **kwargs):
         args = self.args
         accelerator = self.accelerator
         model = self.model
