@@ -39,7 +39,7 @@ class MLLMModelArch:
     llava_llama = 'llava_llama'
     llava_mistral = 'llava_mistral'
 
-    internlm_xcomposer = 'internlm_xcomposer'
+    xcomposer = 'xcomposer'
     internvl = 'internvl'
     minicpmv = 'minicpmv'
     deepseek_vl = 'deepseek_vl'
@@ -330,7 +330,7 @@ register_model_arch(
 
 register_model_arch(
     MultiModelKeys(
-        MLLMModelArch.internlm_xcomposer,
+        MLLMModelArch.xcomposer,
         language_model='model',
         aligner='vision_proj',
         vision_tower='vit',
