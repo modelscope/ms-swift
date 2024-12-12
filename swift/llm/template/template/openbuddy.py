@@ -45,5 +45,4 @@ register_template(
         chat_sep=['<|end|>\n'],
         suffix=['<|end|>'],
         default_system=OPENBUDDY2_DEFAULT_SYSTEM,
-        system_prefix=['<|role|>system<|says|>{{SYSTEM}}<|end|>\n'],
-        auto_add_bos=True))
+        system_prefix=['<|role|>system<|says|>{{SYSTEM}}<|end|>\n']))

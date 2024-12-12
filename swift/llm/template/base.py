@@ -457,7 +457,7 @@ class Template(ProcessorMixin):
 
     @staticmethod
     def _add_default_tags(inputs: StdTemplateInputs):
-        total_content = '\n'.join([message['content'] for message in inputs.messages])
+        total_content = '\n'.join([message['content'] or '' for message in inputs.messages])
         for media_type in ['image', 'audio', 'video']:
             media_key, media_tag = f'{media_type}s', f'<{media_type}>'
             medias = getattr(inputs, media_key)
@@ -540,7 +540,7 @@ class Template(ProcessorMixin):
             res_context_list.append(bos_tokens)
             res_context_types.append(ContextType.OTHER)
 
-        prefix = template_meta.prefix if system is None else template_meta.system_prefix
+        prefix = template_meta.system_prefix if system else template_meta.prefix
         self._concat_context_list(prefix, res_context_list, res_context_types, system=system)
 
         n_round = len(inputs.messages) // 2
