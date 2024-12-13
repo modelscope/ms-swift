@@ -123,9 +123,9 @@ class SwiftMixin:
                             )
                             model.peft_config['default'] = config
                     except ImportError as e:
-                        ErrorMessage = "Since 'LoRA-GA' is not implemented by PEFT, you will need to install it directly from GitHub repository using the following command: 'pip install git+https://github.com/lxline/LoRA-GA.git'."
-                        logger.info(ErrorMessage)
-                        raise RuntimeError(ErrorMessage) from e
+                        error_message = "Since 'LoRA-GA' is not implemented by PEFT, you will need to install it directly from GitHub repository using the following command: 'pip install git+https://github.com/lxline/LoRA-GA.git'."
+                        logger.info(error_message)
+                        raise RuntimeError(error_message) from e
                 elif 'pissa' in init_lora_weights or 'olora' in init_lora_weights:
                     model.save_pretrained(
                         os.path.join(output_dir, 'converted', 'default'),
