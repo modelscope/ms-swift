@@ -110,6 +110,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         self.template = template
 
     def _get_dataset(self):
+        # The random shuffling of the training set occurs in the dataloader of the trainer.
         args = self.args
         dataset_kwargs = args.get_dataset_kwargs()
         train_dataset, val_dataset = load_dataset(
@@ -271,10 +272,16 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             preprocessor_cls = PackingPreprocessor if args.packing else EncodePreprocessor
             preprocessor = preprocessor_cls(template=template)
             train_dataset = preprocessor(
-                train_dataset, num_proc=args.dataset_num_proc, load_from_cache_file=args.load_from_cache_file)
+                train_dataset,
+                num_proc=args.dataset_num_proc,
+                strict=args.strict,
+                load_from_cache_file=args.load_from_cache_file)
             if val_dataset is not None and not args.predict_with_generate:
                 val_dataset = preprocessor(
-                    val_dataset, num_proc=args.dataset_num_proc, load_from_cache_file=args.load_from_cache_file)
+                    val_dataset,
+                    num_proc=args.dataset_num_proc,
+                    strict=args.strict,
+                    load_from_cache_file=args.load_from_cache_file)
 
         inputs = train_dataset[0] if hasattr(train_dataset, '__len__') else next(iter(train_dataset))
         template.print_inputs(inputs, tokenizer_kwargs=inputs.pop('tokenizer_kwargs', None) or {})

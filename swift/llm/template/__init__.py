@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from . import template
-from .base import Template
+from .base import MaxLengthError, Template
 from .constant import TemplateType
 from .register import TEMPLATE_MAPPING, get_template, get_template_meta, register_template
 from .template_inputs import InferRequest, Messages, TemplateInputs, Tool

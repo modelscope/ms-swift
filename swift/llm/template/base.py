@@ -28,6 +28,10 @@ from .vision_utils import load_image, normalize_bbox, rescale_image
 logger = get_logger()
 
 
+class MaxLengthError(ValueError):
+    pass
+
+
 class Template(ProcessorMixin):
     special_tokens = ['<image>', '<video>', '<audio>', '<bbox>', '<ref-object>']
     special_keys = ['images', 'videos', 'audios', 'objects']
@@ -52,7 +56,7 @@ class Template(ProcessorMixin):
             *,
             use_chat_template: bool = True,
             template_backend: Literal['swift', 'jinja'] = 'swift',
-            truncation_strategy: Literal['delete', 'left'] = 'left',
+            truncation_strategy: Literal['raise', 'left'] = 'raise',
             max_pixels: Optional[int] = None,
             tools_prompt: Optional[str] = None,
             # only for train
@@ -161,8 +165,6 @@ class Template(ProcessorMixin):
         rejected_inputs.messages[-1]['content'] = chosen_inputs.rejected_response
         chosen_encoded = self._encode(chosen_inputs)
         rejected_encoded = self._encode(rejected_inputs)
-        if len(chosen_encoded) == 0 or len(rejected_encoded) == 0:
-            return {}
 
         encoded = {}
         for prefix in ['chosen', 'rejected']:
@@ -174,8 +176,6 @@ class Template(ProcessorMixin):
     def _kto_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         label, inputs.label = inputs.label, None
         encoded = self._rlhf_encode(inputs)
-        if len(encoded) == 0:
-            return {}
         encoded['label'] = label
         return encoded
 
@@ -624,10 +624,9 @@ class Template(ProcessorMixin):
             encoded['tokenizer_kwargs'] = tokenizer_kwargs
 
         if self.max_length is not None:
-            if self.truncation_strategy == 'delete' and len(input_ids) > self.max_length:
-                logger.warn(f'Current length of row({len(input_ids)}) is larger'
-                            f' than the max_length({self.max_length}), deleted.')
-                return {}
+            if self.truncation_strategy == 'raise' and len(input_ids) > self.max_length:
+                raise MaxLengthError(f'Current length of row({len(input_ids)}) is larger'
+                                     f' than the max_length({self.max_length}).')
             input_ids = input_ids[-self.max_length:]
             if labels is not None:
                 labels = labels[-self.max_length:]
@@ -678,7 +677,7 @@ class Template(ProcessorMixin):
             k: v
             for k, v in kwargs.items() if k in {'input_ids', 'labels', 'attention_mask', 'position_ids'}
         }
-        keep_kwargs.update(self._post_encode(model, to_device(kwargs, model.device)))
+        keep_kwargs.update(to_device(self._post_encode(model, to_device(kwargs, model.device)), model.device))
         kwargs = keep_kwargs
         if 'inputs_embeds' in kwargs:
             kwargs.pop('input_ids', None)
@@ -755,10 +754,9 @@ class Template(ProcessorMixin):
     @staticmethod
     def fetch_inputs(batch: List[Dict[str, Any]], keys: Optional[List[str]] = None) -> Dict[str, Any]:
         from swift.llm import RowPreprocessor
+        keys = keys or []
         rows = RowPreprocessor.rows_to_batched(batch)
-        if keys is not None:
-            rows = {k: rows[k] for k in keys}
-        return rows
+        return {k: rows[k] for k in keys if rows.get(k) is not None}
 
     @staticmethod
     def gather_list(batch: List[Dict[str, Any]], attr_name: str) -> Optional[List[Any]]:
@@ -804,8 +802,6 @@ class Template(ProcessorMixin):
             padding_to(`int`, optional): Whether padding the batch to a fixed length, if none, the batch
                 will be padded to the `longest`
         """
-        if len(batch) == 0:
-            return {}
         from swift.utils import use_torchacc
         assert self.tokenizer.pad_token_id is not None
         padding_side = self.padding_side if self.is_training else 'left'

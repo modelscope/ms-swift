@@ -30,8 +30,6 @@ class InternvlTemplate(Template):
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
-        if len(encoded) == 0:
-            return encoded
         input_ids = encoded['input_ids']
         idx_list = findall(input_ids, -100)
         pixel_values = None
@@ -131,8 +129,6 @@ class Internvl2Template(InternvlTemplate):
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super(InternvlTemplate, self)._encode(inputs)
-        if len(encoded) == 0:
-            return encoded
         input_ids = encoded['input_ids']
         idx_list = findall(input_ids, -100)
         labels = encoded['labels']

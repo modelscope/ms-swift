@@ -232,9 +232,9 @@ register_model(
             ], ),
         ],
         TemplateType.xcomposer2_5,
-        get_model_tokenizer_internlm_xcomposer2,
+        partial(get_model_tokenizer_internlm_xcomposer2, version='v2.5'),
         architectures=['InternLMXComposer2ForCausalLM'],
-        model_arch=ModelArch.internlm_xcomposer,
+        model_arch=ModelArch.xcomposer,
         tags=['vision'],
         requires=['decord'],
     ))
@@ -250,7 +250,7 @@ register_model(
         TemplateType.xcomposer2,
         get_model_tokenizer_internlm_xcomposer2,
         architectures=['InternLMXComposer2ForCausalLM'],
-        model_arch=ModelArch.internlm_xcomposer,
+        model_arch=ModelArch.xcomposer,
         tags=['vision'],
     ))
 
@@ -265,6 +265,6 @@ register_model(
         TemplateType.xcomposer2,
         partial(get_model_tokenizer_internlm_xcomposer2, version='v2-4khd'),
         architectures=['InternLM2ForCausalLM', 'InternLMXComposer2ForCausalLM'],
-        model_arch=ModelArch.internlm_xcomposer,
+        model_arch=ModelArch.xcomposer,
         tags=['vision'],
     ))

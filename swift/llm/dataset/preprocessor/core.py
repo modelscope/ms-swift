@@ -125,6 +125,8 @@ class RowPreprocessor:
                 if k not in batched:
                     batched[k] = [None] * i
                 batched[k].append(v)
+        # Make all the lengths of v the same.
+        batched = {k: v + [None] * (len(rows) - len(v)) for k, v in batched.items()}
         return batched
 
     @staticmethod
@@ -235,7 +237,7 @@ class RowPreprocessor:
         dataset: DATASET_TYPE,
         *,
         num_proc: int = 1,
-        strict: bool = True,
+        strict: bool = False,
         load_from_cache_file: bool = False,
         batch_size: int = 1000,
     ) -> DATASET_TYPE:
@@ -463,7 +465,7 @@ class AutoPreprocessor:
         dataset: DATASET_TYPE,
         *,
         num_proc: int = 1,
-        strict: bool = True,
+        strict: bool = False,
         load_from_cache_file: bool = False,
     ) -> DATASET_TYPE:
         dataset = RowPreprocessor.safe_rename_columns(dataset, self.columns_mapping)

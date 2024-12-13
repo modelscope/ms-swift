@@ -7,6 +7,7 @@ from datasets import Dataset as HfDataset
 from torch.utils.data import Dataset, IterableDataset
 
 from swift.utils import get_logger
+from ..template import MaxLengthError
 from .preprocessor import DATASET_TYPE, RowPreprocessor
 
 logger = get_logger()
@@ -124,10 +125,11 @@ class ConstantLengthDataset(IterableDataset):
 
             sequences = []
             for example in buffer:
-                input = self.template.encode(example)
-                if not input:
+                try:
+                    inputs = self.template.encode(example)
+                except MaxLengthError:
                     continue
-                sequences.append((input, len(input['input_ids'])))
+                sequences.append((inputs, len(inputs['input_ids'])))
 
             if not sequences:
                 return
@@ -173,7 +175,7 @@ class LazyLLMDataset(Dataset):
                 self._idx = (self._idx + 1) % len(self.dataset)
             data = self.dataset[i]
             try:
-                res = self.encode_func(data)
+                return self.encode_func(data)
             except Exception:
                 if i == self.n_try_fetch - 1:
                     if self.strict:
@@ -185,9 +187,6 @@ class LazyLLMDataset(Dataset):
                     logger.error('👆👆👆There are errors in the template.encode, '
                                  'and another piece of data will be randomly selected.')
                     self._traceback_counter += 1
-                continue
-            assert res is not None
-            return res
 
     def __len__(self) -> int:
         return len(self.dataset)
@@ -200,10 +199,7 @@ class EncodePreprocessor(RowPreprocessor):
         self.template = template
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        res = self.template.encode(row)
-        if len(res) == 0:
-            res = None
-        return res
+        return self.template.encode(row)
 
 
 class PackingPreprocessor(EncodePreprocessor):

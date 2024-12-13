@@ -43,7 +43,7 @@ The introduction to command line parameters will cover base arguments, atomic ar
 - 🔥template: Type of dialogue template, which defaults to the template type corresponding to the model. `swift pt` will convert the dialogue template into a generation template for use.
 - 🔥system: Custom system field, default is None, uses the default system of the template.
 - 🔥max_length: Maximum length of tokens for a single sample, default is None (no limit).
-- truncation_strategy: How to handle overly long tokens, supports `delete` and `left`, representing deletion and left trimming, default is left.
+- truncation_strategy: How to handle overly long tokens, supports `delete` and `left`, representing deletion and left trimming, default is 'delete'.
 - 🔥max_pixels: Maximum pixel count for pre-processing images in multimodal models (H*W), default is no scaling.
 - tools_prompt: The list of tools for agent training converted to system format, refer to [Agent Training](./Agent-support.md), default is 'react_en'.
 - loss_scale: How to add token loss weight during training. Default is `'default'`, meaning all responses (including history) are treated as 1 for cross-entropy loss. For specifics, see [Pluginization](../Customization/Pluginization.md) and [Agent Training](./Agent-support.md).
@@ -127,7 +127,7 @@ Other important parameters:
 - 🔥freeze_llm: Freeze LLM. Default is False. Applicable for full parameters and LoRA.
 - 🔥freeze_vit: Freeze ViT. Default is True. Applicable for full parameters and LoRA.
 - 🔥freeze_aligner: Freeze aligner. Default is True, applicable for full parameters and LoRA.
-- 🔥target_modules: Specify the LoRA module, default is `all-linear`, automatically finds linear layers except for lm_head and attaches the tuner. This parameter is not limited to LoRA.
+- 🔥target_modules: The specified LoRA module defaults to `all-linear`. This behavior differs in LLM and multimodal LLM. If it is LLM, it will automatically search for linear except lm_head and attach tuner. If it is multimodal LLM, it defaults to attach tuner only on LLM, and this behavior can be controlled by `freeze_llm`, `freeze_vit`, `freeze_aligner`. This parameter is not limited to LoRA.
 - 🔥target_regex: Specify a regex expression for the LoRA module. Default is `None`, if this value is provided, target_modules does not take effect. This parameter is not limited to LoRA.
 - 🔥init_weights: The method of init tuner weights, For lora the accepted values are `true`, `false`, `guassian`, `pissa`, `pissa_niter_[number of iters]`, for bone are `true`, `false`, `bat`, default is `true`
 - modules_to_save: After the tuner is attached, the original model's modules used during training and storage, default is `[]`. This parameter is not limited to LoRA.
