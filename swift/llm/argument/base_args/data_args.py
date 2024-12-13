@@ -50,6 +50,8 @@ class DataArguments:
 
     def _init_custom_dataset_info(self):
         """register custom dataset_info.json to datasets"""
+        if isinstance(self.custom_dataset_info, str):
+            self.custom_dataset_info = [self.custom_dataset_info]
         for path in self.custom_dataset_info:
             register_dataset_info(path)
 

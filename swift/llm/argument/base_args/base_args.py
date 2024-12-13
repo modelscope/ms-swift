@@ -63,6 +63,8 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
 
     def _init_custom_register(self) -> None:
         """Register custom .py file to datasets"""
+        if isinstance(self.custom_register_path, str):
+            self.custom_register_path = [self.custom_register_path]
         self.custom_register_path = to_abspath(self.custom_register_path, True)
         for path in self.custom_register_path:
             folder, fname = os.path.split(path)
