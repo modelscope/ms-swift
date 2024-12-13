@@ -90,8 +90,6 @@ class QwenAudioTemplate(Template):
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
-        if len(encoded) == 0:
-            return encoded
         text = ''.join([f'<audio>{audio}</audio>' for audio in inputs.audios])
         audio_info = self.processor.process_audio(text)
         if audio_info:
@@ -122,8 +120,6 @@ class Qwen2AudioTemplate(Template):
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
-        if len(encoded) == 0:
-            return encoded
         processor = self.processor
         sampling_rate = processor.feature_extractor.sampling_rate
         audios = load_batch(inputs.audios, load_func=partial(load_audio_qwen, sampling_rate=sampling_rate))
@@ -151,7 +147,7 @@ register_template(QwenTemplateMeta(MLLMTemplateType.qwen2_audio, template_cls=Qw
 
 def _process_image_qwen(image):
     from qwen_vl_utils.vision_process import IMAGE_FACTOR, MIN_PIXELS, MAX_PIXELS, smart_resize
-    size_factor = get_env_args('size_factor', int, IMAGE_FACTOR)
+    image_factor = get_env_args('image_factor', int, IMAGE_FACTOR)
     # resize
     resized_height = get_env_args('resized_height', int, None)
     resized_width = get_env_args('resized_width', int, None)
@@ -159,7 +155,7 @@ def _process_image_qwen(image):
         resized_height, resized_width = smart_resize(
             resized_height,
             resized_width,
-            factor=size_factor,
+            factor=image_factor,
         )
     else:
         width, height = image.size
@@ -168,7 +164,7 @@ def _process_image_qwen(image):
         resized_height, resized_width = smart_resize(
             height,
             width,
-            factor=size_factor,
+            factor=image_factor,
             min_pixels=min_pixels,
             max_pixels=max_pixels,
         )
@@ -214,8 +210,6 @@ class Qwen2VLTemplate(Template):
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
-        if len(encoded) == 0:
-            return encoded
         processor = self.processor
         input_ids = encoded['input_ids']
         labels = encoded['labels']
@@ -317,8 +311,6 @@ class Ovis1_6Template(Template):
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
-        if len(encoded) == 0:
-            return encoded
         images = inputs.images
         input_ids = encoded['input_ids']
         labels = encoded['labels']

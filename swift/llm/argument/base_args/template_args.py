@@ -17,7 +17,7 @@ class TemplateArguments:
         template (Optional[str]): Template type. Default is None, meaning use the template of the model_type.
         system (Optional[str]): Override the default system in the template. Default is None.
         max_length (Optional[int]): Maximum length for the template. Default is None.
-        truncation_strategy (Literal): Strategy for truncating the template. Default is 'left'.
+        truncation_strategy (Literal): Strategy for truncating the template. Default is 'delete'.
         max_pixels (Optional[int]): Maximum number of pixels for the template. Default is None.
         tools_prompt (str): Override the default tools prompt in the template. Default is 'react_en'.
         loss_scale (str): Loss scale for training. Default is 'default',
@@ -31,7 +31,7 @@ class TemplateArguments:
     system: Optional[str] = None  # Override the default_system in the template.
     max_length: Optional[int] = None
 
-    truncation_strategy: Literal['delete', 'left'] = 'left'
+    truncation_strategy: Literal['delete', 'left'] = 'delete'
     max_pixels: Optional[int] = None
     tools_prompt: str = 'react_en'  # Override the default_tools_prompt in the template.
     # train
@@ -49,10 +49,13 @@ class TemplateArguments:
             self.max_length = self.model_info.max_model_len
 
     def get_template_kwargs(self):
+        truncation_strategy = self.truncation_strategy
+        if truncation_strategy == 'delete':
+            truncation_strategy = 'raise'
         return {
             'default_system': self.system,
             'max_length': self.max_length,
-            'truncation_strategy': self.truncation_strategy,
+            'truncation_strategy': truncation_strategy,
             'max_pixels': self.max_pixels,
             'tools_prompt': self.tools_prompt,
             'loss_scale': self.loss_scale,

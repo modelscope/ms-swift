@@ -45,8 +45,6 @@ class DeepseekVLTemplate(Template):
         is_janus = getattr(self, 'is_janus', False)
 
         encoded = super()._encode(inputs)
-        if len(encoded) == 0:
-            return encoded
         images = inputs.images
         processor = self.processor
         input_ids, labels = encoded['input_ids'], encoded['labels']

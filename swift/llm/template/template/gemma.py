@@ -32,8 +32,6 @@ class PaliGemmaTemplate(Template):
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
-        if len(encoded) == 0:
-            return encoded
         raw_image = inputs.images
         processor = self.processor
         if encoded['labels'] is not None:

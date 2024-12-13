@@ -14,6 +14,7 @@ from ..utils import Context, Prompt, findall
 
 class FlorenceTemplate(Template):
     # loss_scale = 'last_round'
+    # skip_prompt = False
     is_encoder_decoder = True
 
     @staticmethod
@@ -46,8 +47,6 @@ class FlorenceTemplate(Template):
                 break
         encoded = super()._encode(inputs)
         input_ids = encoded['prompt_input_ids']
-        if len(encoded) == 0:
-            return encoded
         images = inputs.images or []
         labels = encoded['labels']
         if labels is not None:
@@ -113,8 +112,6 @@ class Phi3VisionTemplate(Template):
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         images = inputs.images or []
         encoded = super()._encode(inputs)
-        if len(encoded) == 0:
-            return encoded
         input_ids = encoded['input_ids']
         labels = encoded['labels']
         idx_list = findall(input_ids, 32044)  # '<|image|>'

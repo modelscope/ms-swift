@@ -56,11 +56,12 @@ def get_model_tokenizer_florence(model_dir: str,
                                  load_model: bool = True,
                                  **kwargs):
     with ignore_check_imports():
-        model_kwargs['device_map'] = 'cuda:0'
+        if model_kwargs['device_map'] == 'auto':
+            model_kwargs['device_map'] = 'cuda:0'
         model, processor = get_model_tokenizer_multimodal(model_dir, model_info, model_kwargs, load_model, **kwargs)
 
     if model is not None:
-        # model.vision_tower.enable_checkpoint = True
+        model.vision_tower.enable_checkpoint = True
         use_submodel_func(model, 'language_model', ['generate', 'forward'])
     return model, processor
 
