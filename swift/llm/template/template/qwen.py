@@ -90,8 +90,6 @@ class QwenAudioTemplate(Template):
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
-        if len(encoded) == 0:
-            return encoded
         text = ''.join([f'<audio>{audio}</audio>' for audio in inputs.audios])
         audio_info = self.processor.process_audio(text)
         if audio_info:
@@ -122,8 +120,6 @@ class Qwen2AudioTemplate(Template):
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
-        if len(encoded) == 0:
-            return encoded
         processor = self.processor
         sampling_rate = processor.feature_extractor.sampling_rate
         audios = load_batch(inputs.audios, load_func=partial(load_audio_qwen, sampling_rate=sampling_rate))
@@ -214,8 +210,6 @@ class Qwen2VLTemplate(Template):
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
-        if len(encoded) == 0:
-            return encoded
         processor = self.processor
         input_ids = encoded['input_ids']
         labels = encoded['labels']
@@ -317,8 +311,6 @@ class Ovis1_6Template(Template):
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
-        if len(encoded) == 0:
-            return encoded
         images = inputs.images
         input_ids = encoded['input_ids']
         labels = encoded['labels']

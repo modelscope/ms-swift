@@ -43,8 +43,6 @@ class GOT_OCR2Template(Template):
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
         config = self.model_info.config
-        if len(encoded) == 0:
-            return encoded
         images = inputs.images
         image_processor_high = GOTImageEvalProcessor(image_size=1024)
         for i, image in enumerate(images):

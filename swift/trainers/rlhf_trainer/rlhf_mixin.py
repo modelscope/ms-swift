@@ -29,7 +29,7 @@ class ModelWrapper(nn.Module):
         try:
             return super().__getattr__(key)
         except AttributeError:
-            if '_model' in self.__dict__:
+            if '_model' in dir(self):
                 return getattr(self._model, key)
             raise
 

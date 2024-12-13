@@ -12,8 +12,6 @@ class Idefics3Template(Template):
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
-        if len(encoded) == 0:
-            return encoded
         images = inputs.images or []
         processor = self.processor
         prompt = self.processor.decode(encoded['input_ids'])

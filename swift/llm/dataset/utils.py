@@ -174,6 +174,8 @@ class LazyLLMDataset(Dataset):
             data = self.dataset[i]
             try:
                 res = self.encode_func(data)
+                assert res
+                return res
             except Exception:
                 if i == self.n_try_fetch - 1:
                     if self.strict:
@@ -185,9 +187,6 @@ class LazyLLMDataset(Dataset):
                     logger.error('👆👆👆There are errors in the template.encode, '
                                  'and another piece of data will be randomly selected.')
                     self._traceback_counter += 1
-                continue
-            assert res is not None
-            return res
 
     def __len__(self) -> int:
         return len(self.dataset)

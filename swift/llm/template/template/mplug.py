@@ -33,8 +33,6 @@ class mPlugOwl2Template(Template):
             image = image.resize((max_edge, max_edge))
             images[i] = image
         encoded = super()._encode(inputs)
-        if len(encoded) == 0:
-            return encoded
         input_ids = encoded['input_ids']
         labels = encoded['labels']
         res = {'input_ids': input_ids, 'labels': labels}
@@ -88,8 +86,6 @@ class mPlugOwl3Template(Template):
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
-        if len(encoded) == 0:
-            return encoded
         images = inputs.images
         videos = inputs.videos
         cut_enable = not videos
