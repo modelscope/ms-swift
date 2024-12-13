@@ -73,9 +73,8 @@ class LlavaVideoHfTemplate(Template):
         if len(encoded) == 0:
             return encoded
         images = inputs.images or []
-        videos_path = inputs.videos or []
-        if len(videos_path) > 0:
-            videos = load_batch(videos_path, load_video_llava)
+        videos = inputs.videos or []
+        if len(videos) > 0:
             video_processor = self.processor.video_processor
             video_inputs = video_processor(videos, return_tensors='pt').to(self.config.torch_dtype)
             encoded['pixel_values_videos'] = video_inputs['pixel_values_videos']

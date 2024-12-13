@@ -151,7 +151,7 @@ register_template(QwenTemplateMeta(MLLMTemplateType.qwen2_audio, template_cls=Qw
 
 def _process_image_qwen(image):
     from qwen_vl_utils.vision_process import IMAGE_FACTOR, MIN_PIXELS, MAX_PIXELS, smart_resize
-    size_factor = get_env_args('size_factor', int, IMAGE_FACTOR)
+    image_factor = get_env_args('image_factor', int, IMAGE_FACTOR)
     # resize
     resized_height = get_env_args('resized_height', int, None)
     resized_width = get_env_args('resized_width', int, None)
@@ -159,7 +159,7 @@ def _process_image_qwen(image):
         resized_height, resized_width = smart_resize(
             resized_height,
             resized_width,
-            factor=size_factor,
+            factor=image_factor,
         )
     else:
         width, height = image.size
@@ -168,7 +168,7 @@ def _process_image_qwen(image):
         resized_height, resized_width = smart_resize(
             height,
             width,
-            factor=size_factor,
+            factor=image_factor,
             min_pixels=min_pixels,
             max_pixels=max_pixels,
         )

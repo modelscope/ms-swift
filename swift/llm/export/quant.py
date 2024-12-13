@@ -5,9 +5,10 @@ from typing import Dict, List, Optional
 
 import torch
 import torch.nn as nn
+from tqdm import tqdm
 
 from swift.llm import (ExportArguments, ProcessorMixin, deep_getattr, get_model_arch, load_dataset,
-                       prepare_pt_engine_template, save_checkpoint)
+                       prepare_pt_engine_template, save_checkpoint, to_device)
 from swift.utils import get_logger, get_model_parameter_info
 
 logger = get_logger()
@@ -30,10 +31,12 @@ class QuantEngine(ProcessorMixin):
         if args.quant_bits is None:
             raise ValueError(f'Please set the quant_bits. args.quant_bits: {args.quant_bits}')
         if args.quant_method == 'awq':
+            self.template.model = self.model.model
             self.awq_model_quantize()
             self.model.save_quantized(
                 args.output_dir, safetensors=args.safe_serialization, shard_size=args.max_shard_size)
         elif args.quant_method == 'gptq':
+            self.template.model = self.model
             gptq_quantizer = self.gptq_model_quantize()
             gptq_quantizer.save(
                 self.model,
@@ -56,13 +59,18 @@ class QuantEngine(ProcessorMixin):
             additional_saved_files=self.model.model_meta.additional_saved_files)
         logger.info(f'Successfully quantized the model and saved in {args.output_dir}.')
 
-    def _prepare_dataset(self, examples: List[Dict[str, torch.LongTensor]], batch_size: int = 1, *args, **kwargs):
-        examples = [
-            self.template.data_collator(examples[start:start + batch_size])
-            for start in range(0, len(examples), batch_size)
-        ]
-        return examples
+    @torch.inference_mode()
+    def _prepare_gptq_dataset(self, examples: List[Dict[str, torch.LongTensor]], batch_size: int = 1, *args, **kwargs):
+        res = []
+        for start in tqdm(range(0, len(examples), batch_size)):
+            batched_inputs = examples[start:start + batch_size]
+            inputs = to_device(self.template.data_collator(batched_inputs), self.model.device)
+            if self.model.model_meta.is_multimodal:
+                _, inputs = self.template.pre_forward_hook(self.model, None, inputs)
+            res.append(inputs)
+        return res
 
+    @torch.inference_mode()
     def _get_quant_dataset(self, *args, **kwargs):
         args = self.args
         assert args.quant_method in {'awq', 'gptq'}
@@ -78,6 +86,7 @@ class QuantEngine(ProcessorMixin):
 
         samples = []
         i = 0
+        prog_bar = tqdm(total=n_samples, dynamic_ncols=True)
         is_multimodal = self.model.model_meta.is_multimodal
         for data in dataset:
             inputs = template.encode(data)
@@ -90,6 +99,7 @@ class QuantEngine(ProcessorMixin):
             else:
                 samples += input_ids
             i += 1
+            prog_bar.update()
             if i == n_samples:
                 break
         if is_multimodal and args.quant_method == 'gptq':
@@ -106,6 +116,22 @@ class QuantEngine(ProcessorMixin):
                 res.append(torch.tensor(input_ids)[None])
         return res
 
+    @staticmethod
+    @contextmanager
+    def _patch_awq_move_embed(awq_model):
+        _origin_move_embed = awq_model.move_embed
+
+        def _move_embed(model, device: str):
+            if hasattr(model, '_hf_hook') and device != 'cpu':
+                return
+            _origin_move_embed(model, device)
+
+        awq_model.move_embed = _move_embed
+        try:
+            yield
+        finally:
+            awq_model.move_embed = _origin_move_embed
+
     def awq_model_quantize(self) -> None:
         from awq.quantize import quantizer
         from transformers import AwqConfig
@@ -121,7 +147,9 @@ class QuantEngine(ProcessorMixin):
             'version': 'GEMM'
         }
         logger.info('Start quantizing the model...')
-        self.model.quantize(self.tokenizer, quant_config=quant_config, n_parallel_calib_samples=args.quant_batch_size)
+        with self._patch_awq_move_embed(self.model):
+            self.model.quantize(
+                self.tokenizer, quant_config=quant_config, n_parallel_calib_samples=args.quant_batch_size)
         quantizer.get_calib_dataset = _origin_get_calib_dataset  # recover
         self.model.model.config.quantization_config = AwqConfig(
             bits=args.quant_bits, group_size=args.group_size, zero_point=True, version='GEMM')
@@ -132,14 +160,14 @@ class QuantEngine(ProcessorMixin):
         _get_dataset_origin = quantizer.get_dataset
         _prepare_dataset_origin = quantizer.prepare_dataset
         quantizer.get_dataset = self._get_quant_dataset
-        quantizer.prepare_dataset = self._prepare_dataset
+        quantizer.prepare_dataset = self._prepare_gptq_dataset
         try:
             yield
         finally:
             quantizer.get_dataset = _get_dataset_origin
             quantizer.prepare_dataset = _prepare_dataset_origin
 
-    def _patch_model_forward(self, module_list):
+    def _patch_gptq_model_forward(self, module_list):
 
         def _new_forward(self, *args, **kwargs):
             if 'use_cache' in kwargs:
@@ -170,7 +198,7 @@ class QuantEngine(ProcessorMixin):
                 module_lists.append((n, m))
         if module_lists:
             module_list = max(module_lists, key=lambda x: len(x[1]))
-            self._patch_model_forward(module_list[1])
+            self._patch_gptq_model_forward(module_list[1])
             return f'{prefix}.{module_list[0]}'.strip('.')
 
     def gptq_model_quantize(self):
@@ -183,6 +211,7 @@ class QuantEngine(ProcessorMixin):
                 dataset=','.join(args.dataset),
                 batch_size=args.quant_batch_size,
                 block_name_to_quantize=self.get_block_name_to_quantize(self.model, args.model_type))
+            gptq_quantizer.serialization_keys.append('block_name_to_quantize')
             logger.info('Start quantizing the model...')
             logger.warning('The process of packing the model takes a long time and there is no progress bar. '
                            'Please be patient and wait...')

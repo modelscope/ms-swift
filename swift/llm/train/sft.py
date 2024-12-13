@@ -110,6 +110,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         self.template = template
 
     def _get_dataset(self):
+        # The random shuffling of the training set occurs in the dataloader of the trainer.
         args = self.args
         dataset_kwargs = args.get_dataset_kwargs()
         train_dataset, val_dataset = load_dataset(
