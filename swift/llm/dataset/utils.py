@@ -7,6 +7,7 @@ from datasets import Dataset as HfDataset
 from torch.utils.data import Dataset, IterableDataset
 
 from swift.utils import get_logger
+from ..template import MaxLengthError
 from .preprocessor import DATASET_TYPE, RowPreprocessor
 
 logger = get_logger()
@@ -124,10 +125,11 @@ class ConstantLengthDataset(IterableDataset):
 
             sequences = []
             for example in buffer:
-                input = self.template.encode(example)
-                if not input:
+                try:
+                    inputs = self.template.encode(example)
+                except MaxLengthError:
                     continue
-                sequences.append((input, len(input['input_ids'])))
+                sequences.append((inputs, len(inputs['input_ids'])))
 
             if not sequences:
                 return

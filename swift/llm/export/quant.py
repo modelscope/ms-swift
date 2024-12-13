@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 from tqdm import tqdm
 
-from swift.llm import (ExportArguments, ProcessorMixin, deep_getattr, get_model_arch, load_dataset,
+from swift.llm import (ExportArguments, MaxLengthError, ProcessorMixin, deep_getattr, get_model_arch, load_dataset,
                        prepare_pt_engine_template, save_checkpoint, to_device)
 from swift.utils import get_logger, get_model_parameter_info
 
@@ -89,14 +89,15 @@ class QuantEngine(ProcessorMixin):
         prog_bar = tqdm(total=n_samples, dynamic_ncols=True)
         is_multimodal = self.model.model_meta.is_multimodal
         for data in dataset:
-            inputs = template.encode(data)
-            input_ids = inputs['input_ids']
-            if input_ids is None or len(input_ids) == 0:
+            try:
+                inputs = template.encode(data)
+            except MaxLengthError:
                 continue
             if is_multimodal and args.quant_method == 'gptq':
                 inputs.pop('labels', None)
                 samples.append(inputs)
             else:
+                input_ids = inputs['input_ids']
                 samples += input_ids
             i += 1
             prog_bar.update()
