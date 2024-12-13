@@ -80,8 +80,6 @@ class Llama3_2VisionTemplate(Template):
         from transformers.models.mllama.processing_mllama import (get_cross_attention_token_mask,
                                                                   convert_sparse_cross_attention_mask_to_dense)
         encoded = super()._encode(inputs)
-        if len(encoded) == 0:
-            return encoded
         images = inputs.images
         if images:
             input_ids = encoded['input_ids']
@@ -134,8 +132,6 @@ class Llama3_1OmniTemplate(Template):
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         import whisper
         encoded = super()._encode(inputs)
-        if len(encoded) == 0:
-            return encoded
         audios = inputs.audios
         if audios:
             audios = load_batch(audios, whisper.load_audio)

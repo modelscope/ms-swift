@@ -272,10 +272,16 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             preprocessor_cls = PackingPreprocessor if args.packing else EncodePreprocessor
             preprocessor = preprocessor_cls(template=template)
             train_dataset = preprocessor(
-                train_dataset, num_proc=args.dataset_num_proc, load_from_cache_file=args.load_from_cache_file)
+                train_dataset,
+                num_proc=args.dataset_num_proc,
+                strict=args.strict,
+                load_from_cache_file=args.load_from_cache_file)
             if val_dataset is not None and not args.predict_with_generate:
                 val_dataset = preprocessor(
-                    val_dataset, num_proc=args.dataset_num_proc, load_from_cache_file=args.load_from_cache_file)
+                    val_dataset,
+                    num_proc=args.dataset_num_proc,
+                    strict=args.strict,
+                    load_from_cache_file=args.load_from_cache_file)
 
         inputs = train_dataset[0] if hasattr(train_dataset, '__len__') else next(iter(train_dataset))
         template.print_inputs(inputs, tokenizer_kwargs=inputs.pop('tokenizer_kwargs', None) or {})

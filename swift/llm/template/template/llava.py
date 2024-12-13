@@ -31,8 +31,6 @@ class LlavaHfTemplate(Template):
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
-        if len(encoded) == 0:
-            return encoded
         images = inputs.images
         if images:
             image_processor = self.processor.image_processor
@@ -70,8 +68,6 @@ class LlavaVideoHfTemplate(Template):
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
-        if len(encoded) == 0:
-            return encoded
         images = inputs.images or []
         videos = inputs.videos or []
         if len(videos) > 0:
@@ -160,8 +156,6 @@ class LlavaOneVisionHfTemplate(Llava1_6HfTemplate):
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = Template._encode(self, inputs)
-        if len(encoded) == 0:
-            return encoded
         images = inputs.images
         input_ids = encoded['input_ids']
         labels = encoded['labels']
@@ -225,8 +219,6 @@ class LLavaLlama3HfTemplate(Template):
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
-        if len(encoded) == 0:
-            return encoded
         raw_image = inputs.images
         if raw_image:
             pixel_values = self.processor.image_processor(raw_image, return_tensors='pt')['pixel_values']
@@ -251,8 +243,6 @@ class LLavaTemplate(Template):
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
-        if len(encoded) == 0:
-            return encoded
         images = inputs.images or []
         image_sizes = [x.size for x in images]
         from llava.mm_utils import process_images

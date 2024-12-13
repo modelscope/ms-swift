@@ -80,8 +80,6 @@ class MiniCPMVTemplate(Template):
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
-        if len(encoded) == 0:
-            return encoded
         images = inputs.images
         input_ids = encoded['input_ids']
         labels = encoded['labels']
@@ -172,8 +170,6 @@ class MiniCPMV2_6Template(MiniCPMVTemplate):
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = Template._encode(self, inputs)
-        if len(encoded) == 0:
-            return encoded
         images = inputs.images
         use_video = bool(inputs.videos)
         is_plain_text = not images and not use_video
