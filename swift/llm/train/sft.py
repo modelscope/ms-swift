@@ -262,25 +262,18 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         template = self.template
         args = self.args
 
-        strict = args.truncation_strategy != 'delete'
         if args.lazy_tokenize:
-            train_dataset = LazyLLMDataset(train_dataset, template.encode, strict=strict, random_state=args.data_seed)
+            train_dataset = LazyLLMDataset(train_dataset, template.encode, random_state=args.data_seed)
             if val_dataset is not None and not args.predict_with_generate:
-                val_dataset = LazyLLMDataset(val_dataset, template.encode, strict=strict, random_state=args.data_seed)
+                val_dataset = LazyLLMDataset(val_dataset, template.encode, random_state=args.data_seed)
         else:
             preprocessor_cls = PackingPreprocessor if args.packing else EncodePreprocessor
             preprocessor = preprocessor_cls(template=template)
             train_dataset = preprocessor(
-                train_dataset,
-                num_proc=args.dataset_num_proc,
-                load_from_cache_file=args.load_from_cache_file,
-                strict=strict)
+                train_dataset, num_proc=args.dataset_num_proc, load_from_cache_file=args.load_from_cache_file)
             if val_dataset is not None and not args.predict_with_generate:
                 val_dataset = preprocessor(
-                    val_dataset,
-                    num_proc=args.dataset_num_proc,
-                    load_from_cache_file=args.load_from_cache_file,
-                    strict=strict)
+                    val_dataset, num_proc=args.dataset_num_proc, load_from_cache_file=args.load_from_cache_file)
 
         inputs = train_dataset[0] if hasattr(train_dataset, '__len__') else next(iter(train_dataset))
         template.print_inputs(inputs, tokenizer_kwargs=inputs.pop('tokenizer_kwargs', None) or {})

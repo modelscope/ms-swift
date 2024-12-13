@@ -27,6 +27,7 @@ from .vision_utils import load_image, normalize_bbox, rescale_image
 
 logger = get_logger()
 
+
 class MaxLengthError(ValueError):
     pass
 
