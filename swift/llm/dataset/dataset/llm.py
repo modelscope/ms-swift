@@ -343,7 +343,7 @@ register_dataset(
         tags=['chat', 'agent', 'multi-round', 'role-play', 'multi-agent']))
 
 
-class ToolBenchPreprocessor(RowPreprocessor):
+class ToolBenchPreprocessor(MessagesPreprocessor):
 
     def batched_preprocess(self, batched_row: Dict[str, Any], *, strict: bool) -> Dict[str, Any]:
         batched_row = dict(batched_row)

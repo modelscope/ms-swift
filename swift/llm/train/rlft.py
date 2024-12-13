@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import json
 from typing import List, Union
-
+import torch
 from rouge import Rouge
 
 from .tuner import prepare_model
@@ -98,6 +98,7 @@ class SwiftRLFT(SwiftSft):
         action_input_ref = []
         action_pred = []
         action_input_pred = []
+        rewards = []
         for ground_truth, query_response in zip(batch['ground_truth'], query_responses):
             reference = ground_truth
             prediction = query_response[context_length:]
@@ -116,12 +117,13 @@ class SwiftRLFT(SwiftSft):
             else:
                 action_input_pred.append(pred_input)
 
-            rewards = self.evaluate_action_reward(action_pred,
+            reward = self.evaluate_action_reward(action_pred,
                                                   action_ref,
                                                   action_input_pred,
                                                   action_input_ref
                                                   )
-            return None, rewards, None
+            rewards.append(reward)
+        return None, torch.tensor(rewards).to('cuda:0'), None
 
     def evaluate_rougel(self, cand_list: list, ref_list: list):
         if len(ref_list) == 0:

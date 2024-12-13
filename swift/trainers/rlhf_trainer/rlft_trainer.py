@@ -5,12 +5,13 @@ import os
 import time
 from dataclasses import dataclass
 from typing import Optional, Union, Dict, Tuple, List
-
+from collections import defaultdict
 import numpy as np
+import pandas as pd
 import torch
 import torch.nn.functional as F
 from accelerate import Accelerator
-from accelerate.utils import broadcast
+from accelerate.utils import broadcast, gather_object
 from datasets import Dataset
 from torch import nn
 from torch.utils.data import DataLoader
@@ -29,7 +30,7 @@ from trl.trainer.utils import (
     first_true_indices,
     forward,
     get_reward,
-    truncate_response,
+    truncate_response, print_rich_table,
 )
 from trl.trainer.utils import exact_div, disable_dropout_in_model, OnlineTrainerState, prepare_deepspeed
 
@@ -619,3 +620,54 @@ class RLFTTrainer(PPOTrainer):
         if self.control.should_save:
             self._save_checkpoint(model, trial=None, metrics=None)
             self.control = self.callback_handler.on_save(self.args, self.state, self.control)
+
+    def generate_completions(self, sampling: bool = False):
+        args = self.args
+        tokenizer = self.tokenizer
+        generation_config = GenerationConfig(
+            max_new_tokens=self.args.response_length,
+            temperature=(0.01 + 1e-7),
+            top_k=0.0,
+            top_p=1.0,
+            do_sample=True,
+        )
+
+        table = defaultdict(list)
+        with unwrap_model_for_generation(self.model, self.accelerator) as unwrapped_model:
+            for batch in self.eval_dataloader:
+                query = batch["input_ids"]
+                with torch.no_grad():
+                    context_length = query.shape[1]
+                    query_response, _ = batch_generation(
+                        unwrapped_model.policy,
+                        query,
+                        query.shape[0],
+                        tokenizer.pad_token_id,
+                        generation_config,
+                    )
+                    response = query_response[:, context_length:]
+                    postprocessed_response = response
+                    if args.stop_token_id is not None:  # handle the edge case when stop_token_id exists but is 0
+                        postprocessed_response = truncate_response(
+                            args.stop_token_id, tokenizer.pad_token_id, response
+                        )
+                    table["query"].extend(gather_object(tokenizer.batch_decode(query, skip_special_tokens=True)))
+                    table["model response"].extend(gather_object(tokenizer.batch_decode(postprocessed_response)))
+
+                    postprocessed_query_response = torch.cat((query, postprocessed_response), 1)
+                    _, score, _ = self.get_reward(
+                        self.reward_model, batch, postprocessed_query_response, tokenizer.pad_token_id, context_length
+                    )
+                    table["score"].extend(self.accelerator.gather(score).float().cpu().numpy())
+
+                if sampling:
+                    break
+        df = pd.DataFrame(table)
+
+        if self.accelerator.is_main_process:
+            print_rich_table(df.iloc[0: 0 + 5])
+            if "wandb" in args.report_to:
+                import wandb
+
+                if wandb.run is not None:
+                    wandb.log({"completions": wandb.Table(dataframe=df)})

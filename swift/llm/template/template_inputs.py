@@ -112,6 +112,7 @@ class StdTemplateInputs:
     audios: List[str] = field(default_factory=list)
     videos: List[str] = field(default_factory=list)
     objects: List[Dict[str, Any]] = field(default_factory=list)
+    ground_truth: str = None
 
     def __post_init__(self):
         self.image_idx = 0
@@ -174,7 +175,7 @@ class StdTemplateInputs:
                 media_kwargs[k] = inputs_mm_data
 
         StdTemplateInputs.messages_join_observation(messages)
-        return cls(messages=messages, system=system, objects=objects, **kwargs, **media_kwargs)
+        return cls(messages=messages, system=system, objects=objects, **kwargs, ground_truth=inputs.get('ground_truth'), **media_kwargs)
 
     @staticmethod
     def remove_messages_media(messages: Messages) -> Dict[str, Any]:

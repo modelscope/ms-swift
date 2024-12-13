@@ -649,6 +649,7 @@ class Template(ProcessorMixin):
         # sequence_classification
         if inputs.label is not None:
             encoded['label'] = inputs.label
+        encoded['ground_truth'] = inputs.ground_truth
         return encoded
 
     def _debug_logger(self, generate_ids):
@@ -869,6 +870,7 @@ class Template(ProcessorMixin):
             label = [b['label'] for b in batch if b.get('label') is not None]
             if label:
                 res['label'] = label
+        res['ground_truth'] = [b['ground_truth'] for b in batch]
         if use_torchacc() or self.sequence_parallel_size > 1:
             res = self._torchacc_xtuner_data_collator(res, padding_to, self.tokenizer, padding_side)
         return res
