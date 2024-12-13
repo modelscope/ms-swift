@@ -11,6 +11,10 @@ from transformers.generation.streamers import BaseStreamer
 from swift.llm.model.register import fix_do_sample_warning
 from ..protocol import RequestConfig
 
+@dataclass
+class AdapterRequst:
+    name: str
+    path: str
 
 class InferTools:
 

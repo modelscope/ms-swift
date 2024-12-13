@@ -9,7 +9,7 @@ if TYPE_CHECKING:
     from .protocol import RequestConfig
     from .utils import prepare_pt_engine_template
     from .infer_engine import (InferEngine, VllmEngine, LmdeployEngine, PtEngine, InferClient,
-                               prepare_generation_config)
+                               prepare_generation_config, AdapterRequst)
 else:
     _extra_objects = {k: v for k, v in globals().items() if not k.startswith('_')}
     _import_structure = {
@@ -18,7 +18,7 @@ else:
         'protocol': ['RequestConfig'],
         'utils': ['prepare_pt_engine_template'],
         'infer_engine':
-        ['InferEngine', 'VllmEngine', 'LmdeployEngine', 'PtEngine', 'InferClient', 'prepare_generation_config'],
+        ['InferEngine', 'VllmEngine', 'LmdeployEngine', 'PtEngine', 'InferClient', 'prepare_generation_config', 'AdapterRequst'],
     }
 
     import sys

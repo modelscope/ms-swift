@@ -24,13 +24,6 @@ History = List[Union[Tuple[str, str], List[str]]]
 
 os.environ['TOKENIZERS_PARALLELISM'] = 'true'
 
-
-@dataclass
-class Adapter:
-    name: str
-    path: str
-
-
 class ProcessorMixin:
 
     @property

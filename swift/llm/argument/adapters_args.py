@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from typing import List
 
-from swift.llm import Adapter
+from swift.llm import AdapterRequst
 
 
 @dataclass
@@ -12,11 +12,11 @@ class AdaptersArguments:
         if len(self.adapters) == 0:
             self.adapters = []
             return
-        adapters = []
+        self.adapter_mapping = {}
         for i, adapter in enumerate(self.adapters):
             if '=' in adapter:
                 adapter_name, adapter_path = adapter.split('=')
             else:
                 adapter_name, adapter_path = None, adapter
-            adapters.append(Adapter(adapter_name, adapter_path))
-        self.adapters = adapters
+            self.adapter_mapping[adapter_name] = AdapterRequst(adapter_name, adapter_path)
+

@@ -29,6 +29,7 @@ class ModelArguments:
         local_repo_path (Optional[str]): Path to the local github repository for model. Default is None.
     """
     model: Optional[str] = None  # model id or model path
+    adapters: List[str] = field(default_factory=list)
     model_type: Optional[str] = field(
         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
     model_revision: Optional[str] = None
