@@ -49,10 +49,13 @@ class TemplateArguments:
             self.max_length = self.model_info.max_model_len
 
     def get_template_kwargs(self):
+        truncation_strategy = self.truncation_strategy
+        if truncation_strategy == 'delete':
+            truncation_strategy = 'raise'
         return {
             'default_system': self.system,
             'max_length': self.max_length,
-            'truncation_strategy': self.truncation_strategy,
+            'truncation_strategy': truncation_strategy,
             'max_pixels': self.max_pixels,
             'tools_prompt': self.tools_prompt,
             'loss_scale': self.loss_scale,

@@ -164,7 +164,7 @@ class DatasetLoader:
     def _load_dataset_path(dataset_meta: DatasetMeta,
                            *,
                            num_proc: int = 1,
-                           strict: bool = True,
+                           strict: bool = False,
                            load_from_cache_file: bool = False,
                            streaming: bool = False) -> HfDataset:
         dataset_path = dataset_meta.dataset_path
@@ -190,7 +190,7 @@ class DatasetLoader:
         streaming: bool = False,
         use_hf: Optional[bool] = None,
         hub_token: Optional[str] = None,
-        strict: bool = True,
+        strict: bool = False,
         load_from_cache_file: bool = False,
         revision: Optional[str] = None,
         download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists',
@@ -340,7 +340,7 @@ class DatasetLoader:
         streaming: bool = False,
         use_hf: Optional[bool] = None,
         hub_token: Optional[str] = None,
-        strict: bool = True,
+        strict: bool = False,
         load_from_cache_file: bool = False,
         download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists',
     ) -> HfDataset:
@@ -405,7 +405,7 @@ def load_dataset(
     streaming: bool = False,
     use_hf: Optional[bool] = None,
     hub_token: Optional[str] = None,
-    strict: bool = True,
+    strict: bool = False,
     load_from_cache_file: bool = False,
     download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists',
     # self-cognition

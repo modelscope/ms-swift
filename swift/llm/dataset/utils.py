@@ -173,9 +173,7 @@ class LazyLLMDataset(Dataset):
                 self._idx = (self._idx + 1) % len(self.dataset)
             data = self.dataset[i]
             try:
-                res = self.encode_func(data)
-                assert res
-                return res
+                return self.encode_func(data)
             except Exception:
                 if i == self.n_try_fetch - 1:
                     if self.strict:
@@ -199,10 +197,7 @@ class EncodePreprocessor(RowPreprocessor):
         self.template = template
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        res = self.template.encode(row)
-        if len(res) == 0:
-            res = None
-        return res
+        return self.template.encode(row)
 
 
 class PackingPreprocessor(EncodePreprocessor):

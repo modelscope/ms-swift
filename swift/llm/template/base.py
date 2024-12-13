@@ -56,7 +56,7 @@ class Template(ProcessorMixin):
             *,
             use_chat_template: bool = True,
             template_backend: Literal['swift', 'jinja'] = 'swift',
-            truncation_strategy: Literal['delete', 'left'] = 'delete',
+            truncation_strategy: Literal['raise', 'left'] = 'raise',
             max_pixels: Optional[int] = None,
             tools_prompt: Optional[str] = None,
             # only for train
@@ -197,19 +197,16 @@ class Template(ProcessorMixin):
 
         assert isinstance(inputs, StdTemplateInputs)
         self._preprocess_inputs(inputs)
-        try:
-            if self.mode in {'vllm', 'lmdeploy'}:
-                encoded = Template._encode(self, inputs)
-                for key in ['images', 'audios', 'videos']:
-                    encoded[key] = getattr(inputs, key)
-            elif self.mode in {'pt', 'train'}:
-                encoded = self._encode(inputs)
-            elif self.mode == 'rlhf':
-                encoded = self._rlhf_encode(inputs)
-            elif self.mode == 'kto':
-                encoded = self._kto_encode(inputs)
-        except MaxLengthError:
-            return {}
+        if self.mode in {'vllm', 'lmdeploy'}:
+            encoded = Template._encode(self, inputs)
+            for key in ['images', 'audios', 'videos']:
+                encoded[key] = getattr(inputs, key)
+        elif self.mode in {'pt', 'train'}:
+            encoded = self._encode(inputs)
+        elif self.mode == 'rlhf':
+            encoded = self._rlhf_encode(inputs)
+        elif self.mode == 'kto':
+            encoded = self._kto_encode(inputs)
         for key in list(encoded.keys()):
             if encoded[key] is None:
                 encoded.pop(key)
@@ -627,9 +624,9 @@ class Template(ProcessorMixin):
             encoded['tokenizer_kwargs'] = tokenizer_kwargs
 
         if self.max_length is not None:
-            if self.truncation_strategy == 'delete' and len(input_ids) > self.max_length:
+            if self.truncation_strategy == 'raise' and len(input_ids) > self.max_length:
                 raise MaxLengthError(f'Current length of row({len(input_ids)}) is larger'
-                                     f' than the max_length({self.max_length})')
+                                     f' than the max_length({self.max_length}).')
             input_ids = input_ids[-self.max_length:]
             if labels is not None:
                 labels = labels[-self.max_length:]
