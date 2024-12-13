@@ -1,12 +1,14 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import ast
 import re
+from copy import copy
 from functools import partial
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from ..preprocessor import (AlpacaPreprocessor, ClsPreprocessor, MessagesPreprocessor, ResponsePreprocessor,
                             RowPreprocessor, TextGenerationPreprocessor)
 from ..register import DatasetMeta, SubsetDataset, register_dataset
+from ...template import split_str_parts_by
 
 
 def _concat_inst_inp_alpaca_zh(inst: str, inp: str) -> str:
@@ -340,7 +342,43 @@ register_dataset(
         preprocess_func=MultiRoleAgentPreprocessor(),
         tags=['chat', 'agent', 'multi-round', 'role-play', 'multi-agent']))
 
-register_dataset(DatasetMeta(ms_dataset_id='swift/ToolBench', tags=['chat', 'agent', 'multi-round']))
+
+class ToolBenchPreprocessor(RowPreprocessor):
+
+    def batched_preprocess(self, batched_row: Dict[str, Any], *, strict: bool) -> Dict[str, Any]:
+        batched_row = dict(batched_row)
+        assert len(batched_row) > 0
+        self._fix_streaming_keys(batched_row)
+        rows = self.batched_to_rows(batched_row)
+
+        new_rows = []
+        for row in rows:
+            rows = self.preprocess(row)
+            new_rows.extend(rows)
+        res = self.rows_to_batched(new_rows)
+
+        if len(res) == 0:
+            res['messages'] = []
+
+        return res
+
+    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        row = super().preprocess(row)
+        all_rows = []
+        for i, message in enumerate(row['messages']):
+            if message['role'] == 'assistant':
+                if 'Action:' in message['content'] and 'Action Input:' in message['content']:
+                    new_row = copy(row)
+                    new_row['messages'] = new_row['messages'][:i]
+                    new_row['ground_truth'] = message['content']
+                    all_rows.append(new_row)
+        return all_rows
+
+
+register_dataset(DatasetMeta(
+    ms_dataset_id='swift/ToolBench',
+    preprocess_func=ToolBenchPreprocessor(),
+    tags=['chat', 'agent', 'multi-round']))
 
 
 class HC3Preprocessor(ResponsePreprocessor):

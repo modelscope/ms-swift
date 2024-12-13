@@ -2,6 +2,8 @@
 import json
 from typing import List, Union
 
+from rouge import Rouge
+
 from .tuner import prepare_model
 from ..argument import RLFTArguments
 from .sft import SwiftSft
@@ -15,77 +17,119 @@ class SwiftRLFT(SwiftSft):
     args_class = RLFTArguments
     args: args_class
 
-    def get_reward(self, model, batch, query_responses, pad_token_id, context_length):
-        scores_list = []
-        socres_range_list = []
-        for actions, action_inputs, query_response in zip(batch['actions'], batch['action_inputs'], query_responses):
-            assert len(actions) == len(action_inputs)
-            decoded_query_responses = self.template.processor.decode(query_response)
-            from swift.llm.template import split_str_parts_by
-            agent_parts = split_str_parts_by(decoded_query_responses, ['Action:', 'Action Input:', self.template.suffix[0]])
-            agent_parts = [part for part in agent_parts if part['key'] in ['Action:', 'Action Input:']]
+    def evaluate_action_reward(self, action_pred: list, action_ref: list, cand_list: list, ref_list: list):
+        f1 = []
+        for i in range(len(action_pred)):
+            ref_action = action_ref[i]
+            pred_action = action_pred[i]
 
-            ground_truths = []
-            for action, action_input in (actions, action_inputs):
-                ground_truths.append([action, action_input])
+            ref_input = ref_list[i]
+            cand_input = cand_list[i]
 
-            agent_parts_processed = []
-            temp_action = []
-            for i, part in enumerate(agent_parts):
-                if i % 2 == 0:
-                    if part['key'] == 'Action:':
-                        temp_action.append(part['content'])
-                    else:
-                        temp_action = []
-                if i % 2 != 0:
-                    if part['key'] == 'Action Input:':
-                        temp_action.append(part['content'])
-                    else:
-                        temp_action = []
+            ref_is_json = False
+            try:
+                ref_input_json = json.loads(ref_input)
+                ref_is_json = True
+            except:
+                ref_input_json = ref_input
 
-                    if len(part) == 2:
-                        agent_parts_processed.append(temp_action)
-                        temp_action = []
+            cand_is_json = False
+            try:
+                cand_input_json = json.loads(cand_input)
+                cand_is_json = True
+            except:
+                cand_input_json = cand_input
 
-            scores = []
-            score_ranges = []
-            start_idx = 0
-            for ground_truth, predition in (ground_truths, agent_parts):
-                if not scores or scores[-1] == 1.0:
-                    function_ok = ground_truth[0] == predition[0]
-                    args_ok = self.compare_args(ground_truth[1], predition[1])
-                    if function_ok and args_ok:
-                        scores.append(1.0)
-                    elif not function_ok and not args_ok:
-                        scores.append(0.0)
-                    else:
-                        scores.append(0.1)
+            if ref_action != pred_action or (ref_is_json ^ cand_is_json):
+                f1.append(0)
+            elif not ref_is_json and not cand_is_json:
+                rougel = self.evaluate_rougel([ref_input_json], [cand_input_json])
+                if rougel < 10:
+                    f1.append(0)
+                elif 10 <= rougel < 20:
+                    f1.append(0.1)
                 else:
-                    scores.append(0.0)
+                    f1.append(1)
+            else:
+                half_match = 0
+                full_match = 0
+                if ref_input_json == {}:
+                    if cand_input_json == {}:
+                        f1.append(1)
+                    else:
+                        f1.append(0)
+                else:
+                    for k, v in ref_input_json.items():
+                        if k in cand_input_json.keys():
+                            if cand_input_json[k] == v:
+                                full_match += 1
+                            else:
+                                half_match += 1
 
-                action_str = f'Action:{predition[0]}'
-                action_input_str = f'Action Input:{predition[1]}'
-                action_ids = self.template.processor.encode(action_str, add_special_tokens=False)
-                action_input_ids = self.template.processor.encode(action_input_str, add_special_tokens=False)
-                start, end = self.find_sublist(query_response, action_ids)
-                if start == -1 or end == -1:
-                    scores = [scores[-1]]
-                    score_ranges = [(-1, -1)]
-                    break
+                    recall = (0.5 * half_match + full_match) / (len(ref_input_json) + 1e-30)
+                    precision = (0.5 * half_match + full_match) / (len(cand_input_json) + 1e-30)
+                    f1.append((2 * recall * precision) / (recall + precision))
 
-                start_idx += end
-                new_start, new_end = self.find_sublist(query_response[start_idx:], action_input_ids)
-                if new_start == -1 or new_end == -1:
-                    scores = [scores[-1]]
-                    score_ranges = [(-1, -1)]
-                    break
+        return f1 if f1 in (0.0, 1.0) else 0.1
 
-                score_ranges.append((start+start_idx, new_end+start_idx))
-                start_idx += new_end
+    def parse_action(self, text):
+        if 'Action Input:' in text:
+            input_idx = text.rindex('Action Input:')
+            action_input = text[input_idx + len('Action Input:'):].strip()
+        else:
+            action_input = '{}'
 
-            scores_list.append(scores)
-            socres_range_list.append(score_ranges)
-        return scores_list, socres_range_list
+        if 'Action:' in text:
+            action_idx = text.rindex('Action:')
+            action = text[action_idx + len('Action:'):].strip()
+            if 'Action Input:' in action:
+                input_idx = action.index('Action Input:')
+                action = action[:input_idx].strip()
+        else:
+            action = 'none'
+        return action, action_input
+
+    def parse_output(self, text):
+        action, action_input = self.parse_action(text)
+        return action, action_input
+
+    def get_reward(self, model, batch, query_responses, pad_token_id, context_length):
+        action_ref = []
+        action_input_ref = []
+        action_pred = []
+        action_input_pred = []
+        for ground_truth, query_response in zip(batch['ground_truth'], query_responses):
+            reference = ground_truth
+            prediction = query_response[context_length:]
+            prediction = self.tokenizer.decode(prediction)
+            ref_action, ref_input = self.parse_output(reference)
+            pred_action, pred_input = self.parse_output(prediction)
+            action_ref.append(ref_action)
+            action_input_ref.append(ref_input)
+            if pred_action is None:
+                action_pred.append('none')
+            else:
+                action_pred.append(pred_action)
+
+            if pred_input is None:
+                action_input_pred.append('{}')
+            else:
+                action_input_pred.append(pred_input)
+
+            rewards = self.evaluate_action_reward(action_pred,
+                                                  action_ref,
+                                                  action_input_pred,
+                                                  action_input_ref
+                                                  )
+            return None, rewards, None
+
+    def evaluate_rougel(self, cand_list: list, ref_list: list):
+        if len(ref_list) == 0:
+            return None
+        rouge = Rouge()
+        rouge_score = rouge.get_scores(hyps=cand_list, refs=ref_list, avg=True)
+        rougel = rouge_score["rouge-l"]["f"]
+        return rougel
 
     def find_sublist(self, full_list, sub_list):
         len_full = len(full_list)
@@ -136,8 +180,8 @@ class SwiftRLFT(SwiftSft):
         optimizers = self._get_optimizers(train_dataset)
         from modelscope import AutoModelForSequenceClassification
         value_model = AutoModelForSequenceClassification.from_pretrained(
-                args.model, trust_remote_code=True, num_labels=1
-            )
+            args.model, trust_remote_code=True, num_labels=1
+        )
         value_model.model_meta = self.model.model_meta
         value_model.model_info = self.model.model_info
         value_model = prepare_model(self.args, value_model)
@@ -148,7 +192,7 @@ class SwiftRLFT(SwiftSft):
         from copy import deepcopy
         trainer = trainer_cls(
             model=self.model,
-            ref_model = deepcopy(self.model),
+            ref_model=deepcopy(self.model),
             args=self.args.training_args,
             data_collator=data_collator,
             train_dataset=train_dataset,
