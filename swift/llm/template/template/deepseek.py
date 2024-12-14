@@ -159,6 +159,14 @@ class DeepseekVL2Template(DeepseekVLTemplate):
         encoded = {**batched_output, 'input_ids': input_ids, 'labels': labels}
         return encoded
 
+    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = Template._data_collator(self, batch, padding_to=padding_to)
+        new_batch = self.fetch_inputs(batch, ['images', 'images_seq_mask', 'images_spatial_crop'])
+        seq_lens = self.gather_list(batch, 'seq_lens')
+        res['seq_lens'] = seq_lens
+        for k, v in new_batch.items():
+            res[k] = torch.concat(v)
+        return res
 
 register_template(
     TemplateMeta(
