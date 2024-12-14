@@ -34,7 +34,7 @@ class TestExtraStateDict(unittest.TestCase):
         with open(os.path.join(self.tmp_dir, 'extra_states', 'adapter_model.bin'), 'wb') as f:
             torch.save(state_dict, f)
         model = Model.from_pretrained('damo/nlp_structbert_sentence-similarity_chinese-base')
-        model = Swift.from_pretrained(model, self.tmp_dir)
+        model = Swift.from_pretrained(model, self.tmp_dir, inference_mode=False)
         names = [name for name, value in model.named_parameters() if value.requires_grad]
         self.assertTrue(any('classifier' in name for name in names))
         self.assertTrue(torch.allclose(state_dict['classifier.weight'], model.base_model.classifier.weight))

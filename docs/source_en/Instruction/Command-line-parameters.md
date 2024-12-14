@@ -92,7 +92,7 @@ This parameter list inherits from transformers `Seq2SeqTrainingArguments`, with 
 - 🔥learning_rate: Learning rate, default is 1e-5 for all parameters, and 1e-4 for the tuner.
 - lr_scheduler_type: LR scheduler type, default is cosine.
 - lr_scheduler_kwargs: Other parameters for the LR scheduler.
-- 🔥gradient_checkpointing_kwargs: Parameters passed to `torch.utils.checkpoint`. For example, set to `{"use_reentrant": false}`.
+- 🔥gradient_checkpointing_kwargs: Parameters passed to `torch.utils.checkpoint`. For example, set to `--gradient_checkpointing_kwargs '{"use_reentrant": false}'`.
 - report_to: Default is `tensorboard`.
 - remove_unused_columns: Default is False.
 - logging_first_step: Whether to log the first step print, default is True.
