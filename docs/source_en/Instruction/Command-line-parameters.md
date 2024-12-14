@@ -148,6 +148,15 @@ Other important parameters:
 - 🔥use_dora: Default is `False`, whether to use `DoRA`.
 - use_rslora: Default is `False`, whether to use `RS-LoRA`.
 - 🔥lorap_lr_ratio: LoRA+ parameter, default value is `None`, recommended values `10~16`, specifying this parameter allows using lora+ when using LoRA.
+- init_weights: Weight initialization method, applicable to supported Tuners. The default value is `true`.
+
+##### LoRA-GA
+- lora_ga_batch_size: The default value is `2`. The batch size used for estimating gradients during initialization in LoRA-GA.
+- lora_ga_iters: The default value is `2`. The number of iterations for estimating gradients during initialization in LoRA-GA.
+- lora_ga_max_length: The default value is `1024`. The maximum input length for estimating gradients during initialization in LoRA-GA.
+- lora_ga_direction: The default value is `ArB2r`. The initial direction used for gradient estimation during initialization in LoRA-GA. Allowed values are: `ArBr`, `A2rBr`, `ArB2r`, and `random`.
+- lora_ga_scale: The default value is `stable`. The scaling method for initialization in LoRA-GA. Allowed values are: `gd`, `unit`, `stable`, and `weightS`.
+- lora_ga_stable_gamma: The default value is `16`. The gamma value when choosing `stable` scaling for initialization.
 
 #### FourierFt
 
