@@ -68,6 +68,11 @@ class RowPreprocessor:
             if (assistant_message['role'] not in {'assistant'} or 'content' not in assistant_message
                     or assistant_message['content'] in {'', None}):
                 raise ValueError(f'assistant_message: {assistant_message}')
+        # fix swift/SlimOrca
+        for message in messages:
+            keys = set(message.keys()) - {'role', 'content'}
+            for key in keys:
+                message.pop(key)
 
     @staticmethod
     def _cast_images(row: Dict[str, Any]) -> None:
