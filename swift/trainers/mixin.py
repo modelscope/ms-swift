@@ -119,8 +119,8 @@ class SwiftMixin:
                         with LoraGAContext(model):
                             model.save_pretrained(
                                 os.path.join(output_dir, 'converted', 'default'),
-                                path_initial_model_for_weight_conversion=os.path.join(os.path.dirname(output_dir),
-                                                                                      'initial_model'),
+                                path_initial_model_for_weight_conversion=os.path.join(
+                                    os.path.dirname(output_dir), 'initial_model'),
                             )
                             model.peft_config['default'] = config
                     except ImportError as e:
@@ -133,8 +133,8 @@ class SwiftMixin:
                 elif 'pissa' in init_lora_weights or 'olora' in init_lora_weights:
                     model.save_pretrained(
                         os.path.join(output_dir, 'converted', 'default'),
-                        path_initial_model_for_weight_conversion=os.path.join(os.path.dirname(output_dir),
-                                                                              'initial_model'),
+                        path_initial_model_for_weight_conversion=os.path.join(
+                            os.path.dirname(output_dir), 'initial_model'),
                     )
                     model.peft_config['default'] = config
 
