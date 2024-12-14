@@ -143,19 +143,20 @@ class DeepseekVL2Template(DeepseekVLTemplate):
             image_tokens = [processor.image_token_id] * n_image_tokens
             input_ids = input_ids[:idx] + image_tokens + input_ids[idx + 1:]
             if labels is not None:
-                labels = labels[:idx] + [-100] * len(image_tokens) + labels[idx + 1:]
-            images_seq_mask += images_seq_mask[:idx] + [True] * len(image_tokens) + images_seq_mask[idx + 1:]
-            new_num_tokens += len(image_tokens) - 1
+                labels = labels[:idx] + [-100] * n_image_tokens + labels[idx + 1:]
+            images_seq_mask = images_seq_mask[:idx] + [True] * n_image_tokens + images_seq_mask[idx + 1:]
+            new_num_tokens += n_image_tokens - 1
 
         output = VLChatProcessorOutput(
             sft_format=None,
             input_ids=torch.tensor(input_ids),
             target_ids=torch.tensor(input_ids),
-            images=torch.stack(images_list),
+            images=torch.stack(images_list) if images_list else torch.tensor(images_list),
             images_seq_mask=torch.tensor(images_seq_mask),
             images_spatial_crop=torch.tensor(images_spatial_crop),
             num_image_tokens=num_image_tokens)
         batched_output = dict(processor.batchify([output]))
+        batched_output['images'] = batched_output['images'].to(dtype=self.config.torch_dtype)
         encoded = {**batched_output, 'input_ids': input_ids, 'labels': labels}
         return encoded
 
@@ -167,6 +168,7 @@ class DeepseekVL2Template(DeepseekVLTemplate):
         for k, v in new_batch.items():
             res[k] = torch.concat(v)
         return res
+
 
 register_template(
     TemplateMeta(

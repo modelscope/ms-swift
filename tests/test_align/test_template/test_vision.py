@@ -21,7 +21,7 @@ def _infer_model(pt_engine, system=None, messages=None, images=None):
     response = resp[0].choices[0].message.content
     messages += [{'role': 'assistant', 'content': response}]
     logger.info(f'model: {pt_engine.model_info.model_name}, messages: {messages}')
-    return messages
+    return response
 
 
 def test_qwen2_vl():
@@ -132,12 +132,16 @@ def test_xcomposer2_5():
 
 
 def test_deepseek_vl():
-
     # pt_engine = PtEngine('deepseek-ai/deepseek-vl-1.3b-chat')
-    # pt_engine = PtEngine('deepseek-ai/Janus-1.3B')
-    pt_engine = PtEngine('deepseek-ai/deepseek-vl2')
-
+    pt_engine = PtEngine('deepseek-ai/Janus-1.3B')
     _infer_model(pt_engine)
+
+
+def test_deepseek_vl2():
+    pt_engine = PtEngine('deepseek-ai/deepseek-vl2-small')
+    response = _infer_model(pt_engine)
+    assert response == ('这是一只可爱的小猫。它有着大大的蓝色眼睛和柔软的毛发，看起来非常天真无邪。小猫的耳朵竖立着，显得非常警觉和好奇。'
+                        '它的鼻子小巧而粉红，嘴巴微微张开，似乎在探索周围的环境。整体来看，这只小猫非常可爱，充满了活力和好奇心。')
 
 
 def test_mplug_owl2():
@@ -193,6 +197,7 @@ if __name__ == '__main__':
     # test_ovis1_6()
     # test_yi_vl()
     test_deepseek_vl()
+    # test_deepseek_vl2()
     # test_deepseek_janus()
     # test_qwen_vl()
     # test_glm4v()
