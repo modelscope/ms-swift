@@ -75,7 +75,6 @@ class RowPreprocessor:
                     or assistant_message['content'] in {'', None}):
                 raise ValueError(f'assistant_message: {assistant_message}')
 
-
     @staticmethod
     def _cast_images(row: Dict[str, Any]) -> None:
         images = row.get('images')
