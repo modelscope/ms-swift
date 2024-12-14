@@ -15,7 +15,7 @@ from accelerate.utils import broadcast, gather_object
 from datasets import Dataset
 from torch import nn
 from torch.utils.data import DataLoader
-from transformers import GenerationConfig
+from transformers import GenerationConfig, PreTrainedModel, StoppingCriteriaList
 from transformers import PreTrainedTokenizer, DataCollatorWithPadding, TrainerCallback
 from transformers.integrations import get_reporting_integration_callbacks
 from transformers.trainer import DEFAULT_CALLBACKS, DEFAULT_PROGRESS_CALLBACK
@@ -26,7 +26,6 @@ from trl.models.utils import unwrap_model_for_generation
 from trl.trainer.ppov2_trainer import INVALID_LOGPROB
 from trl.trainer.ppov2_trainer import PolicyAndValueWrapper
 from trl.trainer.utils import (
-    batch_generation,
     first_true_indices,
     forward,
     get_reward,
@@ -37,6 +36,83 @@ from trl.trainer.utils import exact_div, disable_dropout_in_model, OnlineTrainer
 from .ppo_trainer import PPOTrainer
 
 HFPPOTrainer.__init_origin__ = HFPPOTrainer.__init__
+
+from ...llm.template.utils import StopWordsCriteria
+
+
+def generate(
+        lm_backbone: PreTrainedModel, queries: torch.Tensor, pad_token_id: int, generation_config: GenerationConfig,
+        tokenizer,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """
+    Generates sequences from the language model backbone in a way that does not affect padding tokens.
+
+    Args:
+        lm_backbone (`torch.nn.Module`):
+            The language model backbone used for generation.
+        queries (`torch.Tensor`):
+            The tensor containing the input queries.
+        pad_token_id (`int`):
+            The token ID representing the pad token.
+        generation_config (`GenerationConfig`):
+            The configuration for the generation process.
+
+    Returns:
+        tuple:
+            - `generated_sequences` (`torch.Tensor`):
+                The concatenated tensor of input queries and generated sequences.
+            - `logits` (`torch.Tensor`):
+                The logits output from the generation process.
+    """
+    context_length = queries.shape[1]
+    attention_mask = queries != pad_token_id
+    input_ids = torch.masked_fill(queries, ~attention_mask, 0)
+    output = lm_backbone.generate(
+        input_ids=input_ids,
+        attention_mask=attention_mask,
+        # position_ids=attention_mask.cumsum(1) - attention_mask.long(), # not needed: already adjusted in generations
+        # https://github.com/huggingface/transformers/blob/ac33aeeeee2a7a89b89c93c2962e6feb90daef0a/src/transformers/models/gpt2/modeling_gpt2.py#L1227-L1250
+        generation_config=generation_config,
+        return_dict_in_generate=True,
+        output_scores=True,
+        stopping_criteria=StoppingCriteriaList([StopWordsCriteria(tokenizer, ['Observation:', '<|im_end|>', '<|endoftext|>', '\nObservation:'])]),
+
+    )
+    logits = torch.stack(output.scores, 1)
+    return torch.cat((queries, output.sequences[:, context_length:]), dim=1), logits
+
+
+@torch.no_grad()
+def batch_generation(
+    model: torch.nn.Module,
+    queries: torch.Tensor,
+    local_rollout_forward_batch_size: int,
+    pad_token_id: int,
+    generation_config: GenerationConfig,
+    tokenizer,
+):
+    query_responses = []
+    logitss = []
+    for i in range(0, queries.shape[0], local_rollout_forward_batch_size):
+        query = queries[i : i + local_rollout_forward_batch_size]
+        query_response, logits = generate(
+            model,
+            query,
+            pad_token_id,
+            generation_config,
+            tokenizer
+        )
+
+        observation_tokens = tokenizer.encode('Observation:', add_special_tokens=False)
+        for qr in query_response:
+            r = qr[queries.shape[1]:]
+            for i in range(len(r)):
+                if len(r[i:i+len(observation_tokens)]) == len(observation_tokens) and all(r[i:i+len(observation_tokens)].cpu().numpy() == observation_tokens):
+                    r[i:i+len(observation_tokens)] = torch.tensor([tokenizer.pad_token_id] * len(observation_tokens))
+        
+        query_responses.append(query_response)
+        logitss.append(logits)
+    return torch.cat(query_responses, 0), torch.cat(logitss, 0)
 
 
 def init_v2(
@@ -234,10 +310,16 @@ class RLFTTrainer(PPOTrainer):
         super().__init__(*args, **kwargs)
         self.reward_func = reward_func
 
+        def repeat_generator():
+            while True:
+                yield from self.dataloader
+
+        self.iter_dataloader = iter(repeat_generator())
+
     def train_reward_model(self, rollout_state: RolloutState, metrics):
         pass
 
-    def train_policy_model(self, rollout_state: RolloutState, metrics):
+    def train_policy_model(self, rollout_state: RolloutState, metrics, update):
         args = self.args
         accelerator = self.accelerator
         optimizer = self.optimizer
@@ -300,6 +382,7 @@ class RLFTTrainer(PPOTrainer):
                         pg_loss_max = torch.max(pg_losses, pg_losses2)
                         pg_loss = masked_mean(pg_loss_max, ~rollout_state.padding_mask[micro_batch_inds])
                         loss = pg_loss + args.vf_coef * vf_loss
+                        print('==================>vf_loss:', vf_loss, 'loss', loss)
                         accelerator.backward(loss)
                         optimizer.step()
                         optimizer.zero_grad()
@@ -354,15 +437,8 @@ class RLFTTrainer(PPOTrainer):
         reward_model = self.reward_model
         tokenizer = self.tokenizer
         device = accelerator.device
-        dataloader = self.dataloader
 
-        def repeat_generator():
-            while True:
-                yield from dataloader
-
-        iter_dataloader = iter(repeat_generator())
-
-        data = next(iter_dataloader)
+        data = next(self.iter_dataloader)
         with torch.no_grad():
             generation_config = GenerationConfig(
                 max_new_tokens=args.response_length,
@@ -370,6 +446,8 @@ class RLFTTrainer(PPOTrainer):
                 top_k=0.0,
                 top_p=1.0,
                 do_sample=True,
+                pad_token_id=self.tokenizer.pad_token_id,
+                eos_token_id=[self.tokenizer.pad_token_id, self.tokenizer.eos_token_id],
             )
             queries = data["input_ids"].to(device)
             context_length = queries.shape[1]
@@ -387,6 +465,7 @@ class RLFTTrainer(PPOTrainer):
                     args.local_rollout_forward_batch_size,
                     tokenizer.pad_token_id,
                     generation_config,
+                    self.tokenizer,
                 )
 
             for i in range(0, queries.shape[0], args.local_rollout_forward_batch_size):
@@ -562,7 +641,7 @@ class RLFTTrainer(PPOTrainer):
             rollout_state = self.rollout()
             metrics = {}
             self.train_reward_model(rollout_state, metrics)
-            self.train_policy_model(rollout_state, metrics)
+            self.train_policy_model(rollout_state, metrics, update)
             with torch.no_grad():
                 mean_kl = rollout_state.kl.sum(1).mean()
                 mean_entropy = (-rollout_state.logprobs).sum(1).mean()
@@ -613,6 +692,7 @@ class RLFTTrainer(PPOTrainer):
                 rollout_state.advantages,
                 rollout_state.returns,
             )
+            del rollout_state
             torch.cuda.empty_cache()
 
         # HF trainer specifics
@@ -630,6 +710,8 @@ class RLFTTrainer(PPOTrainer):
             top_k=0.0,
             top_p=1.0,
             do_sample=True,
+            pad_token_id=self.tokenizer.pad_token_id,
+            eos_token_id=[self.tokenizer.pad_token_id, self.tokenizer.eos_token_id],
         )
 
         table = defaultdict(list)
@@ -644,6 +726,7 @@ class RLFTTrainer(PPOTrainer):
                         query.shape[0],
                         tokenizer.pad_token_id,
                         generation_config,
+                        self.tokenizer,
                     )
                     response = query_response[:, context_length:]
                     postprocessed_response = response

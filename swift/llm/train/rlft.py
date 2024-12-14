@@ -68,9 +68,12 @@ class SwiftRLFT(SwiftSft):
 
                     recall = (0.5 * half_match + full_match) / (len(ref_input_json) + 1e-30)
                     precision = (0.5 * half_match + full_match) / (len(cand_input_json) + 1e-30)
-                    f1.append((2 * recall * precision) / (recall + precision))
+                    try:
+                        f1.append((2 * recall * precision) / (recall + precision))
+                    except:
+                        f1.append(0.0)
 
-        return f1 if f1 in (0.0, 1.0) else 0.1
+        return f1[0]* 10 if f1[0] in (0.0, 1.0) else 1
 
     def parse_action(self, text):
         if 'Action Input:' in text:
@@ -103,6 +106,7 @@ class SwiftRLFT(SwiftSft):
             reference = ground_truth
             prediction = query_response[context_length:]
             prediction = self.tokenizer.decode(prediction)
+            prediction = prediction.replace('<|endoftext|>', '').replace('<|im_end|>', '').strip()
             ref_action, ref_input = self.parse_output(reference)
             pred_action, pred_input = self.parse_output(prediction)
             action_ref.append(ref_action)
@@ -123,7 +127,7 @@ class SwiftRLFT(SwiftSft):
                                                   action_input_ref
                                                   )
             rewards.append(reward)
-        return None, torch.tensor(rewards).to('cuda:0'), None
+        return None, torch.tensor(rewards, dtype=torch.float32).to('cuda:0'), None
 
     def evaluate_rougel(self, cand_list: list, ref_list: list):
         if len(ref_list) == 0:
@@ -171,7 +175,9 @@ class SwiftRLFT(SwiftSft):
 
         train_dataset, val_dataset = self._get_dataset()
         train_dataset, val_dataset = self._encode_dataset(train_dataset, val_dataset)
+        from copy import deepcopy
         # Some tuners require train_dataset for preparation: LoRA-GA
+        ref_model = deepcopy(self.model)
         self.model = prepare_model(self.args, self.model)
         logger.info(f'model: {self.model}')
         model_parameter_info = get_model_parameter_info(self.model)
@@ -186,7 +192,10 @@ class SwiftRLFT(SwiftSft):
         )
         value_model.model_meta = self.model.model_meta
         value_model.model_info = self.model.model_info
-        value_model = prepare_model(self.args, value_model)
+        value_model.config.pad_token_id = self.template.processor.eos_token_id
+        # from swift.utils.torch_utils import freeze_parameters
+        # freeze_parameters(value_model, 0.85, freeze_parameters=[])
+        # value_model.score.requires_grad = True
         trainer_cls = TrainerFactory.get_trainer_cls(args)
         reward_func_kwargs = {}
         if args.reward_type == 'agent':
@@ -194,7 +203,7 @@ class SwiftRLFT(SwiftSft):
         from copy import deepcopy
         trainer = trainer_cls(
             model=self.model,
-            ref_model=deepcopy(self.model),
+            ref_model=ref_model,
             args=self.args.training_args,
             data_collator=data_collator,
             train_dataset=train_dataset,

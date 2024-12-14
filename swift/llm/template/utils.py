@@ -27,6 +27,7 @@ class StopWordsCriteria(StoppingCriteria):
         self.tokenizer_kwargs = tokenizer_kwargs
         self.start_idx = -1
         self.is_done = None
+        self.eos_token_id = self.tokenizer.eos_token_id
 
     def __call__(self, input_ids: torch.Tensor, scores: torch.Tensor, **kwargs) -> torch.Tensor:
         if self.start_idx == -1:
@@ -34,11 +35,13 @@ class StopWordsCriteria(StoppingCriteria):
             self.is_done = torch.full((input_ids.shape[0], ), False, device=input_ids.device, dtype=torch.bool)
         # [-20:]: Assuming the end tokens do not exceed 20 tokens,
         #   to avoid input_ids being too long and affecting efficiency.
-        text_list = self.tokenizer.batch_decode(input_ids[:, self.start_idx:][-20:], **self.tokenizer_kwargs)
+        text_list = self.tokenizer.batch_decode(input_ids[:, self.start_idx:][:, -20:], **self.tokenizer_kwargs)
         for i, text in enumerate(text_list):
             if self.is_done[i]:
                 continue
             is_finished = False
+            if 'Observation:' in text:
+                print()
             for stop_word in self.stop_words:
                 if isinstance(stop_word, str) and stop_word in text or isinstance(
                         stop_word, list) and input_ids[i][-len(stop_word):].tolist() == stop_word:
