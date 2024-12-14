@@ -213,6 +213,7 @@ register_model(
         TemplateType.deepseek_vl2,
         get_model_tokenizer_deepseek_vl2,
         model_arch=ModelArch.deepseek_vl2,
+        requires=['transformers<4.42'],
         architectures=['DeepseekV2ForCausalLM'],
         tags=['vision'],
     ))

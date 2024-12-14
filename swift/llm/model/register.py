@@ -35,7 +35,7 @@ class Model:
 class ModelGroup:
     models: List[Model]
 
-    # Higher priority. If set to None, the attributes of the DatasetMeta will be used.
+    # Higher priority. If set to None, the attributes of the ModelMeta will be used.
     ignore_file_pattern: Optional[List[str]] = None
     requires: Optional[List[str]] = None
     tags: List[str] = field(default_factory=list)
@@ -48,7 +48,7 @@ class ModelGroup:
 @dataclass
 class ModelMeta:
     model_type: str
-    # Used to list the model_ids from huggingface/modelscope,
+    # Used to list the model_ids from modelscope/huggingface,
     # which participate in the automatic inference of the model_type.
     model_groups: List[ModelGroup]
     template: str
