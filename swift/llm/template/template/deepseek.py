@@ -119,8 +119,53 @@ register_template(DeepseekVLTemplateMeta(MLLMTemplateType.deepseek_janus, templa
 register_template(
     TemplateMeta(
         LLMTemplateType.deepseek_v2_5,
-        prefix=['<｜begin▁of▁sentence｜>'],
+        prefix=['<｜begin▁of▁sentence｜>{{SYSTEM}}'],
         prompt=['<｜User｜>{{QUERY}}<｜Assistant｜>'],
         chat_sep=['<｜end▁of▁sentence｜>'],
+        suffix=['<｜end▁of▁sentence｜>']))
+
+
+class DeepseekVL2Template(DeepseekVLTemplate):
+    image_placeholder = ['<image>\n']
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        from deepseek_vl.models.processing_deepseek_vl_v2 import VLChatProcessorOutput
+        encoded = Template._encode(self, inputs)
+        images = inputs.images
+        processor = self.processor
+        input_ids, labels = encoded['input_ids'], encoded['labels']
+        images_seq_mask = [False] * len(input_ids)
+        idx_list = findall(input_ids, processor.image_token_id)  # '<image>'
+        _, images_list, _, images_spatial_crop, num_image_tokens = processor.tokenize_with_images(
+            '<image>' * len(images), images, cropping=len(images) <= 2)
+        new_num_tokens = 0
+        for idx, n_image_tokens in zip(idx_list, num_image_tokens):
+            image_tokens = [processor.image_token_id] * n_image_tokens
+            input_ids = input_ids[:idx] + image_tokens + input_ids[idx + 1:]
+            if labels is not None:
+                labels = labels[:idx] + [-100] * len(image_tokens) + labels[idx + 1:]
+            images_seq_mask += images_seq_mask[:idx] + [True] * len(image_tokens) + images_seq_mask[idx + 1:]
+            new_num_tokens += len(image_tokens) - 1
+
+        output = VLChatProcessorOutput(
+            sft_format=None,
+            input_ids=torch.tensor(input_ids),
+            target_ids=torch.tensor(input_ids),
+            images=torch.stack(images_list),
+            images_seq_mask=torch.tensor(images_seq_mask),
+            images_spatial_crop=torch.tensor(images_spatial_crop),
+            num_image_tokens=num_image_tokens)
+        batched_output = dict(processor.batchify([output]))
+        encoded = {**batched_output, 'input_ids': input_ids, 'labels': labels}
+        return encoded
+
+
+register_template(
+    TemplateMeta(
+        MLLMTemplateType.deepseek_vl2,
+        prefix=['<｜begin▁of▁sentence｜>{{SYSTEM}}'],
+        prompt=['<|User|>: {{QUERY}}\n\n<|Assistant|>:'],
+        chat_sep=['<｜end▁of▁sentence｜>'],
         suffix=['<｜end▁of▁sentence｜>'],
-        system_prefix=['<｜begin▁of▁sentence｜>{{SYSTEM}}']))
+        template_cls=DeepseekVL2Template,
+        placeholder_tokens=['<image>']))
