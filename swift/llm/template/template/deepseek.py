@@ -151,23 +151,21 @@ class DeepseekVL2Template(DeepseekVLTemplate):
             sft_format=None,
             input_ids=torch.tensor(input_ids),
             target_ids=torch.tensor(input_ids),
-            images=torch.stack(images_list) if images_list else torch.tensor(images_list),
+            images=torch.stack(images_list) if images_list else torch.zeros((0, 3, 384, 384)),
             images_seq_mask=torch.tensor(images_seq_mask),
             images_spatial_crop=torch.tensor(images_spatial_crop),
             num_image_tokens=num_image_tokens)
-        batched_output = dict(processor.batchify([output]))
-        batched_output['images'] = batched_output['images'].to(dtype=self.config.torch_dtype)
-        encoded = {**batched_output, 'input_ids': input_ids, 'labels': labels}
+        output.images = output.images.to(dtype=self.config.torch_dtype)
+        encoded = {'output': output, 'input_ids': input_ids, 'labels': labels}
         return encoded
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        output = self.fetch_inputs(batch, ['output'])['output']
+        batched_output = dict(self.processor.batchify(output))
+        batched_output['images_seq_mask'] = batched_output['images_seq_mask'].to(torch.bool)
+        batched_output['images_spatial_crop'] = batched_output['images_spatial_crop'].to(torch.long)
         res = Template._data_collator(self, batch, padding_to=padding_to)
-        new_batch = self.fetch_inputs(batch, ['images', 'images_seq_mask', 'images_spatial_crop'])
-        seq_lens = self.gather_list(batch, 'seq_lens')
-        res['seq_lens'] = seq_lens
-        for k, v in new_batch.items():
-            res[k] = torch.concat(v)
-        return res
+        return {**batched_output, **res}
 
 
 register_template(
