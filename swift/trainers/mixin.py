@@ -98,7 +98,8 @@ class SwiftMixin:
         if isinstance(model, PeftModel):
             config = model.peft_config.get('default')
             init_lora_weights = getattr(config, 'init_lora_weights', None)
-            if isinstance(init_lora_weights, str) and ('pissa' in init_lora_weights or 'olora' in init_lora_weights or 'lora-ga' in init_lora_weights):
+            if (isinstance(init_lora_weights, str)
+                    and any(s in init_lora_weights for s in ('pissa', 'olora', 'lora-ga'))):
                 config.init_lora_weights = True
                 model.save_pretrained(os.path.join(output_dir, 'initial_model'))
                 config.init_lora_weights = init_lora_weights
@@ -123,13 +124,17 @@ class SwiftMixin:
                             )
                             model.peft_config['default'] = config
                     except ImportError as e:
-                        error_message = "Since 'LoRA-GA' is not implemented by PEFT, you will need to install it directly from GitHub repository using the following command: 'pip install git+https://github.com/lxline/LoRA-GA.git'."
+                        error_message = """
+                        Since 'LoRA-GA' is not implemented by PEFT, you will need to install it directly from GitHub.
+                        Command: 'pip install git+https://github.com/lxline/LoRA-GA.git'.
+                        """
                         logger.info(error_message)
                         raise RuntimeError(error_message) from e
                 elif 'pissa' in init_lora_weights or 'olora' in init_lora_weights:
                     model.save_pretrained(
                         os.path.join(output_dir, 'converted', 'default'),
-                        path_initial_model_for_weight_conversion=os.path.join(os.path.dirname(output_dir), 'initial_model'),
+                        path_initial_model_for_weight_conversion=os.path.join(os.path.dirname(output_dir),
+                                                                              'initial_model'),
                     )
                     model.peft_config['default'] = config
 

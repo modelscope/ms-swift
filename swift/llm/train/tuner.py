@@ -165,7 +165,10 @@ def prepare_adapter(args: TrainArguments, model, template=None, train_dataset=No
                 try:
                     import lora_ga
                 except ImportError as e:
-                    error_message = "Since 'LoRA-GA' is not implemented by PEFT, you will need to install it directly from GitHub repository using the following command: 'pip install git+https://github.com/lxline/LoRA-GA.git'."
+                    error_message = """
+                    Since 'LoRA-GA' is not implemented by PEFT, you will need to install it directly from GitHub.
+                    Command: 'pip install git+https://github.com/lxline/LoRA-GA.git'.
+                    """
                     logger.info(error_message)
                     raise RuntimeError(error_message) from e
                 model = lora_ga.entrypoint.get_lora_ga_model(

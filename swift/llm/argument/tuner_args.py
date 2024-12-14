@@ -29,12 +29,18 @@ class TunerArguments:
         use_rslora (bool): Flag to indicate if RSLora is used. Default is False.
         use_dora (bool): Flag to indicate if Dora is used. Default is False.
         init_weights (str): Initialization method for weights of supported tuners. Default is 'true'.
-        lora_ga_batch_size (int): The batch size used for estimating gradients during initialization in LoRA-GA. The default value is 2.
-        lora_ga_iters (int): The number of iterations for estimating gradients during initialization in LoRA-GA. The default value is 2.
-        lora_ga_max_length (int): The maximum input length for estimating gradients during initialization in LoRA-GA. The default value is 1024.
-        lora_ga_direction (str): The initial direction used for gradient estimation during initialization in LoRA-GA. The default value is `ArB2r`. Allowed values are: `ArBr`, `A2rBr`, `ArB2r`, and `random`.
-        lora_ga_scale (str): The scaling method for initialization in LoRA-GA. The default value is `stable`. Allowed values are: `gd`, `unit`, `stable`, and `weightS`.
-        lora_ga_stable_gamma (int): The gamma value when choosing `stable` scaling for initialization. The default value is 16.
+        lora_ga_batch_size (int): Batch size used for estimating gradients during initialization in LoRA-GA.
+                                    Default value is 2.
+        lora_ga_iters (int): Number of iterations for estimating gradients during initialization in LoRA-GA.
+                                Default value is 2.
+        lora_ga_max_length (int): Maximum input length for estimating gradients during initialization in LoRA-GA.
+                                    Default value is 1024.
+        lora_ga_direction (str): Initial direction used for gradient estimation during initialization in LoRA-GA.
+                                    Default value is `ArB2r`. Allowed: `ArBr`, `A2rBr`, `ArB2r`, and `random`.
+        lora_ga_scale (str): The scaling method for initialization in LoRA-GA.
+                                Default value is `stable`. Allowed values are: `gd`, `unit`, `stable`, and `weightS`.
+        lora_ga_stable_gamma (int): The gamma value when choosing `stable` scaling for initialization.
+                                    Default value is 16.
 
         fourier_n_frequency (int): Number of frequencies for FourierFT. Default is 2000.
         fourier_scaling (float): Scaling factor for FourierFT. Default is 300.0.
