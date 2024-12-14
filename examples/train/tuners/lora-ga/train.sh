@@ -1,3 +1,4 @@
+# Train
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen2-1.5B-Instruct \
@@ -22,3 +23,10 @@ swift sft \
     --logging_steps 5 \
     --model_author swift \
     --model_name swift-robot
+
+# Infer
+# swift infer \
+#     --model Qwen/Qwen2-1.5B-Instruct \
+#     --ckpt_dir ./output/Qwen2-1.5B-Instruct/v0-20241214-191235/checkpoint-62/converted/default \
+#     --infer_backend pt \
+#     --stream true
