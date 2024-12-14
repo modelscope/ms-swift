@@ -118,11 +118,20 @@ register_model(
     ))
 
 
-def get_model_tokenizer_deepseek_vl(model_dir: str,
-                                    model_info: ModelInfo,
-                                    model_kwargs: Dict[str, Any],
-                                    load_model: bool = True,
-                                    **kwargs):
+def _get_deepseek_vl(processor, llm_prefix, model_dir, *args, **kwargs):
+    kwargs['tokenizer'] = processor.tokenizer
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
+    if model:
+        llm = getattr(model, llm_prefix)
+        patch_output_clone(llm.model.embed_tokens)
+        patch_output_to_input_device(llm.model.embed_tokens)
+        func_list = ['generate', 'get_input_embeddings', 'gradient_checkpointing_enable', 'forward']
+        use_submodel_func(model, llm_prefix, func_list)
+        model.generation_config = llm.generation_config
+    return model, processor
+
+
+def get_model_tokenizer_deepseek_vl(model_dir: str, *args, **kwargs):
     # compat with python==3.10
     if sys.version_info.minor >= 10:
         import collections
@@ -135,17 +144,7 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     sys.path.append(os.path.join(local_repo_path))
     from deepseek_vl.models import VLChatProcessor
     processor = VLChatProcessor.from_pretrained(model_dir)
-    tokenizer = processor.tokenizer
-
-    model, tokenizer = get_model_tokenizer_with_flash_attn(
-        model_dir, model_info, model_kwargs, load_model, tokenizer=tokenizer, **kwargs)
-    if load_model:
-        patch_output_clone(model.language_model.model.embed_tokens)
-        patch_output_to_input_device(model.language_model.model.embed_tokens)
-        func_list = ['generate', 'get_input_embeddings', 'gradient_checkpointing_enable', 'forward']
-        use_submodel_func(model, 'language_model', func_list)
-        model.generation_config = model.language_model.generation_config
-    return model, processor
+    return _get_deepseek_vl(processor, 'language_model', model_dir, *args, **kwargs)
 
 
 register_model(
@@ -173,15 +172,7 @@ def get_model_tokenizer_deepseek_janus(model_dir: str, *args, **kwargs):
     from janus.models import MultiModalityCausalLM, VLChatProcessor
 
     processor: VLChatProcessor = VLChatProcessor.from_pretrained(model_dir)
-    tokenizer = processor.tokenizer
-    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, *args, tokenizer=tokenizer, **kwargs)
-    if model:
-        patch_output_clone(model.language_model.model.embed_tokens)
-        patch_output_to_input_device(model.language_model.model.embed_tokens)
-        func_list = ['generate', 'get_input_embeddings', 'forward', 'gradient_checkpointing_enable']
-        use_submodel_func(model, 'language_model', func_list)
-        model.generation_config = model.language_model.generation_config
-    return model, processor
+    return _get_deepseek_vl(processor, 'language_model', model_dir, *args, **kwargs)
 
 
 register_model(
@@ -194,6 +185,34 @@ register_model(
         ],
         TemplateType.deepseek_janus,
         get_model_tokenizer_deepseek_janus,
-        model_arch=ModelArch.janus,
+        model_arch=ModelArch.deepseek_janus,
+        tags=['vision'],
+    ))
+
+
+def get_model_tokenizer_deepseek_vl2(model_dir: str, *args, **kwargs):
+    local_repo_path = kwargs.get('local_repo_path')
+    if not local_repo_path:
+        local_repo_path = git_clone_github('https://github.com/deepseek-ai/DeepSeek-VL2')
+    sys.path.append(os.path.join(local_repo_path))
+    from deepseek_vl.models import DeepseekVLV2Processor, DeepseekVLV2ForCausalLM
+    processor: DeepseekVLV2Processor = DeepseekVLV2Processor.from_pretrained(model_dir)
+    return _get_deepseek_vl(processor, 'language', model_dir, *args, **kwargs)
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.deepseek_vl2,
+        [
+            ModelGroup([
+                Model('deepseek-ai/deepseek-vl2-tiny', 'deepseek-ai/deepseek-vl2-tiny'),
+                Model('deepseek-ai/deepseek-vl2-small', 'deepseek-ai/deepseek-vl2-small'),
+                Model('deepseek-ai/deepseek-vl2', 'deepseek-ai/deepseek-vl2'),
+            ]),
+        ],
+        TemplateType.deepseek_vl2,
+        get_model_tokenizer_deepseek_vl2,
+        model_arch=ModelArch.deepseek_vl2,
+        architectures=['DeepseekV2ForCausalLM'],
         tags=['vision'],
     ))

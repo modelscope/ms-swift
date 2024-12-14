@@ -34,7 +34,8 @@ class StopWordsCriteria(StoppingCriteria):
             self.is_done = torch.full((input_ids.shape[0], ), False, device=input_ids.device, dtype=torch.bool)
         # [-20:]: Assuming the end tokens do not exceed 20 tokens,
         #   to avoid input_ids being too long and affecting efficiency.
-        text_list = self.tokenizer.batch_decode(input_ids[:, self.start_idx:][-20:], **self.tokenizer_kwargs)
+        start_idx = max(self.start_idx, input_ids.shape[1] - 20)
+        text_list = self.tokenizer.batch_decode(input_ids[:, start_idx:], **self.tokenizer_kwargs)
         for i, text in enumerate(text_list):
             if self.is_done[i]:
                 continue

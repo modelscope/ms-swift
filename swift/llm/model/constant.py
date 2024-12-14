@@ -139,6 +139,7 @@ class MLLMModelType:
     llama3_llava_next = 'llama3_llava_next'
 
     deepseek_vl = 'deepseek_vl'
+    deepseek_vl2 = 'deepseek_vl2'
     deepseek_janus = 'deepseek_janus'
 
     minicpmv = 'minicpmv'
