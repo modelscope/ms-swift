@@ -246,7 +246,7 @@ def safe_snapshot_download(model_id_or_path: str,
     if not download_model:
         ignore_file_pattern += ['*.bin', '*.safetensors']
     hub = get_hub(use_hf)
-    model_id_or_path = model_id_or_path.split(':', 1)  # ignore ':sub_folder'
+    model_id_or_path = model_id_or_path.split(':', 1)  # get sub_folder
     if len(model_id_or_path) == 1:
         model_id_or_path = [model_id_or_path, None]
     model_id_or_path, sub_folder = model_id_or_path
