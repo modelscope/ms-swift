@@ -111,7 +111,7 @@ def get_model_tokenizer_molmoe(model_dir: str,
         forward_origin = model._old_forward
 
         def _forward(*args, **kwargs):
-            if 'append_last_valid_logits' in kwargs:
+            if kwargs.get('append_last_valid_logits') is not None:
                 kwargs['append_last_valid_logits'] = kwargs['append_last_valid_logits'].to(device)
             return forward_origin(*args, **kwargs)
 
@@ -152,7 +152,7 @@ def get_model_tokenizer_molmo(model_dir: str,
         forward_origin = model.model.forward
 
         def _forward(*args, **kwargs):
-            if 'append_last_valid_logits' in kwargs:
+            if kwargs.get('append_last_valid_logits') is not None:
                 kwargs['append_last_valid_logits'] = kwargs['append_last_valid_logits'].to(device)
             return forward_origin(*args, **kwargs)
 

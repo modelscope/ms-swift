@@ -61,8 +61,6 @@ class RowPreprocessor:
             messages = messages[1:]
         if messages and messages[0]['role'] == 'assistant':
             messages = [{'role': 'user', 'content': ''}] + messages  # pretrain
-        if len(messages) % 2 == 1:
-            raise ValueError(f'len(messages): {len(messages)}')
         for user_message, assistant_message in zip(messages[::2], messages[1::2]):
             if (user_message['role'] not in {'user', 'tool'} or 'content' not in user_message
                     or user_message['content'] is None):
@@ -127,6 +125,8 @@ class RowPreprocessor:
                 if k not in batched:
                     batched[k] = [None] * i
                 batched[k].append(v)
+        # Make all the lengths of v the same.
+        batched = {k: v + [None] * (len(rows) - len(v)) for k, v in batched.items()}
         return batched
 
     @staticmethod
@@ -237,7 +237,7 @@ class RowPreprocessor:
         dataset: DATASET_TYPE,
         *,
         num_proc: int = 1,
-        strict: bool = True,
+        strict: bool = False,
         load_from_cache_file: bool = False,
         batch_size: int = 1000,
     ) -> DATASET_TYPE:
@@ -465,7 +465,7 @@ class AutoPreprocessor:
         dataset: DATASET_TYPE,
         *,
         num_proc: int = 1,
-        strict: bool = True,
+        strict: bool = False,
         load_from_cache_file: bool = False,
     ) -> DATASET_TYPE:
         dataset = RowPreprocessor.safe_rename_columns(dataset, self.columns_mapping)

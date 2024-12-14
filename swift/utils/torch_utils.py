@@ -156,17 +156,16 @@ def _find_layers(model: nn.Module, cond: Callable[[str, nn.Module], bool]) -> Li
     # The content of target_module_names cannot exist in inner_nodes.
     inner_nodes = set()
     for name, module in model.named_modules():
-        name = re.sub(r'\d+', '{}', name)
+        name = re.sub(r'\d+\.', '{}.', name)
         if not cond(name, module):
             inner_nodes.add(name)
     target_module_names = set()
     for name, module in model.named_modules():
         if cond(name, module):
-            name = re.sub(r'\d+', '{}', name)
             module_name_list = name.split('.')
             module_name = module_name_list.pop()
             for inner_node in inner_nodes:
-                while inner_node.endswith(module_name):
+                while module_name_list and inner_node.endswith(re.sub(r'\d+\.', '{}.', module_name)):
                     module_name = f'{module_name_list.pop()}.{module_name}'
             target_module_names.add(module_name)
     return list(target_module_names)
@@ -222,10 +221,12 @@ def find_all_linears(model: nn.Module) -> List[str]:
     else:
         linear_cls = [nn.Linear]
 
-    # 'score': classification model and reward model
+    # 'score': classification model
+    # 'v_head': reward model
+    ignore_layers = [lm_head_name, 'score', 'v_head']
     return _find_layers(
         model, lambda name, module: isinstance(module, tuple(linear_cls)) and all(layer not in name
-                                                                                  for layer in [lm_head_name, 'score']))
+                                                                                  for layer in ignore_layers))
 
 
 @contextmanager

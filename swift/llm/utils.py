@@ -58,7 +58,7 @@ def set_generation_config(model: nn.Module, generation_config: GenerationConfig)
     old_generation_config = getattr(model, 'generation_config', None)
     old_generation_priority_config = ['no_repeat_ngram_size', 'num_beams']
     if old_generation_config is not None:
-        for k, old_v in old_generation_config.__dict__.items():
+        for k, old_v in dir(old_generation_config).items():
             if k.startswith('_'):
                 continue
             v = getattr(generation_config, k, None)

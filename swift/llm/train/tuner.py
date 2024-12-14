@@ -60,6 +60,7 @@ def get_multimodal_target_regex(model_arch,
     else:
         modules += model_arch.aligner
 
+    assert len(modules) > 0, f'modules: {modules}'
     prefix_pattern = '|'.join(modules)
     rejected_pattern = '|'.join(rejected_modules)
 
@@ -72,7 +73,9 @@ def get_multimodal_target_regex(model_arch,
         ignore_pattern += model_arch.lm_head or []
     ignore_pattern = '|'.join(ignore_pattern)
 
-    target_regex = f'^({prefix_pattern})(?!.*({ignore_pattern})).*'
+    target_regex = f'^({prefix_pattern})'
+    if ignore_pattern:
+        target_regex += f'(?!.*({ignore_pattern})).*'
     if rejected_pattern:
         target_regex = f'(?!^({rejected_pattern}))' + target_regex
     return target_regex
@@ -133,7 +136,7 @@ def get_vera_target_modules(model, config):
     return config
 
 
-def prepare_adapter(args: TrainArguments, model):
+def prepare_adapter(args: TrainArguments, model, template=None, train_dataset=None):
     from swift.tuners import (AdaLoraConfig, AdapterConfig, BOFTConfig, LLaMAProConfig, LongLoRAModelType, LoraConfig,
                               LoRAConfig, ReftConfig, Swift, VeraConfig)
     target_modules = get_target_modules(args, model)
@@ -158,7 +161,30 @@ def prepare_adapter(args: TrainArguments, model):
             logger.info(f'lora_config: {lora_config}')
         elif args.tuner_backend == 'peft':
             lora_config = LoraConfig(task_type='CAUSAL_LM', lora_dtype=args.lora_dtype, **lora_kwargs)
-            model = Swift.prepare_model(model, lora_config)
+            if args.init_weights == 'lora-ga':
+                try:
+                    import lora_ga
+                except ImportError as e:
+                    error_message = """
+                    Since 'LoRA-GA' is not implemented by PEFT, you will need to install it directly from GitHub.
+                    Command: 'pip install git+https://github.com/lxline/LoRA-GA.git'.
+                    """
+                    logger.info(error_message)
+                    raise RuntimeError(error_message) from e
+                model = lora_ga.entrypoint.get_lora_ga_model(
+                    model=model,
+                    data_collator=template.data_collator,
+                    dataset=train_dataset,
+                    batch_size=args.lora_ga_batch_size,
+                    num_iters=args.lora_ga_iters,
+                    max_length=args.lora_ga_max_length,
+                    direction=args.lora_ga_direction,
+                    dtype=args.lora_dtype,
+                    scale=args.lora_ga_scale,
+                    stable_gamma=args.lora_ga_stable_gamma,
+                )
+            else:
+                model = Swift.prepare_model(model, lora_config)
             logger.info(f'lora_config: {lora_config}')
         elif args.tuner_backend == 'unsloth':
             if args.resume_from_checkpoint is None:
@@ -300,73 +326,76 @@ def torchacc_resume_from_checkpoint(args, model):
             logger.warning(f'There were unexpected keys in the checkpoint model loaded: {load_result.unexpected_keys}.')
 
 
-def prepare_model(args: TrainArguments, model):
-    if args.use_liger:
-        # Apply liger
-        apply_liger(args.model_type)
+class TunerMixin:
 
-    if args.is_adapter:
-        # Fix the name of the layer in xcomposer that contains Plora.
-        model.requires_grad_(False)
-        if args.resume_from_checkpoint:
-            if args.train_type in extra_tuners:
-                tuner: Tuner = extra_tuners[args.train_type]
-                model = tuner.from_pretrained(model, args.resume_from_checkpoint)
+    @classmethod
+    def prepare_model(cls, args: TrainArguments, model, template=None, train_dataset=None):
+        if args.use_liger:
+            # Apply liger
+            apply_liger(args.model_type)
+
+        if args.is_adapter:
+            # Fix the name of the layer in xcomposer that contains Plora.
+            model.requires_grad_(False)
+            if args.resume_from_checkpoint:
+                if args.train_type in extra_tuners:
+                    tuner: Tuner = extra_tuners[args.train_type]
+                    model = tuner.from_pretrained(model, args.resume_from_checkpoint)
+                else:
+                    kwargs = {}
+                    if use_torchacc():
+                        kwargs = {'adapter_name': 'default'}
+                    model = Swift.from_pretrained(model, args.resume_from_checkpoint, is_trainable=True, **kwargs)
             else:
-                kwargs = {}
-                if use_torchacc():
-                    kwargs = {'adapter_name': 'default'}
-                model = Swift.from_pretrained(model, args.resume_from_checkpoint, is_trainable=True, **kwargs)
+                if args.train_type in extra_tuners:
+                    tuner: Tuner = extra_tuners[args.train_type]
+                    model = tuner.prepare_model(args, model)
+                else:
+                    model = prepare_adapter(args, model, template, train_dataset)
+            # fix bug: Attempting to unscale FP16 gradients.
+            #   peft: https://github.com/huggingface/peft/issues/1249
+            for p in model.parameters():
+                if p.requires_grad and p.dtype == torch.float16:
+                    logger.info_once('Convert trainable parameters from fp16 to fp32.')
+                    p.data = p.data.to(dtype=torch.float32)
+        elif args.train_type == 'full':
+            model.train()
+            model.requires_grad_(True)
+
+            freeze_parameters(model, args.freeze_parameters_ratio, args.freeze_parameters)
+            if len(args.trainable_parameters) > 0:
+                activate_parameters(model, args.trainable_parameters)
+            if use_torchacc() and args.resume_from_checkpoint:
+                torchacc_resume_from_checkpoint(args, model)
         else:
-            if args.train_type in extra_tuners:
-                tuner: Tuner = extra_tuners[args.train_type]
-                model = tuner.prepare_model(args, model)
-            else:
-                model = prepare_adapter(args, model)
-        # fix bug: Attempting to unscale FP16 gradients.
-        #   peft: https://github.com/huggingface/peft/issues/1249
-        for p in model.parameters():
-            if p.requires_grad and p.dtype == torch.float16:
-                logger.info_once('Convert trainable parameters from fp16 to fp32.')
-                p.data = p.data.to(dtype=torch.float32)
-    elif args.train_type == 'full':
-        model.train()
-        model.requires_grad_(True)
+            raise ValueError(f'args.train_type: {args.train_type}')
 
-        freeze_parameters(model, args.freeze_parameters_ratio, args.freeze_parameters)
-        if len(args.trainable_parameters) > 0:
-            activate_parameters(model, args.trainable_parameters)
-        if use_torchacc() and args.resume_from_checkpoint:
-            torchacc_resume_from_checkpoint(args, model)
-    else:
-        raise ValueError(f'args.train_type: {args.train_type}')
+        if args.resume_only_model:
+            args.training_args.resume_from_checkpoint = None
+        if args.use_galore:
+            from swift.trainers.optimizers.galore import GaLoreConfig
+            if args.galore_target_modules is None:
+                args.galore_target_modules = find_all_linears(model)
+            if args.galore_with_embedding:
+                args.galore_target_modules += find_embedding(model)
+            args.galore_config = GaLoreConfig(
+                target_modules=args.galore_target_modules,
+                rank=args.galore_rank,
+                update_proj_gap=args.galore_update_proj_gap,
+                galore_scale=args.galore_scale,
+                proj_type=args.galore_proj_type,
+                optim_per_parameter=args.galore_optim_per_parameter,
+                quantize=args.galore_quantization,
+                proj_quant=args.galore_proj_quant,
+                proj_bits=args.galore_proj_bits,
+                proj_group_size=args.galore_proj_group_size,
+                cos_threshold=args.galore_cos_threshold,
+                gamma_proj=args.galore_gamma_proj,
+                queue_size=args.galore_queue_size,
+            )
 
-    if args.resume_only_model:
-        args.training_args.resume_from_checkpoint = None
-    if args.use_galore:
-        from swift.trainers.optimizers.galore import GaLoreConfig
-        if args.galore_target_modules is None:
-            args.galore_target_modules = find_all_linears(model)
-        if args.galore_with_embedding:
-            args.galore_target_modules += find_embedding(model)
-        args.galore_config = GaLoreConfig(
-            target_modules=args.galore_target_modules,
-            rank=args.galore_rank,
-            update_proj_gap=args.galore_update_proj_gap,
-            galore_scale=args.galore_scale,
-            proj_type=args.galore_proj_type,
-            optim_per_parameter=args.galore_optim_per_parameter,
-            quantize=args.galore_quantization,
-            proj_quant=args.galore_proj_quant,
-            proj_bits=args.galore_proj_bits,
-            proj_group_size=args.galore_proj_group_size,
-            cos_threshold=args.galore_cos_threshold,
-            gamma_proj=args.galore_gamma_proj,
-            queue_size=args.galore_queue_size,
-        )
+        if args.sequence_parallel_size > 1:
+            from swift.trainers.xtuner import dispatch_module_xtuner
+            dispatch_module_xtuner(model)
 
-    if args.sequence_parallel_size > 1:
-        from swift.trainers.xtuner import dispatch_module_xtuner
-        dispatch_module_xtuner(model)
-
-    return model
+        return model

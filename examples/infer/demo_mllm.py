@@ -98,7 +98,7 @@ def get_data(mm_type: Literal['text', 'image', 'video', 'audio']):
 
 if __name__ == '__main__':
     # The inference of the trained model can be referred to as:
-    # https://github.com/modelscope/ms-swift/tree/main/examples/train/notebook
+    # https://github.com/modelscope/ms-swift/tree/main/examples/notebook
     from swift.llm import InferEngine, InferRequest, PtEngine, RequestConfig, load_dataset
     from swift.plugin import InferStats
     infer_backend = 'pt'

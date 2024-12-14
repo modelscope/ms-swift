@@ -309,6 +309,10 @@
     },
     {
         "ms_dataset_id": "swift/Infinity-Instruct",
+        "subsets": ["3M", "7M", "0625", "Gen", "7M_domains"],
+        "columns": {
+            "label": "_"
+        },
         "hf_dataset_id": "BAAI/Infinity-Instruct",
         "tags": ["qa", "quality", "multi-task"],
         "huge_dataset": true

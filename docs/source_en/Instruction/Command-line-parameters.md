@@ -43,7 +43,7 @@ The introduction to command line parameters will cover base arguments, atomic ar
 - 🔥template: Type of dialogue template, which defaults to the template type corresponding to the model. `swift pt` will convert the dialogue template into a generation template for use.
 - 🔥system: Custom system field, default is None, uses the default system of the template.
 - 🔥max_length: Maximum length of tokens for a single sample, default is None (no limit).
-- truncation_strategy: How to handle overly long tokens, supports `delete` and `left`, representing deletion and left trimming, default is left.
+- truncation_strategy: How to handle overly long tokens, supports `delete` and `left`, representing deletion and left trimming, default is 'delete'.
 - 🔥max_pixels: Maximum pixel count for pre-processing images in multimodal models (H*W), default is no scaling.
 - tools_prompt: The list of tools for agent training converted to system format, refer to [Agent Training](./Agent-support.md), default is 'react_en'.
 - loss_scale: How to add token loss weight during training. Default is `'default'`, meaning all responses (including history) are treated as 1 for cross-entropy loss. For specifics, see [Pluginization](../Customization/Pluginization.md) and [Agent Training](./Agent-support.md).
@@ -92,7 +92,7 @@ This parameter list inherits from transformers `Seq2SeqTrainingArguments`, with 
 - 🔥learning_rate: Learning rate, default is 1e-5 for all parameters, and 1e-4 for the tuner.
 - lr_scheduler_type: LR scheduler type, default is cosine.
 - lr_scheduler_kwargs: Other parameters for the LR scheduler.
-- 🔥gradient_checkpointing_kwargs: Parameters passed to `torch.utils.checkpoint`. For example, set to `{"use_reentrant": false}`.
+- 🔥gradient_checkpointing_kwargs: Parameters passed to `torch.utils.checkpoint`. For example, set to `--gradient_checkpointing_kwargs '{"use_reentrant": false}'`.
 - report_to: Default is `tensorboard`.
 - remove_unused_columns: Default is False.
 - logging_first_step: Whether to log the first step print, default is True.
@@ -127,7 +127,7 @@ Other important parameters:
 - 🔥freeze_llm: Freeze LLM. Default is False. Applicable for full parameters and LoRA.
 - 🔥freeze_vit: Freeze ViT. Default is True. Applicable for full parameters and LoRA.
 - 🔥freeze_aligner: Freeze aligner. Default is True, applicable for full parameters and LoRA.
-- 🔥target_modules: Specify the LoRA module, default is `all-linear`, automatically finds linear layers except for lm_head and attaches the tuner. This parameter is not limited to LoRA.
+- 🔥target_modules: The specified LoRA module defaults to `all-linear`. This behavior differs in LLM and multimodal LLM. If it is LLM, it will automatically search for linear except lm_head and attach tuner. If it is multimodal LLM, it defaults to attach tuner only on LLM, and this behavior can be controlled by `freeze_llm`, `freeze_vit`, `freeze_aligner`. This parameter is not limited to LoRA.
 - 🔥target_regex: Specify a regex expression for the LoRA module. Default is `None`, if this value is provided, target_modules does not take effect. This parameter is not limited to LoRA.
 - 🔥init_weights: The method of init tuner weights, For lora the accepted values are `true`, `false`, `guassian`, `pissa`, `pissa_niter_[number of iters]`, for bone are `true`, `false`, `bat`, default is `true`
 - modules_to_save: After the tuner is attached, the original model's modules used during training and storage, default is `[]`. This parameter is not limited to LoRA.
@@ -148,6 +148,15 @@ Other important parameters:
 - 🔥use_dora: Default is `False`, whether to use `DoRA`.
 - use_rslora: Default is `False`, whether to use `RS-LoRA`.
 - 🔥lorap_lr_ratio: LoRA+ parameter, default value is `None`, recommended values `10~16`, specifying this parameter allows using lora+ when using LoRA.
+- init_weights: Weight initialization method, applicable to supported Tuners. The default value is `true`.
+
+##### LoRA-GA
+- lora_ga_batch_size: The default value is `2`. The batch size used for estimating gradients during initialization in LoRA-GA.
+- lora_ga_iters: The default value is `2`. The number of iterations for estimating gradients during initialization in LoRA-GA.
+- lora_ga_max_length: The default value is `1024`. The maximum input length for estimating gradients during initialization in LoRA-GA.
+- lora_ga_direction: The default value is `ArB2r`. The initial direction used for gradient estimation during initialization in LoRA-GA. Allowed values are: `ArBr`, `A2rBr`, `ArB2r`, and `random`.
+- lora_ga_scale: The default value is `stable`. The scaling method for initialization in LoRA-GA. Allowed values are: `gd`, `unit`, `stable`, and `weightS`.
+- lora_ga_stable_gamma: The default value is `16`. The gamma value when choosing `stable` scaling for initialization.
 
 #### FourierFt
 

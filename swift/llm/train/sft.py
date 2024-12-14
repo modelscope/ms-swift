@@ -18,12 +18,12 @@ from ..infer import prepare_generation_config
 from ..model import get_model_arch, get_model_tokenizer
 from ..template import get_template
 from ..utils import deep_getattr, dynamic_gradient_checkpointing
-from .tuner import prepare_model
+from .tuner import TunerMixin
 
 logger = get_logger()
 
 
-class SwiftSft(SwiftPipeline):
+class SwiftSft(SwiftPipeline, TunerMixin):
     args_class = TrainArguments
     args: args_class
 
@@ -110,6 +110,7 @@ class SwiftSft(SwiftPipeline):
         self.template = template
 
     def _get_dataset(self):
+        # The random shuffling of the training set occurs in the dataloader of the trainer.
         args = self.args
         dataset_kwargs = args.get_dataset_kwargs()
         train_dataset, val_dataset = load_dataset(
@@ -141,14 +142,14 @@ class SwiftSft(SwiftPipeline):
 
         train_dataset, val_dataset = self._get_dataset()
         train_dataset, val_dataset = self._encode_dataset(train_dataset, val_dataset)
-        # Some tuners require train_dataset for preparation: LoRA-GA
-        self.model = prepare_model(self.args, self.model)
+        data_collator = self._get_data_collator()
+        # Some tuners require train_dataset and data_collator for preparation: LoRA-GA
+        self.model = self.prepare_model(self.args, self.model, self.template, train_dataset)
         logger.info(f'model: {self.model}')
         model_parameter_info = get_model_parameter_info(self.model)
         self.train_msg['model_parameter_info'] = model_parameter_info
         logger.info(f'model_parameter_info: {model_parameter_info}')
 
-        data_collator = self._get_data_collator()
         optimizers = self._get_optimizers(train_dataset)
 
         trainer_cls = TrainerFactory.get_trainer_cls(args)
@@ -268,19 +269,19 @@ class SwiftSft(SwiftPipeline):
                 val_dataset = LazyLLMDataset(
                     val_dataset, template.encode, strict=args.strict, random_state=args.data_seed)
         else:
-            kwargs = {}
-            if isinstance(train_dataset, HfIterableDataset) and args.model_meta.is_multimodal:
-                kwargs['batch_size'] = 64
             preprocessor_cls = PackingPreprocessor if args.packing else EncodePreprocessor
             preprocessor = preprocessor_cls(template=template)
             train_dataset = preprocessor(
-                train_dataset, num_proc=args.dataset_num_proc, load_from_cache_file=args.load_from_cache_file, **kwargs)
+                train_dataset,
+                num_proc=args.dataset_num_proc,
+                strict=args.strict,
+                load_from_cache_file=args.load_from_cache_file)
             if val_dataset is not None and not args.predict_with_generate:
                 val_dataset = preprocessor(
                     val_dataset,
                     num_proc=args.dataset_num_proc,
-                    load_from_cache_file=args.load_from_cache_file,
-                    **kwargs)
+                    strict=args.strict,
+                    load_from_cache_file=args.load_from_cache_file)
 
         inputs = train_dataset[0] if hasattr(train_dataset, '__len__') else next(iter(train_dataset))
         template.print_inputs(inputs, tokenizer_kwargs=inputs.pop('tokenizer_kwargs', None) or {})

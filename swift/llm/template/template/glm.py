@@ -47,8 +47,6 @@ class GLM4VTemplate(Template):
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
-        if len(encoded) == 0:
-            return encoded
         input_ids = encoded['input_ids']
         labels = encoded['labels']
         idx_list = findall(input_ids, -100)
@@ -102,8 +100,6 @@ class CogTemplate(Template):
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
         model = self.model
-        if len(encoded) == 0:
-            return encoded
         image = inputs.images or []
         history_inputs = inputs.to_history()
         inputs2 = model.build_conversation_input_ids(
@@ -172,8 +168,6 @@ class Cog2VideoTemplate(CogTemplate):
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         model = self.model
         encoded = super(CogTemplate, self)._encode(inputs)
-        if len(encoded) == 0:
-            return encoded
         videos_path = inputs.videos or []
         video = load_batch(videos_path, load_video_cogvlm2)
         history_inputs = inputs.to_history()
@@ -213,8 +207,6 @@ class GLMEdgeVTemplate(Template):
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
-        if len(encoded) == 0:
-            return encoded
         images = inputs.images
         if images:
             encoded['pixel_values'] = torch.tensor(self.processor(images).pixel_values)

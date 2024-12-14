@@ -9,6 +9,7 @@ In addition to installing SWIFT, you need to install the following dependencies:
 ```bash
 # For awq quantization:
 # The versions of autoawq and cuda are related, please choose according to `https://github.com/casper-hansen/AutoAWQ`
+# If there is a torch dependency conflict, please add the `--no-deps` option.
 pip install autoawq -U
 
 # For gptq quantization:
