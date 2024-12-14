@@ -115,6 +115,7 @@ class MLLMModelType:
     xcomposer2 = 'xcomposer2'
     xcomposer2_4khd = 'xcomposer2_4khd'
     xcomposer2_5 = 'xcomposer2_5'
+    xcomposer2_5_ol_audio = 'xcomposer2_5_ol_audio'
 
     llama3_2_vision = 'llama3_2_vision'
     llama3_1_omni = 'llama3_1_omni'
