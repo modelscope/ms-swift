@@ -101,6 +101,7 @@ def get_data(mm_type: Literal['text', 'image', 'video', 'audio']):
     data['messages'] = messages
     return data
 
+
 def run_client(host: str = '127.0.0.1', port: int = 8000):
     engine = InferClient(host=host, port=port)
     print(f'models: {engine.models}')
@@ -108,6 +109,7 @@ def run_client(host: str = '127.0.0.1', port: int = 8000):
     infer_stream(engine, InferRequest(messages=[get_message(mm_type='video')]))
     # This writing is equivalent to the above writing.
     infer_stream(engine, InferRequest(**get_data(mm_type='video')))
+
 
 if __name__ == '__main__':
     from swift.llm import (InferEngine, InferRequest, InferClient, RequestConfig, load_dataset, run_deploy,

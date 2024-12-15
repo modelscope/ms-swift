@@ -123,13 +123,15 @@ class ModelArguments:
     def _init_ckpt_dir(self):
         model_dirs = self.adapters + [self.model]
         self.ckpt_dir = None
-        for model_dir  in model_dirs:
+        for model_dir in model_dirs:
             if os.path.exists(os.path.join(model_dir, 'args.json')):
                 self.ckpt_dir = model_dir
                 break
 
     def __post_init__(self):
-        self.adapters = [safe_snapshot_download(adapter, use_hf=self.use_hf, hub_token=self.hub_token) for adapter in self.adapters]
+        self.adapters = [
+            safe_snapshot_download(adapter, use_hf=self.use_hf, hub_token=self.hub_token) for adapter in self.adapters
+        ]
         self._init_ckpt_dir()
         if self.model is None:
             raise ValueError(f'Please set --model <model_id_or_path>`, model: {self.model}')
@@ -140,11 +142,10 @@ class ModelArguments:
     def _load_args_from_ckpt(self, checkpoint_dir: str) -> None:
         if self.ckpt_dir is None:
             return
-        
+
         args_path = os.path.join(checkpoint_dir, 'args.json')
         with open(args_path, 'r', encoding='utf-8') as f:
             old_args = json.load(f)
-
 
     @classmethod
     def load_args(cls, checkpoint_dir: str) -> Optional['BaseArguments']:
@@ -159,7 +160,6 @@ class ModelArguments:
             if k in all_keys:
                 kwargs[k] = v
         return cls(**kwargs)
-
 
     def get_model_kwargs(self):
         return {
