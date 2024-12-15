@@ -3,6 +3,7 @@ import gc
 import math
 import os
 import time
+from torch.nn.utils.rnn import pad_sequence
 from dataclasses import dataclass
 from typing import Optional, Union, Dict, Tuple, List
 from collections import defaultdict
@@ -76,7 +77,6 @@ def generate(
         return_dict_in_generate=True,
         output_scores=True,
         stopping_criteria=StoppingCriteriaList([StopWordsCriteria(tokenizer, ['Observation:', '<|im_end|>', '<|endoftext|>', '\nObservation:'])]),
-
     )
     logits = torch.stack(output.scores, 1)
     return torch.cat((queries, output.sequences[:, context_length:]), dim=1), logits
@@ -95,6 +95,7 @@ def batch_generation(
     logitss = []
     for i in range(0, queries.shape[0], local_rollout_forward_batch_size):
         query = queries[i : i + local_rollout_forward_batch_size]
+        query = query.to('cuda:0')
         query_response, logits = generate(
             model,
             query,
@@ -354,6 +355,8 @@ class RLFTTrainer(PPOTrainer):
                         mb_values = rollout_state.values[micro_batch_inds]
 
                         output, vpred_temp = forward(model, mb_query_responses, tokenizer.pad_token_id)
+                        if update < 0:
+                            output.logits = output.logits.detach()
                         logits = output.logits[:, rollout_state.context_length - 1: -1]
                         logits /= args.temperature + 1e-7
                         new_all_logprobs = F.log_softmax(logits, dim=-1)
@@ -382,7 +385,7 @@ class RLFTTrainer(PPOTrainer):
                         pg_loss_max = torch.max(pg_losses, pg_losses2)
                         pg_loss = masked_mean(pg_loss_max, ~rollout_state.padding_mask[micro_batch_inds])
                         loss = pg_loss + args.vf_coef * vf_loss
-                        print('==================>vf_loss:', vf_loss, 'loss', loss)
+                        # print('==================>vf_loss:', vf_loss, 'loss', loss, 'scores', rollout_state.scores)
                         accelerator.backward(loss)
                         optimizer.step()
                         optimizer.zero_grad()
@@ -459,14 +462,56 @@ class RLFTTrainer(PPOTrainer):
             sequence_lengths = []
             values = []
             with unwrap_model_for_generation(model, self.accelerator) as unwrapped_model:
-                query_responses, logitss = batch_generation(
-                    unwrapped_model.policy,
-                    queries,
-                    args.local_rollout_forward_batch_size,
-                    tokenizer.pad_token_id,
-                    generation_config,
-                    self.tokenizer,
-                )
+                generated_queries = []
+                ground_truth_queries = []
+                gt_index = []
+                for i in range(queries.shape[0]):
+                    if np.random.random() <= 1.0:
+                        generated_queries.append(queries[i])
+                    else:
+                        gt_index.append(i)
+                        ground_truth_queries.append(queries[i])
+                print('gt_index', gt_index)
+                query_responses = []
+                logitss = []
+                if generated_queries:
+                    query_responses, logitss = batch_generation(
+                        unwrapped_model.policy,
+                        torch.stack(generated_queries, dim=0),
+                        args.local_rollout_forward_batch_size,
+                        tokenizer.pad_token_id,
+                        generation_config,
+                        self.tokenizer,
+                    )
+                query_responses_gt = []
+                logitss_gt = []
+                if ground_truth_queries:
+                    ground_truth_tokens = [self.tokenizer.encode(gt, add_special_tokens=False) for i, gt in enumerate(data["ground_truth"]) if i in gt_index]
+                    ground_truth_qr = []
+                    for query, ground_truth in zip(ground_truth_queries, ground_truth_tokens):
+                        ground_truth_qr.append(torch.cat((query, torch.tensor(ground_truth).to(query.device)), dim=0))
+                    query_responses_gt = pad_sequence(ground_truth_qr, batch_first=True, padding_value=self.tokenizer.pad_token_id)
+                    query_responses_gt = query_responses_gt.to(device)
+                    gt_outputs = forward(unwrapped_model.policy, query_responses_gt, tokenizer.pad_token_id)
+                    logitss_gt = gt_outputs.logits[:, context_length - 1: -1]
+                    logitss_gt /= args.temperature + 1e-7
+
+                qrs = []
+                lts = []
+                gti = 0
+                gei = 0
+                for i in range(queries.shape[0]):
+                    if i in gt_index:
+                        qrs.append(query_responses_gt[gti])
+                        lts.append(logitss_gt[gti])
+                        gti += 1
+                    else:
+                        qrs.append(query_responses[gei])
+                        lts.append(logitss[gei])
+                        gei += 1
+                    
+                query_responses = pad_sequence(qrs, batch_first=True, padding_value=self.tokenizer.pad_token_id)
+                logitss = pad_sequence(lts, batch_first=True, padding_value=INVALID_LOGPROB)
 
             for i in range(0, queries.shape[0], args.local_rollout_forward_batch_size):
                 query = queries[i: i + args.local_rollout_forward_batch_size]
@@ -716,8 +761,8 @@ class RLFTTrainer(PPOTrainer):
 
         table = defaultdict(list)
         with unwrap_model_for_generation(self.model, self.accelerator) as unwrapped_model:
-            for batch in self.eval_dataloader:
-                query = batch["input_ids"]
+            for batch in self.dataloader:
+                query = batch["input_ids"].to('cuda:0')
                 with torch.no_grad():
                     context_length = query.shape[1]
                     query_response, _ = batch_generation(
@@ -736,6 +781,8 @@ class RLFTTrainer(PPOTrainer):
                         )
                     table["query"].extend(gather_object(tokenizer.batch_decode(query, skip_special_tokens=True)))
                     table["model response"].extend(gather_object(tokenizer.batch_decode(postprocessed_response)))
+                    if 'ground_truth' in batch:
+                        table["grounding truth"].extend(batch['ground_truth'])
 
                     postprocessed_query_response = torch.cat((query, postprocessed_response), 1)
                     _, score, _ = self.get_reward(

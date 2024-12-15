@@ -372,6 +372,7 @@ class ToolBenchPreprocessor(MessagesPreprocessor):
                     new_row['messages'] = new_row['messages'][:i]
                     new_row['ground_truth'] = message['content']
                     all_rows.append(new_row)
+                    break
         return all_rows
 
 

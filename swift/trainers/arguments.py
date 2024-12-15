@@ -58,6 +58,9 @@ class SwiftArgumentsMixin:
         if hasattr(self, 'output_dir'):
             self.output_dir = os.path.abspath(os.path.expanduser(self.output_dir))
         self._fix_gradient_checkpointing()
+        from swift.utils import get_dist_setting
+        _, _, world_size, _ = get_dist_setting()
+        self.world_size = world_size
         super().__post_init__()
 
     @property

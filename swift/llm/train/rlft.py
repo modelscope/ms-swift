@@ -3,8 +3,8 @@ import json
 from typing import List, Union
 import torch
 from rouge import Rouge
+from swift.llm.train.tuner import prepare_adapter
 
-from .tuner import prepare_model
 from ..argument import RLFTArguments
 from .sft import SwiftSft
 from swift.utils import get_logger, get_model_parameter_info
@@ -73,7 +73,14 @@ class SwiftRLFT(SwiftSft):
                     except:
                         f1.append(0.0)
 
-        return f1[0]* 10 if f1[0] in (0.0, 1.0) else 1
+        if f1[0] == 1.0:
+            return 2.0
+        elif f1[0] == 0.0:
+            return -1.0
+        elif 0.0 < f1[0] < 1.0:
+            return 0.5
+        else:
+            raise
 
     def parse_action(self, text):
         if 'Action Input:' in text:
@@ -97,12 +104,12 @@ class SwiftRLFT(SwiftSft):
         return action, action_input
 
     def get_reward(self, model, batch, query_responses, pad_token_id, context_length):
-        action_ref = []
-        action_input_ref = []
-        action_pred = []
-        action_input_pred = []
         rewards = []
         for ground_truth, query_response in zip(batch['ground_truth'], query_responses):
+            action_ref = []
+            action_input_ref = []
+            action_pred = []
+            action_input_pred = []
             reference = ground_truth
             prediction = query_response[context_length:]
             prediction = self.tokenizer.decode(prediction)
@@ -178,7 +185,7 @@ class SwiftRLFT(SwiftSft):
         from copy import deepcopy
         # Some tuners require train_dataset for preparation: LoRA-GA
         ref_model = deepcopy(self.model)
-        self.model = prepare_model(self.args, self.model)
+        self.model = prepare_adapter(self.args, self.model)
         logger.info(f'model: {self.model}')
         model_parameter_info = get_model_parameter_info(self.model)
         self.train_msg['model_parameter_info'] = model_parameter_info
@@ -190,9 +197,15 @@ class SwiftRLFT(SwiftSft):
         value_model = AutoModelForSequenceClassification.from_pretrained(
             args.model, trust_remote_code=True, num_labels=1
         )
+        # Test code
+        reward_model = AutoModelForSequenceClassification.from_pretrained(
+            args.model, trust_remote_code=True, num_labels=1
+        )
         value_model.model_meta = self.model.model_meta
         value_model.model_info = self.model.model_info
         value_model.config.pad_token_id = self.template.processor.eos_token_id
+        value_model = prepare_adapter(self.args, value_model, task='SEQ_CLS')
+        # value_model.to('cuda:1')
         # from swift.utils.torch_utils import freeze_parameters
         # freeze_parameters(value_model, 0.85, freeze_parameters=[])
         # value_model.score.requires_grad = True
@@ -209,10 +222,11 @@ class SwiftRLFT(SwiftSft):
             train_dataset=train_dataset,
             eval_dataset=val_dataset,
             value_model=value_model,
+            reward_model=reward_model,
             callbacks=self.callbacks,
             optimizers=optimizers,
             template=self.template,
-            **reward_func_kwargs,
+            #**reward_func_kwargs,
             **self._get_trainer_kwargs(),
         )
         return self.train(trainer)

@@ -136,7 +136,7 @@ def get_vera_target_modules(model, config):
     return config
 
 
-def prepare_adapter(args: TrainArguments, model, template=None, train_dataset=None):
+def prepare_adapter(args: TrainArguments, model, template=None, train_dataset=None, task='CAUSAL_LM'):
     from swift.tuners import (AdaLoraConfig, AdapterConfig, BOFTConfig, LLaMAProConfig, LongLoRAModelType, LoraConfig,
                               LoRAConfig, ReftConfig, Swift, VeraConfig)
     target_modules = get_target_modules(args, model)
@@ -152,6 +152,7 @@ def prepare_adapter(args: TrainArguments, model, template=None, train_dataset=No
         'use_dora': args.use_dora,
         'lorap_lr_ratio': args.lorap_lr_ratio,
         'init_lora_weights': args.init_weights,
+        'task_type': task,
     }
 
     if args.train_type in ('lora', 'longlora'):
@@ -160,7 +161,7 @@ def prepare_adapter(args: TrainArguments, model, template=None, train_dataset=No
             model = Swift.prepare_model(model, lora_config)
             logger.info(f'lora_config: {lora_config}')
         elif args.tuner_backend == 'peft':
-            lora_config = LoraConfig(task_type='CAUSAL_LM', lora_dtype=args.lora_dtype, **lora_kwargs)
+            lora_config = LoraConfig(lora_dtype=args.lora_dtype, **lora_kwargs)
             if args.init_weights == 'lora-ga':
                 try:
                     import lora_ga

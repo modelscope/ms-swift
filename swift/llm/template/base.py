@@ -866,7 +866,8 @@ class Template(ProcessorMixin):
             label = [b['label'] for b in batch if b.get('label') is not None]
             if label:
                 res['label'] = label
-        res['ground_truth'] = [b['ground_truth'] for b in batch]
+        if 'ground_truth' in batch[0]:
+            res['ground_truth'] = [b['ground_truth'] for b in batch]
         if use_torchacc() or self.sequence_parallel_size > 1:
             res = self._torchacc_xtuner_data_collator(res, padding_to, self.tokenizer, padding_side)
         return res
