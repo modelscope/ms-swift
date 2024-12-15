@@ -201,6 +201,7 @@ class MSHub(HubOperation):
 
     @classmethod
     def create_model_repo(cls, repo_id: str, token: Optional[str] = None, private: bool = False) -> str:
+        from modelscope import HubApi
         from modelscope.hub.api import ModelScopeConfig
         from modelscope.hub.constants import ModelVisibility
         assert repo_id is not None, 'Please enter a valid hub_model_id'
@@ -209,7 +210,7 @@ class MSHub(HubOperation):
             raise ValueError('Please specify a token by `--hub_token` or `MODELSCOPE_API_TOKEN=xxx`')
         cls.ms_token = token
         visibility = ModelVisibility.PRIVATE if private else ModelVisibility.PUBLIC
-
+        api = HubApi()
         if '/' not in repo_id:
             user_name = ModelScopeConfig.get_user_info()[0]
             assert isinstance(user_name, str)

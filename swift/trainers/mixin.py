@@ -73,18 +73,19 @@ class SwiftMixin:
             from swift.trainers.xtuner import init_sequence_parallel_xtuner
             init_sequence_parallel_xtuner(args.sequence_parallel_size)
 
-        super().__init__(
-            model=model,
-            args=args,
-            data_collator=data_collator,
-            train_dataset=train_dataset,
-            eval_dataset=eval_dataset,
-            tokenizer=template.tokenizer,
-            model_init=model_init,
-            compute_metrics=compute_metrics,
-            callbacks=callbacks,
-            optimizers=optimizers,
-            preprocess_logits_for_metrics=preprocess_logits_for_metrics)
+        with self.hub.patch_hub():
+            super().__init__(
+                model=model,
+                args=args,
+                data_collator=data_collator,
+                train_dataset=train_dataset,
+                eval_dataset=eval_dataset,
+                tokenizer=template.tokenizer,
+                model_init=model_init,
+                compute_metrics=compute_metrics,
+                callbacks=callbacks,
+                optimizers=optimizers,
+                preprocess_logits_for_metrics=preprocess_logits_for_metrics)
 
         self.compute_loss_func = compute_loss_func
         if get_function(model.__class__.forward) is not get_function(model.forward):
