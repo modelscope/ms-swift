@@ -137,7 +137,7 @@ register_model(
         get_model_tokenizer_internvl,
         architectures=['InternVLChatModel'],
         model_arch=ModelArch.internvl,
-        requires=['transformers>=4.35,<4.45', 'timm'],
+        requires=['transformers>=4.35', 'timm'],
         tags=['vision'],
     ))
 
