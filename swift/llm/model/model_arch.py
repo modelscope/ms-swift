@@ -43,6 +43,8 @@ class MLLMModelArch:
     internvl = 'internvl'
     minicpmv = 'minicpmv'
     deepseek_vl = 'deepseek_vl'
+    deepseek_vl2 = 'deepseek_vl2'
+    deepseek_janus = 'deepseek_janus'
 
     mplug_owl2 = 'mplug_owl2'
     mplug_owl2_1 = 'mplug_owl2_1'
@@ -55,7 +57,6 @@ class MLLMModelArch:
     got_ocr2 = 'got_ocr2'
     ovis1_6 = 'ovis1_6'
     molmo = 'molmo'
-    janus = 'janus'
     emu3_chat = 'emu3_chat'
 
 
@@ -362,6 +363,22 @@ register_model_arch(
 
 register_model_arch(
     MultiModelKeys(
+        MLLMModelArch.deepseek_janus,
+        language_model='language_model',
+        vision_tower='vision_model',
+        aligner='aligner',
+        generator=['gen_vision_model', 'gen_aligner', 'gen_head', 'gen_embed']))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.deepseek_vl2,
+        language_model='language',
+        vision_tower='vision',
+        aligner='projector',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
         MLLMModelArch.minicpmv,
         language_model='llm',
         aligner='resampler',
@@ -471,14 +488,6 @@ register_model_arch(
         language_model='model.transformer',
         vision_tower='model.vision_backbone',
     ))
-
-register_model_arch(
-    MultiModelKeys(
-        MLLMModelArch.janus,
-        language_model='language_model',
-        vision_tower='vision_model',
-        aligner='aligner',
-        generator=['gen_vision_model', 'gen_aligner', 'gen_head', 'gen_embed']))
 
 register_model_arch(MultiModelKeys(MLLMModelArch.emu3_chat, language_model='model'))
 

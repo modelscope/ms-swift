@@ -32,8 +32,8 @@ class SwiftRLHF(SwiftSft):
             self.template.loss_scale = 'last_round'
 
     @classmethod
-    def prepare_model(cls, args, model):
-        model = super().prepare_model(args, model)
+    def prepare_model(cls, args, model, *_args, **kwargs):
+        model = super().prepare_model(args, model, *_args, **kwargs)
         if args.rlhf_type == 'rm':
             from trl import AutoModelForCausalLMWithValueHead
             lm_head_namings = ['lm_head', 'embed_out']

@@ -136,7 +136,7 @@ def get_vera_target_modules(model, config):
     return config
 
 
-def prepare_adapter(args: TrainArguments, model):
+def prepare_adapter(args: TrainArguments, model, template=None, train_dataset=None):
     from swift.tuners import (AdaLoraConfig, AdapterConfig, BOFTConfig, LLaMAProConfig, LongLoRAModelType, LoraConfig,
                               LoRAConfig, ReftConfig, Swift, VeraConfig)
     target_modules = get_target_modules(args, model)
@@ -161,7 +161,30 @@ def prepare_adapter(args: TrainArguments, model):
             logger.info(f'lora_config: {lora_config}')
         elif args.tuner_backend == 'peft':
             lora_config = LoraConfig(task_type='CAUSAL_LM', lora_dtype=args.lora_dtype, **lora_kwargs)
-            model = Swift.prepare_model(model, lora_config)
+            if args.init_weights == 'lora-ga':
+                try:
+                    import lora_ga
+                except ImportError as e:
+                    error_message = """
+                    Since 'LoRA-GA' is not implemented by PEFT, you will need to install it directly from GitHub.
+                    Command: 'pip install git+https://github.com/lxline/LoRA-GA.git'.
+                    """
+                    logger.info(error_message)
+                    raise RuntimeError(error_message) from e
+                model = lora_ga.entrypoint.get_lora_ga_model(
+                    model=model,
+                    data_collator=template.data_collator,
+                    dataset=train_dataset,
+                    batch_size=args.lora_ga_batch_size,
+                    num_iters=args.lora_ga_iters,
+                    max_length=args.lora_ga_max_length,
+                    direction=args.lora_ga_direction,
+                    dtype=args.lora_dtype,
+                    scale=args.lora_ga_scale,
+                    stable_gamma=args.lora_ga_stable_gamma,
+                )
+            else:
+                model = Swift.prepare_model(model, lora_config)
             logger.info(f'lora_config: {lora_config}')
         elif args.tuner_backend == 'unsloth':
             if args.resume_from_checkpoint is None:
@@ -306,7 +329,7 @@ def torchacc_resume_from_checkpoint(args, model):
 class TunerMixin:
 
     @classmethod
-    def prepare_model(cls, args: TrainArguments, model):
+    def prepare_model(cls, args: TrainArguments, model, template=None, train_dataset=None):
         if args.use_liger:
             # Apply liger
             apply_liger(args.model_type)
@@ -328,7 +351,7 @@ class TunerMixin:
                     tuner: Tuner = extra_tuners[args.train_type]
                     model = tuner.prepare_model(args, model)
                 else:
-                    model = prepare_adapter(args, model)
+                    model = prepare_adapter(args, model, template, train_dataset)
             # fix bug: Attempting to unscale FP16 gradients.
             #   peft: https://github.com/huggingface/peft/issues/1249
             for p in model.parameters():
