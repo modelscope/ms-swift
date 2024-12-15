@@ -19,7 +19,7 @@ from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, Ch
                         ChatCompletionStreamResponse, ChatMessage, DeltaMessage, RequestConfig, random_uuid)
 from .infer_engine import InferEngine
 from .patch import patch_auto_config, patch_auto_tokenizer
-from .utils import Adapter, InferStreamer
+from .utils import InferStreamer, AdapterRequest
 
 logger = get_logger()
 dtype_mapping = {torch.float16: 'float16', torch.bfloat16: 'bfloat16', torch.float32: 'float32'}
@@ -188,16 +188,18 @@ class VllmEngine(InferEngine):
                      inputs: Dict[str, Any],
                      generation_config: SamplingParams,
                      request_id: str,
-                     adapter: Optional[Adapter] = None):
+                     adapter_request: Optional[AdapterRequest] = None):
         kwargs = {}
-        if self.enable_lora and adapter:
+        if self.enable_lora and adapter_request:
             from vllm.lora.request import LoRARequest
-            if adapter.name in self._adapters_pool:
-                kwargs['lora_request'] = self._adapters_pool[adapter.name]
+            adapter_name = adapter_request.name
+            adapter_path = adapter_request.path
+            if adapter_name in self._adapters_pool:
+                kwargs['lora_request'] = self._adapters_pool[adapter_name]
             else:
                 kwargs['lora_request'] = LoRARequest(
-                    lora_name=adapter.name, lora_path=adapter.path, lora_int_id=len(self._adapters_pool))
-                self._adapters_pool[adapter.name] = lora_request
+                    lora_name=adapter_name, lora_path=adapter_path, lora_int_id=len(self._adapters_pool))
+                self._adapters_pool[adapter_name] = kwargs['lora_request']
         input_ids = inputs['input_ids']
         if version.parse(vllm.__version__) >= version.parse('0.4.3'):
             llm_inputs = {'prompt_token_ids': input_ids}
@@ -309,9 +311,9 @@ class VllmEngine(InferEngine):
                                 template: Template,
                                 inputs: Dict[str, Any],
                                 generation_config: SamplingParams,
-                                adapter: Optional[Adapter] = None) -> ChatCompletionResponse:
+                                adapter_request: Optional[AdapterRequest] = None) -> ChatCompletionResponse:
         request_id = random_uuid()
-        result_generator = self._add_request(inputs, generation_config, request_id, adapter=adapter)
+        result_generator = self._add_request(inputs, generation_config, request_id, adapter_request=adapter_request)
         result = None
         async for result in result_generator:
             pass
@@ -342,10 +344,15 @@ class VllmEngine(InferEngine):
         *,
         template: Optional[Template] = None,
         use_tqdm: Optional[bool] = None,
-        adapter: Optional[Adapter] = None
+        adapter_request: Optional[AdapterRequest] = None
     ) -> Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
         return super().infer(
-            infer_requests, request_config, metrics, template=template, use_tqdm=use_tqdm, adapter=adapter)
+            infer_requests,
+            request_config,
+            metrics,
+            template=template,
+            use_tqdm=use_tqdm,
+            adapter_request=adapter_request)
 
     @torch.inference_mode()
     async def infer_async(
@@ -354,7 +361,7 @@ class VllmEngine(InferEngine):
         request_config: Optional[RequestConfig] = None,
         *,
         template: Optional[Template] = None,
-        adapter: Optional[Adapter] = None,
+        adapter_request: Optional[AdapterRequest] = None,
     ) -> Union[ChatCompletionResponse, AsyncIterator[ChatCompletionStreamResponse]]:
         request_config = deepcopy(request_config or RequestConfig())
         if template is None:
@@ -366,7 +373,12 @@ class VllmEngine(InferEngine):
         self.set_default_max_tokens(request_config, inputs)
         generation_config = self._prepare_generation_config(request_config)
         self._add_stop_words(generation_config, request_config, template.template_meta)
-        kwargs = {'template': template, 'inputs': inputs, 'generation_config': generation_config, 'adapter': adapter}
+        kwargs = {
+            'template': template,
+            'inputs': inputs,
+            'generation_config': generation_config,
+            'adapter_request': adapter_request
+        }
         for pre_infer_hook in self.pre_infer_hooks:
             kwargs = pre_infer_hook(kwargs)
         if request_config.stream:

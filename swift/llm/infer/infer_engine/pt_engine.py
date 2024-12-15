@@ -19,7 +19,7 @@ from swift.utils import get_logger
 from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                         ChatCompletionStreamResponse, ChatMessage, DeltaMessage, RequestConfig, random_uuid)
 from .infer_engine import InferEngine
-from .utils import InferStreamer, LogitsStreamer, TokensIteratorStreamer, prepare_generation_config, AdapterRequst
+from .utils import AdapterRequest, InferStreamer, LogitsStreamer, TokensIteratorStreamer, prepare_generation_config
 
 logger = get_logger()
 
@@ -136,7 +136,7 @@ class PtEngine(InferEngine):
                       inputs: Dict[str, Any],
                       generation_config: GenerationConfig,
                       *,
-                      adapter_request: Optional[AdapterRequst] = None,
+                      adapter_request: Optional[AdapterRequest] = None,
                       **kwargs) -> Iterator[List[Optional[ChatCompletionStreamResponse]]]:
         generate_kwargs = {}
         if adapter_request is not None:
@@ -235,7 +235,7 @@ class PtEngine(InferEngine):
             if any(res):
                 yield res
 
-    def _get_adapter_names(self, adapter_request: AdapterRequst) -> List[str]:
+    def _get_adapter_names(self, adapter_request: AdapterRequest) -> List[str]:
         adapter_name = adapter_request.name
         if adapter_name not in self._adapters_pool:
             self._adapters_pool[adapter_name] = adapter_request
@@ -247,7 +247,7 @@ class PtEngine(InferEngine):
                     inputs: Dict[str, Any],
                     generation_config: GenerationConfig,
                     *,
-                    adapter_request: Optional[AdapterRequst] = None,
+                    adapter_request: Optional[AdapterRequest] = None,
                     template_inputs=None) -> Union[List[ChatCompletionResponse]]:
         # bos_token TODO: encoder-decoder
         generate_kwargs = {}
@@ -297,12 +297,16 @@ class PtEngine(InferEngine):
         request_config: Optional[RequestConfig] = None,
         *,
         template: Optional[Template] = None,
-        adapter_request: Optional[AdapterRequst] = None,
+        adapter_request: Optional[AdapterRequest] = None,
     ) -> Union[ChatCompletionResponse, AsyncIterator[ChatCompletionStreamResponse]]:
         # TODO:auto batch
         if request_config is None:
             request_config = RequestConfig()
-        res_or_gen = self.infer([infer_request], request_config, template=template, use_tqdm=False, adapter_request=adapter_request)
+        res_or_gen = self.infer([infer_request],
+                                request_config,
+                                template=template,
+                                use_tqdm=False,
+                                adapter_request=adapter_request)
         if request_config.stream:
 
             async def _gen_wrapper():
@@ -320,7 +324,7 @@ class PtEngine(InferEngine):
         metrics: Optional[List[Metric]] = None,
         *,
         template: Optional[Template] = None,
-        adapter_request: Optional[AdapterRequst] = None,
+        adapter_request: Optional[AdapterRequest] = None,
     ) -> Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
         self.model.eval()
         request_config = deepcopy(request_config)
@@ -375,7 +379,7 @@ class PtEngine(InferEngine):
         *,
         template: Optional[Template] = None,
         use_tqdm: Optional[bool] = None,
-        adapter_request: Optional[AdapterRequst] = None
+        adapter_request: Optional[AdapterRequest] = None
     ) -> Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
         if request_config is None:
             request_config = RequestConfig()
@@ -390,7 +394,11 @@ class PtEngine(InferEngine):
                 while i < len(infer_requests):
                     infer_requests_samples = infer_requests[i:i + self.max_batch_size]
                     gen = self._infer(
-                        infer_requests_samples, request_config, metrics, template=template, adapter_request=adapter_request)
+                        infer_requests_samples,
+                        request_config,
+                        metrics,
+                        template=template,
+                        adapter_request=adapter_request)
                     for response in gen:
                         res = [None] * len(infer_requests)
                         res[i:i + self.max_batch_size] = response
@@ -404,7 +412,8 @@ class PtEngine(InferEngine):
             i = 0
             while i < len(infer_requests):
                 infer_requests_samples = infer_requests[i:i + self.max_batch_size]
-                res += self._infer(infer_requests_samples, request_config, metrics, template=template, adapter_request=adapter_request)
+                res += self._infer(
+                    infer_requests_samples, request_config, metrics, template=template, adapter_request=adapter_request)
                 i += self.max_batch_size
                 prog_bar.update(len(infer_requests_samples))
             return res
