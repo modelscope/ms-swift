@@ -229,7 +229,9 @@ register_model(
         [
             ModelGroup([
                 Model('Shanghai_AI_Laboratory/internlm-xcomposer2d5-7b', 'internlm/internlm-xcomposer2d5-7b'),
-            ], ),
+                Model('Shanghai_AI_Laboratory/internlm-xcomposer2d5-ol-7b:base',
+                      'internlm/internlm-xcomposer2d5-ol-7b:base')
+            ]),
         ],
         TemplateType.xcomposer2_5,
         partial(get_model_tokenizer_xcomposer2, version='v2.5'),

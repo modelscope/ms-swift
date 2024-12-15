@@ -1,5 +1,7 @@
 import os
 
+import torch
+
 os.environ['CUDA_VISIBLE_DEVICES'] = '2'
 os.environ['SWIFT_DEBUG'] = '1'
 
@@ -125,10 +127,12 @@ def test_llava_onevision_hf():
 
 
 def test_xcomposer2_5():
-    pt_engine = PtEngine('Shanghai_AI_Laboratory/internlm-xcomposer2d5-7b')
-    _infer_model(pt_engine, system='')
+    pt_engine = PtEngine('Shanghai_AI_Laboratory/internlm-xcomposer2d5-ol-7b:base', torch.float16)
+    # pt_engine = PtEngine('Shanghai_AI_Laboratory/internlm-xcomposer2d5-7b')
+    response = _infer_model(pt_engine, system='')
     pt_engine.default_template.template_backend = 'jinja'
-    _infer_model(pt_engine)
+    response2 = _infer_model(pt_engine)
+    assert response == response2
 
 
 def test_deepseek_vl():
@@ -197,7 +201,7 @@ if __name__ == '__main__':
     # test_ovis1_6()
     # test_yi_vl()
     # test_deepseek_vl()
-    test_deepseek_vl2()
+    # test_deepseek_vl2()
     # test_qwen_vl()
     # test_glm4v()
     # test_minicpmv()
@@ -212,4 +216,4 @@ if __name__ == '__main__':
     # test_phi3_vision()
     # test_internvl2_5()
     # test_mplug_owl3()
-    # test_xcomposer2_5()
+    test_xcomposer2_5()
