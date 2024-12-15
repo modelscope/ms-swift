@@ -4,7 +4,6 @@ from dataclasses import dataclass, field
 from typing import Literal, Optional
 
 from swift.utils import get_logger
-from .adapters_args import AdaptersArguments
 from .base_args import BaseArguments, to_abspath
 from .merge_args import MergeArguments
 
@@ -12,7 +11,7 @@ logger = get_logger()
 
 
 @dataclass
-class ExportArguments(AdaptersArguments, MergeArguments, BaseArguments):
+class ExportArguments(MergeArguments, BaseArguments):
     """
     ExportArguments is a dataclass that inherits from BaseArguments and MergeArguments.
 
@@ -86,8 +85,6 @@ class ExportArguments(AdaptersArguments, MergeArguments, BaseArguments):
             assert not os.path.exists(self.output_dir), f'args.output_dir: {self.output_dir} already exists.'
 
     def __post_init__(self):
-        if self.ckpt_dir:
-            self.ckpt_dir = to_abspath(self.ckpt_dir, True)
         MergeArguments.__post_init__(self)
         BaseArguments.__post_init__(self)
         self._init_output_dir()

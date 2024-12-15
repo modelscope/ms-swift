@@ -113,20 +113,6 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
     def adapters_can_be_merged(self):
         return {'lora', 'longlora', 'llamapro', 'adalora'}
 
-    @classmethod
-    def load_args(cls, checkpoint_dir: str) -> Optional['BaseArguments']:
-        """Load specific attributes from args.json"""
-        args_path = os.path.join(checkpoint_dir, 'args.json')
-        assert os.path.exists(args_path), f'args_path: {args_path}'
-        with open(args_path, 'r', encoding='utf-8') as f:
-            old_args = json.load(f)
-        all_keys = list(f.name for f in fields(cls))
-        kwargs = {}
-        for k, v in old_args.items():
-            if k in all_keys:
-                kwargs[k] = v
-        return cls(**kwargs)
-
     def save_args(self) -> None:
         if is_master():
             os.makedirs(self.output_dir, exist_ok=True)

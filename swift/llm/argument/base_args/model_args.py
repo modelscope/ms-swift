@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Literal, Optional, Union
 import json
 import torch
 
-from swift.llm import MODEL_MAPPING, HfConfigFactory, get_model_info_meta, get_model_name
+from swift.llm import MODEL_MAPPING, HfConfigFactory, get_model_info_meta, get_model_name, safe_snapshot_download
 from swift.utils import get_dist_setting, get_logger
 
 logger = get_logger()
@@ -120,12 +120,46 @@ class ModelArguments:
             self._init_rope_scaling()
         return self.model_info.torch_dtype
 
+    def _init_ckpt_dir(self):
+        model_dirs = self.adapters + [self.model]
+        self.ckpt_dir = None
+        for model_dir  in model_dirs:
+            if os.path.exists(os.path.join(model_dir, 'args.json')):
+                self.ckpt_dir = model_dir
+                break
+
     def __post_init__(self):
+        self.adapters = [safe_snapshot_download(adapter, use_hf=self.use_hf, hub_token=self.hub_token) for adapter in self.adapters]
+        self._init_ckpt_dir()
         if self.model is None:
             raise ValueError(f'Please set --model <model_id_or_path>`, model: {self.model}')
         self.model_suffix = get_model_name(self.model)
         self._init_device_map()
         self._init_torch_dtype()
+
+    def _load_args_from_ckpt(self, checkpoint_dir: str) -> None:
+        if self.ckpt_dir is None:
+            return
+        
+        args_path = os.path.join(checkpoint_dir, 'args.json')
+        with open(args_path, 'r', encoding='utf-8') as f:
+            old_args = json.load(f)
+
+
+    @classmethod
+    def load_args(cls, checkpoint_dir: str) -> Optional['BaseArguments']:
+        """Load specific attributes from args.json"""
+        args_path = os.path.join(checkpoint_dir, 'args.json')
+        assert os.path.exists(args_path), f'args_path: {args_path}'
+        with open(args_path, 'r', encoding='utf-8') as f:
+            old_args = json.load(f)
+        all_keys = list(f.name for f in fields(cls))
+        kwargs = {}
+        for k, v in old_args.items():
+            if k in all_keys:
+                kwargs[k] = v
+        return cls(**kwargs)
+
 
     def get_model_kwargs(self):
         return {

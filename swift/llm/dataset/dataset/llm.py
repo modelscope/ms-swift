@@ -113,6 +113,7 @@ register_dataset(
                 preprocess_func=MessagesPreprocessor(repair_messages=partial(_repair_agent_messages, use_mini=True)),
                 is_weak_subset=True)
         ],
+        split=['train', 'validation'],
         tags=['chat', 'agent', 'multi-round']))
 
 advertise_gen_prompt = """Task: Generating advertisements based on keywords.
@@ -129,6 +130,7 @@ register_dataset(
                 'summary': 'response'
             }),
         tags=['text-generation', '🔥'],
+        split=['train', 'validation'],
     ))
 
 
@@ -164,13 +166,16 @@ register_dataset(
                                         task='Natural Language Inference',
                                         is_pair_seq=True),
         tags=['text-generation', 'classification'],
+        split=['train', 'validation'],
     ))
 
 register_dataset(
     DatasetMeta(
         ms_dataset_id='DAMO_NLP/jd',
         preprocess_func=ClsPreprocessor(['negative', 'positive'], task='Sentiment Classification', is_pair_seq=False),
-        tags=['text-generation', 'classification', '🔥']))
+        tags=['text-generation', 'classification', '🔥'],
+        split=['train', 'validation'],
+    ))
 
 
 class SyntheticText2SqlPreprocessor(ResponsePreprocessor):
@@ -457,7 +462,7 @@ register_dataset(
         ms_dataset_id='AI-ModelScope/hh-rlhf',
         subsets=['helpful-base', 'helpful-online', 'helpful-rejection-sampled'],
         preprocess_func=HHRLHFPreprocessor(),
-        split=['train'],
+        split=['train', 'test'],
         tags=['rlhf', 'dpo'],
         huge_dataset=True))
 
