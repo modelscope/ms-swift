@@ -198,7 +198,7 @@ class VllmEngine(InferEngine):
                 kwargs['lora_request'] = self._adapters_pool[adapter_name]
             else:
                 kwargs['lora_request'] = LoRARequest(
-                    lora_name=adapter_name, lora_path=adapter_path, lora_int_id=len(self._adapters_pool))
+                    lora_name=adapter_name, lora_path=adapter_path, lora_int_id=len(self._adapters_pool) + 1)
                 self._adapters_pool[adapter_name] = kwargs['lora_request']
         input_ids = inputs['input_ids']
         if version.parse(vllm.__version__) >= version.parse('0.4.3'):

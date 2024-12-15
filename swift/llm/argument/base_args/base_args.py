@@ -113,38 +113,19 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
     def adapters_can_be_merged(self):
         return {'lora', 'longlora', 'llamapro', 'adalora'}
 
-    def load_args_from_ckpt(self, checkpoint_dir: str) -> None:
+    @classmethod
+    def load_args(cls, checkpoint_dir: str) -> Optional['BaseArguments']:
         """Load specific attributes from args.json"""
         args_path = os.path.join(checkpoint_dir, 'args.json')
-        if not os.path.exists(args_path):
-            return
-        logger.info(f'Successfully loaded {args_path}...')
+        assert os.path.exists(args_path), f'args_path: {args_path}'
         with open(args_path, 'r', encoding='utf-8') as f:
             old_args = json.load(f)
-        # read settings
-        all_keys = list(f.name for f in fields(self.__class__))
-        data_keys = list(f.name for f in fields(DataArguments))
-        load_keys = [
-            'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant', 'split_dataset_ratio', 'model_name', 'model_author',
-            'train_type', 'tuner_backend'
-        ]
-        skip_keys = [
-            'output_dir',
-            'deepspeed',
-            'temperature',
-            'max_new_tokens',
-        ]
-        for key in all_keys:
-            if key in skip_keys:
-                continue
-            if not self.load_dataset_config and key in data_keys:
-                continue
-            old_value = old_args.get(key)
-            if old_value is None:
-                continue
-            value = getattr(self, key, None)
-            if value is None or isinstance(value, (list, tuple)) and len(value) == 0 or key in load_keys:
-                setattr(self, key, old_value)
+        all_keys = list(f.name for f in fields(cls))
+        kwargs = {}
+        for k, v in old_args.items():
+            if k in all_keys:
+                kwargs[k] = v
+        return cls(**kwargs)
 
     def save_args(self) -> None:
         if is_master():

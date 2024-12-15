@@ -124,32 +124,31 @@ class InferCliState:
 
 def _prepare_pt_engine(args: InferArguments, pt_engine):
     if args.train_type in extra_tuners:
-        extra_tuners[args.train_type].from_pretrained(pt_engine.model, args.ckpt_dir)
-    else:
-        if args.tuner_backend == 'unsloth':
-            model, processor = load_by_unsloth(args.ckpt_dir, args.torch_dtype, args.max_length, args.quant_bits == 4,
-                                               args.model_meta.is_multimodal)
-            model_info = pt_engine.processor.model_info
-            model_meta = pt_engine.processor.model_meta
-            processor.model_info = model_info
-            processor.model_meta = model_meta
-            model.model_info = model_info
-            model.model_meta = model_meta
+        extra_tuners[args.train_type].from_pretrained(pt_engine.model, args.adapters)
+    elif args.tuner_backend == 'unsloth':
+        model, processor = load_by_unsloth(args.adapters, args.torch_dtype, args.max_length, args.quant_bits == 4,
+                                           args.model_meta.is_multimodal)
+        model_info = pt_engine.processor.model_info
+        model_meta = pt_engine.processor.model_meta
+        processor.model_info = model_info
+        processor.model_meta = model_meta
+        model.model_info = model_info
+        model.model_meta = model_meta
 
-            if args.model_meta.is_multimodal:
-                from unsloth import FastVisionModel as UnslothModel
-            else:
-                from unsloth import FastLanguageModel as UnslothModel
-            UnslothModel.for_inference(model)
-
-            pt_engine.model = model
-            pt_engine.generation_config = model.generation_config
-            pt_engine.processor = processor
+        if args.model_meta.is_multimodal:
+            from unsloth import FastVisionModel as UnslothModel
         else:
-            pt_engine.model = Swift.from_pretrained(pt_engine.model, args.ckpt_dir)
-            if args.train_type == 'bone':
-                # Bone has a problem of float32 matmul with bloat16 in `peft==0.14.0`
-                pt_engine.model.to(pt_engine.model.dtype)
+            from unsloth import FastLanguageModel as UnslothModel
+        UnslothModel.for_inference(model)
+
+        pt_engine.model = model
+        pt_engine.generation_config = model.generation_config
+        pt_engine.processor = processor
+    else:
+        pt_engine.model = Swift.from_pretrained(pt_engine.model, args.adapters)
+        if args.train_type == 'bone':
+            # Bone has a problem of float32 matmul with bloat16 in `peft==0.14.0`
+            pt_engine.model.to(pt_engine.model.dtype)
 
 
 def prepare_pt_engine_template(args: InferArguments, load_model: bool = True, **kwargs) -> Tuple[PtEngine, Template]:

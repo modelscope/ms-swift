@@ -123,9 +123,10 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
     def __post_init__(self) -> None:
         if self.resume_from_checkpoint:
             self.resume_from_checkpoint = to_abspath(self.resume_from_checkpoint, True)
-            self.load_args_from_ckpt(self.resume_from_checkpoint)
             if self.train_type == 'full':
                 self.model = self.resume_from_checkpoint
+            else:
+                self.adapters = [self.resume_from_checkpoint]
         BaseArguments.__post_init__(self)
         Seq2SeqTrainingOverrideArguments.__post_init__(self)
         TunerArguments.__post_init__(self)

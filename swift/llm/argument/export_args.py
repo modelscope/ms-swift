@@ -88,7 +88,6 @@ class ExportArguments(AdaptersArguments, MergeArguments, BaseArguments):
     def __post_init__(self):
         if self.ckpt_dir:
             self.ckpt_dir = to_abspath(self.ckpt_dir, True)
-            self.load_args_from_ckpt(self.ckpt_dir)
         MergeArguments.__post_init__(self)
         BaseArguments.__post_init__(self)
         self._init_output_dir()
