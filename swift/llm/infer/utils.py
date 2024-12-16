@@ -1,17 +1,13 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-
 import re
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import List, Literal, Optional, Tuple
+from typing import List, Literal, Optional
 
-from swift.llm import InferArguments, Template
 from swift.plugin import extra_tuners
 from swift.tuners import Swift
 from swift.utils import get_logger
-from ..model.register import load_by_unsloth
 from ..template import Messages
-from .infer_engine import PtEngine
 
 logger = get_logger()
 
