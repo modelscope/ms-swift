@@ -1,14 +1,16 @@
-CUDA_VISIBLE_DEVICES=0 \
+CUDA_VISIBLE_DEVICES=1 \
 PYTHONPATH=. \
 python swift/cli/rlft.py \
-    --model Qwen/Qwen2.5-3B-Instruct \
+    --model /mnt/workspace/yzhao/tastelikefeet/swift/output/pythia-1b-deduped/v24-20241216-185813/checkpoint-400 \
     --model_type qwen2_5 \
     --reward_type agent \
-    --dataset swift/ToolBench#5000 \
-    --per_device_train_batch_size 1 \
+    --template default \
+    --dataset swift/ToolBench:ppo#5000 \
+    --per_device_train_batch_size 2 \
+    --gradient_accumulation_steps 16 \
     --per_device_eval_batch_size 1 \
     --max_length 2048 \
-    --learning_rate 1e-6 \
+    --num_train_epochs 3 \
+    --learning_rate 5e-6 \
     --warmup_ratio 0.05 \
-    --temperature 0.5 \
-    --gradient_accumulation_steps 4
+    --temperature 0.5

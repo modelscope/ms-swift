@@ -378,7 +378,15 @@ class ToolBenchPreprocessor(MessagesPreprocessor):
 
 register_dataset(DatasetMeta(
     ms_dataset_id='swift/ToolBench',
-    preprocess_func=ToolBenchPreprocessor(),
+    subsets=[
+        SubsetDataset(
+            name='default',
+        ),
+        SubsetDataset(
+            name='ppo',
+            preprocess_func=ToolBenchPreprocessor(),
+        ),
+    ],
     tags=['chat', 'agent', 'multi-round']))
 
 
