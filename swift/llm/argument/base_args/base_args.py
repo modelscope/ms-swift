@@ -183,15 +183,19 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         all_keys = list(f.name for f in fields(BaseArguments))
         data_keys = list(f.name for f in fields(DataArguments))
         load_keys = [
+            # quant_args
             'bnb_4bit_quant_type',
-            'bnb_4bit_use_double_quant',  # quant_args
+            'bnb_4bit_use_double_quant',
             'use_swift_lora',
+            # base_args
             'train_type',
-            'tuner_backend',  # base_args
+            'tuner_backend',
+            # data_args
             'model_name',
             'model_author',
-            'split_dataset_ratio',  # data_args
-            'tools_prompt'  # template_args
+            'split_dataset_ratio',
+            # template_args
+            'tools_prompt'
         ]
         skip_keys = list(f.name for f in fields(GenerationArguments)) + ['adapters', 'max_length']
         all_keys = set(all_keys) - set(skip_keys)
