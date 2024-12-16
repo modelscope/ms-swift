@@ -42,7 +42,7 @@ class LoraConfig(peft.LoraConfig):
     lora_dtype: Optional[str] = field(
         default=None, metadata={'help': 'The lora dtype, default None means following the original layer\'s dtype'})
 
-    lorap_lr_ratio: Optional[float] = field(default=2.0**4, metadata={'help': 'The lr ratio of lora_B in lora+'})
+    lorap_lr_ratio: Optional[float] = field(default=None, metadata={'help': 'The lr ratio of lora_B in lora+'})
 
     lorap_emb_lr: float = field(default=1e-6, metadata={'help': 'The lr for embedding in lora+'})
 

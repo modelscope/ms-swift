@@ -19,6 +19,7 @@ class LLMModelType:
     llama3_1 = 'llama3_1'
     llama3_2 = 'llama3_2'
     reflection = 'reflection'
+    megrez = 'megrez'
     yi = 'yi'
     yi_coder = 'yi_coder'
     sus = 'sus'
@@ -115,6 +116,7 @@ class MLLMModelType:
     xcomposer2 = 'xcomposer2'
     xcomposer2_4khd = 'xcomposer2_4khd'
     xcomposer2_5 = 'xcomposer2_5'
+    xcomposer2_5_ol_audio = 'xcomposer2_5_ol_audio'
 
     llama3_2_vision = 'llama3_2_vision'
     llama3_1_omni = 'llama3_1_omni'
@@ -139,6 +141,7 @@ class MLLMModelType:
     llama3_llava_next = 'llama3_llava_next'
 
     deepseek_vl = 'deepseek_vl'
+    deepseek_vl2 = 'deepseek_vl2'
     deepseek_janus = 'deepseek_janus'
 
     minicpmv = 'minicpmv'

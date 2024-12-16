@@ -326,3 +326,17 @@ register_model(
         model_arch=ModelArch.llama,
         architectures=['LlamaForCausalLM'],
     ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.megrez,
+        [
+            ModelGroup([
+                Model('InfiniAI/Megrez-3b-Instruct', 'Infinigence/Megrez-3B-Instruct'),
+            ]),
+        ],
+        TemplateType.megrez,
+        get_model_tokenizer_with_flash_attn,
+        model_arch=ModelArch.llama,
+        architectures=['LlamaForCausalLM'],
+    ))

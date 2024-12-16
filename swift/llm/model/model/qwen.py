@@ -550,8 +550,7 @@ register_model(
             ModelGroup([
                 Model('Qwen/Qwen2-Audio-7B-Instruct', 'Qwen/Qwen2-Audio-7B-Instruct'),
                 Model('Qwen/Qwen2-Audio-7B', 'Qwen/Qwen2-Audio-7B'),
-                Model('Qwen/Qwen2-Audio-7B', 'Qwen/Qwen2-Audio-7B'),
-            ], ),
+            ]),
         ],
         TemplateType.qwen2_audio,
         get_model_tokenizer_qwen2_audio,

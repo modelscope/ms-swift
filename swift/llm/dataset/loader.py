@@ -206,7 +206,8 @@ class DatasetLoader:
             if os.path.isfile(dataset_infos_path):
                 os.rename(dataset_infos_path, f'{dataset_infos_path}.bak')
         elif dataset_id.startswith('/'):
-            raise ValueError(f'The local folder was not found, dataset_id: {dataset_id}.')
+            raise ValueError(f'The local path does not exist, dataset_id: `{dataset_id}`. '
+                             f'os.path.exists(dataset_id): {os.path.exists(dataset_id)}')
         else:
             retry = 3
             load_context = partial(safe_ddp_context, hash_id=dataset_id)
