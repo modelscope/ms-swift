@@ -1,7 +1,5 @@
 import os
 
-import torch
-
 os.environ['CUDA_VISIBLE_DEVICES'] = '2'
 
 kwargs = {
@@ -37,8 +35,9 @@ def test_unsloth():
             tuner_backend='unsloth',
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
-    result = sft_main(
-        TrainArguments(resume_from_checkpoint=last_model_checkpoint, load_dataset_config=True, max_steps=10))
+    result = sft_main(TrainArguments(resume_from_checkpoint=last_model_checkpoint, load_data_args=True, max_steps=10))
+    last_model_checkpoint = result['last_model_checkpoint']
+    infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True))
 
 
 def test_mllm_mp():
@@ -55,7 +54,7 @@ def test_mllm_mp():
             modules_to_save=['all-embedding', 'all-norm'],
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
-    infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True, merge_lora=True))
+    infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_data_args=True, merge_lora=True))
 
 
 def test_llm_streaming():
@@ -64,7 +63,7 @@ def test_llm_streaming():
         TrainArguments(
             model='qwen/Qwen2-7B-Instruct', dataset=['swift/chinese-c4'], streaming=True, max_steps=16, **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
-    infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True, merge_lora=True))
+    infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_data_args=True, merge_lora=True))
 
 
 def test_mllm_streaming():
@@ -77,7 +76,7 @@ def test_mllm_streaming():
             max_steps=16,
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
-    infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True, merge_lora=True))
+    infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_data_args=True, merge_lora=True))
 
 
 def test_mllm_zero3():
@@ -109,7 +108,7 @@ def test_qwen2_audio():
             model='Qwen/Qwen2-Audio-7B-Instruct',
             dataset=['speech_asr/speech_asr_aishell1_trainsets:validation#200'],
             freeze_parameters_ratio=1,
-            trainable_parameters='audio_tower',
+            trainable_parameters=['audio_tower'],
             train_type='full',
             **kwargs))
 
@@ -122,7 +121,7 @@ def test_llm_gptq():
             dataset=['AI-ModelScope/alpaca-gpt4-data-zh#100', 'AI-ModelScope/alpaca-gpt4-data-en#100'],
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
-    infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True))
+    infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_data_args=True))
 
 
 def test_llm_awq():
@@ -133,7 +132,7 @@ def test_llm_awq():
             dataset=['AI-ModelScope/alpaca-gpt4-data-zh#100', 'AI-ModelScope/alpaca-gpt4-data-en#100'],
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
-    infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True))
+    infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_data_args=True))
 
 
 def test_mllm_streaming_zero3():
@@ -172,7 +171,7 @@ def test_llm_hqq():
             quant_bits=4,
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
-    infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True))
+    infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_data_args=True))
 
 
 def test_llm_bnb():
@@ -185,7 +184,7 @@ def test_llm_bnb():
             quant_bits=4,
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
-    infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True))
+    infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_data_args=True))
 
 
 def test_moe():
@@ -196,7 +195,7 @@ def test_moe():
             dataset=['AI-ModelScope/alpaca-gpt4-data-zh#100', 'AI-ModelScope/alpaca-gpt4-data-en#100'],
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
-    infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True))
+    infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True))
 
 
 def test_resume_from_checkpoint():
@@ -208,8 +207,7 @@ def test_resume_from_checkpoint():
             max_steps=5,
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
-    result = sft_main(
-        TrainArguments(resume_from_checkpoint=last_model_checkpoint, load_dataset_config=True, max_steps=10))
+    result = sft_main(TrainArguments(resume_from_checkpoint=last_model_checkpoint, load_data_args=True, max_steps=10))
 
 
 def test_resume_only_model():
@@ -227,10 +225,7 @@ def test_resume_only_model():
     last_model_checkpoint = result['last_model_checkpoint']
     result = sft_main(
         TrainArguments(
-            resume_from_checkpoint=last_model_checkpoint,
-            load_dataset_config=True,
-            max_steps=20,
-            resume_only_model=True))
+            resume_from_checkpoint=last_model_checkpoint, load_data_args=True, max_steps=20, resume_only_model=True))
 
 
 def test_llm_transformers_4_33():
@@ -286,7 +281,7 @@ def test_template():
             model_author=['swift'],
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
-    infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True, merge_lora=True))
+    infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_data_args=True, merge_lora=True))
 
 
 def test_emu3_gen():

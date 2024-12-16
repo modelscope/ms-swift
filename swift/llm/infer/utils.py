@@ -120,3 +120,29 @@ class InferCliState:
             self.multiline_mode = False
             return
         return query
+
+
+def _prepare_adapter(args, model):
+    if args.tuner_backend == 'unsloth':
+        if args.model_meta.is_multimodal:
+            from unsloth import FastVisionModel as UnslothModel
+        else:
+            from unsloth import FastLanguageModel as UnslothModel
+        UnslothModel.for_inference(model)
+        return
+    if args.train_type in extra_tuners:
+        tuner = extra_tuners[args.train_type]
+    else:
+        tuner = Swift
+    model = tuner.from_pretrained(model, args.ckpt_dir)
+    if args.train_type == 'bone':
+        # Bone has a problem of float32 matmul with bloat16 in `peft==0.14.0`
+        model.to(model.dtype)
+    return model
+
+
+def prepare_model_template(args, **kwargs):
+    model, processor = args.get_model_processor(args, **kwargs)
+    model = _prepare_adapter(args, model)
+    template = args.get_template(args, processor)
+    return model, template

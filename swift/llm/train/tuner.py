@@ -136,7 +136,7 @@ def get_vera_target_modules(model, config):
     return config
 
 
-def prepare_adapter(args: TrainArguments, model, is_trainable: bool = True, *, template=None, train_dataset=None):
+def prepare_adapter(args: TrainArguments, model, *, template=None, train_dataset=None):
     from swift.tuners import (AdaLoraConfig, AdapterConfig, BOFTConfig, LLaMAProConfig, LongLoRAModelType, LoraConfig,
                               LoRAConfig, ReftConfig, Swift, VeraConfig)
     target_modules = get_target_modules(args, model)
@@ -201,8 +201,6 @@ def prepare_adapter(args: TrainArguments, model, is_trainable: bool = True, *, t
                     **lora_kwargs,
                 )
                 logger.info(f'unsloth_config: {lora_kwargs}')
-            elif is_trainable:
-                UnslothModel.for_inference(model)
         if args.train_type == 'longlora':
             assert LongLoRAModelType.LLAMA in args.model_type
             assert version.parse(transformers.__version__) >= version.parse('4.39.3')
@@ -335,7 +333,6 @@ class TunerMixin:
         cls,
         args,
         model,
-        is_trainable: bool = True,
         *,
         template=None,
         train_dataset=None,
@@ -346,7 +343,7 @@ class TunerMixin:
             apply_liger(args.model_type)
 
         if args.is_adapter:
-            if not is_trainable or args.tuner_backend != 'unsloth':
+            if args.tuner_backend != 'unsloth':
                 # Fix the name of the layer in xcomposer that contains Plora.
                 # Unsloth prepares and loads lora outside this function when
                 # resume_from_checkpoint, so do not disable grad here
@@ -359,16 +356,13 @@ class TunerMixin:
                 kwargs = {}
                 if use_torchacc():
                     kwargs = {'adapter_name': 'default'}
-                model = tuner.from_pretrained(model, args.ckpt_dir, is_trainable=is_trainable, **kwargs)
-                if not is_trainable and args.train_type == 'bone':
-                    # Bone has a problem of float32 matmul with bloat16 in `peft==0.14.0`
-                    model.to(model.dtype)
+                model = tuner.from_pretrained(model, args.ckpt_dir, is_trainable=True, **kwargs)
             else:
                 if args.train_type in extra_tuners:
                     tuner: Tuner = extra_tuners[args.train_type]
                     model = tuner.prepare_model(args, model)
                 else:
-                    model = prepare_adapter(args, model, is_trainable, template=template, train_dataset=train_dataset)
+                    model = prepare_adapter(args, model, template=template, train_dataset=train_dataset)
             # fix bug: Attempting to unscale FP16 gradients.
             #   peft: https://github.com/huggingface/peft/issues/1249
             for p in model.parameters():
@@ -416,10 +410,3 @@ class TunerMixin:
             dispatch_module_xtuner(model)
 
         return model
-
-
-def prepare_model_template(args, **kwargs):
-    model, processor = args.get_model_processor(args, **kwargs)
-    model = TunerMixin.prepare_model(args, model, False)
-    template = args.get_template(args, processor)
-    return model, template
