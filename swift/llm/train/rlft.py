@@ -193,7 +193,7 @@ class SwiftRLFT(SwiftSft):
 
         data_collator = self._get_data_collator()
         optimizers = self._get_optimizers(train_dataset)
-        from modelscope import AutoModelForSequenceClassification
+        from transformers import AutoModelForSequenceClassification
         value_model = AutoModelForSequenceClassification.from_pretrained(
             args.model, trust_remote_code=True, num_labels=1
         )

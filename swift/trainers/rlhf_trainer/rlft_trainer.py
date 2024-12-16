@@ -316,6 +316,7 @@ class RLFTTrainer(PPOTrainer):
                 yield from self.dataloader
 
         self.iter_dataloader = iter(repeat_generator())
+        self.tokenizer.padding_side='left'
 
     def train_reward_model(self, rollout_state: RolloutState, metrics):
         pass

@@ -11,7 +11,7 @@ register_template(
     TemplateMeta(
         LLMTemplateType.default,
         prefix=[],
-        prompt=['### Human:\n{{QUERY}}\n\n### Assistant:\n'],
+        prompt=['{{QUERY}}\n'],
         chat_sep=['\n\n'],
         default_system=DEFAULT_SYSTEM,
         system_prefix=['{{SYSTEM}}\n\n'],
