@@ -8,7 +8,8 @@ The introduction to command line parameters will cover base arguments, atomic ar
 - 🔥train_type: Default is 'lora'. Optional values: 'lora', 'full', 'longlora', 'adalora', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft', 'reft'
 - seed: Default is 42
 - model_kwargs: Extra parameters specific to the model. This parameter list will be logged during training for reference.
-- load_dataset_config: When specifying `--resume_from_checkpoint`, `--model`, `--adapters`, it will read the `args.json` in the saved file and assign values to any parameters that are None (can be overridden by manual input). If this parameter is set to True, it will read the data parameters as well. Default is False.
+- load_args: When `--resume_from_checkpoint`, `--model`, or `--adapters` is specified, it will read the `args.json` file from the saved checkpoint and assign values to the `BaseArguments` that are defaulted to None (excluding DataArguments and GenerationArguments). These can be overridden by manually passing in values. The default is `True`.
+- load_data_args: If this parameter is set to True, it will additionally read the data parameters. The default is `False`.
 - use_hf: Default is False. Controls model and dataset downloading, and model pushing to the hub.
 - hub_token: Hub token. You can check the modelscope hub token [here](https://modelscope.cn/my/myaccesstoken).
 - custom_register_path: The file path for the custom model, chat template, and dataset registration `.py` files.

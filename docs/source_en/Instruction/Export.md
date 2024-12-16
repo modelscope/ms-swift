@@ -42,7 +42,7 @@ To perform model quantization after training with a training set, use the `--mod
 CUDA_VISIBLE_DEVICES=0 swift export \
     --adapters 'output/some-model/vx-xxx/checkpoint-xxx' \
     --quant_bits 4 \
-    --load_dataset_config true \
+    --load_data_args true \
     --quant_method gptq
 ```
 
