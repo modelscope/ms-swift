@@ -34,6 +34,7 @@ class CompatArguments:
     load_dataset_config: Optional[bool] = None
 
     def _handle_ckpt_dir(self: 'BaseArguments'):
+        assert os.path.isdir(self.ckpt_dir), f'self.ckpt_dir: {self.ckpt_dir}'
         if (os.path.exists(os.path.join(self.ckpt_dir, 'adapter_config.json'))
                 or os.path.exists(os.path.join(self.ckpt_dir, 'default', 'adapter_config.json'))
                 or os.path.exists(os.path.join(self.ckpt_dir, 'reft'))):
