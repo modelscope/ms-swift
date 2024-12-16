@@ -8,7 +8,7 @@ The introduction to command line parameters will cover base arguments, atomic ar
 - 🔥train_type: Default is 'lora'. Optional values: 'lora', 'full', 'longlora', 'adalora', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft', 'reft'
 - seed: Default is 42
 - model_kwargs: Extra parameters specific to the model. This parameter list will be logged during training for reference.
-- load_dataset_config: When specifying resume_from_checkpoint/ckpt_dir, it will read the `args.json` in the saved file and assign values to any parameters that are None (can be overridden by manual input). If this parameter is set to True, it will read the data parameters as well. Default is False.
+- load_dataset_config: When specifying `--resume_from_checkpoint`, `--model`, `--adapters`, it will read the `args.json` in the saved file and assign values to any parameters that are None (can be overridden by manual input). If this parameter is set to True, it will read the data parameters as well. Default is False.
 - use_hf: Default is False. Controls model and dataset downloading, and model pushing to the hub.
 - hub_token: Hub token. You can check the modelscope hub token [here](https://modelscope.cn/my/myaccesstoken).
 - custom_register_path: The file path for the custom model, chat template, and dataset registration `.py` files.
@@ -18,6 +18,7 @@ The introduction to command line parameters will cover base arguments, atomic ar
 - 🔥model: Model ID or local path to the model. If it's a custom model, please use it with `model_type` and `template`. The specific details can be referred to in the [Custom Model](../Customization/Custom-model.md).
 - model_type: Model type. The same model architecture, template, and loading process define a model_type.
 - model_revision: Model version.
+- 🔥adapters: A list used to specify the ID/path of the adapter, default is `[]`.
 - 🔥torch_dtype: Data type for model weights, supports `float16`, `bfloat16`, `float32`, default is read from the config file.
 - attn_impl: Attention type, supports `flash_attn`, `sdpa`, `eager`, default is sdpa.
 - rope_scaling: Rope type, supports `linear` and `dynamic`, to be used with `max_length`.
@@ -329,7 +330,6 @@ RLHF arguments inherit from the [training arguments](#training-arguments).
 
 Inference arguments include the [base arguments](#base-arguments), [merge arguments](#merge-arguments), [vLLM arguments](#vllm-arguments), [LMDeploy arguments](#LMDeploy-arguments), and also contain the following:
 
-- 🔥ckpt_dir: Path to the model checkpoint folder, default is None.
 - 🔥infer_backend: Inference backend, supports 'pt', 'vllm', 'lmdeploy', default is 'pt'.
 - 🔥max_batch_size: Batch size for pt backend, default is 1.
 - result_path: Path to store inference results (jsonl), default is None, saved in the checkpoint directory or './result' directory.
@@ -364,7 +364,6 @@ Evaluation Arguments inherit from the [deployment arguments](#deployment-argumen
 
 Export Arguments include the [basic arguments](#base-arguments) and [merge arguments](#merge-arguments), and also contain the following:
 
-- 🔥ckpt_dir: Checkpoint path, default is None.
 - 🔥output_dir: Path for storing export results, default is None.
 
 - 🔥quant_method: Options are 'gptq' and 'awq', default is None.

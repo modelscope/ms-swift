@@ -17,7 +17,7 @@ def merge_lora(args: ExportArguments, device_map=None, replace_if_exists=False) 
     assert args.quant_method is None, (f'args.quant_method: {args.quant_method}, '
                                        'quantized model and does not support merge-lora.')
 
-    output_dir = getattr(args, 'output_dir', None) or f'{args.ckpt_dir}-merged'
+    output_dir = getattr(args, 'output_dir', None) or f'{args.adapters}-merged'
     if os.path.exists(output_dir) and not replace_if_exists:
         logger.info(f'The weight directory for the merged LoRA already exists in {output_dir}, '
                     'skipping the saving process. '
