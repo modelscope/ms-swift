@@ -7,12 +7,11 @@ import numpy as np
 import torch.distributed as dist
 from datasets import Dataset as HfDataset
 
-from swift.llm import (InferArguments, InferRequest, SwiftPipeline, load_dataset,
-                       sample_dataset, prepare_model_template)
+from swift.llm import InferArguments, InferRequest, SwiftPipeline, load_dataset, prepare_model_template, sample_dataset
 from swift.utils import get_logger, is_master, open_jsonl_writer
+from .infer_engine import PtEngine
 from .protocol import RequestConfig
 from .utils import InferCliState
-from .infer_engine import PtEngine
 
 logger = get_logger()
 

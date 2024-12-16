@@ -5,9 +5,10 @@ from typing import List, Union
 import torch
 import transformers
 from packaging import version
-from swift.tuners import Swift
+
 from swift.llm import TrainArguments, get_model_arch
 from swift.plugin import Tuner, extra_tuners
+from swift.tuners import Swift
 from swift.utils import (activate_parameters, find_all_linears, find_embedding, find_norm, freeze_parameters,
                          get_logger, use_torchacc)
 
@@ -330,7 +331,15 @@ def torchacc_resume_from_checkpoint(args, model):
 class TunerMixin:
 
     @classmethod
-    def prepare_model(cls, args, model, is_trainable: bool = True, *, template=None, train_dataset=None, ):
+    def prepare_model(
+        cls,
+        args,
+        model,
+        is_trainable: bool = True,
+        *,
+        template=None,
+        train_dataset=None,
+    ):
         if args.use_liger:
             # Apply liger
             apply_liger(args.model_type)
@@ -406,6 +415,7 @@ class TunerMixin:
             dispatch_module_xtuner(model)
 
         return model
+
 
 def prepare_model_template(args, **kwargs):
     model, processor = args.get_model_processor(args)

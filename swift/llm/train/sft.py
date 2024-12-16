@@ -58,7 +58,6 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                                                                  args.get_request_config(), self.tokenizer)
         logger.info(f'model.generation_config: {self.model.generation_config}')
 
-
     def _prepare_model_tokenizer(self):
         args = self.args
         self.model, self.processor = args.get_model_processor(args.model, args.model_type, args.model_revision)

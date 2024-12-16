@@ -9,6 +9,7 @@ import torch
 from transformers.utils import is_torch_npu_available
 
 from swift.hub import get_hub
+from swift.llm import Processor, Template, get_model_tokenizer, get_template, load_by_unsloth
 from swift.plugin import extra_tuners
 from swift.utils import check_json_format, get_dist_setting, get_logger, is_dist, is_master, use_hf_hub
 from .data_args import DataArguments
@@ -17,8 +18,6 @@ from .model_args import ModelArguments
 from .quant_args import QuantizeArguments
 from .template_args import TemplateArguments
 from .utils import to_abspath
-from swift.llm import Template, Processor, get_template, get_model_tokenizer, load_by_unsloth
-
 
 logger = get_logger()
 
