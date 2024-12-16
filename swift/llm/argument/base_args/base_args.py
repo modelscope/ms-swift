@@ -28,7 +28,34 @@ def get_supported_tuners():
 
 
 @dataclass
-class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, TemplateArguments, ModelArguments):
+class CompatArguments:
+    #
+    ckpt_dir: Optional[str] = None
+    load_dataset_config: Optional[bool] = None
+
+    def _handle_ckpt_dir(self: 'BaseArguments'):
+        if (os.path.exists(os.path.join(self.ckpt_dir, 'adapter_config.json'))
+                or os.path.exists(os.path.join(self.ckpt_dir, 'default', 'adapter_config.json'))
+                or os.path.exists(os.path.join(self.ckpt_dir, 'reft'))):
+            self.adapters.insert(0, self.ckpt_dir)
+        else:
+            assert self.model is None
+            self.model = self.ckpt_dir
+        self.ckpt_dir = None
+
+    def __post_init__(self):
+        if self.ckpt_dir is not None:
+            self._handle_ckpt_dir()
+
+        if self.load_dataset_config is not None:
+            self.load_data_args = self.load_dataset_config
+            logger.warning('The `--load_dataset_config` parameter will be removed in `ms-swift>=3.2`. '
+                           'Please use `--load_data_args`.')
+
+
+@dataclass
+class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, DataArguments, TemplateArguments,
+                    ModelArguments):
     """
     BaseArguments class is a dataclass that inherits from multiple argument classes:
     GenerationArguments, QuantizeArguments, DataArguments, TemplateArguments, ModelArguments.
@@ -38,7 +65,7 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
         train_type(str): The training type, support all supported tuners and `full`.
         seed (int): Random seed for reproducibility. Default is 42.
         model_kwargs (Optional[str]): Additional keyword arguments for the model. Default is None.
-        load_dataset_config (bool): Flag to determine if dataset configuration should be loaded. Default is False.
+        load_data_args (bool): Flag to determine if dataset configuration should be loaded. Default is False.
         use_hf (bool): Flag to determine if Hugging Face should be used. Default is False.
         hub_token (Optional[str]): SDK token for authentication. Default is None.
         custom_register_path (List[str]): Path to custom .py file for dataset registration. Default is None.
@@ -51,7 +78,7 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
     seed: int = 42
     model_kwargs: Optional[Union[dict, str]] = None
     lora_args: bool = True
-    load_dataset_config: bool = False
+    load_data_args: bool = False
 
     use_hf: bool = False
     # None: use env var `MODELSCOPE_API_TOKEN`
@@ -79,6 +106,7 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
         if self.use_hf or use_hf_hub():
             self.use_hf = True
             os.environ['USE_HF'] = '1'
+        CompatArguments.__post_init__()
         self._init_custom_register()
         self._init_model_kwargs()
         self.rank, self.local_rank, world_size, self.local_world_size = get_dist_setting()
