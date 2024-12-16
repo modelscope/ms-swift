@@ -8,7 +8,7 @@ import torch.nn as nn
 from tqdm import tqdm
 
 from swift.llm import (ExportArguments, MaxLengthError, ProcessorMixin, deep_getattr, get_model_arch, load_dataset,
-                       prepare_pt_engine_template, save_checkpoint, to_device)
+                       prepare_model_template, save_checkpoint, to_device)
 from swift.utils import get_logger, get_model_parameter_info
 
 logger = get_logger()
@@ -22,8 +22,7 @@ class QuantEngine(ProcessorMixin):
         if args.quant_method == 'awq':
             from awq import AutoAWQForCausalLM
             kwargs['automodel_class'] = AutoAWQForCausalLM
-        pt_engine, self.template = prepare_pt_engine_template(args, **kwargs)
-        self.model = pt_engine.model
+        self.model, self.template = prepare_model_template(args, **kwargs)
         self.processor = self.template.processor
 
     def quantize(self):

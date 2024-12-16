@@ -6,7 +6,7 @@ from swift.utils.import_utils import _LazyModule
 if TYPE_CHECKING:
     # Recommend using `xxx_main`
     from .infer import (VllmEngine, RequestConfig, LmdeployEngine, PtEngine, InferEngine, infer_main, deploy_main,
-                        InferClient, run_deploy, prepare_pt_engine_template, AdapterRequest)
+                        InferClient, run_deploy, prepare_model_template, AdapterRequest)
     from .export import (export_main, merge_lora, quantize_model, export_to_ollama)
     from .eval import eval_main
     from .train import sft_main, pt_main, rlhf_main, get_multimodal_target_regex
@@ -32,7 +32,7 @@ else:
         'rlhf': ['rlhf_main'],
         'infer': [
             'deploy_main', 'VllmEngine', 'RequestConfig', 'LmdeployEngine', 'PtEngine', 'infer_main', 'InferClient',
-            'run_deploy', 'prepare_pt_engine_template', 'InferEngine', 'AdapterRequest'
+            'run_deploy', 'prepare_model_template', 'InferEngine', 'AdapterRequest'
         ],
         'export': ['export_main', 'merge_lora', 'quantize_model', 'export_to_ollama'],
         'eval': ['eval_main'],

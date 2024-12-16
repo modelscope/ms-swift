@@ -152,7 +152,7 @@ def _prepare_pt_engine(args: InferArguments, pt_engine):
             pt_engine.model.to(pt_engine.model.dtype)
 
 
-def prepare_pt_engine_template(args: InferArguments, load_model: bool = True, **kwargs) -> Tuple[PtEngine, Template]:
+def prepare_model_template(args: InferArguments, load_model: bool = True, **kwargs) -> Tuple[PtEngine, Template]:
     from .infer import SwiftInfer
     if args.tuner_backend == 'unsloth' and args.adapters:
         kwargs['load_model'] = False

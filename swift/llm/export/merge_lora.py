@@ -3,7 +3,7 @@ import os
 import shutil
 import tempfile
 
-from swift.llm import ExportArguments, prepare_pt_engine_template, save_checkpoint
+from swift.llm import ExportArguments, prepare_model_template, save_checkpoint
 from swift.tuners import Swift
 from swift.utils import get_logger
 
@@ -34,8 +34,7 @@ def merge_lora(args: ExportArguments, device_map=None, replace_if_exists=False) 
                 args.instruct_model = args.hub.download_model(
                     args.instruct_model, revision=args.instruct_model_revision)
             args.model = args.instruct_model
-        pt_engine, template = prepare_pt_engine_template(args)
-        model = pt_engine.model
+        model, template = prepare_model_template(args)
         logger.info('Merge LoRA...')
         Swift.merge_and_unload(model)
         model = model.model

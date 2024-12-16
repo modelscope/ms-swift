@@ -80,10 +80,11 @@ class PtEngine(InferEngine):
         self.model = Swift.from_pretrained(self.model, adapter_path, adapter_name)
 
     @classmethod
-    def from_model_processor(cls, model, processor, *, max_batch_size: int = 1):
+    def from_model_template(cls, model, template, *, max_batch_size: int = 1):
         self = super().__new__(cls)
         self.model = model
-        self.processor = processor  # processor or tokenizer
+        self.default_template = template
+        self.processor = template.processor
         self.max_batch_size = max_batch_size
         self._post_init()
         return self
