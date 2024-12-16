@@ -1,13 +1,13 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import math
 import os
-from dataclasses import asdict, dataclass, field, fields
-from typing import Any, Dict, List, Literal, Optional, Union
+from dataclasses import dataclass, field
+from typing import Any, Dict, Literal, Optional, Union
 
 import json
 import torch
 
-from swift.llm import MODEL_MAPPING, HfConfigFactory, get_model_info_meta, get_model_name, safe_snapshot_download
+from swift.llm import MODEL_MAPPING, HfConfigFactory, get_model_info_meta, get_model_name
 from swift.utils import get_dist_setting, get_logger
 
 logger = get_logger()
