@@ -346,9 +346,11 @@ def get_all_models() -> List[str]:
             for group in model_meta.model_groups:
                 for model in group.models:
                     if use_hf:
-                        models.append(model.hf_model_id)
+                        if model.hf_model_id:
+                            models.append(model.hf_model_id)
                     else:
-                        models.append(model.ms_model_id)
+                        if model.ms_model_id:
+                            models.append(model.ms_model_id)
     return models
 
 
