@@ -19,6 +19,7 @@ class LLMModelType:
     llama3_1 = 'llama3_1'
     llama3_2 = 'llama3_2'
     reflection = 'reflection'
+    megrez = 'megrez'
     yi = 'yi'
     yi_coder = 'yi_coder'
     sus = 'sus'
