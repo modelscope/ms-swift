@@ -154,11 +154,11 @@ def _prepare_pt_engine(args: InferArguments, pt_engine):
 
 def prepare_pt_engine_template(args: InferArguments, load_model: bool = True, **kwargs) -> Tuple[PtEngine, Template]:
     from .infer import SwiftInfer
-    if args.tuner_backend == 'unsloth' and args.weight_type == 'adapter':
+    if args.tuner_backend == 'unsloth' and args.adapters:
         kwargs['load_model'] = False
 
     pt_engine: PtEngine = SwiftInfer.get_infer_engine(args, infer_backend='pt', load_model=load_model, **kwargs)
-    if args.ckpt_dir and args.weight_type == 'adapter':
+    if args.adapters:
         _prepare_pt_engine(args, pt_engine)
 
     template = SwiftInfer.get_template(args, pt_engine.processor)

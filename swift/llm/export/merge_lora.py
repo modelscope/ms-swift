@@ -52,8 +52,8 @@ def merge_lora(args: ExportArguments, device_map=None, replace_if_exists=False) 
         logger.info(f'Successfully merged LoRA and saved in {output_dir}.')
         args.device_map = origin_device_map
 
-    args.weight_type = 'full'
-    args.ckpt_dir = output_dir
+    args.model = output_dir
+    args.adapters = []
     if args.use_merge_kit:
         tempdir = tempfile.gettempdir()
         mergekit_path = os.path.join(output_dir, 'mergekit')

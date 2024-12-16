@@ -121,7 +121,9 @@ class ModelArguments:
         return self.model_info.torch_dtype
 
     def _init_ckpt_dir(self):
-        model_dirs = self.adapters + [self.model]
+        model_dirs = self.adapters
+        if self.model:
+            model_dirs.append(self.model)
         self.ckpt_dir = None
         for model_dir in model_dirs:
             if os.path.exists(os.path.join(model_dir, 'args.json')):
@@ -130,6 +132,8 @@ class ModelArguments:
         self.load_args_from_ckpt()
 
     def __post_init__(self):
+        if isinstance(self.adapters, str):
+            self.adapters = [self.adapters]
         self.adapters = [
             safe_snapshot_download(adapter, use_hf=self.use_hf, hub_token=self.hub_token) for adapter in self.adapters
         ]
@@ -155,7 +159,7 @@ class ModelArguments:
         from .base_args import BaseArguments
         from .data_args import DataArguments
         from .generation_args import GenerationArguments
-        if self.ckpt_dir is None:
+        if self.ckpt_dir is None or not self.lora_args:
             return
 
         args_path = os.path.join(self.ckpt_dir, 'args.json')

@@ -49,6 +49,7 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
 
     seed: int = 42
     model_kwargs: Optional[Union[dict, str]] = None
+    lora_args: bool = True
     load_dataset_config: bool = False
 
     use_hf: bool = False
