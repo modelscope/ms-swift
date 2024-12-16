@@ -335,8 +335,11 @@ class TunerMixin:
             apply_liger(args.model_type)
 
         if args.is_adapter:
-            # Fix the name of the layer in xcomposer that contains Plora.
-            model.requires_grad_(False)
+            if args.tuner_backend != 'unsloth':
+                # Fix the name of the layer in xcomposer that contains Plora.
+                # Unsloth prepares and loads lora outside this function when
+                # resume_from_checkpoint, so do not disable grad here
+                model.requires_grad_(False)
             if args.resume_from_checkpoint:
                 if args.train_type in extra_tuners:
                     tuner: Tuner = extra_tuners[args.train_type]
