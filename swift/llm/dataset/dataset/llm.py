@@ -363,16 +363,23 @@ class ToolBenchPreprocessor(MessagesPreprocessor):
         return res
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        import numpy as np
         row = super().preprocess(row)
         all_rows = []
+        action_rounds = sum([1 if 'Action Input:' in message['content'] and message['role'] == 'assistant' else 0 for message in row['messages']])
+        n_round = np.random.choice(action_rounds)
+        _round = 0
         for i, message in enumerate(row['messages']):
             if message['role'] == 'assistant':
                 if 'Action:' in message['content'] and 'Action Input:' in message['content']:
-                    new_row = copy(row)
-                    new_row['messages'] = new_row['messages'][:i]
-                    new_row['ground_truth'] = message['content']
-                    all_rows.append(new_row)
-                    break
+                    if _round == n_round:
+                        new_row = copy(row)
+                        new_row['messages'] = new_row['messages'][:i]
+                        new_row['ground_truth'] = message['content']
+                        all_rows.append(new_row)
+                        break
+                    else:
+                        _round += 1
         return all_rows
 
 

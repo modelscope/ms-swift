@@ -1,4 +1,4 @@
-CUDA_VISIBLE_DEVICES=1 \
+CUDA_VISIBLE_DEVICES=0 \
 PYTHONPATH=. \
 python swift/cli/rlft.py \
     --model /mnt/workspace/yzhao/tastelikefeet/swift/output/pythia-1b-deduped/v24-20241216-185813/checkpoint-400 \

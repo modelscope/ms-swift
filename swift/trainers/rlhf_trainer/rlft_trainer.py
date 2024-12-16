@@ -433,7 +433,7 @@ class RLFTTrainer(PPOTrainer):
     def rollout_mcts(self) -> RolloutState:
         pass
 
-    def rollout(self) -> RolloutState:
+    def rollout(self, gen_ratio) -> RolloutState:
         args = self.args
         accelerator = self.accelerator
         model = self.model
@@ -445,7 +445,7 @@ class RLFTTrainer(PPOTrainer):
         data = next(self.iter_dataloader)
         with torch.no_grad():
             generation_config = GenerationConfig(
-                max_new_tokens=512, # TODO
+                max_new_tokens=128, # TODO
                 temperature=(args.temperature + 1e-7),
                 top_k=0.0,
                 top_p=1.0,
@@ -467,7 +467,7 @@ class RLFTTrainer(PPOTrainer):
                 ground_truth_queries = []
                 gt_index = []
                 for i in range(queries.shape[0]):
-                    if np.random.random() <= 0.8: # rollout
+                    if np.random.random() <= (0.5-gen_ratio): # rollout
                         generated_queries.append(queries[i])
                     else: # ground truth
                         gt_index.append(i)
@@ -684,7 +684,7 @@ class RLFTTrainer(PPOTrainer):
 
         for update in range(1, args.num_total_batches + 1):
             self.state.episode += 1 * args.batch_size
-            rollout_state = self.rollout()
+            rollout_state = self.rollout(float(update)/(args.num_total_batches + 1))
             metrics = {}
             self.train_reward_model(rollout_state, metrics)
             self.train_policy_model(rollout_state, metrics, update)
@@ -751,7 +751,7 @@ class RLFTTrainer(PPOTrainer):
         args = self.args
         tokenizer = self.tokenizer
         generation_config = GenerationConfig(
-            max_new_tokens=512,
+            max_new_tokens=128,
             temperature=(0.01 + 1e-7),
             top_k=0.0,
             top_p=1.0,
