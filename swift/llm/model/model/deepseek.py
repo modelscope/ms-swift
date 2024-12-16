@@ -127,7 +127,6 @@ def _get_deepseek_vl(processor, llm_prefix, model_dir, *args, **kwargs):
         patch_output_to_input_device(llm.model.embed_tokens)
         func_list = ['generate', 'get_input_embeddings', 'gradient_checkpointing_enable', 'forward']
         use_submodel_func(model, llm_prefix, func_list)
-        model.generation_config = llm.generation_config
     return model, processor
 
 

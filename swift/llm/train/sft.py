@@ -6,7 +6,6 @@ from typing import List, Union
 from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HfIterableDataset
 
-from swift.llm.model.register import load_by_unsloth
 from swift.plugin import extra_callbacks, get_loss_func, get_metric, optimizers_map
 from swift.trainers import IntervalStrategy, TrainerFactory
 from swift.utils import (append_to_jsonl, get_logger, get_model_parameter_info, is_master, plot_images, stat_array,
@@ -15,7 +14,7 @@ from ..argument import TrainArguments
 from ..base import SwiftPipeline
 from ..dataset import EncodePreprocessor, GetLengthPreprocessor, LazyLLMDataset, PackingPreprocessor, load_dataset
 from ..infer import prepare_generation_config
-from ..model import get_model_arch, get_model_tokenizer
+from ..model import get_model_arch, get_model_tokenizer, load_by_unsloth
 from ..template import get_template
 from ..utils import deep_getattr, dynamic_gradient_checkpointing
 from .tuner import TunerMixin
@@ -60,8 +59,10 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                                                                  args.get_request_config(), self.tokenizer)
         logger.info(f'model.generation_config: {self.model.generation_config}')
 
-    def _get_model_tokenizer(self, model, model_type, model_revision):
-        args = self.args
+    @staticmethod
+    def get_model_processor(args, model, model_type, model_revision):
+        if args.tuner_backend == 'unsloth':
+            return load_by_unsloth(args)
         kwargs = args.get_model_kwargs()
         # compat rlhf
         kwargs['model_id_or_path'] = model
@@ -72,23 +73,12 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             from transformers import AutoModelForSequenceClassification
             kwargs['automodel_class'] = AutoModelForSequenceClassification
             model_kwargs = {'num_labels': args.num_labels}
-        if args.tuner_backend == 'unsloth':
-            kwargs['unsloth_kwargs'] = {'load_in_4bit': args.quant_bits == 4}
-        model, processor = get_model_tokenizer(
-            **kwargs, model_kwargs=model_kwargs, use_unsloth=(args.tuner_backend == 'unsloth'))
+        model, processor = get_model_tokenizer(**kwargs, model_kwargs=model_kwargs)
         return model, processor
 
     def _prepare_model_tokenizer(self):
         args = self.args
-        if args.tuner_backend == 'unsloth' and args.resume_from_checkpoint and args.train_type != 'full':
-            self.model, self.processor = load_by_unsloth(args.resume_from_checkpoint, args.torch_dtype, args.max_length,
-                                                         args.quant_bits == 4, args.model_meta.is_multimodal)
-            self.model.model_info = args.model_info
-            self.model.model_meta = args.model_meta
-            self.processor.model_info = args.model_info
-            self.processor.model_meta = args.model_meta
-        else:
-            self.model, self.processor = self._get_model_tokenizer(args.model, args.model_type, args.model_revision)
+        self.model, self.processor = self.get_model_processor(args, args.model, args.model_type, args.model_revision)
 
         if hasattr(self.model, 'hf_device_map'):
             logger.info(f'model.hf_device_map: {self.model.hf_device_map}')
