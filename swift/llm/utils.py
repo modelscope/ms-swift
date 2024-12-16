@@ -10,7 +10,7 @@ import torch.nn as nn
 from transformers import FeatureExtractionMixin, GenerationConfig, PreTrainedModel, PreTrainedTokenizerBase
 from transformers import ProcessorMixin as HfProcessorMixin
 
-from swift.utils import deep_getattr, get_logger, upper_bound
+from swift.utils import deep_getattr, get_logger
 
 try:
     from transformers import BaseImageProcessor

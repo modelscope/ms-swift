@@ -7,11 +7,12 @@ import numpy as np
 import torch.distributed as dist
 from datasets import Dataset as HfDataset
 
-from swift.llm import (InferArguments, InferRequest, Processor, SwiftPipeline, Template, get_template, load_dataset,
-                       sample_dataset)
+from swift.llm import (InferArguments, InferRequest, SwiftPipeline, load_dataset,
+                       sample_dataset, prepare_model_template)
 from swift.utils import get_logger, is_master, open_jsonl_writer
 from .protocol import RequestConfig
-from .utils import InferCliState, prepare_model_template
+from .utils import InferCliState
+from .infer_engine import PtEngine
 
 logger = get_logger()
 
@@ -69,13 +70,6 @@ class SwiftInfer(SwiftPipeline):
             kwargs.update(args.get_lmdeploy_engine_kwargs())
 
         return infer_engine_cls(**kwargs)
-
-    @staticmethod
-    def get_template(args, processor: Processor) -> Template:
-        template_kwargs = args.get_template_kwargs()
-        template = get_template(args.template, processor, use_chat_template=args.use_chat_template, **template_kwargs)
-        logger.info(f'default_system: {template.template_meta.default_system}')
-        return template
 
     def main(self):
         args = self.args

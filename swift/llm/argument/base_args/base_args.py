@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 import sys
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional, Union
 
 import json
@@ -17,6 +17,8 @@ from .model_args import ModelArguments
 from .quant_args import QuantizeArguments
 from .template_args import TemplateArguments
 from .utils import to_abspath
+from swift.llm import Template, Processor, get_template, get_model_tokenizer, load_by_unsloth
+
 
 logger = get_logger()
 
@@ -59,6 +61,7 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
     custom_register_path: List[str] = field(default_factory=list)  # .py
 
     # extra
+    num_labels: Optional[int] = None
     ignore_args_error: bool = False  # True: notebook compatibility
     use_swift_lora: bool = False  # True for using tuner_backend == swift, don't specify this unless you know what you are doing # noqa
 
@@ -128,3 +131,26 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
                 torch.npu.set_device(self.local_rank)
             else:
                 torch.cuda.set_device(self.local_rank)
+
+    def get_template(self, processor: 'Processor') -> 'Template':
+        template_kwargs = self.get_template_kwargs()
+        template = get_template(self.template, processor, use_chat_template=self.use_chat_template, **template_kwargs)
+        logger.info(f'default_system: {template.template_meta.default_system}')
+        return template
+
+    def get_model_processor(self, model=None, model_type=None, model_revision=None):
+        if self.tuner_backend == 'unsloth':
+            return load_by_unsloth(self)
+        kwargs = self.get_model_kwargs()
+        # compat rlhf
+        kwargs['model_id_or_path'] = model or self.model
+        kwargs['model_type'] = model_type or self.model_type
+        kwargs['model_revision'] = model_revision or self.model_revision
+
+        model_kwargs = {}
+        if self.num_labels is not None:
+            from transformers import AutoModelForSequenceClassification
+            kwargs['automodel_class'] = AutoModelForSequenceClassification
+            model_kwargs = {'num_labels': self.num_labels}
+        model, processor = get_model_tokenizer(**kwargs, model_kwargs=model_kwargs)
+        return model, processor

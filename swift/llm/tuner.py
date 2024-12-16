@@ -5,10 +5,9 @@ from typing import List, Union
 import torch
 import transformers
 from packaging import version
-
+from swift.tuners import Swift
 from swift.llm import TrainArguments, get_model_arch
 from swift.plugin import Tuner, extra_tuners
-from swift.tuners import Swift
 from swift.utils import (activate_parameters, find_all_linears, find_embedding, find_norm, freeze_parameters,
                          get_logger, use_torchacc)
 
@@ -136,7 +135,7 @@ def get_vera_target_modules(model, config):
     return config
 
 
-def prepare_adapter(args: TrainArguments, model, template=None, train_dataset=None):
+def prepare_adapter(args: TrainArguments, model, is_trainable: bool = True, *, template=None, train_dataset=None):
     from swift.tuners import (AdaLoraConfig, AdapterConfig, BOFTConfig, LLaMAProConfig, LongLoRAModelType, LoraConfig,
                               LoRAConfig, ReftConfig, Swift, VeraConfig)
     target_modules = get_target_modules(args, model)
@@ -331,7 +330,7 @@ def torchacc_resume_from_checkpoint(args, model):
 class TunerMixin:
 
     @classmethod
-    def prepare_model(cls, args: TrainArguments, model, is_trainable: bool = True, *, template=None, train_dataset=None, ):
+    def prepare_model(cls, args, model, is_trainable: bool = True, *, template=None, train_dataset=None, ):
         if args.use_liger:
             # Apply liger
             apply_liger(args.model_type)
@@ -342,6 +341,8 @@ class TunerMixin:
             if args.ckpt_dir:
                 if args.train_type in extra_tuners:
                     tuner: Tuner = extra_tuners[args.train_type]
+                else:
+                    tuner = Swift
                 kwargs = {}
                 if use_torchacc():
                     kwargs = {'adapter_name': 'default'}
@@ -354,7 +355,7 @@ class TunerMixin:
                     tuner: Tuner = extra_tuners[args.train_type]
                     model = tuner.prepare_model(args, model)
                 else:
-                    model = prepare_adapter(args, model, template, train_dataset)
+                    model = prepare_adapter(args, model, is_trainable, template=template, train_dataset=train_dataset)
             # fix bug: Attempting to unscale FP16 gradients.
             #   peft: https://github.com/huggingface/peft/issues/1249
             for p in model.parameters():
@@ -403,32 +404,9 @@ class TunerMixin:
 
         return model
 
-
-def prepare_model_processor(args, *, model=None, model_type=None, model_revision=None):
-    if args.tuner_backend == 'unsloth':
-        return load_by_unsloth(args)
-    kwargs = args.get_model_kwargs()
-    # compat rlhf
-    kwargs['model_id_or_path'] = model or args.model
-    kwargs['model_type'] = model_type or args.model_type
-    kwargs['model_revision'] = model_revision or args.model_revision
-
-    model_kwargs = {}
-    if args.num_labels is not None:
-        from transformers import AutoModelForSequenceClassification
-        kwargs['automodel_class'] = AutoModelForSequenceClassification
-        model_kwargs = {'num_labels': args.num_labels}
-    model, processor = get_model_tokenizer(**kwargs, model_kwargs=model_kwargs)
-    return model, processor
-
 def prepare_model_template(args, **kwargs):
-    model, processor = get_model_processor(args)
+    model, processor = args.get_model_processor(args)
     if args.tuner_backend == 'unsloth' and args.adapters:
         kwargs['load_model'] = False
-
-    pt_engine: PtEngine = SwiftInfer.get_infer_engine(args, infer_backend='pt', load_model=load_model, **kwargs)
-    if args.adapters:
-        prepare_model(args, pt_engine, is_trainable=False)
-
-    template = SwiftInfer.get_template(args, pt_engine.processor)
-    return pt_engine, template
+    template = args.get_template(args, processor)
+    return model, template

@@ -4,7 +4,6 @@ from functools import partial
 from typing import List, Union
 
 from datasets import Dataset as HfDataset
-from datasets import IterableDataset as HfIterableDataset
 
 from swift.plugin import extra_callbacks, get_loss_func, get_metric, optimizers_map
 from swift.trainers import IntervalStrategy, TrainerFactory
@@ -14,7 +13,7 @@ from ..argument import TrainArguments
 from ..base import SwiftPipeline
 from ..dataset import EncodePreprocessor, GetLengthPreprocessor, LazyLLMDataset, PackingPreprocessor, load_dataset
 from ..infer import prepare_generation_config
-from ..model import get_model_arch, get_model_tokenizer, load_by_unsloth
+from ..model import get_model_arch
 from ..template import get_template
 from ..tuner import TunerMixin
 from ..utils import deep_getattr, dynamic_gradient_checkpointing
@@ -62,7 +61,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
     def _prepare_model_tokenizer(self):
         args = self.args
-        self.model, self.processor = self.get_model_processor(args, args.model, args.model_type, args.model_revision)
+        self.model, self.processor = args.get_model_processor(args.model, args.model_type, args.model_revision)
 
         if hasattr(self.model, 'hf_device_map'):
             logger.info(f'model.hf_device_map: {self.model.hf_device_map}')
