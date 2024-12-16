@@ -132,6 +132,14 @@ def test_openbuddy():
     assert res == res2, f'res: {res}, res2: {res2}'
 
 
+def test_megrez():
+    pt_engine = PtEngine('InfiniAI/Megrez-3b-Instruct')
+    res = _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    res2 = _infer_model(pt_engine)
+    assert res == res2, f'res: {res}, res2: {res2}'
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig, get_template, get_model_tokenizer, VllmEngine
     from swift.utils import get_logger, seed_everything
@@ -149,4 +157,5 @@ if __name__ == '__main__':
     # test_telechat()
     # test_glm_edge()
     # test_llama()
-    test_openbuddy()
+    # test_openbuddy()
+    test_megrez()

@@ -18,6 +18,7 @@ class LLMTemplateType:
     llama3 = 'llama3'
     llama3_2 = 'llama3_2'
     reflection = 'reflection'
+    megrez = 'megrez'
     yi_coder = 'yi_coder'
     sus = 'sus'
 
