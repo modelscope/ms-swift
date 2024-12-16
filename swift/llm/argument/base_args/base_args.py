@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from typing import Any, Dict, List, Literal, Optional, Union
 
 import json
@@ -9,7 +9,7 @@ import torch
 from transformers.utils import is_torch_npu_available
 
 from swift.hub import get_hub
-from swift.llm import Processor, Template, get_model_tokenizer, get_template, load_by_unsloth
+from swift.llm import Processor, Template, get_model_tokenizer, get_template, load_by_unsloth, safe_snapshot_download
 from swift.plugin import extra_tuners
 from swift.utils import check_json_format, get_dist_setting, get_logger, is_dist, is_master, use_hf_hub
 from .data_args import DataArguments
@@ -75,6 +75,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
     """
     tuner_backend: Literal['peft', 'unsloth'] = 'peft'
     train_type: str = field(default='lora', metadata={'help': f'train_type choices: {list(get_supported_tuners())}'})
+    adapters: List[str] = field(default_factory=list)
 
     seed: int = 42
     model_kwargs: Optional[Union[dict, str]] = None
@@ -107,7 +108,8 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         if self.use_hf or use_hf_hub():
             self.use_hf = True
             os.environ['USE_HF'] = '1'
-        CompatArguments.__post_init__()
+        CompatArguments.__post_init__(self)
+        self._init_ckpt_dir()
         self._init_custom_register()
         self._init_model_kwargs()
         self.rank, self.local_rank, world_size, self.local_world_size = get_dist_setting()
@@ -122,6 +124,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         QuantizeArguments.__post_init__(self)
         TemplateArguments.__post_init__(self)
         DataArguments.__post_init__(self)
+
         self.hub = get_hub(self.use_hf)
         if self.hub.try_login(self.hub_token):
             logger.info('hub login successful!')
@@ -144,6 +147,63 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
     @property
     def adapters_can_be_merged(self):
         return {'lora', 'longlora', 'llamapro', 'adalora'}
+
+    @classmethod
+    def from_pretrained(cls, checkpoint_dir: str):
+        self = super().__new__(cls)
+        self.ckpt_dir = checkpoint_dir
+        self.load_args_from_ckpt()
+        return self
+
+    def _init_ckpt_dir(self):
+        if isinstance(self.adapters, str):
+            self.adapters = [self.adapters]
+        self.adapters = [
+            safe_snapshot_download(adapter, use_hf=self.use_hf, hub_token=self.hub_token) for adapter in self.adapters
+        ]
+
+        model_dirs = self.adapters
+        if self.model:
+            model_dirs.append(self.model)
+        self.ckpt_dir = None
+        for model_dir in model_dirs:
+            if os.path.exists(os.path.join(model_dir, 'args.json')):
+                self.ckpt_dir = model_dir
+                break
+        self.load_args_from_ckpt()
+
+    def load_args_from_ckpt(self) -> None:
+        if self.ckpt_dir is None or not self.lora_args:
+            return
+
+        args_path = os.path.join(self.ckpt_dir, 'args.json')
+        assert os.path.exists(args_path), f'args_path: {args_path}'
+        with open(args_path, 'r', encoding='utf-8') as f:
+            old_args = json.load(f)
+        all_keys = list(f.name for f in fields(BaseArguments))
+        data_keys = list(f.name for f in fields(DataArguments))
+        load_keys = [
+            'bnb_4bit_quant_type',
+            'bnb_4bit_use_double_quant',  # quant_args
+            'use_swift_lora',
+            'train_type',
+            'tuner_backend',  # base_args
+            'model_name',
+            'model_author',
+            'split_dataset_ratio',  # data_args
+            'tools_prompt'  # template_args
+        ]
+        skip_keys = list(f.name for f in fields(GenerationArguments)) + ['adapters', 'max_length']
+        all_keys = set(all_keys) - set(skip_keys)
+        for key, old_value in old_args.items():
+            if key not in all_keys:
+                continue
+            if not self.load_dataset_config and key in data_keys:
+                continue
+            value = getattr(self, key, None)
+            if value is None or isinstance(value, (list, tuple)) and len(value) == 0 or key in load_keys:
+                setattr(self, key, old_value)
+        logger.info(f'Successfully loaded {args_path}.')
 
     def save_args(self) -> None:
         if is_master():

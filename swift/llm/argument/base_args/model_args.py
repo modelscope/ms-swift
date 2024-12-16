@@ -29,7 +29,6 @@ class ModelArguments:
         local_repo_path (Optional[str]): Path to the local github repository for model. Default is None.
     """
     model: Optional[str] = None  # model id or model path
-    adapters: List[str] = field(default_factory=list)
     model_type: Optional[str] = field(
         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
     model_revision: Optional[str] = None
@@ -120,76 +119,12 @@ class ModelArguments:
             self._init_rope_scaling()
         return self.model_info.torch_dtype
 
-    def _init_ckpt_dir(self):
-        model_dirs = self.adapters
-        if self.model:
-            model_dirs.append(self.model)
-        self.ckpt_dir = None
-        for model_dir in model_dirs:
-            if os.path.exists(os.path.join(model_dir, 'args.json')):
-                self.ckpt_dir = model_dir
-                break
-        self.load_args_from_ckpt()
-
     def __post_init__(self):
-        if isinstance(self.adapters, str):
-            self.adapters = [self.adapters]
-        self.adapters = [
-            safe_snapshot_download(adapter, use_hf=self.use_hf, hub_token=self.hub_token) for adapter in self.adapters
-        ]
-        self._init_ckpt_dir()
         if self.model is None:
             raise ValueError(f'Please set --model <model_id_or_path>`, model: {self.model}')
         self.model_suffix = get_model_name(self.model)
         self._init_device_map()
         self._init_torch_dtype()
-
-    @staticmethod
-    def _get_args_keys(args):
-        return list(f.name for f in fields(args))
-
-    @classmethod
-    def from_pretrained(cls, checkpoint_dir: str):
-        self = super().__new__(cls)
-        self.ckpt_dir = checkpoint_dir
-        self.load_args_from_ckpt()
-        return self
-
-    def load_args_from_ckpt(self) -> None:
-        from .base_args import BaseArguments
-        from .data_args import DataArguments
-        from .generation_args import GenerationArguments
-        if self.ckpt_dir is None or not self.lora_args:
-            return
-
-        args_path = os.path.join(self.ckpt_dir, 'args.json')
-        assert os.path.exists(args_path), f'args_path: {args_path}'
-        with open(args_path, 'r', encoding='utf-8') as f:
-            old_args = json.load(f)
-        all_keys = self._get_args_keys(BaseArguments)
-        data_keys = self._get_args_keys(DataArguments)
-        load_keys = [
-            'bnb_4bit_quant_type',
-            'bnb_4bit_use_double_quant',  # quant_args
-            'use_swift_lora',
-            'train_type',
-            'tuner_backend',  # base_args
-            'model_name',
-            'model_author',
-            'split_dataset_ratio',  # data_args
-            'tools_prompt'  # template_args
-        ]
-        skip_keys = self._get_args_keys(GenerationArguments) + ['adapters', 'max_length']
-        all_keys = set(all_keys) - set(skip_keys)
-        for key, old_value in old_args.items():
-            if key not in all_keys:
-                continue
-            if not self.load_dataset_config and key in data_keys:
-                continue
-            value = getattr(self, key, None)
-            if value is None or isinstance(value, (list, tuple)) and len(value) == 0 or key in load_keys:
-                setattr(self, key, old_value)
-        logger.info(f'Successfully loaded {args_path}.')
 
     def get_model_kwargs(self):
         return {
