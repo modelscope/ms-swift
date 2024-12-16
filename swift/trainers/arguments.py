@@ -60,7 +60,10 @@ class SwiftArgumentsMixin:
         self._fix_gradient_checkpointing()
         from swift.utils import get_dist_setting
         _, _, world_size, _ = get_dist_setting()
-        self.world_size = world_size
+        try:
+            self.world_size = world_size
+        except:
+            pass
         super().__post_init__()
 
     @property
