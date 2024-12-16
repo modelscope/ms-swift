@@ -27,6 +27,20 @@ def test_llm_ddp():
             **kwargs))
 
 
+def test_unsloth():
+    from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
+    result = sft_main(
+        TrainArguments(
+            model='Qwen/Qwen2-0.5B',
+            dataset=['AI-ModelScope/alpaca-gpt4-data-zh#100', 'AI-ModelScope/alpaca-gpt4-data-en#100'],
+            max_steps=5,
+            tuner_backend='unsloth',
+            **kwargs))
+    last_model_checkpoint = result['last_model_checkpoint']
+    result = sft_main(
+        TrainArguments(resume_from_checkpoint=last_model_checkpoint, load_dataset_config=True, max_steps=10))
+
+
 def test_mllm_mp():
     os.environ['MAX_PIXELS'] = '100352'
     os.environ['SIZE_FACTOR'] = '12'
@@ -315,3 +329,4 @@ if __name__ == '__main__':
     # test_qwen_vl()
     # test_qwen2_audio()
     test_emu3_gen()
+    # test_unsloth()

@@ -187,12 +187,12 @@ def prepare_adapter(args: TrainArguments, model, template=None, train_dataset=No
                 model = Swift.prepare_model(model, lora_config)
             logger.info(f'lora_config: {lora_config}')
         elif args.tuner_backend == 'unsloth':
-            if args.resume_from_checkpoint is None:
-                if args.model_meta.is_multimodal:
-                    from unsloth import FastVisionModel as UnslothModel
-                else:
-                    from unsloth import FastLanguageModel as UnslothModel
-                assert args.train_type == 'lora', 'Unsloth does not support LongLoRA'
+            if args.model_meta.is_multimodal:
+                from unsloth import FastVisionModel as UnslothModel
+            else:
+                from unsloth import FastLanguageModel as UnslothModel
+            assert args.train_type == 'lora', 'Unsloth does not support LongLoRA'
+            if not args.ckpt_dir:
                 lora_kwargs.pop('lorap_lr_ratio')
                 model = UnslothModel.get_peft_model(
                     model,
@@ -201,6 +201,8 @@ def prepare_adapter(args: TrainArguments, model, template=None, train_dataset=No
                     **lora_kwargs,
                 )
                 logger.info(f'unsloth_config: {lora_kwargs}')
+            elif is_trainable:
+                UnslothModel.for_inference(model)
         if args.train_type == 'longlora':
             assert LongLoRAModelType.LLAMA in args.model_type
             assert version.parse(transformers.__version__) >= version.parse('4.39.3')
@@ -329,7 +331,7 @@ def torchacc_resume_from_checkpoint(args, model):
 class TunerMixin:
 
     @classmethod
-    def prepare_model(cls, args: TrainArguments, model, template=None, train_dataset=None):
+    def prepare_model(cls, args: TrainArguments, model, is_trainable: bool = True, *, template=None, train_dataset=None, ):
         if args.use_liger:
             # Apply liger
             apply_liger(args.model_type)
@@ -337,15 +339,16 @@ class TunerMixin:
         if args.is_adapter:
             # Fix the name of the layer in xcomposer that contains Plora.
             model.requires_grad_(False)
-            if args.resume_from_checkpoint:
+            if args.ckpt_dir:
                 if args.train_type in extra_tuners:
                     tuner: Tuner = extra_tuners[args.train_type]
-                    model = tuner.from_pretrained(model, args.resume_from_checkpoint)
-                else:
-                    kwargs = {}
-                    if use_torchacc():
-                        kwargs = {'adapter_name': 'default'}
-                    model = Swift.from_pretrained(model, args.resume_from_checkpoint, is_trainable=True, **kwargs)
+                kwargs = {}
+                if use_torchacc():
+                    kwargs = {'adapter_name': 'default'}
+                model = tuner.from_pretrained(model, args.ckpt_dir, is_trainable=is_trainable, **kwargs)
+                if args.train_type == 'bone':
+                    # Bone has a problem of float32 matmul with bloat16 in `peft==0.14.0`
+                    model.to(model.dtype)
             else:
                 if args.train_type in extra_tuners:
                     tuner: Tuner = extra_tuners[args.train_type]
@@ -399,3 +402,33 @@ class TunerMixin:
             dispatch_module_xtuner(model)
 
         return model
+
+
+def prepare_model_processor(args, *, model=None, model_type=None, model_revision=None):
+    if args.tuner_backend == 'unsloth':
+        return load_by_unsloth(args)
+    kwargs = args.get_model_kwargs()
+    # compat rlhf
+    kwargs['model_id_or_path'] = model or args.model
+    kwargs['model_type'] = model_type or args.model_type
+    kwargs['model_revision'] = model_revision or args.model_revision
+
+    model_kwargs = {}
+    if args.num_labels is not None:
+        from transformers import AutoModelForSequenceClassification
+        kwargs['automodel_class'] = AutoModelForSequenceClassification
+        model_kwargs = {'num_labels': args.num_labels}
+    model, processor = get_model_tokenizer(**kwargs, model_kwargs=model_kwargs)
+    return model, processor
+
+def prepare_model_template(args, **kwargs):
+    model, processor = get_model_processor(args)
+    if args.tuner_backend == 'unsloth' and args.adapters:
+        kwargs['load_model'] = False
+
+    pt_engine: PtEngine = SwiftInfer.get_infer_engine(args, infer_backend='pt', load_model=load_model, **kwargs)
+    if args.adapters:
+        prepare_model(args, pt_engine, is_trainable=False)
+
+    template = SwiftInfer.get_template(args, pt_engine.processor)
+    return pt_engine, template

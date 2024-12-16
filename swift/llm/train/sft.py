@@ -16,8 +16,8 @@ from ..dataset import EncodePreprocessor, GetLengthPreprocessor, LazyLLMDataset,
 from ..infer import prepare_generation_config
 from ..model import get_model_arch, get_model_tokenizer, load_by_unsloth
 from ..template import get_template
+from ..tuner import TunerMixin
 from ..utils import deep_getattr, dynamic_gradient_checkpointing
-from .tuner import TunerMixin
 
 logger = get_logger()
 
@@ -59,22 +59,6 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                                                                  args.get_request_config(), self.tokenizer)
         logger.info(f'model.generation_config: {self.model.generation_config}')
 
-    @staticmethod
-    def get_model_processor(args, model, model_type, model_revision):
-        if args.tuner_backend == 'unsloth':
-            return load_by_unsloth(args)
-        kwargs = args.get_model_kwargs()
-        # compat rlhf
-        kwargs['model_id_or_path'] = model
-        kwargs['model_type'] = model_type
-        kwargs['model_revision'] = model_revision
-        model_kwargs = {}
-        if args.num_labels is not None:
-            from transformers import AutoModelForSequenceClassification
-            kwargs['automodel_class'] = AutoModelForSequenceClassification
-            model_kwargs = {'num_labels': args.num_labels}
-        model, processor = get_model_tokenizer(**kwargs, model_kwargs=model_kwargs)
-        return model, processor
 
     def _prepare_model_tokenizer(self):
         args = self.args

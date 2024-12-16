@@ -6,10 +6,10 @@ from swift.utils.import_utils import _LazyModule
 if TYPE_CHECKING:
     # Recommend using `xxx_main`
     from .infer import (VllmEngine, RequestConfig, LmdeployEngine, PtEngine, InferEngine, infer_main, deploy_main,
-                        InferClient, run_deploy, prepare_model_template, AdapterRequest)
+                        InferClient, run_deploy, AdapterRequest)
     from .export import (export_main, merge_lora, quantize_model, export_to_ollama)
     from .eval import eval_main
-    from .train import sft_main, pt_main, rlhf_main, get_multimodal_target_regex
+    from .train import sft_main, pt_main, rlhf_main
     from .argument import (EvalArguments, InferArguments, TrainArguments, ExportArguments, DeployArguments,
                            RLHFArguments, WebUIArguments, BaseArguments)
     from .template import (TEMPLATE_MAPPING, Template, Word, get_template, TemplateType, register_template,
@@ -26,17 +26,18 @@ if TYPE_CHECKING:
     from .utils import (deep_getattr, to_device, History, history_to_messages, messages_to_history, Processor,
                         save_checkpoint, ProcessorMixin)
     from .base import SwiftPipeline
+    from .tuner import get_multimodal_target_regex, prepare_model_template
 else:
     _extra_objects = {k: v for k, v in globals().items() if not k.startswith('_')}
     _import_structure = {
         'rlhf': ['rlhf_main'],
         'infer': [
             'deploy_main', 'VllmEngine', 'RequestConfig', 'LmdeployEngine', 'PtEngine', 'infer_main', 'InferClient',
-            'run_deploy', 'prepare_model_template', 'InferEngine', 'AdapterRequest'
+            'run_deploy', 'InferEngine', 'AdapterRequest'
         ],
         'export': ['export_main', 'merge_lora', 'quantize_model', 'export_to_ollama'],
         'eval': ['eval_main'],
-        'train': ['sft_main', 'pt_main', 'rlhf_main', 'get_multimodal_target_regex'],
+        'train': ['sft_main', 'pt_main', 'rlhf_main'],
         'argument': [
             'EvalArguments', 'InferArguments', 'TrainArguments', 'ExportArguments', 'WebUIArguments', 'DeployArguments',
             'RLHFArguments', 'BaseArguments'
@@ -62,7 +63,8 @@ else:
             'deep_getattr', 'to_device', 'History', 'history_to_messages', 'messages_to_history', 'Processor',
             'save_checkpoint', 'ProcessorMixin'
         ],
-        'base': ['SwiftPipeline']
+        'base': ['SwiftPipeline'],
+        'tuner': ['get_multimodal_target_regex', 'prepare_model_template']
     }
 
     import sys

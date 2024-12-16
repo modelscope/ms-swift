@@ -28,7 +28,8 @@ class SwiftInfer(SwiftPipeline):
             merge_lora(args, device_map='cpu')
 
         if args.infer_backend == 'pt':
-            self.infer_engine, self.template = prepare_pt_engine_template(args)
+            model, self.template = prepare_model_template(args)
+            self.infer_engine = PtEngine.from_model_template(model, self.template)
             logger.info(f'model: {self.infer_engine.model}')
         else:
             self.infer_engine = SwiftInfer.get_infer_engine(args)
