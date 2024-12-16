@@ -27,9 +27,9 @@ def apply_liger(model_type: str):
         apply_liger_kernel_to_mistral()
     elif model_type in (ModelType.mixtral):
         apply_liger_kernel_to_mixtral()
-    elif model_type in (ModelType.gemma):
+    elif model_type in (ModelType.gemma, ModelType.gemma2):
         apply_liger_kernel_to_gemma()
-    elif model_type in (ModelType.gemma2):
+    elif model_type in (ModelType.qwen2, ModelType.qwen2_5):
         apply_liger_kernel_to_qwen2()
     elif model_type in (ModelType.phi3):
         apply_liger_kernel_to_phi3()
@@ -336,9 +336,12 @@ class TunerMixin:
             apply_liger(args.model_type)
 
         if args.is_adapter:
-            # Fix the name of the layer in xcomposer that contains Plora.
-            model.requires_grad_(False)
-            if args.ckpt_dir:
+            if args.tuner_backend != 'unsloth':
+                # Fix the name of the layer in xcomposer that contains Plora.
+                # Unsloth prepares and loads lora outside this function when
+                # resume_from_checkpoint, so do not disable grad here
+                model.requires_grad_(False)
+            if args.resume_from_checkpoint:
                 if args.train_type in extra_tuners:
                     tuner: Tuner = extra_tuners[args.train_type]
                 else:
