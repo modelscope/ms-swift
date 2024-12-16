@@ -144,6 +144,13 @@ class ModelArguments:
     def _get_args_keys(args):
         return list(f.name for f in fields(args))
 
+    @classmethod
+    def from_pretrained(cls, checkpoint_dir: str):
+        self = super().__new__(cls)
+        self.ckpt_dir = checkpoint_dir
+        self.load_args_from_ckpt()
+        return self
+
     def load_args_from_ckpt(self) -> None:
         from .base_args import BaseArguments
         from .data_args import DataArguments

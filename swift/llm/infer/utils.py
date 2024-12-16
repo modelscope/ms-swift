@@ -145,7 +145,8 @@ def _prepare_pt_engine(args: InferArguments, pt_engine):
         pt_engine.generation_config = model.generation_config
         pt_engine.processor = processor
     else:
-        pt_engine.model = Swift.from_pretrained(pt_engine.model, args.adapters)
+        for adapter in args.adapters:
+            pt_engine.add_adapter(adapter)
         if args.train_type == 'bone':
             # Bone has a problem of float32 matmul with bloat16 in `peft==0.14.0`
             pt_engine.model.to(pt_engine.model.dtype)
