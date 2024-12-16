@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import math
 import os
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from typing import Any, Dict, List, Literal, Optional, Union
 
 import json
@@ -127,6 +127,7 @@ class ModelArguments:
             if os.path.exists(os.path.join(model_dir, 'args.json')):
                 self.ckpt_dir = model_dir
                 break
+        self.load_args_from_ckpt()
 
     def __post_init__(self):
         self.adapters = [
@@ -139,27 +140,45 @@ class ModelArguments:
         self._init_device_map()
         self._init_torch_dtype()
 
-    def _load_args_from_ckpt(self, checkpoint_dir: str) -> None:
+    @staticmethod
+    def _get_args_keys(args):
+        return list(f.name for f in fields(args))
+
+    def load_args_from_ckpt(self) -> None:
+        from .base_args import BaseArguments
+        from .data_args import DataArguments
+        from .generation_args import GenerationArguments
         if self.ckpt_dir is None:
             return
 
-        args_path = os.path.join(checkpoint_dir, 'args.json')
-        with open(args_path, 'r', encoding='utf-8') as f:
-            old_args = json.load(f)
-
-    @classmethod
-    def load_args(cls, checkpoint_dir: str) -> Optional['BaseArguments']:
-        """Load specific attributes from args.json"""
-        args_path = os.path.join(checkpoint_dir, 'args.json')
+        args_path = os.path.join(self.ckpt_dir, 'args.json')
         assert os.path.exists(args_path), f'args_path: {args_path}'
         with open(args_path, 'r', encoding='utf-8') as f:
             old_args = json.load(f)
-        all_keys = list(f.name for f in fields(cls))
-        kwargs = {}
-        for k, v in old_args.items():
-            if k in all_keys:
-                kwargs[k] = v
-        return cls(**kwargs)
+        all_keys = self._get_args_keys(BaseArguments)
+        data_keys = self._get_args_keys(DataArguments)
+        load_keys = [
+            'bnb_4bit_quant_type',
+            'bnb_4bit_use_double_quant',  # quant_args
+            'use_swift_lora',
+            'train_type',
+            'tuner_backend',  # base_args
+            'model_name',
+            'model_author',
+            'split_dataset_ratio',  # data_args
+            'tools_prompt'  # template_args
+        ]
+        skip_keys = self._get_args_keys(GenerationArguments) + ['adapters', 'max_length']
+        all_keys = set(all_keys) - set(skip_keys)
+        for key, old_value in old_args.items():
+            if key not in all_keys:
+                continue
+            if not self.load_dataset_config and key in data_keys:
+                continue
+            value = getattr(self, key, None)
+            if value is None or isinstance(value, (list, tuple)) and len(value) == 0 or key in load_keys:
+                setattr(self, key, old_value)
+        logger.info(f'Successfully loaded {args_path}.')
 
     def get_model_kwargs(self):
         return {
