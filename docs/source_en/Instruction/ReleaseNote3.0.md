@@ -56,7 +56,7 @@ This document lists the BreakChanges between version 3.x and 2.x. Developers sho
 
 ### Parameter Differences
 
-- The meaning of model_type has changed. Version 3.0 requires specifying --model or --ckpt_dir; model_type only needs to be specified for models unsupported by SWIFT.
+- Version 3.0 only requires specifying --model. The model_type only needs to be specified additionally when the model is not supported by SWIFT.
 - sft_type is renamed to train_type.
 - model_id_or_path is renamed to model.
 - template_type is renamed to template.
@@ -75,6 +75,7 @@ This document lists the BreakChanges between version 3.x and 2.x. Developers sho
 - add_output_dir_suffix is renamed to add_version.
 - Removed eval_token; API key is now supported.
 - target_modules (lora_target_modules) ALL is changed to all-linear, retaining the same meaning.
+- The parameters --ckpt_dir have been removed from infer/deploy/export, and control is now done using --model and --adapters.
 
 The parameters marked as compatible in version 2.0 have been entirely removed.
 
