@@ -60,7 +60,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
     def _prepare_model_tokenizer(self):
         args = self.args
-        self.model, self.processor = args.get_model_processor(args.model, args.model_type, args.model_revision)
+        self.model, self.processor = args.get_model_processor()
 
         if hasattr(self.model, 'hf_device_map'):
             logger.info(f'model.hf_device_map: {self.model.hf_device_map}')
@@ -116,7 +116,8 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         train_dataset, val_dataset = self._encode_dataset(train_dataset, val_dataset)
         data_collator = self._get_data_collator()
         # Some tuners require train_dataset and data_collator for preparation: LoRA-GA
-        self.model = self.prepare_model(self.args, self.model, self.template, train_dataset)
+        self.model = self.prepare_model(
+            self.args, self.model, True, template=self.template, train_dataset=train_dataset)
         logger.info(f'model: {self.model}')
         model_parameter_info = get_model_parameter_info(self.model)
         self.train_msg['model_parameter_info'] = model_parameter_info

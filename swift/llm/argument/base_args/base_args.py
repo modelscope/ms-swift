@@ -137,10 +137,10 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
         logger.info(f'default_system: {template.template_meta.default_system}')
         return template
 
-    def get_model_processor(self, model=None, model_type=None, model_revision=None):
+    def get_model_processor(self, *, model=None, model_type=None, model_revision=None, **kwargs):
         if self.tuner_backend == 'unsloth':
             return load_by_unsloth(self)
-        kwargs = self.get_model_kwargs()
+        kwargs.update(self.get_model_kwargs())
         # compat rlhf
         kwargs['model_id_or_path'] = model or self.model
         kwargs['model_type'] = model_type or self.model_type

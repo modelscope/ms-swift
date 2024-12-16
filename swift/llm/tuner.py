@@ -340,17 +340,18 @@ class TunerMixin:
         template=None,
         train_dataset=None,
     ):
+        # "resume_from_checkpoint" is equivalent to "ckpt_dir".
         if args.use_liger:
             # Apply liger
             apply_liger(args.model_type)
 
         if args.is_adapter:
-            if args.tuner_backend != 'unsloth':
+            if not is_trainable or args.tuner_backend != 'unsloth':
                 # Fix the name of the layer in xcomposer that contains Plora.
                 # Unsloth prepares and loads lora outside this function when
                 # resume_from_checkpoint, so do not disable grad here
                 model.requires_grad_(False)
-            if args.resume_from_checkpoint:
+            if args.ckpt_dir:
                 if args.train_type in extra_tuners:
                     tuner: Tuner = extra_tuners[args.train_type]
                 else:
@@ -359,7 +360,7 @@ class TunerMixin:
                 if use_torchacc():
                     kwargs = {'adapter_name': 'default'}
                 model = tuner.from_pretrained(model, args.ckpt_dir, is_trainable=is_trainable, **kwargs)
-                if args.train_type == 'bone':
+                if not is_trainable and args.train_type == 'bone':
                     # Bone has a problem of float32 matmul with bloat16 in `peft==0.14.0`
                     model.to(model.dtype)
             else:
@@ -418,8 +419,7 @@ class TunerMixin:
 
 
 def prepare_model_template(args, **kwargs):
-    model, processor = args.get_model_processor(args)
-    if args.tuner_backend == 'unsloth' and args.adapters:
-        kwargs['load_model'] = False
+    model, processor = args.get_model_processor(args, **kwargs)
+    model = TunerMixin.prepare_model(args, model, False)
     template = args.get_template(args, processor)
     return model, template
