@@ -522,7 +522,7 @@ def get_model_tokenizer(
 
         # generation_config
         generation_config_path = os.path.join(model_dir, 'generation_config.json')
-        if not getattr(model, 'generation_config') and os.path.isfile(generation_config_path):
+        if not hasattr(model, 'generation_config') and os.path.isfile(generation_config_path):
             model.generation_config = GenerationConfig.from_pretrained(model_dir)
         # fix llama2 warning
         if getattr(model, 'generation_config', None):

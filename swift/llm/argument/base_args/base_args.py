@@ -32,6 +32,7 @@ class CompatArguments:
     #
     ckpt_dir: Optional[str] = None
     load_dataset_config: Optional[bool] = None
+    lora_modules: List[str] = field(default_factory=list)
 
     def _handle_ckpt_dir(self: 'BaseArguments'):
         assert os.path.isdir(self.ckpt_dir), f'self.ckpt_dir: {self.ckpt_dir}'
@@ -44,7 +45,7 @@ class CompatArguments:
             self.model = self.ckpt_dir
         self.ckpt_dir = None
 
-    def __post_init__(self):
+    def __post_init__(self: 'BaseArguments'):
         if self.ckpt_dir is not None:
             self._handle_ckpt_dir()
             logger.warning('The `--ckpt_dir` parameter will be removed in `ms-swift>=3.2`. '
@@ -52,8 +53,13 @@ class CompatArguments:
 
         if self.load_dataset_config is not None:
             self.load_data_args = self.load_dataset_config
-            logger.warning('The `--load_dataset_config` parameter will be removed in `ms-swift>=3.2`. '
+            logger.warning('The `--load_dataset_config` parameter will be removed in `ms-swift>=3.1`. '
                            'Please use `--load_data_args`.')
+
+        if len(self.lora_modules) > 0:
+            self.adapters += self.lora_modules
+            logger.warning('The `--lora_modules` parameter will be removed in `ms-swift>=3.1`. '
+                           'Please use `--adapters`.')
 
 
 @dataclass
@@ -81,7 +87,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
 
     seed: int = 42
     model_kwargs: Optional[Union[dict, str]] = None
-    lora_args: bool = True
+    load_args: bool = True
     load_data_args: bool = False
 
     use_hf: bool = False
@@ -175,7 +181,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
                 self.ckpt_dir = model_dir
                 break
 
-        if self.ckpt_dir and self.lora_args:
+        if self.ckpt_dir and self.load_args:
             self.load_args_from_ckpt()
 
     def load_args_from_ckpt(self) -> None:

@@ -6,6 +6,7 @@ The introduction to command line parameters will cover base arguments, atomic ar
 
 - 🔥tuner_backend: Optional values are 'peft' and 'unsloth', default is 'peft'
 - 🔥train_type: Default is 'lora'. Optional values: 'lora', 'full', 'longlora', 'adalora', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft', 'reft'
+- 🔥adapters: A list used to specify the ID/path of the adapter, default is `[]`.
 - seed: Default is 42
 - model_kwargs: Extra parameters specific to the model. This parameter list will be logged during training for reference.
 - load_args: When `--resume_from_checkpoint`, `--model`, or `--adapters` is specified, it will read the `args.json` file from the saved checkpoint and assign values to the `BaseArguments` that are defaulted to None (excluding DataArguments and GenerationArguments). These can be overridden by manually passing in values. The default is `True`.
@@ -277,7 +278,6 @@ Parameter meanings can be found in the [vllm documentation](https://docs.vllm.ai
 - enforce_eager: Whether vllm uses pytorch eager mode or establishes a cuda graph. Default is `False`. Setting to True can save memory but may affect efficiency.
 - 🔥limit_mm_per_prompt: Controls vllm using multiple images, default is `None`. For example, use `--limit_mm_per_prompt '{"image": 10, "video": 5}'`.
 - vllm_max_lora_rank: Default value is `16`. Parameters supported by vllm for LoRA.
-- lora_modules: Used to support dynamic switching between multiple LoRAs, default is `[]`.
 
 ### Merge Arguments
 

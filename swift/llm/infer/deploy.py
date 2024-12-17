@@ -129,7 +129,10 @@ class SwiftDeploy(SwiftInfer):
                      or self._check_max_logprobs(request))
         if error_msg:
             return self.create_error_response(HTTPStatus.BAD_REQUEST, error_msg)
+        infer_kwargs = self.infer_kwargs.copy()
         adapter_request = args.adapter_mapping.get(request.model)
+        if adapter_request:
+            infer_kwargs['adapter_request'] = adapter_request
 
         infer_request, request_config = request.parse()
         request_info = {'infer_request': infer_request.to_printable()}
@@ -142,8 +145,7 @@ class SwiftDeploy(SwiftInfer):
 
         self.infer_engine.pre_infer_hooks = [pre_infer_hook]
         try:
-            res_or_gen = await self.infer_async(
-                infer_request, request_config, template=self.template, adapter_request=adapter_request)
+            res_or_gen = await self.infer_async(infer_request, request_config, template=self.template, **infer_kwargs)
         except ValueError as e:
             return self.create_error_response(HTTPStatus.BAD_REQUEST, str(e))
         if request_config.stream:

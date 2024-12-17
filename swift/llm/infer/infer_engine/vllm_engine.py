@@ -34,6 +34,7 @@ class VllmEngine(InferEngine):
             *,
             model_type: Optional[str] = None,
             use_hf: Optional[bool] = None,
+            hub_token: Optional[str] = None,
             revision: Optional[str] = None,
             # engine_kwargs
             gpu_memory_utilization: float = 0.9,
@@ -57,6 +58,7 @@ class VllmEngine(InferEngine):
             download_model=True,
             model_type=model_type,
             use_hf=use_hf,
+            hub_token=hub_token,
             revision=revision)[1]
         self._post_init()
 

@@ -9,7 +9,7 @@ from datasets import Dataset as HfDataset
 
 from swift.llm import InferArguments, InferRequest, SwiftPipeline, load_dataset, prepare_model_template, sample_dataset
 from swift.utils import get_logger, is_master, open_jsonl_writer
-from .infer_engine import PtEngine
+from .infer_engine import AdapterRequest, PtEngine
 from .protocol import RequestConfig
 from .utils import InferCliState
 
@@ -27,6 +27,9 @@ class SwiftInfer(SwiftPipeline):
         assert len(args.adapters) <= 1, f'args.adapters: {args.adapters}'
         if args.merge_lora:
             merge_lora(args, device_map='cpu')
+        self.infer_kwargs = {}
+        if args.infer_backend == 'vllm' and args.adapters:
+            self.infer_kwargs['adapter_request'] = AdapterRequest('_lora', args.adapters[0])
 
         if args.infer_backend == 'pt':
             model, self.template = prepare_model_template(args)
@@ -90,7 +93,11 @@ class SwiftInfer(SwiftPipeline):
         return result
 
     def infer_single(self, infer_request: Union[InferRequest, Dict[str, Any]], request_config: RequestConfig) -> str:
-        res_or_gen = self.infer([infer_request], request_config, template=self.template, use_tqdm=False)
+        res_or_gen = self.infer([infer_request],
+                                request_config,
+                                template=self.template,
+                                use_tqdm=False,
+                                **self.infer_kwargs)
         if request_config.stream:
             response = ''
             for res in res_or_gen:
@@ -178,7 +185,8 @@ class SwiftInfer(SwiftPipeline):
             val_dataset = list(val_dataset)
             labels_list = [InferRequest.remove_response(data['messages']) for data in val_dataset]
 
-            resp_list = self.infer(val_dataset, request_config, template=self.template, use_tqdm=True)
+            resp_list = self.infer(
+                val_dataset, request_config, template=self.template, use_tqdm=True, **self.infer_kwargs)
             for data, resp, labels in zip(val_dataset, resp_list, labels_list):
                 response = resp.choices[0].message.content
                 data = {'response': response, 'labels': labels, **data}

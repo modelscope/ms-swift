@@ -12,7 +12,7 @@ from tqdm import tqdm
 from transformers import GenerationConfig, LogitsProcessorList
 from transformers.utils import is_torch_npu_available
 
-from swift.llm import InferRequest, Template, get_model_tokenizer, to_device
+from swift.llm import InferRequest, Template, get_model_tokenizer, safe_snapshot_download, to_device
 from swift.plugin import Metric
 from swift.tuners import Swift
 from swift.utils import get_logger
@@ -43,11 +43,13 @@ class PtEngine(InferEngine):
             model_id_or_path: str,
             torch_dtype: Optional[torch.dtype] = None,
             *,
+            adapters: List[str] = None,
             max_batch_size: int = 1,
-            # hub kwargs
+            #
             model_type: Optional[str] = None,
             use_hf: Optional[bool] = None,
             revision: Optional[str] = None,
+            hub_token: Optional[str] = None,
             load_model: bool = True,
             # model kwargs
             attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None,
@@ -62,6 +64,7 @@ class PtEngine(InferEngine):
             model_type=model_type,
             download_model=True,
             use_hf=use_hf,
+            hub_token=hub_token,
             revision=revision,
             device_map=device_map,
             quantization_config=quantization_config,
@@ -69,14 +72,19 @@ class PtEngine(InferEngine):
             model_kwargs=model_kwargs,
             **kwargs)
         self.max_batch_size = max_batch_size
+        if isinstance(adapters, str):
+            adapters = [adapters]
+        self.adapters = adapters or []
         self._post_init()
+        for adapter in self.adapters:
+            self._add_adapter(safe_snapshot_download(adapter, use_hf=use_hf, hub_token=hub_token))
 
     def _post_init(self):
         super()._post_init()
         self.engine = self.model  # dummy
         self.generation_config = self.model.generation_config
 
-    def add_adapter(self, adapter_path: str, adapter_name: Optional[str] = None) -> None:
+    def _add_adapter(self, adapter_path: str, adapter_name: Optional[str] = None) -> None:
         self.model = Swift.from_pretrained(self.model, adapter_path, adapter_name)
 
     @classmethod
@@ -243,7 +251,7 @@ class PtEngine(InferEngine):
         adapter_name = adapter_request.name
         if adapter_name not in self._adapters_pool:
             self._adapters_pool[adapter_name] = adapter_request
-            self.add_adapter(adapter_request.path, adapter_name)
+            self._add_adapter(adapter_request.path, adapter_name)
         return [adapter_name]
 
     def _infer_full(self,
