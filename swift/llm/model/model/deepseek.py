@@ -125,8 +125,7 @@ def _get_deepseek_vl(processor, llm_prefix, model_dir, *args, **kwargs):
         llm = getattr(model, llm_prefix)
         patch_output_clone(llm.model.embed_tokens)
         patch_output_to_input_device(llm.model.embed_tokens)
-        func_list = ['generate', 'get_input_embeddings', 'gradient_checkpointing_enable', 'forward']
-        use_submodel_func(model, llm_prefix, func_list)
+        use_submodel_func(model, llm_prefix)
     return model, processor
 
 
@@ -194,7 +193,7 @@ def get_model_tokenizer_deepseek_vl2(model_dir: str, *args, **kwargs):
     if not local_repo_path:
         local_repo_path = git_clone_github('https://github.com/deepseek-ai/DeepSeek-VL2')
     sys.path.append(os.path.join(local_repo_path))
-    from deepseek_vl.models import DeepseekVLV2Processor, DeepseekVLV2ForCausalLM
+    from deepseek_vl2.models import DeepseekVLV2Processor, DeepseekVLV2ForCausalLM
     processor: DeepseekVLV2Processor = DeepseekVLV2Processor.from_pretrained(model_dir)
     return _get_deepseek_vl(processor, 'language', model_dir, *args, **kwargs)
 

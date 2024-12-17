@@ -116,8 +116,7 @@ def get_model_tokenizer_internvl(model_dir: str,
             model.language_model.output.state.force_no_igemmlt = True
 
     if model is not None:
-        func_list = ['generate', 'get_input_embeddings', 'gradient_checkpointing_enable', 'forward']
-        use_submodel_func(model, 'language_model', func_list)
+        use_submodel_func(model, 'language_model')
         patch_output_clone(model.language_model.get_input_embeddings())
 
     return model, tokenizer

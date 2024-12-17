@@ -58,6 +58,7 @@ class MLLMModelArch:
     ovis1_6 = 'ovis1_6'
     molmo = 'molmo'
     emu3_chat = 'emu3_chat'
+    megrez_omni = 'megrez_omni'
 
 
 class ModelArch(LLMModelArch, MLLMModelArch):
@@ -487,6 +488,13 @@ register_model_arch(
         MLLMModelArch.molmo,
         language_model='model.transformer',
         vision_tower='model.vision_backbone',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.megrez_omni,
+        language_model='llm',
+        vision_tower=['vision', 'audio'],
     ))
 
 register_model_arch(MultiModelKeys(MLLMModelArch.emu3_chat, language_model='model'))

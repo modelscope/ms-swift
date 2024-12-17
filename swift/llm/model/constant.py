@@ -164,6 +164,7 @@ class MLLMModelType:
     molmo = 'molmo'
     molmoe = 'molmoe'
     pixtral = 'pixtral'
+    megrez_omni = 'megrez_omni'
 
 
 class ModelType(LLMModelType, MLLMModelType):

@@ -12,7 +12,7 @@ from ..constant import MLLMModelType
 from ..model_arch import ModelArch
 from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,
                         get_model_tokenizer_with_flash_attn, register_model)
-from ..utils import ModelInfo
+from ..utils import ModelInfo, use_submodel_func
 
 logger = get_logger()
 
@@ -178,4 +178,26 @@ register_model(
         architectures=['MolmoForCausalLM'],
         tags=['vision'],
         requires=['transformers>=4.45'],
+    ))
+
+
+def get_model_tokenizer_megrez_omni(*args, **kwargs):
+    model, processor = get_model_tokenizer_with_flash_attn(*args, **kwargs)
+    processor = model._get_or_init_processor()
+    use_submodel_func(model, 'llm')
+    return model, processor
+
+register_model(
+    ModelMeta(
+        MLLMModelType.megrez_omni,
+        [
+            ModelGroup([
+                Model('InfiniAI/Megrez-3B-Omni', 'Infinigence/Megrez-3B-Omni'),
+            ]),
+        ],
+        TemplateType.megrez_omni,
+        get_model_tokenizer_megrez_omni,
+        model_arch=ModelArch.megrez_omni,
+        architectures=['MegrezO'],
+        tags=['vision', 'audio'],
     ))
