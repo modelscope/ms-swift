@@ -1,8 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import datetime as dt
 import os
-from dataclasses import dataclass, field
-from typing import List, Literal, Optional, Union
+from dataclasses import dataclass
+from typing import Literal, Optional, Union
 
 import torch.distributed as dist
 

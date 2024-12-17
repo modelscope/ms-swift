@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from swift.utils import find_free_port, get_logger
+from swift.llm import safe_snapshot_download
 from .infer_args import InferArguments
 
 logger = get_logger()

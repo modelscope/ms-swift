@@ -47,6 +47,8 @@ class CompatArguments:
     def __post_init__(self):
         if self.ckpt_dir is not None:
             self._handle_ckpt_dir()
+            logger.warning('The `--ckpt_dir` parameter will be removed in `ms-swift>=3.2`. '
+                           'Please use `--model`, `--adapters`.')
 
         if self.load_dataset_config is not None:
             self.load_data_args = self.load_dataset_config
