@@ -45,7 +45,7 @@ class CompatArguments:
             self.model = self.ckpt_dir
         self.ckpt_dir = None
 
-    def __post_init__(self):
+    def __post_init__(self: 'BaseArguments'):
         if self.ckpt_dir is not None:
             self._handle_ckpt_dir()
             logger.warning('The `--ckpt_dir` parameter will be removed in `ms-swift>=3.2`. '
