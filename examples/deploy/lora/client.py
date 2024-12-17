@@ -1,10 +1,7 @@
-import os
-from typing import Literal
-
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+from swift.llm import InferClient, InferRequest, RequestConfig
 
 
-def infer_multilora(engine, infer_request: 'InferRequest'):
+def infer_multilora(engine: InferClient, infer_request: InferRequest):
     # Dynamic LoRA
     models = engine.models
     print(f'models: {models}')
@@ -25,7 +22,6 @@ def infer_multilora(engine, infer_request: 'InferRequest'):
 
 
 if __name__ == '__main__':
-    from swift.llm import InferClient, RequestConfig, InferRequest
-    engine = InferClient(host='127.0.0.1', port='8000')
+    engine = InferClient(host='127.0.0.1', port=8000)
     infer_request = InferRequest(messages=[{'role': 'user', 'content': '你是谁'}])
     infer_multilora(engine, infer_request)
