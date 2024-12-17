@@ -25,11 +25,11 @@ class SwiftInfer(SwiftPipeline):
         super().__init__(args)
         args = self.args
         assert len(args.adapters) <= 1, f'args.adapters: {args.adapters}'
+        if args.merge_lora:
+            merge_lora(args, device_map='cpu')
         self.infer_kwargs = {}
         if args.infer_backend == 'vllm' and args.adapters:
             self.infer_kwargs['adapter_request'] = AdapterRequest('_lora', args.adapters[0])
-        if args.merge_lora:
-            merge_lora(args, device_map='cpu')
 
         if args.infer_backend == 'pt':
             model, self.template = prepare_model_template(args)
