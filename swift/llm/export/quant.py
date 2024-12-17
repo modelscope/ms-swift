@@ -27,6 +27,7 @@ class QuantEngine(ProcessorMixin):
 
     def quantize(self):
         args = self.args
+        assert len(args.adapters) == 0, f'args.adapters: {args.adapters}'
         if args.quant_bits is None:
             raise ValueError(f'Please set the quant_bits. args.quant_bits: {args.quant_bits}')
         if args.quant_method == 'awq':
@@ -54,7 +55,6 @@ class QuantEngine(ProcessorMixin):
             None,
             self.processor,
             args.output_dir,
-            adapters=args.adapters,
             additional_saved_files=self.model.model_meta.additional_saved_files)
         logger.info(f'Successfully quantized the model and saved in {args.output_dir}.')
 

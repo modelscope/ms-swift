@@ -445,7 +445,6 @@ def get_model_tokenizer(
         quantization_config=None,
         attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None,
         rope_scaling: Optional[Dict[str, Any]] = None,
-        max_model_len: Optional[int] = None,
         automodel_class=None,
         model_kwargs: Optional[Dict[str, Any]] = None,
         **kwargs) -> Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]:

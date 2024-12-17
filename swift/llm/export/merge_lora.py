@@ -13,11 +13,11 @@ logger = get_logger()
 def merge_lora(args: ExportArguments, device_map=None, replace_if_exists=False) -> None:
     if replace_if_exists:
         logger.info(f'replace_if_exists: {replace_if_exists}')
-    assert args.adapters, f'args.adapters: {args.adapters}'
+    assert len(args.adapters) == 1, f'args.adapters: {args.adapters}'
     assert args.quant_method is None, (f'args.quant_method: {args.quant_method}, '
                                        'quantized model and does not support merge-lora.')
 
-    output_dir = getattr(args, 'output_dir', None) or f'{args.adapters}-merged'
+    output_dir = getattr(args, 'output_dir', None) or f'{args.adapters[0]}-merged'
     if os.path.exists(output_dir) and not replace_if_exists:
         logger.info(f'The weight directory for the merged LoRA already exists in {output_dir}, '
                     'skipping the saving process. '

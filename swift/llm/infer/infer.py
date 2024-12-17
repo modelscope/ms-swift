@@ -32,7 +32,7 @@ class SwiftInfer(SwiftPipeline):
             self.infer_engine = PtEngine.from_model_template(model, self.template)
             logger.info(f'model: {self.infer_engine.model}')
         else:
-            self.infer_engine = SwiftInfer.get_infer_engine(args)
+            self.infer_engine = self.get_infer_engine(args)
             self.template = self.get_template(args, self.processor)
         self.random_state = np.random.RandomState(args.data_seed)
 
