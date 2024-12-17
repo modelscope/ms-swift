@@ -189,6 +189,13 @@ def test_internvl2_5():
     _infer_model(pt_engine, system='你是书生·万象，英文名是InternVL，是由上海人工智能实验室、清华大学及多家合作单位联合开发的多模态大语言模型。')
 
 
+def test_megrez_omni():
+    pt_engine = PtEngine('InfiniAI/Megrez-3B-Omni')
+    _infer_model(pt_engine, messages=[{'role': 'user', 'content': '<image>这是什么'}])
+    pt_engine.default_template.template_backend = 'jinja'
+    _infer_model(pt_engine)
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig, get_template
     from swift.utils import get_logger, seed_everything
@@ -216,4 +223,5 @@ if __name__ == '__main__':
     # test_phi3_vision()
     # test_internvl2_5()
     # test_mplug_owl3()
-    test_xcomposer2_5()
+    # test_xcomposer2_5()
+    test_megrez_omni()

@@ -673,12 +673,7 @@ class Template(ProcessorMixin):
 
     def pre_forward_hook(self, model: nn.Module, args, kwargs):
         from swift.llm import to_device
-        keep_kwargs = {
-            k: v
-            for k, v in kwargs.items() if k in {'input_ids', 'labels', 'attention_mask', 'position_ids'}
-        }
-        keep_kwargs.update(to_device(self._post_encode(model, to_device(kwargs, model.device)), model.device))
-        kwargs = keep_kwargs
+        kwargs = to_device(self._post_encode(model, to_device(kwargs, model.device)), model.device)
         if 'inputs_embeds' in kwargs:
             kwargs.pop('input_ids', None)
 

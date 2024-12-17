@@ -187,6 +187,7 @@ def get_model_tokenizer_megrez_omni(*args, **kwargs):
     use_submodel_func(model, 'llm')
     return model, processor
 
+
 register_model(
     ModelMeta(
         MLLMModelType.megrez_omni,
