@@ -31,7 +31,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         self.max_model_len = self.model_info.max_model_len
         self.config = self.model_info.config
         self.pre_infer_hooks = []
-        if not hasattr(self, 'default_template'):
+        if getattr(self, 'default_template', None) is None:
             self.default_template = get_template(self.model_meta.template, self.processor)
         self._adapters_pool = {}
 

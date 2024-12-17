@@ -80,7 +80,7 @@ class PtEngine(InferEngine):
         self.model = Swift.from_pretrained(self.model, adapter_path, adapter_name)
 
     @classmethod
-    def from_model_template(cls, model, template, *, max_batch_size: int = 1):
+    def from_model_template(cls, model, template=None, *, max_batch_size: int = 1):
         self = super().__new__(cls)
         self.model = model
         self.default_template = template
