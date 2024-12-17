@@ -45,7 +45,7 @@ class Template(ProcessorMixin):
     use_model = False
 
     is_encoder_decoder = False
-    padding_side: Literal['left', 'right'] = 'right'  # The padding_side when the training batch_size >= 2.
+    padding_side: Literal['left', 'right'] = 'left'  # The padding_side when the training batch_size >= 2.
 
     def __init__(
             self,

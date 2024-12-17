@@ -5,11 +5,11 @@ python swift/cli/rlft.py \
     --model_type qwen2_5 \
     --reward_type agent \
     --template default \
-    --dataset swift/ToolBench:ppo#5000 \
+    --dataset swift/ToolBench:ppo#25000 \
     --per_device_train_batch_size 2 \
     --gradient_accumulation_steps 16 \
     --per_device_eval_batch_size 1 \
-    --max_length 2048 \
+    --max_length 1024 \
     --num_train_epochs 3 \
     --learning_rate 5e-6 \
     --warmup_ratio 0.05 \

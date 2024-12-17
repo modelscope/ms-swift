@@ -51,6 +51,15 @@ class SwiftRLFT(SwiftSft):
                 else:
                     f1.append(1)
             else:
+                if not isinstance(ref_input_json, dict) or not isinstance(cand_input_json, dict):
+                    # This cannot be happen, but:
+                    # File "swift/swift/llm/train/rlft.py", line 62, in evaluate_action_reward
+                    # for k, v in ref_input_json.items():
+                    # AttributeError: 'str' object has no attribute 'items'
+                    print(f'>>>>>>ref_input_json: {ref_input_json}, cand_input_json: {cand_input_json}')
+                    f1.append(0)
+                    continue
+
                 half_match = 0
                 full_match = 0
                 if ref_input_json == {}:
