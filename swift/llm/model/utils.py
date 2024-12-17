@@ -302,7 +302,9 @@ def git_clone_github(github_url: str,
     return local_repo_path
 
 
-def use_submodel_func(model, submodel_name: str, func_list: List[str]) -> None:
+def use_submodel_func(model, submodel_name: str, func_list: Optional[List[str]] = None) -> None:
+    if func_list is None:
+        func_list = ['generate', 'get_input_embeddings', 'gradient_checkpointing_enable', 'forward']
     submodel = getattr(model, submodel_name)
 
     def _get_new_func(func_name: str):
