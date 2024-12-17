@@ -200,14 +200,17 @@ def save_checkpoint(model: Optional[PreTrainedModel],
                     *,
                     safe_serialization: bool = True,
                     max_shard_size: Union[int, str] = '5GB',
-                    adapters: List[str] = None,
+                    model_dirs: List[str] = None,
                     additional_saved_files: Optional[List[str]] = None) -> None:
     if model is not None:
         model.save_pretrained(output_dir, safe_serialization=safe_serialization, max_shard_size=max_shard_size)
     processor.save_pretrained(output_dir)
 
-    model_dirs = (adapters or [])
-    if model and model.model_dir:
+    if model_dirs is None:
+        model_dirs = []
+    else:
+        model_dirs = model_dirs.copy()
+    if model and model.model_dir and model.model_dir not in model_dirs:
         model_dirs.append(model.model_dir)
     for src_file in additional_saved_files or [] + ['preprocessor_config.json', 'args.json']:
         for model_dir in model_dirs:

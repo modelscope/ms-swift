@@ -125,7 +125,7 @@ def _prepare_adapter(args, model):
         else:
             from unsloth import FastLanguageModel as UnslothModel
         UnslothModel.for_inference(model)
-        return
+        return model
     if args.train_type in extra_tuners:
         tuner = extra_tuners[args.train_type]
     else:
@@ -139,7 +139,7 @@ def _prepare_adapter(args, model):
 
 
 def prepare_model_template(args, **kwargs):
-    model, processor = args.get_model_processor(args, **kwargs)
+    model, processor = args.get_model_processor(**kwargs)
     model = _prepare_adapter(args, model)
-    template = args.get_template(args, processor)
+    template = args.get_template(processor)
     return model, template

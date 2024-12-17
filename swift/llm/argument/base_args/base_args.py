@@ -164,7 +164,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         return self
 
     def _init_ckpt_dir(self, adapters=None):
-        model_dirs = adapters or self.adapters
+        model_dirs = (adapters or self.adapters).copy()
         if self.model:
             model_dirs.append(self.model)
         self.ckpt_dir = None
@@ -173,7 +173,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
                 self.ckpt_dir = model_dir
                 break
 
-        if self.ckpt_dir is not None and self.lora_args:
+        if self.ckpt_dir and self.lora_args:
             self.load_args_from_ckpt()
 
     def load_args_from_ckpt(self) -> None:
@@ -203,7 +203,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         for key, old_value in old_args.items():
             if key not in all_keys:
                 continue
-            if not self.load_dataset_config and key in data_keys:
+            if not self.load_data_args and key in data_keys:
                 continue
             value = getattr(self, key, None)
             if value is None or isinstance(value, (list, tuple)) and len(value) == 0 or key in load_keys:

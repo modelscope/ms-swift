@@ -208,6 +208,8 @@ def test_resume_from_checkpoint():
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
     result = sft_main(TrainArguments(resume_from_checkpoint=last_model_checkpoint, load_data_args=True, max_steps=10))
+    last_model_checkpoint = result['last_model_checkpoint']
+    infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True))
 
 
 def test_resume_only_model():

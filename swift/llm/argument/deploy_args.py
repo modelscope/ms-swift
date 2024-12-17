@@ -47,7 +47,7 @@ class DeployArguments(InferArguments):
         from swift.llm import AdapterRequest
         if isinstance(self.adapters, str):
             self.adapters = [self.adapters]
-        adapter_mapping = []
+        adapter_mapping = {}
         adapters = []
         for i, adapter in enumerate(self.adapters):
             adapter_path = adapter.split('=')
