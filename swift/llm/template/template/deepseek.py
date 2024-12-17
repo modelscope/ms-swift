@@ -126,7 +126,7 @@ class DeepseekVL2Template(DeepseekVLTemplate):
     image_placeholder = ['<image>\n']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        from deepseek_vl.models.processing_deepseek_vl_v2 import VLChatProcessorOutput
+        from deepseek_vl2.models.processing_deepseek_vl_v2 import VLChatProcessorOutput
         encoded = Template._encode(self, inputs)
         images = inputs.images
         processor = self.processor
