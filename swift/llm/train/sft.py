@@ -15,8 +15,8 @@ from ..dataset import EncodePreprocessor, GetLengthPreprocessor, LazyLLMDataset,
 from ..infer import prepare_generation_config
 from ..model import get_model_arch
 from ..template import get_template
-from ..tuner import TunerMixin
 from ..utils import deep_getattr, dynamic_gradient_checkpointing
+from .tuner import TunerMixin
 
 logger = get_logger()
 
