@@ -95,7 +95,7 @@ def batch_generation(
     logitss = []
     for i in range(0, queries.shape[0], local_rollout_forward_batch_size):
         query = queries[i : i + local_rollout_forward_batch_size]
-        query = query.to('cuda:0')
+        query = query.to('cuda')
         query_response, logits = generate(
             model,
             query,
@@ -467,11 +467,13 @@ class RLFTTrainer(PPOTrainer):
                 ground_truth_queries = []
                 gt_index = []
                 for i in range(queries.shape[0]):
-                    if np.random.random() <= (0.4-gen_ratio): # rollout
-                        generated_queries.append(queries[i])
-                    else: # ground truth
+                    if np.random.random() < (0.5-gen_ratio):
+                        # ground truth
                         gt_index.append(i)
                         ground_truth_queries.append(queries[i])
+                    else: 
+                        # rollout
+                        generated_queries.append(queries[i])
                 print('gt_index', gt_index)
                 query_responses = []
                 logitss = []
@@ -762,8 +764,8 @@ class RLFTTrainer(PPOTrainer):
 
         table = defaultdict(list)
         with unwrap_model_for_generation(self.model, self.accelerator) as unwrapped_model:
-            for batch in self.dataloader:
-                query = batch["input_ids"].to('cuda:0')
+            for batch in self.eval_dataloader:
+                query = batch["input_ids"].to(f'cuda')
                 with torch.no_grad():
                     context_length = query.shape[1]
                     query_response, _ = batch_generation(
@@ -780,10 +782,10 @@ class RLFTTrainer(PPOTrainer):
                         postprocessed_response = truncate_response(
                             args.stop_token_id, tokenizer.pad_token_id, response
                         )
-                    table["query"].extend(gather_object(tokenizer.batch_decode(query, skip_special_tokens=True)))
+                    # table["query"].extend(gather_object(tokenizer.batch_decode(query, skip_special_tokens=True)))
                     table["model response"].extend(gather_object(tokenizer.batch_decode(postprocessed_response)))
                     if 'ground_truth' in batch:
-                        table["grounding truth"].extend(batch['ground_truth'])
+                        table["grounding truth"].extend(gather_object(batch['ground_truth']))
 
                     postprocessed_query_response = torch.cat((query, postprocessed_response), 1)
                     _, score, _ = self.get_reward(

@@ -44,7 +44,7 @@ class SwiftRLFT(SwiftSft):
                 f1.append(0)
             elif not ref_is_json and not cand_is_json:
                 rougel = self.evaluate_rougel([ref_input_json], [cand_input_json])
-                if rougel < 10:
+                if rougel is None or rougel < 10:
                     f1.append(0)
                 elif 10 <= rougel < 20:
                     f1.append(0.1)
@@ -143,15 +143,18 @@ class SwiftRLFT(SwiftSft):
                                                   action_input_ref
                                                   )
             rewards.append(reward)
-        return None, torch.tensor(rewards, dtype=torch.float32).to('cuda:0'), None
+        return None, torch.tensor(rewards, dtype=torch.float32).to('cuda'), None
 
     def evaluate_rougel(self, cand_list: list, ref_list: list):
         if len(ref_list) == 0:
             return None
-        rouge = Rouge()
-        rouge_score = rouge.get_scores(hyps=cand_list, refs=ref_list, avg=True)
-        rougel = rouge_score["rouge-l"]["f"]
-        return rougel
+        try:
+            rouge = Rouge()
+            rouge_score = rouge.get_scores(hyps=cand_list, refs=ref_list, avg=True)
+            rougel = rouge_score["rouge-l"]["f"]
+            return rougel
+        except:
+            return None
 
     def find_sublist(self, full_list, sub_list):
         len_full = len(full_list)
