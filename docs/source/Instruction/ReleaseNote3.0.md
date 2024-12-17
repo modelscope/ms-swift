@@ -47,7 +47,7 @@
 
 ### 参数差异
 
-- model_type的含义发生了变化。3.0版本需要指定--model或--ckpt_dir，model_type仅当模型为SWIFT不支持模型时才需要额外指定
+- model_type的含义发生了变化。3.0版本只需要指定--model，model_type仅当模型为SWIFT不支持模型时才需要额外指定
 - sft_type更名为train_type
 - model_id_or_path更名为model
 - template_type更名为template
@@ -67,6 +67,7 @@
 - 移除了eval_token，使用api_key支持
 - target_modules(lora_target_modules)的ALL改为了all-linear，含义相同
 - deepspeed的配置更改为`default-zero2`->`zero2`, `default-zero3`->`zero3`
+- infer/deploy/export移除了--ckpt_dir参数，使用--model, --adapters进行控制
 
 2.0标记为compatible参数的部分整体移除了。
 

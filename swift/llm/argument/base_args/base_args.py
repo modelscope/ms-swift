@@ -9,6 +9,7 @@ import torch
 from transformers.utils import is_torch_npu_available
 
 from swift.hub import get_hub
+from swift.llm import Processor, Template, get_model_tokenizer, get_template, load_by_unsloth, safe_snapshot_download
 from swift.plugin import extra_tuners
 from swift.utils import check_json_format, get_dist_setting, get_logger, is_dist, is_master, use_hf_hub
 from .data_args import DataArguments
@@ -27,7 +28,43 @@ def get_supported_tuners():
 
 
 @dataclass
-class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, TemplateArguments, ModelArguments):
+class CompatArguments:
+    #
+    ckpt_dir: Optional[str] = None
+    load_dataset_config: Optional[bool] = None
+    lora_modules: List[str] = field(default_factory=list)
+
+    def _handle_ckpt_dir(self: 'BaseArguments'):
+        assert os.path.isdir(self.ckpt_dir), f'self.ckpt_dir: {self.ckpt_dir}'
+        if (os.path.exists(os.path.join(self.ckpt_dir, 'adapter_config.json'))
+                or os.path.exists(os.path.join(self.ckpt_dir, 'default', 'adapter_config.json'))
+                or os.path.exists(os.path.join(self.ckpt_dir, 'reft'))):
+            self.adapters.insert(0, self.ckpt_dir)
+        else:
+            assert self.model is None
+            self.model = self.ckpt_dir
+        self.ckpt_dir = None
+
+    def __post_init__(self: 'BaseArguments'):
+        if self.ckpt_dir is not None:
+            self._handle_ckpt_dir()
+            logger.warning('The `--ckpt_dir` parameter will be removed in `ms-swift>=3.2`. '
+                           'Please use `--model`, `--adapters`.')
+
+        if self.load_dataset_config is not None:
+            self.load_data_args = self.load_dataset_config
+            logger.warning('The `--load_dataset_config` parameter will be removed in `ms-swift>=3.1`. '
+                           'Please use `--load_data_args`.')
+
+        if len(self.lora_modules) > 0:
+            self.adapters += self.lora_modules
+            logger.warning('The `--lora_modules` parameter will be removed in `ms-swift>=3.1`. '
+                           'Please use `--adapters`.')
+
+
+@dataclass
+class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, DataArguments, TemplateArguments,
+                    ModelArguments):
     """
     BaseArguments class is a dataclass that inherits from multiple argument classes:
     GenerationArguments, QuantizeArguments, DataArguments, TemplateArguments, ModelArguments.
@@ -37,7 +74,7 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
         train_type(str): The training type, support all supported tuners and `full`.
         seed (int): Random seed for reproducibility. Default is 42.
         model_kwargs (Optional[str]): Additional keyword arguments for the model. Default is None.
-        load_dataset_config (bool): Flag to determine if dataset configuration should be loaded. Default is False.
+        load_data_args (bool): Flag to determine if dataset configuration should be loaded. Default is False.
         use_hf (bool): Flag to determine if Hugging Face should be used. Default is False.
         hub_token (Optional[str]): SDK token for authentication. Default is None.
         custom_register_path (List[str]): Path to custom .py file for dataset registration. Default is None.
@@ -46,10 +83,12 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
     """
     tuner_backend: Literal['peft', 'unsloth'] = 'peft'
     train_type: str = field(default='lora', metadata={'help': f'train_type choices: {list(get_supported_tuners())}'})
+    adapters: List[str] = field(default_factory=list)
 
     seed: int = 42
     model_kwargs: Optional[Union[dict, str]] = None
-    load_dataset_config: bool = False
+    load_args: bool = True
+    load_data_args: bool = False
 
     use_hf: bool = False
     # None: use env var `MODELSCOPE_API_TOKEN`
@@ -58,6 +97,7 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
     custom_register_path: List[str] = field(default_factory=list)  # .py
 
     # extra
+    num_labels: Optional[int] = None
     ignore_args_error: bool = False  # True: notebook compatibility
     use_swift_lora: bool = False  # True for using tuner_backend == swift, don't specify this unless you know what you are doing # noqa
 
@@ -72,10 +112,20 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
             __import__(fname.rstrip('.py'))
         logger.info(f'Successfully registered `{self.custom_register_path}`')
 
+    def _init_adapters(self):
+        if isinstance(self.adapters, str):
+            self.adapters = [self.adapters]
+        self.adapters = [
+            safe_snapshot_download(adapter, use_hf=self.use_hf, hub_token=self.hub_token) for adapter in self.adapters
+        ]
+
     def __post_init__(self):
         if self.use_hf or use_hf_hub():
             self.use_hf = True
             os.environ['USE_HF'] = '1'
+        CompatArguments.__post_init__(self)
+        self._init_adapters()
+        self._init_ckpt_dir()
         self._init_custom_register()
         self._init_model_kwargs()
         self.rank, self.local_rank, world_size, self.local_world_size = get_dist_setting()
@@ -90,6 +140,7 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
         QuantizeArguments.__post_init__(self)
         TemplateArguments.__post_init__(self)
         DataArguments.__post_init__(self)
+
         self.hub = get_hub(self.use_hf)
         if self.hub.try_login(self.hub_token):
             logger.info('hub login successful!')
@@ -113,38 +164,59 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
     def adapters_can_be_merged(self):
         return {'lora', 'longlora', 'llamapro', 'adalora'}
 
-    def load_args_from_ckpt(self, checkpoint_dir: str) -> None:
-        """Load specific attributes from args.json"""
-        args_path = os.path.join(checkpoint_dir, 'args.json')
-        if not os.path.exists(args_path):
-            return
-        logger.info(f'Successfully loaded {args_path}...')
+    @classmethod
+    def from_pretrained(cls, checkpoint_dir: str):
+        self = super().__new__(cls)
+        self.ckpt_dir = checkpoint_dir
+        self.load_args_from_ckpt()
+        return self
+
+    def _init_ckpt_dir(self, adapters=None):
+        model_dirs = (adapters or self.adapters).copy()
+        if self.model:
+            model_dirs.append(self.model)
+        self.ckpt_dir = None
+        for model_dir in model_dirs:
+            if os.path.exists(os.path.join(model_dir, 'args.json')):
+                self.ckpt_dir = model_dir
+                break
+
+        if self.ckpt_dir and self.load_args:
+            self.load_args_from_ckpt()
+
+    def load_args_from_ckpt(self) -> None:
+        args_path = os.path.join(self.ckpt_dir, 'args.json')
+        assert os.path.exists(args_path), f'args_path: {args_path}'
         with open(args_path, 'r', encoding='utf-8') as f:
             old_args = json.load(f)
-        # read settings
-        all_keys = list(f.name for f in fields(self.__class__))
+        all_keys = list(f.name for f in fields(BaseArguments))
         data_keys = list(f.name for f in fields(DataArguments))
         load_keys = [
-            'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant', 'split_dataset_ratio', 'model_name', 'model_author',
-            'train_type', 'tuner_backend'
+            # quant_args
+            'bnb_4bit_quant_type',
+            'bnb_4bit_use_double_quant',
+            'use_swift_lora',
+            # base_args
+            'train_type',
+            'tuner_backend',
+            # data_args
+            'model_name',
+            'model_author',
+            'split_dataset_ratio',
+            # template_args
+            'tools_prompt'
         ]
-        skip_keys = [
-            'output_dir',
-            'deepspeed',
-            'temperature',
-            'max_new_tokens',
-        ]
-        for key in all_keys:
-            if key in skip_keys:
+        skip_keys = list(f.name for f in fields(GenerationArguments)) + ['adapters', 'max_length']
+        all_keys = set(all_keys) - set(skip_keys)
+        for key, old_value in old_args.items():
+            if key not in all_keys:
                 continue
-            if not self.load_dataset_config and key in data_keys:
-                continue
-            old_value = old_args.get(key)
-            if old_value is None:
+            if not self.load_data_args and key in data_keys:
                 continue
             value = getattr(self, key, None)
             if value is None or isinstance(value, (list, tuple)) and len(value) == 0 or key in load_keys:
                 setattr(self, key, old_value)
+        logger.info(f'Successfully loaded {args_path}.')
 
     def save_args(self) -> None:
         if is_master():
@@ -154,18 +226,32 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
             with open(fpath, 'w', encoding='utf-8') as f:
                 json.dump(check_json_format(self.__dict__), f, ensure_ascii=False, indent=2)
 
-    def _init_weight_type(self, ckpt_dir):
-        if ckpt_dir and (os.path.exists(os.path.join(ckpt_dir, 'adapter_config.json'))
-                         or os.path.exists(os.path.join(ckpt_dir, 'default', 'adapter_config.json'))
-                         or os.path.exists(os.path.join(ckpt_dir, 'reft'))):
-            self.weight_type = 'adapter'
-        else:
-            self.weight_type = 'full'
-            self.model = ckpt_dir or self.model
-
     def _init_device(self):
         if is_dist():
             if is_torch_npu_available():
                 torch.npu.set_device(self.local_rank)
             else:
                 torch.cuda.set_device(self.local_rank)
+
+    def get_template(self, processor: 'Processor') -> 'Template':
+        template_kwargs = self.get_template_kwargs()
+        template = get_template(self.template, processor, use_chat_template=self.use_chat_template, **template_kwargs)
+        logger.info(f'default_system: {template.template_meta.default_system}')
+        return template
+
+    def get_model_processor(self, *, model=None, model_type=None, model_revision=None, **kwargs):
+        if self.tuner_backend == 'unsloth':
+            return load_by_unsloth(self)
+        kwargs.update(self.get_model_kwargs())
+        # compat rlhf
+        kwargs['model_id_or_path'] = model or self.model
+        kwargs['model_type'] = model_type or self.model_type
+        kwargs['model_revision'] = model_revision or self.model_revision
+
+        model_kwargs = {}
+        if self.num_labels is not None:
+            from transformers import AutoModelForSequenceClassification
+            kwargs['automodel_class'] = AutoModelForSequenceClassification
+            model_kwargs = {'num_labels': self.num_labels}
+        model, processor = get_model_tokenizer(**kwargs, model_kwargs=model_kwargs)
+        return model, processor

@@ -39,8 +39,9 @@ This way, only individuals with permissions from the organization can see the mo
 
 The parameters for pushing the model during export are the same as those for training:
 ```shell
+# If it is full parameter training, it is `--model`
 CUDA_VISIBLE_DEVICES=0 swift export \
-    --ckpt_dir output/qwenxxx/vx-xxx/checkpoint-xxx \
+    --adapters output/qwenxxx/vx-xxx/checkpoint-xxx \
     --push_to_hub true \
     --hub_model_id qwen1half-4b-chat-lora \
     --hub_token '<your-sdk-token>'

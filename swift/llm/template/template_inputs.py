@@ -187,7 +187,7 @@ class StdTemplateInputs:
             new_content = ''
             for item in content:
                 key: str = item['type']
-                value = item[key]
+                value = item.get(key)
                 if key == 'text':
                     new_content += value
                     continue
@@ -198,7 +198,8 @@ class StdTemplateInputs:
                 new_content += f'<{key}>'
                 if isinstance(value, dict):
                     value = value['url']
-                res[f'{key}s'].append(value)
+                if value:
+                    res[f'{key}s'].append(value)
             message['content'] = new_content
         return res
 

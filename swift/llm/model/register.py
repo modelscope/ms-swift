@@ -6,6 +6,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
+from peft import PeftModel
 from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer, GenerationConfig, PretrainedConfig,
                           PreTrainedModel, PreTrainedTokenizerBase)
 from transformers.integrations import is_deepspeed_zero3_enabled
@@ -114,26 +115,34 @@ def register_model(model_meta: ModelMeta, *, exist_ok: bool = False) -> None:
     MODEL_MAPPING[model_type] = model_meta
 
 
-def load_by_unsloth(model_dir: str,
-                    torch_dtype: torch.dtype,
-                    max_seq_length: Optional[int] = None,
-                    load_in_4bit: bool = True,
-                    is_multimodal=False):
+def load_by_unsloth(args):
     """Load model by unsloth"""
-    # TODO:check
     assert is_unsloth_available(), 'please install unsloth if using `use_unsloth=True`'
     os.environ['UNSLOTH_RETURN_LOGITS'] = '1'
-    if is_multimodal:
+    os.environ['UNSLOTH_DISABLE_STATISTICS'] = '1'
+    model_info = args.model_info
+    model_meta = args.model_meta
+    if model_meta.is_multimodal:
         from unsloth import FastVisionModel as UnslothModel
     else:
         from unsloth import FastLanguageModel as UnslothModel
-    return UnslothModel.from_pretrained(
-        model_name=model_dir,
-        dtype=torch_dtype,
-        max_seq_length=max_seq_length,
-        load_in_4bit=load_in_4bit,
+    model, processor = UnslothModel.from_pretrained(
+        model_name=args.adapters and args.adapters[0] or args.model_dir,
+        dtype=args.torch_dtype,
+        max_seq_length=model_info.max_model_len,
+        load_in_4bit=args.quant_bits == 4,
         trust_remote_code=True,
     )
+    if isinstance(model, PeftModel):
+        base_model = model.model
+    else:
+        base_model = model
+    base_model.model_dir = args.model_dir
+    base_model.model_info = model_info
+    base_model.model_meta = model_meta
+    processor.model_info = model_info
+    processor.model_meta = model_meta
+    return model, processor
 
 
 def get_model_tokenizer_from_local(model_dir: str,
@@ -171,14 +180,9 @@ def get_model_tokenizer_from_local(model_dir: str,
 
     model = None
     if load_model:
-        if kwargs.get('use_unsloth', False):
-            unsloth_kwargs = kwargs['unsloth_kwargs']
-            logger.info(f'unsloth_kwargs: {unsloth_kwargs}')
-            model, tokenizer = load_by_unsloth(model_dir, torch_dtype, model_info.max_model_len, **unsloth_kwargs)
-        else:
-            logger.info(f'model_kwargs: {model_kwargs}')
-            model = automodel_class.from_pretrained(
-                model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
+        logger.info(f'model_kwargs: {model_kwargs}')
+        model = automodel_class.from_pretrained(
+            model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
 
     # fix not save modeling_xxx.py (transformers 4.45)
     # https://github.com/huggingface/transformers/issues/24737
@@ -490,9 +494,6 @@ def get_model_tokenizer(
     kwargs['automodel_class'] = automodel_class
     kwargs['attn_impl'] = attn_impl
     kwargs['rope_scaling'] = rope_scaling
-    if 'unsloth_kwargs' not in kwargs:
-        kwargs['unsloth_kwargs'] = {}
-    kwargs['unsloth_kwargs']['is_multimodal'] = model_meta.is_multimodal
     model, processor = get_function(model_dir, model_info, model_kwargs, load_model, **kwargs)
 
     if not isinstance(processor, PreTrainedTokenizerBase) and hasattr(processor, 'tokenizer'):
@@ -521,7 +522,6 @@ def get_model_tokenizer(
 
         # generation_config
         generation_config_path = os.path.join(model_dir, 'generation_config.json')
-        # TODO:model.llm.generation_config: deepseek-vl
         if not hasattr(model, 'generation_config') and os.path.isfile(generation_config_path):
             model.generation_config = GenerationConfig.from_pretrained(model_dir)
         # fix llama2 warning

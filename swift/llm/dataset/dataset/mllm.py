@@ -765,14 +765,13 @@ register_dataset(
             SubsetDataset(
                 name='caption',
                 preprocess_func=RefCOCOPreprocessor('caption'),
-                split=['train', 'validation'],
             ),
             SubsetDataset(
                 name='grounding',
                 preprocess_func=RefCOCOPreprocessor('grounding'),
-                split=['train', 'validation'],
             )
         ],
+        split=['train', 'validation'],
         tags=['multi-modal', 'en', 'grounding']))
 
 register_dataset(
@@ -783,14 +782,13 @@ register_dataset(
             SubsetDataset(
                 name='caption',
                 preprocess_func=RefCOCOPreprocessor('caption'),
-                split=['train', 'validation'],
             ),
             SubsetDataset(
                 name='grounding',
                 preprocess_func=RefCOCOPreprocessor('grounding'),
-                split=['train', 'validation'],
             )
         ],
+        split=['train', 'validation'],
         tags=['multi-modal', 'en', 'grounding']))
 
 register_dataset(
@@ -1098,7 +1096,7 @@ register_dataset(
         hf_dataset_id='linxy/LaTeX_OCR',
         subsets=['default', 'human_handwrite', 'human_handwrite_print', 'synthetic_handwrite', 'small'],
         preprocess_func=LatexocrPreprocessor(),
-        split=['train'],
+        split=['train', 'validation', 'test'],
         tags=['chat', 'ocr', 'multi-modal', 'vision'],
     ))
 

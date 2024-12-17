@@ -36,20 +36,20 @@ pip install .
 
 Please refer to the [examples](https://github.com/modelscope/ms-swift/tree/main/examples/export) for quantization commands.
 
-You can use training datasets for model quantization after training:
+To perform model quantization after training with a training set, use the `--model` and `--adapters` options to specify the checkpoint directory. The checkpoint directory contains the parameter files from training:
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift export \
-    --ckpt_dir 'output/some-model/vx-xxx/checkpoint-xxx' \
+    --adapters 'output/some-model/vx-xxx/checkpoint-xxx' \
     --quant_bits 4 \
-    --load_dataset_config true \
-    --quant_method awq
+    --load_data_args true \
+    --quant_method gptq
 ```
 
-Once quantized, the model can be used for inference or deployment directly with `--ckpt_dir` or `--model`, for example:
+Once quantized, the model can be used for inference or deployment directly with `--model`, for example:
 ```shell
 swift infer --model /xxx/quantize-output-folder
-swift deploy --ckpt_dir /xxx/quantize-output-folder
+swift deploy --model /xxx/quantize-output-folder
 ```
 
 ### bnb, hqq, eetq

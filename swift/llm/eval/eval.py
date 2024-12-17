@@ -41,7 +41,8 @@ class SwiftEval(SwiftPipeline):
                 eval_report['vlmeval'] = result
         eval_report.update({
             'time': args.time,
-            'model': args.ckpt_dir or args.model,
+            'model': args.model,
+            'adapters': args.adapters,
             'result_path': args.result_path,
             'eval_output_dir': args.eval_output_dir,
             'eval_limit': args.eval_limit

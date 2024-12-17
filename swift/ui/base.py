@@ -305,9 +305,9 @@ class BaseUI:
         if os.path.exists(local_args_path):
             try:
                 if hasattr(arg_cls, 'resume_from_checkpoint'):
-                    args = arg_cls(resume_from_checkpoint=model, load_dataset_config=True)
+                    args = arg_cls(resume_from_checkpoint=model, load_data_args=True)
                 else:
-                    args = arg_cls(ckpt_dir=model, load_dataset_config=True)
+                    args = arg_cls(ckpt_dir=model, load_data_args=True)
             except ValueError:
                 return [gr.update()] * (len(keys) + int(has_record))
             values = []

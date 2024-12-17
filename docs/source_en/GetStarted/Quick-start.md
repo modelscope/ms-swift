@@ -54,19 +54,19 @@ swift sft \
     --model_name swift-robot
 ```
 
-After completing the training, use the following command to perform inference with the trained weights. Replace ckpt_dir with the folder of the last checkpoint generated during training:
+After training is complete, use the following command to perform inference with the trained weights. The `--adapters` option should be replaced with the last checkpoint folder generated from the training. Since the adapters folder contains the parameter files from the training, there is no need to specify `--model` or `--system` separately.
 
 ```shell
 # Using an interactive command line for inference.
 NPROC_PER_NODE=0
 swift infer \
-    --ckpt_dir output/vx-xxx/checkpoint-xxx \
+    --adapters output/vx-xxx/checkpoint-xxx \
     --stream true
 
 # merge-lora and use vLLM for inference acceleration
 NPROC_PER_NODE=0
 swift infer \
-    --ckpt_dir output/vx-xxx/checkpoint-xxx \
+    --adapters output/vx-xxx/checkpoint-xxx \
     --stream true \
     --merge_lora true \
     --infer_backend vllm \

@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Literal, Optional
 
 from swift.utils import get_logger
@@ -29,7 +29,6 @@ class ExportArguments(MergeArguments, BaseArguments):
         to_peft_format (bool): Flag to indicate if the output should be in PEFT format.
             This argument is useless for now.
     """
-    ckpt_dir: Optional[str] = field(default=None, metadata={'help': '/path/to/your/vx-xxx/checkpoint-xxx'})
     output_dir: Optional[str] = None
 
     # awq/gptq
@@ -74,22 +73,15 @@ class ExportArguments(MergeArguments, BaseArguments):
             elif self.to_ollama:
                 suffix = 'ollama'
             else:
-                suffix = 'dummy'
-                logger.warn(f'Not a valid export argument: {self}')
-            self.output_dir = os.path.join(ckpt_dir, f'{ckpt_name}-{suffix}')
+                return
 
+            self.output_dir = os.path.join(ckpt_dir, f'{ckpt_name}-{suffix}')
             logger.info(f'Setting args.output_dir: {self.output_dir}')
 
         self.output_dir = to_abspath(self.output_dir)
-        # TODO: logic optimization
-        if suffix != 'dummy':
-            assert not os.path.exists(self.output_dir), f'args.output_dir: {self.output_dir} already exists.'
+        assert not os.path.exists(self.output_dir), f'args.output_dir: {self.output_dir} already exists.'
 
     def __post_init__(self):
-        if self.ckpt_dir:
-            self.ckpt_dir = to_abspath(self.ckpt_dir, True)
-            self.load_args_from_ckpt(self.ckpt_dir)
-        self._init_weight_type(self.ckpt_dir)
         MergeArguments.__post_init__(self)
         BaseArguments.__post_init__(self)
         self._init_output_dir()

@@ -6,9 +6,11 @@ The introduction to command line parameters will cover base arguments, atomic ar
 
 - 🔥tuner_backend: Optional values are 'peft' and 'unsloth', default is 'peft'
 - 🔥train_type: Default is 'lora'. Optional values: 'lora', 'full', 'longlora', 'adalora', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft', 'reft'
+- 🔥adapters: A list used to specify the ID/path of the adapter, default is `[]`.
 - seed: Default is 42
 - model_kwargs: Extra parameters specific to the model. This parameter list will be logged during training for reference.
-- load_dataset_config: When specifying resume_from_checkpoint/ckpt_dir, it will read the `args.json` in the saved file and assign values to any parameters that are None (can be overridden by manual input). If this parameter is set to True, it will read the data parameters as well. Default is False.
+- load_args: When `--resume_from_checkpoint`, `--model`, or `--adapters` is specified, it will read the `args.json` file from the saved checkpoint and assign values to the `BaseArguments` that are defaulted to None (excluding DataArguments and GenerationArguments). These can be overridden by manually passing in values. The default is `True`.
+- load_data_args: If this parameter is set to True, it will additionally read the data parameters. The default is `False`.
 - use_hf: Default is False. Controls model and dataset downloading, and model pushing to the hub.
 - hub_token: Hub token. You can check the modelscope hub token [here](https://modelscope.cn/my/myaccesstoken).
 - custom_register_path: The file path for the custom model, chat template, and dataset registration `.py` files.
@@ -275,7 +277,6 @@ Parameter meanings can be found in the [vllm documentation](https://docs.vllm.ai
 - enforce_eager: Whether vllm uses pytorch eager mode or establishes a cuda graph. Default is `False`. Setting to True can save memory but may affect efficiency.
 - 🔥limit_mm_per_prompt: Controls vllm using multiple images, default is `None`. For example, use `--limit_mm_per_prompt '{"image": 10, "video": 5}'`.
 - vllm_max_lora_rank: Default value is `16`. Parameters supported by vllm for LoRA.
-- lora_modules: Used to support dynamic switching between multiple LoRAs, default is `[]`.
 
 ### Merge Arguments
 
@@ -329,7 +330,6 @@ RLHF arguments inherit from the [training arguments](#training-arguments).
 
 Inference arguments include the [base arguments](#base-arguments), [merge arguments](#merge-arguments), [vLLM arguments](#vllm-arguments), [LMDeploy arguments](#LMDeploy-arguments), and also contain the following:
 
-- 🔥ckpt_dir: Path to the model checkpoint folder, default is None.
 - 🔥infer_backend: Inference backend, supports 'pt', 'vllm', 'lmdeploy', default is 'pt'.
 - 🔥max_batch_size: Batch size for pt backend, default is 1.
 - result_path: Path to store inference results (jsonl), default is None, saved in the checkpoint directory or './result' directory.
@@ -364,7 +364,6 @@ Evaluation Arguments inherit from the [deployment arguments](#deployment-argumen
 
 Export Arguments include the [basic arguments](#base-arguments) and [merge arguments](#merge-arguments), and also contain the following:
 
-- 🔥ckpt_dir: Checkpoint path, default is None.
 - 🔥output_dir: Path for storing export results, default is None.
 
 - 🔥quant_method: Options are 'gptq' and 'awq', default is None.

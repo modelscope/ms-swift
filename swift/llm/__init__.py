@@ -5,19 +5,8 @@ from swift.utils.import_utils import _LazyModule
 
 if TYPE_CHECKING:
     # Recommend using `xxx_main`
-    from .infer import (
-        VllmEngine,
-        RequestConfig,
-        LmdeployEngine,
-        PtEngine,
-        InferEngine,
-        infer_main,
-        deploy_main,
-        LoRARequest,
-        InferClient,
-        run_deploy,
-        prepare_pt_engine_template,
-    )
+    from .infer import (VllmEngine, RequestConfig, LmdeployEngine, PtEngine, InferEngine, infer_main, deploy_main,
+                        InferClient, run_deploy, AdapterRequest, prepare_model_template)
     from .export import (export_main, merge_lora, quantize_model, export_to_ollama)
     from .eval import eval_main
     from .train import sft_main, pt_main, rlhf_main, get_multimodal_target_regex
@@ -29,7 +18,7 @@ if TYPE_CHECKING:
     from .model import (register_model, MODEL_MAPPING, ModelType, get_model_tokenizer, safe_snapshot_download,
                         HfConfigFactory, ModelInfo, ModelMeta, ModelKeys, register_model_arch, MultiModelKeys,
                         ModelArch, get_model_arch, MODEL_ARCH_MAPPING, get_model_info_meta, get_model_name, ModelGroup,
-                        Model, get_model_tokenizer_with_flash_attn, get_model_tokenizer_multimodal)
+                        Model, get_model_tokenizer_with_flash_attn, get_model_tokenizer_multimodal, load_by_unsloth)
     from .dataset import (AlpacaPreprocessor, ResponsePreprocessor, MessagesPreprocessor, AutoPreprocessor,
                           DATASET_MAPPING, MediaResource, register_dataset, register_dataset_info, EncodePreprocessor,
                           LazyLLMDataset, ConstantLengthDataset, standard_keys, load_dataset, DATASET_TYPE,
@@ -42,8 +31,8 @@ else:
     _import_structure = {
         'rlhf': ['rlhf_main'],
         'infer': [
-            'deploy_main', 'VllmEngine', 'RequestConfig', 'LmdeployEngine', 'PtEngine', 'infer_main', 'LoRARequest',
-            'InferClient', 'run_deploy', 'prepare_pt_engine_template', 'InferEngine'
+            'deploy_main', 'VllmEngine', 'RequestConfig', 'LmdeployEngine', 'PtEngine', 'infer_main', 'InferClient',
+            'run_deploy', 'InferEngine', 'AdapterRequest', 'prepare_model_template'
         ],
         'export': ['export_main', 'merge_lora', 'quantize_model', 'export_to_ollama'],
         'eval': ['eval_main'],
@@ -61,7 +50,8 @@ else:
             'MODEL_MAPPING', 'ModelType', 'get_model_tokenizer', 'safe_snapshot_download', 'HfConfigFactory',
             'ModelInfo', 'ModelMeta', 'ModelKeys', 'register_model_arch', 'MultiModelKeys', 'ModelArch',
             'MODEL_ARCH_MAPPING', 'get_model_arch', 'get_model_info_meta', 'get_model_name', 'register_model',
-            'ModelGroup', 'Model', 'get_model_tokenizer_with_flash_attn', 'get_model_tokenizer_multimodal'
+            'ModelGroup', 'Model', 'get_model_tokenizer_with_flash_attn', 'get_model_tokenizer_multimodal',
+            'load_by_unsloth'
         ],
         'dataset': [
             'AlpacaPreprocessor', 'ClsPreprocessor', 'ComposePreprocessor', 'MessagesPreprocessor', 'DATASET_MAPPING',
@@ -73,7 +63,7 @@ else:
             'deep_getattr', 'to_device', 'History', 'history_to_messages', 'messages_to_history', 'Processor',
             'save_checkpoint', 'ProcessorMixin'
         ],
-        'base': ['SwiftPipeline']
+        'base': ['SwiftPipeline'],
     }
 
     import sys

@@ -136,7 +136,7 @@ def get_vera_target_modules(model, config):
     return config
 
 
-def prepare_adapter(args: TrainArguments, model, template=None, train_dataset=None):
+def prepare_adapter(args: TrainArguments, model, *, template=None, train_dataset=None):
     from swift.tuners import (AdaLoraConfig, AdapterConfig, BOFTConfig, LLaMAProConfig, LongLoRAModelType, LoraConfig,
                               LoRAConfig, ReftConfig, Swift, VeraConfig)
     target_modules = get_target_modules(args, model)
@@ -329,7 +329,14 @@ def torchacc_resume_from_checkpoint(args, model):
 class TunerMixin:
 
     @classmethod
-    def prepare_model(cls, args: TrainArguments, model, template=None, train_dataset=None):
+    def prepare_model(
+        cls,
+        args,
+        model,
+        *,
+        template=None,
+        train_dataset=None,
+    ):
         if args.use_liger:
             # Apply liger
             apply_liger(args.model_type)
@@ -343,18 +350,18 @@ class TunerMixin:
             if args.resume_from_checkpoint:
                 if args.train_type in extra_tuners:
                     tuner: Tuner = extra_tuners[args.train_type]
-                    model = tuner.from_pretrained(model, args.resume_from_checkpoint)
                 else:
-                    kwargs = {}
-                    if use_torchacc():
-                        kwargs = {'adapter_name': 'default'}
-                    model = Swift.from_pretrained(model, args.resume_from_checkpoint, is_trainable=True, **kwargs)
+                    tuner = Swift
+                kwargs = {}
+                if use_torchacc():
+                    kwargs = {'adapter_name': 'default'}
+                model = tuner.from_pretrained(model, args.resume_from_checkpoint, is_trainable=True, **kwargs)
             else:
                 if args.train_type in extra_tuners:
                     tuner: Tuner = extra_tuners[args.train_type]
                     model = tuner.prepare_model(args, model)
                 else:
-                    model = prepare_adapter(args, model, template, train_dataset)
+                    model = prepare_adapter(args, model, template=template, train_dataset=train_dataset)
             # fix bug: Attempting to unscale FP16 gradients.
             #   peft: https://github.com/huggingface/peft/issues/1249
             for p in model.parameters():

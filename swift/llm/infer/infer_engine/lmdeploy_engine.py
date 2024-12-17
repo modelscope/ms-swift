@@ -40,6 +40,7 @@ class LmdeployEngine(InferEngine):
             *,
             model_type: Optional[str] = None,
             use_hf: Optional[bool] = None,
+            hub_token: Optional[str] = None,
             revision: Optional[str] = None,
             # engine_kwargs
             tp: int = 1,
@@ -56,6 +57,7 @@ class LmdeployEngine(InferEngine):
             download_model=True,
             model_type=model_type,
             use_hf=use_hf,
+            hub_token=hub_token,
             revision=revision)[1]
         self._post_init()
 
