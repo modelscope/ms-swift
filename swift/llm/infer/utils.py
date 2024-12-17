@@ -130,7 +130,8 @@ def _prepare_adapter(args, model):
         tuner = extra_tuners[args.train_type]
     else:
         tuner = Swift
-    model = tuner.from_pretrained(model, args.ckpt_dir)
+    for adapter in args.adapters:
+        model = tuner.from_pretrained(model, adapter)
     if args.train_type == 'bone':
         # Bone has a problem of float32 matmul with bloat16 in `peft==0.14.0`
         model.to(model.dtype)

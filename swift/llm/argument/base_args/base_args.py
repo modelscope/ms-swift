@@ -104,16 +104,19 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             __import__(fname.rstrip('.py'))
         logger.info(f'Successfully registered `{self.custom_register_path}`')
 
-    def __post_init__(self):
-        if self.use_hf or use_hf_hub():
-            self.use_hf = True
-            os.environ['USE_HF'] = '1'
-        CompatArguments.__post_init__(self)
+    def _init_adapters(self):
         if isinstance(self.adapters, str):
             self.adapters = [self.adapters]
         self.adapters = [
             safe_snapshot_download(adapter, use_hf=self.use_hf, hub_token=self.hub_token) for adapter in self.adapters
         ]
+
+    def __post_init__(self):
+        if self.use_hf or use_hf_hub():
+            self.use_hf = True
+            os.environ['USE_HF'] = '1'
+        CompatArguments.__post_init__(self)
+        self._init_adapters()
         self._init_ckpt_dir()
         self._init_custom_register()
         self._init_model_kwargs()
@@ -160,8 +163,8 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         self.load_args_from_ckpt()
         return self
 
-    def _init_ckpt_dir(self):
-        model_dirs = self.adapters
+    def _init_ckpt_dir(self, adapters=None):
+        model_dirs = adapters or self.adapters
         if self.model:
             model_dirs.append(self.model)
         self.ckpt_dir = None

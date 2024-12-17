@@ -76,7 +76,7 @@ class PtEngine(InferEngine):
         self.engine = self.model  # dummy
         self.generation_config = self.model.generation_config
 
-    def add_adapter(self, adapter_path: str, adapter_name: Optional[str] = None) -> None:
+    def _add_adapter(self, adapter_path: str, adapter_name: Optional[str] = None) -> None:
         self.model = Swift.from_pretrained(self.model, adapter_path, adapter_name)
 
     @classmethod
@@ -243,7 +243,7 @@ class PtEngine(InferEngine):
         adapter_name = adapter_request.name
         if adapter_name not in self._adapters_pool:
             self._adapters_pool[adapter_name] = adapter_request
-            self.add_adapter(adapter_request.path, adapter_name)
+            self._add_adapter(adapter_request.path, adapter_name)
         return [adapter_name]
 
     def _infer_full(self,
