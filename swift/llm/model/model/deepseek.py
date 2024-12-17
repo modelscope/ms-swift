@@ -126,6 +126,7 @@ def _get_deepseek_vl(processor, llm_prefix, model_dir, *args, **kwargs):
         patch_output_clone(llm.model.embed_tokens)
         patch_output_to_input_device(llm.model.embed_tokens)
         use_submodel_func(model, llm_prefix)
+        model.generation_config = llm.generation_config
     return model, processor
 
 

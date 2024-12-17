@@ -191,9 +191,23 @@ def test_internvl2_5():
 
 def test_megrez_omni():
     pt_engine = PtEngine('InfiniAI/Megrez-3B-Omni')
-    _infer_model(pt_engine, messages=[{'role': 'user', 'content': '<image>这是什么'}])
-    pt_engine.default_template.template_backend = 'jinja'
     _infer_model(pt_engine)
+    response = _infer_model(
+        pt_engine,
+        messages=[{
+            'role': 'user',
+            'content': [
+                {
+                    'type': 'image'
+                },
+                {
+                    'type': 'audio',
+                    'audio': 'weather.wav'
+                },
+            ]
+        }])
+    assert response == ('根据图片，无法确定确切的天气状况。然而，猫咪放松的表情和柔和的光线可能暗示着是一个晴朗或温和的日子。'
+                        '没有阴影或明亮的阳光表明这不是正午时分，也没有雨滴或雪花的迹象，这可能意味着不是下雨或下雪的日子。')
 
 
 if __name__ == '__main__':

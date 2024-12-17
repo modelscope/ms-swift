@@ -181,8 +181,12 @@ register_model(
     ))
 
 
-def get_model_tokenizer_megrez_omni(*args, **kwargs):
-    model, processor = get_model_tokenizer_with_flash_attn(*args, **kwargs)
+def get_model_tokenizer_megrez_omni(model_dir, *args, **kwargs):
+    model_cls = get_class_from_dynamic_module('modeling_megrezo.MegrezO', model_dir)
+    model_cls._no_split_modules = ['ResidualAttentionBlock', 'LlamaDecoderLayer']
+    model_cls = get_class_from_dynamic_module('modeling_megrezo.SiglipVisionTransformer', model_dir)
+    model_cls._no_split_modules = ['SiglipEncoderLayer']
+    model, processor = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
     processor = model._get_or_init_processor()
     use_submodel_func(model, 'llm')
     return model, processor
