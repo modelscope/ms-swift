@@ -48,6 +48,7 @@ def infer_pt(infer_request: 'InferRequest'):
     response = resp_list[0].choices[0].message.content
     print(f'lora-response: {response}')
 
+
 if __name__ == '__main__':
     from swift.llm import (PtEngine, RequestConfig, AdapterRequest, get_template, BaseArguments, InferRequest,
                            get_model_tokenizer, safe_snapshot_download)
