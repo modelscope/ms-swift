@@ -87,7 +87,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
 
     seed: int = 42
     model_kwargs: Optional[Union[dict, str]] = None
-    lora_args: bool = True
+    load_args: bool = True
     load_data_args: bool = False
 
     use_hf: bool = False
@@ -181,7 +181,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
                 self.ckpt_dir = model_dir
                 break
 
-        if self.ckpt_dir and self.lora_args:
+        if self.ckpt_dir and self.load_args:
             self.load_args_from_ckpt()
 
     def load_args_from_ckpt(self) -> None:
