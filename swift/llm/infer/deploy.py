@@ -96,7 +96,7 @@ class SwiftDeploy(SwiftInfer):
 
     def _check_max_logprobs(self, request):
         args = self.args
-        if isinstance(request.top_logprobs, int) and request.top_logprobs > self.args.max_logprobs:
+        if isinstance(request.top_logprobs, int) and request.top_logprobs > args.max_logprobs:
             return (f'The value of top_logprobs({request.top_logprobs}) is greater than '
                     f'the server\'s max_logprobs({args.max_logprobs}).')
 
@@ -124,23 +124,26 @@ class SwiftDeploy(SwiftInfer):
                                      raw_request: Request,
                                      *,
                                      return_cmpl_response: bool = False):
+        args = self.args
         error_msg = (await self._check_model(request) or self._check_api_key(raw_request)
                      or self._check_max_logprobs(request))
         if error_msg:
             return self.create_error_response(HTTPStatus.BAD_REQUEST, error_msg)
+        adapter_request = args.adapter_mapping.get(request.model)
 
         infer_request, request_config = request.parse()
         request_info = {'infer_request': infer_request.to_printable()}
 
         def pre_infer_hook(kwargs):
             request_info['generation_config'] = kwargs['generation_config']
-            if self.args.verbose:
+            if args.verbose:
                 logger.info(request_info)
             return kwargs
 
         self.infer_engine.pre_infer_hooks = [pre_infer_hook]
         try:
-            res_or_gen = await self.infer_async(infer_request, request_config, template=self.template)
+            res_or_gen = await self.infer_async(
+                infer_request, request_config, template=self.template, adapter_request=adapter_request)
         except ValueError as e:
             return self.create_error_response(HTTPStatus.BAD_REQUEST, str(e))
         if request_config.stream:

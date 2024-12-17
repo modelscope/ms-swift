@@ -23,8 +23,8 @@ class SwiftInfer(SwiftPipeline):
     def __init__(self, args: Union[List[str], InferArguments, None] = None) -> None:
         from swift.llm import merge_lora
         super().__init__(args)
-        assert len(args.adapters) <= 1, f'args.adapters: {args.adapters}'
         args = self.args
+        assert len(args.adapters) <= 1, f'args.adapters: {args.adapters}'
         if args.merge_lora:
             merge_lora(args, device_map='cpu')
 

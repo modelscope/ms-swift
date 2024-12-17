@@ -15,10 +15,10 @@ def infer_multilora(infer_request: 'InferRequest', infer_backend: Literal['vllm'
         engine = VllmEngine('Qwen/Qwen2.5-7B-Instruct', enable_lora=True, max_loras=1, max_lora_rank=16)
     template = get_template(args.template, engine.processor, args.system)
     request_config = RequestConfig(max_tokens=512, temperature=0)
-    lora_request = AdapterRequest('lora1', adapter_path)
+    adapter_request = AdapterRequest('lora1', adapter_path)
 
     # use lora
-    resp_list = engine.infer([infer_request], request_config, template=template, adapter_request=lora_request)
+    resp_list = engine.infer([infer_request], request_config, template=template, adapter_request=adapter_request)
     response = resp_list[0].choices[0].message.content
     print(f'lora-response: {response}')
     # origin model
@@ -26,7 +26,7 @@ def infer_multilora(infer_request: 'InferRequest', infer_backend: Literal['vllm'
     response = resp_list[0].choices[0].message.content
     print(f'response: {response}')
     # use lora
-    resp_list = engine.infer([infer_request], request_config, template=template, adapter_request=lora_request)
+    resp_list = engine.infer([infer_request], request_config, template=template, adapter_request=adapter_request)
     response = resp_list[0].choices[0].message.content
     print(f'lora-response: {response}')
 
