@@ -32,6 +32,7 @@ class CompatArguments:
     #
     ckpt_dir: Optional[str] = None
     load_dataset_config: Optional[bool] = None
+    lora_modules: List[str] = field(default_factory=list)
 
     def _handle_ckpt_dir(self: 'BaseArguments'):
         assert os.path.isdir(self.ckpt_dir), f'self.ckpt_dir: {self.ckpt_dir}'
@@ -52,8 +53,13 @@ class CompatArguments:
 
         if self.load_dataset_config is not None:
             self.load_data_args = self.load_dataset_config
-            logger.warning('The `--load_dataset_config` parameter will be removed in `ms-swift>=3.2`. '
+            logger.warning('The `--load_dataset_config` parameter will be removed in `ms-swift>=3.1`. '
                            'Please use `--load_data_args`.')
+
+        if len(self.lora_modules) > 0:
+            self.adapters += self.lora_modules
+            logger.warning('The `--lora_modules` parameter will be removed in `ms-swift>=3.1`. '
+                           'Please use `--adapters`.')
 
 
 @dataclass
