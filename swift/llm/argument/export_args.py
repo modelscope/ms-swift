@@ -73,16 +73,13 @@ class ExportArguments(MergeArguments, BaseArguments):
             elif self.to_ollama:
                 suffix = 'ollama'
             else:
-                suffix = 'dummy'
-                logger.warn(f'Not a valid export argument: {self}')
-            self.output_dir = os.path.join(ckpt_dir, f'{ckpt_name}-{suffix}')
+                return
 
+            self.output_dir = os.path.join(ckpt_dir, f'{ckpt_name}-{suffix}')
             logger.info(f'Setting args.output_dir: {self.output_dir}')
 
         self.output_dir = to_abspath(self.output_dir)
-        # TODO: logic optimization
-        if suffix != 'dummy':
-            assert not os.path.exists(self.output_dir), f'args.output_dir: {self.output_dir} already exists.'
+        assert not os.path.exists(self.output_dir), f'args.output_dir: {self.output_dir} already exists.'
 
     def __post_init__(self):
         MergeArguments.__post_init__(self)

@@ -6,6 +6,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
+from peft import PeftModel
 from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer, GenerationConfig, PretrainedConfig,
                           PreTrainedModel, PreTrainedTokenizerBase)
 from transformers.integrations import is_deepspeed_zero3_enabled
@@ -126,14 +127,19 @@ def load_by_unsloth(args):
     else:
         from unsloth import FastLanguageModel as UnslothModel
     model, processor = UnslothModel.from_pretrained(
-        model_name=args.ckpt_dir or model_info.model_dir,
-        dtype=model_info.torch_dtype,
+        model_name=args.adapters and args.adapters[0] or args.model_dir,
+        dtype=args.torch_dtype,
         max_seq_length=model_info.max_model_len,
         load_in_4bit=args.quant_bits == 4,
         trust_remote_code=True,
     )
-    model.model_info = model_info
-    model.model_meta = model_meta
+    if isinstance(model, PeftModel):
+        base_model = model.model
+    else:
+        base_model = model
+    base_model.model_dir = args.model_dir
+    base_model.model_info = model_info
+    base_model.model_meta = model_meta
     processor.model_info = model_info
     processor.model_meta = model_meta
     return model, processor

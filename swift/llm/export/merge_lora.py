@@ -13,7 +13,6 @@ logger = get_logger()
 def merge_lora(args: ExportArguments, device_map=None, replace_if_exists=False) -> None:
     if replace_if_exists:
         logger.info(f'replace_if_exists: {replace_if_exists}')
-    assert len(args.adapters) == 1, f'args.adapters: {args.adapters}'
     assert args.quant_method is None, (f'args.quant_method: {args.quant_method}, '
                                        'quantized model and does not support merge-lora.')
 
