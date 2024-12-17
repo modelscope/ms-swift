@@ -19,7 +19,7 @@ def infer_multilora(infer_request: 'InferRequest', infer_backend: Literal['vllm'
     # use lora
     resp_list = engine.infer([infer_request], request_config, template=template, adapter_request=lora_request)
     response = resp_list[0].choices[0].message.content
-    print(f'response: {response}')
+    print(f'lora-response: {response}')
     # origin model
     resp_list = engine.infer([infer_request], request_config)
     response = resp_list[0].choices[0].message.content
@@ -27,7 +27,7 @@ def infer_multilora(infer_request: 'InferRequest', infer_backend: Literal['vllm'
     # use lora
     resp_list = engine.infer([infer_request], request_config, template=template, adapter_request=lora_request)
     response = resp_list[0].choices[0].message.content
-    print(f'response: {response}')
+    print(f'lora-response: {response}')
 
 
 def infer_pt(infer_request: 'InferRequest'):
@@ -44,7 +44,7 @@ def infer_pt(infer_request: 'InferRequest'):
     engine.add_adapter(adapter_path)
     resp_list = engine.infer([infer_request], request_config, template=template)
     response = resp_list[0].choices[0].message.content
-    print(f'response: {response}')
+    print(f'lora-response: {response}')
 
 
 if __name__ == '__main__':
