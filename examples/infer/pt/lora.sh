@@ -5,4 +5,5 @@ CUDA_VISIBLE_DEVICES=0 \
 swift infer \
     --adapters swift/test_lora \
     --infer_backend pt \
-    --stream true
+    --stream true \
+    --temperature 0
