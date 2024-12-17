@@ -187,12 +187,12 @@ def prepare_adapter(args: TrainArguments, model, *, template=None, train_dataset
                 model = Swift.prepare_model(model, lora_config)
             logger.info(f'lora_config: {lora_config}')
         elif args.tuner_backend == 'unsloth':
-            if args.model_meta.is_multimodal:
-                from unsloth import FastVisionModel as UnslothModel
-            else:
-                from unsloth import FastLanguageModel as UnslothModel
-            assert args.train_type == 'lora', 'Unsloth does not support LongLoRA'
-            if not args.ckpt_dir:
+            if args.resume_from_checkpoint is None:
+                if args.model_meta.is_multimodal:
+                    from unsloth import FastVisionModel as UnslothModel
+                else:
+                    from unsloth import FastLanguageModel as UnslothModel
+                assert args.train_type == 'lora', 'Unsloth does not support LongLoRA'
                 lora_kwargs.pop('lorap_lr_ratio')
                 model = UnslothModel.get_peft_model(
                     model,
@@ -337,7 +337,6 @@ class TunerMixin:
         template=None,
         train_dataset=None,
     ):
-        # "resume_from_checkpoint" is equivalent to "ckpt_dir".
         if args.use_liger:
             # Apply liger
             apply_liger(args.model_type)
@@ -348,7 +347,7 @@ class TunerMixin:
                 # Unsloth prepares and loads lora outside this function when
                 # resume_from_checkpoint, so do not disable grad here
                 model.requires_grad_(False)
-            if args.ckpt_dir:
+            if args.resume_from_checkpoint:
                 if args.train_type in extra_tuners:
                     tuner: Tuner = extra_tuners[args.train_type]
                 else:
@@ -356,7 +355,7 @@ class TunerMixin:
                 kwargs = {}
                 if use_torchacc():
                     kwargs = {'adapter_name': 'default'}
-                model = tuner.from_pretrained(model, args.ckpt_dir, is_trainable=True, **kwargs)
+                model = tuner.from_pretrained(model, args.resume_from_checkpoint, is_trainable=True, **kwargs)
             else:
                 if args.train_type in extra_tuners:
                     tuner: Tuner = extra_tuners[args.train_type]

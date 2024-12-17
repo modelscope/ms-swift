@@ -172,12 +172,11 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             if os.path.exists(os.path.join(model_dir, 'args.json')):
                 self.ckpt_dir = model_dir
                 break
-        self.load_args_from_ckpt()
+
+        if self.ckpt_dir is not None and self.lora_args:
+            self.load_args_from_ckpt()
 
     def load_args_from_ckpt(self) -> None:
-        if self.ckpt_dir is None or not self.lora_args:
-            return
-
         args_path = os.path.join(self.ckpt_dir, 'args.json')
         assert os.path.exists(args_path), f'args_path: {args_path}'
         with open(args_path, 'r', encoding='utf-8') as f:
