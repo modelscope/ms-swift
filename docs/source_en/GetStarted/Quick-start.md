@@ -58,13 +58,13 @@ After training is complete, use the following command to perform inference with 
 
 ```shell
 # Using an interactive command line for inference.
-NPROC_PER_NODE=0
+CUDA_VISIBLE_DEVICES=0 \
 swift infer \
     --adapters output/vx-xxx/checkpoint-xxx \
     --stream true
 
 # merge-lora and use vLLM for inference acceleration
-NPROC_PER_NODE=0
+CUDA_VISIBLE_DEVICES=0 \
 swift infer \
     --adapters output/vx-xxx/checkpoint-xxx \
     --stream true \
