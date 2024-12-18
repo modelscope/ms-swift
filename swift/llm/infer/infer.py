@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from contextlib import nullcontext
 from itertools import chain
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 import torch.distributed as dist
@@ -172,7 +172,10 @@ class SwiftInfer(SwiftPipeline):
             for data in val_dataset:
                 labels = InferRequest.remove_response(data['messages'])
                 query = data['messages'][-1]['content']
-                print(f'[QUERY] {query}\n[RESPONSE] ', end='')
+                print(f'[QUERY] {query}')
+                if labels:
+                    print(f'[LABELS] {labels}')
+                print('[RESPONSE] ', end='')
                 response = self.infer_single(data, request_config)
                 data = {'response': response, 'labels': labels, **data}
                 result_list.append(data)
