@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 from dataclasses import fields
+from functools import partial
 from typing import List, Union
 
 import gradio as gr
@@ -8,7 +9,7 @@ from packaging import version
 from transformers.utils import strtobool
 
 import swift
-from swift.llm import SwiftPipeline, WebUIArguments
+from swift.llm import DeployArguments, EvalArguments, ExportArguments, RLHFArguments, SwiftPipeline, WebUIArguments
 from swift.ui.llm_eval.llm_eval import LLMEval
 from swift.ui.llm_export.llm_export import LLMExport
 from swift.ui.llm_infer.llm_infer import LLMInfer
@@ -89,6 +90,23 @@ class SwiftWebUI(SwiftPipeline):
                 app.load(LLMInfer.deploy_model, list(LLMInfer.valid_elements().values()),
                          [LLMInfer.element('runtime_tab'),
                           LLMInfer.element('running_tasks')])
+            else:
+                app.load(
+                    partial(LLMTrain.update_input_model, arg_cls=RLHFArguments),
+                    inputs=[LLMTrain.element('model')],
+                    outputs=[LLMTrain.element('train_record')] + list(LLMTrain.valid_elements().values()))
+                app.load(
+                    partial(LLMInfer.update_input_model, arg_cls=DeployArguments, has_record=False),
+                    inputs=[LLMInfer.element('model')],
+                    outputs=list(LLMInfer.valid_elements().values()))
+                app.load(
+                    partial(LLMExport.update_input_model, arg_cls=ExportArguments, has_record=False),
+                    inputs=[LLMExport.element('model')],
+                    outputs=list(LLMExport.valid_elements().values()))
+                app.load(
+                    partial(LLMEval.update_input_model, arg_cls=EvalArguments, has_record=False),
+                    inputs=[LLMEval.element('model')],
+                    outputs=list(LLMEval.valid_elements().values()))
         app.queue(**concurrent).launch(server_name=server, inbrowser=True, server_port=port, height=800, share=share)
 
 
