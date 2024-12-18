@@ -152,7 +152,7 @@ swift infer \
 
 ### Web-UI
 
-Web-UI是基于gradio界面技术的**零门槛**训练、部署界面方案，具体可以查看[这里](https://swift.readthedocs.io/en/latest/GetStarted/Web-UI.md)。
+Web-UI是基于gradio界面技术的**零门槛**训练、部署界面方案，具体可以查看[这里](https://swift.readthedocs.io/zh-cn/latest/GetStarted/Web-UI.md)。
 
 ```shell
 swift web-ui
