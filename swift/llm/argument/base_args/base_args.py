@@ -185,6 +185,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             self.load_args_from_ckpt()
 
     def load_args_from_ckpt(self) -> None:
+        from ..train_args import TrainArguments
         args_path = os.path.join(self.ckpt_dir, 'args.json')
         assert os.path.exists(args_path), f'args_path: {args_path}'
         with open(args_path, 'r', encoding='utf-8') as f:
@@ -206,7 +207,9 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             # template_args
             'tools_prompt'
         ]
-        skip_keys = list(f.name for f in fields(GenerationArguments)) + ['adapters', 'max_length']
+        skip_keys = list(f.name for f in fields(GenerationArguments)) + ['adapters']
+        if not isinstance(self, TrainArguments):
+            skip_keys += ['max_length']
         all_keys = set(all_keys) - set(skip_keys)
         for key, old_value in old_args.items():
             if key not in all_keys or old_value is None:
