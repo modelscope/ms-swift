@@ -24,3 +24,11 @@ tqdm
 transformers>=4.33,<4.47
 transformers_stream_generator
 trl>=0.11,<0.12
+charset_normalizer
+cpm_kernels
+fastapi
+gradio>=3.40.0
+openai
+sentencepiece
+tiktoken
+uvicorn
