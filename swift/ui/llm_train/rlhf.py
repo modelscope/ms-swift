@@ -97,6 +97,6 @@ class RLHF(BaseUI):
     @classmethod
     def after_build_ui(cls, base_tab: Type['BaseUI']):
         cls.element('ref_model').change(
-            partial(cls.update_input_model, allow_keys=['ref_model_type'], has_record=False),
+            partial(cls.update_input_model, allow_keys=['ref_model_type'], has_record=False, is_ref_model=True),
             inputs=[cls.element('ref_model')],
             outputs=[cls.element('ref_model_type')])

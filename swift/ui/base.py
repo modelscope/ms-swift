@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import dataclasses
 import os
 import sys
 import time
@@ -268,9 +269,16 @@ class BaseUI:
     def get_default_value_from_dataclass(dataclass):
         default_dict = {}
         for f in fields(dataclass):
-            if hasattr(dataclass, f.name):
-                default_dict[f.name] = getattr(dataclass, f.name)
+            if f.default.__class__ is dataclasses._MISSING_TYPE:
+                default_dict[f.name] = f.default_factory()
             else:
+                default_dict[f.name] = f.default
+            if isinstance(default_dict[f.name], list):
+                try:
+                    default_dict[f.name] = ' '.join(default_dict[f.name])
+                except TypeError:
+                    default_dict[f.name] = None
+            if not default_dict[f.name]:
                 default_dict[f.name] = None
         return default_dict
 
@@ -282,7 +290,7 @@ class BaseUI:
         return arguments
 
     @classmethod
-    def update_input_model(cls, model, allow_keys=None, has_record=True, arg_cls=BaseArguments):
+    def update_input_model(cls, model, allow_keys=None, has_record=True, arg_cls=BaseArguments, is_ref_model=False):
         keys = cls.valid_element_keys()
 
         if not model:
@@ -340,8 +348,12 @@ class BaseUI:
                     values.append(gr.update())
                 elif key in ('template', 'model_type', 'ref_model_type'):
                     if key == 'ref_model_type':
-                        key = 'model_type'
-                    values.append(gr.update(value=getattr(model_meta, key)))
+                        if is_ref_model:
+                            values.append(gr.update(value=getattr(model_meta, 'model_type')))
+                        else:
+                            values.append(gr.update())
+                    else:
+                        values.append(gr.update(value=getattr(model_meta, key)))
                 else:
                     values.append(gr.update(value=TEMPLATE_MAPPING[model_meta.template].default_system))
 
