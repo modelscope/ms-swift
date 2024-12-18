@@ -57,26 +57,14 @@
 
 
 ## 🎉 新闻
-- 2024.12.09: 支持emu3-gen的部署. 使用`swift infer --model BAAI/Emu3-Gen --stream False --use_chat_template False --top_k 2048 --max_new_tokens 40960`进行体验.
 - 🎁2024.12.04: SWIFT3.0大版本更新. 请查看[ReleaseNote和BreakChange](./docs/source/Instruction/ReleaseNote3.0.md).
+- 🔥2024.09.19: 支持Qwen2.5、Qwen2-VL、Qwen2-Audio系列模型.
+- 🔥2024.08.20: 支持使用deepspeed zero2/zero3对多模态模型进行预训练、微调和RLHF.
 - 🔥2024.08.12: 🎉SWIFT论文已经发布到arXiv上，可以点击[这个链接](https://arxiv.org/abs/2408.05517)阅读.
-<details><summary>More</summary>
-
-- 2024.11.28: 支持模型qwq-32b-preview, marco-o1, 支持数据集open-o1.
-- 2024.10.09: 支持LLM和MLLM的reward modeling、PPO训练.
-- 2024.09.26: 支持llama3.2、llama3.2-vision系列模型的训练到部署.
-- 🔥2024.09.19: 支持qwen2.5、qwen2.5-math、qwen2.5-coder系列模型. 支持qwen2-vl-72b系列模型. 最佳实践可以查看[这里](https://github.com/modelscope/ms-swift/issues/2064).
-- 🔥2024.08.30: 支持qwen2-vl系列模型的推理与微调: qwen2-vl-2b-instruct, qwen2-vl-7b-instruct.
-- 🔥2024.08.26: 支持[Liger](https://github.com/linkedin/Liger-Kernel), 该内核支持LLaMA、Qwen、Mistral等模型, 并大幅减少显存使用(10%~60%), 使用`--use_liger true`开启训练.
-- 🔥2024.08.22: 支持[ReFT](https://github.com/stanfordnlp/pyreft), 该tuner可以以LoRA的1/15~1/65的参数量达到和LoRA匹配或更好的效果, 使用`--sft_type reft`开始训练!
-- 🔥2024.08.12: 支持packing和flash-attention时不污染attention_mask, 使用`--packing`开启。详情见[PR](https://github.com/huggingface/transformers/pull/31629/files).
-- 🔥2024.08.09: 支持qwen2-audio模型的推理与微调. 最佳实践可以查看[这里](https://github.com/modelscope/ms-swift/issues/1653).
-- 🔥2024.08.05: 支持多模态数据集的评测！命令行完全一致，新增了许多[多模态数据集](https://swift.readthedocs.io/zh-cn/latest/Instruction/LLM%E8%AF%84%E6%B5%8B%E6%96%87%E6%A1%A3.html#id2).
-- 🔥2024.07.19: 支持[Q-Galore](https://arxiv.org/abs/2407.08296)算法, 该算法可以减少显存使用约60% (qwen-7b-chat, full, 80G -> 35G), 使用命令行:`swift sft --model_type xxx --use_galore true --galore_quantization true`来开始训练!
-- 🔥2024.07.16: 支持ollama和bitsandbytes导出. 可以使用命令: `swift export --model_type xxx --to_ollama true`或者`swift export --model_type xxx --quant_method bnb --quant_bits 4`.
-- 🔥2024.06.29: 支持[eval-scope](https://github.com/modelscope/eval-scope)&[open-compass](https://github.com/open-compass/opencompass)评测! 我们支持了包含`BoolQ, ocnli, humaneval, math, ceval, mmlu, gsk8k, ARC_e`等50+标准数据集在内的评测流程。
-- 🔥2024.06.07: 支持**Qwen2**系列LLM, 包括0.5B、1.5B、7B、72B的Base和Instruct模型, 以及对应的gptq-int4、gptq-int8、awq-int4量化版本. 使用双卡80GiB A100对Qwen2-72B-Instruct进行自我认知微调并推理部署的最佳实践可以查看[这里](https://github.com/modelscope/swift/issues/1092).
-</details>
+- 🔥2024.08.05: 支持使用[evalscope](https://github.com/modelscope/evalscope/)作为后端进行多模态模型的评测.
+- 🔥2024.07.29: 支持使用[vllm](https://github.com/vllm-project/vllm), [lmdeploy](https://github.com/InternLM/lmdeploy)对大模型和多模态大模型进行推理加速，在infer/deploy/eval时额外指定`--infer_backend vllm/lmdeploy`即可.
+- 🔥2024.07.24: 人类偏好对齐算法DPO/ORPO/SimPO/CPO/KTO/RM支持多模态大模型.
+- 🔥2024.02.01: 支持Agent训练！Agent训练算法源自这篇[论文](https://arxiv.org/pdf/2309.00986.pdf). 我们也增加了[ms-agent](https://www.modelscope.cn/datasets/iic/ms_agent/summary)这个优质的agent数据集. 使用[这个脚本](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/qwen_7b_chat/lora/sft.sh)开启Agent训练!
 
 ## 🛠️ 安装
 使用pip进行安装：
