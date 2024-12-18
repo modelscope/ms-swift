@@ -209,7 +209,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         skip_keys = list(f.name for f in fields(GenerationArguments)) + ['adapters', 'max_length']
         all_keys = set(all_keys) - set(skip_keys)
         for key, old_value in old_args.items():
-            if key not in all_keys:
+            if key not in all_keys or old_value is None:
                 continue
             if not self.load_data_args and key in data_keys:
                 continue

@@ -3,7 +3,7 @@ from types import MethodType
 from typing import Any, Dict
 
 import torch
-from modelscope import AutoModel
+from transformers import AutoModel
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.llm import TemplateType
