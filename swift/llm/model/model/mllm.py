@@ -10,6 +10,7 @@ from swift.llm import TemplateType
 from swift.utils import get_logger
 from ..constant import MLLMModelType
 from ..model_arch import ModelArch
+from ..patcher import patch_output_clone
 from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,
                         get_model_tokenizer_with_flash_attn, register_model)
 from ..utils import ModelInfo, use_submodel_func
@@ -188,6 +189,7 @@ def get_model_tokenizer_megrez_omni(model_dir, *args, **kwargs):
     model_cls._no_split_modules = ['SiglipEncoderLayer']
     model, processor = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
     processor = model._get_or_init_processor()
+    patch_output_clone(model.llm.model.embed_tokens)
     use_submodel_func(model, 'llm')
     return model, processor
 
