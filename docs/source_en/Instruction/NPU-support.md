@@ -12,7 +12,7 @@ conda activate swift-npu
 
 # Set pip global mirror (optional, to speed up downloads)
 pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
-pip install 'ms-swift[llm]' -U
+pip install ms-swift -U
 
 # Install torch-npu
 pip install torch-npu decorator
