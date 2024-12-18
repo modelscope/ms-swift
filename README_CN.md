@@ -52,12 +52,12 @@
 <img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
 ## 📝 简介
-🍲 ms-swift是魔搭社区官方提供的LLM与多模态LLM微调部署框架，现已支持400+LLM与100+多模态LLM的训练（预训练、微调、人类对齐）、推理、评测、量化与部署。其中LLM包括：Qwen2.5、Llama3.2、GLM4、Internlm2.5、Yi1.5、Mistral、DeepSeek、Baichuan2、Gemma2、TeleChat2等模型，多模态LLM包括：Qwen2-VL、Qwen2-Audio、Llama3.2-Vision、Llava、InternVL2.5、MiniCPM-V-2.6、GLM4v、Xcomposer2.5、Yi-VL、DeepSeek-VL2、Phi3.5-Vision、GOT-OCR2等模型。
+🍲 ms-swift是魔搭社区官方提供的大模型与多模态大模型微调部署框架，现已支持400+大模型与100+多模态大模型的训练（预训练、微调、人类对齐）、推理、评测、量化与部署。其中LLM包括：Qwen2.5、Llama3.2、GLM4、Internlm2.5、Yi1.5、Mistral、DeepSeek、Baichuan2、Gemma2、TeleChat2等模型，多模态LLM包括：Qwen2-VL、Qwen2-Audio、Llama3.2-Vision、Llava、InternVL2.5、MiniCPM-V-2.6、GLM4v、Xcomposer2.5、Yi-VL、DeepSeek-VL2、Phi3.5-Vision、GOT-OCR2等模型。
 
 🍔 除此之外，ms-swift汇集了最新的训练技术，包括LoRA、QLoRA、Llama-Pro、LongLoRA、GaLore、Q-GaLore、LoRA+、LISA、DoRA、FourierFt、ReFT、UnSloth、Megatron和Liger等。ms-swift支持使用vLLM和LMDeploy对推理、评测和部署模块进行加速。为了帮助研究者和开发者更轻松地微调和应用大模型，ms-swift还提供了基于Gradio的Web-UI界面及丰富的最佳实践。
 
 **为什么选择ms-swift？**
-- 🍎模型类型：支持400+纯文本大模型、**100+多模态大模型**，All-to-All全模态模型的训练到部署全流程。
+- 🍎模型类型：支持400+纯文本大模型、**100+多模态大模型**，All-to-All全模态模型的**训练到部署全流程**。
 - 数据集类型：内置150+预训练、微调、人类对齐、多模态等各种类型的数据集，并支持自定义数据集。
 - 硬件支持：CPU、RTX系列、T4/V100、A10/A100/H100、Ascend NPU等。
 - 🍊轻量训练：支持了LoRA、QLoRA、DoRA、LoRA+、ReFT、RS-LoRA、LLaMAPro、Adapter、GaLore、Q-Galore、LISA、UnSloth、Liger-Kernel等轻量微调方式。
@@ -67,14 +67,13 @@
 - 🍓多模态训练：支持对图像、视频和语音不同模态模型进行训练，支持VQA、Caption、OCR、Grounding任务的训练。
 - 界面训练：以界面的方式提供训练、推理、评测、量化的能力，完成大模型的全链路。
 - 插件化与拓展：支持自定义模型和数据集拓展，支持对loss、metric、trainer、loss-scale、callback、optimizer等组件进行自定义。
-- 🍉工具箱能力：不仅提供大模型和多模态大模型的训练支持，还涵盖其推理、评测、量化和部署**全流程**。
+- 🍉工具箱能力：不仅提供大模型和多模态大模型的训练支持，还涵盖其推理、评测、量化和部署全流程。
 - 推理加速：支持PyTorch、vLLM、LmDeploy等推理加速引擎，并提供OpenAI接口，为推理、部署和评测模块提供加速。
 - 模型评测：以EvalScope作为评测后端，支持100+评测数据集对纯文本和多模态模型进行评测。
 - 模型量化：支持AWQ、GPTQ和BNB的量化导出，导出的模型支持使用vLLM/LmDeploy推理加速，并支持继续训练。
 
 ## 🎉 新闻
 - 🎁2024.12.04: SWIFT3.0大版本更新. 请查看[ReleaseNote和BreakChange](./docs/source/Instruction/ReleaseNote3.0.md).
-- 🔥2024.08.20: 支持使用deepspeed zero2/zero3对多模态大模型进行预训练、微调和RLHF.
 - 🎉2024.08.12: SWIFT论文已经发布到arXiv上，可以点击[这个链接](https://arxiv.org/abs/2408.05517)阅读.
 - 🔥2024.08.05: 支持使用[evalscope](https://github.com/modelscope/evalscope/)作为后端进行多模态模型的评测.
 - 🔥2024.07.29: 支持使用[vllm](https://github.com/vllm-project/vllm), [lmdeploy](https://github.com/InternLM/lmdeploy)对大模型和多模态大模型进行推理加速，在infer/deploy/eval时额外指定`--infer_backend vllm/lmdeploy`即可.
