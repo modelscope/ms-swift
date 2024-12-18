@@ -1,4 +1,4 @@
-# Interface Usage
+# Web-UI
 
 Currently, SWIFT supports interface-based training and inference, with parameter support similar to script training. After installing SWIFT, use the following command:
 

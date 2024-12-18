@@ -38,6 +38,7 @@
 - [用户群](#-用户群)
 - [简介](#-简介)
 - [新闻](#-新闻)
+- [安装](#-安装)
 - [快速开始](#-快速开始)
 - [如何使用](#-如何使用)
 - [License](#-license)
@@ -54,7 +55,7 @@
 ## 📝 简介
 🍲 ms-swift是魔搭社区官方提供的大模型与多模态大模型微调部署框架，现已支持400+大模型与100+多模态大模型的训练（预训练、微调、人类对齐）、推理、评测、量化与部署。其中LLM包括：Qwen2.5、Llama3.2、GLM4、Internlm2.5、Yi1.5、Mistral、DeepSeek、Baichuan2、Gemma2、TeleChat2等模型，多模态LLM包括：Qwen2-VL、Qwen2-Audio、Llama3.2-Vision、Llava、InternVL2.5、MiniCPM-V-2.6、GLM4v、Xcomposer2.5、Yi-VL、DeepSeek-VL2、Phi3.5-Vision、GOT-OCR2等模型。
 
-🍔 除此之外，ms-swift汇集了最新的训练技术，包括LoRA、QLoRA、Llama-Pro、LongLoRA、GaLore、Q-GaLore、LoRA+、LISA、DoRA、FourierFt、ReFT、UnSloth、Megatron和Liger等。ms-swift支持使用vLLM和LMDeploy对推理、评测和部署模块进行加速。为了帮助研究者和开发者更轻松地微调和应用大模型，ms-swift还提供了基于Gradio的Web-UI界面及丰富的最佳实践。
+🍔 除此之外，ms-swift汇集了最新的训练技术，包括LoRA、QLoRA、Llama-Pro、LongLoRA、GaLore、Q-GaLore、LoRA+、LISA、DoRA、FourierFt、ReFT、UnSloth、和Liger等。ms-swift支持使用vLLM和LMDeploy对推理、评测和部署模块进行加速。为了帮助研究者和开发者更轻松地微调和应用大模型，ms-swift还提供了基于Gradio的Web-UI界面及丰富的最佳实践。
 
 **为什么选择ms-swift？**
 - 🍎模型类型：支持400+纯文本大模型、**100+多模态大模型**，All-to-All全模态模型的**训练到部署全流程**。
@@ -73,13 +74,12 @@
 - 模型量化：支持AWQ、GPTQ和BNB的量化导出，导出的模型支持使用vLLM/LmDeploy推理加速，并支持继续训练。
 
 ## 🎉 新闻
-- 🎁2024.12.04: SWIFT3.0大版本更新. 请查看[ReleaseNote和BreakChange](./docs/source/Instruction/ReleaseNote3.0.md).
-- 🎉2024.08.12: SWIFT论文已经发布到arXiv上，可以点击[这个链接](https://arxiv.org/abs/2408.05517)阅读.
-- 🔥2024.08.05: 支持使用[evalscope](https://github.com/modelscope/evalscope/)作为后端进行多模态模型的评测.
-- 🔥2024.07.29: 支持使用[vllm](https://github.com/vllm-project/vllm), [lmdeploy](https://github.com/InternLM/lmdeploy)对大模型和多模态大模型进行推理加速，在infer/deploy/eval时额外指定`--infer_backend vllm/lmdeploy`即可.
-- 🔥2024.07.24: 支持对多模态大模型进行人类偏好对齐: DPO/ORPO/SimPO/CPO/KTO/RM.
-- 🔥2024.02.01: 支持Agent训练！Agent训练算法源自这篇[论文](https://arxiv.org/pdf/2309.00986.pdf).
-
+- 🎁2024.12.04: SWIFT3.0大版本更新. 请查看[发布说明和更改](https://swift.readthedocs.io/zh-cn/latest/Instruction/ReleaseNote3.0.html)。
+- 🎉2024.08.12: SWIFT论文已经发布到arXiv上，可以点击[这里](https://arxiv.org/abs/2408.05517)阅读。
+- 🔥2024.08.05: 支持使用[evalscope](https://github.com/modelscope/evalscope/)作为后端进行大模型和多模态模型的评测。
+- 🔥2024.07.29: 支持使用[vllm](https://github.com/vllm-project/vllm), [lmdeploy](https://github.com/InternLM/lmdeploy)对大模型和多模态大模型进行推理加速，在infer/deploy/eval时额外指定`--infer_backend vllm/lmdeploy`即可。
+- 🔥2024.07.24: 支持对多模态大模型进行人类偏好对齐训练，包括DPO/ORPO/SimPO/CPO/KTO/RM。
+- 🔥2024.02.01: 支持Agent训练！训练算法源自这篇[论文](https://arxiv.org/pdf/2309.00986.pdf)。
 
 ## 🛠️ 安装
 使用pip进行安装：
@@ -152,7 +152,7 @@ swift infer \
 
 ### Web-UI
 
-Web-UI是基于gradio界面技术的**零门槛**训练、部署界面方案，具体可以查看[这里](https://swift.readthedocs.io/zh-cn/latest/GetStarted/%E7%95%8C%E9%9D%A2%E4%BD%BF%E7%94%A8.html)
+Web-UI是基于gradio界面技术的**零门槛**训练、部署界面方案，具体可以查看[这里](https://swift.readthedocs.io/en/latest/GetStarted/Web-UI.md)。
 
 ```shell
 swift web-ui
@@ -160,7 +160,7 @@ swift web-ui
 ![image.png](./docs/resources/web-ui.png)
 
 ### 使用Python
-ms-swift也支持使用python的方式进行训练和推理。下面给出训练和推理的**伪代码**，具体可以查看[这里](https://github.com/modelscope/ms-swift/tree/main/examples/notebook)
+ms-swift也支持使用python的方式进行训练和推理。下面给出训练和推理的**伪代码**，具体可以查看[这里](https://github.com/modelscope/ms-swift/tree/main/examples/notebook)。
 
 训练：
 ```python
@@ -273,7 +273,6 @@ CUDA_VISIBLE_DEVICES=0 swift eval \
     --infer_backend lmdeploy \
     --eval_dataset ARC_c
 ```
-
 
 ### 量化
 ```shell

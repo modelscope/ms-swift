@@ -11,7 +11,7 @@ Swift DOCUMENTATION
 
    GetStarted/SWIFT-installation.md
    GetStarted/Quick-start.md
-   GetStarted/Interface-usage.md
+   GetStarted/Web-UI.md
 
 .. toctree::
    :maxdepth: 2
