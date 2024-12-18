@@ -158,7 +158,7 @@ swift infer \
 ```
 
 ### Web-UI
-The Web-UI is a **zero-threshold** training and deployment interface solution based on Gradio interface technology. For more details, you can check [here](https://swift.readthedocs.io/en/latest/GetStarted/Web-UI.md).
+The Web-UI is a **zero-threshold** training and deployment interface solution based on Gradio interface technology. For more details, you can check [here](https://swift.readthedocs.io/en/latest/GetStarted/Web-UI.html).
 
 ```shell
 SWIFT_UI_LANG=en swift web-ui
