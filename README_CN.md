@@ -195,7 +195,7 @@ resp_list = engine.infer([infer_request], request_config)
 print(f'response: {resp_list[0].choices[0].message.content}')
 ```
 
-## 如何使用
+## ✨ 如何使用
 
 这里给出使用ms-swift进行训练到部署到最简示例，具体可以查看[examples](https://github.com/modelscope/ms-swift/tree/main/examples).
 
