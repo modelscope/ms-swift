@@ -2,6 +2,7 @@
 from dataclasses import dataclass
 from typing import Optional
 
+from swift.llm import safe_snapshot_download
 from swift.utils import find_free_port, get_logger
 from .infer_args import InferArguments
 
@@ -43,14 +44,31 @@ class DeployArguments(InferArguments):
         super().__post_init__()
         self.port = find_free_port(self.port)
 
+    def _init_adapters(self):
+        from swift.llm import AdapterRequest
+        if isinstance(self.adapters, str):
+            self.adapters = [self.adapters]
+        self.adapter_mapping = {}
+        self.pre_adapters = []
+        for i, adapter in enumerate(self.adapters):
+            adapter_path = adapter.split('=')
+            if len(adapter_path) == 1:
+                adapter_path = (None, adapter_path[0])
+            adapter_name, adapter_path = adapter_path
+            adapter_path = safe_snapshot_download(adapter_path, use_hf=self.use_hf, hub_token=self.hub_token)
+            self.adapters[i] = adapter_path
+            if adapter_name is None:
+                self.pre_adapters.append(adapter_path)
+            else:
+                self.adapter_mapping[adapter_name] = AdapterRequest(adapter_name, adapter_path)
+
     def _init_stream(self):
         pass
 
     def _init_eval_human(self):
         pass
 
-    def _init_result_path(self) -> None:
-        if self.result_path is not None:
-            return
-        self.result_path = self.get_result_path('deploy_result')
-        logger.info(f'args.result_path: {self.result_path}')
+    def _init_result_path(self, folder_name: str) -> None:
+        if folder_name == 'infer_result':
+            folder_name = 'deploy_result'
+        return super()._init_result_path(folder_name)

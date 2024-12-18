@@ -13,9 +13,9 @@ from ..protocol import RequestConfig
 
 
 @dataclass
-class LoRARequest:
-    lora_name: str
-    lora_path: str
+class AdapterRequest:
+    name: str
+    path: str
 
 
 class InferTools:

@@ -39,7 +39,7 @@ class ModelArguments:
     attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None
 
     rope_scaling: Literal['linear', 'dynamic'] = None
-    device_map: Optional[str] = None
+    device_map: Optional[Union[dict, str]] = None
     # When some model code needs to be downloaded from GitHub,
     # this parameter specifies the path to the locally downloaded repository.
     local_repo_path: Optional[str] = None
@@ -59,6 +59,7 @@ class ModelArguments:
                     value = json.loads(value)
                 except json.JSONDecodeError:
                     if strict:
+                        logger.error(f"Unable to parse string: '{value}'")
                         raise
         return value
 
@@ -119,13 +120,13 @@ class ModelArguments:
         return self.model_info.torch_dtype
 
     def __post_init__(self):
+        if self.model is None:
+            raise ValueError(f'Please set --model <model_id_or_path>`, model: {self.model}')
         self.model_suffix = get_model_name(self.model)
         self._init_device_map()
         self._init_torch_dtype()
 
     def get_model_kwargs(self):
-        if self.model is None:
-            raise ValueError('Please set --model <model_id_or_path>`')
         return {
             'model_id_or_path': self.model,
             'torch_dtype': self.torch_dtype,

@@ -23,10 +23,16 @@ def get_model_tokenizer_emu3_gen(model_dir: str,
     vq_hub = safe_snapshot_download('BAAI/Emu3-VisionTokenizer')
     from transformers import AutoModel, AutoImageProcessor
     image_processor = AutoImageProcessor.from_pretrained(vq_hub, trust_remote_code=True)
-    image_tokenizer = AutoModel.from_pretrained(vq_hub, trust_remote_code=True).eval()
+    image_tokenizer = AutoModel.from_pretrained(vq_hub, trust_remote_code=True).eval().to('cuda:0')
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
     processor = Emu3Processor(image_processor, image_tokenizer, tokenizer)
-    processor.vision_tokenizer.to('cuda:0')
+    model_info.max_model_len = model_info.max_model_len + 40960
+    if model:
+        model.config.image_area = int(os.environ.get('image_area', model.config.image_area))
+        model.config.max_position_embeddings = int(
+            os.environ.get('max_position_embeddings', model.config.max_position_embeddings))
+        processor.image_area = model.config.image_area
+        model.generation_config.do_sample = True
     return model, processor
 
 

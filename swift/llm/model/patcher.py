@@ -2,8 +2,8 @@
 import torch
 from accelerate.utils import find_device
 
-from swift import get_logger
 from swift.llm import to_device
+from swift.utils import get_logger
 
 logger = get_logger()
 
@@ -28,7 +28,7 @@ def patch_output_clone(module: torch.nn.Module):
         if module.training:
             return output.requires_grad_(True).clone()
         else:
-            return output
+            return output.detach()
 
     module.register_forward_hook(_clone_hook)
 

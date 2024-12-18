@@ -189,6 +189,7 @@ def get_optimizer(args: TrainingArguments, config: GaLoreConfig) -> Tuple[Any, A
         if config.quantize:
             assert importlib.util.find_spec('q_galore_torch') is not None, \
                 'Please install q-galore by `pip install q_galore_torch`'
+            logger.info('If you encounter `absmax2` error, please downgrade your bitsandbytes to 0.40.0')
             from swift.utils import get_dist_setting
             _, _, world_size, _ = get_dist_setting()
             if world_size > 1:

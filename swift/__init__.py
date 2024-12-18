@@ -6,13 +6,12 @@ from .utils.import_utils import _LazyModule
 if TYPE_CHECKING:
     from .version import __version__, __release_datetime__
     from .tuners import (Adapter, AdapterConfig, AdapterModule, SwiftModel, LoRA, LoRAConfig, SWIFT_MAPPING,
-                         AdaLoraConfig, IA3Config, LoftQConfig, LoHaConfig, LoKrConfig, LoraConfig, OFTConfig,
-                         PeftConfig, PeftModel, PeftModelForCausalLM, ResTuningConfig, SideConfig,
-                         PeftModelForSeq2SeqLM, PeftModelForSequenceClassification, PeftModelForTokenClassification,
-                         PrefixTuningConfig, PromptEncoderConfig, PromptLearningConfig, PromptTuningConfig,
-                         get_peft_config, get_peft_model, get_peft_model_state_dict, Prompt, PromptConfig, PromptModule,
-                         SwiftConfig, SwiftOutput, Swift, SwiftTuners, LongLoRAConfig, LongLoRA, LongLoRAModelType,
-                         SCETuning, SCETuningConfig)
+                         AdaLoraConfig, LoftQConfig, LoHaConfig, LoKrConfig, LoraConfig, OFTConfig, PeftConfig,
+                         PeftModel, PeftModelForCausalLM, ResTuningConfig, SideConfig, PeftModelForSeq2SeqLM,
+                         PeftModelForSequenceClassification, PeftModelForTokenClassification, PrefixTuningConfig,
+                         PromptEncoderConfig, PromptLearningConfig, PromptTuningConfig, get_peft_config, get_peft_model,
+                         get_peft_model_state_dict, Prompt, PromptConfig, PromptModule, SwiftConfig, SwiftOutput, Swift,
+                         SwiftTuners, LongLoRAConfig, LongLoRA, LongLoRAModelType, SCETuning, SCETuningConfig)
     from .trainers import (EvaluationStrategy, FSDPOption, HPSearchBackend, HubStrategy, IntervalStrategy,
                            SchedulerType, ShardedDDPOption, TrainingArguments, Seq2SeqTrainingArguments, Trainer,
                            Seq2SeqTrainer)
@@ -22,8 +21,8 @@ else:
         'version': ['__release_datetime__', '__version__'],
         'tuners': [
             'Adapter', 'AdapterConfig', 'AdapterModule', 'SwiftModel', 'LoRA', 'LoRAConfig', 'SWIFT_MAPPING',
-            'LoraConfig', 'AdaLoraConfig', 'IA3Config', 'LoftQConfig', 'LoHaConfig', 'LoKrConfig', 'OFTConfig',
-            'PeftConfig', 'ResTuningConfig', 'SideConfig', 'PeftModel', 'PeftModelForCausalLM', 'PeftModelForSeq2SeqLM',
+            'LoraConfig', 'AdaLoraConfig', 'LoftQConfig', 'LoHaConfig', 'LoKrConfig', 'OFTConfig', 'PeftConfig',
+            'ResTuningConfig', 'SideConfig', 'PeftModel', 'PeftModelForCausalLM', 'PeftModelForSeq2SeqLM',
             'PeftModelForSequenceClassification', 'PeftModelForTokenClassification', 'PrefixTuningConfig',
             'PromptEncoderConfig', 'PromptLearningConfig', 'PromptTuningConfig', 'get_peft_config', 'get_peft_model',
             'get_peft_model_state_dict', 'Prompt', 'PromptConfig', 'PromptModule', 'SwiftConfig', 'SwiftOutput',

@@ -19,7 +19,7 @@ def _prepare(infer_backend: Literal['vllm', 'pt', 'lmdeploy']):
     elif infer_backend == 'vllm':
         from swift.llm import VllmEngine
         engine = VllmEngine('qwen/Qwen2-7B-Instruct')
-    template = get_template(engine.template, engine.tokenizer)
+    template = get_template(engine.model.model_meta.template, engine.tokenizer)
     infer_requests = [
         InferRequest([{
             'role': 'user',
@@ -34,7 +34,8 @@ def _prepare(infer_backend: Literal['vllm', 'pt', 'lmdeploy']):
 
 
 def test_infer(engine, template, infer_requests):
-    from swift.llm import InferStats, RequestConfig
+    from swift.llm import RequestConfig
+    from swift.plugin import InferStats
 
     request_config = RequestConfig(temperature=0, logprobs=True, top_logprobs=2)
     infer_stats = InferStats()
@@ -48,7 +49,8 @@ def test_infer(engine, template, infer_requests):
 
 
 def test_stream(engine, template, infer_requests):
-    from swift.llm import InferStats, RequestConfig
+    from swift.llm import RequestConfig
+    from swift.plugin import InferStats
 
     infer_stats = InferStats()
     request_config = RequestConfig(temperature=0, stream=True, logprobs=True, top_logprobs=2)

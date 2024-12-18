@@ -1,5 +1,7 @@
 import os
 
+import torch
+
 os.environ['CUDA_VISIBLE_DEVICES'] = '2'
 os.environ['SWIFT_DEBUG'] = '1'
 
@@ -21,7 +23,7 @@ def _infer_model(pt_engine, system=None, messages=None, images=None):
     response = resp[0].choices[0].message.content
     messages += [{'role': 'assistant', 'content': response}]
     logger.info(f'model: {pt_engine.model_info.model_name}, messages: {messages}')
-    return messages
+    return response
 
 
 def test_qwen2_vl():
@@ -108,7 +110,8 @@ def test_florence():
 
 
 def test_phi3_vision():
-    pt_engine = PtEngine('LLM-Research/Phi-3-vision-128k-instruct')
+    # pt_engine = PtEngine('LLM-Research/Phi-3-vision-128k-instruct')
+    pt_engine = PtEngine('LLM-Research/Phi-3.5-vision-instruct')
     _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     _infer_model(pt_engine)
@@ -124,20 +127,25 @@ def test_llava_onevision_hf():
 
 
 def test_xcomposer2_5():
-    pt_engine = PtEngine('Shanghai_AI_Laboratory/internlm-xcomposer2d5-7b')
-    _infer_model(pt_engine, system='')
+    pt_engine = PtEngine('Shanghai_AI_Laboratory/internlm-xcomposer2d5-ol-7b:base', torch.float16)
+    # pt_engine = PtEngine('Shanghai_AI_Laboratory/internlm-xcomposer2d5-7b')
+    response = _infer_model(pt_engine, system='')
     pt_engine.default_template.template_backend = 'jinja'
-    _infer_model(pt_engine, system='')
+    response2 = _infer_model(pt_engine)
+    assert response == response2
 
 
 def test_deepseek_vl():
-    pt_engine = PtEngine('deepseek-ai/deepseek-vl-1.3b-chat')
-    _infer_model(pt_engine)
-
-
-def test_deepseek_janus():
+    # pt_engine = PtEngine('deepseek-ai/deepseek-vl-1.3b-chat')
     pt_engine = PtEngine('deepseek-ai/Janus-1.3B')
     _infer_model(pt_engine)
+
+
+def test_deepseek_vl2():
+    pt_engine = PtEngine('deepseek-ai/deepseek-vl2-small')
+    response = _infer_model(pt_engine)
+    assert response == ('这是一只可爱的小猫。它有着大大的蓝色眼睛和柔软的毛发，看起来非常天真无邪。小猫的耳朵竖立着，显得非常警觉和好奇。'
+                        '它的鼻子小巧而粉红，嘴巴微微张开，似乎在探索周围的环境。整体来看，这只小猫非常可爱，充满了活力和好奇心。')
 
 
 def test_mplug_owl2():
@@ -147,9 +155,9 @@ def test_mplug_owl2():
 def test_mplug_owl3():
     # pt_engine = PtEngine('iic/mPLUG-Owl3-7B-240728')
     pt_engine = PtEngine('iic/mPLUG-Owl3-7B-241101')
-    _infer_model(pt_engine)
+    _infer_model(pt_engine, system='')
     pt_engine.default_template.template_backend = 'jinja'
-    _infer_model(pt_engine)
+    _infer_model(pt_engine, system='')
 
 
 def test_ovis1_6():
@@ -181,6 +189,27 @@ def test_internvl2_5():
     _infer_model(pt_engine, system='你是书生·万象，英文名是InternVL，是由上海人工智能实验室、清华大学及多家合作单位联合开发的多模态大语言模型。')
 
 
+def test_megrez_omni():
+    pt_engine = PtEngine('InfiniAI/Megrez-3B-Omni')
+    _infer_model(pt_engine)
+    response = _infer_model(
+        pt_engine,
+        messages=[{
+            'role': 'user',
+            'content': [
+                {
+                    'type': 'image'
+                },
+                {
+                    'type': 'audio',
+                    'audio': 'weather.wav'
+                },
+            ]
+        }])
+    assert response == ('根据图片，无法确定确切的天气状况。然而，猫咪放松的表情和柔和的光线可能暗示着是一个晴朗或温和的日子。'
+                        '没有阴影或明亮的阳光表明这不是正午时分，也没有雨滴或雪花的迹象，这可能意味着不是下雨或下雪的日子。')
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig, get_template
     from swift.utils import get_logger, seed_everything
@@ -193,7 +222,7 @@ if __name__ == '__main__':
     # test_ovis1_6()
     # test_yi_vl()
     # test_deepseek_vl()
-    # test_deepseek_janus()
+    # test_deepseek_vl2()
     # test_qwen_vl()
     # test_glm4v()
     # test_minicpmv()
@@ -202,10 +231,11 @@ if __name__ == '__main__':
     # test_pixtral()
     # test_llama_vision()
     # test_llava_hf()
-    # test_xcomposer2_5()
     # test_florence()
     # test_glm_edge_v()
     #
-    # test_mplug_owl3()
     # test_phi3_vision()
-    test_internvl2_5()
+    # test_internvl2_5()
+    # test_mplug_owl3()
+    # test_xcomposer2_5()
+    test_megrez_omni()

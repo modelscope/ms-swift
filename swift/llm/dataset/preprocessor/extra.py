@@ -66,11 +66,8 @@ class TextGenerationPreprocessor(ResponsePreprocessor):
         super().__init__(columns_mapping=columns_mapping, **kwargs)
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
-        row = super().preprocess(row)
-        messages = row['messages']
-        query_message = messages[-2]
-        query_message['content'] = self.prompt.replace(self.query_tag, query_message['content'])
-        return row
+        row['query'] = self.prompt.replace(self.query_tag, row['query'])
+        return super().preprocess(row)
 
 
 class ClsPreprocessor(ResponsePreprocessor):

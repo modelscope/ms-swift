@@ -28,6 +28,10 @@ from .vision_utils import load_image, normalize_bbox, rescale_image
 logger = get_logger()
 
 
+class MaxLengthError(ValueError):
+    pass
+
+
 class Template(ProcessorMixin):
     special_tokens = ['<image>', '<video>', '<audio>', '<bbox>', '<ref-object>']
     special_keys = ['images', 'videos', 'audios', 'objects']
@@ -52,7 +56,7 @@ class Template(ProcessorMixin):
             *,
             use_chat_template: bool = True,
             template_backend: Literal['swift', 'jinja'] = 'swift',
-            truncation_strategy: Literal['delete', 'left'] = 'left',
+            truncation_strategy: Literal['raise', 'left'] = 'raise',
             max_pixels: Optional[int] = None,
             tools_prompt: Optional[str] = None,
             # only for train
@@ -79,10 +83,9 @@ class Template(ProcessorMixin):
         else:
             template_meta = deepcopy(template_meta)
         # if default_system is None. not change self.default_system
+        template_meta.check_system(default_system)
         if default_system is not None:
-            self.default_system = template_meta.check_system(default_system)
-        else:
-            self.default_system = template_meta.default_system
+            template_meta.default_system = default_system
 
         template_meta.init(tokenizer)
 
@@ -108,7 +111,7 @@ class Template(ProcessorMixin):
     def _load_images(images, load_images: bool) -> None:
         for i, image in enumerate(images):
             if load_images:
-                if isinstance(image, dict):
+                if isinstance(image, dict) and 'bytes' in image:
                     image = image['bytes'] or image['path']
                 image = load_image(image)
             else:
@@ -146,9 +149,6 @@ class Template(ProcessorMixin):
                     images[i] = self._save_pil_image(image)
         inputs.images = images
 
-        if inputs.is_multimodal:
-            self._add_default_tags(inputs)
-
         self._get_std_messages(inputs.messages)
         n_round = len(inputs.messages) // 2
         if n_round > 1 and not self.template_meta.support_multi_round:
@@ -156,14 +156,15 @@ class Template(ProcessorMixin):
                 'The template does not support multi-round chat. Only use the last round of the conversation.')
             inputs.messages = inputs.messages[-2:]
 
+        if inputs.is_multimodal:
+            self._add_default_tags(inputs)
+
     def _rlhf_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         chosen_inputs, rejected_inputs = inputs, deepcopy(inputs)
         assert chosen_inputs.rejected_response is not None, f'inputs: {inputs}'
         rejected_inputs.messages[-1]['content'] = chosen_inputs.rejected_response
         chosen_encoded = self._encode(chosen_inputs)
         rejected_encoded = self._encode(rejected_inputs)
-        if len(chosen_encoded) == 0 or len(rejected_encoded) == 0:
-            return {}
 
         encoded = {}
         for prefix in ['chosen', 'rejected']:
@@ -175,8 +176,6 @@ class Template(ProcessorMixin):
     def _kto_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         label, inputs.label = inputs.label, None
         encoded = self._rlhf_encode(inputs)
-        if len(encoded) == 0:
-            return {}
         encoded['label'] = label
         return encoded
 
@@ -200,8 +199,8 @@ class Template(ProcessorMixin):
         self._preprocess_inputs(inputs)
         if self.mode in {'vllm', 'lmdeploy'}:
             encoded = Template._encode(self, inputs)
-            if inputs.images:
-                encoded['images'] = inputs.images
+            for key in ['images', 'audios', 'videos']:
+                encoded[key] = getattr(inputs, key)
         elif self.mode in {'pt', 'train'}:
             encoded = self._encode(inputs)
         elif self.mode == 'rlhf':
@@ -458,7 +457,7 @@ class Template(ProcessorMixin):
 
     @staticmethod
     def _add_default_tags(inputs: StdTemplateInputs):
-        total_content = '\n'.join([message['content'] for message in inputs.messages])
+        total_content = '\n'.join([message['content'] or '' for message in inputs.messages])
         for media_type in ['image', 'audio', 'video']:
             media_key, media_tag = f'{media_type}s', f'<{media_type}>'
             medias = getattr(inputs, media_key)
@@ -519,7 +518,7 @@ class Template(ProcessorMixin):
 
     def _jinja_encode(self, inputs: StdTemplateInputs):
         messages = inputs.messages.copy()
-        if inputs.system:
+        if inputs.system is not None:
             messages.insert(0, {'role': 'system', 'content': inputs.system})
         if messages[-1]['content'] is None:
             messages.pop()
@@ -530,9 +529,9 @@ class Template(ProcessorMixin):
     def _swift_encode(self, inputs: StdTemplateInputs):
         template_meta = self.template_meta
         system = inputs.system
+        template_meta.check_system(system)
         if system is None:
-            system = self.default_system
-        system = template_meta.check_system(system)
+            system = template_meta.default_system
 
         res_context_list: List[Context] = []
         res_context_types: List[ContextType] = []
@@ -625,10 +624,9 @@ class Template(ProcessorMixin):
             encoded['tokenizer_kwargs'] = tokenizer_kwargs
 
         if self.max_length is not None:
-            if self.truncation_strategy == 'delete' and len(input_ids) > self.max_length:
-                logger.warn(f'Current length of row({len(input_ids)}) is larger'
-                            f' than the max_length({self.max_length}), deleted.')
-                return {}
+            if self.truncation_strategy == 'raise' and len(input_ids) > self.max_length:
+                raise MaxLengthError(f'Current length of row({len(input_ids)}) is larger'
+                                     f' than the max_length({self.max_length}).')
             input_ids = input_ids[-self.max_length:]
             if labels is not None:
                 labels = labels[-self.max_length:]
@@ -675,12 +673,11 @@ class Template(ProcessorMixin):
 
     def pre_forward_hook(self, model: nn.Module, args, kwargs):
         from swift.llm import to_device
-        keep_kwargs = {
-            k: v
-            for k, v in kwargs.items() if k in {'input_ids', 'labels', 'attention_mask', 'position_ids'}
-        }
-        keep_kwargs.update(self._post_encode(model, to_device(kwargs, model.device)))
-        kwargs = keep_kwargs
+        old_kwargs = to_device(kwargs, model.device)
+        kwargs = to_device(self._post_encode(model, old_kwargs), model.device)
+        for k, v in old_kwargs.items():
+            if k in {'input_ids', 'attention_mask', 'labels', 'position_ids'} and k not in kwargs:
+                kwargs[k] = v
         if 'inputs_embeds' in kwargs:
             kwargs.pop('input_ids', None)
 
@@ -756,10 +753,9 @@ class Template(ProcessorMixin):
     @staticmethod
     def fetch_inputs(batch: List[Dict[str, Any]], keys: Optional[List[str]] = None) -> Dict[str, Any]:
         from swift.llm import RowPreprocessor
+        keys = keys or []
         rows = RowPreprocessor.rows_to_batched(batch)
-        if keys is not None:
-            rows = {k: rows[k] for k in keys}
-        return rows
+        return {k: rows[k] for k in keys if rows.get(k) is not None}
 
     @staticmethod
     def gather_list(batch: List[Dict[str, Any]], attr_name: str) -> Optional[List[Any]]:
@@ -805,8 +801,6 @@ class Template(ProcessorMixin):
             padding_to(`int`, optional): Whether padding the batch to a fixed length, if none, the batch
                 will be padded to the `longest`
         """
-        if len(batch) == 0:
-            return {}
         from swift.utils import use_torchacc
         assert self.tokenizer.pad_token_id is not None
         padding_side = self.padding_side if self.is_training else 'left'

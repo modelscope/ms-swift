@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 from dataclasses import dataclass, field
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Union
 
 import torch
 from transformers import Seq2SeqTrainingArguments
@@ -29,7 +29,8 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
     learning_rate: Optional[float] = None
     weight_decay: float = 0.1
     lr_scheduler_type: str = 'cosine'
-    lr_scheduler_kwargs: Optional[str] = None  # json
+    lr_scheduler_kwargs: Optional[Union[dict, str]] = None
+    gradient_checkpointing_kwargs: Optional[Union[dict, str]] = None
     report_to: List[str] = field(default_factory=lambda: ['tensorboard'])
     remove_unused_columns: bool = False
     logging_first_step: bool = True
@@ -96,7 +97,7 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
         num_labels (Optional[int]): Number of labels for classification tasks. Default is None.
         packing (bool): Flag to enable packing of datasets. Default is False.
         lazy_tokenize (Optional[bool]): Flag to enable lazy tokenization. Default is None.
-        acc_strategy (Literal['token', 'sentence']): Strategy for accumulation. Default is 'token'.
+        acc_strategy (Literal['token', 'seq']): Strategy for accumulation. Default is 'token'.
         max_new_tokens (int): Maximum number of new tokens to generate. Default is 64.
         temperature (float): Temperature for sampling. Default is 0.
         optimizer (Optional[str]): Optimizer type to use, define it in the plugin package. Default is None.
@@ -106,14 +107,13 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
     resume_only_model: bool = False
     check_model: bool = True
     loss_type: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
-    num_labels: Optional[int] = None
 
     # dataset
     packing: bool = False
     lazy_tokenize: Optional[bool] = None
 
     # extra
-    acc_strategy: Literal['token', 'sentence'] = 'token'
+    acc_strategy: Literal['token', 'seq'] = 'token'
     max_new_tokens: int = 64
     temperature: float = 0.
     optimizer: Optional[str] = None
@@ -122,9 +122,10 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
     def __post_init__(self) -> None:
         if self.resume_from_checkpoint:
             self.resume_from_checkpoint = to_abspath(self.resume_from_checkpoint, True)
-            self.load_args_from_ckpt(self.resume_from_checkpoint)
             if self.train_type == 'full':
                 self.model = self.resume_from_checkpoint
+            else:
+                self.adapters = [self.resume_from_checkpoint]
         BaseArguments.__post_init__(self)
         Seq2SeqTrainingOverrideArguments.__post_init__(self)
         TunerArguments.__post_init__(self)
@@ -139,10 +140,15 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
         self._init_deepspeed()
         self._init_device()
 
+        if self.streaming and self.lazy_tokenize:
+            self.lazy_tokenize = False
+            logger.warning('Streaming and lazy_tokenize are incompatible. '
+                           f'Setting args.lazy_tokenize: {self.lazy_tokenize}.')
         if self.lazy_tokenize is None:
             self.lazy_tokenize = self.model_meta.is_multimodal and not self.streaming
             logger.info(f'Setting args.lazy_tokenize: {self.lazy_tokenize}')
-        self.accelerator_config = {'dispatch_batches': False}
+        if getattr(self, 'accelerator_config', None) is None:
+            self.accelerator_config = {'dispatch_batches': False}
         self.training_args = TrainerFactory.get_training_args(self)
 
         self._add_version()

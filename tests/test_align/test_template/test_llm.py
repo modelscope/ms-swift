@@ -19,13 +19,11 @@ def _infer_model(pt_engine, system=None, messages=None):
         messages += [{'role': 'assistant', 'content': response}, {'role': 'user', 'content': '<image>这是什么'}]
     resp = pt_engine.infer([{
         'messages': messages,
-        'images': ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png']
-    }],
-                           request_config=request_config)
+    }], request_config=request_config)
     response = resp[0].choices[0].message.content
     messages += [{'role': 'assistant', 'content': response}]
     logger.info(f'model: {pt_engine.model_info.model_name}, messages: {messages}')
-    return messages
+    return response
 
 
 def test_qwen2_5():
@@ -45,13 +43,6 @@ def test_qwen1half():
 def test_glm4():
     # The Jinja prompt is missing \n.
     pt_engine = PtEngine('ZhipuAI/glm-4-9b-chat')
-    _infer_model(pt_engine)
-    pt_engine.default_template.template_backend = 'jinja'
-    _infer_model(pt_engine)
-
-
-def test_llama():
-    pt_engine = PtEngine('LLM-Research/Llama-3.2-1B-Instruct')
     _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     _infer_model(pt_engine)
@@ -117,8 +108,40 @@ def test_glm_edge():
     _infer_model(pt_engine)
 
 
+def test_llama():
+    # pt_engine = PtEngine('LLM-Research/Meta-Llama-3.1-8B-Instruct-BNB-NF4')
+    # pt_engine = PtEngine('LLM-Research/Meta-Llama-3.1-8B-Instruct')
+    # pt_engine = PtEngine('LLM-Research/Meta-Llama-3-8B-Instruct')
+    pt_engine = VllmEngine('LLM-Research/Llama-3.2-1B-Instruct')
+    # pt_engine = PtEngine('AI-ModelScope/Llama-3.1-Nemotron-70B-Instruct-HF')
+    # pt_engine = PtEngine('unsloth/Llama-3.3-70B-Instruct-bnb-4bit')
+
+    res = _infer_model(pt_engine, system='')
+    pt_engine.default_template.template_backend = 'jinja'
+    res2 = _infer_model(pt_engine, system='')
+    assert res == res2, f'res: {res}, res2: {res2}'
+
+
+def test_openbuddy():
+    # pt_engine = PtEngine('OpenBuddy/openbuddy-yi1.5-34b-v21.3-32k')
+    pt_engine = PtEngine('OpenBuddy/openbuddy-nemotron-70b-v23.2-131k')
+    # pt_engine = PtEngine('OpenBuddy/openbuddy-llama3.3-70b-v24.1-131k')
+    res = _infer_model(pt_engine, system='')
+    pt_engine.default_template.template_backend = 'jinja'
+    res2 = _infer_model(pt_engine)
+    assert res == res2, f'res: {res}, res2: {res2}'
+
+
+def test_megrez():
+    pt_engine = PtEngine('InfiniAI/Megrez-3b-Instruct')
+    res = _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    res2 = _infer_model(pt_engine)
+    assert res == res2, f'res: {res}, res2: {res2}'
+
+
 if __name__ == '__main__':
-    from swift.llm import PtEngine, RequestConfig, get_template, get_model_tokenizer
+    from swift.llm import PtEngine, RequestConfig, get_template, get_model_tokenizer, VllmEngine
     from swift.utils import get_logger, seed_everything
     logger = get_logger()
     # test_qwen2_5()
@@ -131,6 +154,8 @@ if __name__ == '__main__':
     # test_deepseek_moe()
     # test_codegeex4()
     # test_glm4()
-    # test_llama()
     # test_telechat()
-    test_glm_edge()
+    # test_glm_edge()
+    # test_llama()
+    # test_openbuddy()
+    test_megrez()

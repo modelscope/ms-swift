@@ -1,4 +1,4 @@
-# LLM Quantization and Export Documentation
+# Export
 Swift supports quantization of models using technologies like awq, gptq, bnb, hqq, and eetq. The awq and gptq quantization methods are compatible with vllm/lmdeploy for inference acceleration. They require a calibration dataset, which improves quantization performance, but slows down the quantization speed. In contrast, bnb, hqq, and eetq do not require calibration data, allowing for faster quantization. All five quantization methods support qlora fine-tuning.
 
 awq, gptq, and bnb (8bit) can use `swift export` for quantization. Meanwhile, bnb, hqq, and eetq allow for quick quantization directly during sft and inference.
@@ -9,6 +9,7 @@ In addition to installing SWIFT, you need to install the following dependencies:
 ```bash
 # For awq quantization:
 # The versions of autoawq and cuda are related, please choose according to `https://github.com/casper-hansen/AutoAWQ`
+# If there is a torch dependency conflict, please add the `--no-deps` option.
 pip install autoawq -U
 
 # For gptq quantization:
@@ -35,20 +36,20 @@ pip install .
 
 Please refer to the [examples](https://github.com/modelscope/ms-swift/tree/main/examples/export) for quantization commands.
 
-You can use training datasets for model quantization after training:
+To perform model quantization after training with a training set, use the `--model` and `--adapters` options to specify the checkpoint directory. The checkpoint directory contains the parameter files from training:
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift export \
-    --ckpt_dir 'output/some-model/vx-xxx/checkpoint-xxx' \
+    --adapters 'output/some-model/vx-xxx/checkpoint-xxx' \
     --quant_bits 4 \
-    --load_dataset_config true \
-    --quant_method awq
+    --load_data_args true \
+    --quant_method gptq
 ```
 
-Once quantized, the model can be used for inference or deployment directly with `--ckpt_dir` or `--model`, for example:
+Once quantized, the model can be used for inference or deployment directly with `--model`, for example:
 ```shell
 swift infer --model /xxx/quantize-output-folder
-swift deploy --ckpt_dir /xxx/quantize-output-folder
+swift deploy --model /xxx/quantize-output-folder
 ```
 
 ### bnb, hqq, eetq

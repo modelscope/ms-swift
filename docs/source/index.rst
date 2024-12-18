@@ -17,12 +17,12 @@ Swift DOCUMENTATION
    :maxdepth: 2
    :caption: Instruction
 
+   Instruction/命令行参数.md
    Instruction/预训练及微调.md
    Instruction/人类对齐.md
    Instruction/推理和部署.md
    Instruction/评测.md
    Instruction/导出.md
-   Instruction/命令行参数.md
    Instruction/支持的模型和数据集.md
    Instruction/使用tuners.md
    Instruction/智能体的支持.md
@@ -35,9 +35,9 @@ Swift DOCUMENTATION
    :maxdepth: 2
    :caption: Customization
 
-   Customization/新增数据集.md
-   Customization/新增模型.md
-   Customization/插件.md
+   Customization/自定义数据集.md
+   Customization/自定义模型.md
+   Customization/插件化.md
 
 Indices and tables
 ==================

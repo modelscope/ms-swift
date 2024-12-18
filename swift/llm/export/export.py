@@ -17,8 +17,9 @@ class SwiftExport(SwiftPipeline):
 
     def run(self):
         args = self.args
+        assert len(args.adapters) <= 1, f'args.adapters: {args.adapters}'
         if args.to_peft_format:
-            args.ckpt_dir = swift_to_peft_format(args.ckpt_dir, args.output_dir)
+            args.adapters[0] = swift_to_peft_format(args.adapters[0], args.output_dir)
         elif args.merge_lora:
             merge_lora(args)
         elif args.quant_method is not None:
@@ -26,11 +27,11 @@ class SwiftExport(SwiftPipeline):
         elif args.to_ollama:
             export_to_ollama(args)
         elif args.push_to_hub:
-            ckpt_dir = args.ckpt_dir or args.model
-            assert ckpt_dir is not None, 'You need to specify `ckpt_dir`.'
+            model_dir = args.adapters and args.adapters[0] or args.model_dir
+            assert model_dir, f'model_dir: {model_dir}'
             args.hub.push_to_hub(
                 args.hub_model_id,
-                ckpt_dir,
+                model_dir,
                 token=args.hub_token,
                 private=args.hub_private_repo,
                 commit_message=args.commit_message)

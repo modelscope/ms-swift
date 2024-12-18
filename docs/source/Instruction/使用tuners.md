@@ -18,9 +18,9 @@ tuner是指附加在模型上的额外结构部分，用于减少训练参数量
 - Res-Tuning: [Res-Tuning: A Flexible and Efficient Tuning Paradigm via Unbinding Tuner from Backbone](https://arxiv.org/abs/2310.19859)  < [arXiv](https://arxiv.org/abs/2310.19859)  |  [Project Page](https://res-tuning.github.io/)  |  [Usage](ResTuning.md) >
 - [PEFT](https://github.com/huggingface/peft)提供的tuners, 如AdaLoRA、DoRA、Fourierft等
 
-# 接口列表
+## 接口列表
 
-## Swift类静态接口
+### Swift类静态接口
 
 - `Swift.prepare_model(model, config, **kwargs)`
   - 接口作用：加载某个tuner到模型上，如果是PeftConfig的子类，则使用Peft库的对应接口加载tuner。在使用SwiftConfig的情况下，本接口可以传入SwiftModel实例并重复调用，此时和config传入字典的效果相同。
@@ -78,7 +78,7 @@ tuner是指附加在模型上的额外结构部分，用于减少训练参数量
     - adapter_name：`str`或`List[str]`或`Dict[str, str]`类型或`None`，待加载tuner目录中的tuner名称，如果为`None`则加载所有名称的tuners，如果是`str`或`List[str]`则只加载某些具体的tuner，如果是`Dict`，则将`key`指代的tuner加载起来后换成`value`的名字
     - revision: 如果model_id是魔搭的id，则revision可以指定对应版本号
 
-## SwiftModel接口
+### SwiftModel接口
 
 下面列出用户可能调用的接口列表，其他内部接口或不推荐使用的接口可以通过`make docs`命令查看API Doc文档。
 

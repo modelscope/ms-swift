@@ -10,7 +10,7 @@ import torch.nn as nn
 from transformers import FeatureExtractionMixin, GenerationConfig, PreTrainedModel, PreTrainedTokenizerBase
 from transformers import ProcessorMixin as HfProcessorMixin
 
-from swift.utils import deep_getattr, get_logger, upper_bound
+from swift.utils import deep_getattr, get_logger
 
 try:
     from transformers import BaseImageProcessor
@@ -21,6 +21,8 @@ except ImportError:
 logger = get_logger()
 
 History = List[Union[Tuple[str, str], List[str]]]
+
+os.environ['TOKENIZERS_PARALLELISM'] = 'true'
 
 
 class ProcessorMixin:
@@ -52,31 +54,11 @@ def to_device(data: Any, device: torch.device) -> Any:
         return data
 
 
-def limit_history_length(template: 'Template', query: str, history: Optional[History],
-                         max_length: Optional[int]) -> Tuple[History, History]:
-    """binary search"""
-    if history is None:
-        history = []
-    if max_length is None:
-        return [], history
-
-    def compute_token_length(history_length: int) -> int:
-        assert history_length != 0
-        example = {'query': query, 'history': history[-history_length:]}
-        input_ids = template.encode(example)[0]['input_ids']
-        return len(input_ids)
-
-    history_length = upper_bound(0, len(history), lambda mid: compute_token_length(mid) <= max_length)
-    old_history = history[:len(history) - history_length]
-    history = history[len(history) - history_length:]
-    return old_history, history
-
-
 def set_generation_config(model: nn.Module, generation_config: GenerationConfig) -> None:
     old_generation_config = getattr(model, 'generation_config', None)
     old_generation_priority_config = ['no_repeat_ngram_size', 'num_beams']
     if old_generation_config is not None:
-        for k, old_v in old_generation_config.__dict__.items():
+        for k, old_v in dir(old_generation_config).items():
             if k.startswith('_'):
                 continue
             v = getattr(generation_config, k, None)
@@ -218,16 +200,20 @@ def save_checkpoint(model: Optional[PreTrainedModel],
                     *,
                     safe_serialization: bool = True,
                     max_shard_size: Union[int, str] = '5GB',
-                    ckpt_dir: str = None,
+                    model_dirs: List[str] = None,
                     additional_saved_files: Optional[List[str]] = None) -> None:
     if model is not None:
         model.save_pretrained(output_dir, safe_serialization=safe_serialization, max_shard_size=max_shard_size)
     processor.save_pretrained(output_dir)
 
+    if model_dirs is None:
+        model_dirs = []
+    else:
+        model_dirs = model_dirs.copy()
+    if model and model.model_dir and model.model_dir not in model_dirs:
+        model_dirs.append(model.model_dir)
     for src_file in additional_saved_files or [] + ['preprocessor_config.json', 'args.json']:
-        for model_dir in [model and model.model_dir, ckpt_dir]:
-            if model_dir is None:
-                continue
+        for model_dir in model_dirs:
             src_path: str = os.path.join(model_dir, src_file)
             tgt_path = os.path.join(output_dir, src_file)
             if os.path.isfile(src_path):

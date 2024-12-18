@@ -1,4 +1,4 @@
-# LLM Evaluation Documentation
+# Evaluation
 
 SWIFT supports eval(evaluation) capabilities to provide standardized assessment metrics for both the raw model and the trained model.
 
@@ -50,8 +50,8 @@ pip install ms-swift[eval] -U
 Or install from the source code:
 
 ```shell
-git clone https://github.com/modelscope/swift.git
-cd swift
+git clone https://github.com/modelscope/ms-swift.git
+cd ms-swift
 pip install -e '.[eval]'
 ```
 

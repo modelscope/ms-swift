@@ -6,13 +6,15 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
+from peft import PeftModel
 from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer, GenerationConfig, PretrainedConfig,
                           PreTrainedModel, PreTrainedTokenizerBase)
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import is_torch_bf16_gpu_available, is_torch_cuda_available, is_torch_npu_available, strtobool
 from transformers.utils.versions import require_version
 
-from swift.utils import get_dist_setting, get_logger, is_dist, is_mp_ddp, is_unsloth_available, use_torchacc
+from swift.utils import (get_dist_setting, get_logger, is_dist, is_mp_ddp, is_unsloth_available, patch_getattr,
+                         use_torchacc)
 from .constant import ModelType
 from .utils import AttnImpl, HfConfigFactory, ModelInfo, safe_snapshot_download
 
@@ -34,16 +36,20 @@ class Model:
 class ModelGroup:
     models: List[Model]
 
-    # Higher priority. If set to None, the attributes of the DatasetMeta will be used.
+    # Higher priority. If set to None, the attributes of the ModelMeta will be used.
     ignore_file_pattern: Optional[List[str]] = None
     requires: Optional[List[str]] = None
     tags: List[str] = field(default_factory=list)
+
+    def __post_init__(self):
+        if not isinstance(self.models, (tuple, list)):
+            self.models = [self.models]
 
 
 @dataclass
 class ModelMeta:
     model_type: str
-    # Used to list the model_ids from huggingface/modelscope,
+    # Used to list the model_ids from modelscope/huggingface,
     # which participate in the automatic inference of the model_type.
     model_groups: List[ModelGroup]
     template: str
@@ -61,6 +67,10 @@ class ModelMeta:
     # Usually specifies the version limits of transformers.
     requires: List[str] = field(default_factory=list)
     tags: List[str] = field(default_factory=list)
+
+    def __post_init__(self):
+        if not isinstance(self.model_groups, (list, tuple)):
+            self.model_groups = [self.model_groups]
 
     def get_matched_model_group(self, model_name: str) -> Optional[ModelGroup]:
         for model_group in self.model_groups:
@@ -105,26 +115,34 @@ def register_model(model_meta: ModelMeta, *, exist_ok: bool = False) -> None:
     MODEL_MAPPING[model_type] = model_meta
 
 
-def load_by_unsloth(model_dir: str,
-                    torch_dtype: torch.dtype,
-                    max_seq_length: Optional[int] = None,
-                    load_in_4bit: bool = True,
-                    is_multimodal=False):
+def load_by_unsloth(args):
     """Load model by unsloth"""
-    # TODO:check
     assert is_unsloth_available(), 'please install unsloth if using `use_unsloth=True`'
     os.environ['UNSLOTH_RETURN_LOGITS'] = '1'
-    if is_multimodal:
+    os.environ['UNSLOTH_DISABLE_STATISTICS'] = '1'
+    model_info = args.model_info
+    model_meta = args.model_meta
+    if model_meta.is_multimodal:
         from unsloth import FastVisionModel as UnslothModel
     else:
         from unsloth import FastLanguageModel as UnslothModel
-    return UnslothModel.from_pretrained(
-        model_name=model_dir,
-        dtype=torch_dtype,
-        max_seq_length=max_seq_length,
-        load_in_4bit=load_in_4bit,
+    model, processor = UnslothModel.from_pretrained(
+        model_name=args.adapters and args.adapters[0] or args.model_dir,
+        dtype=args.torch_dtype,
+        max_seq_length=model_info.max_model_len,
+        load_in_4bit=args.quant_bits == 4,
         trust_remote_code=True,
     )
+    if isinstance(model, PeftModel):
+        base_model = model.model
+    else:
+        base_model = model
+    base_model.model_dir = args.model_dir
+    base_model.model_info = model_info
+    base_model.model_meta = model_meta
+    processor.model_info = model_info
+    processor.model_meta = model_meta
+    return model, processor
 
 
 def get_model_tokenizer_from_local(model_dir: str,
@@ -162,14 +180,9 @@ def get_model_tokenizer_from_local(model_dir: str,
 
     model = None
     if load_model:
-        if kwargs.get('use_unsloth', False):
-            unsloth_kwargs = kwargs['unsloth_kwargs']
-            logger.info(f'unsloth_kwargs: {unsloth_kwargs}')
-            model, tokenizer = load_by_unsloth(model_dir, torch_dtype, model_info.max_model_len, **unsloth_kwargs)
-        else:
-            logger.info(f'model_kwargs: {model_kwargs}')
-            model = automodel_class.from_pretrained(
-                model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
+        logger.info(f'model_kwargs: {model_kwargs}')
+        model = automodel_class.from_pretrained(
+            model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
 
     # fix not save modeling_xxx.py (transformers 4.45)
     # https://github.com/huggingface/transformers/issues/24737
@@ -337,9 +350,11 @@ def get_all_models() -> List[str]:
             for group in model_meta.model_groups:
                 for model in group.models:
                     if use_hf:
-                        models.append(model.hf_model_id)
+                        if model.hf_model_id:
+                            models.append(model.hf_model_id)
                     else:
-                        models.append(model.ms_model_id)
+                        if model.ms_model_id:
+                            models.append(model.ms_model_id)
     return models
 
 
@@ -377,22 +392,6 @@ def _get_model_info(model_dir: str, model_type: Optional[str], quantization_conf
     res = ModelInfo(model_type, model_dir, torch_dtype, max_model_len, quant_info.get('quant_method'),
                     quant_info.get('quant_bits'), rope_scaling)
     return res
-
-
-def patch_processor(processor):
-    if hasattr(processor, '_patch'):
-        return
-
-    def __getattr__(self, key: str):
-        try:
-            return super(processor.__class__, self).__getattr__(key)
-        except AttributeError:
-            if 'tokenizer' in self.__dict__:
-                return getattr(self.tokenizer, key)
-            raise
-
-    processor.__class__.__getattr__ = __getattr__
-    processor.__class__._patch = True
 
 
 def get_model_info_meta(
@@ -495,14 +494,11 @@ def get_model_tokenizer(
     kwargs['automodel_class'] = automodel_class
     kwargs['attn_impl'] = attn_impl
     kwargs['rope_scaling'] = rope_scaling
-    if 'unsloth_kwargs' not in kwargs:
-        kwargs['unsloth_kwargs'] = {}
-    kwargs['unsloth_kwargs']['is_multimodal'] = model_meta.is_multimodal
     model, processor = get_function(model_dir, model_info, model_kwargs, load_model, **kwargs)
 
     if not isinstance(processor, PreTrainedTokenizerBase) and hasattr(processor, 'tokenizer'):
         tokenizer = processor.tokenizer
-        patch_processor(processor)
+        patch_getattr(processor.__class__, 'tokenizer')
     else:
         tokenizer = processor
     tokenizer.model_info = model_info
@@ -526,7 +522,6 @@ def get_model_tokenizer(
 
         # generation_config
         generation_config_path = os.path.join(model_dir, 'generation_config.json')
-        # TODO:model.llm.generation_config: deepseek-vl
         if not hasattr(model, 'generation_config') and os.path.isfile(generation_config_path):
             model.generation_config = GenerationConfig.from_pretrained(model_dir)
         # fix llama2 warning

@@ -13,8 +13,6 @@ class PixtralTemplate(Template):
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
-        if len(encoded) == 0:
-            return encoded
         processor = self.processor
         images = inputs.images
         input_ids = encoded['input_ids']

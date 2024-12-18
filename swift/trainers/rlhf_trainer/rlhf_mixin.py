@@ -29,7 +29,7 @@ class ModelWrapper(nn.Module):
         try:
             return super().__getattr__(key)
         except AttributeError:
-            if '_model' in self.__dict__:
+            if '_model' in dir(self):
                 return getattr(self._model, key)
             raise
 
@@ -101,12 +101,12 @@ class RLHFTrainerMixin:
         super().__init__(model, *_args, **kwargs)
         self.padding_value = self.tokenizer.pad_token_id
 
-    def _save_checkpoint(self, model, trial, metrics=None):
+    def _save_checkpoint(self, model, *args, **kwargs):
         context = nullcontext()
         if hasattr(model, '_save_load_context'):
             context = model._save_load_context(self)
         with context:
-            return super()._save_checkpoint(model, trial, metrics)
+            return super()._save_checkpoint(model, *args, **kwargs)
 
     def concatenated_forward(
         self, model: nn.Module, batch: Dict[str, Union[List, torch.LongTensor]]

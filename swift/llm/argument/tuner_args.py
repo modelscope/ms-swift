@@ -28,8 +28,19 @@ class TunerArguments:
         lorap_lr_ratio (float): Learning rate ratio for LoRA. Default is None.
         use_rslora (bool): Flag to indicate if RSLora is used. Default is False.
         use_dora (bool): Flag to indicate if Dora is used. Default is False.
-        init_lora_weights (str): Initialization method for LoRA weights. Default is 'true'.
-            Allowed values are 'gaussian', 'pissa', 'pissa_niter_[number of iters]', 'olora', 'loftq', 'true', 'false'.
+        init_weights (str): Initialization method for weights of supported tuners. Default is 'true'.
+        lora_ga_batch_size (int): Batch size used for estimating gradients during initialization in LoRA-GA.
+                                    Default value is 2.
+        lora_ga_iters (int): Number of iterations for estimating gradients during initialization in LoRA-GA.
+                                Default value is 2.
+        lora_ga_max_length (int): Maximum input length for estimating gradients during initialization in LoRA-GA.
+                                    Default value is 1024.
+        lora_ga_direction (str): Initial direction used for gradient estimation during initialization in LoRA-GA.
+                                    Default value is `ArB2r`. Allowed: `ArBr`, `A2rBr`, `ArB2r`, and `random`.
+        lora_ga_scale (str): The scaling method for initialization in LoRA-GA.
+                                Default value is `stable`. Allowed values are: `gd`, `unit`, `stable`, and `weightS`.
+        lora_ga_stable_gamma (int): The gamma value when choosing `stable` scaling for initialization.
+                                    Default value is 16.
 
         fourier_n_frequency (int): Number of frequencies for FourierFT. Default is 2000.
         fourier_scaling (float): Scaling factor for FourierFT. Default is 300.0.
@@ -92,9 +103,9 @@ class TunerArguments:
     freeze_parameters_ratio: float = 0.  # 0 ~ 1
     trainable_parameters: List[str] = field(default_factory=list)
     # lora or full
+    freeze_llm: bool = False
     freeze_vit: bool = True
     freeze_aligner: bool = True
-    freeze_llm: bool = False
     # tuners
     target_modules: List[str] = field(default_factory=lambda: ['all-linear'])
     target_regex: Optional[str] = None
@@ -110,8 +121,16 @@ class TunerArguments:
     lorap_lr_ratio: Optional[float] = None
     use_rslora: bool = False
     use_dora: bool = False
-    # Literal['gaussian', 'pissa', 'pissa_niter_[number of iters]', 'olora', 'loftq', 'true', 'false']
-    init_lora_weights: str = 'true'
+    # Lora: Literal['gaussian', 'pissa', 'pissa_niter_[number of iters]', 'olora', 'loftq', 'true', 'false', 'lora-ga']
+    lora_ga_batch_size: int = 2
+    lora_ga_iters: int = 2
+    lora_ga_max_length: int = 1024
+    lora_ga_direction: str = 'ArB2r'
+    lora_ga_scale: str = 'stable'
+    lora_ga_stable_gamma: int = 16
+
+    # Bone: Literal['bat', 'true', 'false']
+    init_weights: str = 'true'
 
     # fourierft
     fourier_n_frequency: int = 2000
@@ -181,8 +200,8 @@ class TunerArguments:
     use_liger: bool = False
 
     def __post_init__(self):
-        if isinstance(self.init_lora_weights, str) and self.init_lora_weights.lower() in {'true', 'false'}:
-            self.init_lora_weights = bool(strtobool(self.init_lora_weights))
+        if isinstance(self.init_weights, str) and self.init_weights.lower() in {'true', 'false'}:
+            self.init_weights = bool(strtobool(self.init_weights))
         self._init_multimodal_full()
         if self.target_regex:
             self.target_modules = self.target_regex

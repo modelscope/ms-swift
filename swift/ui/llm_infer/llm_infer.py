@@ -61,12 +61,6 @@ class LLMInfer(BaseUI):
                 'status" to view details',
             }
         },
-        'load_alert_gradio_app': {
-            'value': {
-                'zh': '部署中，请查看部署日志',
-                'en': 'Start to deploy model, please check the log',
-            }
-        },
         'loaded_alert': {
             'value': {
                 'zh': '模型加载完成',
@@ -292,11 +286,19 @@ class LLMInfer(BaseUI):
         run_command, deploy_args, log_file = cls.deploy(*args)
         logger.info(f'Running deployment command: {run_command}')
         os.system(run_command)
-        if cls.is_gradio_app:
-            gr.Info(cls.locale('load_alert_gradio_app', cls.lang)['value'])
-        else:
+        if not cls.is_gradio_app:
             gr.Info(cls.locale('load_alert', cls.lang)['value'])
-        time.sleep(2)
+            time.sleep(2)
+        else:
+            from swift.llm.infer.deploy import is_accessible
+            logger.info('Begin to check deploy statement...')
+            cnt = 0
+            while not is_accessible(deploy_args.port):
+                time.sleep(1)
+                cnt += 1
+                if cnt >= 60:
+                    logger.warn(f'Deploy costing too much time, please check log file: {log_file}')
+            logger.info('Deploy done.')
         cls.deployed = True
         running_task = Runtime.refresh_tasks(log_file)
         if cls.is_gradio_app:

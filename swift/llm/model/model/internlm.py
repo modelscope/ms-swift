@@ -71,11 +71,11 @@ register_model(
     ))
 
 
-def get_model_tokenizer_internlm_xcomposer2(model_dir: str,
-                                            model_info: ModelInfo,
-                                            model_kwargs: Dict[str, Any],
-                                            load_model: bool = True,
-                                            **kwargs):
+def get_model_tokenizer_xcomposer2(model_dir: str,
+                                   model_info: ModelInfo,
+                                   model_kwargs: Dict[str, Any],
+                                   load_model: bool = True,
+                                   **kwargs):
     version = kwargs.pop('version', 'v2')
     use_flash_attn = kwargs.pop('use_flash_attn', False)
     if version == 'v2-4khd':
@@ -116,8 +116,7 @@ def get_model_tokenizer_internvl(model_dir: str,
             model.language_model.output.state.force_no_igemmlt = True
 
     if model is not None:
-        func_list = ['generate', 'get_input_embeddings', 'gradient_checkpointing_enable', 'forward']
-        use_submodel_func(model, 'language_model', func_list)
+        use_submodel_func(model, 'language_model')
         patch_output_clone(model.language_model.get_input_embeddings())
 
     return model, tokenizer
@@ -229,12 +228,14 @@ register_model(
         [
             ModelGroup([
                 Model('Shanghai_AI_Laboratory/internlm-xcomposer2d5-7b', 'internlm/internlm-xcomposer2d5-7b'),
-            ], ),
+                Model('Shanghai_AI_Laboratory/internlm-xcomposer2d5-ol-7b:base',
+                      'internlm/internlm-xcomposer2d5-ol-7b:base')
+            ]),
         ],
         TemplateType.xcomposer2_5,
-        get_model_tokenizer_internlm_xcomposer2,
+        partial(get_model_tokenizer_xcomposer2, version='v2.5'),
         architectures=['InternLMXComposer2ForCausalLM'],
-        model_arch=ModelArch.internlm_xcomposer,
+        model_arch=ModelArch.xcomposer,
         tags=['vision'],
         requires=['decord'],
     ))
@@ -248,9 +249,9 @@ register_model(
             ], ),
         ],
         TemplateType.xcomposer2,
-        get_model_tokenizer_internlm_xcomposer2,
+        get_model_tokenizer_xcomposer2,
         architectures=['InternLMXComposer2ForCausalLM'],
-        model_arch=ModelArch.internlm_xcomposer,
+        model_arch=ModelArch.xcomposer,
         tags=['vision'],
     ))
 
@@ -263,8 +264,33 @@ register_model(
             ], ),
         ],
         TemplateType.xcomposer2,
-        partial(get_model_tokenizer_internlm_xcomposer2, version='v2-4khd'),
+        partial(get_model_tokenizer_xcomposer2, version='v2-4khd'),
         architectures=['InternLM2ForCausalLM', 'InternLMXComposer2ForCausalLM'],
-        model_arch=ModelArch.internlm_xcomposer,
+        model_arch=ModelArch.xcomposer,
         tags=['vision'],
+    ))
+
+
+def get_model_tokenizer_xcomposer_ol(model_dir, *args, **kwargs):
+    model_tag = model_dir.rsplit('/', 1)[-1]
+    if model_tag == 'audio':
+        from .qwen import get_model_tokenizer_qwen2_audio
+        return get_model_tokenizer_qwen2_audio(model_dir, *args, **kwargs)
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.xcomposer2_5_ol_audio,
+        [
+            ModelGroup([
+                Model('Shanghai_AI_Laboratory/internlm-xcomposer2d5-ol-7b:audio',
+                      'internlm/internlm-xcomposer2d5-ol-7b:audio'),
+            ]),
+        ],
+        TemplateType.qwen2_audio,
+        get_model_tokenizer_xcomposer_ol,
+        requires=['transformers>=4.45'],
+        architectures=['Qwen2AudioForConditionalGeneration'],
+        model_arch=ModelArch.qwen2_audio,
+        tags=['audio'],
     ))

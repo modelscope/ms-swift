@@ -31,7 +31,9 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         self.max_model_len = self.model_info.max_model_len
         self.config = self.model_info.config
         self.pre_infer_hooks = []
-        self.default_template = get_template(self.model_meta.template, self.processor)
+        if getattr(self, 'default_template', None) is None:
+            self.default_template = get_template(self.model_meta.template, self.processor)
+        self._adapters_pool = {}
 
     def _get_stop_words(self, stop_words: List[Union[str, List[int], None]]) -> List[str]:
         stop: List[str] = []
@@ -219,8 +221,23 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         return finish_reason
 
     @staticmethod
-    def _thread_run(queue, coro):
-        queue.put(asyncio.run(coro))
+    def thread_run(target, args=(), kwargs=None):
+        kwargs = kwargs or {}
+
+        def func(target, queue, args, kwargs):
+            try:
+                queue.put(target(*args, **kwargs))
+            except Exception as e:
+                queue.put(e)
+
+        queue = Queue()
+        thread = Thread(target=func, args=(target, queue, args, kwargs))
+        thread.start()
+        thread.join()
+        result = queue.get()
+        if isinstance(result, Exception):
+            raise result
+        return result
 
     @staticmethod
     def safe_asyncio_run(coro):
@@ -228,13 +245,8 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
             loop = asyncio.get_running_loop()
         except RuntimeError:
             loop = None
-
         if loop:
-            queue = Queue()
-            thread = Thread(target=InferEngine._thread_run, args=(queue, coro))
-            thread.start()
-            thread.join()
-            result = queue.get()
+            result = InferEngine.thread_run(asyncio.run, args=(coro, ))
         else:
             result = asyncio.run(coro)
         return result

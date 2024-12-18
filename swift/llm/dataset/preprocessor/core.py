@@ -36,7 +36,15 @@ class RowPreprocessor:
                  random_state: Union[np.random.RandomState, int, None] = None,
                  traceback_limit: int = 10) -> None:
         self.columns_mapping = columns_mapping or {}
-        self.row_mapping = {}
+        self.origin_columns_mapping = self.columns_mapping.copy()  # Higher priority and raise Error
+        images_keys = ['images', 'image']
+        audios_keys = ['audios', 'audio']
+        videos_keys = ['videos', 'video']
+        for mm_type in ['images', 'audios', 'videos']:
+            keys = locals()[f'{mm_type}_keys']
+            for key in keys:
+                self.columns_mapping[key] = mm_type
+
         self.traceback_limit = traceback_limit
         self._traceback_counter = 0
         self.dataset_sample = dataset_sample
@@ -50,8 +58,16 @@ class RowPreprocessor:
             return
         messages = row['messages']
         assert len(messages) > 0, f'messages: {messages}'
+        # fix swift/SlimOrca
+        for message in messages:
+            keys = set(message.keys()) - {'role', 'content'}
+            for key in keys:
+                message.pop(key)
+
         if messages[0]['role'] == 'system':
             messages = messages[1:]
+        if messages and messages[0]['role'] == 'assistant':
+            messages = [{'role': 'user', 'content': ''}] + messages  # pretrain
         for user_message, assistant_message in zip(messages[::2], messages[1::2]):
             if (user_message['role'] not in {'user', 'tool'} or 'content' not in user_message
                     or user_message['content'] is None):
@@ -99,7 +115,7 @@ class RowPreprocessor:
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         raise NotImplementedError
 
-    def prepare_dataset(self, dataset: HfDataset) -> HfDataset:
+    def prepare_dataset(self, dataset: DATASET_TYPE) -> DATASET_TYPE:
         return dataset
 
     @staticmethod
@@ -116,6 +132,8 @@ class RowPreprocessor:
                 if k not in batched:
                     batched[k] = [None] * i
                 batched[k].append(v)
+        # Make all the lengths of v the same.
+        batched = {k: v + [None] * (len(rows) - len(v)) for k, v in batched.items()}
         return batched
 
     @staticmethod
@@ -128,7 +146,6 @@ class RowPreprocessor:
     def batched_preprocess(self, batched_row: Dict[str, Any], *, strict: bool) -> Dict[str, Any]:
         batched_row = dict(batched_row)
         assert len(batched_row) > 0
-        self.row_keys_map(batched_row, self.row_mapping)
         self._fix_streaming_keys(batched_row)
         rows = self.batched_to_rows(batched_row)
 
@@ -163,10 +180,25 @@ class RowPreprocessor:
 
         return res
 
-    @staticmethod
-    def safe_rename_columns(dataset: HfDataset, columns_mapping: Dict[str, Any]) -> HfDataset:
+    def _rename_columns(self, dataset: DATASET_TYPE) -> DATASET_TYPE:
         dataset = get_features_dataset(dataset)
-        safe_columns_mapping = {k: v for k, v in columns_mapping.items() if k in dataset.features}
+        dataset = dataset.rename_columns(self.origin_columns_mapping)
+
+        columns_keys = {k.lower(): k for k in dataset.features.keys()}  # lower -> lower/upper
+        safe_columns_mapping = {
+            columns_keys[k.lower()]: v
+            for k, v in self.columns_mapping.items() if k.lower() in columns_keys
+        }
+
+        counter = Counter(safe_columns_mapping.values())
+        for k, new_k in list(safe_columns_mapping.items()):
+            if counter[new_k] > 1:
+                # For example, if "response" and "answer" match, then no processing is done.
+                safe_columns_mapping.pop(k)
+                continue
+
+        # e.g. Keep {'query': 'query'} to ensure that the query has the highest priority.
+        safe_columns_mapping = {k: v for k, v in safe_columns_mapping.items() if k != v}
         if safe_columns_mapping:
             dataset = dataset.rename_columns(safe_columns_mapping)
 
@@ -177,19 +209,6 @@ class RowPreprocessor:
                 dataset = dataset.rename_columns(columns_mapping)
 
         return dataset
-
-    @staticmethod
-    def row_keys_map(row: Dict[str, Any], row_mapping: Dict[str, str]) -> None:
-        # If there are multiple mappings to the same keys, then delete them.
-        row_keys = {k.lower(): k for k in row.keys()}
-        row_mapping = {row_keys[k]: v for k, v in row_mapping.items() if k in row_keys}
-        counter = Counter(row_mapping.values())
-
-        for k, new_k in row_mapping.items():
-            if counter[new_k] > 1:
-                # For example, if "response" and "answer" match, then no processing is done.
-                continue
-            row[new_k] = row.pop(k)
 
     @staticmethod
     @contextmanager
@@ -226,7 +245,7 @@ class RowPreprocessor:
         dataset: DATASET_TYPE,
         *,
         num_proc: int = 1,
-        strict: bool = True,
+        strict: bool = False,
         load_from_cache_file: bool = False,
         batch_size: int = 1000,
     ) -> DATASET_TYPE:
@@ -234,7 +253,7 @@ class RowPreprocessor:
         if self.dataset_sample is not None:
             dataset = sample_dataset(dataset, self.dataset_sample, self.random_state)
 
-        dataset = self.safe_rename_columns(dataset, self.columns_mapping)
+        dataset = self._rename_columns(dataset)
         dataset = self.prepare_dataset(dataset)
         dataset = self._cast_pil_image(dataset)
         map_kwargs = {}
@@ -268,11 +287,11 @@ class ResponsePreprocessor(RowPreprocessor):
         response_keys = ['response', 'answer', 'output', 'targets', 'target', 'answer_key', 'solution', 'answers'
                          ] + ['text', 'completion', 'content']
         for key in system_keys:
-            self.row_mapping[key] = 'system'
+            self.columns_mapping[key] = 'system'
         for key in query_keys:
-            self.row_mapping[key] = 'query'
+            self.columns_mapping[key] = 'query'
         for key in response_keys:
-            self.row_mapping[key] = 'response'
+            self.columns_mapping[key] = 'response'
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         response = row.pop('response', None)
@@ -361,13 +380,13 @@ class MessagesPreprocessor(RowPreprocessor):
 
         message_keys = ['messages', 'conversation', 'conversations']
         for key in message_keys:
-            self.row_mapping[key] = 'messages'
+            self.columns_mapping[key] = 'messages'
         # sharegptq
         system_keys = ['system', 'system_prompt']
         if system_role not in system_keys:
             system_keys.append(system_role)
         for key in system_keys:
-            self.row_mapping[key] = 'system'
+            self.columns_mapping[key] = 'system'
 
     @staticmethod
     def _is_sharegpt_format(message: Dict[str, str]) -> bool:
@@ -396,8 +415,6 @@ class MessagesPreprocessor(RowPreprocessor):
         if messages[0]['role'] == self.system_role:
             messages[0]['role'] = 'system'
             start_idx = 1
-        if start_idx == 1 and len(messages) % 2 == 0:
-            raise ValueError(f'The messages length is not even: {messages}')
         for user_message, assistant_message in zip(messages[start_idx::2], messages[start_idx + 1::2]):
             user_role = user_message['role']
             assistant_role = assistant_message['role']
@@ -456,9 +473,10 @@ class AutoPreprocessor:
         dataset: DATASET_TYPE,
         *,
         num_proc: int = 1,
-        strict: bool = True,
+        strict: bool = False,
         load_from_cache_file: bool = False,
     ) -> DATASET_TYPE:
-        dataset = RowPreprocessor.safe_rename_columns(dataset, self.columns_mapping)
+        dataset = get_features_dataset(dataset)
+        dataset = dataset.rename_columns(self.columns_mapping)
         preprocessor = self._get_preprocessor(dataset)
         return preprocessor(dataset, num_proc=num_proc, load_from_cache_file=load_from_cache_file, strict=strict)

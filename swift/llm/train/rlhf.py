@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import List, Union
 
+from swift.utils import patch_getattr
 from ..argument import RLHFArguments
 from .kto import prepare_kto_dataset
 from .sft import SwiftSft
@@ -15,13 +16,15 @@ class SwiftRLHF(SwiftSft):
         self.ref_model = None
         if args.ref_model:
             # Be aware of the unexpected behavior caused by double monkey patching.
-            self.ref_model, _ = self._get_model_tokenizer(args.ref_model, args.ref_model_type, args.ref_model_revision)
+            self.ref_model, _ = args.get_model_processor(
+                model=args.ref_model, model_type=args.ref_model_type, model_revision=args.ref_model_revision)
             self.ref_model.requires_grad_(False).eval()
 
         super()._prepare_model_tokenizer()
 
-    def _prepare_train(self):
+    def _prepare_template(self, use_chat_template: bool) -> None:
         args = self.args
+        super()._prepare_template(use_chat_template=use_chat_template)
         mode = 'kto' if args.rlhf_type == 'kto' else 'rlhf'
         self.template.set_mode(mode)
 
@@ -29,11 +32,17 @@ class SwiftRLHF(SwiftSft):
             # Avoid padding labels during the model's forward pass in multimodal models.
             self.template.loss_scale = 'last_round'
 
-        if self.model.model_meta.is_multimodal:
-            models = [self.model]
-            if self.ref_model:
-                models.append(self.ref_model)
-            self.template.register_post_encode_hook(models)
+    @classmethod
+    def prepare_model(cls, args, model, *_args, **kwargs):
+        model = super().prepare_model(args, model, *_args, **kwargs)
+        if args.rlhf_type == 'rm':
+            from trl import AutoModelForCausalLMWithValueHead
+            lm_head_namings = ['lm_head', 'embed_out']
+            if not any(hasattr(model, attribute) for attribute in lm_head_namings):
+                model.lm_head = None  # avoid error
+            model = AutoModelForCausalLMWithValueHead.from_pretrained(model)
+            patch_getattr(AutoModelForCausalLMWithValueHead, 'pretrained_model')
+        return model
 
     def _get_dataset(self):
         args = self.args

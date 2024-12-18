@@ -1,7 +1,6 @@
 # 16GiB * 2
 nproc_per_node=2
 
-PYTHONPATH=../../.. \
 CUDA_VISIBLE_DEVICES=0,1 \
 NPROC_PER_NODE=$nproc_per_node \
 swift sft \

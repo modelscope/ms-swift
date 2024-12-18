@@ -1,18 +1,18 @@
-# Installation and Usage
+# SWIFT Installation
 
 ## Wheel Packages Installation
 
 You can install it using pip:
 
 ```shell
-# Full capabilities
-pip install 'ms-swift[all]' -U
-# For LLM only
+# The abilities of LLM and MLLM
 pip install 'ms-swift[llm]' -U
-# For evaluation only
+# For evaluation
 pip install 'ms-swift[eval]' -U
 # For sequence parallel support
 pip install 'ms-swift[seq_parallel]' -U
+# Full capabilities
+pip install 'ms-swift[all]' -U
 ```
 
 ## Source Code Installation
@@ -20,7 +20,7 @@ pip install 'ms-swift[seq_parallel]' -U
 ```shell
 git clone https://github.com/modelscope/ms-swift.git
 cd ms-swift
-pip install -e '.[all]'
+pip install -e '.[llm]'
 ```
 
 ## Older Versions
@@ -42,13 +42,3 @@ Most models that Swift supports for training can be used on A10 GPUs. Users can 
 1. Visit the [ModelScope](https://www.modelscope.cn) official website and log in.
 2. Click on `My Notebook` on the left and start a free GPU instance.
 3. Enjoy utilizing the A10 GPU resources.
-
-## Build Documentation
-
-Swift supports complete API documentation. Execute the following in the root directory of Swift:
-
-```shell
-make docs
-```
-
-After the execution is complete, you can view the documentation at `docs/build/html/index.html`.

@@ -53,7 +53,7 @@ def loss_scale_func(outputs, labels, loss_scale=None, num_items_in_batch=None) -
         outputs: The model outputs
         labels: The labels
         loss_scale: The loss scale
-        num_items_in_batch: The minibatch number in a gradient accumulation round.
+        num_items_in_batch: Number of tokens in the labels of gradient accumulation round that are not -100.
 
     Returns:
 

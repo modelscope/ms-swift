@@ -43,8 +43,6 @@ class MolmoTemplate(Template):
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
-        if len(encoded) == 0:
-            return encoded
         # image
         raw_image = inputs.images
         res = {}

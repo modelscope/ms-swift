@@ -10,6 +10,7 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import safetensors
 import torch
+import torch.nn as nn
 import transformers
 from datasets import Dataset as HfDataset
 from modelscope import check_local_model_is_latest
@@ -72,18 +73,19 @@ class SwiftMixin:
             from swift.trainers.xtuner import init_sequence_parallel_xtuner
             init_sequence_parallel_xtuner(args.sequence_parallel_size)
 
-        super().__init__(
-            model=model,
-            args=args,
-            data_collator=data_collator,
-            train_dataset=train_dataset,
-            eval_dataset=eval_dataset,
-            tokenizer=template.tokenizer,
-            model_init=model_init,
-            compute_metrics=compute_metrics,
-            callbacks=callbacks,
-            optimizers=optimizers,
-            preprocess_logits_for_metrics=preprocess_logits_for_metrics)
+        with self.hub.patch_hub():
+            super().__init__(
+                model=model,
+                args=args,
+                data_collator=data_collator,
+                train_dataset=train_dataset,
+                eval_dataset=eval_dataset,
+                tokenizer=template.tokenizer,
+                model_init=model_init,
+                compute_metrics=compute_metrics,
+                callbacks=callbacks,
+                optimizers=optimizers,
+                preprocess_logits_for_metrics=preprocess_logits_for_metrics)
 
         self.compute_loss_func = compute_loss_func
         if get_function(model.__class__.forward) is not get_function(model.forward):
@@ -92,30 +94,50 @@ class SwiftMixin:
         self.start_time = time.time()
 
     def _save_initial_model(self, output_dir):
-        # pissa/olora
+        # pissa/olora/lora-ga
         model = unwrap_model(self.model)
         if isinstance(model, PeftModel):
             config = model.peft_config.get('default')
             init_lora_weights = getattr(config, 'init_lora_weights', None)
-            if isinstance(init_lora_weights, str) and ('pissa' in init_lora_weights or 'olora' in init_lora_weights):
+            if (isinstance(init_lora_weights, str)
+                    and any(s in init_lora_weights for s in ('pissa', 'olora', 'lora-ga'))):
                 config.init_lora_weights = True
                 model.save_pretrained(os.path.join(output_dir, 'initial_model'))
                 config.init_lora_weights = init_lora_weights
 
     def _save_converted_model(self, output_dir):
-        # pissa/olora
+        # pissa/olora/lora-ga
         model = unwrap_model(self.model)
         if isinstance(model, PeftModel):
             config = model.peft_config.get('default')
             init_lora_weights = getattr(config, 'init_lora_weights', None)
-            if isinstance(init_lora_weights, str) and ('pissa' in init_lora_weights or 'olora' in init_lora_weights):
+            if isinstance(init_lora_weights, str):
                 config = copy(config)
                 os.makedirs(os.path.join(output_dir, 'converted'), exist_ok=True)
-                model.save_pretrained(
-                    os.path.join(output_dir, 'converted', 'default'),
-                    path_initial_model_for_weight_conversion=os.path.join(os.path.dirname(output_dir), 'initial_model'),
-                )
-                model.peft_config['default'] = config
+                if 'lora-ga' in init_lora_weights:
+                    try:
+                        from lora_ga.entrypoint import LoraGAContext
+                        with LoraGAContext(model):
+                            model.save_pretrained(
+                                os.path.join(output_dir, 'converted', 'default'),
+                                path_initial_model_for_weight_conversion=os.path.join(
+                                    os.path.dirname(output_dir), 'initial_model'),
+                            )
+                            model.peft_config['default'] = config
+                    except ImportError as e:
+                        error_message = """
+                        Since 'LoRA-GA' is not implemented by PEFT, you will need to install it directly from GitHub.
+                        Command: 'pip install git+https://github.com/lxline/LoRA-GA.git'.
+                        """
+                        logger.info(error_message)
+                        raise RuntimeError(error_message) from e
+                elif 'pissa' in init_lora_weights or 'olora' in init_lora_weights:
+                    model.save_pretrained(
+                        os.path.join(output_dir, 'converted', 'default'),
+                        path_initial_model_for_weight_conversion=os.path.join(
+                            os.path.dirname(output_dir), 'initial_model'),
+                    )
+                    model.peft_config['default'] = config
 
     def _load_optimizer_and_scheduler(self, *args, **kwargs):
         super()._load_optimizer_and_scheduler(*args, **kwargs)
@@ -195,8 +217,7 @@ class SwiftMixin:
         # tokenizer
         if not is_adapter:
             from swift.llm import save_checkpoint
-            additional_saved_files = self.model.model_meta.additional_saved_files if hasattr(self.model,
-                                                                                             'model_meta') else []
+            additional_saved_files = self.model.model_meta.additional_saved_files
             save_checkpoint(None, self.template.processor, output_dir, additional_saved_files=additional_saved_files)
 
     def _fix_zero3_gather_all_parameters(self) -> None:
@@ -226,9 +247,19 @@ class SwiftMixin:
         return result
 
     def train(self, *args, **kwargs):
+        if self.model.model_meta.is_multimodal:
+            models = list(
+                set([
+                    v for k, v in self.__dict__.items()
+                    if isinstance(v, nn.Module) and k in {'model', 'ref_model', 'reward_model', 'value_model'}
+                ]))
+            self.template.register_post_encode_hook(models)
+            logger.info(f'Successfully registered post_encode hook: {[model.__class__.__name__ for model in models]}')
+        self.model_accepts_loss_kwargs = True  # fix transformers>=4.46.2
         self._save_initial_model(self.args.output_dir)
         with self.hub.patch_hub():
             return super().train(*args, **kwargs)
+        self.template.remove_post_encode_hook()
 
     def push_to_hub(self, *args, **kwargs):
         with self.hub.patch_hub():

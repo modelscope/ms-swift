@@ -17,12 +17,12 @@ Swift DOCUMENTATION
    :maxdepth: 2
    :caption: Instruction
 
+   Instruction/Command-line-parameters.md
    Instruction/Pre-training-and-Fine-tuning.md
    Instruction/RLHF.md
    Instruction/Inference-and-deployment.md
    Instruction/Evaluation.md
    Instruction/Export.md
-   Instruction/Command-line-parameters.md
    Instruction/Supported-models-and-datasets.md
    Instruction/Use-tuners.md
    Instruction/Agent-support.md
@@ -36,9 +36,9 @@ Swift DOCUMENTATION
    :maxdepth: 2
    :caption: Customization
 
-   Multi-Modal/New-dataset.md
-   Multi-Modal/New-model.md
-   Multi-Modal/Plugin.md
+   Customization/Custom-dataset.md
+   Customization/Custom-model.md
+   Customization/Plugin.md
 
 
 Indices and tables

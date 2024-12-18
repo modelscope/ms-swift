@@ -495,7 +495,7 @@ def get_model_tokenizer_qwen2_vl(model_dir: str,
     from transformers import Qwen2VLForConditionalGeneration
     kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen2VLForConditionalGeneration
     model, tokenizer = get_model_tokenizer_multimodal(model_dir, model_info, model_kwargs, load_model, **kwargs)
-    if model is not None:
+    if model is not None and hasattr(model.model, 'embed_tokens'):
         patch_output_clone(model.model.embed_tokens)
         patch_output_to_input_device(model.model.embed_tokens)
     return model, tokenizer
@@ -550,8 +550,7 @@ register_model(
             ModelGroup([
                 Model('Qwen/Qwen2-Audio-7B-Instruct', 'Qwen/Qwen2-Audio-7B-Instruct'),
                 Model('Qwen/Qwen2-Audio-7B', 'Qwen/Qwen2-Audio-7B'),
-                Model('Qwen/Qwen2-Audio-7B', 'Qwen/Qwen2-Audio-7B'),
-            ], ),
+            ]),
         ],
         TemplateType.qwen2_audio,
         get_model_tokenizer_qwen2_audio,

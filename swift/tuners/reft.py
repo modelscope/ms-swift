@@ -7,7 +7,7 @@ import json
 import torch
 from torch import nn
 
-from swift import get_logger
+from swift.utils import get_logger, patch_getattr
 from .utils import SwiftAdapter, SwiftConfig, SwiftOutput
 
 logger = get_logger()
@@ -78,15 +78,7 @@ class Reft(SwiftAdapter):
             'NodireftIntervention': NodireftIntervention,
         }
 
-        def __getattr__(self, key: str):
-            try:
-                return super(ReftModel, self).__getattr__(key)
-            except AttributeError:
-                if 'model' in dir(self):
-                    return getattr(self.model, key)
-                raise
-
-        ReftModel.__getattr__ = __getattr__
+        patch_getattr(ReftModel, 'model')
 
         def forward(self, x):
             self.to(x.device)

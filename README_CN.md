@@ -57,6 +57,7 @@
 
 
 ## 🎉 新闻
+- 2024.12.09: 支持emu3-gen的部署. 使用`swift infer --model BAAI/Emu3-Gen --stream False --use_chat_template False --top_k 2048 --max_new_tokens 40960`进行体验.
 - 🎁2024.12.04: SWIFT3.0大版本更新. 请查看[ReleaseNote和BreakChange](./docs/source/Instruction/ReleaseNote3.0.md).
 - 🔥2024.08.12: 🎉SWIFT论文已经发布到arXiv上，可以点击[这个链接](https://arxiv.org/abs/2408.05517)阅读.
 <details><summary>More</summary>
