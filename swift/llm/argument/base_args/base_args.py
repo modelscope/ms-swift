@@ -185,6 +185,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             self.load_args_from_ckpt()
 
     def load_args_from_ckpt(self) -> None:
+        from ..train_args import TrainArguments
         args_path = os.path.join(self.ckpt_dir, 'args.json')
         assert os.path.exists(args_path), f'args_path: {args_path}'
         with open(args_path, 'r', encoding='utf-8') as f:
@@ -195,10 +196,10 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             # quant_args
             'bnb_4bit_quant_type',
             'bnb_4bit_use_double_quant',
-            'use_swift_lora',
             # base_args
             'train_type',
             'tuner_backend',
+            'use_swift_lora',
             # data_args
             'model_name',
             'model_author',
@@ -206,7 +207,9 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             # template_args
             'tools_prompt'
         ]
-        skip_keys = list(f.name for f in fields(GenerationArguments)) + ['adapters', 'max_length']
+        skip_keys = list(f.name for f in fields(GenerationArguments)) + ['adapters']
+        if not isinstance(self, TrainArguments):
+            skip_keys += ['max_length']
         all_keys = set(all_keys) - set(skip_keys)
         for key, old_value in old_args.items():
             if key not in all_keys or old_value is None:

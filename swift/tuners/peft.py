@@ -350,6 +350,7 @@ def get_wrapped_class(module_class):
             return module_class.from_pretrained(model, model_id, *args, **kwargs)
 
     PeftWrapper.__name__ = module_class.__name__
+    PeftWrapper.__qualname__ = module_class.__qualname__
     return PeftWrapper
 
 

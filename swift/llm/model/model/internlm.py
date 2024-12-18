@@ -238,6 +238,7 @@ register_model(
         model_arch=ModelArch.xcomposer,
         tags=['vision'],
         requires=['decord'],
+        # target_modules: attention.wqkv attention.wo feed_forward.w1 feed_forward.w2 feed_forward.w3
     ))
 
 register_model(
