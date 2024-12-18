@@ -137,6 +137,7 @@ class MLLMTemplateType:
     phi3_vision = 'phi3_vision'
     florence = 'florence'
     molmo = 'molmo'
+    megrez_omni = 'megrez_omni'
 
 
 class TemplateType(LLMTemplateType, MLLMTemplateType):

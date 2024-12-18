@@ -169,12 +169,3 @@ register_template(
                         'and assist the user with a variety of tasks using natural language.'),
         template_cls=Llama3_1OmniTemplate,
     ))
-
-register_template(
-    TemplateMeta(
-        LLMTemplateType.megrez,
-        prefix=['<|role_start|>system<|role_end|>{{SYSTEM}}<|turn_end|>'],
-        default_system='你是Megrez-3B-Instruct，将针对用户的问题给出详细的、积极的回答。',
-        prompt=['<|role_start|>user<|role_end|>{{QUERY}}<|turn_end|><|role_start|>assistant<|role_end|>'],
-        chat_sep=['<|turn_end|>'],
-        suffix=['<|turn_end|>']))
