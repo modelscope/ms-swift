@@ -35,13 +35,21 @@
 
 
 ##  📖 目录
-- [简介](#-简介)
 - [用户群](#-用户群)
+- [简介](#-简介)
 - [新闻](#-新闻)
 - [快速开始](#-快速开始)
 - [如何使用](#-如何使用)
 - [License](#-license)
 - [引用](#-引用)
+
+## ☎ 用户群
+
+请扫描下面的二维码来加入我们的交流群：
+
+[Discord Group](https://discord.com/invite/D27yfEFVz5)              |  微信群
+:-------------------------:|:-------------------------:
+<img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
 ## 📝 简介
 🍲 ms-swift是魔搭社区官方提供的LLM与多模态LLM微调部署框架，现已支持400+LLM与100+多模态LLM的训练（预训练、微调、人类对齐）、推理、评测、量化与部署。其中LLM包括：Qwen2.5、Llama3.2、GLM4、Internlm2.5、Yi1.5、Mistral、DeepSeek、Baichuan2、Gemma2、TeleChat2等模型，多模态LLM包括：Qwen2-VL、Qwen2-Audio、Llama3.2-Vision、Llava、InternVL2.5、MiniCPM-V-2.6、GLM4v、Xcomposer2.5、Yi-VL、DeepSeek-VL2、Phi3.5-Vision、GOT-OCR2等模型。
@@ -63,16 +71,6 @@
 - 推理加速：支持PyTorch、vLLM、LmDeploy等推理加速引擎，并提供OpenAI接口，为推理、部署和评测模块提供加速。
 - 模型评测：以EvalScope作为评测后端，支持100+评测数据集对纯文本和多模态模型进行评测。
 - 模型量化：支持AWQ、GPTQ和BNB的量化导出，导出的模型支持使用vLLM/LmDeploy推理加速，并支持继续训练。
-
-
-## ☎ 用户群
-
-请扫描下面的二维码来加入我们的交流群：
-
-[Discord Group](https://discord.com/invite/D27yfEFVz5)              |  微信群
-:-------------------------:|:-------------------------:
-<img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
-
 
 ## 🎉 新闻
 - 🎁2024.12.04: SWIFT3.0大版本更新. 请查看[ReleaseNote和BreakChange](./docs/source/Instruction/ReleaseNote3.0.md).
@@ -193,6 +191,7 @@ trainer.train()
 engine = PtEngine(model_id_or_path, adapters=[lora_checkpoint])
 infer_request = InferRequest(messages=[{'role': 'user', 'content': 'who are you?'}])
 request_config = RequestConfig(max_tokens=max_new_tokens, temperature=temperature)
+
 resp_list = engine.infer([infer_request], request_config)
 print(f'response: {resp_list[0].choices[0].message.content}')
 ```
@@ -203,7 +202,7 @@ print(f'response: {resp_list[0].choices[0].message.content}')
 
 |   常用链接 |
 | ------ |
-|   [命令行参数文档](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.html)   |
+|   [命令行参数](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.html)   |
 |   [支持的模型和数据集](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E6%94%AF%E6%8C%81%E7%9A%84%E6%A8%A1%E5%9E%8B%E5%92%8C%E6%95%B0%E6%8D%AE%E9%9B%86.html)   |
 |   [自定义模型](https://swift.readthedocs.io/zh-cn/latest/Customization/%E8%87%AA%E5%AE%9A%E4%B9%89%E6%A8%A1%E5%9E%8B.html), [自定义数据集](https://swift.readthedocs.io/zh-cn/latest/Customization/%E8%87%AA%E5%AE%9A%E4%B9%89%E6%95%B0%E6%8D%AE%E9%9B%86.html)   |
 |   [LLM教程](https://github.com/modelscope/modelscope-classroom/tree/main/LLM-tutorial)   |
@@ -239,7 +238,7 @@ RLHF：
 CUDA_VISIBLE_DEVICES=0 swift rlhf \
     --rlhf_type dpo \
     --model Qwen/Qwen2.5-7B-Instruct \
-    --dataset hjh0119/shareAI-Llama3-DPO-zh-en-emoji \
+    --dataset hjh0119/shareAI-Llama3-DPO-zh-en-emoji:zh \
     --train_type lora \
     --output_dir output
 ```
@@ -257,7 +256,8 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
     --model Qwen/Qwen2.5-7B-Instruct \
     --adapters swift/test_lora \
     --stream true \
-    --infer_backend pt
+    --infer_backend pt \
+    --temperature 0
 ```
 
 ### 部署
