@@ -196,10 +196,10 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             # quant_args
             'bnb_4bit_quant_type',
             'bnb_4bit_use_double_quant',
-            'use_swift_lora',
             # base_args
             'train_type',
             'tuner_backend',
+            'use_swift_lora',
             # data_args
             'model_name',
             'model_author',
