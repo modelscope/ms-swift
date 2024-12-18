@@ -445,7 +445,7 @@ class RLFTTrainer(PPOTrainer):
         data = next(self.iter_dataloader)
         with torch.no_grad():
             generation_config = GenerationConfig(
-                max_new_tokens=300, # TODO
+                max_new_tokens=self.args.max_new_tokens,
                 temperature=(args.temperature + 1e-7),
                 top_k=0.0,
                 top_p=1.0,
@@ -467,7 +467,7 @@ class RLFTTrainer(PPOTrainer):
                 ground_truth_queries = []
                 gt_index = []
                 for i in range(queries.shape[0]):
-                    if np.random.random() < (0.5-gen_ratio):
+                    if np.random.random() < (self.args.gt_ratio-gen_ratio):
                         # ground truth
                         gt_index.append(i)
                         ground_truth_queries.append(queries[i])
@@ -753,7 +753,7 @@ class RLFTTrainer(PPOTrainer):
         args = self.args
         tokenizer = self.tokenizer
         generation_config = GenerationConfig(
-            max_new_tokens=300,
+            max_new_tokens=self.args.max_new_tokens,
             temperature=(0.01 + 1e-7),
             top_k=0.0,
             top_p=1.0,

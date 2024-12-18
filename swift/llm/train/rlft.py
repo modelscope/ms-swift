@@ -209,10 +209,6 @@ class SwiftRLFT(SwiftSft):
         value_model = AutoModelForSequenceClassification.from_pretrained(
             args.model, trust_remote_code=True, num_labels=1
         )
-        # Test code
-        # reward_model = AutoModelForSequenceClassification.from_pretrained(
-        #     args.model, trust_remote_code=True, num_labels=1
-        # )
         value_model.model_meta = self.model.model_meta
         value_model.model_info = self.model.model_info
         value_model.config.pad_token_id = self.template.processor.eos_token_id
@@ -225,6 +221,14 @@ class SwiftRLFT(SwiftSft):
         reward_func_kwargs = {}
         if args.reward_type == 'agent':
             reward_func_kwargs = {'reward_func': self.get_reward}
+        else:
+            # Test code
+            reward_model = AutoModelForSequenceClassification.from_pretrained(
+                args.model, trust_remote_code=True, num_labels=1
+            )
+            reward_func_kwargs = {
+                'reward_model': reward_model
+            }
         from copy import deepcopy
         trainer = trainer_cls(
             model=self.model,
@@ -234,7 +238,6 @@ class SwiftRLFT(SwiftSft):
             train_dataset=train_dataset,
             eval_dataset=val_dataset,
             value_model=value_model,
-            # reward_model=reward_model,
             callbacks=self.callbacks,
             optimizers=optimizers,
             template=self.template,

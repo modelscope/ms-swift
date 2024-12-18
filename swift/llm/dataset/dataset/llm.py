@@ -376,6 +376,8 @@ class ToolBenchPreprocessor(MessagesPreprocessor):
                         new_row = copy(row)
                         new_row['messages'] = new_row['messages'][:i]
                         new_row['ground_truth'] = message['content']
+                        # new_row['messages'] = [m for m in new_row['messages'] if m['role'] != 'system']
+                        # new_row.pop('tools', None)
                         all_rows.append(new_row)
                         break
                     else:
