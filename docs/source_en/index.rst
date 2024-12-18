@@ -36,8 +36,8 @@ Swift DOCUMENTATION
    :maxdepth: 2
    :caption: Customization
 
-   Customization/Custom-dataset.md
    Customization/Custom-model.md
+   Customization/Custom-dataset.md
    Customization/Plugin.md
 
 

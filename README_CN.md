@@ -39,13 +39,31 @@
 - [用户群](#-用户群)
 - [新闻](#-新闻)
 - [快速开始](#-快速开始)
+- [如何使用](#-如何使用)
 - [License](#-license)
 - [引用](#-引用)
 
 ## 📝 简介
-🍲 ms-swift是魔搭社区官方提供的LLM与多模态LLM微调部署框架，现已支持400+LLM与100+多模态LLM的训练（预训练、微调、人类对齐）、推理、评测、量化与部署。其中LLM包括：Qwen2.5、Llama3.2、GLM4、Internlm2.5、Yi1.5、Mistral、DeepSeek、Baichuan2、Gemma2、TeleChat2等模型，多模态LLM包括：Qwen2-VL、Qwen2-Audio、Llama3.2-Vision、Llava、InternVL2、MiniCPM-V-2.6、GLM4v、Xcomposer2.5、Yi-VL、DeepSeek-VL、Phi3.5-Vision等模型。
+🍲 ms-swift是魔搭社区官方提供的LLM与多模态LLM微调部署框架，现已支持400+LLM与100+多模态LLM的训练（预训练、微调、人类对齐）、推理、评测、量化与部署。其中LLM包括：Qwen2.5、Llama3.2、GLM4、Internlm2.5、Yi1.5、Mistral、DeepSeek、Baichuan2、Gemma2、TeleChat2等模型，多模态LLM包括：Qwen2-VL、Qwen2-Audio、Llama3.2-Vision、Llava、InternVL2.5、MiniCPM-V-2.6、GLM4v、Xcomposer2.5、Yi-VL、DeepSeek-VL2、Phi3.5-Vision、GOT-OCR2等模型。
 
 🍔 除此之外，ms-swift汇集了最新的训练技术，包括LoRA、QLoRA、Llama-Pro、LongLoRA、GaLore、Q-GaLore、LoRA+、LISA、DoRA、FourierFt、ReFT、UnSloth、Megatron和Liger等。ms-swift支持使用vLLM和LMDeploy对推理、评测和部署模块进行加速。为了帮助研究者和开发者更轻松地微调和应用大模型，ms-swift还提供了基于Gradio的Web-UI界面及丰富的最佳实践。
+
+**为什么选择ms-swift？**
+- 🍎模型类型：支持400+纯文本大模型、**100+多模态大模型**，All-to-All全模态模型的训练到部署全流程。
+- 数据集类型：内置150+预训练、微调、人类对齐、多模态等各种类型的数据集，并支持自定义数据集。
+- 硬件支持：CPU、RTX系列、T4/V100、A10/A100/H100、Ascend NPU等。
+- 🍊轻量训练：支持了LoRA、QLoRA、DoRA、LoRA+、ReFT、RS-LoRA、LLaMAPro、Adapter、GaLore、Q-Galore、LISA、UnSloth、Liger-Kernel等轻量微调方式。
+- 分布式训练：支持分布式数据并行（DDP）、device_map简易模型并行、DeepSpeed ZeRO2 ZeRO3、FSDP等分布式训练技术。
+- 量化训练：支持对BNB、AWQ、GPTQ、AQLM、HQQ、EETQ量化模型进行训练。
+- RLHF训练：支持纯文本大模型和多模态大模型的DPO、CPO、SimPO、ORPO、KTO、RM等人类对齐训练方法。
+- 🍓多模态训练：支持对图像、视频和语音不同模态模型进行训练，支持VQA、Caption、OCR、Grounding任务的训练。
+- 界面训练：以界面的方式提供训练、推理、评测、量化的能力，完成大模型的全链路。
+- 插件化与拓展：支持自定义模型和数据集拓展，支持对loss、metric、trainer、loss-scale、callback、optimizer等组件进行自定义。
+- 🍉工具箱能力：不仅提供大模型和多模态大模型的训练支持，还涵盖其推理、评测、量化和部署**全流程**。
+- 推理加速：支持PyTorch、vLLM、LmDeploy等推理加速引擎，并提供OpenAI接口，为推理、部署和评测模块提供加速。
+- 模型评测：以EvalScope作为评测后端，支持100+评测数据集对纯文本和多模态模型进行评测。
+- 模型量化：支持AWQ、GPTQ和BNB的量化导出，导出的模型支持使用vLLM/LmDeploy推理加速，并支持继续训练。
+
 
 ## ☎ 用户群
 
@@ -58,13 +76,13 @@
 
 ## 🎉 新闻
 - 🎁2024.12.04: SWIFT3.0大版本更新. 请查看[ReleaseNote和BreakChange](./docs/source/Instruction/ReleaseNote3.0.md).
-- 🔥2024.09.19: 支持Qwen2.5、Qwen2-VL、Qwen2-Audio系列模型.
-- 🔥2024.08.20: 支持使用deepspeed zero2/zero3对多模态模型进行预训练、微调和RLHF.
-- 🔥2024.08.12: 🎉SWIFT论文已经发布到arXiv上，可以点击[这个链接](https://arxiv.org/abs/2408.05517)阅读.
+- 🔥2024.08.20: 支持使用deepspeed zero2/zero3对多模态大模型进行预训练、微调和RLHF.
+- 🎉2024.08.12: SWIFT论文已经发布到arXiv上，可以点击[这个链接](https://arxiv.org/abs/2408.05517)阅读.
 - 🔥2024.08.05: 支持使用[evalscope](https://github.com/modelscope/evalscope/)作为后端进行多模态模型的评测.
 - 🔥2024.07.29: 支持使用[vllm](https://github.com/vllm-project/vllm), [lmdeploy](https://github.com/InternLM/lmdeploy)对大模型和多模态大模型进行推理加速，在infer/deploy/eval时额外指定`--infer_backend vllm/lmdeploy`即可.
-- 🔥2024.07.24: 人类偏好对齐算法DPO/ORPO/SimPO/CPO/KTO/RM支持多模态大模型.
-- 🔥2024.02.01: 支持Agent训练！Agent训练算法源自这篇[论文](https://arxiv.org/pdf/2309.00986.pdf). 我们也增加了[ms-agent](https://www.modelscope.cn/datasets/iic/ms_agent/summary)这个优质的agent数据集. 使用[这个脚本](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/qwen_7b_chat/lora/sft.sh)开启Agent训练!
+- 🔥2024.07.24: 支持对多模态大模型进行人类偏好对齐: DPO/ORPO/SimPO/CPO/KTO/RM.
+- 🔥2024.02.01: 支持Agent训练！Agent训练算法源自这篇[论文](https://arxiv.org/pdf/2309.00986.pdf).
+
 
 ## 🛠️ 安装
 使用pip进行安装：
@@ -83,51 +101,189 @@ pip install -e .
 
 ## 🚀 快速开始
 
-本章节介绍基本使用，更丰富的使用方式请查看[文档部分](https://swift.readthedocs.io/zh-cn/latest/)。
+**10分钟**在单卡3090上对Qwen2.5-7B-Instruct进行自我认知微调：
+
+### 命令行
+```shell
+# 22GB
+CUDA_VISIBLE_DEVICES=0 \
+swift sft \
+    --model Qwen/Qwen2.5-7B-Instruct \
+    --train_type lora \
+    --dataset AI-ModelScope/alpaca-gpt4-data-zh#500 \
+              AI-ModelScope/alpaca-gpt4-data-en#500 \
+              swift/self-cognition#500 \
+    --num_train_epochs 1 \
+    --per_device_train_batch_size 1 \
+    --per_device_eval_batch_size 1 \
+    --learning_rate 1e-4 \
+    --lora_rank 8 \
+    --lora_alpha 32 \
+    --target_modules all-linear \
+    --gradient_accumulation_steps 16 \
+    --eval_steps 50 \
+    --save_steps 50 \
+    --save_total_limit 2 \
+    --logging_steps 5 \
+    --max_length 2048 \
+    --output_dir output \
+    --system 'You are a helpful assistant.' \
+    --warmup_ratio 0.05 \
+    --dataloader_num_workers 4 \
+    --model_author swift \
+    --model_name swift-robot
+```
+
+训练完成后，使用以下命令对训练后的权重进行推理，这里的`--adapters`替换成训练生成的last checkpoint文件夹. 由于adapters文件夹中包含了训练的参数文件，因此不需要额外指定`--model`, `--system`.
+
+```shell
+# 使用交互式命令行进行推理
+CUDA_VISIBLE_DEVICES=0 \
+swift infer \
+    --adapters output/vx-xxx/checkpoint-xxx \
+    --stream true
+
+# merge-lora并使用vLLM进行推理加速
+CUDA_VISIBLE_DEVICES=0 \
+swift infer \
+    --adapters output/vx-xxx/checkpoint-xxx \
+    --stream true \
+    --merge_lora true \
+    --infer_backend vllm \
+    --max_model_len 8192
+```
 
 ### Web-UI
 
-Web-UI是基于gradio界面技术的**零门槛**训练部署界面方案。Web-UI配置简单，且完美支持多卡训练和部署：
+Web-UI是基于gradio界面技术的**零门槛**训练、部署界面方案，具体可以查看[这里](https://swift.readthedocs.io/zh-cn/latest/GetStarted/%E7%95%8C%E9%9D%A2%E4%BD%BF%E7%94%A8.html)
 
 ```shell
 swift web-ui
 ```
 ![image.png](./docs/resources/web-ui.png)
 
-### 命令行
-
-#### 训练
-```shell
-swift sft \
-    --model <model_id_or_path> \
-    --dataset <dataset_id_or_path> \
-    --train_type lora \
-    --output_dir output \
-    ...
-```
-
-#### RLHF
-```shell
-swift sft \
-    --model <model_id_or_path> \
-    --dataset <dataset_id_or_path> \
-    --train_type lora \
-    --rlhf_type lora \
-    --output_dir output \
-    ...
-```
-
-#### 推理
-
-
-#### 部署
-
-
-#### 评测
-
-
 ### 使用Python
+ms-swift也支持使用python的方式进行训练和推理。下面给出训练和推理的**伪代码**，具体可以查看[这里](https://github.com/modelscope/ms-swift/tree/main/examples/notebook)
 
+训练：
+```python
+# 获取模型和template，并加入可训练的LoRA模块
+model, tokenizer = get_model_tokenizer(model_id_or_path, ...)
+template = get_template(model.model_meta.template, tokenizer, ...)
+model = Swift.prepare_model(model, lora_config)
+# 下载并载入数据集，并将文本encode成tokens
+train_dataset, val_dataset = load_dataset(dataset_id_or_path, ...)
+train_dataset = EncodePreprocessor(template=template)(train_dataset, num_proc=num_proc)
+val_dataset = EncodePreprocessor(template=template)(val_dataset, num_proc=num_proc)
+# 进行训练
+trainer = Seq2SeqTrainer(
+    model=model,
+    args=training_args,
+    data_collator=template.data_collator,
+    train_dataset=train_dataset,
+    eval_dataset=val_dataset,
+    template=template,
+)
+trainer.train()
+```
+
+推理：
+```python
+# 使用原生pytorch引擎进行推理
+engine = PtEngine(model_id_or_path, adapters=[lora_checkpoint])
+infer_request = InferRequest(messages=[{'role': 'user', 'content': 'who are you?'}])
+request_config = RequestConfig(max_tokens=max_new_tokens, temperature=temperature)
+resp_list = engine.infer([infer_request], request_config)
+print(f'response: {resp_list[0].choices[0].message.content}')
+```
+
+## 如何使用
+
+这里给出使用ms-swift进行训练到部署到最简示例，具体可以查看[examples](https://github.com/modelscope/ms-swift/tree/main/examples).
+
+|   常用链接 |
+| ------ |
+|   [命令行参数文档](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.html)   |
+|   [支持的模型和数据集](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E6%94%AF%E6%8C%81%E7%9A%84%E6%A8%A1%E5%9E%8B%E5%92%8C%E6%95%B0%E6%8D%AE%E9%9B%86.html)   |
+|   [自定义模型](https://swift.readthedocs.io/zh-cn/latest/Customization/%E8%87%AA%E5%AE%9A%E4%B9%89%E6%A8%A1%E5%9E%8B.html), [自定义数据集](https://swift.readthedocs.io/zh-cn/latest/Customization/%E8%87%AA%E5%AE%9A%E4%B9%89%E6%95%B0%E6%8D%AE%E9%9B%86.html)   |
+|   [LLM教程](https://github.com/modelscope/modelscope-classroom/tree/main/LLM-tutorial)   |
+
+### 训练
+
+预训练：
+```shell
+# 8*A100
+NPROC_PER_NODE=8 \
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+swift pt \
+    --model Qwen/Qwen2.5-7B \
+    --dataset swift/chinese-c4 \
+    --streaming true \
+    --train_type full \
+    --deepspeed zero2 \
+    --output_dir output \
+    --max_steps 100000
+```
+
+微调：
+```shell
+CUDA_VISIBLE_DEVICES=0 swift sft \
+    --model Qwen/Qwen2.5-7B-Instruct \
+    --dataset AI-ModelScope/alpaca-gpt4-data-zh \
+    --train_type lora \
+    --output_dir output
+```
+
+RLHF：
+```shell
+CUDA_VISIBLE_DEVICES=0 swift rlhf \
+    --rlhf_type dpo \
+    --model Qwen/Qwen2.5-7B-Instruct \
+    --dataset hjh0119/shareAI-Llama3-DPO-zh-en-emoji \
+    --train_type lora \
+    --output_dir output
+```
+
+
+### 推理
+```shell
+CUDA_VISIBLE_DEVICES=0 swift infer \
+    --model Qwen/Qwen2.5-7B-Instruct \
+    --stream true \
+    --infer_backend pt
+
+# LoRA
+CUDA_VISIBLE_DEVICES=0 swift infer \
+    --model Qwen/Qwen2.5-7B-Instruct \
+    --adapters swift/test_lora \
+    --stream true \
+    --infer_backend pt
+```
+
+### 部署
+```shell
+CUDA_VISIBLE_DEVICES=0 swift deploy \
+    --model Qwen/Qwen2.5-7B-Instruct \
+    --infer_backend pt
+```
+
+### 评测
+```shell
+CUDA_VISIBLE_DEVICES=0 swift eval \
+    --model Qwen/Qwen2.5-7B-Instruct \
+    --infer_backend lmdeploy \
+    --eval_dataset ARC_c
+```
+
+
+### 量化
+```shell
+CUDA_VISIBLE_DEVICES=0 swift export \
+    --model Qwen/Qwen2.5-7B-Instruct \
+    --quant_bits 4 --quant_method awq \
+    --dataset AI-ModelScope/alpaca-gpt4-data-zh \
+    --output_dir Qwen2.5-7B-Instruct-AWQ
+```
 
 
 ## 🏛 License
