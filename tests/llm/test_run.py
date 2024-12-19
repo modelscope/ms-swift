@@ -50,7 +50,7 @@ class TestRun(unittest.TestCase):
         torch.cuda.empty_cache()
         output = sft_main(
             TrainArguments(
-                model='qwen/Qwen1.5-0.5B',
+                model='Qwen/Qwen1.5-0.5B',
                 train_type='full',
                 dataset='DAMO_NLP/jd',
                 val_dataset='DAMO_NLP/jd#20',
@@ -78,7 +78,7 @@ class TestRun(unittest.TestCase):
         ] + [os.path.join(folder, fname) for fname in train_dataset_fnames]
         output = sft_main(
             TrainArguments(
-                model='qwen/Qwen1.5-0.5B-Chat-GPTQ-Int4', train_type='lora', dataset=dataset, use_hf=True, **kwargs))
+                model='Qwen/Qwen1.5-0.5B-Chat-GPTQ-Int4', train_type='lora', dataset=dataset, use_hf=True, **kwargs))
         last_model_checkpoint = output['last_model_checkpoint']
         torch.cuda.empty_cache()
         infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True, val_dataset_sample=2))
@@ -108,7 +108,7 @@ class TestRun(unittest.TestCase):
                 predict_with_generate = True
                 quant_method = 'bnb'
             sft_args = TrainArguments(
-                model='qwen/Qwen2-0.5B-Instruct',
+                model='Qwen/Qwen2-0.5B-Instruct',
                 quant_bits=quant_bits,
                 eval_steps=5,
                 adam_beta2=0.95,
@@ -146,7 +146,7 @@ class TestRun(unittest.TestCase):
         if not __name__ == '__main__':
             # ignore citest error in github
             return
-        model_type_list = ['qwen/Qwen-VL-Chat', 'qwen/Qwen-Audio-Chat']
+        model_type_list = ['Qwen/Qwen-VL-Chat', 'Qwen/Qwen-Audio-Chat']
         dataset_list = [
             'modelscope/coco_2014_caption:validation#100', 'speech_asr/speech_asr_aishell1_trainsets:validation#100'
         ]
@@ -169,8 +169,8 @@ class TestRun(unittest.TestCase):
                 adapters=best_model_checkpoint,
                 load_data_args=True,
                 stream={
-                    'qwen/Qwen-VL-Chat': True,
-                    'qwen/Qwen-Audio-Chat': False
+                    'Qwen/Qwen-VL-Chat': True,
+                    'Qwen/Qwen-Audio-Chat': False
                 }[model],
                 val_dataset_sample=5)
             torch.cuda.empty_cache()
@@ -242,11 +242,11 @@ class TestRun(unittest.TestCase):
                        if rlhf_type != 'kto' else 'AI-ModelScope/ultrafeedback-binarized-preferences-cleaned-kto#100')
             train_kwargs = {}
             if rlhf_type == 'ppo':
-                train_kwargs['reward_model_type'] = 'qwen/Qwen2-1.5B-Instruct'
+                train_kwargs['reward_model_type'] = 'Qwen/Qwen2-1.5B-Instruct'
             output = rlhf_main(
                 RLHFArguments(
                     rlhf_type=rlhf_type,
-                    model='qwen/Qwen2-1.5B-Instruct',
+                    model='Qwen/Qwen2-1.5B-Instruct',
                     dataset=dataset,
                     eval_steps=5,
                     **train_kwargs,
@@ -263,7 +263,7 @@ class TestRun(unittest.TestCase):
         visual_rlhf_types = ['dpo', 'orpo', 'simpo', 'cpo']  # 'rm'
         #  'florence-2-base-ft'
         # 'swift/llava-v1.6-mistral-7b-hf',
-        test_model = ['OpenGVLab/InternVL2-2B', 'qwen/Qwen2-VL-2B-Instruct']  # decoder only and encoder-decoder
+        test_model = ['OpenGVLab/InternVL2-2B', 'Qwen/Qwen2-VL-2B-Instruct']  # decoder only and encoder-decoder
         for rlhf_type in visual_rlhf_types:
             for model in test_model:
                 dataset_name = 'swift/RLAIF-V-Dataset#100'
@@ -289,7 +289,7 @@ class TestRun(unittest.TestCase):
             bool_var = use_swift_lora
             torch.cuda.empty_cache()
             output = sft_main([
-                '--model', 'qwen/Qwen-7B-Chat', '--eval_steps', '5', '--dataset',
+                '--model', 'Qwen/Qwen-7B-Chat', '--eval_steps', '5', '--dataset',
                 'AI-ModelScope/leetcode-solutions-python#200', '--output_dir', output_dir, '--gradient_checkpointing',
                 'true', '--max_new_tokens', '100', '--attn_impl', 'flash_attn', '--target_modules', 'all-linear',
                 '--seed', '0', '--lora_bias', 'all', '--modules_to_save', 'lm_head', '--use_swift_lora',

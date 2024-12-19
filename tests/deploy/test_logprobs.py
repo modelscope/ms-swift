@@ -70,7 +70,7 @@ def _test(infer_backend, test_vlm: bool = False):
     from swift.llm import deploy_main
     import multiprocessing
     mp = multiprocessing.get_context('spawn')
-    model = 'qwen/Qwen2-VL-7B-Instruct' if test_vlm else 'qwen/Qwen2-7B-Instruct'
+    model = 'Qwen/Qwen2-VL-7B-Instruct' if test_vlm else 'Qwen/Qwen2-7B-Instruct'
     args = DeployArguments(model=model, infer_backend=infer_backend, verbose=False)
     process = mp.Process(target=deploy_main, args=(args, ))
     process.start()
@@ -99,7 +99,7 @@ def test_vllm_orgin():
     import subprocess
     import sys
     from modelscope import snapshot_download
-    model_dir = snapshot_download('qwen/Qwen2-7B-Instruct')
+    model_dir = snapshot_download('Qwen/Qwen2-7B-Instruct')
     args = [sys.executable, '-m', 'vllm.entrypoints.openai.api_server', '--model', model_dir]
     process = subprocess.Popen(args)
     _test_client()

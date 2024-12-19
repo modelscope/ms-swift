@@ -17,7 +17,7 @@ def test_full_vit():
     from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
     sft_main(
         TrainArguments(
-            model='qwen/Qwen2-VL-7B-Instruct',
+            model='Qwen/Qwen2-VL-7B-Instruct',
             dataset=['modelscope/coco_2014_caption:validation#20', 'AI-ModelScope/alpaca-gpt4-data-en#20'],
             train_type='full',
             freeze_llm=True,
@@ -33,7 +33,7 @@ def test_full_aligner():
     from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
     sft_main(
         TrainArguments(
-            model='qwen/Qwen2-VL-7B-Instruct',
+            model='Qwen/Qwen2-VL-7B-Instruct',
             dataset=['modelscope/coco_2014_caption:validation#20', 'AI-ModelScope/alpaca-gpt4-data-en#20'],
             train_type='full',
             freeze_llm=True,
@@ -49,7 +49,7 @@ def test_lora_vit():
     from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
     sft_main(
         TrainArguments(
-            model='qwen/Qwen2-VL-7B-Instruct',
+            model='Qwen/Qwen2-VL-7B-Instruct',
             dataset=['modelscope/coco_2014_caption:validation#20', 'AI-ModelScope/alpaca-gpt4-data-en#20'],
             train_type='lora',
             freeze_llm=True,
@@ -65,7 +65,7 @@ def test_lora_aligner():
     from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
     sft_main(
         TrainArguments(
-            model='qwen/Qwen2-VL-7B-Instruct',
+            model='Qwen/Qwen2-VL-7B-Instruct',
             dataset=['modelscope/coco_2014_caption:validation#20', 'AI-ModelScope/alpaca-gpt4-data-en#20'],
             train_type='lora',
             freeze_llm=True,

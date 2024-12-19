@@ -31,7 +31,7 @@ def test_qwen2_vl():
     os.environ['MAX_PIXELS'] = '100352'
     os.environ['VIDEO_MAX_PIXELS'] = str(100352 // 4)
     os.environ['SIZE_FACTOR'] = '12'
-    pt_engine = PtEngine('qwen/Qwen2-VL-2B-Instruct')
+    pt_engine = PtEngine('Qwen/Qwen2-VL-2B-Instruct')
     _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     _infer_model(pt_engine)

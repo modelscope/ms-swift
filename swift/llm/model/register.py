@@ -117,7 +117,7 @@ def register_model(model_meta: ModelMeta, *, exist_ok: bool = False) -> None:
 
 def load_by_unsloth(args):
     """Load model by unsloth"""
-    assert is_unsloth_available(), 'please install unsloth if using `use_unsloth=True`'
+    assert is_unsloth_available(), 'please install unsloth if using `use_unsloth=True`: `pip install unsloth`'
     os.environ['UNSLOTH_RETURN_LOGITS'] = '1'
     os.environ['UNSLOTH_DISABLE_STATISTICS'] = '1'
     model_info = args.model_info
