@@ -43,15 +43,14 @@ def test_unsloth():
 def test_mllm_mp():
     os.environ['MAX_PIXELS'] = '100352'
     os.environ['SIZE_FACTOR'] = '12'
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
     from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
     result = sft_main(
         TrainArguments(
-            model='Qwen/Qwen2-VL-7B-Instruct',
+            model='Qwen/QVQ-72B-Preview',
             dataset=['modelscope/coco_2014_caption:validation#20', 'AI-ModelScope/alpaca-gpt4-data-en#20'],
             train_type='lora',
-            target_modules=['all-linear', 'all-embedding'],
-            modules_to_save=['all-embedding', 'all-norm'],
+            target_modules=['all-linear'],
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
     infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_data_args=True, merge_lora=True))
@@ -336,7 +335,7 @@ def test_epoch():
 
 if __name__ == '__main__':
     # test_llm_ddp()
-    # test_mllm_mp()
+    test_mllm_mp()
     # test_llm_streaming()
     # test_mllm_streaming()
     # test_mllm_zero3()
@@ -358,4 +357,4 @@ if __name__ == '__main__':
     # test_emu3_gen()
     # test_unsloth()
     # test_eval_strategy()
-    test_epoch()
+    # test_epoch()

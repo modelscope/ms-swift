@@ -299,6 +299,14 @@ register_template(
     QwenTemplateMeta(
         MLLMTemplateType.qwen2_vl, template_cls=Qwen2VLTemplate, placeholder_tokens=['<|image_pad|>', '<|video_pad|>']))
 
+register_template(
+    QwenTemplateMeta(
+        MLLMTemplateType.qvq,
+        default_system=('You are a helpful and harmless assistant. You are Qwen developed by Alibaba. '
+                        'Answer in the language of the question. You should think step-by-step.'),
+        template_cls=Qwen2VLTemplate,
+        placeholder_tokens=['<|image_pad|>', '<|video_pad|>']))
+
 
 class Ovis1_6Template(Template):
     skip_prompt = False

@@ -536,6 +536,20 @@ register_model(
         requires=['transformers>=4.45', 'qwen_vl_utils', 'pyav'],
         tags=['vision', 'video']))
 
+register_model(
+    ModelMeta(
+        MLLMModelType.qvq, [
+            ModelGroup([
+                Model('Qwen/QVQ-72B-Preview', 'Qwen/QVQ-72B-Preview'),
+            ]),
+        ],
+        TemplateType.qvq,
+        get_model_tokenizer_qwen2_vl,
+        model_arch=ModelArch.qwen2_vl,
+        architectures=['Qwen2VLForConditionalGeneration'],
+        requires=['transformers>=4.45', 'qwen_vl_utils', 'pyav'],
+        tags=['vision', 'video']))
+
 
 def get_model_tokenizer_qwen2_audio(*args, **kwargs):
     from transformers import Qwen2AudioForConditionalGeneration

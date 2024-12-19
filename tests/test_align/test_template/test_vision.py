@@ -2,7 +2,7 @@ import os
 
 import torch
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '2'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
 os.environ['SWIFT_DEBUG'] = '1'
 
 
@@ -31,6 +31,14 @@ def test_qwen2_vl():
     _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     _infer_model(pt_engine)
+
+
+def test_qvq():
+    pt_engine = PtEngine('Qwen/QVQ-72B-Preview')
+    response = _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine)
+    assert response == response2
 
 
 def test_internvl2():
@@ -238,4 +246,5 @@ if __name__ == '__main__':
     # test_internvl2_5()
     # test_mplug_owl3()
     # test_xcomposer2_5()
-    test_megrez_omni()
+    # test_megrez_omni()
+    test_qvq()
