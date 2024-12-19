@@ -2,7 +2,7 @@
 
 <p align="center">
     <br>
-    <img src="resources/banner.png"/>
+    <img src="asset/banner.png"/>
     <br>
 <p>
 <p align="center">
@@ -177,10 +177,12 @@ Training:
 model, tokenizer = get_model_tokenizer(model_id_or_path, ...)
 template = get_template(model.model_meta.template, tokenizer, ...)
 model = Swift.prepare_model(model, lora_config)
+
 # Download and load the dataset, and encode the text into tokens
 train_dataset, val_dataset = load_dataset(dataset_id_or_path, ...)
 train_dataset = EncodePreprocessor(template=template)(train_dataset, num_proc=num_proc)
 val_dataset = EncodePreprocessor(template=template)(val_dataset, num_proc=num_proc)
+
 # Train the model
 trainer = Seq2SeqTrainer(
     model=model,
