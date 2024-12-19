@@ -230,7 +230,8 @@ swift pt \
     --train_type full \
     --deepspeed zero2 \
     --output_dir output \
-    --max_steps 100000
+    --max_steps 100000 \
+    ...
 ```
 
 Fine-tuning:
@@ -239,7 +240,8 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
     --model Qwen/Qwen2.5-7B-Instruct \
     --dataset AI-ModelScope/alpaca-gpt4-data-en \
     --train_type lora \
-    --output_dir output
+    --output_dir output \
+    ...
 ```
 
 RLHF:
@@ -249,7 +251,8 @@ CUDA_VISIBLE_DEVICES=0 swift rlhf \
     --model Qwen/Qwen2.5-7B-Instruct \
     --dataset hjh0119/shareAI-Llama3-DPO-zh-en-emoji:en \
     --train_type lora \
-    --output_dir output
+    --output_dir output \
+    ...
 ```
 
 
