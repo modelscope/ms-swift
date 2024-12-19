@@ -33,6 +33,13 @@ def test_qwen2_vl():
     _infer_model(pt_engine)
 
 
+def test_qvq():
+    pt_engine = PtEngine('Qwen/QVQ-72B-Preview')
+    _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    _infer_model(pt_engine)
+
+
 def test_internvl2():
     pt_engine = PtEngine('OpenGVLab/InternVL2-2B')
     _infer_model(pt_engine)
@@ -238,4 +245,5 @@ if __name__ == '__main__':
     # test_internvl2_5()
     # test_mplug_owl3()
     # test_xcomposer2_5()
-    test_megrez_omni()
+    # test_megrez_omni()
+    test_qvq()
