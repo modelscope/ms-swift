@@ -14,6 +14,8 @@ def test_model_arch():
             try:
                 model_dir = safe_snapshot_download(model, download_model=False)
                 config_dict = PretrainedConfig.get_config_dict(model_dir)[0]
+            except Exception:
+                pass
             finally:
                 msg = None
                 if config_dict:

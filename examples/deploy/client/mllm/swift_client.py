@@ -1,16 +1,14 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-from typing import Literal
+from typing import List, Literal
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 
-def infer_batch(engine: 'InferEngine', dataset: str):
+def infer_batch(engine: 'InferEngine', infer_requests: List['InferRequest']):
     request_config = RequestConfig(max_tokens=512, temperature=0)
-    dataset = load_dataset([dataset], strict=False, seed=42)[0]
-    print(f'dataset: {dataset}')
     metric = InferStats()
-    resp_list = engine.infer([InferRequest(**data) for data in dataset], request_config, metrics=[metric])
+    resp_list = engine.infer(infer_requests, request_config, metrics=[metric])
     query0 = dataset[0]['messages'][0]['content']
     print(f'query0: {query0}')
     print(f'response0: {resp_list[0].choices[0].message.content}')
@@ -105,7 +103,11 @@ def get_data(mm_type: Literal['text', 'image', 'video', 'audio']):
 def run_client(host: str = '127.0.0.1', port: int = 8000):
     engine = InferClient(host=host, port=port)
     print(f'models: {engine.models}')
-    infer_batch(engine, 'AI-ModelScope/LaTeX_OCR:small#1000')
+    dataset = load_dataset(['AI-ModelScope/LaTeX_OCR:small#1000'], strict=False, seed=42)[0]
+    print(f'dataset: {dataset}')
+    infer_requests = [InferRequest(**data) for data in dataset]
+    infer_batch(engine, infer_requests)
+
     infer_stream(engine, InferRequest(messages=[get_message(mm_type='video')]))
     # This writing is equivalent to the above writing.
     infer_stream(engine, InferRequest(**get_data(mm_type='video')))

@@ -1,15 +1,14 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
+from typing import List
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 
-def infer_batch(engine: 'InferEngine', dataset: str):
+def infer_batch(engine: 'InferEngine', infer_requests: List['InferRequest']):
     request_config = RequestConfig(max_tokens=512, temperature=0)
-    dataset = load_dataset([dataset], strict=False, seed=42)[0]
-    print(f'dataset: {dataset}')
     metric = InferStats()
-    resp_list = engine.infer([InferRequest(**data) for data in dataset], request_config, metrics=[metric])
+    resp_list = engine.infer(infer_requests, request_config, metrics=[metric])
     query0 = dataset[0]['messages'][0]['content']
     print(f'query0: {query0}')
     print(f'response0: {resp_list[0].choices[0].message.content}')
@@ -44,6 +43,10 @@ if __name__ == '__main__':
         from swift.llm import LmdeployEngine
         engine = LmdeployEngine(model)
 
-    infer_batch(engine, 'AI-ModelScope/alpaca-gpt4-data-zh#1000')
+    dataset = load_dataset(['AI-ModelScope/alpaca-gpt4-data-zh#1000'], strict=False, seed=42)[0]
+    print(f'dataset: {dataset}')
+    infer_requests = [InferRequest(**data) for data in dataset]
+    infer_batch(engine, infer_requests)
+
     messages = [{'role': 'user', 'content': 'who are you?'}]
     infer_stream(engine, InferRequest(messages=messages))
