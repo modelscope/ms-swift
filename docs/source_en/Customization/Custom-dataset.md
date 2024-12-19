@@ -52,7 +52,7 @@ Here is the recommended dataset format for ms-swift:
 
 ### RLHF
 
-#### DPO/ORPO/CPO/SimPO
+#### DPO/ORPO/CPO/SimPO/RM
 
 ```jsonl
 {"messages": [{"role": "system", "content": "You are a useful and harmless assistant"}, {"role": "user", "content": "Tell me tomorrow's weather"}, {"role": "assistant", "content": "Tomorrow's weather will be sunny"}], "rejected_response": "I don't know"}
