@@ -64,7 +64,7 @@ def get_multimodal_target_regex(model_arch,
     prefix_pattern = '|'.join(modules)
     rejected_pattern = '|'.join(rejected_modules)
 
-    ignore_pattern = []
+    ignore_pattern = ['lora_A', 'lora_B', 'base_layer']
     if ignore_embedding:
         ignore_pattern += ['emb', 'wte', 'shared']
         ignore_pattern += model_arch.embedding or []

@@ -18,6 +18,7 @@ from peft import (AdaLoraConfig, BOFTConfig, BOFTModel, LoftQConfig, LoHaConfig,
                   PromptEncoderConfig, PromptLearningConfig, PromptTuningConfig, VeraConfig, VeraModel, get_peft_config,
                   get_peft_model, get_peft_model_state_dict)
 from peft.config import PeftConfigMixin
+from peft.tuners import lora
 from peft.tuners.lora import Embedding
 from transformers import Trainer
 
@@ -84,7 +85,7 @@ class LoraConfig(peft.LoraConfig):
 
 def _create_and_replace_hook(self, peft_config, adapter_name, target, *args, **kwargs):
     all_supported_names = ('linear', )
-    all_supported_types = (torch.nn.Embedding, torch.nn.Conv2d, transformers.pytorch_utils.Conv1D)
+    all_supported_types = (torch.nn.Embedding, torch.nn.Conv2d, transformers.pytorch_utils.Conv1D, lora.Linear)
     target_modules = getattr(peft_config, 'target_modules', None)
     if target is None:
         return
