@@ -246,26 +246,27 @@ def safe_snapshot_download(model_id_or_path: str,
     if not download_model:
         ignore_file_pattern += ['*.bin', '*.safetensors']
     hub = get_hub(use_hf)
-    model_id_or_path = model_id_or_path.split(':', 1)  # get sub_folder
-    if len(model_id_or_path) == 1:
-        model_id_or_path = [model_id_or_path[0], None]
-    model_id_or_path, sub_folder = model_id_or_path
     if model_id_or_path.startswith('~'):
         model_id_or_path = os.path.abspath(os.path.expanduser(model_id_or_path))
     with safe_ddp_context(hash_id=model_id_or_path):
         if os.path.exists(model_id_or_path):
             model_dir = model_id_or_path
+            sub_folder = None
         else:
             if model_id_or_path.startswith('/'):  # startswith
                 raise ValueError(f"path: '{model_id_or_path}' not found")
+            model_id_or_path = model_id_or_path.split(':', 1)  # get sub_folder
+            if len(model_id_or_path) == 1:
+                model_id_or_path = [model_id_or_path[0], None]
+            model_id_or_path, sub_folder = model_id_or_path
             model_dir = hub.download_model(model_id_or_path, revision, ignore_file_pattern, token=hub_token, **kwargs)
 
         logger.info(f'Loading the model using model_dir: {model_dir}')
 
     model_dir = os.path.abspath(os.path.expanduser(model_dir))
-    assert os.path.isdir(model_dir), f'model_dir: {model_dir}'
     if sub_folder:
         model_dir = os.path.join(model_dir, sub_folder)
+    assert os.path.isdir(model_dir), f'model_dir: {model_dir}'
     return model_dir
 
 

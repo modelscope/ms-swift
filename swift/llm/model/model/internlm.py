@@ -91,6 +91,7 @@ def get_model_tokenizer_xcomposer2(model_dir: str,
         CLIPVisionTower.load_model = load_model
 
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
+    model.vit.vision_tower.gradient_checkpointing_enable()
     if model is not None:
         if version == 'v2' and use_flash_attn:
             # fix AttributeError: no attribute 'attention_dropout'
