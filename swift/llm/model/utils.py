@@ -264,9 +264,9 @@ def safe_snapshot_download(model_id_or_path: str,
         logger.info(f'Loading the model using model_dir: {model_dir}')
 
     model_dir = os.path.abspath(os.path.expanduser(model_dir))
-    assert os.path.isdir(model_dir), f'model_dir: {model_dir}'
     if sub_folder:
         model_dir = os.path.join(model_dir, sub_folder)
+    assert os.path.isdir(model_dir), f'model_dir: {model_dir}'
     return model_dir
 
 
