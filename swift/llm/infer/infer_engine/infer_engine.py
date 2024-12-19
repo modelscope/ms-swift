@@ -54,12 +54,14 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
 
         async def _run_infer(i, task, queue, stream: bool = False):
             # task with queue
-            if stream:
-                async for stream_response in await task:
-                    queue.put((i, stream_response))
-            else:
-                queue.put((i, await task))
-            queue.put((i, None))
+            try:
+                if stream:
+                    async for stream_response in await task:
+                        queue.put((i, stream_response))
+                else:
+                    queue.put((i, await task))
+            finally:
+                queue.put((i, None))
 
         async def _batch_run(tasks):
             return await asyncio.gather(*tasks)
