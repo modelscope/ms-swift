@@ -35,6 +35,9 @@ class InferClient(InferEngine):
         self.api_key = api_key
         self.host = host
         self.port = port
+        if timeout is None:
+            timeout = os.getenv('TIMEOUT')
+            timeout = timeout and float(timeout)
         self.timeout = timeout
         self._models = None
 
