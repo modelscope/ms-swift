@@ -24,5 +24,7 @@ class WebUIArguments(InferArguments):
     studio_title: Optional[str] = None
 
     def __post_init__(self):
-        if self.model or self.adapters:
+        if self.model or self.adapters or self.ckpt_dir:
             super().__post_init__()
+            if self.studio_title is None:
+                self.studio_title = self.model_suffix
