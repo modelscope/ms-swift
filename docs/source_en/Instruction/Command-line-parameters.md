@@ -107,9 +107,9 @@ Other important parameters:
 - 🔥gradient_accumulation_steps: Gradient accumulation, default is 1.
 - 🔥save_strategy: Strategy for saving the model, options are 'no', 'steps', 'epoch', default is 'steps'.
 - 🔥save_steps: Default is 500.
-- 🔥save_total_limit: Default is None, saving all checkpoints.
-- 🔥eval_strategy: Evaluation strategy, follows `save_strategy`.
+- 🔥eval_strategy: Default is None. Evaluation strategy, follows `save_strategy`.
 - 🔥eval_steps: Default is None. If evaluation dataset exists, follows `save_steps`.
+- 🔥save_total_limit: Default is None, saving all checkpoints.
 - max_steps: Default is -1, maximum number of training steps. Must be set when the dataset is streaming.
 - 🔥warmup_ratio: Default is 0.
 - save_on_each_node: Default is False. To be considered in multi-machine training.
