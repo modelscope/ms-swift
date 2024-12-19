@@ -35,9 +35,10 @@ def test_qwen2_vl():
 
 def test_qvq():
     pt_engine = PtEngine('Qwen/QVQ-72B-Preview')
-    _infer_model(pt_engine)
+    response = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
-    _infer_model(pt_engine)
+    response2 = _infer_model(pt_engine)
+    assert response == response2
 
 
 def test_internvl2():
