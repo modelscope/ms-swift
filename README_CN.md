@@ -2,7 +2,7 @@
 
 <p align="center">
     <br>
-    <img src="resources/banner.png"/>
+    <img src="asset/banner.png"/>
     <br>
 <p>
 <p align="center">
@@ -69,7 +69,7 @@
 - **界面训练**：以界面的方式提供训练、推理、评测、量化的能力，完成大模型的全链路。
 - **插件化与拓展**：支持自定义模型和数据集拓展，支持对loss、metric、trainer、loss-scale、callback、optimizer等组件进行自定义。
 - 🍉 **工具箱能力**：不仅提供大模型和多模态大模型的训练支持，还涵盖其推理、评测、量化和部署全流程。
-- **推理加速**：支持PyTorch、vLLM、LmDeploy等推理加速引擎，并提供OpenAI接口，为推理、部署和评测模块提供加速。
+- **推理加速**：支持PyTorch、vLLM、LmDeploy推理加速引擎，并提供OpenAI接口，为推理、部署和评测模块提供加速。
 - **模型评测**：以EvalScope作为评测后端，支持100+评测数据集对纯文本和多模态模型进行评测。
 - **模型量化**：支持AWQ、GPTQ和BNB的量化导出，导出的模型支持使用vLLM/LmDeploy推理加速，并支持继续训练。
 
@@ -168,10 +168,12 @@ ms-swift也支持使用python的方式进行训练和推理。下面给出训练
 model, tokenizer = get_model_tokenizer(model_id_or_path, ...)
 template = get_template(model.model_meta.template, tokenizer, ...)
 model = Swift.prepare_model(model, lora_config)
+
 # 下载并载入数据集，并将文本encode成tokens
 train_dataset, val_dataset = load_dataset(dataset_id_or_path, ...)
 train_dataset = EncodePreprocessor(template=template)(train_dataset, num_proc=num_proc)
 val_dataset = EncodePreprocessor(template=template)(val_dataset, num_proc=num_proc)
+
 # 进行训练
 trainer = Seq2SeqTrainer(
     model=model,
@@ -220,7 +222,8 @@ swift pt \
     --train_type full \
     --deepspeed zero2 \
     --output_dir output \
-    --max_steps 100000
+    --max_steps 100000 \
+    ...
 ```
 
 微调：
@@ -229,7 +232,8 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
     --model Qwen/Qwen2.5-7B-Instruct \
     --dataset AI-ModelScope/alpaca-gpt4-data-zh \
     --train_type lora \
-    --output_dir output
+    --output_dir output \
+    ...
 ```
 
 RLHF：
@@ -239,7 +243,8 @@ CUDA_VISIBLE_DEVICES=0 swift rlhf \
     --model Qwen/Qwen2.5-7B-Instruct \
     --dataset hjh0119/shareAI-Llama3-DPO-zh-en-emoji:zh \
     --train_type lora \
-    --output_dir output
+    --output_dir output \
+    ...
 ```
 
 

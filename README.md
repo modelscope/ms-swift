@@ -2,7 +2,7 @@
 
 <p align="center">
     <br>
-    <img src="resources/banner.png"/>
+    <img src="asset/banner.png"/>
     <br>
 <p>
 <p align="center">
@@ -177,10 +177,12 @@ Training:
 model, tokenizer = get_model_tokenizer(model_id_or_path, ...)
 template = get_template(model.model_meta.template, tokenizer, ...)
 model = Swift.prepare_model(model, lora_config)
+
 # Download and load the dataset, and encode the text into tokens
 train_dataset, val_dataset = load_dataset(dataset_id_or_path, ...)
 train_dataset = EncodePreprocessor(template=template)(train_dataset, num_proc=num_proc)
 val_dataset = EncodePreprocessor(template=template)(val_dataset, num_proc=num_proc)
+
 # Train the model
 trainer = Seq2SeqTrainer(
     model=model,
@@ -228,7 +230,8 @@ swift pt \
     --train_type full \
     --deepspeed zero2 \
     --output_dir output \
-    --max_steps 100000
+    --max_steps 100000 \
+    ...
 ```
 
 Fine-tuning:
@@ -237,7 +240,8 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
     --model Qwen/Qwen2.5-7B-Instruct \
     --dataset AI-ModelScope/alpaca-gpt4-data-en \
     --train_type lora \
-    --output_dir output
+    --output_dir output \
+    ...
 ```
 
 RLHF:
@@ -247,7 +251,8 @@ CUDA_VISIBLE_DEVICES=0 swift rlhf \
     --model Qwen/Qwen2.5-7B-Instruct \
     --dataset hjh0119/shareAI-Llama3-DPO-zh-en-emoji:en \
     --train_type lora \
-    --output_dir output
+    --output_dir output \
+    ...
 ```
 
 
