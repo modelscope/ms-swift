@@ -9,7 +9,7 @@ def infer_batch(engine: 'InferEngine', infer_requests: List['InferRequest']):
     request_config = RequestConfig(max_tokens=512, temperature=0)
     metric = InferStats()
     resp_list = engine.infer(infer_requests, request_config, metrics=[metric])
-    query0 = dataset[0]['messages'][0]['content']
+    query0 = infer_requests[0].messages[0]['content']
     print(f'query0: {query0}')
     print(f'response0: {resp_list[0].choices[0].message.content}')
     print(f'metric: {metric.compute()}')
