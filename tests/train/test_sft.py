@@ -304,6 +304,36 @@ def test_emu3_gen():
     infer_main(args)
 
 
+def test_eval_strategy():
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+    from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
+    result = sft_main(
+        TrainArguments(
+            model='qwen/Qwen2-7B-Instruct',
+            eval_strategy='no',
+            dataset=['AI-ModelScope/alpaca-gpt4-data-zh#100', 'AI-ModelScope/alpaca-gpt4-data-en#100'],
+            **kwargs))
+    last_model_checkpoint = result['last_model_checkpoint']
+    infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True))
+
+
+def test_epoch():
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+    from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
+
+    train_kwargs = kwargs.copy()
+    train_kwargs['num_train_epochs'] = 3
+    # train_kwargs['save_steps'] = 2  # not use
+    sft_main(
+        TrainArguments(
+            model='qwen/Qwen2-7B-Instruct',
+            dataset=['AI-ModelScope/alpaca-gpt4-data-zh#50', 'AI-ModelScope/alpaca-gpt4-data-en#50'],
+            save_strategy='epoch',
+            **train_kwargs))
+    last_model_checkpoint = result['last_model_checkpoint']
+    infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True))
+
+
 if __name__ == '__main__':
     # test_llm_ddp()
     # test_mllm_mp()
@@ -325,5 +355,7 @@ if __name__ == '__main__':
     # test_template()
     # test_qwen_vl()
     # test_qwen2_audio()
-    test_emu3_gen()
+    # test_emu3_gen()
     # test_unsloth()
+    # test_eval_strategy()
+    test_epoch()
