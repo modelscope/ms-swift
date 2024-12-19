@@ -209,12 +209,9 @@ class HfConfigFactory:
     @staticmethod
     def get_matched_model_types(config: Union[PretrainedConfig, Dict[str, Any]]) -> List[str]:
         """Get possible model_type."""
-        # get possible model_types based on the model architecture.
-        if isinstance(config, dict):
-            arch = config['architectures'][0]
-        else:
-            arch = config.architectures[0]
-
+        arch = HfConfigFactory.get_config_attr(config, 'architectures')
+        if arch:
+            arch = arch[0]
         arch_mapping = HfConfigFactory._get_arch_mapping()
         return arch_mapping.get(arch) or []
 
