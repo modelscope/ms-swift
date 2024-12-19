@@ -251,6 +251,7 @@ def safe_snapshot_download(model_id_or_path: str,
     with safe_ddp_context(hash_id=model_id_or_path):
         if os.path.exists(model_id_or_path):
             model_dir = model_id_or_path
+            sub_folder = None
         else:
             if model_id_or_path.startswith('/'):  # startswith
                 raise ValueError(f"path: '{model_id_or_path}' not found")
