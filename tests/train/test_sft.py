@@ -16,7 +16,7 @@ def test_llm_ddp():
     from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
     sft_main(
         TrainArguments(
-            model='qwen/Qwen2-7B-Instruct',
+            model='Qwen/Qwen2-7B-Instruct',
             dataset=['AI-ModelScope/alpaca-gpt4-data-zh#100', 'AI-ModelScope/alpaca-gpt4-data-en#100'],
             # ddp_find_unused_parameters=False,
             gradient_checkpointing_kwargs={'use_reentrant': False},
@@ -47,7 +47,7 @@ def test_mllm_mp():
     from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
     result = sft_main(
         TrainArguments(
-            model='qwen/Qwen2-VL-7B-Instruct',
+            model='Qwen/Qwen2-VL-7B-Instruct',
             dataset=['modelscope/coco_2014_caption:validation#20', 'AI-ModelScope/alpaca-gpt4-data-en#20'],
             train_type='lora',
             target_modules=['all-linear', 'all-embedding'],
@@ -61,7 +61,7 @@ def test_llm_streaming():
     from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
     result = sft_main(
         TrainArguments(
-            model='qwen/Qwen2-7B-Instruct', dataset=['swift/chinese-c4'], streaming=True, max_steps=16, **kwargs))
+            model='Qwen/Qwen2-7B-Instruct', dataset=['swift/chinese-c4'], streaming=True, max_steps=16, **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
     infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_data_args=True, merge_lora=True))
 
@@ -70,7 +70,7 @@ def test_mllm_streaming():
     from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
     result = sft_main(
         TrainArguments(
-            model='qwen/Qwen2-VL-7B-Instruct',
+            model='Qwen/Qwen2-VL-7B-Instruct',
             dataset=['modelscope/coco_2014_caption:validation', 'AI-ModelScope/alpaca-gpt4-data-en'],
             streaming=True,
             max_steps=16,
@@ -84,7 +84,7 @@ def test_mllm_zero3():
     from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
     sft_main(
         TrainArguments(
-            model='qwen/Qwen2-VL-7B-Instruct',
+            model='Qwen/Qwen2-VL-7B-Instruct',
             dataset=['modelscope/coco_2014_caption:validation#100', 'AI-ModelScope/alpaca-gpt4-data-en#100'],  #
             deepspeed='zero3',
             **kwargs))
@@ -95,7 +95,7 @@ def test_qwen_vl():
     from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
     sft_main(
         TrainArguments(
-            model='qwen/Qwen-VL-Chat',
+            model='Qwen/Qwen-VL-Chat',
             dataset=['AI-ModelScope/LaTeX_OCR#40', 'modelscope/coco_2014_caption:validation#40'],
             **kwargs))
 
@@ -140,7 +140,7 @@ def test_mllm_streaming_zero3():
     from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
     sft_main(
         TrainArguments(
-            model='qwen/Qwen2-VL-7B-Instruct',
+            model='Qwen/Qwen2-VL-7B-Instruct',
             dataset=['modelscope/coco_2014_caption:validation', 'AI-ModelScope/alpaca-gpt4-data-en'],
             streaming=True,
             max_steps=16,
@@ -153,7 +153,7 @@ def test_mllm_streaming_mp_ddp():
     from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
     sft_main(
         TrainArguments(
-            model='qwen/Qwen2-VL-7B-Instruct',
+            model='Qwen/Qwen2-VL-7B-Instruct',
             dataset=['modelscope/coco_2014_caption:validation', 'AI-ModelScope/alpaca-gpt4-data-en'],
             streaming=True,
             max_steps=16,
@@ -191,7 +191,7 @@ def test_moe():
     from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
     result = sft_main(
         TrainArguments(
-            model='qwen/Qwen1.5-MoE-A2.7B-Chat-GPTQ-Int4',
+            model='Qwen/Qwen1.5-MoE-A2.7B-Chat-GPTQ-Int4',
             dataset=['AI-ModelScope/alpaca-gpt4-data-zh#100', 'AI-ModelScope/alpaca-gpt4-data-en#100'],
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
@@ -235,7 +235,7 @@ def test_llm_transformers_4_33():
     from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
     sft_main(
         TrainArguments(
-            model='qwen/Qwen-7B-Chat',
+            model='Qwen/Qwen-7B-Chat',
             dataset=['AI-ModelScope/alpaca-gpt4-data-zh#100', 'AI-ModelScope/alpaca-gpt4-data-en#100'],
             **kwargs))
 
@@ -247,7 +247,7 @@ def test_predict_with_generate():
     # 'modelscope/coco_2014_caption:validation#100',
     sft_main(
         TrainArguments(
-            model='qwen/Qwen2-7B-Instruct',
+            model='Qwen/Qwen2-7B-Instruct',
             dataset=['AI-ModelScope/alpaca-gpt4-data-en#40'],
             predict_with_generate=True,
             split_dataset_ratio=0.5,
@@ -261,7 +261,7 @@ def test_predict_with_generate_zero3():
     # 'modelscope/coco_2014_caption:validation#100',
     sft_main(
         TrainArguments(
-            model='qwen/Qwen2-VL-7B-Instruct',
+            model='Qwen/Qwen2-VL-7B-Instruct',
             dataset=['AI-ModelScope/LaTeX_OCR#40'],
             predict_with_generate=True,
             freeze_vit=False,
@@ -309,7 +309,7 @@ def test_eval_strategy():
     from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
     result = sft_main(
         TrainArguments(
-            model='qwen/Qwen2-7B-Instruct',
+            model='Qwen/Qwen2-7B-Instruct',
             eval_strategy='no',
             dataset=['AI-ModelScope/alpaca-gpt4-data-zh#100', 'AI-ModelScope/alpaca-gpt4-data-en#100'],
             **kwargs))
@@ -324,9 +324,9 @@ def test_epoch():
     train_kwargs = kwargs.copy()
     train_kwargs['num_train_epochs'] = 3
     # train_kwargs['save_steps'] = 2  # not use
-    sft_main(
+    result = sft_main(
         TrainArguments(
-            model='qwen/Qwen2-7B-Instruct',
+            model='Qwen/Qwen2-7B-Instruct',
             dataset=['AI-ModelScope/alpaca-gpt4-data-zh#50', 'AI-ModelScope/alpaca-gpt4-data-en#50'],
             save_strategy='epoch',
             **train_kwargs))

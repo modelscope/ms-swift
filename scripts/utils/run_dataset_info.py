@@ -83,7 +83,7 @@ def write_dataset_info() -> None:
 
     all_keys = list(DATASET_MAPPING.keys())
     all_keys = sorted(all_keys, key=lambda x: get_dataset_id(x))
-    _, tokenizer = get_model_tokenizer('qwen/Qwen2.5-7B-Instruct', load_model=False)
+    _, tokenizer = get_model_tokenizer('Qwen/Qwen2.5-7B-Instruct', load_model=False)
     template = get_template(tokenizer.model_meta.template, tokenizer)
     try:
         for i, key in enumerate(all_keys):

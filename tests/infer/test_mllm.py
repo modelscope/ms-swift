@@ -10,13 +10,13 @@ def _prepare(infer_backend: Literal['vllm', 'pt', 'lmdeploy']):
     from swift.llm import InferRequest, get_template
     if infer_backend == 'lmdeploy':
         from swift.llm import LmdeployEngine
-        engine = LmdeployEngine('qwen/Qwen-VL-Chat', torch.float32)
+        engine = LmdeployEngine('Qwen/Qwen-VL-Chat', torch.float32)
     elif infer_backend == 'pt':
         from swift.llm import PtEngine
-        engine = PtEngine('qwen/Qwen2-VL-7B-Instruct')
+        engine = PtEngine('Qwen/Qwen2-VL-7B-Instruct')
     elif infer_backend == 'vllm':
         from swift.llm import VllmEngine
-        engine = VllmEngine('qwen/Qwen2-VL-7B-Instruct')
+        engine = VllmEngine('Qwen/Qwen2-VL-7B-Instruct')
     template = get_template(engine.model_meta.template, engine.processor)
     infer_requests = [
         InferRequest([{

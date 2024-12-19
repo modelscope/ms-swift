@@ -25,12 +25,12 @@ def _infer_model(pt_engine, system=None):
 
 
 def test_qwen_audio():
-    pt_engine = PtEngine('qwen/Qwen-Audio-Chat')
+    pt_engine = PtEngine('Qwen/Qwen-Audio-Chat')
     _infer_model(pt_engine)
 
 
 def test_qwen2_audio():
-    pt_engine = PtEngine('qwen/Qwen2-Audio-7B-Instruct')
+    pt_engine = PtEngine('Qwen/Qwen2-Audio-7B-Instruct')
     _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     _infer_model(pt_engine)

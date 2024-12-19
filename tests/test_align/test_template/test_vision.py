@@ -27,7 +27,7 @@ def _infer_model(pt_engine, system=None, messages=None, images=None):
 
 
 def test_qwen2_vl():
-    pt_engine = PtEngine('qwen/Qwen2-VL-2B-Instruct')
+    pt_engine = PtEngine('Qwen/Qwen2-VL-2B-Instruct')
     _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     _infer_model(pt_engine)
@@ -118,7 +118,7 @@ def test_phi3_vision():
 
 
 def test_qwen_vl():
-    pt_engine = PtEngine('qwen/Qwen-VL-Chat')
+    pt_engine = PtEngine('Qwen/Qwen-VL-Chat')
     _infer_model(pt_engine)
 
 
