@@ -1,5 +1,6 @@
 # 22GiB
 CUDA_VISIBLE_DEVICES=0 \
+MAX_PIXELS=602112 \
 swift sft \
     --model Qwen/Qwen2-VL-7B-Instruct \
     --train_type lora \
