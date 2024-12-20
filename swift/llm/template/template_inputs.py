@@ -141,7 +141,7 @@ class StdTemplateInputs:
 
     @classmethod
     def from_dict(cls, inputs: Dict[str, Any], *, tools_prompt: str = 'react_en') -> 'StdTemplateInputs':
-        from swift.plugin import get_tools_prompt
+        from swift.plugin import get_tools_prompt, get_tools_keyword
         inputs = deepcopy(inputs)
         kwargs = {}
         for key in ['rejected_response', 'label']:
@@ -160,10 +160,11 @@ class StdTemplateInputs:
         keyword = None
         if tools is not None:
             if system is not None:
-                logger.warning_once('You have tools prompt but you also have a system field, which will be ignored')
+                logger.warning_once('You have tools prompt but you also have a system field, so the system field will be ignored')
             if isinstance(tools, str):
                 tools = json.loads(tools)
-            system, keyword = get_tools_prompt(tools, tools_prompt)
+            system = get_tools_prompt(tools, tools_prompt)
+            keyword = get_tools_keyword(tools_prompt)
 
         media_kwargs = StdTemplateInputs.remove_messages_media(messages)
         for k in list(media_kwargs.keys()):

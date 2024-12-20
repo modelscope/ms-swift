@@ -199,9 +199,9 @@ def split_action_action_input(response: str, tools_prompt='react_en') -> Tuple[O
     action = None
     action_input = None
     for c in agent_parts:
-        if c['key'].lower() == 'action:':
+        if c['key'].lower() == keyword['action'].lower():
             action = c['content']
-        elif c['key'].lower() == 'action input:':
+        elif c['key'].lower() == keyword['action_input'].lower():
             action_input = c['content']
     if action:
         action = action.strip().replace('\n', '')

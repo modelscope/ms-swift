@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import json
 import datetime as dt
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Union
@@ -27,6 +28,7 @@ Final Answer: the final answer to the original input question
 
 Begin!
 """
+    tool_descs = [json.dumps(t) if not isinstance(t, str) else t for t in tool_descs]
     return REACT_PROMPT.format(tool_list='\n\n'.join(tool_descs), tool_names=','.join(tool_names))
 
 
@@ -46,6 +48,7 @@ Final Answer: 对输入问题的最终答案
 
 开始！
 """
+    tool_descs = [json.dumps(t) if not isinstance(t, str) else t for t in tool_descs]
     return REACT_ZH_PROMPT.format(tool_list='\n\n'.join(tool_descs), tool_names=','.join(tool_names))
 
 
@@ -55,6 +58,7 @@ def format_glm4(tool_names, tool_descs):
 # 可用工具
 
 {tool_list}"""
+    tool_descs = [json.dumps(t) if not isinstance(t, str) else t for t in tool_descs]
     tool_list = ''
     for name, tool in zip(tool_names, tool_descs):
         tool_list += f'## {name}\n\n{tool}\n\n'
@@ -87,6 +91,7 @@ or you find that function calls always fail(the function is not valid now), \
 use function Finish->give_up_and_restart.
 2.Do not use origin tool names, use only subfunctions' names.
 Specifically, you have access to the following APIs: {tool_list}"""
+    tool_descs = [json.dumps(t) if not isinstance(t, str) else t for t in tool_descs]
     return TOOLBENCH_PROMPT.format(tool_list='\n\n'.join(tool_descs))
 
 
@@ -116,7 +121,7 @@ def format_qwen(tool_names, tool_descs):
     PROMPT = PROMPT.replace('{date}', formatted_date)
     tool_list = ''
     for name, tool in zip(tool_names, tool_descs):
-        tool_list += f'### {name} \n{name}: {tool["function"]["description"]} 输入参数: {tool["function"]["parameters"]}\n'
+        tool_list += f'### {name} \n{name}: {tool["description"]} 输入参数: {json.dumps(tool["parameters"])}\n'
 
     PROMPT = PROMPT.replace('{tool_list}', tool_list)
 
@@ -134,6 +139,7 @@ def format_custom(tool_names, tool_descs):
 
     {tool_list}'''
     tool_list = ''
+    tool_descs = [json.dumps(t) if not isinstance(t, str) else t for t in tool_descs]
     for name, tool in zip(tool_names, tool_descs):
         tool_list += f'## {name}\n\n{tool}\n\n'
     return PROMPT.format(tool_list=tool_list)
@@ -162,7 +168,7 @@ def get_tools_prompt(tools: List[Dict[str, Union[str, Dict]]], prompt_format: st
             if isinstance(info, dict) and 'function' in info:
                 info = info['function']
             tool_names.append(info['name'])
-            tool_descs.append(str(info))  # info: dict
+            tool_descs.append(info)  # info: dict
         except KeyError:
             print('invalid tools format, please check'
                   'https://github.com/modelscope/swift/blob/main/docs/source_en/LLM/Agent-deployment-best-practice.md')
