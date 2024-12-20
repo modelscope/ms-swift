@@ -10,7 +10,7 @@ swift rlhf \
     --dataset swift/RLAIF-V-Dataset \
     --num_train_epochs 1 \
     --learning_rate 1e-4 \
-    --gradient_checkpointing_kwargs "{\"use_reentrant\": false}" \
+    --gradient_checkpointing_kwargs '{"use_reentrant": false}' \
     --lora_rank 8 \
     --lora_alpha 32 \
     --gradient_accumulation_steps $(expr 16 / $nproc_per_node) \
