@@ -113,24 +113,18 @@ def load_file(path: Union[str, _T]) -> Union[BytesIO, _T]:
                 request_kwargs['timeout'] = timeout
             content = requests.get(path, **request_kwargs).content
             res = BytesIO(content)
-        elif os.path.exists(path):
+        elif os.path.exists(path) or (not path.startswith('data:') and len(path) <= 200):
+            path = os.path.abspath(os.path.expanduser(path))
             with open(path, 'rb') as f:
                 res = BytesIO(f.read())
         else:  # base64_str
-            import binascii
-            try:
-                data = path
-                if data.startswith('data:'):
-                    match_ = re.match(r'data:(.+?);base64,(.+)', data)
-                    assert match_ is not None
-                    data = match_.group(2)
-                data = base64.b64decode(data)
-                res = BytesIO(data)
-            except (ValueError, binascii.Error) as error:
-                if len(path) < 200:
-                    raise ValueError(f'invalid image: "{path}"')
-                else:
-                    raise ValueError(f'invalid image: {error}')
+            data = path
+            if data.startswith('data:'):
+                match_ = re.match(r'data:(.+?);base64,(.+)', data)
+                assert match_ is not None
+                data = match_.group(2)
+            data = base64.b64decode(data)
+            res = BytesIO(data)
     elif isinstance(path, bytes):
         res = BytesIO(path)
     return res
