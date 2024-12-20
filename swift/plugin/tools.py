@@ -98,17 +98,17 @@ Specifically, you have access to the following APIs: {tool_list}"""
 def format_qwen(tool_names, tool_descs):
     PROMPT = '''You are a helpful assistant.
 
-    当前时间：{date}
+当前时间：{date}
 
-    # 工具
+# 工具
 
-    ## 你拥有如下工具：
+## 你拥有如下工具：
 
-    {tool_list}
+{tool_list}
 
-    ## 你可以在回复中插入以下命令以调用N个工具：
+## 你可以在回复中插入以下命令以调用N个工具：
 
-    {format_list}
+{format_list}
     '''
     # 定义星期映射
     weekdays = {0: '星期一', 1: '星期二', 2: '星期三', 3: '星期四', 4: '星期五', 5: '星期六', 6: '星期日'}
