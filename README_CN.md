@@ -268,7 +268,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift deploy \
     --model Qwen/Qwen2.5-7B-Instruct \
-    --infer_backend pt
+    --infer_backend vllm
 ```
 
 ### 评测
