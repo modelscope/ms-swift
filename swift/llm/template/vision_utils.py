@@ -113,7 +113,7 @@ def load_file(path: Union[str, _T]) -> Union[BytesIO, _T]:
                 request_kwargs['timeout'] = timeout
             content = requests.get(path, **request_kwargs).content
             res = BytesIO(content)
-        elif os.path.exists(path) or len(path) <= 50:
+        elif os.path.exists(path) or (not path.startswith('data:') and len(path) <= 200):
             path = os.path.abspath(os.path.expanduser(path))
             with open(path, 'rb') as f:
                 res = BytesIO(f.read())
