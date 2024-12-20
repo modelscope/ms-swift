@@ -208,6 +208,7 @@ class QuantEngine(ProcessorMixin):
         with self._patch_gptq():
             gptq_quantizer = GPTQQuantizer(
                 bits=args.quant_bits,
+                group_size=args.group_size,
                 dataset=','.join(args.dataset),
                 batch_size=args.quant_batch_size,
                 block_name_to_quantize=self.get_block_name_to_quantize(self.model, args.model_type))
