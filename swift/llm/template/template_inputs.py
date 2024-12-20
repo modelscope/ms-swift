@@ -113,6 +113,8 @@ class StdTemplateInputs:
     videos: List[str] = field(default_factory=list)
     objects: List[Dict[str, Any]] = field(default_factory=list)
 
+    agent_keyword: Optional[Dict[str, str]] = None
+
     def __post_init__(self):
         self.image_idx = 0
         self.audio_idx = 0
@@ -125,6 +127,8 @@ class StdTemplateInputs:
             self.videos = [self.videos]
         if self.audios and not isinstance(self.audios, (list, tuple)):
             self.audios = [self.audios]
+        if self.agent_keyword is None:
+            self.agent_keyword = {}
 
     def to_history(self):
         if not self.messages:
@@ -153,12 +157,13 @@ class StdTemplateInputs:
         else:
             system = None
 
+        keyword = None
         if tools is not None:
             if system is not None:
                 logger.warning_once('You have tools prompt but you also have a system field, which will be ignored')
             if isinstance(tools, str):
                 tools = json.loads(tools)
-            system = get_tools_prompt(tools, tools_prompt)
+            system, keyword = get_tools_prompt(tools, tools_prompt)
 
         media_kwargs = StdTemplateInputs.remove_messages_media(messages)
         for k in list(media_kwargs.keys()):
@@ -174,7 +179,7 @@ class StdTemplateInputs:
                 media_kwargs[k] = inputs_mm_data
 
         StdTemplateInputs.messages_join_observation(messages)
-        return cls(messages=messages, system=system, objects=objects, **kwargs, **media_kwargs)
+        return cls(messages=messages, system=system, objects=objects, agent_keyword=keyword, **kwargs, **media_kwargs)
 
     @staticmethod
     def remove_messages_media(messages: Messages) -> Dict[str, Any]:
@@ -204,7 +209,7 @@ class StdTemplateInputs:
         return res
 
     @staticmethod
-    def messages_join_observation(messages: Messages) -> None:
+    def messages_join_observation(messages: Messages, tools_prompt='react_en') -> None:
         """
         Joins observations from 'tool' message into the 'assistant' response.
 
@@ -228,12 +233,15 @@ class StdTemplateInputs:
         if len(messages) < 2:
             return
         i = 1
+        from swift.plugin import get_tools_keyword
+        keyword = get_tools_keyword(tools_prompt)
         while i < len(messages):
             pre_message, message = messages[i - 1], messages[i]
             pre_role, pre_content = pre_message['role'], pre_message['content']
             role, content = message['role'], message['content']
-            if pre_role == 'assistant' and role == 'tool' and isinstance(pre_content,
-                                                                         str) and pre_content.endswith('Observation:'):
+            if (pre_role == 'assistant' and role == 'tool' and isinstance(pre_content,
+                                                                         str) and
+                    pre_content.endswith(keyword.get('observation'))):
                 assert isinstance(pre_content, str)
                 pre_message['content'] = pre_content + content  # assistant
                 messages.pop(i)  # remove tool

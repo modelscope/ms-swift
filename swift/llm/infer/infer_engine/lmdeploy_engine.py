@@ -211,7 +211,7 @@ class LmdeployEngine(InferEngine):
                 usage_info = self._get_usage_info(len(inputs['input_ids']), output.num_token)
                 toolcall = None
                 if is_finished:
-                    toolcall = self._get_toolcall(template.decode(output.token_ids))
+                    toolcall = self._get_toolcall(template.decode(output.token_ids), template.tools_prompt)
                 finish_reason = self._get_finish_reason(generation_config.max_new_tokens, output.num_token,
                                                         output.status.name == 'FINISH')
                 choices = [
@@ -237,7 +237,7 @@ class LmdeployEngine(InferEngine):
         logprobs = self._get_logprobs(template.tokenizer, output.logprobs, output.token_ids, generation_config.logprobs)
 
         usage_info = self._get_usage_info(len(inputs['input_ids']), output.num_token)
-        toolcall = self._get_toolcall(response)
+        toolcall = self._get_toolcall(response, template.tools_prompt)
         finish_reason = self._get_finish_reason(generation_config.max_new_tokens, output.num_token,
                                                 output.status.name == 'FINISH')
         choices = [

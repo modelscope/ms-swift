@@ -1,5 +1,14 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+from dataclasses import dataclass
 from typing import Dict, List, Optional, Union
+import datetime as dt
+
+
+@dataclass
+class AgentKeyword:
+    action: str = 'Action:'
+    action_input: str = 'Action Input:'
+    observation: str = 'Observation:'
 
 
 def format_react_en(tool_names, tool_descs):
@@ -81,6 +90,51 @@ Specifically, you have access to the following APIs: {tool_list}"""
     return TOOLBENCH_PROMPT.format(tool_list='\n\n'.join(tool_descs))
 
 
+def format_qwen(tool_names, tool_descs):
+    PROMPT = '''You are a helpful assistant.
+    
+    当前时间：{date}
+    
+    # 工具
+
+    ## 你拥有如下工具：
+    
+    {tool_list}
+
+    ## 你可以在回复中插入以下命令以调用N个工具：
+    
+    {format_list}
+    '''
+    # 定义星期映射
+    weekdays = {
+        0: "星期一",
+        1: "星期二",
+        2: "星期三",
+        3: "星期四",
+        4: "星期五",
+        5: "星期六",
+        6: "星期日"
+    }
+    now = dt.datetime.now()
+    year = now.year
+    month = now.month
+    day = now.day
+    weekday = weekdays[now.weekday()]
+    formatted_date = f"{year}年{month:02d}月{day:02d}日，{weekday}"
+    PROMPT = PROMPT.replace('{date}', formatted_date)
+    tool_list = ''
+    for name, tool in zip(tool_names, tool_descs):
+        tool_list += f'### {name} \n{name}: {tool["function"]["description"]} 输入参数: {tool["function"]["parameters"]}\n'
+
+    PROMPT = PROMPT.replace('{tool_list}', tool_list)
+
+    format_list = ''
+    for i, _ in enumerate(tool_names):
+        format_list += f'✿FUNCTION✿:工具{i}的名称\n✿ARGS✿:工具{i + 1}的输入\n✿RESULT✿:工具{i + 1}的结果\n'
+    PROMPT = PROMPT.replace('{format_list}', format_list)
+    return PROMPT
+
+
 def format_custom(tool_names, tool_descs):
     PROMPT = '''你是一个人工智能助手。你的任务是针对用户的问题和要求提供适当的答复和支持。
 
@@ -95,11 +149,16 @@ def format_custom(tool_names, tool_descs):
 
 # Add your prompt here, use --tools_prompt to train
 tools_prompt = {
-    'react_en': format_react_en,
-    'react_zh': format_react_zh,
-    'glm4': format_glm4,
-    'toolbench': format_toolbench,
-    'custom': format_custom,
+    'react_en': (format_react_en, AgentKeyword().__dict__),
+    'react_zh': (format_react_zh, AgentKeyword().__dict__),
+    'glm4': (format_glm4, AgentKeyword().__dict__),
+    'toolbench': (format_toolbench, AgentKeyword().__dict__),
+    'qwen': (format_qwen, AgentKeyword(
+        action='✿FUNCTION✿:',
+        action_input='✿ARGS✿:',
+        observation='✿RESULT✿:',
+    ).__dict__),
+    'custom': (format_custom, AgentKeyword().__dict__),
 }
 
 
@@ -116,5 +175,10 @@ def get_tools_prompt(tools: List[Dict[str, Union[str, Dict]]], prompt_format: st
             print('invalid tools format, please check'
                   'https://github.com/modelscope/swift/blob/main/docs/source_en/LLM/Agent-deployment-best-practice.md')
             return None
-    prompt_format = tools_prompt.get(prompt_format) or format_toolbench
+    prompt_format = tools_prompt.get(prompt_format, (None, None))[0] or format_toolbench
     return prompt_format(tool_names, tool_descs)
+
+
+def get_tools_keyword(prompt_format: str = 'react_en') -> Dict[str, str]:
+    keyword = tools_prompt.get(prompt_format, (None, None))[1] or AgentKeyword().__dict__
+    return keyword
