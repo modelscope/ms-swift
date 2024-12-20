@@ -188,11 +188,11 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift infer --model Qwen/Qwen2-7B-Instruct
 
 After LoRA Fine-tuning:
 ```shell
-ASCEND_RT_VISIBLE_DEVICES=0 swift infer --ckpt_dir xxx/checkpoint-xxx --load_data_args true
+ASCEND_RT_VISIBLE_DEVICES=0 swift infer --adapters xxx/checkpoint-xxx --load_data_args true
 
 # Merge LoRA and infer
-ASCEND_RT_VISIBLE_DEVICES=0 swift export --ckpt_dir xx/checkpoint-xxx --merge_lora true
-ASCEND_RT_VISIBLE_DEVICES=0 swift infer --ckpt_dir xxx/checkpoint-xxx-merged --load_data_args true
+ASCEND_RT_VISIBLE_DEVICES=0 swift export --adapters xx/checkpoint-xxx --merge_lora true
+ASCEND_RT_VISIBLE_DEVICES=0 swift infer --model xxx/checkpoint-xxx-merged --load_data_args true
 ```
 
 ## Deployment
@@ -205,9 +205,9 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift deploy --model Qwen/Qwen2-7B-Instruct
 
 After LoRA Fine-tuning:
 ```shell
-ASCEND_RT_VISIBLE_DEVICES=0 swift deploy --ckpt_dir xxx/checkpoint-xxx --load_data_args true
+ASCEND_RT_VISIBLE_DEVICES=0 swift deploy --adapters xxx/checkpoint-xxx --load_data_args true
 
 # Merge LoRA and deploy
-ASCEND_RT_VISIBLE_DEVICES=0 swift export --ckpt_dir xx/checkpoint-xxx --merge_lora true
-ASCEND_RT_VISIBLE_DEVICES=0 swift deploy --ckpt_dir xxx/checkpoint-xxx-merged --load_data_args true
+ASCEND_RT_VISIBLE_DEVICES=0 swift export --adapters xx/checkpoint-xxx --merge_lora true
+ASCEND_RT_VISIBLE_DEVICES=0 swift deploy --model xxx/checkpoint-xxx-merged --load_data_args true
 ```

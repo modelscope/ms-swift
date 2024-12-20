@@ -5,7 +5,7 @@ PYTHONPATH=. \
 CUDA_VISIBLE_DEVICES=0,1 \
 accelerate launch --config_file "./examples/train/fsdp_qlora/fsdp_offload.json" \
     swift/cli/sft.py \
-    --model Qwen/Qwen2-7B-Instruct \
+    --model Qwen/Qwen2.5-7B-Instruct \
     --train_type lora \
     --dataset swift/self-cognition#1000 \
     --num_train_epochs 1 \

@@ -88,7 +88,7 @@ class SwiftEval(SwiftPipeline):
 
     def get_vlmeval_task_cfg(self, dataset: List[str], url: str):
         args = self.args
-        return {
+        task_cfg = {
             'eval_backend': 'VLMEvalKit',
             'eval_config': {
                 'data':
@@ -106,6 +106,8 @@ class SwiftEval(SwiftPipeline):
                 args.max_batch_size or 16,
             }
         }
+        task_cfg['work_dir'] = task_cfg['eval_config']['work_dir']  # compat evalscope 0.8.1
+        return task_cfg
 
 
 def eval_main(args: Union[List[str], EvalArguments, None] = None):

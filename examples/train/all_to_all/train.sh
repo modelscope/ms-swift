@@ -21,6 +21,5 @@ swift sft \
     --save_total_limit 2 \
     --logging_steps 5 \
     --max_length 1024 \
-    --max_steps 1000 \
     --weight_decay 0.1 \
     --gradient_checkpointing_kwargs '{"use_reentrant": false}'

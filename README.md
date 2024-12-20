@@ -117,6 +117,7 @@ swift sft \
     --dataset AI-ModelScope/alpaca-gpt4-data-zh#500 \
               AI-ModelScope/alpaca-gpt4-data-en#500 \
               swift/self-cognition#500 \
+    --torch_dtype bfloat16 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \
@@ -276,7 +277,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift deploy \
     --model Qwen/Qwen2.5-7B-Instruct \
-    --infer_backend pt
+    --infer_backend vllm
 ```
 
 ### Evaluation

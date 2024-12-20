@@ -43,14 +43,24 @@ class EvalArguments(DeployArguments):
         self.eval_output_dir = to_abspath(self.eval_output_dir)
         logger.info(f'eval_output_dir: {self.eval_output_dir}')
 
+    @staticmethod
+    def list_eval_dataset():
+        from evalscope.backend.opencompass import OpenCompassBackendManager
+        from evalscope.backend.vlm_eval_kit import VLMEvalKitBackendManager
+        return {
+            'opencompass': OpenCompassBackendManager.list_datasets(),
+            'vlmeval': VLMEvalKitBackendManager.list_supported_datasets()
+        }
+
     def _init_eval_dataset(self):
         if isinstance(self.eval_dataset, str):
             self.eval_dataset = [self.eval_dataset]
 
+        eval_dataset = self.list_eval_dataset()
         from evalscope.backend.opencompass import OpenCompassBackendManager
         from evalscope.backend.vlm_eval_kit import VLMEvalKitBackendManager
-        self.opencompass_dataset = set(OpenCompassBackendManager.list_datasets())
-        self.vlmeval_dataset = set(VLMEvalKitBackendManager.list_supported_datasets())
+        self.opencompass_dataset = set(eval_dataset['opencompass'])
+        self.vlmeval_dataset = set(eval_dataset['vlmeval'])
         eval_dataset_mapping = {dataset.lower(): dataset for dataset in self.opencompass_dataset | self.vlmeval_dataset}
         self.eval_dataset_oc = []
         self.eval_dataset_vlm = []
