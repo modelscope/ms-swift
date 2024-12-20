@@ -180,7 +180,7 @@ class StdTemplateInputs:
             else:
                 media_kwargs[k] = inputs_mm_data
 
-        StdTemplateInputs.messages_join_observation(messages)
+        StdTemplateInputs.messages_join_observation(messages, tools_prompt)
         return cls(messages=messages, system=system, objects=objects, agent_keyword=keyword, **kwargs, **media_kwargs)
 
     @staticmethod

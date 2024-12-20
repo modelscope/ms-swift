@@ -107,7 +107,7 @@ def format_qwen(tool_names, tool_descs):
 
 {tool_list}
 
-## 你可以在回复中插入以下命令以调用N个工具：
+## 你可以在回复中插入以下命令以调用这些工具：
 
 {format_list}
     '''
@@ -128,7 +128,7 @@ def format_qwen(tool_names, tool_descs):
 
     format_list = ''
     for i, _ in enumerate(tool_names):
-        format_list += f'✿FUNCTION✿:工具{i}的名称\n✿ARGS✿:工具{i + 1}的输入\n✿RESULT✿:工具{i + 1}的结果\n'
+        format_list += f'✿FUNCTION✿:工具{i+1}的名称\n✿ARGS✿:工具{i + 1}的输入\n✿RESULT✿:工具{i + 1}的结果\n'
     PROMPT = PROMPT.replace('{format_list}', format_list)
     return PROMPT
 
