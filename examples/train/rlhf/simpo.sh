@@ -10,7 +10,6 @@ swift rlhf \
     --num_train_epochs 1 \
     --learning_rate 1e-5 \
     --gradient_accumulation_steps $(expr 16 / $nproc_per_node) \
-    --gradient_checkpointing_kwargs '{"use_reentrant": false}' \
     --warmup_ratio 0.03 \
     --eval_steps 100 \
     --save_steps 100 \

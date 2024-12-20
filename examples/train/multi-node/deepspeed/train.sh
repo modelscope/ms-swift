@@ -11,7 +11,6 @@ deepspeed --hostfile=./examples/train/multi-node-deepspeed/host.txt \
     --lora_alpha 32 \
     --learning_rate 1e-4 \
     --gradient_accumulation_steps 16 \
-    --gradient_checkpointing_kwargs '{"use_reentrant": false}' \
     --eval_steps 100 \
     --save_steps 100 \
     --save_total_limit 2 \
