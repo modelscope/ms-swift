@@ -1,8 +1,9 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import json
 import datetime as dt
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Union
+
+import json
 
 
 @dataclass

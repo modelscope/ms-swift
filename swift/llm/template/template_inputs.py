@@ -160,7 +160,8 @@ class StdTemplateInputs:
         keyword = None
         if tools is not None:
             if system is not None:
-                logger.warning_once('You have tools prompt but you also have a system field, so the system field will be ignored')
+                logger.warning_once(
+                    'You have tools prompt but you also have a system field, so the system field will be ignored')
             if isinstance(tools, str):
                 tools = json.loads(tools)
             system = get_tools_prompt(tools, tools_prompt)
