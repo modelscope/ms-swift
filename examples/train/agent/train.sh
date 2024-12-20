@@ -19,5 +19,4 @@ swift sft \
     --save_total_limit 2 \
     --logging_steps 5 \
     --deepspeed zero3 \
-    --max_length 1024 \
-    --max_steps 1000
+    --max_length 2048

@@ -2,7 +2,7 @@
 # --streaming true is also supported
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
-    --model Qwen/Qwen2-7B-Instruct \
+    --model Qwen/Qwen2.5-7B-Instruct \
     --train_type lora \
     --packing true \
     --max_length 8192 \

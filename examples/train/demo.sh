@@ -26,3 +26,11 @@ swift sft \
     --dataloader_num_workers 4 \
     --model_author swift \
     --model_name swift-robot
+
+
+# After training, use the following command for inference.
+
+# CUDA_VISIBLE_DEVICES=0 \
+# swift infer \
+#     --adapters output/vx-xxx/checkpoint-xxx \
+#     --stream true
