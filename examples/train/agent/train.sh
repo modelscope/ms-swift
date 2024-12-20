@@ -2,8 +2,8 @@ nproc_per_node=4
 
 NPROC_PER_NODE=$nproc_per_node \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
-swift pt \
-    --model Qwen/Qwen-7B-Chat \
+swift sft \
+    --model Qwen/Qwen2.5-7B-Instruct \
     --train_type lora \
     --dataset iic/ms_agent \
     --loss_scale react \
