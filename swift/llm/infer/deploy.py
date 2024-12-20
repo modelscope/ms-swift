@@ -119,6 +119,13 @@ class SwiftDeploy(SwiftInfer):
                 self.jsonl_writer.append(data)
         return response
 
+    def _set_request_config(self, request_config) -> None:
+        default_request_config = self.args.get_request_config()
+        for key, val in asdict(request_config).items():
+            default_val = getattr(default_request_config, key)
+            if default_val is not None and (val is None or isinstance(val, (list, tuple)) and len(val) == 0):
+                setattr(request_config, key, default_val)
+
     async def create_chat_completion(self,
                                      request: ChatCompletionRequest,
                                      raw_request: Request,
@@ -135,6 +142,7 @@ class SwiftDeploy(SwiftInfer):
             infer_kwargs['adapter_request'] = adapter_request
 
         infer_request, request_config = request.parse()
+        self._set_request_config(request_config)
         request_info = {'infer_request': infer_request.to_printable()}
 
         def pre_infer_hook(kwargs):
