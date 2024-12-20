@@ -1,7 +1,6 @@
 # 14GiB * 2
 nproc_per_node=2
 
-PYTHONPATH=. \
 CUDA_VISIBLE_DEVICES=0,1 \
 accelerate launch --config_file "./examples/train/fsdp_qlora/fsdp_offload.json" \
     swift/cli/sft.py \
