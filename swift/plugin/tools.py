@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import datetime as dt
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Union
-import datetime as dt
 
 
 @dataclass
@@ -92,35 +92,27 @@ Specifically, you have access to the following APIs: {tool_list}"""
 
 def format_qwen(tool_names, tool_descs):
     PROMPT = '''You are a helpful assistant.
-    
+
     当前时间：{date}
-    
+
     # 工具
 
     ## 你拥有如下工具：
-    
+
     {tool_list}
 
     ## 你可以在回复中插入以下命令以调用N个工具：
-    
+
     {format_list}
     '''
     # 定义星期映射
-    weekdays = {
-        0: "星期一",
-        1: "星期二",
-        2: "星期三",
-        3: "星期四",
-        4: "星期五",
-        5: "星期六",
-        6: "星期日"
-    }
+    weekdays = {0: '星期一', 1: '星期二', 2: '星期三', 3: '星期四', 4: '星期五', 5: '星期六', 6: '星期日'}
     now = dt.datetime.now()
     year = now.year
     month = now.month
     day = now.day
     weekday = weekdays[now.weekday()]
-    formatted_date = f"{year}年{month:02d}月{day:02d}日，{weekday}"
+    formatted_date = f'{year}年{month:02d}月{day:02d}日，{weekday}'
     PROMPT = PROMPT.replace('{date}', formatted_date)
     tool_list = ''
     for name, tool in zip(tool_names, tool_descs):

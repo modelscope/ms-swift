@@ -239,9 +239,8 @@ class StdTemplateInputs:
             pre_message, message = messages[i - 1], messages[i]
             pre_role, pre_content = pre_message['role'], pre_message['content']
             role, content = message['role'], message['content']
-            if (pre_role == 'assistant' and role == 'tool' and isinstance(pre_content,
-                                                                         str) and
-                    pre_content.endswith(keyword.get('observation'))):
+            if (pre_role == 'assistant' and role == 'tool' and isinstance(pre_content, str)
+                    and pre_content.endswith(keyword.get('observation'))):
                 assert isinstance(pre_content, str)
                 pre_message['content'] = pre_content + content  # assistant
                 messages.pop(i)  # remove tool
