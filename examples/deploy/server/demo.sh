@@ -8,6 +8,6 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 # -H "Content-Type: application/json" \
 # -d '{
 # "model": "Qwen2.5-7B-Instruct",
-# "messages": [{"role": "user", "content": "晚上睡不着觉怎么办？"}],
+# "messages": [{"role": "user", "content": "What is your name?"}],
 # "temperature": 0
 # }'
