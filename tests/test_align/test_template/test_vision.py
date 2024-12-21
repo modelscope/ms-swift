@@ -221,7 +221,9 @@ def test_megrez_omni():
 
 
 def test_molmo():
+    # pt_engine = PtEngine('LLM-Research/Molmo-7B-O-0924')
     pt_engine = PtEngine('LLM-Research/Molmo-7B-D-0924')
+    _infer_model(pt_engine)
     response = _infer_model(pt_engine, messages=[{'role': 'user', 'content': '<image>这是什么'}])
     assert response == (
         ' This is a close-up photograph of a young kitten. '
@@ -230,6 +232,16 @@ def test_molmo():
         "It's looking directly at the camera with an alert and curious expression. "
         "The kitten's fur appears soft and fluffy, and its pink nose and white whiskers are clearly visible. "
         'The background is blurred, which emphasizes the kitten as the main subject of the image.')
+
+
+def test_molmoe():
+    pt_engine = PtEngine('LLM-Research/MolmoE-1B-0924')
+    response = _infer_model(pt_engine, messages=[{'role': 'user', 'content': '<image>这是什么'}])
+    assert response == (" This is a close-up photograph of a kitten's face. The kitten has striking blue eyes and "
+                        "a mix of white, black, and brown fur. It's looking directly at the camera with an adorable "
+                        "expression, its ears perked up and whiskers visible. The image captures the kitten's cute "
+                        'features in sharp detail, while the background is blurred, creating a soft, out-of-focus '
+                        "effect that emphasizes the young feline's charm.")
 
 
 if __name__ == '__main__':
@@ -263,4 +275,5 @@ if __name__ == '__main__':
     # test_megrez_omni()
     # test_qvq()
     # test_mplug_owl2()
-    test_molmo()
+    # test_molmo()
+    test_molmoe()

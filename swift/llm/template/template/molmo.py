@@ -19,15 +19,18 @@ class MolmoTemplate(Template):
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
         # image
-        images_inputs = self.processor.process(images=inputs.images, text='')
+        images_inputs = self.processor.process(images=inputs.images or None, text='')
         images_input_ids = images_inputs.pop('input_ids').tolist()
-        idx = findall(images_input_ids, 2657)
+        user_token = self._tokenize(' User')
+        assert len(user_token) == 1
+        idx = findall(images_input_ids, user_token[0])
         assert len(idx) == 1
         labels = encoded['labels']
         encoded['input_ids'] = images_input_ids[:idx[0]] + encoded['input_ids']
         if labels:
             encoded['labels'] = [-100] * idx[0] + labels
-        images_inputs['images'] = images_inputs['images'].to(self.config.torch_dtype)
+        if 'images' in images_inputs:
+            images_inputs['images'] = images_inputs['images'].to(self.config.torch_dtype)
         encoded.update(images_inputs)
         return encoded
 
