@@ -607,10 +607,9 @@ class Template(ProcessorMixin):
             for key, _slice in zip(['prompt', 'answer'],
                                    [slice(0, total_len - answer_len),
                                     slice(total_len - answer_len, total_len)]):
-                res_context_list, loss_scale_list = self._simplify_context_list(res_context_list[_slice],
-                                                                                loss_scale_list[_slice], inputs)
-                input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(
-                    res_context_list, loss_scale_list)
+                context_list, loss_scale = self._simplify_context_list(res_context_list[_slice],
+                                                                       loss_scale_list[_slice], inputs)
+                input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(context_list, loss_scale)
                 encoded[f'{key}_input_ids'] = input_ids
                 if key == 'answer':
                     encoded['labels'] = labels

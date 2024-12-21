@@ -108,6 +108,8 @@ def test_llava_hf():
 
 def test_florence():
     pt_engine = PtEngine('AI-ModelScope/Florence-2-base-ft')
+    _infer_model(pt_engine, messages=[{'role': 'user', 'content': 'who are you?'}], images=[])
+
     _infer_model(
         pt_engine,
         messages=[{
@@ -265,7 +267,7 @@ if __name__ == '__main__':
     # test_pixtral()
     # test_llama_vision()
     # test_llava_hf()
-    # test_florence()
+    test_florence()
     # test_glm_edge_v()
     #
     # test_phi3_vision()
@@ -276,4 +278,4 @@ if __name__ == '__main__':
     # test_qvq()
     # test_mplug_owl2()
     # test_molmo()
-    test_molmoe()
+    # test_molmoe()
