@@ -168,10 +168,10 @@ class PtEngine(InferEngine):
         if generation_config.output_logits:
             generate_kwargs['logits_processor'] = LogitsProcessorList([LogitsStreamer()])
 
-        def _model_generate(*args, **kwargs):
+        def _model_generate(**kwargs):
             if is_torch_npu_available():
                 torch.npu.set_device(self.model.device)
-            self.model.generate(*args, **kwargs)
+            template.generate(self.model, **kwargs)
 
         generate_kwargs = template.prepare_generate_kwargs(generate_kwargs, model=self.model)
         thread = Thread(target=_model_generate, kwargs=generate_kwargs)
@@ -269,7 +269,7 @@ class PtEngine(InferEngine):
         num_prompt_tokens = self._get_num_tokens(inputs)
 
         generate_kwargs = template.prepare_generate_kwargs(generate_kwargs, model=self.model)
-        output = dict(self.model.generate(**generate_kwargs))
+        output = dict(template.generate(self.model, **generate_kwargs))
         output.pop('past_key_values', None)
         batched_generate_ids = output['sequences']
         batched_generate_ids = template.get_generate_ids(batched_generate_ids, num_prompt_tokens)

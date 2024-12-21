@@ -157,7 +157,9 @@ def test_deepseek_vl2():
 
 
 def test_mplug_owl2():
-    pass
+    # pt_engine = PtEngine('iic/mPLUG-Owl2')
+    pt_engine = PtEngine('iic/mPLUG-Owl2.1')
+    _infer_model(pt_engine, messages=[{'role': 'user', 'content': '<image>这是什么'}])
 
 
 def test_mplug_owl3():
@@ -247,4 +249,5 @@ if __name__ == '__main__':
     # test_mplug_owl3()
     # test_xcomposer2_5()
     # test_megrez_omni()
-    test_qvq()
+    # test_qvq()
+    test_mplug_owl2()
