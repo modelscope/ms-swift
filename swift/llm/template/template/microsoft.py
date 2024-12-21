@@ -3,7 +3,6 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional
 
 import json
-import torch.nn.functional as F
 from torch import nn
 
 from ..base import Template
@@ -14,8 +13,8 @@ from ..utils import Context, Prompt, findall
 
 
 class FlorenceTemplate(Template):
-    # loss_scale = 'last_round'
-    # skip_prompt = False
+    # If it's an encoder-decoder architecture, the default settings are
+    # loss_scale: 'last_round' and skip_prompt: False.
     is_encoder_decoder = True
 
     @staticmethod
@@ -65,7 +64,8 @@ class FlorenceTemplate(Template):
         pixel_values = inputs.get('pixel_values')
         if pixel_values is not None:
             image_features = model._encode_image(pixel_values)
-            inputs_embeds, inputs['attention_mask'] = model._merge_input_ids_with_image_features(image_features, inputs_embeds)
+            inputs_embeds, inputs['attention_mask'] = model._merge_input_ids_with_image_features(
+                image_features, inputs_embeds)
         return {'inputs_embeds': inputs_embeds}
 
     def decode(self, generate_ids: List[int], **kwargs) -> Any:
