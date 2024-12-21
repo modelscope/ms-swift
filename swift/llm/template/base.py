@@ -232,6 +232,9 @@ class Template(ProcessorMixin):
         tokenizer_kwargs = tokenizer_kwargs or {}
         return self._skip_stop_decode(generate_ids, is_finished, **tokenizer_kwargs)
 
+    def generate(self, model, *args, **kwargs):
+        return model.generate(*args, **kwargs)
+
     def _skip_stop_decode(self, generate_ids: List[int], is_finished: bool, **decode_kwargs) -> Any:
         # Do not print template_meta.suffix[-1] and eos_token.
         # However, other stop_words will be printed.

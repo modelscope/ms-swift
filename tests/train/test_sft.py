@@ -42,15 +42,15 @@ def test_unsloth():
 
 def test_mllm_mp():
     os.environ['MAX_PIXELS'] = '100352'
-    os.environ['SIZE_FACTOR'] = '12'
     os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
     from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
     result = sft_main(
         TrainArguments(
-            model='Qwen/QVQ-72B-Preview',
+            model='Qwen/Qwen2-VL-2B-Instruct',
             dataset=['modelscope/coco_2014_caption:validation#20', 'AI-ModelScope/alpaca-gpt4-data-en#20'],
             train_type='lora',
             target_modules=['all-linear'],
+            freeze_aligner=False,
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
     infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_data_args=True, merge_lora=True))
@@ -204,9 +204,16 @@ def test_resume_from_checkpoint():
             model='Qwen/Qwen2-0.5B',
             dataset=['AI-ModelScope/alpaca-gpt4-data-zh#100', 'AI-ModelScope/alpaca-gpt4-data-en#100'],
             max_steps=5,
+            streaming=True,
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
-    result = sft_main(TrainArguments(resume_from_checkpoint=last_model_checkpoint, load_data_args=True, max_steps=10))
+    result = sft_main(
+        TrainArguments(
+            resume_from_checkpoint=last_model_checkpoint,
+            streaming=True,
+            load_data_args=True,
+            max_steps=10,
+        ))
     last_model_checkpoint = result['last_model_checkpoint']
     infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True))
 

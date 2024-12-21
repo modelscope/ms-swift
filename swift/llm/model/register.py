@@ -313,17 +313,17 @@ def _check_torch_dtype(torch_dtype: torch.dtype):
 
 def get_default_torch_dtype(torch_dtype: Optional[torch.dtype]):
     # torch_dtype: torch_dtype in config.json
+    if torch_dtype is not None:
+        return torch_dtype
+
     if is_torch_cuda_available() or is_torch_npu_available():
         if is_torch_bf16_gpu_available():
-            if torch_dtype in {torch.float16, torch.bfloat16}:
-                res = torch_dtype
-            else:
-                res = torch.bfloat16
+            return torch.bfloat16
         else:
-            res = torch.float16
+            return torch.float16
     else:
         # cpu
-        res = torch.float32
+        return torch.float32
     return res
 
 

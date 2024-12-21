@@ -488,7 +488,7 @@ register_model_arch(
         MLLMModelArch.molmo,
         language_model='model.transformer',
         vision_tower='model.vision_backbone',
-    ))
+        aligner='model.vision_backbone.image_projector'))
 
 register_model_arch(
     MultiModelKeys(
