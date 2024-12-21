@@ -220,6 +220,18 @@ def test_megrez_omni():
                         '没有阴影或明亮的阳光表明这不是正午时分，也没有雨滴或雪花的迹象，这可能意味着不是下雨或下雪的日子。')
 
 
+def test_molmo():
+    pt_engine = PtEngine('LLM-Research/Molmo-7B-D-0924')
+    response = _infer_model(pt_engine, messages=[{'role': 'user', 'content': '<image>这是什么'}])
+    assert response == (
+        ' This is a close-up photograph of a young kitten. '
+        'The kitten has striking blue eyes and a mix of white and black fur, '
+        'with distinctive black stripes on its head and face. '
+        "It's looking directly at the camera with an alert and curious expression. "
+        "The kitten's fur appears soft and fluffy, and its pink nose and white whiskers are clearly visible. "
+        'The background is blurred, which emphasizes the kitten as the main subject of the image.')
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig, get_template
     from swift.utils import get_logger, seed_everything
@@ -250,4 +262,5 @@ if __name__ == '__main__':
     # test_xcomposer2_5()
     # test_megrez_omni()
     # test_qvq()
-    test_mplug_owl2()
+    # test_mplug_owl2()
+    test_molmo()
