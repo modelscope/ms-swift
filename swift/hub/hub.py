@@ -101,7 +101,7 @@ class HubOperation:
                        model_id_or_path: Optional[str] = None,
                        revision: Optional[str] = None,
                        download_model: bool = True,
-                       ignore_file_pattern: Optional[List[str]] = None,
+                       ignore_patterns: Optional[List[str]] = None,
                        **kwargs):
         """Download model from the hub
 
@@ -110,7 +110,7 @@ class HubOperation:
             revision: The model revision
             download_model: Whether downloading bin/safetensors files, this is usually useful when only
                 using tokenizer
-            ignore_file_pattern: Custom ignore pattern
+            ignore_patterns: Custom ignore pattern
             **kwargs:
 
         Returns:
@@ -273,7 +273,7 @@ class MSHub(HubOperation):
             token or cls.ms_token,
             private,
             commit_message=commit_message,
-            ignore_file_pattern=ignore_patterns,
+            ignore_patterns=ignore_patterns,
             revision=revision,
             tag=path_in_repo)
 
@@ -304,7 +304,7 @@ class MSHub(HubOperation):
     def download_model(cls,
                        model_id_or_path: Optional[str] = None,
                        revision: Optional[str] = None,
-                       ignore_file_pattern: Optional[List[str]] = None,
+                       ignore_patterns: Optional[List[str]] = None,
                        token: Optional[str] = None,
                        **kwargs):
         cls.try_login(token)
@@ -312,7 +312,7 @@ class MSHub(HubOperation):
             revision = 'master'
         logger.info(f'Downloading the model from ModelScope Hub, model_id: {model_id_or_path}')
         from modelscope import snapshot_download
-        return snapshot_download(model_id_or_path, revision, ignore_file_pattern=ignore_file_pattern, **kwargs)
+        return snapshot_download(model_id_or_path, revision, ignore_patterns=ignore_patterns, **kwargs)
 
     @staticmethod
     def add_patterns_to_file(repo,
@@ -434,7 +434,7 @@ class HFHub(HubOperation):
     def download_model(cls,
                        model_id_or_path: Optional[str] = None,
                        revision: Optional[str] = None,
-                       ignore_file_pattern: Optional[List[str]] = None,
+                       ignore_patterns: Optional[List[str]] = None,
                        **kwargs):
         if revision is None or revision == 'master':
             revision = 'main'
@@ -445,7 +445,7 @@ class HFHub(HubOperation):
             _snapshot_download.HF_HUB_ENABLE_HF_TRANSFER = True
         from huggingface_hub import snapshot_download
         return snapshot_download(
-            model_id_or_path, repo_type='model', revision=revision, ignore_patterns=ignore_file_pattern, **kwargs)
+            model_id_or_path, repo_type='model', revision=revision, ignore_patterns=ignore_patterns, **kwargs)
 
 
 def get_hub(use_hf: Optional[bool] = None):

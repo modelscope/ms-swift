@@ -37,7 +37,7 @@ class ModelGroup:
     models: List[Model]
 
     # Higher priority. If set to None, the attributes of the ModelMeta will be used.
-    ignore_file_pattern: Optional[List[str]] = None
+    ignore_patterns: Optional[List[str]] = None
     requires: Optional[List[str]] = None
     tags: List[str] = field(default_factory=list)
 
@@ -63,7 +63,7 @@ class ModelMeta:
     torch_dtype: Optional[torch.dtype] = None
 
     # File patterns to ignore when downloading the model.
-    ignore_file_pattern: List[str] = field(default_factory=list)
+    ignore_patterns: List[str] = field(default_factory=list)
     # Usually specifies the version limits of transformers.
     requires: List[str] = field(default_factory=list)
     tags: List[str] = field(default_factory=list)
@@ -413,7 +413,7 @@ def get_model_info_meta(
         revision=revision,
         download_model=download_model,
         use_hf=use_hf,
-        ignore_file_pattern=getattr(model_meta, 'ignore_file_pattern', None),
+        ignore_patterns=getattr(model_meta, 'ignore_patterns', None),
         hub_token=hub_token)
 
     model_type = model_type or getattr(model_meta, 'model_type', None)

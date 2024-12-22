@@ -221,7 +221,7 @@ def safe_snapshot_download(model_id_or_path: str,
                            download_model: bool = True,
                            use_hf: Optional[bool] = None,
                            hub_token: Optional[str] = None,
-                           ignore_file_pattern: Optional[List[str]] = None,
+                           ignore_patterns: Optional[List[str]] = None,
                            **kwargs) -> str:
     """Download model protected by DDP context
 
@@ -234,14 +234,14 @@ def safe_snapshot_download(model_id_or_path: str,
     Returns:
         model_dir
     """
-    if ignore_file_pattern is None:
-        ignore_file_pattern = []
-    ignore_file_pattern += [
-        '*.zip', '*.gguf', '*.pth', '*.pt', 'consolidated*', 'onnx', '*.safetensors.md', '*.msgpack', '*.onnx', '*.ot',
-        '*.h5'
+    if ignore_patterns is None:
+        ignore_patterns = []
+    ignore_patterns += [
+        '*.zip', '*.gguf', '*.pth', '*.pt', 'consolidated*', 'onnx/*', '*.safetensors.md', '*.msgpack', '*.onnx',
+        '*.ot', '*.h5'
     ]
     if not download_model:
-        ignore_file_pattern += ['*.bin', '*.safetensors']
+        ignore_patterns += ['*.bin', '*.safetensors']
     hub = get_hub(use_hf)
     if model_id_or_path.startswith('~'):
         model_id_or_path = os.path.abspath(os.path.expanduser(model_id_or_path))
@@ -256,7 +256,9 @@ def safe_snapshot_download(model_id_or_path: str,
             if len(model_id_or_path) == 1:
                 model_id_or_path = [model_id_or_path[0], None]
             model_id_or_path, sub_folder = model_id_or_path
-            model_dir = hub.download_model(model_id_or_path, revision, ignore_file_pattern, token=hub_token, **kwargs)
+            if sub_folder is not None:
+                kwargs['allow_patterns'] = [f"{sub_folder.rstrip('/')}/*"]
+            model_dir = hub.download_model(model_id_or_path, revision, ignore_patterns, token=hub_token, **kwargs)
 
         logger.info(f'Loading the model using model_dir: {model_dir}')
 

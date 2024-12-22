@@ -201,6 +201,15 @@ def test_internvl2_5():
     _infer_model(pt_engine, system='你是书生·万象，英文名是InternVL，是由上海人工智能实验室、清华大学及多家合作单位联合开发的多模态大语言模型。')
 
 
+def test_internvl2_5_mpo():
+    pt_engine = PtEngine('OpenGVLab/InternVL2_5-1B-MPO', model_type='internvl2_5')
+    response = _infer_model(pt_engine, messages=[{'role': 'user', 'content': 'Hello, who are you?'}], images=[])
+    assert response == ("Hello! I'm an AI assistant whose name is InternVL, developed jointly by Shanghai AI Lab, "
+                        'Tsinghua University and other partners.')
+    response2 = _infer_model(pt_engine, messages=[{'role': 'user', 'content': '<image>这是什么'}])
+    assert response2 == ('这是一只小猫的特写照片。照片中的小猫有大大的蓝色眼睛和毛发，看起来非常可爱。这种照片通常用于展示宠物的可爱瞬间。')
+
+
 def test_megrez_omni():
     pt_engine = PtEngine('InfiniAI/Megrez-3B-Omni')
     _infer_model(pt_engine)
@@ -267,11 +276,12 @@ if __name__ == '__main__':
     # test_pixtral()
     # test_llama_vision()
     # test_llava_hf()
-    test_florence()
+    # test_florence()
     # test_glm_edge_v()
     #
     # test_phi3_vision()
     # test_internvl2_5()
+    test_internvl2_5_mpo()
     # test_mplug_owl3()
     # test_xcomposer2_5()
     # test_megrez_omni()
