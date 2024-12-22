@@ -3,6 +3,12 @@ from typing import Any, List
 from swift.llm import MODEL_MAPPING, TEMPLATE_MAPPING, ModelType, TemplateType
 
 
+def get_url_suffix(model_id):
+    if ':' in model_id:
+        return model_id.split(':')[0]
+    return model_id
+
+
 def get_model_info_table():
     fpaths = ['docs/source/Instruction/支持的模型和数据集.md', 'docs/source_en/Instruction/Supported-models-and-datasets.md']
     end_words = [['### 多模态大模型', '## 数据集'], ['### Multimodal large models', '## Datasets']]
@@ -26,11 +32,11 @@ def get_model_info_table():
                 ms_model_id = model.ms_model_id
                 hf_model_id = model.hf_model_id
                 if ms_model_id:
-                    ms_model_id = f'[{ms_model_id}](https://modelscope.cn/models/{ms_model_id})'
+                    ms_model_id = f'[{ms_model_id}](https://modelscope.cn/models/{get_url_suffix(ms_model_id)})'
                 else:
                     ms_model_id = '-'
                 if hf_model_id:
-                    hf_model_id = f'[{hf_model_id}](https://huggingface.co/{hf_model_id})'
+                    hf_model_id = f'[{hf_model_id}](https://huggingface.co/{get_url_suffix(hf_model_id)})'
                 else:
                     hf_model_id = '-'
                 tags = ', '.join(group.tags or model_meta.tags) or '-'
