@@ -187,6 +187,7 @@ class DocOwl2Template(Template):
         encoded = super()._encode(inputs)
         if inputs.images:
             image_tensor, patch_positions, _ = self.processor._process_image(inputs.images)
+            image_tensor = image_tensor.to(self.config.torch_dtype)
             encoded.update({'images': image_tensor, 'patch_positions': patch_positions})
         return encoded
 
