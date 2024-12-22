@@ -177,7 +177,24 @@ register_model(
                 Model('OpenGVLab/InternVL2-40B-AWQ', 'OpenGVLab/InternVL2-40B-AWQ'),
                 Model('OpenGVLab/InternVL2-Llama3-76B-AWQ', 'OpenGVLab/InternVL2-Llama3-76B-AWQ'),
             ]),
-            ModelGroup([Model('OpenGVLab/InternVL2-8B-MPO', 'OpenGVLab/InternVL2-8B-MPO')])
+            ModelGroup([Model('OpenGVLab/InternVL2-8B-MPO', 'OpenGVLab/InternVL2-8B-MPO')]),
+            # pretrain
+            ModelGroup([
+                Model('OpenGVLab/InternVL2-Pretrain-Models:InternVL2-1B-Pretrain',
+                      'OpenGVLab/InternVL2-Pretrain-Models:InternVL2-1B-Pretrain'),
+                Model('OpenGVLab/InternVL2-Pretrain-Models:InternVL2-2B-Pretrain',
+                      'OpenGVLab/InternVL2-Pretrain-Models:InternVL2-2B-Pretrain'),
+                Model('OpenGVLab/InternVL2-Pretrain-Models:InternVL2-4B-Pretrain',
+                      'OpenGVLab/InternVL2-Pretrain-Models:InternVL2-4B-Pretrain'),
+                Model('OpenGVLab/InternVL2-Pretrain-Models:InternVL2-8B-Pretrain',
+                      'OpenGVLab/InternVL2-Pretrain-Models:InternVL2-8B-Pretrain'),
+                Model('OpenGVLab/InternVL2-Pretrain-Models:InternVL2-26B-Pretrain',
+                      'OpenGVLab/InternVL2-Pretrain-Models:InternVL2-26B-Pretrain'),
+                Model('OpenGVLab/InternVL2-Pretrain-Models:InternVL2-40B-Pretrain',
+                      'OpenGVLab/InternVL2-Pretrain-Models:InternVL2-40B-Pretrain'),
+                Model('OpenGVLab/InternVL2-Pretrain-Models:InternVL2-Llama3-76B-Pretrain',
+                      'OpenGVLab/InternVL2-Pretrain-Models:InternVL2-Llama3-76B-Pretrain'),
+            ])
         ],
         TemplateType.internvl2,
         get_model_tokenizer_internvl,

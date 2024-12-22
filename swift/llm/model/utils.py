@@ -237,8 +237,8 @@ def safe_snapshot_download(model_id_or_path: str,
     if ignore_patterns is None:
         ignore_patterns = []
     ignore_patterns += [
-        '*.zip', '*.gguf', '*.pth', '*.pt', 'consolidated*', 'onnx', '*.safetensors.md', '*.msgpack', '*.onnx', '*.ot',
-        '*.h5'
+        '*.zip', '*.gguf', '*.pth', '*.pt', 'consolidated*', 'onnx/*', '*.safetensors.md', '*.msgpack', '*.onnx',
+        '*.ot', '*.h5'
     ]
     if not download_model:
         ignore_patterns += ['*.bin', '*.safetensors']
@@ -256,6 +256,8 @@ def safe_snapshot_download(model_id_or_path: str,
             if len(model_id_or_path) == 1:
                 model_id_or_path = [model_id_or_path[0], None]
             model_id_or_path, sub_folder = model_id_or_path
+            if sub_folder is not None:
+                kwargs['allow_patterns'] = [f"{sub_folder.rstrip('/')}/*"]
             model_dir = hub.download_model(model_id_or_path, revision, ignore_patterns, token=hub_token, **kwargs)
 
         logger.info(f'Loading the model using model_dir: {model_dir}')
