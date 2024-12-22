@@ -18,7 +18,8 @@ def _infer_model(pt_engine, system=None, messages=None, videos=None, max_tokens=
         resp = pt_engine.infer([{'messages': messages}], request_config=request_config)
         response = resp[0].choices[0].message.content
         messages += [{'role': 'assistant', 'content': response}, {'role': 'user', 'content': '<video>描述视频'}]
-    videos = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4']
+    if videos is None:
+        videos = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4']
     resp = pt_engine.infer([{'messages': messages, 'videos': videos}], request_config=request_config)
     response = resp[0].choices[0].message.content
     messages += [{'role': 'assistant', 'content': response}]
@@ -42,6 +43,13 @@ def test_internvl2_5():
     _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     _infer_model(pt_engine, system='你是书生·万象，英文名是InternVL，是由上海人工智能实验室、清华大学及多家合作单位联合开发的多模态大语言模型。')
+
+
+def test_internvl2_5_mpo():
+    pt_engine = PtEngine('OpenGVLab/InternVL2_5-1B-MPO', model_type='internvl2_5')
+    response = _infer_model(pt_engine, messages=[{'role': 'user', 'content': '<video>这是什么'}])
+    assert response == ('这是一段婴儿在阅读的视频。婴儿穿着浅绿色的上衣和粉色的裤子，戴着黑框眼镜，坐在床上，正在翻阅一本打开的书。'
+                        '背景中可以看到婴儿床、衣物和一些家具。视频中可以看到“clipo.com”的水印。婴儿看起来非常专注，似乎在认真地阅读。')
 
 
 def test_xcomposer2_5():
@@ -73,4 +81,5 @@ if __name__ == '__main__':
     logger = get_logger()
     # test_qwen2_vl()
     # test_internvl2_5()
-    test_xcomposer2_5()
+    # test_xcomposer2_5()
+    test_internvl2_5_mpo()
