@@ -974,7 +974,12 @@ class Template(ProcessorMixin):
         return torch.stack(padded_sequences)
 
     def safe_decode(self, input_ids: List[int], **tokenizer_kwargs) -> str:
-        placeholder_tokens = self.template_meta.placeholder_tokens
+        if isinstance(self, Template):
+            tokenizer = self.tokenizer
+            placeholder_tokens = self.template_meta.placeholder_tokens
+        else:
+            tokenizer = self
+            placeholder_tokens = []
 
         def _is_special(token: int) -> bool:
             if isinstance(token, float) or token < 0:
@@ -995,12 +1000,12 @@ class Template(ProcessorMixin):
                 continue
             if _is_special(input_ids[i]) and not _is_special(input_ids[i - 1]):
                 s = i
-                result_str += self.tokenizer.decode(input_ids[e:s], **tokenizer_kwargs)
+                result_str += tokenizer.decode(input_ids[e:s], **tokenizer_kwargs)
             if not _is_special(input_ids[i]) and _is_special(input_ids[i - 1]):
                 e = i
                 result_str += f'[{input_ids[i - 1]} * {e - s}]'
         if _is_special(input_ids[i]):
             result_str += f'[{input_ids[i]} * {len(input_ids) - s}]'
         else:
-            result_str += self.tokenizer.decode(input_ids[e:], **tokenizer_kwargs)
+            result_str += tokenizer.decode(input_ids[e:], **tokenizer_kwargs)
         return result_str
