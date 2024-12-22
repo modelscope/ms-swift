@@ -197,7 +197,7 @@ class DocOwl2Template(Template):
         for key in keys:
             val = res.get(key)
             if val:
-                res[key] = torch.concat(val)
+                res[key] = torch.concat([v for v in val if v is not None])
         res.update(super()._data_collator(batch, padding_to=padding_to))
         return res
 

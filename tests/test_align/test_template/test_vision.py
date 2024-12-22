@@ -257,6 +257,7 @@ def test_molmoe():
 
 def test_doc_owl2():
     pt_engine = PtEngine('iic/DocOwl2', torch_dtype=torch.float16)
+    response = _infer_model(pt_engine, messages=[{'role': 'user', 'content': '你是谁'}], images=[])
     images = [
         'https://modelscope.cn/models/iic/DocOwl2/resolve/master/examples/docowl2_page0.png',
         'https://modelscope.cn/models/iic/DocOwl2/resolve/master/examples/docowl2_page1.png',
