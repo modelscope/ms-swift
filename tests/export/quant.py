@@ -24,7 +24,7 @@ def test_vlm_quant(quant_method: Literal['gptq', 'awq'] = 'awq'):
             quant_method=quant_method))
 
 
-def test_vlm_quant_audio(quant_method: Literal['gptq', 'awq'] = 'awq'):
+def test_audio_quant(quant_method: Literal['gptq', 'awq'] = 'awq'):
     from swift.llm import export_main, ExportArguments
     export_main(
         ExportArguments(
@@ -44,5 +44,5 @@ def test_vlm_bnb_quant():
 if __name__ == '__main__':
     # test_llm_quant('gptq')
     # test_vlm_quant('gptq')
-    test_vlm_quant_audio('gptq')
+    test_audio_quant('gptq')
     # test_vlm_bnb_quant()
