@@ -4,7 +4,7 @@ import re
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
-
+import platform
 import torch
 from peft import PeftModel
 from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer, GenerationConfig, PretrainedConfig,
@@ -336,6 +336,8 @@ def get_model_name(model_id_or_path: str) -> Optional[str]:
         model_name = match_.group(1)
     else:
         model_name = model_id_or_path.rsplit('/', 1)[-1]
+        if platform.system().lower() == 'windows':
+            model_name = model_name.rsplit('\\', 1)[-1]
     # compat modelscope snapshot_download
     model_name = model_name.replace('___', '.')
     return model_name
