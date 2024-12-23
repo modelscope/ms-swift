@@ -1,10 +1,11 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
+import platform
 import re
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
-import platform
+
 import torch
 from peft import PeftModel
 from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer, GenerationConfig, PretrainedConfig,
