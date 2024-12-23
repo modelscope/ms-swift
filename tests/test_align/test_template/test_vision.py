@@ -183,6 +183,11 @@ def test_paligemma():
     pt_engine = PtEngine('AI-ModelScope/paligemma-3b-pt-224')
     _infer_model(pt_engine, messages=[{'role': 'user', 'content': 'caption en'}])
 
+def test_paligemma2():
+    pt_engine = PtEngine('AI-ModelScope/paligemma2-3b-pt-224')
+    response = _infer_model(pt_engine, messages=[{'role': 'user', 'content': 'caption en'}])
+    assert response == 'the world of the cat'
+
 
 def test_pixtral():
     pt_engine = PtEngine('AI-ModelScope/pixtral-12b')
@@ -299,6 +304,7 @@ if __name__ == '__main__':
     # test_minicpmv()
     # test_got_ocr()
     # test_paligemma()
+    test_paligemma2()
     # test_pixtral()
     # test_llama_vision()
     # test_llava_hf()
@@ -314,4 +320,4 @@ if __name__ == '__main__':
     # test_mplug_owl2()
     # test_molmo()
     # test_molmoe()
-    test_doc_owl2()
+    # test_doc_owl2()
