@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
+import platform
 import re
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
@@ -333,9 +334,11 @@ def get_model_name(model_id_or_path: str) -> Optional[str]:
     model_id_or_path = model_id_or_path.rstrip('/')
     match_ = re.search('/models--.+?--(.+?)/snapshots/', model_id_or_path)
     if match_ is not None:
-        model_name = match_.group(1)
-    else:
-        model_name = model_id_or_path.rsplit('/', 1)[-1]
+        return match_.group(1)
+
+    model_name = model_id_or_path.rsplit('/', 1)[-1]
+    if platform.system().lower() == 'windows':
+        model_name = model_name.rsplit('\\', 1)[-1]
     # compat modelscope snapshot_download
     model_name = model_name.replace('___', '.')
     return model_name
