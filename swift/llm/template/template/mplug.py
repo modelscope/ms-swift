@@ -174,3 +174,40 @@ class mPlugOwl3TemplateMeta(QwenTemplateMeta):
 register_template(mPlugOwl3TemplateMeta(MLLMTemplateType.mplug_owl3, template_cls=mPlugOwl3Template))
 
 register_template(mPlugOwl3TemplateMeta(MLLMTemplateType.mplug_owl3_241101, template_cls=mPlugOwl3_241101Template))
+
+
+class DocOwl2Template(Template):
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    inputs: StdTemplateInputs) -> List[Context]:
+        if media_type == 'image':
+            return [f'<img {index + 1}>', [-200]]
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded = super()._encode(inputs)
+        if inputs.images:
+            image_tensor, patch_positions, _ = self.processor._process_image(inputs.images)
+            image_tensor = image_tensor.to(self.config.torch_dtype)
+            encoded.update({'images': image_tensor, 'patch_positions': patch_positions})
+        return encoded
+
+    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        keys = ['images', 'patch_positions']
+        res = self.fetch_inputs(batch, keys)
+        for key in keys:
+            val = res.get(key)
+            if val:
+                res[key] = torch.concat([v for v in val if v is not None])
+        res.update(super()._data_collator(batch, padding_to=padding_to))
+        return res
+
+
+register_template(
+    TemplateMeta(
+        MLLMTemplateType.doc_owl2,
+        prefix=['<s>'],
+        prompt=[' USER: {{QUERY}} ASSISTANT:'],
+        chat_sep=['</s>'],
+        suffix=['</s>'],
+        template_cls=DocOwl2Template,
+    ))

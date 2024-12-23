@@ -49,6 +49,7 @@ class MLLMModelArch:
     mplug_owl2 = 'mplug_owl2'
     mplug_owl2_1 = 'mplug_owl2_1'
     mplug_owl3 = 'mplug_owl3'
+    doc_owl2 = 'doc_owl2'
 
     phi3v = 'phi3v'
     florence = 'florence'
@@ -352,6 +353,14 @@ register_model_arch(
         language_model='language_model',
         aligner='vision2text_model',
         vision_tower='vision_model',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.doc_owl2,
+        language_model='model.layers',
+        aligner=['model.vision2text', 'model.hr_compressor'],
+        vision_tower='model.vision_model',
     ))
 
 register_model_arch(

@@ -587,6 +587,7 @@ The table below introduces the models integrated with ms-swift:
 |[iic/mPLUG-Owl3-2B-241014](https://modelscope.cn/models/iic/mPLUG-Owl3-2B-241014)|mplug_owl3|mplug_owl3|transformers>=4.36, icecream, decord|vision, video|[mPLUG/mPLUG-Owl3-2B-241014](https://huggingface.co/mPLUG/mPLUG-Owl3-2B-241014)|
 |[iic/mPLUG-Owl3-7B-240728](https://modelscope.cn/models/iic/mPLUG-Owl3-7B-240728)|mplug_owl3|mplug_owl3|transformers>=4.36, icecream, decord|vision, video|[mPLUG/mPLUG-Owl3-7B-240728](https://huggingface.co/mPLUG/mPLUG-Owl3-7B-240728)|
 |[iic/mPLUG-Owl3-7B-241101](https://modelscope.cn/models/iic/mPLUG-Owl3-7B-241101)|mplug_owl3_241101|mplug_owl3_241101|transformers>=4.36, icecream|vision, video|[mPLUG/mPLUG-Owl3-7B-241101](https://huggingface.co/mPLUG/mPLUG-Owl3-7B-241101)|
+|[iic/DocOwl2](https://modelscope.cn/models/iic/DocOwl2)|doc_owl2|doc_owl2|transformers>=4.36, icecream|vision|[mPLUG/DocOwl2](https://huggingface.co/mPLUG/DocOwl2)|
 |[BAAI/Emu3-Gen](https://modelscope.cn/models/BAAI/Emu3-Gen)|emu3_gen|emu3_gen|-|t2i|[BAAI/Emu3-Gen](https://huggingface.co/BAAI/Emu3-Gen)|
 |[BAAI/Emu3-Chat](https://modelscope.cn/models/BAAI/Emu3-Chat)|emu3_chat|emu3_chat|transformers>=4.44.0|vision|[BAAI/Emu3-Chat](https://huggingface.co/BAAI/Emu3-Chat)|
 |[stepfun-ai/GOT-OCR2_0](https://modelscope.cn/models/stepfun-ai/GOT-OCR2_0)|got_ocr2|got_ocr2|-|vision|[stepfun-ai/GOT-OCR2_0](https://huggingface.co/stepfun-ai/GOT-OCR2_0)|

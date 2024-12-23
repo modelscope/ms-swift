@@ -255,6 +255,32 @@ def test_molmoe():
                         "effect that emphasizes the young feline's charm.")
 
 
+def test_doc_owl2():
+    pt_engine = PtEngine('iic/DocOwl2', torch_dtype=torch.float16)
+    response = _infer_model(pt_engine, messages=[{'role': 'user', 'content': '你是谁'}], images=[])
+    images = [
+        'https://modelscope.cn/models/iic/DocOwl2/resolve/master/examples/docowl2_page0.png',
+        'https://modelscope.cn/models/iic/DocOwl2/resolve/master/examples/docowl2_page1.png',
+        'https://modelscope.cn/models/iic/DocOwl2/resolve/master/examples/docowl2_page2.png',
+        'https://modelscope.cn/models/iic/DocOwl2/resolve/master/examples/docowl2_page3.png',
+        'https://modelscope.cn/models/iic/DocOwl2/resolve/master/examples/docowl2_page4.png',
+        'https://modelscope.cn/models/iic/DocOwl2/resolve/master/examples/docowl2_page5.png',
+    ]
+    response = _infer_model(
+        pt_engine,
+        messages=[{
+            'role': 'user',
+            'content': '<image>' * len(images) + 'what is this paper about? provide detailed information.'
+        }],
+        images=images)
+    assert response == (
+        'This paper is about multimodal Language Models(MLMs) achieving promising OCR-free '
+        'Document Understanding by performing understanding by the cost of generating thorough sands of visual '
+        'tokens for a single document image, leading to excessive GPU computation time. The paper also discusses '
+        'the challenges and limitations of existing multimodal OCR approaches and proposes a new framework for '
+        'more efficient and accurate OCR-free document understanding.')
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig, get_template
     from swift.utils import get_logger, seed_everything
@@ -278,10 +304,9 @@ if __name__ == '__main__':
     # test_llava_hf()
     # test_florence()
     # test_glm_edge_v()
-    #
     # test_phi3_vision()
     # test_internvl2_5()
-    test_internvl2_5_mpo()
+    # test_internvl2_5_mpo()
     # test_mplug_owl3()
     # test_xcomposer2_5()
     # test_megrez_omni()
@@ -289,3 +314,4 @@ if __name__ == '__main__':
     # test_mplug_owl2()
     # test_molmo()
     # test_molmoe()
+    test_doc_owl2()
