@@ -77,7 +77,7 @@ class SwiftConfig:
             config_file = os.path.join(pretrained_model_name_or_path, CONFIG_NAME)
         else:
             try:
-                model_dir = snapshot_download(pretrained_model_name_or_path, ignore_file_pattern=BIN_EXTENSIONS)
+                model_dir = snapshot_download(pretrained_model_name_or_path, ignore_patterns=BIN_EXTENSIONS)
                 config_file = os.path.join(model_dir, CONFIG_NAME)
             except Exception:
                 raise ValueError(f"Can't find config.json at '{pretrained_model_name_or_path}'")

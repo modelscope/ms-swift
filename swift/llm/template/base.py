@@ -232,6 +232,9 @@ class Template(ProcessorMixin):
         tokenizer_kwargs = tokenizer_kwargs or {}
         return self._skip_stop_decode(generate_ids, is_finished, **tokenizer_kwargs)
 
+    def generate(self, model, *args, **kwargs):
+        return model.generate(*args, **kwargs)
+
     def _skip_stop_decode(self, generate_ids: List[int], is_finished: bool, **decode_kwargs) -> Any:
         # Do not print template_meta.suffix[-1] and eos_token.
         # However, other stop_words will be printed.
@@ -604,10 +607,9 @@ class Template(ProcessorMixin):
             for key, _slice in zip(['prompt', 'answer'],
                                    [slice(0, total_len - answer_len),
                                     slice(total_len - answer_len, total_len)]):
-                res_context_list, loss_scale_list = self._simplify_context_list(res_context_list[_slice],
-                                                                                loss_scale_list[_slice], inputs)
-                input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(
-                    res_context_list, loss_scale_list)
+                context_list, loss_scale = self._simplify_context_list(res_context_list[_slice],
+                                                                       loss_scale_list[_slice], inputs)
+                input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(context_list, loss_scale)
                 encoded[f'{key}_input_ids'] = input_ids
                 if key == 'answer':
                     encoded['labels'] = labels
@@ -972,7 +974,12 @@ class Template(ProcessorMixin):
         return torch.stack(padded_sequences)
 
     def safe_decode(self, input_ids: List[int], **tokenizer_kwargs) -> str:
-        placeholder_tokens = self.template_meta.placeholder_tokens
+        if isinstance(self, Template):
+            tokenizer = self.tokenizer
+            placeholder_tokens = self.template_meta.placeholder_tokens
+        else:
+            tokenizer = self
+            placeholder_tokens = []
 
         def _is_special(token: int) -> bool:
             if isinstance(token, float) or token < 0:
@@ -993,12 +1000,12 @@ class Template(ProcessorMixin):
                 continue
             if _is_special(input_ids[i]) and not _is_special(input_ids[i - 1]):
                 s = i
-                result_str += self.tokenizer.decode(input_ids[e:s], **tokenizer_kwargs)
+                result_str += tokenizer.decode(input_ids[e:s], **tokenizer_kwargs)
             if not _is_special(input_ids[i]) and _is_special(input_ids[i - 1]):
                 e = i
                 result_str += f'[{input_ids[i - 1]} * {e - s}]'
         if _is_special(input_ids[i]):
             result_str += f'[{input_ids[i]} * {len(input_ids) - s}]'
         else:
-            result_str += self.tokenizer.decode(input_ids[e:], **tokenizer_kwargs)
+            result_str += tokenizer.decode(input_ids[e:], **tokenizer_kwargs)
         return result_str

@@ -108,6 +108,8 @@ def test_llava_hf():
 
 def test_florence():
     pt_engine = PtEngine('AI-ModelScope/Florence-2-base-ft')
+    _infer_model(pt_engine, messages=[{'role': 'user', 'content': 'who are you?'}], images=[])
+
     _infer_model(
         pt_engine,
         messages=[{
@@ -157,7 +159,9 @@ def test_deepseek_vl2():
 
 
 def test_mplug_owl2():
-    pass
+    # pt_engine = PtEngine('iic/mPLUG-Owl2')
+    pt_engine = PtEngine('iic/mPLUG-Owl2.1')
+    _infer_model(pt_engine, messages=[{'role': 'user', 'content': '<image>这是什么'}])
 
 
 def test_mplug_owl3():
@@ -197,6 +201,15 @@ def test_internvl2_5():
     _infer_model(pt_engine, system='你是书生·万象，英文名是InternVL，是由上海人工智能实验室、清华大学及多家合作单位联合开发的多模态大语言模型。')
 
 
+def test_internvl2_5_mpo():
+    pt_engine = PtEngine('OpenGVLab/InternVL2_5-1B-MPO', model_type='internvl2_5')
+    response = _infer_model(pt_engine, messages=[{'role': 'user', 'content': 'Hello, who are you?'}], images=[])
+    assert response == ("Hello! I'm an AI assistant whose name is InternVL, developed jointly by Shanghai AI Lab, "
+                        'Tsinghua University and other partners.')
+    response2 = _infer_model(pt_engine, messages=[{'role': 'user', 'content': '<image>这是什么'}])
+    assert response2 == ('这是一只小猫的特写照片。照片中的小猫有大大的蓝色眼睛和毛发，看起来非常可爱。这种照片通常用于展示宠物的可爱瞬间。')
+
+
 def test_megrez_omni():
     pt_engine = PtEngine('InfiniAI/Megrez-3B-Omni')
     _infer_model(pt_engine)
@@ -216,6 +229,56 @@ def test_megrez_omni():
         }])
     assert response == ('根据图片，无法确定确切的天气状况。然而，猫咪放松的表情和柔和的光线可能暗示着是一个晴朗或温和的日子。'
                         '没有阴影或明亮的阳光表明这不是正午时分，也没有雨滴或雪花的迹象，这可能意味着不是下雨或下雪的日子。')
+
+
+def test_molmo():
+    # pt_engine = PtEngine('LLM-Research/Molmo-7B-O-0924')
+    pt_engine = PtEngine('LLM-Research/Molmo-7B-D-0924')
+    _infer_model(pt_engine)
+    response = _infer_model(pt_engine, messages=[{'role': 'user', 'content': '<image>这是什么'}])
+    assert response == (
+        ' This is a close-up photograph of a young kitten. '
+        'The kitten has striking blue eyes and a mix of white and black fur, '
+        'with distinctive black stripes on its head and face. '
+        "It's looking directly at the camera with an alert and curious expression. "
+        "The kitten's fur appears soft and fluffy, and its pink nose and white whiskers are clearly visible. "
+        'The background is blurred, which emphasizes the kitten as the main subject of the image.')
+
+
+def test_molmoe():
+    pt_engine = PtEngine('LLM-Research/MolmoE-1B-0924')
+    response = _infer_model(pt_engine, messages=[{'role': 'user', 'content': '<image>这是什么'}])
+    assert response == (" This is a close-up photograph of a kitten's face. The kitten has striking blue eyes and "
+                        "a mix of white, black, and brown fur. It's looking directly at the camera with an adorable "
+                        "expression, its ears perked up and whiskers visible. The image captures the kitten's cute "
+                        'features in sharp detail, while the background is blurred, creating a soft, out-of-focus '
+                        "effect that emphasizes the young feline's charm.")
+
+
+def test_doc_owl2():
+    pt_engine = PtEngine('iic/DocOwl2', torch_dtype=torch.float16)
+    response = _infer_model(pt_engine, messages=[{'role': 'user', 'content': '你是谁'}], images=[])
+    images = [
+        'https://modelscope.cn/models/iic/DocOwl2/resolve/master/examples/docowl2_page0.png',
+        'https://modelscope.cn/models/iic/DocOwl2/resolve/master/examples/docowl2_page1.png',
+        'https://modelscope.cn/models/iic/DocOwl2/resolve/master/examples/docowl2_page2.png',
+        'https://modelscope.cn/models/iic/DocOwl2/resolve/master/examples/docowl2_page3.png',
+        'https://modelscope.cn/models/iic/DocOwl2/resolve/master/examples/docowl2_page4.png',
+        'https://modelscope.cn/models/iic/DocOwl2/resolve/master/examples/docowl2_page5.png',
+    ]
+    response = _infer_model(
+        pt_engine,
+        messages=[{
+            'role': 'user',
+            'content': '<image>' * len(images) + 'what is this paper about? provide detailed information.'
+        }],
+        images=images)
+    assert response == (
+        'This paper is about multimodal Language Models(MLMs) achieving promising OCR-free '
+        'Document Understanding by performing understanding by the cost of generating thorough sands of visual '
+        'tokens for a single document image, leading to excessive GPU computation time. The paper also discusses '
+        'the challenges and limitations of existing multimodal OCR approaches and proposes a new framework for '
+        'more efficient and accurate OCR-free document understanding.')
 
 
 if __name__ == '__main__':
@@ -241,10 +304,14 @@ if __name__ == '__main__':
     # test_llava_hf()
     # test_florence()
     # test_glm_edge_v()
-    #
     # test_phi3_vision()
     # test_internvl2_5()
+    # test_internvl2_5_mpo()
     # test_mplug_owl3()
     # test_xcomposer2_5()
     # test_megrez_omni()
-    test_qvq()
+    # test_qvq()
+    # test_mplug_owl2()
+    # test_molmo()
+    # test_molmoe()
+    test_doc_owl2()

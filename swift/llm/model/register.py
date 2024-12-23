@@ -37,7 +37,7 @@ class ModelGroup:
     models: List[Model]
 
     # Higher priority. If set to None, the attributes of the ModelMeta will be used.
-    ignore_file_pattern: Optional[List[str]] = None
+    ignore_patterns: Optional[List[str]] = None
     requires: Optional[List[str]] = None
     tags: List[str] = field(default_factory=list)
 
@@ -63,7 +63,7 @@ class ModelMeta:
     torch_dtype: Optional[torch.dtype] = None
 
     # File patterns to ignore when downloading the model.
-    ignore_file_pattern: List[str] = field(default_factory=list)
+    ignore_patterns: List[str] = field(default_factory=list)
     # Usually specifies the version limits of transformers.
     requires: List[str] = field(default_factory=list)
     tags: List[str] = field(default_factory=list)
@@ -313,17 +313,17 @@ def _check_torch_dtype(torch_dtype: torch.dtype):
 
 def get_default_torch_dtype(torch_dtype: Optional[torch.dtype]):
     # torch_dtype: torch_dtype in config.json
+    if torch_dtype is not None:
+        return torch_dtype
+
     if is_torch_cuda_available() or is_torch_npu_available():
         if is_torch_bf16_gpu_available():
-            if torch_dtype in {torch.float16, torch.bfloat16}:
-                res = torch_dtype
-            else:
-                res = torch.bfloat16
+            return torch.bfloat16
         else:
-            res = torch.float16
+            return torch.float16
     else:
         # cpu
-        res = torch.float32
+        return torch.float32
     return res
 
 
@@ -413,7 +413,7 @@ def get_model_info_meta(
         revision=revision,
         download_model=download_model,
         use_hf=use_hf,
-        ignore_file_pattern=getattr(model_meta, 'ignore_file_pattern', None),
+        ignore_patterns=getattr(model_meta, 'ignore_patterns', None),
         hub_token=hub_token)
 
     model_type = model_type or getattr(model_meta, 'model_type', None)

@@ -23,8 +23,10 @@ def get_model_tokenizer_qwen(model_dir: str,
                              model_info: ModelInfo,
                              model_kwargs: Dict[str, Any],
                              load_model: bool = True,
+                             model_config=None,
                              **kwargs):
-    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+    if model_config is None:
+        model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     if model_config.torch_dtype is not None:
         k_true = dtype_mapping[model_config.torch_dtype]
         for k in dtype_mapping.values():

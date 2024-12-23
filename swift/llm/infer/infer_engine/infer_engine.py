@@ -136,12 +136,13 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
                 pass
             return self._update_metrics(res, metrics)
 
-    def _get_toolcall(self, response: Union[str, List[Dict[str,
-                                                           Any]]]) -> Optional[List[ChatCompletionMessageToolCall]]:
+    def _get_toolcall(self,
+                      response: Union[str, List[Dict[str, Any]]],
+                      tools_prompt='react_en') -> Optional[List[ChatCompletionMessageToolCall]]:
         if not isinstance(response, str):
             response = '\n'.join([resp['text'] for resp in response if resp['type'] == 'text'])
 
-        action, action_input = split_action_action_input(response)
+        action, action_input = split_action_action_input(response, tools_prompt=tools_prompt)
         if action is None:
             return None
 

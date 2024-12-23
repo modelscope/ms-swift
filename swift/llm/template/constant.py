@@ -127,6 +127,7 @@ class MLLMTemplateType:
     mplug_owl2 = 'mplug_owl2'
     mplug_owl3 = 'mplug_owl3'
     mplug_owl3_241101 = 'mplug_owl3_241101'
+    doc_owl2 = 'doc_owl2'
 
     emu3_chat = 'emu3_chat'
     emu3_gen = 'emu3_gen'
