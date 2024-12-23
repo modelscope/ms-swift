@@ -125,7 +125,7 @@ def test_llama():
 def test_openbuddy():
     # pt_engine = PtEngine('OpenBuddy/openbuddy-yi1.5-34b-v21.3-32k')
     pt_engine = PtEngine('OpenBuddy/openbuddy-nemotron-70b-v23.2-131k')
-    # pt_engine = PtEngine('OpenBuddy/openbuddy-llama3.3-70b-v24.1-131k')
+    # pt_engine = PtEngine('OpenBuddy/openbuddy-llama3.3-70b-v24.3-131k')
     res = _infer_model(pt_engine, system='')
     pt_engine.default_template.template_backend = 'jinja'
     res2 = _infer_model(pt_engine)
