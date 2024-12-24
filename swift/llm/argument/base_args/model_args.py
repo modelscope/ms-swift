@@ -121,12 +121,13 @@ class ModelArguments:
         return self.model_info.torch_dtype
 
     def _init_task_type(self):
-        if self.task_type is not None:
-            return
-        if self.num_labels is None:
-            self.task_type = 'causal_lm'
-        else:
-            self.task_type = 'seq_cls'
+        if self.task_type is None:
+            if self.num_labels is None:
+                self.task_type = 'causal_lm'
+            else:
+                self.task_type = 'seq_cls'
+        if self.task_type == 'seq_cls':
+            assert self.num_labels is not None, 'Please set --num_labels <num_labels>.'
 
     def __post_init__(self):
         if self.model is None:
