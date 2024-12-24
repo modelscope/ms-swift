@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import List, Union
+from typing import List, Optional, Union
 
 from swift.utils import patch_getattr
 from ..argument import RLHFArguments
@@ -22,7 +22,7 @@ class SwiftRLHF(SwiftSft):
 
         super()._prepare_model_tokenizer()
 
-    def _prepare_template(self, use_chat_template: bool) -> None:
+    def _prepare_template(self, use_chat_template: Optional[bool] = None) -> None:
         args = self.args
         super()._prepare_template(use_chat_template=use_chat_template)
         mode = 'kto' if args.rlhf_type == 'kto' else 'rlhf'

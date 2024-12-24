@@ -379,14 +379,11 @@ class PtEngine(InferEngine):
         if template.use_model:
             template.model = self.model
 
+        generation_config = None
         if self.task_type == 'seq_cls':
             template.set_mode('seq_cls')
-            generation_config = None
         else:
             template.set_mode('pt')
-            self.set_default_max_tokens(request_config, inputs)
-            generation_config = self._prepare_generation_config(request_config)
-            self._add_stop_words(generation_config, request_config, template)
 
         max_workers = min(32, os.cpu_count(), len(infer_requests))
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -400,6 +397,10 @@ class PtEngine(InferEngine):
         inputs = to_device(template.data_collator(batched_inputs), self.model.device)
         if self.model.model_meta.is_multimodal:
             _, inputs = template.pre_forward_hook(self.model, None, inputs)
+        if self.task_type != 'seq_cls':
+            self.set_default_max_tokens(request_config, inputs)
+            generation_config = self._prepare_generation_config(request_config)
+            self._add_stop_words(generation_config, request_config, template)
 
         kwargs = {
             'template': template,

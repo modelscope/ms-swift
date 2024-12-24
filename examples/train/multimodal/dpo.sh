@@ -5,7 +5,7 @@ nproc_per_node=4
 
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=$nproc_per_node \
-MAX_PIXELS=602112 \
+MAX_PIXELS=1003520 \
 swift rlhf \
     --rlhf_type dpo \
     --model Qwen/Qwen2-VL-7B-Instruct \

@@ -14,7 +14,7 @@ kwargs = {
 def test_llm_ddp():
     os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
     from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
-    sft_main(
+    result = sft_main(
         TrainArguments(
             model='Qwen/Qwen2-7B-Instruct',
             dataset=['AI-ModelScope/alpaca-gpt4-data-zh#100', 'AI-ModelScope/alpaca-gpt4-data-en#100'],
