@@ -138,7 +138,7 @@ class BaseUI:
         timestamp = str(int(time.time()))
         key = key.replace('/', '-')
         filename = os.path.join(cls.cache_dir, key + '-' + timestamp)
-        with open(filename, 'w') as f:
+        with open(filename, 'w', encoding='utf-8') as f:
             json.dump(value, f)
 
     @classmethod
@@ -161,7 +161,7 @@ class BaseUI:
         timestamp = int(dt_object.timestamp())
         key = key.replace('/', '-')
         filename = key + '-' + str(timestamp)
-        with open(os.path.join(cls.cache_dir, filename), 'r') as f:
+        with open(os.path.join(cls.cache_dir, filename), 'r', encoding='utf-8') as f:
             return json.load(f)
 
     @classmethod

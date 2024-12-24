@@ -442,6 +442,7 @@ class Template(ProcessorMixin):
                     idx = getattr(inputs, f'{k}_idx')
                     c_list = self.replace_tag(k, idx, inputs)
                     setattr(inputs, f'{k}_idx', idx + 1)
+                    loss_scale = 0.
                     break
             else:
                 if context == '<ref-object>':

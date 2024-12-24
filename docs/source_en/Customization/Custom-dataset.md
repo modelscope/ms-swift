@@ -33,7 +33,7 @@ There are three ways to integrate a custom dataset, with increasing control over
 
 ## Recommended Dataset Format
 
-Here is the recommended dataset format for ms-swift:
+The following provides the recommended dataset format for ms-swift, where the system field is optional and defaults to the `default_system` defined in the template.
 
 ### Pre-training
 
@@ -68,11 +68,25 @@ Here is the recommended dataset format for ms-swift:
 
 ### Multimodal
 
-For multimodal datasets, the format is the same as above. The difference is that it includes the keys `images`, `videos`, and `audios`, which represent multimodal resources:
+For multimodal datasets, the format is the same as the tasks mentioned above. The difference is the addition of several keys: `images`, `videos`, and `audios`, which represent multimodal resources. The tags `<image>`, `<video>`, and `<audio>` indicate the positions where images, videos, and audio are inserted, respectively. The four examples provided below demonstrate the data format for pure text, as well as formats that include image, video, and audio data.
+
+
+Pre-training:
 ```jsonl
-{"messages": [{"role": "system", "content": "You are a useful and harmless assistant"}, {"role": "user", "content": "<image> What is in the image? <video> What is in the video?"}, {"role": "assistant", "content": "An elephant and a lion"}], "images": ["/xxx/x.jpg"], "videos": ["/xxx/x.mp4"]}
+{"messages": [{"role": "assistant", "content": "Pre-trained text goes here"}]}
+{"messages": [{"role": "assistant", "content": "<image> is a puppy, <image> is a kitten"}], "images": ["/xxx/x.jpg", "/xxx/x.png"]}
+{"messages": [{"role": "assistant", "content": "<audio> describes how nice the weather is today"}], "audios": ["/xxx/x.wav"]}
+{"messages": [{"role": "assistant", "content": "<image> is an elephant, <video> is a lion running"}], "images": ["/xxx/x.jpg"], "videos": ["/xxx/x.mp4"]}
 ```
-The `<image>`, `<video>`, and `<audio>` tags indicate where to insert images/videos/audios.
+
+Supervised Fine-tuning:
+
+```jsonl
+{"messages": [{"role": "user", "content": "<image><image>What is the difference between the two images?"}, {"role": "assistant", "content": "The first one is a kitten, and the second one is a puppy."}], "images": ["/xxx/x.jpg", "xxx/x.png"]}
+{"messages": [{"role": "user", "content": "<audio>What did the audio say?"}, {"role": "assistant", "content": "The weather is really nice today."}], "audios": ["/xxx/x.mp3"]}
+{"messages": [{"role": "system", "content": "You are a helpful and harmless assistant."}, {"role": "user", "content": "<image>What is in the image, <video>What is in the video?"}, {"role": "assistant", "content": "The image shows an elephant, and the video shows a puppy running on the grass."}], "images": ["/xxx/x.jpg"], "videos": ["/xxx/x.mp4"]}
+```
+The data format for RLHF can refer to the format used for pure text large models.
 
 #### Grounding
 

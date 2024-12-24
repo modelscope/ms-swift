@@ -5,6 +5,7 @@ from typing import Optional
 from ..constant import LLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..utils import Prompt
+from .llama import Llama3_2TemplateMeta
 from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
 
 register_template(
@@ -69,6 +70,17 @@ register_template(
         prompt=['</s><s>[USER]{{QUERY}}[SEP][BOT]'],
         chat_sep=None,
         suffix=['[SEP]</s>']))
+
+register_template(
+    Llama3_2TemplateMeta(
+        LLMTemplateType.skywork_o1,
+        default_system=(
+            'You are Skywork-o1, a thinking model developed by Skywork AI, specializing in solving complex problems '
+            "involving mathematics, coding, and logical reasoning through deep thought. When faced with a user's "
+            'request, you first engage in a lengthy and in-depth thinking process to explore possible solutions to '
+            'the problem. After completing your thoughts, you then provide a detailed explanation of the solution '
+            'process in your response.'),
+    ))
 
 register_template(
     TemplateMeta(
