@@ -587,7 +587,8 @@ class SwiftModel(nn.Module):
                 os.makedirs(os.path.join(save_directory, self.EXTRA_STATE_DIR), exist_ok=True)
                 self._save_state_dict(output_state_dict, os.path.join(save_directory, self.EXTRA_STATE_DIR),
                                       safe_serialization)
-                with open(os.path.join(save_directory, self.EXTRA_STATE_DIR, CONFIG_NAME), 'w', encoding='utf-8') as file:
+                with open(
+                        os.path.join(save_directory, self.EXTRA_STATE_DIR, CONFIG_NAME), 'w', encoding='utf-8') as file:
                     json.dump({'extra_state_keys': self.extra_state_keys}, file)
             else:
                 logger.error('Full parameter training, save_extra_states will be ignored')

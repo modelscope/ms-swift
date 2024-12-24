@@ -75,7 +75,8 @@ class LoraConfig(peft.LoraConfig):
             self = LoraConfig(**self.to_dict())
 
         if os.path.isfile(os.path.join(pretrained_model_name_or_path, 'additional_config.json')):
-            with open(os.path.join(pretrained_model_name_or_path, 'additional_config.json'), 'r', encoding='utf-8') as f:
+            with open(
+                    os.path.join(pretrained_model_name_or_path, 'additional_config.json'), 'r', encoding='utf-8') as f:
                 _json = json.load(f)
                 for key, value in _json.items():
                     setattr(self, key, value)
