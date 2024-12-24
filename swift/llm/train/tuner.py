@@ -153,7 +153,7 @@ def prepare_adapter(args: TrainArguments, model, *, template=None, train_dataset
         'lorap_lr_ratio': args.lorap_lr_ratio,
         'init_lora_weights': args.init_weights,
     }
-    task_type = 'CAUSAL_LM' if args.num_labels is None else 'SEQ_CLS'
+    task_type = args.task_type.upper()
     if args.train_type in ('lora', 'longlora'):
         if args.use_swift_lora:
             lora_config = LoRAConfig(lora_dtype=args.lora_dtype, **lora_kwargs)

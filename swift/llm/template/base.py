@@ -697,6 +697,8 @@ class Template(ProcessorMixin):
         return self.mode not in {'vllm', 'lmdeploy', 'pt'}
 
     def set_mode(self, mode: Literal['vllm', 'lmdeploy', 'pt', 'seq_cls', 'train', 'rlhf', 'kto']) -> None:
+        if mode == 'causal_lm':
+            mode = 'train'
         self.mode = mode
 
     def register_post_encode_hook(self, models: List[nn.Module]) -> None:

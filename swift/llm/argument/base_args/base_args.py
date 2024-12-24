@@ -77,10 +77,12 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         load_data_args (bool): Flag to determine if dataset configuration should be loaded. Default is False.
         use_hf (bool): Flag to determine if Hugging Face should be used. Default is False.
         hub_token (Optional[str]): SDK token for authentication. Default is None.
+        num_labels (Optional[int]): Number of labels for classification tasks. Default is None.
         custom_register_path (List[str]): Path to custom .py file for dataset registration. Default is None.
         ignore_args_error (bool): Flag to ignore argument errors for notebook compatibility. Default is False.
         use_swift_lora (bool): Use swift lora, a compatible argument
     """
+    task_type: Literal['causal_lm', 'seq_cls'] = None
     tuner_backend: Literal['peft', 'unsloth'] = 'peft'
     train_type: str = field(default='lora', metadata={'help': f'train_type choices: {list(get_supported_tuners())}'})
     adapters: List[str] = field(default_factory=list)
@@ -112,6 +114,14 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             __import__(fname.rstrip('.py'))
         logger.info(f'Successfully registered `{self.custom_register_path}`')
 
+    def _init_task_type(self):
+        if self.task_type is not None:
+            return
+        if self.num_labels is None:
+            self.task_type = 'causal_lm'
+        else:
+            self.task_type = 'seq_cls'
+
     def _init_adapters(self):
         if isinstance(self.adapters, str):
             self.adapters = [self.adapters]
@@ -124,6 +134,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             self.use_hf = True
             os.environ['USE_HF'] = '1'
         CompatArguments.__post_init__(self)
+        self._init_task_type()
         self._init_adapters()
         self._init_ckpt_dir()
         self._init_custom_register()
@@ -252,7 +263,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         kwargs['model_revision'] = model_revision or self.model_revision
 
         model_kwargs = {}
-        if self.num_labels is not None:
+        if self.task_type == 'seq_cls':
             from transformers import AutoModelForSequenceClassification
             kwargs['automodel_class'] = AutoModelForSequenceClassification
             model_kwargs = {'num_labels': self.num_labels}

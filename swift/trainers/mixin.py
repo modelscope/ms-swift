@@ -6,9 +6,11 @@ import shutil
 import time
 from contextlib import contextmanager
 from copy import copy
+from swift.plugin import MeanMetric, compute_acc
 from functools import wraps
 from types import MethodType
 from typing import Callable, Dict, List, Optional, Tuple, Union
+from swift.utils.torchacc_utils import ta_trim_graph
 
 import safetensors
 import torch
@@ -31,7 +33,7 @@ from swift.hub import get_hub
 from swift.llm import Template
 from swift.plugin import extra_tuners
 from swift.tuners import SwiftModel
-from swift.utils import get_logger, is_mp_ddp
+from swift.utils import get_logger, is_mp_ddp, use_torchacc
 from .arguments import TrainingArguments
 from .optimizers.galore import create_optimizer_and_scheduler
 from .utils import can_return_loss, find_labels, get_function, is_instance_of_ms_model
@@ -377,3 +379,19 @@ class SwiftMixin:
         else:
             from swift.trainers.xtuner import get_xtuner_train_dataloader
             return get_xtuner_train_dataloader(self)
+
+    def _compute_acc(self, outputs, labels) -> None:
+        args = self.args
+        acc_steps = args.acc_steps
+        preds = outputs.logits.argmax(dim=-1)
+        if self.state.global_step % acc_steps == 0:
+            if use_torchacc():
+                ta_trim_graph()
+                preds = preds.to('cpu')
+                labels = labels.to('cpu')
+            metrics = compute_acc(
+                preds, labels, acc_strategy=args.acc_strategy, is_encoder_decoder=args.is_encoder_decoder)
+            for k, v in metrics.items():
+                if k not in self._custom_metrics:
+                    self._custom_metrics[k] = MeanMetric(nan_value=None)
+                self._custom_metrics[k].update(v)

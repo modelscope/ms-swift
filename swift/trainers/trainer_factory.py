@@ -11,7 +11,7 @@ logger = get_logger()
 
 class TrainerFactory:
     TRAINER_MAPPING = {
-        'seq2seq': 'swift.trainers.Seq2SeqTrainer',
+        'causal_lm': 'swift.trainers.Seq2SeqTrainer',
         'seq_cls': 'swift.trainers.Trainer',
         'dpo': 'swift.trainers.DPOTrainer',
         'orpo': 'swift.trainers.ORPOTrainer',
@@ -22,7 +22,7 @@ class TrainerFactory:
     }
 
     TRAINING_ARGS_MAPPING = {
-        'seq2seq': 'swift.trainers.Seq2SeqTrainingArguments',
+        'causal_lm': 'swift.trainers.Seq2SeqTrainingArguments',
         'seq_cls': 'swift.trainers.TrainingArguments',
         'dpo': 'swift.trainers.DPOConfig',
         'orpo': 'swift.trainers.ORPOConfig',
@@ -36,10 +36,8 @@ class TrainerFactory:
     def get_cls(args, mapping: Dict[str, str]):
         if hasattr(args, 'rlhf_type'):
             train_method = args.rlhf_type
-        elif args.num_labels is None:
-            train_method = 'seq2seq'
         else:
-            train_method = 'seq_cls'
+            train_method = args.task_type
         module_path, class_name = mapping[train_method].rsplit('.', 1)
         module = importlib.import_module(module_path)
         return getattr(module, class_name)

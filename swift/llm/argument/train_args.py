@@ -97,7 +97,6 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
         resume_only_model (bool): Flag to resume training only the model. Default is False.
         check_model (bool): Flag to check the model is latest. Default is True.
         loss_type (Optional[str]): Type of loss function to use. Default is None.
-        num_labels (Optional[int]): Number of labels for classification tasks. Default is None.
         packing (bool): Flag to enable packing of datasets. Default is False.
         lazy_tokenize (Optional[bool]): Flag to enable lazy tokenization. Default is None.
         acc_strategy (Literal['token', 'seq']): Strategy for accumulation. Default is 'token'.

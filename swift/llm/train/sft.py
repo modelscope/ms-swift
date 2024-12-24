@@ -80,7 +80,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         logger.info(f'default_system: {template.template_meta.default_system}')
         if template.use_model:
             template.model = self.model
-        template.set_mode('train' if args.num_labels is None else 'seq_cls')
+        template.set_mode(args.task_type)
         self.template = template
 
     def _get_dataset(self):
