@@ -189,10 +189,9 @@ def test_paligemma2():
     pt_engine = PtEngine('AI-ModelScope/paligemma2-3b-ft-docci-448', torch_dtype=torch.bfloat16)
     response = _infer_model(pt_engine, messages=[{'role': 'user', 'content': 'caption en'}])
     assert response == (
-        'A close up view of a white kitten with black stripes on its head and body. The kitten is looking straight '
-        'ahead with its light blue eyes. The kitten has a pink nose and mouth. The kitten is sitting on a white '
-        'surface. A white light is shining on the kitten and the white surface. A shadow is being cast underneath '
-        'the kitten and the white surface.')
+        'A close up view of a white and gray kitten with black stripes on its head and face staring forward with '
+        'its light blue eyes. The kitten is sitting on a white surface with a blurry background. '
+        "There is a light shining on the top of the kitten's head and the front of its body.")
 
 
 def test_pixtral():
