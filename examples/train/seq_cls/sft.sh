@@ -23,4 +23,5 @@ swift sft \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 4 \
     --num_labels 2 \
+    --task_type seq_cls \
     --use_chat_template false
