@@ -24,6 +24,7 @@ class ModelArguments:
         model_revision (Optional[str]): Revision of the model. Default is None.
         torch_dtype (Literal): Model parameter dtype. Default is None.
         attn_impl (Literal): Attention implementation to use. Default is None.
+        num_labels (Optional[int]): Number of labels for classification tasks. Default is None.
         rope_scaling (Literal): Type of rope scaling to use. Default is None.
         device_map (Optional[str]): Configuration for device mapping. Default is None.
         local_repo_path (Optional[str]): Path to the local github repository for model. Default is None.
@@ -39,6 +40,7 @@ class ModelArguments:
     # None: It will be automatically selected between sdpa and eager.
     attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None
 
+    num_labels: Optional[int] = None
     rope_scaling: Literal['linear', 'dynamic'] = None
     device_map: Optional[Union[dict, str]] = None
     # When some model code needs to be downloaded from GitHub,

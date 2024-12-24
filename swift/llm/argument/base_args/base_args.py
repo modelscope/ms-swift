@@ -77,7 +77,6 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         load_data_args (bool): Flag to determine if dataset configuration should be loaded. Default is False.
         use_hf (bool): Flag to determine if Hugging Face should be used. Default is False.
         hub_token (Optional[str]): SDK token for authentication. Default is None.
-        num_labels (Optional[int]): Number of labels for classification tasks. Default is None.
         custom_register_path (List[str]): Path to custom .py file for dataset registration. Default is None.
         ignore_args_error (bool): Flag to ignore argument errors for notebook compatibility. Default is False.
         use_swift_lora (bool): Use swift lora, a compatible argument
@@ -98,7 +97,6 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
     custom_register_path: List[str] = field(default_factory=list)  # .py
 
     # extra
-    num_labels: Optional[int] = None
     ignore_args_error: bool = False  # True: notebook compatibility
     use_swift_lora: bool = False  # True for using tuner_backend == swift, don't specify this unless you know what you are doing # noqa
 
