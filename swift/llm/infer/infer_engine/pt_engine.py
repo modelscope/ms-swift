@@ -95,6 +95,7 @@ class PtEngine(InferEngine):
         self.processor = template.processor
         self.max_batch_size = max_batch_size
         self._post_init()
+        self.task_type = self.model_info.task_type
         return self
 
     def _prepare_generation_config(self, request_config: RequestConfig) -> _GenerationConfig:
@@ -146,8 +147,8 @@ class PtEngine(InferEngine):
     def _infer_stream(self,
                       template: Template,
                       inputs: Dict[str, Any],
-                      generation_config: GenerationConfig,
                       *,
+                      generation_config: GenerationConfig,
                       adapter_request: Optional[AdapterRequest] = None,
                       **kwargs) -> Iterator[List[Optional[ChatCompletionStreamResponse]]]:
         generate_kwargs = {}
@@ -254,11 +255,36 @@ class PtEngine(InferEngine):
             self._add_adapter(adapter_request.path, adapter_name)
         return [adapter_name]
 
+    def _infer_seq_cls(self,
+                       template: Template,
+                       inputs: Dict[str, Any],
+                       adapter_request: Optional[AdapterRequest] = None,
+                       **kwargs):
+        call_kwargs = {}
+        if adapter_request is not None:
+            call_kwargs['adapter_names'] = self._get_adapter_names(adapter_request)
+        num_prompt_tokens = self._get_num_tokens(inputs)
+        inputs.pop('labels')
+        logits = self.model(**inputs, **call_kwargs).logits
+        preds = torch.argmax(logits, dim=-1).tolist()
+        res = []
+        for pred in preds:
+            usage_info = self._get_usage_info(num_prompt_tokens, 1)
+            choices = [
+                ChatCompletionResponseChoice(
+                    index=0,
+                    message=ChatMessage(role='assistant', content=str(pred), tool_calls=None),
+                    finish_reason='stop',
+                    logprobs=None)
+            ]
+            res.append(ChatCompletionResponse(model=self.model_name, choices=choices, usage=usage_info))
+        return res
+
     def _infer_full(self,
                     template: Template,
                     inputs: Dict[str, Any],
-                    generation_config: GenerationConfig,
                     *,
+                    generation_config: GenerationConfig,
                     adapter_request: Optional[AdapterRequest] = None,
                     template_inputs=None) -> Union[List[ChatCompletionResponse]]:
         # bos_token TODO: encoder-decoder
@@ -345,7 +371,15 @@ class PtEngine(InferEngine):
         if template.use_model:
             template.model = self.model
 
-        template.set_mode('pt')
+        if self.task_type == 'seq_cls':
+            template.set_mode('seq_cls')
+            generation_config = None
+        else:
+            template.set_mode('pt')
+            self.set_default_max_tokens(request_config, inputs)
+            generation_config = self._prepare_generation_config(request_config)
+            self._add_stop_words(generation_config, request_config, template)
+
         max_workers = min(32, os.cpu_count(), len(infer_requests))
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = [
@@ -358,10 +392,6 @@ class PtEngine(InferEngine):
         inputs = to_device(template.data_collator(batched_inputs), self.model.device)
         if self.model.model_meta.is_multimodal:
             _, inputs = template.pre_forward_hook(self.model, None, inputs)
-        if template.mode != 'seq_cls':
-            self.set_default_max_tokens(request_config, inputs)
-            generation_config = self._prepare_generation_config(request_config)
-        self._add_stop_words(generation_config, request_config, template)
 
         kwargs = {
             'template': template,
@@ -381,7 +411,8 @@ class PtEngine(InferEngine):
 
             return _gen_wrapper()
         else:
-            return self._update_metrics(self._infer_full(**kwargs), metrics)
+            infer_func = self._infer_seq_cls if template.mode == 'seq_cls' else self._infer_full
+            return self._update_metrics(infer_func(**kwargs), metrics)
 
     @torch.inference_mode()
     def infer(
