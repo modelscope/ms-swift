@@ -2,10 +2,10 @@
 # You can refer to `https://github.com/QwenLM/Qwen2-VL` for the meaning of the `VIDEO_MAX_PIXELS` parameter.
 nproc_per_node=4
 
-NPROC_PER_NODE=$nproc_per_node \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
-VIDEO_MAX_PIXELS=100352 \
-FPS_MAX_FRAMES=24 \
+NPROC_PER_NODE=$nproc_per_node \
+VIDEO_MAX_PIXELS=50176 \
+FPS_MAX_FRAMES=12 \
 swift sft \
     --model Qwen/QVQ-72B-Preview \
     --dataset swift/VideoChatGPT:all \
