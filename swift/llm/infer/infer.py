@@ -98,7 +98,7 @@ class SwiftInfer(SwiftPipeline):
                                 template=self.template,
                                 use_tqdm=False,
                                 **self.infer_kwargs)
-        if request_config.stream:
+        if request_config and request_config.stream:
             response = ''
             for res in res_or_gen:
                 delta = res[0].choices[0].delta.content
@@ -115,6 +115,7 @@ class SwiftInfer(SwiftPipeline):
         args = self.args
         template = self.template
         request_config = args.get_request_config()
+        logger.info(f'request_config: {request_config}')
 
         logger.info('Input `exit` or `quit` to exit the conversation.')
         logger.info('Input `multi-line` to switch to multi-line input mode.')
@@ -168,7 +169,7 @@ class SwiftInfer(SwiftPipeline):
         val_dataset = self._prepare_val_dataset()
         logger.info(f'val_dataset: {val_dataset}')
         result_list = []
-        if request_config.stream:
+        if request_config and request_config.stream:
             for data in val_dataset:
                 labels = InferRequest.remove_response(data['messages'])
                 query = data['messages'][-1]['content']

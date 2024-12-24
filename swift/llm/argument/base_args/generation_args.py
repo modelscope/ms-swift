@@ -36,6 +36,8 @@ class GenerationArguments:
     stop_words: List[str] = field(default_factory=list)
 
     def get_request_config(self):
+        if getattr(self, 'task_type') != 'causal_lm':
+            return
         from swift.llm import RequestConfig
 
         return RequestConfig(

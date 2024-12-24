@@ -14,13 +14,14 @@ from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_N
 from transformers.utils import is_peft_available
 
 from swift.utils import JsonlWriter, Serializer
-from .arguments import TrainingArguments, Seq2SeqTrainingArguments
+from .arguments import Seq2SeqTrainingArguments, TrainingArguments
 from .mixin import SwiftMixin
 from .torchacc_mixin import TorchAccMixin
 
 
 class Trainer(SwiftMixin, HfTrainer):
     args: TrainingArguments
+
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         kwargs = {}
         if num_items_in_batch is not None:

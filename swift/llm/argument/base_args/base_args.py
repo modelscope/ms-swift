@@ -82,7 +82,6 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         ignore_args_error (bool): Flag to ignore argument errors for notebook compatibility. Default is False.
         use_swift_lora (bool): Use swift lora, a compatible argument
     """
-    task_type: Literal['causal_lm', 'seq_cls'] = None
     tuner_backend: Literal['peft', 'unsloth'] = 'peft'
     train_type: str = field(default='lora', metadata={'help': f'train_type choices: {list(get_supported_tuners())}'})
     adapters: List[str] = field(default_factory=list)
@@ -114,14 +113,6 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             __import__(fname.rstrip('.py'))
         logger.info(f'Successfully registered `{self.custom_register_path}`')
 
-    def _init_task_type(self):
-        if self.task_type is not None:
-            return
-        if self.num_labels is None:
-            self.task_type = 'causal_lm'
-        else:
-            self.task_type = 'seq_cls'
-
     def _init_adapters(self):
         if isinstance(self.adapters, str):
             self.adapters = [self.adapters]
@@ -134,7 +125,6 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             self.use_hf = True
             os.environ['USE_HF'] = '1'
         CompatArguments.__post_init__(self)
-        self._init_task_type()
         self._init_adapters()
         self._init_ckpt_dir()
         self._init_custom_register()
@@ -247,10 +237,13 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             else:
                 torch.cuda.set_device(self.local_rank)
 
-    def get_template(self, processor: 'Processor') -> 'Template':
+    def get_template(self, processor: 'Processor', use_chat_template: Optional[bool] = None) -> 'Template':
         template_kwargs = self.get_template_kwargs()
+        if use_chat_template is not None:
+            template_kwargs['use_chat_template'] = use_chat_template
         template = get_template(self.template, processor, **template_kwargs)
         logger.info(f'default_system: {template.template_meta.default_system}')
+        template.set_mode(self.task_type)  # default mode
         return template
 
     def get_model_processor(self, *, model=None, model_type=None, model_revision=None, **kwargs):
@@ -262,10 +255,5 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         kwargs['model_type'] = model_type or self.model_type
         kwargs['model_revision'] = model_revision or self.model_revision
 
-        model_kwargs = {}
-        if self.task_type == 'seq_cls':
-            from transformers import AutoModelForSequenceClassification
-            kwargs['automodel_class'] = AutoModelForSequenceClassification
-            model_kwargs = {'num_labels': self.num_labels}
-        model, processor = get_model_tokenizer(**kwargs, model_kwargs=model_kwargs)
+        model, processor = get_model_tokenizer(**kwargs)
         return model, processor

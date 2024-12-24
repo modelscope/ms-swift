@@ -23,6 +23,8 @@ def test_llm_ddp():
             target_modules=['all-linear', 'all-embedding'],
             modules_to_save=['all-embedding', 'all-norm'],
             **kwargs))
+    last_model_checkpoint = result['last_model_checkpoint']
+    infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True))
 
 
 def test_unsloth():

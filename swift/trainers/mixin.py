@@ -6,11 +6,9 @@ import shutil
 import time
 from contextlib import contextmanager
 from copy import copy
-from swift.plugin import MeanMetric, compute_acc
 from functools import wraps
 from types import MethodType
 from typing import Callable, Dict, List, Optional, Tuple, Union
-from swift.utils.torchacc_utils import ta_trim_graph
 
 import safetensors
 import torch
@@ -31,9 +29,10 @@ from transformers.utils import is_torch_npu_available
 
 from swift.hub import get_hub
 from swift.llm import Template
-from swift.plugin import extra_tuners
+from swift.plugin import MeanMetric, compute_acc, extra_tuners
 from swift.tuners import SwiftModel
 from swift.utils import get_logger, is_mp_ddp, use_torchacc
+from swift.utils.torchacc_utils import ta_trim_graph
 from .arguments import TrainingArguments
 from .optimizers.galore import create_optimizer_and_scheduler
 from .utils import can_return_loss, find_labels, get_function, is_instance_of_ms_model

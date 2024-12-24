@@ -72,15 +72,9 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         self._prepare_gradient_checkpointing()
 
     def _prepare_template(self, use_chat_template: Optional[bool] = None) -> None:
-        args = self.args
-        template_kwargs = args.get_template_kwargs()
-        if use_chat_template is not None:
-            template_kwargs['use_chat_template'] = use_chat_template
-        template = get_template(args.template, self.processor, **template_kwargs)
-        logger.info(f'default_system: {template.template_meta.default_system}')
+        template = self.args.get_template(self.processor, use_chat_template)
         if template.use_model:
             template.model = self.model
-        template.set_mode(args.task_type)
         self.template = template
 
     def _get_dataset(self):

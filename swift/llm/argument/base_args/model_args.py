@@ -28,6 +28,7 @@ class ModelArguments:
         device_map (Optional[str]): Configuration for device mapping. Default is None.
         local_repo_path (Optional[str]): Path to the local github repository for model. Default is None.
     """
+    task_type: Literal['causal_lm', 'seq_cls'] = None
     model: Optional[str] = None  # model id or model path
     model_type: Optional[str] = field(
         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
@@ -119,15 +120,24 @@ class ModelArguments:
             self._init_rope_scaling()
         return self.model_info.torch_dtype
 
+    def _init_task_type(self):
+        if self.task_type is not None:
+            return
+        if self.num_labels is None:
+            self.task_type = 'causal_lm'
+        else:
+            self.task_type = 'seq_cls'
+
     def __post_init__(self):
         if self.model is None:
             raise ValueError(f'Please set --model <model_id_or_path>`, model: {self.model}')
+        self._init_task_type()
         self.model_suffix = get_model_name(self.model)
         self._init_device_map()
         self._init_torch_dtype()
 
     def get_model_kwargs(self):
-        return {
+        kwargs = {
             'model_id_or_path': self.model,
             'torch_dtype': self.torch_dtype,
             'model_type': self.model_type,
@@ -140,3 +150,8 @@ class ModelArguments:
             'attn_impl': self.attn_impl,
             'rope_scaling': self.rope_scaling,
         }
+        if self.task_type == 'seq_cls':
+            from transformers import AutoModelForSequenceClassification
+            kwargs['automodel_class'] = AutoModelForSequenceClassification
+            kwargs['model_kwargs'] = {'num_labels': self.num_labels}
+        return kwargs

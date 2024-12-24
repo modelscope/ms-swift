@@ -75,9 +75,9 @@ class PtEngine(InferEngine):
         if isinstance(adapters, str):
             adapters = [adapters]
         self.adapters = adapters or []
-        self._post_init()
         for adapter in self.adapters:
             self._add_adapter(safe_snapshot_download(adapter, use_hf=use_hf, hub_token=hub_token))
+        self._post_init()
 
     def _post_init(self):
         super()._post_init()
@@ -358,8 +358,9 @@ class PtEngine(InferEngine):
         inputs = to_device(template.data_collator(batched_inputs), self.model.device)
         if self.model.model_meta.is_multimodal:
             _, inputs = template.pre_forward_hook(self.model, None, inputs)
-        self.set_default_max_tokens(request_config, inputs)
-        generation_config = self._prepare_generation_config(request_config)
+        if template.mode != 'seq_cls':
+            self.set_default_max_tokens(request_config, inputs)
+            generation_config = self._prepare_generation_config(request_config)
         self._add_stop_words(generation_config, request_config, template)
 
         kwargs = {
