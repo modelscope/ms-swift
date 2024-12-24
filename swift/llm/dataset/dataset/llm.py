@@ -398,11 +398,27 @@ register_dataset(
         subsets=hc3_subsets,
         tags=['text-generation', 'classification', '🔥']))
 
+hc3_subset_names = ['finance', 'medicine']
+hc3_subsets: List[SubsetDataset] = []
+for hc3_subset_name in hc3_subset_names:
+    hc3_subsets.append(
+        SubsetDataset(
+            name=hc3_subset_name,
+            subset=hc3_subset_name,
+            preprocess_func=HC3Preprocessor(),
+        ))
+    hc3_subsets.append(
+        SubsetDataset(
+            name=f'{hc3_subset_name}_cls',
+            subset=hc3_subset_name,
+            preprocess_func=HC3ClsPreprocessor(),
+        ))
+
 register_dataset(
     DatasetMeta(
         ms_dataset_id='simpleai/HC3',
         hf_dataset_id='Hello-SimpleAI/HC3',
-        subsets=['finance', 'medicine'],
+        subsets=hc3_subsets,
         preprocess_func=HC3Preprocessor(),
         tags=['text-generation', 'classification', '🔥']))
 

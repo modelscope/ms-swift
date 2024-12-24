@@ -14,7 +14,7 @@ if TYPE_CHECKING:
                          SwiftTuners, LongLoRAConfig, LongLoRA, LongLoRAModelType, SCETuning, SCETuningConfig)
     from .trainers import (EvaluationStrategy, FSDPOption, HPSearchBackend, HubStrategy, IntervalStrategy,
                            SchedulerType, ShardedDDPOption, TrainingArguments, Seq2SeqTrainingArguments, Trainer,
-                           Seq2SeqTrainer, SequenceClassificationTrainer)
+                           Seq2SeqTrainer)
     from .utils import get_logger
 else:
     _import_structure = {
@@ -29,9 +29,17 @@ else:
             'Swift', 'SwiftTuners', 'LongLoRAConfig', 'LongLoRA', 'LongLoRAModelType', 'SCETuning', 'SCETuningConfig'
         ],
         'trainers': [
-            'EvaluationStrategy', 'FSDPOption', 'HPSearchBackend', 'HubStrategy', 'IntervalStrategy', 'SchedulerType',
-            'ShardedDDPOption', 'TrainingArguments', 'Seq2SeqTrainingArguments', 'Trainer', 'Seq2SeqTrainer',
-            'SequenceClassificationTrainer'
+            'EvaluationStrategy',
+            'FSDPOption',
+            'HPSearchBackend',
+            'HubStrategy',
+            'IntervalStrategy',
+            'SchedulerType',
+            'ShardedDDPOption',
+            'TrainingArguments',
+            'Seq2SeqTrainingArguments',
+            'Trainer',
+            'Seq2SeqTrainer',
         ],
         'utils': ['get_logger']
     }

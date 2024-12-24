@@ -4,6 +4,7 @@ import inspect
 import os
 import shutil
 import time
+from contextlib import contextmanager
 from copy import copy
 from types import MethodType
 from typing import Callable, Dict, List, Optional, Tuple, Union
@@ -246,6 +247,23 @@ class SwiftMixin:
         logger.info(f'Saving model checkpoint to {self.state.last_model_checkpoint}')
         return result
 
+    @contextmanager
+    def _patch_loss_function(self):
+        if not hasattr(self.model, 'loss_function'):
+            yield
+            return
+
+        loss_function = model.loss_function
+
+        @warps(loss_function)
+        def new_loss_function(logits, labels, **kwargs):
+            labels = labels.to(logits.device)  # fix device_map
+            return loss_function(logits=logits, labels=labels, **kwargs)
+
+        self.model.loss_function = new_loss_function
+        yield
+        self.model.loss_function = loss_function
+
     def train(self, *args, **kwargs):
         if self.model.model_meta.is_multimodal:
             models = list(
@@ -255,9 +273,8 @@ class SwiftMixin:
                 ]))
             self.template.register_post_encode_hook(models)
             logger.info(f'Successfully registered post_encode hook: {[model.__class__.__name__ for model in models]}')
-        self.model_accepts_loss_kwargs = True  # fix transformers>=4.46.2
         self._save_initial_model(self.args.output_dir)
-        with self.hub.patch_hub():
+        with self.hub.patch_hub(), self._patch_loss_function():
             return super().train(*args, **kwargs)
         self.template.remove_post_encode_hook()
 

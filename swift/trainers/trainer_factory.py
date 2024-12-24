@@ -12,7 +12,7 @@ logger = get_logger()
 class TrainerFactory:
     TRAINER_MAPPING = {
         'seq2seq': 'swift.trainers.Seq2SeqTrainer',
-        'seq_cls': 'swift.trainers.SequenceClassificationTrainer',
+        'seq_cls': 'swift.trainers.Trainer',
         'dpo': 'swift.trainers.DPOTrainer',
         'orpo': 'swift.trainers.ORPOTrainer',
         'kto': 'swift.trainers.KTOTrainer',

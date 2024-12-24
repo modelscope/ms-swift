@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 from functools import partial
-from typing import List, Union
+from typing import List, Optional, Union
 
 from datasets import Dataset as HfDataset
 
@@ -30,7 +30,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         self.args.save_args()
         self.train_msg = {}
         self._prepare_model_tokenizer()
-        self._prepare_template(True)
+        self._prepare_template()
         self._prepare_callbacks()
 
     def _prepare_gradient_checkpointing(self):
@@ -71,14 +71,16 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             self._prepare_generation_config()
         self._prepare_gradient_checkpointing()
 
-    def _prepare_template(self, use_chat_template: bool) -> None:
+    def _prepare_template(self, use_chat_template: Optional[bool] = None) -> None:
         args = self.args
         template_kwargs = args.get_template_kwargs()
-        template = get_template(args.template, self.processor, use_chat_template=use_chat_template, **template_kwargs)
+        if use_chat_template is not None:
+            template_kwargs['use_chat_template'] = use_chat_template
+        template = get_template(args.template, self.processor, **template_kwargs)
         logger.info(f'default_system: {template.template_meta.default_system}')
         if template.use_model:
             template.model = self.model
-        template.set_mode('train')
+        template.set_mode('train' if args.num_labels is None else 'seq_cls')
         self.template = template
 
     def _get_dataset(self):
