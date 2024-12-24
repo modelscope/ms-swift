@@ -8,6 +8,7 @@ swift sft \
     --dataset simpleai/HC3-Chinese:baike_cls#1000 \
     --num_train_epochs 1 \
     --num_labels 2 \
+    --task_type seq_cls \
     --per_device_train_batch_size 1 \
     --learning_rate 1e-5 \
     --gradient_accumulation_steps 16 \
