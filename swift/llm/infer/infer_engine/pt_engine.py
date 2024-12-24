@@ -78,6 +78,7 @@ class PtEngine(InferEngine):
         for adapter in self.adapters:
             self._add_adapter(safe_snapshot_download(adapter, use_hf=use_hf, hub_token=hub_token))
         self._post_init()
+        self.task_type = 'causal_lm'
 
     def _post_init(self):
         super()._post_init()
