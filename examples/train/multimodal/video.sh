@@ -1,8 +1,10 @@
 # 4*80GB
 # You can refer to `https://github.com/QwenLM/Qwen2-VL` for the meaning of the `VIDEO_MAX_PIXELS` parameter.
-NPROC_PER_NODE=4 \
+nproc_per_node=4
+
+NPROC_PER_NODE=$nproc_per_node \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
-VIDEO_MAX_PIXELS=200704 \
+VIDEO_MAX_PIXELS=100352 \
 FPS_MAX_FRAMES=24 \
 swift sft \
     --model Qwen/QVQ-72B-Preview \
@@ -17,7 +19,7 @@ swift sft \
     --lora_alpha 32 \
     --target_modules all-linear \
     --freeze_vit true \
-    --gradient_accumulation_steps 4 \
+    --gradient_accumulation_steps $(expr 16 / $nproc_per_node) \
     --eval_steps 50 \
     --save_steps 50 \
     --save_total_limit 5 \
