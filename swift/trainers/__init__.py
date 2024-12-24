@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from .rlhf_trainer import (CPOTrainer, DPOTrainer, KTOTrainer, ORPOTrainer, RLHFTrainerMixin, PPOTrainer,
                                RewardTrainer)
     from .trainer_factory import TrainerFactory
-    from .trainers import Seq2SeqTrainer, Trainer
+    from .trainers import Seq2SeqTrainer, Trainer, SequenceClassificationTrainer
     from .mixin import SwiftMixin
 
 else:
@@ -33,7 +33,7 @@ else:
         'rlhf_trainer':
         ['CPOTrainer', 'DPOTrainer', 'KTOTrainer', 'ORPOTrainer', 'RLHFTrainerMixin', 'PPOTrainer', 'RewardTrainer'],
         'trainer_factory': ['TrainerFactory'],
-        'trainers': ['Seq2SeqTrainer', 'Trainer'],
+        'trainers': ['Seq2SeqTrainer', 'Trainer', 'SequenceClassificationTrainer'],
         'mixin': ['SwiftMixin'],
     }
 

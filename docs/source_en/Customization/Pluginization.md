@@ -8,12 +8,6 @@ Examples can be found [here](https://github.com/modelscope/swift/blob/main/swift
 
 Callbacks are registered into the trainer before constructing the trainer. The example provides a simple version of the EarlyStop scheme.
 
-## Customized Trainer
-
-Examples can be found [here](https://github.com/modelscope/swift/blob/main/swift/plugin/custom_trainer.py).
-
-Users can inherit existing trainers and implement their own training logic here, such as customizing data loaders, customizing compute_loss, etc. The example demonstrates a trainer for a text-classification task.
-
 ## Customized Loss
 
 Examples can be found [here](https://github.com/modelscope/swift/blob/main/swift/plugin/loss.py).

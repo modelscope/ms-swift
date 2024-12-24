@@ -358,7 +358,8 @@ Output:"""
     def preprocess(self, row):
         rows = []
         for response in ['Human', 'ChatGPT']:
-            query = self.prompt.format(question=row['query'], answer=row[f'{response.lower()}_answers'])
+            query = self.prompt.format(
+                question=row['query'], answer=self.random_state.choice(row[f'{response.lower()}_answers']))
             rows.append(super().preprocess({'query': query, 'response': response}))
         return rows
 
@@ -368,7 +369,8 @@ class HC3ClsPreprocessor(HC3Preprocessor):
     def preprocess(self, row):
         rows = []
         for i, response in enumerate(['Human', 'ChatGPT']):
-            query = self.prompt.format(question=row['query'], answer=row[f'{response.lower()}_answers'])
+            query = self.prompt.format(
+                question=row['query'], answer=self.random_state.choice(row[f'{response.lower()}_answers']))
             rows.append(ResponsePreprocessor.preprocess(self, {'query': query, 'label': i}))
         return rows
 
