@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 from functools import partial
-from typing import List, Optional, Union
+from typing import List, Union
 
 from datasets import Dataset as HfDataset
 
@@ -14,7 +14,6 @@ from ..base import SwiftPipeline
 from ..dataset import EncodePreprocessor, GetLengthPreprocessor, LazyLLMDataset, PackingPreprocessor, load_dataset
 from ..infer import prepare_generation_config
 from ..model import get_model_arch
-from ..template import get_template
 from ..utils import deep_getattr, dynamic_gradient_checkpointing
 from .tuner import TunerMixin
 

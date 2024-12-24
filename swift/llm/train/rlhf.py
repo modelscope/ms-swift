@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import List, Optional, Union
+from typing import List, Union
 
 from swift.utils import patch_getattr
 from ..argument import RLHFArguments

@@ -283,8 +283,9 @@ class SwiftMixin:
             logger.info(f'Successfully registered post_encode hook: {[model.__class__.__name__ for model in models]}')
         self._save_initial_model(self.args.output_dir)
         with self.hub.patch_hub(), self._patch_loss_function():
-            return super().train(*args, **kwargs)
+            res = super().train(*args, **kwargs)
         self.template.remove_post_encode_hook()
+        return res
 
     def push_to_hub(self, *args, **kwargs):
         with self.hub.patch_hub():

@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import Any, Dict, List, Optional, Tuple, Type
+from typing import Any, Dict, Optional, Tuple, Type
 
 import torch
 from transformers import AutoConfig, BitsAndBytesConfig, PreTrainedTokenizerBase

@@ -9,7 +9,6 @@ from typing import Any, Callable, Dict, List, Literal, TypeVar, Union
 import numpy as np
 import requests
 import torch
-from packaging import version
 from PIL import Image, ImageDraw
 
 from swift.utils import get_env_args
