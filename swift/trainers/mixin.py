@@ -253,7 +253,7 @@ class SwiftMixin:
             yield
             return
 
-        loss_function = model.loss_function
+        loss_function = self.model.loss_function
 
         @warps(loss_function)
         def new_loss_function(logits, labels, **kwargs):
