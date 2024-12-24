@@ -255,6 +255,13 @@ class PtEngine(InferEngine):
             self._add_adapter(adapter_request.path, adapter_name)
         return [adapter_name]
 
+    @staticmethod
+    def _get_seq_cls_logprobs(logprobs):
+        res = []
+        for i, logprob in enumerate(logprobs.tolist()):
+            res.append({'index': i, 'logprob': logprob})
+        return {'content': res}
+
     def _infer_seq_cls(self,
                        template: Template,
                        inputs: Dict[str, Any],
@@ -266,16 +273,17 @@ class PtEngine(InferEngine):
         num_prompt_tokens = self._get_num_tokens(inputs)
         inputs.pop('labels')
         logits = self.model(**inputs, **call_kwargs).logits
+        logprobs = torch.log_softmax(logits, -1)
         preds = torch.argmax(logits, dim=-1).tolist()
         res = []
-        for pred in preds:
+        for i, pred in enumerate(preds):
             usage_info = self._get_usage_info(num_prompt_tokens, 1)
             choices = [
                 ChatCompletionResponseChoice(
                     index=0,
                     message=ChatMessage(role='assistant', content=str(pred), tool_calls=None),
                     finish_reason='stop',
-                    logprobs=None)
+                    logprobs=self._get_seq_cls_logprobs(logprobs[i]))
             ]
             res.append(ChatCompletionResponse(model=self.model_name, choices=choices, usage=usage_info))
         return res

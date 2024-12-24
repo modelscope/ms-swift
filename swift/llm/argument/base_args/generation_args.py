@@ -34,6 +34,7 @@ class GenerationArguments:
 
     stream: bool = False
     stop_words: List[str] = field(default_factory=list)
+    logprobs: bool = False
 
     def get_request_config(self):
         if getattr(self, 'task_type') != 'causal_lm':
@@ -48,4 +49,5 @@ class GenerationArguments:
             num_beams=self.num_beams,
             stop=self.stop_words,
             stream=self.stream,
-            repetition_penalty=self.repetition_penalty)
+            repetition_penalty=self.repetition_penalty,
+            logprobs=self.logprobs)

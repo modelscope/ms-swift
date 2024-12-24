@@ -193,7 +193,9 @@ class SwiftInfer(SwiftPipeline):
                 val_dataset, request_config, template=self.template, use_tqdm=True, **self.infer_kwargs)
             for data, resp, labels in zip(val_dataset, resp_list, labels_list):
                 response = resp.choices[0].message.content
-                data = {'response': response, 'labels': labels, **data}
+                if labels:
+                    data['labels'] = labels
+                data = {'response': response, 'logprobs': resp.choices[0].logprobs, **data}
                 result_list.append(data)
             if is_dist:
                 total_result_list = [None for _ in range(args.world_size)] if args.rank == 0 else None
