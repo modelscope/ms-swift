@@ -31,7 +31,7 @@ class TemplateArguments:
     system: Optional[str] = None  # Override the default_system in the template.
     max_length: Optional[int] = None
 
-    truncation_strategy: Literal['delete', 'left'] = 'delete'
+    truncation_strategy: Literal['delete', 'left', 'right'] = 'delete'
     max_pixels: Optional[int] = None
     tools_prompt: str = 'react_en'  # Override the default_tools_prompt in the template.
     # train

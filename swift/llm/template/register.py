@@ -24,7 +24,7 @@ def get_template(
         *,
         use_chat_template: bool = True,
         template_backend: Literal['swift', 'jinja'] = 'swift',
-        truncation_strategy: Literal['raise', 'left'] = 'raise',
+        truncation_strategy: Literal['raise', 'left', 'right'] = 'raise',
         max_pixels: Optional[int] = None,  # h * w
         tools_prompt: str = 'react_en',
         # train
