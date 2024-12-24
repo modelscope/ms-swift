@@ -284,7 +284,7 @@ def generate_export_report(outputs: List[ModelOutput]):
 
 
 def parse_output(file):
-    with open(file, 'r') as f:
+    with open(file, 'r', encoding='utf-8') as f:
         content = json.load(f)
 
     name = content['name']
