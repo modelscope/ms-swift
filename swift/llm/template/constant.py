@@ -50,6 +50,9 @@ class LLMTemplateType:
     codefuse = 'codefuse'
     codefuse_codellama = 'codefuse_codellama'
 
+    skywork = 'skywork'
+    skywork_o1 = 'skywork_o1'
+
     mistral_nemo = 'mistral_nemo'
     zephyr = 'zephyr'
     wizardlm2 = 'wizardlm2'
@@ -59,7 +62,6 @@ class LLMTemplateType:
 
     yuan = 'yuan'
     xverse = 'xverse'
-    skywork = 'skywork'
     bluelm = 'bluelm'
     orion = 'orion'
 

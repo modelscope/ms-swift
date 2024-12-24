@@ -180,8 +180,19 @@ def test_ovis1_6():
 
 
 def test_paligemma():
-    pt_engine = PtEngine('AI-ModelScope/paligemma-3b-pt-224')
-    _infer_model(pt_engine, messages=[{'role': 'user', 'content': 'caption en'}])
+    pt_engine = PtEngine('AI-ModelScope/paligemma-3b-mix-224')
+    response = _infer_model(pt_engine, messages=[{'role': 'user', 'content': 'detect cat'}])
+    assert response == '<loc0000><loc0000><loc1022><loc1022> cat'
+
+
+def test_paligemma2():
+    pt_engine = PtEngine('AI-ModelScope/paligemma2-3b-ft-docci-448', torch_dtype=torch.bfloat16)
+    response = _infer_model(pt_engine, messages=[{'role': 'user', 'content': 'caption en'}])
+    assert response == (
+        'A close up view of a white kitten with black stripes on its head and body. The kitten is looking straight '
+        'ahead with its light blue eyes. The kitten has a pink nose and mouth. The kitten is sitting on a white '
+        'surface. A white light is shining on the kitten and the white surface. A shadow is being cast underneath '
+        'the kitten and the white surface.')
 
 
 def test_pixtral():
@@ -299,6 +310,7 @@ if __name__ == '__main__':
     # test_minicpmv()
     # test_got_ocr()
     # test_paligemma()
+    test_paligemma2()
     # test_pixtral()
     # test_llama_vision()
     # test_llava_hf()
@@ -314,4 +326,4 @@ if __name__ == '__main__':
     # test_mplug_owl2()
     # test_molmo()
     # test_molmoe()
-    test_doc_owl2()
+    # test_doc_owl2()
