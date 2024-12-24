@@ -63,7 +63,8 @@ After training is complete, use the following command to perform inference with 
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
     --adapters output/vx-xxx/checkpoint-xxx \
-    --stream true
+    --stream true \
+    --max_new_tokens 2048
 
 # merge-lora and use vLLM for inference acceleration
 CUDA_VISIBLE_DEVICES=0 \
@@ -72,7 +73,8 @@ swift infer \
     --stream true \
     --merge_lora true \
     --infer_backend vllm \
-    --max_model_len 8192
+    --max_model_len 8192 \
+    --max_new_tokens 2048
 ```
 
 > [!TIP]

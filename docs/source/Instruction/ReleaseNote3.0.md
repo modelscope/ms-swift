@@ -18,7 +18,6 @@
     - 采用messages格式作为入参接口
 4. 支持了plugin机制，用于定制训练过程，目前支持的plugin有：
     - callback 定制训练回调方法
-    - custom_trainer 定制trainer
     - loss 定制loss方法
     - loss_scale 定制每个token的权重
     - metric 定制交叉验证的指标

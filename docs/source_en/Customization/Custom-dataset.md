@@ -74,14 +74,15 @@ For multimodal datasets, the format is the same as the tasks mentioned above. Th
 Pre-training:
 ```jsonl
 {"messages": [{"role": "assistant", "content": "Pre-trained text goes here"}]}
-{"messages": [{"role": "assistant", "content": "<image> is a puppy, <image> is a kitten"}], "images": ["/xxx/x.jpg", "/xxx/x.png"]}
-{"messages": [{"role": "assistant", "content": "<audio> describes how nice the weather is today"}], "audios": ["/xxx/x.wav"]}
-{"messages": [{"role": "assistant", "content": "<image> is an elephant, <video> is a lion running"}], "images": ["/xxx/x.jpg"], "videos": ["/xxx/x.mp4"]}
+{"messages": [{"role": "assistant", "content": "<image>is a puppy, <image>is a kitten"}], "images": ["/xxx/x.jpg", "/xxx/x.png"]}
+{"messages": [{"role": "assistant", "content": "<audio>describes how nice the weather is today"}], "audios": ["/xxx/x.wav"]}
+{"messages": [{"role": "assistant", "content": "<image>is an elephant, <video>is a lion running"}], "images": ["/xxx/x.jpg"], "videos": ["/xxx/x.mp4"]}
 ```
 
 Supervised Fine-tuning:
 
 ```jsonl
+{"messages": [{"role": "user", "content": "Where is the capital of Zhejiang?"}, {"role": "assistant", "content": "The capital of Zhejiang is Hangzhou."}]}
 {"messages": [{"role": "user", "content": "<image><image>What is the difference between the two images?"}, {"role": "assistant", "content": "The first one is a kitten, and the second one is a puppy."}], "images": ["/xxx/x.jpg", "xxx/x.png"]}
 {"messages": [{"role": "user", "content": "<audio>What did the audio say?"}, {"role": "assistant", "content": "The weather is really nice today."}], "audios": ["/xxx/x.mp3"]}
 {"messages": [{"role": "system", "content": "You are a helpful and harmless assistant."}, {"role": "user", "content": "<image>What is in the image, <video>What is in the video?"}, {"role": "assistant", "content": "The image shows an elephant, and the video shows a puppy running on the grass."}], "images": ["/xxx/x.jpg"], "videos": ["/xxx/x.mp4"]}
@@ -93,7 +94,7 @@ The data format for RLHF can refer to the format used for pure text large models
 For grounding (object detection) tasks, SWIFT supports two methods:
 1. Maintain consistency with the above multimodal dataset format, adding special characters in the dataset, for example:
 ```jsonl
-{"messages": [{"role": "system", "content": "You are a useful and harmless assistant"}, {"role": "user", "content": "<image> Find a <ref> elephant </ref>"}, {"role": "assistant", "content": "<box>(200,450),(500,800)</box>"}], "images": ["/xxx/x.jpg"]}
+{"messages": [{"role": "system", "content": "You are a useful and harmless assistant"}, {"role": "user", "content": "<image>Find a <ref> elephant </ref>"}, {"role": "assistant", "content": "<box>(200,450),(500,800)</box>"}], "images": ["/xxx/x.jpg"]}
 ```
 With this type of data, please note:
   - Grounding tasks often require special characters. You need to determine which model to use, read the model paper to identify special characters for grounding tasks, and combine the data accordingly.
@@ -104,9 +105,9 @@ With this type of data, please note:
 
 ```jsonl
 # Object detection
-{"messages": [{"role": "system", "content": "You are a useful and harmless assistant"}, {"role": "user", "content": "<image> Identify <bbox>"}, {"role": "assistant", "content": "<ref-object>"}], "images": ["/coco2014/train2014/COCO_train2014_000000001507.jpg"], "objects": "[{\"caption\": \"guy in red\", \"bbox\": [138, 136, 235, 359], \"bbox_type\": \"real\", \"image\": 0}]"}
+{"messages": [{"role": "system", "content": "You are a useful and harmless assistant"}, {"role": "user", "content": "<image>Identify <bbox>"}, {"role": "assistant", "content": "<ref-object>"}], "images": ["/coco2014/train2014/COCO_train2014_000000001507.jpg"], "objects": "[{\"caption\": \"guy in red\", \"bbox\": [138, 136, 235, 359], \"bbox_type\": \"real\", \"image\": 0}]"}
 # Grounding to multiple bboxes
-{"messages": [{"role": "system", "content": "You are a useful and harmless assistant"}, {"role": "user", "content": "<image> Find <ref-object>"}, {"role": "assistant", "content": "<bbox>"}], "images": ["/coco2014/train2014/COCO_train2014_000000001507.jpg"], "objects": "[{\"caption\": \"guy in red\", \"bbox\": [[138, 136, 235, 359], [1,2,3,4]], \"bbox_type\": \"real\", \"image\": 0}]"}
+{"messages": [{"role": "system", "content": "You are a useful and harmless assistant"}, {"role": "user", "content": "<image>Find <ref-object>"}, {"role": "assistant", "content": "<bbox>"}], "images": ["/coco2014/train2014/COCO_train2014_000000001507.jpg"], "objects": "[{\"caption\": \"guy in red\", \"bbox\": [[138, 136, 235, 359], [1,2,3,4]], \"bbox_type\": \"real\", \"image\": 0}]"}
 ```
 
 This format adds the objects field, which includes:

@@ -169,10 +169,35 @@ register_dataset(
         split=['train', 'validation'],
     ))
 
+
+class JdClsPreprocessor(ClsPreprocessor):
+
+    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        label = int(row['label'])
+        res = super().preprocess(row)
+        res['messages'].pop()
+        res['label'] = label
+        return res
+
+
 register_dataset(
     DatasetMeta(
         ms_dataset_id='DAMO_NLP/jd',
-        preprocess_func=ClsPreprocessor(['negative', 'positive'], task='Sentiment Classification', is_pair_seq=False),
+        subsets=[
+            SubsetDataset(
+                'default',
+                'default',
+                preprocess_func=ClsPreprocessor(['negative', 'positive'],
+                                                task='Sentiment Classification',
+                                                is_pair_seq=False)),
+            SubsetDataset(
+                'cls',
+                'default',
+                preprocess_func=JdClsPreprocessor(['negative', 'positive'],
+                                                  task='Sentiment Classification',
+                                                  is_pair_seq=False),
+            ),
+        ],
         tags=['text-generation', 'classification', '🔥'],
         split=['train', 'validation'],
     ))
@@ -358,7 +383,8 @@ Output:"""
     def preprocess(self, row):
         rows = []
         for response in ['Human', 'ChatGPT']:
-            query = self.prompt.format(question=row['query'], answer=row[f'{response.lower()}_answers'])
+            query = self.prompt.format(
+                question=row['query'], answer=self.random_state.choice(row[f'{response.lower()}_answers']))
             rows.append(super().preprocess({'query': query, 'response': response}))
         return rows
 
@@ -368,7 +394,8 @@ class HC3ClsPreprocessor(HC3Preprocessor):
     def preprocess(self, row):
         rows = []
         for i, response in enumerate(['Human', 'ChatGPT']):
-            query = self.prompt.format(question=row['query'], answer=row[f'{response.lower()}_answers'])
+            query = self.prompt.format(
+                question=row['query'], answer=self.random_state.choice(row[f'{response.lower()}_answers']))
             rows.append(ResponsePreprocessor.preprocess(self, {'query': query, 'label': i}))
         return rows
 
@@ -396,11 +423,27 @@ register_dataset(
         subsets=hc3_subsets,
         tags=['text-generation', 'classification', '🔥']))
 
+hc3_subset_names = ['finance', 'medicine']
+hc3_subsets: List[SubsetDataset] = []
+for hc3_subset_name in hc3_subset_names:
+    hc3_subsets.append(
+        SubsetDataset(
+            name=hc3_subset_name,
+            subset=hc3_subset_name,
+            preprocess_func=HC3Preprocessor(),
+        ))
+    hc3_subsets.append(
+        SubsetDataset(
+            name=f'{hc3_subset_name}_cls',
+            subset=hc3_subset_name,
+            preprocess_func=HC3ClsPreprocessor(),
+        ))
+
 register_dataset(
     DatasetMeta(
         ms_dataset_id='simpleai/HC3',
         hf_dataset_id='Hello-SimpleAI/HC3',
-        subsets=['finance', 'medicine'],
+        subsets=hc3_subsets,
         preprocess_func=HC3Preprocessor(),
         tags=['text-generation', 'classification', '🔥']))
 

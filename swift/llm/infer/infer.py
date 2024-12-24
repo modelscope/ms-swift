@@ -33,7 +33,7 @@ class SwiftInfer(SwiftPipeline):
 
         if args.infer_backend == 'pt':
             model, self.template = prepare_model_template(args)
-            self.infer_engine = PtEngine.from_model_template(model, self.template)
+            self.infer_engine = PtEngine.from_model_template(model, self.template, max_batch_size=args.max_batch_size)
             logger.info(f'model: {self.infer_engine.model}')
         else:
             self.infer_engine = self.get_infer_engine(args)
@@ -98,7 +98,7 @@ class SwiftInfer(SwiftPipeline):
                                 template=self.template,
                                 use_tqdm=False,
                                 **self.infer_kwargs)
-        if request_config.stream:
+        if request_config and request_config.stream:
             response = ''
             for res in res_or_gen:
                 delta = res[0].choices[0].delta.content
@@ -115,6 +115,7 @@ class SwiftInfer(SwiftPipeline):
         args = self.args
         template = self.template
         request_config = args.get_request_config()
+        logger.info(f'request_config: {request_config}')
 
         logger.info('Input `exit` or `quit` to exit the conversation.')
         logger.info('Input `multi-line` to switch to multi-line input mode.')
@@ -168,7 +169,7 @@ class SwiftInfer(SwiftPipeline):
         val_dataset = self._prepare_val_dataset()
         logger.info(f'val_dataset: {val_dataset}')
         result_list = []
-        if request_config.stream:
+        if request_config and request_config.stream:
             for data in val_dataset:
                 labels = InferRequest.remove_response(data['messages'])
                 query = data['messages'][-1]['content']
@@ -192,7 +193,9 @@ class SwiftInfer(SwiftPipeline):
                 val_dataset, request_config, template=self.template, use_tqdm=True, **self.infer_kwargs)
             for data, resp, labels in zip(val_dataset, resp_list, labels_list):
                 response = resp.choices[0].message.content
-                data = {'response': response, 'labels': labels, **data}
+                if labels:
+                    data['labels'] = labels
+                data = {'response': response, 'logprobs': resp.choices[0].logprobs, **data}
                 result_list.append(data)
             if is_dist:
                 total_result_list = [None for _ in range(args.world_size)] if args.rank == 0 else None

@@ -4,7 +4,9 @@ import inspect
 import os
 import shutil
 import time
+from contextlib import contextmanager
 from copy import copy
+from functools import wraps
 from types import MethodType
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
@@ -27,9 +29,10 @@ from transformers.utils import is_torch_npu_available
 
 from swift.hub import get_hub
 from swift.llm import Template
-from swift.plugin import extra_tuners
+from swift.plugin import MeanMetric, compute_acc, extra_tuners
 from swift.tuners import SwiftModel
-from swift.utils import get_logger, is_mp_ddp
+from swift.utils import get_logger, is_mp_ddp, use_torchacc
+from swift.utils.torchacc_utils import ta_trim_graph
 from .arguments import TrainingArguments
 from .optimizers.galore import create_optimizer_and_scheduler
 from .utils import can_return_loss, find_labels, get_function, is_instance_of_ms_model
@@ -246,6 +249,29 @@ class SwiftMixin:
         logger.info(f'Saving model checkpoint to {self.state.last_model_checkpoint}')
         return result
 
+    @contextmanager
+    def _patch_loss_function(self):
+        model = self.model
+        if isinstance(model, PeftModel):
+            model = model.model
+        model_cls = model.__class__
+        if not hasattr(model_cls, 'loss_function'):
+            yield
+            return
+
+        loss_function = model.loss_function
+        _old_loss_function = model_cls.loss_function
+
+        @staticmethod
+        @wraps(loss_function)
+        def new_loss_function(logits, labels, **kwargs):
+            labels = labels.to(logits.device)  # fix device_map
+            return loss_function(logits=logits, labels=labels, **kwargs)
+
+        model_cls.loss_function = new_loss_function
+        yield
+        model_cls.loss_function = _old_loss_function
+
     def train(self, *args, **kwargs):
         if self.model.model_meta.is_multimodal:
             models = list(
@@ -255,11 +281,11 @@ class SwiftMixin:
                 ]))
             self.template.register_post_encode_hook(models)
             logger.info(f'Successfully registered post_encode hook: {[model.__class__.__name__ for model in models]}')
-        self.model_accepts_loss_kwargs = True  # fix transformers>=4.46.2
         self._save_initial_model(self.args.output_dir)
-        with self.hub.patch_hub():
-            return super().train(*args, **kwargs)
+        with self.hub.patch_hub(), self._patch_loss_function():
+            res = super().train(*args, **kwargs)
         self.template.remove_post_encode_hook()
+        return res
 
     def push_to_hub(self, *args, **kwargs):
         with self.hub.patch_hub():
@@ -353,3 +379,19 @@ class SwiftMixin:
         else:
             from swift.trainers.xtuner import get_xtuner_train_dataloader
             return get_xtuner_train_dataloader(self)
+
+    def _compute_acc(self, outputs, labels) -> None:
+        args = self.args
+        acc_steps = args.acc_steps
+        preds = outputs.logits.argmax(dim=-1)
+        if self.state.global_step % acc_steps == 0:
+            if use_torchacc():
+                ta_trim_graph()
+                preds = preds.to('cpu')
+                labels = labels.to('cpu')
+            metrics = compute_acc(
+                preds, labels, acc_strategy=args.acc_strategy, is_encoder_decoder=args.is_encoder_decoder)
+            for k, v in metrics.items():
+                if k not in self._custom_metrics:
+                    self._custom_metrics[k] = MeanMetric(nan_value=None)
+                self._custom_metrics[k].update(v)

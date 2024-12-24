@@ -150,7 +150,7 @@ class RLHFTrainerMixin:
             labels = labels.clone()  # fix trl bug
         return super().get_batch_logps(logits, labels, *args, **kwargs)
 
-    def compute_loss(self, model, inputs, return_outputs=None, num_items_in_batch=None):
+    def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         res = super().compute_loss(model, inputs, return_outputs=return_outputs)
         # compat transformers>=4.46.*
         if num_items_in_batch is not None:
