@@ -74,7 +74,7 @@ For multimodal datasets, the format is the same as the tasks mentioned above. Th
 Pre-training:
 ```jsonl
 {"messages": [{"role": "assistant", "content": "Pre-trained text goes here"}]}
-{"messages": [{"role": "assistant", "content": "<image> is a puppy, <image> is a kitten"}], "images": ["/xxx/x.jpg", "/xxx/x.jpg"]}
+{"messages": [{"role": "assistant", "content": "<image> is a puppy, <image> is a kitten"}], "images": ["/xxx/x.jpg", "/xxx/x.png"]}
 {"messages": [{"role": "assistant", "content": "<audio> describes how nice the weather is today"}], "audios": ["/xxx/x.wav"]}
 {"messages": [{"role": "assistant", "content": "<image> is an elephant, <video> is a lion running"}], "images": ["/xxx/x.jpg"], "videos": ["/xxx/x.mp4"]}
 ```
