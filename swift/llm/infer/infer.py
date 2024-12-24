@@ -33,7 +33,7 @@ class SwiftInfer(SwiftPipeline):
 
         if args.infer_backend == 'pt':
             model, self.template = prepare_model_template(args)
-            self.infer_engine = PtEngine.from_model_template(model, self.template)
+            self.infer_engine = PtEngine.from_model_template(model, self.template, max_batch_size=args.max_batch_size)
             logger.info(f'model: {self.infer_engine.model}')
         else:
             self.infer_engine = self.get_infer_engine(args)

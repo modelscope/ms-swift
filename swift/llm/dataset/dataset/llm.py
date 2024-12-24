@@ -169,7 +169,9 @@ register_dataset(
         split=['train', 'validation'],
     ))
 
+
 class JdClsPreprocessor(ClsPreprocessor):
+
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         label = int(row['label'])
         res = super().preprocess(row)
@@ -177,12 +179,24 @@ class JdClsPreprocessor(ClsPreprocessor):
         res['label'] = label
         return res
 
+
 register_dataset(
     DatasetMeta(
         ms_dataset_id='DAMO_NLP/jd',
         subsets=[
-            SubsetDataset('default', 'default', preprocess_func=ClsPreprocessor(['negative', 'positive'], task='Sentiment Classification', is_pair_seq=False)),
-            SubsetDataset('cls', 'default', preprocess_func=JdClsPreprocessor(['negative', 'positive'], task='Sentiment Classification', is_pair_seq=False),),
+            SubsetDataset(
+                'default',
+                'default',
+                preprocess_func=ClsPreprocessor(['negative', 'positive'],
+                                                task='Sentiment Classification',
+                                                is_pair_seq=False)),
+            SubsetDataset(
+                'cls',
+                'default',
+                preprocess_func=JdClsPreprocessor(['negative', 'positive'],
+                                                  task='Sentiment Classification',
+                                                  is_pair_seq=False),
+            ),
         ],
         tags=['text-generation', 'classification', '🔥'],
         split=['train', 'validation'],

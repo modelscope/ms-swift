@@ -12,12 +12,7 @@ kwargs = {
 def test_llm():
     from swift.llm import TrainArguments, sft_main, infer_main, InferArguments
     result = sft_main(
-        TrainArguments(
-            model='Qwen/Qwen2.5-7B-Instruct',
-            num_labels=2,
-            dataset=['simpleai/HC3-Chinese:baike_cls#200'],
-            use_chat_template=False,
-            **kwargs))
+        TrainArguments(model='Qwen/Qwen2.5-7B-Instruct', num_labels=2, dataset=['DAMO_NLP/jd:cls#2000'], **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
     infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True))
 

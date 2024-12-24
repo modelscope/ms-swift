@@ -1,8 +1,8 @@
-# If `num_labels` is provided, it will be considered a classification task, 
+# If `num_labels` is provided, it will be considered a classification task,
 # and AutoModelForSequenceClassification will be used to load the model.
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
-    --model Qwen/Qwen2.5-7B-Instruct \
+    --model Qwen/Qwen2.5-7B \
     --train_type lora \
     --dataset DAMO_NLP/jd:cls#2000 \
     --torch_dtype bfloat16 \
@@ -22,4 +22,5 @@ swift sft \
     --output_dir output \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 4 \
-    --num_labels 2
+    --num_labels 2 \
+    --use_chat_template false

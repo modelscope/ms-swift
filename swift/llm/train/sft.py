@@ -27,11 +27,11 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
     def __init__(self, args: Union[List[str], TrainArguments, None] = None) -> None:
         super().__init__(args)
-        self.args.save_args()
         self.train_msg = {}
         self._prepare_model_tokenizer()
         self._prepare_template()
         self._prepare_callbacks()
+        self.args.save_args()
 
     def _prepare_gradient_checkpointing(self):
         args = self.args
@@ -71,8 +71,8 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             self._prepare_generation_config()
         self._prepare_gradient_checkpointing()
 
-    def _prepare_template(self, use_chat_template: Optional[bool] = None) -> None:
-        template = self.args.get_template(self.processor, use_chat_template)
+    def _prepare_template(self) -> None:
+        template = self.args.get_template(self.processor)
         if template.use_model:
             template.model = self.model
         self.template = template
@@ -111,7 +111,8 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         train_dataset, val_dataset = self._get_dataset()
         if args.task_type == 'seq_cls' and isinstance(train_dataset, HfDataset):
             min_num_labels = int(max(train_dataset['label']) + 1)
-            assert args.num_labels >= min_num_labels, f'args.num_labels: {args.num_labels}, min_num_labels: {min_num_labels}'
+            assert args.num_labels >= min_num_labels, (
+                f'args.num_labels: {args.num_labels}, min_num_labels: {min_num_labels}')
 
         train_dataset, val_dataset = self._encode_dataset(train_dataset, val_dataset)
         data_collator = self._get_data_collator()

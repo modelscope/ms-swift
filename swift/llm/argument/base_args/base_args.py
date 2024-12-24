@@ -204,7 +204,8 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             'model_author',
             'split_dataset_ratio',
             # template_args
-            'tools_prompt'
+            'tools_prompt',
+            'use_chat_template'
         ]
         skip_keys = list(f.name for f in fields(GenerationArguments)) + ['adapters']
         if not isinstance(self, TrainArguments):
@@ -235,10 +236,8 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             else:
                 torch.cuda.set_device(self.local_rank)
 
-    def get_template(self, processor: 'Processor', use_chat_template: Optional[bool] = None) -> 'Template':
+    def get_template(self, processor: 'Processor') -> 'Template':
         template_kwargs = self.get_template_kwargs()
-        if use_chat_template is not None:
-            template_kwargs['use_chat_template'] = use_chat_template
         template = get_template(self.template, processor, **template_kwargs)
         logger.info(f'default_system: {template.template_meta.default_system}')
         template.set_mode(self.task_type)  # default mode

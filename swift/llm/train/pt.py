@@ -9,7 +9,8 @@ class SwiftPt(SwiftSft):
     args_class = TrainArguments
     args: args_class
 
-    def _prepare_template(self, use_chat_template: bool) -> None:
+    def _prepare_template(self) -> None:
+        self.args.use_chat_template = False
         super()._prepare_template(use_chat_template=False)
         self.template.loss_scale = 'all'
 
