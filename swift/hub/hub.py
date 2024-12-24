@@ -256,7 +256,7 @@ class MSHub(HubOperation):
         if commit_description:
             commit_message = commit_message + '\n' + commit_description
         if not os.path.exists(os.path.join(folder_path, 'configuration.json')):
-            with open(os.path.join(folder_path, 'configuration.json'), 'w') as f:
+            with open(os.path.join(folder_path, 'configuration.json'), 'w', encoding='utf-8') as f:
                 f.write('{"framework": "pytorch", "task": "text-generation", "allow_remote": true}')
         if ignore_patterns:
             ignore_patterns = [p for p in ignore_patterns if p != '_*']

@@ -52,7 +52,7 @@ class ModelArguments:
             value = {}
         elif isinstance(value, str):
             if os.path.exists(value):  # local path
-                with open(value, 'r') as f:
+                with open(value, 'r', encoding='utf-8') as f:
                     value = json.load(f)
             else:  # json str
                 try:

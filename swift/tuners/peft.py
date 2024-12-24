@@ -61,7 +61,7 @@ class LoraConfig(peft.LoraConfig):
             'lorap_lr_ratio': self.lorap_lr_ratio,
             'lorap_emb_lr': self.lorap_emb_lr,
         }
-        with open(os.path.join(save_directory, 'additional_config.json'), 'w') as f:
+        with open(os.path.join(save_directory, 'additional_config.json'), 'w', encoding='utf-8') as f:
             json.dump(additional_args, f)
 
     @classmethod
@@ -75,7 +75,8 @@ class LoraConfig(peft.LoraConfig):
             self = LoraConfig(**self.to_dict())
 
         if os.path.isfile(os.path.join(pretrained_model_name_or_path, 'additional_config.json')):
-            with open(os.path.join(pretrained_model_name_or_path, 'additional_config.json'), 'r') as f:
+            with open(
+                    os.path.join(pretrained_model_name_or_path, 'additional_config.json'), 'r', encoding='utf-8') as f:
                 _json = json.load(f)
                 for key, value in _json.items():
                     setattr(self, key, value)
