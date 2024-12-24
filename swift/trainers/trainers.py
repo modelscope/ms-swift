@@ -128,7 +128,7 @@ class Seq2SeqTrainer(TorchAccMixin, SwiftMixin, HfSeq2SeqTrainer):
         else:
             unwrapped_model = self.accelerator.unwrap_model(model)
             if is_peft_available() and isinstance(unwrapped_model, PeftModel):
-                model_name = unwrapped_model.base_model.model._get_name()
+                model_name = unwrapped_model.model._get_name()
             else:
                 model_name = unwrapped_model._get_name()
             # User-defined compute_loss function

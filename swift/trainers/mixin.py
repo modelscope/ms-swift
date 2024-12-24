@@ -5,8 +5,8 @@ import os
 import shutil
 import time
 from contextlib import contextmanager
-from functools import wraps
 from copy import copy
+from functools import wraps
 from types import MethodType
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
@@ -250,20 +250,26 @@ class SwiftMixin:
 
     @contextmanager
     def _patch_loss_function(self):
-        if not hasattr(self.model, 'loss_function'):
+        model = self.model
+        if isinstance(model, PeftModel):
+            model = model.model
+        model_cls = model.__class__
+        if not hasattr(model_cls, 'loss_function'):
             yield
             return
 
-        loss_function = self.model.loss_function
+        loss_function = model.loss_function
+        _old_loss_function = model_cls.loss_function
 
+        @staticmethod
         @wraps(loss_function)
         def new_loss_function(logits, labels, **kwargs):
             labels = labels.to(logits.device)  # fix device_map
             return loss_function(logits=logits, labels=labels, **kwargs)
 
-        self.model.loss_function = new_loss_function
+        model_cls.loss_function = new_loss_function
         yield
-        self.model.loss_function = loss_function
+        model_cls.loss_function = _old_loss_function
 
     def train(self, *args, **kwargs):
         if self.model.model_meta.is_multimodal:

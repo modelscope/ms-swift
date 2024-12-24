@@ -685,7 +685,7 @@ class Template(ProcessorMixin):
             kwargs.pop('input_ids', None)
 
         if isinstance(model, PeftModel):
-            parameters = inspect.signature(model.base_model.model.forward).parameters
+            parameters = inspect.signature(model.model.forward).parameters
         else:
             parameters = inspect.signature(model.forward).parameters
         if 'position_ids' not in parameters:
