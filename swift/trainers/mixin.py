@@ -5,6 +5,7 @@ import os
 import shutil
 import time
 from contextlib import contextmanager
+from functools import wraps
 from copy import copy
 from types import MethodType
 from typing import Callable, Dict, List, Optional, Tuple, Union
@@ -255,7 +256,7 @@ class SwiftMixin:
 
         loss_function = self.model.loss_function
 
-        @warps(loss_function)
+        @wraps(loss_function)
         def new_loss_function(logits, labels, **kwargs):
             labels = labels.to(logits.device)  # fix device_map
             return loss_function(logits=logits, labels=labels, **kwargs)
