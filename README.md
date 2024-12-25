@@ -147,6 +147,7 @@ CUDA_VISIBLE_DEVICES=0 \
 swift infer \
     --adapters output/vx-xxx/checkpoint-xxx \
     --stream true \
+    --temperature 0 \
     --max_new_tokens 2048
 
 # merge-lora and use vLLM for inference acceleration
@@ -157,6 +158,7 @@ swift infer \
     --merge_lora true \
     --infer_backend vllm \
     --max_model_len 8192 \
+    --temperature 0 \
     --max_new_tokens 2048
 ```
 

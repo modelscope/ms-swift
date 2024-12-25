@@ -2,6 +2,7 @@
 # Part of the implementation is borrowed from huggingface/transformers.
 import os
 from contextlib import contextmanager, nullcontext
+from functools import wraps
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -21,6 +22,33 @@ from .torchacc_mixin import TorchAccMixin
 
 class Trainer(SwiftMixin, HfTrainer):
     args: TrainingArguments
+
+    @contextmanager
+    def _patch_loss_function(self):
+        model = self.model
+        if isinstance(model, PeftModel):
+            model = model.model
+        model_cls = model.__class__
+        if not hasattr(model_cls, 'loss_function'):
+            yield
+            return
+
+        loss_function = model.loss_function
+        _old_loss_function = model_cls.loss_function
+
+        @staticmethod
+        @wraps(loss_function)
+        def new_loss_function(logits, labels, **kwargs):
+            labels = labels.to(logits.device)  # fix device_map
+            return loss_function(logits=logits, labels=labels, **kwargs)
+
+        model_cls.loss_function = new_loss_function
+        yield
+        model_cls.loss_function = _old_loss_function
+
+    def train(self, *args, **kwargs):
+        with self._patch_loss_function():
+            return super().train(*args, **kwargs)
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         loss, outputs = super().compute_loss(model, inputs, return_outputs=True)

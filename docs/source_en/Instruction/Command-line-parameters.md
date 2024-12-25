@@ -16,11 +16,11 @@ The introduction to command line parameters will cover base arguments, atomic ar
 - custom_register_path: The file path for the custom model, chat template, and dataset registration `.py` files.
 
 ### Model Arguments
-- task_type: Defaults to 'causal_lm'. Options include 'causal_lm' and 'seq_cls'. You can view examples [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/seq_cls).
 - 🔥model: Model ID or local path to the model. If it's a custom model, please use it with `model_type` and `template`. The specific details can be referred to in the [Custom Model](../Customization/Custom-model.md).
 - model_type: Model type. The same model architecture, template, and loading process define a model_type.
 - model_revision: Model version.
 - 🔥torch_dtype: Data type for model weights, supports `float16`, `bfloat16`, `float32`, default is read from the config file.
+- task_type: Defaults to 'causal_lm'. Options include 'causal_lm' and 'seq_cls'. You can view examples [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/seq_cls).
 - attn_impl: Attention type, supports `flash_attn`, `sdpa`, `eager`, default is sdpa.
 - num_labels: To be specified for classification models, representing the number of labels, default is None.
 - rope_scaling: Rope type, supports `linear` and `dynamic`, to be used with `max_length`.
