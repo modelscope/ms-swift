@@ -4,9 +4,7 @@ import inspect
 import os
 import shutil
 import time
-from contextlib import contextmanager
 from copy import copy
-from functools import wraps
 from types import MethodType
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
@@ -249,29 +247,6 @@ class SwiftMixin:
         logger.info(f'Saving model checkpoint to {self.state.last_model_checkpoint}')
         return result
 
-    @contextmanager
-    def _patch_loss_function(self):
-        model = self.model
-        if isinstance(model, PeftModel):
-            model = model.model
-        model_cls = model.__class__
-        if not hasattr(model_cls, 'loss_function'):
-            yield
-            return
-
-        loss_function = model.loss_function
-        _old_loss_function = model_cls.loss_function
-
-        @staticmethod
-        @wraps(loss_function)
-        def new_loss_function(logits, labels, **kwargs):
-            labels = labels.to(logits.device)  # fix device_map
-            return loss_function(logits=logits, labels=labels, **kwargs)
-
-        model_cls.loss_function = new_loss_function
-        yield
-        model_cls.loss_function = _old_loss_function
-
     def train(self, *args, **kwargs):
         if self.model.model_meta.is_multimodal:
             models = list(
@@ -282,7 +257,7 @@ class SwiftMixin:
             self.template.register_post_encode_hook(models)
             logger.info(f'Successfully registered post_encode hook: {[model.__class__.__name__ for model in models]}')
         self._save_initial_model(self.args.output_dir)
-        with self.hub.patch_hub(), self._patch_loss_function():
+        with self.hub.patch_hub():
             res = super().train(*args, **kwargs)
         self.template.remove_post_encode_hook()
         return res

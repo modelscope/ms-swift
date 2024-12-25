@@ -29,11 +29,11 @@ class ModelArguments:
         device_map (Optional[str]): Configuration for device mapping. Default is None.
         local_repo_path (Optional[str]): Path to the local github repository for model. Default is None.
     """
-    task_type: Literal['causal_lm', 'seq_cls'] = None
     model: Optional[str] = None  # model id or model path
     model_type: Optional[str] = field(
         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
     model_revision: Optional[str] = None
+    task_type: Literal['causal_lm', 'seq_cls'] = None
 
     torch_dtype: Literal['bfloat16', 'float16', 'float32', None] = None
     # flash_attn: It will automatically convert names based on the model.
