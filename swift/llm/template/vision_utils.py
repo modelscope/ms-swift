@@ -9,7 +9,6 @@ from typing import Any, Callable, Dict, List, Literal, TypeVar, Union
 import numpy as np
 import requests
 import torch
-from packaging import version
 from PIL import Image, ImageDraw
 
 from swift.utils import get_env_args
@@ -267,79 +266,6 @@ def load_video_minicpmv_mplug_owl3(video_io: BytesIO, max_num_frames):
 def load_audio_qwen(audio_io: BytesIO, sampling_rate: int):
     import librosa
     return librosa.load(audio_io, sr=sampling_rate)[0]
-
-
-def load_video_qwen2(video_path: str):
-    import torchvision
-    from torchvision import io, transforms
-    from qwen_vl_utils.vision_process import (round_by_factor, FPS, FRAME_FACTOR, FPS_MIN_FRAMES, FPS_MAX_FRAMES,
-                                              VIDEO_MIN_PIXELS, VIDEO_MAX_PIXELS, VIDEO_TOTAL_PIXELS, smart_resize,
-                                              ceil_by_factor, floor_by_factor)
-    from torchvision.transforms import InterpolationMode
-
-    if version.parse(torchvision.__version__) >= version.parse('0.19'):
-        video_path = load_file(video_path)
-    video, _, info = io.read_video(
-        video_path,
-        pts_unit='sec',
-        output_format='TCHW',
-    )
-    nframes = get_env_args('nframes', int, None)
-    fps = get_env_args('fps', int, None)
-    frame_factor = get_env_args('frame_factor', int, FRAME_FACTOR)
-    assert not (fps and nframes), 'Only accept either `fps` or `nframes`'
-    if nframes is not None:
-        nframes = round_by_factor(nframes, frame_factor)
-    else:
-        if fps is None:
-            fps = FPS
-        nframes = video.size(0) / info['video_fps'] * fps
-        nframes = round_by_factor(nframes, frame_factor)
-        min_frames = get_env_args('fps_min_frames', int, FPS_MIN_FRAMES)
-        max_frames = get_env_args('fps_max_frames', int, FPS_MAX_FRAMES)
-        if nframes < min_frames:
-            nframes = ceil_by_factor(min_frames, frame_factor)
-        if nframes > max_frames:
-            nframes = floor_by_factor(max_frames, frame_factor)
-
-    if not (frame_factor <= nframes and nframes <= video.size(0)):
-        raise ValueError(f'nframes should in interval [{frame_factor}, {video.size(0)}], but got {nframes}.')
-
-    idx = torch.linspace(0, video.size(0) - 1, nframes).round().long()
-    height, width = video.shape[2:]
-    video = video[idx]
-
-    min_pixels = get_env_args('video_min_pixels', int, VIDEO_MIN_PIXELS)
-    total_pixels = get_env_args('video_total_pixels', int, VIDEO_TOTAL_PIXELS)
-    max_pixels = get_env_args('video_max_pixels', int, None)
-    if max_pixels is None:
-        max_pixels = VIDEO_MAX_PIXELS
-        max_pixels = max(min(max_pixels, total_pixels / nframes * frame_factor), min_pixels * 1.05)
-    # resize
-    resized_height = get_env_args('resized_height', int, None)
-    resized_width = get_env_args('resized_width', int, None)
-    if resized_height and resized_width:
-        resized_height, resized_width = smart_resize(
-            resized_height,
-            resized_width,
-            factor=frame_factor,
-        )
-    else:
-        resized_height, resized_width = smart_resize(
-            height,
-            width,
-            factor=frame_factor,
-            min_pixels=min_pixels,
-            max_pixels=max_pixels,
-        )
-
-    video = transforms.functional.resize(
-        video,
-        [resized_height, resized_width],
-        interpolation=InterpolationMode.BICUBIC,
-        antialias=True,
-    ).float()
-    return video
 
 
 def normalize_bbox(objects: List[Dict[str, Any]], images: List[Image.Image], to_type: Literal['real', 'norm_1000',

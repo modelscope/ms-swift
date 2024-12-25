@@ -153,14 +153,14 @@ def prepare_adapter(args: TrainArguments, model, *, template=None, train_dataset
         'lorap_lr_ratio': args.lorap_lr_ratio,
         'init_lora_weights': args.init_weights,
     }
-
+    task_type = args.task_type.upper()
     if args.train_type in ('lora', 'longlora'):
         if args.use_swift_lora:
             lora_config = LoRAConfig(lora_dtype=args.lora_dtype, **lora_kwargs)
             model = Swift.prepare_model(model, lora_config)
             logger.info(f'lora_config: {lora_config}')
         elif args.tuner_backend == 'peft':
-            lora_config = LoraConfig(task_type='CAUSAL_LM', lora_dtype=args.lora_dtype, **lora_kwargs)
+            lora_config = LoraConfig(task_type=task_type, lora_dtype=args.lora_dtype, **lora_kwargs)
             if args.init_weights == 'lora-ga':
                 try:
                     import lora_ga
@@ -211,7 +211,7 @@ def prepare_adapter(args: TrainArguments, model, *, template=None, train_dataset
         lora_kwargs.pop('lorap_lr_ratio', None)
         lora_kwargs['rank_pattern'] = None
         adalora_config = AdaLoraConfig(
-            task_type='CAUSAL_LM',
+            task_type=task_type,
             **lora_kwargs,
             target_r=args.adalora_target_r,
             init_r=args.adalora_init_r,

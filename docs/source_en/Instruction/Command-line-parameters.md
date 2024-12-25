@@ -16,12 +16,13 @@ The introduction to command line parameters will cover base arguments, atomic ar
 - custom_register_path: The file path for the custom model, chat template, and dataset registration `.py` files.
 
 ### Model Arguments
-
+- task_type: Defaults to 'causal_lm'. Options include 'causal_lm' and 'seq_cls'. You can view examples [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/seq_cls).
 - 🔥model: Model ID or local path to the model. If it's a custom model, please use it with `model_type` and `template`. The specific details can be referred to in the [Custom Model](../Customization/Custom-model.md).
 - model_type: Model type. The same model architecture, template, and loading process define a model_type.
 - model_revision: Model version.
 - 🔥torch_dtype: Data type for model weights, supports `float16`, `bfloat16`, `float32`, default is read from the config file.
 - attn_impl: Attention type, supports `flash_attn`, `sdpa`, `eager`, default is sdpa.
+- num_labels: To be specified for classification models, representing the number of labels, default is None.
 - rope_scaling: Rope type, supports `linear` and `dynamic`, to be used with `max_length`.
 - device_map: Configuration of the device map used by the model, e.g., 'auto', 'cpu', json string, json file path.
 - local_repo_path: Some models require a GitHub repo when loading. To avoid network issues during `git clone`, you can directly use a local repo. This parameter needs to pass the local repo path, default is `None`.
@@ -294,8 +295,6 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
 - resume_only_model: If resume_from_checkpoint, only resume model weights, default is False.
 - check_model: Check local model files for corruption or modification and give a prompt, default is True. If in an offline environment, please set to False.
 - loss_type: Type of loss, default uses the model's built-in loss function.
-- num_labels: To be specified for classification models, representing the number of labels, default is None.
--
 - packing: Whether to use packing, default is False.
 - 🔥lazy_tokenize: Whether to use lazy_tokenize, default is False during LLM training, default is True during MLLM training.
 

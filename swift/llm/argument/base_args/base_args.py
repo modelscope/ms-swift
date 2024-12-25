@@ -97,7 +97,6 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
     custom_register_path: List[str] = field(default_factory=list)  # .py
 
     # extra
-    num_labels: Optional[int] = None
     ignore_args_error: bool = False  # True: notebook compatibility
     use_swift_lora: bool = False  # True for using tuner_backend == swift, don't specify this unless you know what you are doing # noqa
 
@@ -205,7 +204,8 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             'model_author',
             'split_dataset_ratio',
             # template_args
-            'tools_prompt'
+            'tools_prompt',
+            'use_chat_template'
         ]
         skip_keys = list(f.name for f in fields(GenerationArguments)) + ['adapters']
         if not isinstance(self, TrainArguments):
@@ -238,8 +238,9 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
 
     def get_template(self, processor: 'Processor') -> 'Template':
         template_kwargs = self.get_template_kwargs()
-        template = get_template(self.template, processor, use_chat_template=self.use_chat_template, **template_kwargs)
+        template = get_template(self.template, processor, **template_kwargs)
         logger.info(f'default_system: {template.template_meta.default_system}')
+        template.set_mode(self.task_type)  # default mode
         return template
 
     def get_model_processor(self, *, model=None, model_type=None, model_revision=None, **kwargs):
@@ -251,10 +252,6 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         kwargs['model_type'] = model_type or self.model_type
         kwargs['model_revision'] = model_revision or self.model_revision
 
-        model_kwargs = {}
-        if self.num_labels is not None:
-            from transformers import AutoModelForSequenceClassification
-            kwargs['automodel_class'] = AutoModelForSequenceClassification
-            model_kwargs = {'num_labels': self.num_labels}
-        model, processor = get_model_tokenizer(**kwargs, model_kwargs=model_kwargs)
+        model, processor = get_model_tokenizer(**kwargs)
+        model.model_info.task_type = self.task_type
         return model, processor

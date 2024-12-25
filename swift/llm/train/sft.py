@@ -14,7 +14,6 @@ from ..base import SwiftPipeline
 from ..dataset import EncodePreprocessor, GetLengthPreprocessor, LazyLLMDataset, PackingPreprocessor, load_dataset
 from ..infer import prepare_generation_config
 from ..model import get_model_arch
-from ..template import get_template
 from ..utils import deep_getattr, dynamic_gradient_checkpointing
 from .tuner import TunerMixin
 
@@ -27,11 +26,11 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
     def __init__(self, args: Union[List[str], TrainArguments, None] = None) -> None:
         super().__init__(args)
-        self.args.save_args()
         self.train_msg = {}
         self._prepare_model_tokenizer()
-        self._prepare_template(True)
+        self._prepare_template()
         self._prepare_callbacks()
+        self.args.save_args()
 
     def _prepare_gradient_checkpointing(self):
         args = self.args
@@ -71,14 +70,10 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             self._prepare_generation_config()
         self._prepare_gradient_checkpointing()
 
-    def _prepare_template(self, use_chat_template: bool) -> None:
-        args = self.args
-        template_kwargs = args.get_template_kwargs()
-        template = get_template(args.template, self.processor, use_chat_template=use_chat_template, **template_kwargs)
-        logger.info(f'default_system: {template.template_meta.default_system}')
+    def _prepare_template(self) -> None:
+        template = self.args.get_template(self.processor)
         if template.use_model:
             template.model = self.model
-        template.set_mode('train')
         self.template = template
 
     def _get_dataset(self):
@@ -113,6 +108,11 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         args = self.args
 
         train_dataset, val_dataset = self._get_dataset()
+        if args.task_type == 'seq_cls' and isinstance(train_dataset, HfDataset):
+            min_num_labels = int(max(train_dataset['label']) + 1)
+            assert args.num_labels >= min_num_labels, (
+                f'args.num_labels: {args.num_labels}, min_num_labels: {min_num_labels}')
+
         train_dataset, val_dataset = self._encode_dataset(train_dataset, val_dataset)
         data_collator = self._get_data_collator()
         # Some tuners require train_dataset and data_collator for preparation: LoRA-GA

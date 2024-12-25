@@ -176,8 +176,9 @@ def get_model_tokenizer_from_local(model_dir: str,
     if tokenizer is None:
         tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
 
-    if model_kwargs.get('num_labels') is not None:
-        model_config.num_labels = model_kwargs.pop('num_labels')
+    num_labels = model_kwargs.pop('num_labels', None)
+    if num_labels:
+        model_config.num_labels = num_labels
 
     model = None
     if load_model:

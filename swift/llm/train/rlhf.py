@@ -22,9 +22,9 @@ class SwiftRLHF(SwiftSft):
 
         super()._prepare_model_tokenizer()
 
-    def _prepare_template(self, use_chat_template: bool) -> None:
+    def _prepare_template(self) -> None:
         args = self.args
-        super()._prepare_template(use_chat_template=use_chat_template)
+        super()._prepare_template()
         mode = 'kto' if args.rlhf_type == 'kto' else 'rlhf'
         self.template.set_mode(mode)
 

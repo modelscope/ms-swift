@@ -1,11 +1,10 @@
-# 22GB
+# If `num_labels` is provided, it will be considered a classification task,
+# and AutoModelForSequenceClassification will be used to load the model.
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
-    --model Qwen/Qwen2.5-7B-Instruct \
+    --model Qwen/Qwen2.5-7B \
     --train_type lora \
-    --dataset AI-ModelScope/alpaca-gpt4-data-zh#500 \
-              AI-ModelScope/alpaca-gpt4-data-en#500 \
-              swift/self-cognition#500 \
+    --dataset DAMO_NLP/jd:cls#2000 \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \
@@ -21,17 +20,8 @@ swift sft \
     --logging_steps 5 \
     --max_length 2048 \
     --output_dir output \
-    --system 'You are a helpful assistant.' \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 4 \
-    --model_author swift \
-    --model_name swift-robot
-
-
-# After training, use the following command for inference.
-
-# CUDA_VISIBLE_DEVICES=0 \
-# swift infer \
-#     --adapters output/vx-xxx/checkpoint-xxx \
-#     --stream true \
-#     --max_new_tokens 2048
+    --num_labels 2 \
+    --task_type seq_cls \
+    --use_chat_template false

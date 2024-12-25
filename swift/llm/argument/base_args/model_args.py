@@ -24,10 +24,12 @@ class ModelArguments:
         model_revision (Optional[str]): Revision of the model. Default is None.
         torch_dtype (Literal): Model parameter dtype. Default is None.
         attn_impl (Literal): Attention implementation to use. Default is None.
+        num_labels (Optional[int]): Number of labels for classification tasks. Default is None.
         rope_scaling (Literal): Type of rope scaling to use. Default is None.
         device_map (Optional[str]): Configuration for device mapping. Default is None.
         local_repo_path (Optional[str]): Path to the local github repository for model. Default is None.
     """
+    task_type: Literal['causal_lm', 'seq_cls'] = None
     model: Optional[str] = None  # model id or model path
     model_type: Optional[str] = field(
         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
@@ -38,6 +40,7 @@ class ModelArguments:
     # None: It will be automatically selected between sdpa and eager.
     attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None
 
+    num_labels: Optional[int] = None
     rope_scaling: Literal['linear', 'dynamic'] = None
     device_map: Optional[Union[dict, str]] = None
     # When some model code needs to be downloaded from GitHub,
@@ -119,15 +122,25 @@ class ModelArguments:
             self._init_rope_scaling()
         return self.model_info.torch_dtype
 
+    def _init_task_type(self):
+        if self.task_type is None:
+            if self.num_labels is None:
+                self.task_type = 'causal_lm'
+            else:
+                self.task_type = 'seq_cls'
+        if self.task_type == 'seq_cls':
+            assert self.num_labels is not None, 'Please set --num_labels <num_labels>.'
+
     def __post_init__(self):
         if self.model is None:
             raise ValueError(f'Please set --model <model_id_or_path>`, model: {self.model}')
+        self._init_task_type()
         self.model_suffix = get_model_name(self.model)
         self._init_device_map()
         self._init_torch_dtype()
 
     def get_model_kwargs(self):
-        return {
+        kwargs = {
             'model_id_or_path': self.model,
             'torch_dtype': self.torch_dtype,
             'model_type': self.model_type,
@@ -140,3 +153,8 @@ class ModelArguments:
             'attn_impl': self.attn_impl,
             'rope_scaling': self.rope_scaling,
         }
+        if self.task_type == 'seq_cls':
+            from transformers import AutoModelForSequenceClassification
+            kwargs['automodel_class'] = AutoModelForSequenceClassification
+            kwargs['model_kwargs'] = {'num_labels': self.num_labels}
+        return kwargs

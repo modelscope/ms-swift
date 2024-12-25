@@ -103,7 +103,7 @@ class Template(ProcessorMixin):
 
         self.mode: Literal['pt', 'vllm', 'lmdeploy',  # infer
                            'train', 'rlhf', 'kto'  # train
-                           ] = 'pt'
+                           'seq_cls'] = 'pt'
         self._handles = []
         self._deepspeed_initialize = None
 
@@ -201,7 +201,7 @@ class Template(ProcessorMixin):
             encoded = Template._encode(self, inputs)
             for key in ['images', 'audios', 'videos']:
                 encoded[key] = getattr(inputs, key)
-        elif self.mode in {'pt', 'train'}:
+        elif self.mode in {'pt', 'train', 'seq_cls'}:
             encoded = self._encode(inputs)
         elif self.mode == 'rlhf':
             encoded = self._rlhf_encode(inputs)
@@ -685,7 +685,7 @@ class Template(ProcessorMixin):
             kwargs.pop('input_ids', None)
 
         if isinstance(model, PeftModel):
-            parameters = inspect.signature(model.base_model.model.forward).parameters
+            parameters = inspect.signature(model.model.forward).parameters
         else:
             parameters = inspect.signature(model.forward).parameters
         if 'position_ids' not in parameters:
@@ -696,7 +696,9 @@ class Template(ProcessorMixin):
     def is_training(self):
         return self.mode not in {'vllm', 'lmdeploy', 'pt'}
 
-    def set_mode(self, mode: Literal['vllm', 'lmdeploy', 'pt', 'train', 'rlhf', 'kto']) -> None:
+    def set_mode(self, mode: Literal['vllm', 'lmdeploy', 'pt', 'seq_cls', 'train', 'rlhf', 'kto']) -> None:
+        if mode == 'causal_lm':
+            mode = 'train'
         self.mode = mode
 
     def register_post_encode_hook(self, models: List[nn.Module]) -> None:
@@ -741,6 +743,8 @@ class Template(ProcessorMixin):
             return self._kto_data_collator(batch, padding_to=padding_to)
         elif self.mode in {'pt', 'train'}:
             return self._data_collator(batch, padding_to=padding_to)
+        elif self.mode == 'seq_cls':
+            return self._seq_cls_data_collator(batch, padding_to=padding_to)
 
     @staticmethod
     def _fetch_inputs_startswith(batch: List[Dict[str, Any]], prefix: str) -> List[Dict[str, Any]]:
@@ -795,6 +799,16 @@ class Template(ProcessorMixin):
         label = [b['label'] for b in batch if b.get('label') is not None]
         if label:
             res['label'] = label
+        return res
+
+    def _seq_cls_data_collator(self,
+                               batch: List[Dict[str, Any]],
+                               *,
+                               padding_to: Optional[int] = None) -> Dict[str, Any]:
+        labels = [b['label'] for b in batch if b.get('label') is not None]
+        res = self._data_collator(batch, padding_to=padding_to)
+        if labels:
+            res['labels'] = torch.tensor(labels, dtype=torch.long)
         return res
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
@@ -862,11 +876,6 @@ class Template(ProcessorMixin):
         pixel_values_videos = [b['pixel_values_videos'] for b in batch if b.get('pixel_values_videos') is not None]
         if len(pixel_values_videos) > 0:
             res['pixel_values_videos'] = torch.concat(pixel_values_videos)
-        # sequence_classification
-        if self.is_training:
-            label = [b['label'] for b in batch if b.get('label') is not None]
-            if label:
-                res['label'] = label
         if use_torchacc() or self.sequence_parallel_size > 1:
             res = self._torchacc_xtuner_data_collator(res, padding_to, self.tokenizer, padding_side)
         return res

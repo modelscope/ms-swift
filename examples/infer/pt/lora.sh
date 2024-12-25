@@ -6,4 +6,5 @@ swift infer \
     --adapters swift/test_lora \
     --infer_backend pt \
     --stream true \
-    --temperature 0
+    --temperature 0 \
+    --max_new_tokens 2048
