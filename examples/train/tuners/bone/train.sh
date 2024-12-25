@@ -4,7 +4,7 @@ swift sft \
     --model Qwen/Qwen2.5-7B-Instruct \
     --train_type bone \
     --label_names labels \
-    --dataset swift/self-cognition#1000 \
+    --dataset 'swift/self-cognition#1000' \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \
     --learning_rate 1e-4 \

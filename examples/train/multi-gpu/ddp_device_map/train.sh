@@ -6,7 +6,7 @@ NPROC_PER_NODE=$nproc_per_node \
 swift sft \
     --model Qwen/Qwen2.5-7B-Instruct \
     --train_type lora \
-    --dataset swift/self-cognition#1000 \
+    --dataset 'swift/self-cognition#1000' \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \

@@ -6,7 +6,7 @@ MAX_PIXELS=1003520 \
 swift sft \
     --model Qwen/Qwen2-VL-7B-Instruct \
     --train_type lora \
-    --dataset swift/OK-VQA_train#1000 \
+    --dataset 'swift/OK-VQA_train#1000' \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \
     --learning_rate 1e-4 \
