@@ -7,7 +7,7 @@ image_area=518400 \
 swift sft \
     --model BAAI/Emu3-Gen \
     --train_type lora \
-    --dataset swift/TextCaps#40 \
+    --dataset 'swift/TextCaps#40' \
     --loss_scale react \
     --tools_prompt react_zh \
     --torch_dtype bfloat16 \

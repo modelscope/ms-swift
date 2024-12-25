@@ -4,7 +4,7 @@ CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen2.5-7B \
     --train_type lora \
-    --dataset DAMO_NLP/jd:cls#2000 \
+    --dataset 'DAMO_NLP/jd:cls#2000' \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \

@@ -3,7 +3,7 @@ CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen2.5-7B-Instruct \
     --train_type llamapro \
-    --dataset swift/self-cognition#1000 \
+    --dataset 'swift/self-cognition#1000' \
     --llamapro_num_new_blocks 4 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \
