@@ -462,6 +462,8 @@ class Template(ProcessorMixin):
     @staticmethod
     def _add_default_tags(inputs: StdTemplateInputs):
         total_content = '\n'.join([message['content'] or '' for message in inputs.messages])
+        if inputs.system:
+            total_content = f'{inputs.system}\n{total_content}'
         for media_type in ['image', 'audio', 'video']:
             media_key, media_tag = f'{media_type}s', f'<{media_type}>'
             medias = getattr(inputs, media_key)

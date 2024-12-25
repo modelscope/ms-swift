@@ -170,8 +170,8 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         self.load_args_from_ckpt()
         return self
 
-    def _init_ckpt_dir(self, adapters=None):
-        model_dirs = (adapters or self.adapters).copy()
+    def _init_ckpt_dir(self):
+        model_dirs = self.adapters.copy()
         if self.model:
             model_dirs.append(self.model)
         self.ckpt_dir = None
