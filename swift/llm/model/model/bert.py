@@ -16,9 +16,23 @@ def get_model_tokenizer_modern_bert(model_dir, *args, **kwargs):
 
 
 register_model(
-    ModelMeta(LLMModelType.modern_bert, [
-        ModelGroup([
-            Model('answerdotai/ModernBERT-base', 'answerdotai/ModernBERT-base'),
-            Model('answerdotai/ModernBERT-large', 'answerdotai/ModernBERT-large'),
-        ])
-    ], None, get_model_tokenizer_from_local), )
+    ModelMeta(
+        LLMModelType.modern_bert, [
+            ModelGroup([
+                Model('answerdotai/ModernBERT-base', 'answerdotai/ModernBERT-base'),
+                Model('answerdotai/ModernBERT-large', 'answerdotai/ModernBERT-large'),
+            ])
+        ],
+        None,
+        get_model_tokenizer_modern_bert,
+        requires=['transformers>=4.48'],
+        tags=['bert']))
+
+register_model(
+    ModelMeta(
+        LLMModelType.bert, [ModelGroup([
+            Model('iic/nlp_structbert_backbone_base_std'),
+        ])],
+        None,
+        get_model_tokenizer_from_local,
+        tags=['bert']))

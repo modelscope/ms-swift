@@ -599,7 +599,8 @@ class Template(ProcessorMixin):
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         template_backend = self.template_backend
-        if self.template_meta.template_type == 'dummy' and self.use_chat_template and not self.is_training:
+        if (self.template_meta.template_type == 'dummy' and self.use_chat_template and not self.is_training
+                and self.mode != 'seq_cls'):
             template_backend = 'jinja'
         res_context_list, loss_scale_list, answer_len = (
             self._swift_encode(inputs) if template_backend == 'swift' else self._jinja_encode(inputs))

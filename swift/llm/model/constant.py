@@ -81,8 +81,6 @@ class LLMModelType:
     skywork = 'skywork'
     skywork_o1 = 'skywork_o1'
 
-    modern_bert = 'modern_bert'
-
     yuan2 = 'yuan2'
     orion = 'orion'
     xverse = 'xverse'
@@ -95,6 +93,9 @@ class LLMModelType:
     mamba = 'mamba'
     polylm = 'polylm'
     aya = 'aya'
+
+    modern_bert = 'modern_bert'
+    bert = 'bert'
 
 
 class MLLMModelType:

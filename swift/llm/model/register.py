@@ -510,7 +510,9 @@ def get_model_tokenizer(
     tokenizer.model_info = model_info
     tokenizer.model_meta = model_meta
 
-    pad_token = tokenizer.pad_token_id or tokenizer.eos_token_id
+    pad_token = tokenizer.pad_token_id
+    if pad_token is None:
+        pad_token = tokenizer.eos_token_id
     if tokenizer.eos_token_id is None:
         tokenizer.eos_token_id = pad_token
     if tokenizer.pad_token_id is None:
