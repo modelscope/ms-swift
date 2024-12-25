@@ -401,6 +401,8 @@ class LLMInfer(BaseUI):
         if infer_request.messages[-1]['role'] != 'assistant':
             infer_request.messages.append({'role': 'assistant', 'content': ''})
         for chunk in stream_resp:
+            if chunk[0] is None:
+                continue
             stream_resp_with_history += chunk[0].choices[0].delta.content if chat else chunk.choices[0].text
             infer_request.messages[-1]['content'] = stream_resp_with_history
             yield '', cls._replace_tag_with_media(infer_request), gr.update(value=None), gr.update(
