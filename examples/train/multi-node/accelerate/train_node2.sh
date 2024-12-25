@@ -4,7 +4,7 @@ accelerate launch --config_file ./examples/train/multi-node/accelerate/multi_nod
     --model Qwen/Qwen2.5-7B-Instruct \
     --train_type lora \
     --torch_dtype bfloat16 \
-    --dataset swift/self-cognition#1000 \
+    --dataset 'swift/self-cognition#1000' \
     --num_train_epochs 1 \
     --lora_rank 8 \
     --lora_alpha 32 \

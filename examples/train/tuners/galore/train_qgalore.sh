@@ -5,7 +5,7 @@ swift sft \
     --model Qwen/Qwen2.5-7B-Instruct \
     --train_type full \
     --torch_dtype bfloat16 \
-    --dataset lvjianjin/AdvertiseGen#1000 \
+    --dataset 'lvjianjin/AdvertiseGen#1000' \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \
     --learning_rate 1e-5 \

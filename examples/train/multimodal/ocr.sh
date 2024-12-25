@@ -3,7 +3,7 @@ CUDA_VISIBLE_DEVICES=0,1 \
 MAX_PIXELS=1003520 \
 swift sft \
     --model Qwen/QVQ-72B-Preview \
-    --dataset AI-ModelScope/LaTeX_OCR:human_handwrite#20000 \
+    --dataset 'AI-ModelScope/LaTeX_OCR:human_handwrite#20000' \
     --train_type lora \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \

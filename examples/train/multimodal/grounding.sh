@@ -4,7 +4,7 @@ MAX_PIXELS=1003520 \
 swift sft \
     --model Qwen/Qwen2-VL-7B-Instruct \
     --train_type lora \
-    --dataset swift/refcoco:grounding#1000 \
+    --dataset 'swift/refcoco:grounding#1000' \
     --num_train_epochs 1 \
     --learning_rate 1e-4 \
     --lora_rank 8 \

@@ -4,7 +4,7 @@ torchrun --master_port 29500 --nproc_per_node=4 --nnodes=2 --node_rank=1 --maste
     --model Qwen/Qwen2.5-7B-Instruct \
     --train_type lora \
     --torch_dtype bfloat16 \
-    --dataset swift/self-cognition#1000 \
+    --dataset 'swift/self-cognition#1000' \
     --num_train_epochs 1 \
     --lora_rank 8 \
     --lora_alpha 32 \
