@@ -53,7 +53,7 @@ class ModelMeta:
     # Used to list the model_ids from modelscope/huggingface,
     # which participate in the automatic inference of the model_type.
     model_groups: List[ModelGroup]
-    template: str
+    template: Optional[str]
     get_function: GetModelTokenizerFunction
 
     model_arch: Optional[str] = None
@@ -70,6 +70,8 @@ class ModelMeta:
     tags: List[str] = field(default_factory=list)
 
     def __post_init__(self):
+        if self.template is None:
+            self.template = 'dummy'
         if not isinstance(self.model_groups, (list, tuple)):
             self.model_groups = [self.model_groups]
 

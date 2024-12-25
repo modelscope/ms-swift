@@ -81,6 +81,8 @@ class LLMModelType:
     skywork = 'skywork'
     skywork_o1 = 'skywork_o1'
 
+    modern_bert = 'modern_bert'
+
     yuan2 = 'yuan2'
     orion = 'orion'
     xverse = 'xverse'
