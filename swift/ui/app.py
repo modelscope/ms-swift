@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
+from copy import copy
 from dataclasses import fields
 from functools import partial
 from typing import List, Union
@@ -72,6 +73,7 @@ class SwiftWebUI(SwiftPipeline):
                     for f in fields(self.args):
                         if getattr(self.args, f.name):
                             LLMInfer.default_dict[f.name] = getattr(self.args, f.name)
+
                     LLMInfer.is_gradio_app = True
                     LLMInfer.is_multimodal = self.args.model_meta.is_multimodal
                     LLMInfer.build_ui(LLMInfer)
@@ -94,9 +96,19 @@ class SwiftWebUI(SwiftPipeline):
                         if isinstance(value, list):
                             value = ' '.join([v or '' for v in value])
                         LLMInfer.elements()[f.name].value = value
-                app.load(LLMInfer.deploy_model, list(LLMInfer.valid_elements().values()),
-                         [LLMInfer.element('runtime_tab'),
-                          LLMInfer.element('running_tasks')])
+
+                args = copy(self.args)
+                args.port = find_free_port()
+
+                values = []
+                for key in LLMInfer.valid_elements():
+                    if key in args.__dict__:
+                        value = getattr(args, key)
+                    else:
+                        value = LLMInfer.element(key).value
+                    values.append(value)
+                _, running_task = LLMInfer.deploy_model(*values)
+                LLMInfer.element('running_tasks').value = running_task['value']
             else:
                 app.load(
                     partial(LLMTrain.update_input_model, arg_cls=RLHFArguments),

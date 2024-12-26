@@ -1,6 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import atexit
 import os
 import re
+import signal
 import sys
 import time
 from copy import deepcopy
@@ -298,12 +300,36 @@ class LLMInfer(BaseUI):
                 cnt += 1
                 if cnt >= 60:
                     logger.warning_once(f'Deploy costing too much time, please check log file: {log_file}')
+            if cls.is_gradio_app:
+                cls.register_clean_hook()
             logger.info('Deploy done.')
         cls.deployed = True
         running_task = Runtime.refresh_tasks(log_file)
         if cls.is_gradio_app:
             cls.running_task = running_task['value']
         return gr.update(open=True), running_task
+
+    @classmethod
+    def clean_deployment(cls):
+        if not cls.is_gradio_app:
+            return
+
+        logger.info('Killing deployment')
+        _, args = Runtime.parse_info_from_cmdline(cls.running_task)
+        os.system(f'pkill -9 -f {args["log_file"]}')
+        logger.info('Done.')
+
+    @classmethod
+    def register_clean_hook(cls):
+        atexit.register(LLMInfer.clean_deployment)
+        signal.signal(signal.SIGINT, LLMInfer.signal_handler)
+        if os.name != 'nt':
+            signal.signal(signal.SIGTERM, LLMInfer.signal_handler)
+
+    @staticmethod
+    def signal_handler(*args, **kwargs):
+        LLMInfer.clean_deployment()
+        sys.exit(0)
 
     @classmethod
     def clear_session(cls):
