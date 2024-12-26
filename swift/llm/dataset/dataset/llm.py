@@ -8,6 +8,7 @@ from ..preprocessor import (AlpacaPreprocessor, ClsPreprocessor, MessagesPreproc
                             RowPreprocessor, TextGenerationPreprocessor)
 from ..register import DatasetMeta, SubsetDataset, register_dataset
 
+
 class AlpacaZhPreprocessor(AlpacaPreprocessor):
 
     @classmethod
