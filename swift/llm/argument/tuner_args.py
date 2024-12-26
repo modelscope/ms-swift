@@ -222,4 +222,4 @@ class TunerArguments:
         if self.freeze_parameters:
             logger.info(f'freeze_parameters: {self.freeze_parameters}')
         if self.trainable_parameters:
-            logger.info(f'trainable_parameters: {self.trainable_parameters}')
+            logger.info(f'additional trainable_parameters: {self.trainable_parameters}')

@@ -37,7 +37,7 @@ def check_json_format(obj: Any, token_safe: bool = True) -> Any:
     elif isinstance(obj, Mapping):
         res = {}
         for k, v in obj.items():
-            if token_safe and isinstance(k, str) and '_token' in k:
+            if token_safe and isinstance(k, str) and '_token' in k and isinstance(v, str):
                 res[k] = None
             else:
                 res[k] = check_json_format(v, token_safe)
