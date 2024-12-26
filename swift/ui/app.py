@@ -89,9 +89,13 @@ class SwiftWebUI(SwiftPipeline):
 
                 values = []
                 for key in LLMInfer.valid_elements():
-                    values.append(getattr(args, key, None))
-                _, running_task = LLMInfer.deploy_model(values)
-                LLMInfer.element('running_tasks').value = running_task
+                    if key in args.__dict__:
+                        value = getattr(args, key)
+                    else:
+                        value = LLMInfer.element(key).value
+                    values.append(value)
+                _, running_task = LLMInfer.deploy_model(*values)
+                # LLMInfer.element('running_tasks').value = running_task['value']
             else:
                 app.load(
                     partial(LLMTrain.update_input_model, arg_cls=RLHFArguments),
