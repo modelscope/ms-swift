@@ -297,7 +297,7 @@ class LLMInfer(BaseUI):
                 time.sleep(1)
                 cnt += 1
                 if cnt >= 60:
-                    logger.warn(f'Deploy costing too much time, please check log file: {log_file}')
+                    logger.warning_once(f'Deploy costing too much time, please check log file: {log_file}')
             logger.info('Deploy done.')
         cls.deployed = True
         running_task = Runtime.refresh_tasks(log_file)
