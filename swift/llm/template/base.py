@@ -812,7 +812,7 @@ class Template(ProcessorMixin):
                                batch: List[Dict[str, Any]],
                                *,
                                padding_to: Optional[int] = None) -> Dict[str, Any]:
-        labels = [b.pop('labels') for b in batch if 'labels' in b]
+        labels = [b.pop('labels') for b in batch if b.get('labels') is not None]
         res = self._data_collator(batch, padding_to=padding_to)
         if labels:
             res['labels'] = torch.tensor(labels, dtype=torch.long)
