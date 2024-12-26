@@ -66,6 +66,13 @@ The following provides the recommended dataset format for ms-swift, where the sy
 {"messages": [{"role": "system", "content": "You are a useful and harmless math calculator"}, {"role": "user", "content": "What is 1 + 1?"}, {"role": "assistant", "content": "It equals 2"}, {"role": "user", "content": "What about adding 1?"}, {"role": "assistant", "content": "It equals 3"}], "label": true}
 ```
 
+### Sequence Classification
+```jsonl
+{"messages": [{"role": "user", "content": "The weather is really nice today"}], "label": 1}
+{"messages": [{"role": "user", "content": "Today is really unlucky"}], "label": 0}
+{"messages": [{"role": "user", "content": "So happy"}], "label": 1}
+```
+
 ### Multimodal
 
 For multimodal datasets, the format is the same as the tasks mentioned above. The difference is the addition of several keys: `images`, `videos`, and `audios`, which represent multimodal resources. The tags `<image>`, `<video>`, and `<audio>` indicate the positions where images, videos, and audio are inserted, respectively. The four examples provided below demonstrate the data format for pure text, as well as formats that include image, video, and audio data.
