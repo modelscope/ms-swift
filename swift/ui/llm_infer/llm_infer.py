@@ -1,6 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import atexit
 import os
 import re
+import signal
 import sys
 import time
 from copy import deepcopy
@@ -11,7 +13,6 @@ from typing import List, Type
 import gradio as gr
 import json
 import torch
-import atexit
 from json import JSONDecodeError
 
 from swift.llm import DeployArguments, InferArguments, InferClient, InferRequest, RequestConfig
@@ -299,7 +300,8 @@ class LLMInfer(BaseUI):
                 cnt += 1
                 if cnt >= 60:
                     logger.warning_once(f'Deploy costing too much time, please check log file: {log_file}')
-            atexit.register(cls.clean_deployment)
+            if cls.is_gradio_app:
+                cls.register_clean_hook()
             logger.info('Deploy done.')
         cls.deployed = True
         running_task = Runtime.refresh_tasks(log_file)
@@ -312,8 +314,22 @@ class LLMInfer(BaseUI):
         if not cls.is_gradio_app:
             return
 
+        logger.info('Killing deployment')
         _, args = Runtime.parse_info_from_cmdline(cls.running_task)
-        os.system(f'pkill -f {args["log_file"]}')
+        os.system(f'pkill -9 -f {args["log_file"]}')
+        logger.info('Done.')
+
+    @classmethod
+    def register_clean_hook(cls):
+        atexit.register(LLMInfer.clean_deployment)
+        signal.signal(signal.SIGINT, LLMInfer.signal_handler)
+        if os.name != 'nt':
+            signal.signal(signal.SIGTERM, LLMInfer.signal_handler)
+
+    @staticmethod
+    def signal_handler(*args, **kwargs):
+        LLMInfer.clean_deployment()
+        sys.exit(0)
 
     @classmethod
     def clear_session(cls):
