@@ -132,11 +132,9 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
     def _init_stream(self):
         self.eval_human = not (self.dataset and self.split_dataset_ratio > 0 or self.val_dataset)
 
-        if self.stream and self.template:
-            template_meta = get_template_meta(self.template)
-            if self.num_beams != 1 or not template_meta.support_stream:
-                self.stream = False
-                logger.info('Setting args.stream: False')
+        if self.stream and self.num_beams != 1:
+            self.stream = False
+            logger.info('Setting args.stream: False')
 
     def _init_pt_ddp(self):
         if self.infer_backend != 'pt' or not is_dist():

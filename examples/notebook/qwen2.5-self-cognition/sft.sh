@@ -26,5 +26,5 @@ swift sft \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 4 \
     --dataset_num_proc 4 \
-    --model_author 小黄 'Xiao Huang' \
-    --model_name '魔搭' 'ModelScope'
+    --model_name 小黄 'Xiao Huang' \
+    --model_author '魔搭' 'ModelScope'

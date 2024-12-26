@@ -87,7 +87,7 @@ register_template(
         chat_sep=None,
         suffix=['</s>'],
         template_cls=FlorenceTemplate,
-        support_stream=False))
+    ))
 
 
 @dataclass
