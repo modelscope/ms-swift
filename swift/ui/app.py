@@ -70,6 +70,10 @@ class SwiftWebUI(SwiftPipeline):
                 if is_gradio_app:
                     if self.args.ckpt_dir:
                         self.args.model = self.args.ckpt_dir
+                    for f in fields(self.args):
+                        if getattr(self.args, f.name):
+                            LLMInfer.default_dict[f.name] = getattr(self.args, f.name)
+
                     LLMInfer.is_gradio_app = True
                     LLMInfer.is_multimodal = self.args.model_meta.is_multimodal
                     LLMInfer.build_ui(LLMInfer)
@@ -84,6 +88,15 @@ class SwiftWebUI(SwiftPipeline):
                 concurrent = {'concurrency_count': 5}
             if is_gradio_app:
                 from swift.utils import find_free_port
+                LLMInfer.element('port').value = str(find_free_port())
+                for f in fields(self.args):
+                    if getattr(self.args, f.name) and f.name in LLMInfer.elements() and hasattr(
+                            LLMInfer.elements()[f.name], 'value') and f.name != 'port':
+                        value = getattr(self.args, f.name)
+                        if isinstance(value, list):
+                            value = ' '.join([v or '' for v in value])
+                        LLMInfer.elements()[f.name].value = value
+
                 args = copy(self.args)
                 args.port = find_free_port()
 
@@ -95,7 +108,7 @@ class SwiftWebUI(SwiftPipeline):
                         value = LLMInfer.element(key).value
                     values.append(value)
                 _, running_task = LLMInfer.deploy_model(*values)
-                # LLMInfer.element('running_tasks').value = running_task['value']
+                LLMInfer.element('running_tasks').value = running_task['value']
             else:
                 app.load(
                     partial(LLMTrain.update_input_model, arg_cls=RLHFArguments),
