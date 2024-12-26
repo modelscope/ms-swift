@@ -5,7 +5,6 @@ from swift.utils.import_utils import _LazyModule
 
 if TYPE_CHECKING:
     from .callback import extra_callbacks
-    from .custom_trainer import custom_trainer_class
     from .loss import LOSS_MAPPING, get_loss_func
     from .loss_scale import loss_scale_map
     from .metric import InferStats, MeanMetric, Metric, compute_acc, get_metric
@@ -17,7 +16,6 @@ else:
     _extra_objects = {k: v for k, v in globals().items() if not k.startswith('_')}
     _import_structure = {
         'callback': ['extra_callbacks'],
-        'custom_trainer': ['custom_trainer_class'],
         'loss': ['LOSS_MAPPING', 'get_loss_func'],
         'loss_scale': ['loss_scale_map'],
         'metric': ['InferStats', 'MeanMetric', 'Metric', 'compute_acc', 'get_metric'],

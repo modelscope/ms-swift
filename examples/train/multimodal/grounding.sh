@@ -1,13 +1,11 @@
-# 22GiB
 # You can refer to `https://github.com/QwenLM/Qwen2-VL` for the meaning of the `MAX_PIXELS` parameter.
 CUDA_VISIBLE_DEVICES=0 \
-MAX_PIXELS=602112 \
+MAX_PIXELS=1003520 \
 swift sft \
     --model Qwen/Qwen2-VL-7B-Instruct \
     --train_type lora \
-    --dataset swift/OK-VQA_train#1000 \
+    --dataset 'swift/refcoco:grounding#1000' \
     --num_train_epochs 1 \
-    --per_device_train_batch_size 1 \
     --learning_rate 1e-4 \
     --lora_rank 8 \
     --lora_alpha 32 \

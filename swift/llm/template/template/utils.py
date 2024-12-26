@@ -22,8 +22,9 @@ class ChatmlTemplateMeta(TemplateMeta):
 @dataclass
 class EmptyTemplateMeta(TemplateMeta):
     prefix: Prompt = field(default_factory=list)
-    prompt: Prompt = field(default_factory=list)
-    chat_sep: Optional[Prompt] = field(default_factory=list)
+    prompt: Prompt = field(default_factory=lambda: ['{{QUERY}}'])
+    chat_sep: Optional[Prompt] = None
+    auto_add_bos: bool = True
 
 
 register_template(ChatmlTemplateMeta(LLMTemplateType.chatml))

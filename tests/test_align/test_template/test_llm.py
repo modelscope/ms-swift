@@ -140,6 +140,24 @@ def test_megrez():
     assert res == res2, f'res: {res}, res2: {res2}'
 
 
+def test_skywork_o1():
+    pt_engine = PtEngine('AI-ModelScope/Skywork-o1-Open-Llama-3.1-8B')
+    res = _infer_model(
+        pt_engine,
+        messages=[{
+            'role':
+            'user',
+            'content':
+            ('Jane has 12 apples. She gives 4 apples to her friend Mark, then buys 1 more apple, and finally splits '
+             'all her apples equally among herself and her 2 siblings. How many apples does each person get?')
+        }])
+    assert res == ("To solve the problem, let's break it down into a series of logical steps:\n\n1. **Initial Number "
+                   'of Apples**: Jane starts with 12 apples.\n2. **Apples Given Away**: Jane gives 4 apples to her '
+                   'friend Mark. So, the number of apples she has now is:\n   \\[\n   12 - 4 = 8\n   \\]\n3. **Apples '
+                   'Bought**: Jane then buys 1 more apple. So, the number of apples she has now is:\n   \\[\n   '
+                   '8 + 1 = 9\n   \\]\n4. **Apples Split Equally')
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig, get_template, get_model_tokenizer, VllmEngine
     from swift.utils import get_logger, seed_everything
@@ -158,4 +176,5 @@ if __name__ == '__main__':
     # test_glm_edge()
     # test_llama()
     # test_openbuddy()
-    test_megrez()
+    # test_megrez()
+    test_skywork_o1()

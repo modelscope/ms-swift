@@ -3,11 +3,10 @@ from swift.llm import load_dataset
 
 def test_local_dataset():
     # please use git clone
-    local_dataset = '/mnt/nas2/huangjintao.hjt/work/datasets/swift-sft-mixture:firefly#100'
-    dataset = load_dataset(datasets=[local_dataset], streaming=True)[0]
-    for i, x in enumerate(dataset):
-        pass
-    print(i, x)
+    from swift.llm import git_clone_github
+    model_dir = git_clone_github('https://www.modelscope.cn/datasets/swift/swift-sft-mixture.git')
+    dataset = load_dataset(datasets=[f'{model_dir}:firefly'], streaming=True)[0]
+    print(next(iter(dataset)))
 
 
 def test_hub_dataset():

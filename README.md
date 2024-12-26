@@ -55,13 +55,13 @@ You can contact us and communicate with us by adding our group:
 
 
 ## 📝 Introduction
-🍲 ms-swift is an official framework provided by the ModelScope community for fine-tuning and deploying large language models and multi-modal large models. It currently supports the training (pre-training, fine-tuning, human alignment), inference, evaluation, quantization, and deployment of over 400 large models and 100+ multi-modal large models. These large language models (LLMs) include models such as Qwen2.5, Llama3.2, GLM4, Internlm2.5, Yi1.5, Mistral, DeepSeek, Baichuan2, Gemma2, and TeleChat2. The multi-modal LLMs include models such as Qwen2-VL, Qwen2-Audio, Llama3.2-Vision, Llava, InternVL2.5, MiniCPM-V-2.6, GLM4v, Xcomposer2.5, Yi-VL, DeepSeek-VL2, Phi3.5-Vision, and GOT-OCR2.
+🍲 ms-swift is an official framework provided by the ModelScope community for fine-tuning and deploying large language models and multi-modal large models. It currently supports the training (pre-training, fine-tuning, human alignment), inference, evaluation, quantization, and deployment of 400+ large models and 150+ multi-modal large models. These large language models (LLMs) include models such as Qwen2.5, Llama3.3, GLM4, Internlm2.5, Yi1.5, Mistral, DeepSeek2.5, Baichuan2, Gemma2, and TeleChat2. The multi-modal LLMs include models such as Qwen2-VL, Qwen2-Audio, Llama3.2-Vision, Llava, InternVL2.5, MiniCPM-V-2.6, GLM4v, Xcomposer2.5, Yi-VL, DeepSeek-VL2, Phi3.5-Vision, and GOT-OCR2.
 
-🍔 In addition, ms-swift gathers the latest training technologies, including LoRA, QLoRA, Llama-Pro, LongLoRA, GaLore, Q-GaLore, LoRA+, LISA, DoRA, FourierFt, ReFT, UnSloth, and Liger. ms-swift supports accelerating the inference, evaluation, and deployment modules using vLLM and LMDeploy. To help researchers and developers fine-tune and apply large models more easily, ms-swift also provides a Gradio-based Web-UI interface and a wealth of best practices.
+🍔 In addition, ms-swift gathers the latest training technologies, including LoRA, QLoRA, Llama-Pro, LongLoRA, GaLore, Q-GaLore, LoRA+, LISA, DoRA, FourierFt, ReFT, UnSloth, and Liger. ms-swift supports acceleration of inference, evaluation, and deployment modules using vLLM and LMDeploy, and supports the quantization of large models and multi-modal large models using technologies such as GPTQ, AWQ, and BNB. To help researchers and developers fine-tune and apply large models more easily, ms-swift also provides a Gradio-based Web-UI interface and a wealth of best practices.
 
 **Why choose ms-swift?**
 
-- 🍎 **Model Types**: Supports 400+ large language models and **100+ multi-modal large models** and all-to-all models, **providing a comprehensive solution from training to deployment**.
+- 🍎 **Model Types**: Supports 400+ large language models and **150+ multi-modal large models** and all-to-all models, **providing a comprehensive solution from training to deployment**.
 - **Dataset Types**: Comes with 150+ pre-training, fine-tuning, human alignment, multi-modal datasets, and supports custom datasets.
 - **Hardware Support**: Compatible with CPU, RTX series, T4/V100, A10/A100/H100, Ascend NPU, etc.
 - 🍊 **Lightweight Training**: Supports lightweight fine-tuning methods like LoRA, QLoRA, DoRA, LoRA+, ReFT, RS-LoRA, LLaMAPro, Adapter, GaLore, Q-Galore, LISA, UnSloth, Liger-Kernel.
@@ -114,9 +114,9 @@ CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen2.5-7B-Instruct \
     --train_type lora \
-    --dataset AI-ModelScope/alpaca-gpt4-data-zh#500 \
-              AI-ModelScope/alpaca-gpt4-data-en#500 \
-              swift/self-cognition#500 \
+    --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
+              'AI-ModelScope/alpaca-gpt4-data-en#500' \
+              'swift/self-cognition#500' \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \
@@ -146,7 +146,9 @@ After training is complete, use the following command to perform inference with 
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
     --adapters output/vx-xxx/checkpoint-xxx \
-    --stream true
+    --stream true \
+    --temperature 0 \
+    --max_new_tokens 2048
 
 # merge-lora and use vLLM for inference acceleration
 CUDA_VISIBLE_DEVICES=0 \
@@ -155,7 +157,9 @@ swift infer \
     --stream true \
     --merge_lora true \
     --infer_backend vllm \
-    --max_model_len 8192
+    --max_model_len 8192 \
+    --temperature 0 \
+    --max_new_tokens 2048
 ```
 
 ### Web-UI
@@ -262,7 +266,8 @@ CUDA_VISIBLE_DEVICES=0 swift rlhf \
 CUDA_VISIBLE_DEVICES=0 swift infer \
     --model Qwen/Qwen2.5-7B-Instruct \
     --stream true \
-    --infer_backend pt
+    --infer_backend pt \
+    --max_new_tokens 2048
 
 # LoRA
 CUDA_VISIBLE_DEVICES=0 swift infer \
@@ -270,7 +275,8 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
     --adapters swift/test_lora \
     --stream true \
     --infer_backend pt \
-    --temperature 0
+    --temperature 0 \
+    --max_new_tokens 2048
 ```
 
 ### Deployment

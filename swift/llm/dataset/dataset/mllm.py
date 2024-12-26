@@ -314,6 +314,8 @@ class EmoSchemaPreprocessor(ResponsePreprocessor):
         return super().prepare_dataset(dataset)
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        if row['video_idx'] not in self.mp4_set:
+            return None
         transfer_to_option = {
             '0': 'A',
             '1': 'B',
@@ -321,24 +323,36 @@ class EmoSchemaPreprocessor(ResponsePreprocessor):
             '3': 'D',
             '4': 'E',
         }
-        if row['video_idx'] not in self.mp4_set:
-            return None
-
         row = {
-            'query': row['query'] + '\n' + str(row['option']),
+            'query': row['query'] + '\n' + '\n'.join(row['option']),
             'response': transfer_to_option[row['response']],
             'videos': [os.path.join(self.local_dir, f"{row['video_idx']}.mp4")],
         }
         return super().preprocess(row)
 
 
+class EmoSchemaClsPreprocessor(EmoSchemaPreprocessor):
+
+    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        if row['video_idx'] not in self.mp4_set:
+            return None
+        row = {
+            'query': row['query'] + '\n' + '\n'.join(row['option']),
+            'label': int(row['response']),
+            'videos': [os.path.join(self.local_dir, f"{row['video_idx']}.mp4")],
+        }
+        return ResponsePreprocessor.preprocess(self, row)
+
+
 register_dataset(
     DatasetMeta(
         ms_dataset_id='AI-ModelScope/egoschema',
         hf_dataset_id='lmms-lab/egoschema',
-        subsets=['Subset'],
+        subsets=[
+            SubsetDataset('default', 'Subset', preprocess_func=EmoSchemaPreprocessor()),
+            SubsetDataset('cls', 'Subset', preprocess_func=EmoSchemaClsPreprocessor())
+        ],
         split=['test'],
-        preprocess_func=EmoSchemaPreprocessor(),
         tags=['chat', 'multi-modal', 'video'],
     ))
 

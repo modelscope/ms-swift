@@ -80,13 +80,28 @@ register_model(
         LLMModelType.skywork,
         [
             ModelGroup([
-                Model('skywork/Skywork-13B-base'),
+                Model('skywork/Skywork-13B-base', 'skywork/Skywork-13B-base'),
                 Model('skywork/Skywork-13B-chat'),
             ]),
         ],
         TemplateType.skywork,
         get_skywork_model_tokenizer,
         architectures=['SkyworkForCausalLM'],
+        model_arch=ModelArch.llama,
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.skywork_o1,
+        [
+            ModelGroup([
+                Model('AI-ModelScope/Skywork-o1-Open-Llama-3.1-8B', 'Skywork/Skywork-o1-Open-Llama-3.1-8B'),
+            ]),
+        ],
+        TemplateType.skywork_o1,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['LlamaForCausalLM'],
+        requires=['transformers>=4.43'],
         model_arch=ModelArch.llama,
     ))
 

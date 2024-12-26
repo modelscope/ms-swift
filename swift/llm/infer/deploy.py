@@ -121,6 +121,8 @@ class SwiftDeploy(SwiftInfer):
 
     def _set_request_config(self, request_config) -> None:
         default_request_config = self.args.get_request_config()
+        if default_request_config is None:
+            return
         for key, val in asdict(request_config).items():
             default_val = getattr(default_request_config, key)
             if default_val is not None and (val is None or isinstance(val, (list, tuple)) and len(val) == 0):

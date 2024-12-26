@@ -24,6 +24,16 @@ def test_vlm_quant(quant_method: Literal['gptq', 'awq'] = 'awq'):
             quant_method=quant_method))
 
 
+def test_audio_quant(quant_method: Literal['gptq', 'awq'] = 'awq'):
+    from swift.llm import export_main, ExportArguments
+    export_main(
+        ExportArguments(
+            model='Qwen/Qwen2-Audio-7B-Instruct',
+            quant_bits=4,
+            dataset=['speech_asr/speech_asr_aishell1_trainsets:validation#1000'],
+            quant_method=quant_method))
+
+
 def test_vlm_bnb_quant():
     from swift.llm import export_main, ExportArguments, infer_main, InferArguments
     export_main(ExportArguments(model='Qwen/Qwen2-VL-7B-Instruct', quant_bits=4, quant_method='bnb'))
@@ -34,4 +44,5 @@ def test_vlm_bnb_quant():
 if __name__ == '__main__':
     # test_llm_quant('gptq')
     # test_vlm_quant('gptq')
-    test_vlm_bnb_quant()
+    test_audio_quant('gptq')
+    # test_vlm_bnb_quant()

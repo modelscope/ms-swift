@@ -319,7 +319,7 @@ class Runtime(BaseUI):
         latest_data = ''
         lines = collections.deque(maxlen=int(os.environ.get('MAX_LOG_LINES', 50)))
         try:
-            with open(log_file, 'r') as input:
+            with open(log_file, 'r', encoding='utf-8') as input:
                 input.seek(offset)
                 fail_cnt = 0
                 while True:
@@ -451,8 +451,8 @@ class Runtime(BaseUI):
             all_args[splits[0]] = splits[1]
 
         output_dir = all_args['output_dir']
-        if os.path.exists(os.path.join(output_dir, 'sft_args.json')):
-            with open(os.path.join(output_dir, 'sft_args.json'), 'r') as f:
+        if os.path.exists(os.path.join(output_dir, 'args.json')):
+            with open(os.path.join(output_dir, 'args.json'), 'r', encoding='utf-8') as f:
                 _json = json.load(f)
             for key in all_args.keys():
                 all_args[key] = _json.get(key)

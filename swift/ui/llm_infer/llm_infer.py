@@ -231,7 +231,7 @@ class LLMInfer(BaseUI):
         model = kwargs.get('model')
         if os.path.exists(model) and os.path.exists(os.path.join(model, 'args.json')):
             kwargs['ckpt_dir'] = kwargs.pop('model')
-            with open(os.path.join(kwargs['ckpt_dir'], 'args.json'), 'r') as f:
+            with open(os.path.join(kwargs['ckpt_dir'], 'args.json'), 'r', encoding='utf-8') as f:
                 _json = json.load(f)
                 kwargs['model_type'] = _json['model_type']
                 kwargs['train_type'] = _json['train_type']
@@ -298,7 +298,7 @@ class LLMInfer(BaseUI):
                 time.sleep(1)
                 cnt += 1
                 if cnt >= 60:
-                    logger.warn(f'Deploy costing too much time, please check log file: {log_file}')
+                    logger.warning_once(f'Deploy costing too much time, please check log file: {log_file}')
             atexit.register(cls.clean_deployment)
             logger.info('Deploy done.')
         cls.deployed = True
@@ -411,6 +411,8 @@ class LLMInfer(BaseUI):
         if infer_request.messages[-1]['role'] != 'assistant':
             infer_request.messages.append({'role': 'assistant', 'content': ''})
         for chunk in stream_resp:
+            if chunk[0] is None:
+                continue
             stream_resp_with_history += chunk[0].choices[0].delta.content if chat else chunk.choices[0].text
             infer_request.messages[-1]['content'] = stream_resp_with_history
             yield '', cls._replace_tag_with_media(infer_request), gr.update(value=None), gr.update(

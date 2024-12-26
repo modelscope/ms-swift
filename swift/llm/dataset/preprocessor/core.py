@@ -312,18 +312,14 @@ class ResponsePreprocessor(RowPreprocessor):
 
 class AlpacaPreprocessor(ResponsePreprocessor):
 
-    def __init__(self,
-                 *,
-                 concat_inst_input: Union[Callable[[str, str], str]] = '\n',
-                 columns_mapping: Optional[Dict[str, str]] = None,
-                 **kwargs) -> None:
-        """Alpaca format preprocessor
-
-        Args:
-            concat_inst_input: The concat sep between instruction and input
-        """
-        super().__init__(columns_mapping=columns_mapping, **kwargs)
-        self.concat_inst_input = concat_inst_input
+    @classmethod
+    def concat_inst_input(cls, instruction, input_):
+        if instruction and input_:
+            query = f'{instruction}\n{input_}'
+        else:
+            query = instruction or input_
+        assert isinstance(query, str), f'query: {query}'
+        return query
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         instruction = row.pop('instruction', None)
@@ -331,15 +327,7 @@ class AlpacaPreprocessor(ResponsePreprocessor):
         output = row.pop('output', None)
         if output is not None:
             row['response'] = output
-
-        if instruction is not None or input_ is not None:
-            instruction = instruction or ''
-            input_ = input_ or ''
-            if isinstance(self.concat_inst_input, str):
-                query = instruction + self.concat_inst_input + input_
-            else:
-                query = self.concat_inst_input(instruction, input_)
-            row['query'] = query
+        row['query'] = self.concat_inst_input(instruction, input_)
         return super().preprocess(row)
 
 

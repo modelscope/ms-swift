@@ -4,4 +4,5 @@ swift infer \
     --infer_backend lmdeploy \
     --val_dataset AI-ModelScope/captcha-images#1000 \
     --tp 2 \
-    --vision_batch_size 8
+    --vision_batch_size 8 \
+    --max_new_tokens 2048

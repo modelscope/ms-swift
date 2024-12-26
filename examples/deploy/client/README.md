@@ -1,1 +1,0 @@
-In each client `.py` program, we have added the `run_deploy` context. The `run_deploy` function is a simple way to deploy locally, making it convenient for users to run the program directly. In common deployment scenarios, users only need to remove the deployment context and modify the `host` and `port` in order to use the client.

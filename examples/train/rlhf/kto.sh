@@ -6,7 +6,7 @@ swift rlhf \
     --rlhf_type kto \
     --model Qwen/Qwen2.5-7B-Instruct \
     --train_type lora \
-    --dataset AI-ModelScope/ultrafeedback-binarized-preferences-cleaned-kto#10000 \
+    --dataset 'AI-ModelScope/ultrafeedback-binarized-preferences-cleaned-kto#10000' \
     --num_train_epochs 2 \
     --learning_rate 1e-4 \
     --lora_rank 8 \

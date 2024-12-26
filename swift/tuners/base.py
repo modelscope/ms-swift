@@ -322,7 +322,7 @@ class SwiftModel(nn.Module):
             raise ValueError(f'Please pass in a local dir or a model id, not a local file: {model_dir}')
         extra_state_keys = kwargs.pop('extra_state_keys', None)
         if extra_state_keys is None and os.path.isfile(os.path.join(model_dir, cls.EXTRA_STATE_DIR, CONFIG_NAME)):
-            with open(os.path.join(model_dir, cls.EXTRA_STATE_DIR, CONFIG_NAME), 'r') as file:
+            with open(os.path.join(model_dir, cls.EXTRA_STATE_DIR, CONFIG_NAME), 'r', encoding='utf-8') as file:
                 _json = json.load(file)
                 extra_state_keys = _json.get('extra_state_keys')
         if adapter_name is None:
@@ -340,7 +340,7 @@ class SwiftModel(nn.Module):
                 logger.warning(f'{_name} is not a valid tuner')
                 continue
 
-            with open(config_file, 'r') as file:
+            with open(config_file, 'r', encoding='utf-8') as file:
                 json_object = json.load(file)
 
             if SWIFT_TYPE_KEY not in json_object:
@@ -395,7 +395,7 @@ class SwiftModel(nn.Module):
         if not os.path.exists(os.path.join(output_dir, 'README.md')):
             lines = []
         else:
-            with open(os.path.join(output_dir, 'README.md'), 'r') as f:
+            with open(os.path.join(output_dir, 'README.md'), 'r', encoding='utf-8') as f:
                 lines = f.readlines()
 
         quantization_config = None
@@ -426,7 +426,7 @@ class SwiftModel(nn.Module):
         lines.append(f'{base_model_heading}\n\n- BaseModel Class {self.base_model.__class__.__name__}\n')
 
         # write the lines back to README.md
-        with open(os.path.join(output_dir, 'README.md'), 'w') as f:
+        with open(os.path.join(output_dir, 'README.md'), 'w', encoding='utf-8') as f:
             f.writelines(lines)
 
     def add_weighted_adapter(
@@ -587,13 +587,14 @@ class SwiftModel(nn.Module):
                 os.makedirs(os.path.join(save_directory, self.EXTRA_STATE_DIR), exist_ok=True)
                 self._save_state_dict(output_state_dict, os.path.join(save_directory, self.EXTRA_STATE_DIR),
                                       safe_serialization)
-                with open(os.path.join(save_directory, self.EXTRA_STATE_DIR, CONFIG_NAME), 'w') as file:
+                with open(
+                        os.path.join(save_directory, self.EXTRA_STATE_DIR, CONFIG_NAME), 'w', encoding='utf-8') as file:
                     json.dump({'extra_state_keys': self.extra_state_keys}, file)
             else:
                 logger.error('Full parameter training, save_extra_states will be ignored')
 
         if not os.path.exists(os.path.join(save_directory, 'configuration.json')):
-            with open(os.path.join(save_directory, 'configuration.json'), 'w') as f:
+            with open(os.path.join(save_directory, 'configuration.json'), 'w', encoding='utf-8') as f:
                 f.write('{}')
 
     @staticmethod
@@ -776,7 +777,7 @@ class Swift:
             return not LoRAConfig(**_json).can_be_saved_to_peft()
 
         for adapter in adapter_names:
-            with open(os.path.join(ckpt_dir, adapter, CONFIG_NAME)) as f:
+            with open(os.path.join(ckpt_dir, adapter, CONFIG_NAME), encoding='utf-8') as f:
                 _json = json.load(f)
                 if has_custom_content(_json):
                     raise AssertionError('Cannot transfer to peft format, '
@@ -802,7 +803,7 @@ class Swift:
             state_dict = new_state_dict
             SwiftModel._save_state_dict(state_dict, os.path.join(output_dir, adapter), safe_serialization)
             from swift import LoRAConfig
-            with open(os.path.join(output_dir, adapter, CONFIG_NAME)) as f:
+            with open(os.path.join(output_dir, adapter, CONFIG_NAME), encoding='utf-8') as f:
                 _json = json.load(f)
                 peft_config = LoRAConfig(**_json).to_peft_config()
             peft_config.save_pretrained(os.path.join(output_dir, adapter))
@@ -836,7 +837,7 @@ class Swift:
             model_id = snapshot_download(model_id, revision=revision)
         is_peft_model = False
         if os.path.exists(os.path.join(model_id, CONFIG_NAME)):
-            with open(os.path.join(model_id, CONFIG_NAME), 'r') as f:
+            with open(os.path.join(model_id, CONFIG_NAME), 'r', encoding='utf-8') as f:
                 _json = json.load(f)
             is_peft_model = SWIFT_TYPE_KEY not in _json
 
@@ -845,7 +846,7 @@ class Swift:
             if isinstance(adapter_name, list) else list(adapter_name.keys())[0]
         _name = _name or ''
         if os.path.exists(os.path.join(model_id, _name, CONFIG_NAME)):
-            with open(os.path.join(model_id, _name, CONFIG_NAME), 'r') as f:
+            with open(os.path.join(model_id, _name, CONFIG_NAME), 'r', encoding='utf-8') as f:
                 _json = json.load(f)
             is_peft_model = SWIFT_TYPE_KEY not in _json and 'extra_state_keys' not in _json
         if is_peft_model:

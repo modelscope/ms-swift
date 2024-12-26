@@ -54,7 +54,7 @@ def get_model_info_table():
         result[i] += text[i]
 
     for i, fpath in enumerate(fpaths):
-        with open(fpath, 'r') as f:
+        with open(fpath, 'r', encoding='utf-8') as f:
             text = f.read()
         llm_start_idx = text.find('| Model ID |')
         mllm_start_idx = text[llm_start_idx + 1:].find('| Model ID |') + llm_start_idx + 1
@@ -62,7 +62,7 @@ def get_model_info_table():
         mllm_end_idx = text.find(end_words[i][1])
         output = text[:llm_start_idx] + result[0] + '\n\n' + text[llm_end_idx:mllm_start_idx] + result[
             1] + '\n\n' + text[mllm_end_idx:]
-        with open(fpath, 'w') as f:
+        with open(fpath, 'w', encoding='utf-8') as f:
             f.write(output)
 
 

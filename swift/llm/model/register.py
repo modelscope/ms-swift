@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
+import platform
 import re
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
@@ -52,7 +53,7 @@ class ModelMeta:
     # Used to list the model_ids from modelscope/huggingface,
     # which participate in the automatic inference of the model_type.
     model_groups: List[ModelGroup]
-    template: str
+    template: Optional[str]
     get_function: GetModelTokenizerFunction
 
     model_arch: Optional[str] = None
@@ -69,6 +70,8 @@ class ModelMeta:
     tags: List[str] = field(default_factory=list)
 
     def __post_init__(self):
+        if self.template is None:
+            self.template = 'dummy'
         if not isinstance(self.model_groups, (list, tuple)):
             self.model_groups = [self.model_groups]
 
@@ -175,8 +178,9 @@ def get_model_tokenizer_from_local(model_dir: str,
     if tokenizer is None:
         tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
 
-    if model_kwargs.get('num_labels') is not None:
-        model_config.num_labels = model_kwargs.pop('num_labels')
+    num_labels = model_kwargs.pop('num_labels', None)
+    if num_labels:
+        model_config.num_labels = num_labels
 
     model = None
     if load_model:
@@ -333,9 +337,11 @@ def get_model_name(model_id_or_path: str) -> Optional[str]:
     model_id_or_path = model_id_or_path.rstrip('/')
     match_ = re.search('/models--.+?--(.+?)/snapshots/', model_id_or_path)
     if match_ is not None:
-        model_name = match_.group(1)
-    else:
-        model_name = model_id_or_path.rsplit('/', 1)[-1]
+        return match_.group(1)
+
+    model_name = model_id_or_path.rsplit('/', 1)[-1]
+    if platform.system().lower() == 'windows':
+        model_name = model_name.rsplit('\\', 1)[-1]
     # compat modelscope snapshot_download
     model_name = model_name.replace('___', '.')
     return model_name
@@ -504,7 +510,9 @@ def get_model_tokenizer(
     tokenizer.model_info = model_info
     tokenizer.model_meta = model_meta
 
-    pad_token = tokenizer.pad_token_id or tokenizer.eos_token_id
+    pad_token = tokenizer.pad_token_id
+    if pad_token is None:
+        pad_token = tokenizer.eos_token_id
     if tokenizer.eos_token_id is None:
         tokenizer.eos_token_id = pad_token
     if tokenizer.pad_token_id is None:

@@ -221,9 +221,9 @@ def find_all_linears(model: nn.Module) -> List[str]:
     else:
         linear_cls = [nn.Linear]
 
-    # 'score': classification model
+    # 'score', 'classifier': classification model
     # 'v_head': reward model
-    ignore_layers = [lm_head_name, 'score', 'v_head']
+    ignore_layers = [lm_head_name, 'score', 'v_head', 'classifier']
     return _find_layers(
         model, lambda name, module: isinstance(module, tuple(linear_cls)) and all(layer not in name
                                                                                   for layer in ignore_layers))

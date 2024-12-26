@@ -60,7 +60,7 @@ def merge_lora(args: ExportArguments, device_map=None, replace_if_exists=False) 
                                                                                        '{base_model}', base_model)
         try:
             yamlfile = os.path.join(tempdir, 'mergekit.yaml')
-            with open(yamlfile, 'w') as f:
+            with open(yamlfile, 'w', encoding='utf-8') as f:
                 f.write(merge_yaml)
             logger.info(f'Merging with config: {merge_yaml}')
             os.system(f'mergekit-yaml {yamlfile} {mergekit_path}')

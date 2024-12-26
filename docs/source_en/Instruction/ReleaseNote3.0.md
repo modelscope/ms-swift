@@ -21,7 +21,6 @@
 
 4. Supported plugin mechanism for customizing the training process. Current plugins include:
     - callback  to customize training callbacks,
-    - custom_trainer  to customize the trainer,
     - loss  to customize the loss method,
     - loss_scale  to customize the weight of each token,
     - metric  to customize cross-validation metrics,

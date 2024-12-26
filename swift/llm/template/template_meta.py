@@ -47,7 +47,6 @@ class TemplateMeta:
     placeholder_tokens: List[Union[int, str]] = field(default_factory=list)
 
     default_tools_prompt: str = 'react_en'
-    support_stream: bool = True
 
     def to_generate_template_meta(self) -> 'TemplateMeta':
         self = deepcopy(self)
@@ -60,7 +59,6 @@ class TemplateMeta:
             auto_add_bos=True,
             stop_words=self.stop_words,
             placeholder_tokens=self.placeholder_tokens,
-            support_stream=self.support_stream,
         )
 
     @staticmethod

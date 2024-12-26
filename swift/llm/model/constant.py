@@ -78,6 +78,9 @@ class LLMModelType:
     gemma = 'gemma'
     gemma2 = 'gemma2'
 
+    skywork = 'skywork'
+    skywork_o1 = 'skywork_o1'
+
     yuan2 = 'yuan2'
     orion = 'orion'
     xverse = 'xverse'
@@ -89,8 +92,10 @@ class LLMModelType:
     grok = 'grok'
     mamba = 'mamba'
     polylm = 'polylm'
-    skywork = 'skywork'
     aya = 'aya'
+
+    modern_bert = 'modern_bert'
+    bert = 'bert'
 
 
 class MLLMModelType:

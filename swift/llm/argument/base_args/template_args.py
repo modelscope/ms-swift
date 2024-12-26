@@ -60,5 +60,6 @@ class TemplateArguments:
             'tools_prompt': self.tools_prompt,
             'loss_scale': self.loss_scale,
             'sequence_parallel_size': self.sequence_parallel_size,
-            'template_backend': self.template_backend
+            'template_backend': self.template_backend,
+            'use_chat_template': self.use_chat_template
         }
