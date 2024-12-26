@@ -136,7 +136,7 @@ class TeleChatTemplateMeta(TemplateMeta):
     prompt: Prompt = field(default_factory=lambda: ['<_user>{{QUERY}}<_bot>'])
     chat_sep: Optional[Prompt] = field(default_factory=lambda: ['<_end>'])
     suffix: Prompt = field(default_factory=lambda: ['<_end>'])
-    system_prefix: Optional[Prompt] = field(default_factory=lambda: ['<_system>{{SYSTEM}}'])
+    system_prefix: Optional[Prompt] = field(default_factory=lambda: ['<_system>{{SYSTEM}}\n'])
 
 
 register_template(TeleChatTemplateMeta(LLMTemplateType.telechat))
