@@ -274,6 +274,8 @@ def git_clone_github(github_url: str,
                      local_repo_name: Optional[str] = None,
                      branch: Optional[str] = None,
                      commit_hash: Optional[str] = None) -> str:
+    if github_url.endswith('.git'):
+        github_url = github_url[:-4]
     git_cache_dir = os.path.join(get_cache_dir(), '_github')
     os.makedirs(git_cache_dir, exist_ok=True)
     if local_repo_name is None:
@@ -282,8 +284,7 @@ def git_clone_github(github_url: str,
     local_repo_path = os.path.join(git_cache_dir, local_repo_name)
     with safe_ddp_context(hash_id=local_repo_path):
         if not os.path.exists(local_repo_path):
-            if not github_url.endswith('.git'):
-                github_url = f'{github_url}.git'
+            github_url = f'{github_url}.git'
             command = ['git', '-C', git_cache_dir, 'clone', github_url, local_repo_name]
             command_str = f"git -C '{git_cache_dir}' clone '{github_url}' {local_repo_name}"
             if branch is not None:
