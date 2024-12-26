@@ -312,10 +312,6 @@ class ResponsePreprocessor(RowPreprocessor):
 
 class AlpacaPreprocessor(ResponsePreprocessor):
 
-    def __init__(self, *, columns_mapping: Optional[Dict[str, str]] = None, **kwargs) -> None:
-        """Alpaca format preprocessor"""
-        super().__init__(columns_mapping=columns_mapping, **kwargs)
-
     @classmethod
     def concat_inst_input(cls, instruction, input_):
         if instruction and input_:
