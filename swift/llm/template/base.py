@@ -181,7 +181,8 @@ class Template(ProcessorMixin):
 
     def _seq_cls_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = self._encode(inputs)
-        encoded['labels'] = int(inputs.label)
+        if inputs.label is not None:
+            encoded['labels'] = int(inputs.label)
         return encoded
 
     def encode(self,
