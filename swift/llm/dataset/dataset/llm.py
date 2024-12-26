@@ -8,16 +8,6 @@ from ..preprocessor import (AlpacaPreprocessor, ClsPreprocessor, MessagesPreproc
                             RowPreprocessor, TextGenerationPreprocessor)
 from ..register import DatasetMeta, SubsetDataset, register_dataset
 
-
-def _concat_inst_inp_alpaca_zh(inst: str, inp: str) -> str:
-    if inp.startswith('输入：'):
-        inp = inp[3:]
-    if inst and inp:
-        return f'{inst}\n{inp}'
-    else:
-        return inst or inp
-
-
 class AlpacaZhPreprocessor(AlpacaPreprocessor):
 
     @classmethod
