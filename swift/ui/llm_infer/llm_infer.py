@@ -11,6 +11,7 @@ from typing import List, Type
 import gradio as gr
 import json
 import torch
+import atexit
 from json import JSONDecodeError
 
 from swift.llm import DeployArguments, InferArguments, InferClient, InferRequest, RequestConfig
@@ -298,12 +299,21 @@ class LLMInfer(BaseUI):
                 cnt += 1
                 if cnt >= 60:
                     logger.warn(f'Deploy costing too much time, please check log file: {log_file}')
+            atexit.register(cls.clean_deployment)
             logger.info('Deploy done.')
         cls.deployed = True
         running_task = Runtime.refresh_tasks(log_file)
         if cls.is_gradio_app:
             cls.running_task = running_task['value']
         return gr.update(open=True), running_task
+
+    @classmethod
+    def clean_deployment(cls):
+        if not cls.is_gradio_app:
+            return
+
+        _, args = Runtime.parse_info_from_cmdline(cls.running_task)
+        os.system(f'pkill -f {args["log_file"]}')
 
     @classmethod
     def clear_session(cls):
