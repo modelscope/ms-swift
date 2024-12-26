@@ -164,7 +164,10 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
                                  f'local_world_size: {self.local_world_size}.')
 
             ds_config_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'ds_config'))
-            deepspeed_mapping = {name: f'{name}.json' for name in ['zero2', 'zero3', 'zero2_offload', 'zero3_offload']}
+            deepspeed_mapping = {
+                name: f'{name}.json'
+                for name in ['zero0', 'zero1', 'zero2', 'zero3', 'zero2_offload', 'zero3_offload']
+            }
             for ds_name, ds_config in deepspeed_mapping.items():
                 if self.deepspeed == ds_name:
                     self.deepspeed = os.path.join(ds_config_folder, ds_config)
