@@ -149,8 +149,6 @@ class Seq2SeqTrainer(TorchAccMixin, SwiftMixin, HfSeq2SeqTrainer):
             labels = inputs['labels']
             # fix https://github.com/huggingface/transformers/issues/34263
             if num_items_in_batch is not None:
-                if getattr(self.args, 'average_tokens_across_devices', False):
-                    outputs.loss *= self.accelerator.num_processes
                 outputs.loss = outputs.loss * (labels[:, 1:] != -100).sum() / num_items_in_batch
 
             if isinstance(outputs, dict) and 'loss' not in outputs:
