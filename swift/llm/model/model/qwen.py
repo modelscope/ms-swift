@@ -474,12 +474,24 @@ register_model(
 
 def patch_qwen_vl_utils():
     from qwen_vl_utils import vision_process
+    if hasattr(vision_process, '_patch'):
+        return
     for key in [
             'image_factor', 'min_pixels', 'max_pixels', 'max_ratio', 'video_min_pixels', 'video_max_pixels',
             'video_total_pixels', 'frame_factor', 'fps', 'fps_min_frames', 'fps_max_frames'
     ]:
         type_func = float if key == 'fps' else int
         setattr(vision_process, key.upper(), get_env_args(key, type_func, getattr(vision_process, key.upper())))
+    from qwen_vl_utils import vision_process
+    _read_video_decord = vision_process._read_video_decord
+
+    def _new_read_video_decord(ele: dict):
+        from swift.llm import load_file
+        ele['video'] = load_file(ele['video'])
+        return _read_video_decord(ele)
+
+    vision_process.VIDEO_READER_BACKENDS['decord'] = _new_read_video_decord
+    vision_process._patch = True
 
 
 def get_model_tokenizer_qwen2_vl(model_dir: str,
@@ -530,7 +542,7 @@ register_model(
         get_model_tokenizer_qwen2_vl,
         model_arch=ModelArch.qwen2_vl,
         architectures=['Qwen2VLForConditionalGeneration'],
-        requires=['transformers>=4.45', 'qwen_vl_utils', 'pyav', 'decord'],
+        requires=['transformers>=4.45', 'qwen_vl_utils>=0.0.6', 'pyav', 'decord'],
         tags=['vision', 'video']))
 
 register_model(
@@ -544,7 +556,7 @@ register_model(
         get_model_tokenizer_qwen2_vl,
         model_arch=ModelArch.qwen2_vl,
         architectures=['Qwen2VLForConditionalGeneration'],
-        requires=['transformers>=4.45', 'qwen_vl_utils', 'pyav', 'decord'],
+        requires=['transformers>=4.45', 'qwen_vl_utils>=0.0.6', 'pyav', 'decord'],
         tags=['vision', 'video']))
 
 
