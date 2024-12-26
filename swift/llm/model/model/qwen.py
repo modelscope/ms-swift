@@ -542,7 +542,7 @@ register_model(
         get_model_tokenizer_qwen2_vl,
         model_arch=ModelArch.qwen2_vl,
         architectures=['Qwen2VLForConditionalGeneration'],
-        requires=['transformers>=4.45', 'qwen_vl_utils', 'pyav', 'decord'],
+        requires=['transformers>=4.45', 'qwen_vl_utils>=0.0.6', 'pyav', 'decord'],
         tags=['vision', 'video']))
 
 register_model(
@@ -556,7 +556,7 @@ register_model(
         get_model_tokenizer_qwen2_vl,
         model_arch=ModelArch.qwen2_vl,
         architectures=['Qwen2VLForConditionalGeneration'],
-        requires=['transformers>=4.45', 'qwen_vl_utils', 'pyav', 'decord'],
+        requires=['transformers>=4.45', 'qwen_vl_utils>=0.0.6', 'pyav', 'decord'],
         tags=['vision', 'video']))
 
 
