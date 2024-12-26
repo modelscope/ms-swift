@@ -9,17 +9,20 @@ from ..preprocessor import (AlpacaPreprocessor, ClsPreprocessor, MessagesPreproc
 from ..register import DatasetMeta, SubsetDataset, register_dataset
 
 
-def _concat_inst_inp_alpaca_zh(inst: str, inp: str) -> str:
-    if inp.startswith('输入：'):
-        inp = inp[3:]
-    return f'{inst}\n{inp}'
+class AlpacaZhPreprocessor(AlpacaPreprocessor):
+
+    @classmethod
+    def concat_inst_input(cls, instruction, input_):
+        if input_ and input_.startswith('输入：'):
+            input_ = input_[3:]
+        return super().concat_inst_input(instruction, input_)
 
 
 register_dataset(
     DatasetMeta(
         ms_dataset_id='AI-ModelScope/alpaca-gpt4-data-zh',
         hf_dataset_id='llm-wizard/alpaca-gpt4-data-zh',
-        preprocess_func=AlpacaPreprocessor(concat_inst_input=_concat_inst_inp_alpaca_zh),
+        preprocess_func=AlpacaZhPreprocessor(),
         tags=['chat', 'general', '🔥'],
     ))
 
