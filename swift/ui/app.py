@@ -87,6 +87,13 @@ class SwiftWebUI(SwiftPipeline):
             if is_gradio_app:
                 from swift.utils import find_free_port
                 LLMInfer.element('port').value = str(find_free_port())
+                for f in fields(self.args):
+                    if getattr(self.args, f.name) and f.name in LLMInfer.elements() and hasattr(
+                            LLMInfer.elements()[f.name], 'value') and f.name != 'port':
+                        value = getattr(self.args, f.name)
+                        if isinstance(value, list):
+                            value = ' '.join([v or '' for v in value])
+                        LLMInfer.elements()[f.name].value = value
                 app.load(LLMInfer.deploy_model, list(LLMInfer.valid_elements().values()),
                          [LLMInfer.element('runtime_tab'),
                           LLMInfer.element('running_tasks')])

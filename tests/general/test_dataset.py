@@ -15,8 +15,11 @@ def test_sft():
     # _test_dataset(['AI-ModelScope/Duet-v0.5'])
     # _test_dataset(['swift/SlimOrca', 'swift/cosmopedia-100k'])
     # _test_dataset(['OmniData/Zhihu-KOL-More-Than-100-Upvotes'])
-    _test_dataset(['OmniData/Zhihu-KOL'])
-    # _test_dataset(['AI-ModelScope/alpaca-gpt4-data-zh#1000', 'AI-ModelScope/alpaca-gpt4-data-en#200'])
+    # _test_dataset(['OmniData/Zhihu-KOL'])
+    _test_dataset([
+        'AI-ModelScope/alpaca-gpt4-data-zh#1000', 'AI-ModelScope/alpaca-gpt4-data-en#1000',
+        'AI-ModelScope/LongAlpaca-12k#1000'
+    ])
     # _test_dataset(['swift/Infinity-Instruct:all'])
     # _test_dataset(['swift/sharegpt:all'])
     # _test_dataset(['AI-ModelScope/sharegpt_gpt4:all'])

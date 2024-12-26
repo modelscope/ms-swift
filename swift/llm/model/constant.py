@@ -94,6 +94,9 @@ class LLMModelType:
     polylm = 'polylm'
     aya = 'aya'
 
+    modern_bert = 'modern_bert'
+    bert = 'bert'
+
 
 class MLLMModelType:
     qwen_vl = 'qwen_vl'

@@ -179,6 +179,12 @@ class Template(ProcessorMixin):
         encoded['label'] = label
         return encoded
 
+    def _seq_cls_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded = self._encode(inputs)
+        if inputs.label is not None:
+            encoded['labels'] = int(inputs.label)
+        return encoded
+
     def encode(self,
                inputs: Union[TemplateInputs, Dict[str, Any], InferRequest],
                return_template_inputs: bool = False) -> Dict[str, Any]:
@@ -201,8 +207,10 @@ class Template(ProcessorMixin):
             encoded = Template._encode(self, inputs)
             for key in ['images', 'audios', 'videos']:
                 encoded[key] = getattr(inputs, key)
-        elif self.mode in {'pt', 'train', 'seq_cls'}:
+        elif self.mode in {'pt', 'train'}:
             encoded = self._encode(inputs)
+        elif self.mode == 'seq_cls':
+            encoded = self._seq_cls_encode(inputs)
         elif self.mode == 'rlhf':
             encoded = self._rlhf_encode(inputs)
         elif self.mode == 'kto':
@@ -599,7 +607,8 @@ class Template(ProcessorMixin):
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         template_backend = self.template_backend
-        if self.template_meta.template_type == 'dummy' and self.use_chat_template and not self.is_training:
+        if (self.template_meta.template_type == 'dummy' and self.use_chat_template and not self.is_training
+                and self.mode != 'seq_cls'):
             template_backend = 'jinja'
         res_context_list, loss_scale_list, answer_len = (
             self._swift_encode(inputs) if template_backend == 'swift' else self._jinja_encode(inputs))
@@ -649,10 +658,6 @@ class Template(ProcessorMixin):
             for k in list(encoded.keys()):
                 if k.endswith('loss_scale'):
                     encoded[k] = None
-
-        # sequence_classification
-        if inputs.label is not None:
-            encoded['label'] = inputs.label
         return encoded
 
     def _debug_logger(self, generate_ids):
@@ -807,7 +812,7 @@ class Template(ProcessorMixin):
                                batch: List[Dict[str, Any]],
                                *,
                                padding_to: Optional[int] = None) -> Dict[str, Any]:
-        labels = [b['label'] for b in batch if b.get('label') is not None]
+        labels = [b.pop('labels') for b in batch if b.get('labels') is not None]
         res = self._data_collator(batch, padding_to=padding_to)
         if labels:
             res['labels'] = torch.tensor(labels, dtype=torch.long)
@@ -930,8 +935,9 @@ class Template(ProcessorMixin):
             if val is not None:
                 key_upper = key.upper()
                 logger.info(f'[{key_upper}_IDS] {val}')
-                val_str = self.safe_decode(val, **tokenizer_kwargs)
-                logger.info(f'[{key_upper}] {val_str}')
+                if isinstance(val, (list, tuple, torch.Tensor)):
+                    val_str = self.safe_decode(val, **tokenizer_kwargs)
+                    logger.info(f'[{key_upper}] {val_str}')
         if inputs.get('loss_scale') is not None:
             val = inputs['loss_scale']
             logger.info(f'[LOSS_SCALE] {val}')
