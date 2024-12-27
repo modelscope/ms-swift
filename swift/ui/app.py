@@ -93,7 +93,7 @@ class SwiftWebUI(SwiftPipeline):
                         value = getattr(self.args, f.name)
                         if isinstance(value, list):
                             value = ' '.join([v or '' for v in value])
-                        LLMInfer.elements()[f.name].value = value
+                        LLMInfer.elements()[f.name].value = str(value)
                 app.load(LLMInfer.deploy_model, list(LLMInfer.valid_elements().values()),
                          [LLMInfer.element('runtime_tab'),
                           LLMInfer.element('running_tasks')])
