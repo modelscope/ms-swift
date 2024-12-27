@@ -49,7 +49,7 @@ class DeployArguments(InferArguments):
         if isinstance(self.adapters, str):
             self.adapters = [self.adapters]
         self.adapter_mapping = {}
-        self._all_adapters = []
+        self.all_adapters = []
         adapters = []
         for i, adapter in enumerate(self.adapters):
             adapter_path = adapter.split('=')
@@ -57,7 +57,7 @@ class DeployArguments(InferArguments):
                 adapter_path = (None, adapter_path[0])
             adapter_name, adapter_path = adapter_path
             adapter_path = safe_snapshot_download(adapter_path, use_hf=self.use_hf, hub_token=self.hub_token)
-            self._all_adapters.append(adapter_path)
+            self.all_adapters.append(adapter_path)
             if adapter_name is None:
                 adapters.append(adapter_path)
             else:
@@ -65,7 +65,7 @@ class DeployArguments(InferArguments):
         self.adapters = adapters
 
     def _init_ckpt_dir(self, adapters=None):
-        return super()._init_ckpt_dir(self._all_adapters)
+        return super()._init_ckpt_dir(self.all_adapters)
 
     def _init_stream(self):
         pass
