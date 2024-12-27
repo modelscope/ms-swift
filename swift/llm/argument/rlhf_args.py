@@ -50,14 +50,15 @@ class RLHFArguments(TrainArguments):
     local_rollout_forward_batch_size: int = 64
     kl_coef: float = 0.05
     cliprange: float = 0.2
-    cliprange_value: float = 0.2
     vf_coef: float = 0.1
+    cliprange_value: float = 0.2
     gamma: float = 1.0
     lam: float = 0.95
     num_sample_generations: int = 10
 
     def __post_init__(self):
         self._init_simpo()
+        self._init_ppo()
         self._set_default()
         super().__post_init__()
 
@@ -67,6 +68,10 @@ class RLHFArguments(TrainArguments):
             self.ref_model_revision = self.ref_model_revision or self.model_revision
         elif self.ref_model is not None:
             raise ValueError('CPO/ORPO or LoRA training does not require a ref_model to be passed in.')
+
+    def _init_ppo(self):
+        pass
+
 
     def _init_simpo(self):
         if self.rlhf_type != 'simpo':
