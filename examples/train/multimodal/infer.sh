@@ -1,5 +1,5 @@
 # Perform inference using the validation set from the training phase.
-# CUDA_VISIBLE_DEVICES=0,1 \
+CUDA_VISIBLE_DEVICES=0 \
 swift infer \
     --adapters output/vx-xxx/checkpoint-xxx \
     --stream true \

@@ -131,8 +131,7 @@ def _prepare_adapter(args, model):
     else:
         tuner = Swift
     # compat deploy
-    adapters = getattr(args, 'pre_adapters', None) or args.adapters
-    for adapter in adapters:
+    for adapter in args.adapters:
         model = tuner.from_pretrained(model, adapter)
     if args.train_type == 'bone':
         # Bone has a problem of float32 matmul with bloat16 in `peft==0.14.0`

@@ -21,6 +21,7 @@ class SwiftEval(SwiftPipeline):
 
     def run(self):
         args = self.args
+        assert len(args.adapters) <= 1, f'args.adapters: {args.adapters}'
         eval_report = {}
         deploy_context = nullcontext() if args.eval_url else run_deploy(self.args, return_url=True)
         with deploy_context as url:

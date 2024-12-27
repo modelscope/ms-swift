@@ -45,22 +45,24 @@ class DeployArguments(InferArguments):
         self.port = find_free_port(self.port)
 
     def _init_adapters(self):
-        from swift.llm import AdapterRequest
         if isinstance(self.adapters, str):
             self.adapters = [self.adapters]
         self.adapter_mapping = {}
-        self.pre_adapters = []
+        adapters = []
         for i, adapter in enumerate(self.adapters):
             adapter_path = adapter.split('=')
             if len(adapter_path) == 1:
                 adapter_path = (None, adapter_path[0])
             adapter_name, adapter_path = adapter_path
             adapter_path = safe_snapshot_download(adapter_path, use_hf=self.use_hf, hub_token=self.hub_token)
-            self.adapters[i] = adapter_path
             if adapter_name is None:
-                self.pre_adapters.append(adapter_path)
+                adapters.append(adapter_path)
             else:
-                self.adapter_mapping[adapter_name] = AdapterRequest(adapter_name, adapter_path)
+                self.adapter_mapping[adapter_name] = adapter_path
+        self.adapters = adapters
+
+    def _init_ckpt_dir(self, adapters=None):
+        return super()._init_ckpt_dir(self.adapters + list(self.adapter_mapping.values()))
 
     def _init_stream(self):
         pass
