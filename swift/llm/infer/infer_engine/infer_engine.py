@@ -244,12 +244,4 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
 
     @staticmethod
     def safe_asyncio_run(coro):
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
-        if loop:
-            result = InferEngine.thread_run(asyncio.run, args=(coro, ))
-        else:
-            result = asyncio.run(coro)
-        return result
+        return InferEngine.thread_run(asyncio.run, args=(coro, ))
