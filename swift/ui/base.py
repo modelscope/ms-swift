@@ -4,10 +4,11 @@ import os
 import sys
 import time
 import typing
+from collections import OrderedDict
 from dataclasses import fields
 from datetime import datetime
 from functools import wraps
-from typing import Any, Dict, List, OrderedDict, Type
+from typing import Any, Dict, List, Type
 
 import gradio as gr
 import json
@@ -220,12 +221,12 @@ class BaseUI:
 
     @classmethod
     def valid_elements(cls):
+        valid_elements = OrderedDict()
         elements = cls.elements()
-        return {
-            key: value
-            for key, value in elements.items()
-            if isinstance(value, (Textbox, Dropdown, Slider, Checkbox)) and key != 'train_record'
-        }
+        for key, value in elements.items():
+            if isinstance(value, (Textbox, Dropdown, Slider, Checkbox)) and key != 'train_record':
+                valid_elements[key] = value
+        return valid_elements
 
     @classmethod
     def element_keys(cls):

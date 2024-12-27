@@ -12,7 +12,7 @@ from ..register import register_template
 from ..template_inputs import StdTemplateInputs
 from ..template_meta import TemplateMeta
 from ..utils import Context, Word, findall
-from ..vision_utils import load_audio_qwen, load_batch
+from ..vision_utils import load_audio_qwen, load_batch, load_file
 from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
 
 
@@ -145,11 +145,6 @@ class Qwen2AudioTemplate(Template):
 register_template(QwenTemplateMeta(MLLMTemplateType.qwen2_audio, template_cls=Qwen2AudioTemplate))
 
 
-def _process_image_qwen(image):
-
-    return image
-
-
 class Qwen2VLTemplate(Template):
     image_token_id = 151655
     video_token_id = 151656
@@ -162,7 +157,7 @@ class Qwen2VLTemplate(Template):
             inputs.images[index] = fetch_image({'image': inputs.images[index]})
             return ['<|vision_start|><|image_pad|><|vision_end|>']
         else:
-            inputs.videos[index] = fetch_video({'video': inputs.videos[index]})
+            inputs.videos[index] = fetch_video({'video': inputs.videos[index]}).to(torch.uint8)
             return ['<|vision_start|><|video_pad|><|vision_end|>']
 
     def replace_object(self, object_: Dict[str, Any], index: int, inputs: StdTemplateInputs) -> List[Context]:
@@ -198,12 +193,10 @@ class Qwen2VLTemplate(Template):
             if locals()[media_type]:
                 if media_type == 'images':
                     media_token = self.image_token_id
-                    media_inputs = processor.image_processor(
-                        images=images, videos=None, return_tensors='pt', do_rescale=False)
+                    media_inputs = processor.image_processor(images=images, videos=None, return_tensors='pt')
                     media_grid_thw = media_inputs['image_grid_thw']
                 else:
-                    media_inputs = processor.image_processor(
-                        images=None, videos=videos, return_tensors='pt', do_rescale=False)
+                    media_inputs = processor.image_processor(images=None, videos=videos, return_tensors='pt')
                     media_grid_thw = media_inputs['video_grid_thw']
                     media_token = self.video_token_id
                 idx_list = findall(input_ids, media_token)

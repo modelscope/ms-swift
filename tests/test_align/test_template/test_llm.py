@@ -96,9 +96,11 @@ def test_codegeex4():
 
 def test_telechat():
     pt_engine = PtEngine('TeleAI/TeleChat2-7B', torch_dtype=torch.float16)
-    _infer_model(pt_engine, messages=[{'role': 'user', 'content': '你是谁？'}])
+    messages = [{'role': 'system', 'content': '你是一个乐于助人的智能助手，请使用用户提问的语言进行有帮助的问答'}, {'role': 'user', 'content': '你好'}]
+    response = _infer_model(pt_engine, messages=messages)
     pt_engine.default_template.template_backend = 'jinja'
-    _infer_model(pt_engine, messages=[{'role': 'user', 'content': '你是谁？'}])
+    response2 = _infer_model(pt_engine, messages=messages)
+    assert response == response2
 
 
 def test_glm_edge():

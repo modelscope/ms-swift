@@ -159,6 +159,6 @@ class Advanced(BaseUI):
                         scale=20,
                         allow_custom_value=True,
                         value=None,
-                        choices=['zero2', 'zero3', 'zero2_offload', 'zero3_offload'])
+                        choices=['zero0', 'zero1', 'zero2', 'zero3', 'zero2_offload', 'zero3_offload'])
                 with gr.Row():
                     gr.Textbox(elem_id='more_params', lines=4, scale=20)
