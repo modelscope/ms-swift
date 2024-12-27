@@ -95,7 +95,7 @@ class SwiftWebUI(SwiftPipeline):
                         value = getattr(self.args, f.name)
                         if isinstance(value, list):
                             value = ' '.join([v or '' for v in value])
-                        LLMInfer.elements()[f.name].value = value
+                        LLMInfer.elements()[f.name].value = str(value)
 
                 args = copy(self.args)
                 args.port = find_free_port()
