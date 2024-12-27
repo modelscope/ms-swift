@@ -39,17 +39,19 @@ class CompatArguments:
         if (os.path.exists(os.path.join(self.ckpt_dir, 'adapter_config.json'))
                 or os.path.exists(os.path.join(self.ckpt_dir, 'default', 'adapter_config.json'))
                 or os.path.exists(os.path.join(self.ckpt_dir, 'reft'))):
+            if self.ckpt_dir in self.adapters:
+                return
             self.adapters.insert(0, self.ckpt_dir)
         else:
-            assert self.model is None
+            assert self.model is None, f'self.model: {self.model}'
             self.model = self.ckpt_dir
         self.ckpt_dir = None
+        logger.warning('The `--ckpt_dir` parameter will be removed in `ms-swift>=3.2`. '
+                       'Please use `--model`, `--adapters`.')
 
     def __post_init__(self: 'BaseArguments'):
         if self.ckpt_dir is not None:
             self._handle_ckpt_dir()
-            logger.warning('The `--ckpt_dir` parameter will be removed in `ms-swift>=3.2`. '
-                           'Please use `--model`, `--adapters`.')
 
         if self.load_dataset_config is not None:
             self.load_data_args = self.load_dataset_config
@@ -207,7 +209,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             'tools_prompt',
             'use_chat_template'
         ]
-        skip_keys = list(f.name for f in fields(GenerationArguments)) + ['adapters']
+        skip_keys = list(f.name for f in fields(GenerationArguments) + fields(CompatArguments)) + ['adapters']
         if not isinstance(self, TrainArguments):
             skip_keys += ['max_length']
         all_keys = set(all_keys) - set(skip_keys)
