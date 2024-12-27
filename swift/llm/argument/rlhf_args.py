@@ -72,7 +72,6 @@ class RLHFArguments(TrainArguments):
     def _init_ppo(self):
         pass
 
-
     def _init_simpo(self):
         if self.rlhf_type != 'simpo':
             return
