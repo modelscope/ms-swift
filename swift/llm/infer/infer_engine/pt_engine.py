@@ -152,20 +152,19 @@ class PtEngine(InferEngine):
                       generation_config: GenerationConfig,
                       adapter_request: Optional[AdapterRequest] = None,
                       **kwargs) -> Iterator[List[Optional[ChatCompletionStreamResponse]]]:
-        generate_kwargs = {}
-        if adapter_request is not None:
-            generate_kwargs['adapter_names'] = self._get_adapter_names(adapter_request)
+
         if generation_config.num_beams != 1:
             error_msg = 'Streaming generation does not support beam search.'
             raise ValueError(error_msg)
-        num_prompt_tokens = self._get_num_tokens(inputs)
-
-        streamer = TokensIteratorStreamer()
-        generate_kwargs.update({
+        generate_kwargs = {
+            'adapter_names': self._get_adapter_names(adapter_request),
             'generation_config': generation_config,
             'streamer': streamer,
             **inputs,
-        })
+        }
+        num_prompt_tokens = self._get_num_tokens(inputs)
+
+        streamer = TokensIteratorStreamer()
         logits_streamer = None
         if generation_config.output_logits:
             generate_kwargs['logits_processor'] = LogitsProcessorList([LogitsStreamer()])
@@ -249,7 +248,11 @@ class PtEngine(InferEngine):
             if any(res):
                 yield res
 
-    def _get_adapter_names(self, adapter_request: AdapterRequest) -> List[str]:
+    def _get_adapter_names(self, adapter_request: Optional[AdapterRequest]) -> Optional[List[str]]:
+        if adapter_request is None:
+            if self._adapters_pool:
+                return ['__base__']
+            return
         adapter_name = adapter_request.name
         if adapter_name not in self._adapters_pool:
             self._adapters_pool[adapter_name] = adapter_request
@@ -268,9 +271,7 @@ class PtEngine(InferEngine):
                        inputs: Dict[str, Any],
                        adapter_request: Optional[AdapterRequest] = None,
                        **kwargs):
-        call_kwargs = {}
-        if adapter_request is not None:
-            call_kwargs['adapter_names'] = self._get_adapter_names(adapter_request)
+        call_kwargs = {'adapter_names': self._get_adapter_names(adapter_request)}
         num_prompt_tokens = self._get_num_tokens(inputs)
         inputs.pop('labels')
         logits = self.model(**inputs, **call_kwargs).logits
@@ -297,10 +298,11 @@ class PtEngine(InferEngine):
                     adapter_request: Optional[AdapterRequest] = None,
                     template_inputs=None) -> Union[List[ChatCompletionResponse]]:
         # bos_token TODO: encoder-decoder
-        generate_kwargs = {}
-        if adapter_request is not None:
-            generate_kwargs['adapter_names'] = self._get_adapter_names(adapter_request)
-        generate_kwargs.update({'generation_config': generation_config, **inputs})
+        generate_kwargs = {
+            'adapter_names': self._get_adapter_names(adapter_request),
+            'generation_config': generation_config,
+            **inputs
+        }
         num_prompt_tokens = self._get_num_tokens(inputs)
 
         generate_kwargs = template.prepare_generate_kwargs(generate_kwargs, model=self.model)

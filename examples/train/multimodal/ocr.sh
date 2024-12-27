@@ -1,8 +1,8 @@
-# 2*75GB
-CUDA_VISIBLE_DEVICES=0,1 \
+# 20GB
+CUDA_VISIBLE_DEVICES=0 \
 MAX_PIXELS=1003520 \
 swift sft \
-    --model Qwen/QVQ-72B-Preview \
+    --model Qwen/Qwen2-VL-7B-Instruct \
     --dataset 'AI-ModelScope/LaTeX_OCR:human_handwrite#20000' \
     --train_type lora \
     --torch_dtype bfloat16 \
