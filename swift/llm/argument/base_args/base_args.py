@@ -109,7 +109,8 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             folder, fname = os.path.split(path)
             sys.path.append(folder)
             __import__(fname.rstrip('.py'))
-        logger.info(f'Successfully registered `{self.custom_register_path}`')
+        if self.custom_register_path:
+            logger.info(f'Successfully registered `{self.custom_register_path}`')
 
     def _init_adapters(self):
         if isinstance(self.adapters, str):
