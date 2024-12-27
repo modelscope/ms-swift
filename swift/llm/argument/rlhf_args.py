@@ -70,7 +70,9 @@ class RLHFArguments(TrainArguments):
             raise ValueError('CPO/ORPO or LoRA training does not require a ref_model to be passed in.')
 
     def _init_ppo(self):
-        pass
+        self.response_length = self.max_new_tokens
+        self.num_ppo_epochs = self.num_train_epochs
+        # TODO: streaming, MLLM
 
     def _init_simpo(self):
         if self.rlhf_type != 'simpo':
