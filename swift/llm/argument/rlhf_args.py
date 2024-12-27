@@ -25,7 +25,7 @@ class RLHFArguments(TrainArguments):
         desirable_weight (float): Weight for desirable outcomes in KTO. Default is 1.0.
         undesirable_weight (float): Weight for undesirable outcomes in KTO. Default is 1.0.
     """
-    rlhf_type: Literal['dpo', 'orpo', 'simpo', 'kto', 'cpo', 'rm'] = 'dpo'
+    rlhf_type: Literal['dpo', 'orpo', 'simpo', 'kto', 'cpo', 'rm', 'ppo'] = 'dpo'
     ref_model: Optional[str] = None
     ref_model_type: Optional[str] = field(
         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
@@ -42,6 +42,19 @@ class RLHFArguments(TrainArguments):
     # KTO
     desirable_weight: float = 1.0
     undesirable_weight: float = 1.0
+    # PPO
+    reward_model: Optional[str] = None
+    reward_model_type: Optional[str] = field(
+        default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
+    reward_model_revision: Optional[str] = None
+    local_rollout_forward_batch_size: int = 64
+    kl_coef: float = 0.05
+    cliprange: float = 0.2
+    cliprange_value: float = 0.2
+    vf_coef: float = 0.1
+    gamma: float = 1.0
+    lam: float = 0.95
+    num_sample_generations: int = 10
 
     def __post_init__(self):
         self._init_simpo()

@@ -308,7 +308,7 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
 
 RLHF arguments inherit from the [training arguments](#training-arguments).
 
-- 🔥rlhf_type: Alignment algorithm type, supports `dpo`, `orpo`, `simpo`, `kto`, `cpo`.
+- 🔥rlhf_type: Alignment algorithm type, supports `dpo`, `orpo`, `simpo`, `kto`, `cpo`, `rm`, `ppo`.
 - ref_model: Original comparison model in algorithms like DPO.
 - ref_model_type: Same as model_type.
 - ref_model_revision: Same as model_revision.
