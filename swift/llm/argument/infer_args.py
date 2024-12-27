@@ -76,7 +76,9 @@ class VllmArguments:
         self.limit_mm_per_prompt = ModelArguments.parse_to_dict(self.limit_mm_per_prompt)
 
     def get_vllm_engine_kwargs(self):
-        all_adapters = getattr(self, 'all_adapters', None) or self.adapters
+        adapters = self.adapters
+        if hasattr(self, 'adapter_mapping'):
+            adapters = adapters + list(self.adapter_mapping.values())
         return {
             'gpu_memory_utilization': self.gpu_memory_utilization,
             'tensor_parallel_size': self.tensor_parallel_size,
@@ -87,8 +89,8 @@ class VllmArguments:
             'enforce_eager': self.enforce_eager,
             'limit_mm_per_prompt': self.limit_mm_per_prompt,
             'max_lora_rank': self.vllm_max_lora_rank,
-            'enable_lora': len(all_adapters) > 0,
-            'max_loras': max(len(all_adapters), 1),
+            'enable_lora': len(adapters) > 0,
+            'max_loras': max(len(adapters), 1),
         }
 
 

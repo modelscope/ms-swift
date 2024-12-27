@@ -15,7 +15,7 @@ from aiohttp import ClientConnectorError
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from swift.llm import DeployArguments
+from swift.llm import DeployArguments, AdapterRequest
 from swift.plugin import InferStats
 from swift.utils import get_logger
 from .infer import SwiftInfer
@@ -141,7 +141,7 @@ class SwiftDeploy(SwiftInfer):
         infer_kwargs = self.infer_kwargs.copy()
         adapter_request = args.adapter_mapping.get(request.model)
         if adapter_request:
-            infer_kwargs['adapter_request'] = adapter_request
+            infer_kwargs['adapter_request'] = AdapterRequest(request.model, adapter_request)
 
         infer_request, request_config = request.parse()
         self._set_request_config(request_config)
