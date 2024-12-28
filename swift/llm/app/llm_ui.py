@@ -33,7 +33,7 @@ def model_chat(query: str, history: History, system: str, *, base_url: str) -> T
         resp = resp_list[0]
         if resp is None:
             continue
-        response += resp.choices[0].message.delta
+        response += resp.choices[0].delta.content
         history[-1][1] = response
         yield '', history, system
 
