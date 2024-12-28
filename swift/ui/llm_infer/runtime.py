@@ -233,13 +233,14 @@ class Runtime(BaseUI):
 
     @classmethod
     def kill_task(cls, task):
-        pid, all_args = cls.parse_info_from_cmdline(task)
-        log_file = all_args['log_file']
-        if sys.platform == 'win32':
-            os.system(f'taskkill /f /t /pid "{pid}"')
-        else:
-            os.system(f'pkill -9 -f {log_file}')
-        time.sleep(1)
+        if task:
+            pid, all_args = cls.parse_info_from_cmdline(task)
+            log_file = all_args['log_file']
+            if sys.platform == 'win32':
+                os.system(f'taskkill /f /t /pid "{pid}"')
+            else:
+                os.system(f'pkill -9 -f {log_file}')
+            time.sleep(1)
         return [cls.refresh_tasks()] + [gr.update(value=None)]
 
     @classmethod
@@ -266,9 +267,4 @@ class Runtime(BaseUI):
                 ret.append(gr.update(value=arg))
             else:
                 ret.append(gr.update())
-        train_type = None
-        if is_custom_path:
-            with open(os.path.join(all_args['ckpt_dir'], 'args.json'), 'r', encoding='utf-8') as f:
-                _json = json.load(f)
-                train_type = _json.get('train_type')
-        return ret + [gr.update(value=None), [all_args.get('model_type'), all_args.get('template_type'), train_type]]
+        return ret + [gr.update(value=None)]
