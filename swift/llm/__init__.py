@@ -9,9 +9,10 @@ if TYPE_CHECKING:
                         InferClient, run_deploy, AdapterRequest, prepare_model_template)
     from .export import (export_main, merge_lora, quantize_model, export_to_ollama)
     from .eval import eval_main
+    from .app import app_main
     from .train import sft_main, pt_main, rlhf_main, get_multimodal_target_regex
     from .argument import (EvalArguments, InferArguments, TrainArguments, ExportArguments, DeployArguments,
-                           RLHFArguments, WebUIArguments, BaseArguments)
+                           RLHFArguments, WebUIArguments, BaseArguments, AppArguments)
     from .template import (TEMPLATE_MAPPING, Template, Word, get_template, TemplateType, register_template,
                            TemplateInputs, Messages, TemplateMeta, get_template_meta, InferRequest, load_image,
                            MaxLengthError, load_file)
@@ -36,11 +37,12 @@ else:
             'run_deploy', 'InferEngine', 'AdapterRequest', 'prepare_model_template'
         ],
         'export': ['export_main', 'merge_lora', 'quantize_model', 'export_to_ollama'],
+        'app': ['app_main'],
         'eval': ['eval_main'],
         'train': ['sft_main', 'pt_main', 'rlhf_main', 'get_multimodal_target_regex'],
         'argument': [
             'EvalArguments', 'InferArguments', 'TrainArguments', 'ExportArguments', 'WebUIArguments', 'DeployArguments',
-            'RLHFArguments', 'BaseArguments'
+            'RLHFArguments', 'BaseArguments', 'AppArguments'
         ],
         'template': [
             'TEMPLATE_MAPPING', 'Template', 'Word', 'get_template', 'TemplateType', 'register_template',

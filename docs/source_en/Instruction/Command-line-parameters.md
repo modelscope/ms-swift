@@ -100,6 +100,7 @@ This parameter list inherits from transformers `Seq2SeqTrainingArguments`, with 
 - remove_unused_columns: Default is False.
 - logging_first_step: Whether to log the first step print, default is True.
 - logging_steps: Interval for logging prints, default is 5.
+- average_tokens_across_devices: Whether to average the token count across devices. If set to True, it will use all_reduce to synchronize `num_tokens_in_batch` for accurate loss computation. The default is None; set to True for distributed training, otherwise set to False.
 - metric_for_best_model: Default is None. When `predict_with_generate` is set to False, it is 'loss'; otherwise, it is 'rouge-l'.
 - greater_is_better: Default is None. When `metric_for_best_model` contains 'loss', set to False; otherwise, set to True.
 

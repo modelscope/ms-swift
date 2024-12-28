@@ -32,9 +32,11 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
     lr_scheduler_kwargs: Optional[Union[dict, str]] = None
     gradient_checkpointing_kwargs: Optional[Union[dict, str]] = None
     report_to: List[str] = field(default_factory=lambda: ['tensorboard'])
+    eval_strategy: Optional[str] = None  # steps, epoch
+
     remove_unused_columns: bool = False
     logging_first_step: bool = True
-    eval_strategy: Optional[str] = None  # steps, epoch
+    average_tokens_across_devices: Optional[bool] = None
 
     def _init_output_dir(self):
         if self.output_dir is not None:
@@ -54,6 +56,8 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
 
     def __post_init__(self):
         self._init_output_dir()
+        if self.average_tokens_across_devices is None:
+            self.average_tokens_across_devices = self.world_size > 1
         if self.metric_for_best_model is None:
             self.metric_for_best_model = 'rouge-l' if self.predict_with_generate else 'loss'
         if self.greater_is_better is None:

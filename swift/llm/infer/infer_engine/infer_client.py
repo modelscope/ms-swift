@@ -3,11 +3,10 @@ import os
 from copy import deepcopy
 from dataclasses import asdict
 from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
+from urllib.parse import urljoin
 
 import aiohttp
 import json
-
-from urllib.parse import urljoin
 from dacite import from_dict
 from requests.exceptions import HTTPError
 
@@ -123,12 +122,12 @@ class InferClient(InferEngine):
         return data[5:].strip()
 
     async def infer_async(
-            self,
-            infer_request: InferRequest,
-            request_config: Optional[RequestConfig] = None,
-            *,
-            model: Optional[str] = None,
-            ) -> Union[ChatCompletionResponse, AsyncIterator[ChatCompletionStreamResponse]]:
+        self,
+        infer_request: InferRequest,
+        request_config: Optional[RequestConfig] = None,
+        *,
+        model: Optional[str] = None,
+    ) -> Union[ChatCompletionResponse, AsyncIterator[ChatCompletionStreamResponse]]:
         request_config = deepcopy(request_config or RequestConfig())
         if model is None:
             if len(self.models) == 1:
