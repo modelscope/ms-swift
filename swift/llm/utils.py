@@ -21,6 +21,8 @@ except ImportError:
 logger = get_logger()
 
 History = List[Union[Tuple[str, str], List[str]]]
+Message = Dict[str, Union[str, List[Dict[str, Any]]]]
+Messages = List[Message]
 
 os.environ['TOKENIZERS_PARALLELISM'] = 'true'
 

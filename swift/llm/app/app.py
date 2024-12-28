@@ -1,5 +1,4 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import os
 from contextlib import nullcontext
 from typing import List, Union
 

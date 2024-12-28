@@ -1,15 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import os
 from functools import partial
-from typing import Dict, List, Literal, Optional, Tuple
+from typing import Literal, Optional
 
 import gradio as gr
 
 from swift.utils import get_file_mm_type
+from ..utils import History
 from .locale import locale_mapping
-
-History = List[Tuple[str, str]]
-Messages = List[Dict[str, str]]
 
 
 def clear_session():
