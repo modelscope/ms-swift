@@ -156,6 +156,7 @@ class PtEngine(InferEngine):
         if generation_config.num_beams != 1:
             error_msg = 'Streaming generation does not support beam search.'
             raise ValueError(error_msg)
+        streamer = TokensIteratorStreamer()
         generate_kwargs = {
             'adapter_names': self._get_adapter_names(adapter_request),
             'generation_config': generation_config,
@@ -164,7 +165,6 @@ class PtEngine(InferEngine):
         }
         num_prompt_tokens = self._get_num_tokens(inputs)
 
-        streamer = TokensIteratorStreamer()
         logits_streamer = None
         if generation_config.output_logits:
             generate_kwargs['logits_processor'] = LogitsProcessorList([LogitsStreamer()])
