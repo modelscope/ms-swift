@@ -5,7 +5,7 @@ from typing import Dict, List, Literal, Optional, Tuple
 
 import gradio as gr
 
-from ..utils import history_to_messages
+from swift.utils import get_file_mm_type
 from .locale import locale_mapping
 
 History = List[Tuple[str, str]]
@@ -21,11 +21,32 @@ def modify_system_session(system: str):
     return system, '', []
 
 
+def _history_to_messages(history: History, system: str):
+    messages = []
+    if system is not None:
+        messages.append({'role': 'system', 'content': system})
+    content = []
+    for h in history:
+        assert isinstance(h, (list, tuple))
+        if isinstance(h[0], tuple):
+            assert h[1] is None
+            file_path = h[0][0]
+            mm_type = get_file_mm_type(file_path)
+            content.append({'type': mm_type, mm_type: file_path})
+        else:
+            content.append({'type': 'text', 'text': h[0]})
+            messages.append({'role': 'user', 'content': content})
+            if h[1] is not None:
+                messages.append({'role': 'assistant', 'content': h[1]})
+            content = []
+    return messages
+
+
 def model_chat(history: History, system: str, *, base_url: str):
     if history:
         from swift.llm import InferRequest, InferClient, RequestConfig
 
-        messages = history_to_messages(history, system)
+        messages = _history_to_messages(history, system)
         client = InferClient(base_url=base_url)
         gen = client.infer([InferRequest(messages=messages)], request_config=RequestConfig(stream=True))
         response = ''
@@ -56,7 +77,7 @@ def build_ui(base_url: str,
              *,
              is_multimodal: bool = True,
              studio_title: Optional[str] = None,
-             lang: Literal['en', 'zh'] = 'zh',
+             lang: Literal['en', 'zh'] = 'en',
              default_system: Optional[str] = None):
     with gr.Blocks() as demo:
         gr.Markdown(f'<center><font size=8>{studio_title}</center>')

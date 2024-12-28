@@ -17,7 +17,7 @@ class AppArguments(DeployArguments):
     server_name: str = '0.0.0.0'
     server_port: int = 7860
     share: bool = False
-    lang: Literal['en', 'zh'] = 'zh'
+    lang: Literal['en', 'zh'] = 'en'
 
     def _init_torch_dtype(self) -> None:
         if self.base_url:
