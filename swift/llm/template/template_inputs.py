@@ -7,11 +7,9 @@ import json
 from PIL import Image
 
 from swift.utils import get_logger
-from ..utils import Messages, messages_to_history
+from ..utils import Messages, Tool, messages_to_history
 
 logger = get_logger()
-
-Tool = Dict[str, Union[str, Dict]]
 
 
 @dataclass
