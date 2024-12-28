@@ -18,25 +18,32 @@ def clear_session():
 
 def modify_system_session(system: str):
     system = system or ''
-    return system, system, []
+    return system, '', []
 
 
-def model_chat(query: str, history: History, system: str, *, base_url: str) -> Tuple[str, str, History]:
-    from swift.llm import InferRequest, InferClient, RequestConfig
-    query = query or ''
+def model_chat(history: History, system: str, *, base_url: str):
+    if history:
+        from swift.llm import InferRequest, InferClient, RequestConfig
+
+        messages = history_to_messages(history, system)
+        client = InferClient(base_url=base_url)
+        gen = client.infer([InferRequest(messages=messages)], request_config=RequestConfig(stream=True))
+        response = ''
+        for resp_list in gen:
+            resp = resp_list[0]
+            if resp is None:
+                continue
+            response += resp.choices[0].delta.content
+            history[-1][1] = response
+            yield history
+    else:
+        yield []
+
+
+def add_text(history: History, query: str):
     history = history or []
     history.append([query, None])
-    messages = history_to_messages(history, system)
-    client = InferClient(base_url=base_url)
-    gen = client.infer([InferRequest(messages=messages)], request_config=RequestConfig(stream=True))
-    response = ''
-    for resp_list in gen:
-        resp = resp_list[0]
-        if resp is None:
-            continue
-        response += resp.choices[0].delta.content
-        history[-1][1] = response
-        yield '', history, system
+    return history, ''
 
 
 def add_file(history: History, file):
@@ -71,15 +78,11 @@ def build_ui(base_url: str,
         model_chat_ = partial(model_chat, base_url=base_url)
 
         upload.upload(add_file, [chatbot, upload], [chatbot])
-        textbox.submit(model_chat_, inputs=[textbox, chatbot, system_state], outputs=[textbox, chatbot, system_input])
-        submit.click(model_chat_, inputs=[textbox, chatbot, system_state], outputs=[textbox, chatbot, system_input])
-
-        def _regenerate(query: str, history: History, *args, **kwargs):
-            history.pop()
-            return model_chat_(query, history, *args, **kwargs)
-
-        regenerate.click(_regenerate, inputs=[textbox, chatbot, system_state], outputs=[textbox, chatbot, system_input])
-        clear_history.click(fn=clear_session, inputs=[], outputs=[textbox, chatbot])
-        modify_system.click(
-            fn=modify_system_session, inputs=[system_input], outputs=[system_state, system_input, chatbot])
+        textbox.submit(add_text, [chatbot, textbox], [chatbot, textbox]).then(model_chat_, [chatbot, system_state],
+                                                                              [chatbot])
+        submit.click(add_text, [chatbot, textbox], [chatbot, textbox]).then(model_chat_, [chatbot, system_state],
+                                                                            [chatbot])
+        regenerate.click(model_chat_, [chatbot, system_state], [chatbot])
+        clear_history.click(clear_session, [], [textbox, chatbot])
+        modify_system.click(modify_system_session, [system_input], [system_state, textbox, chatbot])
     return demo
