@@ -93,9 +93,11 @@ class LLMModelType:
     mamba = 'mamba'
     polylm = 'polylm'
     aya = 'aya'
-
+    # bert
     modern_bert = 'modern_bert'
     bert = 'bert'
+    # reward model
+    reward_model = 'reward_model'
 
 
 class MLLMModelType:
