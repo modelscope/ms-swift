@@ -8,7 +8,7 @@ from ..argument import AppArguments
 from ..base import SwiftPipeline
 from ..infer import run_deploy
 from ..template import get_template_meta
-from .llm_ui import build_llm_ui
+from .llm_ui import build_ui
 
 logger = get_logger()
 
@@ -23,7 +23,12 @@ class SwiftApp(SwiftPipeline):
         default_system = get_template_meta(args.model_meta.template).default_system
         with deploy_context as base_url:
             base_url = base_url or args.base_url
-            demo = build_llm_ui(base_url, studio_title=args.studio_title, lang=args.lang, default_system=default_system)
+            demo = build_ui(
+                base_url,
+                is_multimodal=args.model_meta.is_multimodal,
+                studio_title=args.studio_title,
+                lang=args.lang,
+                default_system=default_system)
             demo.queue().launch(server_name=args.server_name, server_port=args.server_port, share=args.share)
 
 
