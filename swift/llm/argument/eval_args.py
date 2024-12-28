@@ -37,6 +37,10 @@ class EvalArguments(DeployArguments):
     # will directly use the URL for evaluation.
     eval_url: Optional[str] = None
 
+    def _init_eval_url(self):
+        if self.eval_url and 'chat/completions' in self.eval_url:
+            self.eval_url = self.eval_url.split('/chat/completions', 1)
+
     def __post_init__(self):
         super().__post_init__()
         self._init_eval_dataset()

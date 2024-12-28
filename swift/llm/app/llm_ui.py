@@ -1,8 +1,11 @@
 import os
+from functools import partial
 from http import HTTPStatus
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Literal, Optional, Tuple
 
 import gradio as gr
+
+from ..utils import history_to_messages
 
 History = List[Tuple[str, str]]
 Messages = List[Dict[str, str]]
@@ -12,26 +15,27 @@ def clear_session():
     return '', []
 
 
-def modify_system_session(system: str, default_system: str):
-    system = system or default_system
+def modify_system_session(system: str):
+    system = system or ''
     return system, system, []
 
 
-def model_chat(query: str, history: History, system: str) -> Tuple[str, str, History]:
+def model_chat(query: str, history: History, system: str, *, base_url: str) -> Tuple[str, str, History]:
+    from swift.llm import InferRequest, InferClient, RequestConfig
     query = query or ''
     history = history or []
     history.append([query, None])
     messages = history_to_messages(history, system)
-    gen = Generation.call(model='qwen2-72b-instruct', messages=messages, result_format='message', stream=True)
-    for response in gen:
-        if response.status_code == HTTPStatus.OK:
-            role = response.output.choices[0].message.role
-            response = response.output.choices[0].message.content
-            system, history = messages_to_history(messages + [{'role': role, 'content': response}])
-            yield '', history, system
-        else:
-            raise ValueError('Request id: %s, Status code: %s, error code: %s, error message: %s' %
-                             (response.request_id, response.status_code, response.code, response.message))
+    client = InferClient(base_url=base_url)
+    gen = client.infer([InferRequest(messages=messages)], request_config=RequestConfig(stream=True))
+    response = ''
+    for resp_list in gen:
+        resp = resp_list[0]
+        if resp is None:
+            continue
+        response += resp.choices[0].message.delta
+        history[-1][1] = response
+        yield '', history, system
 
 
 locale_mapping = {
@@ -50,7 +54,11 @@ locale_mapping = {
 }
 
 
-def build_llm_ui(studio_title: str, *, lang: str = 'zh', default_system: Optional[str] = None):
+def build_llm_ui(base_url: str,
+                 *,
+                 studio_title: Optional[str] = None,
+                 lang: Literal['en', 'zh'] = 'zh',
+                 default_system: Optional[str] = None):
     with gr.Blocks() as demo:
         gr.Markdown(f'<center><font size=8>{studio_title}</center>')
         with gr.Row():
@@ -66,16 +74,15 @@ def build_llm_ui(studio_title: str, *, lang: str = 'zh', default_system: Optiona
             submit = gr.Button(locale_mapping['submit'][lang])
 
         system_state = gr.State(value=default_system)
-        textbox.submit(model_chat, inputs=[textbox, chatbot, system_state], outputs=[textbox, chatbot, system_input])
+        model_chat_ = partial(model_chat, base_url=base_url)
+        textbox.submit(model_chat_, inputs=[textbox, chatbot, system_state], outputs=[textbox, chatbot, system_input])
 
         submit.click(
-            model_chat,
+            model_chat_,
             inputs=[textbox, chatbot, system_state],
             outputs=[textbox, chatbot, system_input],
             concurrency_limit=5)
         clear_history.click(fn=clear_session, inputs=[], outputs=[textbox, chatbot])
         modify_system.click(
-            fn=modify_system_session,
-            inputs=[system_input, default_system],
-            outputs=[system_state, system_input, chatbot])
+            fn=modify_system_session, inputs=[system_input], outputs=[system_state, system_input, chatbot])
     return demo

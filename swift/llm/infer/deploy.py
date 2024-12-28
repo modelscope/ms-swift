@@ -212,7 +212,7 @@ def run_deploy(args: DeployArguments, return_url: bool = False):
     try:
         while not is_accessible(deploy_args.port):
             time.sleep(1)
-        yield f'http://127.0.0.1:{deploy_args.port}/v1/chat/completions' if return_url else deploy_args.port
+        yield f'http://127.0.0.1:{deploy_args.port}/v1' if return_url else deploy_args.port
     finally:
         process.terminate()
         logger.info('The deployment process has been terminated.')

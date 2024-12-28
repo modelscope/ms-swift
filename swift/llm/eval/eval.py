@@ -22,9 +22,10 @@ class SwiftEval(SwiftPipeline):
     def run(self):
         args = self.args
         eval_report = {}
-        deploy_context = nullcontext() if args.eval_url else run_deploy(self.args, return_url=True)
+        deploy_context = nullcontext() if args.eval_url else run_deploy(args, return_url=True)
         with deploy_context as url:
             url = args.eval_url or url
+            url = os.path.join(url, 'chat/completions')
             if args.eval_dataset_oc:
                 reports = self.run_task(args.eval_dataset_oc, 'opencompass', url)
                 result = {}

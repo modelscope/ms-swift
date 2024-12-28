@@ -48,9 +48,9 @@ class SwiftWebUI(SwiftPipeline):
         lang = os.environ.get('SWIFT_UI_LANG') or self.args.lang
         share_env = os.environ.get('WEBUI_SHARE')
         share = strtobool(share_env) if share_env else self.args.share
-        server = os.environ.get('WEBUI_SERVER') or self.args.host
+        server = os.environ.get('WEBUI_SERVER') or self.args.server_name
         port_env = os.environ.get('WEBUI_PORT')
-        port = int(port_env) if port_env else self.args.port
+        port = int(port_env) if port_env else self.args.server_port
         LLMTrain.set_lang(lang)
         LLMInfer.set_lang(lang)
         LLMExport.set_lang(lang)

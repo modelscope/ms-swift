@@ -16,7 +16,7 @@ class WebUIArguments:
         share (bool): A flag indicating whether to share the web UI publicly. Default is False.
         lang (str): The language setting for the web UI. Default is 'zh'.
     """
-    host: str = '0.0.0.0'
-    port: int = 7860
+    server_name: str = '0.0.0.0'
+    server_port: int = 7860
     share: bool = False
     lang: str = 'zh'

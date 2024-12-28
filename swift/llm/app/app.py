@@ -7,6 +7,7 @@ from swift.utils import get_logger
 from ..argument import AppArguments
 from ..base import SwiftPipeline
 from ..infer import run_deploy
+from ..template import get_template_meta
 from .llm_ui import build_llm_ui
 
 logger = get_logger()
@@ -18,9 +19,12 @@ class SwiftApp(SwiftPipeline):
 
     def run(self):
         args = self.args
-        deploy_context = nullcontext() if args.api_url else run_deploy(self.args, return_url=True)
-        demo = build_llm_ui()
-        demo.queue().launch()
+        deploy_context = nullcontext() if args.base_url else run_deploy(args, return_url=True)
+        default_system = get_template_meta(args.model_meta.template).default_system
+        with deploy_context as base_url:
+            base_url = base_url or args.base_url
+            demo = build_llm_ui(base_url, studio_title=args.studio_title, lang=args.lang, default_system=default_system)
+            demo.queue().launch(server_name=args.server_name, server_port=args.server_port, share=args.share)
 
 
 def app_main(args: Union[List[str], AppArguments, None] = None):

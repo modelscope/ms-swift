@@ -1,1 +1,1 @@
-from .app import app_main, SwiftApp
+from .app import SwiftApp, app_main
