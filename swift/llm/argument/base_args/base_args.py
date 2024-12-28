@@ -137,6 +137,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             pass
         logger.info(f'rank: {self.rank}, local_rank: {self.local_rank}, '
                     f'world_size: {world_size}, local_world_size: {self.local_world_size}')
+        assert len(self.adapters) <= 1, f'args.adapters: {self.adapters}'
         ModelArguments.__post_init__(self)
         QuantizeArguments.__post_init__(self)
         TemplateArguments.__post_init__(self)

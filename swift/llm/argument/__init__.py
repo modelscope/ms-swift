@@ -8,3 +8,4 @@ from .rlhf_args import RLHFArguments
 from .train_args import TrainArguments
 from .tuner_args import TunerArguments
 from .webui_args import WebUIArguments
+from .app_args import AppArguments

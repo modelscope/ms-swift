@@ -41,7 +41,8 @@ class SwiftPipeline(ABC, ProcessorMixin):
 
     def main(self):
         logger.info(f'Start time of running main: {dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")}')
-        seed_everything(self.args.seed)
+        if hasattr(self.args, 'seed'):
+            seed_everything(self.args.seed)
         result = self.run()
         logger.info(f'End time of running main: {dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")}')
         return result
