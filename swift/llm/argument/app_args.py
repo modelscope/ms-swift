@@ -15,7 +15,7 @@ logger = get_logger()
 class AppArguments(WebUIArguments, DeployArguments):
     base_url: Optional[str] = None
     studio_title: Optional[str] = None
-    is_multimodal: Optional[str] = None
+    is_multimodal: Optional[bool] = None
 
     lang: Literal['en', 'zh'] = 'en'
 
