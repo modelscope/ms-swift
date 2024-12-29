@@ -28,9 +28,10 @@ def _infer_model(pt_engine, system=None, messages=None, images=None):
 
 def test_qwen2_vl():
     pt_engine = PtEngine('Qwen/Qwen2-VL-2B-Instruct')
-    _infer_model(pt_engine)
+    response = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
-    _infer_model(pt_engine)
+    response2 = _infer_model(pt_engine)
+    assert response == response2 == '这是一只小猫的图片。它有黑白相间的毛发，眼睛大而圆，显得非常可爱。'
 
 
 def test_qvq():
@@ -94,9 +95,10 @@ def test_got_ocr():
 
 def test_llama_vision():
     pt_engine = PtEngine('LLM-Research/Llama-3.2-11B-Vision-Instruct')
-    _infer_model(pt_engine)
+    response = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
-    _infer_model(pt_engine)
+    response2 = _infer_model(pt_engine)
+    assert response == response2
 
 
 def test_llava_hf():

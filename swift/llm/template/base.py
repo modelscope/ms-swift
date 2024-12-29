@@ -481,7 +481,8 @@ class Template(ProcessorMixin):
                 num_media_tags = len(re.findall(media_tag, total_content))
                 num_media = len(medias)
                 num_new_tags = num_media - num_media_tags
-                assert num_new_tags >= 0, f'Number of media: {num_media}, number of media_tags: {num_media_tags}'
+                assert num_new_tags >= 0, (
+                    f'num_media: {num_media}, num_media_tags: {num_media_tags}, total_content: {total_content}')
                 inputs.messages[0]['content'] = media_tag * num_new_tags + inputs.messages[0]['content']
 
     def _encode_context_list(

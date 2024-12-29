@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import os
 from contextlib import contextmanager
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Literal, Union
 
 import json
 import requests
@@ -90,3 +91,20 @@ def open_jsonl_writer(fpath: str, *, buffer_size: int = 0, encoding: str = 'utf-
 def append_to_jsonl(fpath: str, obj: Union[Dict, List[Dict]], *, encoding: str = 'utf-8', strict: bool = True) -> None:
     with open_jsonl_writer(fpath, encoding=encoding, strict=strict) as jsonl_writer:
         jsonl_writer.append(obj)
+
+
+def get_file_mm_type(file_name: str) -> Literal['image', 'video', 'audio']:
+    video_extensions = {'.mp4', '.mkv', '.mov', '.avi', '.wmv', '.flv', '.webm'}
+    audio_extensions = {'.mp3', '.wav', '.aac', '.flac', '.ogg', '.m4a'}
+    image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp'}
+
+    _, ext = os.path.splitext(file_name)
+
+    if ext.lower() in video_extensions:
+        return 'video'
+    elif ext.lower() in audio_extensions:
+        return 'audio'
+    elif ext.lower() in image_extensions:
+        return 'image'
+    else:
+        raise ValueError(f'file_name: {file_name}, ext: {ext}')

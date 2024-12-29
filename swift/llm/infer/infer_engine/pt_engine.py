@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import asyncio
 import concurrent.futures
 import inspect
 import os
@@ -360,6 +361,7 @@ class PtEngine(InferEngine):
 
             async def _gen_wrapper():
                 for response in res_or_gen:
+                    await asyncio.sleep(0)
                     yield response[0]
 
             return _gen_wrapper()

@@ -9,12 +9,13 @@ if TYPE_CHECKING:
                         InferClient, run_deploy, AdapterRequest, prepare_model_template)
     from .export import (export_main, merge_lora, quantize_model, export_to_ollama)
     from .eval import eval_main
+    from .app import app_main
     from .train import sft_main, pt_main, rlhf_main, get_multimodal_target_regex
     from .argument import (EvalArguments, InferArguments, TrainArguments, ExportArguments, DeployArguments,
-                           RLHFArguments, WebUIArguments, BaseArguments)
+                           RLHFArguments, WebUIArguments, BaseArguments, AppArguments)
     from .template import (TEMPLATE_MAPPING, Template, Word, get_template, TemplateType, register_template,
-                           TemplateInputs, Messages, TemplateMeta, get_template_meta, InferRequest, load_image,
-                           MaxLengthError, load_file)
+                           TemplateInputs, TemplateMeta, get_template_meta, InferRequest, load_image, MaxLengthError,
+                           load_file)
     from .model import (register_model, MODEL_MAPPING, ModelType, get_model_tokenizer, safe_snapshot_download,
                         HfConfigFactory, ModelInfo, ModelMeta, ModelKeys, register_model_arch, MultiModelKeys,
                         ModelArch, get_model_arch, MODEL_ARCH_MAPPING, get_model_info_meta, get_model_name, ModelGroup,
@@ -24,7 +25,7 @@ if TYPE_CHECKING:
                           DATASET_MAPPING, MediaResource, register_dataset, register_dataset_info, EncodePreprocessor,
                           LazyLLMDataset, ConstantLengthDataset, standard_keys, load_dataset, DATASET_TYPE,
                           sample_dataset, RowPreprocessor, DatasetMeta)
-    from .utils import (deep_getattr, to_device, History, history_to_messages, messages_to_history, Processor,
+    from .utils import (deep_getattr, to_device, History, Messages, history_to_messages, messages_to_history, Processor,
                         save_checkpoint, ProcessorMixin)
     from .base import SwiftPipeline
 else:
@@ -36,16 +37,17 @@ else:
             'run_deploy', 'InferEngine', 'AdapterRequest', 'prepare_model_template'
         ],
         'export': ['export_main', 'merge_lora', 'quantize_model', 'export_to_ollama'],
+        'app': ['app_main'],
         'eval': ['eval_main'],
         'train': ['sft_main', 'pt_main', 'rlhf_main', 'get_multimodal_target_regex'],
         'argument': [
             'EvalArguments', 'InferArguments', 'TrainArguments', 'ExportArguments', 'WebUIArguments', 'DeployArguments',
-            'RLHFArguments', 'BaseArguments'
+            'RLHFArguments', 'BaseArguments', 'AppArguments'
         ],
         'template': [
             'TEMPLATE_MAPPING', 'Template', 'Word', 'get_template', 'TemplateType', 'register_template',
-            'TemplateInputs', 'Messages', 'TemplateMeta', 'get_template_meta', 'InferRequest', 'load_image',
-            'MaxLengthError', 'load_file'
+            'TemplateInputs', 'TemplateMeta', 'get_template_meta', 'InferRequest', 'load_image', 'MaxLengthError',
+            'load_file'
         ],
         'model': [
             'MODEL_MAPPING', 'ModelType', 'get_model_tokenizer', 'safe_snapshot_download', 'HfConfigFactory',
@@ -61,8 +63,8 @@ else:
             'RowPreprocessor', 'ResponsePreprocessor', 'DatasetMeta'
         ],
         'utils': [
-            'deep_getattr', 'to_device', 'History', 'history_to_messages', 'messages_to_history', 'Processor',
-            'save_checkpoint', 'ProcessorMixin'
+            'deep_getattr', 'to_device', 'History', 'Messages', 'history_to_messages', 'messages_to_history',
+            'Processor', 'save_checkpoint', 'ProcessorMixin'
         ],
         'base': ['SwiftPipeline'],
     }

@@ -111,7 +111,8 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             folder, fname = os.path.split(path)
             sys.path.append(folder)
             __import__(fname.rstrip('.py'))
-        logger.info(f'Successfully registered `{self.custom_register_path}`')
+        if self.custom_register_path:
+            logger.info(f'Successfully registered `{self.custom_register_path}`')
 
     def _init_adapters(self):
         if isinstance(self.adapters, str):
@@ -137,6 +138,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             pass
         logger.info(f'rank: {self.rank}, local_rank: {self.local_rank}, '
                     f'world_size: {world_size}, local_world_size: {self.local_world_size}')
+        assert len(self.adapters) <= 1, f'args.adapters: {self.adapters}'
         ModelArguments.__post_init__(self)
         QuantizeArguments.__post_init__(self)
         TemplateArguments.__post_init__(self)

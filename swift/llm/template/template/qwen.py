@@ -193,10 +193,12 @@ class Qwen2VLTemplate(Template):
             if locals()[media_type]:
                 if media_type == 'images':
                     media_token = self.image_token_id
-                    media_inputs = processor.image_processor(images=images, videos=None, return_tensors='pt')
+                    media_inputs = processor.image_processor(
+                        images=images, videos=None, return_tensors='pt', do_resize=False)
                     media_grid_thw = media_inputs['image_grid_thw']
                 else:
-                    media_inputs = processor.image_processor(images=None, videos=videos, return_tensors='pt')
+                    media_inputs = processor.image_processor(
+                        images=None, videos=videos, return_tensors='pt', do_resize=False)
                     media_grid_thw = media_inputs['video_grid_thw']
                     media_token = self.video_token_id
                 idx_list = findall(input_ids, media_token)

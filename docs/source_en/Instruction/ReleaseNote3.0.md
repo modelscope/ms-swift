@@ -88,7 +88,7 @@ The parameters marked as compatible in version 2.0 have been entirely removed.
 
 4. The storage directory for merge_lora can be specified using `--output_dir`, and merge_lora and quantization cannot be executed in the same command; at least two commands are required.
 
-5. The app-ui interface has been removed, replaced by `swift web-ui --model xxx`, and multi-modal interface deployment is supported.
+5. Use `swift app --model xxx` to launch the app-ui interface, which supports multimodal interface inference.
 
 6. Removed dependencies for AIGC along with corresponding examples and training code.
 
