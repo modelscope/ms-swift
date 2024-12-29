@@ -13,5 +13,10 @@ def test_mllm():
     app_main(AppArguments(model='Qwen/Qwen2-VL-7B-Instruct', stream=True))
 
 
+def test_audio():
+    from swift.llm import app_main, AppArguments
+    app_main(AppArguments(model='Qwen/Qwen2-Audio-7B-Instruct', stream=True))
+
+
 if __name__ == '__main__':
-    test_mllm()
+    test_audio()
