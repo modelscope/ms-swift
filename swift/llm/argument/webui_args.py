@@ -1,15 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from dataclasses import dataclass
-from typing import Optional
-
-from swift.llm import InferArguments
 
 
 @dataclass
 class WebUIArguments:
     """
-    WebUIArguments is a dataclass that inherits from InferArguments.
-
     Args:
         server_name (str): The hostname or IP address to bind the web UI server to. Default is '0.0.0.0'.
         server_port (int): The port number to bind the web UI server to. Default is 7860.

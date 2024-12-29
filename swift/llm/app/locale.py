@@ -18,6 +18,6 @@ locale_mapping = {
     },
     'upload': {
         'en': '📁 Upload',
-        'zh': '📁 上传文件'
+        'zh': '📁 上传'
     }
 }

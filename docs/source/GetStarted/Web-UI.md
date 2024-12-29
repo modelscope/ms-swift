@@ -3,7 +3,7 @@
 目前SWIFT已经支持了界面化的训练和推理，参数支持和脚本训练相同。在安装SWIFT后，使用如下命令：
 
 ```shell
-swift web-ui --host 0.0.0.0 --port 7860 --lang zh/en
+swift web-ui --server_name 0.0.0.0 --server_port 7860 --lang zh/en
 ```
 
 开启界面训练和推理。

@@ -28,8 +28,12 @@ def _history_to_messages(history: History, system: str):
         if isinstance(h[0], tuple):
             assert h[1] is None
             file_path = h[0][0]
-            mm_type = get_file_mm_type(file_path)
-            content.append({'type': mm_type, mm_type: file_path})
+            try:
+                mm_type = get_file_mm_type(file_path)
+                content.append({'type': mm_type, mm_type: file_path})
+            except ValueError:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content.append({'type': 'text', 'text': f.read()})
         else:
             content.append({'type': 'text', 'text': h[0]})
             messages.append({'role': 'user', 'content': content})

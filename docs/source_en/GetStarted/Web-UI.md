@@ -3,7 +3,7 @@
 Currently, SWIFT supports interface-based training and inference, with parameter support similar to script training. After installing SWIFT, use the following command:
 
 ```shell
-swift web-ui --host 0.0.0.0 --port 7860 --lang zh/en
+swift web-ui --server_name 0.0.0.0 --server_port 7860 --lang zh/en
 ```
 
 to start the interface for training and inference.
