@@ -22,8 +22,9 @@ class SwiftApp(SwiftPipeline):
             base_url = base_url or args.base_url
             demo = build_ui(
                 base_url,
+                args.model_suffix,
                 stream=args.stream,
-                is_multimodal=args.model_meta.is_multimodal,
+                is_multimodal=args.is_multimodal,
                 studio_title=args.studio_title,
                 lang=args.lang,
                 default_system=args.system)

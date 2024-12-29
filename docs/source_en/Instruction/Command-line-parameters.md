@@ -361,6 +361,7 @@ App parameters inherit from [deployment arguments](#deployment-arguments) and [W
 
 - base_url: Base URL for the model deployment, for example, `http://localhost:8000/v1`. Default is None.
 - studio_title: Title of the studio. Default is None, set to the model name.
+- is_multimodal: Whether to launch the multimodal version of the app. Defaults to None, automatically determined based on the model; if it cannot be determined, set to False.
 - lang: Overrides the Web-UI Arguments, default is 'en'.
 
 ### Evaluation Arguments
