@@ -464,13 +464,14 @@ class Runtime(BaseUI):
 
     @staticmethod
     def kill_task(task):
-        pid, all_args = Runtime.parse_info_from_cmdline(task)
-        output_dir = all_args['output_dir']
-        if sys.platform == 'win32':
-            os.system(f'taskkill /f /t /pid "{pid}"')
-        else:
-            os.system(f'pkill -9 -f {output_dir}')
-        time.sleep(1)
+        if task:
+            pid, all_args = Runtime.parse_info_from_cmdline(task)
+            output_dir = all_args['output_dir']
+            if sys.platform == 'win32':
+                os.system(f'taskkill /f /t /pid "{pid}"')
+            else:
+                os.system(f'pkill -9 -f {output_dir}')
+            time.sleep(1)
         return [Runtime.refresh_tasks()] + [gr.update(value=None)] * (len(Runtime.get_plot(task)) + 1)
 
     @staticmethod
@@ -520,6 +521,16 @@ class Runtime(BaseUI):
         for k in plot:
             name = k['name']
             smooth = k['smooth']
+            if name == 'train/acc':
+                if 'train/token_acc' in data:
+                    name = 'train/token_acc'
+                if 'train/seq_acc' in data:
+                    name = 'train/seq_acc'
+            if name == 'eval/acc':
+                if 'eval/token_acc' in data:
+                    name = 'eval/token_acc'
+                if 'eval/seq_acc' in data:
+                    name = 'eval/seq_acc'
             if name not in data:
                 plots.append(None)
                 continue
