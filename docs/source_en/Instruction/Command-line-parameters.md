@@ -348,6 +348,20 @@ Deployment Arguments inherit from the [inference arguments](#inference-arguments
 - log_interval: Interval for printing tokens/s statistics, default is 20 seconds. If set to -1, it will not be printed.
 - max_logprobs: Maximum number of logprobs to return, default is 20.
 
+### Web-UI Arguments
+- server_name: Host for the web UI, default is '0.0.0.0'.
+- server_port: Port for the web UI, default is 7860.
+- share: Default is False.
+- lang: Language for the web UI, options are 'zh', 'en'. Default is 'zh'.
+
+
+### App Arguments
+App parameters inherit from [deployment arguments](#deployment-arguments) and [Web-UI Arguments](#web-ui-arguments).
+
+- base_url: Base URL for the model deployment, for example, `http://localhost:8000/v1`. Default is None.
+- studio_title: Title of the studio. Default is None, set to the model name.
+- lang: Overrides the Web-UI Arguments, default is 'en'.
+
 ### Evaluation Arguments
 
 Evaluation Arguments inherit from the [deployment arguments](#deployment-arguments).
@@ -358,7 +372,7 @@ Evaluation Arguments inherit from the [deployment arguments](#deployment-argumen
 - temperature: Default is 0.
 - verbose: This parameter is passed to DeployArguments during local evaluation, default is `False`.
 - max_batch_size: Maximum batch size, default is 256 for text evaluation, 16 for multimodal.
-- 🔥eval_url: Evaluation URL. Default is None, uses local deployment for evaluation.
+- 🔥eval_url: Evaluation URL, for example `http://localhost:8000/v1`. Default is None, uses local deployment for evaluation. You can view the examples [here](https://github.com/modelscope/ms-swift/tree/main/examples/eval/eval_url).
 
 ### Export Arguments
 
