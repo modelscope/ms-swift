@@ -38,6 +38,7 @@ class EvalArguments(DeployArguments):
     eval_url: Optional[str] = None
 
     def _init_eval_url(self):
+        # [compat]
         if self.eval_url and 'chat/completions' in self.eval_url:
             self.eval_url = self.eval_url.split('/chat/completions', 1)[0]
 
