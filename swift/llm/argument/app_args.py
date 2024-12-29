@@ -5,18 +5,16 @@ from typing import Literal, Optional
 from swift.utils import find_free_port, get_logger
 from ..template import get_template_meta
 from .deploy_args import DeployArguments
+from .webui_args import WebUIArguments
 
 logger = get_logger()
 
 
 @dataclass
-class AppArguments(DeployArguments):
+class AppArguments(WebUIArguments, DeployArguments):
     base_url: Optional[str] = None
     studio_title: Optional[str] = None
 
-    server_name: str = '0.0.0.0'
-    server_port: int = 7860
-    share: bool = False
     lang: Literal['en', 'zh'] = 'en'
 
     def _init_torch_dtype(self) -> None:
