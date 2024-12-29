@@ -279,6 +279,15 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
     --max_new_tokens 2048
 ```
 
+### Interface Inference
+```shell
+CUDA_VISIBLE_DEVICES=0 swift app \
+    --model Qwen/Qwen2.5-7B-Instruct \
+    --stream true \
+    --infer_backend pt \
+    --max_new_tokens 2048
+```
+
 ### Deployment
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift deploy \

@@ -39,21 +39,28 @@ def _history_to_messages(history: History, system: str):
     return messages
 
 
-def model_chat(history: History, system: str, *, base_url: str):
+def model_chat(history: History, system: str, *, base_url: str, stream: bool):
     if history:
         from swift.llm import InferRequest, InferClient, RequestConfig
 
         messages = _history_to_messages(history, system)
         client = InferClient(base_url=base_url)
-        gen = client.infer([InferRequest(messages=messages)], request_config=RequestConfig(stream=True))
-        response = ''
-        for resp_list in gen:
-            resp = resp_list[0]
-            if resp is None:
-                continue
-            response += resp.choices[0].delta.content
+        gen_or_res = client.infer([InferRequest(messages=messages)], request_config=RequestConfig(stream=stream))
+        if stream:
+            response = ''
+            for resp_list in gen_or_res:
+                resp = resp_list[0]
+                if resp is None:
+                    continue
+                response += resp.choices[0].delta.content
+                history[-1][1] = response
+                yield history
+
+        else:
+            response = gen_or_res[0].choices[0].message.content
             history[-1][1] = response
             yield history
+
     else:
         yield []
 
@@ -72,6 +79,7 @@ def add_file(history: History, file):
 
 def build_ui(base_url: str,
              *,
+             stream: bool = False,
              is_multimodal: bool = True,
              studio_title: Optional[str] = None,
              lang: Literal['en', 'zh'] = 'en',
@@ -93,7 +101,7 @@ def build_ui(base_url: str,
             clear_history = gr.Button(locale_mapping['clear_history'][lang])
 
         system_state = gr.State(value=default_system)
-        model_chat_ = partial(model_chat, base_url=base_url)
+        model_chat_ = partial(model_chat, base_url=base_url, stream=stream)
 
         upload.upload(add_file, [chatbot, upload], [chatbot])
         textbox.submit(add_text, [chatbot, textbox], [chatbot, textbox]).then(model_chat_, [chatbot, system_state],
