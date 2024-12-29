@@ -43,9 +43,10 @@ def _history_to_messages(history: History, system: Optional[str]):
     return messages
 
 
-def model_chat(history: History, system: Optional[str], *, client, model: str, request_config: Optional[RequestConfig]):
+def model_chat(history: History, system: Optional[str], *, client, model: str,
+               request_config: Optional['RequestConfig']):
     if history:
-        from swift.llm import InferRequest, RequestConfig
+        from swift.llm import InferRequest
 
         messages = _history_to_messages(history, system)
         gen_or_res = client.infer([InferRequest(messages=messages)], request_config=request_config, model=model)
@@ -83,7 +84,7 @@ def add_file(history: History, file):
 def build_ui(base_url: str,
              model: Optional[str] = None,
              *,
-             request_config: Optional[RequestConfig] = None,
+             request_config: Optional['RequestConfig'] = None,
              is_multimodal: bool = True,
              studio_title: Optional[str] = None,
              lang: Literal['en', 'zh'] = 'en',
