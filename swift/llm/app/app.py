@@ -23,7 +23,7 @@ class SwiftApp(SwiftPipeline):
             demo = build_ui(
                 base_url,
                 args.model_suffix,
-                stream=args.stream,
+                request_config=args.get_request_config(),
                 is_multimodal=args.is_multimodal,
                 studio_title=args.studio_title,
                 lang=args.lang,

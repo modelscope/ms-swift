@@ -43,15 +43,13 @@ def _history_to_messages(history: History, system: Optional[str]):
     return messages
 
 
-def model_chat(history: History, system: Optional[str], *, client, model: str, stream: bool):
+def model_chat(history: History, system: Optional[str], *, client, model: str, request_config: Optional[RequestConfig]):
     if history:
         from swift.llm import InferRequest, RequestConfig
 
         messages = _history_to_messages(history, system)
-        gen_or_res = client.infer([InferRequest(messages=messages)],
-                                  request_config=RequestConfig(stream=stream),
-                                  model=model)
-        if stream:
+        gen_or_res = client.infer([InferRequest(messages=messages)], request_config=request_config, model=model)
+        if request_config and request_config.stream:
             response = ''
             for resp_list in gen_or_res:
                 resp = resp_list[0]
@@ -85,7 +83,7 @@ def add_file(history: History, file):
 def build_ui(base_url: str,
              model: Optional[str] = None,
              *,
-             stream: bool = True,
+             request_config: Optional[RequestConfig] = None,
              is_multimodal: bool = True,
              studio_title: Optional[str] = None,
              lang: Literal['en', 'zh'] = 'en',
@@ -111,7 +109,7 @@ def build_ui(base_url: str,
             clear_history = gr.Button(locale_mapping['clear_history'][lang])
 
         system_state = gr.State(value=default_system)
-        model_chat_ = partial(model_chat, client=client, model=model, stream=stream)
+        model_chat_ = partial(model_chat, client=client, model=model, request_config=request_config)
 
         upload.upload(add_file, [chatbot, upload], [chatbot])
         textbox.submit(add_text, [chatbot, textbox], [chatbot, textbox]).then(model_chat_, [chatbot, system_state],
