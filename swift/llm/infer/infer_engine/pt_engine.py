@@ -353,10 +353,10 @@ class PtEngine(InferEngine):
         if request_config is None:
             request_config = RequestConfig()
         res_or_gen = self._infer([infer_request],
-                                request_config,
-                                template=template,
-                                adapter_request=adapter_request,
-                                pre_infer_hook=pre_infer_hook)
+                                 request_config,
+                                 template=template,
+                                 adapter_request=adapter_request,
+                                 pre_infer_hook=pre_infer_hook)
         if request_config.stream:
 
             async def _gen_wrapper():
