@@ -81,6 +81,27 @@ def test_glm4v():
                          '主要是白色和棕色相间的花纹。背景模糊不清，但似乎是一个室内环境。')
 
 
+def test_cogagent():
+    pt_engine = PtEngine('ZhipuAI/cogagent-9b-20241220')
+    messages = [{
+        'role':
+        'user',
+        'content':
+        """<image>Task: I'm looking for a software to \"edit my photo with grounding\"
+History steps:
+(Platform: Mac)
+(Answer in Action-Operation-Sensitive format.)"""
+    }]
+    images = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/agent.png']
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=messages, images=images)
+    assert response == response2 == (
+        """Action: Click on the 'Adobe Photoshop 2023' icon located in the middle of the screen to open the application.
+Grounded Operation: CLICK(box=[[346,574,424,710]], element_type='卡片', element_info='Adobe Photoshop 2023')
+<<一般操作>>""")
+
+
 def test_minicpmv():
     pt_engine = PtEngine('OpenBMB/MiniCPM-V-2_6')
     _infer_model(pt_engine)
@@ -314,7 +335,8 @@ if __name__ == '__main__':
     # test_deepseek_vl()
     # test_deepseek_vl2()
     # test_qwen_vl()
-    test_glm4v()
+    # test_glm4v()
+    test_cogagent()
     # test_minicpmv()
     # test_got_ocr()
     # test_paligemma()
