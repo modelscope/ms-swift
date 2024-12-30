@@ -28,8 +28,7 @@ def run_client(host: str = '127.0.0.1', port: int = 8000):
 
 
 if __name__ == '__main__':
-    from swift.llm import (InferEngine, InferRequest, InferClient, RequestConfig, load_dataset, run_deploy,
-                           DeployArguments)
+    from swift.llm import run_deploy, DeployArguments
     # NOTE: In a real deployment scenario, please comment out the context of run_deploy.
     with run_deploy(
             DeployArguments(
