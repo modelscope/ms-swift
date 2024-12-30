@@ -38,7 +38,7 @@ def infer_stream(engine: 'InferEngine', infer_request: 'InferRequest'):
 def run_client(host: str = '127.0.0.1', port: int = 8000):
     engine = InferClient(host=host, port=port)
     print(f'models: {engine.models}')
-    # Here, `load_dataset` is used for convenience; `batch_infer` does not require creating a dataset.
+    # Here, `load_dataset` is used for convenience; `infer_batch` does not require creating a dataset.
     dataset = load_dataset(['AI-ModelScope/alpaca-gpt4-data-zh#1000'], seed=42)[0]
     print(f'dataset: {dataset}')
     infer_requests = [InferRequest(**data) for data in dataset]

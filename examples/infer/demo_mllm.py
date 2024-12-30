@@ -119,7 +119,7 @@ if __name__ == '__main__':
         dataset = 'AI-ModelScope/LaTeX_OCR:small#1000'
         engine = LmdeployEngine(model, vision_batch_size=8)
 
-    # Here, `load_dataset` is used for convenience; `batch_infer` does not require creating a dataset.
+    # Here, `load_dataset` is used for convenience; `infer_batch` does not require creating a dataset.
     dataset = load_dataset([dataset], seed=42)[0]
     print(f'dataset: {dataset}')
     infer_requests = [InferRequest(**data) for data in dataset]
