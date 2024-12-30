@@ -20,7 +20,7 @@ if TYPE_CHECKING:
                         HfConfigFactory, ModelInfo, ModelMeta, ModelKeys, register_model_arch, MultiModelKeys,
                         ModelArch, get_model_arch, MODEL_ARCH_MAPPING, get_model_info_meta, get_model_name, ModelGroup,
                         Model, get_model_tokenizer_with_flash_attn, get_model_tokenizer_multimodal, load_by_unsloth,
-                        git_clone_github)
+                        git_clone_github, get_matched_model_meta)
     from .dataset import (AlpacaPreprocessor, ResponsePreprocessor, MessagesPreprocessor, AutoPreprocessor,
                           DATASET_MAPPING, MediaResource, register_dataset, register_dataset_info, EncodePreprocessor,
                           LazyLLMDataset, ConstantLengthDataset, standard_keys, load_dataset, DATASET_TYPE,
@@ -54,7 +54,7 @@ else:
             'ModelInfo', 'ModelMeta', 'ModelKeys', 'register_model_arch', 'MultiModelKeys', 'ModelArch',
             'MODEL_ARCH_MAPPING', 'get_model_arch', 'get_model_info_meta', 'get_model_name', 'register_model',
             'ModelGroup', 'Model', 'get_model_tokenizer_with_flash_attn', 'get_model_tokenizer_multimodal',
-            'load_by_unsloth', 'git_clone_github'
+            'load_by_unsloth', 'git_clone_github', 'get_matched_model_meta'
         ],
         'dataset': [
             'AlpacaPreprocessor', 'ClsPreprocessor', 'ComposePreprocessor', 'MessagesPreprocessor', 'DATASET_MAPPING',
