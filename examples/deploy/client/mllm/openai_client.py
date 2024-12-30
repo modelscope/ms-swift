@@ -8,7 +8,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 
 def infer(client, model: str, messages):
-    resp = client.chat.completions.create(model=model, messages=messages, temperature=0)
+    resp = client.chat.completions.create(model=model, messages=messages, max_tokens=512, temperature=0)
     query = messages[0]['content']
     response = resp.choices[0].message.content
     print(f'query: {query}')
