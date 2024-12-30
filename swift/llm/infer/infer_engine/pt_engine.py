@@ -348,6 +348,7 @@ class PtEngine(InferEngine):
         *,
         template: Optional[Template] = None,
         adapter_request: Optional[AdapterRequest] = None,
+        pre_infer_hook=None,
     ) -> Union[ChatCompletionResponse, AsyncIterator[ChatCompletionStreamResponse]]:
         # TODO:auto batch
         if request_config is None:
