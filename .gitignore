@@ -139,7 +139,7 @@ my_model/
 /data
 result/
 images
-/custom
+/custom/
 
 # Pytorch
 *.pth
