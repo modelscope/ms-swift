@@ -57,7 +57,7 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
     def __post_init__(self):
         self._init_output_dir()
         if self.average_tokens_across_devices is None:
-            self.average_tokens_across_devices = self.world_size > 1
+            self.average_tokens_across_devices = self.global_world_size > 1
         if self.metric_for_best_model is None:
             self.metric_for_best_model = 'rouge-l' if self.predict_with_generate else 'loss'
         if self.greater_is_better is None:

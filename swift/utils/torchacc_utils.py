@@ -254,9 +254,9 @@ def save_ta_fsdp_checkpoint(self_model, tokenizer, args, output_dir):
         'shard_metadata': self_model._get_underlay_model().get_shard_metadata(),
     }
     if isinstance(model, PeftModel):
-        ckpt_path = os.path.join(output_dir, f'rank{args.process_index}-of-{args.world_size}-adapter_model.bin')
+        ckpt_path = os.path.join(output_dir, f'rank{args.process_index}-of-{args.global_world_size}-adapter_model.bin')
     else:
-        ckpt_path = os.path.join(output_dir, f'rank{args.process_index}-of-{args.world_size}-pytorch_model.bin')
+        ckpt_path = os.path.join(output_dir, f'rank{args.process_index}-of-{args.global_world_size}-pytorch_model.bin')
     xm.save(ckpt, ckpt_path, master_only=False)
     # Make sure all ranks have saved checkpoints
     xm.rendezvous('save_full_checkpoints')
