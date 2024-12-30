@@ -352,11 +352,11 @@ class PtEngine(InferEngine):
         # TODO:auto batch
         if request_config is None:
             request_config = RequestConfig()
-        res_or_gen = self.infer([infer_request],
+        res_or_gen = self._infer([infer_request],
                                 request_config,
                                 template=template,
-                                use_tqdm=False,
-                                adapter_request=adapter_request)
+                                adapter_request=adapter_request,
+                                pre_infer_hook=pre_infer_hook)
         if request_config.stream:
 
             async def _gen_wrapper():
@@ -376,6 +376,7 @@ class PtEngine(InferEngine):
         *,
         template: Optional[Template] = None,
         adapter_request: Optional[AdapterRequest] = None,
+        pre_infer_hook=None,
     ) -> Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
         self.model.eval()
         request_config = deepcopy(request_config)
@@ -414,7 +415,7 @@ class PtEngine(InferEngine):
             'adapter_request': adapter_request,
             'template_inputs': template_inputs
         }
-        for pre_infer_hook in self.pre_infer_hooks:
+        if pre_infer_hook:
             kwargs = pre_infer_hook(kwargs)
         if request_config.stream:
 
