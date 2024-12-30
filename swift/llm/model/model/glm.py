@@ -180,6 +180,7 @@ register_model(
         MLLMModelType.glm4v,
         [ModelGroup([
             Model('ZhipuAI/glm-4v-9b', 'THUDM/glm-4v-9b'),
+            Model('ZhipuAI/cogagent-9b-20241220', 'THUDM/cogagent-9b-20241220'),
         ])],
         TemplateType.glm4v,
         get_model_tokenizer_glm4v,

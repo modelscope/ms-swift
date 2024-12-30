@@ -165,7 +165,7 @@ class DatasetLoader:
                            *,
                            num_proc: int = 1,
                            strict: bool = False,
-                           load_from_cache_file: bool = False,
+                           enable_cache: bool = False,
                            streaming: bool = False) -> HfDataset:
         dataset_path = dataset_meta.dataset_path
 
@@ -177,7 +177,7 @@ class DatasetLoader:
         dataset = hf_load_dataset(file_type, data_files=dataset_path, **kwargs)
 
         dataset = dataset_meta.preprocess_func(
-            dataset, num_proc=num_proc, strict=strict, load_from_cache_file=load_from_cache_file)
+            dataset, num_proc=num_proc, strict=strict, enable_cache=enable_cache)
         dataset = DatasetLoader._remove_useless_columns(dataset)
         return dataset
 
@@ -191,7 +191,7 @@ class DatasetLoader:
         use_hf: Optional[bool] = None,
         hub_token: Optional[str] = None,
         strict: bool = False,
-        load_from_cache_file: bool = False,
+        enable_cache: bool = False,
         revision: Optional[str] = None,
         download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists',
     ) -> HfDataset:
@@ -245,7 +245,7 @@ class DatasetLoader:
                     if streaming and isinstance(dataset, HfDataset):
                         dataset = dataset.to_iterable_dataset()
             dataset = subset.preprocess_func(
-                dataset, num_proc=num_proc, strict=strict, load_from_cache_file=load_from_cache_file)
+                dataset, num_proc=num_proc, strict=strict, enable_cache=enable_cache)
             dataset = DatasetLoader._remove_useless_columns(dataset)
             datasets.append(dataset)
         return DatasetLoader._concat_datasets(datasets, streaming)
@@ -278,7 +278,7 @@ class DatasetLoader:
         split_dataset_ratio: float = 0.,
         streaming: bool = False,
         random_state: Optional[np.random.RandomState] = None,
-        load_from_cache_file: bool = False,
+        enable_cache: bool = False,
     ) -> Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]:
         """Split into train/val datasets and perform dataset sampling."""
         assert dataset_sample is None or dataset_sample > 0
@@ -319,7 +319,7 @@ class DatasetLoader:
                 assert train_sample > 0
                 train_dataset, val_dataset = train_dataset.train_test_split(
                     test_size=val_sample, seed=get_seed(random_state),
-                    load_from_cache_file=load_from_cache_file).values()
+                    enable_cache=enable_cache).values()
                 train_dataset = sample_dataset(train_dataset, train_sample, random_state)
         return train_dataset, val_dataset
 
@@ -342,7 +342,7 @@ class DatasetLoader:
         use_hf: Optional[bool] = None,
         hub_token: Optional[str] = None,
         strict: bool = False,
-        load_from_cache_file: bool = False,
+        enable_cache: bool = False,
         download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists',
     ) -> HfDataset:
 
@@ -351,7 +351,7 @@ class DatasetLoader:
                 dataset_meta=dataset_meta,
                 num_proc=num_proc,
                 strict=strict,
-                load_from_cache_file=load_from_cache_file,
+                enable_cache=enable_cache,
                 streaming=streaming,
             )
         else:
@@ -373,7 +373,7 @@ class DatasetLoader:
                     hub_token=hub_token,
                     num_proc=num_proc,
                     strict=strict,
-                    load_from_cache_file=load_from_cache_file,
+                    enable_cache=enable_cache,
                     revision=revision,
                     streaming=streaming,
                     download_mode=download_mode)
@@ -407,7 +407,7 @@ def load_dataset(
     use_hf: Optional[bool] = None,
     hub_token: Optional[str] = None,
     strict: bool = False,
-    load_from_cache_file: bool = False,
+    enable_cache: bool = False,
     download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists',
     # self-cognition
     model_name: Union[Tuple[str, str], List[str], None] = None,  # zh, en
@@ -417,7 +417,7 @@ def load_dataset(
 
     Args:
         download_mode: Download mode, default is `reuse_dataset_if_exists`.
-        load_from_cache_file: Use cache file or not, Default False.
+        enable_cache: Use cache file or not, Default False.
         strict: Raise if any row is not correct.
         hub_token: The token of the hub.
         use_hf: Use hf dataset or ms dataset.
@@ -444,7 +444,7 @@ def load_dataset(
         'num_proc': num_proc,
         'use_hf': use_hf,
         'strict': strict,
-        'load_from_cache_file': load_from_cache_file,
+        'enable_cache': enable_cache,
         'download_mode': download_mode,
         'streaming': streaming,
         'hub_token': hub_token
@@ -461,7 +461,7 @@ def load_dataset(
             split_dataset_ratio=split_dataset_ratio,
             random_state=seed,
             streaming=streaming,
-            load_from_cache_file=load_from_cache_file)
+            enable_cache=enable_cache)
         if train_dataset is not None:
             train_datasets.append(train_dataset)
         if val_dataset is not None:

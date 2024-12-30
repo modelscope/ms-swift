@@ -225,7 +225,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
     def _stat_dataset(self, dataset: HfDataset):
         args = self.args
         dataset = GetLengthPreprocessor()(
-            dataset, num_proc=args.dataset_num_proc, load_from_cache_file=args.load_from_cache_file)
+            dataset, num_proc=args.dataset_num_proc, enable_cache=args.enable_cache)
         _, stat_str = stat_array(dataset['length'])
         logger.info(f'Dataset Token Length: {stat_str}')
         return stat_str
@@ -247,13 +247,13 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                 train_dataset,
                 num_proc=args.dataset_num_proc,
                 strict=args.strict,
-                load_from_cache_file=args.load_from_cache_file)
+                enable_cache=args.enable_cache)
             if val_dataset is not None and not args.predict_with_generate:
                 val_dataset = preprocessor(
                     val_dataset,
                     num_proc=args.dataset_num_proc,
                     strict=args.strict,
-                    load_from_cache_file=args.load_from_cache_file)
+                    enable_cache=args.enable_cache)
 
         inputs = train_dataset[0] if hasattr(train_dataset, '__len__') else next(iter(train_dataset))
         template.print_inputs(inputs, tokenizer_kwargs=inputs.pop('tokenizer_kwargs', None) or {})

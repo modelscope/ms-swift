@@ -34,7 +34,7 @@ The introduction to command line parameters will cover base arguments, atomic ar
 - data_seed: Random seed for the dataset, default is 42.
 - 🔥dataset_num_proc: Number of processes for dataset preprocessing, default is 1.
 - 🔥streaming: Stream read and process the dataset, default is False.
-- load_from_cache_file: Use cache for dataset preprocessing, default is False.
+- enable_cache: Use cache for dataset preprocessing, default is False.
   - Note: If set to True, it may not take effect if the dataset changes. If modifying this parameter leads to issues during training, consider setting it to False.
 - download_mode: Dataset download mode, including `reuse_dataset_if_exists` and `force_redownload`, default is reuse_dataset_if_exists.
 - strict: If True, the dataset will throw an error if any row has a problem; otherwise, it will discard the erroneous row. Default is False.

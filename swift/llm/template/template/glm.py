@@ -64,6 +64,7 @@ class GLM4VTemplate(Template):
             encoded['images'] = inputs2['images']
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
+        encoded['position_ids'] = list(range(len(input_ids)))
         return encoded
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
