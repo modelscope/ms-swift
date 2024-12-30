@@ -130,8 +130,8 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         self._init_ckpt_dir()
         self._init_custom_register()
         self._init_model_kwargs()
+        # The Seq2SeqTrainingArguments has a property called world_size, which cannot be assigned a value.
         self.rank, self.local_rank, self.global_world_size, self.local_world_size = get_dist_setting()
-        # The Seq2SeqTrainingArguments has a property called world_size
         logger.info(f'rank: {self.rank}, local_rank: {self.local_rank}, '
                     f'world_size: {self.global_world_size}, local_world_size: {self.local_world_size}')
         assert len(self.adapters) <= 1, f'args.adapters: {self.adapters}'
