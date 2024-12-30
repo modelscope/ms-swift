@@ -76,7 +76,7 @@
 2. 整体移除了2.x版本的examples目录，并添加了按功能类型划分的新examples
 3. 数据集格式完全向messages格式兼容，不再支持query/response/history格式
 4. merge_lora的存储目录可以通过`--output_dir`指定了，且merge_lora和量化不能在一个命令中执行，需要最少两个命令
-5. 移除了app-ui界面，并使用`swift web-ui --model xxx`进行替代，并支持了多模态界面部署
+5. 使用`swift app --model xxx`开启app-ui界面，支持了多模态界面推理
 6. 移除了AIGC的依赖以及对应的examples和训练代码
 
 ## 待完成

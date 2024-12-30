@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-<img src="https://img.shields.io/badge/python-%E2%89%A53.8-5be.svg">
+<img src="https://img.shields.io/badge/python-3.10-5be.svg">
 <img src="https://img.shields.io/badge/pytorch-%E2%89%A52.0-orange.svg">
 <a href="https://github.com/modelscope/modelscope/"><img src="https://img.shields.io/badge/modelscope-%E2%89%A51.19-5D91D4.svg"></a>
 <a href="https://pypi.org/project/ms-swift/"><img src="https://badge.fury.io/py/ms-swift.svg"></a>
@@ -276,6 +276,15 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
     --stream true \
     --infer_backend pt \
     --temperature 0 \
+    --max_new_tokens 2048
+```
+
+### Interface Inference
+```shell
+CUDA_VISIBLE_DEVICES=0 swift app \
+    --model Qwen/Qwen2.5-7B-Instruct \
+    --stream true \
+    --infer_backend pt \
     --max_new_tokens 2048
 ```
 

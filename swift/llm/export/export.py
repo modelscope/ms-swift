@@ -17,7 +17,6 @@ class SwiftExport(SwiftPipeline):
 
     def run(self):
         args = self.args
-        assert len(args.adapters) <= 1, f'args.adapters: {args.adapters}'
         if args.to_peft_format:
             args.adapters[0] = swift_to_peft_format(args.adapters[0], args.output_dir)
         elif args.merge_lora:

@@ -10,7 +10,8 @@ from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 from PIL import Image
 
-from swift.llm.template import InferRequest, Messages, Tool
+from ..template import InferRequest
+from ..utils import Messages, Tool
 
 
 def random_uuid() -> str:

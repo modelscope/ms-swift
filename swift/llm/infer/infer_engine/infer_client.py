@@ -22,6 +22,7 @@ class InferClient(InferEngine):
                  port: int = 8000,
                  api_key: str = 'EMPTY',
                  *,
+                 base_url: Optional[str] = None,
                  timeout: Optional[int] = None) -> None:
         """
         Initialize the InferClient.
@@ -39,6 +40,9 @@ class InferClient(InferEngine):
             timeout = os.getenv('TIMEOUT')
             timeout = timeout and float(timeout)
         self.timeout = timeout
+        if base_url is None:
+            base_url = f'http://{self.host}:{self.port}/v1'
+        self.base_url = base_url
         self._models = None
 
     @property
@@ -51,10 +55,10 @@ class InferClient(InferEngine):
             self._models = models
         return self._models
 
-    def get_model_list(self, *, url: Optional[str] = None) -> ModelList:
+    def get_model_list(self) -> ModelList:
         """Get model list from the inference server.
         """
-        coro = self.get_model_list_async(url=url)
+        coro = self.get_model_list_async()
         return self.safe_asyncio_run(coro)
 
     def _get_request_kwargs(self) -> Dict[str, Any]:
@@ -65,9 +69,8 @@ class InferClient(InferEngine):
             request_kwargs['headers'] = {'Authorization': f'Bearer {self.api_key}'}
         return request_kwargs
 
-    async def get_model_list_async(self, *, url: Optional[str] = None) -> ModelList:
-        if url is None:
-            url = f'http://{self.host}:{self.port}/v1/models'
+    async def get_model_list_async(self) -> ModelList:
+        url = os.path.join(self.base_url, 'models')
         async with aiohttp.ClientSession() as session:
             async with session.get(url, **self._get_request_kwargs()) as resp:
                 resp_obj = await resp.json()
@@ -80,7 +83,6 @@ class InferClient(InferEngine):
         metrics: Optional[List[Metric]] = None,
         *,
         model: Optional[str] = None,
-        url: Optional[str] = None,
         use_tqdm: Optional[bool] = None
     ) -> Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
         """
@@ -91,14 +93,13 @@ class InferClient(InferEngine):
             request_config (Optional[RequestConfig]): Configuration for the request. Defaults to None.
             metrics (Optional[List[Metric]]): The usage information to return. Defaults to None.
             model (Optional[str]): The model name to be used for inference. Defaults to None.
-            url (Optional[str]): The URL for the inference request. Defaults to None.
             use_tqdm (Optional[bool]): Whether to use tqdm for progress tracking. Defaults to None.
 
         Returns:
             Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
             The inference responses or an iterator of streaming responses.
         """
-        return super().infer(infer_requests, request_config, metrics, model=model, url=url, use_tqdm=use_tqdm)
+        return super().infer(infer_requests, request_config, metrics, model=model, use_tqdm=use_tqdm)
 
     @staticmethod
     def _prepare_request_data(model: str, infer_request: InferRequest, request_config: RequestConfig) -> Dict[str, Any]:
@@ -120,20 +121,19 @@ class InferClient(InferEngine):
         return data[5:].strip()
 
     async def infer_async(
-            self,
-            infer_request: InferRequest,
-            request_config: Optional[RequestConfig] = None,
-            *,
-            model: Optional[str] = None,
-            url: Optional[str] = None) -> Union[ChatCompletionResponse, AsyncIterator[ChatCompletionStreamResponse]]:
+        self,
+        infer_request: InferRequest,
+        request_config: Optional[RequestConfig] = None,
+        *,
+        model: Optional[str] = None,
+    ) -> Union[ChatCompletionResponse, AsyncIterator[ChatCompletionStreamResponse]]:
         request_config = deepcopy(request_config or RequestConfig())
         if model is None:
             if len(self.models) == 1:
                 model = self.models[0]
             else:
                 raise ValueError(f'Please explicitly specify the model. Available models: {self.models}.')
-        if url is None:
-            url = f'http://{self.host}:{self.port}/v1/chat/completions'
+        url = os.path.join(self.base_url, 'chat/completions')
 
         request_data = self._prepare_request_data(model, infer_request, request_config)
         if request_config.stream:

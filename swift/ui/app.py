@@ -48,84 +48,45 @@ class SwiftWebUI(SwiftPipeline):
         lang = os.environ.get('SWIFT_UI_LANG') or self.args.lang
         share_env = os.environ.get('WEBUI_SHARE')
         share = strtobool(share_env) if share_env else self.args.share
-        server = os.environ.get('WEBUI_SERVER') or self.args.host
+        server = os.environ.get('WEBUI_SERVER') or self.args.server_name
         port_env = os.environ.get('WEBUI_PORT')
-        port = int(port_env) if port_env else self.args.port
-        is_gradio_app = self.args.model or self.args.ckpt_dir
+        port = int(port_env) if port_env else self.args.server_port
         LLMTrain.set_lang(lang)
         LLMInfer.set_lang(lang)
         LLMExport.set_lang(lang)
         LLMEval.set_lang(lang)
         with gr.Blocks(title='SWIFT WebUI') as app:
-            if is_gradio_app:
-                gr.HTML(f'<h1><center>{self.args.studio_title}</center></h1>')
-            else:
-                try:
-                    _version = swift.__version__
-                except AttributeError:
-                    _version = ''
-                gr.HTML(f"<h1><center>{locale_dict['title'][lang]}({_version})</center></h1>")
-                gr.HTML(f"<h3><center>{locale_dict['sub_title'][lang]}</center></h3>")
+            try:
+                _version = swift.__version__
+            except AttributeError:
+                _version = ''
+            gr.HTML(f"<h1><center>{locale_dict['title'][lang]}({_version})</center></h1>")
+            gr.HTML(f"<h3><center>{locale_dict['sub_title'][lang]}</center></h3>")
             with gr.Tabs():
-                if is_gradio_app:
-                    if self.args.ckpt_dir:
-                        self.args.model = self.args.ckpt_dir
-                    for f in fields(self.args):
-                        if getattr(self.args, f.name):
-                            LLMInfer.default_dict[f.name] = getattr(self.args, f.name)
-
-                    LLMInfer.is_gradio_app = True
-                    LLMInfer.is_multimodal = self.args.model_meta.is_multimodal
-                    LLMInfer.build_ui(LLMInfer)
-                else:
-                    LLMTrain.build_ui(LLMTrain)
-                    LLMInfer.build_ui(LLMInfer)
-                    LLMExport.build_ui(LLMExport)
-                    LLMEval.build_ui(LLMEval)
+                LLMTrain.build_ui(LLMTrain)
+                LLMInfer.build_ui(LLMInfer)
+                LLMExport.build_ui(LLMExport)
+                LLMEval.build_ui(LLMEval)
 
             concurrent = {}
             if version.parse(gr.__version__) < version.parse('4.0.0'):
                 concurrent = {'concurrency_count': 5}
-            if is_gradio_app:
-                from swift.utils import find_free_port
-                LLMInfer.element('port').value = str(find_free_port())
-                for f in fields(self.args):
-                    if getattr(self.args, f.name) and f.name in LLMInfer.elements() and hasattr(
-                            LLMInfer.elements()[f.name], 'value') and f.name != 'port':
-                        value = getattr(self.args, f.name)
-                        if isinstance(value, list):
-                            value = ' '.join([v or '' for v in value])
-                        LLMInfer.elements()[f.name].value = str(value)
-
-                args = copy(self.args)
-                args.port = find_free_port()
-
-                values = []
-                for key in LLMInfer.valid_elements():
-                    if key in args.__dict__:
-                        value = getattr(args, key)
-                    else:
-                        value = LLMInfer.element(key).value
-                    values.append(value)
-                _, running_task = LLMInfer.deploy_model(*values)
-                LLMInfer.element('running_tasks').value = running_task['value']
-            else:
-                app.load(
-                    partial(LLMTrain.update_input_model, arg_cls=RLHFArguments),
-                    inputs=[LLMTrain.element('model')],
-                    outputs=[LLMTrain.element('train_record')] + list(LLMTrain.valid_elements().values()))
-                app.load(
-                    partial(LLMInfer.update_input_model, arg_cls=DeployArguments, has_record=False),
-                    inputs=[LLMInfer.element('model')],
-                    outputs=list(LLMInfer.valid_elements().values()))
-                app.load(
-                    partial(LLMExport.update_input_model, arg_cls=ExportArguments, has_record=False),
-                    inputs=[LLMExport.element('model')],
-                    outputs=list(LLMExport.valid_elements().values()))
-                app.load(
-                    partial(LLMEval.update_input_model, arg_cls=EvalArguments, has_record=False),
-                    inputs=[LLMEval.element('model')],
-                    outputs=list(LLMEval.valid_elements().values()))
+            app.load(
+                partial(LLMTrain.update_input_model, arg_cls=RLHFArguments),
+                inputs=[LLMTrain.element('model')],
+                outputs=[LLMTrain.element('train_record')] + list(LLMTrain.valid_elements().values()))
+            app.load(
+                partial(LLMInfer.update_input_model, arg_cls=DeployArguments, has_record=False),
+                inputs=[LLMInfer.element('model')],
+                outputs=list(LLMInfer.valid_elements().values()))
+            app.load(
+                partial(LLMExport.update_input_model, arg_cls=ExportArguments, has_record=False),
+                inputs=[LLMExport.element('model')],
+                outputs=list(LLMExport.valid_elements().values()))
+            app.load(
+                partial(LLMEval.update_input_model, arg_cls=EvalArguments, has_record=False),
+                inputs=[LLMEval.element('model')],
+                outputs=list(LLMEval.valid_elements().values()))
         app.queue(**concurrent).launch(server_name=server, inbrowser=True, server_port=port, height=800, share=share)
 
 
