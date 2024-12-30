@@ -4,10 +4,10 @@ import os
 from dataclasses import dataclass
 from typing import Literal, Optional, Union
 
+import torch
 import torch.distributed as dist
 from transformers.utils import is_torch_npu_available
 
-from swift.llm import get_template_meta
 from swift.utils import get_logger, is_dist
 from .base_args import BaseArguments, to_abspath
 from .base_args.model_args import ModelArguments
