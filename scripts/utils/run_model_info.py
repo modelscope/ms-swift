@@ -40,7 +40,7 @@ def get_model_info_table():
                 else:
                     hf_model_id = '-'
                 tags = ', '.join(group.tags or model_meta.tags) or '-'
-                requires = ', '.join(model_meta.requires or model_meta.requires) or '-'
+                requires = ', '.join(group.requires or model_meta.requires) or '-'
                 r = (f'|{ms_model_id}|{model_type}|{template}|{requires}|{tags}|{hf_model_id}|\n')
                 if model_meta.is_multimodal:
                     res_mllm.append(r)
