@@ -1,6 +1,6 @@
 # Command Line Parameters
 
-The introduction to command line parameters will cover base arguments, atomic arguments, and integrated arguments, and specific model arguments. The final list of arguments used in the command line is the integration arguments. Integrated arguments inherit from basic arguments and some atomic arguments. Specific model arguments are designed for specific models and can be set using `--model_kwargs '{"fps_max_frames": 12}'` or the environment variable `FPS_MAX_FRAMES=12`.
+The introduction to command line parameters will cover base arguments, atomic arguments, and integrated arguments, and specific model arguments. The final list of arguments used in the command line is the integration arguments. Integrated arguments inherit from basic arguments and some atomic arguments. Specific model arguments are designed for specific models and can be set using `--model_kwargs'` or the environment variable.
 
 ## Base Arguments
 
@@ -395,7 +395,7 @@ Export Arguments include the [basic arguments](#base-arguments) and [merge argum
 
 ## Specific Model Arguments
 
-Specific model arguments can be set using `--model_kwargs '{"max_pixels": 1003520}'` or the environment variable `MAX_PIXELS=1003520`.
+Specific model arguments can be set using `--model_kwargs` or environment variables, for example: `--model_kwargs '{"fps_max_frames": 12}'` or `FPS_MAX_FRAMES=12`.
 
 ### qwen2_vl, qvq
 For the meaning of the arguments, please refer to [here](https://github.com/QwenLM/Qwen2-VL/blob/main/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L24)
