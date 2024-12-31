@@ -245,7 +245,6 @@ class RowPreprocessor:
         *,
         num_proc: int = 1,
         strict: bool = False,
-        enable_cache: bool = False,
         batch_size: int = 1000,
     ) -> DATASET_TYPE:
         from ..utils import sample_dataset
@@ -465,9 +464,8 @@ class AutoPreprocessor:
         *,
         num_proc: int = 1,
         strict: bool = False,
-        enable_cache: bool = False,
     ) -> DATASET_TYPE:
         dataset = get_features_dataset(dataset)
         dataset = dataset.rename_columns(self.columns_mapping)
         preprocessor = self._get_preprocessor(dataset)
-        return preprocessor(dataset, num_proc=num_proc, enable_cache=enable_cache, strict=strict)
+        return preprocessor(dataset, num_proc=num_proc, strict=strict)

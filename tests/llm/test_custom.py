@@ -2,6 +2,8 @@
 import unittest
 from typing import Any, Dict, Optional
 
+import torch
+
 from swift.llm import (DatasetMeta, InferRequest, Model, ModelGroup, ModelMeta, PtEngine, RequestConfig,
                        ResponsePreprocessor, TemplateMeta, get_model_tokenizer_with_flash_attn, load_dataset,
                        register_dataset, register_model, register_template)
@@ -50,7 +52,7 @@ class TestCustom(unittest.TestCase):
     def test_custom_model(self):
         infer_request = InferRequest(messages=[{'role': 'user', 'content': 'who are you?'}])
         request_config = RequestConfig(max_tokens=512, temperature=0)
-        engine = PtEngine('AI-ModelScope/Nemotron-Mini-4B-Instruct')
+        engine = PtEngine('AI-ModelScope/Nemotron-Mini-4B-Instruct', torch.float16)
         response = engine.infer([infer_request], request_config)
         swift_response = response[0].choices[0].message.content
 

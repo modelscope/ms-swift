@@ -30,7 +30,6 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         self.model_name = self.model_info.model_name
         self.max_model_len = self.model_info.max_model_len
         self.config = self.model_info.config
-        self.pre_infer_hooks = []
         if getattr(self, 'default_template', None) is None:
             self.default_template = get_template(self.model_meta.template, self.processor)
         self._adapters_pool = {}
@@ -60,7 +59,9 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
                         queue.put((i, stream_response))
                 else:
                     queue.put((i, await task))
-            finally:
+            except Exception as e:
+                queue.put((i, e))
+            else:
                 queue.put((i, None))
 
         async def _batch_run(tasks):
@@ -78,7 +79,9 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
 
         while n_finished < len(new_tasks):
             i, output = queue.get()
-            if output is None:  # is_finished
+            if isinstance(output, Exception):
+                raise output
+            elif output is None:  # is_finished
                 n_finished += 1
                 prog_bar.update()
             else:

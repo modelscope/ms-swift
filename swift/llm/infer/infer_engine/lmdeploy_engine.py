@@ -255,6 +255,7 @@ class LmdeployEngine(InferEngine):
                           request_config: Optional[RequestConfig] = None,
                           *,
                           template: Optional[Template] = None,
+                          pre_infer_hook=None,
                           **kwargs) -> Union[ChatCompletionResponse, AsyncIterator[ChatCompletionStreamResponse]]:
         request_config = deepcopy(request_config or RequestConfig())
         if template is None:
@@ -275,7 +276,7 @@ class LmdeployEngine(InferEngine):
         generation_config = self._prepare_generation_config(request_config)
         self._add_stop_words(generation_config, request_config, template.template_meta)
         kwargs.update({'template': template, 'inputs': inputs, 'generation_config': generation_config})
-        for pre_infer_hook in self.pre_infer_hooks:
+        if pre_infer_hook:
             kwargs = pre_infer_hook(kwargs)
         if request_config.stream:
             return self._infer_stream_async(**kwargs)
