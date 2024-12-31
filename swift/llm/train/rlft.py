@@ -3,7 +3,7 @@ import json
 import os
 from typing import List, Union
 import torch
-from modelscope import AutoModelForSequenceClassification, GenerationConfig
+from modelscope import AutoModelForSequenceClassification, GenerationConfig, AutoTokenizer
 from rouge import Rouge
 from trl.models.utils import unwrap_model_for_generation
 
@@ -196,8 +196,9 @@ class SwiftRLFT(SwiftSft):
         trainer_cls = TrainerFactory.get_trainer_cls(args)
         # Test code
         self.reward_model = AutoModelForSequenceClassification.from_pretrained(
-            args.model, trust_remote_code=True, num_labels=1
+            args.reward_model, trust_remote_code=True, num_labels=1, torch_dtype=torch.bfloat16,
         )
+        self.reward_tokenizer = AutoTokenizer.from_pretrained(args.reward_model)
         trainer = trainer_cls(
             model=self.model,
             ref_model=ref_model,
@@ -211,6 +212,13 @@ class SwiftRLFT(SwiftSft):
             **self._get_trainer_kwargs(),
         )
         return self.train(trainer)
+
+    def get_reward_by_model(self, conv):
+        import torch
+        conv_formatted = self.reward_tokenizer.apply_chat_template(conv, tokenize=False)
+        conv_tokenized = self.reward_tokenizer(conv_formatted, return_tensors="pt").to(self.reward_model.device)
+        with torch.no_grad():
+            return self.reward_model(conv_tokenized).logits[0][0].item()
 
     def rollout(self, data, trainer):
         with torch.no_grad():
@@ -232,7 +240,7 @@ class SwiftRLFT(SwiftSft):
                                                   unwrapped_model,
                                                   self.tokenizer,
                                                   self.get_reward,
-                                                  self.reward_model,
+                                                  self.get_reward_by_model,
                                                   generation_config,
                                                   max_depth=6,
                                                   max_children=5,

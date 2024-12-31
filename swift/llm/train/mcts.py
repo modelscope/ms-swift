@@ -1,3 +1,5 @@
+from copy import copy
+
 import torch
 from modelscope import AutoModelForCausalLM, AutoTokenizer, GenerationConfig
 from dataclasses import dataclass, field
@@ -28,6 +30,7 @@ def monte_carlo_tree_search(
     penalty_factor: float = 0.2,  # 失败惩罚的初始因子
     penalty_decay: float = 0.5,    # 失败惩罚的衰减因子
     score_threshold: float = 0.0,
+    history: List = [],
 ) -> Tuple[List[str], bool]:
     """
     使用蒙特卡洛树搜索生成文本，并返回最佳路径。
@@ -79,7 +82,9 @@ def monte_carlo_tree_search(
                     continue  # 跳过不相关的生成
 
                 # 计算生成文本的得分
-                score = custom_score(gen_text)
+                h = copy(history)
+                h[-1][1] = gen_text
+                score = custom_score(h)
                 if score < score_threshold:
                     continue
                 # 创建子节点
