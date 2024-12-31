@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from transformers import AutoConfig
-from transformers import AutoModel
+from transformers import AutoConfig, AutoModel
+
 from swift.utils import get_logger
 from ..constant import LLMModelType
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local, register_model

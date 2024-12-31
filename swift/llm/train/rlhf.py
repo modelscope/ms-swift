@@ -32,7 +32,6 @@ class SwiftRLHF(SwiftSft):
             # Avoid padding labels during the model's forward pass in multimodal models.
             self.template.loss_scale = 'last_round'
 
-
     def _get_dataset(self):
         args = self.args
         train_dataset, val_dataset = super()._get_dataset()

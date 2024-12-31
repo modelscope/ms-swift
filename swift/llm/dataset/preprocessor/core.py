@@ -6,8 +6,9 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
 from datasets import Dataset as HfDataset
-from datasets import Image, Value, enable_caching, disable_caching
+from datasets import Image
 from datasets import IterableDataset as HfIterableDataset
+from datasets import Value
 
 from swift.llm import history_to_messages
 from swift.utils import get_logger
@@ -251,10 +252,6 @@ class RowPreprocessor:
         if self.dataset_sample is not None:
             dataset = sample_dataset(dataset, self.dataset_sample, self.random_state)
 
-        if enable_cache:
-            enable_caching()
-        else:
-            disable_caching()
         dataset = self._rename_columns(dataset)
         dataset = self.prepare_dataset(dataset)
         dataset = self._cast_pil_image(dataset)
