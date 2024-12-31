@@ -6,7 +6,7 @@
 
 1. Dataset module refactoring. The dataset loading speed has improved by 2-20 times, and encoding speed has improved by 2-4 times, with support for streaming mode.
     - Removed the dataset_name mechanism; now use dataset_id, dataset_dir, or dataset_path to specify the dataset.
-    - Use `--dataset_num_proc` to support multi-process acceleration and `--load_from_cache_file true` to support cache processing before using the data.
+    - Use `--dataset_num_proc` to support multi-process acceleration.
     - Use `--streaming` to support streaming loading of hub and local datasets.
     - Support `--packing` command for more stable training efficiency.
     - Use `--dataset <dataset_dir>` to support local loading of open-source datasets.

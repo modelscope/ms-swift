@@ -20,7 +20,7 @@ class DataArguments:
         data_seed (Optional[int]): Seed for dataset shuffling. Default is None.
         dataset_num_proc (int): Number of processes to use for data loading and preprocessing. Default is 1.
         streaming (bool): Flag to enable streaming of datasets. Default is False.
-        load_from_cache_file (bool): Flag to load dataset from cache file. Default is False.
+        enable_cache (bool): Flag to load dataset from cache file. Default is False.
         download_mode (Literal): Mode for downloading datasets. Default is 'reuse_dataset_if_exists'.
         model_name (List[str]): List containing Chinese and English names of the model. Default is [None, None].
         model_author (List[str]): List containing Chinese and English names of the model author.
@@ -38,7 +38,7 @@ class DataArguments:
     dataset_num_proc: int = 1
     streaming: bool = False
 
-    load_from_cache_file: bool = False
+    enable_cache: bool = False
     download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists'
     strict: bool = False
     # Chinese name and English name
@@ -74,7 +74,7 @@ class DataArguments:
             'streaming': self.streaming,
             'use_hf': self.use_hf,
             'hub_token': self.hub_token,
-            'load_from_cache_file': self.load_from_cache_file,
+            'enable_cache': self.enable_cache,
             'download_mode': self.download_mode,
             'strict': self.strict,
             'model_name': self.model_name,
