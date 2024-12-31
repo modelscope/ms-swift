@@ -136,7 +136,10 @@ class Internvl2Template(InternvlTemplate):
         if images:
             has_video = bool(inputs.videos)
             input_size = get_env_args('input_size', int, 448)
-            max_num = get_env_args('max_num', int, 1 if has_video else 12)
+            max_num = get_env_args('max_num', int, 12)
+            video_max_num = get_env_args('video_max_num', int, 1)
+            if has_video:
+                max_num = video_max_num
             pixel_values = [transform_image(image, input_size, max_num) for image in images]
             num_patches = [pv.shape[0] for pv in pixel_values]
             pixel_values = torch.cat(pixel_values).to(self.config.torch_dtype)

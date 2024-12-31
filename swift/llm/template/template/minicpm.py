@@ -174,13 +174,11 @@ class MiniCPMV2_6Template(MiniCPMVTemplate):
         use_video = bool(inputs.videos)
         is_plain_text = not images and not use_video
         use_image_id = True
-        max_slice_nums = None
-
+        max_slice_nums = get_env_args('max_slice_nums', int, None)
+        video_max_slice_nums = get_env_args('video_max_slice_nums', int, 1)  # or 2
         if use_video:
+            max_slice_nums = video_max_slice_nums
             use_image_id = False
-            max_slice_nums = 1  # or 2
-
-        max_slice_nums = get_env_args('max_slice_nums', int, max_slice_nums)
         input_ids = encoded['input_ids']
         labels = encoded['labels']
         idx_list = findall(input_ids, -100)

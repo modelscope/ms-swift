@@ -1,6 +1,6 @@
 # Command Line Parameters
 
-The introduction to command line parameters will cover base arguments, atomic arguments, and integration arguments. The final list of arguments used in the command line is the integration arguments. The integration arguments inherit from the base arguments and some atomic arguments.
+The introduction to command line parameters will cover base arguments, atomic arguments, and integrated arguments, and specific model arguments. The final list of arguments used in the command line is the integration arguments. Integrated arguments inherit from basic arguments and some atomic arguments. Specific model arguments are designed for specific models and can be set using `--model_kwargs'` or the environment variable.
 
 ## Base Arguments
 
@@ -8,7 +8,7 @@ The introduction to command line parameters will cover base arguments, atomic ar
 - 🔥train_type: Default is 'lora'. Optional values: 'lora', 'full', 'longlora', 'adalora', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft', 'reft'
 - 🔥adapters: A list used to specify the ID/path of the adapter, default is `[]`.
 - seed: Default is 42
-- model_kwargs: Extra parameters specific to the model. This parameter list will be logged during training for reference.
+- model_kwargs: Extra parameters specific to the model. This parameter list will be logged during training for reference, for example, `--model_kwargs '{"fps_max_frames": 12}'`.
 - load_args: When `--resume_from_checkpoint`, `--model`, or `--adapters` is specified, it will read the `args.json` file from the saved checkpoint and assign values to the `BaseArguments` that are defaulted to None (excluding DataArguments and GenerationArguments). These can be overridden by manually passing in values. The default is `True`.
 - load_data_args: If this parameter is set to True, it will additionally read the data parameters. The default is `False`.
 - use_hf: Default is False. Controls model and dataset downloading, and model pushing to the hub.
@@ -392,3 +392,62 @@ Export Arguments include the [basic arguments](#base-arguments) and [merge argum
 - hub_model_id: Model ID for pushing, default is None.
 - hub_private_repo: Whether it is a private repo, default is False.
 - commit_message: Commit message, default is 'update files'.
+
+## Specific Model Arguments
+
+Specific model arguments can be set using `--model_kwargs` or environment variables, for example: `--model_kwargs '{"fps_max_frames": 12}'` or `FPS_MAX_FRAMES=12`.
+
+### qwen2_vl, qvq
+For the meaning of the arguments, please refer to [here](https://github.com/QwenLM/Qwen2-VL/blob/main/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L24)
+
+- IMAGE_FACTOR: Default is 28
+- MIN_PIXELS: Default is `4 * 28 * 28`
+- MAX_PIXELS: Default is `16384 * 28 * 28`, refer to [here](https://github.com/modelscope/ms-swift/blob/main/examples/train/multimodal/ocr.sh#L3)
+- MAX_RATIO: Default is 200
+- VIDEO_MIN_PIXELS: Default is `128 * 28 * 28`
+- VIDEO_MAX_PIXELS: Default is `768 * 28 * 28`, refer to [here](https://github.com/modelscope/ms-swift/blob/main/examples/train/multimodal/video.sh#L7)
+- VIDEO_TOTAL_PIXELS: Default is `24576 * 28 * 28`
+- FRAME_FACTOR: Default is 2
+- FPS: Default is 2.0
+- FPS_MIN_FRAMES: Default is 4
+- FPS_MAX_FRAMES: Default is 768, refer to [here](https://github.com/modelscope/ms-swift/blob/main/examples/train/multimodal/video.sh#L8)
+
+### internvl, internvl_phi3
+For the meaning of the arguments, please refer to [here](https://modelscope.cn/models/OpenGVLab/Mini-InternVL-Chat-2B-V1-5)
+- MAX_NUM: Default is 12
+- INPUT_SIZE: Default is 448
+
+### internvl2, internvl2_phi3, internvl2_5
+- MAX_NUM: Default is 12
+- INPUT_SIZE: Default is 448
+- VIDEO_MAX_NUM: Default is 1, which is the MAX_NUM for videos
+- VIDEO_SEGMENTS: Default is 8
+
+### minicpmv2_6
+- MAX_SLICE_NUMS: Default is 9, refer to [here](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2_6/file/view/master?fileName=config.json&status=1)
+- VIDEO_MAX_SLICE_NUMS: Default is 1, which is the MAX_SLICE_NUMS for videos, refer to [here](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2_6)
+- MAX_NUM_FRAMES: Default is 64, refer to [here](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2_6)
+
+### ovis1_6
+- MAX_PARTITION: Refer to [here](https://github.com/AIDC-AI/Ovis/blob/d248e34d755a95d24315c40e2489750a869c5dbc/ovis/model/modeling_ovis.py#L312)
+
+### mplug_owl3, mplug_owl3_241101
+- MAX_NUM_FRAMES: Default is 16, refer to [here](https://modelscope.cn/models/iic/mPLUG-Owl3-7B-240728)
+
+### xcomposer2_4khd
+- HD_NUM: Default is 55, refer to [here](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-xcomposer2-4khd-7b)
+
+### xcomposer2_5
+- HD_NUM: Default is 24 when the number of images is 1. Greater than 1, the default is 6. Refer to [here](https://modelscope.cn/models/AI-ModelScope/internlm-xcomposer2d5-7b/file/view/master?fileName=modeling_internlm_xcomposer2.py&status=1#L254)
+
+### video_cogvlm2
+- NUM_FRAMES: Default is 24, refer to [here](https://github.com/THUDM/CogVLM2/blob/main/video_demo/inference.py#L22)
+
+### phi3_vision
+- NUM_CROPS: Default is 4, refer to [here](https://modelscope.cn/models/LLM-Research/Phi-3.5-vision-instruct)
+
+### llama3_1_omni
+- N_MELS: Default is 128, refer to [here](https://github.com/ictnlp/LLaMA-Omni/blob/544d0ff3de8817fdcbc5192941a11cf4a72cbf2b/omni_speech/infer/infer.py#L57)
+
+### video_llava
+- NUM_FRAMES: Default is 16
