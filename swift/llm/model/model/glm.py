@@ -185,6 +185,12 @@ register_model(
                 ],
                 requires=['transformers>=4.42,<4.45'],
             ),
+            ModelGroup(
+                [
+                    Model('ZhipuAI/cogagent-9b-20241220', 'THUDM/cogagent-9b-20241220'),
+                ],
+                requires=['transformers>=4.42'],
+            )
         ],
         TemplateType.glm4v,
         get_model_tokenizer_glm4v,

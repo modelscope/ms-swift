@@ -97,4 +97,4 @@ The parameters marked as compatible in version 2.0 have been entirely removed.
 1. RM/PPO capabilities are not supported in version 3.0. Please use version 2.6.1.
 2. Custom dataset evaluation is not supported in version 3.0. Please use version 2.6.1.
 3. Megatron pre-training capabilities are not supported in version 3.0. Please use version 2.6.1.
-4. Documentation and README, especially the English portions, are temporarily incomplete and will be updated.
+4. Documentation and README are temporarily incomplete and will be updated.
