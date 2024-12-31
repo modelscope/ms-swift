@@ -1,9 +1,14 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import json
+import os
 from typing import List, Union
 import torch
+from modelscope import AutoModelForSequenceClassification, GenerationConfig
 from rouge import Rouge
+from trl.models.utils import unwrap_model_for_generation
+
 from swift.llm.train.tuner import prepare_adapter
+from .mcts import monte_carlo_tree_search
 
 from ..argument import RLFTArguments
 from .sft import SwiftSft
@@ -83,13 +88,9 @@ class SwiftRLFT(SwiftSft):
                         f1.append(0.0)
 
         if f1[0] == 1.0:
-            return 2.0
-        elif f1[0] == 0.0:
-            return -1.0
-        elif 0.0 < f1[0] < 1.0:
-            return 0.5
+            return True
         else:
-            raise
+            return False
 
     def parse_action(self, text):
         if 'Action Input:' in text:
@@ -138,10 +139,10 @@ class SwiftRLFT(SwiftSft):
                 action_input_pred.append(pred_input)
 
             reward = self.evaluate_action_reward(action_pred,
-                                                  action_ref,
-                                                  action_input_pred,
-                                                  action_input_ref
-                                                  )
+                                                 action_ref,
+                                                 action_input_pred,
+                                                 action_input_ref
+                                                 )
             rewards.append(reward)
         return None, torch.tensor(rewards, dtype=torch.float32).to('cuda'), None
 
@@ -176,19 +177,6 @@ class SwiftRLFT(SwiftSft):
         # 如果未找到子列表，返回 (-1, -1)
         return -1, -1
 
-    def compare_args(self, args1, args2):
-        try:
-            args1 = json.loads(args1)
-        except Exception:
-            pass
-
-        try:
-            args2 = json.loads(args2)
-        except Exception:
-            pass
-
-        return args1 == args2
-
     def run(self):
         args = self.args
 
@@ -205,31 +193,11 @@ class SwiftRLFT(SwiftSft):
 
         data_collator = self._get_data_collator()
         optimizers = self._get_optimizers(train_dataset)
-        from transformers import AutoModelForSequenceClassification
-        value_model = AutoModelForSequenceClassification.from_pretrained(
+        trainer_cls = TrainerFactory.get_trainer_cls(args)
+        # Test code
+        self.reward_model = AutoModelForSequenceClassification.from_pretrained(
             args.model, trust_remote_code=True, num_labels=1
         )
-        value_model.model_meta = self.model.model_meta
-        value_model.model_info = self.model.model_info
-        value_model.config.pad_token_id = self.template.processor.eos_token_id
-        value_model = prepare_adapter(self.args, value_model, task='SEQ_CLS')
-        # value_model.to('cuda:1')
-        # from swift.utils.torch_utils import freeze_parameters
-        # freeze_parameters(value_model, 0.85, freeze_parameters=[])
-        # value_model.score.requires_grad = True
-        trainer_cls = TrainerFactory.get_trainer_cls(args)
-        reward_func_kwargs = {}
-        if args.reward_type == 'agent':
-            reward_func_kwargs = {'reward_func': self.get_reward}
-        else:
-            # Test code
-            reward_model = AutoModelForSequenceClassification.from_pretrained(
-                args.model, trust_remote_code=True, num_labels=1
-            )
-            reward_func_kwargs = {
-                'reward_model': reward_model
-            }
-        from copy import deepcopy
         trainer = trainer_cls(
             model=self.model,
             ref_model=ref_model,
@@ -237,14 +205,62 @@ class SwiftRLFT(SwiftSft):
             data_collator=data_collator,
             train_dataset=train_dataset,
             eval_dataset=val_dataset,
-            value_model=value_model,
             callbacks=self.callbacks,
             optimizers=optimizers,
             template=self.template,
-            **reward_func_kwargs,
             **self._get_trainer_kwargs(),
         )
         return self.train(trainer)
+
+    def rollout(self, data, trainer):
+        with torch.no_grad():
+            generation_config = GenerationConfig(
+                max_new_tokens=30,
+                temperature=(self.args.temperature + 1e-7),
+                top_k=0.0,
+                top_p=1.0,
+                do_sample=True,
+                pad_token_id=self.tokenizer.pad_token_id,
+                eos_token_id=[self.tokenizer.pad_token_id, self.tokenizer.eos_token_id],
+            )
+            queries = data["input_ids"].to(self.model.device)
+            with unwrap_model_for_generation(self.model, trainer.accelerator) as unwrapped_model:
+                generated = []
+                for q in queries:
+                    # TODO get a negative path?
+                    gen = monte_carlo_tree_search(q,
+                                                  unwrapped_model,
+                                                  self.tokenizer,
+                                                  self.get_reward,
+                                                  self.reward_model,
+                                                  generation_config,
+                                                  max_depth=6,
+                                                  max_children=5,
+                                                  success_factor=1.0,
+                                                  decay_factor=0.5,
+                                                  penalty_factor=0.2,
+                                                  penalty_decay=0.5,
+                                                  score_threshold=0.0,
+                                                  )
+                    if gen:
+                        generated.append(gen)
+            return generated
+
+    def train(self, trainer):
+        logging_path = os.path.join(trainer.args.output_dir, 'logging.jsonl')
+        logger.info(f'The logging file will be saved in: {logging_path}')
+        # trainer.train(trainer.args.resume_from_checkpoint)
+        new_dataset = []
+        for i in range(19):
+            train_dataloader = trainer.get_train_dataloader()
+            for batch in train_dataloader:
+                new_data = self.rollout(batch, trainer)
+                new_dataset.extend(new_data)
+
+            trainer.train_dataset = new_dataset
+            trainer.train(trainer.args.resume_from_checkpoint)
+
+        return self._save_trainer_state(trainer)
 
 
 def rlft_main(args: Union[List[str], RLFTArguments, None] = None):
