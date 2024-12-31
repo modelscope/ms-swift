@@ -6,7 +6,7 @@
 
 1. 数据集模块重构。数据集加载速度提升2-20倍，encode速度提升2-4倍，支持streaming模式
     - 移除了dataset_name机制，采用dataset_id、dataset_dir、dataset_path方式指定数据集
-    - 使用`--dataset_num_proc`支持多进程加速处理、使用`--load_from_cache_file true`支持使用数据前处理缓存
+    - 使用`--dataset_num_proc`支持多进程加速处理
     - 使用`--streaming`支持流式加载hub端和本地数据集
     - 支持`--packing`命令以获得更稳定的训练效率
     - 指定`--dataset <dataset_dir>`支持本地加载开源数据集

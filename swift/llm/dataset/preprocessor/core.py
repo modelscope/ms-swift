@@ -246,7 +246,6 @@ class RowPreprocessor:
         *,
         num_proc: int = 1,
         strict: bool = False,
-        load_from_cache_file: bool = False,
         batch_size: int = 1000,
     ) -> DATASET_TYPE:
         from ..utils import sample_dataset
@@ -258,7 +257,7 @@ class RowPreprocessor:
         dataset = self._cast_pil_image(dataset)
         map_kwargs = {}
         if isinstance(dataset, HfDataset):
-            map_kwargs.update({'num_proc': num_proc, 'load_from_cache_file': load_from_cache_file})
+            map_kwargs.update({'num_proc': num_proc})
         with self._patch_arrow_writer():
             try:
                 dataset_mapped = dataset.map(
@@ -462,9 +461,8 @@ class AutoPreprocessor:
         *,
         num_proc: int = 1,
         strict: bool = False,
-        load_from_cache_file: bool = False,
     ) -> DATASET_TYPE:
         dataset = get_features_dataset(dataset)
         dataset = dataset.rename_columns(self.columns_mapping)
         preprocessor = self._get_preprocessor(dataset)
-        return preprocessor(dataset, num_proc=num_proc, load_from_cache_file=load_from_cache_file, strict=strict)
+        return preprocessor(dataset, num_proc=num_proc, strict=strict)
