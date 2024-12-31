@@ -1,7 +1,9 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import unittest
 from typing import Any, Dict, Optional
+
 import torch
+
 from swift.llm import (DatasetMeta, InferRequest, Model, ModelGroup, ModelMeta, PtEngine, RequestConfig,
                        ResponsePreprocessor, TemplateMeta, get_model_tokenizer_with_flash_attn, load_dataset,
                        register_dataset, register_model, register_template)
