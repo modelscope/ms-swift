@@ -23,8 +23,8 @@ You can find examples [here](https://github.com/modelscope/swift/blob/main/examp
 
 Additionally, other technologies and examples supported by SWIFT include:
 
-- **ddp+device_map**: This is suitable for situations where a single GPU cannot handle the workload and DeepSpeed is not applicable. Refer to [this link](https://github.com/modelscope/swift/blob/main/examples/train/ddp_device_map/train.sh).
-- **fsdp+qlora**: This allows training of 70B models on dual 3090 GPUs. Details can be found [here](https://github.com/modelscope/swift/blob/main/examples/train/fsdp_qlora/train.sh).
+- **ddp+device_map**: This is suitable for situations where a single GPU cannot handle the workload and DeepSpeed is not applicable. Refer to [this link](https://github.com/modelscope/ms-swift/blob/main/examples/train/multi-gpu/ddp_device_map/train.sh).
+- **fsdp+qlora**: This allows training of 70B models on dual 3090 GPUs. Details can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/multi-gpu/fsdp_qlora/train.sh).
 - **Multimodal Training**: For more information, see [here](https://github.com/modelscope/swift/blob/main/examples/train/multimodal).
 - **Sequence Parallelism**: More details can be found [here](https://github.com/modelscope/swift/blob/main/examples/train/sequence_parallel).
 - **Packing**: This combines multiple sequences into one, helping each sample to approach the set max_length during training, improving GPU utilization. See [here](https://github.com/modelscope/swift/blob/main/examples/train/packing/train.sh).
