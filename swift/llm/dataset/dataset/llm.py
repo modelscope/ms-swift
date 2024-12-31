@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import ast
+import json
 import re
 from copy import copy
 from functools import partial
@@ -365,6 +366,18 @@ class ToolBenchPreprocessor(MessagesPreprocessor):
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         import numpy as np
         row = super().preprocess(row)
+        has_error = False
+        for m in row['messages']:
+            if m['role'] == 'tool':
+                content = json.loads(m['content'])
+                if content.get('error'):
+                    has_error = True
+        if 'give_up_and_restart' in row['messages'][-1]['content']:
+            has_error = True
+
+        if has_error:
+            return []
+
         all_rows = []
         action_rounds = sum([1 if 'Action Input:' in message['content'] and message['role'] == 'assistant' else 0 for message in row['messages']])
         n_round = np.random.choice(action_rounds)
