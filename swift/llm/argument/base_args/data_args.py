@@ -2,6 +2,8 @@
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional
 
+from datasets import enable_caching
+
 from swift.llm import DATASET_MAPPING, register_dataset_info
 from swift.utils import get_logger
 
@@ -58,6 +60,8 @@ class DataArguments:
     def __post_init__(self):
         if self.data_seed is None:
             self.data_seed = self.seed
+        if self.enable_cache:
+            enable_caching()
         if len(self.val_dataset) > 0 or self.streaming:
             self.split_dataset_ratio = 0.
             if len(self.val_dataset) > 0:
@@ -74,7 +78,6 @@ class DataArguments:
             'streaming': self.streaming,
             'use_hf': self.use_hf,
             'hub_token': self.hub_token,
-            'enable_cache': self.enable_cache,
             'download_mode': self.download_mode,
             'strict': self.strict,
             'model_name': self.model_name,

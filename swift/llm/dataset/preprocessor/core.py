@@ -8,7 +8,7 @@ import numpy as np
 from datasets import Dataset as HfDataset
 from datasets import Image
 from datasets import IterableDataset as HfIterableDataset
-from datasets import Value, disable_caching, enable_caching
+from datasets import Value
 
 from swift.llm import history_to_messages
 from swift.utils import get_logger
@@ -246,17 +246,12 @@ class RowPreprocessor:
         *,
         num_proc: int = 1,
         strict: bool = False,
-        enable_cache: bool = False,
         batch_size: int = 1000,
     ) -> DATASET_TYPE:
         from ..utils import sample_dataset
         if self.dataset_sample is not None:
             dataset = sample_dataset(dataset, self.dataset_sample, self.random_state)
 
-        if enable_cache:
-            enable_caching()
-        else:
-            disable_caching()
         dataset = self._rename_columns(dataset)
         dataset = self.prepare_dataset(dataset)
         dataset = self._cast_pil_image(dataset)
@@ -466,9 +461,8 @@ class AutoPreprocessor:
         *,
         num_proc: int = 1,
         strict: bool = False,
-        enable_cache: bool = False,
     ) -> DATASET_TYPE:
         dataset = get_features_dataset(dataset)
         dataset = dataset.rename_columns(self.columns_mapping)
         preprocessor = self._get_preprocessor(dataset)
-        return preprocessor(dataset, num_proc=num_proc, enable_cache=enable_cache, strict=strict)
+        return preprocessor(dataset, num_proc=num_proc, strict=strict)
