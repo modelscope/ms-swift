@@ -316,7 +316,7 @@ class DatasetLoader:
                 train_sample = dataset_sample - val_sample
                 assert train_sample > 0
                 train_dataset, val_dataset = train_dataset.train_test_split(
-                    test_size=val_sample, seed=get_seed(random_state), enable_cache=enable_cache).values()
+                    test_size=val_sample, seed=get_seed(random_state)).values()
                 train_dataset = sample_dataset(train_dataset, train_sample, random_state)
         return train_dataset, val_dataset
 
