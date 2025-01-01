@@ -136,7 +136,7 @@ class RowPreprocessor:
                 new_k = k[len('__@'):]
                 row[new_k] = row.pop(k)
 
-    def batched_preprocess(self, batched_row: Dict[str, Any], *, strict: bool) -> Dict[str, Any]:
+    def batched_preprocess(self, batched_row: Dict[str, Any], *, strict: bool, **kwargs) -> Dict[str, Any]:
         batched_row = dict(batched_row)
         assert len(batched_row) > 0
         self._fix_streaming_keys(batched_row)
@@ -145,7 +145,7 @@ class RowPreprocessor:
         new_rows = []
         for row in rows:
             try:
-                row = self.preprocess(row)
+                row = self.preprocess(row, **kwargs)
                 # support [row1, row2, ...]
                 if row is None:
                     row = []

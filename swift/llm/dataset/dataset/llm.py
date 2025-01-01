@@ -344,7 +344,7 @@ register_dataset(
         tags=['chat', 'agent', 'multi-round', 'role-play', 'multi-agent']))
 
 
-class ToolBenchPreprocessor(MessagesPreprocessor):
+class ToolBenchPPOPreprocessor(MessagesPreprocessor):
 
     def batched_preprocess(self, batched_row: Dict[str, Any], *, strict: bool) -> Dict[str, Any]:
         batched_row = dict(batched_row)
@@ -367,12 +367,20 @@ class ToolBenchPreprocessor(MessagesPreprocessor):
         import numpy as np
         row = super().preprocess(row)
         has_error = False
+        http_errno = ['404', '403', '400', '401', '500', '502', '503']
         for m in row['messages']:
             if m['role'] == 'tool':
-                content = json.loads(m['content'])
-                if content.get('error'):
+                try:
+                    content = json.loads(m['content'])
+                except:
                     has_error = True
-        if 'give_up_and_restart' in row['messages'][-1]['content']:
+                    continue
+                if content.get('error') or any(errno in m['content'] for errno in http_errno) or not content.get('response'):
+                    has_error = True
+        if 'give_up_and_restart' in row['messages'][-1]['content'] or 'unfortunately' in row['messages'][-1]['content'].lower() or 'failed' in row['messages'][-1]['content'].lower() or 'sorry' in row['messages'][-1]['content'].lower():
+            has_error = True
+
+        if len(row['messages']) > 7:
             has_error = True
 
         if has_error:
@@ -398,6 +406,36 @@ class ToolBenchPreprocessor(MessagesPreprocessor):
         return all_rows
 
 
+class ToolBenchFilteredPreprocessor(MessagesPreprocessor):
+
+    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        import numpy as np
+        row = super().preprocess(row)
+        has_error = False
+        http_errno = ['404', '403', '400', '401', '500', '502', '503']
+        for m in row['messages']:
+            if m['role'] == 'tool':
+                try:
+                    content = json.loads(m['content'])
+                except:
+                    has_error = True
+                    continue
+                if content.get('error') or any(errno in m['content'] for errno in http_errno) or not content.get('response'):
+                    has_error = True
+        if 'give_up_and_restart' in row['messages'][-1]['content'] or 'unfortunately' in row['messages'][-1]['content'].lower() or 'failed' in row['messages'][-1]['content'].lower() or 'sorry' in row['messages'][-1]['content'].lower():
+            has_error = True
+
+        if len(row['messages']) > 7:
+            has_error = True
+
+        if has_error:
+            return None
+
+        return row
+
+        
+
+
 register_dataset(DatasetMeta(
     ms_dataset_id='swift/ToolBench',
     subsets=[
@@ -406,10 +444,72 @@ register_dataset(DatasetMeta(
         ),
         SubsetDataset(
             name='ppo',
-            preprocess_func=ToolBenchPreprocessor(),
+            preprocess_func=ToolBenchPPOPreprocessor(),
+        ),
+        SubsetDataset(
+            name='filtered',
+            preprocess_func=ToolBenchFilteredPreprocessor(),
         ),
     ],
     tags=['chat', 'agent', 'multi-round']))
+
+
+class XlamPreprocessor(ResponsePreprocessor):
+
+    def batched_preprocess(self, batched_row: Dict[str, Any], *, strict: bool) -> Dict[str, Any]:
+        tools = batched_row['tools']
+        all_tools = {}
+        for _tools in tools:
+            _tools = json.loads(_tools)
+            for _tool in _tools:
+                name = _tool['name']
+                if name not in all_tools:
+                    all_tools[name] = _tool
+
+        return super().batched_preprocess(batched_row, strict=strict, all_tools=all_tools)
+
+    def preprocess(self, row: Dict[str, Any], all_tools) -> Optional[Dict[str, Any]]:
+        query = row['query']
+        answers = row['response']
+        answers = json.loads(answers)
+        tools = row['tools']
+        tools = json.loads(tools)
+        if len(answers) > 1:
+            # parallelism tool calling not supported
+            return None
+
+        answer = answers[0]
+        if len(tools) < 5:
+            for tool in tools:
+                all_tools.pop(tool['name'], None)
+        all_tools = list(all_tools.values())
+        import numpy as np
+        choices = np.random.permutation(len(all_tools))[:(5-len(tools))]
+        all_tools = [all_tools[i] for i in choices]
+        tools.extend(all_tools)
+        action = answer['name']
+        action_input = answer['arguments']
+        if len(tools) > 10:
+            return None
+        answer = f'Action: {action}\nAction Input:{json.dumps(action_input)}'
+        row = {
+            'query': query,
+            'tools': json.dumps(tools),
+            'ground_truth': answer,
+        }
+        return super().preprocess(row)
+
+
+register_dataset(DatasetMeta(
+    ms_dataset_id='LLM-Research/xlam-function-calling-60k',
+    subsets=[
+        SubsetDataset(
+            name='default',
+            subset='dataset',
+            preprocess_func=XlamPreprocessor(),
+        ),
+    ],
+    tags=['chat', 'agent']))
 
 
 class HC3Preprocessor(ResponsePreprocessor):

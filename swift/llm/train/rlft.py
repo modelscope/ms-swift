@@ -3,13 +3,14 @@ import json
 import os
 from typing import List, Union
 import torch
+from functools import partial
 from modelscope import AutoModelForSequenceClassification, GenerationConfig, AutoTokenizer
 from rouge import Rouge
 from trl.models.utils import unwrap_model_for_generation
-
+from copy import deepcopy, copy
 from swift.llm.train.tuner import prepare_adapter
 from .mcts import monte_carlo_tree_search
-
+from swift.llm.template.template_inputs import StdTemplateInputs
 from ..argument import RLFTArguments
 from .sft import SwiftSft
 from swift.utils import get_logger, get_model_parameter_info
@@ -113,16 +114,16 @@ class SwiftRLFT(SwiftSft):
         action, action_input = self.parse_action(text)
         return action, action_input
 
-    def get_reward(self, model, batch, query_responses, pad_token_id, context_length):
+    def get_reward(self, responses, ground_truths):
         rewards = []
-        for ground_truth, query_response in zip(batch['ground_truth'], query_responses):
+        for ground_truth, response in zip(ground_truths, responses):
             action_ref = []
             action_input_ref = []
             action_pred = []
             action_input_pred = []
             reference = ground_truth
-            prediction = query_response[context_length:]
-            prediction = self.tokenizer.decode(prediction)
+            prediction = response
+            # prediction = self.tokenizer.decode(prediction)
             prediction = prediction.replace('<|endoftext|>', '').replace('<|im_end|>', '').strip()
             ref_action, ref_input = self.parse_output(reference)
             pred_action, pred_input = self.parse_output(prediction)
@@ -144,7 +145,7 @@ class SwiftRLFT(SwiftSft):
                                                  action_input_ref
                                                  )
             rewards.append(reward)
-        return None, torch.tensor(rewards, dtype=torch.float32).to('cuda'), None
+        return rewards
 
     def evaluate_rougel(self, cand_list: list, ref_list: list):
         if len(ref_list) == 0:
@@ -184,7 +185,6 @@ class SwiftRLFT(SwiftSft):
         train_dataset, val_dataset = self._encode_dataset(train_dataset, val_dataset)
         from copy import deepcopy
         # Some tuners require train_dataset for preparation: LoRA-GA
-        ref_model = deepcopy(self.model)
         self.model = prepare_adapter(self.args, self.model)
         logger.info(f'model: {self.model}')
         model_parameter_info = get_model_parameter_info(self.model)
@@ -194,14 +194,14 @@ class SwiftRLFT(SwiftSft):
         data_collator = self._get_data_collator()
         optimizers = self._get_optimizers(train_dataset)
         trainer_cls = TrainerFactory.get_trainer_cls(args)
-        # Test code
+
         self.reward_model = AutoModelForSequenceClassification.from_pretrained(
             args.reward_model, trust_remote_code=True, num_labels=1, torch_dtype=torch.bfloat16,
         )
         self.reward_tokenizer = AutoTokenizer.from_pretrained(args.reward_model)
+
         trainer = trainer_cls(
             model=self.model,
-            ref_model=ref_model,
             args=self.args.training_args,
             data_collator=data_collator,
             train_dataset=train_dataset,
@@ -218,40 +218,55 @@ class SwiftRLFT(SwiftSft):
         conv_formatted = self.reward_tokenizer.apply_chat_template(conv, tokenize=False)
         conv_tokenized = self.reward_tokenizer(conv_formatted, return_tensors="pt").to(self.reward_model.device)
         with torch.no_grad():
-            return self.reward_model(conv_tokenized).logits[0][0].item()
+            return self.reward_model(**conv_tokenized)[0].cpu().detach().item()
 
-    def rollout(self, data, trainer):
+    def rollout(self, data, trainer, rd):
+        splitter = [
+            '.', '。', '\n\n'
+        ]
         with torch.no_grad():
+            eos = [self.tokenizer.pad_token_id, self.tokenizer.eos_token_id]
+            for s in splitter:
+                eos.extend(self.tokenizer.encode(s, add_special_tokens=False))
             generation_config = GenerationConfig(
-                max_new_tokens=30,
-                temperature=(self.args.temperature + 1e-7),
-                top_k=0.0,
-                top_p=1.0,
+                max_new_tokens=100,
+                temperature=min(0.3 + 0.07 * rd, 1.0),
+                top_k=50,
+                top_p=0.9,
                 do_sample=True,
                 pad_token_id=self.tokenizer.pad_token_id,
-                eos_token_id=[self.tokenizer.pad_token_id, self.tokenizer.eos_token_id],
+                eos_token_id=eos,
             )
             queries = data["input_ids"].to(self.model.device)
+            ground_truths = data["ground_truth"]
+            messages = data["_messages"]
             with unwrap_model_for_generation(self.model, trainer.accelerator) as unwrapped_model:
                 generated = []
-                for q in queries:
+                for i, (q, m, g) in enumerate(zip(queries, messages, ground_truths)):
                     # TODO get a negative path?
-                    gen = monte_carlo_tree_search(q,
+                    gen = monte_carlo_tree_search(self.tokenizer.decode(q),
                                                   unwrapped_model,
                                                   self.tokenizer,
-                                                  self.get_reward,
+                                                  partial(self.get_reward, ground_truths=[g]),
                                                   self.get_reward_by_model,
                                                   generation_config,
                                                   max_depth=6,
-                                                  max_children=5,
+                                                  max_children=3,
                                                   success_factor=1.0,
                                                   decay_factor=0.5,
                                                   penalty_factor=0.2,
                                                   penalty_decay=0.5,
-                                                  score_threshold=0.0,
+                                                  score_threshold=-5,
+                                                  history=m,
                                                   )
-                    if gen:
-                        generated.append(gen)
+                    if gen[1]:
+                        _data = deepcopy(data)
+                        messages = _data['_messages'][i]
+                        assert messages[-1]['content'] is None
+                        messages[-1]['content'] = gen[0]
+                        encoded = self.template.encode(StdTemplateInputs.from_dict({'messages': messages}, tools_prompt='toolbench'))
+                        encoded.pop('_messages', None)
+                        generated.append(encoded)
             return generated
 
     def train(self, trainer):
@@ -261,12 +276,19 @@ class SwiftRLFT(SwiftSft):
         new_dataset = []
         for i in range(19):
             train_dataloader = trainer.get_train_dataloader()
+            cnt = 0
             for batch in train_dataloader:
-                new_data = self.rollout(batch, trainer)
+                cnt += 1
+                new_data = self.rollout(batch, trainer, i)
                 new_dataset.extend(new_data)
+                if cnt > 300:
+                    break
 
+            trainer._origin_dataset = trainer.train_dataset
             trainer.train_dataset = new_dataset
             trainer.train(trainer.args.resume_from_checkpoint)
+            trainer.train_dataset = trainer._origin_dataset
+            trainer.train_dataset = trainer.train_dataset.shuffle()
 
         return self._save_trainer_state(trainer)
 

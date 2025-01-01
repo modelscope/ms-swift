@@ -212,6 +212,9 @@ class Template(ProcessorMixin):
                 encoded.pop(key)
         if return_template_inputs:
             encoded['template_inputs'] = inputs
+        if inputs.messages[0]['role'] != 'system':
+            inputs.messages.insert(0, {'role': 'system', 'content': inputs.system})
+        encoded['_messages'] = inputs.messages
         return encoded
 
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
@@ -868,6 +871,8 @@ class Template(ProcessorMixin):
                 res['label'] = label
         if 'ground_truth' in batch[0]:
             res['ground_truth'] = [b['ground_truth'] for b in batch]
+        if '_messages' in batch[0]:
+            res['_messages'] = [b['_messages'] for b in batch]
         if use_torchacc() or self.sequence_parallel_size > 1:
             res = self._torchacc_xtuner_data_collator(res, padding_to, self.tokenizer, padding_side)
         return res
