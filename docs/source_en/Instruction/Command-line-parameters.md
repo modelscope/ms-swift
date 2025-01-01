@@ -49,6 +49,7 @@ The introduction to command line parameters will cover base arguments, atomic ar
 - truncation_strategy: How to handle overly long tokens, supports `delete`, `left`, `right`, representing deletion, left trimming, and right trimming, default is 'delete'.
 - 🔥max_pixels: Maximum pixel count for pre-processing images in multimodal models (H*W), default is no scaling.
 - tools_prompt: The list of tools for agent training converted to system format, refer to [Agent Training](./Agent-support.md), default is 'react_en'.
+- padding_side: The padding_side used when training with `batch_size >= 2`, with optional values of 'left' and 'right', defaulting to 'right'. (When the batch_size in `generate` is >= 2, only left padding is applied.)
 - loss_scale: How to add token loss weight during training. Default is `'default'`, meaning all responses (including history) are treated as 1 for cross-entropy loss. For specifics, see [Pluginization](../Customization/Pluginization.md) and [Agent Training](./Agent-support.md).
 - sequence_parallel_size: Number of sequence parallelism. Refer to [example](https://github.com/modelscope/ms-swift/tree/main/examples/train/sequence_parallel/train.sh).
 - use_chat_template: Use chat template or generation template, default is `True`. `swift pt` is automatically set to the generation template.
@@ -100,7 +101,6 @@ This parameter list inherits from transformers `Seq2SeqTrainingArguments`, with 
 - remove_unused_columns: Default is False.
 - logging_first_step: Whether to log the first step print, default is True.
 - logging_steps: Interval for logging prints, default is 5.
-- average_tokens_across_devices: Whether to average the token count across devices. If set to True, it will use all_reduce to synchronize `num_tokens_in_batch` for accurate loss computation. The default is None; set to True for distributed training, otherwise set to False.
 - metric_for_best_model: Default is None. When `predict_with_generate` is set to False, it is 'loss'; otherwise, it is 'rouge-l'.
 - greater_is_better: Default is None. When `metric_for_best_model` contains 'loss', set to False; otherwise, set to True.
 
@@ -121,6 +121,7 @@ Other important parameters:
 - 🔥ddp_find_unused_parameters: Default is None.
 - 🔥dataloader_num_workers: Default is 0.
 - 🔥neftune_noise_alpha: Noise coefficient added by neftune, default is 0. Generally can be set to 5, 10, 15.
+- average_tokens_across_devices: Whether to average the token count across devices. If set to True, it will use all_reduce to synchronize `num_tokens_in_batch` for accurate loss computation. The default is False.
 - max_grad_norm: Gradient clipping. The default value is 1.
 - push_to_hub: Push training weights to hub, default is False.
 - hub_model_id: Default is None.

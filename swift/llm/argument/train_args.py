@@ -36,7 +36,6 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
 
     remove_unused_columns: bool = False
     logging_first_step: bool = True
-    average_tokens_across_devices: Optional[bool] = None
 
     def _init_output_dir(self):
         if self.output_dir is not None:
@@ -56,8 +55,6 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
 
     def __post_init__(self):
         self._init_output_dir()
-        if self.average_tokens_across_devices is None:
-            self.average_tokens_across_devices = self.global_world_size > 1
         if self.metric_for_best_model is None:
             self.metric_for_best_model = 'rouge-l' if self.predict_with_generate else 'loss'
         if self.greater_is_better is None:
@@ -112,18 +109,20 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
     add_version: bool = True
     resume_only_model: bool = False
     check_model: bool = True
-    loss_type: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
 
     # dataset
     packing: bool = False
     lazy_tokenize: Optional[bool] = None
 
+    # plugin
+    loss_type: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
+    optimizer: Optional[str] = None
+    metric: Optional[str] = None
+
     # extra
     acc_strategy: Literal['token', 'seq'] = 'token'
     max_new_tokens: int = 64
     temperature: float = 0.
-    optimizer: Optional[str] = None
-    metric: Optional[str] = None
 
     def __post_init__(self) -> None:
         if self.resume_from_checkpoint:

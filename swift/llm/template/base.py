@@ -45,31 +45,34 @@ class Template(ProcessorMixin):
     use_model = False
 
     is_encoder_decoder = False
-    padding_side: Literal['left', 'right'] = 'right'  # The padding_side when the training batch_size >= 2.
 
     def __init__(
-            self,
-            processor: Processor,
-            template_meta: 'TemplateMeta',
-            default_system: Optional[str] = None,
-            max_length: Optional[int] = None,
-            *,
-            use_chat_template: bool = True,
-            template_backend: Literal['swift', 'jinja'] = 'swift',
-            truncation_strategy: Literal['raise', 'left', 'right'] = 'raise',
-            max_pixels: Optional[int] = None,
-            tools_prompt: Optional[str] = None,
-            # only for train
-            loss_scale: str = 'default',
-            sequence_parallel_size: int = 1) -> None:
+        self,
+        processor: Processor,
+        template_meta: 'TemplateMeta',
+        default_system: Optional[str] = None,
+        max_length: Optional[int] = None,
+        *,
+        use_chat_template: bool = True,
+        truncation_strategy: Literal['raise', 'left', 'right'] = 'raise',
+        max_pixels: Optional[int] = None,
+        tools_prompt: Optional[str] = None,
+        # only for train
+        padding_side: Literal['left', 'right'] = 'right',
+        loss_scale: str = 'default',
+        sequence_parallel_size: int = 1,
+        # infer/deploy
+        template_backend: Literal['swift', 'jinja'] = 'swift',
+    ) -> None:
         """
         default_system: Override the default_system in the template.
         max_length: Max length of the sequence
         truncation_strategy: The truncation strategy
-        loss_scale: The loss scale function to use
         max_pixels: Rescale image to reduce memory usage, default `None` means no limitation.
             e.g. 512 * 512 (H*W)
         tools_prompt: The type of tools_prompt added in the system.
+        padding_side: The padding_side when the training batch_size >= 2
+        loss_scale: The loss scale function to use
         """
         from .template_meta import TemplateMeta
         self.processor = processor
@@ -96,6 +99,7 @@ class Template(ProcessorMixin):
         self.truncation_strategy = truncation_strategy
         self.loss_scale = loss_scale
         self.max_pixels = max_pixels
+        self.padding_side = padding_side
         self.sequence_parallel_size = sequence_parallel_size
         self.tools_prompt = tools_prompt or template_meta.default_tools_prompt
         if self.is_encoder_decoder:
@@ -853,7 +857,7 @@ class Template(ProcessorMixin):
         keys = [
             'input_ids', 'inputs_embeds', 'attention_mask', 'labels', 'loss_scale', 'position_ids', 'token_type_ids'
         ]
-        pad_value = [self.tokenizer.pad_token_id, 0., 0, -100, 0., -1, 0]
+        pad_value = [self.tokenizer.pad_token_id, 0., 0, -100, 0., 1, 0]
         # Convert to tensor and remove unnecessary dimensions.
         seq_lens = None
         for key in keys:
@@ -869,6 +873,8 @@ class Template(ProcessorMixin):
                 seq_lens = [seq.shape[0] for seq in res[key]]
         if seq_lens and ('input_ids' in res or 'inputs_embeds' in res):
             res['attention_mask'] = [torch.ones(seq_len, dtype=torch.int64) for seq_len in seq_lens]
+            if self.is_training and self.padding_side == 'left':
+                res['position_ids'] = [torch.arange(seq_len, dtype=torch.int64) for seq_len in seq_lens]
 
         for key, pad_value in zip(keys, pad_value):
             if key not in res:
