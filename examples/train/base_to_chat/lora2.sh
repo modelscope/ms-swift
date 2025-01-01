@@ -1,21 +1,24 @@
-# Here is the command-line style training code.
-# 22GB
-CUDA_VISIBLE_DEVICES=0 \
+# Use `--target_modules all-linear all-embedding lm_head`
+# Please adjust the `lm_head` according to the model.
+nproc_per_node=2
+
+CUDA_VISIBLE_DEVICES=0,1 \
+NPROC_PER_NODE=$nproc_per_node \
 swift sft \
-    --model Qwen/Qwen2.5-3B-Instruct \
+    --model Qwen/Qwen2.5-1.5B \
     --train_type lora \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
               'AI-ModelScope/alpaca-gpt4-data-en#500' \
-              'swift/self-cognition#500' \
+              'swift/self-cognition' \
     --torch_dtype bfloat16 \
-    --num_train_epochs 1 \
+    --num_train_epochs 10 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \
     --learning_rate 1e-4 \
     --lora_rank 8 \
     --lora_alpha 32 \
-    --target_modules all-linear \
-    --gradient_accumulation_steps 16 \
+    --target_modules all-linear all-embedding lm_head \
+    --gradient_accumulation_steps $(expr 16 / $nproc_per_node) \
     --eval_steps 50 \
     --save_steps 50 \
     --save_total_limit 5 \
@@ -25,6 +28,6 @@ swift sft \
     --system 'You are a helpful assistant.' \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 4 \
-    --dataset_num_proc 4 \
-    --model_name 小黄 'Xiao Huang' \
-    --model_author '魔搭' 'ModelScope'
+    --model_author swift \
+    --model_name swift-robot \
+    --deepspeed zero2
