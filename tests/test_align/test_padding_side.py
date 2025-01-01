@@ -10,6 +10,7 @@ kwargs = {
     'gradient_accumulation_steps': 4,
     'num_train_epochs': 1,
     'save_steps': 100,
+    'max_length': 8192,
 }
 
 
@@ -34,7 +35,7 @@ def test_llm():
     res = []
     for padding_side in ['left', 'right']:
         model = 'Qwen/Qwen2.5-0.5B-Instruct'
-        dataset = ['DAMO_NLP/jd#2000']
+        dataset = ['damo/zh_cls_fudan-news#2000']
         result = sft_main(
             TrainArguments(model=model, dataset=dataset, split_dataset_ratio=0.1, padding_side=padding_side, **kwargs))
         last_model_checkpoint = result['last_model_checkpoint']
