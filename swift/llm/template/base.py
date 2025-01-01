@@ -47,23 +47,23 @@ class Template(ProcessorMixin):
     is_encoder_decoder = False
 
     def __init__(
-            self,
-            processor: Processor,
-            template_meta: 'TemplateMeta',
-            default_system: Optional[str] = None,
-            max_length: Optional[int] = None,
-            *,
-            use_chat_template: bool = True,
-            truncation_strategy: Literal['raise', 'left', 'right'] = 'raise',
-            max_pixels: Optional[int] = None,
-            tools_prompt: Optional[str] = None,
-            # only for train
-            padding_side: Literal['left', 'right'] = 'right',
-            loss_scale: str = 'default',
-            sequence_parallel_size: int = 1,
-            # infer/deploy
-            template_backend: Literal['swift', 'jinja'] = 'swift',
-        ) -> None:
+        self,
+        processor: Processor,
+        template_meta: 'TemplateMeta',
+        default_system: Optional[str] = None,
+        max_length: Optional[int] = None,
+        *,
+        use_chat_template: bool = True,
+        truncation_strategy: Literal['raise', 'left', 'right'] = 'raise',
+        max_pixels: Optional[int] = None,
+        tools_prompt: Optional[str] = None,
+        # only for train
+        padding_side: Literal['left', 'right'] = 'right',
+        loss_scale: str = 'default',
+        sequence_parallel_size: int = 1,
+        # infer/deploy
+        template_backend: Literal['swift', 'jinja'] = 'swift',
+    ) -> None:
         """
         default_system: Override the default_system in the template.
         max_length: Max length of the sequence
