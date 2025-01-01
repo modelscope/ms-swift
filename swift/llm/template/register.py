@@ -28,6 +28,7 @@ def get_template(
         max_pixels: Optional[int] = None,  # h * w
         tools_prompt: str = 'react_en',
         # train
+        padding_side: Literal['left', 'right'] = 'right',
         loss_scale: str = 'default',
         sequence_parallel_size: int = 1) -> 'Template':
     template_meta = TEMPLATE_MAPPING[template_type]

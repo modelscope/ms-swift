@@ -20,6 +20,7 @@ class TemplateArguments:
         truncation_strategy (Literal): Strategy for truncating the template. Default is 'delete'.
         max_pixels (Optional[int]): Maximum number of pixels for the template. Default is None.
         tools_prompt (str): Override the default tools prompt in the template. Default is 'react_en'.
+        padding_side: The padding_side when the training batch_size >= 2
         loss_scale (str): Loss scale for training. Default is 'default',
             meaning only calculate the loss of the assistant.
         sequence_parallel_size (int): Size of sequence parallelism. Default is 1.
@@ -35,6 +36,7 @@ class TemplateArguments:
     max_pixels: Optional[int] = None
     tools_prompt: str = 'react_en'  # Override the default_tools_prompt in the template.
     # train
+    padding_side: Literal['left', 'right'] = 'right'
     loss_scale: str = 'default'
     sequence_parallel_size: int = 1
     # infer/deploy
@@ -59,6 +61,7 @@ class TemplateArguments:
             'max_pixels': self.max_pixels,
             'tools_prompt': self.tools_prompt,
             'loss_scale': self.loss_scale,
+            'padding_side': self.padding_side,
             'sequence_parallel_size': self.sequence_parallel_size,
             'template_backend': self.template_backend,
             'use_chat_template': self.use_chat_template

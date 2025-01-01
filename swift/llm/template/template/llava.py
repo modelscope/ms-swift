@@ -19,11 +19,6 @@ from .utils import ChatmlTemplateMeta
 
 class LlavaHfTemplate(Template):
 
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        if version.parse(transformers.__version__) < version.parse('4.43.0'):
-            self.padding_side = 'left'
-
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         assert media_type == 'image'

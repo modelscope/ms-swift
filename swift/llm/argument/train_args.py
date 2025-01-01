@@ -112,18 +112,20 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
     add_version: bool = True
     resume_only_model: bool = False
     check_model: bool = True
-    loss_type: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
 
     # dataset
     packing: bool = False
     lazy_tokenize: Optional[bool] = None
 
+    # plugin
+    loss_type: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
+    optimizer: Optional[str] = None
+    metric: Optional[str] = None
+
     # extra
     acc_strategy: Literal['token', 'seq'] = 'token'
     max_new_tokens: int = 64
     temperature: float = 0.
-    optimizer: Optional[str] = None
-    metric: Optional[str] = None
 
     def __post_init__(self) -> None:
         if self.resume_from_checkpoint:
