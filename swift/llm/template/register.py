@@ -41,10 +41,12 @@ def get_template(
         use_chat_template=use_chat_template,
         template_backend=template_backend,
         truncation_strategy=truncation_strategy,
-        loss_scale=loss_scale,
         max_pixels=max_pixels,
+        tools_prompt=tools_prompt,
+        padding_side=padding_side,
+        loss_scale=loss_scale,
         sequence_parallel_size=sequence_parallel_size,
-        tools_prompt=tools_prompt)
+    )
 
 
 def get_template_meta(template_type: str) -> TemplateMeta:
