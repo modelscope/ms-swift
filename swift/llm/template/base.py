@@ -56,7 +56,7 @@ class Template(ProcessorMixin):
             *,
             use_chat_template: bool = True,
             template_backend: Literal['swift', 'jinja'] = 'swift',
-            truncation_strategy: Literal['raise', 'left'] = 'raise',
+            truncation_strategy: Literal['raise', 'left', 'right'] = 'raise',
             max_pixels: Optional[int] = None,
             tools_prompt: Optional[str] = None,
             # only for train
@@ -643,11 +643,18 @@ class Template(ProcessorMixin):
             if self.truncation_strategy == 'raise' and len(input_ids) > self.max_length:
                 raise MaxLengthError(f'Current length of row({len(input_ids)}) is larger'
                                      f' than the max_length({self.max_length}).')
-            input_ids = input_ids[-self.max_length:]
-            if labels is not None:
-                labels = labels[-self.max_length:]
-            if loss_scale is not None:
-                loss_scale = loss_scale[-self.max_length:]
+            elif self.truncation_strategy == 'right':
+                input_ids = input_ids[:self.max_length]
+                if labels is not None:
+                    labels = labels[:self.max_length]
+                if loss_scale is not None:
+                    loss_scale = loss_scale[:self.max_length]
+            else:
+                input_ids = input_ids[-self.max_length:]
+                if labels is not None:
+                    labels = labels[-self.max_length:]
+                if loss_scale is not None:
+                    loss_scale = loss_scale[-self.max_length:]
 
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
