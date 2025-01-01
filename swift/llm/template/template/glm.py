@@ -220,6 +220,7 @@ register_template(
         prompt=['<|user|>\\n{{QUERY}}\\n<|assistant|>\\n'],
         chat_sep=['\\n'],
         system_prefix=['<|system|>\\n{{SYSTEM}}\\n'],
+        suffix=['<|endoftext|>'],
         template_cls=GLMEdgeVTemplate,
         placeholder_tokens=['<|begin_of_image|>'],
     ))
