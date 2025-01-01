@@ -76,7 +76,7 @@ class GLM4VTemplate(Template):
 
 
 # not '<|assistant|>\n'
-register_template(GLM4TemplateMeta(MLLMTemplateType.glm4v, template_cls=GLM4VTemplate))
+register_template(GLM4TemplateMeta(MLLMTemplateType.glm4v, template_cls=GLM4VTemplate, suffix=['<|endoftext|>']))
 
 register_template(GLM4TemplateMeta(LLMTemplateType.glm4))
 
@@ -220,6 +220,7 @@ register_template(
         prompt=['<|user|>\\n{{QUERY}}\\n<|assistant|>\\n'],
         chat_sep=['\\n'],
         system_prefix=['<|system|>\\n{{SYSTEM}}\\n'],
+        suffix=['<|endoftext|>'],
         template_cls=GLMEdgeVTemplate,
         placeholder_tokens=['<|begin_of_image|>'],
     ))
