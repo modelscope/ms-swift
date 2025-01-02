@@ -419,6 +419,7 @@ For the meaning of the arguments, please refer to [here](https://modelscope.cn/m
 - INPUT_SIZE: Default is 448
 
 ### internvl2, internvl2_phi3, internvl2_5
+For the meaning of the arguments, please refer to [here](https://modelscope.cn/models/OpenGVLab/InternVL2_5-2B)
 - MAX_NUM: Default is 12
 - INPUT_SIZE: Default is 448
 - VIDEO_MAX_NUM: Default is 1, which is the MAX_NUM for videos
