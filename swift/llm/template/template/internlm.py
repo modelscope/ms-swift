@@ -8,7 +8,7 @@ from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.utils import get_env_args
 from ..base import Template
-from ..constant import LLMTemplateType, MLLMTemplateType
+from ..constant import LLMTemplateType, MLLMTemplateType, RMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import Context, Prompt, Word
@@ -34,6 +34,7 @@ register_template(
 
 register_template(ChatmlTemplateMeta(LLMTemplateType.internlm2, default_system=INTERNLM_SYSTEM))
 
+register_template(ChatmlTemplateMeta(RMTemplateType.internlm2_reward, default_system=INTERNLM_SYSTEM))
 
 class InternLMXComposer2Template(Template):
     image_placeholder = ['</s>']

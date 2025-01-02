@@ -9,7 +9,7 @@ from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 import torch
 from peft import PeftModel
 from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer, GenerationConfig, PretrainedConfig,
-                          PreTrainedModel, PreTrainedTokenizerBase)
+                          PreTrainedModel, PreTrainedTokenizerBase, AutoModel)
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import is_torch_bf16_gpu_available, is_torch_cuda_available, is_torch_npu_available, strtobool
 from transformers.utils.versions import require_version
@@ -216,6 +216,11 @@ def get_model_tokenizer_multimodal(model_dir: str, *args, **kwargs):
     model, _ = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
     return model, processor
 
+def get_model_tokenizer_reward_model(model_dir, *args, **kwargs):
+    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+    if 'AutoModel' in (getattr(model_config, 'auto_map', None) or {}):
+        kwargs['automodel_class'] = AutoModel
+    return get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
 
 def fix_do_sample_warning(generation_config: GenerationConfig) -> None:
     # Use the default values of temperature/top_p/top_k in generation_config.

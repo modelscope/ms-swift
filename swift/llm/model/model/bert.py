@@ -2,7 +2,7 @@
 from transformers import AutoConfig
 
 from swift.utils import get_logger
-from ..constant import LLMModelType
+from ..constant import BertModelType
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local, register_model
 
 logger = get_logger()
@@ -17,7 +17,7 @@ def get_model_tokenizer_modern_bert(model_dir, *args, **kwargs):
 
 register_model(
     ModelMeta(
-        LLMModelType.modern_bert, [
+        BertModelType.modern_bert, [
             ModelGroup([
                 Model('answerdotai/ModernBERT-base', 'answerdotai/ModernBERT-base'),
                 Model('answerdotai/ModernBERT-large', 'answerdotai/ModernBERT-large'),
@@ -30,7 +30,7 @@ register_model(
 
 register_model(
     ModelMeta(
-        LLMModelType.bert, [ModelGroup([
+        BertModelType.bert, [ModelGroup([
             Model('iic/nlp_structbert_backbone_base_std'),
         ])],
         None,
