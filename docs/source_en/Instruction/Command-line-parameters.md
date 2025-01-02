@@ -20,7 +20,7 @@ The introduction to command line parameters will cover base arguments, atomic ar
 - model_type: Model type. The same model architecture, template, and loading process define a model_type.
 - model_revision: Model version.
 - 🔥torch_dtype: Data type for model weights, supports `float16`, `bfloat16`, `float32`, default is read from the config file.
-- task_type: Defaults to 'causal_lm'. Options include 'causal_lm' and 'seq_cls'. You can view examples [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/seq_cls).
+- task_type: Defaults to 'causal_lm'. Options include 'causal_lm' and 'seq_cls'. You can view examples of seq_cls [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/seq_cls).
 - attn_impl: Attention type, supports `flash_attn`, `sdpa`, `eager`, default is sdpa.
 - num_labels: To be specified for classification models, representing the number of labels, default is None.
 - rope_scaling: Rope type, supports `linear` and `dynamic`, to be used with `max_length`.
@@ -45,7 +45,7 @@ The introduction to command line parameters will cover base arguments, atomic ar
 ### Template Arguments
 - 🔥template: Type of dialogue template, which defaults to the template type corresponding to the model. `swift pt` will convert the dialogue template into a generation template for use.
 - 🔥system: Custom system field, default is None, uses the default system of the template.
-- 🔥max_length: Maximum length of tokens for a single sample, default is None (no limit).
+- 🔥max_length: The maximum length of tokens for a single sample. Defaults to None, set to the maximum length of tokens supported by the model (max_model_len).
 - truncation_strategy: How to handle overly long tokens, supports `delete`, `left`, `right`, representing deletion, left trimming, and right trimming, default is 'delete'.
 - 🔥max_pixels: Maximum pixel count for pre-processing images in multimodal models (H*W), default is no scaling.
 - tools_prompt: The list of tools for agent training converted to system format, refer to [Agent Training](./Agent-support.md), default is 'react_en'.
@@ -97,7 +97,7 @@ This parameter list inherits from transformers `Seq2SeqTrainingArguments`, with 
 - lr_scheduler_type: LR scheduler type, default is cosine.
 - lr_scheduler_kwargs: Other parameters for the LR scheduler.
 - 🔥gradient_checkpointing_kwargs: Parameters passed to `torch.utils.checkpoint`. For example, set to `--gradient_checkpointing_kwargs '{"use_reentrant": false}'`.
-- report_to: Default is `tensorboard`.
+- report_to: Default is `tensorboard`. You can also specify `--report_to tensorboard wandb`, `--report_to all`.
 - remove_unused_columns: Default is False.
 - logging_first_step: Whether to log the first step print, default is True.
 - logging_steps: Interval for logging prints, default is 5.
@@ -141,7 +141,7 @@ Other important parameters:
 
 - freeze_parameters: Prefix of parameters to be frozen, default is `[]`.
 - freeze_parameters_ratio: Ratio of parameters to freeze from the bottom up, default is 0. Setting it to 1 will freeze all parameters. Combine with `trainable_parameters` to set trainable parameters.
-- trainable_parameters: Prefix of trainable parameters, default is `[]`.
+- trainable_parameters: Prefix of trainable parameters, default is `[]`. The priority of `trainable_parameters` is higher than that of `freeze_parameters` and `freeze_parameters_ratio`.
 
 #### LoRA
 
@@ -310,7 +310,7 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
 
 RLHF arguments inherit from the [training arguments](#training-arguments).
 
-- 🔥rlhf_type: Alignment algorithm type, supports `dpo`, `orpo`, `simpo`, `kto`, `cpo`.
+- 🔥rlhf_type: Alignment algorithm type, supports `dpo`, `orpo`, `simpo`, `kto`, `cpo`, `rm`.
 - ref_model: Original comparison model in algorithms like DPO.
 - ref_model_type: Same as model_type.
 - ref_model_revision: Same as model_revision.
