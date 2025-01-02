@@ -8,8 +8,8 @@ from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
 from peft import PeftModel
-from transformers import (AutoConfig, AutoModel, AutoModelForCausalLM, AutoTokenizer, GenerationConfig,
-                          PretrainedConfig, PreTrainedModel, PreTrainedTokenizerBase)
+from transformers import (AutoConfig, AutoModel, AutoModelForCausalLM, AutoModelForSequenceClassification,
+                          AutoTokenizer, GenerationConfig, PretrainedConfig, PreTrainedModel, PreTrainedTokenizerBase)
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import is_torch_bf16_gpu_available, is_torch_cuda_available, is_torch_npu_available, strtobool
 from transformers.utils.versions import require_version
@@ -62,6 +62,7 @@ class ModelMeta:
     # Additional files that need to be saved for full parameter training/merge-lora.
     additional_saved_files: List[str] = field(default_factory=list)
     torch_dtype: Optional[torch.dtype] = None
+    task_type: Literal['causal_lm', 'seq_cls', None] = None
 
     # File patterns to ignore when downloading the model.
     ignore_patterns: List[str] = field(default_factory=list)
@@ -158,7 +159,9 @@ def get_model_tokenizer_from_local(model_dir: str,
                                    automodel_class=None,
                                    **kwargs):
     """Load the model and tokenizer from the local model_dir."""
-    automodel_class = automodel_class or AutoModelForCausalLM
+    automodel_class_mapping = {'seq_cls': AutoModelForSequenceClassification, 'causal_lm': AutoModelForCausalLM}
+    if automodel_class is None:
+        automodel_class = automodel_class_mapping[model_info.task_type]
     if model_config is None:
         model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     # fix prediction_step (internvl2, ovis, ...)
@@ -363,6 +366,7 @@ def get_model_info_meta(
         # model kwargs
         model_type: Optional[str] = None,
         quantization_config=None,
+        task_type=None,
         **kwargs) -> Tuple[ModelInfo, ModelMeta]:
     model_meta = get_matched_model_meta(model_id_or_path)
     model_dir = safe_snapshot_download(
@@ -389,6 +393,7 @@ def get_model_info_meta(
         logger.info(f'Setting torch_dtype: {torch_dtype}')
     _check_torch_dtype(torch_dtype)
     model_info.torch_dtype = torch_dtype
+    model_info.task_type = task_type or model_meta.task_type
 
     model_meta.check_requires(model_info)
     return model_info, model_meta
@@ -411,6 +416,7 @@ def get_model_tokenizer(
         attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None,
         rope_scaling: Optional[Dict[str, Any]] = None,
         automodel_class=None,
+        task_type: Literal['causal_lm', 'seq_cls'] = 'causal_lm',
         model_kwargs: Optional[Dict[str, Any]] = None,
         **kwargs) -> Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]:
     """
@@ -439,7 +445,8 @@ def get_model_tokenizer(
         revision=revision,
         download_model=download_model,
         model_type=model_type,
-        quantization_config=quantization_config)
+        quantization_config=quantization_config,
+        task_type=task_type)
 
     if not use_torchacc() and device_map is None:
         device_map = get_default_device_map()

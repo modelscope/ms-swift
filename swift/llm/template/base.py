@@ -185,6 +185,7 @@ class Template(ProcessorMixin):
 
     def _seq_cls_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = self._encode(inputs)
+        encoded.pop('labels', None)
         if inputs.label is not None:
             encoded['labels'] = int(inputs.label)
         return encoded
@@ -204,6 +205,9 @@ class Template(ProcessorMixin):
             inputs = StdTemplateInputs.from_dict(inputs, tools_prompt=self.tools_prompt)
         elif isinstance(inputs, StdTemplateInputs):
             inputs = deepcopy(inputs)
+
+        if not self.is_training:
+            InferRequest.remove_response(inputs.messages)
 
         assert isinstance(inputs, StdTemplateInputs)
         self._preprocess_inputs(inputs)
@@ -677,7 +681,14 @@ class Template(ProcessorMixin):
     def debug_logger(self, inputs):
         if not strtobool(os.getenv('SWIFT_DEBUG', 'false')):
             return
-        self.print_inputs(inputs)
+        if 'input_ids' in inputs:
+            k = 'input_ids'
+            val = inputs['input_ids']
+        else:
+            k = 'generate_ids'
+            val = inputs['generate_ids']
+        for v in val:
+            self.print_inputs({k: v.tolist()})
 
     def get_generate_ids(self, generate_ids: Union[torch.Tensor, List[int]],
                          num_prompt_tokens: int) -> Union[torch.Tensor, List[int]]:
@@ -937,7 +948,9 @@ class Template(ProcessorMixin):
     def print_inputs(self, inputs: Dict[str, Any], tokenizer_kwargs: Optional[Dict[str, Any]] = None) -> None:
         if tokenizer_kwargs is None:
             tokenizer_kwargs = {}
-        for key in ['input', 'labels', 'generate_ids', 'chosen_input', 'chosen_labels', 'rejected_input', 'rejected_labels']:
+        for key in [
+                'input', 'labels', 'generate', 'chosen_input', 'chosen_labels', 'rejected_input', 'rejected_labels'
+        ]:
             val = inputs.get(key)  # fix val is a tensor
             if val is None:
                 val = inputs.get(f'{key}_ids')

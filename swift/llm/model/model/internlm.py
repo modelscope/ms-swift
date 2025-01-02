@@ -347,4 +347,4 @@ register_model(
         get_model_tokenizer_reward_model,
         requires=['transformers>=4.38'],
         architectures=['InternLM2ForRewardModel'],
-        tags=['reward_model']))
+        task_type='seq_cls'))

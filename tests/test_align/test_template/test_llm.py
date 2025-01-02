@@ -177,7 +177,6 @@ def test_internlm2_reward():
     pt_engine.default_template.template_backend = 'jinja'
     res2 = _infer_model(pt_engine, messages=messages)
     assert res == res2 == '0.48681640625'
-    print()
 
 
 if __name__ == '__main__':

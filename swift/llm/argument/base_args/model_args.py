@@ -154,7 +154,6 @@ class ModelArguments:
             'rope_scaling': self.rope_scaling,
         }
         if self.task_type == 'seq_cls':
-            from transformers import AutoModelForSequenceClassification
-            kwargs['automodel_class'] = AutoModelForSequenceClassification
+            kwargs['task_type'] = self.task_type
             kwargs['model_kwargs'] = {'num_labels': self.num_labels}
         return kwargs
