@@ -34,7 +34,10 @@ register_template(
 
 register_template(ChatmlTemplateMeta(LLMTemplateType.internlm2, default_system=INTERNLM_SYSTEM))
 
-register_template(ChatmlTemplateMeta(RMTemplateType.internlm2_reward, default_system=INTERNLM_SYSTEM))
+register_template(
+    ChatmlTemplateMeta(
+        RMTemplateType.internlm2_reward, default_system=INTERNLM_SYSTEM, suffix=['<|im_end|>\n<|reward|>']))
+
 
 class InternLMXComposer2Template(Template):
     image_placeholder = ['</s>']

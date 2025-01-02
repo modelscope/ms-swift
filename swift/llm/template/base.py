@@ -541,7 +541,8 @@ class Template(ProcessorMixin):
             messages.insert(0, {'role': 'system', 'content': inputs.system})
         if messages[-1]['content'] is None:
             messages.pop()
-        text = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        add_generation_prompt = messages[-1]['role'] != 'assistant'
+        text = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=add_generation_prompt)
         answer_len = 1 if self.is_training else 0
         return [text], [1.], answer_len
 

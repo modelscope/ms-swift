@@ -8,9 +8,8 @@ from swift.llm import TemplateType
 from ..constant import LLMModelType, MLLMModelType, RMModelType
 from ..model_arch import ModelArch
 from ..patcher import patch_output_clone, patch_output_to_input_device
-from ..register import (
-    Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model, get_model_tokenizer_reward_model
-)
+from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_reward_model,
+                        get_model_tokenizer_with_flash_attn, register_model)
 from ..utils import ModelInfo, safe_snapshot_download, use_submodel_func
 
 register_model(
@@ -334,7 +333,6 @@ register_model(
         model_arch=ModelArch.qwen2_audio,
         tags=['audio'],
     ))
-
 
 register_model(
     ModelMeta(

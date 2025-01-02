@@ -2,6 +2,7 @@
 # Classification criteria for model_type: same model architecture, tokenizer (get function), template.
 from typing import List
 
+
 class LLMModelType:
     qwen = 'qwen'
     qwen2 = 'qwen2'
@@ -93,12 +94,15 @@ class LLMModelType:
     polylm = 'polylm'
     aya = 'aya'
 
+
 class BertModelType:
     modern_bert = 'modern_bert'
     bert = 'bert'
 
+
 class RMModelType:
     internlm2_reward = 'internlm2_reward'
+
 
 class MLLMModelType:
     qwen_vl = 'qwen_vl'
