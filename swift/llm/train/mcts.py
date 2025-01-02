@@ -4,6 +4,9 @@ import torch
 from modelscope import AutoModelForCausalLM, AutoTokenizer, GenerationConfig
 from dataclasses import dataclass, field
 from typing import List, Optional, Callable, Tuple
+from swift.utils import get_logger
+
+logger = get_logger()
 
 @dataclass
 class Node:
@@ -57,13 +60,13 @@ def monte_carlo_tree_search(
     success_nodes = []  # 存储满足条件的成功路径节点
     for depth in range(max_depth):
         all_children = []
-        print(f"\n--- 深度 {depth + 1} ---")
+        logger.info(f"\n--- 深度 {depth + 1} ---")
         for node in current_nodes:
-            print(f"扩展节点: \"{node.text[len(prompt):]}\" (分数: {node.score:.2f})")
+            logger.info(f"扩展节点: \"{node.text[len(prompt):]}\" (分数: {node.score:.2f})")
 
             # 如果当前节点已具有成功子节点，不再扩展
             if node.success_count > 0:
-                print(f"节点 \"{node.text[len(prompt):]}\" 已有成功子节点，不再扩展。")
+                logger.info(f"节点 \"{node.text[len(prompt):]}\" 已有成功子节点，不再扩展。")
                 continue
 
             # 使用模型生成多个可能的续句
@@ -104,7 +107,7 @@ def monte_carlo_tree_search(
                     while ancestor is not None:
                         ancestor.score += current_reward
                         ancestor.success_count += 1
-                        print(f"生成子句: \"{child.text[len(prompt):]}\" (得分: {child.score:.2f}) [成功] 父节点 \"{ancestor.text[len(prompt):]}\" 得分增加至 {ancestor.score:.2f}")
+                        logger.info(f"生成子句: \"{child.text[len(prompt):]}\" (得分: {child.score:.2f}) [成功] 父节点 \"{ancestor.text[len(prompt):]}\" 得分增加至 {ancestor.score:.2f}")
                         current_reward *= decay_factor  # 奖励衰减
                         ancestor = ancestor.parent
                 else:
@@ -115,20 +118,20 @@ def monte_carlo_tree_search(
                         ancestor = node
                         while ancestor is not None:
                             ancestor.score -= current_penalty
-                            print(f"生成子句: \"{child.text[len(prompt):]}\" (得分: {child.score:.2f}) [失败：生成结束] 父节点 \"{ancestor.text[len(prompt):]}\" 得分减少至 {ancestor.score:.2f}")
+                            logger.info(f"生成子句: \"{child.text[len(prompt):]}\" (得分: {child.score:.2f}) [失败：生成结束] 父节点 \"{ancestor.text[len(prompt):]}\" 得分减少至 {ancestor.score:.2f}")
                             current_penalty *= penalty_decay  # 惩罚衰减
                             ancestor = ancestor.parent
                     else:
-                        print(f"生成子句: \"{child.text[len(prompt):]}\" (得分: {child.score:.2f})")
+                        logger.info(f"生成子句: \"{child.text[len(prompt):]}\" (得分: {child.score:.2f})")
                         node.children.append(child)
                         all_children.append(child)
 
         if success_nodes:
-            print(f"在深度 {depth + 1} 找到了满足条件的路径。")
+            logger.info(f"在深度 {depth + 1} 找到了满足条件的路径。")
             break  # 找到成功路径后，可以选择停止搜索或继续搜索以找到更优的路径
 
         if not all_children:
-            print("没有更多的子节点生成，提前终止搜索。")
+            logger.info("没有更多的子节点生成，提前终止搜索。")
             break
 
         # 按照得分降序排列所有子节点，并选择前 max_children 个
@@ -146,5 +149,5 @@ def monte_carlo_tree_search(
         #     node = node.parent
         return node.text[len(prompt):], True
     else:
-        print("未能找到满足条件的路径。")
+        logger.info("未能找到满足条件的路径。")
         return None, False

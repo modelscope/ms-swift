@@ -230,7 +230,7 @@ class SwiftRLFT(SwiftSft):
                 eos.extend(self.tokenizer.encode(s, add_special_tokens=False))
             generation_config = GenerationConfig(
                 max_new_tokens=100,
-                temperature=min(0.3 + 0.07 * rd, 1.0),
+                temperature=min(0.3 + 0.07 * rd, 1.2),
                 top_k=50,
                 top_p=0.9,
                 do_sample=True,
@@ -240,33 +240,37 @@ class SwiftRLFT(SwiftSft):
             queries = data["input_ids"].to(self.model.device)
             ground_truths = data["ground_truth"]
             messages = data["_messages"]
-            with unwrap_model_for_generation(self.model, trainer.accelerator) as unwrapped_model:
-                generated = []
-                for i, (q, m, g) in enumerate(zip(queries, messages, ground_truths)):
-                    # TODO get a negative path?
-                    gen = monte_carlo_tree_search(self.tokenizer.decode(q),
-                                                  unwrapped_model,
-                                                  self.tokenizer,
-                                                  partial(self.get_reward, ground_truths=[g]),
-                                                  self.get_reward_by_model,
-                                                  generation_config,
-                                                  max_depth=6,
-                                                  max_children=3,
-                                                  success_factor=1.0,
-                                                  decay_factor=0.5,
-                                                  penalty_factor=0.2,
-                                                  penalty_decay=0.5,
-                                                  score_threshold=-5,
-                                                  history=m,
-                                                  )
-                    if gen[1]:
-                        _data = deepcopy(data)
-                        messages = _data['_messages'][i]
-                        assert messages[-1]['content'] is None
-                        messages[-1]['content'] = gen[0]
-                        encoded = self.template.encode(StdTemplateInputs.from_dict({'messages': messages}, tools_prompt='toolbench'))
-                        encoded.pop('_messages', None)
-                        generated.append(encoded)
+            
+            os.mkdirs('mcts', exist_ok=True)
+            with open(f'mcts/round_{rd}.jsonl', 'w') as f:
+                with unwrap_model_for_generation(self.model, trainer.accelerator) as unwrapped_model:
+                    generated = []
+                    for i, (q, m, g) in enumerate(zip(queries, messages, ground_truths)):
+                        # TODO get a negative path?
+                        gen = monte_carlo_tree_search(self.tokenizer.decode(q),
+                                                    unwrapped_model,
+                                                    self.tokenizer,
+                                                    partial(self.get_reward, ground_truths=[g]),
+                                                    self.get_reward_by_model,
+                                                    generation_config,
+                                                    max_depth=6,
+                                                    max_children=4,
+                                                    success_factor=1.0,
+                                                    decay_factor=0.5,
+                                                    penalty_factor=0.2,
+                                                    penalty_decay=0.5,
+                                                    score_threshold=-5,
+                                                    history=m,
+                                                    )
+                        if gen[1]:
+                            _data = deepcopy(data)
+                            messages = _data['_messages'][i]
+                            assert messages[-1]['content'] is None
+                            messages[-1]['content'] = gen[0]
+                            encoded = self.template.encode(StdTemplateInputs.from_dict({'messages': messages}, tools_prompt='toolbench'))
+                            encoded.pop('_messages', None)
+                            generated.append(encoded)
+                            f.write(json.dumps({'messages': messages}) + '\n')
             return generated
 
     def train(self, trainer):
@@ -274,18 +278,19 @@ class SwiftRLFT(SwiftSft):
         logger.info(f'The logging file will be saved in: {logging_path}')
         # trainer.train(trainer.args.resume_from_checkpoint)
         new_dataset = []
-        for i in range(19):
+        for i in range(50):
             train_dataloader = trainer.get_train_dataloader()
             cnt = 0
             for batch in train_dataloader:
                 cnt += 1
                 new_data = self.rollout(batch, trainer, i)
                 new_dataset.extend(new_data)
-                if cnt > 300:
+                if cnt > 30:
                     break
 
             trainer._origin_dataset = trainer.train_dataset
             trainer.train_dataset = new_dataset
+            trainer.args.eval_strategy = 'no'
             trainer.train(trainer.args.resume_from_checkpoint)
             trainer.train_dataset = trainer._origin_dataset
             trainer.train_dataset = trainer.train_dataset.shuffle()
