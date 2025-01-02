@@ -45,7 +45,7 @@ The introduction to command line parameters will cover base arguments, atomic ar
 ### Template Arguments
 - 🔥template: Type of dialogue template, which defaults to the template type corresponding to the model. `swift pt` will convert the dialogue template into a generation template for use.
 - 🔥system: Custom system field, default is None, uses the default system of the template.
-- 🔥max_length: Maximum length of tokens for a single sample, default is None (no limit).
+- 🔥max_length: The maximum length of tokens for a single sample. Defaults to None, set to the maximum length of tokens supported by the model (max_model_len).
 - truncation_strategy: How to handle overly long tokens, supports `delete`, `left`, `right`, representing deletion, left trimming, and right trimming, default is 'delete'.
 - 🔥max_pixels: Maximum pixel count for pre-processing images in multimodal models (H*W), default is no scaling.
 - tools_prompt: The list of tools for agent training converted to system format, refer to [Agent Training](./Agent-support.md), default is 'react_en'.
@@ -97,7 +97,7 @@ This parameter list inherits from transformers `Seq2SeqTrainingArguments`, with 
 - lr_scheduler_type: LR scheduler type, default is cosine.
 - lr_scheduler_kwargs: Other parameters for the LR scheduler.
 - 🔥gradient_checkpointing_kwargs: Parameters passed to `torch.utils.checkpoint`. For example, set to `--gradient_checkpointing_kwargs '{"use_reentrant": false}'`.
-- report_to: Default is `tensorboard`.
+- report_to: Default is `tensorboard`. You can also specify `--report_to tensorboard wandb`.
 - remove_unused_columns: Default is False.
 - logging_first_step: Whether to log the first step print, default is True.
 - logging_steps: Interval for logging prints, default is 5.
@@ -141,7 +141,7 @@ Other important parameters:
 
 - freeze_parameters: Prefix of parameters to be frozen, default is `[]`.
 - freeze_parameters_ratio: Ratio of parameters to freeze from the bottom up, default is 0. Setting it to 1 will freeze all parameters. Combine with `trainable_parameters` to set trainable parameters.
-- trainable_parameters: Prefix of trainable parameters, default is `[]`.
+- trainable_parameters: Prefix of trainable parameters, default is `[]`. The priority of `trainable_parameters` is higher than that of `freeze_parameters` and `freeze_parameters_ratio`.
 
 #### LoRA
 
