@@ -8,11 +8,7 @@ from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_from_lo
 
 logger = get_logger()
 
-
-
-
-
-            # ModelGroup([
-            #     Model('Qwen/Qwen2.5-Math-RM-72B', 'Qwen/Qwen2.5-Math-RM-72B'),
-            #     Model('Qwen/Qwen2-Math-RM-72B', 'Qwen/Qwen2-Math-RM-72B'),
-            # ]),
+# ModelGroup([
+#     Model('Qwen/Qwen2.5-Math-RM-72B', 'Qwen/Qwen2.5-Math-RM-72B'),
+#     Model('Qwen/Qwen2-Math-RM-72B', 'Qwen/Qwen2-Math-RM-72B'),
+# ]),

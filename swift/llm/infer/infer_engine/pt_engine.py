@@ -314,12 +314,13 @@ class PtEngine(InferEngine):
         if adapter_names is not None:
             generate_kwargs['adapter_names'] = adapter_names
         num_prompt_tokens = self._get_num_tokens(inputs)
-
+        template.debug_logger(inputs)  # debug
         generate_kwargs = template.prepare_generate_kwargs(generate_kwargs, model=self.model)
         output = dict(template.generate(self.model, **generate_kwargs))
         output.pop('past_key_values', None)
         batched_generate_ids = output['sequences']
         batched_generate_ids = template.get_generate_ids(batched_generate_ids, num_prompt_tokens)
+        template.debug_logger({'generate_ids': batched_generate_ids})  # debug
         batched_logprobs = self.preprocess_logits(
             output.get('logits'), batched_generate_ids, generation_config.top_logprobs)
 

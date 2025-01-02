@@ -674,23 +674,16 @@ class Template(ProcessorMixin):
                     encoded[k] = None
         return encoded
 
-    def _debug_logger(self, generate_ids):
-        if isinstance(generate_ids, list) or isinstance(generate_ids, torch.Tensor) and generate_ids.ndim == 1:
-            generate_ids = [generate_ids]
-        for tokens in generate_ids:
-            if isinstance(tokens, torch.Tensor):
-                tokens = tokens.tolist()
-            logger.info(f'[GENERATE_IDS] {tokens}')
-            logger.info(f'[GENERATE] {self.safe_decode(tokens)}\n' + '-' * 50)
+    def debug_logger(self, inputs):
+        if not strtobool(os.getenv('SWIFT_DEBUG', 'false')):
+            return
+        self.print_inputs(inputs)
 
     def get_generate_ids(self, generate_ids: Union[torch.Tensor, List[int]],
                          num_prompt_tokens: int) -> Union[torch.Tensor, List[int]]:
-        if strtobool(os.getenv('SWIFT_DEBUG', 'false')):
-            self._debug_logger(generate_ids)
         if self.skip_prompt:
-            return generate_ids[..., num_prompt_tokens:]
-        else:
-            return generate_ids
+            generate_ids = generate_ids[..., num_prompt_tokens:]
+        return generate_ids
 
     def post_process_generate_response(self, response: str, inputs: StdTemplateInputs) -> str:
         return response
@@ -944,7 +937,7 @@ class Template(ProcessorMixin):
     def print_inputs(self, inputs: Dict[str, Any], tokenizer_kwargs: Optional[Dict[str, Any]] = None) -> None:
         if tokenizer_kwargs is None:
             tokenizer_kwargs = {}
-        for key in ['input', 'labels', 'chosen_input', 'chosen_labels', 'rejected_input', 'rejected_labels']:
+        for key in ['input', 'labels', 'generate_ids', 'chosen_input', 'chosen_labels', 'rejected_input', 'rejected_labels']:
             val = inputs.get(key)  # fix val is a tensor
             if val is None:
                 val = inputs.get(f'{key}_ids')
