@@ -284,7 +284,7 @@ class PtEngine(InferEngine):
         if logits.shape[-1] > 1:
             preds = torch.argmax(logits, dim=-1).tolist()
             logprobs = torch.log_softmax(logits, -1)
-            logprobs = [self._get_seq_cls_logprobs(logprobs[i]) for i in range(preds)]
+            logprobs = [self._get_seq_cls_logprobs(logprobs[i]) for i in range(len(preds))]
         else:
             preds = logits.squeeze(dim=-1).tolist()
             logprobs = [None] * len(preds)
@@ -309,10 +309,7 @@ class PtEngine(InferEngine):
                     adapter_request: Optional[AdapterRequest] = None,
                     template_inputs=None) -> Union[List[ChatCompletionResponse]]:
         # bos_token TODO: encoder-decoder
-        generate_kwargs = {
-            'generation_config': generation_config,
-            **inputs
-        }
+        generate_kwargs = {'generation_config': generation_config, **inputs}
         adapter_names = self._get_adapter_names(adapter_request)
         if adapter_names is not None:
             generate_kwargs['adapter_names'] = adapter_names
