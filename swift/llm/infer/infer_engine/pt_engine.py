@@ -282,10 +282,12 @@ class PtEngine(InferEngine):
         inputs.pop('labels')
         logits = self.model(**inputs, **call_kwargs).logits
         if logits.shape[-1] > 1:
-            logprobs = torch.log_softmax(logits, -1)
             preds = torch.argmax(logits, dim=-1).tolist()
+            logprobs = torch.log_softmax(logits, -1)
+            logprobs = [self._get_seq_cls_logprobs(logprobs[i]) for i in range(preds)]
         else:
             preds = logits.squeeze(dim=-1).tolist()
+            logprobs = [None] * len(preds)
         res = []
         for i, pred in enumerate(preds):
             usage_info = self._get_usage_info(num_prompt_tokens, 1)
@@ -294,7 +296,7 @@ class PtEngine(InferEngine):
                     index=0,
                     message=ChatMessage(role='assistant', content=str(pred), tool_calls=None),
                     finish_reason='stop',
-                    logprobs=self._get_seq_cls_logprobs(logprobs[i]))
+                    logprobs=logprobs[i])
             ]
             res.append(ChatCompletionResponse(model=self.model_name, choices=choices, usage=usage_info))
         return res
