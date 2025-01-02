@@ -284,7 +284,7 @@ class PtEngine(InferEngine):
         if logits.shape[-1] > 1:
             preds = torch.argmax(logits, dim=-1).tolist()
             logprobs = torch.log_softmax(logits, -1)
-            logprobs = [self._get_seq_cls_logprobs(logprobs[i]) for i in range(preds)]
+            logprobs = [self._get_seq_cls_logprobs(logprobs[i]) for i in range(len(preds))]
         else:
             preds = logits.squeeze(dim=-1).tolist()
             logprobs = [None] * len(preds)
