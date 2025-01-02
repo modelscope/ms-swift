@@ -393,7 +393,7 @@ def get_model_info_meta(
         logger.info(f'Setting torch_dtype: {torch_dtype}')
     _check_torch_dtype(torch_dtype)
     model_info.torch_dtype = torch_dtype
-    model_info.task_type = task_type or model_meta.task_type
+    model_info.task_type = model_meta.task_type or task_type
 
     model_meta.check_requires(model_info)
     return model_info, model_meta

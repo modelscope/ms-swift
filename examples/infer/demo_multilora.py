@@ -7,6 +7,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 def infer_multilora(infer_request: 'InferRequest', infer_backend: Literal['vllm', 'pt']):
     # Dynamic LoRA
     adapter_path = safe_snapshot_download('swift/test_lora')
+    adapter_path2 = safe_snapshot_download('swift/test_lora2')
     args = BaseArguments.from_pretrained(adapter_path)
     if infer_backend == 'pt':
         engine = PtEngine(args.model)
@@ -16,19 +17,20 @@ def infer_multilora(infer_request: 'InferRequest', infer_backend: Literal['vllm'
     template = get_template(args.template, engine.processor, args.system)
     request_config = RequestConfig(max_tokens=512, temperature=0)
     adapter_request = AdapterRequest('lora1', adapter_path)
+    adapter_request2 = AdapterRequest('lora2', adapter_path2)
 
     # use lora
     resp_list = engine.infer([infer_request], request_config, template=template, adapter_request=adapter_request)
     response = resp_list[0].choices[0].message.content
-    print(f'lora-response: {response}')
+    print(f'lora1-response: {response}')
     # origin model
     resp_list = engine.infer([infer_request], request_config)
     response = resp_list[0].choices[0].message.content
     print(f'response: {response}')
     # use lora
-    resp_list = engine.infer([infer_request], request_config, template=template, adapter_request=adapter_request)
+    resp_list = engine.infer([infer_request], request_config, template=template, adapter_request=adapter_request2)
     response = resp_list[0].choices[0].message.content
-    print(f'lora-response: {response}')
+    print(f'lora2-response: {response}')
 
 
 def infer_pt(infer_request: 'InferRequest'):

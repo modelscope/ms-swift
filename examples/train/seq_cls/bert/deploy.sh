@@ -1,6 +1,6 @@
 CUDA_VISIBLE_DEVICES=0 \
 swift deploy \
-    --model output/vx-xxx/checkpoint-xxx \
+    --adapters output/vx-xxx/checkpoint-xxx \
     --served_model_name bert-base-chinese \
     --truncation_strategy right
 
