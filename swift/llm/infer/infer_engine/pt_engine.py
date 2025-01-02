@@ -159,11 +159,13 @@ class PtEngine(InferEngine):
             raise ValueError(error_msg)
         streamer = TokensIteratorStreamer()
         generate_kwargs = {
-            'adapter_names': self._get_adapter_names(adapter_request),
             'generation_config': generation_config,
             'streamer': streamer,
             **inputs,
         }
+        adapter_names = self._get_adapter_names(adapter_request)
+        if adapter_names is not None:
+            generate_kwargs['adapter_names'] = adapter_names
         num_prompt_tokens = self._get_num_tokens(inputs)
 
         logits_streamer = None
@@ -272,12 +274,20 @@ class PtEngine(InferEngine):
                        inputs: Dict[str, Any],
                        adapter_request: Optional[AdapterRequest] = None,
                        **kwargs):
-        call_kwargs = {'adapter_names': self._get_adapter_names(adapter_request)}
+        call_kwargs = {}
+        adapter_names = self._get_adapter_names(adapter_request)
+        if adapter_names is not None:
+            call_kwargs['adapter_names'] = adapter_names
         num_prompt_tokens = self._get_num_tokens(inputs)
         inputs.pop('labels')
         logits = self.model(**inputs, **call_kwargs).logits
-        logprobs = torch.log_softmax(logits, -1)
-        preds = torch.argmax(logits, dim=-1).tolist()
+        if logits.shape[-1] > 1:
+            preds = torch.argmax(logits, dim=-1).tolist()
+            logprobs = torch.log_softmax(logits, -1)
+            logprobs = [self._get_seq_cls_logprobs(logprobs[i]) for i in range(len(preds))]
+        else:
+            preds = logits.squeeze(dim=-1).tolist()
+            logprobs = [None] * len(preds)
         res = []
         for i, pred in enumerate(preds):
             usage_info = self._get_usage_info(num_prompt_tokens, 1)
@@ -286,7 +296,7 @@ class PtEngine(InferEngine):
                     index=0,
                     message=ChatMessage(role='assistant', content=str(pred), tool_calls=None),
                     finish_reason='stop',
-                    logprobs=self._get_seq_cls_logprobs(logprobs[i]))
+                    logprobs=logprobs[i])
             ]
             res.append(ChatCompletionResponse(model=self.model_name, choices=choices, usage=usage_info))
         return res
@@ -299,11 +309,10 @@ class PtEngine(InferEngine):
                     adapter_request: Optional[AdapterRequest] = None,
                     template_inputs=None) -> Union[List[ChatCompletionResponse]]:
         # bos_token TODO: encoder-decoder
-        generate_kwargs = {
-            'adapter_names': self._get_adapter_names(adapter_request),
-            'generation_config': generation_config,
-            **inputs
-        }
+        generate_kwargs = {'generation_config': generation_config, **inputs}
+        adapter_names = self._get_adapter_names(adapter_request)
+        if adapter_names is not None:
+            generate_kwargs['adapter_names'] = adapter_names
         num_prompt_tokens = self._get_num_tokens(inputs)
 
         generate_kwargs = template.prepare_generate_kwargs(generate_kwargs, model=self.model)

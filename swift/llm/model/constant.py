@@ -93,7 +93,9 @@ class LLMModelType:
     mamba = 'mamba'
     polylm = 'polylm'
     aya = 'aya'
-    # bert
+
+
+class BertModelType:
     modern_bert = 'modern_bert'
     bert = 'bert'
 
@@ -174,7 +176,7 @@ class MLLMModelType:
     megrez_omni = 'megrez_omni'
 
 
-class ModelType(LLMModelType, MLLMModelType):
+class ModelType(LLMModelType, MLLMModelType, BertModelType):
 
     @classmethod
     def get_model_name_list(cls) -> List[str]:
