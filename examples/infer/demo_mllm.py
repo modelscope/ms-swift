@@ -109,15 +109,27 @@ if __name__ == '__main__':
     elif infer_backend == 'vllm':
         from swift.llm import VllmEngine
         model = 'Qwen/Qwen2-VL-2B-Instruct'
-        mm_type = 'video'
-        dataset = 'AI-ModelScope/LaTeX_OCR:small#1000'
         engine = VllmEngine(model, max_model_len=32768, limit_mm_per_prompt={'image': 5, 'video': 2})
+        mm_type = 'video'
+        # If you encounter insufficient GPU memory,
+        # please reduce max_model_len and set max_num_seqs=5.
+        if mm_type == 'video':
+            # test env: vllm==0.6.5
+            os.environ['VIDEO_MAX_PIXELS'] = '50176'
+            os.environ['FPS_MAX_FRAMES'] = '12'
+            dataset = 'swift/VideoChatGPT:Generic#100'
+        elif mm_type == 'image':
+            os.environ['MAX_PIXELS'] = '1003520'
+            dataset = 'AI-ModelScope/LaTeX_OCR:small#1000'
     elif infer_backend == 'lmdeploy':
         from swift.llm import LmdeployEngine
         model = 'OpenGVLab/InternVL2_5-1B'
-        mm_type = 'video'
-        dataset = 'AI-ModelScope/LaTeX_OCR:small#1000'
         engine = LmdeployEngine(model, vision_batch_size=8)
+        mm_type = 'video'
+        if mm_type == 'video':
+            dataset = 'swift/VideoChatGPT:Generic#1000'
+        else:
+            dataset = 'AI-ModelScope/LaTeX_OCR:small#1000'
 
     # Here, `load_dataset` is used for convenience; `infer_batch` does not require creating a dataset.
     dataset = load_dataset([dataset], seed=42)[0]
