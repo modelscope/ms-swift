@@ -52,19 +52,3 @@ def merge_lora(args: ExportArguments, device_map=None, replace_if_exists=False) 
 
     args.model = output_dir
     args.adapters = []
-    if args.use_merge_kit:
-        tempdir = tempfile.gettempdir()
-        mergekit_path = os.path.join(output_dir, 'mergekit')
-        merge_yaml = args.merge_yaml.replace('{merged_model}', output_dir).replace('{instruct_model}',
-                                                                                   args.instruct_model).replace(
-                                                                                       '{base_model}', base_model)
-        try:
-            yamlfile = os.path.join(tempdir, 'mergekit.yaml')
-            with open(yamlfile, 'w', encoding='utf-8') as f:
-                f.write(merge_yaml)
-            logger.info(f'Merging with config: {merge_yaml}')
-            os.system(f'mergekit-yaml {yamlfile} {mergekit_path}')
-            logger.info(f'Merge complete with path: {mergekit_path}')
-        finally:
-            if tempdir:
-                shutil.rmtree(tempdir, ignore_errors=True)

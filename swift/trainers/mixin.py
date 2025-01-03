@@ -315,33 +315,6 @@ class SwiftMixin:
             self.log(logs)
         super()._maybe_log_save_evaluate(tr_loss, *args, **kwargs)
 
-    def create_optimizer_and_scheduler(self, num_training_steps: int):
-        if hasattr(self.args, 'galore_config'):
-            optimizer, lr_scheduler = create_optimizer_and_scheduler(
-                self.model,
-                self.args,
-                self.args.galore_config,
-                num_training_steps,
-                lr=self.args.learning_rate,
-                weight_decay=self.args.weight_decay)
-            self.optimizer = optimizer
-            self.lr_scheduler = lr_scheduler
-        else:
-            super().create_optimizer_and_scheduler(num_training_steps=num_training_steps)
-
-    def create_optimizer(self):
-
-        if self.optimizer is None and hasattr(self.model, 'create_optimizer_param_groups'):
-            # Lora+ parameter groups
-            optimizer_grouped_parameters = self.model.create_optimizer_param_groups(
-                lr=self.args.learning_rate, weight_decay=self.args.weight_decay)
-            if optimizer_grouped_parameters is not None:
-                optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(self.args)
-                self.optimizer = optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs)
-                return self.optimizer
-
-        return super().create_optimizer()
-
     def _get_train_sampler(self) -> Optional[torch.utils.data.Sampler]:
         if self.args.train_sampler_random:
             return super()._get_train_sampler()

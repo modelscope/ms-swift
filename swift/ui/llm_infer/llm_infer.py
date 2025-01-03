@@ -29,8 +29,6 @@ class LLMInfer(BaseUI):
 
     is_multimodal = True
 
-    deployed = False
-
     sub_ui = [Model, Runtime]
 
     locale_dict = {
@@ -279,7 +277,6 @@ class LLMInfer(BaseUI):
         os.system(run_command)
         gr.Info(cls.locale('load_alert', cls.lang)['value'])
         time.sleep(2)
-        cls.deployed = True
         running_task = Runtime.refresh_tasks(log_file)
         return gr.update(open=True), running_task
 
