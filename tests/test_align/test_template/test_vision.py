@@ -163,7 +163,8 @@ def test_qwen_vl():
 
 
 def test_llava_onevision_hf():
-    pass
+    pt_engine = PtEngine('AI-ModelScope/llava-onevision-qwen2-0.5b-ov-hf')
+    _infer_model(pt_engine)
 
 
 def test_xcomposer2_5():
@@ -336,7 +337,8 @@ if __name__ == '__main__':
     # test_deepseek_vl2()
     # test_qwen_vl()
     # test_glm4v()
-    test_cogagent()
+    # test_cogagent()
+    test_llava_onevision_hf()
     # test_minicpmv()
     # test_got_ocr()
     # test_paligemma()

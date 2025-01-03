@@ -1,9 +1,9 @@
 from typing import List
 
-from swift.llm import InferClient, InferRequest, RequestConfig
+from swift.llm import InferClient, InferRequest
 
 
-def infer_batch(engine: 'InferEngine', infer_requests: List[InferRequest]):
+def infer_batch(engine: InferClient, infer_requests: List[InferRequest]):
     resp_list = engine.infer(infer_requests)
     query0 = infer_requests[0].messages[0]['content']
     query1 = infer_requests[1].messages[0]['content']

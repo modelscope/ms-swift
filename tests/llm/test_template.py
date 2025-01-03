@@ -1,7 +1,7 @@
 import os
 import unittest
 
-from swift.llm import PtEngine, RequestConfig, VllmEngine, get_model_tokenizer, get_template
+from swift.llm import PtEngine, RequestConfig
 from swift.utils import get_logger, seed_everything
 
 logger = get_logger()

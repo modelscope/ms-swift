@@ -1,6 +1,6 @@
 from typing import List
 
-from swift.llm import InferClient, InferRequest, RequestConfig
+from swift.llm import InferClient, InferRequest
 
 if __name__ == '__main__':
     engine = InferClient(host='127.0.0.1', port=8000)

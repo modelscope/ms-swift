@@ -49,7 +49,7 @@ class ModelGroup:
 
 @dataclass
 class ModelMeta:
-    model_type: str
+    model_type: Optional[str]
     # Used to list the model_ids from modelscope/huggingface,
     # which participate in the automatic inference of the model_type.
     model_groups: List[ModelGroup]
@@ -282,7 +282,6 @@ def get_default_torch_dtype(torch_dtype: Optional[torch.dtype]):
     else:
         # cpu
         return torch.float32
-    return res
 
 
 def get_model_name(model_id_or_path: str) -> Optional[str]:
