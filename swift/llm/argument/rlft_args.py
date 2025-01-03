@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from dataclasses import dataclass
+from typing import Optional
 
 from swift.llm import RLHFArguments
 
@@ -8,7 +9,8 @@ from swift.llm import RLHFArguments
 class RLFTArguments(RLHFArguments):
 
     reward_model: str = "AI-ModelScope/GRM_Llama3.1_8B_rewardmodel-ft"
-    gt_ratio: float = 0.0
+
+    orm_type: Optional[str] = None
 
     def __post_init__(self):
         self.rlhf_type = 'train'
