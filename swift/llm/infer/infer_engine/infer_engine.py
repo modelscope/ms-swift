@@ -143,7 +143,8 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
             if hasattr(self, 'model_meta') and self.model_meta.is_multimodal:
                 # vllm & lmdeploy
                 max_batch_size = self.mllm_max_batch_size
-            prog_bar = tqdm(total=len(infer_requests), dynamic_ncols=True, disable=not use_tqdm or len(tasks) <= max_batch_size)
+            prog_bar = tqdm(
+                total=len(infer_requests), dynamic_ncols=True, disable=not use_tqdm or len(tasks) <= max_batch_size)
             while i < len(tasks):
                 tasks_samples = tasks[i:i + max_batch_size]
                 for res in self._batch_infer_stream(tasks_samples, False, use_tqdm):
