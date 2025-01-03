@@ -138,10 +138,18 @@ class SwiftInfer(SwiftPipeline):
             infer_state.add_query(query)
             if args.model_meta.is_multimodal:
                 infer_state.input_mm_data()
-            data = infer_state.to_dict()
-            response = self.infer_single(data, request_config)
-            infer_state.add_response(response)
-            data = {'response': response, **data}
+            if args.task_type == 'seq_cls' and args.num_labels in {None, 1}:
+                # reward model
+                response = infer_state.input_text()
+                infer_state.add_response(response)
+                data = infer_state.to_dict()
+                response = self.infer_single(data, request_config)
+                data = {'response': response, **data}
+            else:
+                data = infer_state.to_dict()
+                response = self.infer_single(data, request_config)
+                infer_state.add_response(response)
+                data = {'response': response, **data}
             result_list.append(data)
             if self.jsonl_writer:
                 self.jsonl_writer.append(data)

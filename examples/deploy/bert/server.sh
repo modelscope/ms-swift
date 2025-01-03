@@ -1,8 +1,11 @@
 # Since `swift/test_lora` is trained by swift and contains an `args.json` file,
 # there is no need to explicitly set `--model`, `--system`, etc., as they will be automatically read.
-# To disable this behavior, please set `--load_args false`.
-CUDA_VISIBLE_DEVICES=0 \
-swift infer \
+CUDA_VISIBLE_DEVICES=0 swift deploy \
+    --host 0.0.0.0 \
+    --port 8000 \
     --adapters swift/test_bert \
+    --infer_backend pt \
     --truncation_strategy right \
-    --max_length 512
+    --max_length 512 \
+    --served_model_name bert-base-chinese
+

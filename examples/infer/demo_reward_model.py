@@ -6,10 +6,8 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 
 def infer_batch(engine: 'InferEngine', infer_requests: List['InferRequest']):
-    request_config = RequestConfig(max_tokens=512, temperature=0)
-    resp_list = engine.infer(infer_requests, request_config)
-    query0 = infer_requests[0].messages[0]['content']
-    print(f'query0: {query0}')
+    resp_list = engine.infer(infer_requests)
+    print(f'messages0: {infer_requests[0].messages}')
     print(f'response0: {resp_list[0].choices[0].message.content}')
 
 

@@ -79,6 +79,8 @@ class Template(ProcessorMixin):
         self.model_info = processor.model_info
         self.config = self.model_info.config
         self.model_meta = processor.model_meta
+        if max_length is None:
+            max_length = self.model_info.max_model_len
         tokenizer = self.tokenizer
 
         if not use_chat_template:

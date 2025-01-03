@@ -6,9 +6,9 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 
 def infer_batch(engine: 'InferEngine', infer_requests: List['InferRequest']):
-    request_config = RequestConfig(max_tokens=512, temperature=0)
-    resp_list = engine.infer(infer_requests, request_config)
+    resp_list = engine.infer(infer_requests)
     query0 = infer_requests[0].messages[0]['content']
+    query1 = infer_requests[1].messages[0]['content']
     print(f'query0: {query0}')
     print(f'response0: {resp_list[0].choices[0].message.content}')
     print(f'query1: {query1}')
@@ -22,10 +22,12 @@ if __name__ == '__main__':
     from swift.tuners import Swift
     adapter_path = safe_snapshot_download('swift/test_bert')
     args = BaseArguments.from_pretrained(adapter_path)
+    args.max_length = 512
+    args.truncation_strategy = 'right'
     # method1
     model, processor = args.get_model_processor()
     model = Swift.from_pretrained(model, adapter_path)
-    template = args.get_template(engine.processor)
+    template = args.get_template(processor)
     engine = PtEngine.from_model_template(model, template, max_batch_size=64)
 
     # method2
@@ -39,11 +41,13 @@ if __name__ == '__main__':
     infer_requests = [InferRequest(messages=data['messages']) for data in dataset]
     infer_batch(engine, infer_requests)
 
-    infer_batch(engine,
-                [InferRequest(messages=[{
-                    'role': 'user',
-                    'content': '今天天气真好呀'
-                }, {
-                    'role': 'user',
-                    'content': '真倒霉'
-                }])])
+    infer_batch(engine, [
+        InferRequest(messages=[{
+            'role': 'user',
+            'content': '今天天气真好呀'
+        }]),
+        InferRequest(messages=[{
+            'role': 'user',
+            'content': '真倒霉'
+        }])
+    ])

@@ -116,6 +116,7 @@ class ModelArguments:
 
     def _init_model_info(self) -> torch.dtype:
         self.model_info, self.model_meta = get_model_info_meta(**self.get_model_kwargs())
+        self.task_type = self.model_info.task_type
         self.model_dir = self.model_info.model_dir
         self.model_type = self.model_info.model_type
         if isinstance(self.rope_scaling, str):
@@ -152,8 +153,8 @@ class ModelArguments:
             'quantization_config': self.get_quantization_config(),
             'attn_impl': self.attn_impl,
             'rope_scaling': self.rope_scaling,
+            'task_type': self.task_type,
         }
         if self.task_type == 'seq_cls':
-            kwargs['task_type'] = self.task_type
             kwargs['model_kwargs'] = {'num_labels': self.num_labels}
         return kwargs
