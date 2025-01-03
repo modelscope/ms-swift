@@ -8,7 +8,7 @@ from transformers.models.auto.tokenization_auto import get_tokenizer_config
 
 from swift.llm import TemplateType
 from swift.utils import get_dist_setting, get_env_args, get_logger
-from ..constant import LLMModelType, MLLMModelType
+from ..constant import LLMModelType, MLLMModelType, RMModelType
 from ..model_arch import ModelArch
 from ..patcher import patch_fixed_device, patch_output_clone, patch_output_to_input_device
 from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,
@@ -633,7 +633,9 @@ register_model(
         MLLMModelType.ovis1_6,
         [
             ModelGroup([
+                Model('AIDC-AI/Ovis1.6-Gemma2-9B-GPTQ-Int4', 'AIDC-AI/Ovis1.6-Gemma2-9B-GPTQ-Int4'),
                 Model('AIDC-AI/Ovis1.6-Gemma2-9B', 'AIDC-AI/Ovis1.6-Gemma2-9B'),
+                Model('AIDC-AI/Ovis1.6-Gemma2-27B', 'AIDC-AI/Ovis1.6-Gemma2-27B'),
             ]),
         ],
         TemplateType.ovis1_6,
@@ -642,4 +644,34 @@ register_model(
         architectures=['Ovis'],
         tags=['vision'],
         requires=['transformers>=4.42'],
+    ))
+
+register_model(
+    ModelMeta(
+        MLLMModelType.ovis1_6_llama3,
+        [
+            ModelGroup([
+                Model('AIDC-AI/Ovis1.6-Llama3.2-3B', 'AIDC-AI/Ovis1.6-Llama3.2-3B'),
+            ]),
+        ],
+        TemplateType.ovis1_6_llama3,
+        get_model_tokenizer_ovis,
+        model_arch=ModelArch.ovis1_6,
+        architectures=['Ovis'],
+        tags=['vision'],
+    ))
+
+register_model(
+    ModelMeta(
+        RMModelType.qwen2_reward,
+        [
+            ModelGroup([
+                Model('Qwen/Qwen2-Math-RM-72B', 'Qwen/Qwen2-Math-RM-72B'),
+                Model('Qwen/Qwen2.5-Math-RM-72B', 'Qwen/Qwen2.5-Math-RM-72B'),
+            ]),
+        ],
+        TemplateType.qwen,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['Qwen2ForRewardModel'],
+        requires=['transformers>=4.37'],
     ))
