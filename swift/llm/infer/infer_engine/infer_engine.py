@@ -21,6 +21,8 @@ logger = get_logger()
 
 
 class InferEngine(BaseInferEngine, ProcessorMixin):
+    llm_max_batch_size = 1024 * 1024
+    mllm_max_batch_size = 1024
 
     def _post_init(self):
         processor = self.processor
@@ -135,8 +137,21 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
 
             return _gen_wrapper()
         else:
-            for res in self._batch_infer_stream(tasks, False, use_tqdm):
-                pass
+            i = 0
+            result = []
+            max_batch_size = self.llm_max_batch_size
+            if hasattr(self, 'model_meta') and self.model_meta.is_multimodal:
+                # vllm & lmdeploy
+                max_batch_size = self.mllm_max_batch_size
+            prog_bar = tqdm(
+                total=len(infer_requests), dynamic_ncols=True, disable=not use_tqdm or len(tasks) <= max_batch_size)
+            while i < len(tasks):
+                tasks_samples = tasks[i:i + max_batch_size]
+                for res in self._batch_infer_stream(tasks_samples, False, use_tqdm):
+                    pass
+                result += res
+                i += max_batch_size
+                prog_bar.update(len(tasks_samples))
             return self._update_metrics(res, metrics)
 
     def _get_toolcall(self,

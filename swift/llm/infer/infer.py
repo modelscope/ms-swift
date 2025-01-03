@@ -138,10 +138,18 @@ class SwiftInfer(SwiftPipeline):
             infer_state.add_query(query)
             if args.model_meta.is_multimodal:
                 infer_state.input_mm_data()
-            data = infer_state.to_dict()
-            response = self.infer_single(data, request_config)
-            infer_state.add_response(response)
-            data = {'response': response, **data}
+            if args.task_type == 'seq_cls' and args.num_labels in {None, 1}:
+                # reward model
+                response = infer_state.input_text()
+                infer_state.add_response(response)
+                data = infer_state.to_dict()
+                response = self.infer_single(data, request_config)
+                data = {'response': response, **data}
+            else:
+                data = infer_state.to_dict()
+                response = self.infer_single(data, request_config)
+                infer_state.add_response(response)
+                data = {'response': response, **data}
             result_list.append(data)
             if self.jsonl_writer:
                 self.jsonl_writer.append(data)
@@ -185,15 +193,21 @@ class SwiftInfer(SwiftPipeline):
             if is_dist:
                 val_dataset = val_dataset.shard(args.global_world_size, args.rank, contiguous=True)
             val_dataset = list(val_dataset)
-            labels_list = [InferRequest.remove_response(data['messages']) for data in val_dataset]
+            labels_list = []
+            for data in val_dataset:
+                if args.task_type == 'causal_lm':
+                    labels = InferRequest.remove_response(data['messages'])
+                else:
+                    labels = data.pop('label', None)
+                    if labels is not None:
+                        labels = str(int(labels))
+                labels_list.append(labels)
 
             resp_list = self.infer(
                 val_dataset, request_config, template=self.template, use_tqdm=True, **self.infer_kwargs)
             for data, resp, labels in zip(val_dataset, resp_list, labels_list):
                 response = resp.choices[0].message.content
-                if labels:
-                    data['labels'] = labels
-                data = {'response': response, 'logprobs': resp.choices[0].logprobs, **data}
+                data = {'response': response, 'labels': labels, 'logprobs': resp.choices[0].logprobs, **data}
                 result_list.append(data)
             if is_dist:
                 total_result_list = [None for _ in range(args.global_world_size)] if args.rank == 0 else None

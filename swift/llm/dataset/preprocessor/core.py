@@ -440,6 +440,14 @@ class MessagesPreprocessor(RowPreprocessor):
         return row
 
 
+class ClsPreprocessor(ResponsePreprocessor):
+
+    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        res = super().preprocess(row)
+        res['label'] = int(res['label'])
+        return res
+
+
 class AutoPreprocessor:
 
     def __init__(self, *, columns_mapping: Optional[Dict[str, str]] = None, **kwargs) -> None:

@@ -46,7 +46,6 @@ class InferRequest:
             if isinstance(val, str):
                 setattr(self, key, [val])
         assert isinstance(self.messages, list), f'messages: {self.messages}'
-        self.remove_response(self.messages)
 
     @staticmethod
     def remove_response(messages) -> Optional[str]:

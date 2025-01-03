@@ -70,6 +70,10 @@ class LLMTemplateType:
     dbrx = 'dbrx'
 
 
+class RMTemplateType:
+    internlm2_reward = 'internlm2_reward'
+
+
 class MLLMTemplateType:
     qwen_vl = 'qwen_vl'
     qwen_audio = 'qwen_audio'
@@ -144,7 +148,7 @@ class MLLMTemplateType:
     megrez_omni = 'megrez_omni'
 
 
-class TemplateType(LLMTemplateType, MLLMTemplateType):
+class TemplateType(LLMTemplateType, MLLMTemplateType, RMTemplateType):
 
     @classmethod
     def get_template_name_list(cls) -> List[str]:

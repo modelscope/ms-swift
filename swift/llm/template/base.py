@@ -79,6 +79,8 @@ class Template(ProcessorMixin):
         self.model_info = processor.model_info
         self.config = self.model_info.config
         self.model_meta = processor.model_meta
+        if max_length is None:
+            max_length = self.model_info.max_model_len
         tokenizer = self.tokenizer
 
         if not use_chat_template:
@@ -185,6 +187,7 @@ class Template(ProcessorMixin):
 
     def _seq_cls_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = self._encode(inputs)
+        encoded.pop('labels', None)
         if inputs.label is not None:
             encoded['labels'] = int(inputs.label)
         return encoded
@@ -204,6 +207,9 @@ class Template(ProcessorMixin):
             inputs = StdTemplateInputs.from_dict(inputs, tools_prompt=self.tools_prompt)
         elif isinstance(inputs, StdTemplateInputs):
             inputs = deepcopy(inputs)
+
+        if not self.is_training:
+            InferRequest.remove_response(inputs.messages)
 
         assert isinstance(inputs, StdTemplateInputs)
         self._preprocess_inputs(inputs)
@@ -541,7 +547,8 @@ class Template(ProcessorMixin):
             messages.insert(0, {'role': 'system', 'content': inputs.system})
         if messages[-1]['content'] is None:
             messages.pop()
-        text = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        add_generation_prompt = messages[-1]['role'] != 'assistant'
+        text = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=add_generation_prompt)
         answer_len = 1 if self.is_training else 0
         return [text], [1.], answer_len
 
@@ -673,23 +680,23 @@ class Template(ProcessorMixin):
                     encoded[k] = None
         return encoded
 
-    def _debug_logger(self, generate_ids):
-        if isinstance(generate_ids, list) or isinstance(generate_ids, torch.Tensor) and generate_ids.ndim == 1:
-            generate_ids = [generate_ids]
-        for tokens in generate_ids:
-            if isinstance(tokens, torch.Tensor):
-                tokens = tokens.tolist()
-            logger.info(f'[GENERATE_IDS] {tokens}')
-            logger.info(f'[GENERATE] {self.safe_decode(tokens)}\n' + '-' * 50)
+    def debug_logger(self, inputs):
+        if not strtobool(os.getenv('SWIFT_DEBUG', 'false')):
+            return
+        if 'input_ids' in inputs:
+            k = 'input_ids'
+            val = inputs['input_ids']
+        else:
+            k = 'generate_ids'
+            val = inputs['generate_ids']
+        for v in val:
+            self.print_inputs({k: v.tolist()})
 
     def get_generate_ids(self, generate_ids: Union[torch.Tensor, List[int]],
                          num_prompt_tokens: int) -> Union[torch.Tensor, List[int]]:
-        if strtobool(os.getenv('SWIFT_DEBUG', 'false')):
-            self._debug_logger(generate_ids)
         if self.skip_prompt:
-            return generate_ids[..., num_prompt_tokens:]
-        else:
-            return generate_ids
+            generate_ids = generate_ids[..., num_prompt_tokens:]
+        return generate_ids
 
     def post_process_generate_response(self, response: str, inputs: StdTemplateInputs) -> str:
         return response
@@ -943,7 +950,9 @@ class Template(ProcessorMixin):
     def print_inputs(self, inputs: Dict[str, Any], tokenizer_kwargs: Optional[Dict[str, Any]] = None) -> None:
         if tokenizer_kwargs is None:
             tokenizer_kwargs = {}
-        for key in ['input', 'labels', 'chosen_input', 'chosen_labels', 'rejected_input', 'rejected_labels']:
+        for key in [
+                'input', 'labels', 'generate', 'chosen_input', 'chosen_labels', 'rejected_input', 'rejected_labels'
+        ]:
             val = inputs.get(key)  # fix val is a tensor
             if val is None:
                 val = inputs.get(f'{key}_ids')

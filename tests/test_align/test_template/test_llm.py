@@ -17,6 +17,8 @@ def _infer_model(pt_engine, system=None, messages=None):
         resp = pt_engine.infer([{'messages': messages}], request_config=request_config)
         response = resp[0].choices[0].message.content
         messages += [{'role': 'assistant', 'content': response}, {'role': 'user', 'content': '<image>这是什么'}]
+    else:
+        messages = messages.copy()
     resp = pt_engine.infer([{
         'messages': messages,
     }], request_config=request_config)
@@ -61,6 +63,7 @@ def test_internlm():
 
 
 def test_internlm2():
+    # pt_engine = PtEngine('Shanghai_AI_Laboratory/internlm2-1_8b')
     pt_engine = PtEngine('Shanghai_AI_Laboratory/internlm2_5-1_8b-chat')
     _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
@@ -160,6 +163,22 @@ def test_skywork_o1():
                    '8 + 1 = 9\n   \\]\n4. **Apples Split Equally')
 
 
+def test_internlm2_reward():
+    pt_engine = PtEngine('Shanghai_AI_Laboratory/internlm2-1_8b-reward')
+    messages = [{
+        'role': 'user',
+        'content': "Hello! What's your name?"
+    }, {
+        'role': 'assistant',
+        'content': 'My name is InternLM2! A helpful AI assistant. What can I do for you?'
+    }]
+    pt_engine.task_type = 'seq_cls'
+    res = _infer_model(pt_engine, messages=messages)
+    pt_engine.default_template.template_backend = 'jinja'
+    res2 = _infer_model(pt_engine, messages=messages)
+    assert res == res2 == '0.48681640625'
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig, get_template, get_model_tokenizer, VllmEngine
     from swift.utils import get_logger, seed_everything
@@ -179,4 +198,5 @@ if __name__ == '__main__':
     # test_llama()
     # test_openbuddy()
     # test_megrez()
-    test_skywork_o1()
+    # test_skywork_o1()
+    test_internlm2_reward()
