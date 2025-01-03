@@ -4,8 +4,8 @@ import re
 from functools import partial
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from ..preprocessor import (AlpacaPreprocessor, ClsPreprocessor, MessagesPreprocessor, ResponsePreprocessor,
-                            RowPreprocessor, TextGenerationPreprocessor)
+from ..preprocessor import (AlpacaPreprocessor, ClsGenerationPreprocessor, ClsPreprocessor, MessagesPreprocessor,
+                            ResponsePreprocessor, RowPreprocessor, TextGenerationPreprocessor)
 from ..register import DatasetMeta, SubsetDataset, register_dataset
 
 
@@ -165,23 +165,12 @@ register_dataset(
         ms_dataset_id='modelscope/clue',
         hf_dataset_id='clue',
         subsets=['cmnli'],
-        preprocess_func=ClsPreprocessor(['neutral', 'entailment', 'contradiction'],
-                                        task='Natural Language Inference',
-                                        is_pair_seq=True),
+        preprocess_func=ClsGenerationPreprocessor(['neutral', 'entailment', 'contradiction'],
+                                                  task='Natural Language Inference',
+                                                  is_pair_seq=True),
         tags=['text-generation', 'classification'],
         split=['train', 'validation'],
     ))
-
-
-class JdClsPreprocessor(ClsPreprocessor):
-
-    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
-        label = int(row['label'])
-        res = super().preprocess(row)
-        res['messages'].pop()
-        res['label'] = label
-        return res
-
 
 register_dataset(
     DatasetMeta(
@@ -190,15 +179,13 @@ register_dataset(
             SubsetDataset(
                 'default',
                 'default',
-                preprocess_func=ClsPreprocessor(['negative', 'positive'],
-                                                task='Sentiment Classification',
-                                                is_pair_seq=False)),
+                preprocess_func=ClsGenerationPreprocessor(['negative', 'positive'],
+                                                          task='Sentiment Classification',
+                                                          is_pair_seq=False)),
             SubsetDataset(
                 'cls',
                 'default',
-                preprocess_func=JdClsPreprocessor(['negative', 'positive'],
-                                                  task='Sentiment Classification',
-                                                  is_pair_seq=False),
+                preprocess_func=ClsPreprocessor(columns_mapping={'sentence': 'query'}),
             ),
         ],
         tags=['text-generation', 'classification', '🔥'],

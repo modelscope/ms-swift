@@ -100,6 +100,10 @@ class BertModelType:
     bert = 'bert'
 
 
+class RMModelType:
+    internlm2_reward = 'internlm2_reward'
+
+
 class MLLMModelType:
     qwen_vl = 'qwen_vl'
     qwen_audio = 'qwen_audio'
@@ -176,7 +180,7 @@ class MLLMModelType:
     megrez_omni = 'megrez_omni'
 
 
-class ModelType(LLMModelType, MLLMModelType, BertModelType):
+class ModelType(LLMModelType, MLLMModelType, BertModelType, RMModelType):
 
     @classmethod
     def get_model_name_list(cls) -> List[str]:

@@ -252,6 +252,4 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         kwargs['model_type'] = model_type or self.model_type
         kwargs['model_revision'] = model_revision or self.model_revision
 
-        model, processor = get_model_tokenizer(**kwargs)
-        model.model_info.task_type = self.task_type
-        return model, processor
+        return get_model_tokenizer(**kwargs)

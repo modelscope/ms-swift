@@ -3,5 +3,9 @@
 CUDA_VISIBLE_DEVICES=0 swift deploy \
     --host 0.0.0.0 \
     --port 8000 \
-    --adapters lora1=swift/test_lora lora2=swift/test_lora2 \
-    --infer_backend vllm
+    --adapters swift/test_bert \
+    --infer_backend pt \
+    --truncation_strategy right \
+    --max_length 512 \
+    --served_model_name bert-base-chinese
+
