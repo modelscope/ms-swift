@@ -19,6 +19,7 @@ from peft import (AdaLoraConfig, BOFTConfig, BOFTModel, LoftQConfig, LoHaConfig,
                   get_peft_model, get_peft_model_state_dict)
 from peft.config import PeftConfigMixin
 from peft.tuners import lora
+from peft.tuners.adalora import AdaLoraModel, RankAllocator
 from peft.tuners.lora import Embedding
 from transformers import Trainer
 
@@ -283,6 +284,8 @@ def hot_patch_peft_module():
     # Fix Lora does not support NonDynamicallyQuantizableLinear
     LoraModel._create_and_replace_origin = LoraModel._create_and_replace
     LoraModel._create_and_replace = _create_and_replace_hook
+    AdaLoraModel._create_and_replace_origin = AdaLoraModel._create_and_replace
+    AdaLoraModel._create_and_replace = _create_and_replace_hook
     VeraModel._create_and_replace_origin = VeraModel._create_and_replace
     VeraModel._create_and_replace = _create_and_replace_hook
     BOFTModel._create_and_replace_origin = BOFTModel._create_and_replace
@@ -328,7 +331,6 @@ def hot_patch_peft_module():
     PeftModel.set_active_adapters = partial(dummy_function, func='set_active_adapters')
 
     # Fix adalora does not support device_map
-    from peft.tuners.adalora import AdaLoraModel, RankAllocator
     AdaLoraModel.forward = adalora_forward
     RankAllocator.mask_to_budget = adalora_mask_to_budget
 
