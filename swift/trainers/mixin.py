@@ -315,6 +315,15 @@ class SwiftMixin:
             self.log(logs)
         super()._maybe_log_save_evaluate(tr_loss, *args, **kwargs)
 
+    def create_optimizer_and_scheduler(self, num_training_steps: int):
+        if self.args.optimizer is not None:
+            from swift.plugin import optimizers_map
+            optimizer_callback = optimizers_map[self.args.optimizer]
+            self.optimizer, self.lr_scheduler = optimizer_callback(self.args, self.model, self.train_dataset)
+        else:
+            super().create_optimizer_and_scheduler(num_training_steps=num_training_steps)
+
+
     def _get_train_sampler(self) -> Optional[torch.utils.data.Sampler]:
         if self.args.train_sampler_random:
             return super()._get_train_sampler()

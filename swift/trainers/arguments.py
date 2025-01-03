@@ -30,6 +30,7 @@ class SwiftArgumentsMixin:
 
     # Value copied from TrainArguments, Used for external tuners.
     train_type: Optional[str] = None
+    optimizer: Optional[str] = None
 
     def _fix_gradient_checkpointing(self):
         # fix use_reentrant
