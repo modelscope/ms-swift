@@ -24,6 +24,7 @@ def create_galore_optimizers(args, model, dataset):
     training_steps = calculate_max_steps(args, dataset)
     optimizer, lr_scheduler = create_optimizer_and_scheduler(
         model, args, args.galore_config, training_steps, lr=args.learning_rate, weight_decay=args.weight_decay)
+    # trainer cannot serialize galore_config
     args.galore_config = None
     return optimizer, lr_scheduler
 

@@ -21,7 +21,7 @@ from transformers import PreTrainedModel
 from transformers.data.data_collator import DataCollator
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.modeling_utils import unwrap_model
-from transformers.trainer import Trainer, TrainerCallback
+from transformers.trainer import TrainerCallback
 from transformers.trainer_utils import EvalPrediction
 from transformers.utils import is_torch_npu_available
 
