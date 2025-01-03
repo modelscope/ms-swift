@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 import re
+import signal
 import sys
 import time
 from copy import deepcopy
@@ -26,11 +27,7 @@ class LLMInfer(BaseUI):
 
     group = 'llm_infer'
 
-    is_gradio_app = False
-
     is_multimodal = True
-
-    deployed = False
 
     sub_ui = [Model, Runtime]
 
@@ -133,12 +130,9 @@ class LLMInfer(BaseUI):
                 default_device = '0'
             with gr.Blocks():
                 infer_request = gr.State(None)
-                if LLMInfer.is_gradio_app:
-                    Model.visible = False
-                    Runtime.visible = False
                 Model.build_ui(base_tab)
                 Runtime.build_ui(base_tab)
-                with gr.Row(visible=not LLMInfer.is_gradio_app):
+                with gr.Row():
                     gr.Dropdown(
                         elem_id='gpu_id',
                         multiselect=True,
@@ -150,7 +144,7 @@ class LLMInfer(BaseUI):
                 chatbot = gr.Chatbot(elem_id='chatbot', elem_classes='control-height')
                 with gr.Row():
                     prompt = gr.Textbox(elem_id='prompt', lines=1, interactive=True)
-                    with gr.Tabs(visible=not cls.is_gradio_app or cls.is_multimodal):
+                    with gr.Tabs(visible=cls.is_multimodal):
                         with gr.TabItem(label='Image'):
                             image = gr.Image(type='filepath')
                         with gr.TabItem(label='Video'):
@@ -162,10 +156,9 @@ class LLMInfer(BaseUI):
                     clear_history = gr.Button(elem_id='clear_history')
                     submit = gr.Button(elem_id='submit')
 
-                if not LLMInfer.is_gradio_app:
-                    cls.element('load_checkpoint').click(
-                        cls.deploy_model, list(base_tab.valid_elements().values()),
-                        [cls.element('runtime_tab'), cls.element('running_tasks')])
+                cls.element('load_checkpoint').click(
+                    cls.deploy_model, list(base_tab.valid_elements().values()),
+                    [cls.element('runtime_tab'), cls.element('running_tasks')])
                 submit.click(
                     cls.send_message,
                     inputs=[
@@ -184,17 +177,16 @@ class LLMInfer(BaseUI):
                 clear_history.click(
                     fn=cls.clear_session, inputs=[], outputs=[prompt, chatbot, image, video, audio, infer_request])
 
-                if not LLMInfer.is_gradio_app:
-                    base_tab.element('running_tasks').change(
-                        partial(Runtime.task_changed, base_tab=base_tab), [base_tab.element('running_tasks')],
-                        list(cls.valid_elements().values()) + [cls.element('log')],
-                        cancels=Runtime.log_event)
-                    Runtime.element('kill_task').click(
-                        Runtime.kill_task,
-                        [Runtime.element('running_tasks')],
-                        [Runtime.element('running_tasks')] + [Runtime.element('log')],
-                        cancels=[Runtime.log_event],
-                    )
+                base_tab.element('running_tasks').change(
+                    partial(Runtime.task_changed, base_tab=base_tab), [base_tab.element('running_tasks')],
+                    list(cls.valid_elements().values()) + [cls.element('log')],
+                    cancels=Runtime.log_event)
+                Runtime.element('kill_task').click(
+                    Runtime.kill_task,
+                    [Runtime.element('running_tasks')],
+                    [Runtime.element('running_tasks')] + [Runtime.element('log')],
+                    cancels=[Runtime.log_event],
+                )
 
     @classmethod
     def deploy(cls, *args):
@@ -230,7 +222,7 @@ class LLMInfer(BaseUI):
         model = kwargs.get('model')
         if os.path.exists(model) and os.path.exists(os.path.join(model, 'args.json')):
             kwargs['ckpt_dir'] = kwargs.pop('model')
-            with open(os.path.join(kwargs['ckpt_dir'], 'args.json'), 'r') as f:
+            with open(os.path.join(kwargs['ckpt_dir'], 'args.json'), 'r', encoding='utf-8') as f:
                 _json = json.load(f)
                 kwargs['model_type'] = _json['model_type']
                 kwargs['train_type'] = _json['train_type']
@@ -280,30 +272,24 @@ class LLMInfer(BaseUI):
 
     @classmethod
     def deploy_model(cls, *args):
-        if cls.is_gradio_app:
-            if cls.deployed:
-                return gr.update(), gr.update()
         run_command, deploy_args, log_file = cls.deploy(*args)
         logger.info(f'Running deployment command: {run_command}')
         os.system(run_command)
-        if not cls.is_gradio_app:
-            gr.Info(cls.locale('load_alert', cls.lang)['value'])
-            time.sleep(2)
-        else:
-            from swift.llm.infer.deploy import is_accessible
-            logger.info('Begin to check deploy statement...')
-            cnt = 0
-            while not is_accessible(deploy_args.port):
-                time.sleep(1)
-                cnt += 1
-                if cnt >= 60:
-                    logger.warn(f'Deploy costing too much time, please check log file: {log_file}')
-            logger.info('Deploy done.')
-        cls.deployed = True
+        gr.Info(cls.locale('load_alert', cls.lang)['value'])
+        time.sleep(2)
         running_task = Runtime.refresh_tasks(log_file)
-        if cls.is_gradio_app:
-            cls.running_task = running_task['value']
         return gr.update(open=True), running_task
+
+    @classmethod
+    def register_clean_hook(cls):
+        signal.signal(signal.SIGINT, LLMInfer.signal_handler)
+        if os.name != 'nt':
+            signal.signal(signal.SIGTERM, LLMInfer.signal_handler)
+
+    @staticmethod
+    def signal_handler(*args, **kwargs):
+        LLMInfer.clean_deployment()
+        sys.exit(0)
 
     @classmethod
     def clear_session(cls):
@@ -369,8 +355,6 @@ class LLMInfer(BaseUI):
         else:
             infer_request.messages[-1]['content'] = infer_request.messages[-1]['content'] + prompt
 
-        if cls.is_gradio_app:
-            running_task = cls.running_task
         _, args = Runtime.parse_info_from_cmdline(running_task)
         request_config = RequestConfig(
             temperature=temperature, top_k=top_k, top_p=top_p, repetition_penalty=repetition_penalty)
@@ -401,6 +385,8 @@ class LLMInfer(BaseUI):
         if infer_request.messages[-1]['role'] != 'assistant':
             infer_request.messages.append({'role': 'assistant', 'content': ''})
         for chunk in stream_resp:
+            if chunk[0] is None:
+                continue
             stream_resp_with_history += chunk[0].choices[0].delta.content if chat else chunk.choices[0].text
             infer_request.messages[-1]['content'] = stream_resp_with_history
             yield '', cls._replace_tag_with_media(infer_request), gr.update(value=None), gr.update(

@@ -319,7 +319,7 @@ class Runtime(BaseUI):
         latest_data = ''
         lines = collections.deque(maxlen=int(os.environ.get('MAX_LOG_LINES', 50)))
         try:
-            with open(log_file, 'r') as input:
+            with open(log_file, 'r', encoding='utf-8') as input:
                 input.seek(offset)
                 fail_cnt = 0
                 while True:
@@ -451,8 +451,8 @@ class Runtime(BaseUI):
             all_args[splits[0]] = splits[1]
 
         output_dir = all_args['output_dir']
-        if os.path.exists(os.path.join(output_dir, 'sft_args.json')):
-            with open(os.path.join(output_dir, 'sft_args.json'), 'r') as f:
+        if os.path.exists(os.path.join(output_dir, 'args.json')):
+            with open(os.path.join(output_dir, 'args.json'), 'r', encoding='utf-8') as f:
                 _json = json.load(f)
             for key in all_args.keys():
                 all_args[key] = _json.get(key)
@@ -464,13 +464,14 @@ class Runtime(BaseUI):
 
     @staticmethod
     def kill_task(task):
-        pid, all_args = Runtime.parse_info_from_cmdline(task)
-        output_dir = all_args['output_dir']
-        if sys.platform == 'win32':
-            os.system(f'taskkill /f /t /pid "{pid}"')
-        else:
-            os.system(f'pkill -9 -f {output_dir}')
-        time.sleep(1)
+        if task:
+            pid, all_args = Runtime.parse_info_from_cmdline(task)
+            output_dir = all_args['output_dir']
+            if sys.platform == 'win32':
+                os.system(f'taskkill /f /t /pid "{pid}"')
+            else:
+                os.system(f'pkill -9 -f {output_dir}')
+            time.sleep(1)
         return [Runtime.refresh_tasks()] + [gr.update(value=None)] * (len(Runtime.get_plot(task)) + 1)
 
     @staticmethod
@@ -520,6 +521,16 @@ class Runtime(BaseUI):
         for k in plot:
             name = k['name']
             smooth = k['smooth']
+            if name == 'train/acc':
+                if 'train/token_acc' in data:
+                    name = 'train/token_acc'
+                if 'train/seq_acc' in data:
+                    name = 'train/seq_acc'
+            if name == 'eval/acc':
+                if 'eval/token_acc' in data:
+                    name = 'eval/token_acc'
+                if 'eval/seq_acc' in data:
+                    name = 'eval/seq_acc'
             if name not in data:
                 plots.append(None)
                 continue

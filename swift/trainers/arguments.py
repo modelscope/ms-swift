@@ -10,6 +10,7 @@ from transformers.training_args import TrainingArguments as HfTrainingArguments
 from transformers.training_args_seq2seq import Seq2SeqTrainingArguments as HfSeq2SeqTrainingArguments
 
 from swift.utils import use_torchacc
+from .optimizers.galore import GaLoreConfig
 
 
 @dataclass
@@ -28,22 +29,24 @@ class SwiftArgumentsMixin:
     fsdp_num: int = 1
     acc_steps: int = 1
 
-    # Value copied from TrainArguments, Used for external tuners.
+    # Value copied from TrainArguments
     train_type: Optional[str] = None
+    optimizer: Optional[str] = None
+    galore_config: Optional[GaLoreConfig] = None
 
     def _fix_gradient_checkpointing(self):
         # fix use_reentrant
         if hasattr(torch.utils.checkpoint, '_old_checkpoint'):  # avoid double patching
             return
         # Consistent with the default behavior of transformers.
-        default_use_reentrant = (
+        use_reentrant_ = (
             self.gradient_checkpointing_kwargs.get('use_reentrant', True)
             if self.gradient_checkpointing_kwargs else True)
         _old_checkpoint = torch.utils.checkpoint.checkpoint
 
         @wraps(_old_checkpoint)
-        def _new_checkpoint(*args, use_reentrant=default_use_reentrant, **kwargs):
-            return _old_checkpoint(*args, use_reentrant=use_reentrant, **kwargs)
+        def _new_checkpoint(*args, use_reentrant=None, **kwargs):
+            return _old_checkpoint(*args, use_reentrant=use_reentrant_, **kwargs)
 
         torch.utils.checkpoint._old_checkpoint = _old_checkpoint
         torch.utils.checkpoint.checkpoint = _new_checkpoint

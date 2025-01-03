@@ -15,11 +15,11 @@ def test_llm():
     result = rlhf_main(
         RLHFArguments(
             rlhf_type='kto',
-            model='qwen/Qwen2-7B-Instruct',
+            model='Qwen/Qwen2-7B-Instruct',
             dataset=['AI-ModelScope/ultrafeedback-binarized-preferences-cleaned-kto#100'],
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
-    infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True, merge_lora=True))
+    infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True, merge_lora=True))
 
 
 def test_mllm():
@@ -27,11 +27,11 @@ def test_mllm():
     result = rlhf_main(
         RLHFArguments(
             rlhf_type='kto',
-            model='qwen/Qwen2-VL-7B-Instruct',
+            model='Qwen/Qwen2-VL-7B-Instruct',
             dataset=['AI-ModelScope/ultrafeedback-binarized-preferences-cleaned-kto#100'],
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
-    infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True, merge_lora=True))
+    infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True, merge_lora=True))
 
 
 if __name__ == '__main__':

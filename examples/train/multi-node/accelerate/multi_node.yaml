@@ -7,11 +7,11 @@ deepspeed_config:
     zero3_init_flag: false
     zero_stage: 3
 distributed_type: DEEPSPEED
-main_process_ip: '127.0.0.1'
+main_process_ip: 'xxx.xxx.xxx.xxx'
 main_process_port: 29500
 main_training_function: main
-mixed_precision: fp16
+mixed_precision: bf16
 num_machines: 2
-num_processes: 4
+num_processes: 8  # world size
 rdzv_backend: static
 use_cpu: false

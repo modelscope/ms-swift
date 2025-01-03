@@ -10,13 +10,13 @@ def _prepare(infer_backend: Literal['vllm', 'pt', 'lmdeploy']):
     from swift.llm import InferRequest, get_template
     if infer_backend == 'lmdeploy':
         from swift.llm import LmdeployEngine
-        engine = LmdeployEngine('qwen/Qwen2-7B-Instruct', torch.float32)
+        engine = LmdeployEngine('OpenGVLab/InternVL2_5-2B', torch.float32)
     elif infer_backend == 'pt':
         from swift.llm import PtEngine
-        engine = PtEngine('qwen/Qwen2-7B-Instruct', max_batch_size=16)
+        engine = PtEngine('Qwen/Qwen2-7B-Instruct', max_batch_size=16)
     elif infer_backend == 'vllm':
         from swift.llm import VllmEngine
-        engine = VllmEngine('qwen/Qwen2-7B-Instruct')
+        engine = VllmEngine('Qwen/Qwen2-7B-Instruct')
     template = get_template(engine.model_meta.template, engine.tokenizer)
     infer_requests = [
         # InferRequest([{'role': 'user', 'content': '晚上睡不着觉怎么办'}]) for i in range(100)

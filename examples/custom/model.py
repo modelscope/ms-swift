@@ -17,7 +17,7 @@ register_model(
         ],
         template='custom',
         get_function=get_model_tokenizer_with_flash_attn,
-        ignore_file_pattern=['nemo']))
+        ignore_patterns=['nemo']))
 
 if __name__ == '__main__':
     infer_request = InferRequest(messages=[{'role': 'user', 'content': 'who are you?'}])

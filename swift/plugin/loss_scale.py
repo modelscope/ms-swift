@@ -69,7 +69,7 @@ class LossScale:
         if self.loss_scale_config is not None:
             path = os.path.dirname(os.path.abspath(__file__))
             config_path = os.path.join(path, 'agent', self.loss_scale_config)
-            with open(config_path, 'r') as json_file:
+            with open(config_path, 'r', encoding='utf-8') as json_file:
                 self.loss_scale_map = json.load(json_file)
         else:
             self.loss_scale_map = None
@@ -154,6 +154,20 @@ class REACTLossScale(LossScale):
         return super().get_loss_scale(context, context_type, is_last_round)
 
 
+class QwenLossScale(LossScale):
+    loss_scale_config = 'qwen_loss_scale_config.json'
+
+    def get_loss_scale(self,
+                       context: str,
+                       context_type: ContextType,
+                       is_last_round: bool,
+                       *,
+                       query: Optional[str] = None):
+        if context_type == ContextType.RESPONSE:
+            return calculate_loss_scale(query, context, self.loss_scale_map)
+        return super().get_loss_scale(context, context_type, is_last_round)
+
+
 class AlphaUmiLossScale(REACTLossScale):
     loss_scale_config = 'alpha_umi_loss_scale_config.json'
 
@@ -171,5 +185,6 @@ loss_scale_map = {
     'alpha_umi': AlphaUmiLossScale(),
     'default': LossScale(),
     'last_round': LastRoundLossScale(),
+    'qwen': QwenLossScale(),
     'all': TrainAllLossScale(),
 }

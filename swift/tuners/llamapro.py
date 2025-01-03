@@ -1,12 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from copy import deepcopy
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from typing import Optional
 
 import torch
 from torch import nn
 
-from swift.llm import MODEL_ARCH_MAPPING, ModelKeys
+from swift.llm import MODEL_ARCH_MAPPING, HfConfigFactory, ModelKeys
 from swift.utils.logger import get_logger
 from .utils import ActivationMixin, SwiftAdapter, SwiftConfig, SwiftOutput
 
@@ -46,22 +46,40 @@ class LLaMAPro(SwiftAdapter):
     @staticmethod
     def prepare_model(model: nn.Module, config: LLaMAProConfig, adapter_name: str) -> SwiftOutput:
         """Prepare a model with `LLaMAProConfig`"""
-        num_hidden_layers = None
-        if hasattr(model.config, 'num_hidden_layers'):
-            num_hidden_layers = model.config.num_hidden_layers
-        elif hasattr(model.config, 'num_layers'):
-            num_hidden_layers = model.config.num_layers
-
+        num_hidden_layers = HfConfigFactory.get_config_attr(model.config, 'num_hidden_layers')
+        if num_hidden_layers is None:
+            num_hidden_layers = HfConfigFactory.get_config_attr(model.config, 'num_layers')
         assert num_hidden_layers is not None, 'Cannot find num of layers config'
         assert num_hidden_layers % config.num_new_blocks == 0, f'Model layers {num_hidden_layers} ' \
                                                                f'should be divided by {config.num_new_blocks}'
         if config.num_groups is None:
             config.num_groups = config.num_new_blocks
 
+        # the except block will change the model_type, this will cause `model not found` error
+        # when using internvl
+        origin_model_type = config.model_type
+        model_type = origin_model_type
         num_stride = num_hidden_layers // config.num_groups
+        try:
+            module_list = LLaMAPro._find_module_list(config, model)
+        except AssertionError as e:
+            model_type = LLaMAPro.search_correct_model_type(model)
+            if model_type is None:
+                language_model_name = SwiftAdapter.get_model_key_mapping(config.model_type, config).language_model
+                if language_model_name:
+                    if isinstance(language_model_name, str):
+                        language_model_name = [language_model_name]
+                    language_model = model.get_submodule(language_model_name[0])
+                    model_type = LLaMAPro.search_correct_model_type(language_model)
+                    if model_type:
+                        model = language_model
 
-        # We only support decoder only model for now.
-        module_list = LLaMAPro._find_module_list(config, model)
+            if model_type:
+                config.model_type = model_type
+                module_list = LLaMAPro._find_module_list(config, model)
+            else:
+                raise e
+
         new_module_list = nn.ModuleList()
         new_module_idx = []
         for idx, module in enumerate(module_list):
@@ -78,7 +96,7 @@ class LLaMAPro(SwiftAdapter):
         LLaMAPro._set_module_list(config, model, new_module_list)
 
         def state_dict_callback(state_dict, adapter_name, **kwargs):
-            model_key_mapping = LLaMAPro.get_model_key_mapping(config.model_type, config)
+            model_key_mapping = LLaMAPro.get_model_key_mapping(model_type, config)
             new_module_list = [model_key_mapping.module_list + f'.{i}' for i in new_module_idx]
             return {
                 key: value
@@ -86,13 +104,14 @@ class LLaMAPro(SwiftAdapter):
             }
 
         def mark_trainable_callback(model):
-            model_key_mapping = LLaMAPro.get_model_key_mapping(config.model_type, config)
+            model_key_mapping = LLaMAPro.get_model_key_mapping(model_type, config)
             new_module_list = [model_key_mapping.module_list + f'.{i}' for i in new_module_idx]
             for name, parameter in model.named_parameters():
                 parameter: nn.Parameter
                 if any([m_part in name for m_part in new_module_list]):
                     parameter.requires_grad = True
 
+        config.model_type = origin_model_type
         return SwiftOutput(
             config=config, state_dict_callback=state_dict_callback, mark_trainable_callback=mark_trainable_callback)
 
@@ -107,7 +126,10 @@ class LLaMAPro(SwiftAdapter):
         if model_type in ('llama', 'mistral', 'qwen2', 'yi', 'gemma', 'deepseek', 'openbuddy', 'xverse', 'orion',
                           'bluelm', 'ziya', 'skywork', 'deepseek-v2', 'minicpm', 'phi3', 'internlm2'):
             for idx, module in enumerate(module_list):
-                getattr(module, attention).layer_idx = idx
+                try:
+                    getattr(module, attention).layer_idx = idx
+                except AttributeError:
+                    getattr(module, 'cross_attn').layer_idx = idx
         elif model_type in ('chatglm', 'glm4'):
             for idx, module in enumerate(module_list):
                 getattr(module, attention).layer_number = idx
@@ -134,6 +156,34 @@ class LLaMAPro(SwiftAdapter):
         assert model_key_mapping.o_proj is not None and model_key_mapping.down_proj is not None, \
             'LLaMAPro only support models with o_proj and down_proj components.'
         return model_key_mapping
+
+    @classmethod
+    def search_correct_model_type(cls, module: nn.Module):
+        for arch_name, arch_type in MODEL_ARCH_MAPPING.items():
+            arch_type: ModelKeys
+            if getattr(arch_type, 'module_list') is None:
+                # Need to be a LLM arch
+                continue
+
+            matched = True
+            for f in fields(arch_type):
+                arch_str = getattr(arch_type, f.name)
+                if f.name == 'arch_name' or arch_str is None:
+                    continue
+
+                arch_str = arch_str.replace('{}', '0')
+                try:
+                    sub_module = module.get_submodule(arch_str)
+                    if sub_module is None:
+                        matched = False
+                except AttributeError:
+                    matched = False
+
+                if not matched:
+                    break
+
+            if matched:
+                return arch_name
 
     @staticmethod
     def _update_module_weight(config: LLaMAProConfig, module_list, new_module_idx):

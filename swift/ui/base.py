@@ -1,20 +1,21 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import dataclasses
 import os
 import sys
 import time
 import typing
+from collections import OrderedDict
 from dataclasses import fields
 from datetime import datetime
 from functools import wraps
-from typing import Any, Dict, List, OrderedDict, Type
+from typing import Any, Dict, List, Type
 
 import gradio as gr
 import json
 from gradio import Accordion, Audio, Button, Checkbox, Dropdown, File, Image, Slider, Tab, TabItem, Textbox, Video
 from modelscope.hub.utils.utils import get_cache_dir
 
-from swift.llm import TEMPLATE_MAPPING, BaseArguments
-from swift.llm.model.register import get_matched_model_meta
+from swift.llm import TEMPLATE_MAPPING, BaseArguments, get_matched_model_meta
 
 all_langs = ['zh', 'en']
 builder: Type['BaseUI'] = None
@@ -137,7 +138,7 @@ class BaseUI:
         timestamp = str(int(time.time()))
         key = key.replace('/', '-')
         filename = os.path.join(cls.cache_dir, key + '-' + timestamp)
-        with open(filename, 'w') as f:
+        with open(filename, 'w', encoding='utf-8') as f:
             json.dump(value, f)
 
     @classmethod
@@ -160,7 +161,7 @@ class BaseUI:
         timestamp = int(dt_object.timestamp())
         key = key.replace('/', '-')
         filename = key + '-' + str(timestamp)
-        with open(os.path.join(cls.cache_dir, filename), 'r') as f:
+        with open(os.path.join(cls.cache_dir, filename), 'r', encoding='utf-8') as f:
             return json.load(f)
 
     @classmethod
@@ -219,12 +220,12 @@ class BaseUI:
 
     @classmethod
     def valid_elements(cls):
+        valid_elements = OrderedDict()
         elements = cls.elements()
-        return {
-            key: value
-            for key, value in elements.items()
-            if isinstance(value, (Textbox, Dropdown, Slider, Checkbox)) and key != 'train_record'
-        }
+        for key, value in elements.items():
+            if isinstance(value, (Textbox, Dropdown, Slider, Checkbox)) and key != 'train_record':
+                valid_elements[key] = value
+        return valid_elements
 
     @classmethod
     def element_keys(cls):
@@ -268,9 +269,16 @@ class BaseUI:
     def get_default_value_from_dataclass(dataclass):
         default_dict = {}
         for f in fields(dataclass):
-            if hasattr(dataclass, f.name):
-                default_dict[f.name] = getattr(dataclass, f.name)
+            if f.default.__class__ is dataclasses._MISSING_TYPE:
+                default_dict[f.name] = f.default_factory()
             else:
+                default_dict[f.name] = f.default
+            if isinstance(default_dict[f.name], list):
+                try:
+                    default_dict[f.name] = ' '.join(default_dict[f.name])
+                except TypeError:
+                    default_dict[f.name] = None
+            if not default_dict[f.name]:
                 default_dict[f.name] = None
         return default_dict
 
@@ -282,7 +290,7 @@ class BaseUI:
         return arguments
 
     @classmethod
-    def update_input_model(cls, model, allow_keys=None, has_record=True, arg_cls=BaseArguments):
+    def update_input_model(cls, model, allow_keys=None, has_record=True, arg_cls=BaseArguments, is_ref_model=False):
         keys = cls.valid_element_keys()
 
         if not model:
@@ -305,9 +313,9 @@ class BaseUI:
         if os.path.exists(local_args_path):
             try:
                 if hasattr(arg_cls, 'resume_from_checkpoint'):
-                    args = arg_cls(resume_from_checkpoint=model, load_dataset_config=True)
+                    args = arg_cls(resume_from_checkpoint=model, load_data_args=True)
                 else:
-                    args = arg_cls(ckpt_dir=model, load_dataset_config=True)
+                    args = arg_cls(ckpt_dir=model, load_data_args=True)
             except ValueError:
                 return [gr.update()] * (len(keys) + int(has_record))
             values = []
@@ -340,8 +348,12 @@ class BaseUI:
                     values.append(gr.update())
                 elif key in ('template', 'model_type', 'ref_model_type'):
                     if key == 'ref_model_type':
-                        key = 'model_type'
-                    values.append(gr.update(value=getattr(model_meta, key)))
+                        if is_ref_model:
+                            values.append(gr.update(value=getattr(model_meta, 'model_type')))
+                        else:
+                            values.append(gr.update())
+                    else:
+                        values.append(gr.update(value=getattr(model_meta, key)))
                 else:
                     values.append(gr.update(value=TEMPLATE_MAPPING[model_meta.template].default_system))
 

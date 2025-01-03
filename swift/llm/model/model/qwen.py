@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import Any, Dict, List, Optional, Tuple, Type
+from typing import Any, Dict, Optional, Tuple, Type
 
 import torch
 from transformers import AutoConfig, BitsAndBytesConfig, PreTrainedTokenizerBase
@@ -7,7 +7,7 @@ from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
 
 from swift.llm import TemplateType
-from swift.utils import get_dist_setting, get_logger
+from swift.utils import get_dist_setting, get_env_args, get_logger
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
 from ..patcher import patch_fixed_device, patch_output_clone, patch_output_to_input_device
@@ -23,8 +23,10 @@ def get_model_tokenizer_qwen(model_dir: str,
                              model_info: ModelInfo,
                              model_kwargs: Dict[str, Any],
                              load_model: bool = True,
+                             model_config=None,
                              **kwargs):
-    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+    if model_config is None:
+        model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     if model_config.torch_dtype is not None:
         k_true = dtype_mapping[model_config.torch_dtype]
         for k in dtype_mapping.values():
@@ -470,34 +472,41 @@ register_model(
         model_arch=ModelArch.llama))
 
 
+def patch_qwen_vl_utils():
+    from qwen_vl_utils import vision_process
+    if hasattr(vision_process, '_patch'):
+        return
+    for key in [
+            'image_factor', 'min_pixels', 'max_pixels', 'max_ratio', 'video_min_pixels', 'video_max_pixels',
+            'video_total_pixels', 'frame_factor', 'fps', 'fps_min_frames', 'fps_max_frames'
+    ]:
+        type_func = float if key == 'fps' else int
+        setattr(vision_process, key.upper(), get_env_args(key, type_func, getattr(vision_process, key.upper())))
+    from qwen_vl_utils import vision_process
+    _read_video_decord = vision_process._read_video_decord
+
+    def _new_read_video_decord(ele: dict):
+        from swift.llm import load_file
+        ele['video'] = load_file(ele['video'])
+        return _read_video_decord(ele)
+
+    vision_process.VIDEO_READER_BACKENDS['decord'] = _new_read_video_decord
+    vision_process._patch = True
+
+
 def get_model_tokenizer_qwen2_vl(model_dir: str,
                                  model_info: ModelInfo,
                                  model_kwargs: Dict[str, Any],
                                  load_model: bool = True,
                                  **kwargs):
-    try:
-        from torchvision.io import video
-        if not hasattr(video, '_patching'):
-            # not read audio
-            video._patching = True
-            _old_read_from_stream = video._read_from_stream
-
-            def _read_from_stream(container: 'av.container.Container', start_offset: float, end_offset: float,
-                                  pts_unit: str, stream: 'av.stream.Stream', *args, **kwargs) -> List['av.frame.Frame']:
-                if stream.type == 'video':
-                    return _old_read_from_stream(container, start_offset, end_offset, pts_unit, stream, *args, **kwargs)
-                return []
-
-            video._read_from_stream = _read_from_stream
-    except Exception:
-        pass
-
     from transformers import Qwen2VLForConditionalGeneration
     kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen2VLForConditionalGeneration
     model, tokenizer = get_model_tokenizer_multimodal(model_dir, model_info, model_kwargs, load_model, **kwargs)
     if model is not None and hasattr(model.model, 'embed_tokens'):
         patch_output_clone(model.model.embed_tokens)
         patch_output_to_input_device(model.model.embed_tokens)
+
+    patch_qwen_vl_utils()
     return model, tokenizer
 
 
@@ -533,7 +542,21 @@ register_model(
         get_model_tokenizer_qwen2_vl,
         model_arch=ModelArch.qwen2_vl,
         architectures=['Qwen2VLForConditionalGeneration'],
-        requires=['transformers>=4.45', 'qwen_vl_utils', 'pyav'],
+        requires=['transformers>=4.45', 'qwen_vl_utils>=0.0.6', 'pyav', 'decord'],
+        tags=['vision', 'video']))
+
+register_model(
+    ModelMeta(
+        MLLMModelType.qvq, [
+            ModelGroup([
+                Model('Qwen/QVQ-72B-Preview', 'Qwen/QVQ-72B-Preview'),
+            ]),
+        ],
+        TemplateType.qvq,
+        get_model_tokenizer_qwen2_vl,
+        model_arch=ModelArch.qwen2_vl,
+        architectures=['Qwen2VLForConditionalGeneration'],
+        requires=['transformers>=4.45', 'qwen_vl_utils>=0.0.6', 'pyav', 'decord'],
         tags=['vision', 'video']))
 
 
@@ -550,8 +573,7 @@ register_model(
             ModelGroup([
                 Model('Qwen/Qwen2-Audio-7B-Instruct', 'Qwen/Qwen2-Audio-7B-Instruct'),
                 Model('Qwen/Qwen2-Audio-7B', 'Qwen/Qwen2-Audio-7B'),
-                Model('Qwen/Qwen2-Audio-7B', 'Qwen/Qwen2-Audio-7B'),
-            ], ),
+            ]),
         ],
         TemplateType.qwen2_audio,
         get_model_tokenizer_qwen2_audio,

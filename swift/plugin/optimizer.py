@@ -11,7 +11,6 @@ def calculate_max_steps(args: 'TrainArguments', dataset) -> int:
     if args.max_steps and args.max_steps > 0:
         max_steps = args.max_steps
     else:
-        assert not args.streaming
         len_dataset = len(dataset)
         _, _, world_size, _ = get_dist_setting()
         total_train_batch_size = args.per_device_train_batch_size * args.gradient_accumulation_steps * world_size
@@ -23,17 +22,14 @@ def calculate_max_steps(args: 'TrainArguments', dataset) -> int:
 
 def create_galore_optimizers(args, model, dataset):
     training_steps = calculate_max_steps(args, dataset)
-    return create_optimizer_and_scheduler(
-        model,
-        args.training_args,
-        args.galore_config,
-        training_steps,
-        lr=args.learning_rate,
-        weight_decay=args.weight_decay)
+    optimizer, lr_scheduler = create_optimizer_and_scheduler(
+        model, args, args.galore_config, training_steps, lr=args.learning_rate, weight_decay=args.weight_decay)
+    # trainer cannot serialize galore_config
+    args.galore_config = None
+    return optimizer, lr_scheduler
 
 
 def create_lorap_optimizers(args, model, dataset):
-    args = args.training_args
     optimizer_grouped_parameters = None
     if hasattr(model, 'create_optimizer_param_groups'):
         # Lora+ parameter groups

@@ -77,22 +77,19 @@ class DeepseekVLTemplate(Template):
             input_ids=torch.tensor(new_input_ids),
             pixel_values=images_outputs.pixel_values,
             num_image_tokens=torch.tensor([processor.num_image_tokens] * len(idx_list)))
-        batched_output = dict(processor.batchify([output]))
-        batched_output['pixel_values'] = batched_output['pixel_values'].to(dtype=self.config.torch_dtype)
-        encoded = {**batched_output, 'input_ids': new_input_ids, 'labels': new_labels}
+        encoded = {'output': output, 'input_ids': new_input_ids, 'labels': new_labels}
         return encoded
 
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        inputs['pixel_values'] = inputs['pixel_values'].to(dtype=self.config.torch_dtype)
         inputs_embeds = model.prepare_inputs_embeds(**inputs)
         return {'inputs_embeds': inputs_embeds}
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        output = self.fetch_inputs(batch, ['output'])['output']
+        batched_output = dict(self.processor.batchify(output))
         res = super()._data_collator(batch, padding_to=padding_to)
-        new_batch = self.fetch_inputs(batch, ['images_seq_mask', 'images_emb_mask'])
-        res['images_emb_mask'] = torch.concat(new_batch['images_emb_mask'])
-        res['images_seq_mask'] = self._pad_sequence(
-            [images_seq_mask[0] for images_seq_mask in new_batch['images_seq_mask']], 0)
-        return res
+        return {**batched_output, **res}
 
 
 @dataclass
@@ -119,8 +116,59 @@ register_template(DeepseekVLTemplateMeta(MLLMTemplateType.deepseek_janus, templa
 register_template(
     TemplateMeta(
         LLMTemplateType.deepseek_v2_5,
-        prefix=['<｜begin▁of▁sentence｜>'],
+        prefix=['<｜begin▁of▁sentence｜>{{SYSTEM}}'],
         prompt=['<｜User｜>{{QUERY}}<｜Assistant｜>'],
         chat_sep=['<｜end▁of▁sentence｜>'],
+        suffix=['<｜end▁of▁sentence｜>']))
+
+
+class DeepseekVL2Template(DeepseekVLTemplate):
+    image_placeholder = ['<image>\n']
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        from deepseek_vl2.models.processing_deepseek_vl_v2 import VLChatProcessorOutput
+        encoded = Template._encode(self, inputs)
+        images = inputs.images
+        processor = self.processor
+        input_ids, labels = encoded['input_ids'], encoded['labels']
+        images_seq_mask = [False] * len(input_ids)
+        idx_list = findall(input_ids, processor.image_token_id)  # '<image>'
+        _, images_list, _, images_spatial_crop, num_image_tokens = processor.tokenize_with_images(
+            '<image>' * len(images), images, cropping=len(images) <= 2)
+        new_num_tokens = 0
+        for idx, n_image_tokens in zip(idx_list, num_image_tokens):
+            image_tokens = [processor.image_token_id] * n_image_tokens
+            input_ids = input_ids[:idx] + image_tokens + input_ids[idx + 1:]
+            if labels is not None:
+                labels = labels[:idx] + [-100] * n_image_tokens + labels[idx + 1:]
+            images_seq_mask = images_seq_mask[:idx] + [True] * n_image_tokens + images_seq_mask[idx + 1:]
+            new_num_tokens += n_image_tokens - 1
+
+        output = VLChatProcessorOutput(
+            sft_format=None,
+            input_ids=torch.tensor(input_ids),
+            target_ids=torch.tensor(input_ids),
+            images=torch.stack(images_list) if images_list else torch.zeros((0, 3, 384, 384)),
+            images_seq_mask=torch.tensor(images_seq_mask),
+            images_spatial_crop=torch.tensor(images_spatial_crop),
+            num_image_tokens=num_image_tokens)
+        output.images = output.images.to(dtype=self.config.torch_dtype)
+        encoded = {'output': output, 'input_ids': input_ids, 'labels': labels}
+        return encoded
+
+    def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        inputs['images_seq_mask'] = inputs['images_seq_mask'].to(torch.bool)
+        inputs['images_spatial_crop'] = inputs['images_spatial_crop'].to(torch.long)
+        inputs_embeds = model.prepare_inputs_embeds(**inputs)
+        return {'inputs_embeds': inputs_embeds}
+
+
+register_template(
+    TemplateMeta(
+        MLLMTemplateType.deepseek_vl2,
+        prefix=['<｜begin▁of▁sentence｜>{{SYSTEM}}'],
+        prompt=['<|User|>: {{QUERY}}\n\n<|Assistant|>:'],
+        chat_sep=['<｜end▁of▁sentence｜>'],
         suffix=['<｜end▁of▁sentence｜>'],
-        system_prefix=['<｜begin▁of▁sentence｜>{{SYSTEM}}']))
+        template_cls=DeepseekVL2Template,
+        placeholder_tokens=['<image>']))

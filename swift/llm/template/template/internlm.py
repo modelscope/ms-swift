@@ -1,16 +1,18 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 import torch
+from PIL import Image
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.utils import get_env_args
 from ..base import Template
-from ..constant import LLMTemplateType, MLLMTemplateType
+from ..constant import LLMTemplateType, MLLMTemplateType, RMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
-from ..utils import Prompt, Word
+from ..utils import Context, Prompt, Word
+from ..vision_utils import load_file
 from .utils import ChatmlTemplateMeta
 
 INTERNLM_SYSTEM = (
@@ -32,12 +34,21 @@ register_template(
 
 register_template(ChatmlTemplateMeta(LLMTemplateType.internlm2, default_system=INTERNLM_SYSTEM))
 
+register_template(ChatmlTemplateMeta(RMTemplateType.internlm2_reward, suffix=['<|im_end|>\n<|reward|>']))
+
 
 class InternLMXComposer2Template(Template):
     image_placeholder = ['</s>']
     version = 'v2'
     skip_prompt = False
     use_model = True
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    inputs: StdTemplateInputs) -> List[Context]:
+        if media_type == 'video':
+            inputs.images.insert(inputs.image_idx, inputs.videos[index])
+            inputs.image_idx += 1
+        return self.image_placeholder
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         model = self.model
@@ -49,8 +60,19 @@ class InternLMXComposer2Template(Template):
             if len(images) > 1:
                 hd_num = 6
             hd_num = get_env_args('hd_num', int, hd_num)
-            Image_transform = get_class_from_dynamic_module('ixc_utils.Image_transform', model.model_dir)
-            images = [Image_transform(image, hd_num=hd_num) for image in images]
+            images_origin = images
+            images = []
+            for image in images_origin:
+                if isinstance(image, Image.Image):
+                    Image_transform = get_class_from_dynamic_module('ixc_utils.Image_transform', model.model_dir)
+                    images.append(Image_transform(image, hd_num=hd_num))
+                else:
+                    load_video = get_class_from_dynamic_module('ixc_utils.load_video', model.model_dir)
+                    frame2img = get_class_from_dynamic_module('ixc_utils.frame2img', model.model_dir)
+                    Video_transform = get_class_from_dynamic_module('ixc_utils.Video_transform', model.model_dir)
+                    image = load_video(load_file(image))
+                    image = frame2img(image, model.font)
+                    images.append(Video_transform(image, hd_num=hd_num))
         elif self.version == 'v2-4khd':
             hd_num = 55
             hd_num = get_env_args('hd_num', int, hd_num)

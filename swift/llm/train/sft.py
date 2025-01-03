@@ -4,9 +4,7 @@ from functools import partial
 from typing import List, Union
 
 from datasets import Dataset as HfDataset
-from datasets import IterableDataset as HfIterableDataset
 
-from swift.llm.model.register import load_by_unsloth
 from swift.plugin import extra_callbacks, get_loss_func, get_metric, optimizers_map
 from swift.trainers import IntervalStrategy, TrainerFactory
 from swift.utils import (append_to_jsonl, get_logger, get_model_parameter_info, is_master, plot_images, stat_array,
@@ -15,8 +13,7 @@ from ..argument import TrainArguments
 from ..base import SwiftPipeline
 from ..dataset import EncodePreprocessor, GetLengthPreprocessor, LazyLLMDataset, PackingPreprocessor, load_dataset
 from ..infer import prepare_generation_config
-from ..model import get_model_arch, get_model_tokenizer
-from ..template import get_template
+from ..model import get_model_arch
 from ..utils import deep_getattr, dynamic_gradient_checkpointing
 from .tuner import TunerMixin
 
@@ -29,11 +26,11 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
     def __init__(self, args: Union[List[str], TrainArguments, None] = None) -> None:
         super().__init__(args)
-        self.args.save_args()
         self.train_msg = {}
         self._prepare_model_tokenizer()
-        self._prepare_template(True)
+        self._prepare_template()
         self._prepare_callbacks()
+        self.args.save_args()
 
     def _prepare_gradient_checkpointing(self):
         args = self.args
@@ -60,35 +57,9 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                                                                  args.get_request_config(), self.tokenizer)
         logger.info(f'model.generation_config: {self.model.generation_config}')
 
-    def _get_model_tokenizer(self, model, model_type, model_revision):
-        args = self.args
-        kwargs = args.get_model_kwargs()
-        # compat rlhf
-        kwargs['model_id_or_path'] = model
-        kwargs['model_type'] = model_type
-        kwargs['model_revision'] = model_revision
-        model_kwargs = {}
-        if args.num_labels is not None:
-            from transformers import AutoModelForSequenceClassification
-            kwargs['automodel_class'] = AutoModelForSequenceClassification
-            model_kwargs = {'num_labels': args.num_labels}
-        if args.tuner_backend == 'unsloth':
-            kwargs['unsloth_kwargs'] = {'load_in_4bit': args.quant_bits == 4}
-        model, processor = get_model_tokenizer(
-            **kwargs, model_kwargs=model_kwargs, use_unsloth=(args.tuner_backend == 'unsloth'))
-        return model, processor
-
     def _prepare_model_tokenizer(self):
         args = self.args
-        if args.tuner_backend == 'unsloth' and args.resume_from_checkpoint and args.train_type != 'full':
-            self.model, self.processor = load_by_unsloth(args.resume_from_checkpoint, args.torch_dtype, args.max_length,
-                                                         args.quant_bits == 4, args.model_meta.is_multimodal)
-            self.model.model_info = args.model_info
-            self.model.model_meta = args.model_meta
-            self.processor.model_info = args.model_info
-            self.processor.model_meta = args.model_meta
-        else:
-            self.model, self.processor = self._get_model_tokenizer(args.model, args.model_type, args.model_revision)
+        self.model, self.processor = args.get_model_processor()
 
         if hasattr(self.model, 'hf_device_map'):
             logger.info(f'model.hf_device_map: {self.model.hf_device_map}')
@@ -99,14 +70,10 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             self._prepare_generation_config()
         self._prepare_gradient_checkpointing()
 
-    def _prepare_template(self, use_chat_template: bool) -> None:
-        args = self.args
-        template_kwargs = args.get_template_kwargs()
-        template = get_template(args.template, self.processor, use_chat_template=use_chat_template, **template_kwargs)
-        logger.info(f'default_system: {template.template_meta.default_system}')
+    def _prepare_template(self) -> None:
+        template = self.args.get_template(self.processor)
         if template.use_model:
             template.model = self.model
-        template.set_mode('train')
         self.template = template
 
     def _get_dataset(self):
@@ -141,16 +108,19 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         args = self.args
 
         train_dataset, val_dataset = self._get_dataset()
+        if args.task_type == 'seq_cls' and isinstance(train_dataset, HfDataset):
+            min_num_labels = int(max(train_dataset['label']) + 1)
+            assert args.num_labels >= min_num_labels, (
+                f'args.num_labels: {args.num_labels}, min_num_labels: {min_num_labels}')
+
         train_dataset, val_dataset = self._encode_dataset(train_dataset, val_dataset)
         data_collator = self._get_data_collator()
         # Some tuners require train_dataset and data_collator for preparation: LoRA-GA
-        self.model = self.prepare_model(self.args, self.model, self.template, train_dataset)
+        self.model = self.prepare_model(self.args, self.model, template=self.template, train_dataset=train_dataset)
         logger.info(f'model: {self.model}')
         model_parameter_info = get_model_parameter_info(self.model)
         self.train_msg['model_parameter_info'] = model_parameter_info
         logger.info(f'model_parameter_info: {model_parameter_info}')
-
-        optimizers = self._get_optimizers(train_dataset)
 
         trainer_cls = TrainerFactory.get_trainer_cls(args)
         trainer = trainer_cls(
@@ -160,7 +130,6 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             train_dataset=train_dataset,
             eval_dataset=val_dataset,
             callbacks=self.callbacks,
-            optimizers=optimizers,
             template=self.template,
             **self._get_trainer_kwargs(),
         )
@@ -220,18 +189,6 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
         return self._save_trainer_state(trainer)
 
-    def _get_optimizers(self, train_dataset):
-        args = self.args
-        if args.lorap_lr_ratio:
-            optimizer_callback = optimizers_map['lorap']
-        elif args.use_galore:
-            optimizer_callback = optimizers_map['galore']
-        elif args.optimizer is not None:
-            optimizer_callback = optimizers_map[args.optimizer]
-        else:
-            optimizer_callback = optimizers_map['default']
-        return optimizer_callback(args, self.model, train_dataset)
-
     def _prepare_callbacks(self):
         from .callback import DynamicLayerActivationCallback, TrainerAdapterCallback
         args = self.args
@@ -252,8 +209,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
     def _stat_dataset(self, dataset: HfDataset):
         args = self.args
-        dataset = GetLengthPreprocessor()(
-            dataset, num_proc=args.dataset_num_proc, load_from_cache_file=args.load_from_cache_file)
+        dataset = GetLengthPreprocessor()(dataset, num_proc=args.dataset_num_proc)
         _, stat_str = stat_array(dataset['length'])
         logger.info(f'Dataset Token Length: {stat_str}')
         return stat_str
@@ -271,17 +227,9 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         else:
             preprocessor_cls = PackingPreprocessor if args.packing else EncodePreprocessor
             preprocessor = preprocessor_cls(template=template)
-            train_dataset = preprocessor(
-                train_dataset,
-                num_proc=args.dataset_num_proc,
-                strict=args.strict,
-                load_from_cache_file=args.load_from_cache_file)
+            train_dataset = preprocessor(train_dataset, num_proc=args.dataset_num_proc, strict=args.strict)
             if val_dataset is not None and not args.predict_with_generate:
-                val_dataset = preprocessor(
-                    val_dataset,
-                    num_proc=args.dataset_num_proc,
-                    strict=args.strict,
-                    load_from_cache_file=args.load_from_cache_file)
+                val_dataset = preprocessor(val_dataset, num_proc=args.dataset_num_proc, strict=args.strict)
 
         inputs = train_dataset[0] if hasattr(train_dataset, '__len__') else next(iter(train_dataset))
         template.print_inputs(inputs, tokenizer_kwargs=inputs.pop('tokenizer_kwargs', None) or {})

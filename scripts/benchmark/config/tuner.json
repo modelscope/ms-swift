@@ -9,7 +9,7 @@
     },
     "eval_dataset": ["ceval", "gsm8k", "arc"],
     "args": {
-      "model": "qwen/Qwen-7B-Chat",
+      "model": "Qwen/Qwen-7B-Chat",
       "dataset": "iic/ms_agent",
       "per_device_train_batch_size": 1,
       "max_length": 2048,

@@ -32,6 +32,8 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
     lr_scheduler_kwargs: Optional[Union[dict, str]] = None
     gradient_checkpointing_kwargs: Optional[Union[dict, str]] = None
     report_to: List[str] = field(default_factory=lambda: ['tensorboard'])
+    eval_strategy: Optional[str] = None  # steps, epoch
+
     remove_unused_columns: bool = False
     logging_first_step: bool = True
 
@@ -39,6 +41,17 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
         if self.output_dir is not None:
             return
         self.output_dir = f'output/{self.model_suffix}'
+
+    def _init_eval_strategy(self):
+        if self.eval_strategy is None:
+            self.eval_strategy = self.save_strategy
+        if self.eval_strategy == 'no':
+            self.eval_steps = None
+            self.split_dataset_ratio = 0.
+            logger.info(f'Setting args.split_dataset_ratio: {self.split_dataset_ratio}')
+        elif self.eval_strategy == 'steps' and self.eval_steps is None:
+            self.eval_steps = self.save_steps
+        self.evaluation_strategy = self.eval_strategy
 
     def __post_init__(self):
         self._init_output_dir()
@@ -56,16 +69,7 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
             self.lr_scheduler_kwargs = self.parse_to_dict(self.lr_scheduler_kwargs)
         if getattr(self, 'gradient_checkpointing_kwargs', None):
             self.gradient_checkpointing_kwargs = self.parse_to_dict(self.gradient_checkpointing_kwargs)
-
-        if len(self.val_dataset) == 0 and self.split_dataset_ratio == 0:
-            self.evaluation_strategy = IntervalStrategy.NO
-            self.eval_strategy = IntervalStrategy.NO
-            self.eval_steps = None
-        else:
-            self.evaluation_strategy = self.save_strategy
-            self.eval_strategy = self.save_strategy
-            if self.eval_steps is None:
-                self.eval_steps = self.save_steps
+        self._init_eval_strategy()
 
 
 @dataclass
@@ -94,7 +98,6 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
         resume_only_model (bool): Flag to resume training only the model. Default is False.
         check_model (bool): Flag to check the model is latest. Default is True.
         loss_type (Optional[str]): Type of loss function to use. Default is None.
-        num_labels (Optional[int]): Number of labels for classification tasks. Default is None.
         packing (bool): Flag to enable packing of datasets. Default is False.
         lazy_tokenize (Optional[bool]): Flag to enable lazy tokenization. Default is None.
         acc_strategy (Literal['token', 'seq']): Strategy for accumulation. Default is 'token'.
@@ -106,30 +109,39 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
     add_version: bool = True
     resume_only_model: bool = False
     check_model: bool = True
-    loss_type: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
-    num_labels: Optional[int] = None
 
     # dataset
     packing: bool = False
     lazy_tokenize: Optional[bool] = None
 
+    # plugin
+    loss_type: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
+    optimizer: Optional[str] = None
+    metric: Optional[str] = None
+
     # extra
     acc_strategy: Literal['token', 'seq'] = 'token'
     max_new_tokens: int = 64
     temperature: float = 0.
-    optimizer: Optional[str] = None
-    metric: Optional[str] = None
 
     def __post_init__(self) -> None:
         if self.resume_from_checkpoint:
             self.resume_from_checkpoint = to_abspath(self.resume_from_checkpoint, True)
-            self.load_args_from_ckpt(self.resume_from_checkpoint)
             if self.train_type == 'full':
                 self.model = self.resume_from_checkpoint
+            else:
+                self.adapters = [self.resume_from_checkpoint]
         BaseArguments.__post_init__(self)
         Seq2SeqTrainingOverrideArguments.__post_init__(self)
         TunerArguments.__post_init__(self)
         TorchAccArguments.__post_init__(self)
+
+        if self.lorap_lr_ratio:
+            self.optimizer = 'lorap'
+        elif self.use_galore:
+            self.optimizer = 'galore'
+        elif self.optimizer is None:
+            self.optimizer = 'default'
 
         if len(self.dataset) == 0:
             raise ValueError(f'self.dataset: {self.dataset}, Please input the training dataset.')
@@ -161,7 +173,10 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
                                  f'local_world_size: {self.local_world_size}.')
 
             ds_config_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'ds_config'))
-            deepspeed_mapping = {name: f'{name}.json' for name in ['zero2', 'zero3', 'zero2_offload', 'zero3_offload']}
+            deepspeed_mapping = {
+                name: f'{name}.json'
+                for name in ['zero0', 'zero1', 'zero2', 'zero3', 'zero2_offload', 'zero3_offload']
+            }
             for ds_name, ds_config in deepspeed_mapping.items():
                 if self.deepspeed == ds_name:
                     self.deepspeed = os.path.join(ds_config_folder, ds_config)

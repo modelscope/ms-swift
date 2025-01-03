@@ -43,10 +43,13 @@ class MLLMModelArch:
     internvl = 'internvl'
     minicpmv = 'minicpmv'
     deepseek_vl = 'deepseek_vl'
+    deepseek_vl2 = 'deepseek_vl2'
+    deepseek_janus = 'deepseek_janus'
 
     mplug_owl2 = 'mplug_owl2'
     mplug_owl2_1 = 'mplug_owl2_1'
     mplug_owl3 = 'mplug_owl3'
+    doc_owl2 = 'doc_owl2'
 
     phi3v = 'phi3v'
     florence = 'florence'
@@ -55,8 +58,8 @@ class MLLMModelArch:
     got_ocr2 = 'got_ocr2'
     ovis1_6 = 'ovis1_6'
     molmo = 'molmo'
-    janus = 'janus'
     emu3_chat = 'emu3_chat'
+    megrez_omni = 'megrez_omni'
 
 
 class ModelArch(LLMModelArch, MLLMModelArch):
@@ -354,10 +357,34 @@ register_model_arch(
 
 register_model_arch(
     MultiModelKeys(
+        MLLMModelArch.doc_owl2,
+        language_model='model.layers',
+        aligner=['model.vision2text', 'model.hr_compressor'],
+        vision_tower='model.vision_model',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
         MLLMModelArch.deepseek_vl,
         language_model='language_model',
         aligner='aligner',
         vision_tower='vision_model',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.deepseek_janus,
+        language_model='language_model',
+        vision_tower='vision_model',
+        aligner='aligner',
+        generator=['gen_vision_model', 'gen_aligner', 'gen_head', 'gen_embed']))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.deepseek_vl2,
+        language_model='language',
+        vision_tower='vision',
+        aligner='projector',
     ))
 
 register_model_arch(
@@ -470,15 +497,14 @@ register_model_arch(
         MLLMModelArch.molmo,
         language_model='model.transformer',
         vision_tower='model.vision_backbone',
-    ))
+        aligner='model.vision_backbone.image_projector'))
 
 register_model_arch(
     MultiModelKeys(
-        MLLMModelArch.janus,
-        language_model='language_model',
-        vision_tower='vision_model',
-        aligner='aligner',
-        generator=['gen_vision_model', 'gen_aligner', 'gen_head', 'gen_embed']))
+        MLLMModelArch.megrez_omni,
+        language_model='llm',
+        vision_tower=['vision', 'audio'],
+    ))
 
 register_model_arch(MultiModelKeys(MLLMModelArch.emu3_chat, language_model='model'))
 

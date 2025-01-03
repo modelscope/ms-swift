@@ -13,9 +13,9 @@ from ..protocol import RequestConfig
 
 
 @dataclass
-class LoRARequest:
-    lora_name: str
-    lora_path: str
+class AdapterRequest:
+    name: str
+    path: str
 
 
 class InferTools:
@@ -153,6 +153,5 @@ def prepare_generation_config(model_generation_config: GenerationConfig, request
 
     if generation_config.eos_token_id is None:
         generation_config.eos_token_id = tokenizer.eos_token_id
-    if generation_config.pad_token_id is None:
-        generation_config.pad_token_id = tokenizer.pad_token_id
+    generation_config.pad_token_id = tokenizer.pad_token_id
     return generation_config

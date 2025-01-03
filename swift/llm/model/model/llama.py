@@ -40,7 +40,7 @@ register_model(
                     Model('modelscope/Llama-2-13b-chat-ms', 'meta-llama/Llama-2-13b-chat-hf'),
                     Model('modelscope/Llama-2-70b-chat-ms', 'meta-llama/Llama-2-70b-chat-hf'),
                 ],
-                ignore_file_pattern=[r'.+\.bin$']),
+                ignore_patterns=[r'.+\.bin$']),
             # chinese-llama2
             ModelGroup([
                 # base
@@ -322,6 +322,20 @@ register_model(
             ]),
         ],
         TemplateType.ziya,
+        get_model_tokenizer_with_flash_attn,
+        model_arch=ModelArch.llama,
+        architectures=['LlamaForCausalLM'],
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.megrez,
+        [
+            ModelGroup([
+                Model('InfiniAI/Megrez-3b-Instruct', 'Infinigence/Megrez-3B-Instruct'),
+            ]),
+        ],
+        TemplateType.megrez,
         get_model_tokenizer_with_flash_attn,
         model_arch=ModelArch.llama,
         architectures=['LlamaForCausalLM'],

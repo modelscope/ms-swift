@@ -17,6 +17,8 @@ def _infer_model(pt_engine, system=None, messages=None):
         resp = pt_engine.infer([{'messages': messages}], request_config=request_config)
         response = resp[0].choices[0].message.content
         messages += [{'role': 'assistant', 'content': response}, {'role': 'user', 'content': '<image>这是什么'}]
+    else:
+        messages = messages.copy()
     resp = pt_engine.infer([{
         'messages': messages,
     }], request_config=request_config)
@@ -61,6 +63,7 @@ def test_internlm():
 
 
 def test_internlm2():
+    # pt_engine = PtEngine('Shanghai_AI_Laboratory/internlm2-1_8b')
     pt_engine = PtEngine('Shanghai_AI_Laboratory/internlm2_5-1_8b-chat')
     _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
@@ -96,9 +99,11 @@ def test_codegeex4():
 
 def test_telechat():
     pt_engine = PtEngine('TeleAI/TeleChat2-7B', torch_dtype=torch.float16)
-    _infer_model(pt_engine, messages=[{'role': 'user', 'content': '你是谁？'}])
+    messages = [{'role': 'system', 'content': '你是一个乐于助人的智能助手，请使用用户提问的语言进行有帮助的问答'}, {'role': 'user', 'content': '你好'}]
+    response = _infer_model(pt_engine, messages=messages)
     pt_engine.default_template.template_backend = 'jinja'
-    _infer_model(pt_engine, messages=[{'role': 'user', 'content': '你是谁？'}])
+    response2 = _infer_model(pt_engine, messages=messages)
+    assert response == response2
 
 
 def test_glm_edge():
@@ -125,11 +130,53 @@ def test_llama():
 def test_openbuddy():
     # pt_engine = PtEngine('OpenBuddy/openbuddy-yi1.5-34b-v21.3-32k')
     pt_engine = PtEngine('OpenBuddy/openbuddy-nemotron-70b-v23.2-131k')
-    # pt_engine = PtEngine('OpenBuddy/openbuddy-llama3.3-70b-v24.1-131k')
+    # pt_engine = PtEngine('OpenBuddy/openbuddy-llama3.3-70b-v24.3-131k')
     res = _infer_model(pt_engine, system='')
     pt_engine.default_template.template_backend = 'jinja'
     res2 = _infer_model(pt_engine)
     assert res == res2, f'res: {res}, res2: {res2}'
+
+
+def test_megrez():
+    pt_engine = PtEngine('InfiniAI/Megrez-3b-Instruct')
+    res = _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    res2 = _infer_model(pt_engine)
+    assert res == res2, f'res: {res}, res2: {res2}'
+
+
+def test_skywork_o1():
+    pt_engine = PtEngine('AI-ModelScope/Skywork-o1-Open-Llama-3.1-8B')
+    res = _infer_model(
+        pt_engine,
+        messages=[{
+            'role':
+            'user',
+            'content':
+            ('Jane has 12 apples. She gives 4 apples to her friend Mark, then buys 1 more apple, and finally splits '
+             'all her apples equally among herself and her 2 siblings. How many apples does each person get?')
+        }])
+    assert res == ("To solve the problem, let's break it down into a series of logical steps:\n\n1. **Initial Number "
+                   'of Apples**: Jane starts with 12 apples.\n2. **Apples Given Away**: Jane gives 4 apples to her '
+                   'friend Mark. So, the number of apples she has now is:\n   \\[\n   12 - 4 = 8\n   \\]\n3. **Apples '
+                   'Bought**: Jane then buys 1 more apple. So, the number of apples she has now is:\n   \\[\n   '
+                   '8 + 1 = 9\n   \\]\n4. **Apples Split Equally')
+
+
+def test_internlm2_reward():
+    pt_engine = PtEngine('Shanghai_AI_Laboratory/internlm2-1_8b-reward')
+    messages = [{
+        'role': 'user',
+        'content': "Hello! What's your name?"
+    }, {
+        'role': 'assistant',
+        'content': 'My name is InternLM2! A helpful AI assistant. What can I do for you?'
+    }]
+    pt_engine.task_type = 'seq_cls'
+    res = _infer_model(pt_engine, messages=messages)
+    pt_engine.default_template.template_backend = 'jinja'
+    res2 = _infer_model(pt_engine, messages=messages)
+    assert res == res2 == '0.48681640625'
 
 
 if __name__ == '__main__':
@@ -149,4 +196,7 @@ if __name__ == '__main__':
     # test_telechat()
     # test_glm_edge()
     # test_llama()
-    test_openbuddy()
+    # test_openbuddy()
+    # test_megrez()
+    # test_skywork_o1()
+    test_internlm2_reward()

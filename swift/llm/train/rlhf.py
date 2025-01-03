@@ -16,14 +16,15 @@ class SwiftRLHF(SwiftSft):
         self.ref_model = None
         if args.ref_model:
             # Be aware of the unexpected behavior caused by double monkey patching.
-            self.ref_model, _ = self._get_model_tokenizer(args.ref_model, args.ref_model_type, args.ref_model_revision)
+            self.ref_model, _ = args.get_model_processor(
+                model=args.ref_model, model_type=args.ref_model_type, model_revision=args.ref_model_revision)
             self.ref_model.requires_grad_(False).eval()
 
         super()._prepare_model_tokenizer()
 
-    def _prepare_template(self, use_chat_template: bool) -> None:
+    def _prepare_template(self) -> None:
         args = self.args
-        super()._prepare_template(use_chat_template=use_chat_template)
+        super()._prepare_template()
         mode = 'kto' if args.rlhf_type == 'kto' else 'rlhf'
         self.template.set_mode(mode)
 
@@ -32,8 +33,8 @@ class SwiftRLHF(SwiftSft):
             self.template.loss_scale = 'last_round'
 
     @classmethod
-    def prepare_model(cls, args, model):
-        model = super().prepare_model(args, model)
+    def prepare_model(cls, args, model, *_args, **kwargs):
+        model = super().prepare_model(args, model, *_args, **kwargs)
         if args.rlhf_type == 'rm':
             from trl import AutoModelForCausalLMWithValueHead
             lm_head_namings = ['lm_head', 'embed_out']

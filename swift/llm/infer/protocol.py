@@ -10,7 +10,8 @@ from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 from PIL import Image
 
-from swift.llm.template import InferRequest, Messages, Tool
+from ..template import InferRequest
+from ..utils import Messages, Tool
 
 
 def random_uuid() -> str:
@@ -102,11 +103,11 @@ class MultiModalRequestMixin:
 
     @staticmethod
     def to_base64(mm_data: Union[str, Image.Image, bytes]) -> str:
+        if isinstance(mm_data, dict) and 'bytes' in mm_data:
+            mm_data = mm_data['bytes'] or mm_data['path']
         if isinstance(mm_data, str) and not os.path.isfile(mm_data):
             # base64 or url
             return mm_data
-        if isinstance(mm_data, dict) and 'bytes' in mm_data:
-            mm_data = mm_data['bytes'] or mm_data['path']
         if isinstance(mm_data, str):
             # local_path
             with open(mm_data, 'rb') as f:

@@ -11,7 +11,7 @@ Swift DOCUMENTATION
 
    GetStarted/SWIFT-installation.md
    GetStarted/Quick-start.md
-   GetStarted/Interface-usage.md
+   GetStarted/Web-UI.md
 
 .. toctree::
    :maxdepth: 2
@@ -36,8 +36,8 @@ Swift DOCUMENTATION
    :maxdepth: 2
    :caption: Customization
 
-   Customization/Custom-dataset.md
    Customization/Custom-model.md
+   Customization/Custom-dataset.md
    Customization/Plugin.md
 
 

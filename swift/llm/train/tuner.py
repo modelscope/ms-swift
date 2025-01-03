@@ -28,9 +28,9 @@ def apply_liger(model_type: str):
         apply_liger_kernel_to_mistral()
     elif model_type in (ModelType.mixtral):
         apply_liger_kernel_to_mixtral()
-    elif model_type in (ModelType.gemma):
+    elif model_type in (ModelType.gemma, ModelType.gemma2):
         apply_liger_kernel_to_gemma()
-    elif model_type in (ModelType.gemma2):
+    elif model_type in (ModelType.qwen2, ModelType.qwen2_5):
         apply_liger_kernel_to_qwen2()
     elif model_type in (ModelType.phi3):
         apply_liger_kernel_to_phi3()
@@ -64,7 +64,7 @@ def get_multimodal_target_regex(model_arch,
     prefix_pattern = '|'.join(modules)
     rejected_pattern = '|'.join(rejected_modules)
 
-    ignore_pattern = []
+    ignore_pattern = ['lora_A', 'lora_B', 'base_layer']
     if ignore_embedding:
         ignore_pattern += ['emb', 'wte', 'shared']
         ignore_pattern += model_arch.embedding or []
@@ -136,7 +136,7 @@ def get_vera_target_modules(model, config):
     return config
 
 
-def prepare_adapter(args: TrainArguments, model, template=None, train_dataset=None, task='CAUSAL_LM'):
+def prepare_adapter(args: TrainArguments, model, *, template=None, train_dataset=None):
     from swift.tuners import (AdaLoraConfig, AdapterConfig, BOFTConfig, LLaMAProConfig, LongLoRAModelType, LoraConfig,
                               LoRAConfig, ReftConfig, Swift, VeraConfig)
     target_modules = get_target_modules(args, model)
@@ -152,16 +152,15 @@ def prepare_adapter(args: TrainArguments, model, template=None, train_dataset=No
         'use_dora': args.use_dora,
         'lorap_lr_ratio': args.lorap_lr_ratio,
         'init_lora_weights': args.init_weights,
-        'task_type': task,
     }
-
+    task_type = args.task_type.upper()
     if args.train_type in ('lora', 'longlora'):
         if args.use_swift_lora:
             lora_config = LoRAConfig(lora_dtype=args.lora_dtype, **lora_kwargs)
             model = Swift.prepare_model(model, lora_config)
             logger.info(f'lora_config: {lora_config}')
         elif args.tuner_backend == 'peft':
-            lora_config = LoraConfig(lora_dtype=args.lora_dtype, **lora_kwargs)
+            lora_config = LoraConfig(task_type=task_type, lora_dtype=args.lora_dtype, **lora_kwargs)
             if args.init_weights == 'lora-ga':
                 try:
                     import lora_ga
@@ -212,7 +211,7 @@ def prepare_adapter(args: TrainArguments, model, template=None, train_dataset=No
         lora_kwargs.pop('lorap_lr_ratio', None)
         lora_kwargs['rank_pattern'] = None
         adalora_config = AdaLoraConfig(
-            task_type='CAUSAL_LM',
+            task_type=task_type,
             **lora_kwargs,
             target_r=args.adalora_target_r,
             init_r=args.adalora_init_r,
@@ -330,29 +329,39 @@ def torchacc_resume_from_checkpoint(args, model):
 class TunerMixin:
 
     @classmethod
-    def prepare_model(cls, args: TrainArguments, model, template=None, train_dataset=None):
+    def prepare_model(
+        cls,
+        args,
+        model,
+        *,
+        template=None,
+        train_dataset=None,
+    ):
         if args.use_liger:
             # Apply liger
             apply_liger(args.model_type)
 
         if args.is_adapter:
-            # Fix the name of the layer in xcomposer that contains Plora.
-            model.requires_grad_(False)
+            if args.tuner_backend != 'unsloth':
+                # Fix the name of the layer in xcomposer that contains Plora.
+                # Unsloth prepares and loads lora outside this function when
+                # resume_from_checkpoint, so do not disable grad here
+                model.requires_grad_(False)
             if args.resume_from_checkpoint:
                 if args.train_type in extra_tuners:
                     tuner: Tuner = extra_tuners[args.train_type]
-                    model = tuner.from_pretrained(model, args.resume_from_checkpoint)
                 else:
-                    kwargs = {}
-                    if use_torchacc():
-                        kwargs = {'adapter_name': 'default'}
-                    model = Swift.from_pretrained(model, args.resume_from_checkpoint, is_trainable=True, **kwargs)
+                    tuner = Swift
+                kwargs = {}
+                if use_torchacc():
+                    kwargs = {'adapter_name': 'default'}
+                model = tuner.from_pretrained(model, args.resume_from_checkpoint, is_trainable=True, **kwargs)
             else:
                 if args.train_type in extra_tuners:
                     tuner: Tuner = extra_tuners[args.train_type]
                     model = tuner.prepare_model(args, model)
                 else:
-                    model = prepare_adapter(args, model, template, train_dataset)
+                    model = prepare_adapter(args, model, template=template, train_dataset=train_dataset)
             # fix bug: Attempting to unscale FP16 gradients.
             #   peft: https://github.com/huggingface/peft/issues/1249
             for p in model.parameters():
@@ -394,6 +403,7 @@ class TunerMixin:
                 gamma_proj=args.galore_gamma_proj,
                 queue_size=args.galore_queue_size,
             )
+            args.training_args.galore_config = args.galore_config
 
         if args.sequence_parallel_size > 1:
             from swift.trainers.xtuner import dispatch_module_xtuner

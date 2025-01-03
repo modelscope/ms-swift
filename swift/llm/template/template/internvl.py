@@ -136,7 +136,10 @@ class Internvl2Template(InternvlTemplate):
         if images:
             has_video = bool(inputs.videos)
             input_size = get_env_args('input_size', int, 448)
-            max_num = get_env_args('max_num', int, 1 if has_video else 12)
+            max_num = get_env_args('max_num', int, 12)
+            video_max_num = get_env_args('video_max_num', int, 1)
+            if has_video:
+                max_num = video_max_num
             pixel_values = [transform_image(image, input_size, max_num) for image in images]
             num_patches = [pv.shape[0] for pv in pixel_values]
             pixel_values = torch.cat(pixel_values).to(self.config.torch_dtype)
@@ -159,8 +162,6 @@ class Internvl2Template(InternvlTemplate):
         encoded['pixel_values'] = pixel_values
         return encoded
 
-
-# TODO: self.padding_side = 'left'
 
 _internvl2_system = '你是由上海人工智能实验室联合商汤科技开发的书生多模态大模型，英文名叫InternVL, 是一个有用无害的人工智能助手。'
 register_template(

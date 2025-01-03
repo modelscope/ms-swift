@@ -5,6 +5,7 @@ from typing import Optional
 from ..constant import LLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..utils import Prompt
+from .llama import Llama3_2TemplateMeta
 from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
 
 register_template(
@@ -71,6 +72,17 @@ register_template(
         suffix=['[SEP]</s>']))
 
 register_template(
+    Llama3_2TemplateMeta(
+        LLMTemplateType.skywork_o1,
+        default_system=(
+            'You are Skywork-o1, a thinking model developed by Skywork AI, specializing in solving complex problems '
+            "involving mathematics, coding, and logical reasoning through deep thought. When faced with a user's "
+            'request, you first engage in a lengthy and in-depth thinking process to explore possible solutions to '
+            'the problem. After completing your thoughts, you then provide a detailed explanation of the solution '
+            'process in your response.'),
+    ))
+
+register_template(
     TemplateMeta(
         LLMTemplateType.bluelm,
         prefix=[['bos_token_id'], '{{SYSTEM}}'],
@@ -124,7 +136,7 @@ class TeleChatTemplateMeta(TemplateMeta):
     prompt: Prompt = field(default_factory=lambda: ['<_user>{{QUERY}}<_bot>'])
     chat_sep: Optional[Prompt] = field(default_factory=lambda: ['<_end>'])
     suffix: Prompt = field(default_factory=lambda: ['<_end>'])
-    system_prefix: Optional[Prompt] = field(default_factory=lambda: ['<_system>{{SYSTEM}}'])
+    system_prefix: Optional[Prompt] = field(default_factory=lambda: ['<_system>{{SYSTEM}}\n'])
 
 
 register_template(TeleChatTemplateMeta(LLMTemplateType.telechat))

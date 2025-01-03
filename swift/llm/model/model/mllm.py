@@ -3,16 +3,17 @@ from types import MethodType
 from typing import Any, Dict
 
 import torch
-from modelscope import AutoModel
+from transformers import AutoModel
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.llm import TemplateType
 from swift.utils import get_logger
 from ..constant import MLLMModelType
 from ..model_arch import ModelArch
+from ..patcher import patch_output_clone
 from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,
                         get_model_tokenizer_with_flash_attn, register_model)
-from ..utils import ModelInfo
+from ..utils import ModelInfo, use_submodel_func
 
 logger = get_logger()
 
@@ -103,20 +104,6 @@ def get_model_tokenizer_molmoe(model_dir: str,
     if model is not None:
         model.config._to_dict = model.config.to_dict
         model.config.to_dict = MethodType(to_dict, model.config)
-        from transformers import GenerationMixin
-        model.generate = MethodType(GenerationMixin.generate, model)
-
-    if model and hasattr(model, '_old_forward'):  # device_map
-        device = model.lm_head.weight.device
-        forward_origin = model._old_forward
-
-        def _forward(*args, **kwargs):
-            if kwargs.get('append_last_valid_logits') is not None:
-                kwargs['append_last_valid_logits'] = kwargs['append_last_valid_logits'].to(device)
-            return forward_origin(*args, **kwargs)
-
-        model._old_forward = _forward
-        model.forward_origin = forward_origin
 
     return model, processor
 
@@ -147,18 +134,8 @@ def get_model_tokenizer_molmo(model_dir: str,
     model_cls = get_class_from_dynamic_module('modeling_molmo.MolmoForCausalLM', model_dir)
     model_cls._no_split_modules = ['MolmoSequentialBlock']
     model, processor = get_model_tokenizer_multimodal(model_dir, model_info, model_kwargs, load_model, **kwargs)
-    if model:
-        device = next(model.model.transformer.ff_out.parameters()).device
-        forward_origin = model.model.forward
 
-        def _forward(*args, **kwargs):
-            if kwargs.get('append_last_valid_logits') is not None:
-                kwargs['append_last_valid_logits'] = kwargs['append_last_valid_logits'].to(device)
-            return forward_origin(*args, **kwargs)
-
-        model.model.forward = _forward
-        model.model.forward_origin = forward_origin
-
+    patch_output_clone(model.model.transformer.wte)
     return model, processor
 
 
@@ -178,4 +155,32 @@ register_model(
         architectures=['MolmoForCausalLM'],
         tags=['vision'],
         requires=['transformers>=4.45'],
+    ))
+
+
+def get_model_tokenizer_megrez_omni(model_dir, *args, **kwargs):
+    model_cls = get_class_from_dynamic_module('modeling_megrezo.MegrezO', model_dir)
+    model_cls._no_split_modules = ['ResidualAttentionBlock', 'LlamaDecoderLayer']
+    model_cls = get_class_from_dynamic_module('modeling_megrezo.SiglipVisionTransformer', model_dir)
+    model_cls._no_split_modules = ['SiglipEncoderLayer']
+    model, processor = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
+    processor = model._get_or_init_processor()
+    patch_output_clone(model.llm.model.embed_tokens)
+    use_submodel_func(model, 'llm')
+    return model, processor
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.megrez_omni,
+        [
+            ModelGroup([
+                Model('InfiniAI/Megrez-3B-Omni', 'Infinigence/Megrez-3B-Omni'),
+            ]),
+        ],
+        TemplateType.megrez_omni,
+        get_model_tokenizer_megrez_omni,
+        model_arch=ModelArch.megrez_omni,
+        architectures=['MegrezO'],
+        tags=['vision', 'audio'],
     ))

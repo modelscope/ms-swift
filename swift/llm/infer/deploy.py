@@ -5,6 +5,7 @@ import multiprocessing
 import time
 from contextlib import contextmanager
 from dataclasses import asdict
+from functools import partial
 from http import HTTPStatus
 from threading import Thread
 from typing import List, Optional, Union
@@ -15,7 +16,7 @@ from aiohttp import ClientConnectorError
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from swift.llm import DeployArguments
+from swift.llm import AdapterRequest, DeployArguments
 from swift.plugin import InferStats
 from swift.utils import get_logger
 from .infer import SwiftInfer
@@ -67,8 +68,8 @@ class SwiftDeploy(SwiftInfer):
     def _get_model_list(self):
         args = self.args
         model_list = [args.served_model_name or args.model_suffix]
-        if args.lora_request_list is not None:
-            model_list += [lora_request.lora_name for lora_request in args.lora_request_list]
+        if args.adapter_mapping:
+            model_list += [name for name in args.adapter_mapping.keys()]
         return model_list
 
     async def get_available_models(self):
@@ -96,7 +97,7 @@ class SwiftDeploy(SwiftInfer):
 
     def _check_max_logprobs(self, request):
         args = self.args
-        if isinstance(request.top_logprobs, int) and request.top_logprobs > self.args.max_logprobs:
+        if isinstance(request.top_logprobs, int) and request.top_logprobs > args.max_logprobs:
             return (f'The value of top_logprobs({request.top_logprobs}) is greater than '
                     f'the server\'s max_logprobs({args.max_logprobs}).')
 
@@ -119,29 +120,46 @@ class SwiftDeploy(SwiftInfer):
                 self.jsonl_writer.append(data)
         return response
 
+    def _set_request_config(self, request_config) -> None:
+        default_request_config = self.args.get_request_config()
+        if default_request_config is None:
+            return
+        for key, val in asdict(request_config).items():
+            default_val = getattr(default_request_config, key)
+            if default_val is not None and (val is None or isinstance(val, (list, tuple)) and len(val) == 0):
+                setattr(request_config, key, default_val)
+
     async def create_chat_completion(self,
                                      request: ChatCompletionRequest,
                                      raw_request: Request,
                                      *,
                                      return_cmpl_response: bool = False):
+        args = self.args
         error_msg = (await self._check_model(request) or self._check_api_key(raw_request)
                      or self._check_max_logprobs(request))
         if error_msg:
             return self.create_error_response(HTTPStatus.BAD_REQUEST, error_msg)
+        infer_kwargs = self.infer_kwargs.copy()
+        adapter_path = args.adapter_mapping.get(request.model)
+        if adapter_path:
+            infer_kwargs['adapter_request'] = AdapterRequest(request.model, adapter_path)
 
         infer_request, request_config = request.parse()
+        self._set_request_config(request_config)
         request_info = {'infer_request': infer_request.to_printable()}
 
         def pre_infer_hook(kwargs):
             request_info['generation_config'] = kwargs['generation_config']
-            if self.args.verbose:
+            if args.verbose:
                 logger.info(request_info)
             return kwargs
 
-        self.infer_engine.pre_infer_hooks = [pre_infer_hook]
+        infer_kwargs['pre_infer_hook'] = pre_infer_hook
         try:
-            res_or_gen = await self.infer_async(infer_request, request_config, template=self.template)
-        except ValueError as e:
+            res_or_gen = await self.infer_async(infer_request, request_config, template=self.template, **infer_kwargs)
+        except Exception as e:
+            import traceback
+            print(traceback.format_exc())
             return self.create_error_response(HTTPStatus.BAD_REQUEST, str(e))
         if request_config.stream:
 
@@ -197,7 +215,7 @@ def run_deploy(args: DeployArguments, return_url: bool = False):
     try:
         while not is_accessible(deploy_args.port):
             time.sleep(1)
-        yield f'http://127.0.0.1:{deploy_args.port}/v1/chat/completions' if return_url else deploy_args.port
+        yield f'http://127.0.0.1:{deploy_args.port}/v1' if return_url else deploy_args.port
     finally:
         process.terminate()
         logger.info('The deployment process has been terminated.')

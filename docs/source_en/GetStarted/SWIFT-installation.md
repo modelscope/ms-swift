@@ -5,11 +5,10 @@
 You can install it using pip:
 
 ```shell
-# The abilities of LLM and MLLM
-pip install 'ms-swift[llm]' -U
-# For evaluation
+pip install 'ms-swift'
+# For evaluation usage
 pip install 'ms-swift[eval]' -U
-# For sequence parallel support
+# For sequence parallel usage
 pip install 'ms-swift[seq_parallel]' -U
 # Full capabilities
 pip install 'ms-swift[all]' -U
@@ -20,7 +19,10 @@ pip install 'ms-swift[all]' -U
 ```shell
 git clone https://github.com/modelscope/ms-swift.git
 cd ms-swift
-pip install -e '.[llm]'
+pip install -e .
+
+# Full capabilities
+# pip install -e '.[all]'
 ```
 
 ## Older Versions
@@ -33,7 +35,9 @@ pip install ms-swift==2.*
 
 ## Mirror
 
-You can check [here](https://modelscope.cn/docs/intro/environment-setup#%E6%9C%80%E6%96%B0%E9%95%9C%E5%83%8F)
+You can view the image [here](https://modelscope.cn/docs/intro/environment-setup#%E6%9C%80%E6%96%B0%E9%95%9C%E5%83%8F).
+
+You can also use [install_all.sh](https://github.com/modelscope/ms-swift/blob/main/requirements/install_all.sh) for installation.
 
 ## Notebook Environment
 

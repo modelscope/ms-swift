@@ -15,11 +15,11 @@ def test_llm():
     result = rlhf_main(
         RLHFArguments(
             rlhf_type='dpo',
-            model='qwen/Qwen2-7B-Instruct',
+            model='Qwen/Qwen2-7B-Instruct',
             dataset=['hjh0119/shareAI-Llama3-DPO-zh-en-emoji:zh#100'],
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
-    infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True, merge_lora=True))
+    infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True, merge_lora=True))
 
 
 def test_mllm():
@@ -27,13 +27,13 @@ def test_mllm():
     result = rlhf_main(
         RLHFArguments(
             rlhf_type='dpo',
-            model='qwen/Qwen2-VL-7B-Instruct',
+            model='Qwen/Qwen2-VL-7B-Instruct',
             dataset=['swift/RLAIF-V-Dataset#100'],
             dataset_num_proc=8,
             max_pixels=512 * 512,
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
-    infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True, merge_lora=True))
+    infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True, merge_lora=True))
 
 
 def test_mllm_zero3():
@@ -42,7 +42,7 @@ def test_mllm_zero3():
     rlhf_main(
         RLHFArguments(
             rlhf_type='dpo',
-            model='qwen/Qwen2-VL-7B-Instruct',
+            model='Qwen/Qwen2-VL-7B-Instruct',
             dataset=['swift/RLAIF-V-Dataset#100'],
             dataset_num_proc=8,
             max_pixels=512 * 512,

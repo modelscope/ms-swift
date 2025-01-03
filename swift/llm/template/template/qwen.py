@@ -12,7 +12,7 @@ from ..register import register_template
 from ..template_inputs import StdTemplateInputs
 from ..template_meta import TemplateMeta
 from ..utils import Context, Word, findall
-from ..vision_utils import load_audio_qwen, load_batch, load_video_qwen2
+from ..vision_utils import load_audio_qwen, load_batch, load_file
 from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
 
 
@@ -145,45 +145,19 @@ class Qwen2AudioTemplate(Template):
 register_template(QwenTemplateMeta(MLLMTemplateType.qwen2_audio, template_cls=Qwen2AudioTemplate))
 
 
-def _process_image_qwen(image):
-    from qwen_vl_utils.vision_process import IMAGE_FACTOR, MIN_PIXELS, MAX_PIXELS, smart_resize
-    image_factor = get_env_args('image_factor', int, IMAGE_FACTOR)
-    # resize
-    resized_height = get_env_args('resized_height', int, None)
-    resized_width = get_env_args('resized_width', int, None)
-    if resized_height and resized_width:
-        resized_height, resized_width = smart_resize(
-            resized_height,
-            resized_width,
-            factor=image_factor,
-        )
-    else:
-        width, height = image.size
-        min_pixels = get_env_args('min_pixels', int, MIN_PIXELS)
-        max_pixels = get_env_args('max_pixels', int, MAX_PIXELS)
-        resized_height, resized_width = smart_resize(
-            height,
-            width,
-            factor=image_factor,
-            min_pixels=min_pixels,
-            max_pixels=max_pixels,
-        )
-    image = image.resize((resized_width, resized_height))
-    return image
-
-
 class Qwen2VLTemplate(Template):
     image_token_id = 151655
     video_token_id = 151656
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
+        from qwen_vl_utils import fetch_image, fetch_video
         assert media_type in {'image', 'video'}
         if media_type == 'image':
-            inputs.images[index] = _process_image_qwen(inputs.images[index])
+            inputs.images[index] = fetch_image({'image': inputs.images[index]})
             return ['<|vision_start|><|image_pad|><|vision_end|>']
         else:
-            inputs.videos[index] = load_video_qwen2(inputs.videos[index])
+            inputs.videos[index] = fetch_video({'video': inputs.videos[index]}).to(torch.uint8)
             return ['<|vision_start|><|video_pad|><|vision_end|>']
 
     def replace_object(self, object_: Dict[str, Any], index: int, inputs: StdTemplateInputs) -> List[Context]:
@@ -219,10 +193,12 @@ class Qwen2VLTemplate(Template):
             if locals()[media_type]:
                 if media_type == 'images':
                     media_token = self.image_token_id
-                    media_inputs = processor.image_processor(images=images, videos=None, return_tensors='pt')
+                    media_inputs = processor.image_processor(
+                        images=images, videos=None, return_tensors='pt', do_resize=False)
                     media_grid_thw = media_inputs['image_grid_thw']
                 else:
-                    media_inputs = processor.image_processor(images=None, videos=videos, return_tensors='pt')
+                    media_inputs = processor.image_processor(
+                        images=None, videos=videos, return_tensors='pt', do_resize=False)
                     media_grid_thw = media_inputs['video_grid_thw']
                     media_token = self.video_token_id
                 idx_list = findall(input_ids, media_token)
@@ -298,6 +274,14 @@ class Qwen2VLTemplate(Template):
 register_template(
     QwenTemplateMeta(
         MLLMTemplateType.qwen2_vl, template_cls=Qwen2VLTemplate, placeholder_tokens=['<|image_pad|>', '<|video_pad|>']))
+
+register_template(
+    QwenTemplateMeta(
+        MLLMTemplateType.qvq,
+        default_system=('You are a helpful and harmless assistant. You are Qwen developed by Alibaba. '
+                        'Answer in the language of the question. You should think step-by-step.'),
+        template_cls=Qwen2VLTemplate,
+        placeholder_tokens=['<|image_pad|>', '<|video_pad|>']))
 
 
 class Ovis1_6Template(Template):

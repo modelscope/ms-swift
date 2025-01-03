@@ -37,7 +37,7 @@ def check_json_format(obj: Any, token_safe: bool = True) -> Any:
     elif isinstance(obj, Mapping):
         res = {}
         for k, v in obj.items():
-            if token_safe and isinstance(k, str) and '_token' in k:
+            if token_safe and isinstance(k, str) and '_token' in k and isinstance(v, str):
                 res[k] = None
             else:
                 res[k] = check_json_format(v, token_safe)
@@ -235,7 +235,7 @@ def find_free_port(start_port: Optional[int] = None, retry: int = 100) -> int:
     for port in range(start_port, start_port + retry):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             try:
-                sock.bind(('', start_port))
+                sock.bind(('', port))
                 port = sock.getsockname()[1]
                 break
             except OSError:

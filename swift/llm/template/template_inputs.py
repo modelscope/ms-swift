@@ -7,13 +7,9 @@ import json
 from PIL import Image
 
 from swift.utils import get_logger
-from ..utils import messages_to_history
+from ..utils import Messages, Tool, messages_to_history
 
 logger = get_logger()
-
-Tool = Dict[str, Union[str, Dict]]
-Message = Dict[str, Union[str, List[Dict[str, Any]]]]
-Messages = List[Message]
 
 
 @dataclass
@@ -49,8 +45,7 @@ class InferRequest:
             val = getattr(self, key)
             if isinstance(val, str):
                 setattr(self, key, [val])
-
-        self.remove_response(self.messages)
+        assert isinstance(self.messages, list), f'messages: {self.messages}'
 
     @staticmethod
     def remove_response(messages) -> Optional[str]:
@@ -114,6 +109,8 @@ class StdTemplateInputs:
     objects: List[Dict[str, Any]] = field(default_factory=list)
     ground_truth: str = None
 
+    agent_keyword: Optional[Dict[str, str]] = None
+
     def __post_init__(self):
         self.image_idx = 0
         self.audio_idx = 0
@@ -126,6 +123,8 @@ class StdTemplateInputs:
             self.videos = [self.videos]
         if self.audios and not isinstance(self.audios, (list, tuple)):
             self.audios = [self.audios]
+        if self.agent_keyword is None:
+            self.agent_keyword = {}
 
     def to_history(self):
         if not self.messages:
@@ -138,7 +137,7 @@ class StdTemplateInputs:
 
     @classmethod
     def from_dict(cls, inputs: Dict[str, Any], *, tools_prompt: str = 'react_en') -> 'StdTemplateInputs':
-        from swift.plugin import get_tools_prompt
+        from swift.plugin import get_tools_prompt, get_tools_keyword
         inputs = deepcopy(inputs)
         kwargs = {}
         for key in ['rejected_response', 'label']:
@@ -154,12 +153,15 @@ class StdTemplateInputs:
         else:
             system = None
 
+        keyword = None
         if tools is not None:
             if system is not None:
-                logger.warning_once('You have tools prompt but you also have a system field, which will be ignored')
+                logger.warning_once(
+                    'You have tools prompt but you also have a system field, so the system field will be ignored')
             if isinstance(tools, str):
                 tools = json.loads(tools)
             system = get_tools_prompt(tools, tools_prompt)
+            keyword = get_tools_keyword(tools_prompt)
 
         media_kwargs = StdTemplateInputs.remove_messages_media(messages)
         for k in list(media_kwargs.keys()):
@@ -174,8 +176,8 @@ class StdTemplateInputs:
             else:
                 media_kwargs[k] = inputs_mm_data
 
-        StdTemplateInputs.messages_join_observation(messages)
-        return cls(messages=messages, system=system, objects=objects, **kwargs, ground_truth=inputs.get('ground_truth'), **media_kwargs)
+        StdTemplateInputs.messages_join_observation(messages, tools_prompt)
+        return cls(messages=messages, system=system, objects=objects, **kwargs, **media_kwargs)
 
     @staticmethod
     def remove_messages_media(messages: Messages) -> Dict[str, Any]:
@@ -188,7 +190,7 @@ class StdTemplateInputs:
             new_content = ''
             for item in content:
                 key: str = item['type']
-                value = item[key]
+                value = item.get(key)
                 if key == 'text':
                     new_content += value
                     continue
@@ -199,12 +201,13 @@ class StdTemplateInputs:
                 new_content += f'<{key}>'
                 if isinstance(value, dict):
                     value = value['url']
-                res[f'{key}s'].append(value)
+                if value:
+                    res[f'{key}s'].append(value)
             message['content'] = new_content
         return res
 
     @staticmethod
-    def messages_join_observation(messages: Messages) -> None:
+    def messages_join_observation(messages: Messages, tools_prompt='react_en') -> None:
         """
         Joins observations from 'tool' message into the 'assistant' response.
 
@@ -228,12 +231,14 @@ class StdTemplateInputs:
         if len(messages) < 2:
             return
         i = 1
+        from swift.plugin import get_tools_keyword
+        keyword = get_tools_keyword(tools_prompt)
         while i < len(messages):
             pre_message, message = messages[i - 1], messages[i]
             pre_role, pre_content = pre_message['role'], pre_message['content']
             role, content = message['role'], message['content']
-            if pre_role == 'assistant' and role == 'tool' and isinstance(pre_content,
-                                                                         str) and pre_content.endswith('Observation:'):
+            if (pre_role == 'assistant' and role == 'tool' and isinstance(pre_content, str)
+                    and pre_content.endswith(keyword.get('observation'))):
                 assert isinstance(pre_content, str)
                 pre_message['content'] = pre_content + content  # assistant
                 messages.pop(i)  # remove tool

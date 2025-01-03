@@ -12,7 +12,7 @@ conda activate swift-npu
 
 # 设置pip全局镜像 (可选,加速下载)
 pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
-pip install 'ms-swift[llm]' -U
+pip install ms-swift -U
 
 # 安装torch-npu
 pip install torch-npu decorator
@@ -192,11 +192,11 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift infer --model Qwen/Qwen2-7B-Instruct
 
 LoRA微调后:
 ```shell
-ASCEND_RT_VISIBLE_DEVICES=0 swift infer --ckpt_dir xxx/checkpoint-xxx --load_dataset_config true
+ASCEND_RT_VISIBLE_DEVICES=0 swift infer --adapters xxx/checkpoint-xxx --load_data_args true
 
 # merge-lora并推理
-ASCEND_RT_VISIBLE_DEVICES=0 swift export --ckpt_dir xx/checkpoint-xxx --merge_lora true
-ASCEND_RT_VISIBLE_DEVICES=0 swift infer --ckpt_dir xxx/checkpoint-xxx-merged --load_dataset_config true
+ASCEND_RT_VISIBLE_DEVICES=0 swift export --adapters xx/checkpoint-xxx --merge_lora true
+ASCEND_RT_VISIBLE_DEVICES=0 swift infer --model xxx/checkpoint-xxx-merged --load_data_args true
 ```
 
 
@@ -210,9 +210,9 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift deploy --model Qwen/Qwen2-7B-Instruct
 
 LoRA微调后:
 ```shell
-ASCEND_RT_VISIBLE_DEVICES=0 swift deploy --ckpt_dir xxx/checkpoint-xxx --load_dataset_config true
+ASCEND_RT_VISIBLE_DEVICES=0 swift deploy --adapters xxx/checkpoint-xxx --load_data_args true
 
 # merge-lora并推理
-ASCEND_RT_VISIBLE_DEVICES=0 swift export --ckpt_dir xx/checkpoint-xxx --merge_lora true
-ASCEND_RT_VISIBLE_DEVICES=0 swift deploy --ckpt_dir xxx/checkpoint-xxx-merged --load_dataset_config true
+ASCEND_RT_VISIBLE_DEVICES=0 swift export --adapters xx/checkpoint-xxx --merge_lora true
+ASCEND_RT_VISIBLE_DEVICES=0 swift deploy --model xxx/checkpoint-xxx-merged --load_data_args true
 ```

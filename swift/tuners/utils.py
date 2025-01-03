@@ -59,7 +59,7 @@ class SwiftConfig:
         output_path = os.path.join(save_directory, CONFIG_NAME)
 
         # save it
-        with open(output_path, 'w') as writer:
+        with open(output_path, 'w', encoding='utf-8') as writer:
             writer.write(json.dumps(output_dict, indent=2, sort_keys=True))
 
     @classmethod
@@ -77,7 +77,7 @@ class SwiftConfig:
             config_file = os.path.join(pretrained_model_name_or_path, CONFIG_NAME)
         else:
             try:
-                model_dir = snapshot_download(pretrained_model_name_or_path, ignore_file_pattern=BIN_EXTENSIONS)
+                model_dir = snapshot_download(pretrained_model_name_or_path, ignore_patterns=BIN_EXTENSIONS)
                 config_file = os.path.join(model_dir, CONFIG_NAME)
             except Exception:
                 raise ValueError(f"Can't find config.json at '{pretrained_model_name_or_path}'")
@@ -103,7 +103,7 @@ class SwiftConfig:
             path_json_file (`str`):
                 The path to the json file.
         """
-        with open(path_json_file, 'r') as file:
+        with open(path_json_file, 'r', encoding='utf-8') as file:
             json_object = json.load(file)
 
         return json_object

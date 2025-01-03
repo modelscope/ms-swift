@@ -5,13 +5,12 @@
 可以使用pip进行安装：
 
 ```shell
-# LLM和MLLM能力
-pip install 'ms-swift[llm]' -U
+pip install 'ms-swift'
 # 使用评测
 pip install 'ms-swift[eval]' -U
-# 支持序列并行
+# 使用序列并行
 pip install 'ms-swift[seq_parallel]' -U
-# 全量能力
+# 全能力
 pip install 'ms-swift[all]' -U
 ```
 
@@ -20,7 +19,10 @@ pip install 'ms-swift[all]' -U
 ```shell
 git clone https://github.com/modelscope/ms-swift.git
 cd ms-swift
-pip install -e '.[llm]'
+pip install -e .
+
+# 全能力
+# pip install -e '.[all]'
 ```
 
 ## 旧版本
@@ -32,7 +34,9 @@ pip install ms-swift==2.*
 
 ## 镜像
 
-可以查看[这里](https://modelscope.cn/docs/intro/environment-setup#%E6%9C%80%E6%96%B0%E9%95%9C%E5%83%8F)
+镜像可以查看[这里](https://modelscope.cn/docs/intro/environment-setup#%E6%9C%80%E6%96%B0%E9%95%9C%E5%83%8F)
+
+你也可以使用[install_all.sh](https://github.com/modelscope/ms-swift/blob/main/requirements/install_all.sh)进行安装
 
 ## Notebook环境
 

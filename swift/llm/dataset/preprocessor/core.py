@@ -36,6 +36,7 @@ class RowPreprocessor:
                  random_state: Union[np.random.RandomState, int, None] = None,
                  traceback_limit: int = 10) -> None:
         self.columns_mapping = columns_mapping or {}
+        self.origin_columns_mapping = self.columns_mapping.copy()  # Higher priority and raise Error
         images_keys = ['images', 'image']
         audios_keys = ['audios', 'audio']
         videos_keys = ['videos', 'video']
@@ -57,6 +58,12 @@ class RowPreprocessor:
             return
         messages = row['messages']
         assert len(messages) > 0, f'messages: {messages}'
+        # fix swift/SlimOrca
+        for message in messages:
+            keys = set(message.keys()) - {'role', 'content'}
+            for key in keys:
+                message.pop(key)
+
         if messages[0]['role'] == 'system':
             messages = messages[1:]
         if messages and messages[0]['role'] == 'assistant':
@@ -173,13 +180,14 @@ class RowPreprocessor:
 
         return res
 
-    @staticmethod
-    def safe_rename_columns(dataset: DATASET_TYPE, columns_mapping: Dict[str, Any]) -> DATASET_TYPE:
+    def _rename_columns(self, dataset: DATASET_TYPE) -> DATASET_TYPE:
         dataset = get_features_dataset(dataset)
+        dataset = dataset.rename_columns(self.origin_columns_mapping)
+
         columns_keys = {k.lower(): k for k in dataset.features.keys()}  # lower -> lower/upper
         safe_columns_mapping = {
             columns_keys[k.lower()]: v
-            for k, v in columns_mapping.items() if k.lower() in columns_keys
+            for k, v in self.columns_mapping.items() if k.lower() in columns_keys
         }
 
         counter = Counter(safe_columns_mapping.values())
@@ -238,19 +246,18 @@ class RowPreprocessor:
         *,
         num_proc: int = 1,
         strict: bool = False,
-        load_from_cache_file: bool = False,
         batch_size: int = 1000,
     ) -> DATASET_TYPE:
         from ..utils import sample_dataset
         if self.dataset_sample is not None:
             dataset = sample_dataset(dataset, self.dataset_sample, self.random_state)
 
-        dataset = self.safe_rename_columns(dataset, self.columns_mapping)
+        dataset = self._rename_columns(dataset)
         dataset = self.prepare_dataset(dataset)
         dataset = self._cast_pil_image(dataset)
         map_kwargs = {}
         if isinstance(dataset, HfDataset):
-            map_kwargs.update({'num_proc': num_proc, 'load_from_cache_file': load_from_cache_file})
+            map_kwargs.update({'num_proc': num_proc})
         with self._patch_arrow_writer():
             try:
                 dataset_mapped = dataset.map(
@@ -304,18 +311,14 @@ class ResponsePreprocessor(RowPreprocessor):
 
 class AlpacaPreprocessor(ResponsePreprocessor):
 
-    def __init__(self,
-                 *,
-                 concat_inst_input: Union[Callable[[str, str], str]] = '\n',
-                 columns_mapping: Optional[Dict[str, str]] = None,
-                 **kwargs) -> None:
-        """Alpaca format preprocessor
-
-        Args:
-            concat_inst_input: The concat sep between instruction and input
-        """
-        super().__init__(columns_mapping=columns_mapping, **kwargs)
-        self.concat_inst_input = concat_inst_input
+    @classmethod
+    def concat_inst_input(cls, instruction, input_):
+        if instruction and input_:
+            query = f'{instruction}\n{input_}'
+        else:
+            query = instruction or input_
+        assert isinstance(query, str), f'query: {query}'
+        return query
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         instruction = row.pop('instruction', None)
@@ -323,15 +326,7 @@ class AlpacaPreprocessor(ResponsePreprocessor):
         output = row.pop('output', None)
         if output is not None:
             row['response'] = output
-
-        if instruction is not None or input_ is not None:
-            instruction = instruction or ''
-            input_ = input_ or ''
-            if isinstance(self.concat_inst_input, str):
-                query = instruction + self.concat_inst_input + input_
-            else:
-                query = self.concat_inst_input(instruction, input_)
-            row['query'] = query
+        row['query'] = self.concat_inst_input(instruction, input_)
         return super().preprocess(row)
 
 
@@ -445,6 +440,14 @@ class MessagesPreprocessor(RowPreprocessor):
         return row
 
 
+class ClsPreprocessor(ResponsePreprocessor):
+
+    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        res = super().preprocess(row)
+        res['label'] = int(res['label'])
+        return res
+
+
 class AutoPreprocessor:
 
     def __init__(self, *, columns_mapping: Optional[Dict[str, str]] = None, **kwargs) -> None:
@@ -466,8 +469,8 @@ class AutoPreprocessor:
         *,
         num_proc: int = 1,
         strict: bool = False,
-        load_from_cache_file: bool = False,
     ) -> DATASET_TYPE:
-        dataset = RowPreprocessor.safe_rename_columns(dataset, self.columns_mapping)
+        dataset = get_features_dataset(dataset)
+        dataset = dataset.rename_columns(self.columns_mapping)
         preprocessor = self._get_preprocessor(dataset)
-        return preprocessor(dataset, num_proc=num_proc, load_from_cache_file=load_from_cache_file, strict=strict)
+        return preprocessor(dataset, num_proc=num_proc, strict=strict)

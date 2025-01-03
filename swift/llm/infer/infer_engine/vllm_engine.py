@@ -7,10 +7,8 @@ from dataclasses import asdict
 from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
 
 import torch
-import vllm
 from packaging import version
 from transformers import GenerationConfig, PreTrainedTokenizerBase
-from vllm import AsyncEngineArgs, AsyncLLMEngine, SamplingParams
 
 from swift.llm import InferRequest, Template, TemplateMeta, get_model_tokenizer
 from swift.plugin import Metric
@@ -19,7 +17,15 @@ from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, Ch
                         ChatCompletionStreamResponse, ChatMessage, DeltaMessage, RequestConfig, random_uuid)
 from .infer_engine import InferEngine
 from .patch import patch_auto_config, patch_auto_tokenizer
-from .utils import InferStreamer, LoRARequest
+from .utils import AdapterRequest, InferStreamer
+
+try:
+    # After setting the environment variables, import vllm. This way of writing allows lint to pass.
+    os.environ['VLLM_ENGINE_ITERATION_TIMEOUT_S'] = '3600'
+    import vllm
+    from vllm import AsyncEngineArgs, AsyncLLMEngine, SamplingParams
+except Exception:
+    raise
 
 logger = get_logger()
 dtype_mapping = {torch.float16: 'float16', torch.bfloat16: 'bfloat16', torch.float32: 'float32'}
@@ -34,6 +40,7 @@ class VllmEngine(InferEngine):
             *,
             model_type: Optional[str] = None,
             use_hf: Optional[bool] = None,
+            hub_token: Optional[str] = None,
             revision: Optional[str] = None,
             # engine_kwargs
             gpu_memory_utilization: float = 0.9,
@@ -49,7 +56,6 @@ class VllmEngine(InferEngine):
             max_loras: int = 1,
             max_lora_rank: int = 16,
             engine_kwargs: Optional[Dict[str, Any]] = None) -> None:
-        self._init_env()
         self.processor = get_model_tokenizer(
             model_id_or_path,
             torch_dtype,
@@ -57,6 +63,7 @@ class VllmEngine(InferEngine):
             download_model=True,
             model_type=model_type,
             use_hf=use_hf,
+            hub_token=hub_token,
             revision=revision)[1]
         self._post_init()
 
@@ -78,7 +85,6 @@ class VllmEngine(InferEngine):
         self._load_generation_config()
         self._fix_vllm_bug()
         self.patch_remove_log()
-        self._lora_request_pool = {}
 
     def _prepare_engine(self) -> None:
         with patch_auto_tokenizer(self.tokenizer), patch_auto_config(self.config):
@@ -136,18 +142,6 @@ class VllmEngine(InferEngine):
         if max_model_len is not None:
             model_info.max_model_len = max_model_len
 
-    @staticmethod
-    def _init_env() -> None:
-        try:
-            from vllm.model_executor.parallel_utils.parallel_state import destroy_model_parallel
-            destroy_model_parallel()
-        except ImportError:
-            pass
-        # fix HTTPError bug (use model_dir)
-        os.environ.pop('VLLM_USE_MODELSCOPE', None)
-        if version.parse(vllm.__version__) >= version.parse('0.5.1'):
-            os.environ['VLLM_WORKER_MULTIPROC_METHOD'] = 'spawn'
-
     def _fix_vllm_bug(self) -> None:
         # fix vllm==0.4 bug (very slow)
         tokenizer = self.tokenizer
@@ -189,12 +183,18 @@ class VllmEngine(InferEngine):
                      inputs: Dict[str, Any],
                      generation_config: SamplingParams,
                      request_id: str,
-                     lora_request: Optional[LoRARequest] = None):
+                     adapter_request: Optional[AdapterRequest] = None):
         kwargs = {}
-        if self.enable_lora and lora_request:
+        if self.enable_lora and adapter_request:
             from vllm.lora.request import LoRARequest
-            kwargs['lora_request'] = LoRARequest(**asdict(lora_request), lora_int_id=len(self._lora_request_pool))
-            self._lora_request_pool[lora_request.lora_name] = lora_request
+            adapter_name = adapter_request.name
+            adapter_path = adapter_request.path
+            if adapter_name in self._adapters_pool:
+                kwargs['lora_request'] = self._adapters_pool[adapter_name]
+            else:
+                kwargs['lora_request'] = LoRARequest(
+                    lora_name=adapter_name, lora_path=adapter_path, lora_int_id=len(self._adapters_pool) + 1)
+                self._adapters_pool[adapter_name] = kwargs['lora_request']
         input_ids = inputs['input_ids']
         if version.parse(vllm.__version__) >= version.parse('0.4.3'):
             llm_inputs = {'prompt_token_ids': input_ids}
@@ -293,7 +293,7 @@ class VllmEngine(InferEngine):
                 token_idxs[output.index] = len(output.token_ids)
                 toolcall = None
                 if output.is_finished:
-                    toolcall = self._get_toolcall(template.decode(output.token_ids))
+                    toolcall = self._get_toolcall(template.decode(output.token_ids), template.tools_prompt)
                 choice = ChatCompletionResponseStreamChoice(
                     index=output.index,
                     delta=DeltaMessage(role='assistant', content=output.delta_text, tool_calls=toolcall),
@@ -306,9 +306,9 @@ class VllmEngine(InferEngine):
                                 template: Template,
                                 inputs: Dict[str, Any],
                                 generation_config: SamplingParams,
-                                lora_request: Optional[LoRARequest] = None) -> ChatCompletionResponse:
+                                adapter_request: Optional[AdapterRequest] = None) -> ChatCompletionResponse:
         request_id = random_uuid()
-        result_generator = self._add_request(inputs, generation_config, request_id, lora_request=lora_request)
+        result_generator = self._add_request(inputs, generation_config, request_id, adapter_request=adapter_request)
         result = None
         async for result in result_generator:
             pass
@@ -321,7 +321,7 @@ class VllmEngine(InferEngine):
             response = template.decode(output.token_ids)
             logprobs = self._get_logprobs(template.tokenizer, output.logprobs, output.token_ids,
                                           generation_config.logprobs)
-            toolcall = self._get_toolcall(response)
+            toolcall = self._get_toolcall(response, template.tools_prompt)
             choice = ChatCompletionResponseChoice(
                 index=output.index,
                 message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
@@ -339,10 +339,15 @@ class VllmEngine(InferEngine):
         *,
         template: Optional[Template] = None,
         use_tqdm: Optional[bool] = None,
-        lora_request: Optional[LoRARequest] = None
+        adapter_request: Optional[AdapterRequest] = None
     ) -> Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
         return super().infer(
-            infer_requests, request_config, metrics, template=template, use_tqdm=use_tqdm, lora_request=lora_request)
+            infer_requests,
+            request_config,
+            metrics,
+            template=template,
+            use_tqdm=use_tqdm,
+            adapter_request=adapter_request)
 
     @torch.inference_mode()
     async def infer_async(
@@ -351,7 +356,8 @@ class VllmEngine(InferEngine):
         request_config: Optional[RequestConfig] = None,
         *,
         template: Optional[Template] = None,
-        lora_request: Optional[LoRARequest] = None,
+        adapter_request: Optional[AdapterRequest] = None,
+        pre_infer_hook=None,
     ) -> Union[ChatCompletionResponse, AsyncIterator[ChatCompletionStreamResponse]]:
         request_config = deepcopy(request_config or RequestConfig())
         if template is None:
@@ -367,9 +373,9 @@ class VllmEngine(InferEngine):
             'template': template,
             'inputs': inputs,
             'generation_config': generation_config,
-            'lora_request': lora_request
+            'adapter_request': adapter_request
         }
-        for pre_infer_hook in self.pre_infer_hooks:
+        if pre_infer_hook:
             kwargs = pre_infer_hook(kwargs)
         if request_config.stream:
             return self._infer_stream_async(**kwargs)
