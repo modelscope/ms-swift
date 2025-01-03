@@ -136,6 +136,13 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
         TunerArguments.__post_init__(self)
         TorchAccArguments.__post_init__(self)
 
+        if self.lorap_lr_ratio:
+            self.optimizer = 'lorap'
+        elif self.use_galore:
+            self.optimizer = 'galore'
+        elif self.optimizer is None:
+            self.optimizer = 'default'
+
         if len(self.dataset) == 0:
             raise ValueError(f'self.dataset: {self.dataset}, Please input the training dataset.')
 

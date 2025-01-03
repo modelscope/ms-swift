@@ -21,7 +21,7 @@ from transformers import PreTrainedModel
 from transformers.data.data_collator import DataCollator
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.modeling_utils import unwrap_model
-from transformers.trainer import Trainer, TrainerCallback
+from transformers.trainer import TrainerCallback
 from transformers.trainer_utils import EvalPrediction
 from transformers.utils import is_torch_npu_available
 
@@ -32,7 +32,6 @@ from swift.tuners import SwiftModel
 from swift.utils import get_logger, is_mp_ddp, use_torchacc
 from swift.utils.torchacc_utils import ta_trim_graph
 from .arguments import TrainingArguments
-from .optimizers.galore import create_optimizer_and_scheduler
 from .utils import can_return_loss, find_labels, get_function, is_instance_of_ms_model
 
 try:
@@ -316,31 +315,16 @@ class SwiftMixin:
         super()._maybe_log_save_evaluate(tr_loss, *args, **kwargs)
 
     def create_optimizer_and_scheduler(self, num_training_steps: int):
-        if hasattr(self.args, 'galore_config'):
-            optimizer, lr_scheduler = create_optimizer_and_scheduler(
-                self.model,
-                self.args,
-                self.args.galore_config,
-                num_training_steps,
-                lr=self.args.learning_rate,
-                weight_decay=self.args.weight_decay)
-            self.optimizer = optimizer
-            self.lr_scheduler = lr_scheduler
+        if self.args.optimizer is not None:
+            from swift.plugin import optimizers_map
+            optimizer_callback = optimizers_map[self.args.optimizer]
+            self.optimizer, self.lr_scheduler = optimizer_callback(self.args, self.model, self.train_dataset)
+            if self.optimizer is None:
+                self.create_optimizer()
+            if self.lr_scheduler is None:
+                self.create_scheduler(num_training_steps=num_training_steps, optimizer=self.optimizer)
         else:
             super().create_optimizer_and_scheduler(num_training_steps=num_training_steps)
-
-    def create_optimizer(self):
-
-        if self.optimizer is None and hasattr(self.model, 'create_optimizer_param_groups'):
-            # Lora+ parameter groups
-            optimizer_grouped_parameters = self.model.create_optimizer_param_groups(
-                lr=self.args.learning_rate, weight_decay=self.args.weight_decay)
-            if optimizer_grouped_parameters is not None:
-                optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(self.args)
-                self.optimizer = optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs)
-                return self.optimizer
-
-        return super().create_optimizer()
 
     def _get_train_sampler(self) -> Optional[torch.utils.data.Sampler]:
         if self.args.train_sampler_random:
