@@ -102,7 +102,7 @@ def test_vllm_orgin():
     model_dir = snapshot_download('Qwen/Qwen2-7B-Instruct')
     args = [sys.executable, '-m', 'vllm.entrypoints.openai.api_server', '--model', model_dir]
     process = subprocess.Popen(args)
-    _test_client()
+    _test_client(8000)
     process.terminate()
 
 
