@@ -50,8 +50,6 @@ class GaLoreConfig:
     gamma_proj: int = 2
     queue_size: int = 5
 
-    
-
 
 class GaloreOptimizerWrapper(Optimizer):
 

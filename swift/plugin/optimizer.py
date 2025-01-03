@@ -23,12 +23,7 @@ def calculate_max_steps(args: 'TrainArguments', dataset) -> int:
 def create_galore_optimizers(args, model, dataset):
     training_steps = calculate_max_steps(args, dataset)
     optimizer, lr_scheduler = create_optimizer_and_scheduler(
-        model,
-        args,
-        args.galore_config,
-        training_steps,
-        lr=args.learning_rate,
-        weight_decay=args.weight_decay)
+        model, args, args.galore_config, training_steps, lr=args.learning_rate, weight_decay=args.weight_decay)
     args.galore_config = None
     return optimizer, lr_scheduler
 

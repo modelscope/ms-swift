@@ -32,7 +32,6 @@ from swift.tuners import SwiftModel
 from swift.utils import get_logger, is_mp_ddp, use_torchacc
 from swift.utils.torchacc_utils import ta_trim_graph
 from .arguments import TrainingArguments
-from .optimizers.galore import create_optimizer_and_scheduler
 from .utils import can_return_loss, find_labels, get_function, is_instance_of_ms_model
 
 try:
@@ -326,7 +325,6 @@ class SwiftMixin:
                 self.create_scheduler(num_training_steps=num_training_steps, optimizer=self.optimizer)
         else:
             super().create_optimizer_and_scheduler(num_training_steps=num_training_steps)
-
 
     def _get_train_sampler(self) -> Optional[torch.utils.data.Sampler]:
         if self.args.train_sampler_random:
