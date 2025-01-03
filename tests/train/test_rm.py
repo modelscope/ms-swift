@@ -10,25 +10,26 @@ kwargs = {
     'num_train_epochs': 1,
 }
 
+
 def test_infer():
     from swift.llm import infer_main, InferArguments
-    infer_main(InferArguments(model='Shanghai_AI_Laboratory/internlm2-1_8b-reward',
-                              val_dataset='AI-ModelScope/alpaca-gpt4-data-zh#500'))
+    infer_main(
+        InferArguments(
+            model='Shanghai_AI_Laboratory/internlm2-1_8b-reward', val_dataset='AI-ModelScope/alpaca-gpt4-data-zh#500'))
 
 
 def test_llm():
     from swift.llm import TrainArguments, sft_main, infer_main, InferArguments
     result = sft_main(
         TrainArguments(
-            model='Qwen/Qwen2.5-1.5B-Instruct',
+            model='Shanghai_AI_Laboratory/internlm2-1_8b-reward',
             train_type='lora',
-            num_labels=2,
-            dataset=['DAMO_NLP/jd:cls#2000'],
+            dataset=['hjh0119/shareAI-Llama3-DPO-zh-en-emoji:zh#100'],
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
     infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True))
 
 
 if __name__ == '__main__':
-    test_infer()
-    # test_llm()
+    # test_infer()
+    test_llm()
