@@ -25,14 +25,6 @@ def merge_lora(args: ExportArguments, device_map=None, replace_if_exists=False) 
         origin_device_map = args.device_map
         args.device_map = device_map or args.device_map
         logger.info(f'merge_device_map: {device_map}')
-        if args.use_merge_kit:
-            base_model = args.model
-            if not os.path.exists(base_model):
-                base_model = args.hub.download_model(base_model, revision=args.model_revision)
-            if not os.path.exists(args.instruct_model):
-                args.instruct_model = args.hub.download_model(
-                    args.instruct_model, revision=args.instruct_model_revision)
-            args.model = args.instruct_model
         model, template = prepare_model_template(args)
         logger.info('Merge LoRA...')
         Swift.merge_and_unload(model)

@@ -320,6 +320,10 @@ class SwiftMixin:
             from swift.plugin import optimizers_map
             optimizer_callback = optimizers_map[self.args.optimizer]
             self.optimizer, self.lr_scheduler = optimizer_callback(self.args, self.model, self.train_dataset)
+            if self.optimizer is None:
+                self.create_optimizer()
+            if self.lr_scheduler is None:
+                self.create_scheduler(num_training_steps=num_training_steps, optimizer=self.optimizer)
         else:
             super().create_optimizer_and_scheduler(num_training_steps=num_training_steps)
 
