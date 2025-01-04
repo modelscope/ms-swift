@@ -205,9 +205,21 @@ def test_mplug_owl3():
 
 def test_ovis1_6():
     pt_engine = PtEngine('AIDC-AI/Ovis1.6-Gemma2-9B')
+    # pt_engine = PtEngine('AIDC-AI/Ovis1.6-Gemma2-27B')
     _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     _infer_model(pt_engine)
+
+
+def test_ovis1_6_llama3():
+    pt_engine = PtEngine('AIDC-AI/Ovis1.6-Llama3.2-3B')
+    messages = [{'role': 'user', 'content': '这是什么'}]
+    # llama3
+    response = _infer_model(pt_engine, messages=messages)
+    pt_engine.default_template.template_backend = 'jinja'
+    # llama3_2
+    _infer_model(pt_engine, messages=messages, system='You are a helpful and honest multimodal assistant.')
+    assert response == '这是一只小猫。从图中可见的特征如大眼睛、细长的白色鼻毛和毛发的图案，表明它可能属于常见的猫种。猫的表情和毛发的质感显示出它年轻，可能是幼猫。'
 
 
 def test_paligemma():
@@ -332,13 +344,14 @@ if __name__ == '__main__':
     # test_internvl2_phi3()
     # test_llava()
     # test_ovis1_6()
+    test_ovis1_6_llama3()
     # test_yi_vl()
     # test_deepseek_vl()
     # test_deepseek_vl2()
     # test_qwen_vl()
     # test_glm4v()
     # test_cogagent()
-    test_llava_onevision_hf()
+    # test_llava_onevision_hf()
     # test_minicpmv()
     # test_got_ocr()
     # test_paligemma()

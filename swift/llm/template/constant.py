@@ -10,6 +10,7 @@ class LLMTemplateType:
 
     qwen = 'qwen'
     qwen2_5 = 'qwen2_5'
+    qwen2_5_math = 'qwen2_5_math'
     qwq = 'qwq'
     marco_o1 = 'marco_o1'
     modelscope_agent = 'modelscope_agent'
@@ -80,6 +81,7 @@ class MLLMTemplateType:
     qwen2_audio = 'qwen2_audio'
     qvq = 'qvq'
     ovis1_6 = 'ovis1_6'
+    ovis1_6_llama3 = 'ovis1_6_llama3'
 
     llama3_1_omni = 'llama3_1_omni'
     llama3_2_vision = 'llama3_2_vision'

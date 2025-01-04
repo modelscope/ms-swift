@@ -110,6 +110,8 @@ class Template(ProcessorMixin):
         self.mode: Literal['pt', 'vllm', 'lmdeploy',  # infer
                            'train', 'rlhf', 'kto'  # train
                            'seq_cls'] = 'pt'
+        if self.model_info.task_type != 'causal':
+            self.mode = self.model_info.task_type
         self._handles = []
         self._deepspeed_initialize = None
 
@@ -269,11 +271,6 @@ class Template(ProcessorMixin):
         if 'spaces_between_special_tokens' not in decode_kwargs:
             decode_kwargs['spaces_between_special_tokens'] = False
         return tokenizer.decode(generate_ids, **decode_kwargs)
-        # if not is_finished or is_finished and response[-len_suffix:] == template_suffix:
-        #     # To avoid response length being shorter than previous response length during streaming.
-        #     # TODO:check
-        #     # idx = max(len(response) - len_suffix, 0, self.print_idx)
-        #     response = response[:-len_suffix]
 
     def prepare_generate_kwargs(self, generate_kwargs: Dict[str, Any], *, model=None) -> Dict[str, Any]:
         generation_config = generate_kwargs['generation_config']
@@ -586,7 +583,7 @@ class Template(ProcessorMixin):
             context_list = prompt.copy()
             extra_context_list = []
             extra_context_type = None
-            if i < n_round - 1:
+            if i < n_round - 1 or self.mode == 'seq_cls':
                 # Not the last round.
                 context_list.append('{{RESPONSE}}')
                 extra_context_list = template_meta.chat_sep

@@ -7,12 +7,13 @@ import torch
 
 from swift.utils import get_env_args, is_deepspeed_enabled
 from ..base import Template
-from ..constant import LLMTemplateType, MLLMTemplateType
+from ..constant import LLMTemplateType, MLLMTemplateType, RMTemplateType
 from ..register import register_template
 from ..template_inputs import StdTemplateInputs
 from ..template_meta import TemplateMeta
 from ..utils import Context, Word, findall
 from ..vision_utils import load_audio_qwen, load_batch, load_file
+from .llama import Llama3TemplateMeta
 from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
 
 
@@ -29,6 +30,11 @@ class Qwen2_5TemplateMeta(QwenTemplateMeta):
 
 
 @dataclass
+class Qwen2_5MathTemplateMeta(QwenTemplateMeta):
+    default_system: Optional[str] = 'Please reason step by step, and put your final answer within \\boxed{}.'
+
+
+@dataclass
 class QwqTemplateMeta(QwenTemplateMeta):
     default_system: Optional[str] = ('You are a helpful and harmless assistant. You are Qwen developed by Alibaba. '
                                      'You should think step-by-step.')
@@ -37,6 +43,8 @@ class QwqTemplateMeta(QwenTemplateMeta):
 register_template(QwenTemplateMeta(LLMTemplateType.qwen))
 register_template(Qwen2_5TemplateMeta(LLMTemplateType.qwen2_5))
 register_template(QwqTemplateMeta(LLMTemplateType.qwq))
+
+register_template(Qwen2_5MathTemplateMeta(LLMTemplateType.qwen2_5_math))
 
 
 class QwenVLTemplate(Template):
@@ -345,6 +353,13 @@ register_template(
         chat_sep=['<end_of_turn>\n'],
         suffix=['<end_of_turn>'],
         system_prefix=['<bos><start_of_turn>system\n{{SYSTEM}}<end_of_turn>\n'],
+        template_cls=Ovis1_6Template,
+    ))
+
+register_template(
+    Llama3TemplateMeta(
+        MLLMTemplateType.ovis1_6_llama3,
+        default_system='You are a helpful and honest multimodal assistant.',
         template_cls=Ovis1_6Template,
     ))
 

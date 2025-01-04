@@ -8,6 +8,7 @@ class LLMModelType:
     qwen = 'qwen'
     qwen2 = 'qwen2'
     qwen2_5 = 'qwen2_5'
+    qwen2_5_math = 'qwen2_5_math'
     qwen2_moe = 'qwen2_moe'
     qwq = 'qwq'
 
@@ -102,6 +103,10 @@ class BertModelType:
 
 class RMModelType:
     internlm2_reward = 'internlm2_reward'
+    qwen2_reward = 'qwen2_reward'
+    qwen2_5_math_reward = 'qwen2_5_math_reward'
+    llama3_2_reward = 'llama3_2_reward'
+    gemma_reward = 'gemma_reward'
 
 
 class MLLMModelType:
@@ -111,6 +116,7 @@ class MLLMModelType:
     qwen2_audio = 'qwen2_audio'
     qvq = 'qvq'
     ovis1_6 = 'ovis1_6'
+    ovis1_6_llama3 = 'ovis1_6_llama3'
 
     glm4v = 'glm4v'
     glm_edge_v = 'glm_edge_v'

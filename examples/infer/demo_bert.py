@@ -30,7 +30,8 @@ if __name__ == '__main__':
     engine = PtEngine.from_model_template(model, template, max_batch_size=64)
 
     # method2
-    # engine = PtEngine(args.model, adapters=[adapter_path], max_batch_size=64, task_type=args.task_type)
+    # engine = PtEngine(args.model, adapters=[adapter_path], max_batch_size=64,
+    #                   task_type=args.task_type, num_labels=args.num_labels)
     # template = args.get_template(engine.processor)
     # engine.default_template = template
 

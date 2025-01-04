@@ -105,7 +105,6 @@ class ModelMeta:
 MODEL_MAPPING: Dict[str, ModelMeta] = {}
 
 
-# [TODO:eos_token -> template]
 def register_model(model_meta: ModelMeta, *, exist_ok: bool = False) -> None:
     """
     model_type: The unique ID for the model type. Models with the same model_type share
@@ -184,8 +183,10 @@ def get_model_tokenizer_from_local(model_dir: str,
     if tokenizer is None:
         tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
 
-    if model_info.num_labels:
-        model_config.num_labels = model_info.num_labels
+    num_labels = model_info.num_labels or getattr(model_config, 'num_labels', None)
+    if num_labels:
+        model_info.num_labels = num_labels
+        model_config.num_labels = num_labels
 
     model = None
     if load_model:
