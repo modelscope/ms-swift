@@ -122,8 +122,6 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         self.train_msg['model_parameter_info'] = model_parameter_info
         logger.info(f'model_parameter_info: {model_parameter_info}')
 
-        optimizers = self._get_optimizers(train_dataset)
-
         trainer_cls = TrainerFactory.get_trainer_cls(args)
         trainer = trainer_cls(
             model=self.model,
@@ -132,7 +130,6 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             train_dataset=train_dataset,
             eval_dataset=val_dataset,
             callbacks=self.callbacks,
-            optimizers=optimizers,
             template=self.template,
             **self._get_trainer_kwargs(),
         )
@@ -191,18 +188,6 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         trainer.train(trainer.args.resume_from_checkpoint)
 
         return self._save_trainer_state(trainer)
-
-    def _get_optimizers(self, train_dataset):
-        args = self.args
-        if args.lorap_lr_ratio:
-            optimizer_callback = optimizers_map['lorap']
-        elif args.use_galore:
-            optimizer_callback = optimizers_map['galore']
-        elif args.optimizer is not None:
-            optimizer_callback = optimizers_map[args.optimizer]
-        else:
-            optimizer_callback = optimizers_map['default']
-        return optimizer_callback(args, self.model, train_dataset)
 
     def _prepare_callbacks(self):
         from .callback import DynamicLayerActivationCallback, TrainerAdapterCallback
