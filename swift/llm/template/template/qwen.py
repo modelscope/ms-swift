@@ -43,10 +43,8 @@ class QwqTemplateMeta(QwenTemplateMeta):
 register_template(QwenTemplateMeta(LLMTemplateType.qwen))
 register_template(Qwen2_5TemplateMeta(LLMTemplateType.qwen2_5))
 register_template(QwqTemplateMeta(LLMTemplateType.qwq))
-register_template(QwenTemplateMeta(RMTemplateType.qwen2_reward, suffix=['<|im_end|>\n']))
 
 register_template(Qwen2_5MathTemplateMeta(LLMTemplateType.qwen2_5_math))
-register_template(Qwen2_5MathTemplateMeta(RMTemplateType.qwen2_5_math_reward, suffix=['<|im_end|>\n']))
 
 
 class QwenVLTemplate(Template):

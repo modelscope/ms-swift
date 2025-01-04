@@ -72,8 +72,6 @@ class LLMTemplateType:
 
 class RMTemplateType:
     internlm2_reward = 'internlm2_reward'
-    qwen2_reward = 'qwen2_reward'
-    qwen2_5_math_reward = 'qwen2_5_math_reward'
 
 
 class MLLMTemplateType:

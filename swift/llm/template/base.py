@@ -583,7 +583,7 @@ class Template(ProcessorMixin):
             context_list = prompt.copy()
             extra_context_list = []
             extra_context_type = None
-            if i < n_round - 1:
+            if i < n_round - 1 or self.mode == 'seq_cls':
                 # Not the last round.
                 context_list.append('{{RESPONSE}}')
                 extra_context_list = template_meta.chat_sep

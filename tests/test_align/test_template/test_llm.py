@@ -227,6 +227,22 @@ def test_qwen2_5_math():
     assert res == res2
 
 
+def test_skywork_reward():
+    prompt = ('Jane has 12 apples. She gives 4 apples to her friend Mark, then buys 1 more apple, and finally splits '
+              'all her apples equally among herself and her 2 siblings. How many apples does each person get?')
+    response = ('1. Jane starts with 12 apples and gives 4 to Mark. 12 - 4 = 8. Jane now has 8 apples.\n2. Jane buys '
+                '1 more apple. 8 + 1 = 9. Jane now has 9 apples.\n3. Jane splits the 9 apples equally among herself '
+                'and her 2 siblings (3 people in total). 9 ÷ 3 = 3 apples each. Each person gets 3 apples.')
+
+    pt_engine = PtEngine('AI-ModelScope/Skywork-Reward-Llama-3.1-8B-v0.2')
+    messages = [{'role': 'user', 'content': prompt}, {'role': 'assistant', 'content': response}]
+    res = _infer_model(pt_engine, messages=messages)
+    pt_engine.default_template.template_backend = 'jinja'
+    res2 = _infer_model(pt_engine, messages=messages)
+    assert res == '14.1875'
+    assert res2 == '13.8125'
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig, get_template, get_model_tokenizer, VllmEngine
     from swift.utils import get_logger, seed_everything
@@ -249,5 +265,6 @@ if __name__ == '__main__':
     # test_megrez()
     # test_skywork_o1()
     # test_internlm2_reward()
-    # test_qwen2_reward()
-    test_qwen2_5_math()
+    test_qwen2_reward()
+    # test_qwen2_5_math()
+    test_skywork_reward()
