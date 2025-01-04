@@ -21,6 +21,7 @@ class RLFTArguments(RLHFArguments):
     num_rollout_iters: int = 50
     num_rollout_batches: int = 300
 
+    temperature: float = 0.4
     end_temperature: float = 1.2
     start_threshold: float = 0.0
     end_threshold: float = -5.0

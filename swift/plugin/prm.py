@@ -2,11 +2,11 @@ from typing import List
 
 import torch
 
-from swift.llm import InferRequest, InferEngine
+from swift.llm import InferRequest
 from swift.llm.infer.protocol import ChatCompletionResponse
 
 
-class PRM(InferEngine):
+class PRM:
 
     def __init__(self):
         # init here

@@ -1,11 +1,11 @@
 import json
 from typing import List
 import torch
-from swift.llm import InferRequest, InferEngine
+from swift.llm import InferRequest
 from swift.llm.infer.protocol import ChatCompletionResponse
 
 
-class ORM(InferEngine):
+class ORM:
 
     def __init__(self):
         # init here

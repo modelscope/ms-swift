@@ -14,6 +14,7 @@ from trl.models.utils import unwrap_model_for_generation
 from swift.llm.template.template_inputs import StdTemplateInputs, InferRequest
 from swift.utils import get_logger
 from .sft import SwiftSft
+from .rlhf import SwiftRLHF
 from .. import PtEngine
 from ..argument import RLFTArguments
 from ...plugin.orm import orms
@@ -23,12 +24,12 @@ from ...plugin.sampler import samplers
 logger = get_logger()
 
 
-class SwiftRLFT(SwiftSft):
+class SwiftRLFT(SwiftRLHF):
     args_class = RLFTArguments
     args: args_class
 
     splitter = [
-        '.', '。', '\n\n'
+        # '.', '。', '\n\n'
     ]
 
     def _prepare_rm(self):
@@ -37,28 +38,36 @@ class SwiftRLFT(SwiftSft):
             return
         if self.args.prm_model in prms:
             self.prm = prms[self.args.prm_model]()
-        self.prm_model = PtEngine(self.args.prm_model, max_batch_size=64)
+        else:
+            self.prm_model = PtEngine(self.args.prm_model, max_batch_size=64)
 
         if self.args.orm_model is None:
             self.orm_model = None
             return
         elif self.args.orm_model in orms:
             self.orm = orms[self.args.orm_model]()
-        self.orm_model = PtEngine(self.args.orm_model, max_batch_size=64)
+        else:
+            self.orm_model = PtEngine(self.args.orm_model, max_batch_size=64)
+
+    def _prepare_template(self) -> None:
+        super()._prepare_template()
+        self.template.set_mode('train')
 
     def _sample(self, model, batch, generation_config: GenerationConfig):
         queries = batch["input_ids"]
         generation_config.num_return_sequences = self.args.num_return_sequences
-        generation_config.num_beam_groups = 5
-        generation_config.num_beams = 10
+        # generation_config.num_beam_groups = 5
+        # generation_config.num_beams = 10
+        # generation_config.do_sample = False
+        # generation_config.diversity_penalty = 0.1
 
         with torch.no_grad():
             context_length = queries.shape[1]
-            query_response, _ = batch_generation(model, queries,
+            responses = batch_generation(model, queries,
                                                  local_rollout_forward_batch_size=queries.shape[0],
                                                  pad_token_id=self.tokenizer.pad_token_id,
                                                  generation_config=generation_config)
-            return query_response[:, context_length:]
+            return responses
 
     def _prepare_sampler(self):
         if self.args.sampler_type in samplers:
@@ -161,8 +170,7 @@ def generate(
         return_dict_in_generate=True,
         output_scores=True,
     )
-    logits = torch.stack(output.scores, 1)
-    return torch.cat((queries, output.sequences[:, context_length:]), dim=1), logits
+    return output.sequences[:, context_length:]
 
 
 @torch.no_grad()
@@ -174,17 +182,17 @@ def batch_generation(
     generation_config: GenerationConfig,
 ):
     """Code borrowed from trl"""
-    query_responses = []
+    responses = []
     for i in range(0, queries.shape[0], local_rollout_forward_batch_size):
         query = queries[i : i + local_rollout_forward_batch_size]
-        query_response = generate(
+        response = generate(
             model,
             query,
             pad_token_id,
             generation_config,
         )
-        query_responses.append(query_response)
-    return torch.cat(query_responses, 0)
+        responses.append(response)
+    return responses
 
 
 def rlft_main(args: Union[List[str], RLFTArguments, None] = None):
