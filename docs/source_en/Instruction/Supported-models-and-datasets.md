@@ -460,6 +460,12 @@ The table below introduces the models integrated with ms-swift:
 |[damo/nlp_polylm_13b_text_generation](https://modelscope.cn/models/damo/nlp_polylm_13b_text_generation)|polylm|default|-|-|[DAMO-NLP-MT/polylm-13b](https://huggingface.co/DAMO-NLP-MT/polylm-13b)|
 |[AI-ModelScope/aya-expanse-8b](https://modelscope.cn/models/AI-ModelScope/aya-expanse-8b)|aya|aya|transformers>=4.44.0|-|[CohereForAI/aya-expanse-8b](https://huggingface.co/CohereForAI/aya-expanse-8b)|
 |[AI-ModelScope/aya-expanse-32b](https://modelscope.cn/models/AI-ModelScope/aya-expanse-32b)|aya|aya|transformers>=4.44.0|-|[CohereForAI/aya-expanse-32b](https://huggingface.co/CohereForAI/aya-expanse-32b)|
+|[answerdotai/ModernBERT-base](https://modelscope.cn/models/answerdotai/ModernBERT-base)|modern_bert|dummy|transformers>=4.48|bert|[answerdotai/ModernBERT-base](https://huggingface.co/answerdotai/ModernBERT-base)|
+|[answerdotai/ModernBERT-large](https://modelscope.cn/models/answerdotai/ModernBERT-large)|modern_bert|dummy|transformers>=4.48|bert|[answerdotai/ModernBERT-large](https://huggingface.co/answerdotai/ModernBERT-large)|
+|[iic/nlp_structbert_backbone_base_std](https://modelscope.cn/models/iic/nlp_structbert_backbone_base_std)|bert|dummy|-|bert|-|
+|[Shanghai_AI_Laboratory/internlm2-1_8b-reward](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm2-1_8b-reward)|internlm2_reward|internlm2_reward|transformers>=4.38|-|[internlm/internlm2-1_8b-reward](https://huggingface.co/internlm/internlm2-1_8b-reward)|
+|[Shanghai_AI_Laboratory/internlm2-7b-reward](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm2-7b-reward)|internlm2_reward|internlm2_reward|transformers>=4.38|-|[internlm/internlm2-7b-reward](https://huggingface.co/internlm/internlm2-7b-reward)|
+|[Shanghai_AI_Laboratory/internlm2-20b-reward](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm2-20b-reward)|internlm2_reward|internlm2_reward|transformers>=4.38|-|[internlm/internlm2-20b-reward](https://huggingface.co/internlm/internlm2-20b-reward)|
 
 
 ### Multimodal large models
