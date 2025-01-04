@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Literal
 
 from swift.llm import RLHFArguments
 
@@ -8,12 +8,24 @@ from swift.llm import RLHFArguments
 @dataclass
 class RLFTArguments(RLHFArguments):
 
-    reward_model: str = "AI-ModelScope/GRM_Llama3.1_8B_rewardmodel-ft"
+    rlft_type: Literal['sft', 'dpo'] = 'dpo'
 
-    orm_type: Optional[str] = None
+    prm_model: str = "AI-ModelScope/GRM_Llama3.1_8B_rewardmodel-ft"
+    orm_model: Optional[str] = None
+
+    # sample/mcts/dvts/xxx
+    sampler_type: str = 'sample'
+    sampler_output: str = 'rollout_output'
+    num_return_sequences: int = 10
+
+    num_rollout_iters: int = 50
+    num_rollout_batches: int = 300
+
+    end_temperature: float = 1.2
+    start_threshold: float = 0.0
+    end_threshold: float = -5.0
 
     def __post_init__(self):
-        self.rlhf_type = 'train'
+        self.rlhf_type = 'train' if self.rlhf_type == 'sft' else self.rlft_type
         super().__post_init__()
-        self.rlhf_type = 'train'
         self.training_args.max_new_tokens = self.max_new_tokens
