@@ -21,7 +21,7 @@ The introduction to command line parameters will cover base arguments, atomic ar
 - model_revision: Model version.
 - 🔥torch_dtype: Data type for model weights, supports `float16`, `bfloat16`, `float32`, default is read from the config file.
 - task_type: Defaults to 'causal_lm'. Options include 'causal_lm' and 'seq_cls'. You can view examples of seq_cls [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/seq_cls).
-- attn_impl: Attention type, supports `flash_attn`, `sdpa`, `eager`, default is sdpa.
+- attn_impl: type of attention, options are `flash_attn`, `sdpa`, `eager`, with the default being `sdpa`. Note: Not all three implementations are guaranteed to be supported; it depends on the support available for the corresponding model.
 - num_labels: To be specified for classification models, representing the number of labels, default is None.
 - rope_scaling: Rope type, supports `linear` and `dynamic`, to be used with `max_length`.
 - device_map: Configuration of the device map used by the model, e.g., 'auto', 'cpu', json string, json file path.
