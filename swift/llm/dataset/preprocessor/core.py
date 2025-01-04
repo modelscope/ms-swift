@@ -1,5 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import ast
+import glob
+import os
 from collections import Counter
 from contextlib import contextmanager
 from typing import Any, Callable, Dict, List, Optional, Union
@@ -8,10 +10,12 @@ import numpy as np
 from datasets import Dataset as HfDataset
 from datasets import Image
 from datasets import IterableDataset as HfIterableDataset
-from datasets import Value
+from datasets import Value, is_caching_enabled
+from datasets.arrow_dataset import generate_random_fingerprint
+from modelscope.hub.utils.utils import get_cache_dir
 
 from swift.llm import history_to_messages
-from swift.utils import get_logger
+from swift.utils import get_logger, safe_ddp_context
 
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
@@ -257,7 +261,11 @@ class RowPreprocessor:
         dataset = self._cast_pil_image(dataset)
         map_kwargs = {}
         if isinstance(dataset, HfDataset):
-            map_kwargs.update({'num_proc': num_proc})
+            cache_file_name = 'cache-' + generate_random_fingerprint() + '.arrow'
+            cache_file_name = os.path.join(get_cache_dir(), 'tmp', cache_file_name)
+            map_kwargs.update({'num_proc': num_proc, 'cache_file_name': cache_file_name})
+        else:
+            cache_file_name = None
         with self._patch_arrow_writer():
             try:
                 dataset_mapped = dataset.map(
@@ -267,6 +275,13 @@ class RowPreprocessor:
                     fn_kwargs={'strict': strict},
                     remove_columns=list(dataset.features.keys()),
                     **map_kwargs)
+                if cache_file_name and not is_caching_enabled():
+                    with safe_ddp_context(cache_file_name):
+                        prefix, suffix = os.path.splitext(cache_file_name)
+                        cache_path_list = glob.glob(f'{prefix}*{suffix}')
+                        for cache_path in cache_path_list:
+                            if os.path.exists(cache_path):
+                                os.remove(cache_path)
             except NotImplementedError:
                 pass
         if isinstance(dataset_mapped, HfDataset) and len(dataset) != len(dataset_mapped):
