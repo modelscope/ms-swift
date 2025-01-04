@@ -142,7 +142,7 @@ class StdTemplateInputs:
         from swift.plugin import get_tools_prompt, get_tools_keyword
         inputs = deepcopy(inputs)
         kwargs = {}
-        for key in ['rejected_response', 'label']:
+        for key in ['rejected_response', 'label', 'ground_truth']:
             if key in inputs:
                 kwargs[key] = inputs[key]
         messages = inputs['messages']

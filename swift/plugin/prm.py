@@ -3,7 +3,7 @@ from typing import List
 import torch
 
 from swift.llm import InferRequest
-from swift.llm.infer.protocol import ChatCompletionResponse
+from swift.llm.infer.protocol import ChatCompletionResponse, RequestConfig
 
 
 class PRM:

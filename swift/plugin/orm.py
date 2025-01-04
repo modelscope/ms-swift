@@ -3,6 +3,7 @@ from typing import List
 import torch
 from swift.llm import InferRequest
 from swift.llm.infer.protocol import ChatCompletionResponse
+from swift.llm.infer.protocol import ChatCompletionResponse, ChatCompletionResponseChoice, ChatMessage
 
 
 class ORM:
@@ -119,8 +120,8 @@ class ReactORM(ORM):
               infer_requests: List[InferRequest],
               **kwargs) -> List[ChatCompletionResponse]:
         rewards = []
-        predictions = [request.messages[-1]['content']for request in infer_requests]
-        ground_truths = [request.ground_truths[-1]['content'] for request in infer_requests]
+        predictions = [request.messages[-1]['content'] for request in infer_requests]
+        ground_truths = [request.ground_truths[-1] for request in infer_requests]
         for prediction, ground_truth in zip(predictions, ground_truths):
             action_ref = []
             action_input_ref = []
@@ -148,7 +149,9 @@ class ReactORM(ORM):
                                                  action_input_ref
                                                  )
             rewards.append(reward)
-        return rewards
+        return [ChatCompletionResponse(choices=[ChatCompletionResponseChoice(
+            message=ChatMessage(content=1.0 if r else 0.0, role='assistant'), index=0, finish_reason='')],
+            model=None, usage=None) for r in rewards]
 
     @staticmethod
     def evaluate_rougel(cand_list: list, ref_list: list):

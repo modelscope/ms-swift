@@ -11,7 +11,7 @@ from datasets import Dataset
 from modelscope import GenerationConfig
 from transformers import PreTrainedModel
 from trl.models.utils import unwrap_model_for_generation
-
+from swift.llm.infer.protocol import ChatCompletionResponse, RequestConfig
 from swift.llm.template.template_inputs import StdTemplateInputs, InferRequest
 from swift.utils import get_logger
 from .sft import SwiftSft
@@ -38,7 +38,7 @@ class SwiftRLFT(SwiftRLHF):
             self.prm_model = None
             return
         if self.args.prm_model in prms:
-            self.prm = prms[self.args.prm_model]()
+            self.prm_model = prms[self.args.prm_model]()
         else:
             self.prm_model = PtEngine(self.args.prm_model, max_batch_size=64)
 
@@ -46,7 +46,7 @@ class SwiftRLFT(SwiftRLHF):
             self.orm_model = None
             return
         elif self.args.orm_model in orms:
-            self.orm = orms[self.args.orm_model]()
+            self.orm_model = orms[self.args.orm_model]()
         else:
             self.orm_model = PtEngine(self.args.orm_model, max_batch_size=64)
 
@@ -79,8 +79,8 @@ class SwiftRLFT(SwiftRLHF):
         else:
             raise NotImplementedError
 
-    def _get_reward(self, model, infer_requests: List[InferRequest]):
-        resp_list = model.infer(infer_requests)
+    def _get_reward(self, model, infer_requests: List[InferRequest], request_config=None):
+        resp_list = model.infer(infer_requests, request_config=request_config)
         return [resp_list[i].choices[0].message.content for i in range(len(resp_list))]
 
     def rollout(self, data, trainer, step):
@@ -113,9 +113,10 @@ class SwiftRLFT(SwiftRLHF):
                             _messages = deepcopy(messages)
                             _messages[-1]['content'] = decoded
                             infer_requests.append(InferRequest(messages=_messages,
-                                                               ground_truths=_data['ground_truths']))
-                        prm_score = self._get_reward(self.prm, infer_requests)
-                        orm_score = self._get_reward(self.orm, infer_requests)
+                                                               ground_truths=_data['ground_truth']))
+                        orm_score = self._get_reward(self.orm_model, infer_requests)
+                        prm_score = self._get_reward(self.prm_model, infer_requests, request_config=RequestConfig(max_tokens=3))
+                        
                         score = np.array(prm_score) + np.array(orm_score)
                         sorted_indices = np.argsort(score)
                         positive = batch_decoded[sorted_indices[0]]

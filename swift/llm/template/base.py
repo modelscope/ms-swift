@@ -233,6 +233,7 @@ class Template(ProcessorMixin):
         if inputs.messages[0]['role'] != 'system':
             inputs.messages.insert(0, {'role': 'system', 'content': inputs.system})
         encoded['_messages'] = inputs.messages
+        encoded['ground_truth'] = inputs.ground_truth
         return encoded
 
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
@@ -282,6 +283,8 @@ class Template(ProcessorMixin):
         generation_config = generate_kwargs['generation_config']
         stop_words = getattr(generation_config, 'stop_words', None) or self.template_meta.stop_words
         generate_kwargs['stopping_criteria'] = StoppingCriteriaList([StopWordsCriteria(self.tokenizer, stop_words)])
+        generate_kwargs.pop('_messages', None)
+        generate_kwargs.pop('ground_truth', None)
         return generate_kwargs
 
     @staticmethod
