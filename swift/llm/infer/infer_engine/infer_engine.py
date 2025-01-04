@@ -222,7 +222,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
             if top_logprobs is not None:
                 res_top_logprobs = []
                 for k, logprob in logprobs.items():
-                    if k == token_id:  # TODO
+                    if k == token_id:
                         continue
                     token = tokenizer.decode(k)
                     res_top_logprobs.append({'token': token, 'logprob': logprob, 'bytes': list(token.encode('utf8'))})

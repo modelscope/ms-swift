@@ -157,7 +157,6 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
 
     def __post_init__(self) -> None:
         BaseArguments.__post_init__(self)
-        MergeArguments.__post_init__(self)
         VllmArguments.__post_init__(self)
         self._init_result_path('infer_result')
         self._init_eval_human()

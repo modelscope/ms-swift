@@ -8,10 +8,10 @@ from transformers.models.auto.tokenization_auto import get_tokenizer_config
 
 from swift.llm import TemplateType
 from swift.utils import get_dist_setting, get_env_args, get_logger
-from ..constant import LLMModelType, MLLMModelType
+from ..constant import LLMModelType, MLLMModelType, RMModelType
 from ..model_arch import ModelArch
 from ..patcher import patch_fixed_device, patch_output_clone, patch_output_to_input_device
-from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,
+from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal, get_model_tokenizer_reward_model,
                         get_model_tokenizer_with_flash_attn, register_model)
 from ..utils import AttnImpl, ModelInfo, use_submodel_func
 
@@ -390,19 +390,6 @@ register_model(
                 Model('Qwen/Qwen2.5-32B-Instruct-AWQ', 'Qwen/Qwen2.5-32B-Instruct-AWQ'),
                 Model('Qwen/Qwen2.5-72B-Instruct-AWQ', 'Qwen/Qwen2.5-72B-Instruct-AWQ'),
             ]),
-            # qwen2.5-math
-            ModelGroup(
-                [
-                    # instruct
-                    Model('Qwen/Qwen2.5-Math-1.5B-Instruct', 'Qwen/Qwen2.5-Math-1.5B-Instruct'),
-                    Model('Qwen/Qwen2.5-Math-7B-Instruct', 'Qwen/Qwen2.5-Math-7B-Instruct'),
-                    Model('Qwen/Qwen2.5-Math-72B-Instruct', 'Qwen/Qwen2.5-Math-72B-Instruct'),
-                    # base
-                    Model('Qwen/Qwen2.5-Math-1.5B', 'Qwen/Qwen2.5-Math-1.5B'),
-                    Model('Qwen/Qwen2.5-Math-7B', 'Qwen/Qwen2.5-Math-7B'),
-                    Model('Qwen/Qwen2.5-Math-72B', 'Qwen/Qwen2.5-Math-72B'),
-                ],
-                tags=['math']),
             # qwen2.5-coder
             ModelGroup(
                 [
@@ -444,6 +431,30 @@ register_model(
                 tags=['coding'])
         ],
         TemplateType.qwen2_5,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['Qwen2ForCausalLM'],
+        requires=['transformers>=4.37'],
+        model_arch=ModelArch.llama))
+
+register_model(
+    ModelMeta(
+        LLMModelType.qwen2_5_math,
+        [
+            # qwen2.5-math
+            ModelGroup(
+                [
+                    # instruct
+                    Model('Qwen/Qwen2.5-Math-1.5B-Instruct', 'Qwen/Qwen2.5-Math-1.5B-Instruct'),
+                    Model('Qwen/Qwen2.5-Math-7B-Instruct', 'Qwen/Qwen2.5-Math-7B-Instruct'),
+                    Model('Qwen/Qwen2.5-Math-72B-Instruct', 'Qwen/Qwen2.5-Math-72B-Instruct'),
+                    # base
+                    Model('Qwen/Qwen2.5-Math-1.5B', 'Qwen/Qwen2.5-Math-1.5B'),
+                    Model('Qwen/Qwen2.5-Math-7B', 'Qwen/Qwen2.5-Math-7B'),
+                    Model('Qwen/Qwen2.5-Math-72B', 'Qwen/Qwen2.5-Math-72B'),
+                ],
+                tags=['math']),
+        ],
+        TemplateType.qwen2_5_math,
         get_model_tokenizer_with_flash_attn,
         architectures=['Qwen2ForCausalLM'],
         requires=['transformers>=4.37'],
@@ -634,6 +645,8 @@ register_model(
         [
             ModelGroup([
                 Model('AIDC-AI/Ovis1.6-Gemma2-9B', 'AIDC-AI/Ovis1.6-Gemma2-9B'),
+                Model('AIDC-AI/Ovis1.6-Gemma2-9B-GPTQ-Int4', 'AIDC-AI/Ovis1.6-Gemma2-9B-GPTQ-Int4'),
+                Model('AIDC-AI/Ovis1.6-Gemma2-27B', 'AIDC-AI/Ovis1.6-Gemma2-27B'),
             ]),
         ],
         TemplateType.ovis1_6,
@@ -642,4 +655,47 @@ register_model(
         architectures=['Ovis'],
         tags=['vision'],
         requires=['transformers>=4.42'],
+    ))
+
+register_model(
+    ModelMeta(
+        MLLMModelType.ovis1_6_llama3,
+        [
+            ModelGroup([
+                Model('AIDC-AI/Ovis1.6-Llama3.2-3B', 'AIDC-AI/Ovis1.6-Llama3.2-3B'),
+            ]),
+        ],
+        TemplateType.ovis1_6_llama3,
+        get_model_tokenizer_ovis,
+        model_arch=ModelArch.ovis1_6,
+        architectures=['Ovis'],
+        tags=['vision'],
+    ))
+
+register_model(
+    ModelMeta(
+        RMModelType.qwen2_reward,
+        [
+            ModelGroup([
+                Model('Qwen/Qwen2-Math-RM-72B', 'Qwen/Qwen2-Math-RM-72B'),
+            ]),
+        ],
+        TemplateType.qwen,
+        get_model_tokenizer_reward_model,
+        architectures=['Qwen2ForRewardModel'],
+        requires=['transformers>=4.37'],
+    ))
+
+register_model(
+    ModelMeta(
+        RMModelType.qwen2_5_math_reward,
+        [
+            ModelGroup([
+                Model('Qwen/Qwen2.5-Math-RM-72B', 'Qwen/Qwen2.5-Math-RM-72B'),
+            ]),
+        ],
+        TemplateType.qwen2_5_math,
+        get_model_tokenizer_reward_model,
+        architectures=['Qwen2ForRewardModel'],
+        requires=['transformers>=4.37'],
     ))

@@ -60,6 +60,7 @@ class ModelInfo:
     # extra
     config: Optional[PretrainedConfig] = None
     task_type: Literal['causal_lm', 'seq_cls', None] = None
+    num_labels: Optional[int] = None
 
     def __post_init__(self):
         from .register import get_model_name
