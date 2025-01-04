@@ -461,6 +461,11 @@ The table below introduces the models integrated with ms-swift:
 |[answerdotai/ModernBERT-base](https://modelscope.cn/models/answerdotai/ModernBERT-base)|modern_bert|dummy|transformers>=4.48|bert|[answerdotai/ModernBERT-base](https://huggingface.co/answerdotai/ModernBERT-base)|
 |[answerdotai/ModernBERT-large](https://modelscope.cn/models/answerdotai/ModernBERT-large)|modern_bert|dummy|transformers>=4.48|bert|[answerdotai/ModernBERT-large](https://huggingface.co/answerdotai/ModernBERT-large)|
 |[iic/nlp_structbert_backbone_base_std](https://modelscope.cn/models/iic/nlp_structbert_backbone_base_std)|bert|dummy|-|bert|-|
+|[Shanghai_AI_Laboratory/internlm2-1_8b-reward](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm2-1_8b-reward)|internlm2_reward|internlm2_reward|transformers>=4.38|-|[internlm/internlm2-1_8b-reward](https://huggingface.co/internlm/internlm2-1_8b-reward)|
+|[Shanghai_AI_Laboratory/internlm2-7b-reward](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm2-7b-reward)|internlm2_reward|internlm2_reward|transformers>=4.38|-|[internlm/internlm2-7b-reward](https://huggingface.co/internlm/internlm2-7b-reward)|
+|[Shanghai_AI_Laboratory/internlm2-20b-reward](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm2-20b-reward)|internlm2_reward|internlm2_reward|transformers>=4.38|-|[internlm/internlm2-20b-reward](https://huggingface.co/internlm/internlm2-20b-reward)|
+|[Qwen/Qwen2-Math-RM-72B](https://modelscope.cn/models/Qwen/Qwen2-Math-RM-72B)|qwen2_reward|qwen|transformers>=4.37|-|[Qwen/Qwen2-Math-RM-72B](https://huggingface.co/Qwen/Qwen2-Math-RM-72B)|
+|[Qwen/Qwen2.5-Math-RM-72B](https://modelscope.cn/models/Qwen/Qwen2.5-Math-RM-72B)|qwen2_reward|qwen|transformers>=4.37|-|[Qwen/Qwen2.5-Math-RM-72B](https://huggingface.co/Qwen/Qwen2.5-Math-RM-72B)|
 
 
 ### Multimodal large models
@@ -490,6 +495,9 @@ The table below introduces the models integrated with ms-swift:
 |[Qwen/Qwen2-Audio-7B](https://modelscope.cn/models/Qwen/Qwen2-Audio-7B)|qwen2_audio|qwen2_audio|transformers>=4.45, librosa|audio|[Qwen/Qwen2-Audio-7B](https://huggingface.co/Qwen/Qwen2-Audio-7B)|
 |[Qwen/QVQ-72B-Preview](https://modelscope.cn/models/Qwen/QVQ-72B-Preview)|qvq|qvq|transformers>=4.45, qwen_vl_utils>=0.0.6, pyav, decord|vision, video|[Qwen/QVQ-72B-Preview](https://huggingface.co/Qwen/QVQ-72B-Preview)|
 |[AIDC-AI/Ovis1.6-Gemma2-9B](https://modelscope.cn/models/AIDC-AI/Ovis1.6-Gemma2-9B)|ovis1_6|ovis1_6|transformers>=4.42|vision|[AIDC-AI/Ovis1.6-Gemma2-9B](https://huggingface.co/AIDC-AI/Ovis1.6-Gemma2-9B)|
+|[AIDC-AI/Ovis1.6-Gemma2-9B-GPTQ-Int4](https://modelscope.cn/models/AIDC-AI/Ovis1.6-Gemma2-9B-GPTQ-Int4)|ovis1_6|ovis1_6|transformers>=4.42|vision|[AIDC-AI/Ovis1.6-Gemma2-9B-GPTQ-Int4](https://huggingface.co/AIDC-AI/Ovis1.6-Gemma2-9B-GPTQ-Int4)|
+|[AIDC-AI/Ovis1.6-Gemma2-27B](https://modelscope.cn/models/AIDC-AI/Ovis1.6-Gemma2-27B)|ovis1_6|ovis1_6|transformers>=4.42|vision|[AIDC-AI/Ovis1.6-Gemma2-27B](https://huggingface.co/AIDC-AI/Ovis1.6-Gemma2-27B)|
+|[AIDC-AI/Ovis1.6-Llama3.2-3B](https://modelscope.cn/models/AIDC-AI/Ovis1.6-Llama3.2-3B)|ovis1_6_llama3|ovis1_6_llama3|-|vision|[AIDC-AI/Ovis1.6-Llama3.2-3B](https://huggingface.co/AIDC-AI/Ovis1.6-Llama3.2-3B)|
 |[ZhipuAI/glm-4v-9b](https://modelscope.cn/models/ZhipuAI/glm-4v-9b)|glm4v|glm4v|transformers>=4.42,<4.45|-|[THUDM/glm-4v-9b](https://huggingface.co/THUDM/glm-4v-9b)|
 |[ZhipuAI/cogagent-9b-20241220](https://modelscope.cn/models/ZhipuAI/cogagent-9b-20241220)|glm4v|glm4v|transformers>=4.42|-|[THUDM/cogagent-9b-20241220](https://huggingface.co/THUDM/cogagent-9b-20241220)|
 |[ZhipuAI/glm-edge-v-2b](https://modelscope.cn/models/ZhipuAI/glm-edge-v-2b)|glm_edge_v|glm_edge_v|transformers>=4.46|vision|[THUDM/glm-edge-v-2b](https://huggingface.co/THUDM/glm-edge-v-2b)|

@@ -336,7 +336,8 @@ register_model(
 
 register_model(
     ModelMeta(
-        RMModelType.internlm2_reward, [
+        RMModelType.internlm2_reward,
+        [
             ModelGroup([
                 Model('Shanghai_AI_Laboratory/internlm2-1_8b-reward', 'internlm/internlm2-1_8b-reward'),
                 Model('Shanghai_AI_Laboratory/internlm2-7b-reward', 'internlm/internlm2-7b-reward'),
@@ -347,4 +348,4 @@ register_model(
         get_model_tokenizer_reward_model,
         requires=['transformers>=4.38'],
         architectures=['InternLM2ForRewardModel'],
-        task_type='seq_cls'))
+    ))

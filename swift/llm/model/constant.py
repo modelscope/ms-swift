@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Classification criteria for model_type: same model architecture, tokenizer (get function), template.
+from itertools import chain
 from typing import List
 
 
@@ -102,6 +103,7 @@ class BertModelType:
 
 class RMModelType:
     internlm2_reward = 'internlm2_reward'
+    qwen2_reward = 'qwen2_reward'
 
 
 class MLLMModelType:
@@ -111,6 +113,7 @@ class MLLMModelType:
     qwen2_audio = 'qwen2_audio'
     qvq = 'qvq'
     ovis1_6 = 'ovis1_6'
+    ovis1_6_llama3 = 'ovis1_6_llama3'
 
     glm4v = 'glm4v'
     glm_edge_v = 'glm_edge_v'
@@ -195,4 +198,7 @@ class ModelType(LLMModelType, MLLMModelType, BertModelType, RMModelType):
                     res.append(value)
             return res
 
-        return _get_model_name_list(LLMModelType) + _get_model_name_list(MLLMModelType)
+        return list(
+            chain.from_iterable(
+                _get_model_name_list(model_type_cls)
+                for model_type_cls in [LLMModelType, MLLMModelType, BertModelType, RMModelType]))

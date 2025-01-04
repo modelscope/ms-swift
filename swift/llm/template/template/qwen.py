@@ -13,6 +13,7 @@ from ..template_inputs import StdTemplateInputs
 from ..template_meta import TemplateMeta
 from ..utils import Context, Word, findall
 from ..vision_utils import load_audio_qwen, load_batch, load_file
+from .llama import Llama3TemplateMeta
 from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
 
 
@@ -345,6 +346,13 @@ register_template(
         chat_sep=['<end_of_turn>\n'],
         suffix=['<end_of_turn>'],
         system_prefix=['<bos><start_of_turn>system\n{{SYSTEM}}<end_of_turn>\n'],
+        template_cls=Ovis1_6Template,
+    ))
+
+register_template(
+    Llama3TemplateMeta(
+        MLLMTemplateType.ovis1_6_llama3,
+        default_system='You are a helpful and honest multimodal assistant.',
         template_cls=Ovis1_6Template,
     ))
 

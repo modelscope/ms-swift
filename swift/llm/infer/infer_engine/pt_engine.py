@@ -312,7 +312,6 @@ class PtEngine(InferEngine):
         if adapter_names is not None:
             generate_kwargs['adapter_names'] = adapter_names
         num_prompt_tokens = self._get_num_tokens(inputs)
-        template.debug_logger(inputs)  # debug
         generate_kwargs = template.prepare_generate_kwargs(generate_kwargs, model=self.model)
         output = dict(template.generate(self.model, **generate_kwargs))
         output.pop('past_key_values', None)
@@ -410,6 +409,7 @@ class PtEngine(InferEngine):
             batched_inputs = [future.result() for future in futures]
         template_inputs = [inputs.pop('template_inputs') for inputs in batched_inputs]
         inputs = to_device(template.data_collator(batched_inputs), self.model.device)
+        template.debug_logger(inputs)  # debug
         if self.model.model_meta.is_multimodal:
             _, inputs = template.pre_forward_hook(self.model, None, inputs)
         if self.model_info.task_type == 'causal_lm':
