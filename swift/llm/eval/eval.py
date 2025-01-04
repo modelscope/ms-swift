@@ -75,7 +75,7 @@ class SwiftEval(SwiftPipeline):
                 'datasets':
                 dataset,
                 'batch_size':
-                args.max_batch_size or 256,
+                args.eval_num_proc or 256,
                 'work_dir':
                 os.path.join(args.eval_output_dir, 'opencompass'),
                 'models': [{
@@ -104,7 +104,7 @@ class SwiftEval(SwiftPipeline):
                     'key': args.api_key or 'EMPTY',
                 }],
                 'nproc':
-                args.max_batch_size or 16,
+                args.eval_num_proc or 16,
             }
         }
         task_cfg['work_dir'] = task_cfg['eval_config']['work_dir']  # compat evalscope 0.8.1

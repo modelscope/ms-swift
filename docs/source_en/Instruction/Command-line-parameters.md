@@ -374,7 +374,7 @@ Evaluation Arguments inherit from the [deployment arguments](#deployment-argumen
 - eval_output_dir: Folder for storing evaluation results, default is 'eval_output'.
 - temperature: Default is 0.
 - verbose: This parameter is passed to DeployArguments during local evaluation, default is `False`.
-- max_batch_size: Maximum batch size, default is 256 for text evaluation, 16 for multimodal.
+- eval_num_proc: Maximum concurrency for clients during evaluation. The default for text evaluation is 256, while for multimodal it is 16.
 - 🔥eval_url: Evaluation URL, for example `http://localhost:8000/v1`. Default is None, uses local deployment for evaluation. You can view the examples [here](https://github.com/modelscope/ms-swift/tree/main/examples/eval/eval_url).
 
 ### Export Arguments
