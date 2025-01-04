@@ -265,6 +265,6 @@ if __name__ == '__main__':
     # test_megrez()
     # test_skywork_o1()
     # test_internlm2_reward()
-    test_qwen2_reward()
+    # test_qwen2_reward()
     # test_qwen2_5_math()
     test_skywork_reward()
