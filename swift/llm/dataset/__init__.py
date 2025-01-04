@@ -1,3 +1,5 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
+
 import datasets.fingerprint
 from datasets import disable_caching
 
