@@ -5,6 +5,7 @@ import os
 from copy import deepcopy
 from typing import List, Union, Tuple
 
+import numpy as np
 import torch
 from datasets import Dataset
 from modelscope import GenerationConfig
@@ -62,11 +63,10 @@ class SwiftRLFT(SwiftRLHF):
         # generation_config.diversity_penalty = 0.1
 
         with torch.no_grad():
-            context_length = queries.shape[1]
             responses = batch_generation(model, queries,
-                                                 local_rollout_forward_batch_size=queries.shape[0],
-                                                 pad_token_id=self.tokenizer.pad_token_id,
-                                                 generation_config=generation_config)
+                                         local_rollout_forward_batch_size=queries.shape[0],
+                                         pad_token_id=self.tokenizer.pad_token_id,
+                                         generation_config=generation_config)
             return responses
 
     def _prepare_sampler(self):
@@ -106,8 +106,20 @@ class SwiftRLFT(SwiftRLHF):
                         _data = deepcopy(data)
                         messages = _data['_messages'][i]
                         assert messages[-1]['content'] is None
-                        positive = gen[0]
-                        negative = gen[-1]
+                        batch_decoded = self.tokenizer.batch_decode(gen, skip_special_tokens=True,
+                                                                    clean_up_tokenization_spaces=True)
+                        infer_requests = []
+                        for decoded in batch_decoded:
+                            _messages = deepcopy(messages)
+                            _messages[-1]['content'] = decoded
+                            infer_requests.append(InferRequest(messages=_messages,
+                                                               ground_truths=_data['ground_truths']))
+                        prm_score = self._get_reward(self.prm, infer_requests)
+                        orm_score = self._get_reward(self.orm, infer_requests)
+                        score = np.array(prm_score) + np.array(orm_score)
+                        sorted_indices = np.argsort(score)
+                        positive = batch_decoded[sorted_indices[0]]
+                        negative = batch_decoded[sorted_indices[-1]]
                         messages[-1]['content'] = positive
                         encoded = self.template.encode(
                             StdTemplateInputs.from_dict({'messages': messages, 'rejected_response': negative},
@@ -157,7 +169,7 @@ class SwiftRLFT(SwiftRLHF):
 
 
 def generate(
-    lm_backbone: PreTrainedModel, queries: torch.Tensor, pad_token_id: int, generation_config: GenerationConfig
+        lm_backbone: PreTrainedModel, queries: torch.Tensor, pad_token_id: int, generation_config: GenerationConfig
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """Code borrowed from trl"""
     context_length = queries.shape[1]
@@ -175,16 +187,16 @@ def generate(
 
 @torch.no_grad()
 def batch_generation(
-    model: torch.nn.Module,
-    queries: torch.Tensor,
-    local_rollout_forward_batch_size: int,
-    pad_token_id: int,
-    generation_config: GenerationConfig,
+        model: torch.nn.Module,
+        queries: torch.Tensor,
+        local_rollout_forward_batch_size: int,
+        pad_token_id: int,
+        generation_config: GenerationConfig,
 ):
     """Code borrowed from trl"""
     responses = []
     for i in range(0, queries.shape[0], local_rollout_forward_batch_size):
-        query = queries[i : i + local_rollout_forward_batch_size]
+        query = queries[i: i + local_rollout_forward_batch_size]
         response = generate(
             model,
             query,
