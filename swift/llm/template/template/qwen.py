@@ -7,12 +7,12 @@ import torch
 
 from swift.utils import get_env_args, is_deepspeed_enabled
 from ..base import Template
-from ..constant import LLMTemplateType, MLLMTemplateType, RMTemplateType
+from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import register_template
 from ..template_inputs import StdTemplateInputs
 from ..template_meta import TemplateMeta
 from ..utils import Context, Word, findall
-from ..vision_utils import load_audio_qwen, load_batch, load_file
+from ..vision_utils import load_audio_qwen, load_batch
 from .llama import Llama3TemplateMeta
 from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
 
