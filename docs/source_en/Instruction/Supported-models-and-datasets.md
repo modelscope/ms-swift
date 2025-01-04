@@ -377,12 +377,14 @@ The table below introduces the models integrated with ms-swift:
 |[TeleAI/TeleChat-7B](https://modelscope.cn/models/TeleAI/TeleChat-7B)|telechat|telechat|-|-|[Tele-AI/telechat-7B](https://huggingface.co/Tele-AI/telechat-7B)|
 |[TeleAI/TeleChat-12B](https://modelscope.cn/models/TeleAI/TeleChat-12B)|telechat|telechat|-|-|[Tele-AI/TeleChat-12B](https://huggingface.co/Tele-AI/TeleChat-12B)|
 |[TeleAI/TeleChat-12B-v2](https://modelscope.cn/models/TeleAI/TeleChat-12B-v2)|telechat|telechat|-|-|[Tele-AI/TeleChat-12B-v2](https://huggingface.co/Tele-AI/TeleChat-12B-v2)|
+|[TeleAI/TeleChat-52B](https://modelscope.cn/models/TeleAI/TeleChat-52B)|telechat|telechat|-|-|[TeleAI/TeleChat-52B](https://huggingface.co/TeleAI/TeleChat-52B)|
 |[swift/TeleChat-12B-V2-GPTQ-Int4](https://modelscope.cn/models/swift/TeleChat-12B-V2-GPTQ-Int4)|telechat|telechat|-|-|-|
+|[TeleAI/TeleChat2-35B](https://modelscope.cn/models/TeleAI/TeleChat2-35B)|telechat|telechat|-|-|[Tele-AI/TeleChat2-35B](https://huggingface.co/Tele-AI/TeleChat2-35B)|
+|[TeleAI/TeleChat2-115B](https://modelscope.cn/models/TeleAI/TeleChat2-115B)|telechat|telechat|-|-|[Tele-AI/TeleChat2-115B](https://huggingface.co/Tele-AI/TeleChat2-115B)|
 |[TeleAI/TeleChat2-3B](https://modelscope.cn/models/TeleAI/TeleChat2-3B)|telechat2|telechat2|-|-|[Tele-AI/TeleChat2-3B](https://huggingface.co/Tele-AI/TeleChat2-3B)|
 |[TeleAI/TeleChat2-7B](https://modelscope.cn/models/TeleAI/TeleChat2-7B)|telechat2|telechat2|-|-|[Tele-AI/TeleChat2-7B](https://huggingface.co/Tele-AI/TeleChat2-7B)|
+|[TeleAI/TeleChat2-35B-32K](https://modelscope.cn/models/TeleAI/TeleChat2-35B-32K)|telechat2|telechat2|-|-|[Tele-AI/TeleChat2-35B-32K](https://huggingface.co/Tele-AI/TeleChat2-35B-32K)|
 |[TeleAI/TeleChat2-35B-Nov](https://modelscope.cn/models/TeleAI/TeleChat2-35B-Nov)|telechat2|telechat2|-|-|[Tele-AI/TeleChat2-35B-Nov](https://huggingface.co/Tele-AI/TeleChat2-35B-Nov)|
-|[TeleAI/TeleChat2-35B](https://modelscope.cn/models/TeleAI/TeleChat2-35B)|telechat2_115b|telechat2_115b|-|-|[Tele-AI/TeleChat2-35B](https://huggingface.co/Tele-AI/TeleChat2-35B)|
-|[TeleAI/TeleChat2-115B](https://modelscope.cn/models/TeleAI/TeleChat2-115B)|telechat2_115b|telechat2_115b|-|-|[Tele-AI/TeleChat2-115B](https://huggingface.co/Tele-AI/TeleChat2-115B)|
 |[AI-ModelScope/Mistral-7B-Instruct-v0.1](https://modelscope.cn/models/AI-ModelScope/Mistral-7B-Instruct-v0.1)|mistral|llama|transformers>=4.34|-|[mistralai/Mistral-7B-Instruct-v0.1](https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.1)|
 |[AI-ModelScope/Mistral-7B-Instruct-v0.2](https://modelscope.cn/models/AI-ModelScope/Mistral-7B-Instruct-v0.2)|mistral|llama|transformers>=4.34|-|[mistralai/Mistral-7B-Instruct-v0.2](https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.2)|
 |[LLM-Research/Mistral-7B-Instruct-v0.3](https://modelscope.cn/models/LLM-Research/Mistral-7B-Instruct-v0.3)|mistral|llama|transformers>=4.34|-|[mistralai/Mistral-7B-Instruct-v0.3](https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.3)|

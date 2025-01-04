@@ -1,5 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import ast
+import os
+import tempfile
 from collections import Counter
 from contextlib import contextmanager
 from typing import Any, Callable, Dict, List, Optional, Union
@@ -8,7 +10,9 @@ import numpy as np
 from datasets import Dataset as HfDataset
 from datasets import Image
 from datasets import IterableDataset as HfIterableDataset
-from datasets import Value
+from datasets import Value, is_caching_enabled
+from datasets.arrow_dataset import generate_random_fingerprint
+from modelscope.hub.utils.utils import get_cache_dir
 
 from swift.llm import history_to_messages
 from swift.utils import get_logger
@@ -256,8 +260,13 @@ class RowPreprocessor:
         dataset = self.prepare_dataset(dataset)
         dataset = self._cast_pil_image(dataset)
         map_kwargs = {}
-        if isinstance(dataset, HfDataset):
-            map_kwargs.update({'num_proc': num_proc})
+        if not is_caching_enabled() and isinstance(dataset, HfDataset):
+            tmp_dir = os.path.join(get_cache_dir(), 'tmp')
+            os.makedirs(tmp_dir, exist_ok=True)
+            tmp_dir = tempfile.TemporaryDirectory(dir=tmp_dir)
+
+            cache_file_name = os.path.join(tmp_dir.name, 'cache-' + generate_random_fingerprint() + '.arrow')
+            map_kwargs.update({'num_proc': num_proc, 'cache_file_name': cache_file_name})
         with self._patch_arrow_writer():
             try:
                 dataset_mapped = dataset.map(
