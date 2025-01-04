@@ -2,6 +2,7 @@
 import ast
 import glob
 import os
+import tempfile
 from collections import Counter
 from contextlib import contextmanager
 from typing import Any, Callable, Dict, List, Optional, Union
@@ -260,12 +261,13 @@ class RowPreprocessor:
         dataset = self.prepare_dataset(dataset)
         dataset = self._cast_pil_image(dataset)
         map_kwargs = {}
-        if isinstance(dataset, HfDataset):
-            cache_file_name = 'cache-' + generate_random_fingerprint() + '.arrow'
-            cache_file_name = os.path.join(get_cache_dir(), 'tmp', cache_file_name)
+        if not is_caching_enabled() and isinstance(dataset, HfDataset):
+            tmp_dir = os.path.join(get_cache_dir(), 'tmp')
+            os.makedirs(tmp_dir, exist_ok=True)
+            tmp_dir = tempfile.TemporaryDirectory(dir=tmp_dir)
+
+            cache_file_name = os.path.join(tmp_dir.name, 'cache-' + generate_random_fingerprint() + '.arrow')
             map_kwargs.update({'num_proc': num_proc, 'cache_file_name': cache_file_name})
-        else:
-            cache_file_name = None
         with self._patch_arrow_writer():
             try:
                 dataset_mapped = dataset.map(
@@ -275,13 +277,7 @@ class RowPreprocessor:
                     fn_kwargs={'strict': strict},
                     remove_columns=list(dataset.features.keys()),
                     **map_kwargs)
-                if cache_file_name and not is_caching_enabled():
-                    with safe_ddp_context(cache_file_name):
-                        prefix, suffix = os.path.splitext(cache_file_name)
-                        cache_path_list = glob.glob(f'{prefix}*{suffix}')
-                        for cache_path in cache_path_list:
-                            if os.path.exists(cache_path):
-                                os.remove(cache_path)
+
             except NotImplementedError:
                 pass
         if isinstance(dataset_mapped, HfDataset) and len(dataset) != len(dataset_mapped):
