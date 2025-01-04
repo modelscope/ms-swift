@@ -63,7 +63,7 @@ class ModelMeta:
     torch_dtype: Optional[torch.dtype] = None
 
     is_multimodal: bool = False
-    is_reward_model: bool = False
+    is_reward: bool = False
 
     # File patterns to ignore when downloading the model.
     ignore_patterns: List[str] = field(default_factory=list)
@@ -118,7 +118,7 @@ def register_model(model_meta: ModelMeta, *, exist_ok: bool = False) -> None:
     if model_type in MLLMModelType.__dict__:
         model_meta.is_multimodal = True
     if model_type in RMModelType.__dict__:
-        model_meta.is_reward_model = True
+        model_meta.is_reward = True
     MODEL_MAPPING[model_type] = model_meta
 
 
@@ -395,7 +395,7 @@ def get_model_info_meta(
         logger.info(f'Setting torch_dtype: {torch_dtype}')
     _check_torch_dtype(torch_dtype)
     model_info.torch_dtype = torch_dtype
-    if model_meta.is_reward_model:
+    if model_meta.is_reward:
         task_type = 'seq_cls'
         num_labels = 1
     model_info.task_type = task_type
