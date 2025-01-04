@@ -214,9 +214,11 @@ def test_ovis1_6():
 def test_ovis1_6_llama3():
     pt_engine = PtEngine('AIDC-AI/Ovis1.6-Llama3.2-3B')
     messages = [{'role': 'user', 'content': '这是什么'}]
+    # llama3
     response = _infer_model(pt_engine, messages=messages)
     pt_engine.default_template.template_backend = 'jinja'
-    response2 = _infer_model(pt_engine, messages=messages, system='You are a helpful and honest multimodal assistant.')
+    # llama3_2
+    _infer_model(pt_engine, messages=messages, system='You are a helpful and honest multimodal assistant.')
     assert response == ('这是一只小猫。从图中可见的特征如大眼睛、细长的白色鼻毛和毛发的图案，表明它可能属于常见的猫种。猫的表情和毛发的质感显示出它年轻，可能是幼猫。')
 
 

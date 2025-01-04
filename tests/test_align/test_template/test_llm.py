@@ -215,7 +215,16 @@ def test_qwen2_reward():
     res = _infer_model(pt_engine, messages=messages)
     pt_engine.default_template.template_backend = 'jinja'
     res2 = _infer_model(pt_engine, messages=messages)
-    assert res == res2 == '0.48681640625'
+    assert res == res2 == '1.390625'
+
+
+def test_qwen2_5_math():
+    pt_engine = PtEngine('Qwen/Qwen2.5-Math-1.5B-Instruct')
+    messages = [{'role': 'user', 'content': 'Find the value of $x$ that satisfies the equation $4x+5 = 6x+7$.'}]
+    res = _infer_model(pt_engine, messages=messages)
+    pt_engine.default_template.template_backend = 'jinja'
+    res2 = _infer_model(pt_engine, messages=messages)
+    assert res == res2
 
 
 if __name__ == '__main__':
@@ -232,7 +241,7 @@ if __name__ == '__main__':
     # test_deepseek_moe()
     # test_codegeex4()
     # test_glm4()
-    test_telechat()
+    # test_telechat()
     # test_telechat2()
     # test_glm_edge()
     # test_llama()
@@ -241,3 +250,4 @@ if __name__ == '__main__':
     # test_skywork_o1()
     # test_internlm2_reward()
     # test_qwen2_reward()
+    test_qwen2_5_math()

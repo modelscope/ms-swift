@@ -8,6 +8,7 @@ class LLMModelType:
     qwen = 'qwen'
     qwen2 = 'qwen2'
     qwen2_5 = 'qwen2_5'
+    qwen2_5_math = 'qwen2_5_math'
     qwen2_moe = 'qwen2_moe'
     qwq = 'qwq'
 
@@ -103,6 +104,7 @@ class BertModelType:
 class RMModelType:
     internlm2_reward = 'internlm2_reward'
     qwen2_reward = 'qwen2_reward'
+    qwen2_5_math_reward = 'qwen2_5_math_reward'
 
 
 class MLLMModelType:
