@@ -1,6 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import ast
-import glob
 import os
 import tempfile
 from collections import Counter
@@ -16,7 +15,7 @@ from datasets.arrow_dataset import generate_random_fingerprint
 from modelscope.hub.utils.utils import get_cache_dir
 
 from swift.llm import history_to_messages
-from swift.utils import get_logger, safe_ddp_context
+from swift.utils import get_logger
 
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
@@ -277,7 +276,6 @@ class RowPreprocessor:
                     fn_kwargs={'strict': strict},
                     remove_columns=list(dataset.features.keys()),
                     **map_kwargs)
-
             except NotImplementedError:
                 pass
         if isinstance(dataset_mapped, HfDataset) and len(dataset) != len(dataset_mapped):
