@@ -7,7 +7,7 @@ import torch
 
 from swift.utils import get_env_args, is_deepspeed_enabled
 from ..base import Template
-from ..constant import LLMTemplateType, MLLMTemplateType, RMTemplateType
+from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import register_template
 from ..template_inputs import StdTemplateInputs
 from ..template_meta import TemplateMeta
