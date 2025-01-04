@@ -466,8 +466,12 @@ The table below introduces the models integrated with ms-swift:
 |[Shanghai_AI_Laboratory/internlm2-1_8b-reward](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm2-1_8b-reward)|internlm2_reward|internlm2_reward|transformers>=4.38|-|[internlm/internlm2-1_8b-reward](https://huggingface.co/internlm/internlm2-1_8b-reward)|
 |[Shanghai_AI_Laboratory/internlm2-7b-reward](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm2-7b-reward)|internlm2_reward|internlm2_reward|transformers>=4.38|-|[internlm/internlm2-7b-reward](https://huggingface.co/internlm/internlm2-7b-reward)|
 |[Shanghai_AI_Laboratory/internlm2-20b-reward](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm2-20b-reward)|internlm2_reward|internlm2_reward|transformers>=4.38|-|[internlm/internlm2-20b-reward](https://huggingface.co/internlm/internlm2-20b-reward)|
-|[Qwen/Qwen2-Math-RM-72B](https://modelscope.cn/models/Qwen/Qwen2-Math-RM-72B)|qwen2_reward|qwen2_reward|transformers>=4.37|-|[Qwen/Qwen2-Math-RM-72B](https://huggingface.co/Qwen/Qwen2-Math-RM-72B)|
-|[Qwen/Qwen2.5-Math-RM-72B](https://modelscope.cn/models/Qwen/Qwen2.5-Math-RM-72B)|qwen2_5_math_reward|qwen2_5_math_reward|transformers>=4.37|-|[Qwen/Qwen2.5-Math-RM-72B](https://huggingface.co/Qwen/Qwen2.5-Math-RM-72B)|
+|[Qwen/Qwen2-Math-RM-72B](https://modelscope.cn/models/Qwen/Qwen2-Math-RM-72B)|qwen2_reward|qwen|transformers>=4.37|-|[Qwen/Qwen2-Math-RM-72B](https://huggingface.co/Qwen/Qwen2-Math-RM-72B)|
+|[Qwen/Qwen2.5-Math-RM-72B](https://modelscope.cn/models/Qwen/Qwen2.5-Math-RM-72B)|qwen2_5_math_reward|qwen2_5_math|transformers>=4.37|-|[Qwen/Qwen2.5-Math-RM-72B](https://huggingface.co/Qwen/Qwen2.5-Math-RM-72B)|
+|[AI-ModelScope/Skywork-Reward-Llama-3.1-8B](https://modelscope.cn/models/AI-ModelScope/Skywork-Reward-Llama-3.1-8B)|llama3_2_reward|llama3_2|transformers>=4.43|-|[Skywork/Skywork-Reward-Llama-3.1-8B](https://huggingface.co/Skywork/Skywork-Reward-Llama-3.1-8B)|
+|[AI-ModelScope/Skywork-Reward-Llama-3.1-8B-v0.2](https://modelscope.cn/models/AI-ModelScope/Skywork-Reward-Llama-3.1-8B-v0.2)|llama3_2_reward|llama3_2|transformers>=4.43|-|[Skywork/Skywork-Reward-Llama-3.1-8B-v0.2](https://huggingface.co/Skywork/Skywork-Reward-Llama-3.1-8B-v0.2)|
+|[AI-ModelScope/Skywork-Reward-Gemma-2-27B](https://modelscope.cn/models/AI-ModelScope/Skywork-Reward-Gemma-2-27B)|gemma_reward|gemma|transformers>=4.42|-|[Skywork/Skywork-Reward-Gemma-2-27B](https://huggingface.co/Skywork/Skywork-Reward-Gemma-2-27B)|
+|[AI-ModelScope/Skywork-Reward-Gemma-2-27B-v0.2](https://modelscope.cn/models/AI-ModelScope/Skywork-Reward-Gemma-2-27B-v0.2)|gemma_reward|gemma|transformers>=4.42|-|[Skywork/Skywork-Reward-Gemma-2-27B-v0.2](https://huggingface.co/Skywork/Skywork-Reward-Gemma-2-27B-v0.2)|
 
 
 ### Multimodal large models
