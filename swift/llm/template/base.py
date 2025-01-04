@@ -108,7 +108,7 @@ class Template(ProcessorMixin):
             self.skip_prompt = False
 
         self.mode: Literal['pt', 'vllm', 'lmdeploy',  # infer
-                           'train', 'rlhf', 'kto'  # train
+                           'train', 'rlhf', 'kto',  # train
                            'seq_cls'] = 'pt'
         if self.model_info.task_type != 'causal':
             self.mode = self.model_info.task_type
@@ -583,7 +583,7 @@ class Template(ProcessorMixin):
             context_list = prompt.copy()
             extra_context_list = []
             extra_context_type = None
-            if i < n_round - 1 or self.mode == 'seq_cls':
+            if i < n_round - 1 or self.mode == 'seq_cls' and response is not None:
                 # Not the last round.
                 context_list.append('{{RESPONSE}}')
                 extra_context_list = template_meta.chat_sep
@@ -721,9 +721,10 @@ class Template(ProcessorMixin):
         return self.mode not in {'vllm', 'lmdeploy', 'pt'}
 
     def set_mode(self, mode: Literal['vllm', 'lmdeploy', 'pt', 'seq_cls', 'train', 'rlhf', 'kto']) -> None:
-        if mode == 'causal_lm':
-            mode = 'train'
-        self.mode = mode
+        if self.model_info.task_type == 'causal_lm':
+            self.mode = mode
+        else:
+            swift.warning(f'task_type: `{self.model_info.task_type}` does not support modifying template.mode.')
 
     def register_post_encode_hook(self, models: List[nn.Module]) -> None:
         """This function is important for multi-modal training, as it registers the post_encode method

@@ -394,9 +394,7 @@ class PtEngine(InferEngine):
             template.model = self.model
 
         generation_config = None
-        if self.model_info.task_type == 'seq_cls':
-            template.set_mode('seq_cls')
-        else:
+        if self.model_info.task_type == 'causal_lm':
             template.set_mode('pt')
 
         max_workers = min(32, os.cpu_count(), len(infer_requests))
