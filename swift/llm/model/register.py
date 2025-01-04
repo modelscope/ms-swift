@@ -58,11 +58,12 @@ class ModelMeta:
 
     model_arch: Optional[str] = None
     architectures: List[str] = field(default_factory=list)
-    is_multimodal: bool = False
     # Additional files that need to be saved for full parameter training/merge-lora.
     additional_saved_files: List[str] = field(default_factory=list)
     torch_dtype: Optional[torch.dtype] = None
-    task_type: Literal['causal_lm', 'seq_cls', None] = None
+
+    is_multimodal: bool = False
+    is_reward: bool = False
 
     # File patterns to ignore when downloading the model.
     ignore_patterns: List[str] = field(default_factory=list)
@@ -113,9 +114,11 @@ def register_model(model_meta: ModelMeta, *, exist_ok: bool = False) -> None:
     model_type = model_meta.model_type
     if not exist_ok and model_type in MODEL_MAPPING:
         raise ValueError(f'The `{model_type}` has already been registered in the MODEL_MAPPING.')
-    from .constant import MLLMModelType
+    from .constant import MLLMModelType, RMModelType
     if model_type in MLLMModelType.__dict__:
         model_meta.is_multimodal = True
+    if model_type in RMModelType.__dict__:
+        model_meta.is_reward = True
     MODEL_MAPPING[model_type] = model_meta
 
 
@@ -181,9 +184,8 @@ def get_model_tokenizer_from_local(model_dir: str,
     if tokenizer is None:
         tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
 
-    num_labels = model_kwargs.pop('num_labels', None)
-    if num_labels:
-        model_config.num_labels = num_labels
+    if model_info.num_labels:
+        model_config.num_labels = model_info.num_labels
 
     model = None
     if load_model:
@@ -366,6 +368,7 @@ def get_model_info_meta(
         model_type: Optional[str] = None,
         quantization_config=None,
         task_type=None,
+        num_labels=None,
         **kwargs) -> Tuple[ModelInfo, ModelMeta]:
     model_meta = get_matched_model_meta(model_id_or_path)
     model_dir = safe_snapshot_download(
@@ -392,7 +395,11 @@ def get_model_info_meta(
         logger.info(f'Setting torch_dtype: {torch_dtype}')
     _check_torch_dtype(torch_dtype)
     model_info.torch_dtype = torch_dtype
-    model_info.task_type = model_meta.task_type or task_type
+    if model_meta.is_reward:
+        task_type = 'seq_cls'
+        num_labels = 1
+    model_info.task_type = task_type
+    model_info.num_labels = num_labels
 
     model_meta.check_requires(model_info)
     return model_info, model_meta
@@ -416,6 +423,7 @@ def get_model_tokenizer(
         rope_scaling: Optional[Dict[str, Any]] = None,
         automodel_class=None,
         task_type: Literal['causal_lm', 'seq_cls'] = 'causal_lm',
+        num_labels: Optional[int] = None,
         model_kwargs: Optional[Dict[str, Any]] = None,
         **kwargs) -> Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]:
     """
@@ -445,7 +453,8 @@ def get_model_tokenizer(
         download_model=download_model,
         model_type=model_type,
         quantization_config=quantization_config,
-        task_type=task_type)
+        task_type=task_type,
+        num_labels=num_labels)
 
     if not use_torchacc() and device_map is None:
         device_map = get_default_device_map()

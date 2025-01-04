@@ -182,7 +182,6 @@ def test_internlm2_reward():
         'role': 'assistant',
         'content': 'My name is InternLM2! A helpful AI assistant. What can I do for you?'
     }]
-    pt_engine.task_type = 'seq_cls'
     res = _infer_model(pt_engine, messages=messages)
     pt_engine.default_template.template_backend = 'jinja'
     res2 = _infer_model(pt_engine, messages=messages)
