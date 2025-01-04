@@ -16,10 +16,6 @@ def is_vllm_available():
     return importlib.util.find_spec('vllm') is not None
 
 
-def is_merge_kit_available():
-    return importlib.util.find_spec('mergekit') is not None
-
-
 def is_lmdeploy_available():
     return importlib.util.find_spec('lmdeploy') is not None
 

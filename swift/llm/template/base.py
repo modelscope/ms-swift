@@ -108,8 +108,10 @@ class Template(ProcessorMixin):
             self.skip_prompt = False
 
         self.mode: Literal['pt', 'vllm', 'lmdeploy',  # infer
-                           'train', 'rlhf', 'kto'  # train
+                           'train', 'rlhf', 'kto',  # train
                            'seq_cls'] = 'pt'
+        if self.model_info.task_type != 'causal':
+            self.mode = self.model_info.task_type
         self._handles = []
         self._deepspeed_initialize = None
 
@@ -269,11 +271,6 @@ class Template(ProcessorMixin):
         if 'spaces_between_special_tokens' not in decode_kwargs:
             decode_kwargs['spaces_between_special_tokens'] = False
         return tokenizer.decode(generate_ids, **decode_kwargs)
-        # if not is_finished or is_finished and response[-len_suffix:] == template_suffix:
-        #     # To avoid response length being shorter than previous response length during streaming.
-        #     # TODO:check
-        #     # idx = max(len(response) - len_suffix, 0, self.print_idx)
-        #     response = response[:-len_suffix]
 
     def prepare_generate_kwargs(self, generate_kwargs: Dict[str, Any], *, model=None) -> Dict[str, Any]:
         generation_config = generate_kwargs['generation_config']
@@ -586,7 +583,7 @@ class Template(ProcessorMixin):
             context_list = prompt.copy()
             extra_context_list = []
             extra_context_type = None
-            if i < n_round - 1:
+            if i < n_round - 1 or self.mode == 'seq_cls' and response is not None:
                 # Not the last round.
                 context_list.append('{{RESPONSE}}')
                 extra_context_list = template_meta.chat_sep
@@ -686,7 +683,7 @@ class Template(ProcessorMixin):
         if 'input_ids' in inputs:
             k = 'input_ids'
             val = inputs['input_ids']
-        else:
+        elif 'generate_ids' in inputs:
             k = 'generate_ids'
             val = inputs['generate_ids']
         for v in val:
@@ -724,9 +721,10 @@ class Template(ProcessorMixin):
         return self.mode not in {'vllm', 'lmdeploy', 'pt'}
 
     def set_mode(self, mode: Literal['vllm', 'lmdeploy', 'pt', 'seq_cls', 'train', 'rlhf', 'kto']) -> None:
-        if mode == 'causal_lm':
-            mode = 'train'
-        self.mode = mode
+        if self.model_info.task_type == 'causal_lm':
+            self.mode = mode
+        else:
+            swift.warning(f'task_type: `{self.model_info.task_type}` does not support modifying template.mode.')
 
     def register_post_encode_hook(self, models: List[nn.Module]) -> None:
         """This function is important for multi-modal training, as it registers the post_encode method

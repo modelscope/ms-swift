@@ -41,8 +41,29 @@ def test_vlm_bnb_quant():
     # infer_main(InferArguments(ckpt_dir='Qwen/Qwen2-VL-7B-Instruct-bnb-int4'))
 
 
+def test_bert():
+    from swift.llm import export_main, ExportArguments
+    output_dir = 'output/swift_test_bert_merged'
+    export_main(ExportArguments(adapters='swift/test_bert', merge_lora=True, output_dir=output_dir))
+    export_main(
+        ExportArguments(model=output_dir, load_data_args=True, quant_bits=4, quant_method='gptq', max_length=512))
+
+
+def test_reward_model():
+    from swift.llm import export_main, ExportArguments
+
+    export_main(
+        ExportArguments(
+            model='Shanghai_AI_Laboratory/internlm2-1_8b-reward',
+            dataset=['AI-ModelScope/alpaca-gpt4-data-zh#1000', 'AI-ModelScope/alpaca-gpt4-data-en#1000'],
+            quant_bits=4,
+            quant_method='gptq'))
+
+
 if __name__ == '__main__':
     # test_llm_quant('gptq')
     # test_vlm_quant('gptq')
-    test_audio_quant('gptq')
+    # test_audio_quant('gptq')
     # test_vlm_bnb_quant()
+    # test_bert()
+    test_reward_model()

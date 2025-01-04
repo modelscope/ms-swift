@@ -21,7 +21,7 @@ The introduction to command line parameters will cover base arguments, atomic ar
 - model_revision: Model version.
 - 🔥torch_dtype: Data type for model weights, supports `float16`, `bfloat16`, `float32`, default is read from the config file.
 - task_type: Defaults to 'causal_lm'. Options include 'causal_lm' and 'seq_cls'. You can view examples of seq_cls [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/seq_cls).
-- attn_impl: Attention type, supports `flash_attn`, `sdpa`, `eager`, default is sdpa.
+- attn_impl: type of attention, options are `flash_attn`, `sdpa`, `eager`, with the default being `sdpa`. Note: Not all three implementations are guaranteed to be supported; it depends on the support available for the corresponding model.
 - num_labels: To be specified for classification models, representing the number of labels, default is None.
 - rope_scaling: Rope type, supports `linear` and `dynamic`, to be used with `max_length`.
 - device_map: Configuration of the device map used by the model, e.g., 'auto', 'cpu', json string, json file path.
@@ -374,7 +374,7 @@ Evaluation Arguments inherit from the [deployment arguments](#deployment-argumen
 - eval_output_dir: Folder for storing evaluation results, default is 'eval_output'.
 - temperature: Default is 0.
 - verbose: This parameter is passed to DeployArguments during local evaluation, default is `False`.
-- max_batch_size: Maximum batch size, default is 256 for text evaluation, 16 for multimodal.
+- eval_num_proc: Maximum concurrency for clients during evaluation. The default for text evaluation is 256, while for multimodal it is 16.
 - 🔥eval_url: Evaluation URL, for example `http://localhost:8000/v1`. Default is None, uses local deployment for evaluation. You can view the examples [here](https://github.com/modelscope/ms-swift/tree/main/examples/eval/eval_url).
 
 ### Export Arguments

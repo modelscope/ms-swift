@@ -98,6 +98,16 @@ def test_codegeex4():
 
 
 def test_telechat():
+    pt_engine = PtEngine('TeleAI/TeleChat-12B', torch_dtype=torch.float16)
+    messages = [{'role': 'user', 'content': '你是谁'}]
+    response = _infer_model(pt_engine, messages=messages)
+    assert response == ('我是中国电信星辰语义大模型，英文名TeleChat，是由中国电信自主研发的生成式大语言模型。\n\n'
+                        '我基于Transformer-decoder结构，学习了海量知识，包括百科、书籍、论坛、党政媒体、GitHub代码、专业领域知识等，'
+                        '具备自然语言处理、语义理解、内容创作和逻辑推理等能力，可以与人类进行对话互动和情感交流，还能提供知识问答、创作写作、'
+                        '代码生成等服务，希望能为人类带来更加智能、高效和便捷的工作与生活体验。')
+
+
+def test_telechat2():
     pt_engine = PtEngine('TeleAI/TeleChat2-7B', torch_dtype=torch.float16)
     messages = [{'role': 'system', 'content': '你是一个乐于助人的智能助手，请使用用户提问的语言进行有帮助的问答'}, {'role': 'user', 'content': '你好'}]
     response = _infer_model(pt_engine, messages=messages)
@@ -172,11 +182,65 @@ def test_internlm2_reward():
         'role': 'assistant',
         'content': 'My name is InternLM2! A helpful AI assistant. What can I do for you?'
     }]
-    pt_engine.task_type = 'seq_cls'
     res = _infer_model(pt_engine, messages=messages)
     pt_engine.default_template.template_backend = 'jinja'
     res2 = _infer_model(pt_engine, messages=messages)
     assert res == res2 == '0.48681640625'
+
+
+def test_qwen2_reward():
+    pt_engine = PtEngine('Qwen/Qwen2-Math-RM-72B')
+    messages = [{
+        'role':
+        'user',
+        'content': ('Suppose that a certain software product has a mean time between failures of 10,000 hours '
+                    'and has a mean time to repair of 20 hours. If the product is used by 100 customers, '
+                    'what is its availability?\nAnswer Choices: (A) 80% (B) 90% (C) 98% (D) 99.80%\nPlease '
+                    'reason step by step, and put your final answer within \\boxed{}.')
+    }, {
+        'role':
+        'assistant',
+        'content': ("To find the availability of the software product, we'll use the formula:\n\n\\[ \\text{ "
+                    'availability} = \\frac{\\text{Mean Time Between Failures (MTBF)}}{\\text{Mean Time Between '
+                    'Failures (MTBF) + Mean Time To Repair (MTTR)}} \\]\n\nGiven:\n- MTBF = 10,000 hours\n- MTTR '
+                    "= 20 hours\n\nLet's plug these values into the formula:\n\n\\[ \\text{availability} = "
+                    '\\frac{10,000}{10,000 + 20} = \\frac{10,000}{10,020} \\]\n\nTo simplify this fraction, '
+                    'we can divide both the numerator and the denominator by 10,000:\n\n\\[ \\text{availability} ='
+                    ' \\frac{10,000 \\div 10,000}{10,020 \\div 10,000} = \\frac{1}{1.002} \\]\n\nTo express this as'
+                    ' a percentage, we can calculate the decimal value of the fraction and then multiply by '
+                    '100:\n\n\\[ \\text{availability} \\approx 0.998002 \\times 100 = 99.80\\% \\]\n\nTherefore, '
+                    'the availability of the software product is approximately 99.80%.\n\nThe correct answer is '
+                    '\\boxed{D}')
+    }]
+    res = _infer_model(pt_engine, messages=messages)
+    pt_engine.default_template.template_backend = 'jinja'
+    res2 = _infer_model(pt_engine, messages=messages)
+    assert res == res2 == '1.390625'
+
+
+def test_qwen2_5_math():
+    pt_engine = PtEngine('Qwen/Qwen2.5-Math-1.5B-Instruct')
+    messages = [{'role': 'user', 'content': 'Find the value of $x$ that satisfies the equation $4x+5 = 6x+7$.'}]
+    res = _infer_model(pt_engine, messages=messages)
+    pt_engine.default_template.template_backend = 'jinja'
+    res2 = _infer_model(pt_engine, messages=messages)
+    assert res == res2
+
+
+def test_skywork_reward():
+    prompt = ('Jane has 12 apples. She gives 4 apples to her friend Mark, then buys 1 more apple, and finally splits '
+              'all her apples equally among herself and her 2 siblings. How many apples does each person get?')
+    response = ('1. Jane starts with 12 apples and gives 4 to Mark. 12 - 4 = 8. Jane now has 8 apples.\n2. Jane buys '
+                '1 more apple. 8 + 1 = 9. Jane now has 9 apples.\n3. Jane splits the 9 apples equally among herself '
+                'and her 2 siblings (3 people in total). 9 ÷ 3 = 3 apples each. Each person gets 3 apples.')
+
+    pt_engine = PtEngine('AI-ModelScope/Skywork-Reward-Llama-3.1-8B-v0.2')
+    messages = [{'role': 'user', 'content': prompt}, {'role': 'assistant', 'content': response}]
+    res = _infer_model(pt_engine, messages=messages)
+    pt_engine.default_template.template_backend = 'jinja'
+    res2 = _infer_model(pt_engine, messages=messages)
+    assert res == '14.1875'
+    assert res2 == '13.8125'
 
 
 if __name__ == '__main__':
@@ -194,9 +258,13 @@ if __name__ == '__main__':
     # test_codegeex4()
     # test_glm4()
     # test_telechat()
+    # test_telechat2()
     # test_glm_edge()
     # test_llama()
     # test_openbuddy()
     # test_megrez()
     # test_skywork_o1()
-    test_internlm2_reward()
+    # test_internlm2_reward()
+    # test_qwen2_reward()
+    # test_qwen2_5_math()
+    test_skywork_reward()

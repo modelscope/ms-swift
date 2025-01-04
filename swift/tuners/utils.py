@@ -4,6 +4,7 @@
 import hashlib
 import os
 import shutil
+import tempfile
 import threading
 import uuid
 from dataclasses import asdict, dataclass, field
@@ -191,14 +192,12 @@ class ActivationMixin:
 class OffloadHelper:
 
     def __init__(self):
-        sub_dir = os.path.join('offload_cache', str(uuid.uuid4().hex))
-        self.cache_dir = os.path.join(get_cache_dir(), sub_dir)
-        shutil.rmtree(self.cache_dir, ignore_errors=True)
-        os.makedirs(self.cache_dir, exist_ok=True)
+        cache_dir = os.path.join(get_cache_dir(), 'offload_cache')
+        os.makedirs(cache_dir, exist_ok=True)
+        tmp_dir = tempfile.TemporaryDirectory(dir=cache_dir)
+        self.cache_dir = tmp_dir.name
+        self._tmp_dir = tmp_dir
         self.index = {}
-
-    def __del__(self):
-        shutil.rmtree(self.cache_dir, ignore_errors=True)
 
     @staticmethod
     def offload_weight(weight, weight_name, offload_folder, index=None):

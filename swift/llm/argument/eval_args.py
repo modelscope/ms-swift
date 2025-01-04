@@ -23,7 +23,6 @@ class EvalArguments(DeployArguments):
         eval_output_dir (str): The eval output dir.
         temperature (float): The temperature.
         verbose (bool): Output verbose information.
-        max_batch_size(int): The max batch size.
         eval_url(str): The extra eval url, use this as --model.
     """
     eval_dataset: List[str] = field(default_factory=list)
@@ -32,7 +31,7 @@ class EvalArguments(DeployArguments):
 
     temperature: Optional[float] = 0.
     verbose: bool = False
-    max_batch_size: Optional[int] = None
+    eval_num_proc: Optional[int] = None
     # If eval_url is set, ms-swift will not perform deployment operations and
     # will directly use the URL for evaluation.
     eval_url: Optional[str] = None

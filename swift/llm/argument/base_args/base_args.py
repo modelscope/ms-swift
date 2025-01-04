@@ -240,7 +240,6 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         template_kwargs = self.get_template_kwargs()
         template = get_template(self.template, processor, **template_kwargs)
         logger.info(f'default_system: {template.template_meta.default_system}')
-        template.set_mode(self.task_type)  # default mode
         return template
 
     def get_model_processor(self, *, model=None, model_type=None, model_revision=None, **kwargs):
