@@ -45,7 +45,6 @@ class LLMTemplateType:
     minicpm = 'minicpm'
     telechat = 'telechat'
     telechat2 = 'telechat2'
-    telechat2_115b = 'telechat2_115b'
 
     codefuse = 'codefuse'
     codefuse_codellama = 'codefuse_codellama'

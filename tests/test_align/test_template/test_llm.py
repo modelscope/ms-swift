@@ -98,6 +98,16 @@ def test_codegeex4():
 
 
 def test_telechat():
+    pt_engine = PtEngine('TeleAI/TeleChat-12B', torch_dtype=torch.float16)
+    messages = [{'role': 'user', 'content': '你是谁'}]
+    response = _infer_model(pt_engine, messages=messages)
+    assert response == ('我是中国电信星辰语义大模型，英文名TeleChat，是由中国电信自主研发的生成式大语言模型。\n\n'
+                        '我基于Transformer-decoder结构，学习了海量知识，包括百科、书籍、论坛、党政媒体、GitHub代码、专业领域知识等，'
+                        '具备自然语言处理、语义理解、内容创作和逻辑推理等能力，可以与人类进行对话互动和情感交流，还能提供知识问答、创作写作、'
+                        '代码生成等服务，希望能为人类带来更加智能、高效和便捷的工作与生活体验。')
+
+
+def test_telechat2():
     pt_engine = PtEngine('TeleAI/TeleChat2-7B', torch_dtype=torch.float16)
     messages = [{'role': 'system', 'content': '你是一个乐于助人的智能助手，请使用用户提问的语言进行有帮助的问答'}, {'role': 'user', 'content': '你好'}]
     response = _infer_model(pt_engine, messages=messages)
@@ -172,7 +182,6 @@ def test_internlm2_reward():
         'role': 'assistant',
         'content': 'My name is InternLM2! A helpful AI assistant. What can I do for you?'
     }]
-    pt_engine.task_type = 'seq_cls'
     res = _infer_model(pt_engine, messages=messages)
     pt_engine.default_template.template_backend = 'jinja'
     res2 = _infer_model(pt_engine, messages=messages)
@@ -193,10 +202,11 @@ if __name__ == '__main__':
     # test_deepseek_moe()
     # test_codegeex4()
     # test_glm4()
-    # test_telechat()
+    test_telechat()
+    # test_telechat2()
     # test_glm_edge()
     # test_llama()
     # test_openbuddy()
     # test_megrez()
     # test_skywork_o1()
-    test_internlm2_reward()
+    # test_internlm2_reward()

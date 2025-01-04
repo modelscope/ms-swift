@@ -686,7 +686,7 @@ class Template(ProcessorMixin):
         if 'input_ids' in inputs:
             k = 'input_ids'
             val = inputs['input_ids']
-        else:
+        elif 'generate_ids' in inputs:
             k = 'generate_ids'
             val = inputs['generate_ids']
         for v in val:
