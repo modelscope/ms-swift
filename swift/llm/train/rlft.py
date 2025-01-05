@@ -81,7 +81,21 @@ class SwiftRLFT(SwiftRLHF):
 
     def _get_reward(self, model, infer_requests: List[InferRequest], request_config=None):
         resp_list = model.infer(infer_requests, request_config=request_config)
-        return [resp_list[i].choices[0].message.content for i in range(len(resp_list))]
+        arr = [float(resp_list[i].choices[0].message.content) for i in range(len(resp_list))]
+
+        def normalize(arr):
+            min_val = np.min(arr)
+            max_val = np.max(arr)
+            if min_val == max_val:
+                if min_val == 0:
+                    constant_value = 0.0
+                else:
+                    constant_value = 0.5
+                return np.full_like(arr, fill_value=constant_value, dtype=np.float64)
+            normalized = (arr - min_val) / (max_val - min_val + 1e-5)
+            return normalized
+        
+        return normalize(arr)
 
     def rollout(self, data, trainer, step):
         os.makedirs(self.args.sampler_output, exist_ok=True)
@@ -100,6 +114,7 @@ class SwiftRLFT(SwiftRLHF):
                     eos_token_id=eos,
                 )
 
+                res = []
                 with unwrap_model_for_generation(self.model, trainer.accelerator) as unwrapped_model:
                     generated = self.sampler(unwrapped_model, data, generation_config)
                     for i, gen in enumerate(generated):
@@ -113,31 +128,38 @@ class SwiftRLFT(SwiftRLHF):
                             _messages = deepcopy(messages)
                             _messages[-1]['content'] = decoded
                             infer_requests.append(InferRequest(messages=_messages,
-                                                               ground_truths=_data['ground_truth']))
+                                                               ground_truths=_data['ground_truth'][i]))
+                        _messages[-1]['content'] = _data['ground_truth'][i]
+                        infer_requests.append(InferRequest(messages=_messages,
+                                                               ground_truths=_data['ground_truth'][i]))
                         orm_score = self._get_reward(self.orm_model, infer_requests)
-                        prm_score = self._get_reward(self.prm_model, infer_requests, request_config=RequestConfig(max_tokens=3))
+                        prm_score = self._get_reward(self.prm_model, infer_requests)
                         
+                        logger.info(f'orm:{orm_score}')
+                        if not any([score > 0 for score in orm_score]):
+                            continue
                         score = np.array(prm_score) + np.array(orm_score)
                         sorted_indices = np.argsort(score)
-                        positive = batch_decoded[sorted_indices[0]]
-                        negative = batch_decoded[sorted_indices[-1]]
+                        batch_decoded.append(_data['ground_truth'][i])
+                        positive = batch_decoded[sorted_indices[-1]]
+                        negative = batch_decoded[sorted_indices[0]]
                         messages[-1]['content'] = positive
                         encoded = self.template.encode(
                             StdTemplateInputs.from_dict({'messages': messages, 'rejected_response': negative},
                                                         tools_prompt=self.args.tools_prompt))
                         encoded.pop('_messages', None)
-                        generated.append(encoded)
-                        f.write(json.dumps({'messages': messages}) + '\n')
-                return generated
+                        res.append(encoded)
+                        f.write(json.dumps({'messages': messages, 'rejected_response': negative}) + '\n')
+                return res
 
     def step_temperature(self, step):
         # Linear
-        step_wise = (self.args.end_temperature - self.args.temperature) / self.args.training_args.max_steps
+        step_wise = (self.args.end_temperature - self.args.temperature) / self.args.num_rollout_iters
         return self.args.temperature + step_wise * step
 
     def step_reward_threshold(self, step):
         # Linear
-        step_wise = (self.args.end_threshold - self.args.start_threshold) / self.args.training_args.max_steps
+        step_wise = (self.args.end_threshold - self.args.start_threshold) / self.args.num_rollout_iters
         return self.args.start_threshold + step_wise * step
 
     @staticmethod
@@ -158,13 +180,17 @@ class SwiftRLFT(SwiftRLHF):
         for _iter in range(self.args.num_rollout_iters):
             train_dataloader = trainer.get_train_dataloader()
             for _index, batch in enumerate(train_dataloader):
+                self.template.set_mode('rlhf')
                 new_data = self.rollout(batch, trainer, _iter)
+                self.template.set_mode('train')
                 new_dataset.extend(new_data)
                 if _index > self.args.num_rollout_batches:
                     break
-
-            with SwiftRLFT.switch_dataset(new_dataset):
+            
+            self.template.set_mode('rlhf')
+            with SwiftRLFT.switch_dataset(trainer, new_dataset):
                 trainer.train(trainer.args.resume_from_checkpoint)
+            self.template.set_mode('train')
 
         return self._save_trainer_state(trainer)
 

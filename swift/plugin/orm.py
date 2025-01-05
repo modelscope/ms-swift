@@ -1,6 +1,7 @@
 import json
 from typing import List
 import torch
+import re
 from swift.llm import InferRequest
 from swift.llm.infer.protocol import ChatCompletionResponse
 from swift.llm.infer.protocol import ChatCompletionResponse, ChatCompletionResponseChoice, ChatMessage
@@ -121,7 +122,7 @@ class ReactORM(ORM):
               **kwargs) -> List[ChatCompletionResponse]:
         rewards = []
         predictions = [request.messages[-1]['content'] for request in infer_requests]
-        ground_truths = [request.ground_truths[-1] for request in infer_requests]
+        ground_truths = [request.ground_truths for request in infer_requests]
         for prediction, ground_truth in zip(predictions, ground_truths):
             action_ref = []
             action_input_ref = []
@@ -167,6 +168,35 @@ class ReactORM(ORM):
             return None
 
 
+
+class MathORM(ORM):
+
+    @staticmethod
+    def extract_boxed_result(text):
+        pattern = r'\\boxed{([^}]*)}'
+        match = re.search(pattern, text)
+        if match:
+            return match.group(1).strip()
+        else:
+            return None
+
+    @torch.inference_mode()
+    def infer(self,
+              infer_requests: List[InferRequest],
+              **kwargs) -> List[ChatCompletionResponse]:
+        rewards = []
+        predictions = [request.messages[-1]['content'] for request in infer_requests]
+        ground_truths = [request.ground_truths for request in infer_requests]
+        for prediction, ground_truth in zip(predictions, ground_truths):
+            res1 = MathORM.extract_boxed_result(prediction) or ''
+            res2 = MathORM.extract_boxed_result(ground_truth) or ''
+            rewards.append(res1.strip() == res2.strip())
+
+        return [ChatCompletionResponse(choices=[ChatCompletionResponseChoice(
+            message=ChatMessage(content=1.0 if r else 0.0, role='assistant'), index=0, finish_reason='')],
+            model=None, usage=None) for r in rewards]
+        
 orms = {
     'toolbench': ReactORM,
+    'math': MathORM,
 }

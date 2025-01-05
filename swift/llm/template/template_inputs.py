@@ -40,7 +40,7 @@ class InferRequest:
 
     tools: Optional[List[Tool]] = None
 
-    ground_truths: Optional[Messages] = None
+    ground_truths: Optional[str] = None
 
     def __post_init__(self):
         for key in ['images', 'audios', 'videos']:

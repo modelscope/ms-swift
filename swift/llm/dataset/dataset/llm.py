@@ -532,6 +532,54 @@ register_dataset(DatasetMeta(
     tags=['chat', 'agent']))
 
 
+class CompetitionMathRLPreprocessor(ResponsePreprocessor):
+
+    def preprocess(self, row: Dict[str, Any], all_tools=None) -> Optional[Dict[str, Any]]:
+        query = row['problem']
+        solution = row['response']
+        row = {
+            'query': query,
+            'ground_truth': solution,
+        }
+        return super().preprocess(row)
+
+
+class CompetitionMathPreprocessor(ResponsePreprocessor):
+
+    def preprocess(self, row: Dict[str, Any], all_tools=None) -> Optional[Dict[str, Any]]:
+        query = row['problem']
+        response = row['response']
+        row = {
+            'query': query,
+            'response': response,
+        }
+        return super().preprocess(row)
+
+
+register_dataset(DatasetMeta(
+    ms_dataset_id='modelscope/competition_math',
+    subsets=[
+        SubsetDataset(
+            name='default',
+            subset='default',
+            preprocess_func=CompetitionMathPreprocessor(),
+        ),
+        SubsetDataset(
+            name='rl',
+            subset='default',
+            preprocess_func=CompetitionMathRLPreprocessor(),
+        ),
+    ],
+    tags=['qa', 'math']))
+
+
+register_dataset(DatasetMeta(
+    ms_dataset_id='modelscope/gsm8k',
+    subsets=['main'],
+    split=['train'],
+    tags=['qa', 'math']))
+
+
 class HC3Preprocessor(ResponsePreprocessor):
     prompt = """Classification Task: Are the following responses from a human or from ChatGPT?
 Question: {question}
