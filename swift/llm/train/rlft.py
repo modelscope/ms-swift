@@ -57,6 +57,7 @@ class SwiftRLFT(SwiftRLHF):
     def _sample(self, model, batch, generation_config: GenerationConfig):
         queries = batch["input_ids"]
         generation_config.num_return_sequences = self.args.num_return_sequences
+        generation_config.return_legacy_cache = False
         # generation_config.num_beam_groups = 5
         # generation_config.num_beams = 10
         # generation_config.do_sample = False
@@ -134,12 +135,12 @@ class SwiftRLFT(SwiftRLHF):
                     orm_score = self._get_reward(self.orm_model, infer_requests)
                     prm_score = self._get_reward(self.prm_model, infer_requests)
                     
-                    logger.info(f'orm:{orm_score}')
                     if not any([score > 0 for score in orm_score]):
-                        continue
+                        raise
                     score = np.array(prm_score) + np.array(orm_score)
                     sorted_indices = np.argsort(score)
                     batch_decoded.append(_data['ground_truth'][i])
+                    logger.info(f'orm:{orm_score}, positive index: {sorted_indices[-1]}, negative index: {sorted_indices[0]}')
                     positive = batch_decoded[sorted_indices[-1]]
                     negative = batch_decoded[sorted_indices[0]]
                     messages[-1]['content'] = positive
@@ -177,12 +178,14 @@ class SwiftRLFT(SwiftRLHF):
         self._prepare_sampler()
         os.makedirs(self.args.sampler_output, exist_ok=True)
         for _iter in range(self.args.num_rollout_iters):
+            logger.info(f'Starting iter:{_iter}')
             train_dataloader = trainer.get_train_dataloader()
             dumped_ds = []
             new_dataset = []
             
             for _index, batch in enumerate(train_dataloader):
                 self.template.set_mode('rlhf')
+                logger.info(f'Rolling out index:{_index}')
                 new_data, origin = self.rollout(batch, trainer, _iter)
                 self.template.set_mode('train')
                 new_dataset.extend(new_data)
@@ -212,7 +215,7 @@ def generate(
         attention_mask=attention_mask,
         generation_config=generation_config,
         return_dict_in_generate=True,
-        output_scores=True,
+        output_scores=False,
     )
     return output.sequences[:, context_length:]
 
@@ -235,8 +238,9 @@ def batch_generation(
             pad_token_id,
             generation_config,
         )
+        response = response.reshape(local_rollout_forward_batch_size, -1, response.shape[-1])
         responses.append(response)
-    return responses
+    return torch.cat(responses, 0)
 
 
 def rlft_main(args: Union[List[str], RLFTArguments, None] = None):

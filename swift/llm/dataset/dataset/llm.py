@@ -537,6 +537,9 @@ class CompetitionMathRLPreprocessor(ResponsePreprocessor):
     def preprocess(self, row: Dict[str, Any], all_tools=None) -> Optional[Dict[str, Any]]:
         query = row['problem']
         solution = row['response']
+        if len(solution) > 900:
+            # Want max 300 length to reduce test time.
+            return None
         row = {
             'query': query,
             'ground_truth': solution,
