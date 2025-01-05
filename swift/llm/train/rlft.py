@@ -98,7 +98,6 @@ class SwiftRLFT(SwiftRLHF):
         return normalize(arr)
 
     def rollout(self, data, trainer, step):
-        os.makedirs(self.args.sampler_output, exist_ok=True)
         with torch.no_grad():
             eos = [self.tokenizer.pad_token_id, self.tokenizer.eos_token_id]
             for s in self.splitter:
@@ -149,7 +148,7 @@ class SwiftRLFT(SwiftRLHF):
                                                     tools_prompt=self.args.tools_prompt))
                     encoded.pop('_messages', None)
                     res.append(encoded)
-                    origin.append(json.dumps({'messages': messages, 'rejected_response': negative}))
+                    origin.append(json.dumps({'messages': messages, 'rejected_response': negative}) + '\n')
             return res, origin
 
     def step_temperature(self, step):
@@ -176,6 +175,7 @@ class SwiftRLFT(SwiftRLHF):
         logger.info(f'The logging file will be saved in: {logging_path}')
         self._prepare_rm()
         self._prepare_sampler()
+        os.makedirs(self.args.sampler_output, exist_ok=True)
         for _iter in range(self.args.num_rollout_iters):
             train_dataloader = trainer.get_train_dataloader()
             dumped_ds = []
@@ -187,10 +187,10 @@ class SwiftRLFT(SwiftRLHF):
                 self.template.set_mode('train')
                 new_dataset.extend(new_data)
                 dumped_ds.extend(origin)
-                if _index > self.args.num_rollout_batches:
+                if _index >= self.args.num_rollout_batches-1:
                     break
                 
-            with open(os.path.join(self.args.sampler_output, f'step_{step}.jsonl'), 'w') as f:
+            with open(os.path.join(self.args.sampler_output, f'step_{_iter}.jsonl'), 'w') as f:
                 f.writelines(dumped_ds)
             self.template.set_mode('rlhf')
             with SwiftRLFT.switch_dataset(trainer, new_dataset):
