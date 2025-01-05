@@ -176,10 +176,10 @@ class SwiftRLFT(SwiftRLHF):
         logger.info(f'The logging file will be saved in: {logging_path}')
         self._prepare_rm()
         self._prepare_sampler()
-        new_dataset = []
         for _iter in range(self.args.num_rollout_iters):
             train_dataloader = trainer.get_train_dataloader()
             dumped_ds = []
+            new_dataset = []
             
             for _index, batch in enumerate(train_dataloader):
                 self.template.set_mode('rlhf')
