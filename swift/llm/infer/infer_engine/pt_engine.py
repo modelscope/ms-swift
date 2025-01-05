@@ -347,7 +347,6 @@ class PtEngine(InferEngine):
             res.append(ChatCompletionResponse(model=self.model_name, choices=choices, usage=usage_info))
         return res
 
-    @torch.inference_mode()
     async def infer_async(
         self,
         infer_request: InferRequest,
@@ -376,6 +375,7 @@ class PtEngine(InferEngine):
         else:
             return res_or_gen[0]
 
+    @torch.inference_mode()
     def _infer(
         self,
         infer_requests: List[InferRequest],
@@ -436,7 +436,6 @@ class PtEngine(InferEngine):
             infer_func = self._infer_seq_cls if template.mode == 'seq_cls' else self._infer_full
             return self._update_metrics(infer_func(**kwargs), metrics)
 
-    @torch.inference_mode()
     def infer(
         self,
         infer_requests: List[InferRequest],
