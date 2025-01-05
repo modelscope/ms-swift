@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from dataclasses import dataclass, field
-from typing import Literal, Optional
+from typing import List, Literal, Optional
 
 from swift.llm import MODEL_MAPPING
 from .train_args import TrainArguments
@@ -44,6 +44,7 @@ class RLHFArguments(TrainArguments):
     undesirable_weight: float = 1.0
     # PPO
     reward_model: Optional[str] = None
+    reward_adapters: List[str] = field(default_factory=list)
     reward_model_type: Optional[str] = field(
         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
     reward_model_revision: Optional[str] = None
@@ -71,9 +72,11 @@ class RLHFArguments(TrainArguments):
             raise ValueError('CPO/ORPO or LoRA training does not require a ref_model to be passed in.')
 
     def _init_ppo(self):
-        self.response_length = self.max_new_tokens
-        self.num_ppo_epochs = self.num_train_epochs
-        # TODO: streaming, MLLM
+        if self.rlhf_type == 'ppo':
+            self.response_length = self.max_new_tokens
+            self.num_ppo_epochs = self.num_train_epochs
+            self.padding_side = 'left'
+            # TODO: streaming, MLLM
 
     def _init_simpo(self):
         if self.rlhf_type != 'simpo':

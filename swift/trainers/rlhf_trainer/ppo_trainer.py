@@ -1,4 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+from contextlib import contextmanager
+
 from torch.utils.data import DataLoader
 from transformers import PreTrainedModel
 from trl import PPOv2Trainer as HFPPOTrainer
@@ -8,6 +10,18 @@ from .rlhf_mixin import RLHFTrainerMixin
 
 
 class PPOTrainer(RLHFTrainerMixin, SwiftMixin, HFPPOTrainer):
+
+    @contextmanager
+    def _patch_dataloader():
+        print()
+
+    @contextmanager
+    def _patch_init():
+        kwargs_to_pop = ['model', 'model_init', 'compute_metrics', 'preprocess_logits_for_metrics']
+        for kwarg in kwargs_to_pop:
+            kwargs.pop(kwarg, None)
+        kwargs['config'] = kwargs.pop('args')
+        HFPPOTrainer.__init__(self, **kwargs)
 
     def __init__(self, model: PreTrainedModel, ref_model: PreTrainedModel, *_args, **kwargs):
         kwargs['policy'] = model
@@ -33,15 +47,3 @@ class PPOTrainer(RLHFTrainerMixin, SwiftMixin, HFPPOTrainer):
     def train(self, *args, **kwargs):
         # remove args that are not needed for the HFPPOTrainer
         HFPPOTrainer.train(self)
-
-
-def patched_init(self, **kwargs):
-    kwargs_to_pop = ['model', 'model_init', 'compute_metrics', 'preprocess_logits_for_metrics']
-    for kwarg in kwargs_to_pop:
-        kwargs.pop(kwarg, None)
-    kwargs['config'] = kwargs.pop('args')
-    original_init(self, **kwargs)
-
-
-original_init = HFPPOTrainer.__init__
-HFPPOTrainer.__init__ = patched_init

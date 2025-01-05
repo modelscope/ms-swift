@@ -12,21 +12,41 @@ class SwiftRLHF(SwiftSft):
     args: args_class
 
     def _prepare_model_tokenizer(self):
+        from swift.llm.infer.utils import prepare_adapter
         args = self.args
-        self.ref_model = None
-        if args.ref_model:
+        for key in ['ref', 'reward', 'value']:
+            origin_key = key
+            setattr(self, f'{key}_model', None)
+            if key == 'value':
+                if args.rlhf_type == 'ppo':
+                    key = 'reward'
+                else:
+                    continue
+            model_id_or_path = getattr(args, f'{key}_model')
+            if model_id_or_path is None:
+                continue
+            model_type = getattr(args, f'{key}_model_type')
+            model_revision = getattr(args, f'{key}_model_revision')
+            adapters = args.adapters if key == 'ref' else args.reward_adapters
+
             # Be aware of the unexpected behavior caused by double monkey patching.
-            self.ref_model, _ = args.get_model_processor(
-                model=args.ref_model, model_type=args.ref_model_type, model_revision=args.ref_model_revision)
-            self.ref_model.requires_grad_(False).eval()
+            model = args.get_model_processor(
+                model=model_id_or_path, model_type=model_type, model_revision=model_revision)[0]
+
+            model = prepare_adapter(args, model, adapters)
+            if origin_key in {'ref', 'reward'}:
+                model.requires_grad_(False).eval()
+            else:
+                model = self.prepare_model(args, model, task_type='seq_cls')
+            setattr(self, f'{origin_key}_model', model)
 
         super()._prepare_model_tokenizer()
 
     def _prepare_template(self) -> None:
         args = self.args
         super()._prepare_template()
-        mode = 'kto' if args.rlhf_type == 'kto' else 'rlhf'
-        self.template.set_mode(mode)
+        model_mapping = {'kto': 'kto', 'ppo': 'pt'}
+        self.template.set_mode(model_mapping.get(args.rlhf_type, 'rlhf'))
 
         if args.rlhf_type != 'orpo' or args.model_meta.is_multimodal:
             # Avoid padding labels during the model's forward pass in multimodal models.
@@ -41,8 +61,11 @@ class SwiftRLHF(SwiftSft):
 
     def _get_trainer_kwargs(self):
         trainer_kwargs = {}
-        if self.ref_model:
-            trainer_kwargs['ref_model'] = self.ref_model
+        for key in ['ref', 'reward', 'value']:
+            key = f'{key}_model'
+            model = getattr(self, key)
+            if model:
+                trainer_kwargs[key] = model
         return trainer_kwargs
 
 
