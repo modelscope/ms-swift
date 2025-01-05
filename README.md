@@ -254,7 +254,7 @@ RLHF:
 CUDA_VISIBLE_DEVICES=0 swift rlhf \
     --rlhf_type dpo \
     --model Qwen/Qwen2.5-7B-Instruct \
-    --dataset hjh0119/shareAI-Llama3-DPO-zh-en-emoji:en \
+    --dataset hjh0119/shareAI-Llama3-DPO-zh-en-emoji \
     --train_type lora \
     --output_dir output \
     ...

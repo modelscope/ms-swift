@@ -44,6 +44,7 @@ class RLHFArguments(TrainArguments):
     undesirable_weight: float = 1.0
 
     def __post_init__(self):
+        self._init_rm()
         self._init_simpo()
         self._set_default()
         super().__post_init__()
@@ -64,6 +65,11 @@ class RLHFArguments(TrainArguments):
             self.loss_type = 'simpo'
         if self.beta is None:
             self.beta = 2.
+
+    def _init_rm(self):
+        if self.rlhf_type == 'rm':
+            self.task_type = 'seq_cls'
+            self.num_labels = 1
 
     def _set_default(self):
         if self.beta is None:

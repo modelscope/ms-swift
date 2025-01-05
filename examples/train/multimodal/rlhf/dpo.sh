@@ -1,15 +1,15 @@
-# 4*32GiB
+# 4*50GiB
 # You can refer to `https://github.com/QwenLM/Qwen2-VL` for the meaning of the `MAX_PIXELS` parameter.
-# --rlhf_type cpo/orpo/simpo/rm/kto are also supported
-nproc_per_node=4
+# --rlhf_type cpo/orpo/simpo are also supported
+nproc_per_node=2
 
-CUDA_VISIBLE_DEVICES=0,1,2,3 \
+CUDA_VISIBLE_DEVICES=0,1 \
 NPROC_PER_NODE=$nproc_per_node \
 MAX_PIXELS=1003520 \
 swift rlhf \
     --rlhf_type dpo \
     --model Qwen/Qwen2-VL-7B-Instruct \
-    --dataset swift/RLAIF-V-Dataset \
+    --dataset 'swift/RLAIF-V-Dataset#20000' \
     --train_type lora \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
@@ -24,7 +24,7 @@ swift rlhf \
     --eval_steps 100 \
     --save_steps 100 \
     --save_total_limit 5 \
-    --deepspeed zero3 \
+    --deepspeed zero2 \
     --logging_steps 5 \
     --max_length 2048 \
     --output_dir output \

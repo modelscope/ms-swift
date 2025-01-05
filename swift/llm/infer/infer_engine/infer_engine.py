@@ -115,7 +115,6 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
                 metric.update(response)
         return result_origin
 
-    @torch.inference_mode()
     def infer(self,
               infer_requests: List[InferRequest],
               request_config: Optional[RequestConfig] = None,

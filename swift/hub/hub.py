@@ -291,7 +291,7 @@ class MSHub(HubOperation):
         cls.try_login(token)
         if revision is None or revision == 'main':
             revision = 'master'
-        # noinspection PyTypeChecker
+
         return MsDataset.load(
             dataset_id,
             subset_name=subset_name,

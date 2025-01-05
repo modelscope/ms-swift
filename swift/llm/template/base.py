@@ -110,7 +110,7 @@ class Template(ProcessorMixin):
         self.mode: Literal['pt', 'vllm', 'lmdeploy',  # infer
                            'train', 'rlhf', 'kto',  # train
                            'seq_cls'] = 'pt'
-        if self.model_info.task_type != 'causal':
+        if self.model_info.task_type != 'causal_lm':
             self.mode = self.model_info.task_type
         self._handles = []
         self._deepspeed_initialize = None
@@ -184,7 +184,7 @@ class Template(ProcessorMixin):
     def _kto_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         label, inputs.label = inputs.label, None
         encoded = self._rlhf_encode(inputs)
-        encoded['label'] = label
+        encoded['label'] = bool(label)
         return encoded
 
     def _seq_cls_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
@@ -721,10 +721,7 @@ class Template(ProcessorMixin):
         return self.mode not in {'vllm', 'lmdeploy', 'pt'}
 
     def set_mode(self, mode: Literal['vllm', 'lmdeploy', 'pt', 'seq_cls', 'train', 'rlhf', 'kto']) -> None:
-        if self.model_info.task_type == 'causal_lm':
-            self.mode = mode
-        else:
-            swift.warning(f'task_type: `{self.model_info.task_type}` does not support modifying template.mode.')
+        self.mode = mode
 
     def register_post_encode_hook(self, models: List[nn.Module]) -> None:
         """This function is important for multi-modal training, as it registers the post_encode method
