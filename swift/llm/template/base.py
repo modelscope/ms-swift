@@ -110,7 +110,7 @@ class Template(ProcessorMixin):
         self.mode: Literal['pt', 'vllm', 'lmdeploy',  # infer
                            'train', 'rlhf', 'kto',  # train
                            'seq_cls'] = 'pt'
-        if self.model_info.task_type != 'causal':
+        if self.model_info.task_type != 'causal_lm':
             self.mode = self.model_info.task_type
         self._handles = []
         self._deepspeed_initialize = None

@@ -1,10 +1,11 @@
+# 2*50GB
 nproc_per_node=2
 
 CUDA_VISIBLE_DEVICES=0,1 \
 NPROC_PER_NODE=$nproc_per_node \
 swift rlhf \
     --rlhf_type simpo \
-    --model Qwen/Qwen2.5-7B-Instruct \
+    --model Qwen/Qwen2.5-3B-Instruct \
     --train_type full \
     --dataset hjh0119/shareAI-Llama3-DPO-zh-en-emoji \
     --torch_dtype bfloat16 \

@@ -1,15 +1,14 @@
-# 4*50GiB
-# You can refer to `https://github.com/QwenLM/Qwen2-VL` for the meaning of the `MAX_PIXELS` parameter.
-# --rlhf_type cpo/orpo/simpo are also supported
+# Due to the absence of a multi-modal open-source dataset for kto, 
+# we will use a pure text kto dataset as an example here.
 nproc_per_node=2
 
 CUDA_VISIBLE_DEVICES=0,1 \
 NPROC_PER_NODE=$nproc_per_node \
 MAX_PIXELS=1003520 \
 swift rlhf \
-    --rlhf_type dpo \
+    --rlhf_type kto \
     --model Qwen/Qwen2-VL-7B-Instruct \
-    --dataset 'swift/RLAIF-V-Dataset#20000' \
+    --dataset 'AI-ModelScope/ultrafeedback-binarized-preferences-cleaned-kto#10000' \
     --train_type lora \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
