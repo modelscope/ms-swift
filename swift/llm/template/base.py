@@ -721,10 +721,7 @@ class Template(ProcessorMixin):
         return self.mode not in {'vllm', 'lmdeploy', 'pt'}
 
     def set_mode(self, mode: Literal['vllm', 'lmdeploy', 'pt', 'seq_cls', 'train', 'rlhf', 'kto']) -> None:
-        if self.model_info.task_type == 'causal_lm':
-            self.mode = mode
-        else:
-            swift.warning(f'task_type: `{self.model_info.task_type}` does not support modifying template.mode.')
+        self.mode = mode
 
     def register_post_encode_hook(self, models: List[nn.Module]) -> None:
         """This function is important for multi-modal training, as it registers the post_encode method

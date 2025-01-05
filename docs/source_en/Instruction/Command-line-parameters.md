@@ -68,6 +68,7 @@ Refer to the [generation_config](https://huggingface.co/docs/transformers/main_c
 - num_beams: Number of beams for beam search, default is 1.
 - 🔥stream: Stream output, default is `False`.
 - stop_words: Additional stop words, default is `[]`.
+- logprobs: Whether to output logprobs, default is False.
 
 ### Quantization Arguments
 
