@@ -16,7 +16,7 @@ def test_llm():
         RLHFArguments(
             rlhf_type='dpo',
             model='Qwen/Qwen2-7B-Instruct',
-            dataset=['hjh0119/shareAI-Llama3-DPO-zh-en-emoji:zh#100'],
+            dataset=['hjh0119/shareAI-Llama3-DPO-zh-en-emoji#100'],
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
     infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True, merge_lora=True))

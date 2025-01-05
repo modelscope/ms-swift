@@ -1,4 +1,4 @@
-# Due to the absence of a multi-modal open-source dataset for kto, 
+# Due to the absence of a multi-modal open-source dataset for kto,
 # we will use a pure text kto dataset as an example here.
 nproc_per_node=2
 
