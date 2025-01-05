@@ -57,6 +57,7 @@ class RLHFArguments(TrainArguments):
     num_sample_generations: int = 10
 
     def __post_init__(self):
+        self._init_rm()
         self._init_simpo()
         self._init_ppo()
         self._set_default()
@@ -83,6 +84,11 @@ class RLHFArguments(TrainArguments):
             self.loss_type = 'simpo'
         if self.beta is None:
             self.beta = 2.
+
+    def _init_rm(self):
+        if self.rlhf_type == 'rm':
+            self.task_type = 'seq_cls'
+            self.num_labels = 1
 
     def _set_default(self):
         if self.beta is None:

@@ -249,7 +249,6 @@ class LmdeployEngine(InferEngine):
         ]
         return ChatCompletionResponse(model=self.model_name, choices=choices, usage=usage_info)
 
-    @torch.inference_mode()
     async def infer_async(self,
                           infer_request: InferRequest,
                           request_config: Optional[RequestConfig] = None,
@@ -266,7 +265,8 @@ class LmdeployEngine(InferEngine):
             request_config.seed = get_seed()
 
         loop = asyncio.get_running_loop()
-        inputs = await loop.run_in_executor(None, template.encode, infer_request)
+        with torch.inference_mode():
+            inputs = await loop.run_in_executor(None, template.encode, infer_request)
         images = inputs.pop('images', None)
         if images:
             inputs['images'] = await self.engine.vl_encoder.async_infer(images)
@@ -283,7 +283,6 @@ class LmdeployEngine(InferEngine):
         else:
             return await self._infer_full_async(**kwargs)
 
-    @torch.inference_mode()
     def infer(
         self,
         infer_requests: List[InferRequest],
