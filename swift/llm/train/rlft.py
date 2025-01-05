@@ -99,58 +99,58 @@ class SwiftRLFT(SwiftRLHF):
 
     def rollout(self, data, trainer, step):
         os.makedirs(self.args.sampler_output, exist_ok=True)
-        with open(os.path.join(self.args.sampler_output, f'step_{step}.jsonl'), 'w') as f:
-            with torch.no_grad():
-                eos = [self.tokenizer.pad_token_id, self.tokenizer.eos_token_id]
-                for s in self.splitter:
-                    eos.extend(self.tokenizer.encode(s, add_special_tokens=False))
-                generation_config = GenerationConfig(
-                    max_new_tokens=self.args.max_new_tokens,
-                    temperature=self.step_temperature(step),
-                    top_k=self.args.top_k,
-                    top_p=self.args.top_p,
-                    do_sample=True,
-                    pad_token_id=self.tokenizer.pad_token_id,
-                    eos_token_id=eos,
-                )
+        with torch.no_grad():
+            eos = [self.tokenizer.pad_token_id, self.tokenizer.eos_token_id]
+            for s in self.splitter:
+                eos.extend(self.tokenizer.encode(s, add_special_tokens=False))
+            generation_config = GenerationConfig(
+                max_new_tokens=self.args.max_new_tokens,
+                temperature=self.step_temperature(step),
+                top_k=self.args.top_k,
+                top_p=self.args.top_p,
+                do_sample=True,
+                pad_token_id=self.tokenizer.pad_token_id,
+                eos_token_id=eos,
+            )
 
-                res = []
-                with unwrap_model_for_generation(self.model, trainer.accelerator) as unwrapped_model:
-                    generated = self.sampler(unwrapped_model, data, generation_config)
-                    for i, gen in enumerate(generated):
-                        _data = deepcopy(data)
-                        messages = _data['_messages'][i]
-                        assert messages[-1]['content'] is None
-                        batch_decoded = self.tokenizer.batch_decode(gen, skip_special_tokens=True,
-                                                                    clean_up_tokenization_spaces=True)
-                        infer_requests = []
-                        for decoded in batch_decoded:
-                            _messages = deepcopy(messages)
-                            _messages[-1]['content'] = decoded
-                            infer_requests.append(InferRequest(messages=_messages,
-                                                               ground_truths=_data['ground_truth'][i]))
-                        _messages[-1]['content'] = _data['ground_truth'][i]
+            res = []
+            origin = []
+            with unwrap_model_for_generation(self.model, trainer.accelerator) as unwrapped_model:
+                generated = self.sampler(unwrapped_model, data, generation_config)
+                for i, gen in enumerate(generated):
+                    _data = deepcopy(data)
+                    messages = _data['_messages'][i]
+                    assert messages[-1]['content'] is None
+                    batch_decoded = self.tokenizer.batch_decode(gen, skip_special_tokens=True,
+                                                                clean_up_tokenization_spaces=True)
+                    infer_requests = []
+                    for decoded in batch_decoded:
+                        _messages = deepcopy(messages)
+                        _messages[-1]['content'] = decoded
                         infer_requests.append(InferRequest(messages=_messages,
-                                                               ground_truths=_data['ground_truth'][i]))
-                        orm_score = self._get_reward(self.orm_model, infer_requests)
-                        prm_score = self._get_reward(self.prm_model, infer_requests)
-                        
-                        logger.info(f'orm:{orm_score}')
-                        if not any([score > 0 for score in orm_score]):
-                            continue
-                        score = np.array(prm_score) + np.array(orm_score)
-                        sorted_indices = np.argsort(score)
-                        batch_decoded.append(_data['ground_truth'][i])
-                        positive = batch_decoded[sorted_indices[-1]]
-                        negative = batch_decoded[sorted_indices[0]]
-                        messages[-1]['content'] = positive
-                        encoded = self.template.encode(
-                            StdTemplateInputs.from_dict({'messages': messages, 'rejected_response': negative},
-                                                        tools_prompt=self.args.tools_prompt))
-                        encoded.pop('_messages', None)
-                        res.append(encoded)
-                        f.write(json.dumps({'messages': messages, 'rejected_response': negative}) + '\n')
-                return res
+                                                            ground_truths=_data['ground_truth'][i]))
+                    _messages[-1]['content'] = _data['ground_truth'][i]
+                    infer_requests.append(InferRequest(messages=_messages,
+                                                            ground_truths=_data['ground_truth'][i]))
+                    orm_score = self._get_reward(self.orm_model, infer_requests)
+                    prm_score = self._get_reward(self.prm_model, infer_requests)
+                    
+                    logger.info(f'orm:{orm_score}')
+                    if not any([score > 0 for score in orm_score]):
+                        continue
+                    score = np.array(prm_score) + np.array(orm_score)
+                    sorted_indices = np.argsort(score)
+                    batch_decoded.append(_data['ground_truth'][i])
+                    positive = batch_decoded[sorted_indices[-1]]
+                    negative = batch_decoded[sorted_indices[0]]
+                    messages[-1]['content'] = positive
+                    encoded = self.template.encode(
+                        StdTemplateInputs.from_dict({'messages': messages, 'rejected_response': negative},
+                                                    tools_prompt=self.args.tools_prompt))
+                    encoded.pop('_messages', None)
+                    res.append(encoded)
+                    origin.append(json.dumps({'messages': messages, 'rejected_response': negative}))
+            return res, origin
 
     def step_temperature(self, step):
         # Linear
@@ -179,14 +179,19 @@ class SwiftRLFT(SwiftRLHF):
         new_dataset = []
         for _iter in range(self.args.num_rollout_iters):
             train_dataloader = trainer.get_train_dataloader()
+            dumped_ds = []
+            
             for _index, batch in enumerate(train_dataloader):
                 self.template.set_mode('rlhf')
-                new_data = self.rollout(batch, trainer, _iter)
+                new_data, origin = self.rollout(batch, trainer, _iter)
                 self.template.set_mode('train')
                 new_dataset.extend(new_data)
+                dumped_ds.extend(origin)
                 if _index > self.args.num_rollout_batches:
                     break
-            
+                
+            with open(os.path.join(self.args.sampler_output, f'step_{step}.jsonl'), 'w') as f:
+                f.writelines(dumped_ds)
             self.template.set_mode('rlhf')
             with SwiftRLFT.switch_dataset(trainer, new_dataset):
                 trainer.train(trainer.args.resume_from_checkpoint)
