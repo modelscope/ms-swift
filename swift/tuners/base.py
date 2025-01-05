@@ -885,10 +885,6 @@ class Swift:
                 peft_model = model
                 for key, value in adapter_name.items():
                     peft_model = load_peft_model(peft_model, key, value)
-            try:
-                peft_model.disable_input_require_grads()
-            except AttributeError:
-                pass
             return peft_model
         else:
             return SwiftModel.from_pretrained(model, model_id, revision=revision, adapter_name=adapter_name, **kwargs)
