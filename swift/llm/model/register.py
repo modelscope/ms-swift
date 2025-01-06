@@ -250,7 +250,7 @@ def get_default_device_map():
         return f'npu:{local_rank}'
     elif is_torch_mps_available():
         return f'mps:{local_rank}'
-    if torch.cuda.device_count() == 0:
+    elif torch.cuda.device_count() == 0:
         return 'cpu'
     elif is_mp():
         return 'auto'
