@@ -38,14 +38,21 @@ def infer_lora(infer_request: 'InferRequest'):
     adapter_path = safe_snapshot_download('swift/test_lora')
     args = BaseArguments.from_pretrained(adapter_path)
     # method1
-    engine = PtEngine(args.model, adapters=[adapter_path])
-    template = get_template(args.template, engine.tokenizer, args.system)
-    engine.default_template = template
+    # engine = PtEngine(args.model, adapters=[adapter_path])
+    # template = get_template(args.template, engine.tokenizer, args.system)
+    # engine.default_template = template
+
     # method2
     # model, processor = args.get_model_processor()
     # model = Swift.from_pretrained(model, adapter_path)
     # template = args.get_template(processor)
     # engine = PtEngine.from_model_template(model, template)
+
+    # method3
+    model, tokenizer = get_model_tokenizer(args.model)
+    model = Swift.from_pretrained(model, adapter_path)
+    template = get_template(args.template, tokenizer, args.system)
+    engine = PtEngine.from_model_template(model, template)
 
     resp_list = engine.infer([infer_request], request_config)
     response = resp_list[0].choices[0].message.content
