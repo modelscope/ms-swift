@@ -7,7 +7,7 @@ from typing import List, Literal, Optional
 from swift.plugin import extra_tuners
 from swift.tuners import Swift
 from swift.utils import get_logger
-from ..template import Messages
+from ..utils import Messages
 
 logger = get_logger()
 

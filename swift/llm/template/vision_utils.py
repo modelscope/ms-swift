@@ -12,7 +12,6 @@ import torch
 from PIL import Image, ImageDraw
 
 from swift.utils import get_env_args
-from .utils import Context
 
 # >>> internvl
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
@@ -323,20 +322,6 @@ def normalize_bbox(objects: List[Dict[str, Any]], images: List[Image.Image], to_
                 width, height = image.width, image.height
                 object_['bbox'] = [int(coord * dim) for coord, dim in zip(bbox, [width, height, width, height])]
             object_['bbox_type'] = to_type
-
-
-def replace_video2image(load_video_func, inputs, replace_tag: Callable) -> List[Context]:
-    context_list = []
-    video_idx = inputs.video_idx
-    video = inputs.videos[video_idx]
-    images = inputs.images
-    image_idx = inputs.image_idx
-    new_images = load_video_func(video)
-    inputs.images = images[:image_idx] + new_images + images[image_idx:]
-    for i in range(len(new_images)):
-        context_list += replace_tag(i)
-    inputs.image_idx += len(new_images)
-    return context_list
 
 
 if __name__ == '__main__':

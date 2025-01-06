@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Classification criteria for model_type: same model architecture, tokenizer (get function), template.
+from itertools import chain
 from typing import List
 
 
@@ -7,6 +8,7 @@ class LLMModelType:
     qwen = 'qwen'
     qwen2 = 'qwen2'
     qwen2_5 = 'qwen2_5'
+    qwen2_5_math = 'qwen2_5_math'
     qwen2_moe = 'qwen2_moe'
     qwq = 'qwq'
 
@@ -61,7 +63,6 @@ class LLMModelType:
 
     telechat = 'telechat'
     telechat2 = 'telechat2'
-    telechat2_115b = 'telechat2_115b'
 
     mistral = 'mistral'
     zephyr = 'zephyr'
@@ -94,8 +95,18 @@ class LLMModelType:
     polylm = 'polylm'
     aya = 'aya'
 
+
+class BertModelType:
     modern_bert = 'modern_bert'
     bert = 'bert'
+
+
+class RMModelType:
+    internlm2_reward = 'internlm2_reward'
+    qwen2_reward = 'qwen2_reward'
+    qwen2_5_math_reward = 'qwen2_5_math_reward'
+    llama3_2_reward = 'llama3_2_reward'
+    gemma_reward = 'gemma_reward'
 
 
 class MLLMModelType:
@@ -105,6 +116,7 @@ class MLLMModelType:
     qwen2_audio = 'qwen2_audio'
     qvq = 'qvq'
     ovis1_6 = 'ovis1_6'
+    ovis1_6_llama3 = 'ovis1_6_llama3'
 
     glm4v = 'glm4v'
     glm_edge_v = 'glm_edge_v'
@@ -174,7 +186,7 @@ class MLLMModelType:
     megrez_omni = 'megrez_omni'
 
 
-class ModelType(LLMModelType, MLLMModelType):
+class ModelType(LLMModelType, MLLMModelType, BertModelType, RMModelType):
 
     @classmethod
     def get_model_name_list(cls) -> List[str]:
@@ -189,4 +201,7 @@ class ModelType(LLMModelType, MLLMModelType):
                     res.append(value)
             return res
 
-        return _get_model_name_list(LLMModelType) + _get_model_name_list(MLLMModelType)
+        return list(
+            chain.from_iterable(
+                _get_model_name_list(model_type_cls)
+                for model_type_cls in [LLMModelType, MLLMModelType, BertModelType, RMModelType]))

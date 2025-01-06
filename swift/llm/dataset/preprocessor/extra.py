@@ -70,7 +70,7 @@ class TextGenerationPreprocessor(ResponsePreprocessor):
         return super().preprocess(row)
 
 
-class ClsPreprocessor(ResponsePreprocessor):
+class ClsGenerationPreprocessor(ResponsePreprocessor):
 
     def __init__(self,
                  labels: List[str],

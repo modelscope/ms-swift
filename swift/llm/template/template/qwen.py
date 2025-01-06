@@ -12,7 +12,8 @@ from ..register import register_template
 from ..template_inputs import StdTemplateInputs
 from ..template_meta import TemplateMeta
 from ..utils import Context, Word, findall
-from ..vision_utils import load_audio_qwen, load_batch, load_file
+from ..vision_utils import load_audio_qwen, load_batch
+from .llama import Llama3TemplateMeta
 from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
 
 
@@ -29,6 +30,11 @@ class Qwen2_5TemplateMeta(QwenTemplateMeta):
 
 
 @dataclass
+class Qwen2_5MathTemplateMeta(QwenTemplateMeta):
+    default_system: Optional[str] = 'Please reason step by step, and put your final answer within \\boxed{}.'
+
+
+@dataclass
 class QwqTemplateMeta(QwenTemplateMeta):
     default_system: Optional[str] = ('You are a helpful and harmless assistant. You are Qwen developed by Alibaba. '
                                      'You should think step-by-step.')
@@ -37,6 +43,8 @@ class QwqTemplateMeta(QwenTemplateMeta):
 register_template(QwenTemplateMeta(LLMTemplateType.qwen))
 register_template(Qwen2_5TemplateMeta(LLMTemplateType.qwen2_5))
 register_template(QwqTemplateMeta(LLMTemplateType.qwq))
+
+register_template(Qwen2_5MathTemplateMeta(LLMTemplateType.qwen2_5_math))
 
 
 class QwenVLTemplate(Template):
@@ -193,10 +201,12 @@ class Qwen2VLTemplate(Template):
             if locals()[media_type]:
                 if media_type == 'images':
                     media_token = self.image_token_id
-                    media_inputs = processor.image_processor(images=images, videos=None, return_tensors='pt')
+                    media_inputs = processor.image_processor(
+                        images=images, videos=None, return_tensors='pt', do_resize=False)
                     media_grid_thw = media_inputs['image_grid_thw']
                 else:
-                    media_inputs = processor.image_processor(images=None, videos=videos, return_tensors='pt')
+                    media_inputs = processor.image_processor(
+                        images=None, videos=videos, return_tensors='pt', do_resize=False)
                     media_grid_thw = media_inputs['video_grid_thw']
                     media_token = self.video_token_id
                 idx_list = findall(input_ids, media_token)
@@ -343,6 +353,13 @@ register_template(
         chat_sep=['<end_of_turn>\n'],
         suffix=['<end_of_turn>'],
         system_prefix=['<bos><start_of_turn>system\n{{SYSTEM}}<end_of_turn>\n'],
+        template_cls=Ovis1_6Template,
+    ))
+
+register_template(
+    Llama3TemplateMeta(
+        MLLMTemplateType.ovis1_6_llama3,
+        default_system='You are a helpful and honest multimodal assistant.',
         template_cls=Ovis1_6Template,
     ))
 

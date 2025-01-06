@@ -111,7 +111,8 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             folder, fname = os.path.split(path)
             sys.path.append(folder)
             __import__(fname.rstrip('.py'))
-        logger.info(f'Successfully registered `{self.custom_register_path}`')
+        if self.custom_register_path:
+            logger.info(f'Successfully registered `{self.custom_register_path}`')
 
     def _init_adapters(self):
         if isinstance(self.adapters, str):
@@ -129,14 +130,11 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         self._init_ckpt_dir()
         self._init_custom_register()
         self._init_model_kwargs()
-        self.rank, self.local_rank, world_size, self.local_world_size = get_dist_setting()
         # The Seq2SeqTrainingArguments has a property called world_size, which cannot be assigned a value.
-        try:
-            self.world_size = world_size
-        except AttributeError:
-            pass
+        self.rank, self.local_rank, self.global_world_size, self.local_world_size = get_dist_setting()
         logger.info(f'rank: {self.rank}, local_rank: {self.local_rank}, '
-                    f'world_size: {world_size}, local_world_size: {self.local_world_size}')
+                    f'world_size: {self.global_world_size}, local_world_size: {self.local_world_size}')
+        assert len(self.adapters) <= 1, f'args.adapters: {self.adapters}'
         ModelArguments.__post_init__(self)
         QuantizeArguments.__post_init__(self)
         TemplateArguments.__post_init__(self)
@@ -242,7 +240,6 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         template_kwargs = self.get_template_kwargs()
         template = get_template(self.template, processor, **template_kwargs)
         logger.info(f'default_system: {template.template_meta.default_system}')
-        template.set_mode(self.task_type)  # default mode
         return template
 
     def get_model_processor(self, *, model=None, model_type=None, model_revision=None, **kwargs):
@@ -254,6 +251,4 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         kwargs['model_type'] = model_type or self.model_type
         kwargs['model_revision'] = model_revision or self.model_revision
 
-        model, processor = get_model_tokenizer(**kwargs)
-        model.model_info.task_type = self.task_type
-        return model, processor
+        return get_model_tokenizer(**kwargs)

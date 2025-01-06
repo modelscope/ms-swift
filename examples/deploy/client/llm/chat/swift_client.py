@@ -38,8 +38,8 @@ def infer_stream(engine: 'InferEngine', infer_request: 'InferRequest'):
 def run_client(host: str = '127.0.0.1', port: int = 8000):
     engine = InferClient(host=host, port=port)
     print(f'models: {engine.models}')
-
-    dataset = load_dataset(['AI-ModelScope/alpaca-gpt4-data-zh#1000'], strict=False, seed=42)[0]
+    # Here, `load_dataset` is used for convenience; `infer_batch` does not require creating a dataset.
+    dataset = load_dataset(['AI-ModelScope/alpaca-gpt4-data-zh#1000'], seed=42)[0]
     print(f'dataset: {dataset}')
     infer_requests = [InferRequest(**data) for data in dataset]
     infer_batch(engine, infer_requests)
@@ -52,7 +52,6 @@ if __name__ == '__main__':
     from swift.llm import (InferEngine, InferRequest, InferClient, RequestConfig, load_dataset, run_deploy,
                            DeployArguments)
     from swift.plugin import InferStats
-    # TODO: The current 'pt' deployment does not support automatic batch.
     # NOTE: In a real deployment scenario, please comment out the context of run_deploy.
     with run_deploy(
             DeployArguments(model='Qwen/Qwen2.5-1.5B-Instruct', verbose=False, log_interval=-1,

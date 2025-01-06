@@ -17,6 +17,8 @@ def _infer_model(pt_engine, system=None, messages=None, images=None):
         resp = pt_engine.infer([{'messages': messages}], request_config=request_config)
         response = resp[0].choices[0].message.content
         messages += [{'role': 'assistant', 'content': response}, {'role': 'user', 'content': '<image>这是什么'}]
+    else:
+        messages = messages.copy()
     if images is None:
         images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png']
     resp = pt_engine.infer([{'messages': messages, 'images': images}], request_config=request_config)
@@ -28,9 +30,10 @@ def _infer_model(pt_engine, system=None, messages=None, images=None):
 
 def test_qwen2_vl():
     pt_engine = PtEngine('Qwen/Qwen2-VL-2B-Instruct')
-    _infer_model(pt_engine)
+    response = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
-    _infer_model(pt_engine)
+    response2 = _infer_model(pt_engine)
+    assert response == response2 == '这是一只小猫的图片。它有黑白相间的毛发，眼睛大而圆，显得非常可爱。'
 
 
 def test_qvq():
@@ -68,9 +71,35 @@ def test_yi_vl():
 def test_glm4v():
     # There will be differences in '\n'. This is normal.
     pt_engine = PtEngine('ZhipuAI/glm-4v-9b')
-    _infer_model(pt_engine)
+    messages = [{'role': 'user', 'content': '描述这张图片'}]
+    response = _infer_model(pt_engine, messages=messages)
     pt_engine.default_template.template_backend = 'jinja'
-    _infer_model(pt_engine)
+    response2 = _infer_model(pt_engine, messages=messages)
+    assert response == ('这张图片是一只小猫的特写，它有着非常醒目的蓝色眼睛和混合了灰色、白色和棕色毛发的皮毛。小猫的耳朵竖立着，胡须清晰可见。它的眼神看起来既好奇又警觉，整体上显得非常可爱。')
+    assert response2 == ('这是一张特写照片，展示了一只毛茸茸的小猫。小猫的眼睛大而圆，呈深蓝色，眼珠呈金黄色，非常明亮。它的鼻子短而小巧，'
+                         '是粉色的。小猫的嘴巴紧闭，胡须细长。它的耳朵竖立着，耳朵内侧是白色的，外侧是棕色的。小猫的毛发看起来柔软而浓密，'
+                         '主要是白色和棕色相间的花纹。背景模糊不清，但似乎是一个室内环境。')
+
+
+def test_cogagent():
+    pt_engine = PtEngine('ZhipuAI/cogagent-9b-20241220')
+    messages = [{
+        'role':
+        'user',
+        'content':
+        """<image>Task: I'm looking for a software to \"edit my photo with grounding\"
+History steps:
+(Platform: Mac)
+(Answer in Action-Operation-Sensitive format.)"""
+    }]
+    images = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/agent.png']
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=messages, images=images)
+    assert response == response2 == (
+        """Action: Click on the 'Adobe Photoshop 2023' icon located in the middle of the screen to open the application.
+Grounded Operation: CLICK(box=[[346,574,424,710]], element_type='卡片', element_info='Adobe Photoshop 2023')
+<<一般操作>>""")
 
 
 def test_minicpmv():
@@ -94,9 +123,10 @@ def test_got_ocr():
 
 def test_llama_vision():
     pt_engine = PtEngine('LLM-Research/Llama-3.2-11B-Vision-Instruct')
-    _infer_model(pt_engine)
+    response = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
-    _infer_model(pt_engine)
+    response2 = _infer_model(pt_engine)
+    assert response == response2
 
 
 def test_llava_hf():
@@ -133,7 +163,8 @@ def test_qwen_vl():
 
 
 def test_llava_onevision_hf():
-    pass
+    pt_engine = PtEngine('AI-ModelScope/llava-onevision-qwen2-0.5b-ov-hf')
+    _infer_model(pt_engine)
 
 
 def test_xcomposer2_5():
@@ -174,9 +205,21 @@ def test_mplug_owl3():
 
 def test_ovis1_6():
     pt_engine = PtEngine('AIDC-AI/Ovis1.6-Gemma2-9B')
+    # pt_engine = PtEngine('AIDC-AI/Ovis1.6-Gemma2-27B')
     _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     _infer_model(pt_engine)
+
+
+def test_ovis1_6_llama3():
+    pt_engine = PtEngine('AIDC-AI/Ovis1.6-Llama3.2-3B')
+    messages = [{'role': 'user', 'content': '这是什么'}]
+    # llama3
+    response = _infer_model(pt_engine, messages=messages)
+    pt_engine.default_template.template_backend = 'jinja'
+    # llama3_2
+    _infer_model(pt_engine, messages=messages, system='You are a helpful and honest multimodal assistant.')
+    assert response == '这是一只小猫。从图中可见的特征如大眼睛、细长的白色鼻毛和毛发的图案，表明它可能属于常见的猫种。猫的表情和毛发的质感显示出它年轻，可能是幼猫。'
 
 
 def test_paligemma():
@@ -301,15 +344,18 @@ if __name__ == '__main__':
     # test_internvl2_phi3()
     # test_llava()
     # test_ovis1_6()
+    test_ovis1_6_llama3()
     # test_yi_vl()
     # test_deepseek_vl()
     # test_deepseek_vl2()
     # test_qwen_vl()
     # test_glm4v()
+    # test_cogagent()
+    # test_llava_onevision_hf()
     # test_minicpmv()
     # test_got_ocr()
     # test_paligemma()
-    test_paligemma2()
+    # test_paligemma2()
     # test_pixtral()
     # test_llama_vision()
     # test_llava_hf()

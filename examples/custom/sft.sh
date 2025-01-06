@@ -16,7 +16,7 @@ swift sft \
     --gradient_accumulation_steps 16 \
     --eval_steps 100 \
     --save_steps 100 \
-    --save_total_limit 2 \
+    --save_total_limit 5 \
     --logging_steps 5 \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 4 \

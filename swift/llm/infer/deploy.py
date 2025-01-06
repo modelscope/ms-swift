@@ -5,6 +5,7 @@ import multiprocessing
 import time
 from contextlib import contextmanager
 from dataclasses import asdict
+from functools import partial
 from http import HTTPStatus
 from threading import Thread
 from typing import List, Optional, Union
@@ -153,10 +154,12 @@ class SwiftDeploy(SwiftInfer):
                 logger.info(request_info)
             return kwargs
 
-        self.infer_engine.pre_infer_hooks = [pre_infer_hook]
+        infer_kwargs['pre_infer_hook'] = pre_infer_hook
         try:
             res_or_gen = await self.infer_async(infer_request, request_config, template=self.template, **infer_kwargs)
-        except ValueError as e:
+        except Exception as e:
+            import traceback
+            print(traceback.format_exc())
             return self.create_error_response(HTTPStatus.BAD_REQUEST, str(e))
         if request_config.stream:
 
@@ -212,7 +215,7 @@ def run_deploy(args: DeployArguments, return_url: bool = False):
     try:
         while not is_accessible(deploy_args.port):
             time.sleep(1)
-        yield f'http://127.0.0.1:{deploy_args.port}/v1/chat/completions' if return_url else deploy_args.port
+        yield f'http://127.0.0.1:{deploy_args.port}/v1' if return_url else deploy_args.port
     finally:
         process.terminate()
         logger.info('The deployment process has been terminated.')

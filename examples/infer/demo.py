@@ -43,7 +43,8 @@ if __name__ == '__main__':
         from swift.llm import LmdeployEngine
         engine = LmdeployEngine(model)
 
-    dataset = load_dataset(['AI-ModelScope/alpaca-gpt4-data-zh#1000'], strict=False, seed=42)[0]
+    # Here, `load_dataset` is used for convenience; `infer_batch` does not require creating a dataset.
+    dataset = load_dataset(['AI-ModelScope/alpaca-gpt4-data-zh#1000'], seed=42)[0]
     print(f'dataset: {dataset}')
     infer_requests = [InferRequest(**data) for data in dataset]
     infer_batch(engine, infer_requests)

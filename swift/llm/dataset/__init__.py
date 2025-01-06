@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
 import datasets.fingerprint
+from datasets import disable_caching
 
 from swift.utils.torch_utils import _find_local_mac
 from . import dataset
@@ -27,3 +28,4 @@ datasets.fingerprint._update_fingerprint = datasets.fingerprint.update_fingerpri
 datasets.fingerprint.update_fingerprint = _update_fingerprint_mac
 datasets.arrow_dataset.update_fingerprint = _update_fingerprint_mac
 register_dataset_info()
+disable_caching()

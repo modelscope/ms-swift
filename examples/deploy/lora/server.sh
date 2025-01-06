@@ -3,5 +3,5 @@
 CUDA_VISIBLE_DEVICES=0 swift deploy \
     --host 0.0.0.0 \
     --port 8000 \
-    --adapters swift-lora=swift/test_lora \
+    --adapters lora1=swift/test_lora lora2=swift/test_lora2 \
     --infer_backend vllm

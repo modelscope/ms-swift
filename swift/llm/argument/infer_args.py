@@ -4,9 +4,10 @@ import os
 from dataclasses import dataclass
 from typing import Literal, Optional, Union
 
+import torch
 import torch.distributed as dist
+from transformers.utils import is_torch_npu_available
 
-from swift.llm import get_template_meta
 from swift.utils import get_logger, is_dist
 from .base_args import BaseArguments, to_abspath
 from .base_args.model_args import ModelArguments
@@ -111,9 +112,9 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
     infer_backend: Literal['vllm', 'pt', 'lmdeploy'] = 'pt'
 
     result_path: Optional[str] = None
-    writer_buffer_size: int = 65536
     # for pt engine
     max_batch_size: int = 1
+    ddp_backend: Optional[str] = None
 
     # only for inference
     val_dataset_sample: Optional[int] = None
@@ -145,11 +146,17 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
         assert not self.eval_human and not self.stream
         self._init_device()
         if not dist.is_initialized():
-            dist.init_process_group(backend='nccl')
+            if self.ddp_backend is None:
+                if is_torch_npu_available():
+                    self.ddp_backend = 'hccl'
+                elif torch.cuda.is_available():
+                    self.ddp_backend = 'nccl'
+                else:
+                    self.ddp_backend = 'gloo'
+            dist.init_process_group(backend=self.ddp_backend)
 
     def __post_init__(self) -> None:
         BaseArguments.__post_init__(self)
-        MergeArguments.__post_init__(self)
         VllmArguments.__post_init__(self)
         self._init_result_path('infer_result')
         self._init_eval_human()

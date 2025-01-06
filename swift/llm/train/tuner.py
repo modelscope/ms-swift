@@ -403,6 +403,7 @@ class TunerMixin:
                 gamma_proj=args.galore_gamma_proj,
                 queue_size=args.galore_queue_size,
             )
+            args.training_args.galore_config = args.galore_config
 
         if args.sequence_parallel_size > 1:
             from swift.trainers.xtuner import dispatch_module_xtuner

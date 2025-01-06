@@ -49,15 +49,17 @@ class LLaMAPro(SwiftAdapter):
         num_hidden_layers = HfConfigFactory.get_config_attr(model.config, 'num_hidden_layers')
         if num_hidden_layers is None:
             num_hidden_layers = HfConfigFactory.get_config_attr(model.config, 'num_layers')
-
         assert num_hidden_layers is not None, 'Cannot find num of layers config'
         assert num_hidden_layers % config.num_new_blocks == 0, f'Model layers {num_hidden_layers} ' \
                                                                f'should be divided by {config.num_new_blocks}'
         if config.num_groups is None:
             config.num_groups = config.num_new_blocks
 
+        # the except block will change the model_type, this will cause `model not found` error
+        # when using internvl
+        origin_model_type = config.model_type
+        model_type = origin_model_type
         num_stride = num_hidden_layers // config.num_groups
-
         try:
             module_list = LLaMAPro._find_module_list(config, model)
         except AssertionError as e:
@@ -94,7 +96,7 @@ class LLaMAPro(SwiftAdapter):
         LLaMAPro._set_module_list(config, model, new_module_list)
 
         def state_dict_callback(state_dict, adapter_name, **kwargs):
-            model_key_mapping = LLaMAPro.get_model_key_mapping(config.model_type, config)
+            model_key_mapping = LLaMAPro.get_model_key_mapping(model_type, config)
             new_module_list = [model_key_mapping.module_list + f'.{i}' for i in new_module_idx]
             return {
                 key: value
@@ -102,13 +104,14 @@ class LLaMAPro(SwiftAdapter):
             }
 
         def mark_trainable_callback(model):
-            model_key_mapping = LLaMAPro.get_model_key_mapping(config.model_type, config)
+            model_key_mapping = LLaMAPro.get_model_key_mapping(model_type, config)
             new_module_list = [model_key_mapping.module_list + f'.{i}' for i in new_module_idx]
             for name, parameter in model.named_parameters():
                 parameter: nn.Parameter
                 if any([m_part in name for m_part in new_module_list]):
                     parameter.requires_grad = True
 
+        config.model_type = origin_model_type
         return SwiftOutput(
             config=config, state_dict_callback=state_dict_callback, mark_trainable_callback=mark_trainable_callback)
 

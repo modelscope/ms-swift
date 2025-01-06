@@ -7,13 +7,9 @@ import json
 from PIL import Image
 
 from swift.utils import get_logger
-from ..utils import messages_to_history
+from ..utils import Messages, Tool, messages_to_history
 
 logger = get_logger()
-
-Tool = Dict[str, Union[str, Dict]]
-Message = Dict[str, Union[str, List[Dict[str, Any]]]]
-Messages = List[Message]
 
 
 @dataclass
@@ -49,8 +45,7 @@ class InferRequest:
             val = getattr(self, key)
             if isinstance(val, str):
                 setattr(self, key, [val])
-
-        self.remove_response(self.messages)
+        assert isinstance(self.messages, list), f'messages: {self.messages}'
 
     @staticmethod
     def remove_response(messages) -> Optional[str]:

@@ -5,10 +5,11 @@ from typing import Any, Dict
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.llm import TemplateType
-from ..constant import LLMModelType, MLLMModelType
+from ..constant import LLMModelType, MLLMModelType, RMModelType
 from ..model_arch import ModelArch
 from ..patcher import patch_output_clone, patch_output_to_input_device
-from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
+from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_reward_model,
+                        get_model_tokenizer_with_flash_attn, register_model)
 from ..utils import ModelInfo, safe_snapshot_download, use_submodel_func
 
 register_model(
@@ -331,4 +332,20 @@ register_model(
         architectures=['Qwen2AudioForConditionalGeneration'],
         model_arch=ModelArch.qwen2_audio,
         tags=['audio'],
+    ))
+
+register_model(
+    ModelMeta(
+        RMModelType.internlm2_reward,
+        [
+            ModelGroup([
+                Model('Shanghai_AI_Laboratory/internlm2-1_8b-reward', 'internlm/internlm2-1_8b-reward'),
+                Model('Shanghai_AI_Laboratory/internlm2-7b-reward', 'internlm/internlm2-7b-reward'),
+                Model('Shanghai_AI_Laboratory/internlm2-20b-reward', 'internlm/internlm2-20b-reward'),
+            ]),
+        ],
+        TemplateType.internlm2_reward,
+        get_model_tokenizer_reward_model,
+        requires=['transformers>=4.38'],
+        architectures=['InternLM2ForRewardModel'],
     ))

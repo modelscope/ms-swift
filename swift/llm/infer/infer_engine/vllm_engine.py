@@ -7,10 +7,8 @@ from dataclasses import asdict
 from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
 
 import torch
-import vllm
 from packaging import version
 from transformers import GenerationConfig, PreTrainedTokenizerBase
-from vllm import AsyncEngineArgs, AsyncLLMEngine, SamplingParams
 
 from swift.llm import InferRequest, Template, TemplateMeta, get_model_tokenizer
 from swift.plugin import Metric
@@ -20,6 +18,15 @@ from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, Ch
 from .infer_engine import InferEngine
 from .patch import patch_auto_config, patch_auto_tokenizer
 from .utils import AdapterRequest, InferStreamer
+
+try:
+    # After setting the environment variables, import vllm. This way of writing allows lint to pass.
+    os.environ['VLLM_WORKER_MULTIPROC_METHOD'] = 'spawn'
+    os.environ['VLLM_ENGINE_ITERATION_TIMEOUT_S'] = '3600'
+    import vllm
+    from vllm import AsyncEngineArgs, AsyncLLMEngine, SamplingParams
+except Exception:
+    raise
 
 logger = get_logger()
 dtype_mapping = {torch.float16: 'float16', torch.bfloat16: 'bfloat16', torch.float32: 'float32'}
@@ -50,7 +57,6 @@ class VllmEngine(InferEngine):
             max_loras: int = 1,
             max_lora_rank: int = 16,
             engine_kwargs: Optional[Dict[str, Any]] = None) -> None:
-        self._init_env()
         self.processor = get_model_tokenizer(
             model_id_or_path,
             torch_dtype,
@@ -136,18 +142,6 @@ class VllmEngine(InferEngine):
         self.enable_lora = enable_lora
         if max_model_len is not None:
             model_info.max_model_len = max_model_len
-
-    @staticmethod
-    def _init_env() -> None:
-        try:
-            from vllm.model_executor.parallel_utils.parallel_state import destroy_model_parallel
-            destroy_model_parallel()
-        except ImportError:
-            pass
-        # fix HTTPError bug (use model_dir)
-        os.environ.pop('VLLM_USE_MODELSCOPE', None)
-        if version.parse(vllm.__version__) >= version.parse('0.5.1'):
-            os.environ['VLLM_WORKER_MULTIPROC_METHOD'] = 'spawn'
 
     def _fix_vllm_bug(self) -> None:
         # fix vllm==0.4 bug (very slow)
@@ -337,7 +331,6 @@ class VllmEngine(InferEngine):
             choices.append(choice)
         return ChatCompletionResponse(model=self.model_name, choices=choices, usage=usage_info, id=request_id)
 
-    @torch.inference_mode()
     def infer(
         self,
         infer_requests: List[InferRequest],
@@ -356,7 +349,6 @@ class VllmEngine(InferEngine):
             use_tqdm=use_tqdm,
             adapter_request=adapter_request)
 
-    @torch.inference_mode()
     async def infer_async(
         self,
         infer_request: InferRequest,
@@ -364,6 +356,7 @@ class VllmEngine(InferEngine):
         *,
         template: Optional[Template] = None,
         adapter_request: Optional[AdapterRequest] = None,
+        pre_infer_hook=None,
     ) -> Union[ChatCompletionResponse, AsyncIterator[ChatCompletionStreamResponse]]:
         request_config = deepcopy(request_config or RequestConfig())
         if template is None:
@@ -371,7 +364,8 @@ class VllmEngine(InferEngine):
 
         template.set_mode('vllm')
         loop = asyncio.get_running_loop()
-        inputs = await loop.run_in_executor(None, template.encode, infer_request)
+        with torch.inference_mode():
+            inputs = await loop.run_in_executor(None, template.encode, infer_request)
         self.set_default_max_tokens(request_config, inputs)
         generation_config = self._prepare_generation_config(request_config)
         self._add_stop_words(generation_config, request_config, template.template_meta)
@@ -381,7 +375,7 @@ class VllmEngine(InferEngine):
             'generation_config': generation_config,
             'adapter_request': adapter_request
         }
-        for pre_infer_hook in self.pre_infer_hooks:
+        if pre_infer_hook:
             kwargs = pre_infer_hook(kwargs)
         if request_config.stream:
             return self._infer_stream_async(**kwargs)

@@ -32,9 +32,10 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
     lr_scheduler_kwargs: Optional[Union[dict, str]] = None
     gradient_checkpointing_kwargs: Optional[Union[dict, str]] = None
     report_to: List[str] = field(default_factory=lambda: ['tensorboard'])
+    eval_strategy: Optional[str] = None  # steps, epoch
+
     remove_unused_columns: bool = False
     logging_first_step: bool = True
-    eval_strategy: Optional[str] = None  # steps, epoch
 
     def _init_output_dir(self):
         if self.output_dir is not None:
@@ -108,18 +109,20 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
     add_version: bool = True
     resume_only_model: bool = False
     check_model: bool = True
-    loss_type: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
 
     # dataset
     packing: bool = False
     lazy_tokenize: Optional[bool] = None
 
+    # plugin
+    loss_type: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
+    optimizer: Optional[str] = None
+    metric: Optional[str] = None
+
     # extra
     acc_strategy: Literal['token', 'seq'] = 'token'
     max_new_tokens: int = 64
     temperature: float = 0.
-    optimizer: Optional[str] = None
-    metric: Optional[str] = None
 
     def __post_init__(self) -> None:
         if self.resume_from_checkpoint:
@@ -132,6 +135,12 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
         Seq2SeqTrainingOverrideArguments.__post_init__(self)
         TunerArguments.__post_init__(self)
         TorchAccArguments.__post_init__(self)
+
+        if self.optimizer is None:
+            if self.lorap_lr_ratio:
+                self.optimizer = 'lorap'
+            elif self.use_galore:
+                self.optimizer = 'galore'
 
         if len(self.dataset) == 0:
             raise ValueError(f'self.dataset: {self.dataset}, Please input the training dataset.')
