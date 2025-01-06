@@ -6,7 +6,6 @@ from transformers import PreTrainedModel
 from trl import PPOv2Trainer as HFPPOv2Trainer
 
 from ..mixin import SwiftMixin
-from .rlhf_mixin import RLHFTrainerMixin
 
 
 class PPOTrainer(SwiftMixin, HFPPOv2Trainer):
