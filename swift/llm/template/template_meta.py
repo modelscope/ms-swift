@@ -130,7 +130,13 @@ class TemplateMeta:
 
         self.stop_token_id = tokenizer.eos_token_id
         if self.suffix:
-            stop_token_id = tokenizer.convert_tokens_to_ids(self.suffix[-1])
+            suffix_tokens = self.suffix[-1]
+            if isinstance(suffix_tokens, str):
+                stop_token_id = tokenizer.convert_tokens_to_ids(suffix_tokens)
+            elif isinstance(suffix_tokens, list) and len(suffix_tokens) == 1:
+                stop_token_id = suffix_tokens[0]
+            else:
+                stop_token_id = None
             if stop_token_id is not None:
                 self.stop_token_id = stop_token_id
 

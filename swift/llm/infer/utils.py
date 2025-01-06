@@ -131,6 +131,7 @@ def prepare_adapter(args, model, adapters=None):
     else:
         tuner = Swift
     # compat deploy
+    adapters = adapters or args.adapters
     for adapter in adapters:
         model = tuner.from_pretrained(model, adapter)
     if args.train_type == 'bone':
@@ -141,6 +142,6 @@ def prepare_adapter(args, model, adapters=None):
 
 def prepare_model_template(args, **kwargs):
     model, processor = args.get_model_processor(**kwargs)
-    model = prepare_adapter(args, model, args.adapters)
+    model = prepare_adapter(args, model)
     template = args.get_template(processor)
     return model, template
