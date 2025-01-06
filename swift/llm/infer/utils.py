@@ -118,7 +118,7 @@ class InferCliState:
         return query
 
 
-def _prepare_adapter(args, model):
+def prepare_adapter(args, model, adapters=None):
     if args.tuner_backend == 'unsloth':
         if args.model_meta.is_multimodal:
             from unsloth import FastVisionModel as UnslothModel
@@ -131,7 +131,8 @@ def _prepare_adapter(args, model):
     else:
         tuner = Swift
     # compat deploy
-    for adapter in args.adapters:
+    adapters = adapters or args.adapters
+    for adapter in adapters:
         model = tuner.from_pretrained(model, adapter)
     if args.train_type == 'bone':
         # Bone has a problem of float32 matmul with bloat16 in `peft==0.14.0`
@@ -141,6 +142,6 @@ def _prepare_adapter(args, model):
 
 def prepare_model_template(args, **kwargs):
     model, processor = args.get_model_processor(**kwargs)
-    model = _prepare_adapter(args, model)
+    model = prepare_adapter(args, model)
     template = args.get_template(processor)
     return model, template

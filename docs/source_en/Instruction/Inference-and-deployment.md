@@ -4,7 +4,7 @@ SWIFT supports inference and deployment through command line, Python code, and i
 - Use `engine.infer` or `engine.infer_async` for Python-based inference. See [here](https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo.py) for reference.
 - Use `swift infer` for command-line-based inference. See [here](https://github.com/modelscope/ms-swift/blob/main/examples/infer/cli_demo.sh) for reference.
 - Use `swift deploy` for service deployment and perform inference using the OpenAI API or `client.infer`. Refer to the server guidelines [here](https://github.com/modelscope/ms-swift/tree/main/examples/deploy/server) and the client guidelines [here](https://github.com/modelscope/ms-swift/tree/main/examples/deploy/client).
-- Deploy the model with `swift app` for web-based inference. You can check [here](../GetStarted/Interface-usage.md) for details.
+- Deploy the model with `swift app` for web-based inference. You can check [here](../GetStarted/Web-UI.md) for details.
 
 
 ## Command Line Inference

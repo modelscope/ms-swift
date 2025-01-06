@@ -128,6 +128,12 @@ class TemplateMeta:
         if tokenizer.eos_token not in self.stop_words:
             self.stop_words.append(tokenizer.eos_token)
 
+        self.stop_token_id = tokenizer.eos_token_id
+        if self.suffix:
+            stop_token_id = tokenizer.convert_tokens_to_ids(self.suffix[-1])
+            if stop_token_id is not None:
+                self.stop_token_id = stop_token_id
+
     def check_system(self, system: Optional[str]) -> None:
         if system is not None:
             assert self.support_system, (
