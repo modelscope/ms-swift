@@ -3,11 +3,37 @@ from dataclasses import dataclass, field
 from typing import List, Literal, Optional
 
 from swift.llm import MODEL_MAPPING
+from ..template import get_template_meta
 from .train_args import TrainArguments
 
 
 @dataclass
-class RLHFArguments(TrainArguments):
+class PPOArguments:
+    reward_model: Optional[str] = None
+    reward_adapters: List[str] = field(default_factory=list)
+    reward_model_type: Optional[str] = field(
+        default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
+    reward_model_revision: Optional[str] = None
+
+    num_ppo_epochs: int = 4
+    whiten_rewards: bool = False
+    kl_coef: float = 0.05
+    cliprange: float = 0.2
+    vf_coef: float = 0.1
+    cliprange_value: float = 0.2
+    gamma: float = 1.0
+    lam: float = 0.95
+
+    num_mini_batches: int = 1
+    local_rollout_forward_batch_size: int = 64
+    num_sample_generations: int = 10
+    response_length: int = 53
+    temperature: float = 0.7
+    missing_eos_penalty: Optional[float] = None
+
+
+@dataclass
+class RLHFArguments(PPOArguments, TrainArguments):
     """
     RLHFArguments is a dataclass that holds arguments specific to the Reinforcement
         Learning with Human Feedback (RLHF) training backend.
@@ -42,27 +68,13 @@ class RLHFArguments(TrainArguments):
     # KTO
     desirable_weight: float = 1.0
     undesirable_weight: float = 1.0
-    # PPO
-    reward_model: Optional[str] = None
-    reward_adapters: List[str] = field(default_factory=list)
-    reward_model_type: Optional[str] = field(
-        default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
-    reward_model_revision: Optional[str] = None
-    local_rollout_forward_batch_size: int = 64
-    kl_coef: float = 0.05
-    cliprange: float = 0.2
-    vf_coef: float = 0.1
-    cliprange_value: float = 0.2
-    gamma: float = 1.0
-    lam: float = 0.95
-    num_sample_generations: int = 10
 
     def __post_init__(self):
         self._init_rm()
         self._init_simpo()
-        self._init_ppo()
         self._set_default()
         super().__post_init__()
+        self._init_ppo()
 
         if self.rlhf_type in ['dpo', 'kto'] and self.train_type == 'full' or self.rlhf_type == 'ppo':
             self.ref_model = self.ref_model or self.model
@@ -73,8 +85,6 @@ class RLHFArguments(TrainArguments):
 
     def _init_ppo(self):
         if self.rlhf_type == 'ppo':
-            self.response_length = self.max_new_tokens
-            self.num_ppo_epochs = self.num_train_epochs
             self.padding_side = 'left'
             # TODO: streaming, MLLM
 

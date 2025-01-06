@@ -30,16 +30,16 @@ class SwiftRLHF(SwiftSft):
             model_type = getattr(args, f'{key}_model_type')
             model_revision = getattr(args, f'{key}_model_revision')
             adapters = args.adapters if key == 'ref' else args.reward_adapters
-
+            task_type = args.task_type if origin_key == 'ref' else 'seq_cls'
             # Be aware of the unexpected behavior caused by double monkey patching.
             model = args.get_model_processor(
-                model=model_id_or_path, model_type=model_type, model_revision=model_revision)[0]
+                model=model_id_or_path, model_type=model_type, model_revision=model_revision, task_type=task_type)[0]
 
             model = prepare_adapter(args, model, adapters)
             if origin_key in {'ref', 'reward'}:
                 model.requires_grad_(False).eval()
             else:
-                model = self.prepare_model(args, model, task_type='seq_cls')
+                model = self.prepare_model(args, model, task_type=task_type)
                 logger.info(f'value_model: {model}')
                 model_parameter_info = get_model_parameter_info(model)
                 self.train_msg['value_model_parameter_info'] = model_parameter_info
@@ -57,6 +57,9 @@ class SwiftRLHF(SwiftSft):
         if args.rlhf_type != 'orpo' or args.model_meta.is_multimodal:
             # Avoid padding labels during the model's forward pass in multimodal models.
             self.template.loss_scale = 'last_round'
+
+        if args.rlhf_type == 'ppo':
+            self.training_args.stop_token_id = self.template.template_meta.stop_token_id
 
     def _get_dataset(self):
         args = self.args
