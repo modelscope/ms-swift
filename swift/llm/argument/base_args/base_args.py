@@ -43,7 +43,6 @@ class CompatArguments:
                 return
             self.adapters.insert(0, self.ckpt_dir)
         else:
-            assert self.model is None, f'self.model: {self.model}'
             self.model = self.ckpt_dir
         self.ckpt_dir = None
         logger.warning('The `--ckpt_dir` parameter will be removed in `ms-swift>=3.2`. '
@@ -236,9 +235,10 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             else:
                 torch.cuda.set_device(self.local_rank)
 
-    def get_template(self, processor: 'Processor') -> 'Template':
+    def get_template(self, processor: 'Processor', template_type=None) -> 'Template':
         template_kwargs = self.get_template_kwargs()
-        template = get_template(self.template, processor, **template_kwargs)
+        template_type = template_type or self.template
+        template = get_template(template_type, processor, **template_kwargs)
         logger.info(f'default_system: {template.template_meta.default_system}')
         return template
 

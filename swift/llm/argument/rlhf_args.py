@@ -14,6 +14,7 @@ class PPOArguments:
     reward_model_type: Optional[str] = field(
         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
     reward_model_revision: Optional[str] = None
+    reward_template: Optional[str] = None
 
     num_ppo_epochs: int = 4
     whiten_rewards: bool = False

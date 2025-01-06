@@ -174,7 +174,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
             else:
                 return input_ids.shape[-1]
         elif 'inputs_embeds' in inputs:  # 2d or 3d
-            return inputs['inputs_embeds'].shape[-1]
+            return inputs['inputs_embeds'].shape[-2]
         raise ValueError(f'Unable to retrieve input_ids and inputs_embeds. inputs: {inputs}')
 
     def set_default_max_tokens(self, request_config: RequestConfig, inputs: Dict[str, Any]) -> None:
