@@ -3,47 +3,39 @@ from contextlib import contextmanager
 
 from torch.utils.data import DataLoader
 from transformers import PreTrainedModel
-from trl import PPOv2Trainer as HFPPOTrainer
+from trl import PPOv2Trainer as HFPPOv2Trainer
 
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 
 
-class PPOTrainer(RLHFTrainerMixin, SwiftMixin, HFPPOTrainer):
+class PPOTrainer(SwiftMixin, HFPPOv2Trainer):
+    ppo_trainer_init = HFPPOv2Trainer.__init__
+    del HFPPOv2Trainer.__init__
 
+    @staticmethod
     @contextmanager
-    def _patch_dataloader():
-        print()
+    def _patch_dataloader(data_collator):
+        __init__ = DataLoader.__init__
 
-    @contextmanager
-    def _patch_init():
-        kwargs_to_pop = ['model', 'model_init', 'compute_metrics', 'preprocess_logits_for_metrics']
-        for kwarg in kwargs_to_pop:
-            kwargs.pop(kwarg, None)
-        kwargs['config'] = kwargs.pop('args')
-        HFPPOTrainer.__init__(self, **kwargs)
+        def __new_init__(self, *args, **kwargs):
+            kwargs['data_collator'] = data_collator
+            __init__(self, *args, **kwargs)
+
+        DataLoader.__init__ = __new_init__
+        yield
+        DataLoader.__init__ = __init__
 
     def __init__(self, model: PreTrainedModel, ref_model: PreTrainedModel, *_args, **kwargs):
-        kwargs['policy'] = model
-        kwargs['ref_policy'] = ref_model
-        super().__init__(model, ref_model, *_args, **kwargs)
-        # reset dataloader
-        self.dataloader = DataLoader(
-            self.train_dataset,
-            batch_size=self.local_dataloader_batch_size,
-            shuffle=True,
-            collate_fn=kwargs['data_collator'],
-            drop_last=True,  # needed; otherwise the last batch will be of ragged shape
-        )
-        self.accelerator.prepare(self.data_collator)
-        self.eval_dataloader = DataLoader(
-            self.eval_dataset,
-            batch_size=self.args.per_device_eval_batch_size,
-            collate_fn=kwargs['data_collator'],
-            drop_last=True,
-        )  # no need to shuffle eval dataset
-        self.eval_dataloader = self.accelerator.prepare(self.eval_dataloader)
+        super().__init__(model, *_args, **kwargs)
+        with self._patch_dataloader(kwargs['data_collator']):
+            new_kwargs = {
+                k: v
+                for k, v in kwargs.items()
+                if k in ['train_dataset', 'data_collator', 'reward_model', 'val_model', 'eval_dataset', 'tokenizer']
+            }
+            self.ppo_trainer_init(config=kwargs['args'], policy=model, ref_policy=ref_model, **new_kwargs)
 
     def train(self, *args, **kwargs):
         # remove args that are not needed for the HFPPOTrainer
-        HFPPOTrainer.train(self)
+        super().train()

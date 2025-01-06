@@ -44,21 +44,20 @@ logger = get_logger()
 
 class SwiftMixin:
 
-    def __init__(
-            self,
-            model: Union[PreTrainedModel, Module] = None,
-            args: TrainingArguments = None,
-            data_collator: Optional[DataCollator] = None,
-            train_dataset: Optional[HfDataset] = None,
-            eval_dataset: Optional[Union[HfDataset, Dict[str, HfDataset]]] = None,
-            template: Optional[Template] = None,
-            model_init: Optional[Callable[[], PreTrainedModel]] = None,
-            compute_loss_func: Optional[Callable] = None,
-            compute_metrics: Optional[Callable[[EvalPrediction], Dict]] = None,
-            callbacks: Optional[List[TrainerCallback]] = None,
-            optimizers: Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR] = (None, None),
-            preprocess_logits_for_metrics: Optional[Callable[[torch.Tensor, torch.Tensor],
-                                                             torch.Tensor]] = None) -> None:
+    def __init__(self,
+                 model: Union[PreTrainedModel, Module] = None,
+                 args: TrainingArguments = None,
+                 data_collator: Optional[DataCollator] = None,
+                 train_dataset: Optional[HfDataset] = None,
+                 eval_dataset: Optional[Union[HfDataset, Dict[str, HfDataset]]] = None,
+                 template: Optional[Template] = None,
+                 model_init: Optional[Callable[[], PreTrainedModel]] = None,
+                 compute_loss_func: Optional[Callable] = None,
+                 compute_metrics: Optional[Callable[[EvalPrediction], Dict]] = None,
+                 callbacks: Optional[List[TrainerCallback]] = None,
+                 optimizers: Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR] = (None, None),
+                 preprocess_logits_for_metrics: Optional[Callable[[torch.Tensor, torch.Tensor], torch.Tensor]] = None,
+                 **kwargs) -> None:
         if args.check_model and hasattr(model, 'model_dir'):
             check_local_model_is_latest(
                 model.model_dir, user_agent={
