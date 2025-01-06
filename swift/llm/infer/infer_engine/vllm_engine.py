@@ -167,7 +167,7 @@ class VllmEngine(InferEngine):
             max_new_tokens = kwargs.get('max_new_tokens')
             if max_new_tokens is not None:
                 kwargs['max_tokens'] = max_new_tokens
-            parameters = inspect.signature(SamplingParams.__init__).parameters
+            parameters = inspect.signature(SamplingParams).parameters
             for k, v in kwargs.copy().items():
                 if k not in parameters or v is None:
                     kwargs.pop(k)
