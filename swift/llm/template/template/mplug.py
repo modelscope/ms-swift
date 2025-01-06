@@ -12,7 +12,7 @@ from ..constant import MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import Context, Prompt, findall
-from ..vision_utils import load_video_minicpmv_mplug_owl3, replace_video2image
+from ..vision_utils import load_video_minicpmv_mplug_owl3
 from .qwen import QwenTemplateMeta
 
 
@@ -82,7 +82,7 @@ class mPlugOwl3Template(Template):
         if media_type == 'image':
             return [[-100], '\n']
         elif media_type == 'video':
-            return replace_video2image(load_video, inputs, lambda i: [[-100]]) + ['\n']
+            return self.replace_video2image(load_video, inputs, lambda i: [[-100]]) + ['\n']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
