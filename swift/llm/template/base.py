@@ -206,12 +206,11 @@ class Template(ProcessorMixin):
             inputs = asdict(inputs)
 
         if isinstance(inputs, dict):
+            if not self.is_training:
+                InferRequest.remove_response(inputs['messages'])
             inputs = StdTemplateInputs.from_dict(inputs, tools_prompt=self.tools_prompt)
         elif isinstance(inputs, StdTemplateInputs):
             inputs = deepcopy(inputs)
-
-        if not self.is_training:
-            InferRequest.remove_response(inputs.messages)
 
         assert isinstance(inputs, StdTemplateInputs)
         self._preprocess_inputs(inputs)
