@@ -91,10 +91,8 @@ class ModelArguments:
         self.torch_dtype: Optional[torch.dtype] = HfConfigFactory.to_torch_dtype(self.torch_dtype)
         self.torch_dtype: torch.dtype = self._init_model_info()
         # Mixed Precision Training
-        if isinstance(self, TrainArguments):
-            if is_torch_mps_available():
-                pass
-            elif self.torch_dtype in {torch.float16, torch.float32}:
+        if isinstance(self, TrainArguments) and not is_torch_mps_available():
+            if self.torch_dtype in {torch.float16, torch.float32}:
                 self.fp16, self.bf16 = True, False
             elif self.torch_dtype == torch.bfloat16:
                 self.fp16, self.bf16 = False, True
