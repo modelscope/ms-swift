@@ -6,6 +6,7 @@ from typing import Any, Dict, Literal, Optional, Union
 
 import json
 import torch
+from transformers.utils import is_torch_mps_available
 
 from swift.llm import MODEL_MAPPING, HfConfigFactory, get_model_info_meta, get_model_name
 from swift.utils import get_dist_setting, get_logger
@@ -90,7 +91,7 @@ class ModelArguments:
         self.torch_dtype: Optional[torch.dtype] = HfConfigFactory.to_torch_dtype(self.torch_dtype)
         self.torch_dtype: torch.dtype = self._init_model_info()
         # Mixed Precision Training
-        if isinstance(self, TrainArguments):
+        if isinstance(self, TrainArguments) and not is_torch_mps_available():
             if self.torch_dtype in {torch.float16, torch.float32}:
                 self.fp16, self.bf16 = True, False
             elif self.torch_dtype == torch.bfloat16:

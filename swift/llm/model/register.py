@@ -11,11 +11,11 @@ from peft import PeftModel
 from transformers import (AutoConfig, AutoModel, AutoModelForCausalLM, AutoModelForSequenceClassification,
                           AutoTokenizer, GenerationConfig, PretrainedConfig, PreTrainedModel, PreTrainedTokenizerBase)
 from transformers.integrations import is_deepspeed_zero3_enabled
-from transformers.utils import is_torch_bf16_gpu_available, is_torch_cuda_available, is_torch_npu_available, strtobool
+from transformers.utils import (is_torch_bf16_gpu_available, is_torch_cuda_available, is_torch_mps_available,
+                                is_torch_npu_available, strtobool)
 from transformers.utils.versions import require_version
 
-from swift.utils import (get_dist_setting, get_logger, is_dist, is_mp_ddp, is_unsloth_available, patch_getattr,
-                         use_torchacc)
+from swift.utils import get_dist_setting, get_logger, is_dist, is_mp, is_unsloth_available, patch_getattr, use_torchacc
 from .constant import ModelType
 from .utils import AttnImpl, HfConfigFactory, ModelInfo, safe_snapshot_download
 
@@ -244,32 +244,19 @@ def get_default_device_map():
     if is_deepspeed_zero3_enabled() or os.environ.get('ACCELERATE_USE_FSDP', 'False') == 'true':
         return None
     local_rank = get_dist_setting()[1]
+    if local_rank == -1:
+        local_rank = 0
     if is_torch_npu_available():
-        if local_rank >= 0:
-            return f'npu:{local_rank}'
+        return f'npu:{local_rank}'
+    elif is_torch_mps_available():
+        return f'mps:{local_rank}'
+    elif is_torch_cuda_available():
+        if is_mp():
+            return 'auto'
         else:
-            return 'npu:0'
-    if torch.cuda.device_count() == 0:
+            return f'cuda:{local_rank}'
+    else:
         return 'cpu'
-    elif torch.cuda.device_count() == 1:
-        return 'cuda:0'
-    elif is_dist() and not is_mp_ddp():
-        return f'cuda:{local_rank}'
-    else:
-        return 'auto'
-
-
-def _check_torch_dtype(torch_dtype: torch.dtype):
-    if is_torch_cuda_available() or is_torch_npu_available():
-
-        if torch_dtype == torch.bfloat16:
-            support_bf16 = is_torch_bf16_gpu_available()
-            if not support_bf16:
-                logger.warning(f'torch_dtype: {torch_dtype}, but support_bf16: {support_bf16}.')
-    else:
-        # cpu
-        if torch_dtype == torch.float16:
-            logger.warning(f'torch_dtype: {torch_dtype}. The CPU does not support matrix multiplication with FP16.')
 
 
 def get_default_torch_dtype(torch_dtype: Optional[torch.dtype]):
@@ -394,7 +381,6 @@ def get_model_info_meta(
     if torch_dtype is None:
         torch_dtype = model_meta.torch_dtype or get_default_torch_dtype(model_info.torch_dtype)
         logger.info(f'Setting torch_dtype: {torch_dtype}')
-    _check_torch_dtype(torch_dtype)
     model_info.torch_dtype = torch_dtype
     if model_meta.is_reward:
         task_type = 'seq_cls'
