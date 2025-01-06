@@ -38,6 +38,10 @@ class SwiftRLHF(SwiftSft):
                 model.requires_grad_(False).eval()
             else:
                 model = self.prepare_model(args, model, task_type='seq_cls')
+                logger.info(f'value_model: {model}')
+                model_parameter_info = get_model_parameter_info(model)
+                self.train_msg['value_model_parameter_info'] = model_parameter_info
+                logger.info(f'value_model_parameter_info: {model_parameter_info}')
             setattr(self, f'{origin_key}_model', model)
 
         super()._prepare_model_tokenizer()
