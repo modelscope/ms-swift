@@ -12,7 +12,6 @@ import torch
 from PIL import Image, ImageDraw
 
 from swift.utils import get_env_args
-from .utils import Context
 
 # >>> internvl
 IMAGENET_MEAN = (0.485, 0.456, 0.406)

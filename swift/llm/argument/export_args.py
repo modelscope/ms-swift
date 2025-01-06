@@ -54,7 +54,6 @@ class ExportArguments(MergeArguments, BaseArguments):
     to_peft_format: bool = False
 
     def _init_output_dir(self):
-        suffix = None
         if self.output_dir is None:
             ckpt_dir = self.ckpt_dir or f'./{self.model_suffix}'
             ckpt_dir, ckpt_name = os.path.split(ckpt_dir)
