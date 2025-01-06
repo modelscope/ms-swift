@@ -27,7 +27,7 @@ def test_ppo():
     result = rlhf_main(
         RLHFArguments(
             rlhf_type='ppo',
-            model='Qwen/Qwen2.5-7B-Instruct',
+            model='LLM-Research/Meta-Llama-3.1-8B-Instruct',
             reward_model='AI-ModelScope/Skywork-Reward-Llama-3.1-8B-v0.2',
             dataset=['AI-ModelScope/alpaca-gpt4-data-zh#100', 'AI-ModelScope/alpaca-gpt4-data-en#100'],
             **kwargs))

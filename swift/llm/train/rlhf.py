@@ -32,10 +32,8 @@ class SwiftRLHF(SwiftSft):
             adapters = args.adapters if key == 'ref' else args.reward_adapters
             task_type = args.task_type if origin_key == 'ref' else 'seq_cls'
             # Be aware of the unexpected behavior caused by double monkey patching.
-            model, processor = args.get_model_processor(
-                model=model_id_or_path, model_type=model_type, model_revision=model_revision, task_type=task_type)
-            if origin_key == 'reward':
-                self.reward_template = args.get_template(processor, args.reward_template)
+            model = args.get_model_processor(
+                model=model_id_or_path, model_type=model_type, model_revision=model_revision, task_type=task_type)[0]
 
             model = prepare_adapter(args, model, adapters)
             if origin_key in {'ref', 'reward'}:
@@ -77,8 +75,6 @@ class SwiftRLHF(SwiftSft):
             model = getattr(self, key)
             if model:
                 trainer_kwargs[key] = model
-        if self.args.rlhf_type == 'ppo':
-            trainer_kwargs['reward_template'] = self.reward_template
         return trainer_kwargs
 
 
