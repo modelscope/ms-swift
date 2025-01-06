@@ -164,8 +164,23 @@ class Template(ProcessorMixin):
                 'The template does not support multi-round chat. Only use the last round of the conversation.')
             inputs.messages = inputs.messages[-2:]
 
+        if self.model_meta.is_multimodal:
+            self._replace_image_tags(inputs)
         if inputs.is_multimodal:
             self._add_default_tags(inputs)
+
+    def _replace_image_tags(inputs: StdTemplateInputs):
+        images = []
+        pattern = r'<img>(.+?)</img>'
+        for message in inputs.messages:
+            content = message['content']
+            if not isinstance(content, str):
+                continue
+            images += re.findall(pattern, content)
+            message['content'] = re.sub(pattern, '<image>', content)
+        if images:
+            assert not inputs.images, f'images: {images}, inputs.images: {inputs.images}'
+            inputs.images = images
 
     def _rlhf_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         chosen_inputs, rejected_inputs = inputs, deepcopy(inputs)
