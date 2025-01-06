@@ -214,7 +214,7 @@ def generate(
     attention_mask = queries != pad_token_id
     # input_ids = torch.masked_fill(queries, ~attention_mask, 0)
     output = lm_backbone.generate(
-        input_ids=input_ids,
+        input_ids=queries,
         attention_mask=attention_mask,
         generation_config=generation_config,
         return_dict_in_generate=True,
