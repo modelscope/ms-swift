@@ -169,6 +169,7 @@ class Template(ProcessorMixin):
         if inputs.is_multimodal:
             self._add_default_tags(inputs)
 
+    @staticmethod
     def _replace_image_tags(inputs: StdTemplateInputs):
         images = []
         pattern = r'<img>(.+?)</img>'
