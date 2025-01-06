@@ -14,7 +14,7 @@ from trl.models.utils import unwrap_model_for_generation
 from swift.llm.infer.protocol import ChatCompletionResponse, RequestConfig
 from swift.llm import load_dataset
 from swift.llm.template.template_inputs import StdTemplateInputs, InferRequest
-from swift.utils import get_logger
+from swift.utils import get_logger, get_dist_setting
 from .sft import SwiftSft
 from .rlhf import SwiftRLHF
 from .. import PtEngine
@@ -175,6 +175,7 @@ class SwiftRLFT(SwiftRLHF):
         trainer.train_dataset = origin_dataset
 
     def train(self, trainer):
+        _, local_rank, world_size, _ = get_dist_setting()
         logging_path = os.path.join(trainer.args.output_dir, 'logging.jsonl')
         logger.info(f'The logging file will be saved in: {logging_path}')
         self._prepare_rm()
@@ -183,31 +184,33 @@ class SwiftRLFT(SwiftRLHF):
         for _iter in range(self.args.num_rollout_iters):
             logger.info(f'Starting iter:{_iter}')
             iter_file = os.path.join(self.args.sampler_output, f'step_{_iter}.jsonl')
-            if os.path.exists(iter_file) and self.args.use_cache_dataset:
-                local_dataset = load_dataset(iter_file, split_dataset_ratio=0., **self.args.get_dataset_kwargs())
-                self.template.set_mode('rlhf' if self.args.rlft_type != 'causal_lm' else 'train')
-                new_dataset, _ = self._encode_dataset(local_dataset[0], None)
-            else:
+            if not os.path.exists(iter_file) or not self.args.use_cache_dataset:
                 train_dataloader = trainer.get_train_dataloader()
                 dumped_ds = []
-                new_dataset = []
 
                 for _index, batch in enumerate(train_dataloader):
                     self.template.set_mode('rlhf' if self.args.rlft_type != 'causal_lm' else 'train')
                     logger.info(f'Rolling out index:{_index}')
-                    new_data, origin = self.rollout(batch, trainer, _iter)
+                    _, origin = self.rollout(batch, trainer, _iter)
                     self.template.set_mode('train')
-                    new_dataset.extend(new_data)
                     dumped_ds.extend(origin)
                     if _index >= self.args.num_rollout_batches-1:
                         break
-                    
-                with open(iter_file, 'w') as f:
-                    f.writelines(dumped_ds)
+
+                if world_size > 1:
+                    from accelerate.utils import gather_object
+                    dumped_ds = gather_object(dumped_ds)
+
+                if local_rank <= 0:
+                    with open(iter_file, 'w') as f:
+                        f.writelines(dumped_ds)
+
             self.template.set_mode('rlhf' if self.args.rlft_type != 'causal_lm' else 'train')
+            local_dataset, _ = load_dataset(iter_file, split_dataset_ratio=0., **self.args.get_dataset_kwargs())
+            new_dataset, _ = self._encode_dataset(local_dataset, None)
             with SwiftRLFT.switch_dataset(trainer, new_dataset):
                 self.model.train()
-                trainer.train(trainer.args.resume_from_checkpoint)
+                trainer.train()
             self.template.set_mode('train')
 
         return self._save_trainer_state(trainer)
