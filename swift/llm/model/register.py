@@ -193,6 +193,8 @@ def get_model_tokenizer_from_local(model_dir: str,
         logger.info(f'model_kwargs: {model_kwargs}')
         model = automodel_class.from_pretrained(
             model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
+    if model_info.task_type == 'seq_cls' and 'SequenceClassification' not in model.__class__.__name__:
+        pass
 
     # fix not save modeling_xxx.py (transformers 4.45)
     # https://github.com/huggingface/transformers/issues/24737

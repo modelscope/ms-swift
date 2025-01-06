@@ -127,6 +127,8 @@ def _set_generation_config_default_value(model_generation_config: GenerationConf
 
 def prepare_generation_config(model_generation_config: GenerationConfig, request_config: RequestConfig,
                               tokenizer) -> GenerationConfig:
+    if model_generation_config is None or request_config is None:
+        return model_generation_config
     kwargs = {'max_new_tokens': request_config.max_tokens}
     # not use: 'n', 'best_of', 'frequency_penalty', 'presence_penalty'
     for key in ['length_penalty']:
