@@ -181,22 +181,28 @@ class SwiftRLFT(SwiftRLHF):
         os.makedirs(self.args.sampler_output, exist_ok=True)
         for _iter in range(self.args.num_rollout_iters):
             logger.info(f'Starting iter:{_iter}')
-            train_dataloader = trainer.get_train_dataloader()
-            dumped_ds = []
-            new_dataset = []
-            
-            for _index, batch in enumerate(train_dataloader):
+            iter_file = os.path.join(self.args.sampler_output, f'step_{_iter}.jsonl')
+            if os.path.exists(iter_file) and self.args.use_cache_dataset:
+                local_dataset = load_dataset(iter_file, split_dataset_ratio=0., **args.get_dataset_kwargs())
                 self.template.set_mode('rlhf')
-                logger.info(f'Rolling out index:{_index}')
-                new_data, origin = self.rollout(batch, trainer, _iter)
-                self.template.set_mode('train')
-                new_dataset.extend(new_data)
-                dumped_ds.extend(origin)
-                if _index >= self.args.num_rollout_batches-1:
-                    break
-                
-            with open(os.path.join(self.args.sampler_output, f'step_{_iter}.jsonl'), 'w') as f:
-                f.writelines(dumped_ds)
+                new_dataset, _ = self._encode_dataset(local_dataset, None)
+            else:
+                train_dataloader = trainer.get_train_dataloader()
+                dumped_ds = []
+                new_dataset = []
+
+                for _index, batch in enumerate(train_dataloader):
+                    self.template.set_mode('rlhf')
+                    logger.info(f'Rolling out index:{_index}')
+                    new_data, origin = self.rollout(batch, trainer, _iter)
+                    self.template.set_mode('train')
+                    new_dataset.extend(new_data)
+                    dumped_ds.extend(origin)
+                    if _index >= self.args.num_rollout_batches-1:
+                        break
+                    
+                with open(iter_file, 'w') as f:
+                    f.writelines(dumped_ds)
             self.template.set_mode('rlhf')
             with SwiftRLFT.switch_dataset(trainer, new_dataset):
                 self.model.train()

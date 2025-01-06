@@ -26,6 +26,8 @@ class RLFTArguments(RLHFArguments):
     start_threshold: float = 0.0
     end_threshold: float = -5.0
 
+    use_cache_dataset: bool = False
+
     def __post_init__(self):
         self.rlhf_type = self.rlft_type
         self.padding_side = 'left'
