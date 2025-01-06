@@ -6,7 +6,7 @@ import re
 from copy import deepcopy
 from dataclasses import asdict
 from functools import wraps
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import json
 import torch
@@ -454,20 +454,19 @@ class Template(ProcessorMixin):
         for context, loss_scale in zip(context_list, loss_scale_list):
             for k in ['image', 'video', 'audio']:
                 if context == f'<{k}>':
-                    idx = getattr(inputs, f'{k}_idx')
-                    c_list = self.replace_tag(k, idx, inputs)
-                    setattr(inputs, f'{k}_idx', idx + 1)
+                    c_list = self.replace_tag(k, getattr(inputs, f'{k}_idx'), inputs)
+                    setattr(inputs, f'{k}_idx', getattr(inputs, f'{k}_idx') + 1)
                     loss_scale = 0.
                     break
             else:
                 if context == '<ref-object>':
                     idx = inputs.object_idx
                     c_list = self.replace_object(inputs.objects[idx], idx, inputs)
-                    inputs.object_idx = idx + 1
+                    inputs.object_idx += 1
                 elif context == '<bbox>':
                     idx = inputs.box_idx
                     c_list = self.replace_box(inputs.objects[idx], idx, inputs)
-                    inputs.box_idx = idx + 1
+                    inputs.box_idx += 1
                 else:
                     c_list = [context]
             res += c_list
@@ -688,6 +687,21 @@ class Template(ProcessorMixin):
             val = inputs['generate_ids']
         for v in val:
             self.print_inputs({k: v.tolist()})
+
+    def replace_video2image(self, load_video_func, inputs, replace_tag: Callable) -> List[Context]:
+        context_list = []
+        if self.mode == 'pt':
+            video = inputs.videos[inputs.video_idx]
+        else:
+            video = inputs.videos.pop(inputs.video_idx)
+            inputs.video_idx -= 1
+        images = inputs.images
+        new_images = load_video_func(video)
+        inputs.images = images[:inputs.image_idx] + new_images + images[inputs.image_idx:]
+        for i in range(len(new_images)):
+            context_list += replace_tag(i)
+        inputs.image_idx += len(new_images)
+        return context_list
 
     def get_generate_ids(self, generate_ids: Union[torch.Tensor, List[int]],
                          num_prompt_tokens: int) -> Union[torch.Tensor, List[int]]:
