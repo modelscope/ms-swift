@@ -43,7 +43,6 @@ class CompatArguments:
                 return
             self.adapters.insert(0, self.ckpt_dir)
         else:
-            assert self.model is None, f'self.model: {self.model}'
             self.model = self.ckpt_dir
         self.ckpt_dir = None
         logger.warning('The `--ckpt_dir` parameter will be removed in `ms-swift>=3.2`. '
