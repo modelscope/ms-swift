@@ -33,19 +33,27 @@ def infer_multilora(infer_request: 'InferRequest', infer_backend: Literal['vllm'
     print(f'lora2-response: {response}')
 
 
-def infer_pt(infer_request: 'InferRequest'):
+def infer_lora(infer_request: 'InferRequest'):
+    request_config = RequestConfig(max_tokens=512, temperature=0)
     adapter_path = safe_snapshot_download('swift/test_lora')
     args = BaseArguments.from_pretrained(adapter_path)
-    engine = PtEngine(args.model, adapters=[adapter_path])
-    template = get_template(args.template, engine.tokenizer, args.system)
-    request_config = RequestConfig(max_tokens=512, temperature=0)
+    # method1
+    # engine = PtEngine(args.model, adapters=[adapter_path])
+    # template = get_template(args.template, engine.tokenizer, args.system)
+    # engine.default_template = template
 
-    # use lora
-    resp_list = engine.infer([infer_request], request_config, template=template)
-    response = resp_list[0].choices[0].message.content
-    print(f'lora-response: {response}')
     # method2
-    engine.default_template = template
+    # model, processor = args.get_model_processor()
+    # model = Swift.from_pretrained(model, adapter_path)
+    # template = args.get_template(processor)
+    # engine = PtEngine.from_model_template(model, template)
+
+    # method3
+    model, tokenizer = get_model_tokenizer(args.model)
+    model = Swift.from_pretrained(model, adapter_path)
+    template = get_template(args.template, tokenizer, args.system)
+    engine = PtEngine.from_model_template(model, template)
+
     resp_list = engine.infer([infer_request], request_config)
     response = resp_list[0].choices[0].message.content
     print(f'lora-response: {response}')
@@ -53,7 +61,8 @@ def infer_pt(infer_request: 'InferRequest'):
 
 if __name__ == '__main__':
     from swift.llm import (PtEngine, RequestConfig, AdapterRequest, get_template, BaseArguments, InferRequest,
-                           safe_snapshot_download)
+                           safe_snapshot_download, get_model_tokenizer)
+    from swift.tuners import Swift
     infer_request = InferRequest(messages=[{'role': 'user', 'content': '你是谁'}])
+    # infer_lora(infer_request)
     infer_multilora(infer_request, 'pt')
-    # infer_pt(infer_request)
