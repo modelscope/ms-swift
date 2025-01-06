@@ -100,6 +100,7 @@ class SwiftRLFT(SwiftRLHF):
 
     def rollout(self, data, trainer, step):
         with torch.no_grad():
+            self.model.eval()
             eos = [self.tokenizer.pad_token_id, self.tokenizer.eos_token_id]
             for s in self.splitter:
                 eos.extend(self.tokenizer.encode(s, add_special_tokens=False))
@@ -129,6 +130,7 @@ class SwiftRLFT(SwiftRLHF):
                         _messages[-1]['content'] = decoded
                         infer_requests.append(InferRequest(messages=_messages,
                                                             ground_truths=_data['ground_truth'][i]))
+                    _messages = deepcopy(messages)
                     _messages[-1]['content'] = _data['ground_truth'][i]
                     infer_requests.append(InferRequest(messages=_messages,
                                                             ground_truths=_data['ground_truth'][i]))
@@ -197,6 +199,7 @@ class SwiftRLFT(SwiftRLHF):
                 f.writelines(dumped_ds)
             self.template.set_mode('rlhf')
             with SwiftRLFT.switch_dataset(trainer, new_dataset):
+                self.model.train()
                 trainer.train(trainer.args.resume_from_checkpoint)
             self.template.set_mode('train')
 
@@ -209,7 +212,7 @@ def generate(
     """Code borrowed from trl"""
     context_length = queries.shape[1]
     attention_mask = queries != pad_token_id
-    input_ids = torch.masked_fill(queries, ~attention_mask, 0)
+    # input_ids = torch.masked_fill(queries, ~attention_mask, 0)
     output = lm_backbone.generate(
         input_ids=input_ids,
         attention_mask=attention_mask,
