@@ -256,18 +256,18 @@ class VllmEngine(InferEngine):
         return {'content': res}
 
     def _prepare_generation_config(self, request_config: RequestConfig) -> SamplingParams:
-        kwargs = {'max_tokens': request_config.max_tokens}
-        for key in ['temperature', 'top_k', 'top_p', 'repetition_penalty']:
+        import msgspec
+        kwargs = msgspec.structs.asdict(self.generation_config)
+        
+        for key in ['max_tokens', 'temperature', 'top_k', 'top_p', 'repetition_penalty']:
             new_value = getattr(request_config, key)
-            if new_value is None:
-                kwargs[key] = getattr(self.generation_config, key)
-            else:
+            if new_value:
                 kwargs[key] = new_value
 
         if request_config.logprobs:
-            kwargs['logprobs'] = 1
-            if request_config.top_logprobs is not None:
-                kwargs['logprobs'] = max(1, request_config.top_logprobs)
+            top_logprobs = request_config.top_logprobs or 1
+            kwargs['logprobs'] = max(1, top_logprobs)
+
 
         # TODO: beam search
         for key in ['n', 'best_of', 'frequency_penalty', 'presence_penalty', 'seed']:
