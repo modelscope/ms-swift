@@ -171,6 +171,7 @@ class Template(ProcessorMixin):
 
     @staticmethod
     def _replace_image_tags(inputs: StdTemplateInputs):
+        # compat
         images = []
         pattern = r'<img>(.+?)</img>'
         for message in inputs.messages:
