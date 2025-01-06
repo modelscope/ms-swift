@@ -161,19 +161,32 @@ class VllmEngine(InferEngine):
 
     def _load_generation_config(self) -> None:
         generation_config_path = os.path.join(self.model_dir, 'generation_config.json')
-        if os.path.isfile(generation_config_path):
-            generation_config = GenerationConfig.from_pretrained(self.model_dir)
-            kwargs = generation_config.to_dict()
-            max_new_tokens = kwargs.get('max_new_tokens')
-            if max_new_tokens is not None:
-                kwargs['max_tokens'] = max_new_tokens
-            parameters = inspect.signature(SamplingParams).parameters
-            for k, v in kwargs.copy().items():
-                if k not in parameters or v is None:
-                    kwargs.pop(k)
-            self.generation_config = SamplingParams(**kwargs)
-        else:
-            self.generation_config = SamplingParams()
+            if os.path.isfile(generation_config_path):
+                generation_config = GenerationConfig.from_pretrained(self.model_dir)
+                kwargs = generation_config.to_dict()
+                max_new_tokens = kwargs.get('max_new_tokens')
+                if max_new_tokens is not None:
+                    kwargs['max_tokens'] = max_new_tokens
+                parameters = inspect.signature(SamplingParams).parameters
+                for k, v in kwargs.copy().items():
+                    if k not in parameters or v is None:
+                        kwargs.pop(k)
+                        continue
+                    # Check if parameter class has from_optional method
+                    param_type = parameters[k].annotation
+                    
+                    if str(param_type).startswith('typing.Optional'):
+                        # Extract the actual type from Optional
+                        param_type = param_type.__args__[0]
+                    print(param_type)
+                    if hasattr(param_type, 'from_optional') and v is not None:
+                        kwargs[k] = param_type.from_optional(v)
+                        
+                self.generation_config = SamplingParams(**kwargs)
+                print("self.generation_config")
+                print(self.generation_config)
+            else:
+                self.generation_config = SamplingParams()
 
     def _add_stop_words(self, generation_config: SamplingParams, request_config: RequestConfig,
                         template_meta: TemplateMeta) -> None:
