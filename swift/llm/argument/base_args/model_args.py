@@ -125,19 +125,9 @@ class ModelArguments:
             self._init_rope_scaling()
         return self.model_info.torch_dtype
 
-    def _init_task_type(self):
-        if self.task_type is None:
-            if self.num_labels is None:
-                self.task_type = 'causal_lm'
-            else:
-                self.task_type = 'seq_cls'
-        if self.task_type == 'seq_cls':
-            assert self.num_labels is not None, 'Please set --num_labels <num_labels>.'
-
     def __post_init__(self):
         if self.model is None:
             raise ValueError(f'Please set --model <model_id_or_path>`, model: {self.model}')
-        self._init_task_type()
         self.model_suffix = get_model_name(self.model)
         self._init_device_map()
         self._init_torch_dtype()

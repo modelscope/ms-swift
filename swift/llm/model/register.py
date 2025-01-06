@@ -382,9 +382,15 @@ def get_model_info_meta(
         torch_dtype = model_meta.torch_dtype or get_default_torch_dtype(model_info.torch_dtype)
         logger.info(f'Setting torch_dtype: {torch_dtype}')
     model_info.torch_dtype = torch_dtype
-    if model_meta.is_reward:
-        task_type = 'seq_cls'
-        num_labels = 1
+    if task_type is None:
+        if model_meta.is_reward:
+            num_labels = 1
+        if num_labels is None:
+            task_type = 'causal_lm'
+        else:
+            task_type = 'seq_cls'
+        if task_type == 'seq_cls':
+            assert num_labels is not None, 'Please pass the parameter `num_labels`.'
     model_info.task_type = task_type
     model_info.num_labels = num_labels
 
@@ -409,7 +415,7 @@ def get_model_tokenizer(
         attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None,
         rope_scaling: Optional[Dict[str, Any]] = None,
         automodel_class=None,
-        task_type: Literal['causal_lm', 'seq_cls'] = 'causal_lm',
+        task_type: Literal['causal_lm', 'seq_cls'] = None,
         num_labels: Optional[int] = None,
         model_kwargs: Optional[Dict[str, Any]] = None,
         **kwargs) -> Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]:
