@@ -1,10 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import List, Union
 
-from swift.utils import patch_getattr
+from swift.utils import get_logger, get_model_parameter_info, patch_getattr
 from ..argument import RLHFArguments
 from .kto import prepare_kto_dataset
 from .sft import SwiftSft
+
+logger = get_logger()
 
 
 class SwiftRLHF(SwiftSft):
