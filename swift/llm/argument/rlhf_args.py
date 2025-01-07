@@ -1,13 +1,38 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from dataclasses import dataclass, field
-from typing import Literal, Optional
+from typing import List, Literal, Optional
 
 from swift.llm import MODEL_MAPPING
 from .train_args import TrainArguments
 
 
 @dataclass
-class RLHFArguments(TrainArguments):
+class PPOArguments:
+    reward_model: Optional[str] = None
+    reward_adapters: List[str] = field(default_factory=list)
+    reward_model_type: Optional[str] = field(
+        default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
+    reward_model_revision: Optional[str] = None
+
+    num_ppo_epochs: int = 4
+    whiten_rewards: bool = False
+    kl_coef: float = 0.05
+    cliprange: float = 0.2
+    vf_coef: float = 0.1
+    cliprange_value: float = 0.2
+    gamma: float = 1.0
+    lam: float = 0.95
+
+    num_mini_batches: int = 1
+    local_rollout_forward_batch_size: int = 64
+    num_sample_generations: int = 10
+    response_length: int = 512
+    temperature: float = 0.7
+    missing_eos_penalty: Optional[float] = None
+
+
+@dataclass
+class RLHFArguments(PPOArguments, TrainArguments):
     """
     RLHFArguments is a dataclass that holds arguments specific to the Reinforcement
         Learning with Human Feedback (RLHF) training backend.
@@ -25,7 +50,7 @@ class RLHFArguments(TrainArguments):
         desirable_weight (float): Weight for desirable outcomes in KTO. Default is 1.0.
         undesirable_weight (float): Weight for undesirable outcomes in KTO. Default is 1.0.
     """
-    rlhf_type: Literal['dpo', 'orpo', 'simpo', 'kto', 'cpo', 'rm'] = 'dpo'
+    rlhf_type: Literal['dpo', 'orpo', 'simpo', 'kto', 'cpo', 'rm', 'ppo'] = 'dpo'
     ref_model: Optional[str] = None
     ref_model_type: Optional[str] = field(
         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
@@ -48,6 +73,7 @@ class RLHFArguments(TrainArguments):
         self._init_simpo()
         self._set_default()
         super().__post_init__()
+        self._init_ppo()
 
         if self.rlhf_type in ['dpo', 'kto'] and self.train_type == 'full' or self.rlhf_type == 'ppo':
             self.ref_model = self.ref_model or self.model
@@ -55,6 +81,13 @@ class RLHFArguments(TrainArguments):
             self.ref_model_revision = self.ref_model_revision or self.model_revision
         elif self.ref_model is not None:
             raise ValueError('CPO/ORPO or LoRA training does not require a ref_model to be passed in.')
+
+    def _init_ppo(self):
+        if self.rlhf_type == 'ppo':
+            self.padding_side = 'left'
+            self.metric_for_best_model = None
+            self.training_args.metric_for_best_model = None
+            # TODO: streaming, MLLM
 
     def _init_simpo(self):
         if self.rlhf_type != 'simpo':

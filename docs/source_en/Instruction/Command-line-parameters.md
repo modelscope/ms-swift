@@ -50,7 +50,7 @@ The introduction to command line parameters will cover base arguments, atomic ar
 - 🔥max_pixels: Maximum pixel count for pre-processing images in multimodal models (H*W), default is no scaling.
 - tools_prompt: The list of tools for agent training converted to system format, refer to [Agent Training](./Agent-support.md), default is 'react_en'.
 - padding_side: The padding_side used when training with `batch_size >= 2`, with optional values of 'left' and 'right', defaulting to 'right'. (When the batch_size in `generate` is >= 2, only left padding is applied.)
-- loss_scale: How to add token loss weight during training. Default is `'default'`, meaning all responses (including history) are treated as 1 for cross-entropy loss. For specifics, see [Pluginization](../Customization/Pluginization.md) and [Agent Training](./Agent-support.md).
+- loss_scale: How to add token loss weight during training. Default is `'default'`, meaning all responses (including history) are treated as 1 for cross-entropy loss. The optional values are 'default', 'last_round', 'all', and the loss scale required by the agent: 'react', 'agentflan', 'alpha_umi', 'qwen'. For specifics, see [Pluginization](../Customization/Pluginization.md) and [Agent Training](./Agent-support.md).
 - sequence_parallel_size: Number of sequence parallelism. Refer to [example](https://github.com/modelscope/ms-swift/tree/main/examples/train/sequence_parallel/train.sh).
 - use_chat_template: Use chat template or generation template, default is `True`. `swift pt` is automatically set to the generation template.
 - template_backend: Use swift or jinja for inference. If using jinja, it will utilize transformers' `apply_chat_template`. Default is swift.
@@ -311,22 +311,46 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
 
 RLHF arguments inherit from the [training arguments](#training-arguments).
 
-- 🔥rlhf_type: Alignment algorithm type, supports `dpo`, `orpo`, `simpo`, `kto`, `cpo`, `rm`.
+- 🔥rlhf_type: Alignment algorithm type, supports `dpo`, `orpo`, `simpo`, `kto`, `cpo`, `rm`, `ppo`.
 - ref_model: Original comparison model in algorithms like DPO.
 - ref_model_type: Same as model_type.
 - ref_model_revision: Same as model_revision.
 
 - 🔥beta: KL regularization term coefficient, default is `None`, i.e., for `simpo` algorithm default is `2.`, for other algorithms default is `0.1`. Refer to the [documentation](./Human-alignment.md) for specifics.
 - label_smoothing: Whether to use DPO smoothing, default value is `0`, generally set between 0~0.5.
--
+
 - 🔥rpo_alpha: Weight for adding sft_loss in DPO, default is `1`. The final loss is `KL_loss + rpo_alpha * sft_loss`.
--
+
 - cpo_alpha: The coefficient of nll loss in CPO/SimPO loss, default is `1.`.
--
+
 - simpo_gamma: Reward margin term in SimPO algorithm, recommended to set between 0.5-1.5 in the paper, default is `1.`.
--
+
 - desirable_weight: Loss weight for desirable response in KTO algorithm $\lambda_D$, default is `1.`.
 - undesirable_weight: Loss weight for undesirable response in KTO paper $\lambda_U$, default is `1.`.
+
+#### PPO Arguments
+
+- reward_model: Defaults to None
+- reward_adapters: Defaults to `[]`
+- reward_model_type: Defaults to None
+- reward_model_revision: Defaults to None
+
+The meanings of the following parameters can be referenced [here](https://huggingface.co/docs/trl/main/ppo_trainer):
+
+- num_ppo_epochs: Defaults to 4
+- whiten_rewards: Defaults to False
+- kl_coef: Defaults to 0.05
+- cliprange: Defaults to 0.2
+- vf_coef: Defaults to 0.1
+- cliprange_value: Defaults to 0.2
+- gamma: Defaults to 1.0
+- lam: Defaults to 0.95
+- num_mini_batches: Defaults to 1
+- local_rollout_forward_batch_size: Defaults to 64
+- num_sample_generations: Defaults to 10
+- response_length: Defaults to 512
+- temperature: Defaults to 0.7
+- missing_eos_penalty: Defaults to None
 
 ### Inference Arguments
 
