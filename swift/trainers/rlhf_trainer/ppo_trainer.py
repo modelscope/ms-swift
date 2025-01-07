@@ -1,19 +1,18 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from contextlib import contextmanager
 
-import torch
 from torch.utils.data import DataLoader
 from transformers import PreTrainedModel
 from trl import PPOv2Trainer as HFPPOv2Trainer
 
 from swift.utils import patch_getattr
 from ..mixin import SwiftMixin
-from .rlhf_mixin import RLHFTrainerMixin
+
+ppo_trainer_init = HFPPOv2Trainer.__init__
+del HFPPOv2Trainer.__init__
 
 
 class PPOTrainer(SwiftMixin, HFPPOv2Trainer):
-    ppo_trainer_init = HFPPOv2Trainer.__init__
-    del HFPPOv2Trainer.__init__
 
     @staticmethod
     @contextmanager
@@ -36,7 +35,7 @@ class PPOTrainer(SwiftMixin, HFPPOv2Trainer):
                 for k, v in kwargs.items()
                 if k in ['train_dataset', 'data_collator', 'reward_model', 'value_model', 'eval_dataset']
             }
-            self.ppo_trainer_init(
+            ppo_trainer_init(
                 config=kwargs['args'], tokenizer=self.tokenizer, policy=model, ref_policy=ref_model, **new_kwargs)
         unwrap_model = self.accelerator.unwrap_model(self.model)
         patch_getattr(unwrap_model, 'policy')
