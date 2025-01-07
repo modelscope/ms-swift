@@ -1,6 +1,6 @@
-nproc_per_node=2
+nproc_per_node=4
 
-CUDA_VISIBLE_DEVICES=0,1 \
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=$nproc_per_node \
 swift rlhf \
     --rlhf_type ppo \
