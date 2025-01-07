@@ -18,6 +18,7 @@ from swift.llm import history_to_messages
 from swift.utils import get_logger
 
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
+DATASET_TEMP_DIR = None
 
 standard_keys = ['messages', 'rejected_response', 'label', 'images', 'videos', 'audios', 'tools', 'objects']
 
@@ -262,11 +263,13 @@ class RowPreprocessor:
         map_kwargs = {}
         if isinstance(dataset, HfDataset):
             if not is_caching_enabled():
-                tmp_dir = os.path.join(get_cache_dir(), 'tmp')
-                os.makedirs(tmp_dir, exist_ok=True)
-                tmp_dir = tempfile.TemporaryDirectory(dir=tmp_dir)
+                global DATASET_TEMP_DIR
+                if DATASET_TEMP_DIR is None:
+                    tmp_dir = os.path.join(get_cache_dir(), 'tmp')
+                    os.makedirs(tmp_dir, exist_ok=True)
+                    DATASET_TEMP_DIR = tempfile.TemporaryDirectory(dir=tmp_dir)
 
-                cache_file_name = os.path.join(tmp_dir.name, 'cache-' + generate_random_fingerprint() + '.arrow')
+                cache_file_name = os.path.join(DATASET_TEMP_DIR.name, 'cache-' + generate_random_fingerprint() + '.arrow')
                 map_kwargs['cache_file_name'] = cache_file_name
             map_kwargs['num_proc'] = num_proc
         with self._patch_arrow_writer():
