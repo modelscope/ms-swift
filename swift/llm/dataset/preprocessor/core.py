@@ -12,7 +12,6 @@ from datasets import Image
 from datasets import IterableDataset as HfIterableDataset
 from datasets import Value, is_caching_enabled
 from datasets.arrow_dataset import generate_random_fingerprint
-from modelscope.hub.utils.utils import get_cache_dir
 
 from swift.llm import history_to_messages
 from swift.utils import get_logger
@@ -262,16 +261,7 @@ class RowPreprocessor:
         dataset = self._cast_pil_image(dataset)
         map_kwargs = {}
         if isinstance(dataset, HfDataset):
-            if not is_caching_enabled():
-                global DATASET_TEMP_DIR
-                if DATASET_TEMP_DIR is None:
-                    tmp_dir = os.path.join(get_cache_dir(), 'tmp')
-                    os.makedirs(tmp_dir, exist_ok=True)
-                    DATASET_TEMP_DIR = tempfile.TemporaryDirectory(dir=tmp_dir)
 
-                cache_file_name = os.path.join(DATASET_TEMP_DIR.name,
-                                               'cache-' + generate_random_fingerprint() + '.arrow')
-                map_kwargs['cache_file_name'] = cache_file_name
             map_kwargs['num_proc'] = num_proc
         with self._patch_arrow_writer():
             try:
