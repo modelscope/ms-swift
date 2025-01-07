@@ -1,7 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import ast
-import os
-import tempfile
 from collections import Counter
 from contextlib import contextmanager
 from typing import Any, Callable, Dict, List, Optional, Union
@@ -10,14 +8,12 @@ import numpy as np
 from datasets import Dataset as HfDataset
 from datasets import Image
 from datasets import IterableDataset as HfIterableDataset
-from datasets import Value, is_caching_enabled
-from datasets.arrow_dataset import generate_random_fingerprint
+from datasets import Value
 
 from swift.llm import history_to_messages
 from swift.utils import get_logger
 
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
-DATASET_TEMP_DIR = None
 
 standard_keys = ['messages', 'rejected_response', 'label', 'images', 'videos', 'audios', 'tools', 'objects']
 
@@ -261,7 +257,6 @@ class RowPreprocessor:
         dataset = self._cast_pil_image(dataset)
         map_kwargs = {}
         if isinstance(dataset, HfDataset):
-
             map_kwargs['num_proc'] = num_proc
         with self._patch_arrow_writer():
             try:
