@@ -1,6 +1,6 @@
 if __name__ == '__main__':
     import os
-    os.environ['CUDA_VISIBLE_DEVICES'] = '2'
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
     os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 
 import os
@@ -236,7 +236,7 @@ class TestRun(unittest.TestCase):
         torch.cuda.empty_cache()
         # llm rlhf
         #
-        rlhf_types = ['dpo', 'orpo', 'simpo', 'kto', 'cpo']  # , 'rm', 'ppo'
+        rlhf_types = ['dpo', 'orpo', 'simpo', 'kto', 'cpo', 'rm', 'ppo']
         for rlhf_type in rlhf_types:
             dataset = ('AI-ModelScope/hh_rlhf_cn:harmless_base_cn#100'
                        if rlhf_type != 'kto' else 'AI-ModelScope/ultrafeedback-binarized-preferences-cleaned-kto#100')
@@ -289,7 +289,7 @@ class TestRun(unittest.TestCase):
             bool_var = use_swift_lora
             torch.cuda.empty_cache()
             output = sft_main([
-                '--model', 'Qwen/Qwen-7B-Chat', '--eval_steps', '5', '--dataset',
+                '--model', 'Qwen/Qwen-7B-Chat', '--save_steps', '5', '--dataset',
                 'AI-ModelScope/leetcode-solutions-python#200', '--output_dir', output_dir, '--gradient_checkpointing',
                 'true', '--max_new_tokens', '100', '--attn_impl', 'flash_attn', '--target_modules', 'all-linear',
                 '--seed', '0', '--lora_bias', 'all', '--modules_to_save', 'lm_head', '--use_swift_lora',
