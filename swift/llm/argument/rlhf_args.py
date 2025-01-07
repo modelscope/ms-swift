@@ -27,7 +27,7 @@ class PPOArguments:
     num_mini_batches: int = 1
     local_rollout_forward_batch_size: int = 64
     num_sample_generations: int = 10
-    response_length: int = 53
+    response_length: int = 512
     temperature: float = 0.7
     missing_eos_penalty: Optional[float] = None
 

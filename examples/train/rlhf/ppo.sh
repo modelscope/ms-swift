@@ -12,7 +12,7 @@ swift rlhf \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \
-    --learning_rate 1e-4 \
+    --learning_rate 1e-5 \
     --lora_rank 8 \
     --lora_alpha 32 \
     --target_modules all-linear \
@@ -25,4 +25,5 @@ swift rlhf \
     --output_dir output \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 4 \
-    --deepspeed zero2
+    --deepspeed zero2 \
+    --response_length 512
