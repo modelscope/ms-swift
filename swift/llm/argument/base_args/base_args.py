@@ -235,10 +235,9 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             else:
                 torch.cuda.set_device(self.local_rank)
 
-    def get_template(self, processor: 'Processor', template_type=None) -> 'Template':
+    def get_template(self, processor: 'Processor') -> 'Template':
         template_kwargs = self.get_template_kwargs()
-        template_type = template_type or self.template
-        template = get_template(template_type, processor, **template_kwargs)
+        template = get_template(self.template, processor, **template_kwargs)
         logger.info(f'default_system: {template.template_meta.default_system}')
         return template
 
