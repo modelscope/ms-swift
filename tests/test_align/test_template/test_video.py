@@ -75,6 +75,21 @@ def test_xcomposer2_5():
     assert response == std_response[:len(response)]
 
 
+def test_mplug3():
+    pt_engine = PtEngine('iic/mPLUG-Owl3-7B-240728')
+    # pt_engine = PtEngine('iic/mPLUG-Owl3-7B-241101')
+    _infer_model(pt_engine, system='')
+    pt_engine.default_template.template_backend = 'jinja'
+    _infer_model(pt_engine, system='')
+
+
+def test_minicpmv():
+    pt_engine = PtEngine('OpenBMB/MiniCPM-V-2_6')
+    _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    _infer_model(pt_engine)
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig, get_template
     from swift.utils import get_logger, seed_everything
@@ -82,4 +97,6 @@ if __name__ == '__main__':
     # test_qwen2_vl()
     # test_internvl2_5()
     # test_xcomposer2_5()
-    test_internvl2_5_mpo()
+    # test_internvl2_5_mpo()
+    test_mplug3()
+    test_minicpmv()
