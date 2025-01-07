@@ -27,8 +27,8 @@ def test_ppo():
     result = rlhf_main(
         RLHFArguments(
             rlhf_type='ppo',
-            model='LLM-Research/Meta-Llama-3.1-8B-Instruct',
-            reward_model='AI-ModelScope/Skywork-Reward-Llama-3.1-8B-v0.2',
+            model='LLM-Research/Llama-3.2-1B-Instruct',
+            reward_model='AI-ModelScope/GRM-Llama3.2-3B-rewardmodel-ft',
             dataset=['AI-ModelScope/alpaca-gpt4-data-zh#100', 'AI-ModelScope/alpaca-gpt4-data-en#100'],
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
