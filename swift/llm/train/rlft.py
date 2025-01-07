@@ -177,9 +177,9 @@ def _inner_training_loop(
 
     total_batched_samples = 0
 
-    for rollout_iter in num_rollout_iters:
+    for rollout_iter in range(num_rollout_iters):
         rollout_func(rollout_iter)
-        for epoch in range(epochs_trained, args.num_train_epochs):
+        for epoch in range(epochs_trained, int(args.num_train_epochs)):
             epoch_iterator = self.get_train_dataloader()
             if hasattr(epoch_iterator, "set_epoch"):
                 epoch_iterator.set_epoch(epoch)
@@ -315,7 +315,7 @@ def _inner_training_loop(
                     self.state.epoch = epoch + (step + 1 + steps_skipped) / steps_in_epoch
                     self.control = self.callback_handler.on_step_end(args, self.state, self.control)
 
-                    self._maybe_log_save_evaluate(tr_loss, grad_norm, model, trial, epoch, ignore_keys_for_eval)
+                    self._maybe_log_save_evaluate(tr_loss, grad_norm, model, trial, epoch, ignore_keys_for_eval, None)
                 else:
                     self.control = self.callback_handler.on_substep_end(args, self.state, self.control)
 
@@ -330,7 +330,7 @@ def _inner_training_loop(
                 self.control.should_training_stop = True
 
             self.control = self.callback_handler.on_epoch_end(args, self.state, self.control)
-            self._maybe_log_save_evaluate(tr_loss, grad_norm, model, trial, epoch, ignore_keys_for_eval)
+            self._maybe_log_save_evaluate(tr_loss, grad_norm, model, trial, epoch, ignore_keys_for_eval, None)
 
             if self.control.should_training_stop:
                 break
@@ -466,7 +466,10 @@ class SwiftRLFT(SwiftRLHF):
 
     def rollout(self, data, trainer, step):
         with torch.no_grad():
-            self.model.eval()
+            trainer.model_wrapped.eval()
+            trainer.model.eval()
+            if hasattr(trainer.optimizer, "eval") and callable(trainer.optimizer.eval):
+                trainer.optimizer.eval()
             eos = [self.tokenizer.pad_token_id, self.tokenizer.eos_token_id]
             for s in self.splitter:
                 eos.extend(self.tokenizer.encode(s, add_special_tokens=False))
@@ -482,7 +485,7 @@ class SwiftRLFT(SwiftRLHF):
 
             res = []
             origin = []
-            with unwrap_model_for_generation(self.model, trainer.accelerator) as unwrapped_model:
+            with unwrap_model_for_generation(trainer.model_wrapped, trainer.accelerator) as unwrapped_model:
                 generated = self.sampler(unwrapped_model, data, generation_config)
                 for i, gen in enumerate(generated):
                     _data = deepcopy(data)
@@ -501,7 +504,14 @@ class SwiftRLFT(SwiftRLHF):
                     infer_requests.append(InferRequest(messages=_messages,
                                                             ground_truths=_data['ground_truth'][i]))
                     orm_score = self._get_reward(self.orm_model, infer_requests)
-                    prm_score = self._get_reward(self.prm_model, infer_requests)
+                    from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
+                    if is_deepspeed_zero3_enabled():
+                        import deepspeed
+                        context = deepspeed.zero.GatheredParameters(self.prm_model.engine.parameters())
+                    else:
+                        context = nullcontext()
+                    with context:
+                        prm_score = self._get_reward(self.prm_model, infer_requests)
                     
                     if not any([score > 0 for score in orm_score]):
                         raise
@@ -542,7 +552,8 @@ class SwiftRLFT(SwiftRLHF):
     def rollout_or_load(self, _iter, trainer):
         _, local_rank, world_size, _ = get_dist_setting()
         logger.info(f'Starting iter:{_iter}')
-        trainer.train_dataset = trainer.origin_dataset
+        if hasattr(trainer, 'origin_dataset'):
+            trainer.train_dataset = trainer.origin_dataset.shuffle()
         iter_file = os.path.join(self.args.sampler_output, f'step_{_iter}.jsonl')
         if not os.path.exists(iter_file) or not self.args.use_cache_dataset:
             self.template.set_mode('train')
@@ -565,6 +576,10 @@ class SwiftRLFT(SwiftRLHF):
             if local_rank <= 0:
                 with open(iter_file, 'w') as f:
                     f.writelines(dumped_ds)
+            
+            if world_size > 1:
+                import torch.distributed as dist
+                dist.barrier()
 
         self.template.set_mode('rlhf' if self.args.rlft_type != 'causal_lm' else 'train')
         local_dataset, _ = load_dataset(iter_file, split_dataset_ratio=0., **self.args.get_dataset_kwargs())
@@ -576,7 +591,7 @@ class SwiftRLFT(SwiftRLHF):
         trainer._inner_training_loop = MethodType(
             partial(_inner_training_loop, num_rollout_iters=self.args.num_rollout_iters,
                     num_rollout_batches=self.args.num_rollout_batches,
-                    rollout_func=partial(self.rollout, trainer.train_dataset, trainer)), trainer)
+                    rollout_func=partial(self.rollout_or_load, trainer=trainer)), trainer)
 
         logging_path = os.path.join(trainer.args.output_dir, 'logging.jsonl')
         logger.info(f'The logging file will be saved in: {logging_path}')
