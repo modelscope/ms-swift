@@ -23,5 +23,5 @@ def infer_multilora(engine: InferClient, infer_request: InferRequest):
 
 if __name__ == '__main__':
     engine = InferClient(host='127.0.0.1', port=8000)
-    infer_request = InferRequest(messages=[{'role': 'user', 'content': '你是谁'}])
+    infer_request = InferRequest(messages=[{'role': 'user', 'content': 'who are you?'}])
     infer_multilora(engine, infer_request)

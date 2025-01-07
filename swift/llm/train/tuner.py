@@ -105,7 +105,7 @@ def get_target_modules(args, model) -> Union[str, List[str]]:
     return target_modules
 
 
-def get_modules_to_save(args, model):
+def get_modules_to_save(args, model, task_type=None):
     modules_to_save = args.modules_to_save.copy()
     if 'all-embedding' in args.modules_to_save:
         modules_to_save.remove('all-embedding')
@@ -113,6 +113,8 @@ def get_modules_to_save(args, model):
     if 'all-norm' in args.modules_to_save:
         modules_to_save.remove('all-norm')
         modules_to_save += find_norm(model)
+    if task_type and task_type.lower() == 'seq_cls':  # reward_model
+        modules_to_save.append('v_head')
     return modules_to_save
 
 
@@ -136,11 +138,12 @@ def get_vera_target_modules(model, config):
     return config
 
 
-def prepare_adapter(args: TrainArguments, model, *, template=None, train_dataset=None):
+def prepare_adapter(args: TrainArguments, model, *, template=None, train_dataset=None, task_type=None):
     from swift.tuners import (AdaLoraConfig, AdapterConfig, BOFTConfig, LLaMAProConfig, LongLoRAModelType, LoraConfig,
                               LoRAConfig, ReftConfig, Swift, VeraConfig)
+    task_type = (task_type or args.task_type).upper()
     target_modules = get_target_modules(args, model)
-    modules_to_save = get_modules_to_save(args, model)
+    modules_to_save = get_modules_to_save(args, model, task_type)
     lora_kwargs = {
         'r': args.lora_rank,
         'target_modules': target_modules,
@@ -153,7 +156,6 @@ def prepare_adapter(args: TrainArguments, model, *, template=None, train_dataset
         'lorap_lr_ratio': args.lorap_lr_ratio,
         'init_lora_weights': args.init_weights,
     }
-    task_type = args.task_type.upper()
     if args.train_type in ('lora', 'longlora'):
         if args.use_swift_lora:
             lora_config = LoRAConfig(lora_dtype=args.lora_dtype, **lora_kwargs)
@@ -329,14 +331,7 @@ def torchacc_resume_from_checkpoint(args, model):
 class TunerMixin:
 
     @classmethod
-    def prepare_model(
-        cls,
-        args,
-        model,
-        *,
-        template=None,
-        train_dataset=None,
-    ):
+    def prepare_model(cls, args, model, *, template=None, train_dataset=None, task_type=None):
         if args.use_liger:
             # Apply liger
             apply_liger(args.model_type)
@@ -361,7 +356,8 @@ class TunerMixin:
                     tuner: Tuner = extra_tuners[args.train_type]
                     model = tuner.prepare_model(args, model)
                 else:
-                    model = prepare_adapter(args, model, template=template, train_dataset=train_dataset)
+                    model = prepare_adapter(
+                        args, model, template=template, train_dataset=train_dataset, task_type=task_type)
             # fix bug: Attempting to unscale FP16 gradients.
             #   peft: https://github.com/huggingface/peft/issues/1249
             for p in model.parameters():

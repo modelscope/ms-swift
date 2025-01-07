@@ -43,7 +43,6 @@ class CompatArguments:
                 return
             self.adapters.insert(0, self.ckpt_dir)
         else:
-            assert self.model is None, f'self.model: {self.model}'
             self.model = self.ckpt_dir
         self.ckpt_dir = None
         logger.warning('The `--ckpt_dir` parameter will be removed in `ms-swift>=3.2`. '
@@ -236,13 +235,14 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             else:
                 torch.cuda.set_device(self.local_rank)
 
-    def get_template(self, processor: 'Processor') -> 'Template':
+    def get_template(self, processor: 'Processor', template_type=None) -> 'Template':
         template_kwargs = self.get_template_kwargs()
-        template = get_template(self.template, processor, **template_kwargs)
+        template_type = template_type or self.template
+        template = get_template(template_type, processor, **template_kwargs)
         logger.info(f'default_system: {template.template_meta.default_system}')
         return template
 
-    def get_model_processor(self, *, model=None, model_type=None, model_revision=None, **kwargs):
+    def get_model_processor(self, *, model=None, model_type=None, model_revision=None, task_type=None, **kwargs):
         if self.tuner_backend == 'unsloth':
             return load_by_unsloth(self)
         kwargs.update(self.get_model_kwargs())
@@ -250,5 +250,6 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         kwargs['model_id_or_path'] = model or self.model
         kwargs['model_type'] = model_type or self.model_type
         kwargs['model_revision'] = model_revision or self.model_revision
+        kwargs['task_type'] = task_type or self.task_type
 
         return get_model_tokenizer(**kwargs)
