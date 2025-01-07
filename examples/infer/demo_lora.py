@@ -63,6 +63,6 @@ if __name__ == '__main__':
     from swift.llm import (PtEngine, RequestConfig, AdapterRequest, get_template, BaseArguments, InferRequest,
                            safe_snapshot_download, get_model_tokenizer)
     from swift.tuners import Swift
-    infer_request = InferRequest(messages=[{'role': 'user', 'content': '你是谁'}])
+    infer_request = InferRequest(messages=[{'role': 'user', 'content': 'who are you?'}])
     # infer_lora(infer_request)
     infer_multilora(infer_request, 'pt')
