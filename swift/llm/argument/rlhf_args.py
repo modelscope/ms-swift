@@ -3,7 +3,6 @@ from dataclasses import dataclass, field
 from typing import List, Literal, Optional
 
 from swift.llm import MODEL_MAPPING
-from ..template import get_template_meta
 from .train_args import TrainArguments
 
 
