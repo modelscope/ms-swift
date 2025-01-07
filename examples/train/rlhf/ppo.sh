@@ -1,3 +1,4 @@
+# Currently, it only supports the case where the model and reward_model use the same template/tokenizer.
 nproc_per_node=4
 
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
