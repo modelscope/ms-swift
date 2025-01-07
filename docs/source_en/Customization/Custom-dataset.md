@@ -52,7 +52,7 @@ The following provides the recommended dataset format for ms-swift, where the sy
 
 ### RLHF
 
-#### DPO/ORPO/CPO/SimPO/RM/PPO
+#### DPO/ORPO/CPO/SimPO/RM
 
 ```jsonl
 {"messages": [{"role": "system", "content": "You are a useful and harmless assistant"}, {"role": "user", "content": "Tell me tomorrow's weather"}, {"role": "assistant", "content": "Tomorrow's weather will be sunny"}], "rejected_response": "I don't know"}
@@ -64,6 +64,14 @@ The following provides the recommended dataset format for ms-swift, where the sy
 ```jsonl
 {"messages": [{"role": "system", "content": "You are a useful and harmless assistant"}, {"role": "user", "content": "Tell me tomorrow's weather"}, {"role": "assistant", "content": "I don't know"}], "label": false}
 {"messages": [{"role": "system", "content": "You are a useful and harmless math calculator"}, {"role": "user", "content": "What is 1 + 1?"}, {"role": "assistant", "content": "It equals 2"}, {"role": "user", "content": "What about adding 1?"}, {"role": "assistant", "content": "It equals 3"}], "label": true}
+```
+
+#### PPO
+
+```jsonl
+{"messages": [{"role": "system", "content": "You are a useful and harmless assistant"}, {"role": "user", "content": "Tell me tomorrow's weather"}]}
+{"messages": [{"role": "system", "content": "You are a useful and harmless math calculator"}, {"role": "user", "content": "What is 1 + 1?"}, {"role": "assistant", "content": "It equals 2"}, {"role": "user", "content": "What about adding 1?"}]}
+{"messages": [{"role": "user", "content": "What is your name?"}]}
 ```
 
 ### Sequence Classification
