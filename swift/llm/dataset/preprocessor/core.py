@@ -269,7 +269,8 @@ class RowPreprocessor:
                     os.makedirs(tmp_dir, exist_ok=True)
                     DATASET_TEMP_DIR = tempfile.TemporaryDirectory(dir=tmp_dir)
 
-                cache_file_name = os.path.join(DATASET_TEMP_DIR.name, 'cache-' + generate_random_fingerprint() + '.arrow')
+                cache_file_name = os.path.join(DATASET_TEMP_DIR.name,
+                                               'cache-' + generate_random_fingerprint() + '.arrow')
                 map_kwargs['cache_file_name'] = cache_file_name
             map_kwargs['num_proc'] = num_proc
         with self._patch_arrow_writer():
