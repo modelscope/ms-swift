@@ -260,13 +260,15 @@ class RowPreprocessor:
         dataset = self.prepare_dataset(dataset)
         dataset = self._cast_pil_image(dataset)
         map_kwargs = {}
-        if not is_caching_enabled() and isinstance(dataset, HfDataset):
-            tmp_dir = os.path.join(get_cache_dir(), 'tmp')
-            os.makedirs(tmp_dir, exist_ok=True)
-            tmp_dir = tempfile.TemporaryDirectory(dir=tmp_dir)
+        if isinstance(dataset, HfDataset):
+            if not is_caching_enabled():
+                tmp_dir = os.path.join(get_cache_dir(), 'tmp')
+                os.makedirs(tmp_dir, exist_ok=True)
+                tmp_dir = tempfile.TemporaryDirectory(dir=tmp_dir)
 
-            cache_file_name = os.path.join(tmp_dir.name, 'cache-' + generate_random_fingerprint() + '.arrow')
-            map_kwargs.update({'num_proc': num_proc, 'cache_file_name': cache_file_name})
+                cache_file_name = os.path.join(tmp_dir.name, 'cache-' + generate_random_fingerprint() + '.arrow')
+                map_kwargs['cache_file_name'] = cache_file_name
+            map_kwargs['num_proc'] = num_proc
         with self._patch_arrow_writer():
             try:
                 dataset_mapped = dataset.map(
