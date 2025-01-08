@@ -2,7 +2,7 @@
 import os
 from dataclasses import dataclass
 from typing import Literal, Optional
-
+import torch.distributed as dist
 import torch
 
 from swift.utils import get_logger
@@ -44,6 +44,12 @@ class ExportArguments(MergeArguments, BaseArguments):
     to_ollama: bool = False
     gguf_file: Optional[str] = None
 
+    # megatron
+    to_megatron: bool = False
+    to_hf: bool = False
+    target_tensor_model_parallel_size: int = 1
+    target_pipeline_model_parallel_size: int = 1
+
     # push to ms hub
     push_to_hub: bool = False
     # 'user_name/repo_name' or 'repo_name'
@@ -65,6 +71,10 @@ class ExportArguments(MergeArguments, BaseArguments):
                 suffix = f'{self.quant_method}-int{self.quant_bits}'
             elif self.to_ollama:
                 suffix = 'ollama'
+            elif self.to_megatron:
+                suffix = f'tp{self.target_tensor_model_parallel_size}-pp{self.target_pipeline_model_parallel_size}'
+            elif self.to_hf:
+                suffix = 'hf'
             else:
                 return
 
@@ -81,6 +91,14 @@ class ExportArguments(MergeArguments, BaseArguments):
             raise ValueError('Please specify `--quant_bits`.')
         if self.quant_method in {'gptq', 'awq'} and self.torch_dtype is None:
             self.torch_dtype = torch.float16
+        if self.to_megatron or self.to_hf:
+            os.environ['RANK'] = '0'
+            os.environ['LOCAL_RANK'] = '0'
+            os.environ['WORLD_SIZE'] = '1'
+            os.environ['LOCAL_WORLD_SIZE'] = '1'
+            os.environ['MASTER_ADDR'] = '127.0.0.1'
+            os.environ['MASTER_PORT'] = os.environ.get('MASTER_PORT', '29500')
+            dist.init_process_group(backend='nccl')
 
         BaseArguments.__post_init__(self)
         self._init_output_dir()
