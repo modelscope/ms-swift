@@ -28,9 +28,10 @@ class SwiftRLHF(SwiftSft):
         mode = 'kto' if args.rlhf_type == 'kto' else 'rlhf'
         self.template.set_mode(mode)
 
-        if args.rlhf_type != 'orpo' or args.model_meta.is_multimodal:
+        if args.rlhf_type == 'orpo' and not args.model_meta.is_multimodal:
             # Avoid padding labels during the model's forward pass in multimodal models.
-            self.template.loss_scale = 'last_round'
+            args.loss_scale = 'default'
+        self.template.loss_scale = args.loss_scale
 
     @classmethod
     def prepare_model(cls, args, model, *_args, **kwargs):
