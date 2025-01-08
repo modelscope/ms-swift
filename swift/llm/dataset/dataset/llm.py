@@ -563,9 +563,15 @@ register_dataset(DatasetMeta(
     ms_dataset_id='modelscope/competition_math',
     subsets=[
         SubsetDataset(
-            name='default',
+            name='train',
             subset='default',
             split=['train'],
+            preprocess_func=CompetitionMathPreprocessor(),
+        ),
+        SubsetDataset(
+            name='test',
+            subset='default',
+            split=['test'],
             preprocess_func=CompetitionMathPreprocessor(),
         ),
         SubsetDataset(

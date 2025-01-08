@@ -581,6 +581,9 @@ class SwiftRLFT(SwiftRLHF):
                 import torch.distributed as dist
                 dist.barrier()
 
+        iter_file = [iter_file]
+        if _iter >= 1:
+            iter_file = [os.path.join(self.args.sampler_output, f'step_{_iter-1}.jsonl')] + iter_file
         self.template.set_mode('rlhf' if self.args.rlft_type != 'causal_lm' else 'train')
         local_dataset, _ = load_dataset(iter_file, split_dataset_ratio=0., **self.args.get_dataset_kwargs())
         new_dataset, _ = self._encode_dataset(local_dataset, None)
