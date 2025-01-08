@@ -27,7 +27,7 @@ logger = get_logger()
 kwargs = {
     'per_device_train_batch_size': 2,
     'per_device_eval_batch_size': 2,
-    'save_steps': 10,
+    'save_steps': 5,
     'gradient_accumulation_steps': 4,
     'num_train_epochs': 1,
 }
