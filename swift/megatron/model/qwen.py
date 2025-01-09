@@ -21,6 +21,10 @@ def convert_hf2megatron():
     pass
 
 
+def get_qwen_model_provider():
+    pass
+
+
 register_megatron_model(
     MegatronModelMeta(MegatronModelType.qwen, [
         ModelGroup([

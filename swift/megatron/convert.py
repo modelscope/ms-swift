@@ -1,9 +1,11 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
+from typing import Any, Dict
+
 import torch
 
 from swift.llm import ExportArguments, get_model_tokenizer
-from ..model import get_megatron_model_meta
+from .model import get_megatron_model_meta
 
 
 def convert_hf2megatron(args: ExportArguments) -> None:
@@ -14,7 +16,7 @@ def convert_hf2megatron(args: ExportArguments) -> None:
     kwargs['torch_dtype'] = torch.float32
     hf_model, processor = get_model_tokenizer(**kwargs)
     megatron_model_meta = get_megatron_model_meta(args.model)
-    megatron_model_meta.get_model_provider()
+    model_provider = megatron_model_meta.get_model_provider()
     megatron_model_meta.load_config(hf_model.model_info)
 
     initialize_megatron(args_defaults=extra_args)

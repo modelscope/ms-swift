@@ -27,10 +27,10 @@ class SwiftExport(SwiftPipeline):
             export_to_ollama(args)
         elif args.to_megatron:
             from swift.megatron import convert_hf2megatron
-            convert_hf_to_megatron(args)
+            convert_hf2megatron(args)
         elif args.to_hf:
-            from swift.megatron import convert_megatron_to_hf
-            convert_megatron_to_hf(args)
+            from swift.megatron import convert_megatron2hf
+            convert_megatron2hf(args)
         elif args.push_to_hub:
             model_dir = args.adapters and args.adapters[0] or args.model_dir
             assert model_dir, f'model_dir: {model_dir}'
