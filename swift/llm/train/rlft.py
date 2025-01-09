@@ -40,14 +40,14 @@ logger = get_logger()
 
 def _inner_training_loop(
         self, batch_size=None, args=None, resume_from_checkpoint=None, trial=None, ignore_keys_for_eval=None,
-        num_rollout_iters=50, num_rollout_batches=300, rollout_func=None
+        num_rollout_iters=10, num_rollout_batches=300, rollout_func=None
 ):
     self.accelerator.free_memory()
     self._train_batch_size = batch_size
     # Data loader and number of training steps
 
     total_train_batch_size = self._train_batch_size * args.gradient_accumulation_steps * args.world_size
-    max_steps = num_rollout_iters * num_rollout_batches // total_train_batch_size
+    max_steps = num_rollout_iters * num_rollout_batches // args.gradient_accumulation_steps
 
     # We need to reset the scheduler, as its parameters may be different on subsequent calls
     if self._created_lr_scheduler:
@@ -457,11 +457,11 @@ class SwiftRLFT(SwiftRLHF):
                 if min_val == 0:
                     constant_value = 0.0
                 else:
-                    constant_value = 0.5
+                    constant_value = min(1.0, min_val)
                 return np.full_like(arr, fill_value=constant_value, dtype=np.float64)
             normalized = (arr - min_val) / (max_val - min_val + 1e-5)
             return normalized
-        
+
         return normalize(arr)
 
     def rollout(self, data, trainer, step):
@@ -486,7 +486,7 @@ class SwiftRLFT(SwiftRLHF):
             res = []
             origin = []
             with unwrap_model_for_generation(trainer.model_wrapped, trainer.accelerator) as unwrapped_model:
-                generated = self.sampler(unwrapped_model, data, generation_config)
+                    generated = self.sampler(unwrapped_model, data, generation_config)
                 for i, gen in enumerate(generated):
                     _data = deepcopy(data)
                     messages = _data['_messages'][i]
@@ -498,27 +498,28 @@ class SwiftRLFT(SwiftRLHF):
                         _messages = deepcopy(messages)
                         _messages[-1]['content'] = decoded
                         infer_requests.append(InferRequest(messages=_messages,
-                                                            ground_truths=_data['ground_truth'][i]))
+                                                           ground_truths=_data['ground_truth'][i]))
                     _messages = deepcopy(messages)
                     _messages[-1]['content'] = _data['ground_truth'][i]
                     infer_requests.append(InferRequest(messages=_messages,
-                                                            ground_truths=_data['ground_truth'][i]))
+                                                       ground_truths=_data['ground_truth'][i]))
                     orm_score = self._get_reward(self.orm_model, infer_requests)
                     from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
                     if is_deepspeed_zero3_enabled():
                         import deepspeed
                         context = deepspeed.zero.GatheredParameters(self.prm_model.engine.parameters())
                     else:
-                        context = nullcontext()
+                        context = contextlib.nullcontext()
                     with context:
                         prm_score = self._get_reward(self.prm_model, infer_requests)
-                    
+
                     if not any([score > 0 for score in orm_score]):
                         raise
                     score = np.array(prm_score) + np.array(orm_score)
                     sorted_indices = np.argsort(score)
                     batch_decoded.append(_data['ground_truth'][i])
-                    logger.info(f'orm:{orm_score}, positive index: {sorted_indices[-1]}, negative index: {sorted_indices[0]}')
+                    logger.info(
+                        f'orm:{orm_score}, prm:{prm_score}, positive index: {sorted_indices[-1]}, negative index: {sorted_indices[0]}')
                     positive = batch_decoded[sorted_indices[-1]]
                     negative = batch_decoded[sorted_indices[0]]
                     messages[-1]['content'] = positive
@@ -576,14 +577,14 @@ class SwiftRLFT(SwiftRLHF):
             if local_rank <= 0:
                 with open(iter_file, 'w') as f:
                     f.writelines(dumped_ds)
-            
+
             if world_size > 1:
                 import torch.distributed as dist
                 dist.barrier()
 
         iter_file = [iter_file]
         if _iter >= 1:
-            iter_file = [os.path.join(self.args.sampler_output, f'step_{_iter-1}.jsonl')] + iter_file
+            iter_file = [os.path.join(self.args.sampler_output, f'step_{_iter - 1}.jsonl')] + iter_file
         self.template.set_mode('rlhf' if self.args.rlft_type != 'causal_lm' else 'train')
         local_dataset, _ = load_dataset(iter_file, split_dataset_ratio=0., **self.args.get_dataset_kwargs())
         new_dataset, _ = self._encode_dataset(local_dataset, None)
