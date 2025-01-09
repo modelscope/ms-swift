@@ -159,7 +159,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
                 result += res
                 i += max_batch_size
                 prog_bar.update(len(tasks_samples))
-            return self._update_metrics(res, metrics)
+            return self._update_metrics(result, metrics)
 
     def _get_toolcall(self,
                       response: Union[str, List[Dict[str, Any]]],
