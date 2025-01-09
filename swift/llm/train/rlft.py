@@ -2,6 +2,7 @@
 import contextlib
 import json
 import math
+import multiprocessing
 import os
 import shutil
 import time
@@ -550,7 +551,7 @@ class SwiftRLFT(SwiftRLHF):
         origin_dataset = origin_dataset.shuffle()
         trainer.train_dataset = origin_dataset
 
-    def rollout_or_load(self, _iter, trainer):
+    def rollout_or_load(self, _iter):
         _, local_rank, world_size, _ = get_dist_setting()
         logger.info(f'Starting iter:{_iter}')
         if hasattr(trainer, 'origin_dataset'):
@@ -604,6 +605,12 @@ class SwiftRLFT(SwiftRLHF):
         os.makedirs(self.args.sampler_output, exist_ok=True)
         trainer.train()
         return self._save_trainer_state(trainer)
+
+    def run(self):
+        for _iter in self.args.num_rollout_iters:
+            mp = multiprocessing.get_context('spawn')
+            process = mp.Process(target=self.rollout_or_load, args=(_iter,))
+            process.start()
 
 
 def generate(
