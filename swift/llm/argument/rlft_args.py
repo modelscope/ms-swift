@@ -35,5 +35,7 @@ class RLFTArguments(RLHFArguments):
     def __post_init__(self):
         self.rlhf_type = self.rlft_type
         self.padding_side = 'left'
+        if self.task == 'rollout':
+            self.rlhf_type = 'causal_lm'
         super().__post_init__()
         self.training_args.max_new_tokens = self.max_new_tokens

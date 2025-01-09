@@ -14,7 +14,7 @@ from transformers import PreTrainedModel
 from swift.llm.template.template_inputs import InferRequest
 from swift.utils import get_logger, get_dist_setting, get_model_parameter_info
 from .rlhf import SwiftRLHF
-from .. import PtEngine, VllmEngine, RequestConfig
+from .. import PtEngine, RequestConfig, LmdeployEngine
 from ..argument import RLFTArguments
 from ...plugin.orm import orms
 from ...plugin.prm import prms
@@ -95,24 +95,35 @@ class SwiftRLFT(SwiftRLHF):
 
     def rollout(self, data, trainer, step):
         infer_requests = []
-        for row in data:
-            infer_request = InferRequest(messages=row['_message'])
-            infer_requests.append(infer_request)
+        for messages in data["_messages"]:
+            messages = deepcopy(messages)
+            assert messages[0]['role'] == 'system'
+            assert messages[-1]['role'] == 'assistant' and messages[-1]['content'] is None
+            messages[0]['content'] = self.args.system
+            messages = messages[:-1]
+            infer_request = InferRequest(messages=messages)
+            for i in range(self.args.num_return_sequences):
+                infer_requests.append(infer_request)
+
         request_config = RequestConfig(
             max_tokens=self.args.max_new_tokens,
             temperature=self.step_temperature(step),
             top_k=self.args.top_k,
             top_p=self.args.top_p,
-            n=self.args.num_return_sequences,
+            # n=self.args.num_return_sequences,
         )
         res = []
         origin = []
-        resp_list = self.infer_engine.infer(infer_requests, request_config=request_config)
 
-        for i, resp in enumerate(resp_list):
+        resp_list = self.infer_engine.infer(infer_requests, request_config=request_config)
+        batch_decoded_all = []
+        for i in range(0, len(resp_list), self.args.num_return_sequences):
             batch_decoded = []
-            for choice in resp.choices:
-                batch_decoded.append(choice.message.content)
+            for j in range(i, i+self.args.num_return_sequences):
+                batch_decoded.append(resp_list[j].choices[0].message.content)
+            batch_decoded_all.append(batch_decoded)
+
+        for i, batch_decoded in enumerate(batch_decoded_all):
             _data = deepcopy(data)
             messages = _data['_messages'][i]
             assert messages[-1]['content'] is None
@@ -132,18 +143,18 @@ class SwiftRLFT(SwiftRLHF):
             if not any([score > 0 for score in orm_score]):
                 raise
 
-            if sum([score > 0 for score in orm_score]) - 1 >= int(self.args.num_return_sequences * 0.8):
-                continue
-            score = np.array(prm_score) + np.array(orm_score)
+            score = np.array(prm_score) + np.array(orm_score * 10)
             sorted_indices = np.argsort(score)
             batch_decoded.append(_data['ground_truth'][i])
             logger.info(
                 f'orm:{orm_score}, prm:{prm_score}, positive index: {sorted_indices[-1]}, negative index: {sorted_indices[0]}')
+            if sum([score > 0 for score in orm_score]) - 1 >= int(self.args.num_return_sequences * 0.8):
+                continue
             positive = batch_decoded[sorted_indices[-1]]
             negative = batch_decoded[sorted_indices[0]]
             messages[-1]['content'] = positive
             origin.append(json.dumps({'messages': messages, 'rejected_response': negative}) + '\n')
-            return res, origin
+        return origin
 
     def step_temperature(self, step):
         # Linear
@@ -178,7 +189,7 @@ class SwiftRLFT(SwiftRLHF):
             for _index, batch in enumerate(train_dataloader):
                 self.template.set_mode('rlhf' if self.args.rlft_type != 'causal_lm' else 'train')
                 logger.info(f'Rolling out index:{_index}')
-                _, origin = self.rollout(batch, trainer, _iter)
+                origin = self.rollout(batch, trainer, _iter)
                 self.template.set_mode('train')
                 dumped_ds.extend(origin)
                 if _index >= self.args.num_rollout_batches - 1:
@@ -196,26 +207,42 @@ class SwiftRLFT(SwiftRLHF):
                 import torch.distributed as dist
                 dist.barrier()
 
-    def _train(self, _iter, trainer):
-
     def train(self, trainer):
         logging_path = os.path.join(trainer.args.output_dir, 'logging.jsonl')
         logger.info(f'The logging file will be saved in: {logging_path}')
         trainer.train()
         return self._save_trainer_state(trainer)
 
+    def _prepare_model_tokenizer(self):
+        args = self.args
+        self.model, self.processor = args.get_model_processor(load_model = self.args.task != 'rollout')
+
+        if self.args.task != 'rollout':
+            if hasattr(self.model, 'hf_device_map'):
+                logger.info(f'model.hf_device_map: {self.model.hf_device_map}')
+
+            logger.info(f'model_info: {self.model.model_info}')
+
+            if getattr(self.model, 'generation_config', None):
+                self._prepare_generation_config()
+            self._prepare_gradient_checkpointing()
+
     def run(self):
         args = self.args
         if self.args.task == 'rollout':
-            self.template.set_mode('causal_lm')
+            self.template.set_mode('train')
         train_dataset, val_dataset = self._get_dataset()
         train_dataset, val_dataset = self._encode_dataset(train_dataset, val_dataset)
         data_collator = self._get_data_collator()
-        self.model = self.prepare_model(self.args, self.model, template=self.template, train_dataset=train_dataset)
-        logger.info(f'model: {self.model}')
-        model_parameter_info = get_model_parameter_info(self.model)
-        self.train_msg['model_parameter_info'] = model_parameter_info
-        logger.info(f'model_parameter_info: {model_parameter_info}')
+        if self.args.task == 'rollout':
+            from swift.llm import get_model_tokenizer
+            self.model = get_model_tokenizer('Qwen/Qwen2.5-0.5B-Instruct')[0]
+            self.model = self.prepare_model(self.args, self.model, template=self.template, train_dataset=train_dataset)
+        else:
+            logger.info(f'model: {self.model}')
+            model_parameter_info = get_model_parameter_info(self.model)
+            self.train_msg['model_parameter_info'] = model_parameter_info
+            logger.info(f'model_parameter_info: {model_parameter_info}')
 
         trainer_cls = TrainerFactory.get_trainer_cls(args)
         trainer = trainer_cls(
@@ -231,7 +258,7 @@ class SwiftRLFT(SwiftRLHF):
         if self.args.task == 'rollout':
             self._prepare_rm()
             self._prepare_sampler()
-            self.infer_engine = VllmEngine(self.args.model, gpu_memory_utilization=0.7)
+            self.infer_engine = LmdeployEngine(self.args.model, model_type=self.args.model_type)
             os.makedirs(self.args.sampler_output, exist_ok=True)
             self._rollout_or_load(self.args.iter, trainer)
         else:
