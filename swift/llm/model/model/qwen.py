@@ -336,6 +336,7 @@ register_model(
                     Model('Qwen/Qwen2-Math-72B', 'Qwen/Qwen2-Math-72B'),
                 ],
                 tags=['math']),
+            ModelGroup([Model('PowerInfer/SmallThinker-3B-Preview', 'PowerInfer/SmallThinker-3B-Preview')])
         ],
         TemplateType.qwen,
         get_model_tokenizer_with_flash_attn,

@@ -56,8 +56,9 @@ class JsonlWriter:
         else:
             obj_list = [obj]
         obj_list = check_json_format(obj_list)
-        for _obj in obj_list:
-            self._cache_text += f'{json.dumps(_obj, ensure_ascii=False)}\n'
+        for i, _obj in enumerate(obj_list):
+            obj_list[i] = json.dumps(_obj, ensure_ascii=False) + '\n'
+        self._cache_text = ''.join(obj_list)
 
         if len(self._cache_text) >= self.buffer_size:
             self._write_buffer()

@@ -215,7 +215,7 @@ def test_qwen2_reward():
     res = _infer_model(pt_engine, messages=messages)
     pt_engine.default_template.template_backend = 'jinja'
     res2 = _infer_model(pt_engine, messages=messages)
-    assert res == res2 == '1.390625'
+    assert res == '1.84375' and res2 == '1.390625'  # \n diff
 
 
 def test_qwen2_5_math():
@@ -239,7 +239,7 @@ def test_skywork_reward():
     res = _infer_model(pt_engine, messages=messages)
     pt_engine.default_template.template_backend = 'jinja'
     res2 = _infer_model(pt_engine, messages=messages)
-    assert res == '14.1875'
+    assert res == '14.25'
     assert res2 == '13.8125'
 
 

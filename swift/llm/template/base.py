@@ -6,7 +6,7 @@ import re
 from copy import deepcopy
 from dataclasses import asdict
 from functools import wraps
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import json
 import torch
@@ -108,9 +108,9 @@ class Template(ProcessorMixin):
             self.skip_prompt = False
 
         self.mode: Literal['pt', 'vllm', 'lmdeploy',  # infer
-                           'train', 'rlhf', 'kto'  # train
+                           'train', 'rlhf', 'kto',  # train
                            'seq_cls'] = 'pt'
-        if self.model_info.task_type != 'causal':
+        if self.model_info.task_type != 'causal_lm':
             self.mode = self.model_info.task_type
         self._handles = []
         self._deepspeed_initialize = None
@@ -164,8 +164,25 @@ class Template(ProcessorMixin):
                 'The template does not support multi-round chat. Only use the last round of the conversation.')
             inputs.messages = inputs.messages[-2:]
 
+        if self.model_meta.is_multimodal:
+            self._replace_image_tags(inputs)
         if inputs.is_multimodal:
             self._add_default_tags(inputs)
+
+    @staticmethod
+    def _replace_image_tags(inputs: StdTemplateInputs):
+        # compat
+        images = []
+        pattern = r'<img>(.+?)</img>'
+        for message in inputs.messages:
+            content = message['content']
+            if not isinstance(content, str):
+                continue
+            images += re.findall(pattern, content)
+            message['content'] = re.sub(pattern, '<image>', content)
+        if images:
+            assert not inputs.images, f'images: {images}, inputs.images: {inputs.images}'
+            inputs.images = images
 
     def _rlhf_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         chosen_inputs, rejected_inputs = inputs, deepcopy(inputs)
@@ -184,7 +201,7 @@ class Template(ProcessorMixin):
     def _kto_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         label, inputs.label = inputs.label, None
         encoded = self._rlhf_encode(inputs)
-        encoded['label'] = label
+        encoded['label'] = bool(label)
         return encoded
 
     def _seq_cls_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
@@ -206,12 +223,11 @@ class Template(ProcessorMixin):
             inputs = asdict(inputs)
 
         if isinstance(inputs, dict):
+            if not self.is_training:
+                InferRequest.remove_response(inputs['messages'])
             inputs = StdTemplateInputs.from_dict(inputs, tools_prompt=self.tools_prompt)
         elif isinstance(inputs, StdTemplateInputs):
             inputs = deepcopy(inputs)
-
-        if not self.is_training:
-            InferRequest.remove_response(inputs.messages)
 
         assert isinstance(inputs, StdTemplateInputs)
         self._preprocess_inputs(inputs)
@@ -460,20 +476,19 @@ class Template(ProcessorMixin):
         for context, loss_scale in zip(context_list, loss_scale_list):
             for k in ['image', 'video', 'audio']:
                 if context == f'<{k}>':
-                    idx = getattr(inputs, f'{k}_idx')
-                    c_list = self.replace_tag(k, idx, inputs)
-                    setattr(inputs, f'{k}_idx', idx + 1)
+                    c_list = self.replace_tag(k, getattr(inputs, f'{k}_idx'), inputs)
+                    setattr(inputs, f'{k}_idx', getattr(inputs, f'{k}_idx') + 1)
                     loss_scale = 0.
                     break
             else:
                 if context == '<ref-object>':
                     idx = inputs.object_idx
                     c_list = self.replace_object(inputs.objects[idx], idx, inputs)
-                    inputs.object_idx = idx + 1
+                    inputs.object_idx += 1
                 elif context == '<bbox>':
                     idx = inputs.box_idx
                     c_list = self.replace_box(inputs.objects[idx], idx, inputs)
-                    inputs.box_idx = idx + 1
+                    inputs.box_idx += 1
                 else:
                     c_list = [context]
             res += c_list
@@ -589,7 +604,7 @@ class Template(ProcessorMixin):
             context_list = prompt.copy()
             extra_context_list = []
             extra_context_type = None
-            if i < n_round - 1 or self.mode == 'seq_cls':
+            if i < n_round - 1:
                 # Not the last round.
                 context_list.append('{{RESPONSE}}')
                 extra_context_list = template_meta.chat_sep
@@ -696,6 +711,21 @@ class Template(ProcessorMixin):
         for v in val:
             self.print_inputs({k: v.tolist()})
 
+    def replace_video2image(self, load_video_func, inputs, replace_tag: Callable) -> List[Context]:
+        context_list = []
+        if self.mode == 'pt':
+            video = inputs.videos[inputs.video_idx]
+        else:
+            video = inputs.videos.pop(inputs.video_idx)
+            inputs.video_idx -= 1
+        images = inputs.images
+        new_images = load_video_func(video)
+        inputs.images = images[:inputs.image_idx] + new_images + images[inputs.image_idx:]
+        for i in range(len(new_images)):
+            context_list += replace_tag(i)
+        inputs.image_idx += len(new_images)
+        return context_list
+
     def get_generate_ids(self, generate_ids: Union[torch.Tensor, List[int]],
                          num_prompt_tokens: int) -> Union[torch.Tensor, List[int]]:
         if self.skip_prompt:
@@ -728,8 +758,6 @@ class Template(ProcessorMixin):
         return self.mode not in {'vllm', 'lmdeploy', 'pt'}
 
     def set_mode(self, mode: Literal['vllm', 'lmdeploy', 'pt', 'seq_cls', 'train', 'rlhf', 'kto']) -> None:
-        if mode == 'causal_lm':
-            mode = 'train'
         self.mode = mode
 
     def register_post_encode_hook(self, models: List[nn.Module]) -> None:

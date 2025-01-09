@@ -102,6 +102,14 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         )
 
     @staticmethod
+    def _update_usage_info(origin_use_info: UsageInfo, num_generated_tokens: int) -> UsageInfo:
+        return UsageInfo(
+            prompt_tokens=origin_use_info.prompt_tokens,
+            completion_tokens=origin_use_info.completion_tokens + num_generated_tokens,
+            total_tokens=origin_use_info.total_tokens + num_generated_tokens,
+        )
+
+    @staticmethod
     def _update_metrics(result, metrics: Optional[List[Metric]] = None):
         if metrics is None:
             return result
@@ -115,7 +123,6 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
                 metric.update(response)
         return result_origin
 
-    @torch.inference_mode()
     def infer(self,
               infer_requests: List[InferRequest],
               request_config: Optional[RequestConfig] = None,
@@ -175,7 +182,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
             else:
                 return input_ids.shape[-1]
         elif 'inputs_embeds' in inputs:  # 2d or 3d
-            return inputs['inputs_embeds'].shape[-1]
+            return inputs['inputs_embeds'].shape[-2]
         raise ValueError(f'Unable to retrieve input_ids and inputs_embeds. inputs: {inputs}')
 
     def set_default_max_tokens(self, request_config: RequestConfig, inputs: Dict[str, Any]) -> None:

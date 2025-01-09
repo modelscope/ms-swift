@@ -25,10 +25,7 @@ def patch_output_clone(module: torch.nn.Module):
     """Clone the output, to avoid the inplace problem"""
 
     def _clone_hook(module, input, output):
-        if module.training:
-            return output.requires_grad_(True).clone()
-        else:
-            return output.detach()
+        return output.requires_grad_(True).clone()
 
     module.register_forward_hook(_clone_hook)
 

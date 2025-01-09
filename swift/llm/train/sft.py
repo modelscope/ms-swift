@@ -72,6 +72,8 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
     def _prepare_template(self) -> None:
         template = self.args.get_template(self.processor)
+        if self.args.task_type == 'causal_lm':
+            template.set_mode('train')
         if template.use_model:
             template.model = self.model
         self.template = template
@@ -108,7 +110,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         args = self.args
 
         train_dataset, val_dataset = self._get_dataset()
-        if args.task_type == 'seq_cls' and isinstance(train_dataset, HfDataset):
+        if args.task_type == 'seq_cls' and isinstance(train_dataset, HfDataset) and 'label' in train_dataset.features:
             min_num_labels = int(max(train_dataset['label']) + 1)
             assert args.num_labels >= min_num_labels, (
                 f'args.num_labels: {args.num_labels}, min_num_labels: {min_num_labels}')
