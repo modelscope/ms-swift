@@ -324,7 +324,7 @@ class PtEngine(InferEngine):
 
         res = []
         num_return_sequences = generation_config.num_return_sequences
-        for i in range(inputs['input_ids'].shape[0]):
+        for i in range(inputs['attention_mask'].shape[0]):
             choices = []
             usage_info = self._get_usage_info(num_prompt_tokens, 0)
             for j in range(num_return_sequences):
