@@ -7,6 +7,7 @@ from megatron.training import get_args
 from megatron.training.initialize import initialize_megatron
 
 from swift.llm import ExportArguments, get_model_tokenizer
+from .argument import MegatronArguments
 from .model import get_megatron_model_meta
 
 
@@ -15,17 +16,13 @@ def convert_hf2megatron(args: ExportArguments) -> None:
     kwargs['torch_dtype'] = torch.float32
     hf_model, processor = get_model_tokenizer(**kwargs)
     megatron_model_meta = get_megatron_model_meta(args.model)
-    model_provider = megatron_model_meta.get_model_provider()
-    megatron_model_meta.load_config(hf_model.model_info)
+    mg_model = megatron_model_meta.get_model_provider()()
+    kwargs = megatron_model_meta.load_config(hf_model.model_info)
+    megatron_args = MegatronArguments(kwargs)
+    extra_args = megatron_args.parse_to_megatron()
 
     initialize_megatron(args_defaults=extra_args)
-    args = get_args()
-    model_provider, convert_module = get_megatron_model_convert(args.model_type)
-    mg_model = model_provider()
-    convert_module.convert_checkpoint_from_transformers_to_megatron(hf_model, mg_model, args)
-    if save_torch_dtype is not None:
-        mg_model.to(save_torch_dtype)
-    convert_module.save_mgmodel(mg_model, args)
+    megatron_model_meta.convert_hf2megatron(hf_model, mg_model)
 
 
 def convert_megatron2hf(

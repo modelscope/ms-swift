@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
 import importlib
+from typing import Any, Dict
 
 from megatron.training import get_args
 
@@ -11,7 +12,7 @@ from .register import MegatronModelMeta, register_megatron_model
 from .utils import get_model_provider
 
 
-def load_qwen_config(model_info: ModelInfo):
+def load_qwen_config(model_info: ModelInfo) -> Dict[str, Any]:
     args_config = load_config(model_info)
     args_config['swiglu'] = True
     return args_config
@@ -23,6 +24,8 @@ def convert_megatron2hf(hf_model, mg_model):
 
 def convert_hf2megatron(hf_model, mg_model):
     args = get_args()
+    mg_model.to(args.torch_dtype)
+    convert_module.save_mgmodel(mg_model, args)
 
 
 def get_qwen_model_provider():
