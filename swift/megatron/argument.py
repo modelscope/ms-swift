@@ -2,7 +2,7 @@
 import sys
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Literal, Optional, Tuple
-
+import inspect
 
 @dataclass
 class ExtraMegatronArguments:
@@ -107,6 +107,15 @@ class MegatronArguments(ExtraMegatronArguments, MegatronMixin):
         if self.lr_decay_iters is None and self.train_iters is not None and self.lr_warmup_iters is not None:
             self.lr_decay_iters = self.train_iters - self.lr_warmup_iters
 
+    def get_matched_kwargs(args):
+        args_dict = asdict(args)
+        parameters = inspect.signature(MegatronArguments.__init__).parameters
+
+        for k in list(args_dict.keys()):
+            if k not in parameters:
+                args_dict.pop(k)
+        return args_dict
+    
     def _args_to_argv(self) -> Tuple[List[Any], Dict[str, Any]]:
         new_args = []
         args_dict = asdict(self)

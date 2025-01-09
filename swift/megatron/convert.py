@@ -16,12 +16,14 @@ def convert_hf2megatron(args: ExportArguments) -> None:
     kwargs['torch_dtype'] = torch.float32
     hf_model, processor = get_model_tokenizer(**kwargs)
     megatron_model_meta = get_megatron_model_meta(args.model)
-    mg_model = megatron_model_meta.get_model_provider()()
     kwargs = megatron_model_meta.load_config(hf_model.model_info)
-    megatron_args = MegatronArguments(kwargs)
+    megatron_args = MegatronArguments(**kwargs, **MegatronArguments.get_matched_kwargs(args))
     extra_args = megatron_args.parse_to_megatron()
-
     initialize_megatron(args_defaults=extra_args)
+
+    mg_model = megatron_model_meta.get_model_provider()()
+
+
     megatron_model_meta.convert_hf2megatron(hf_model, mg_model)
 
 

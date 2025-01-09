@@ -49,4 +49,4 @@ register_megatron_model(
             Model('Qwen/Qwen2.5-32B-Instruct', 'Qwen/Qwen2.5-32B-Instruct'),
             Model('Qwen/Qwen2.5-72B-Instruct', 'Qwen/Qwen2.5-72B-Instruct'),
         ]),
-    ], convert_megatron2hf, convert_hf2megatron, get_model_provider, load_qwen_config))
+    ], convert_megatron2hf, convert_hf2megatron, get_qwen_model_provider, load_qwen_config))
