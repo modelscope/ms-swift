@@ -1,14 +1,9 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-
-import os
-import tempfile
-
-import datasets.config
 import datasets.fingerprint
 from datasets import disable_caching
-from modelscope.hub.utils.utils import get_cache_dir
 
 from swift.utils.torch_utils import _find_local_mac
+from ..utils import get_temporary_cache_files_directory
 from . import dataset
 from .loader import DATASET_TYPE, load_dataset
 from .media import MediaResource
@@ -16,7 +11,7 @@ from .preprocessor import (AlpacaPreprocessor, AutoPreprocessor, MessagesPreproc
                            RowPreprocessor, standard_keys)
 from .register import DATASET_MAPPING, DatasetMeta, register_dataset, register_dataset_info
 from .utils import (ConstantLengthDataset, EncodePreprocessor, GetLengthPreprocessor, LazyLLMDataset,
-                    PackingPreprocessor, get_temporary_cache_files_directory, sample_dataset)
+                    PackingPreprocessor, sample_dataset)
 
 _update_fingerprint = datasets.fingerprint.update_fingerprint
 _get_temporary_cache_files_directory = datasets.fingerprint.get_temporary_cache_files_directory

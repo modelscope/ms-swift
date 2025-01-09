@@ -20,8 +20,7 @@ from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import strtobool
 
 from swift.utils import get_dist_setting, get_logger, use_torchacc
-from ..dataset import get_temporary_cache_files_directory
-from ..utils import Processor, ProcessorMixin
+from ..utils import Processor, ProcessorMixin, get_temporary_cache_files_directory
 from .template_inputs import InferRequest, StdTemplateInputs, TemplateInputs
 from .utils import Context, ContextType, StopWordsCriteria, fetch_one, findall, split_str_parts_by
 from .vision_utils import load_image, normalize_bbox, rescale_image

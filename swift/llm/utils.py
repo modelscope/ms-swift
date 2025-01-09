@@ -2,11 +2,13 @@
 import inspect
 import os
 import shutil
+import tempfile
 from types import MethodType
 from typing import Any, Dict, List, Mapping, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
+from modelscope.hub.utils.utils import get_cache_dir
 from transformers import FeatureExtractionMixin, GenerationConfig, PreTrainedModel, PreTrainedTokenizerBase
 from transformers import ProcessorMixin as HfProcessorMixin
 
@@ -230,6 +232,7 @@ TEMP_DIR_POOL = {}
 
 def get_temporary_cache_files_directory(prefix=None):
     if prefix is None:
+        import datasets.config
         prefix = datasets.config.TEMP_CACHE_DIR_PREFIX
     global TEMP_DIR_POOL
     if prefix in TEMP_DIR_POOL:
