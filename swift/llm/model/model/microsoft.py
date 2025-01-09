@@ -178,7 +178,7 @@ register_model(
         LLMModelType.phi4,
         [
             ModelGroup([
-                Model('microsoft/phi-4', 'LLM-Research/phi-4'),
+                Model('LLM-Research/phi-4', 'microsoft/phi-4'),
             ]),
         ],
         TemplateType.phi4,
