@@ -75,6 +75,7 @@ class LLMModelType:
     phi3_small = 'phi3_small'
     phi3 = 'phi3'
     phi3_moe = 'phi3_moe'
+    phi4 = 'phi4'
 
     gemma = 'gemma'
     gemma2 = 'gemma2'

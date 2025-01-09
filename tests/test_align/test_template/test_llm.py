@@ -35,6 +35,13 @@ def test_qwen2_5():
     _infer_model(pt_engine)
 
 
+def test_phi4():
+    pt_engine = PtEngine('LLM-Research/phi-4')
+    _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    _infer_model(pt_engine)
+
+
 def test_qwen1half():
     pt_engine = PtEngine('Qwen/Qwen1.5-0.5B-Chat-GPTQ-Int4')
     _infer_model(pt_engine)
@@ -267,4 +274,5 @@ if __name__ == '__main__':
     # test_internlm2_reward()
     # test_qwen2_reward()
     # test_qwen2_5_math()
-    test_skywork_reward()
+    # test_skywork_reward()
+    test_phi4()
