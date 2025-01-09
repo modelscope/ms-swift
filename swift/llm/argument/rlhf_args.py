@@ -68,6 +68,9 @@ class RLHFArguments(PPOArguments, TrainArguments):
     desirable_weight: float = 1.0
     undesirable_weight: float = 1.0
 
+    # Use last_round by default
+    loss_scale: str = 'last_round'
+
     def __post_init__(self):
         self._init_rm()
         self._init_simpo()

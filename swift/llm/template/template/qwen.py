@@ -50,6 +50,12 @@ register_template(Qwen2_5MathTemplateMeta(LLMTemplateType.qwen2_5_math))
 class QwenVLTemplate(Template):
     load_images = False
 
+    @staticmethod
+    def _load_image(image, load_images: bool):
+        if not load_images and isinstance(image, str) and (image.startswith('data:') or len(image) > 200):
+            load_images = True
+        return Template._load_image(image, load_images)
+
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         assert media_type == 'image'
