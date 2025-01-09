@@ -413,6 +413,7 @@ The table below introduces the models integrated with ms-swift:
 |[LLM-Research/Phi-3-medium-128k-instruct](https://modelscope.cn/models/LLM-Research/Phi-3-medium-128k-instruct)|phi3|phi3|transformers>=4.36|-|[microsoft/Phi-3-medium-128k-instruct](https://huggingface.co/microsoft/Phi-3-medium-128k-instruct)|
 |[LLM-Research/Phi-3.5-mini-instruct](https://modelscope.cn/models/LLM-Research/Phi-3.5-mini-instruct)|phi3|phi3|transformers>=4.36|-|[microsoft/Phi-3.5-mini-instruct](https://huggingface.co/microsoft/Phi-3.5-mini-instruct)|
 |[LLM-Research/Phi-3.5-MoE-instruct](https://modelscope.cn/models/LLM-Research/Phi-3.5-MoE-instruct)|phi3_moe|phi3|transformers>=4.36|-|[microsoft/Phi-3.5-MoE-instruct](https://huggingface.co/microsoft/Phi-3.5-MoE-instruct)|
+|[microsoft/phi-4](https://modelscope.cn/models/microsoft/phi-4)|phi4|phi4|transformers>=4.36|-|[LLM-Research/phi-4](https://huggingface.co/LLM-Research/phi-4)|
 |[AI-ModelScope/gemma-2b-it](https://modelscope.cn/models/AI-ModelScope/gemma-2b-it)|gemma|gemma|transformers>=4.38|-|[google/gemma-2b-it](https://huggingface.co/google/gemma-2b-it)|
 |[AI-ModelScope/gemma-2b](https://modelscope.cn/models/AI-ModelScope/gemma-2b)|gemma|gemma|transformers>=4.38|-|[google/gemma-2b](https://huggingface.co/google/gemma-2b)|
 |[AI-ModelScope/gemma-7b](https://modelscope.cn/models/AI-ModelScope/gemma-7b)|gemma|gemma|transformers>=4.38|-|[google/gemma-7b](https://huggingface.co/google/gemma-7b)|

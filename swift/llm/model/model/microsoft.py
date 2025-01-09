@@ -178,7 +178,7 @@ register_model(
         LLMModelType.phi4,
         [
             ModelGroup([
-                Model('microsoft/phi-4', 'AI-ModelScope/phi-4'),
+                Model('microsoft/phi-4', 'LLM-Research/phi-4'),
             ]),
         ],
         TemplateType.phi4,

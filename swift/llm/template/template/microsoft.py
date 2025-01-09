@@ -107,11 +107,11 @@ register_template(Phi3TemplateMeta(LLMTemplateType.phi3))
 class Phi4TemplateMeta(TemplateMeta):
     prefix: Prompt = field(default_factory=list)
     prompt: Prompt = field(
-        default_factory=lambda: ['<|im_start|>user<|im_sep|>\n{{QUERY}}<|im_end|>\n<|im_start|>assistant<|im_sep|>\n'])
-    chat_sep: Optional[Prompt] = field(default_factory=lambda: ['<|im_end|>\n'])
+        default_factory=lambda: ['<|im_start|>user<|im_sep|>{{QUERY}}<|im_end|><|im_start|>assistant<|im_sep|>'])
+    chat_sep: Optional[Prompt] = field(default_factory=lambda: ['<|im_end|>'])
     suffix: Prompt = field(default_factory=lambda: ['<|im_end|>'])
     system_prefix: Optional[Prompt] = field(
-        default_factory=lambda: ['<|im_start|>system<|im_sep|>\n{{SYSTEM}}<|im_end|>\n'])
+        default_factory=lambda: ['<|im_start|>system<|im_sep|>{{SYSTEM}}<|im_end|>'])
     auto_add_bos: bool = True
 
 
