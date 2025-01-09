@@ -10,7 +10,7 @@ class RLFTArguments(RLHFArguments):
 
     rlft_type: Literal['causal_lm', 'dpo'] = 'dpo'
 
-    prm_model: str = "AI-ModelScope/GRM_Llama3.1_8B_rewardmodel-ft"
+    prm_model: str = "AI-ModelScope/GRM-llama3.2-3B-rewardmodel-ft"
     orm_model: Optional[str] = None
 
     # sample/mcts/dvts/xxx

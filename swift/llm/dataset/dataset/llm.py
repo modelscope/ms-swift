@@ -580,6 +580,12 @@ register_dataset(DatasetMeta(
             split=['train'],
             preprocess_func=CompetitionMathRLPreprocessor(),
         ),
+        SubsetDataset(
+            name='rl_test',
+            subset='default',
+            split=['test'],
+            preprocess_func=CompetitionMathRLPreprocessor(),
+        ),
     ],
     tags=['qa', 'math']))
 
