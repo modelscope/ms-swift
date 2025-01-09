@@ -52,7 +52,7 @@ class QwenVLTemplate(Template):
 
     @staticmethod
     def _load_image(image, load_images: bool):
-        if not load_images and isinstance(image, str) and (image.startswith('data:') or len(path) > 200):
+        if not load_images and isinstance(image, str) and (image.startswith('data:') or len(image) > 200):
             load_images = True
         return Template._load_image(image, load_images)
 
