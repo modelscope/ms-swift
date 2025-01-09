@@ -7,7 +7,10 @@ def hf2megatron():
     from swift.llm import export_main, ExportArguments
     export_main(
         ExportArguments(
-            model='Qwen/Qwen2.5-7B-Instruct', to_megatron=True, tensor_model_parallel_size=2, torch_dtype='bfloat16'))
+            model='Qwen/Qwen2.5-7B-Instruct',
+            to_megatron=True,
+            target_tensor_model_parallel_size=2,
+            torch_dtype='bfloat16'))
 
 
 def megatron2hf():

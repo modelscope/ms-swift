@@ -31,21 +31,19 @@ def _rename_files():
 
 def init_megatron_env() -> None:
     if 'MEGATRON_LM_PATH' not in os.environ:
-        megatron_path = git_clone_github('https://github.com/NVIDIA/Megatron-LM', branch='core_r0.10.0')
-    else:
-        megatron_path = os.environ['MEGATRON_LM_PATH']
+        os.environ['MEGATRON_LM_PATH'] = git_clone_github(
+            'https://github.com/NVIDIA/Megatron-LM', branch='core_r0.10.0')
     if not is_megatron_available():
-        subprocess_run(['pip', 'install', '-e', megatron_path])
-    sys.path.append(megatron_path)
+        subprocess_run(['pip', 'install', '-e', os.environ['MEGATRON_LM_PATH']])
+    sys.path.append(os.environ['MEGATRON_LM_PATH'])
 
     if 'PAI_MEGATRON_PATCH_PATH' not in os.environ:
-        megatron_patch_path = git_clone_github('https://github.com/alibaba/Pai-Megatron-Patch', commit_hash='v0.10.1')
-    else:
-        megatron_patch_path = os.environ['PAI_MEGATRON_PATCH_PATH']
-    sys.path.append(megatron_patch_path)
+        os.environ['PAI_MEGATRON_PATCH_PATH'] = git_clone_github(
+            'https://github.com/alibaba/Pai-Megatron-Patch', commit_hash='v0.10.1')
+    sys.path.append(os.environ['PAI_MEGATRON_PATCH_PATH'])
 
     # rename qwen1.5/2.5->qwen1_5/2_5 files
-    with safe_ddp_context():
+    with safe_ddp_context('rename_files'):
         _rename_files()
 
 

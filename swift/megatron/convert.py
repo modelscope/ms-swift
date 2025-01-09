@@ -25,3 +25,18 @@ def convert_hf2megatron(args: ExportArguments) -> None:
     if save_torch_dtype is not None:
         mg_model.to(save_torch_dtype)
     convert_module.save_mgmodel(mg_model, args)
+
+
+def convert_megatron2hf(
+    hf_model,
+    extra_args: Dict[str, Any],
+) -> None:
+    from megatron.training.initialize import initialize_megatron
+    from megatron.training import get_args
+    initialize_megatron(args_defaults=extra_args)
+    args = get_args()
+
+    model_provider, convert_module = get_megatron_model_convert(args.model_type)
+    convert_module.model_provider = model_provider
+    mg_model = convert_module.load_megatron_model(args)  # no copy
+    convert_module.convert_checkpoint_from_megatron_to_transformers(mg_model, hf_model, args)

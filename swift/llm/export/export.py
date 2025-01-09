@@ -26,7 +26,7 @@ class SwiftExport(SwiftPipeline):
         elif args.to_ollama:
             export_to_ollama(args)
         elif args.to_megatron:
-            from swift.megatron import convert_hf_to_megatron
+            from swift.megatron import convert_hf2megatron
             convert_hf_to_megatron(args)
         elif args.to_hf:
             from swift.megatron import convert_megatron_to_hf
