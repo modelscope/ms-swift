@@ -26,6 +26,10 @@ class RLFTArguments(RLHFArguments):
     start_threshold: float = 0.0
     end_threshold: float = -5.0
 
+    iter: int = 0
+
+    task: Literal['rollout', 'train'] = 'rollout'
+
     use_cache_dataset: bool = False
 
     def __post_init__(self):
