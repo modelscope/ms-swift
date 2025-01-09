@@ -537,7 +537,6 @@ register_dataset(
 register_dataset(
     DatasetMeta(
         ms_dataset_id='hjh0119/shareAI-Llama3-DPO-zh-en-emoji',
-        dataset_path='xxxxx',
         preprocess_func=ResponsePreprocessor(columns_mapping={
             'answer_zh': 'response',
             'answer_en': 'rejected_response'
