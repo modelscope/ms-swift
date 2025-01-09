@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from .dataset import (AlpacaPreprocessor, ResponsePreprocessor, MessagesPreprocessor, AutoPreprocessor,
                           DATASET_MAPPING, MediaResource, register_dataset, register_dataset_info, EncodePreprocessor,
                           LazyLLMDataset, ConstantLengthDataset, standard_keys, load_dataset, DATASET_TYPE,
-                          sample_dataset, RowPreprocessor, DatasetMeta)
+                          sample_dataset, RowPreprocessor, DatasetMeta, get_temporary_cache_files_directory)
     from .utils import (deep_getattr, to_device, History, Messages, history_to_messages, messages_to_history, Processor,
                         save_checkpoint, ProcessorMixin)
     from .base import SwiftPipeline
@@ -59,7 +59,8 @@ else:
         'dataset': [
             'AlpacaPreprocessor', 'MessagesPreprocessor', 'DATASET_MAPPING', 'MediaResource', 'register_dataset',
             'register_dataset_info', 'EncodePreprocessor', 'LazyLLMDataset', 'ConstantLengthDataset', 'standard_keys',
-            'load_dataset', 'DATASET_TYPE', 'sample_dataset', 'RowPreprocessor', 'ResponsePreprocessor', 'DatasetMeta'
+            'load_dataset', 'DATASET_TYPE', 'sample_dataset', 'RowPreprocessor', 'ResponsePreprocessor', 'DatasetMeta',
+            'get_temporary_cache_files_directory'
         ],
         'utils': [
             'deep_getattr', 'to_device', 'History', 'Messages', 'history_to_messages', 'messages_to_history',

@@ -20,6 +20,7 @@ from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import strtobool
 
 from swift.utils import get_dist_setting, get_logger, use_torchacc
+from ..dataset import get_temporary_cache_files_directory
 from ..utils import Processor, ProcessorMixin
 from .template_inputs import InferRequest, StdTemplateInputs, TemplateInputs
 from .utils import Context, ContextType, StopWordsCriteria, fetch_one, findall, split_str_parts_by
@@ -116,22 +117,21 @@ class Template(ProcessorMixin):
         self._deepspeed_initialize = None
 
     @staticmethod
-    def _load_images(images, load_images: bool) -> None:
-        for i, image in enumerate(images):
-            if load_images:
-                if isinstance(image, dict) and 'bytes' in image:
-                    image = image['bytes'] or image['path']
+    def _load_image(image, load_images: bool):
+        if load_images:
+            if isinstance(image, dict) and 'bytes' in image:
+                image = image['bytes'] or image['path']
+            image = load_image(image)
+        else:
+            if isinstance(image, dict):
+                path = image['path']
+                if path and (path.startswith('http') or os.path.exists(path)):
+                    image = path
+                else:
+                    image = load_image(image['bytes'])
+            elif not isinstance(image, str):
                 image = load_image(image)
-            else:
-                if isinstance(image, dict):
-                    path = image['path']
-                    if path and (path.startswith('http') or os.path.exists(path)):
-                        image = path
-                    else:
-                        image = load_image(image['bytes'])
-                elif not isinstance(image, str):
-                    image = load_image(image)
-            images[i] = image
+        return image
 
     def _preprocess_inputs(
         self,
@@ -143,7 +143,8 @@ class Template(ProcessorMixin):
         if self.max_pixels is not None or inputs.objects:
             load_images = True
         if images:
-            self._load_images(images, load_images)
+            for i, image in enumerate(images):
+                images[i] = self._load_image(images[i], load_images)
         if self.max_pixels is not None:
             assert self.grounding_type != 'real', 'not support'  # TODO:check
             images = [rescale_image(img, self.max_pixels) for img in images]
@@ -298,7 +299,8 @@ class Template(ProcessorMixin):
     def _save_pil_image(image: Image.Image) -> str:
         img_bytes = image.tobytes()
         img_hash = hashlib.sha256(img_bytes).hexdigest()
-        img_path = os.path.join('tmp', f'{img_hash}.png')
+        tmp_dir = get_temporary_cache_files_directory('images')
+        img_path = os.path.join(tmp_dir, f'{img_hash}.png')
         if not os.path.exists(img_path):
             image.save(img_path)
         return img_path

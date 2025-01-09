@@ -223,3 +223,21 @@ def save_checkpoint(model: Optional[PreTrainedModel],
             elif os.path.isdir(src_path):
                 shutil.copytree(src_path, tgt_path)
                 break
+
+
+TEMP_DIR_POOL = {}
+
+
+def get_temporary_cache_files_directory(prefix=None):
+    if prefix is None:
+        prefix = datasets.config.TEMP_CACHE_DIR_PREFIX
+    global TEMP_DIR_POOL
+    if prefix in TEMP_DIR_POOL:
+        TEMP_DIR = TEMP_DIR_POOL[prefix]
+    else:
+        tmp_dir = os.path.join(get_cache_dir(), 'tmp')
+        os.makedirs(tmp_dir, exist_ok=True)
+        TEMP_DIR = tempfile.TemporaryDirectory(prefix=prefix, dir=tmp_dir)
+        TEMP_DIR_POOL[prefix] = TEMP_DIR_POOL
+
+    return TEMP_DIR.name
