@@ -1,6 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
+
 def get_model_provider(gpt_model_cls, transformer_config_cls, layer_spec_module):
+
     def model_provider(pre_process=True, post_process=True):
         from megatron.training import get_args
         from megatron.training.arguments import core_transformer_config_from_args
@@ -23,5 +25,5 @@ def get_model_provider(gpt_model_cls, transformer_config_cls, layer_spec_module)
             rotary_base=args.rotary_base,
             seq_len_interpolation_factor=args.rotary_seq_len_interpolation_factor)
         return model
-    return model_provider
 
+    return model_provider

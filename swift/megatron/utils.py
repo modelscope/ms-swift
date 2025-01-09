@@ -9,10 +9,8 @@ import torch
 import torch.distributed as dist
 
 from swift.llm import LazyLLMDataset, Template, git_clone_github
-from swift.utils import (
-    append_to_jsonl, get_dist_setting, get_logger, is_master, subprocess_run,
-is_megatron_available, safe_ddp_context)
-
+from swift.utils import (append_to_jsonl, get_dist_setting, get_logger, is_master, is_megatron_available,
+                         safe_ddp_context, subprocess_run)
 
 logger = get_logger()
 
@@ -33,8 +31,7 @@ def _rename_files():
 
 def init_megatron_env() -> None:
     if 'MEGATRON_LM_PATH' not in os.environ:
-        megatron_path = git_clone_github(
-            'https://github.com/NVIDIA/Megatron-LM', branch='core_r0.10.0')
+        megatron_path = git_clone_github('https://github.com/NVIDIA/Megatron-LM', branch='core_r0.10.0')
     else:
         megatron_path = os.environ['MEGATRON_LM_PATH']
     if not is_megatron_available():
@@ -42,8 +39,7 @@ def init_megatron_env() -> None:
     sys.path.append(megatron_path)
 
     if 'PAI_MEGATRON_PATCH_PATH' not in os.environ:
-        megatron_patch_path = git_clone_github(
-            'https://github.com/alibaba/Pai-Megatron-Patch', commit_hash='v0.10.1')
+        megatron_patch_path = git_clone_github('https://github.com/alibaba/Pai-Megatron-Patch', commit_hash='v0.10.1')
     else:
         megatron_patch_path = os.environ['PAI_MEGATRON_PATCH_PATH']
     sys.path.append(megatron_patch_path)
@@ -51,6 +47,7 @@ def init_megatron_env() -> None:
     # rename qwen1.5/2.5->qwen1_5/2_5 files
     with safe_ddp_context():
         _rename_files()
+
 
 def patch_megatron(tokenizer):
 

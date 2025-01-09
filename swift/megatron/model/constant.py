@@ -1,3 +1,2 @@
-
 class MegatronModelType:
     qwen = 'qwen'

@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import Callable, List, Optional
 from dataclasses import dataclass
+from typing import Callable, List, Optional
+
 from swift.llm import ModelGroup
 from swift.llm.model.register import _get_matched_model_meta
 
@@ -17,6 +18,7 @@ class MegatronModelMeta:
     get_model_provider: Callable
     load_config: Callable
 
+
 def register_megatron_model(model_meta: MegatronModelMeta, *, exist_ok: bool = False):
     megatron_model_type = model_meta.megatron_model_type
     if not exist_ok and megatron_model_type in MEGATRON_MODEL_MAPPING:
@@ -27,4 +29,3 @@ def register_megatron_model(model_meta: MegatronModelMeta, *, exist_ok: bool = F
 
 def get_megatron_model_meta(model_id_or_path: str) -> Optional[MegatronModelMeta]:
     return _get_matched_model_meta(model_id_or_path, MEGATRON_MODEL_MAPPING)
-

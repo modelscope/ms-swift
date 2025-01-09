@@ -2,8 +2,9 @@
 import os
 from dataclasses import dataclass
 from typing import Literal, Optional
-import torch.distributed as dist
+
 import torch
+import torch.distributed as dist
 
 from swift.utils import get_logger
 from .base_args import BaseArguments, to_abspath

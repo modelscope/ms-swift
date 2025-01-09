@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from dataclasses import dataclass, field, asdict
-from typing import Optional, Literal, Dict, Any, Tuple, List
 import sys
+from dataclasses import asdict, dataclass, field
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 
 @dataclass

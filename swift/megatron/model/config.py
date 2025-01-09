@@ -1,5 +1,6 @@
+from typing import Any, Dict
+
 from swift.llm import ModelInfo
-from typing import Dict, Any
 
 config_mapping = {
     'num_layers': ['num_hidden_layers'],
@@ -13,6 +14,7 @@ config_mapping = {
     'padded_vocab_size': ['vocab_size'],
     'attention_dropout': ['attention_dropout']
 }
+
 
 def load_config(model_info: ModelInfo) -> Dict[str, Any]:
     model_config = model_info.config
