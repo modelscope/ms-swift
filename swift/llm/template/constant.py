@@ -59,6 +59,7 @@ class LLMTemplateType:
     wizardlm2_moe = 'wizardlm2_moe'
     gemma = 'gemma'
     phi3 = 'phi3'
+    phi4 = 'phi4'
 
     yuan = 'yuan'
     xverse = 'xverse'
