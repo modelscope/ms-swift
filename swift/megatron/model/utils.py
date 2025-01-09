@@ -1,11 +1,13 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
+from megatron.training import get_args
+from megatron.training.arguments import core_transformer_config_from_args
+
 
 def get_model_provider(gpt_model_cls, transformer_config_cls, layer_spec_module):
 
     def model_provider(pre_process=True, post_process=True):
-        from megatron.training import get_args
-        from megatron.training.arguments import core_transformer_config_from_args
+
         args = get_args()
         config = core_transformer_config_from_args(args, transformer_config_cls)
         transformer_layer_spec = layer_spec_module.get_gpt_layer_with_transformer_engine_spec(

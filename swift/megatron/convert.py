@@ -3,15 +3,14 @@
 from typing import Any, Dict
 
 import torch
+from megatron.training import get_args
+from megatron.training.initialize import initialize_megatron
 
 from swift.llm import ExportArguments, get_model_tokenizer
 from .model import get_megatron_model_meta
 
 
 def convert_hf2megatron(args: ExportArguments) -> None:
-
-    from megatron.training.initialize import initialize_megatron
-    from megatron.training import get_args
     kwargs = args.get_model_kwargs()
     kwargs['torch_dtype'] = torch.float32
     hf_model, processor = get_model_tokenizer(**kwargs)
@@ -33,8 +32,6 @@ def convert_megatron2hf(
     hf_model,
     extra_args: Dict[str, Any],
 ) -> None:
-    from megatron.training.initialize import initialize_megatron
-    from megatron.training import get_args
     initialize_megatron(args_defaults=extra_args)
     args = get_args()
 

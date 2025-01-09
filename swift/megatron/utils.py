@@ -7,6 +7,10 @@ from typing import Any, Dict, List, Mapping, Optional
 
 import torch
 import torch.distributed as dist
+from megatron.core import mpu
+from megatron.training import get_args, global_vars, initialize, training
+from megatron.training.utils import (average_losses_across_data_parallel_group, get_batch_on_this_cp_rank,
+                                     get_ltor_masks_and_position_ids)
 
 from swift.llm import LazyLLMDataset, Template, git_clone_github
 from swift.utils import (append_to_jsonl, get_dist_setting, get_logger, is_master, is_megatron_available,
@@ -53,7 +57,6 @@ def patch_megatron(tokenizer):
         args.extra_vocab_size = args.padded_vocab_size - tokenizer.vocab_size
         return tokenizer
 
-    from megatron.training import get_args, training, initialize, global_vars
     global_vars.build_tokenizer = build_tokenizer
 
     _old_initialize_distributed = initialize._initialize_distributed
@@ -114,9 +117,6 @@ def loss_func(loss_mask: torch.Tensor, output_tensor: torch.Tensor):
         loss_mask (torch.Tensor): Used to mask out some portions of the loss
         output_tensor (torch.Tensor): The tensor with the losses
     """
-    from megatron.training import get_args
-    from megatron.core import mpu
-    from megatron.training.utils import average_losses_across_data_parallel_group
     args = get_args()
 
     losses = output_tensor.float()
@@ -142,8 +142,6 @@ def loss_func(loss_mask: torch.Tensor, output_tensor: torch.Tensor):
 
 def get_batch_on_this_tp_rank(data_iterator):
     # copy from Megatron-LM and made some changes.
-    from megatron.training import get_args
-    from megatron.core import mpu
     args = get_args()
 
     def _broadcast(item):
@@ -241,7 +239,6 @@ def get_batch_on_this_tp_rank(data_iterator):
 
 
 def forward_step(data_iterator, model):
-    from megatron.training.utils import get_batch_on_this_cp_rank
     batch = get_batch_on_this_tp_rank(data_iterator)
     batch = get_batch_on_this_cp_rank(batch)
     tokens, labels, loss_mask, attention_mask, position_ids = batch.values()
@@ -252,9 +249,6 @@ def forward_step(data_iterator, model):
 def train_valid_test_datasets_provider(train_val_test_num_samples, train_dataset: LazyLLMDataset,
                                        val_dataset: LazyLLMDataset, template: Template):
     # train_val_test_num_samples: ignored
-    from megatron.training import training
-    from megatron.training.utils import get_ltor_masks_and_position_ids
-
     assert not hasattr(training, '_old_build_pretraining_data_loader')
     _old_build_pretraining_data_loader = training.build_pretraining_data_loader
 
