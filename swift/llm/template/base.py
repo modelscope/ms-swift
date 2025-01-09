@@ -299,7 +299,8 @@ class Template(ProcessorMixin):
     def _save_pil_image(image: Image.Image) -> str:
         img_bytes = image.tobytes()
         img_hash = hashlib.sha256(img_bytes).hexdigest()
-        tmp_dir = os.path.join(get_cache_dir(), 'images')
+        tmp_dir = os.path.join(get_cache_dir(), 'tmp', 'images')
+        logger.info_once(f'create tmp_dir: {tmp_dir}')
         os.makedirs(tmp_dir, exist_ok=True)
         img_path = os.path.join(tmp_dir, f'{img_hash}.png')
         if not os.path.exists(img_path):
