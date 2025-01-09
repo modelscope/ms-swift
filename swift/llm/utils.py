@@ -241,6 +241,6 @@ def get_temporary_cache_files_directory(prefix=None):
         tmp_dir = os.path.join(get_cache_dir(), 'tmp')
         os.makedirs(tmp_dir, exist_ok=True)
         TEMP_DIR = tempfile.TemporaryDirectory(prefix=prefix, dir=tmp_dir)
-        TEMP_DIR_POOL[prefix] = TEMP_DIR_POOL
+        TEMP_DIR_POOL[prefix] = TEMP_DIR
 
     return TEMP_DIR.name
