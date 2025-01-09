@@ -6,6 +6,7 @@ import re
 from copy import deepcopy
 from dataclasses import asdict
 from functools import wraps
+from modelscope.hub.utils.utils import get_cache_dir
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import json
@@ -20,7 +21,7 @@ from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import strtobool
 
 from swift.utils import get_dist_setting, get_logger, use_torchacc
-from ..utils import Processor, ProcessorMixin, get_temporary_cache_files_directory
+from ..utils import Processor, ProcessorMixin
 from .template_inputs import InferRequest, StdTemplateInputs, TemplateInputs
 from .utils import Context, ContextType, StopWordsCriteria, fetch_one, findall, split_str_parts_by
 from .vision_utils import load_image, normalize_bbox, rescale_image
@@ -298,7 +299,8 @@ class Template(ProcessorMixin):
     def _save_pil_image(image: Image.Image) -> str:
         img_bytes = image.tobytes()
         img_hash = hashlib.sha256(img_bytes).hexdigest()
-        tmp_dir = get_temporary_cache_files_directory('images-')
+        tmp_dir = os.path.join(get_cache_dir(), 'images')
+        os.makedirs(tmp_dir, exist_ok=True)
         img_path = os.path.join(tmp_dir, f'{img_hash}.png')
         if not os.path.exists(img_path):
             image.save(img_path)
