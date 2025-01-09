@@ -12,6 +12,7 @@ import json
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from modelscope.hub.utils.utils import get_cache_dir
 from peft import PeftModel
 from PIL import Image
 from torch.nn.utils.rnn import pad_sequence
@@ -116,22 +117,21 @@ class Template(ProcessorMixin):
         self._deepspeed_initialize = None
 
     @staticmethod
-    def _load_images(images, load_images: bool) -> None:
-        for i, image in enumerate(images):
-            if load_images:
-                if isinstance(image, dict) and 'bytes' in image:
-                    image = image['bytes'] or image['path']
+    def _load_image(image, load_images: bool):
+        if load_images:
+            if isinstance(image, dict) and 'bytes' in image:
+                image = image['bytes'] or image['path']
+            image = load_image(image)
+        else:
+            if isinstance(image, dict):
+                path = image['path']
+                if path and (path.startswith('http') or os.path.exists(path)):
+                    image = path
+                else:
+                    image = load_image(image['bytes'])
+            elif not isinstance(image, str):
                 image = load_image(image)
-            else:
-                if isinstance(image, dict):
-                    path = image['path']
-                    if path and (path.startswith('http') or os.path.exists(path)):
-                        image = path
-                    else:
-                        image = load_image(image['bytes'])
-                elif not isinstance(image, str):
-                    image = load_image(image)
-            images[i] = image
+        return image
 
     def _preprocess_inputs(
         self,
@@ -143,7 +143,8 @@ class Template(ProcessorMixin):
         if self.max_pixels is not None or inputs.objects:
             load_images = True
         if images:
-            self._load_images(images, load_images)
+            for i, image in enumerate(images):
+                images[i] = self._load_image(images[i], load_images)
         if self.max_pixels is not None:
             assert self.grounding_type != 'real', 'not support'  # TODO:check
             images = [rescale_image(img, self.max_pixels) for img in images]
@@ -298,7 +299,10 @@ class Template(ProcessorMixin):
     def _save_pil_image(image: Image.Image) -> str:
         img_bytes = image.tobytes()
         img_hash = hashlib.sha256(img_bytes).hexdigest()
-        img_path = os.path.join('tmp', f'{img_hash}.png')
+        tmp_dir = os.path.join(get_cache_dir(), 'tmp', 'images')
+        logger.info_once(f'create tmp_dir: {tmp_dir}')
+        os.makedirs(tmp_dir, exist_ok=True)
+        img_path = os.path.join(tmp_dir, f'{img_hash}.png')
         if not os.path.exists(img_path):
             image.save(img_path)
         return img_path
