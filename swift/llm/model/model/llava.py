@@ -334,7 +334,7 @@ register_model(
         MLLMModelType.llama3_llava_next,
         [
             ModelGroup([
-                Model('AI-Modelscope/llama3-llava-next-8b', 'lmms-lab/llama3-llava-next-8b'),
+                Model('AI-ModelScope/llama3-llava-next-8b', 'lmms-lab/llama3-llava-next-8b'),
             ], ),
         ],
         TemplateType.llama3_llava_next,
@@ -379,8 +379,8 @@ register_model(
     ModelMeta(
         MLLMModelType.llava_next_qwen, [
             ModelGroup([
-                Model('AI-Modelscope/llava-next-72b', 'lmms-lab/llava-next-72b'),
-                Model('AI-Modelscope/llava-next-110b', 'lmms-lab/llava-next-110b'),
+                Model('AI-ModelScope/llava-next-72b', 'lmms-lab/llava-next-72b'),
+                Model('AI-ModelScope/llava-next-110b', 'lmms-lab/llava-next-110b'),
             ], ),
         ],
         TemplateType.llava_next_qwen,

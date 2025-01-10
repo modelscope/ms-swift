@@ -30,10 +30,19 @@ class SwiftRLHF(SwiftSft):
             model_type = getattr(args, f'{key}_model_type')
             model_revision = getattr(args, f'{key}_model_revision')
             adapters = args.adapters if key == 'ref' else args.reward_adapters
-            task_type = args.task_type if origin_key == 'ref' else 'seq_cls'
+            if origin_key == 'ref':
+                task_type = args.task_type
+                num_labels = None
+            else:
+                task_type = 'seq_cls'
+                num_labels = 1
             # Be aware of the unexpected behavior caused by double monkey patching.
             model = args.get_model_processor(
-                model=model_id_or_path, model_type=model_type, model_revision=model_revision, task_type=task_type)[0]
+                model=model_id_or_path,
+                model_type=model_type,
+                model_revision=model_revision,
+                task_type=task_type,
+                num_labels=num_labels)[0]
 
             model = prepare_adapter(args, model, adapters)
             if origin_key in {'ref', 'reward'}:
