@@ -4,18 +4,18 @@ import os
 import sys
 import time
 import typing
+from collections import OrderedDict
 from dataclasses import fields
 from datetime import datetime
 from functools import wraps
-from typing import Any, Dict, List, OrderedDict, Type
+from typing import Any, Dict, List, Type
 
 import gradio as gr
 import json
 from gradio import Accordion, Audio, Button, Checkbox, Dropdown, File, Image, Slider, Tab, TabItem, Textbox, Video
 from modelscope.hub.utils.utils import get_cache_dir
 
-from swift.llm import TEMPLATE_MAPPING, BaseArguments
-from swift.llm.model.register import get_matched_model_meta
+from swift.llm import TEMPLATE_MAPPING, BaseArguments, get_matched_model_meta
 
 all_langs = ['zh', 'en']
 builder: Type['BaseUI'] = None
@@ -138,7 +138,7 @@ class BaseUI:
         timestamp = str(int(time.time()))
         key = key.replace('/', '-')
         filename = os.path.join(cls.cache_dir, key + '-' + timestamp)
-        with open(filename, 'w') as f:
+        with open(filename, 'w', encoding='utf-8') as f:
             json.dump(value, f)
 
     @classmethod
@@ -161,7 +161,7 @@ class BaseUI:
         timestamp = int(dt_object.timestamp())
         key = key.replace('/', '-')
         filename = key + '-' + str(timestamp)
-        with open(os.path.join(cls.cache_dir, filename), 'r') as f:
+        with open(os.path.join(cls.cache_dir, filename), 'r', encoding='utf-8') as f:
             return json.load(f)
 
     @classmethod
@@ -220,12 +220,12 @@ class BaseUI:
 
     @classmethod
     def valid_elements(cls):
+        valid_elements = OrderedDict()
         elements = cls.elements()
-        return {
-            key: value
-            for key, value in elements.items()
-            if isinstance(value, (Textbox, Dropdown, Slider, Checkbox)) and key != 'train_record'
-        }
+        for key, value in elements.items():
+            if isinstance(value, (Textbox, Dropdown, Slider, Checkbox)) and key != 'train_record':
+                valid_elements[key] = value
+        return valid_elements
 
     @classmethod
     def element_keys(cls):

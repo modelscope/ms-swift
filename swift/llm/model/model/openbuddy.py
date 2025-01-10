@@ -43,7 +43,7 @@ register_model(
             ],
                        requires=['transformers>=4.43']),
             ModelGroup(
-                [Model('OpenBuddy/openbuddy-llama3.3-70b-v24.1-131k', 'OpenBuddy/openbuddy-llama3.3-70b-v24.1-131k')],
+                [Model('OpenBuddy/openbuddy-llama3.3-70b-v24.3-131k', 'OpenBuddy/openbuddy-llama3.3-70b-v24.3-131k')],
                 requires=['transformers>=4.45'])
         ],
         TemplateType.openbuddy2,

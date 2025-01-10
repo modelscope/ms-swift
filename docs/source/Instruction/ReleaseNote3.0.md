@@ -6,7 +6,7 @@
 
 1. 数据集模块重构。数据集加载速度提升2-20倍，encode速度提升2-4倍，支持streaming模式
     - 移除了dataset_name机制，采用dataset_id、dataset_dir、dataset_path方式指定数据集
-    - 使用`--dataset_num_proc`支持多进程加速处理、使用`--load_from_cache_file true`支持使用数据前处理缓存
+    - 使用`--dataset_num_proc`支持多进程加速处理
     - 使用`--streaming`支持流式加载hub端和本地数据集
     - 支持`--packing`命令以获得更稳定的训练效率
     - 指定`--dataset <dataset_dir>`支持本地加载开源数据集
@@ -18,7 +18,6 @@
     - 采用messages格式作为入参接口
 4. 支持了plugin机制，用于定制训练过程，目前支持的plugin有：
     - callback 定制训练回调方法
-    - custom_trainer 定制trainer
     - loss 定制loss方法
     - loss_scale 定制每个token的权重
     - metric 定制交叉验证的指标
@@ -77,12 +76,11 @@
 2. 整体移除了2.x版本的examples目录，并添加了按功能类型划分的新examples
 3. 数据集格式完全向messages格式兼容，不再支持query/response/history格式
 4. merge_lora的存储目录可以通过`--output_dir`指定了，且merge_lora和量化不能在一个命令中执行，需要最少两个命令
-5. 移除了app-ui界面，并使用`swift web-ui --model xxx`进行替代，并支持了多模态界面部署
+5. 使用`swift app --model xxx`开启app-ui界面，支持了多模态界面推理
 6. 移除了AIGC的依赖以及对应的examples和训练代码
 
 ## 待完成
 
-1. RM/PPO能力3.0版本尚不支持，请使用2.6.1版本
-2. 自定义数据集评测3.0版本尚不支持，请使用2.6.1版本
-3. Megatron预训练能力3.0版本尚不支持，请使用2.6.1版本
-4. 文档和README，尤其是英文部分暂时未更新完整
+1. 自定义数据集评测3.0版本尚不支持，请使用2.6.1版本
+2. Megatron预训练能力3.0版本尚不支持，请使用2.6.1版本
+3. 文档和README暂时未更新完整

@@ -78,7 +78,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
 CUDA_VISIBLE_DEVICES=0 swift sft \
     --model Qwen/Qwen2-7B-Instruct \
     --train_type lora \
-    --dataset AI-ModelScope/alpaca-gpt4-data-zh#5000 \
+    --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#5000' \
     --quant_method bnb \
     --quant_bits 4 \
     --torch_dtype bfloat16
@@ -87,7 +87,7 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
 CUDA_VISIBLE_DEVICES=0 swift sft \
     --model Qwen/Qwen2-7B-Instruct \
     --train_type lora \
-    --dataset AI-ModelScope/alpaca-gpt4-data-zh#5000 \
+    --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#5000' \
     --quant_method hqq \
     --quant_bits 4
 
@@ -95,7 +95,7 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
 CUDA_VISIBLE_DEVICES=0 swift sft \
     --model Qwen/Qwen2-7B-Instruct \
     --train_type lora \
-    --dataset AI-ModelScope/alpaca-gpt4-data-zh#5000 \
+    --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#5000' \
     --quant_method eetq \
     --torch_dtype float16
 ```

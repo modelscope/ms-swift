@@ -85,7 +85,7 @@ class RLHFTrainerMixin:
             if self.ref_model is not None:
                 disable_dropout_in_model(self.ref_model)
 
-        self.is_encoder_decoder = args.is_encoder_decoder
+        self.is_encoder_decoder = kwargs['template'].is_encoder_decoder
         self.aux_loss_enabled = getattr(model.config, 'output_router_logits', False)
         self._peft_has_been_casted_to_bf16 = False
         self.generate_during_eval = getattr(args, 'generate_during_eval', False)
@@ -150,7 +150,7 @@ class RLHFTrainerMixin:
             labels = labels.clone()  # fix trl bug
         return super().get_batch_logps(logits, labels, *args, **kwargs)
 
-    def compute_loss(self, model, inputs, return_outputs=None, num_items_in_batch=None):
+    def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         res = super().compute_loss(model, inputs, return_outputs=return_outputs)
         # compat transformers>=4.46.*
         if num_items_in_batch is not None:

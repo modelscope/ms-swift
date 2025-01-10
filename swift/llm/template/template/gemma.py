@@ -1,21 +1,27 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import Any, Dict, List, Literal
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Literal, Optional
 
 from swift.utils import upper_bound
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
-from ..utils import Context
+from ..utils import Context, Prompt
 
-register_template(
-    TemplateMeta(
-        LLMTemplateType.gemma,
-        prefix=['<bos>'],
-        prompt=['<start_of_turn>user\n{{QUERY}}<end_of_turn>\n<start_of_turn>model\n'],
-        chat_sep=['<end_of_turn>\n'],
-        suffix=['<end_of_turn>'],
-        system_prefix=['<bos><start_of_turn>system\n{{SYSTEM}}<end_of_turn>\n']))
+
+@dataclass
+class GemmaTemplateMeta(TemplateMeta):
+    prefix: Prompt = field(default_factory=lambda: ['<bos>'])
+    prompt: Prompt = field(
+        default_factory=lambda: ['<start_of_turn>user\n{{QUERY}}<end_of_turn>\n<start_of_turn>model\n'])
+    chat_sep: Optional[Prompt] = field(default_factory=lambda: ['<end_of_turn>\n'])
+    suffix: Prompt = field(default_factory=lambda: ['<end_of_turn>'])
+    system_prefix: Optional[Prompt] = field(
+        default_factory=lambda: ['<bos><start_of_turn>system\n{{SYSTEM}}<end_of_turn>\n'])
+
+
+register_template(GemmaTemplateMeta(LLMTemplateType.gemma))
 
 
 class PaliGemmaTemplate(Template):
@@ -41,8 +47,8 @@ class PaliGemmaTemplate(Template):
         else:
             encoded['token_type_ids'] = [0] * len(encoded['input_ids'])
         if raw_image:
-            model_inputs = processor(text=inputs.to_history()['query'], images=raw_image[0], return_tensors='pt')
-            encoded['pixel_values'] = model_inputs['pixel_values']
+            model_inputs = processor(text='<image>' * len(raw_image), images=raw_image, return_tensors='pt')
+            encoded['pixel_values'] = model_inputs['pixel_values'].to(self.config.torch_dtype)
         return encoded
 
 

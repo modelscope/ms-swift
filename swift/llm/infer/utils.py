@@ -7,7 +7,7 @@ from typing import List, Literal, Optional
 from swift.plugin import extra_tuners
 from swift.tuners import Swift
 from swift.utils import get_logger
-from ..template import Messages
+from ..utils import Messages
 
 logger = get_logger()
 
@@ -118,7 +118,7 @@ class InferCliState:
         return query
 
 
-def _prepare_adapter(args, model):
+def prepare_adapter(args, model, adapters=None):
     if args.tuner_backend == 'unsloth':
         if args.model_meta.is_multimodal:
             from unsloth import FastVisionModel as UnslothModel
@@ -131,7 +131,7 @@ def _prepare_adapter(args, model):
     else:
         tuner = Swift
     # compat deploy
-    adapters = getattr(args, 'pre_adapters', None) or args.adapters
+    adapters = adapters or args.adapters
     for adapter in adapters:
         model = tuner.from_pretrained(model, adapter)
     if args.train_type == 'bone':
@@ -142,6 +142,6 @@ def _prepare_adapter(args, model):
 
 def prepare_model_template(args, **kwargs):
     model, processor = args.get_model_processor(**kwargs)
-    model = _prepare_adapter(args, model)
+    model = prepare_adapter(args, model)
     template = args.get_template(processor)
     return model, template

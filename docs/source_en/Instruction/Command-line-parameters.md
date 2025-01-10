@@ -1,6 +1,6 @@
 # Command Line Parameters
 
-The introduction to command line parameters will cover base arguments, atomic arguments, and integration arguments. The final list of arguments used in the command line is the integration arguments. The integration arguments inherit from the base arguments and some atomic arguments.
+The introduction to command line parameters will cover base arguments, atomic arguments, and integrated arguments, and specific model arguments. The final list of arguments used in the command line is the integration arguments. Integrated arguments inherit from basic arguments and some atomic arguments. Specific model arguments are designed for specific models and can be set using `--model_kwargs'` or the environment variable.
 
 ## Base Arguments
 
@@ -8,7 +8,7 @@ The introduction to command line parameters will cover base arguments, atomic ar
 - 🔥train_type: Default is 'lora'. Optional values: 'lora', 'full', 'longlora', 'adalora', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft', 'reft'
 - 🔥adapters: A list used to specify the ID/path of the adapter, default is `[]`.
 - seed: Default is 42
-- model_kwargs: Extra parameters specific to the model. This parameter list will be logged during training for reference.
+- model_kwargs: Extra parameters specific to the model. This parameter list will be logged during training for reference, for example, `--model_kwargs '{"fps_max_frames": 12}'`.
 - load_args: When `--resume_from_checkpoint`, `--model`, or `--adapters` is specified, it will read the `args.json` file from the saved checkpoint and assign values to the `BaseArguments` that are defaulted to None (excluding DataArguments and GenerationArguments). These can be overridden by manually passing in values. The default is `True`.
 - load_data_args: If this parameter is set to True, it will additionally read the data parameters. The default is `False`.
 - use_hf: Default is False. Controls model and dataset downloading, and model pushing to the hub.
@@ -16,12 +16,13 @@ The introduction to command line parameters will cover base arguments, atomic ar
 - custom_register_path: The file path for the custom model, chat template, and dataset registration `.py` files.
 
 ### Model Arguments
-
 - 🔥model: Model ID or local path to the model. If it's a custom model, please use it with `model_type` and `template`. The specific details can be referred to in the [Custom Model](../Customization/Custom-model.md).
 - model_type: Model type. The same model architecture, template, and loading process define a model_type.
 - model_revision: Model version.
 - 🔥torch_dtype: Data type for model weights, supports `float16`, `bfloat16`, `float32`, default is read from the config file.
-- attn_impl: Attention type, supports `flash_attn`, `sdpa`, `eager`, default is sdpa.
+- task_type: Defaults to 'causal_lm'. Options include 'causal_lm' and 'seq_cls'. You can view examples of seq_cls [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/seq_cls).
+- attn_impl: type of attention, options are `flash_attn`, `sdpa`, `eager`, with the default being `sdpa`. Note: Not all three implementations are guaranteed to be supported; it depends on the support available for the corresponding model.
+- num_labels: To be specified for classification models, representing the number of labels, default is None.
 - rope_scaling: Rope type, supports `linear` and `dynamic`, to be used with `max_length`.
 - device_map: Configuration of the device map used by the model, e.g., 'auto', 'cpu', json string, json file path.
 - local_repo_path: Some models require a GitHub repo when loading. To avoid network issues during `git clone`, you can directly use a local repo. This parameter needs to pass the local repo path, default is `None`.
@@ -33,7 +34,7 @@ The introduction to command line parameters will cover base arguments, atomic ar
 - data_seed: Random seed for the dataset, default is 42.
 - 🔥dataset_num_proc: Number of processes for dataset preprocessing, default is 1.
 - 🔥streaming: Stream read and process the dataset, default is False.
-- load_from_cache_file: Use cache for dataset preprocessing, default is False.
+- enable_cache: Use cache for dataset preprocessing, default is False.
   - Note: If set to True, it may not take effect if the dataset changes. If modifying this parameter leads to issues during training, consider setting it to False.
 - download_mode: Dataset download mode, including `reuse_dataset_if_exists` and `force_redownload`, default is reuse_dataset_if_exists.
 - strict: If True, the dataset will throw an error if any row has a problem; otherwise, it will discard the erroneous row. Default is False.
@@ -44,11 +45,12 @@ The introduction to command line parameters will cover base arguments, atomic ar
 ### Template Arguments
 - 🔥template: Type of dialogue template, which defaults to the template type corresponding to the model. `swift pt` will convert the dialogue template into a generation template for use.
 - 🔥system: Custom system field, default is None, uses the default system of the template.
-- 🔥max_length: Maximum length of tokens for a single sample, default is None (no limit).
-- truncation_strategy: How to handle overly long tokens, supports `delete` and `left`, representing deletion and left trimming, default is 'delete'.
+- 🔥max_length: The maximum length of tokens for a single sample. Defaults to None, set to the maximum length of tokens supported by the model (max_model_len).
+- truncation_strategy: How to handle overly long tokens, supports `delete`, `left`, `right`, representing deletion, left trimming, and right trimming, default is 'delete'.
 - 🔥max_pixels: Maximum pixel count for pre-processing images in multimodal models (H*W), default is no scaling.
 - tools_prompt: The list of tools for agent training converted to system format, refer to [Agent Training](./Agent-support.md), default is 'react_en'.
-- loss_scale: How to add token loss weight during training. Default is `'default'`, meaning all responses (including history) are treated as 1 for cross-entropy loss. For specifics, see [Pluginization](../Customization/Pluginization.md) and [Agent Training](./Agent-support.md).
+- padding_side: The padding_side used when training with `batch_size >= 2`, with optional values of 'left' and 'right', defaulting to 'right'. (When the batch_size in `generate` is >= 2, only left padding is applied.)
+- loss_scale: How to add token loss weight during training. Default is `'default'`, meaning all responses (including history) are treated as 1 for cross-entropy loss. The optional values are 'default', 'last_round', 'all', and the loss scale required by the agent: 'react', 'agentflan', 'alpha_umi', 'qwen'. For specifics, see [Pluginization](../Customization/Pluginization.md) and [Agent Training](./Agent-support.md).
 - sequence_parallel_size: Number of sequence parallelism. Refer to [example](https://github.com/modelscope/ms-swift/tree/main/examples/train/sequence_parallel/train.sh).
 - use_chat_template: Use chat template or generation template, default is `True`. `swift pt` is automatically set to the generation template.
 - template_backend: Use swift or jinja for inference. If using jinja, it will utilize transformers' `apply_chat_template`. Default is swift.
@@ -66,6 +68,7 @@ Refer to the [generation_config](https://huggingface.co/docs/transformers/main_c
 - num_beams: Number of beams for beam search, default is 1.
 - 🔥stream: Stream output, default is `False`.
 - stop_words: Additional stop words, default is `[]`.
+- logprobs: Whether to output logprobs, default is False.
 
 ### Quantization Arguments
 
@@ -87,7 +90,7 @@ This parameter list inherits from transformers `Seq2SeqTrainingArguments`, with 
 
 - 🔥output_dir: Default is `output/<model_name>`.
 - 🔥gradient_checkpointing: Whether to use gradient checkpointing, default is True.
-- 🔥deepspeed: Default is None. Can be set to 'zero2', 'zero3', 'zero2_offload', 'zero3_offload' to use the built-in deepspeed configuration files from ms-swift.
+- 🔥deepspeed: Default is None. Can be set to 'zero0', 'zero1', 'zero2', 'zero3', 'zero2_offload', 'zero3_offload' to use the built-in deepspeed configuration files from ms-swift.
 - 🔥per_device_train_batch_size: Default is 1.
 - 🔥per_device_eval_batch_size: Default is 1.
 - weight_decay: Weight decay coefficient, default value is 0.1.
@@ -95,7 +98,7 @@ This parameter list inherits from transformers `Seq2SeqTrainingArguments`, with 
 - lr_scheduler_type: LR scheduler type, default is cosine.
 - lr_scheduler_kwargs: Other parameters for the LR scheduler.
 - 🔥gradient_checkpointing_kwargs: Parameters passed to `torch.utils.checkpoint`. For example, set to `--gradient_checkpointing_kwargs '{"use_reentrant": false}'`.
-- report_to: Default is `tensorboard`.
+- report_to: Default is `tensorboard`. You can also specify `--report_to tensorboard wandb`, `--report_to all`.
 - remove_unused_columns: Default is False.
 - logging_first_step: Whether to log the first step print, default is True.
 - logging_steps: Interval for logging prints, default is 5.
@@ -107,9 +110,9 @@ Other important parameters:
 - 🔥gradient_accumulation_steps: Gradient accumulation, default is 1.
 - 🔥save_strategy: Strategy for saving the model, options are 'no', 'steps', 'epoch', default is 'steps'.
 - 🔥save_steps: Default is 500.
-- 🔥save_total_limit: Default is None, saving all checkpoints.
-- 🔥eval_strategy: Evaluation strategy, follows `save_strategy`.
+- 🔥eval_strategy: Default is None. Evaluation strategy, follows `save_strategy`.
 - 🔥eval_steps: Default is None. If evaluation dataset exists, follows `save_steps`.
+- 🔥save_total_limit: Default is None, saving all checkpoints.
 - max_steps: Default is -1, maximum number of training steps. Must be set when the dataset is streaming.
 - 🔥warmup_ratio: Default is 0.
 - save_on_each_node: Default is False. To be considered in multi-machine training.
@@ -119,6 +122,7 @@ Other important parameters:
 - 🔥ddp_find_unused_parameters: Default is None.
 - 🔥dataloader_num_workers: Default is 0.
 - 🔥neftune_noise_alpha: Noise coefficient added by neftune, default is 0. Generally can be set to 5, 10, 15.
+- average_tokens_across_devices: Whether to average the token count across devices. If set to True, it will use all_reduce to synchronize `num_tokens_in_batch` for accurate loss computation. The default is False.
 - max_grad_norm: Gradient clipping. The default value is 1.
 - push_to_hub: Push training weights to hub, default is False.
 - hub_model_id: Default is None.
@@ -138,7 +142,7 @@ Other important parameters:
 
 - freeze_parameters: Prefix of parameters to be frozen, default is `[]`.
 - freeze_parameters_ratio: Ratio of parameters to freeze from the bottom up, default is 0. Setting it to 1 will freeze all parameters. Combine with `trainable_parameters` to set trainable parameters.
-- trainable_parameters: Prefix of trainable parameters, default is `[]`.
+- trainable_parameters: Prefix of trainable parameters, default is `[]`. The priority of `trainable_parameters` is higher than that of `freeze_parameters` and `freeze_parameters_ratio`.
 
 #### LoRA
 
@@ -294,8 +298,6 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
 - resume_only_model: If resume_from_checkpoint, only resume model weights, default is False.
 - check_model: Check local model files for corruption or modification and give a prompt, default is True. If in an offline environment, please set to False.
 - loss_type: Type of loss, default uses the model's built-in loss function.
-- num_labels: To be specified for classification models, representing the number of labels, default is None.
--
 - packing: Whether to use packing, default is False.
 - 🔥lazy_tokenize: Whether to use lazy_tokenize, default is False during LLM training, default is True during MLLM training.
 
@@ -309,22 +311,46 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
 
 RLHF arguments inherit from the [training arguments](#training-arguments).
 
-- 🔥rlhf_type: Alignment algorithm type, supports `dpo`, `orpo`, `simpo`, `kto`, `cpo`.
+- 🔥rlhf_type: Alignment algorithm type, supports `dpo`, `orpo`, `simpo`, `kto`, `cpo`, `rm`, `ppo`.
 - ref_model: Original comparison model in algorithms like DPO.
 - ref_model_type: Same as model_type.
 - ref_model_revision: Same as model_revision.
 
 - 🔥beta: KL regularization term coefficient, default is `None`, i.e., for `simpo` algorithm default is `2.`, for other algorithms default is `0.1`. Refer to the [documentation](./Human-alignment.md) for specifics.
 - label_smoothing: Whether to use DPO smoothing, default value is `0`, generally set between 0~0.5.
--
+
 - 🔥rpo_alpha: Weight for adding sft_loss in DPO, default is `1`. The final loss is `KL_loss + rpo_alpha * sft_loss`.
--
+
 - cpo_alpha: The coefficient of nll loss in CPO/SimPO loss, default is `1.`.
--
+
 - simpo_gamma: Reward margin term in SimPO algorithm, recommended to set between 0.5-1.5 in the paper, default is `1.`.
--
+
 - desirable_weight: Loss weight for desirable response in KTO algorithm $\lambda_D$, default is `1.`.
 - undesirable_weight: Loss weight for undesirable response in KTO paper $\lambda_U$, default is `1.`.
+
+#### PPO Arguments
+
+- reward_model: Defaults to None
+- reward_adapters: Defaults to `[]`
+- reward_model_type: Defaults to None
+- reward_model_revision: Defaults to None
+
+The meanings of the following parameters can be referenced [here](https://huggingface.co/docs/trl/main/ppo_trainer):
+
+- num_ppo_epochs: Defaults to 4
+- whiten_rewards: Defaults to False
+- kl_coef: Defaults to 0.05
+- cliprange: Defaults to 0.2
+- vf_coef: Defaults to 0.1
+- cliprange_value: Defaults to 0.2
+- gamma: Defaults to 1.0
+- lam: Defaults to 0.95
+- num_mini_batches: Defaults to 1
+- local_rollout_forward_batch_size: Defaults to 64
+- num_sample_generations: Defaults to 10
+- response_length: Defaults to 512
+- temperature: Defaults to 0.7
+- missing_eos_penalty: Defaults to None
 
 ### Inference Arguments
 
@@ -332,6 +358,7 @@ Inference arguments include the [base arguments](#base-arguments), [merge argume
 
 - 🔥infer_backend: Inference backend, supports 'pt', 'vllm', 'lmdeploy', default is 'pt'.
 - 🔥max_batch_size: Batch size for pt backend, default is 1.
+- ddp_backend: The distributed backend for multi-gpu inference using the pt backend, default is None. Examples of multi-card inference can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/infer/pt).
 - result_path: Path to store inference results (jsonl), default is None, saved in the checkpoint directory or './result' directory.
 - val_dataset_sample: Number of samples from the inference dataset, default is None.
 
@@ -348,6 +375,21 @@ Deployment Arguments inherit from the [inference arguments](#inference-arguments
 - log_interval: Interval for printing tokens/s statistics, default is 20 seconds. If set to -1, it will not be printed.
 - max_logprobs: Maximum number of logprobs to return, default is 20.
 
+### Web-UI Arguments
+- server_name: Host for the web UI, default is '0.0.0.0'.
+- server_port: Port for the web UI, default is 7860.
+- share: Default is False.
+- lang: Language for the web UI, options are 'zh', 'en'. Default is 'zh'.
+
+
+### App Arguments
+App parameters inherit from [deployment arguments](#deployment-arguments) and [Web-UI Arguments](#web-ui-arguments).
+
+- base_url: Base URL for the model deployment, for example, `http://localhost:8000/v1`. Default is None.
+- studio_title: Title of the studio. Default is None, set to the model name.
+- is_multimodal: Whether to launch the multimodal version of the app. Defaults to None, automatically determined based on the model; if it cannot be determined, set to False.
+- lang: Overrides the Web-UI Arguments, default is 'en'.
+
 ### Evaluation Arguments
 
 Evaluation Arguments inherit from the [deployment arguments](#deployment-arguments).
@@ -357,8 +399,8 @@ Evaluation Arguments inherit from the [deployment arguments](#deployment-argumen
 - eval_output_dir: Folder for storing evaluation results, default is 'eval_output'.
 - temperature: Default is 0.
 - verbose: This parameter is passed to DeployArguments during local evaluation, default is `False`.
-- max_batch_size: Maximum batch size, default is 256 for text evaluation, 16 for multimodal.
-- 🔥eval_url: Evaluation URL. Default is None, uses local deployment for evaluation.
+- eval_num_proc: Maximum concurrency for clients during evaluation. The default for text evaluation is 256, while for multimodal it is 16.
+- 🔥eval_url: Evaluation URL, for example `http://localhost:8000/v1`. Default is None, uses local deployment for evaluation. You can view the examples [here](https://github.com/modelscope/ms-swift/tree/main/examples/eval/eval_url).
 
 ### Export Arguments
 
@@ -367,7 +409,7 @@ Export Arguments include the [basic arguments](#base-arguments) and [merge argum
 - 🔥output_dir: Path for storing export results, default is None.
 
 - 🔥quant_method: Options are 'gptq' and 'awq', default is None.
-- quant_n_samples: Sampling size for the validation set in gptq/awq, default is 256.
+- quant_n_samples: Sampling size for the validation set in gptq/awq, default is 128.
 - max_length: Max length for the calibration set, default value is 2048.
 - quant_batch_size: Quantization batch size, default is 1.
 - group_size: Group size for quantization, default is 128.
@@ -376,3 +418,63 @@ Export Arguments include the [basic arguments](#base-arguments) and [merge argum
 - hub_model_id: Model ID for pushing, default is None.
 - hub_private_repo: Whether it is a private repo, default is False.
 - commit_message: Commit message, default is 'update files'.
+
+## Specific Model Arguments
+
+Specific model arguments can be set using `--model_kwargs` or environment variables, for example: `--model_kwargs '{"fps_max_frames": 12}'` or `FPS_MAX_FRAMES=12`.
+
+### qwen2_vl, qvq
+For the meaning of the arguments, please refer to [here](https://github.com/QwenLM/Qwen2-VL/blob/main/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L24)
+
+- IMAGE_FACTOR: Default is 28
+- MIN_PIXELS: Default is `4 * 28 * 28`
+- 🔥MAX_PIXELS: Default is `16384 * 28 * 28`, refer to [here](https://github.com/modelscope/ms-swift/blob/main/examples/train/multimodal/ocr.sh#L3)
+- MAX_RATIO: Default is 200
+- VIDEO_MIN_PIXELS: Default is `128 * 28 * 28`
+- 🔥VIDEO_MAX_PIXELS: Default is `768 * 28 * 28`, refer to [here](https://github.com/modelscope/ms-swift/blob/main/examples/train/multimodal/video.sh#L7)
+- VIDEO_TOTAL_PIXELS: Default is `24576 * 28 * 28`
+- FRAME_FACTOR: Default is 2
+- FPS: Default is 2.0
+- FPS_MIN_FRAMES: Default is 4
+- 🔥FPS_MAX_FRAMES: Default is 768, refer to [here](https://github.com/modelscope/ms-swift/blob/main/examples/train/multimodal/video.sh#L8)
+
+### internvl, internvl_phi3
+For the meaning of the arguments, please refer to [here](https://modelscope.cn/models/OpenGVLab/Mini-InternVL-Chat-2B-V1-5)
+- MAX_NUM: Default is 12
+- INPUT_SIZE: Default is 448
+
+### internvl2, internvl2_phi3, internvl2_5
+For the meaning of the arguments, please refer to [here](https://modelscope.cn/models/OpenGVLab/InternVL2_5-2B)
+- MAX_NUM: Default is 12
+- INPUT_SIZE: Default is 448
+- VIDEO_MAX_NUM: Default is 1, which is the MAX_NUM for videos
+- VIDEO_SEGMENTS: Default is 8
+
+### minicpmv2_6
+- MAX_SLICE_NUMS: Default is 9, refer to [here](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2_6/file/view/master?fileName=config.json&status=1)
+- VIDEO_MAX_SLICE_NUMS: Default is 1, which is the MAX_SLICE_NUMS for videos, refer to [here](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2_6)
+- MAX_NUM_FRAMES: Default is 64, refer to [here](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2_6)
+
+### ovis1_6
+- MAX_PARTITION: Refer to [here](https://github.com/AIDC-AI/Ovis/blob/d248e34d755a95d24315c40e2489750a869c5dbc/ovis/model/modeling_ovis.py#L312)
+
+### mplug_owl3, mplug_owl3_241101
+- MAX_NUM_FRAMES: Default is 16, refer to [here](https://modelscope.cn/models/iic/mPLUG-Owl3-7B-240728)
+
+### xcomposer2_4khd
+- HD_NUM: Default is 55, refer to [here](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-xcomposer2-4khd-7b)
+
+### xcomposer2_5
+- HD_NUM: Default is 24 when the number of images is 1. Greater than 1, the default is 6. Refer to [here](https://modelscope.cn/models/AI-ModelScope/internlm-xcomposer2d5-7b/file/view/master?fileName=modeling_internlm_xcomposer2.py&status=1#L254)
+
+### video_cogvlm2
+- NUM_FRAMES: Default is 24, refer to [here](https://github.com/THUDM/CogVLM2/blob/main/video_demo/inference.py#L22)
+
+### phi3_vision
+- NUM_CROPS: Default is 4, refer to [here](https://modelscope.cn/models/LLM-Research/Phi-3.5-vision-instruct)
+
+### llama3_1_omni
+- N_MELS: Default is 128, refer to [here](https://github.com/ictnlp/LLaMA-Omni/blob/544d0ff3de8817fdcbc5192941a11cf4a72cbf2b/omni_speech/infer/infer.py#L57)
+
+### video_llava
+- NUM_FRAMES: Default is 16

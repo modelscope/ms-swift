@@ -39,17 +39,18 @@ class CompatArguments:
         if (os.path.exists(os.path.join(self.ckpt_dir, 'adapter_config.json'))
                 or os.path.exists(os.path.join(self.ckpt_dir, 'default', 'adapter_config.json'))
                 or os.path.exists(os.path.join(self.ckpt_dir, 'reft'))):
+            if self.ckpt_dir in self.adapters:
+                return
             self.adapters.insert(0, self.ckpt_dir)
         else:
-            assert self.model is None
             self.model = self.ckpt_dir
         self.ckpt_dir = None
+        logger.warning('The `--ckpt_dir` parameter will be removed in `ms-swift>=3.2`. '
+                       'Please use `--model`, `--adapters`.')
 
     def __post_init__(self: 'BaseArguments'):
         if self.ckpt_dir is not None:
             self._handle_ckpt_dir()
-            logger.warning('The `--ckpt_dir` parameter will be removed in `ms-swift>=3.2`. '
-                           'Please use `--model`, `--adapters`.')
 
         if self.load_dataset_config is not None:
             self.load_data_args = self.load_dataset_config
@@ -97,7 +98,6 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
     custom_register_path: List[str] = field(default_factory=list)  # .py
 
     # extra
-    num_labels: Optional[int] = None
     ignore_args_error: bool = False  # True: notebook compatibility
     use_swift_lora: bool = False  # True for using tuner_backend == swift, don't specify this unless you know what you are doing # noqa
 
@@ -110,7 +110,8 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             folder, fname = os.path.split(path)
             sys.path.append(folder)
             __import__(fname.rstrip('.py'))
-        logger.info(f'Successfully registered `{self.custom_register_path}`')
+        if self.custom_register_path:
+            logger.info(f'Successfully registered `{self.custom_register_path}`')
 
     def _init_adapters(self):
         if isinstance(self.adapters, str):
@@ -128,14 +129,11 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         self._init_ckpt_dir()
         self._init_custom_register()
         self._init_model_kwargs()
-        self.rank, self.local_rank, world_size, self.local_world_size = get_dist_setting()
         # The Seq2SeqTrainingArguments has a property called world_size, which cannot be assigned a value.
-        try:
-            self.world_size = world_size
-        except AttributeError:
-            pass
+        self.rank, self.local_rank, self.global_world_size, self.local_world_size = get_dist_setting()
         logger.info(f'rank: {self.rank}, local_rank: {self.local_rank}, '
-                    f'world_size: {world_size}, local_world_size: {self.local_world_size}')
+                    f'world_size: {self.global_world_size}, local_world_size: {self.local_world_size}')
+        assert len(self.adapters) <= 1, f'args.adapters: {self.adapters}'
         ModelArguments.__post_init__(self)
         QuantizeArguments.__post_init__(self)
         TemplateArguments.__post_init__(self)
@@ -205,9 +203,10 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             'model_author',
             'split_dataset_ratio',
             # template_args
-            'tools_prompt'
+            'tools_prompt',
+            'use_chat_template'
         ]
-        skip_keys = list(f.name for f in fields(GenerationArguments)) + ['adapters']
+        skip_keys = list(f.name for f in fields(GenerationArguments) + fields(CompatArguments)) + ['adapters']
         if not isinstance(self, TrainArguments):
             skip_keys += ['max_length']
         all_keys = set(all_keys) - set(skip_keys)
@@ -238,11 +237,11 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
 
     def get_template(self, processor: 'Processor') -> 'Template':
         template_kwargs = self.get_template_kwargs()
-        template = get_template(self.template, processor, use_chat_template=self.use_chat_template, **template_kwargs)
+        template = get_template(self.template, processor, **template_kwargs)
         logger.info(f'default_system: {template.template_meta.default_system}')
         return template
 
-    def get_model_processor(self, *, model=None, model_type=None, model_revision=None, **kwargs):
+    def get_model_processor(self, *, model=None, model_type=None, model_revision=None, task_type=None, **kwargs):
         if self.tuner_backend == 'unsloth':
             return load_by_unsloth(self)
         kwargs.update(self.get_model_kwargs())
@@ -250,11 +249,6 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         kwargs['model_id_or_path'] = model or self.model
         kwargs['model_type'] = model_type or self.model_type
         kwargs['model_revision'] = model_revision or self.model_revision
+        kwargs['task_type'] = task_type or self.task_type
 
-        model_kwargs = {}
-        if self.num_labels is not None:
-            from transformers import AutoModelForSequenceClassification
-            kwargs['automodel_class'] = AutoModelForSequenceClassification
-            model_kwargs = {'num_labels': self.num_labels}
-        model, processor = get_model_tokenizer(**kwargs, model_kwargs=model_kwargs)
-        return model, processor
+        return get_model_tokenizer(**kwargs)

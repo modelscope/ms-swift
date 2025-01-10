@@ -26,7 +26,7 @@ def _test(infer_backend):
 
     from swift.llm import DeployArguments
     from swift.llm import run_deploy
-    args = DeployArguments(model='qwen/Qwen2-7B-Instruct', infer_backend=infer_backend, verbose=False)
+    args = DeployArguments(model='Qwen/Qwen2-7B-Instruct', infer_backend=infer_backend, verbose=False)
     with run_deploy(args) as port:
         _test_client(port)
 
@@ -47,7 +47,7 @@ def test_vllm_orgin():
     import subprocess
     import sys
     from modelscope import snapshot_download
-    model_dir = snapshot_download('qwen/Qwen2-7B-Instruct')
+    model_dir = snapshot_download('Qwen/Qwen2-7B-Instruct')
     args = [sys.executable, '-m', 'vllm.entrypoints.openai.api_server', '--model', model_dir]
     process = subprocess.Popen(args)
     _test_client()

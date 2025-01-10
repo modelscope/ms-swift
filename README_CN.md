@@ -13,7 +13,7 @@
 
 
 <p align="center">
-<img src="https://img.shields.io/badge/python-%E2%89%A53.8-5be.svg">
+<img src="https://img.shields.io/badge/python-3.10-5be.svg">
 <img src="https://img.shields.io/badge/pytorch-%E2%89%A52.0-orange.svg">
 <a href="https://github.com/modelscope/modelscope/"><img src="https://img.shields.io/badge/modelscope-%E2%89%A51.19-5D91D4.svg"></a>
 <a href="https://pypi.org/project/ms-swift/"><img src="https://badge.fury.io/py/ms-swift.svg"></a>
@@ -53,18 +53,18 @@
 <img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
 ## 📝 简介
-🍲 ms-swift是魔搭社区提供的大模型与多模态大模型微调部署框架，现已支持400+大模型与100+多模态大模型的训练（预训练、微调、人类对齐）、推理、评测、量化与部署。其中LLM包括：Qwen2.5、Llama3.2、GLM4、Internlm2.5、Yi1.5、Mistral、DeepSeek、Baichuan2、Gemma2、TeleChat2等模型，多模态LLM包括：Qwen2-VL、Qwen2-Audio、Llama3.2-Vision、Llava、InternVL2.5、MiniCPM-V-2.6、GLM4v、Xcomposer2.5、Yi-VL、DeepSeek-VL2、Phi3.5-Vision、GOT-OCR2等模型。
+🍲 ms-swift是魔搭社区提供的大模型与多模态大模型微调部署框架，现已支持450+大模型与150+多模态大模型的训练（预训练、微调、人类对齐）、推理、评测、量化与部署。其中大模型包括：Qwen2.5、Llama3.3、GLM4、Internlm2.5、Yi1.5、Mistral、DeepSeek2.5、Baichuan2、Gemma2、TeleChat2等模型，多模态大模型包括：Qwen2-VL、Qwen2-Audio、Llama3.2-Vision、Llava、InternVL2.5、MiniCPM-V-2.6、GLM4v、Xcomposer2.5、Yi-VL、DeepSeek-VL2、Phi3.5-Vision、GOT-OCR2等模型。
 
-🍔 除此之外，ms-swift汇集了最新的训练技术，包括LoRA、QLoRA、Llama-Pro、LongLoRA、GaLore、Q-GaLore、LoRA+、LISA、DoRA、FourierFt、ReFT、UnSloth、和Liger等。ms-swift支持使用vLLM和LMDeploy对推理、评测和部署模块进行加速。为了帮助研究者和开发者更轻松地微调和应用大模型，ms-swift还提供了基于Gradio的Web-UI界面及丰富的最佳实践。
+🍔 除此之外，ms-swift汇集了最新的训练技术，包括LoRA、QLoRA、Llama-Pro、LongLoRA、GaLore、Q-GaLore、LoRA+、LISA、DoRA、FourierFt、ReFT、UnSloth、和Liger等。ms-swift支持使用vLLM和LMDeploy对推理、评测和部署模块进行加速，并支持使用GPTQ、AWQ、BNB等技术对大模型和多模态大模型进行量化。为了帮助研究者和开发者更轻松地微调和应用大模型，ms-swift还提供了基于Gradio的Web-UI界面及丰富的最佳实践。
 
 **为什么选择ms-swift？**
-- 🍎 **模型类型**：支持400+纯文本大模型、**100+多模态大模型**，All-to-All全模态模型的**训练到部署全流程**。
+- 🍎 **模型类型**：支持400+纯文本大模型、**150+多模态大模型**，All-to-All全模态模型的**训练到部署全流程**。
 - **数据集类型**：内置150+预训练、微调、人类对齐、多模态等各种类型的数据集，并支持自定义数据集。
 - **硬件支持**：CPU、RTX系列、T4/V100、A10/A100/H100、Ascend NPU等。
 - 🍊 **轻量训练**：支持了LoRA、QLoRA、DoRA、LoRA+、ReFT、RS-LoRA、LLaMAPro、Adapter、GaLore、Q-Galore、LISA、UnSloth、Liger-Kernel等轻量微调方式。
 - **分布式训练**：支持分布式数据并行（DDP）、device_map简易模型并行、DeepSpeed ZeRO2 ZeRO3、FSDP等分布式训练技术。
 - **量化训练**：支持对BNB、AWQ、GPTQ、AQLM、HQQ、EETQ量化模型进行训练。
-- **RLHF训练**：支持纯文本大模型和多模态大模型的DPO、CPO、SimPO、ORPO、KTO、RM等人类对齐训练方法。
+- **RLHF训练**：支持纯文本大模型和多模态大模型的DPO、CPO、SimPO、ORPO、KTO、RM、PPO等人类对齐训练方法。
 - 🍓 **多模态训练**：支持对图像、视频和语音不同模态模型进行训练，支持VQA、Caption、OCR、Grounding任务的训练。
 - **界面训练**：以界面的方式提供训练、推理、评测、量化的能力，完成大模型的全链路。
 - **插件化与拓展**：支持自定义模型和数据集拓展，支持对loss、metric、trainer、loss-scale、callback、optimizer等组件进行自定义。
@@ -78,7 +78,7 @@
 - 🎉 2024.08.12: SWIFT论文已经发布到arXiv上，可以点击[这里](https://arxiv.org/abs/2408.05517)阅读。
 - 🔥 2024.08.05: 支持使用[evalscope](https://github.com/modelscope/evalscope/)作为后端进行大模型和多模态模型的评测。
 - 🔥 2024.07.29: 支持使用[vllm](https://github.com/vllm-project/vllm), [lmdeploy](https://github.com/InternLM/lmdeploy)对大模型和多模态大模型进行推理加速，在infer/deploy/eval时额外指定`--infer_backend vllm/lmdeploy`即可。
-- 🔥 2024.07.24: 支持对多模态大模型进行人类偏好对齐训练，包括DPO/ORPO/SimPO/CPO/KTO/RM。
+- 🔥 2024.07.24: 支持对多模态大模型进行人类偏好对齐训练，包括DPO/ORPO/SimPO/CPO/KTO/RM/PPO。
 - 🔥 2024.02.01: 支持Agent训练！训练算法源自这篇[论文](https://arxiv.org/pdf/2309.00986.pdf)。
 
 ## 🛠️ 安装
@@ -107,9 +107,10 @@ CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen2.5-7B-Instruct \
     --train_type lora \
-    --dataset AI-ModelScope/alpaca-gpt4-data-zh#500 \
-              AI-ModelScope/alpaca-gpt4-data-en#500 \
-              swift/self-cognition#500 \
+    --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
+              'AI-ModelScope/alpaca-gpt4-data-en#500' \
+              'swift/self-cognition#500' \
+    --torch_dtype bfloat16 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \
@@ -120,7 +121,7 @@ swift sft \
     --gradient_accumulation_steps 16 \
     --eval_steps 50 \
     --save_steps 50 \
-    --save_total_limit 2 \
+    --save_total_limit 5 \
     --logging_steps 5 \
     --max_length 2048 \
     --output_dir output \
@@ -138,7 +139,9 @@ swift sft \
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
     --adapters output/vx-xxx/checkpoint-xxx \
-    --stream true
+    --stream true \
+    --temperature 0 \
+    --max_new_tokens 2048
 
 # merge-lora并使用vLLM进行推理加速
 CUDA_VISIBLE_DEVICES=0 \
@@ -147,7 +150,9 @@ swift infer \
     --stream true \
     --merge_lora true \
     --infer_backend vllm \
-    --max_model_len 8192
+    --max_model_len 8192 \
+    --temperature 0 \
+    --max_new_tokens 2048
 ```
 
 ### Web-UI
@@ -241,7 +246,7 @@ RLHF：
 CUDA_VISIBLE_DEVICES=0 swift rlhf \
     --rlhf_type dpo \
     --model Qwen/Qwen2.5-7B-Instruct \
-    --dataset hjh0119/shareAI-Llama3-DPO-zh-en-emoji:zh \
+    --dataset hjh0119/shareAI-Llama3-DPO-zh-en-emoji \
     --train_type lora \
     --output_dir output \
     ...
@@ -253,7 +258,8 @@ CUDA_VISIBLE_DEVICES=0 swift rlhf \
 CUDA_VISIBLE_DEVICES=0 swift infer \
     --model Qwen/Qwen2.5-7B-Instruct \
     --stream true \
-    --infer_backend pt
+    --infer_backend pt \
+    --max_new_tokens 2048
 
 # LoRA
 CUDA_VISIBLE_DEVICES=0 swift infer \
@@ -261,14 +267,25 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
     --adapters swift/test_lora \
     --stream true \
     --infer_backend pt \
-    --temperature 0
+    --temperature 0 \
+    --max_new_tokens 2048
+```
+
+### 界面推理
+```shell
+CUDA_VISIBLE_DEVICES=0 swift app \
+    --model Qwen/Qwen2.5-7B-Instruct \
+    --stream true \
+    --infer_backend pt \
+    --max_new_tokens 2048 \
+    --lang zh
 ```
 
 ### 部署
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift deploy \
     --model Qwen/Qwen2.5-7B-Instruct \
-    --infer_backend pt
+    --infer_backend vllm
 ```
 
 ### 评测
@@ -306,7 +323,6 @@ CUDA_VISIBLE_DEVICES=0 swift export \
       url={https://arxiv.org/abs/2408.05517},
 }
 ```
-
 
 ## Star History
 

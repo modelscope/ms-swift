@@ -2,6 +2,7 @@
 # Part of the implementation is borrowed from huggingface/transformers.
 import os
 from contextlib import contextmanager, nullcontext
+from functools import wraps
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -13,16 +14,49 @@ from transformers import Trainer as HfTrainer
 from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
 from transformers.utils import is_peft_available
 
-from swift.plugin import MeanMetric, compute_acc
-from swift.utils import JsonlWriter, Serializer, use_torchacc
-from swift.utils.torchacc_utils import ta_trim_graph
-from .arguments import Seq2SeqTrainingArguments
+from swift.utils import JsonlWriter, Serializer
+from .arguments import Seq2SeqTrainingArguments, TrainingArguments
 from .mixin import SwiftMixin
 from .torchacc_mixin import TorchAccMixin
 
 
 class Trainer(SwiftMixin, HfTrainer):
-    pass
+    args: TrainingArguments
+
+    @contextmanager
+    def _patch_loss_function(self):
+        model = self.model
+        if isinstance(model, PeftModel):
+            model = model.model
+        model_cls = model.__class__
+        if not hasattr(model_cls, 'loss_function'):
+            yield
+            return
+
+        loss_function = model.loss_function
+        _old_loss_function = model_cls.loss_function
+
+        @staticmethod
+        @wraps(loss_function)
+        def new_loss_function(logits, labels, **kwargs):
+            labels = labels.to(logits.device)  # fix device_map
+            return loss_function(logits=logits, labels=labels, **kwargs)
+
+        model_cls.loss_function = new_loss_function
+        yield
+        model_cls.loss_function = _old_loss_function
+
+    def train(self, *args, **kwargs):
+        with self._patch_loss_function():
+            return super().train(*args, **kwargs)
+
+    def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+        loss, outputs = super().compute_loss(model, inputs, return_outputs=True)
+        if inputs.get('labels') is not None:
+            self._compute_acc(outputs, inputs['labels'])
+        if num_items_in_batch is not None:
+            loss /= self.args.gradient_accumulation_steps
+        return (loss, outputs) if return_outputs else loss
 
 
 class Seq2SeqTrainer(TorchAccMixin, SwiftMixin, HfSeq2SeqTrainer):
@@ -30,6 +64,7 @@ class Seq2SeqTrainer(TorchAccMixin, SwiftMixin, HfSeq2SeqTrainer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.model_accepts_loss_kwargs = True  # fix transformers>=4.46.2
         if self.args.predict_with_generate:
             from swift.llm import PtEngine
             self.infer_engine = PtEngine.from_model_template(
@@ -94,7 +129,7 @@ class Seq2SeqTrainer(TorchAccMixin, SwiftMixin, HfSeq2SeqTrainer):
         labels_list = pad_sequence(labels_list, batch_first=True, padding_value=0)
         return None, response_list, labels_list
 
-    def compute_loss(self, model, inputs, return_outputs=None, num_items_in_batch=None):
+    def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         loss_kwargs = {}
         labels = None
         if (self.label_smoother is not None or self.compute_loss_func is not None) and 'labels' in inputs:
@@ -114,8 +149,6 @@ class Seq2SeqTrainer(TorchAccMixin, SwiftMixin, HfSeq2SeqTrainer):
             labels = inputs['labels']
             # fix https://github.com/huggingface/transformers/issues/34263
             if num_items_in_batch is not None:
-                if getattr(self.args, 'average_tokens_across_devices', False):
-                    outputs.loss *= self.accelerator.num_processes
                 outputs.loss = outputs.loss * (labels[:, 1:] != -100).sum() / num_items_in_batch
 
             if isinstance(outputs, dict) and 'loss' not in outputs:
@@ -127,7 +160,7 @@ class Seq2SeqTrainer(TorchAccMixin, SwiftMixin, HfSeq2SeqTrainer):
         else:
             unwrapped_model = self.accelerator.unwrap_model(model)
             if is_peft_available() and isinstance(unwrapped_model, PeftModel):
-                model_name = unwrapped_model.base_model.model._get_name()
+                model_name = unwrapped_model.model._get_name()
             else:
                 model_name = unwrapped_model._get_name()
             # User-defined compute_loss function
@@ -145,23 +178,7 @@ class Seq2SeqTrainer(TorchAccMixin, SwiftMixin, HfSeq2SeqTrainer):
         if getattr(self.args, 'average_tokens_across_devices', False):
             loss *= self.accelerator.num_processes
 
-        if outputs.logits is not None:
-            # In case of Liger
-            self._compute_token_acc(outputs, labels)
+        if outputs.logits is not None and labels is not None:
+            # Liger does not have logits
+            self._compute_acc(outputs, labels)
         return (loss, outputs) if return_outputs else loss
-
-    def _compute_token_acc(self, outputs, labels) -> None:
-
-        acc_steps = self.args.acc_steps
-        preds = outputs.logits.argmax(dim=2)
-        if self.state.global_step % acc_steps == 0:
-            if use_torchacc():
-                ta_trim_graph()
-                preds = preds.to('cpu')
-                labels = labels.to('cpu')
-            metrics = compute_acc(
-                preds, labels, acc_strategy=self.args.acc_strategy, is_encoder_decoder=self.args.is_encoder_decoder)
-            for k, v in metrics.items():
-                if k not in self._custom_metrics:
-                    self._custom_metrics[k] = MeanMetric(nan_value=None)
-                self._custom_metrics[k].update(v)

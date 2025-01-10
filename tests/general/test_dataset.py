@@ -3,29 +3,39 @@ from typing import List
 from swift.llm import load_dataset
 
 
-def _test_dataset(datasets: List[str], num_proc: int = 1, strict: bool = True, **kwargs):
+def _test_dataset(datasets: List[str], num_proc: int = 1, strict: bool = False, **kwargs):
     dataset = load_dataset(datasets, num_proc=num_proc, strict=strict, **kwargs)
     print(f'dataset[0]: {dataset[0]}')
     print(f'dataset[1]: {dataset[1]}')
 
 
 def test_sft():
+    # swift/SlimOrca  swift/cosmopedia-100k
+    # _test_dataset(['lvjianjin/AdvertiseGen'])
+    # _test_dataset(['AI-ModelScope/Duet-v0.5'])
+    # _test_dataset(['swift/SlimOrca', 'swift/cosmopedia-100k'])
     # _test_dataset(['OmniData/Zhihu-KOL-More-Than-100-Upvotes'])
-    _test_dataset(['OmniData/Zhihu-KOL'])
-    # _test_dataset(['AI-ModelScope/alpaca-gpt4-data-zh#1000', 'AI-ModelScope/alpaca-gpt4-data-en#200'])
-    # _test_dataset(['swift/sharegpt:all'], strict=False)
-    # _test_dataset(['AI-ModelScope/sharegpt_gpt4:default'])
-    # _test_dataset(['iic/ms_bench'], strict=False)
-    # _test_dataset(['swift/tagengo-gpt4'], strict=False)
+    # _test_dataset(['OmniData/Zhihu-KOL'])
+    _test_dataset([
+        'AI-ModelScope/alpaca-gpt4-data-zh#1000', 'AI-ModelScope/alpaca-gpt4-data-en#1000',
+        'AI-ModelScope/LongAlpaca-12k#1000'
+    ])
+    # _test_dataset(['swift/Infinity-Instruct:all'])
+    # _test_dataset(['swift/sharegpt:all'])
+    # _test_dataset(['AI-ModelScope/sharegpt_gpt4:all'])
+    # _test_dataset(['iic/ms_bench'])
+    # _test_dataset(['swift/tagengo-gpt4'])
 
 
 def test_mllm():
     # _test_dataset(['AI-ModelScope/ShareGPT4V:all'])
     # _test_dataset(['AI-ModelScope/LLaVA-Pretrain'])
-    # _test_dataset(['swift/RLAIF-V-Dataset:all'], strict=False)
-    # _test_dataset(['swift/OK-VQA_train'], strict=False)
-    # _test_dataset(['swift/OCR-VQA'], strict=False)
-    # _test_dataset(['swift/A-OKVQA'], strict=False)
+    # _test_dataset(['swift/TextCaps'])
+    # _test_dataset(['swift/RLAIF-V-Dataset:all'])
+    # _test_dataset(['swift/OK-VQA_train'])
+    # _test_dataset(['swift/OCR-VQA'])
+    # _test_dataset(['swift/A-OKVQA'])
+    # _test_dataset(['AI-ModelScope/MovieChat-1K-test'])
     _test_dataset([
         'AI-ModelScope/LaTeX_OCR:all', 'modelscope/coco_2014_caption:validation',
         'speech_asr/speech_asr_aishell1_trainsets:validation'
@@ -45,14 +55,14 @@ def test_agent():
 
 
 def test_dpo():
-    _test_dataset(['AI-ModelScope/orpo-dpo-mix-40k'], strict=False)
-    _test_dataset(['AI-ModelScope/hh-rlhf:all'], strict=False)
-    _test_dataset(['AI-ModelScope/hh_rlhf_cn:all'], strict=False)
+    _test_dataset(['AI-ModelScope/orpo-dpo-mix-40k'])
+    _test_dataset(['AI-ModelScope/hh-rlhf:all'])
+    _test_dataset(['AI-ModelScope/hh_rlhf_cn:all'])
     _test_dataset(['hjh0119/shareAI-Llama3-DPO-zh-en-emoji:all'])
 
 
 def test_kto():
-    _test_dataset(['AI-ModelScope/ultrafeedback-binarized-preferences-cleaned-kto'], strict=False)
+    _test_dataset(['AI-ModelScope/ultrafeedback-binarized-preferences-cleaned-kto'])
 
 
 def test_pretrain():

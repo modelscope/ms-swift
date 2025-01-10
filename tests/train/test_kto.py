@@ -15,7 +15,7 @@ def test_llm():
     result = rlhf_main(
         RLHFArguments(
             rlhf_type='kto',
-            model='qwen/Qwen2-7B-Instruct',
+            model='Qwen/Qwen2-7B-Instruct',
             dataset=['AI-ModelScope/ultrafeedback-binarized-preferences-cleaned-kto#100'],
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
@@ -27,7 +27,7 @@ def test_mllm():
     result = rlhf_main(
         RLHFArguments(
             rlhf_type='kto',
-            model='qwen/Qwen2-VL-7B-Instruct',
+            model='Qwen/Qwen2-VL-7B-Instruct',
             dataset=['AI-ModelScope/ultrafeedback-binarized-preferences-cleaned-kto#100'],
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']

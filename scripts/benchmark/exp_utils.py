@@ -106,7 +106,7 @@ class ExpManager:
 
     def run(self, exp: Experiment):
         if os.path.exists(os.path.join(exp.input_args.save_dir, exp.name + '.json')):
-            with open(os.path.join(exp.input_args.save_dir, exp.name + '.json'), 'r') as f:
+            with open(os.path.join(exp.input_args.save_dir, exp.name + '.json'), 'r', encoding='utf-8') as f:
                 _json = json.load(f)
                 if exp.eval_dataset and 'eval_result' not in _json['record']:
                     if not exp.do_eval:
@@ -238,7 +238,7 @@ class ExpManager:
     def prepare_experiments(self, args: Any):
         experiments = []
         for config_file in args.config:
-            with open(config_file, 'r') as f:
+            with open(config_file, 'r', encoding='utf-8') as f:
                 group = os.path.basename(config_file)
                 group = group[:-5]
                 content = json.load(f)
@@ -275,7 +275,7 @@ class ExpManager:
     def _get_metric(exp: Experiment):
         if exp.do_eval:
             if os.path.isfile(os.path.join('exp', f'{exp.name}.eval.log')):
-                with open(os.path.join('exp', f'{exp.name}.eval.log'), 'r') as f:
+                with open(os.path.join('exp', f'{exp.name}.eval.log'), 'r', encoding='utf-8') as f:
                     for line in f.readlines():
                         if 'Final report:' in line:
                             return json.loads(line.split('Final report:')[1].replace('\'', '"'))
@@ -301,7 +301,7 @@ class ExpManager:
             logging_dir = exp.runtime.get('logging_dir')
             logging_file = os.path.join(logging_dir, '..', 'logging.jsonl')
             if os.path.isfile(logging_file):
-                with open(logging_file, 'r') as f:
+                with open(logging_file, 'r', encoding='utf-8') as f:
                     for line in f.readlines():
                         if 'model_info' in line:
                             return json.loads(line)

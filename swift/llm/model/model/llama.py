@@ -40,7 +40,7 @@ register_model(
                     Model('modelscope/Llama-2-13b-chat-ms', 'meta-llama/Llama-2-13b-chat-hf'),
                     Model('modelscope/Llama-2-70b-chat-ms', 'meta-llama/Llama-2-70b-chat-hf'),
                 ],
-                ignore_file_pattern=[r'.+\.bin$']),
+                ignore_patterns=[r'.+\.bin$']),
             # chinese-llama2
             ModelGroup([
                 # base

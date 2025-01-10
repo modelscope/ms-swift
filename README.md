@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-<img src="https://img.shields.io/badge/python-%E2%89%A53.8-5be.svg">
+<img src="https://img.shields.io/badge/python-3.10-5be.svg">
 <img src="https://img.shields.io/badge/pytorch-%E2%89%A52.0-orange.svg">
 <a href="https://github.com/modelscope/modelscope/"><img src="https://img.shields.io/badge/modelscope-%E2%89%A51.19-5D91D4.svg"></a>
 <a href="https://pypi.org/project/ms-swift/"><img src="https://badge.fury.io/py/ms-swift.svg"></a>
@@ -49,25 +49,25 @@
 You can contact us and communicate with us by adding our group:
 
 
-[Discord Group](https://discord.com/invite/D27yfEFVz5)              |  微信群
+[Discord Group](https://discord.com/invite/D27yfEFVz5)              |  WeChat Group
 :-------------------------:|:-------------------------:
 <img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
 
 ## 📝 Introduction
-🍲 ms-swift is an official framework provided by the ModelScope community for fine-tuning and deploying large language models and multi-modal large models. It currently supports the training (pre-training, fine-tuning, human alignment), inference, evaluation, quantization, and deployment of over 400 large models and 100+ multi-modal large models. These large language models (LLMs) include models such as Qwen2.5, Llama3.2, GLM4, Internlm2.5, Yi1.5, Mistral, DeepSeek, Baichuan2, Gemma2, and TeleChat2. The multi-modal LLMs include models such as Qwen2-VL, Qwen2-Audio, Llama3.2-Vision, Llava, InternVL2.5, MiniCPM-V-2.6, GLM4v, Xcomposer2.5, Yi-VL, DeepSeek-VL2, Phi3.5-Vision, and GOT-OCR2.
+🍲 ms-swift is an official framework provided by the ModelScope community for fine-tuning and deploying large language models and multi-modal large models. It currently supports the training (pre-training, fine-tuning, human alignment), inference, evaluation, quantization, and deployment of 400+ large models and 150+ multi-modal large models. These large language models (LLMs) include models such as Qwen2.5, Llama3.3, GLM4, Internlm2.5, Yi1.5, Mistral, DeepSeek2.5, Baichuan2, Gemma2, and TeleChat2. The multi-modal LLMs include models such as Qwen2-VL, Qwen2-Audio, Llama3.2-Vision, Llava, InternVL2.5, MiniCPM-V-2.6, GLM4v, Xcomposer2.5, Yi-VL, DeepSeek-VL2, Phi3.5-Vision, and GOT-OCR2.
 
-🍔 In addition, ms-swift gathers the latest training technologies, including LoRA, QLoRA, Llama-Pro, LongLoRA, GaLore, Q-GaLore, LoRA+, LISA, DoRA, FourierFt, ReFT, UnSloth, and Liger. ms-swift supports accelerating the inference, evaluation, and deployment modules using vLLM and LMDeploy. To help researchers and developers fine-tune and apply large models more easily, ms-swift also provides a Gradio-based Web-UI interface and a wealth of best practices.
+🍔 In addition, ms-swift gathers the latest training technologies, including LoRA, QLoRA, Llama-Pro, LongLoRA, GaLore, Q-GaLore, LoRA+, LISA, DoRA, FourierFt, ReFT, UnSloth, and Liger. ms-swift supports acceleration of inference, evaluation, and deployment modules using vLLM and LMDeploy, and supports the quantization of large models and multi-modal large models using technologies such as GPTQ, AWQ, and BNB. To help researchers and developers fine-tune and apply large models more easily, ms-swift also provides a Gradio-based Web-UI interface and a wealth of best practices.
 
 **Why choose ms-swift?**
 
-- 🍎 **Model Types**: Supports 400+ large language models and **100+ multi-modal large models** and all-to-all models, **providing a comprehensive solution from training to deployment**.
+- 🍎 **Model Types**: Supports 400+ large language models and **150+ multi-modal large models** and all-to-all models, **providing a comprehensive solution from training to deployment**.
 - **Dataset Types**: Comes with 150+ pre-training, fine-tuning, human alignment, multi-modal datasets, and supports custom datasets.
 - **Hardware Support**: Compatible with CPU, RTX series, T4/V100, A10/A100/H100, Ascend NPU, etc.
 - 🍊 **Lightweight Training**: Supports lightweight fine-tuning methods like LoRA, QLoRA, DoRA, LoRA+, ReFT, RS-LoRA, LLaMAPro, Adapter, GaLore, Q-Galore, LISA, UnSloth, Liger-Kernel.
 - **Distributed Training**: Supports distributed data parallel (DDP), device_map simple model parallelism, DeepSpeed ZeRO2/ZeRO3, FSDP, and other distributed training techniques.
 - **Quantization Training**: Supports training quantized models like BNB, AWQ, GPTQ, AQLM, HQQ, EETQ.
-- **RLHF Training**: Supports human alignment training methods such as DPO, CPO, SimPO, ORPO, KTO, RM for both pure text and multi-modal large models.
+- **RLHF Training**: Supports human alignment training methods such as DPO, CPO, SimPO, ORPO, KTO, RM, PPO for both pure text and multi-modal large models.
 - 🍓 **Multi-Modal Training**: Supports training on different modalities like images, videos, and audio, for tasks like VQA, captioning, OCR, and grounding.
 - **Interface Training**: Provides capabilities for training, inference, evaluation, quantization through an interface, completing the whole large model pipeline.
 - **Plugin and Extension**: Supports custom model and dataset extensions, as well as customization of components like loss, metric, trainer, loss-scale, callback, optimizer.
@@ -83,7 +83,7 @@ You can contact us and communicate with us by adding our group:
 - 🎉 2024.08.12: The SWIFT paper has been published on arXiv, and you can read it [here](https://arxiv.org/abs/2408.05517).
 - 🔥 2024.08.05: Support for using [evalscope](https://github.com/modelscope/evalscope/) as a backend for evaluating large models and multimodal models.
 - 🔥 2024.07.29: Support for using [vllm](https://github.com/vllm-project/vllm) and [lmdeploy](https://github.com/InternLM/lmdeploy) to accelerate inference for large models and multimodal models. When performing infer/deploy/eval, you can specify `--infer_backend vllm/lmdeploy`.
-- 🔥 2024.07.24: Support for human preference alignment training for multimodal large models, including DPO/ORPO/SimPO/CPO/KTO/RM.
+- 🔥 2024.07.24: Support for human preference alignment training for multimodal large models, including DPO/ORPO/SimPO/CPO/KTO/RM/PPO.
 - 🔥 2024.02.01: Support for Agent training! The training algorithm is derived from [this paper](https://arxiv.org/pdf/2309.00986.pdf).
 
 
@@ -114,9 +114,10 @@ CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen2.5-7B-Instruct \
     --train_type lora \
-    --dataset AI-ModelScope/alpaca-gpt4-data-zh#500 \
-              AI-ModelScope/alpaca-gpt4-data-en#500 \
-              swift/self-cognition#500 \
+    --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
+              'AI-ModelScope/alpaca-gpt4-data-en#500' \
+              'swift/self-cognition#500' \
+    --torch_dtype bfloat16 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \
@@ -127,7 +128,7 @@ swift sft \
     --gradient_accumulation_steps 16 \
     --eval_steps 50 \
     --save_steps 50 \
-    --save_total_limit 2 \
+    --save_total_limit 5 \
     --logging_steps 5 \
     --max_length 2048 \
     --output_dir output \
@@ -145,7 +146,9 @@ After training is complete, use the following command to perform inference with 
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
     --adapters output/vx-xxx/checkpoint-xxx \
-    --stream true
+    --stream true \
+    --temperature 0 \
+    --max_new_tokens 2048
 
 # merge-lora and use vLLM for inference acceleration
 CUDA_VISIBLE_DEVICES=0 \
@@ -154,7 +157,9 @@ swift infer \
     --stream true \
     --merge_lora true \
     --infer_backend vllm \
-    --max_model_len 8192
+    --max_model_len 8192 \
+    --temperature 0 \
+    --max_new_tokens 2048
 ```
 
 ### Web-UI
@@ -249,7 +254,7 @@ RLHF:
 CUDA_VISIBLE_DEVICES=0 swift rlhf \
     --rlhf_type dpo \
     --model Qwen/Qwen2.5-7B-Instruct \
-    --dataset hjh0119/shareAI-Llama3-DPO-zh-en-emoji:en \
+    --dataset hjh0119/shareAI-Llama3-DPO-zh-en-emoji \
     --train_type lora \
     --output_dir output \
     ...
@@ -261,7 +266,8 @@ CUDA_VISIBLE_DEVICES=0 swift rlhf \
 CUDA_VISIBLE_DEVICES=0 swift infer \
     --model Qwen/Qwen2.5-7B-Instruct \
     --stream true \
-    --infer_backend pt
+    --infer_backend pt \
+    --max_new_tokens 2048
 
 # LoRA
 CUDA_VISIBLE_DEVICES=0 swift infer \
@@ -269,14 +275,24 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
     --adapters swift/test_lora \
     --stream true \
     --infer_backend pt \
-    --temperature 0
+    --temperature 0 \
+    --max_new_tokens 2048
+```
+
+### Interface Inference
+```shell
+CUDA_VISIBLE_DEVICES=0 swift app \
+    --model Qwen/Qwen2.5-7B-Instruct \
+    --stream true \
+    --infer_backend pt \
+    --max_new_tokens 2048
 ```
 
 ### Deployment
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift deploy \
     --model Qwen/Qwen2.5-7B-Instruct \
-    --infer_backend pt
+    --infer_backend vllm
 ```
 
 ### Evaluation

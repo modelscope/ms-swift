@@ -157,7 +157,7 @@ def register_dataset_info(dataset_info: Union[str, List[str], None] = None) -> L
         if os.path.isfile(dataset_path):
             log_msg = dataset_path
             base_dir = os.path.dirname(dataset_path)
-            with open(dataset_path, 'r') as f:
+            with open(dataset_path, 'r', encoding='utf-8') as f:
                 dataset_info = json.load(f)
         else:
             dataset_info = json.loads(dataset_info)  # json

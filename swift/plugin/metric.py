@@ -132,24 +132,20 @@ def compute_acc(preds,
     if isinstance(preds, torch.Tensor):
         preds = preds.cpu().numpy()
         labels = labels.cpu().numpy()
-
-    if is_encoder_decoder:
-        labels = labels[..., :]
-        preds = preds[..., :]
-    else:
+    if preds.ndim >= 2 and not is_encoder_decoder:
         labels = labels[..., 1:]
         preds = preds[..., :-1]
     if preds.shape != labels.shape:
         return {}
 
     masks = labels != -100
-    if acc_strategy == 'seq':
+    if acc_strategy == 'token' or preds.ndim == 1:
+        acc_list = (preds[masks] == labels[masks]).tolist()
+    else:
         acc_list = []
         for i, m in enumerate(masks):
             acc_list.append(np.all(preds[i, m] == labels[i, m]))
-    else:
-        acc_list = (preds[masks] == labels[masks]).tolist()
-    return {f'{acc_strategy}_acc': acc_list}
+    return {f'{acc_strategy}_acc' if preds.ndim >= 2 else 'acc': acc_list}
 
 
 def compute_acc_metrics(eval_prediction: EvalPrediction,

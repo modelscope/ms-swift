@@ -29,8 +29,17 @@ else:
             'Swift', 'SwiftTuners', 'LongLoRAConfig', 'LongLoRA', 'LongLoRAModelType', 'SCETuning', 'SCETuningConfig'
         ],
         'trainers': [
-            'EvaluationStrategy', 'FSDPOption', 'HPSearchBackend', 'HubStrategy', 'IntervalStrategy', 'SchedulerType',
-            'ShardedDDPOption', 'TrainingArguments', 'Seq2SeqTrainingArguments', 'Trainer', 'Seq2SeqTrainer'
+            'EvaluationStrategy',
+            'FSDPOption',
+            'HPSearchBackend',
+            'HubStrategy',
+            'IntervalStrategy',
+            'SchedulerType',
+            'ShardedDDPOption',
+            'TrainingArguments',
+            'Seq2SeqTrainingArguments',
+            'Trainer',
+            'Seq2SeqTrainer',
         ],
         'utils': ['get_logger']
     }

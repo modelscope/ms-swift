@@ -4,7 +4,7 @@ from swift.llm import EncodePreprocessor, TemplateInputs, get_model_tokenizer, g
 
 
 def test_template():
-    _, tokenizer = get_model_tokenizer('qwen/Qwen2-7B-Instruct', load_model=False)
+    _, tokenizer = get_model_tokenizer('Qwen/Qwen2-7B-Instruct', load_model=False)
     template = get_template(tokenizer.model_meta.template, tokenizer)
     template_inputs = TemplateInputs([{
         'role': 'system',
@@ -25,7 +25,7 @@ def test_template():
 
 
 def test_mllm():
-    _, tokenizer = get_model_tokenizer('qwen/Qwen2-VL-7B-Instruct', load_model=False)
+    _, tokenizer = get_model_tokenizer('Qwen/Qwen2-VL-7B-Instruct', load_model=False)
     template = get_template(tokenizer.model_meta.template, tokenizer)
     template_inputs = TemplateInputs([{
         'role': 'system',
@@ -60,11 +60,11 @@ def _test_dataset_map(model_id: str, dataset_id: str):
 
 
 def test_llm_dataset_map():
-    _test_dataset_map('qwen/Qwen2-7B-Instruct', 'AI-ModelScope/alpaca-gpt4-data-zh')
+    _test_dataset_map('Qwen/Qwen2-7B-Instruct', 'AI-ModelScope/alpaca-gpt4-data-zh')
 
 
 def test_mllm_dataset_map():
-    _test_dataset_map('qwen/Qwen2-VL-7B-Instruct', 'modelscope/coco_2014_caption:validation#100')
+    _test_dataset_map('Qwen/Qwen2-VL-7B-Instruct', 'modelscope/coco_2014_caption:validation#100')
 
 
 if __name__ == '__main__':

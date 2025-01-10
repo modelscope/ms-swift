@@ -62,35 +62,6 @@ register_model(
         model_arch=ModelArch.qwen))
 
 
-def get_skywork_model_tokenizer(model_dir: str,
-                                model_info: ModelInfo,
-                                model_kwargs: Dict[str, Any],
-                                load_model: bool = True,
-                                **kwargs):
-    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
-    if 'chat' in model_dir:
-        tokenizer.add_tokens('[USER]')
-        tokenizer.add_tokens('[BOT]')
-        tokenizer.add_tokens('[SEP]')
-    return model, tokenizer
-
-
-register_model(
-    ModelMeta(
-        LLMModelType.skywork,
-        [
-            ModelGroup([
-                Model('skywork/Skywork-13B-base'),
-                Model('skywork/Skywork-13B-chat'),
-            ]),
-        ],
-        TemplateType.skywork,
-        get_skywork_model_tokenizer,
-        architectures=['SkyworkForCausalLM'],
-        model_arch=ModelArch.llama,
-    ))
-
-
 def get_model_tokenizer_yuan(model_dir: str,
                              model_info: ModelInfo,
                              model_kwargs: Dict[str, Any],

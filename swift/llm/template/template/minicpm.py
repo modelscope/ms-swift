@@ -12,7 +12,7 @@ from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import Context, Prompt, findall
-from ..vision_utils import load_video_minicpmv_mplug_owl3, replace_video2image
+from ..vision_utils import load_video_minicpmv_mplug_owl3
 from .llama import Llama3TemplateMeta
 from .qwen import QwenTemplateMeta
 
@@ -166,7 +166,7 @@ class MiniCPMV2_6Template(MiniCPMVTemplate):
         if media_type == 'image':
             return image_context
         elif media_type == 'video':
-            return replace_video2image(load_video, inputs, lambda i: image_context)
+            return self.replace_video2image(load_video, inputs, lambda i: image_context)
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = Template._encode(self, inputs)
@@ -174,13 +174,11 @@ class MiniCPMV2_6Template(MiniCPMVTemplate):
         use_video = bool(inputs.videos)
         is_plain_text = not images and not use_video
         use_image_id = True
-        max_slice_nums = None
-
+        max_slice_nums = get_env_args('max_slice_nums', int, None)
+        video_max_slice_nums = get_env_args('video_max_slice_nums', int, 1)  # or 2
         if use_video:
+            max_slice_nums = video_max_slice_nums
             use_image_id = False
-            max_slice_nums = 1  # or 2
-
-        max_slice_nums = get_env_args('max_slice_nums', int, max_slice_nums)
         input_ids = encoded['input_ids']
         labels = encoded['labels']
         idx_list = findall(input_ids, -100)

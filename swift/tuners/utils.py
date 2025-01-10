@@ -4,6 +4,7 @@
 import hashlib
 import os
 import shutil
+import tempfile
 import threading
 import uuid
 from dataclasses import asdict, dataclass, field
@@ -59,7 +60,7 @@ class SwiftConfig:
         output_path = os.path.join(save_directory, CONFIG_NAME)
 
         # save it
-        with open(output_path, 'w') as writer:
+        with open(output_path, 'w', encoding='utf-8') as writer:
             writer.write(json.dumps(output_dict, indent=2, sort_keys=True))
 
     @classmethod
@@ -77,7 +78,7 @@ class SwiftConfig:
             config_file = os.path.join(pretrained_model_name_or_path, CONFIG_NAME)
         else:
             try:
-                model_dir = snapshot_download(pretrained_model_name_or_path, ignore_file_pattern=BIN_EXTENSIONS)
+                model_dir = snapshot_download(pretrained_model_name_or_path, ignore_patterns=BIN_EXTENSIONS)
                 config_file = os.path.join(model_dir, CONFIG_NAME)
             except Exception:
                 raise ValueError(f"Can't find config.json at '{pretrained_model_name_or_path}'")
@@ -103,7 +104,7 @@ class SwiftConfig:
             path_json_file (`str`):
                 The path to the json file.
         """
-        with open(path_json_file, 'r') as file:
+        with open(path_json_file, 'r', encoding='utf-8') as file:
             json_object = json.load(file)
 
         return json_object
@@ -191,14 +192,12 @@ class ActivationMixin:
 class OffloadHelper:
 
     def __init__(self):
-        sub_dir = os.path.join('offload_cache', str(uuid.uuid4().hex))
-        self.cache_dir = os.path.join(get_cache_dir(), sub_dir)
-        shutil.rmtree(self.cache_dir, ignore_errors=True)
-        os.makedirs(self.cache_dir, exist_ok=True)
+        cache_dir = os.path.join(get_cache_dir(), 'offload_cache')
+        os.makedirs(cache_dir, exist_ok=True)
+        tmp_dir = tempfile.TemporaryDirectory(dir=cache_dir)
+        self.cache_dir = tmp_dir.name
+        self._tmp_dir = tmp_dir
         self.index = {}
-
-    def __del__(self):
-        shutil.rmtree(self.cache_dir, ignore_errors=True)
 
     @staticmethod
     def offload_weight(weight, weight_name, offload_folder, index=None):

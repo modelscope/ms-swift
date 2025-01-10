@@ -1,14 +1,14 @@
 # Quick Start
 
-ms-swift is a comprehensive training and deployment framework for large language models and multimodal large models, provided by the ModelScope Community. It currently supports the training (CPT, SFT, RLHF), inference, evaluation, quantization, and deployment of over 400 LLM and over 100 MLLM. Model developers can fulfill all kinds of needs related to large models in a single platform within the ms-swift framework. The main capabilities of ms-swift include:
+ms-swift is a comprehensive training and deployment framework for large language models and multimodal large models, provided by the ModelScope Community. It currently supports the training (CPT, SFT, RLHF), inference, evaluation, quantization, and deployment of 400+ LLM and 150+ MLLM. Model developers can fulfill all kinds of needs related to large models in a single platform within the ms-swift framework. The main capabilities of ms-swift include:
 
-- 🍎 Model Types: Supports the full process from training to deployment of over 400 text-based large models and over 100 multimodal large models, including All-to-All all-modality models.
+- 🍎 Model Types: Supports the full process from training to deployment of 400+ text-based large models and 150+ multimodal large models, including All-to-All all-modality models.
 - Dataset Types: Comes with more than 150 pre-built datasets for pre-training, fine-tuning, human alignment, multimodal, and supports custom datasets.
 - Hardware Support: Compatible with CPU, RTX series, T4/V100, A10/A100/H100, Ascend NPU, and others.
 - 🍊 Lightweight Training: Supports lightweight fine-tuning methods like LoRA, QLoRA, DoRA, LoRA+, ReFT, RS-LoRA, LLaMAPro, Adapter, GaLore, Q-Galore, LISA, UnSloth, Liger-Kernel, and more.
 - Distributed Training: Supports distributed data parallel (DDP), simple model parallelism via device_map, DeepSpeed ZeRO2 ZeRO3, FSDP, and other distributed training technologies.
 - Quantization Training: Provides training for quantized models like BNB, AWQ, GPTQ, AQLM, HQQ, EETQ.
-- RLHF Training: Supports human alignment training methods like DPO, CPO, SimPO, ORPO, KTO, RM for both text-based and multimodal large models.
+- RLHF Training: Supports human alignment training methods like DPO, CPO, SimPO, ORPO, KTO, RM, PPO for both text-based and multimodal large models.
 - 🍓 Multimodal Training: Capable of training models for different modalities such as images, videos, and audios; supports tasks like VQA (Visual Question Answering), Captioning, OCR (Optical Character Recognition), and Grounding.
 - Interface-driven Training: Offers training, inference, evaluation, and quantization capabilities through an interface, enabling a complete workflow for large models.
 - Plugins and Extensions: Allows customization and extension of models and datasets, and supports customizations for components like loss, metric, trainer, loss-scale, callback, optimizer, etc.
@@ -31,9 +31,10 @@ CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen2.5-7B-Instruct \
     --train_type lora \
-    --dataset AI-ModelScope/alpaca-gpt4-data-zh#500 \
-              AI-ModelScope/alpaca-gpt4-data-en#500 \
-              swift/self-cognition#500 \
+    --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
+              'AI-ModelScope/alpaca-gpt4-data-en#500' \
+              'swift/self-cognition#500' \
+    --torch_dtype bfloat16 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \
@@ -44,7 +45,7 @@ swift sft \
     --gradient_accumulation_steps 16 \
     --eval_steps 50 \
     --save_steps 50 \
-    --save_total_limit 2 \
+    --save_total_limit 5 \
     --logging_steps 5 \
     --max_length 2048 \
     --output_dir output \
@@ -62,7 +63,9 @@ After training is complete, use the following command to perform inference with 
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
     --adapters output/vx-xxx/checkpoint-xxx \
-    --stream true
+    --stream true \
+    --temperature 0 \
+    --max_new_tokens 2048
 
 # merge-lora and use vLLM for inference acceleration
 CUDA_VISIBLE_DEVICES=0 \
@@ -71,7 +74,9 @@ swift infer \
     --stream true \
     --merge_lora true \
     --infer_backend vllm \
-    --max_model_len 8192
+    --max_model_len 8192 \
+    --temperature 0 \
+    --max_new_tokens 2048
 ```
 
 > [!TIP]

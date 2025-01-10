@@ -104,20 +104,6 @@ def get_model_tokenizer_molmoe(model_dir: str,
     if model is not None:
         model.config._to_dict = model.config.to_dict
         model.config.to_dict = MethodType(to_dict, model.config)
-        from transformers import GenerationMixin
-        model.generate = MethodType(GenerationMixin.generate, model)
-
-    if model and hasattr(model, '_old_forward'):  # device_map
-        device = model.lm_head.weight.device
-        forward_origin = model._old_forward
-
-        def _forward(*args, **kwargs):
-            if kwargs.get('append_last_valid_logits') is not None:
-                kwargs['append_last_valid_logits'] = kwargs['append_last_valid_logits'].to(device)
-            return forward_origin(*args, **kwargs)
-
-        model._old_forward = _forward
-        model.forward_origin = forward_origin
 
     return model, processor
 
@@ -148,18 +134,8 @@ def get_model_tokenizer_molmo(model_dir: str,
     model_cls = get_class_from_dynamic_module('modeling_molmo.MolmoForCausalLM', model_dir)
     model_cls._no_split_modules = ['MolmoSequentialBlock']
     model, processor = get_model_tokenizer_multimodal(model_dir, model_info, model_kwargs, load_model, **kwargs)
-    if model:
-        device = next(model.model.transformer.ff_out.parameters()).device
-        forward_origin = model.model.forward
 
-        def _forward(*args, **kwargs):
-            if kwargs.get('append_last_valid_logits') is not None:
-                kwargs['append_last_valid_logits'] = kwargs['append_last_valid_logits'].to(device)
-            return forward_origin(*args, **kwargs)
-
-        model.model.forward = _forward
-        model.model.forward_origin = forward_origin
-
+    patch_output_clone(model.model.transformer.wte)
     return model, processor
 
 

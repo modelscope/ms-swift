@@ -5,6 +5,10 @@ import subprocess
 import sys
 from typing import Dict, List, Optional
 
+from swift.utils import get_logger
+
+logger = get_logger()
+
 ROUTE_MAPPING: Dict[str, str] = {
     'pt': 'swift.cli.pt',
     'sft': 'swift.cli.sft',
@@ -14,7 +18,8 @@ ROUTE_MAPPING: Dict[str, str] = {
     'deploy': 'swift.cli.deploy',
     'rlhf': 'swift.cli.rlhf',
     'export': 'swift.cli.export',
-    'eval': 'swift.cli.eval'
+    'eval': 'swift.cli.eval',
+    'app': 'swift.cli.app',
 }
 
 ROUTE_MAPPING.update({k.replace('-', '_'): v for k, v in ROUTE_MAPPING.items()})
@@ -40,8 +45,17 @@ def get_torchrun_args() -> Optional[List[str]]:
     return torchrun_args
 
 
+def _compat_web_ui(argv):
+    # [compat]
+    method_name = argv[0]
+    if method_name in {'web-ui', 'web_ui'} and ('--model' in argv or '--adapters' in argv or '--ckpt_dir' in argv):
+        argv[0] = 'app'
+        logger.warning('Please use `swift app`.')
+
+
 def cli_main() -> None:
     argv = sys.argv[1:]
+    _compat_web_ui(argv)
     method_name = argv[0]
     argv = argv[1:]
     file_path = importlib.util.find_spec(ROUTE_MAPPING[method_name]).origin

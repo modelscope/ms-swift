@@ -5,6 +5,7 @@ from typing import Optional
 from ..constant import LLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..utils import Prompt
+from .llama import Llama3_2TemplateMeta
 from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
 
 register_template(
@@ -71,6 +72,17 @@ register_template(
         suffix=['[SEP]</s>']))
 
 register_template(
+    Llama3_2TemplateMeta(
+        LLMTemplateType.skywork_o1,
+        default_system=(
+            'You are Skywork-o1, a thinking model developed by Skywork AI, specializing in solving complex problems '
+            "involving mathematics, coding, and logical reasoning through deep thought. When faced with a user's "
+            'request, you first engage in a lengthy and in-depth thinking process to explore possible solutions to '
+            'the problem. After completing your thoughts, you then provide a detailed explanation of the solution '
+            'process in your response.'),
+    ))
+
+register_template(
     TemplateMeta(
         LLMTemplateType.bluelm,
         prefix=[['bos_token_id'], '{{SYSTEM}}'],
@@ -121,24 +133,17 @@ register_template(
 @dataclass
 class TeleChatTemplateMeta(TemplateMeta):
     prefix: Prompt = field(default_factory=list)
-    prompt: Prompt = field(default_factory=lambda: ['<_user>{{QUERY}}<_bot>'])
-    chat_sep: Optional[Prompt] = field(default_factory=lambda: ['<_end>'])
-    suffix: Prompt = field(default_factory=lambda: ['<_end>'])
-    system_prefix: Optional[Prompt] = field(default_factory=lambda: ['<_system>{{SYSTEM}}'])
+    prompt: Prompt = field(default_factory=lambda: [['user_token_id'], '{{QUERY}}', ['bot_token_id']])
+    chat_sep: Optional[Prompt] = field(default_factory=lambda: [['eos_token_id']])
+    suffix: Prompt = field(default_factory=lambda: [['eos_token_id']])
+    system_prefix: Optional[Prompt] = field(default_factory=lambda: ['<_system>{{SYSTEM}}\n'])
+    auto_add_bos: bool = True
 
 
 register_template(TeleChatTemplateMeta(LLMTemplateType.telechat))
 
-telechat2_system = '你是中国电信星辰语义大模型，英文名是TeleChat，你是由中电信人工智能科技有限公司和中国电信人工智能研究院（TeleAI）研发的人工智能助手。\n'
-register_template(TeleChatTemplateMeta(LLMTemplateType.telechat2, default_system=telechat2_system))
-
-register_template(
-    TemplateMeta(
-        LLMTemplateType.telechat2_115b,
-        prefix=['<_start>'],
-        prompt=[[4], '{{QUERY}}', [5]],
-        chat_sep=['<_end>'],
-        suffix=['<_end>']))
+telechat_system = '你是中国电信星辰语义大模型，英文名是TeleChat，你是由中电信人工智能科技有限公司和中国电信人工智能研究院（TeleAI）研发的人工智能助手。'
+register_template(TeleChatTemplateMeta(LLMTemplateType.telechat2, default_system=telechat_system))
 
 DBRX_SYSTEM = (
     'You are DBRX, created by Databricks. You were last updated in December 2023. '

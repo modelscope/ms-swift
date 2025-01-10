@@ -178,14 +178,24 @@ def get_model_tokenizer_glm4v(model_dir: str,
 register_model(
     ModelMeta(
         MLLMModelType.glm4v,
-        [ModelGroup([
-            Model('ZhipuAI/glm-4v-9b', 'THUDM/glm-4v-9b'),
-        ])],
+        [
+            ModelGroup(
+                [
+                    Model('ZhipuAI/glm-4v-9b', 'THUDM/glm-4v-9b'),
+                ],
+                requires=['transformers>=4.42,<4.45'],
+            ),
+            ModelGroup(
+                [
+                    Model('ZhipuAI/cogagent-9b-20241220', 'THUDM/cogagent-9b-20241220'),
+                ],
+                requires=['transformers>=4.42'],
+            )
+        ],
         TemplateType.glm4v,
         get_model_tokenizer_glm4v,
         architectures=['ChatGLMModel', 'ChatGLMForConditionalGeneration'],
         model_arch=ModelArch.glm4v,
-        requires=['transformers>=4.42'],
     ))
 
 

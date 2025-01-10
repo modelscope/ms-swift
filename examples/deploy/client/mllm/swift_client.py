@@ -9,7 +9,7 @@ def infer_batch(engine: 'InferEngine', infer_requests: List['InferRequest']):
     request_config = RequestConfig(max_tokens=512, temperature=0)
     metric = InferStats()
     resp_list = engine.infer(infer_requests, request_config, metrics=[metric])
-    query0 = dataset[0]['messages'][0]['content']
+    query0 = infer_requests[0].messages[0]['content']
     print(f'query0: {query0}')
     print(f'response0: {resp_list[0].choices[0].message.content}')
     print(f'metric: {metric.compute()}')
@@ -103,7 +103,8 @@ def get_data(mm_type: Literal['text', 'image', 'video', 'audio']):
 def run_client(host: str = '127.0.0.1', port: int = 8000):
     engine = InferClient(host=host, port=port)
     print(f'models: {engine.models}')
-    dataset = load_dataset(['AI-ModelScope/LaTeX_OCR:small#1000'], strict=False, seed=42)[0]
+    # Here, `load_dataset` is used for convenience; `infer_batch` does not require creating a dataset.
+    dataset = load_dataset(['AI-ModelScope/LaTeX_OCR:small#1000'], seed=42)[0]
     print(f'dataset: {dataset}')
     infer_requests = [InferRequest(**data) for data in dataset]
     infer_batch(engine, infer_requests)
@@ -117,7 +118,7 @@ if __name__ == '__main__':
     from swift.llm import (InferEngine, InferRequest, InferClient, RequestConfig, load_dataset, run_deploy,
                            DeployArguments)
     from swift.plugin import InferStats
-    # TODO: The current 'pt' deployment does not support automatic batch.
+    # NOTE: In a real deployment scenario, please comment out the context of run_deploy.
     with run_deploy(
             DeployArguments(model='Qwen/Qwen2-VL-2B-Instruct', verbose=False, log_interval=-1,
                             infer_backend='vllm')) as port:

@@ -7,7 +7,7 @@ image_area=518400 \
 swift sft \
     --model BAAI/Emu3-Gen \
     --train_type lora \
-    --dataset swift/TextCaps#40 \
+    --dataset 'swift/TextCaps#40' \
     --loss_scale react \
     --tools_prompt react_zh \
     --torch_dtype bfloat16 \
@@ -21,6 +21,5 @@ swift sft \
     --save_total_limit 2 \
     --logging_steps 5 \
     --max_length 1024 \
-    --max_steps 1000 \
     --weight_decay 0.1 \
     --gradient_checkpointing_kwargs '{"use_reentrant": false}'

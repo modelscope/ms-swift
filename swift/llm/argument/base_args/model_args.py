@@ -6,6 +6,7 @@ from typing import Any, Dict, Literal, Optional, Union
 
 import json
 import torch
+from transformers.utils import is_torch_mps_available
 
 from swift.llm import MODEL_MAPPING, HfConfigFactory, get_model_info_meta, get_model_name
 from swift.utils import get_dist_setting, get_logger
@@ -24,6 +25,7 @@ class ModelArguments:
         model_revision (Optional[str]): Revision of the model. Default is None.
         torch_dtype (Literal): Model parameter dtype. Default is None.
         attn_impl (Literal): Attention implementation to use. Default is None.
+        num_labels (Optional[int]): Number of labels for classification tasks. Default is None.
         rope_scaling (Literal): Type of rope scaling to use. Default is None.
         device_map (Optional[str]): Configuration for device mapping. Default is None.
         local_repo_path (Optional[str]): Path to the local github repository for model. Default is None.
@@ -32,12 +34,14 @@ class ModelArguments:
     model_type: Optional[str] = field(
         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
     model_revision: Optional[str] = None
+    task_type: Literal['causal_lm', 'seq_cls'] = None
 
     torch_dtype: Literal['bfloat16', 'float16', 'float32', None] = None
     # flash_attn: It will automatically convert names based on the model.
     # None: It will be automatically selected between sdpa and eager.
     attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None
 
+    num_labels: Optional[int] = None
     rope_scaling: Literal['linear', 'dynamic'] = None
     device_map: Optional[Union[dict, str]] = None
     # When some model code needs to be downloaded from GitHub,
@@ -52,7 +56,7 @@ class ModelArguments:
             value = {}
         elif isinstance(value, str):
             if os.path.exists(value):  # local path
-                with open(value, 'r') as f:
+                with open(value, 'r', encoding='utf-8') as f:
                     value = json.load(f)
             else:  # json str
                 try:
@@ -87,7 +91,7 @@ class ModelArguments:
         self.torch_dtype: Optional[torch.dtype] = HfConfigFactory.to_torch_dtype(self.torch_dtype)
         self.torch_dtype: torch.dtype = self._init_model_info()
         # Mixed Precision Training
-        if isinstance(self, TrainArguments):
+        if isinstance(self, TrainArguments) and not is_torch_mps_available():
             if self.torch_dtype in {torch.float16, torch.float32}:
                 self.fp16, self.bf16 = True, False
             elif self.torch_dtype == torch.bfloat16:
@@ -113,6 +117,8 @@ class ModelArguments:
 
     def _init_model_info(self) -> torch.dtype:
         self.model_info, self.model_meta = get_model_info_meta(**self.get_model_kwargs())
+        self.task_type = self.model_info.task_type
+        self.num_labels = self.model_info.num_labels
         self.model_dir = self.model_info.model_dir
         self.model_type = self.model_info.model_type
         if isinstance(self.rope_scaling, str):
@@ -139,4 +145,6 @@ class ModelArguments:
             'quantization_config': self.get_quantization_config(),
             'attn_impl': self.attn_impl,
             'rope_scaling': self.rope_scaling,
+            'task_type': self.task_type,
+            'num_labels': self.num_labels
         }

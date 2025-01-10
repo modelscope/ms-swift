@@ -6,12 +6,13 @@ import re
 from copy import deepcopy
 from dataclasses import asdict
 from functools import wraps
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import json
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from modelscope.hub.utils.utils import get_cache_dir
 from peft import PeftModel
 from PIL import Image
 from torch.nn.utils.rnn import pad_sequence
@@ -45,37 +46,42 @@ class Template(ProcessorMixin):
     use_model = False
 
     is_encoder_decoder = False
-    padding_side: Literal['left', 'right'] = 'right'  # The padding_side when the training batch_size >= 2.
 
     def __init__(
-            self,
-            processor: Processor,
-            template_meta: 'TemplateMeta',
-            default_system: Optional[str] = None,
-            max_length: Optional[int] = None,
-            *,
-            use_chat_template: bool = True,
-            template_backend: Literal['swift', 'jinja'] = 'swift',
-            truncation_strategy: Literal['raise', 'left'] = 'raise',
-            max_pixels: Optional[int] = None,
-            tools_prompt: Optional[str] = None,
-            # only for train
-            loss_scale: str = 'default',
-            sequence_parallel_size: int = 1) -> None:
+        self,
+        processor: Processor,
+        template_meta: 'TemplateMeta',
+        default_system: Optional[str] = None,
+        max_length: Optional[int] = None,
+        *,
+        use_chat_template: bool = True,
+        truncation_strategy: Literal['raise', 'left', 'right'] = 'raise',
+        max_pixels: Optional[int] = None,
+        tools_prompt: Optional[str] = None,
+        # only for train
+        padding_side: Literal['left', 'right'] = 'right',
+        loss_scale: str = 'default',
+        sequence_parallel_size: int = 1,
+        # infer/deploy
+        template_backend: Literal['swift', 'jinja'] = 'swift',
+    ) -> None:
         """
         default_system: Override the default_system in the template.
         max_length: Max length of the sequence
         truncation_strategy: The truncation strategy
-        loss_scale: The loss scale function to use
         max_pixels: Rescale image to reduce memory usage, default `None` means no limitation.
             e.g. 512 * 512 (H*W)
         tools_prompt: The type of tools_prompt added in the system.
+        padding_side: The padding_side when the training batch_size >= 2
+        loss_scale: The loss scale function to use
         """
         from .template_meta import TemplateMeta
         self.processor = processor
         self.model_info = processor.model_info
         self.config = self.model_info.config
         self.model_meta = processor.model_meta
+        if max_length is None:
+            max_length = self.model_info.max_model_len
         tokenizer = self.tokenizer
 
         if not use_chat_template:
@@ -96,34 +102,36 @@ class Template(ProcessorMixin):
         self.truncation_strategy = truncation_strategy
         self.loss_scale = loss_scale
         self.max_pixels = max_pixels
+        self.padding_side = padding_side
         self.sequence_parallel_size = sequence_parallel_size
         self.tools_prompt = tools_prompt or template_meta.default_tools_prompt
         if self.is_encoder_decoder:
             self.skip_prompt = False
 
         self.mode: Literal['pt', 'vllm', 'lmdeploy',  # infer
-                           'train', 'rlhf', 'kto'  # train
-                           ] = 'pt'
+                           'train', 'rlhf', 'kto',  # train
+                           'seq_cls'] = 'pt'
+        if self.model_info.task_type != 'causal_lm':
+            self.mode = self.model_info.task_type
         self._handles = []
         self._deepspeed_initialize = None
 
     @staticmethod
-    def _load_images(images, load_images: bool) -> None:
-        for i, image in enumerate(images):
-            if load_images:
-                if isinstance(image, dict) and 'bytes' in image:
-                    image = image['bytes'] or image['path']
+    def _load_image(image, load_images: bool):
+        if load_images:
+            if isinstance(image, dict) and 'bytes' in image:
+                image = image['bytes'] or image['path']
+            image = load_image(image)
+        else:
+            if isinstance(image, dict):
+                path = image['path']
+                if path and (path.startswith('http') or os.path.exists(path)):
+                    image = path
+                else:
+                    image = load_image(image['bytes'])
+            elif not isinstance(image, str):
                 image = load_image(image)
-            else:
-                if isinstance(image, dict):
-                    path = image['path']
-                    if path and (path.startswith('http') or os.path.exists(path)):
-                        image = path
-                    else:
-                        image = load_image(image['bytes'])
-                elif not isinstance(image, str):
-                    image = load_image(image)
-            images[i] = image
+        return image
 
     def _preprocess_inputs(
         self,
@@ -135,7 +143,8 @@ class Template(ProcessorMixin):
         if self.max_pixels is not None or inputs.objects:
             load_images = True
         if images:
-            self._load_images(images, load_images)
+            for i, image in enumerate(images):
+                images[i] = self._load_image(images[i], load_images)
         if self.max_pixels is not None:
             assert self.grounding_type != 'real', 'not support'  # TODO:check
             images = [rescale_image(img, self.max_pixels) for img in images]
@@ -156,8 +165,25 @@ class Template(ProcessorMixin):
                 'The template does not support multi-round chat. Only use the last round of the conversation.')
             inputs.messages = inputs.messages[-2:]
 
+        if self.model_meta.is_multimodal:
+            self._replace_image_tags(inputs)
         if inputs.is_multimodal:
             self._add_default_tags(inputs)
+
+    @staticmethod
+    def _replace_image_tags(inputs: StdTemplateInputs):
+        # compat
+        images = []
+        pattern = r'<img>(.+?)</img>'
+        for message in inputs.messages:
+            content = message['content']
+            if not isinstance(content, str):
+                continue
+            images += re.findall(pattern, content)
+            message['content'] = re.sub(pattern, '<image>', content)
+        if images:
+            assert not inputs.images, f'images: {images}, inputs.images: {inputs.images}'
+            inputs.images = images
 
     def _rlhf_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         chosen_inputs, rejected_inputs = inputs, deepcopy(inputs)
@@ -176,7 +202,14 @@ class Template(ProcessorMixin):
     def _kto_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         label, inputs.label = inputs.label, None
         encoded = self._rlhf_encode(inputs)
-        encoded['label'] = label
+        encoded['label'] = bool(label)
+        return encoded
+
+    def _seq_cls_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded = self._encode(inputs)
+        encoded.pop('labels', None)
+        if inputs.label is not None:
+            encoded['labels'] = int(inputs.label)
         return encoded
 
     def encode(self,
@@ -191,6 +224,8 @@ class Template(ProcessorMixin):
             inputs = asdict(inputs)
 
         if isinstance(inputs, dict):
+            if not self.is_training:
+                InferRequest.remove_response(inputs['messages'])
             inputs = StdTemplateInputs.from_dict(inputs, tools_prompt=self.tools_prompt)
         elif isinstance(inputs, StdTemplateInputs):
             inputs = deepcopy(inputs)
@@ -203,6 +238,8 @@ class Template(ProcessorMixin):
                 encoded[key] = getattr(inputs, key)
         elif self.mode in {'pt', 'train'}:
             encoded = self._encode(inputs)
+        elif self.mode == 'seq_cls':
+            encoded = self._seq_cls_encode(inputs)
         elif self.mode == 'rlhf':
             encoded = self._rlhf_encode(inputs)
         elif self.mode == 'kto':
@@ -232,6 +269,9 @@ class Template(ProcessorMixin):
         tokenizer_kwargs = tokenizer_kwargs or {}
         return self._skip_stop_decode(generate_ids, is_finished, **tokenizer_kwargs)
 
+    def generate(self, model, *args, **kwargs):
+        return model.generate(*args, **kwargs)
+
     def _skip_stop_decode(self, generate_ids: List[int], is_finished: bool, **decode_kwargs) -> Any:
         # Do not print template_meta.suffix[-1] and eos_token.
         # However, other stop_words will be printed.
@@ -248,11 +288,6 @@ class Template(ProcessorMixin):
         if 'spaces_between_special_tokens' not in decode_kwargs:
             decode_kwargs['spaces_between_special_tokens'] = False
         return tokenizer.decode(generate_ids, **decode_kwargs)
-        # if not is_finished or is_finished and response[-len_suffix:] == template_suffix:
-        #     # To avoid response length being shorter than previous response length during streaming.
-        #     # TODO:check
-        #     # idx = max(len(response) - len_suffix, 0, self.print_idx)
-        #     response = response[:-len_suffix]
 
     def prepare_generate_kwargs(self, generate_kwargs: Dict[str, Any], *, model=None) -> Dict[str, Any]:
         generation_config = generate_kwargs['generation_config']
@@ -264,7 +299,10 @@ class Template(ProcessorMixin):
     def _save_pil_image(image: Image.Image) -> str:
         img_bytes = image.tobytes()
         img_hash = hashlib.sha256(img_bytes).hexdigest()
-        img_path = os.path.join('tmp', f'{img_hash}.png')
+        tmp_dir = os.path.join(get_cache_dir(), 'tmp', 'images')
+        logger.info_once(f'create tmp_dir: {tmp_dir}')
+        os.makedirs(tmp_dir, exist_ok=True)
+        img_path = os.path.join(tmp_dir, f'{img_hash}.png')
         if not os.path.exists(img_path):
             image.save(img_path)
         return img_path
@@ -436,19 +474,19 @@ class Template(ProcessorMixin):
         for context, loss_scale in zip(context_list, loss_scale_list):
             for k in ['image', 'video', 'audio']:
                 if context == f'<{k}>':
-                    idx = getattr(inputs, f'{k}_idx')
-                    c_list = self.replace_tag(k, idx, inputs)
-                    setattr(inputs, f'{k}_idx', idx + 1)
+                    c_list = self.replace_tag(k, getattr(inputs, f'{k}_idx'), inputs)
+                    setattr(inputs, f'{k}_idx', getattr(inputs, f'{k}_idx') + 1)
+                    loss_scale = 0.
                     break
             else:
                 if context == '<ref-object>':
                     idx = inputs.object_idx
                     c_list = self.replace_object(inputs.objects[idx], idx, inputs)
-                    inputs.object_idx = idx + 1
+                    inputs.object_idx += 1
                 elif context == '<bbox>':
                     idx = inputs.box_idx
                     c_list = self.replace_box(inputs.objects[idx], idx, inputs)
-                    inputs.box_idx = idx + 1
+                    inputs.box_idx += 1
                 else:
                     c_list = [context]
             res += c_list
@@ -458,6 +496,8 @@ class Template(ProcessorMixin):
     @staticmethod
     def _add_default_tags(inputs: StdTemplateInputs):
         total_content = '\n'.join([message['content'] or '' for message in inputs.messages])
+        if inputs.system:
+            total_content = f'{inputs.system}\n{total_content}'
         for media_type in ['image', 'audio', 'video']:
             media_key, media_tag = f'{media_type}s', f'<{media_type}>'
             medias = getattr(inputs, media_key)
@@ -467,7 +507,8 @@ class Template(ProcessorMixin):
                 num_media_tags = len(re.findall(media_tag, total_content))
                 num_media = len(medias)
                 num_new_tags = num_media - num_media_tags
-                assert num_new_tags >= 0, f'Number of media: {num_media}, number of media_tags: {num_media_tags}'
+                assert num_new_tags >= 0, (
+                    f'num_media: {num_media}, num_media_tags: {num_media_tags}, total_content: {total_content}')
                 inputs.messages[0]['content'] = media_tag * num_new_tags + inputs.messages[0]['content']
 
     def _encode_context_list(
@@ -522,7 +563,8 @@ class Template(ProcessorMixin):
             messages.insert(0, {'role': 'system', 'content': inputs.system})
         if messages[-1]['content'] is None:
             messages.pop()
-        text = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        add_generation_prompt = messages[-1]['role'] != 'assistant'
+        text = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=add_generation_prompt)
         answer_len = 1 if self.is_training else 0
         return [text], [1.], answer_len
 
@@ -593,8 +635,10 @@ class Template(ProcessorMixin):
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         template_backend = self.template_backend
-        if self.template_meta.template_type == 'dummy' and self.use_chat_template and not self.is_training:
+        if (self.template_meta.template_type == 'dummy' and self.use_chat_template and not self.is_training
+                and self.mode != 'seq_cls'):
             template_backend = 'jinja'
+            logger.info_once(f'Setting template_backend: {template_backend}')
         res_context_list, loss_scale_list, answer_len = (
             self._swift_encode(inputs) if template_backend == 'swift' else self._jinja_encode(inputs))
         encoded = {}
@@ -604,10 +648,9 @@ class Template(ProcessorMixin):
             for key, _slice in zip(['prompt', 'answer'],
                                    [slice(0, total_len - answer_len),
                                     slice(total_len - answer_len, total_len)]):
-                res_context_list, loss_scale_list = self._simplify_context_list(res_context_list[_slice],
-                                                                                loss_scale_list[_slice], inputs)
-                input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(
-                    res_context_list, loss_scale_list)
+                context_list, loss_scale = self._simplify_context_list(res_context_list[_slice],
+                                                                       loss_scale_list[_slice], inputs)
+                input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(context_list, loss_scale)
                 encoded[f'{key}_input_ids'] = input_ids
                 if key == 'answer':
                     encoded['labels'] = labels
@@ -627,11 +670,18 @@ class Template(ProcessorMixin):
             if self.truncation_strategy == 'raise' and len(input_ids) > self.max_length:
                 raise MaxLengthError(f'Current length of row({len(input_ids)}) is larger'
                                      f' than the max_length({self.max_length}).')
-            input_ids = input_ids[-self.max_length:]
-            if labels is not None:
-                labels = labels[-self.max_length:]
-            if loss_scale is not None:
-                loss_scale = loss_scale[-self.max_length:]
+            elif self.truncation_strategy == 'right':
+                input_ids = input_ids[:self.max_length]
+                if labels is not None:
+                    labels = labels[:self.max_length]
+                if loss_scale is not None:
+                    loss_scale = loss_scale[:self.max_length]
+            else:
+                input_ids = input_ids[-self.max_length:]
+                if labels is not None:
+                    labels = labels[-self.max_length:]
+                if loss_scale is not None:
+                    loss_scale = loss_scale[-self.max_length:]
 
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
@@ -644,29 +694,40 @@ class Template(ProcessorMixin):
             for k in list(encoded.keys()):
                 if k.endswith('loss_scale'):
                     encoded[k] = None
-
-        # sequence_classification
-        if inputs.label is not None:
-            encoded['label'] = inputs.label
         return encoded
 
-    def _debug_logger(self, generate_ids):
-        if isinstance(generate_ids, list) or isinstance(generate_ids, torch.Tensor) and generate_ids.ndim == 1:
-            generate_ids = [generate_ids]
-        for tokens in generate_ids:
-            if isinstance(tokens, torch.Tensor):
-                tokens = tokens.tolist()
-            logger.info(f'[GENERATE_IDS] {tokens}')
-            logger.info(f'[GENERATE] {self.safe_decode(tokens)}\n' + '-' * 50)
+    def debug_logger(self, inputs):
+        if not strtobool(os.getenv('SWIFT_DEBUG', 'false')):
+            return
+        if 'input_ids' in inputs:
+            k = 'input_ids'
+            val = inputs['input_ids']
+        elif 'generate_ids' in inputs:
+            k = 'generate_ids'
+            val = inputs['generate_ids']
+        for v in val:
+            self.print_inputs({k: v.tolist()})
+
+    def replace_video2image(self, load_video_func, inputs, replace_tag: Callable) -> List[Context]:
+        context_list = []
+        if self.mode == 'pt':
+            video = inputs.videos[inputs.video_idx]
+        else:
+            video = inputs.videos.pop(inputs.video_idx)
+            inputs.video_idx -= 1
+        images = inputs.images
+        new_images = load_video_func(video)
+        inputs.images = images[:inputs.image_idx] + new_images + images[inputs.image_idx:]
+        for i in range(len(new_images)):
+            context_list += replace_tag(i)
+        inputs.image_idx += len(new_images)
+        return context_list
 
     def get_generate_ids(self, generate_ids: Union[torch.Tensor, List[int]],
                          num_prompt_tokens: int) -> Union[torch.Tensor, List[int]]:
-        if strtobool(os.getenv('SWIFT_DEBUG', 'false')):
-            self._debug_logger(generate_ids)
         if self.skip_prompt:
-            return generate_ids[..., num_prompt_tokens:]
-        else:
-            return generate_ids
+            generate_ids = generate_ids[..., num_prompt_tokens:]
+        return generate_ids
 
     def post_process_generate_response(self, response: str, inputs: StdTemplateInputs) -> str:
         return response
@@ -682,7 +743,7 @@ class Template(ProcessorMixin):
             kwargs.pop('input_ids', None)
 
         if isinstance(model, PeftModel):
-            parameters = inspect.signature(model.base_model.model.forward).parameters
+            parameters = inspect.signature(model.model.forward).parameters
         else:
             parameters = inspect.signature(model.forward).parameters
         if 'position_ids' not in parameters:
@@ -693,7 +754,7 @@ class Template(ProcessorMixin):
     def is_training(self):
         return self.mode not in {'vllm', 'lmdeploy', 'pt'}
 
-    def set_mode(self, mode: Literal['vllm', 'lmdeploy', 'pt', 'train', 'rlhf', 'kto']) -> None:
+    def set_mode(self, mode: Literal['vllm', 'lmdeploy', 'pt', 'seq_cls', 'train', 'rlhf', 'kto']) -> None:
         self.mode = mode
 
     def register_post_encode_hook(self, models: List[nn.Module]) -> None:
@@ -738,6 +799,8 @@ class Template(ProcessorMixin):
             return self._kto_data_collator(batch, padding_to=padding_to)
         elif self.mode in {'pt', 'train'}:
             return self._data_collator(batch, padding_to=padding_to)
+        elif self.mode == 'seq_cls':
+            return self._seq_cls_data_collator(batch, padding_to=padding_to)
 
     @staticmethod
     def _fetch_inputs_startswith(batch: List[Dict[str, Any]], prefix: str) -> List[Dict[str, Any]]:
@@ -794,6 +857,16 @@ class Template(ProcessorMixin):
             res['label'] = label
         return res
 
+    def _seq_cls_data_collator(self,
+                               batch: List[Dict[str, Any]],
+                               *,
+                               padding_to: Optional[int] = None) -> Dict[str, Any]:
+        labels = [b.pop('labels') for b in batch if b.get('labels') is not None]
+        res = self._data_collator(batch, padding_to=padding_to)
+        if labels:
+            res['labels'] = torch.tensor(labels, dtype=torch.long)
+        return res
+
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         """
         Args:
@@ -820,7 +893,7 @@ class Template(ProcessorMixin):
         keys = [
             'input_ids', 'inputs_embeds', 'attention_mask', 'labels', 'loss_scale', 'position_ids', 'token_type_ids'
         ]
-        pad_value = [self.tokenizer.pad_token_id, 0., 0, -100, 0., -1, 0]
+        pad_value = [self.tokenizer.pad_token_id, 0., 0, -100, 0., 1, 0]
         # Convert to tensor and remove unnecessary dimensions.
         seq_lens = None
         for key in keys:
@@ -836,6 +909,8 @@ class Template(ProcessorMixin):
                 seq_lens = [seq.shape[0] for seq in res[key]]
         if seq_lens and ('input_ids' in res or 'inputs_embeds' in res):
             res['attention_mask'] = [torch.ones(seq_len, dtype=torch.int64) for seq_len in seq_lens]
+            if self.is_training and self.padding_side == 'left':
+                res['position_ids'] = [torch.arange(seq_len, dtype=torch.int64) for seq_len in seq_lens]
 
         for key, pad_value in zip(keys, pad_value):
             if key not in res:
@@ -859,11 +934,6 @@ class Template(ProcessorMixin):
         pixel_values_videos = [b['pixel_values_videos'] for b in batch if b.get('pixel_values_videos') is not None]
         if len(pixel_values_videos) > 0:
             res['pixel_values_videos'] = torch.concat(pixel_values_videos)
-        # sequence_classification
-        if self.is_training:
-            label = [b['label'] for b in batch if b.get('label') is not None]
-            if label:
-                res['label'] = label
         if use_torchacc() or self.sequence_parallel_size > 1:
             res = self._torchacc_xtuner_data_collator(res, padding_to, self.tokenizer, padding_side)
         return res
@@ -909,15 +979,18 @@ class Template(ProcessorMixin):
     def print_inputs(self, inputs: Dict[str, Any], tokenizer_kwargs: Optional[Dict[str, Any]] = None) -> None:
         if tokenizer_kwargs is None:
             tokenizer_kwargs = {}
-        for key in ['input', 'labels', 'chosen_input', 'chosen_labels', 'rejected_input', 'rejected_labels']:
+        for key in [
+                'input', 'labels', 'generate', 'chosen_input', 'chosen_labels', 'rejected_input', 'rejected_labels'
+        ]:
             val = inputs.get(key)  # fix val is a tensor
             if val is None:
                 val = inputs.get(f'{key}_ids')
             if val is not None:
                 key_upper = key.upper()
                 logger.info(f'[{key_upper}_IDS] {val}')
-                val_str = self.safe_decode(val, **tokenizer_kwargs)
-                logger.info(f'[{key_upper}] {val_str}')
+                if isinstance(val, (list, tuple, torch.Tensor)):
+                    val_str = self.safe_decode(val, **tokenizer_kwargs)
+                    logger.info(f'[{key_upper}] {val_str}')
         if inputs.get('loss_scale') is not None:
             val = inputs['loss_scale']
             logger.info(f'[LOSS_SCALE] {val}')
@@ -972,7 +1045,12 @@ class Template(ProcessorMixin):
         return torch.stack(padded_sequences)
 
     def safe_decode(self, input_ids: List[int], **tokenizer_kwargs) -> str:
-        placeholder_tokens = self.template_meta.placeholder_tokens
+        if isinstance(self, Template):
+            tokenizer = self.tokenizer
+            placeholder_tokens = self.template_meta.placeholder_tokens
+        else:
+            tokenizer = self
+            placeholder_tokens = []
 
         def _is_special(token: int) -> bool:
             if isinstance(token, float) or token < 0:
@@ -993,12 +1071,12 @@ class Template(ProcessorMixin):
                 continue
             if _is_special(input_ids[i]) and not _is_special(input_ids[i - 1]):
                 s = i
-                result_str += self.tokenizer.decode(input_ids[e:s], **tokenizer_kwargs)
+                result_str += tokenizer.decode(input_ids[e:s], **tokenizer_kwargs)
             if not _is_special(input_ids[i]) and _is_special(input_ids[i - 1]):
                 e = i
                 result_str += f'[{input_ids[i - 1]} * {e - s}]'
         if _is_special(input_ids[i]):
             result_str += f'[{input_ids[i]} * {len(input_ids) - s}]'
         else:
-            result_str += self.tokenizer.decode(input_ids[e:], **tokenizer_kwargs)
+            result_str += tokenizer.decode(input_ids[e:], **tokenizer_kwargs)
         return result_str

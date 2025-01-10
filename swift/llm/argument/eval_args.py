@@ -23,7 +23,6 @@ class EvalArguments(DeployArguments):
         eval_output_dir (str): The eval output dir.
         temperature (float): The temperature.
         verbose (bool): Output verbose information.
-        max_batch_size(int): The max batch size.
         eval_url(str): The extra eval url, use this as --model.
     """
     eval_dataset: List[str] = field(default_factory=list)
@@ -32,25 +31,41 @@ class EvalArguments(DeployArguments):
 
     temperature: Optional[float] = 0.
     verbose: bool = False
-    max_batch_size: Optional[int] = None
+    eval_num_proc: Optional[int] = None
     # If eval_url is set, ms-swift will not perform deployment operations and
     # will directly use the URL for evaluation.
     eval_url: Optional[str] = None
 
+    def _init_eval_url(self):
+        # [compat]
+        if self.eval_url and 'chat/completions' in self.eval_url:
+            self.eval_url = self.eval_url.split('/chat/completions', 1)[0]
+
     def __post_init__(self):
         super().__post_init__()
+        self._init_eval_url()
         self._init_eval_dataset()
         self.eval_output_dir = to_abspath(self.eval_output_dir)
         logger.info(f'eval_output_dir: {self.eval_output_dir}')
+
+    @staticmethod
+    def list_eval_dataset():
+        from evalscope.backend.opencompass import OpenCompassBackendManager
+        from evalscope.backend.vlm_eval_kit import VLMEvalKitBackendManager
+        return {
+            'opencompass': OpenCompassBackendManager.list_datasets(),
+            'vlmeval': VLMEvalKitBackendManager.list_supported_datasets()
+        }
 
     def _init_eval_dataset(self):
         if isinstance(self.eval_dataset, str):
             self.eval_dataset = [self.eval_dataset]
 
+        eval_dataset = self.list_eval_dataset()
         from evalscope.backend.opencompass import OpenCompassBackendManager
         from evalscope.backend.vlm_eval_kit import VLMEvalKitBackendManager
-        self.opencompass_dataset = set(OpenCompassBackendManager.list_datasets())
-        self.vlmeval_dataset = set(VLMEvalKitBackendManager.list_supported_datasets())
+        self.opencompass_dataset = set(eval_dataset['opencompass'])
+        self.vlmeval_dataset = set(eval_dataset['vlmeval'])
         eval_dataset_mapping = {dataset.lower(): dataset for dataset in self.opencompass_dataset | self.vlmeval_dataset}
         self.eval_dataset_oc = []
         self.eval_dataset_vlm = []

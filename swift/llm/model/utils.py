@@ -59,6 +59,8 @@ class ModelInfo:
 
     # extra
     config: Optional[PretrainedConfig] = None
+    task_type: Literal['causal_lm', 'seq_cls', None] = None
+    num_labels: Optional[int] = None
 
     def __post_init__(self):
         from .register import get_model_name
@@ -221,7 +223,7 @@ def safe_snapshot_download(model_id_or_path: str,
                            download_model: bool = True,
                            use_hf: Optional[bool] = None,
                            hub_token: Optional[str] = None,
-                           ignore_file_pattern: Optional[List[str]] = None,
+                           ignore_patterns: Optional[List[str]] = None,
                            **kwargs) -> str:
     """Download model protected by DDP context
 
@@ -234,14 +236,14 @@ def safe_snapshot_download(model_id_or_path: str,
     Returns:
         model_dir
     """
-    if ignore_file_pattern is None:
-        ignore_file_pattern = []
-    ignore_file_pattern += [
-        '*.zip', '*.gguf', '*.pth', '*.pt', 'consolidated*', 'onnx', '*.safetensors.md', '*.msgpack', '*.onnx', '*.ot',
-        '*.h5'
+    if ignore_patterns is None:
+        ignore_patterns = []
+    ignore_patterns += [
+        '*.zip', '*.gguf', '*.pth', '*.pt', 'consolidated*', 'onnx/*', '*.safetensors.md', '*.msgpack', '*.onnx',
+        '*.ot', '*.h5'
     ]
     if not download_model:
-        ignore_file_pattern += ['*.bin', '*.safetensors']
+        ignore_patterns += ['*.bin', '*.safetensors']
     hub = get_hub(use_hf)
     if model_id_or_path.startswith('~'):
         model_id_or_path = os.path.abspath(os.path.expanduser(model_id_or_path))
@@ -256,7 +258,9 @@ def safe_snapshot_download(model_id_or_path: str,
             if len(model_id_or_path) == 1:
                 model_id_or_path = [model_id_or_path[0], None]
             model_id_or_path, sub_folder = model_id_or_path
-            model_dir = hub.download_model(model_id_or_path, revision, ignore_file_pattern, token=hub_token, **kwargs)
+            if sub_folder is not None:
+                kwargs['allow_patterns'] = [f"{sub_folder.rstrip('/')}/*"]
+            model_dir = hub.download_model(model_id_or_path, revision, ignore_patterns, token=hub_token, **kwargs)
 
         logger.info(f'Loading the model using model_dir: {model_dir}')
 
@@ -271,6 +275,8 @@ def git_clone_github(github_url: str,
                      local_repo_name: Optional[str] = None,
                      branch: Optional[str] = None,
                      commit_hash: Optional[str] = None) -> str:
+    if github_url.endswith('.git'):
+        github_url = github_url[:-4]
     git_cache_dir = os.path.join(get_cache_dir(), '_github')
     os.makedirs(git_cache_dir, exist_ok=True)
     if local_repo_name is None:
@@ -279,8 +285,7 @@ def git_clone_github(github_url: str,
     local_repo_path = os.path.join(git_cache_dir, local_repo_name)
     with safe_ddp_context(hash_id=local_repo_path):
         if not os.path.exists(local_repo_path):
-            if not github_url.endswith('.git'):
-                github_url = f'{github_url}.git'
+            github_url = f'{github_url}.git'
             command = ['git', '-C', git_cache_dir, 'clone', github_url, local_repo_name]
             command_str = f"git -C '{git_cache_dir}' clone '{github_url}' {local_repo_name}"
             if branch is not None:

@@ -3,6 +3,8 @@ import os
 from dataclasses import dataclass
 from typing import Literal, Optional
 
+import torch
+
 from swift.utils import get_logger
 from .base_args import BaseArguments, to_abspath
 from .merge_args import MergeArguments
@@ -33,7 +35,7 @@ class ExportArguments(MergeArguments, BaseArguments):
 
     # awq/gptq
     quant_method: Literal['awq', 'gptq', 'bnb'] = None
-    quant_n_samples: int = 256
+    quant_n_samples: int = 128
     max_length: int = 2048
     quant_batch_size: int = 1
     group_size: int = 128
@@ -51,16 +53,7 @@ class ExportArguments(MergeArguments, BaseArguments):
     # compat
     to_peft_format: bool = False
 
-    def _init_quant(self):
-
-        if self.quant_bits:
-            if self.quant_method is None:
-                raise ValueError('Please specify the quantization method using `--quant_method awq/gptq`.')
-            if len(self.dataset) == 0 and self.quant_method in {'gptq', 'awq'}:
-                raise ValueError(f'self.dataset: {self.dataset}, Please input the quant dataset.')
-
     def _init_output_dir(self):
-        suffix = None
         if self.output_dir is None:
             ckpt_dir = self.ckpt_dir or f'./{self.model_suffix}'
             ckpt_dir, ckpt_name = os.path.split(ckpt_dir)
@@ -68,7 +61,7 @@ class ExportArguments(MergeArguments, BaseArguments):
                 suffix = 'peft'
             elif self.merge_lora:
                 suffix = 'merged'
-            elif self.quant_bits:
+            elif self.quant_method:
                 suffix = f'{self.quant_method}-int{self.quant_bits}'
             elif self.to_ollama:
                 suffix = 'ollama'
@@ -82,14 +75,14 @@ class ExportArguments(MergeArguments, BaseArguments):
         assert not os.path.exists(self.output_dir), f'args.output_dir: {self.output_dir} already exists.'
 
     def __post_init__(self):
-        MergeArguments.__post_init__(self)
+        if self.quant_bits and self.quant_method is None:
+            raise ValueError('Please specify the quantization method using `--quant_method awq/gptq/bnb`.')
+        if self.quant_method and self.quant_bits is None:
+            raise ValueError('Please specify `--quant_bits`.')
+        if self.quant_method in {'gptq', 'awq'} and self.torch_dtype is None:
+            self.torch_dtype = torch.float16
+
         BaseArguments.__post_init__(self)
         self._init_output_dir()
-        if self.quant_bits:
-            self._init_quant()
-
-    def _init_torch_dtype(self) -> None:
-        if self.quant_bits and self.torch_dtype is None:
-            self.torch_dtype = 'float16'
-            logger.info(f'Setting args.torch_dtype: {self.torch_dtype}')
-        super()._init_torch_dtype()
+        if self.quant_method in {'gptq', 'awq'} and len(self.dataset) == 0:
+            raise ValueError(f'self.dataset: {self.dataset}, Please input the quant dataset.')

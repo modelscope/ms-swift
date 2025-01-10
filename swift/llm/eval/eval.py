@@ -22,9 +22,10 @@ class SwiftEval(SwiftPipeline):
     def run(self):
         args = self.args
         eval_report = {}
-        deploy_context = nullcontext() if args.eval_url else run_deploy(self.args, return_url=True)
-        with deploy_context as url:
-            url = args.eval_url or url
+        deploy_context = nullcontext() if args.eval_url else run_deploy(args, return_url=True)
+        with deploy_context as base_url:
+            base_url = args.eval_url or base_url
+            url = os.path.join(base_url, 'chat/completions')
             if args.eval_dataset_oc:
                 reports = self.run_task(args.eval_dataset_oc, 'opencompass', url)
                 result = {}
@@ -74,7 +75,7 @@ class SwiftEval(SwiftPipeline):
                 'datasets':
                 dataset,
                 'batch_size':
-                args.max_batch_size or 256,
+                args.eval_num_proc or 256,
                 'work_dir':
                 os.path.join(args.eval_output_dir, 'opencompass'),
                 'models': [{
@@ -88,7 +89,7 @@ class SwiftEval(SwiftPipeline):
 
     def get_vlmeval_task_cfg(self, dataset: List[str], url: str):
         args = self.args
-        return {
+        task_cfg = {
             'eval_backend': 'VLMEvalKit',
             'eval_config': {
                 'data':
@@ -103,9 +104,11 @@ class SwiftEval(SwiftPipeline):
                     'key': args.api_key or 'EMPTY',
                 }],
                 'nproc':
-                args.max_batch_size or 16,
+                args.eval_num_proc or 16,
             }
         }
+        task_cfg['work_dir'] = task_cfg['eval_config']['work_dir']  # compat evalscope 0.8.1
+        return task_cfg
 
 
 def eval_main(args: Union[List[str], EvalArguments, None] = None):

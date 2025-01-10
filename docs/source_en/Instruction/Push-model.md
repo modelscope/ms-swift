@@ -41,9 +41,9 @@ The parameters for pushing the model during export are the same as those for tra
 ```shell
 # If it is full parameter training, it is `--model`
 CUDA_VISIBLE_DEVICES=0 swift export \
-    --adapters output/qwenxxx/vx-xxx/checkpoint-xxx \
+    --adapters output/vx-xxx/checkpoint-xxx \
     --push_to_hub true \
-    --hub_model_id qwen1half-4b-chat-lora \
+    --hub_model_id '<your-model-id>' \
     --hub_token '<your-sdk-token>'
 ```
 

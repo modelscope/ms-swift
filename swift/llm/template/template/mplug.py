@@ -12,7 +12,7 @@ from ..constant import MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import Context, Prompt, findall
-from ..vision_utils import load_video_minicpmv_mplug_owl3, replace_video2image
+from ..vision_utils import load_video_minicpmv_mplug_owl3
 from .qwen import QwenTemplateMeta
 
 
@@ -43,7 +43,7 @@ class mPlugOwl2Template(Template):
         return res
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
-        res = super().data_collator(batch, padding_to=padding_to)
+        res = super()._data_collator(batch, padding_to=padding_to)
         images = [b['images'] for b in batch if 'images' in b]
         if images:
             res['images'] = torch.concat(images)
@@ -82,7 +82,7 @@ class mPlugOwl3Template(Template):
         if media_type == 'image':
             return [[-100], '\n']
         elif media_type == 'video':
-            return replace_video2image(load_video, inputs, lambda i: [[-100]]) + ['\n']
+            return self.replace_video2image(load_video, inputs, lambda i: [[-100]]) + ['\n']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
@@ -97,7 +97,7 @@ class mPlugOwl3Template(Template):
         if images:
             image_inputs = processor.image_processor(images, cut_enable=cut_enable, return_tensors='pt')
             added_tokens_len = 0
-            cut_shapes = image_inputs['cut_shape'] or [None] * len(idx_list)
+            cut_shapes = image_inputs['cut_shape'] or [None] * 2 * len(idx_list)
             image_token_list = self.processor.encode('<|image|>', add_special_tokens=False)
             for idx, cut_shape in zip(idx_list, cut_shapes[::2]):
                 if cut_shape:
@@ -161,6 +161,8 @@ class mPlugOwl3_241101Template(mPlugOwl3Template):
         if 'pixel_values' in inputs:
             pixel_values = inputs.pop('pixel_values')
             inputs['image_embeds'] = torch.concat([model.forward_image(pv) for pv in pixel_values])
+        else:
+            inputs['media_offset'] = [None] * inputs['input_ids'].shape[0]
         return inputs
 
 
@@ -174,3 +176,40 @@ class mPlugOwl3TemplateMeta(QwenTemplateMeta):
 register_template(mPlugOwl3TemplateMeta(MLLMTemplateType.mplug_owl3, template_cls=mPlugOwl3Template))
 
 register_template(mPlugOwl3TemplateMeta(MLLMTemplateType.mplug_owl3_241101, template_cls=mPlugOwl3_241101Template))
+
+
+class DocOwl2Template(Template):
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    inputs: StdTemplateInputs) -> List[Context]:
+        if media_type == 'image':
+            return [f'<img {index + 1}>', [-200]]
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded = super()._encode(inputs)
+        if inputs.images:
+            image_tensor, patch_positions, _ = self.processor._process_image(inputs.images)
+            image_tensor = image_tensor.to(self.config.torch_dtype)
+            encoded.update({'images': image_tensor, 'patch_positions': patch_positions})
+        return encoded
+
+    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        keys = ['images', 'patch_positions']
+        res = self.fetch_inputs(batch, keys)
+        for key in keys:
+            val = res.get(key)
+            if val:
+                res[key] = torch.concat([v for v in val if v is not None])
+        res.update(super()._data_collator(batch, padding_to=padding_to))
+        return res
+
+
+register_template(
+    TemplateMeta(
+        MLLMTemplateType.doc_owl2,
+        prefix=['<s>'],
+        prompt=[' USER: {{QUERY}} ASSISTANT:'],
+        chat_sep=['</s>'],
+        suffix=['</s>'],
+        template_cls=DocOwl2Template,
+    ))

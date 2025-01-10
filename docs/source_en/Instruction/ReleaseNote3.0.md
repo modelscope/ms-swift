@@ -6,7 +6,7 @@
 
 1. Dataset module refactoring. The dataset loading speed has improved by 2-20 times, and encoding speed has improved by 2-4 times, with support for streaming mode.
     - Removed the dataset_name mechanism; now use dataset_id, dataset_dir, or dataset_path to specify the dataset.
-    - Use `--dataset_num_proc` to support multi-process acceleration and `--load_from_cache_file true` to support cache processing before using the data.
+    - Use `--dataset_num_proc` to support multi-process acceleration.
     - Use `--streaming` to support streaming loading of hub and local datasets.
     - Support `--packing` command for more stable training efficiency.
     - Use `--dataset <dataset_dir>` to support local loading of open-source datasets.
@@ -21,7 +21,6 @@
 
 4. Supported plugin mechanism for customizing the training process. Current plugins include:
     - callback  to customize training callbacks,
-    - custom_trainer  to customize the trainer,
     - loss  to customize the loss method,
     - loss_scale  to customize the weight of each token,
     - metric  to customize cross-validation metrics,
@@ -89,13 +88,12 @@ The parameters marked as compatible in version 2.0 have been entirely removed.
 
 4. The storage directory for merge_lora can be specified using `--output_dir`, and merge_lora and quantization cannot be executed in the same command; at least two commands are required.
 
-5. The app-ui interface has been removed, replaced by `swift web-ui --model xxx`, and multi-modal interface deployment is supported.
+5. Use `swift app --model xxx` to launch the app-ui interface, which supports multimodal interface inference.
 
 6. Removed dependencies for AIGC along with corresponding examples and training code.
 
 ## Pending Tasks
 
-1. RM/PPO capabilities are not supported in version 3.0. Please use version 2.6.1.
-2. Custom dataset evaluation is not supported in version 3.0. Please use version 2.6.1.
-3. Megatron pre-training capabilities are not supported in version 3.0. Please use version 2.6.1.
-4. Documentation and README, especially the English portions, are temporarily incomplete and will be updated.
+1. Custom dataset evaluation is not supported in version 3.0. Please use version 2.6.1.
+2. Megatron pre-training capabilities are not supported in version 3.0. Please use version 2.6.1.
+3. Documentation and README are temporarily incomplete and will be updated.

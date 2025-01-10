@@ -21,6 +21,8 @@ logger = get_logger()
 
 
 class InferEngine(BaseInferEngine, ProcessorMixin):
+    llm_max_batch_size = 1024 * 1024
+    mllm_max_batch_size = 1024
 
     def _post_init(self):
         processor = self.processor
@@ -30,7 +32,6 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         self.model_name = self.model_info.model_name
         self.max_model_len = self.model_info.max_model_len
         self.config = self.model_info.config
-        self.pre_infer_hooks = []
         if getattr(self, 'default_template', None) is None:
             self.default_template = get_template(self.model_meta.template, self.processor)
         self._adapters_pool = {}
@@ -54,12 +55,16 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
 
         async def _run_infer(i, task, queue, stream: bool = False):
             # task with queue
-            if stream:
-                async for stream_response in await task:
-                    queue.put((i, stream_response))
+            try:
+                if stream:
+                    async for stream_response in await task:
+                        queue.put((i, stream_response))
+                else:
+                    queue.put((i, await task))
+            except Exception as e:
+                queue.put((i, e))
             else:
-                queue.put((i, await task))
-            queue.put((i, None))
+                queue.put((i, None))
 
         async def _batch_run(tasks):
             return await asyncio.gather(*tasks)
@@ -76,7 +81,9 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
 
         while n_finished < len(new_tasks):
             i, output = queue.get()
-            if output is None:  # is_finished
+            if isinstance(output, Exception):
+                raise output
+            elif output is None:  # is_finished
                 n_finished += 1
                 prog_bar.update()
             else:
@@ -95,6 +102,14 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         )
 
     @staticmethod
+    def _update_usage_info(origin_use_info: UsageInfo, num_generated_tokens: int) -> UsageInfo:
+        return UsageInfo(
+            prompt_tokens=origin_use_info.prompt_tokens,
+            completion_tokens=origin_use_info.completion_tokens + num_generated_tokens,
+            total_tokens=origin_use_info.total_tokens + num_generated_tokens,
+        )
+
+    @staticmethod
     def _update_metrics(result, metrics: Optional[List[Metric]] = None):
         if metrics is None:
             return result
@@ -108,7 +123,6 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
                 metric.update(response)
         return result_origin
 
-    @torch.inference_mode()
     def infer(self,
               infer_requests: List[InferRequest],
               request_config: Optional[RequestConfig] = None,
@@ -130,16 +144,30 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
 
             return _gen_wrapper()
         else:
-            for res in self._batch_infer_stream(tasks, False, use_tqdm):
-                pass
-            return self._update_metrics(res, metrics)
+            i = 0
+            result = []
+            max_batch_size = self.llm_max_batch_size
+            if hasattr(self, 'model_meta') and self.model_meta.is_multimodal:
+                # vllm & lmdeploy
+                max_batch_size = self.mllm_max_batch_size
+            prog_bar = tqdm(
+                total=len(infer_requests), dynamic_ncols=True, disable=not use_tqdm or len(tasks) <= max_batch_size)
+            while i < len(tasks):
+                tasks_samples = tasks[i:i + max_batch_size]
+                for res in self._batch_infer_stream(tasks_samples, False, use_tqdm):
+                    pass
+                result += res
+                i += max_batch_size
+                prog_bar.update(len(tasks_samples))
+            return self._update_metrics(result, metrics)
 
-    def _get_toolcall(self, response: Union[str, List[Dict[str,
-                                                           Any]]]) -> Optional[List[ChatCompletionMessageToolCall]]:
+    def _get_toolcall(self,
+                      response: Union[str, List[Dict[str, Any]]],
+                      tools_prompt='react_en') -> Optional[List[ChatCompletionMessageToolCall]]:
         if not isinstance(response, str):
             response = '\n'.join([resp['text'] for resp in response if resp['type'] == 'text'])
 
-        action, action_input = split_action_action_input(response)
+        action, action_input = split_action_action_input(response, tools_prompt=tools_prompt)
         if action is None:
             return None
 
@@ -154,7 +182,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
             else:
                 return input_ids.shape[-1]
         elif 'inputs_embeds' in inputs:  # 2d or 3d
-            return inputs['inputs_embeds'].shape[-1]
+            return inputs['inputs_embeds'].shape[-2]
         raise ValueError(f'Unable to retrieve input_ids and inputs_embeds. inputs: {inputs}')
 
     def set_default_max_tokens(self, request_config: RequestConfig, inputs: Dict[str, Any]) -> None:
@@ -201,7 +229,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
             if top_logprobs is not None:
                 res_top_logprobs = []
                 for k, logprob in logprobs.items():
-                    if k == token_id:  # TODO
+                    if k == token_id:
                         continue
                     token = tokenizer.decode(k)
                     res_top_logprobs.append({'token': token, 'logprob': logprob, 'bytes': list(token.encode('utf8'))})
@@ -241,12 +269,4 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
 
     @staticmethod
     def safe_asyncio_run(coro):
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
-        if loop:
-            result = InferEngine.thread_run(asyncio.run, args=(coro, ))
-        else:
-            result = asyncio.run(coro)
-        return result
+        return InferEngine.thread_run(asyncio.run, args=(coro, ))

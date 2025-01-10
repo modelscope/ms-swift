@@ -5,10 +5,11 @@ from typing import Any, Dict
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.llm import TemplateType
-from ..constant import LLMModelType, MLLMModelType
+from ..constant import LLMModelType, MLLMModelType, RMModelType
 from ..model_arch import ModelArch
 from ..patcher import patch_output_clone, patch_output_to_input_device
-from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
+from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_reward_model,
+                        get_model_tokenizer_with_flash_attn, register_model)
 from ..utils import ModelInfo, safe_snapshot_download, use_submodel_func
 
 register_model(
@@ -168,13 +169,32 @@ register_model(
                 Model('OpenGVLab/InternVL2-26B', 'OpenGVLab/InternVL2-26B'),
                 Model('OpenGVLab/InternVL2-40B', 'OpenGVLab/InternVL2-40B'),
                 Model('OpenGVLab/InternVL2-Llama3-76B', 'OpenGVLab/InternVL2-Llama3-76B'),
-            ], ),
+            ]),
+            # (infer use lmdeploy)
             ModelGroup([
                 Model('OpenGVLab/InternVL2-2B-AWQ', 'OpenGVLab/InternVL2-2B-AWQ'),
                 Model('OpenGVLab/InternVL2-8B-AWQ', 'OpenGVLab/InternVL2-8B-AWQ'),
                 Model('OpenGVLab/InternVL2-26B-AWQ', 'OpenGVLab/InternVL2-26B-AWQ'),
                 Model('OpenGVLab/InternVL2-40B-AWQ', 'OpenGVLab/InternVL2-40B-AWQ'),
                 Model('OpenGVLab/InternVL2-Llama3-76B-AWQ', 'OpenGVLab/InternVL2-Llama3-76B-AWQ'),
+            ]),
+            ModelGroup([Model('OpenGVLab/InternVL2-8B-MPO', 'OpenGVLab/InternVL2-8B-MPO')]),
+            # pretrain
+            ModelGroup([
+                Model('OpenGVLab/InternVL2-Pretrain-Models:InternVL2-1B-Pretrain',
+                      'OpenGVLab/InternVL2-Pretrain-Models:InternVL2-1B-Pretrain'),
+                Model('OpenGVLab/InternVL2-Pretrain-Models:InternVL2-2B-Pretrain',
+                      'OpenGVLab/InternVL2-Pretrain-Models:InternVL2-2B-Pretrain'),
+                Model('OpenGVLab/InternVL2-Pretrain-Models:InternVL2-4B-Pretrain',
+                      'OpenGVLab/InternVL2-Pretrain-Models:InternVL2-4B-Pretrain'),
+                Model('OpenGVLab/InternVL2-Pretrain-Models:InternVL2-8B-Pretrain',
+                      'OpenGVLab/InternVL2-Pretrain-Models:InternVL2-8B-Pretrain'),
+                Model('OpenGVLab/InternVL2-Pretrain-Models:InternVL2-26B-Pretrain',
+                      'OpenGVLab/InternVL2-Pretrain-Models:InternVL2-26B-Pretrain'),
+                Model('OpenGVLab/InternVL2-Pretrain-Models:InternVL2-40B-Pretrain',
+                      'OpenGVLab/InternVL2-Pretrain-Models:InternVL2-40B-Pretrain'),
+                Model('OpenGVLab/InternVL2-Pretrain-Models:InternVL2-Llama3-76B-Pretrain',
+                      'OpenGVLab/InternVL2-Pretrain-Models:InternVL2-Llama3-76B-Pretrain'),
             ])
         ],
         TemplateType.internvl2,
@@ -213,7 +233,24 @@ register_model(
                 Model('OpenGVLab/InternVL2_5-26B', 'OpenGVLab/InternVL2_5-26B'),
                 Model('OpenGVLab/InternVL2_5-38B', 'OpenGVLab/InternVL2_5-38B'),
                 Model('OpenGVLab/InternVL2_5-78B', 'OpenGVLab/InternVL2_5-78B'),
-            ], ),
+            ]),
+            # quant (infer use lmdeploy)
+            ModelGroup([
+                Model('OpenGVLab/InternVL2_5-4B-AWQ', 'OpenGVLab/InternVL2_5-4B-AWQ'),
+                Model('OpenGVLab/InternVL2_5-8B-AWQ', 'OpenGVLab/InternVL2_5-8B-AWQ'),
+                Model('OpenGVLab/InternVL2_5-26B-AWQ', 'OpenGVLab/InternVL2_5-26B-AWQ'),
+                Model('OpenGVLab/InternVL2_5-38B-AWQ', 'OpenGVLab/InternVL2_5-38B-AWQ'),
+                Model('OpenGVLab/InternVL2_5-78B-AWQ', 'OpenGVLab/InternVL2_5-78B-AWQ'),
+            ]),
+            ModelGroup([
+                Model('OpenGVLab/InternVL2_5-1B-MPO', 'OpenGVLab/InternVL2_5-1B-MPO'),
+                Model('OpenGVLab/InternVL2_5-2B-MPO', 'OpenGVLab/InternVL2_5-2B-MPO'),
+                Model('OpenGVLab/InternVL2_5-4B-MPO', 'OpenGVLab/InternVL2_5-4B-MPO'),
+                Model('OpenGVLab/InternVL2_5-8B-MPO', 'OpenGVLab/InternVL2_5-8B-MPO'),
+                Model('OpenGVLab/InternVL2_5-26B-MPO', 'OpenGVLab/InternVL2_5-26B-MPO'),
+                Model('OpenGVLab/InternVL2_5-38B-MPO', 'OpenGVLab/InternVL2_5-38B-MPO'),
+                Model('OpenGVLab/InternVL2_5-78B-MPO', 'OpenGVLab/InternVL2_5-78B-MPO'),
+            ])
         ],
         TemplateType.internvl2_5,
         get_model_tokenizer_internvl,
@@ -295,4 +332,20 @@ register_model(
         architectures=['Qwen2AudioForConditionalGeneration'],
         model_arch=ModelArch.qwen2_audio,
         tags=['audio'],
+    ))
+
+register_model(
+    ModelMeta(
+        RMModelType.internlm2_reward,
+        [
+            ModelGroup([
+                Model('Shanghai_AI_Laboratory/internlm2-1_8b-reward', 'internlm/internlm2-1_8b-reward'),
+                Model('Shanghai_AI_Laboratory/internlm2-7b-reward', 'internlm/internlm2-7b-reward'),
+                Model('Shanghai_AI_Laboratory/internlm2-20b-reward', 'internlm/internlm2-20b-reward'),
+            ]),
+        ],
+        TemplateType.internlm2_reward,
+        get_model_tokenizer_reward_model,
+        requires=['transformers>=4.38'],
+        architectures=['InternLM2ForRewardModel'],
     ))

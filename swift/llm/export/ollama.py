@@ -36,7 +36,7 @@ def export_to_ollama(args: ExportArguments):
     pt_engine = PtEngine.from_model_template(model, template)
     logger.info(f'Using model_dir: {pt_engine.model_dir}')
     template_meta = template.template_meta
-    with open(os.path.join(args.output_dir, 'Modelfile'), 'w') as f:
+    with open(os.path.join(args.output_dir, 'Modelfile'), 'w', encoding='utf-8') as f:
         f.write(f'FROM {pt_engine.model_dir}\n')
         f.write(f'TEMPLATE """{{{{ if .System }}}}'
                 f'{replace_and_concat(template, template_meta.system_prefix, "{{SYSTEM}}", "{{ .System }}")}'

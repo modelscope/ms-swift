@@ -34,7 +34,9 @@ pip install ms-swift==2.*
 
 ## 镜像
 
-可以查看[这里](https://modelscope.cn/docs/intro/environment-setup#%E6%9C%80%E6%96%B0%E9%95%9C%E5%83%8F)
+镜像可以查看[这里](https://modelscope.cn/docs/intro/environment-setup#%E6%9C%80%E6%96%B0%E9%95%9C%E5%83%8F)
+
+你也可以使用[install_all.sh](https://github.com/modelscope/ms-swift/blob/main/requirements/install_all.sh)进行安装
 
 ## Notebook环境
 

@@ -246,7 +246,6 @@ class RowPreprocessor:
         *,
         num_proc: int = 1,
         strict: bool = False,
-        load_from_cache_file: bool = False,
         batch_size: int = 1000,
     ) -> DATASET_TYPE:
         from ..utils import sample_dataset
@@ -258,7 +257,7 @@ class RowPreprocessor:
         dataset = self._cast_pil_image(dataset)
         map_kwargs = {}
         if isinstance(dataset, HfDataset):
-            map_kwargs.update({'num_proc': num_proc, 'load_from_cache_file': load_from_cache_file})
+            map_kwargs['num_proc'] = num_proc
         with self._patch_arrow_writer():
             try:
                 dataset_mapped = dataset.map(
@@ -312,18 +311,14 @@ class ResponsePreprocessor(RowPreprocessor):
 
 class AlpacaPreprocessor(ResponsePreprocessor):
 
-    def __init__(self,
-                 *,
-                 concat_inst_input: Union[Callable[[str, str], str]] = '\n',
-                 columns_mapping: Optional[Dict[str, str]] = None,
-                 **kwargs) -> None:
-        """Alpaca format preprocessor
-
-        Args:
-            concat_inst_input: The concat sep between instruction and input
-        """
-        super().__init__(columns_mapping=columns_mapping, **kwargs)
-        self.concat_inst_input = concat_inst_input
+    @classmethod
+    def concat_inst_input(cls, instruction, input_):
+        if instruction and input_:
+            query = f'{instruction}\n{input_}'
+        else:
+            query = instruction or input_
+        assert isinstance(query, str), f'query: {query}'
+        return query
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         instruction = row.pop('instruction', None)
@@ -331,15 +326,7 @@ class AlpacaPreprocessor(ResponsePreprocessor):
         output = row.pop('output', None)
         if output is not None:
             row['response'] = output
-
-        if instruction is not None or input_ is not None:
-            instruction = instruction or ''
-            input_ = input_ or ''
-            if isinstance(self.concat_inst_input, str):
-                query = instruction + self.concat_inst_input + input_
-            else:
-                query = self.concat_inst_input(instruction, input_)
-            row['query'] = query
+        row['query'] = self.concat_inst_input(instruction, input_)
         return super().preprocess(row)
 
 
@@ -453,6 +440,14 @@ class MessagesPreprocessor(RowPreprocessor):
         return row
 
 
+class ClsPreprocessor(ResponsePreprocessor):
+
+    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        res = super().preprocess(row)
+        res['label'] = int(res['label'])
+        return res
+
+
 class AutoPreprocessor:
 
     def __init__(self, *, columns_mapping: Optional[Dict[str, str]] = None, **kwargs) -> None:
@@ -474,9 +469,8 @@ class AutoPreprocessor:
         *,
         num_proc: int = 1,
         strict: bool = False,
-        load_from_cache_file: bool = False,
     ) -> DATASET_TYPE:
         dataset = get_features_dataset(dataset)
         dataset = dataset.rename_columns(self.columns_mapping)
         preprocessor = self._get_preprocessor(dataset)
-        return preprocessor(dataset, num_proc=num_proc, load_from_cache_file=load_from_cache_file, strict=strict)
+        return preprocessor(dataset, num_proc=num_proc, strict=strict)
