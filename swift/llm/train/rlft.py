@@ -18,7 +18,6 @@ from .. import PtEngine, RequestConfig, LmdeployEngine
 from ..argument import RLFTArguments
 from ...plugin.orm import orms
 from ...plugin.prm import prms
-from ...plugin.sampler import samplers
 from ...trainers import TrainerFactory
 
 logger = get_logger()
@@ -49,32 +48,6 @@ class SwiftRLFT(SwiftRLHF):
         super()._prepare_template()
         self.template.set_mode('train')
 
-    def _sample(self, model, batch, generation_config: GenerationConfig):
-        queries = batch["input_ids"]
-        generation_config.num_return_sequences = self.args.num_return_sequences
-        generation_config.return_legacy_cache = False
-        # generation_config.num_beam_groups = 5
-        # generation_config.num_beams = 10
-        # generation_config.do_sample = False
-        # generation_config.diversity_penalty = 0.1
-
-        with torch.no_grad():
-            responses = batch_generation(model, queries,
-                                         local_rollout_forward_batch_size=queries.shape[0],
-                                         pad_token_id=self.tokenizer.pad_token_id,
-                                         generation_config=generation_config)
-            return responses
-
-    def _prepare_sampler(self):
-        if self.args.sampler_type in samplers:
-            self.sampler = samplers[self.args.sampler_type]()
-        elif self.args.sampler_type == 'sample':
-            self.sampler = self._sample
-        elif self.args.sampler_type == 'mcts':
-            pass
-        else:
-            raise NotImplementedError
-
     def _get_reward(self, model, infer_requests: List[InferRequest], request_config=None):
         resp_list = model.infer(infer_requests, request_config=request_config)
         arr = [float(resp_list[i].choices[0].message.content) for i in range(len(resp_list))]
@@ -103,7 +76,7 @@ class SwiftRLFT(SwiftRLHF):
             messages = messages[:-1]
             infer_request = InferRequest(messages=messages)
             for i in range(self.args.num_return_sequences):
-                infer_requests.append(infer_request)
+                infer_requests.append(deepcopy(infer_request))
 
         request_config = RequestConfig(
             max_tokens=self.args.max_new_tokens,
@@ -112,7 +85,6 @@ class SwiftRLFT(SwiftRLHF):
             top_p=self.args.top_p,
             # n=self.args.num_return_sequences,
         )
-        res = []
         origin = []
 
         resp_list = self.infer_engine.infer(infer_requests, request_config=request_config)
@@ -161,26 +133,10 @@ class SwiftRLFT(SwiftRLHF):
         step_wise = (self.args.end_temperature - self.args.temperature) / self.args.num_rollout_iters
         return self.args.temperature + step_wise * step
 
-    def step_reward_threshold(self, step):
-        # Linear
-        step_wise = (self.args.end_threshold - self.args.start_threshold) / self.args.num_rollout_iters
-        return self.args.start_threshold + step_wise * step
-
-    @staticmethod
-    @contextlib.contextmanager
-    def switch_dataset(trainer, sampled_ds):
-        origin_dataset: Dataset = trainer.train_dataset
-        trainer.train_dataset = sampled_ds
-        yield
-        origin_dataset = origin_dataset.shuffle()
-        trainer.train_dataset = origin_dataset
-
     def _rollout_or_load(self, _iter, trainer):
-        _, local_rank, world_size, _ = get_dist_setting()
         logger.info(f'Starting iter:{_iter}')
-        if hasattr(trainer, 'origin_dataset'):
-            trainer.train_dataset = trainer.origin_dataset.shuffle()
-        iter_file = os.path.join(self.args.sampler_output, f'step_{_iter}.jsonl')
+        trainer.train_dataset = trainer.train_dataset.shuffle().select(range(self.args.gpu * self.args.per_device_train_batch_size * self.args.num_rollout_batches, (self.args.gpu+1) * self.args.per_device_train_batch_size * self.args.num_rollout_batches))
+        iter_file = os.path.join(self.args.sampler_output, f'rollout_iter_{_iter}_gpu_{self.args.gpu}.jsonl')
         if not os.path.exists(iter_file) or not self.args.use_cache_dataset:
             self.template.set_mode('train')
             train_dataloader = trainer.get_train_dataloader()
@@ -195,17 +151,8 @@ class SwiftRLFT(SwiftRLHF):
                 if _index >= self.args.num_rollout_batches - 1:
                     break
 
-            if world_size > 1:
-                from accelerate.utils import gather_object
-                dumped_ds = gather_object(dumped_ds)
-
-            if local_rank <= 0:
-                with open(iter_file, 'w') as f:
-                    f.writelines(dumped_ds)
-
-            if world_size > 1:
-                import torch.distributed as dist
-                dist.barrier()
+            with open(iter_file, 'w') as f:
+                f.writelines(dumped_ds)
 
     def train(self, trainer):
         logging_path = os.path.join(trainer.args.output_dir, 'logging.jsonl')
@@ -215,7 +162,7 @@ class SwiftRLFT(SwiftRLHF):
 
     def _prepare_model_tokenizer(self):
         args = self.args
-        self.model, self.processor = args.get_model_processor(load_model = self.args.task != 'rollout')
+        self.model, self.processor = args.get_model_processor(load_model=self.args.task != 'rollout')
 
         if self.args.task != 'rollout':
             if hasattr(self.model, 'hf_device_map'):
@@ -230,6 +177,9 @@ class SwiftRLFT(SwiftRLHF):
     def run(self):
         args = self.args
         if self.args.task == 'rollout':
+            iter_file = os.path.join(self.args.sampler_output, f'rollout_iter_{self.args.iter}_gpu_{self.args.gpu}.jsonl')
+            if os.path.exists(iter_file) and self.args.use_cache_dataset:
+                return
             self.template.set_mode('train')
         train_dataset, val_dataset = self._get_dataset()
         train_dataset, val_dataset = self._encode_dataset(train_dataset, val_dataset)
@@ -257,52 +207,11 @@ class SwiftRLFT(SwiftRLHF):
         )
         if self.args.task == 'rollout':
             self._prepare_rm()
-            self._prepare_sampler()
             self.infer_engine = LmdeployEngine(self.args.model, model_type=self.args.model_type)
             os.makedirs(self.args.sampler_output, exist_ok=True)
             self._rollout_or_load(self.args.iter, trainer)
         else:
             return self.train(trainer)
-
-
-def generate(
-        lm_backbone: PreTrainedModel, queries: torch.Tensor, pad_token_id: int, generation_config: GenerationConfig
-) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Code borrowed from trl"""
-    context_length = queries.shape[1]
-    attention_mask = queries != pad_token_id
-    # input_ids = torch.masked_fill(queries, ~attention_mask, 0)
-    output = lm_backbone.generate(
-        input_ids=queries,
-        attention_mask=attention_mask,
-        generation_config=generation_config,
-        return_dict_in_generate=True,
-        output_scores=False,
-    )
-    return output.sequences[:, context_length:]
-
-
-@torch.no_grad()
-def batch_generation(
-        model: torch.nn.Module,
-        queries: torch.Tensor,
-        local_rollout_forward_batch_size: int,
-        pad_token_id: int,
-        generation_config: GenerationConfig,
-):
-    """Code borrowed from trl"""
-    responses = []
-    for i in range(0, queries.shape[0], local_rollout_forward_batch_size):
-        query = queries[i: i + local_rollout_forward_batch_size]
-        response = generate(
-            model,
-            query,
-            pad_token_id,
-            generation_config,
-        )
-        response = response.reshape(local_rollout_forward_batch_size, -1, response.shape[-1])
-        responses.append(response)
-    return torch.cat(responses, 0)
 
 
 def rlft_main(args: Union[List[str], RLFTArguments, None] = None):

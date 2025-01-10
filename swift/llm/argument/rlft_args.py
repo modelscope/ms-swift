@@ -16,6 +16,7 @@ class RLFTArguments(RLHFArguments):
     # sample/mcts/dvts/xxx
     sampler_type: str = 'sample'
     sampler_output: str = 'rollout_output'
+    gpu: int = 0
     num_return_sequences: int = 10
 
     num_rollout_iters: int = 50
