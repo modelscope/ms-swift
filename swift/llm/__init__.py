@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from .export import (export_main, merge_lora, quantize_model, export_to_ollama)
     from .eval import eval_main
     from .app import app_main
-    from .train import sft_main, pt_main, rlhf_main, rlft_main, get_multimodal_target_regex
+    from .train import sft_main, pt_main, rlhf_main, get_multimodal_target_regex
     from .argument import (EvalArguments, InferArguments, TrainArguments, ExportArguments, DeployArguments,
                            RLHFArguments, WebUIArguments, BaseArguments, AppArguments)
     from .template import (TEMPLATE_MAPPING, Template, Word, get_template, TemplateType, register_template,
@@ -39,7 +39,7 @@ else:
         'export': ['export_main', 'merge_lora', 'quantize_model', 'export_to_ollama'],
         'app': ['app_main'],
         'eval': ['eval_main'],
-        'train': ['sft_main', 'pt_main', 'rlhf_main', 'rlft_main', 'get_multimodal_target_regex'],
+        'train': ['sft_main', 'pt_main', 'rlhf_main', 'get_multimodal_target_regex'],
         'argument': [
             'EvalArguments', 'InferArguments', 'TrainArguments', 'ExportArguments', 'WebUIArguments', 'DeployArguments',
             'RLHFArguments', 'BaseArguments', 'AppArguments'

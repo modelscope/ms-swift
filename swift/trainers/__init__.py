@@ -17,7 +17,7 @@ except ImportError:
 if TYPE_CHECKING:
     from .arguments import Seq2SeqTrainingArguments, TrainingArguments
     from .rlhf_trainer import (CPOTrainer, DPOTrainer, KTOTrainer, ORPOTrainer, RLHFTrainerMixin, PPOTrainer,
-                               RewardTrainer, RLFTTrainer)
+                               RewardTrainer)
     from .rlhf_arguments import DPOConfig, CPOConfig, KTOConfig, ORPOConfig, PPOConfig, RewardConfig
     from .trainer_factory import TrainerFactory
     from .trainers import Seq2SeqTrainer, Trainer
@@ -29,7 +29,7 @@ else:
         'arguments': ['Seq2SeqTrainingArguments', 'TrainingArguments'],
         'rlhf_arguments': ['DPOConfig', 'CPOConfig', 'KTOConfig', 'ORPOConfig', 'PPOConfig', 'RewardConfig'],
         'rlhf_trainer':
-        ['CPOTrainer', 'DPOTrainer', 'KTOTrainer', 'ORPOTrainer', 'RLHFTrainerMixin', 'PPOTrainer', 'RewardTrainer', 'RLFTTrainer'],
+        ['CPOTrainer', 'DPOTrainer', 'KTOTrainer', 'ORPOTrainer', 'RLHFTrainerMixin', 'PPOTrainer', 'RewardTrainer'],
         'trainer_factory': ['TrainerFactory'],
         'trainers': ['Seq2SeqTrainer', 'Trainer'],
         'mixin': ['SwiftMixin'],

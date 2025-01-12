@@ -555,9 +555,6 @@ class CompetitionMathRLPreprocessor(ResponsePreprocessor):
     def preprocess(self, row: Dict[str, Any], all_tools=None) -> Optional[Dict[str, Any]]:
         query = row['problem']
         solution = row['response']
-        if len(solution) > 900:
-            # Want max 300 length to reduce test time.
-            return None
         row = {
             'query': query,
             'ground_truth': solution,
@@ -578,30 +575,18 @@ class CompetitionMathPreprocessor(ResponsePreprocessor):
 
 
 register_dataset(DatasetMeta(
-    ms_dataset_id='modelscope/competition_math',
+    ms_dataset_id='tastelikefeet/competition_math',
     subsets=[
         SubsetDataset(
-            name='train',
+            name='default',
             subset='default',
-            split=['train'],
-            preprocess_func=CompetitionMathPreprocessor(),
-        ),
-        SubsetDataset(
-            name='test',
-            subset='default',
-            split=['test'],
+            split=['train', 'test'],
             preprocess_func=CompetitionMathPreprocessor(),
         ),
         SubsetDataset(
             name='rl',
             subset='default',
-            split=['train'],
-            preprocess_func=CompetitionMathRLPreprocessor(),
-        ),
-        SubsetDataset(
-            name='rl_test',
-            subset='default',
-            split=['test'],
+            split=['train', 'test'],
             preprocess_func=CompetitionMathRLPreprocessor(),
         ),
     ],

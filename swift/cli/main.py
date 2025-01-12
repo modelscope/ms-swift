@@ -17,7 +17,7 @@ ROUTE_MAPPING: Dict[str, str] = {
     'web-ui': 'swift.cli.web_ui',
     'deploy': 'swift.cli.deploy',
     'rlhf': 'swift.cli.rlhf',
-    'rlft': 'swift.cli.rlft',
+    'sample': 'swift.cli.sample',
     'export': 'swift.cli.export',
     'eval': 'swift.cli.eval',
     'app': 'swift.cli.app',
@@ -62,7 +62,7 @@ def cli_main() -> None:
     file_path = importlib.util.find_spec(ROUTE_MAPPING[method_name]).origin
     torchrun_args = get_torchrun_args()
     python_cmd = sys.executable
-    if torchrun_args is None or method_name not in {'pt', 'sft', 'rlhf', 'rlft', 'infer'}:
+    if torchrun_args is None or method_name not in {'pt', 'sft', 'rlhf', 'infer'}:
         args = [python_cmd, file_path, *argv]
     else:
         args = [python_cmd, '-m', 'torch.distributed.run', *torchrun_args, file_path, *argv]
