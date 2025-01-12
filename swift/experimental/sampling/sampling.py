@@ -18,18 +18,11 @@ from ...plugin.prm import prms
 
 logger = get_logger()
 
-cur_proc = 0
-total_proc = 1
-
-if 'DATA_RANGE' in os.environ:
-    cur_proc, total_proc = os.environ['DATA_RANGE'].split(',')
-    cur_proc = int(cur_proc)
-    total_proc = int(total_proc)
-
 
 def _get_reward(model, infer_requests: List[InferRequest], request_config=None, threshold: float = None):
     resp_list = model.infer(infer_requests, request_config=request_config)
     arr = [float(resp_list[i].choices[0].message.content) for i in range(len(resp_list))]
+    logger.info(arr)
 
     _mask = np.array([True]*len(arr))
     if threshold is not None:
@@ -58,6 +51,14 @@ class SwiftSampling(SwiftPipeline):
         super().__init__(args)
         self.args.save_args()
         os.makedirs(self.args.output_dir, exist_ok=True)
+        self.cur_proc = 0
+        self.total_proc = 1
+
+        if 'DATA_RANGE' in os.environ:
+            cur_proc, total_proc = os.environ['DATA_RANGE'].split(',')
+            self.cur_proc = int(cur_proc)
+            self.total_proc = int(total_proc)
+
         if int(os.environ.get('NPROC_PER_NODE', '1')) == 1:
             self._prepare_model_tokenizer()
             self._prepare_template()
@@ -74,7 +75,7 @@ class SwiftSampling(SwiftPipeline):
                 _Engine = LmdeployEngine
             else:
                 raise ValueError(f'Cannot find engine name: {self.args.sampler_engine}')
-            self.infer_engine = _Engine(self.args.model, model_type=self.args.model_type)
+            self.infer_engine = _Engine(self.args.model, model_type=self.args.model_type, **self.args.engine_kwargs)
 
     def _prepare_model_tokenizer(self):
         args = self.args
@@ -83,7 +84,7 @@ class SwiftSampling(SwiftPipeline):
     def _prepare_rm(self):
         if self.args.prm_model is None:
             self.prm_model = None
-            logger.warning(f'[PROC {cur_proc}]prm_model is None.')
+            logger.warning(f'[PROC {self.cur_proc}]prm_model is None.')
             return
         if self.args.prm_model in prms:
             self.prm_model = prms[self.args.prm_model]()
@@ -93,7 +94,7 @@ class SwiftSampling(SwiftPipeline):
 
         if self.args.orm_model is None:
             self.orm_model = None
-            logger.warning(f'[PROC {cur_proc}]orm_model is None.')
+            logger.warning(f'[PROC {self.cur_proc}]orm_model is None.')
             return
         elif self.args.orm_model in orms:
             self.orm_model = orms[self.args.orm_model]()
@@ -111,16 +112,16 @@ class SwiftSampling(SwiftPipeline):
         dataset_kwargs = args.get_dataset_kwargs()
         sampling_dataset, _ = load_dataset(
             args.dataset, split_dataset_ratio=0., **dataset_kwargs)
-        logger.info(f'[PROC {cur_proc}]Sampling_dataset: {sampling_dataset}')
+        logger.info(f'[PROC {self.cur_proc}]Sampling_dataset: {sampling_dataset}')
         dataset_len = len(sampling_dataset)
-        piece_len = dataset_len // total_proc
-        sampling_dataset = sampling_dataset.select(range(piece_len * cur_proc, piece_len * (cur_proc + 1)))
+        piece_len = dataset_len // self.total_proc
+        sampling_dataset = sampling_dataset.select(range(piece_len * self.cur_proc, piece_len * (self.cur_proc + 1)))
         return sampling_dataset
 
     def do_sample(self, data):
         infer_requests = []
-        for row in data:
-            messages = deepcopy(row['messages'])
+        for _messages in data['messages']:
+            messages = deepcopy(_messages)
             if self.args.system:
                 if messages[0]['role'] == 'system':
                     messages[0]['content'] = self.args.system
@@ -149,7 +150,7 @@ class SwiftSampling(SwiftPipeline):
             batch_decoded_all.append(batch_decoded)
 
         for i, batch_decoded in enumerate(batch_decoded_all):
-            messages = deepcopy(data[i]['messages'])
+            messages = deepcopy(data['messages'][i])
             if messages[-1]['role'] != 'assistant':
                 messages.append({'role': 'assistant', 'content': None})
 
@@ -158,13 +159,13 @@ class SwiftSampling(SwiftPipeline):
                 _messages = deepcopy(messages)
                 _messages[-1]['content'] = decoded
                 infer_requests.append(InferRequest(messages=_messages,
-                                                   ground_truths=data[i]['ground_truth'][i]))
+                                                   ground_truths=data['ground_truth'][i]))
             _messages = deepcopy(messages)
-            _messages[-1]['content'] = data[i]['ground_truth'][i]
+            _messages[-1]['content'] = data['ground_truth'][i]
             infer_requests.append(InferRequest(messages=_messages,
-                                               ground_truths=data[i]['ground_truth'][i]))
+                                               ground_truths=data['ground_truth'][i]))
             orm_score, _ = _get_reward(self.orm_model, infer_requests)
-            prm_score, _mask = _get_reward(self.prm_model, infer_requests)
+            prm_score, _mask = _get_reward(self.prm_model, infer_requests, threshold=self.args.prm_threshold)
 
             if not any([score > 0 for score in orm_score]):
                 # Should not happen
@@ -172,21 +173,22 @@ class SwiftSampling(SwiftPipeline):
 
             score = np.array(prm_score) + np.array(orm_score * 10)
             sorted_indices = np.argsort(score)[::-1]
-            neg_index = sorted_indices[0]
+            neg_index = sorted_indices[-1]
             pos_indexes = sorted_indices[0:self.args.n_best_to_keep]
             pos_indexes = [i for i in pos_indexes if _mask[i]]
-            batch_decoded.append(data[i]['ground_truth'][i])
+            batch_decoded.append(data['ground_truth'][i])
             batch_decoded = np.array(batch_decoded)
             logger.info(
-                f'[PROC {cur_proc}]orm:{orm_score}, prm:{prm_score}, positive index: {pos_indexes}, negative index: {neg_index}')
-            if sum([score > 0 for score in orm_score]) - 1 >= int(self.args.num_return_sequences * self.args.easy_query_threshold):
+                f'[PROC {self.cur_proc}]orm:{orm_score}, prm:{prm_score}, positive index: {pos_indexes}, negative index: {neg_index}')
+            if self.args.easy_query_threshold is not None and sum([score > 0 for score in orm_score]) - 1 >= int(self.args.num_return_sequences * self.args.easy_query_threshold):
                 continue
-            positives = batch_decoded[pos_indexes]
-            negative = batch_decoded[neg_index]
-            for positive in positives:
-                messages = deepcopy(data[i]['messages'])
-                messages[-1]['content'] = positive
-                generated.append(json.dumps({'messages': messages, 'rejected_response': negative}) + '\n')
+            if len(pos_indexes) > 0:
+                positives = batch_decoded[pos_indexes]
+                negative = batch_decoded[neg_index]
+                for positive in positives:
+                    messages = deepcopy(messages)
+                    messages[-1]['content'] = str(positive)
+                    generated.append(json.dumps({'messages': messages, 'rejected_response': str(negative)}) + '\n')
         return generated
 
     def run_sampling(self):
@@ -203,16 +205,16 @@ class SwiftSampling(SwiftPipeline):
             self.args.num_sampling_per_gpu_batches = total_iters
 
         for _index in range(self.args.num_sampling_per_gpu_batches):
-            logger.info(f'[PROC {cur_proc}] Sampling index:{_index}')
-            generated = self.do_sample(dataset[self.args.num_sampling_per_gpu_batches*_index,
-                                               self.args.num_sampling_per_gpu_batches*(_index+1)])
+            logger.info(f'[PROC {self.cur_proc}] Sampling index:{_index}')
+            generated = self.do_sample(dataset[self.args.num_sampling_per_gpu_batch_size*_index:
+                                               self.args.num_sampling_per_gpu_batch_size*(_index+1)])
             dumped_ds.extend(generated)
 
         with open(iter_file, 'w') as f:
             f.writelines(dumped_ds)
 
     def run(self):
-        os.makedirs(self.args.output_dir)
+        os.makedirs(self.args.output_dir, exist_ok=True)
         dev_count = torch.cuda.device_count()
         nproc = int(os.environ.get('NPROC_PER_NODE', '1'))
         assert dev_count > 0 and dev_count % nproc == 0, ('You need to at least have one cuda '
@@ -223,15 +225,13 @@ class SwiftSampling(SwiftPipeline):
         else:
             handlers = []
             dev_per_proc = dev_count // nproc
-            for proc in range(0, dev_count, ):
+            for proc in range(0, dev_count, dev_per_proc):
                 mp = multiprocessing.get_context('spawn')
                 tmp_args = copy(self.args)
                 tmp_args.file_prefix = tmp_args.file_prefix + f'_proc_{proc}'
-                tmp_args.data_range = []
-                process = mp.Process(target=sampling_main, args=(tmp_args,),
-                                     initializer=partial(init_process,
-                                                         data_range=[proc, nproc],
-                                                         gpus=list(range(dev_per_proc*proc, dev_per_proc*(proc+1)))))
+                initializer=partial(init_process, data_range=[proc, nproc],
+                                    gpus=list(range(dev_per_proc*proc, dev_per_proc*(proc+1))))
+                process = mp.Process(target=sampling_main, args=(tmp_args, initializer))
                 process.start()
                 handlers.append(process)
 
@@ -241,10 +241,12 @@ class SwiftSampling(SwiftPipeline):
 
 def init_process(data_range: List[int], gpus: List[int]):
     import os
-    os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(gpus)
+    os.environ['CUDA_VISIBLE_DEVICES'] = ','.join([str(gpu) for gpu in gpus])
     os.environ['NPROC_PER_NODE'] = '1'
-    os.environ['DATA_RANGE'] = ','.join(data_range)
+    os.environ['DATA_RANGE'] = ','.join([str(r) for r in data_range])
 
 
-def sampling_main(args: Union[List[str], SamplingArguments, None] = None):
+def sampling_main(args: Union[List[str], SamplingArguments, None] = None, initializer=None):
+    if initializer is not None:
+        initializer()
     return SwiftSampling(args).main()

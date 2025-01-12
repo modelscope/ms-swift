@@ -4,7 +4,7 @@ from typing import Optional, Literal
 from datetime import datetime
 from swift.llm import BaseArguments
 from swift.utils import get_logger
-
+import json
 logger = get_logger()
 
 
@@ -29,7 +29,10 @@ class SamplingArguments(BaseArguments):
     # generate settings
     temperature: float = 1.0
     prm_threshold: float = 0.0
-    easy_query_threshold: float = 0.8
+    easy_query_threshold: Optional[float] = None
+
+    # engine settings
+    engine_kwargs: Optional[str] = None
 
     def __post_init__(self):
         if self.file_prefix is None:
@@ -42,4 +45,8 @@ class SamplingArguments(BaseArguments):
                 raise ValueError(f'Please use a string prefix without directory to '
                                  f'`--file_prefix` but now is: {self.file_prefix}')
         self.padding_side = 'left'
+        if self.engine_kwargs is not None:
+            self.engine_kwargs = json.loads(self.engine_kwargs)
+        else:
+            self.engine_kwargs = {}
         super().__post_init__()

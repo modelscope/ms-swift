@@ -21,17 +21,15 @@ def do_sample(model: str, dataset: List[str], iter: int):
                   f'--system "You are a math model, you should **think step by step** carefully, '
                   f'and always consider the basic math principles to avoid making calculating mistakes.'
                   f'Give the final answer wrapped with \\boxed{{}}" '
-                  f'--num_train_epochs 2 '
                   f'--load_args false '
                   f'--sampler_engine lmdeploy '
                   f'--orm_model math '
                   f'--max_new_tokens 768 '
                   f'--override_exist_file false '
-                  f'--eval_strategy no '
                   f'--num_sampling_per_gpu_batch_size 2 '
                   f'--num_return_sequences 64 '
                   f'--file_prefix iter_{iter} '
-                  f'--temperature 0.6 ')
+                  f'--temperature 1.0 ')
     print(f'Sampling iter {iter}.')
     handler = subprocess.Popen(f'{sample_cmd}' + f' > logs/sample_iter_{iter}.log 2>&1', env=os.environ.copy(),
                                shell=True, executable='/bin/bash')
@@ -136,7 +134,7 @@ def main():
     model = first_model
     for i in range(5):
         ts = time.time()
-        datasets = do_sample(model, ['modelscope/competition_math:rl'], i)
+        datasets = do_sample(model, ['tastelikefeet/competition_math:rl'], i)
         print(f'do sample cost: {(time.time()-ts)/60} seconds.')
         ts = time.time()
         ckpt = do_train(model, datasets, i)
