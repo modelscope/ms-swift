@@ -74,6 +74,24 @@ register_dataset(
         tags=['pretrain', '🔥']))
 
 
+class MathTrnPreprocessor(ResponsePreprocessor):
+
+    def preprocess(self, row):
+        query = row['query']
+        output = row['response']
+        row = {
+            'query': query,
+            'response': output,
+        }
+        return super().preprocess(row)
+
+
+register_dataset(
+    DatasetMeta(
+        ms_dataset_id='AI-ModelScope/math-trn-format',
+        preprocess_func=MathTrnPreprocessor(),
+        tags=['pretrain', '🔥']))
+
 def _repair_ms_bench(messages: str) -> Optional[List[Dict[str, str]]]:
     if isinstance(messages, str):
         messages = ast.literal_eval(messages)

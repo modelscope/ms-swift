@@ -8,7 +8,7 @@ from swift.llm import RLHFArguments
 @dataclass
 class RLFTArguments(RLHFArguments):
 
-    rlft_type: Literal['causal_lm', 'dpo'] = 'dpo'
+    rlft_type: str = 'dpo'
 
     prm_model: str = "AI-ModelScope/GRM-llama3.2-3B-rewardmodel-ft"
     orm_model: Optional[str] = None
