@@ -1,10 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from dataclasses import dataclass
+import dataclasses
 from typing import Optional, Literal
 from datetime import datetime
 from swift.llm import BaseArguments
 from swift.utils import get_logger
 import json
+from typing import List
 logger = get_logger()
 
 
@@ -25,6 +27,7 @@ class SamplingArguments(BaseArguments):
     num_sampling_per_gpu_batch_size: int = 2
     num_sampling_per_gpu_batches: Optional[int] = None
     n_best_to_keep: int = 5
+    data_range: List[int] = dataclasses.field(default_factory=list)
 
     # generate settings
     temperature: float = 1.0
@@ -46,6 +49,7 @@ class SamplingArguments(BaseArguments):
                                  f'`--file_prefix` but now is: {self.file_prefix}')
         self.padding_side = 'left'
         if self.engine_kwargs is not None:
+            print(self.engine_kwargs)
             self.engine_kwargs = json.loads(self.engine_kwargs)
         else:
             self.engine_kwargs = {}
