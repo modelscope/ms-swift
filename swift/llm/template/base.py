@@ -248,8 +248,6 @@ class Template(ProcessorMixin):
                 encoded.pop(key)
         if return_template_inputs:
             encoded['template_inputs'] = inputs
-        if inputs.messages[0]['role'] != 'system':
-            inputs.messages.insert(0, {'role': 'system', 'content': inputs.system})
         return encoded
 
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:

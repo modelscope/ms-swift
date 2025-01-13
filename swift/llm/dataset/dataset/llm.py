@@ -89,7 +89,7 @@ class MathTrnPreprocessor(ResponsePreprocessor):
 
 register_dataset(
     DatasetMeta(
-        ms_dataset_id='AI-ModelScope/math-trn-format', preprocess_func=MathTrnPreprocessor(), tags=['pretrain', '🔥']))
+        ms_dataset_id='AI-ModelScope/math-trn-format', preprocess_func=MathTrnPreprocessor(), tags=['math', 'for test']))
 
 
 def _repair_ms_bench(messages: str) -> Optional[List[Dict[str, str]]]:
@@ -381,13 +381,7 @@ register_dataset(
         preprocess_func=MultiRoleAgentPreprocessor(),
         tags=['chat', 'agent', 'multi-round', 'role-play', 'multi-agent']))
 
-register_dataset(
-    DatasetMeta(
-        ms_dataset_id='swift/ToolBench',
-        subsets=[
-            SubsetDataset(name='default', ),
-        ],
-        tags=['chat', 'agent', 'multi-round']))
+register_dataset(DatasetMeta(ms_dataset_id='swift/ToolBench', tags=['chat', 'agent', 'multi-round']))
 
 
 class CompetitionMathPreprocessor(ResponsePreprocessor):

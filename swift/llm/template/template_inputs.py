@@ -40,8 +40,6 @@ class InferRequest:
 
     tools: Optional[List[Tool]] = None
 
-    ground_truths: Optional[str] = None
-
     def __post_init__(self):
         for key in ['images', 'audios', 'videos']:
             val = getattr(self, key)
@@ -109,7 +107,6 @@ class StdTemplateInputs:
     audios: List[str] = field(default_factory=list)
     videos: List[str] = field(default_factory=list)
     objects: List[Dict[str, Any]] = field(default_factory=list)
-    ground_truth: str = None
 
     agent_keyword: Optional[Dict[str, str]] = None
 
@@ -142,7 +139,7 @@ class StdTemplateInputs:
         from swift.plugin import get_tools_prompt, get_tools_keyword
         inputs = deepcopy(inputs)
         kwargs = {}
-        for key in ['rejected_response', 'label', 'ground_truth']:
+        for key in ['rejected_response', 'label']:
             if key in inputs:
                 kwargs[key] = inputs[key]
         messages = inputs['messages']
@@ -155,6 +152,7 @@ class StdTemplateInputs:
         else:
             system = None
 
+        keyword = None
         if tools is not None:
             if system is not None:
                 logger.warning_once(
@@ -162,6 +160,7 @@ class StdTemplateInputs:
             if isinstance(tools, str):
                 tools = json.loads(tools)
             system = get_tools_prompt(tools, tools_prompt)
+            keyword = get_tools_keyword(tools_prompt)
 
         media_kwargs = StdTemplateInputs.remove_messages_media(messages)
         for k in list(media_kwargs.keys()):
@@ -177,7 +176,7 @@ class StdTemplateInputs:
                 media_kwargs[k] = inputs_mm_data
 
         StdTemplateInputs.messages_join_observation(messages, tools_prompt)
-        return cls(messages=messages, system=system, objects=objects, **kwargs, **media_kwargs)
+        return cls(messages=messages, system=system, objects=objects, agent_keyword=keyword, **kwargs, **media_kwargs)
 
     @staticmethod
     def remove_messages_media(messages: Messages) -> Dict[str, Any]:
