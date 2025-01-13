@@ -79,7 +79,6 @@ class PtEngine(InferEngine):
         for adapter in self.adapters:
             self._add_adapter(safe_snapshot_download(adapter, use_hf=use_hf, hub_token=hub_token))
         self._post_init()
-        self.task_type = 'causal_lm'
 
     def _post_init(self):
         super()._post_init()
@@ -97,7 +96,6 @@ class PtEngine(InferEngine):
         self.processor = template.processor
         self.max_batch_size = max_batch_size
         self._post_init()
-        self.task_type = self.model_info.task_type
         return self
 
     def _prepare_generation_config(self, request_config: RequestConfig) -> _GenerationConfig:
@@ -106,6 +104,7 @@ class PtEngine(InferEngine):
         if request_config.logprobs:
             generation_config.output_logits = True
         generation_config.top_logprobs = request_config.top_logprobs
+        generation_config.num_return_sequences = request_config.n
         return _GenerationConfig(**generation_config.to_dict())
 
     def _add_stop_words(self, generation_config: _GenerationConfig, request_config: RequestConfig,
@@ -279,7 +278,7 @@ class PtEngine(InferEngine):
         if adapter_names is not None:
             call_kwargs['adapter_names'] = adapter_names
         num_prompt_tokens = self._get_num_tokens(inputs)
-        inputs.pop('labels')
+        inputs.pop('labels', None)
         logits = self.model(**inputs, **call_kwargs).logits
         if logits.shape[-1] > 1:
             preds = torch.argmax(logits, dim=-1).tolist()
@@ -314,42 +313,48 @@ class PtEngine(InferEngine):
         if adapter_names is not None:
             generate_kwargs['adapter_names'] = adapter_names
         num_prompt_tokens = self._get_num_tokens(inputs)
-
         generate_kwargs = template.prepare_generate_kwargs(generate_kwargs, model=self.model)
         output = dict(template.generate(self.model, **generate_kwargs))
         output.pop('past_key_values', None)
         batched_generate_ids = output['sequences']
         batched_generate_ids = template.get_generate_ids(batched_generate_ids, num_prompt_tokens)
+        template.debug_logger({'generate_ids': batched_generate_ids})  # debug
         batched_logprobs = self.preprocess_logits(
             output.get('logits'), batched_generate_ids, generation_config.top_logprobs)
 
         res = []
-        for i in range(batched_generate_ids.shape[0]):
-            generate_ids = batched_generate_ids[i]
+        num_return_sequences = generation_config.num_return_sequences
+        for i in range(inputs['attention_mask'].shape[0]):
+            choices = []
+            usage_info = self._get_usage_info(num_prompt_tokens, 0)
+            for j in range(num_return_sequences):
+                batched_index = i * num_return_sequences + j
+                generate_ids = batched_generate_ids[batched_index]
 
-            # ignore pad_token
-            masks = generate_ids != self.tokenizer.pad_token_id
-            generate_ids = generate_ids[masks].tolist()
-            logprobs_list = None
-            if batched_logprobs is not None:
-                logprobs_list = [logprobs for m, logprobs in zip(masks, batched_logprobs[i]) if m.item()]
+                # ignore pad_token
+                masks = generate_ids != self.tokenizer.pad_token_id
+                generate_ids = generate_ids[masks].tolist()
+                logprobs_list = None
+                if batched_logprobs is not None:
+                    logprobs_list = [
+                        logprobs for m, logprobs in zip(masks, batched_logprobs[batched_index]) if m.item()
+                    ]
 
-            logprobs = self._get_logprobs(self.tokenizer, logprobs_list, generate_ids, generation_config.top_logprobs)
-            usage_info = self._get_usage_info(num_prompt_tokens, len(generate_ids))
-            response = template.decode(generate_ids, template_inputs=template_inputs[i])
-            finish_reason = self._get_finish_reason(generation_config.max_new_tokens, num_prompt_tokens, True)
-            toolcall = self._get_toolcall(response, template.tools_prompt)
-            choices = [
-                ChatCompletionResponseChoice(
-                    index=0,
-                    message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
-                    finish_reason=finish_reason,
-                    logprobs=logprobs)
-            ]
+                logprobs = self._get_logprobs(self.tokenizer, logprobs_list, generate_ids,
+                                              generation_config.top_logprobs)
+                usage_info = self._update_usage_info(usage_info, len(generate_ids))
+                response = template.decode(generate_ids, template_inputs=template_inputs[i])
+                finish_reason = self._get_finish_reason(generation_config.max_new_tokens, num_prompt_tokens, True)
+                toolcall = self._get_toolcall(response, template.tools_prompt)
+                choices.append(
+                    ChatCompletionResponseChoice(
+                        index=j,
+                        message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
+                        finish_reason=finish_reason,
+                        logprobs=logprobs))
             res.append(ChatCompletionResponse(model=self.model_name, choices=choices, usage=usage_info))
         return res
 
-    @torch.inference_mode()
     async def infer_async(
         self,
         infer_request: InferRequest,
@@ -378,6 +383,7 @@ class PtEngine(InferEngine):
         else:
             return res_or_gen[0]
 
+    @torch.inference_mode()
     def _infer(
         self,
         infer_requests: List[InferRequest],
@@ -396,9 +402,7 @@ class PtEngine(InferEngine):
             template.model = self.model
 
         generation_config = None
-        if self.task_type == 'seq_cls':
-            template.set_mode('seq_cls')
-        else:
+        if self.model_info.task_type == 'causal_lm':
             template.set_mode('pt')
 
         max_workers = min(32, os.cpu_count(), len(infer_requests))
@@ -411,9 +415,10 @@ class PtEngine(InferEngine):
             batched_inputs = [future.result() for future in futures]
         template_inputs = [inputs.pop('template_inputs') for inputs in batched_inputs]
         inputs = to_device(template.data_collator(batched_inputs), self.model.device)
+        template.debug_logger(inputs)  # debug
         if self.model.model_meta.is_multimodal:
             _, inputs = template.pre_forward_hook(self.model, None, inputs)
-        if self.task_type != 'seq_cls':
+        if self.model_info.task_type == 'causal_lm':
             self.set_default_max_tokens(request_config, inputs)
             generation_config = self._prepare_generation_config(request_config)
             self._add_stop_words(generation_config, request_config, template)
@@ -439,7 +444,6 @@ class PtEngine(InferEngine):
             infer_func = self._infer_seq_cls if template.mode == 'seq_cls' else self._infer_full
             return self._update_metrics(infer_func(**kwargs), metrics)
 
-    @torch.inference_mode()
     def infer(
         self,
         infer_requests: List[InferRequest],

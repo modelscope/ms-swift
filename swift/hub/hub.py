@@ -273,7 +273,7 @@ class MSHub(HubOperation):
             token or cls.ms_token,
             private,
             commit_message=commit_message,
-            ignore_patterns=ignore_patterns,
+            ignore_file_pattern=ignore_patterns,
             revision=revision,
             tag=path_in_repo)
 
@@ -291,7 +291,7 @@ class MSHub(HubOperation):
         cls.try_login(token)
         if revision is None or revision == 'main':
             revision = 'master'
-        # noinspection PyTypeChecker
+
         return MsDataset.load(
             dataset_id,
             subset_name=subset_name,

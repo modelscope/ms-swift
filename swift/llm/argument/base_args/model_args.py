@@ -6,6 +6,7 @@ from typing import Any, Dict, Literal, Optional, Union
 
 import json
 import torch
+from transformers.utils import is_torch_mps_available
 
 from swift.llm import MODEL_MAPPING, HfConfigFactory, get_model_info_meta, get_model_name
 from swift.utils import get_dist_setting, get_logger
@@ -90,7 +91,7 @@ class ModelArguments:
         self.torch_dtype: Optional[torch.dtype] = HfConfigFactory.to_torch_dtype(self.torch_dtype)
         self.torch_dtype: torch.dtype = self._init_model_info()
         # Mixed Precision Training
-        if isinstance(self, TrainArguments):
+        if isinstance(self, TrainArguments) and not is_torch_mps_available():
             if self.torch_dtype in {torch.float16, torch.float32}:
                 self.fp16, self.bf16 = True, False
             elif self.torch_dtype == torch.bfloat16:
@@ -116,31 +117,23 @@ class ModelArguments:
 
     def _init_model_info(self) -> torch.dtype:
         self.model_info, self.model_meta = get_model_info_meta(**self.get_model_kwargs())
+        self.task_type = self.model_info.task_type
+        self.num_labels = self.model_info.num_labels
         self.model_dir = self.model_info.model_dir
         self.model_type = self.model_info.model_type
         if isinstance(self.rope_scaling, str):
             self._init_rope_scaling()
         return self.model_info.torch_dtype
 
-    def _init_task_type(self):
-        if self.task_type is None:
-            if self.num_labels is None:
-                self.task_type = 'causal_lm'
-            else:
-                self.task_type = 'seq_cls'
-        if self.task_type == 'seq_cls':
-            assert self.num_labels is not None, 'Please set --num_labels <num_labels>.'
-
     def __post_init__(self):
         if self.model is None:
             raise ValueError(f'Please set --model <model_id_or_path>`, model: {self.model}')
-        self._init_task_type()
         self.model_suffix = get_model_name(self.model)
         self._init_device_map()
         self._init_torch_dtype()
 
     def get_model_kwargs(self):
-        kwargs = {
+        return {
             'model_id_or_path': self.model,
             'torch_dtype': self.torch_dtype,
             'model_type': self.model_type,
@@ -152,9 +145,6 @@ class ModelArguments:
             'quantization_config': self.get_quantization_config(),
             'attn_impl': self.attn_impl,
             'rope_scaling': self.rope_scaling,
+            'task_type': self.task_type,
+            'num_labels': self.num_labels
         }
-        if self.task_type == 'seq_cls':
-            from transformers import AutoModelForSequenceClassification
-            kwargs['automodel_class'] = AutoModelForSequenceClassification
-            kwargs['model_kwargs'] = {'num_labels': self.num_labels}
-        return kwargs

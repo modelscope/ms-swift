@@ -12,7 +12,7 @@ from ..constant import MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import Context, Prompt, findall
-from ..vision_utils import load_video_minicpmv_mplug_owl3, replace_video2image
+from ..vision_utils import load_video_minicpmv_mplug_owl3
 from .qwen import QwenTemplateMeta
 
 
@@ -82,7 +82,7 @@ class mPlugOwl3Template(Template):
         if media_type == 'image':
             return [[-100], '\n']
         elif media_type == 'video':
-            return replace_video2image(load_video, inputs, lambda i: [[-100]]) + ['\n']
+            return self.replace_video2image(load_video, inputs, lambda i: [[-100]]) + ['\n']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
@@ -97,7 +97,7 @@ class mPlugOwl3Template(Template):
         if images:
             image_inputs = processor.image_processor(images, cut_enable=cut_enable, return_tensors='pt')
             added_tokens_len = 0
-            cut_shapes = image_inputs['cut_shape'] or [None] * len(idx_list)
+            cut_shapes = image_inputs['cut_shape'] or [None] * 2 * len(idx_list)
             image_token_list = self.processor.encode('<|image|>', add_special_tokens=False)
             for idx, cut_shape in zip(idx_list, cut_shapes[::2]):
                 if cut_shape:
@@ -161,6 +161,8 @@ class mPlugOwl3_241101Template(mPlugOwl3Template):
         if 'pixel_values' in inputs:
             pixel_values = inputs.pop('pixel_values')
             inputs['image_embeds'] = torch.concat([model.forward_image(pv) for pv in pixel_values])
+        else:
+            inputs['media_offset'] = [None] * inputs['input_ids'].shape[0]
         return inputs
 
 

@@ -8,14 +8,14 @@ from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
 from peft import PeftModel
-from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer, GenerationConfig, PretrainedConfig,
-                          PreTrainedModel, PreTrainedTokenizerBase)
+from transformers import (AutoConfig, AutoModel, AutoModelForCausalLM, AutoModelForSequenceClassification,
+                          AutoTokenizer, GenerationConfig, PretrainedConfig, PreTrainedModel, PreTrainedTokenizerBase)
 from transformers.integrations import is_deepspeed_zero3_enabled
-from transformers.utils import is_torch_bf16_gpu_available, is_torch_cuda_available, is_torch_npu_available, strtobool
+from transformers.utils import (is_torch_bf16_gpu_available, is_torch_cuda_available, is_torch_mps_available,
+                                is_torch_npu_available, strtobool)
 from transformers.utils.versions import require_version
 
-from swift.utils import (get_dist_setting, get_logger, is_dist, is_mp_ddp, is_unsloth_available, patch_getattr,
-                         use_torchacc)
+from swift.utils import get_dist_setting, get_logger, is_dist, is_mp, is_unsloth_available, patch_getattr, use_torchacc
 from .constant import ModelType
 from .utils import AttnImpl, HfConfigFactory, ModelInfo, safe_snapshot_download
 
@@ -49,7 +49,7 @@ class ModelGroup:
 
 @dataclass
 class ModelMeta:
-    model_type: str
+    model_type: Optional[str]
     # Used to list the model_ids from modelscope/huggingface,
     # which participate in the automatic inference of the model_type.
     model_groups: List[ModelGroup]
@@ -58,10 +58,12 @@ class ModelMeta:
 
     model_arch: Optional[str] = None
     architectures: List[str] = field(default_factory=list)
-    is_multimodal: bool = False
     # Additional files that need to be saved for full parameter training/merge-lora.
     additional_saved_files: List[str] = field(default_factory=list)
     torch_dtype: Optional[torch.dtype] = None
+
+    is_multimodal: bool = False
+    is_reward: bool = False
 
     # File patterns to ignore when downloading the model.
     ignore_patterns: List[str] = field(default_factory=list)
@@ -103,7 +105,6 @@ class ModelMeta:
 MODEL_MAPPING: Dict[str, ModelMeta] = {}
 
 
-# [TODO:eos_token -> template]
 def register_model(model_meta: ModelMeta, *, exist_ok: bool = False) -> None:
     """
     model_type: The unique ID for the model type. Models with the same model_type share
@@ -112,9 +113,11 @@ def register_model(model_meta: ModelMeta, *, exist_ok: bool = False) -> None:
     model_type = model_meta.model_type
     if not exist_ok and model_type in MODEL_MAPPING:
         raise ValueError(f'The `{model_type}` has already been registered in the MODEL_MAPPING.')
-    from .constant import MLLMModelType
+    from .constant import MLLMModelType, RMModelType
     if model_type in MLLMModelType.__dict__:
         model_meta.is_multimodal = True
+    if model_type in RMModelType.__dict__:
+        model_meta.is_reward = True
     MODEL_MAPPING[model_type] = model_meta
 
 
@@ -158,7 +161,9 @@ def get_model_tokenizer_from_local(model_dir: str,
                                    automodel_class=None,
                                    **kwargs):
     """Load the model and tokenizer from the local model_dir."""
-    automodel_class = automodel_class or AutoModelForCausalLM
+    automodel_class_mapping = {'seq_cls': AutoModelForSequenceClassification, 'causal_lm': AutoModelForCausalLM}
+    if automodel_class is None:
+        automodel_class = automodel_class_mapping[model_info.task_type]
     if model_config is None:
         model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     # fix prediction_step (internvl2, ovis, ...)
@@ -178,8 +183,9 @@ def get_model_tokenizer_from_local(model_dir: str,
     if tokenizer is None:
         tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
 
-    num_labels = model_kwargs.pop('num_labels', None)
+    num_labels = model_info.num_labels or getattr(model_config, 'num_labels', None)
     if num_labels:
+        model_info.num_labels = num_labels
         model_config.num_labels = num_labels
 
     model = None
@@ -217,6 +223,13 @@ def get_model_tokenizer_multimodal(model_dir: str, *args, **kwargs):
     return model, processor
 
 
+def get_model_tokenizer_reward_model(model_dir, *args, **kwargs):
+    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+    if 'AutoModel' in (getattr(model_config, 'auto_map', None) or {}):
+        kwargs['automodel_class'] = AutoModel
+    return get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
+
+
 def fix_do_sample_warning(generation_config: GenerationConfig) -> None:
     # Use the default values of temperature/top_p/top_k in generation_config.
     if generation_config.temperature == 0:
@@ -231,32 +244,19 @@ def get_default_device_map():
     if is_deepspeed_zero3_enabled() or os.environ.get('ACCELERATE_USE_FSDP', 'False') == 'true':
         return None
     local_rank = get_dist_setting()[1]
+    if local_rank == -1:
+        local_rank = 0
     if is_torch_npu_available():
-        if local_rank >= 0:
-            return f'npu:{local_rank}'
+        return f'npu:{local_rank}'
+    elif is_torch_mps_available():
+        return f'mps:{local_rank}'
+    elif is_torch_cuda_available():
+        if is_mp():
+            return 'auto'
         else:
-            return 'npu:0'
-    if torch.cuda.device_count() == 0:
+            return f'cuda:{local_rank}'
+    else:
         return 'cpu'
-    elif torch.cuda.device_count() == 1:
-        return 'cuda:0'
-    elif is_dist() and not is_mp_ddp():
-        return f'cuda:{local_rank}'
-    else:
-        return 'auto'
-
-
-def _check_torch_dtype(torch_dtype: torch.dtype):
-    if is_torch_cuda_available() or is_torch_npu_available():
-
-        if torch_dtype == torch.bfloat16:
-            support_bf16 = is_torch_bf16_gpu_available()
-            if not support_bf16:
-                logger.warning(f'torch_dtype: {torch_dtype}, but support_bf16: {support_bf16}.')
-    else:
-        # cpu
-        if torch_dtype == torch.float16:
-            logger.warning(f'torch_dtype: {torch_dtype}. The CPU does not support matrix multiplication with FP16.')
 
 
 def get_default_torch_dtype(torch_dtype: Optional[torch.dtype]):
@@ -272,7 +272,6 @@ def get_default_torch_dtype(torch_dtype: Optional[torch.dtype]):
     else:
         # cpu
         return torch.float32
-    return res
 
 
 def get_model_name(model_id_or_path: str) -> Optional[str]:
@@ -356,6 +355,8 @@ def get_model_info_meta(
         # model kwargs
         model_type: Optional[str] = None,
         quantization_config=None,
+        task_type=None,
+        num_labels=None,
         **kwargs) -> Tuple[ModelInfo, ModelMeta]:
     model_meta = get_matched_model_meta(model_id_or_path)
     model_dir = safe_snapshot_download(
@@ -380,8 +381,18 @@ def get_model_info_meta(
     if torch_dtype is None:
         torch_dtype = model_meta.torch_dtype or get_default_torch_dtype(model_info.torch_dtype)
         logger.info(f'Setting torch_dtype: {torch_dtype}')
-    _check_torch_dtype(torch_dtype)
     model_info.torch_dtype = torch_dtype
+    if task_type is None:
+        if model_meta.is_reward:
+            num_labels = 1
+        if num_labels is None:
+            task_type = 'causal_lm'
+        else:
+            task_type = 'seq_cls'
+        if task_type == 'seq_cls':
+            assert num_labels is not None, 'Please pass the parameter `num_labels`.'
+    model_info.task_type = task_type
+    model_info.num_labels = num_labels
 
     model_meta.check_requires(model_info)
     return model_info, model_meta
@@ -404,6 +415,8 @@ def get_model_tokenizer(
         attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None,
         rope_scaling: Optional[Dict[str, Any]] = None,
         automodel_class=None,
+        task_type: Literal['causal_lm', 'seq_cls'] = None,
+        num_labels: Optional[int] = None,
         model_kwargs: Optional[Dict[str, Any]] = None,
         **kwargs) -> Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]:
     """
@@ -432,7 +445,9 @@ def get_model_tokenizer(
         revision=revision,
         download_model=download_model,
         model_type=model_type,
-        quantization_config=quantization_config)
+        quantization_config=quantization_config,
+        task_type=task_type,
+        num_labels=num_labels)
 
     if not use_torchacc() and device_map is None:
         device_map = get_default_device_map()

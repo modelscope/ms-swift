@@ -47,9 +47,6 @@ class TemplateArguments:
         if self.template is None and hasattr(self, 'model_meta'):
             self.template = self.model_meta.template
 
-        if self.max_length is None and hasattr(self, 'model_info'):
-            self.max_length = self.model_info.max_model_len
-
     def get_template_kwargs(self):
         truncation_strategy = self.truncation_strategy
         if truncation_strategy == 'delete':

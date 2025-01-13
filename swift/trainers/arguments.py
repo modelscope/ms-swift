@@ -10,6 +10,7 @@ from transformers.training_args import TrainingArguments as HfTrainingArguments
 from transformers.training_args_seq2seq import Seq2SeqTrainingArguments as HfSeq2SeqTrainingArguments
 
 from swift.utils import use_torchacc
+from .optimizers.galore import GaLoreConfig
 
 
 @dataclass
@@ -28,8 +29,10 @@ class SwiftArgumentsMixin:
     fsdp_num: int = 1
     acc_steps: int = 1
 
-    # Value copied from TrainArguments, Used for external tuners.
+    # Value copied from TrainArguments
     train_type: Optional[str] = None
+    optimizer: Optional[str] = None
+    galore_config: Optional[GaLoreConfig] = None
 
     def _fix_gradient_checkpointing(self):
         # fix use_reentrant
@@ -73,40 +76,3 @@ class TrainingArguments(SwiftArgumentsMixin, HfTrainingArguments):
 @dataclass
 class Seq2SeqTrainingArguments(SwiftArgumentsMixin, HfSeq2SeqTrainingArguments):
     pass
-
-
-try:
-    from trl import (DPOConfig as HfDPOConfig, CPOConfig as HfCPOConfig, ORPOConfig as HfORPOConfig, KTOConfig as
-                     HfKTOConfig, RewardConfig as HfRewardConfig, PPOv2Config as HfPPOConfig)
-
-    @dataclass
-    class DPOConfig(SwiftArgumentsMixin, HfDPOConfig):
-        pass
-
-    @dataclass
-    class CPOConfig(SwiftArgumentsMixin, HfCPOConfig):
-        pass
-
-    @dataclass
-    class ORPOConfig(SwiftArgumentsMixin, HfORPOConfig):
-        pass
-
-    @dataclass
-    class KTOConfig(SwiftArgumentsMixin, HfKTOConfig):
-        pass
-
-    @dataclass
-    class RewardConfig(SwiftArgumentsMixin, HfRewardConfig):
-        pass
-
-    @dataclass
-    class PPOConfig(SwiftArgumentsMixin, HfPPOConfig):
-        pass
-
-except (ImportError, RuntimeError):
-    DPOConfig = None
-    CPOConfig = None
-    ORPOConfig = None
-    KTOConfig = None
-    RewardConfig = None
-    PPOConfig = None

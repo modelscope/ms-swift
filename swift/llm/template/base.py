@@ -6,12 +6,13 @@ import re
 from copy import deepcopy
 from dataclasses import asdict
 from functools import wraps
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import json
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from modelscope.hub.utils.utils import get_cache_dir
 from peft import PeftModel
 from PIL import Image
 from torch.nn.utils.rnn import pad_sequence
@@ -79,6 +80,8 @@ class Template(ProcessorMixin):
         self.model_info = processor.model_info
         self.config = self.model_info.config
         self.model_meta = processor.model_meta
+        if max_length is None:
+            max_length = self.model_info.max_model_len
         tokenizer = self.tokenizer
 
         if not use_chat_template:
@@ -106,28 +109,29 @@ class Template(ProcessorMixin):
             self.skip_prompt = False
 
         self.mode: Literal['pt', 'vllm', 'lmdeploy',  # infer
-                           'train', 'rlhf', 'kto'  # train
+                           'train', 'rlhf', 'kto',  # train
                            'seq_cls'] = 'pt'
+        if self.model_info.task_type != 'causal_lm':
+            self.mode = self.model_info.task_type
         self._handles = []
         self._deepspeed_initialize = None
 
     @staticmethod
-    def _load_images(images, load_images: bool) -> None:
-        for i, image in enumerate(images):
-            if load_images:
-                if isinstance(image, dict) and 'bytes' in image:
-                    image = image['bytes'] or image['path']
+    def _load_image(image, load_images: bool):
+        if load_images:
+            if isinstance(image, dict) and 'bytes' in image:
+                image = image['bytes'] or image['path']
+            image = load_image(image)
+        else:
+            if isinstance(image, dict):
+                path = image['path']
+                if path and (path.startswith('http') or os.path.exists(path)):
+                    image = path
+                else:
+                    image = load_image(image['bytes'])
+            elif not isinstance(image, str):
                 image = load_image(image)
-            else:
-                if isinstance(image, dict):
-                    path = image['path']
-                    if path and (path.startswith('http') or os.path.exists(path)):
-                        image = path
-                    else:
-                        image = load_image(image['bytes'])
-                elif not isinstance(image, str):
-                    image = load_image(image)
-            images[i] = image
+        return image
 
     def _preprocess_inputs(
         self,
@@ -139,7 +143,8 @@ class Template(ProcessorMixin):
         if self.max_pixels is not None or inputs.objects:
             load_images = True
         if images:
-            self._load_images(images, load_images)
+            for i, image in enumerate(images):
+                images[i] = self._load_image(images[i], load_images)
         if self.max_pixels is not None:
             assert self.grounding_type != 'real', 'not support'  # TODO:check
             images = [rescale_image(img, self.max_pixels) for img in images]
@@ -160,8 +165,25 @@ class Template(ProcessorMixin):
                 'The template does not support multi-round chat. Only use the last round of the conversation.')
             inputs.messages = inputs.messages[-2:]
 
+        if self.model_meta.is_multimodal:
+            self._replace_image_tags(inputs)
         if inputs.is_multimodal:
             self._add_default_tags(inputs)
+
+    @staticmethod
+    def _replace_image_tags(inputs: StdTemplateInputs):
+        # compat
+        images = []
+        pattern = r'<img>(.+?)</img>'
+        for message in inputs.messages:
+            content = message['content']
+            if not isinstance(content, str):
+                continue
+            images += re.findall(pattern, content)
+            message['content'] = re.sub(pattern, '<image>', content)
+        if images:
+            assert not inputs.images, f'images: {images}, inputs.images: {inputs.images}'
+            inputs.images = images
 
     def _rlhf_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         chosen_inputs, rejected_inputs = inputs, deepcopy(inputs)
@@ -180,11 +202,12 @@ class Template(ProcessorMixin):
     def _kto_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         label, inputs.label = inputs.label, None
         encoded = self._rlhf_encode(inputs)
-        encoded['label'] = label
+        encoded['label'] = bool(label)
         return encoded
 
     def _seq_cls_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = self._encode(inputs)
+        encoded.pop('labels', None)
         if inputs.label is not None:
             encoded['labels'] = int(inputs.label)
         return encoded
@@ -201,6 +224,8 @@ class Template(ProcessorMixin):
             inputs = asdict(inputs)
 
         if isinstance(inputs, dict):
+            if not self.is_training:
+                InferRequest.remove_response(inputs['messages'])
             inputs = StdTemplateInputs.from_dict(inputs, tools_prompt=self.tools_prompt)
         elif isinstance(inputs, StdTemplateInputs):
             inputs = deepcopy(inputs)
@@ -263,11 +288,6 @@ class Template(ProcessorMixin):
         if 'spaces_between_special_tokens' not in decode_kwargs:
             decode_kwargs['spaces_between_special_tokens'] = False
         return tokenizer.decode(generate_ids, **decode_kwargs)
-        # if not is_finished or is_finished and response[-len_suffix:] == template_suffix:
-        #     # To avoid response length being shorter than previous response length during streaming.
-        #     # TODO:check
-        #     # idx = max(len(response) - len_suffix, 0, self.print_idx)
-        #     response = response[:-len_suffix]
 
     def prepare_generate_kwargs(self, generate_kwargs: Dict[str, Any], *, model=None) -> Dict[str, Any]:
         generation_config = generate_kwargs['generation_config']
@@ -279,7 +299,10 @@ class Template(ProcessorMixin):
     def _save_pil_image(image: Image.Image) -> str:
         img_bytes = image.tobytes()
         img_hash = hashlib.sha256(img_bytes).hexdigest()
-        img_path = os.path.join('tmp', f'{img_hash}.png')
+        tmp_dir = os.path.join(get_cache_dir(), 'tmp', 'images')
+        logger.info_once(f'create tmp_dir: {tmp_dir}')
+        os.makedirs(tmp_dir, exist_ok=True)
+        img_path = os.path.join(tmp_dir, f'{img_hash}.png')
         if not os.path.exists(img_path):
             image.save(img_path)
         return img_path
@@ -451,20 +474,19 @@ class Template(ProcessorMixin):
         for context, loss_scale in zip(context_list, loss_scale_list):
             for k in ['image', 'video', 'audio']:
                 if context == f'<{k}>':
-                    idx = getattr(inputs, f'{k}_idx')
-                    c_list = self.replace_tag(k, idx, inputs)
-                    setattr(inputs, f'{k}_idx', idx + 1)
+                    c_list = self.replace_tag(k, getattr(inputs, f'{k}_idx'), inputs)
+                    setattr(inputs, f'{k}_idx', getattr(inputs, f'{k}_idx') + 1)
                     loss_scale = 0.
                     break
             else:
                 if context == '<ref-object>':
                     idx = inputs.object_idx
                     c_list = self.replace_object(inputs.objects[idx], idx, inputs)
-                    inputs.object_idx = idx + 1
+                    inputs.object_idx += 1
                 elif context == '<bbox>':
                     idx = inputs.box_idx
                     c_list = self.replace_box(inputs.objects[idx], idx, inputs)
-                    inputs.box_idx = idx + 1
+                    inputs.box_idx += 1
                 else:
                     c_list = [context]
             res += c_list
@@ -541,7 +563,8 @@ class Template(ProcessorMixin):
             messages.insert(0, {'role': 'system', 'content': inputs.system})
         if messages[-1]['content'] is None:
             messages.pop()
-        text = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        add_generation_prompt = messages[-1]['role'] != 'assistant'
+        text = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=add_generation_prompt)
         answer_len = 1 if self.is_training else 0
         return [text], [1.], answer_len
 
@@ -673,23 +696,38 @@ class Template(ProcessorMixin):
                     encoded[k] = None
         return encoded
 
-    def _debug_logger(self, generate_ids):
-        if isinstance(generate_ids, list) or isinstance(generate_ids, torch.Tensor) and generate_ids.ndim == 1:
-            generate_ids = [generate_ids]
-        for tokens in generate_ids:
-            if isinstance(tokens, torch.Tensor):
-                tokens = tokens.tolist()
-            logger.info(f'[GENERATE_IDS] {tokens}')
-            logger.info(f'[GENERATE] {self.safe_decode(tokens)}\n' + '-' * 50)
+    def debug_logger(self, inputs):
+        if not strtobool(os.getenv('SWIFT_DEBUG', 'false')):
+            return
+        if 'input_ids' in inputs:
+            k = 'input_ids'
+            val = inputs['input_ids']
+        elif 'generate_ids' in inputs:
+            k = 'generate_ids'
+            val = inputs['generate_ids']
+        for v in val:
+            self.print_inputs({k: v.tolist()})
+
+    def replace_video2image(self, load_video_func, inputs, replace_tag: Callable) -> List[Context]:
+        context_list = []
+        if self.mode == 'pt':
+            video = inputs.videos[inputs.video_idx]
+        else:
+            video = inputs.videos.pop(inputs.video_idx)
+            inputs.video_idx -= 1
+        images = inputs.images
+        new_images = load_video_func(video)
+        inputs.images = images[:inputs.image_idx] + new_images + images[inputs.image_idx:]
+        for i in range(len(new_images)):
+            context_list += replace_tag(i)
+        inputs.image_idx += len(new_images)
+        return context_list
 
     def get_generate_ids(self, generate_ids: Union[torch.Tensor, List[int]],
                          num_prompt_tokens: int) -> Union[torch.Tensor, List[int]]:
-        if strtobool(os.getenv('SWIFT_DEBUG', 'false')):
-            self._debug_logger(generate_ids)
         if self.skip_prompt:
-            return generate_ids[..., num_prompt_tokens:]
-        else:
-            return generate_ids
+            generate_ids = generate_ids[..., num_prompt_tokens:]
+        return generate_ids
 
     def post_process_generate_response(self, response: str, inputs: StdTemplateInputs) -> str:
         return response
@@ -717,8 +755,6 @@ class Template(ProcessorMixin):
         return self.mode not in {'vllm', 'lmdeploy', 'pt'}
 
     def set_mode(self, mode: Literal['vllm', 'lmdeploy', 'pt', 'seq_cls', 'train', 'rlhf', 'kto']) -> None:
-        if mode == 'causal_lm':
-            mode = 'train'
         self.mode = mode
 
     def register_post_encode_hook(self, models: List[nn.Module]) -> None:
@@ -943,7 +979,9 @@ class Template(ProcessorMixin):
     def print_inputs(self, inputs: Dict[str, Any], tokenizer_kwargs: Optional[Dict[str, Any]] = None) -> None:
         if tokenizer_kwargs is None:
             tokenizer_kwargs = {}
-        for key in ['input', 'labels', 'chosen_input', 'chosen_labels', 'rejected_input', 'rejected_labels']:
+        for key in [
+                'input', 'labels', 'generate', 'chosen_input', 'chosen_labels', 'rejected_input', 'rejected_labels'
+        ]:
             val = inputs.get(key)  # fix val is a tensor
             if val is None:
                 val = inputs.get(f'{key}_ids')

@@ -257,7 +257,7 @@ class RowPreprocessor:
         dataset = self._cast_pil_image(dataset)
         map_kwargs = {}
         if isinstance(dataset, HfDataset):
-            map_kwargs.update({'num_proc': num_proc})
+            map_kwargs['num_proc'] = num_proc
         with self._patch_arrow_writer():
             try:
                 dataset_mapped = dataset.map(
@@ -438,6 +438,14 @@ class MessagesPreprocessor(RowPreprocessor):
             self.to_std_messages(messages)  # inplace
         row['messages'] = messages
         return row
+
+
+class ClsPreprocessor(ResponsePreprocessor):
+
+    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        res = super().preprocess(row)
+        res['label'] = int(res['label'])
+        return res
 
 
 class AutoPreprocessor:
