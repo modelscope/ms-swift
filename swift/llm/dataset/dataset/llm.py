@@ -4,6 +4,7 @@ import re
 from functools import partial
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+from ...template import split_str_parts_by
 from ..preprocessor import (AlpacaPreprocessor, ClsGenerationPreprocessor, ClsPreprocessor, MessagesPreprocessor,
                             ResponsePreprocessor, RowPreprocessor, TextGenerationPreprocessor)
 from ..register import DatasetMeta, SubsetDataset, register_dataset
@@ -69,6 +70,22 @@ register_dataset(
         subsets=['post-annual', 'title-good', 'title-norm'],
         preprocess_func=RuozhibaPreprocessor(),
         tags=['pretrain', '🔥']))
+
+
+class MathTrnPreprocessor(ResponsePreprocessor):
+
+    def preprocess(self, row):
+        query = row['query']
+        output = row['response']
+        row = {
+            'query': query,
+            'response': output,
+        }
+        return super().preprocess(row)
+
+
+register_dataset(
+    DatasetMeta(ms_dataset_id='AI-ModelScope/math-trn-format', preprocess_func=MathTrnPreprocessor(), tags=['math']))
 
 
 def _repair_ms_bench(messages: str) -> Optional[List[Dict[str, str]]]:
@@ -363,6 +380,34 @@ register_dataset(
 register_dataset(DatasetMeta(ms_dataset_id='swift/ToolBench', tags=['chat', 'agent', 'multi-round']))
 
 
+class CompetitionMathPreprocessor(ResponsePreprocessor):
+
+    def preprocess(self, row: Dict[str, Any], all_tools=None) -> Optional[Dict[str, Any]]:
+        query = row['problem']
+        response = row['response']
+        row = {
+            'query': query,
+            'response': response,
+        }
+        return super().preprocess(row)
+
+
+register_dataset(
+    DatasetMeta(
+        ms_dataset_id='tastelikefeet/competition_math',
+        subsets=[
+            SubsetDataset(
+                name='default',
+                subset='default',
+                split=['train', 'test'],
+                preprocess_func=CompetitionMathPreprocessor(),
+            ),
+        ],
+        tags=['qa', 'math']))
+
+register_dataset(DatasetMeta(ms_dataset_id='modelscope/gsm8k', subsets=['main'], split=['train'], tags=['qa', 'math']))
+
+
 class HC3Preprocessor(ResponsePreprocessor):
     prompt = """Classification Task: Are the following responses from a human or from ChatGPT?
 Question: {question}
@@ -569,7 +614,6 @@ class GuanacoPreprocessor(RowPreprocessor):
         output = row['output']
         history = []
         if instruction:
-            from swift.llm.template import split_str_parts_by
             parts = split_str_parts_by(
                 instruction, ['User:', 'User：', 'Assistant：', 'Assistant:', 'Asssistent:', 'Assistent:', 'Assistenz:'])
             for idx, part in enumerate(parts):

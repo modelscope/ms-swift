@@ -82,7 +82,7 @@ class SwiftRLHF(SwiftSft):
         trainer_kwargs = {}
         for key in ['ref', 'reward', 'value']:
             key = f'{key}_model'
-            model = getattr(self, key)
+            model = getattr(self, key, None)
             if model:
                 trainer_kwargs[key] = model
         return trainer_kwargs
