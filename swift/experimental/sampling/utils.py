@@ -1,4 +1,5 @@
 import hashlib
+import inspect
 from typing import Any, List, Optional
 
 import numpy as np
@@ -14,6 +15,7 @@ def get_messages_md5(messages: Messages):
 def get_reward(model: Any,
                infer_requests: List[InferRequest],
                request_config: RequestConfig = None,
+               ground_truths: List[str] = None,
                threshold: Optional[float] = None):
     """Get reward from an RM model.
 
@@ -21,6 +23,7 @@ def get_reward(model: Any,
         model: The model instance or an RM evaluator
         infer_requests: Infer requests sent to the model
         request_config: Infer config
+        ground_truths: The ground truth list
         threshold: An optional threshold to generate the mask
 
     Returns:
@@ -28,7 +31,11 @@ def get_reward(model: Any,
         Index 0: The min-max normalized scores matched the infer_requests
         Index 1: The mask filtered by the threshold
     """
-    resp_list = model.infer(infer_requests, request_config=request_config)
+    parameters = inspect.signature(model.infer).parameters
+    gt_param = {}
+    if 'ground_truths' in parameters:
+        gt_param = {'ground_truths': ground_truths}
+    resp_list = model.infer(infer_requests, request_config=request_config, **gt_param)
     arr = [float(resp_list[i].choices[0].message.content) for i in range(len(resp_list))]
 
     _mask = np.array([True] * len(arr))

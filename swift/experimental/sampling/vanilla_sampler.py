@@ -121,12 +121,13 @@ class VanillaSampler(Sampler):
             for decoded in choices:
                 _messages = deepcopy(messages)
                 _messages[-1]['content'] = decoded
-                infer_requests.append(InferRequest(messages=_messages, ground_truths=ground_truth))
+                infer_requests.append(InferRequest(messages=_messages))
             _messages = deepcopy(messages)
             _messages[-1]['content'] = ground_truth
-            infer_requests.append(InferRequest(messages=_messages, ground_truths=ground_truth))
+            infer_requests.append(InferRequest(messages=_messages))
             if self.orm_model is not None:
-                orm_score, _orm_mask = get_reward(self.orm_model, infer_requests, threshold=0.0)
+                orm_score, _orm_mask = get_reward(
+                    self.orm_model, infer_requests, ground_truths=[ground_truth] * len(infer_requests), threshold=0.0)
             else:
                 orm_score = np.array([1.0] * len(infer_requests))
                 _orm_mask = np.array([True] * len(infer_requests))
