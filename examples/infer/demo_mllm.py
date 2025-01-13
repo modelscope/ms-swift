@@ -113,6 +113,7 @@ if __name__ == '__main__':
         engine = VllmEngine(model, max_model_len=32768, limit_mm_per_prompt={'image': 5, 'video': 2})
         mm_type = 'video'
     elif infer_backend == 'lmdeploy':
+        # test env: lmdeploy==0.6.4
         from swift.llm import LmdeployEngine
         model = 'OpenGVLab/InternVL2_5-1B'
         engine = LmdeployEngine(model, vision_batch_size=8)
