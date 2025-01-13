@@ -10,6 +10,10 @@ class Sampler:
 
     def __init__(self, input_args: SamplingArguments):
         self.args = input_args
+        self.template = None
+        self.processer = None
+        self.prm_model = None
+        self.orm_model = None
         self._prepare_model_tokenizer()
         self._prepare_template()
         self._prepare_rm()
@@ -22,8 +26,7 @@ class Sampler:
         if self.args.prm_model is None:
             self.prm_model = None
             logger.warning(f'prm_model is None.')
-            return
-        if self.args.prm_model in prms:
+        elif self.args.prm_model in prms:
             self.prm_model = prms[self.args.prm_model]()
         else:
             from swift.llm import PtEngine
@@ -32,7 +35,6 @@ class Sampler:
         if self.args.orm_model is None:
             self.orm_model = None
             logger.warning(f'orm_model is None.')
-            return
         elif self.args.orm_model in orms:
             self.orm_model = orms[self.args.orm_model]()
         else:

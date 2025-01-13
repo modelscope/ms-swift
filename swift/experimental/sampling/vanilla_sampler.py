@@ -17,6 +17,7 @@ class VanillaSampler(Sampler):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
         if self.args.sampler_engine == 'pt':
             from swift.llm import PtEngine
             _Engine = PtEngine
@@ -26,9 +27,13 @@ class VanillaSampler(Sampler):
         elif self.args.sampler_engine == 'lmdeploy':
             from swift.llm import LmdeployEngine
             _Engine = LmdeployEngine
+        elif self.args.sampler_engine == 'no':
+            _Engine = None
         else:
             raise ValueError(f'Cannot find engine name: {self.args.sampler_engine}')
-        self.infer_engine = _Engine(self.args.model, model_type=self.args.model_type, **self.args.engine_kwargs)
+        self.infer_engine = None
+        if _Engine:
+            self.infer_engine = _Engine(self.args.model, model_type=self.args.model_type, **self.args.engine_kwargs)
         self.caches = self.read_cache()
 
     def read_cache(self):
@@ -107,14 +112,15 @@ class VanillaSampler(Sampler):
             for j in range(self.args.num_return_sequences*_cur, self.args.num_return_sequences*(_cur+1)):
                 resps['choices'].append(resp_list[j].choices[0].message.content)
             resp_all.append(resps)
+            _cur += 1
         return resp_all
 
     def do_sample(self, data):
         generated = []
-        batch_decoded_all = self.generate(data)
-        for i, batch_decoded in enumerate(batch_decoded_all):
-            choices = batch_decoded['choices']
-            messages = deepcopy(batch_decoded['messages'])
+        resp_all = self.generate(data)
+        for i, resps in enumerate(resp_all):
+            choices = resps['choices']
+            messages = deepcopy(resps['messages'])
             uuid = get_messages_md5(messages)
             assert messages[-1]['role'] == 'assistant'
             ground_truth = messages[-1]['content']
@@ -145,18 +151,9 @@ class VanillaSampler(Sampler):
                 # Should not happen
                 raise
 
-            score = np.array(prm_score) + np.array(orm_score * 10)
-            sorted_indices = np.argsort(score)[::-1]
-            n_best = self.args.n_best_to_keep
-            if self.prm_model is None and self.orm_model is None:
-                # Save all results
-                n_best = self.args.num_return_sequences + 1
-
             choices.append(ground_truth)
             choices = np.array(choices)
 
-            pos_indexes = sorted_indices[0:n_best]
-            pos_indexes = [i for i in pos_indexes if _mask[i]]
             if self.orm_model is None and self.prm_model is None:
                 positives = choices[:-1]
                 for positive in positives:
@@ -164,6 +161,10 @@ class VanillaSampler(Sampler):
                     messages[-1]['content'] = str(positive)
                     generated.append(json.dumps({'id': uuid, 'messages': messages}) + '\n')
             else:
+                score = np.array(prm_score) + np.array(orm_score * 10)
+                sorted_indices = np.argsort(score)[::-1]
+                pos_indexes = sorted_indices[0:self.args.n_best_to_keep]
+                pos_indexes = [i for i in pos_indexes if _mask[i]]
                 neg_index = sorted_indices[-1]
                 logger.info(
                     f'orm:{orm_score}, prm:{prm_score}, positive index: {pos_indexes}, negative index: {neg_index}')

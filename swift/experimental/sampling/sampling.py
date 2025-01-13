@@ -41,25 +41,22 @@ class SwiftSampling(SwiftPipeline):
     def run(self):
         os.makedirs(self.args.output_dir, exist_ok=True)
         iter_file = os.path.join(self.args.output_dir,
-                                 self.args.file_prefix + f'_sampling.jsonl')
+                                 self.args.output_file)
         if os.path.exists(iter_file) and not self.args.override_exist_file:
             return
         dataset = self._get_dataset()
-        dumped_ds = []
         dataset_len = len(dataset)
         total_iters = int(dataset_len // self.args.num_sampling_per_gpu_batch_size)
         if self.args.num_sampling_per_gpu_batches is None or self.args.num_sampling_per_gpu_batches > total_iters:
             self.args.num_sampling_per_gpu_batches = total_iters
-
-        for _index in range(self.args.num_sampling_per_gpu_batches):
-            logger.info(f' Sampling index:{_index}')
-            generated = self.sampler.do_sample(dataset[self.args.num_sampling_per_gpu_batch_size * _index:
-                                               self.args.num_sampling_per_gpu_batch_size * (_index + 1)])
-            dumped_ds.extend(generated)
-
-        with open(iter_file, 'w') as f:
-            f.writelines(dumped_ds)
-
+        
+        with open(iter_file, 'a') as f:
+            for _index in range(self.args.num_sampling_per_gpu_batches):
+                logger.info(f' Sampling index:{_index}')
+                generated = self.sampler.do_sample(dataset[self.args.num_sampling_per_gpu_batch_size * _index:
+                                                self.args.num_sampling_per_gpu_batch_size * (_index + 1)])
+                f.writelines(generated)
+            
 
 def sampling_main(args: Union[List[str], SamplingArguments, None] = None):
     return SwiftSampling(args).main()

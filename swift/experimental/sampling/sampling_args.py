@@ -19,9 +19,9 @@ class SamplingArguments(BaseArguments):
     # sampler settings
     # sample/mcts/dvts/xxx
     sampler_type: str = 'sample'
-    sampler_engine: Literal['pt', 'lmdeploy', 'vllm'] = 'pt'
+    sampler_engine: Literal['pt', 'lmdeploy', 'vllm', 'no'] = 'pt'
     output_dir: str = 'sample_output'
-    file_prefix: Optional[str] = None
+    output_file: Optional[str] = None
     override_exist_file: bool = False
     num_return_sequences: int = 64
     num_sampling_per_gpu_batch_size: int = 2
@@ -41,15 +41,15 @@ class SamplingArguments(BaseArguments):
     cache_files: List[str] = dataclasses.field(default_factory=list)
 
     def __post_init__(self):
-        if self.file_prefix is None:
+        if self.output_file is None:
             now = datetime.now()
             formatted_time = now.strftime("%Y-%m-%d-%H-%M-%S")
-            self.file_prefix = formatted_time
-            logger.info(f'Setting file_prefix to {self.file_prefix}')
+            self.output_file = formatted_time + '.jsonl'
+            logger.info(f'Setting output_file to {self.output_file}')
         else:
-            if '/' in self.file_prefix or '\\' in self.file_prefix:
+            if '/' in self.output_file or '\\' in self.output_file:
                 raise ValueError(f'Please use a string prefix without directory to '
-                                 f'`--file_prefix` but now is: {self.file_prefix}')
+                                 f'`--output_file` but now is: {self.output_file}')
         self.padding_side = 'left'
         if self.engine_kwargs is not None:
             print(self.engine_kwargs)
