@@ -250,8 +250,6 @@ class Template(ProcessorMixin):
             encoded['template_inputs'] = inputs
         if inputs.messages[0]['role'] != 'system':
             inputs.messages.insert(0, {'role': 'system', 'content': inputs.system})
-        encoded['_messages'] = inputs.messages
-        encoded['ground_truth'] = inputs.ground_truth
         return encoded
 
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
@@ -296,8 +294,6 @@ class Template(ProcessorMixin):
         generation_config = generate_kwargs['generation_config']
         stop_words = getattr(generation_config, 'stop_words', None) or self.template_meta.stop_words
         generate_kwargs['stopping_criteria'] = StoppingCriteriaList([StopWordsCriteria(self.tokenizer, stop_words)])
-        generate_kwargs.pop('_messages', None)
-        generate_kwargs.pop('ground_truth', None)
         return generate_kwargs
 
     @staticmethod
@@ -696,7 +692,6 @@ class Template(ProcessorMixin):
             for k in list(encoded.keys()):
                 if k.endswith('loss_scale'):
                     encoded[k] = None
-        encoded['ground_truth'] = inputs.ground_truth
         return encoded
 
     def debug_logger(self, inputs):
@@ -937,10 +932,6 @@ class Template(ProcessorMixin):
         pixel_values_videos = [b['pixel_values_videos'] for b in batch if b.get('pixel_values_videos') is not None]
         if len(pixel_values_videos) > 0:
             res['pixel_values_videos'] = torch.concat(pixel_values_videos)
-        if 'ground_truth' in batch[0]:
-            res['ground_truth'] = [b['ground_truth'] for b in batch]
-        if '_messages' in batch[0]:
-            res['_messages'] = [b['_messages'] for b in batch]
         if use_torchacc() or self.sequence_parallel_size > 1:
             res = self._torchacc_xtuner_data_collator(res, padding_to, self.tokenizer, padding_side)
         return res

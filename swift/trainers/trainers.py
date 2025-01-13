@@ -138,10 +138,6 @@ class Seq2SeqTrainer(TorchAccMixin, SwiftMixin, HfSeq2SeqTrainer):
         loss_scale = inputs.pop('loss_scale', None)
         if loss_scale is not None:
             loss_kwargs['loss_scale'] = loss_scale
-        if 'ground_truth' in inputs:
-            inputs.pop('ground_truth')
-        if '_messages' in inputs:
-            inputs.pop('_messages')
 
         outputs = model(**inputs)
         # Save past state if it exists

@@ -279,8 +279,6 @@ class PtEngine(InferEngine):
             call_kwargs['adapter_names'] = adapter_names
         num_prompt_tokens = self._get_num_tokens(inputs)
         inputs.pop('labels', None)
-        inputs.pop('_messages', None)
-        inputs.pop('ground_truth', None)
         logits = self.model(**inputs, **call_kwargs).logits
         if logits.shape[-1] > 1:
             preds = torch.argmax(logits, dim=-1).tolist()
