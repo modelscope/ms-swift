@@ -13,7 +13,7 @@ logger = get_logger()
 @dataclass
 class SamplingArguments(BaseArguments):
     # rm models
-    prm_model: str = "AI-ModelScope/GRM-llama3.2-3B-rewardmodel-ft"
+    prm_model: Optional[str] = None
     orm_model: Optional[str] = None
 
     # sampler settings
@@ -36,6 +36,9 @@ class SamplingArguments(BaseArguments):
 
     # engine settings
     engine_kwargs: Optional[str] = None
+
+    # Vanilla
+    cache_files: List[str] = dataclasses.field(default_factory=list)
 
     def __post_init__(self):
         if self.file_prefix is None:
