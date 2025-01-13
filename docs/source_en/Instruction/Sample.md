@@ -46,7 +46,7 @@ PRM and ORM can be customized by adding a new implementation in the plugin accor
 
 ```python
 class CustomPRM:
-    
+
     # The constructor should be parameterless
     def __init__(self):
         # Initialize here
@@ -55,7 +55,7 @@ class CustomPRM:
     @torch.inference_mode()
     def infer(self, infer_requests: List[InferRequest], **kwargs) -> List[ChatCompletionResponse]:
         ...
-    
+
 
 prms = {'custom': CustomPRM}
 ```

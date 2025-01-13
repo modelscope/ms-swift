@@ -1,11 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import ast
 import re
-from copy import copy
 from functools import partial
 from typing import Any, Dict, List, Optional, Tuple, Union
-
-import json
 
 from ...template import split_str_parts_by
 from ..preprocessor import (AlpacaPreprocessor, ClsGenerationPreprocessor, ClsPreprocessor, MessagesPreprocessor,
