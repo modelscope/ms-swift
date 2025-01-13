@@ -241,7 +241,14 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         logger.info(f'default_system: {template.template_meta.default_system}')
         return template
 
-    def get_model_processor(self, *, model=None, model_type=None, model_revision=None, task_type=None, **kwargs):
+    def get_model_processor(self,
+                            *,
+                            model=None,
+                            model_type=None,
+                            model_revision=None,
+                            task_type=None,
+                            num_labels=None,
+                            **kwargs):
         if self.tuner_backend == 'unsloth':
             return load_by_unsloth(self)
         kwargs.update(self.get_model_kwargs())
@@ -250,5 +257,6 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         kwargs['model_type'] = model_type or self.model_type
         kwargs['model_revision'] = model_revision or self.model_revision
         kwargs['task_type'] = task_type or self.task_type
+        kwargs['num_labels'] = num_labels or self.num_labels
 
         return get_model_tokenizer(**kwargs)
