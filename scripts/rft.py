@@ -10,7 +10,7 @@ import torch.cuda
 conda_prefix = ''
 
 
-def do_sample(model: str, model_type:str, dataset: List[str], iter: int):
+def do_sample(model: str, model_type: str, dataset: List[str], iter: int):
     device_count = torch.cuda.device_count()
     handlers = []
     datasets = []
@@ -36,8 +36,11 @@ def do_sample(model: str, model_type:str, dataset: List[str], iter: int):
         print(f'Sampling caches of iter {iter}, part {device}.', flush=True)
         env = os.environ.copy()
         env['CUDA_VISIBLE_DEVICES'] = str(device)
-        handler = subprocess.Popen(f'{sample_cmd}' + f' > logs/sample_iter_{iter}_proc_{device}_cache.log 2>&1', env=os.environ.copy(),
-                                   shell=True, executable='/bin/bash')
+        handler = subprocess.Popen(
+            f'{sample_cmd}' + f' > logs/sample_iter_{iter}_proc_{device}_cache.log 2>&1',
+            env=os.environ.copy(),
+            shell=True,
+            executable='/bin/bash')
         handlers.append(handler)
 
     for proc, handler in enumerate(handlers):
@@ -68,8 +71,11 @@ def do_sample(model: str, model_type:str, dataset: List[str], iter: int):
         print(f'Sampling iter {iter}, part {device}.', flush=True)
         env = os.environ.copy()
         env['CUDA_VISIBLE_DEVICES'] = str(device)
-        handler = subprocess.Popen(f'{sample_cmd}' + f' > logs/sample_iter_{iter}_proc_{device}.log 2>&1', env=os.environ.copy(),
-                                   shell=True, executable='/bin/bash')
+        handler = subprocess.Popen(
+            f'{sample_cmd}' + f' > logs/sample_iter_{iter}_proc_{device}.log 2>&1',
+            env=os.environ.copy(),
+            shell=True,
+            executable='/bin/bash')
         handlers.append(handler)
 
     for proc, handler in enumerate(handlers):
@@ -80,7 +86,7 @@ def do_sample(model: str, model_type:str, dataset: List[str], iter: int):
     return datasets
 
 
-def do_train(model: str, model_type:str, datasets: List[str], iter, cmd='sft'):
+def do_train(model: str, model_type: str, datasets: List[str], iter, cmd='sft'):
     gpu_prefix = ''
     ds_config = ''
     if torch.cuda.device_count() > 1:
@@ -88,9 +94,7 @@ def do_train(model: str, model_type:str, datasets: List[str], iter, cmd='sft'):
         ds_config = '--deepspeed zero3 '
     extra_args = ''
     if cmd == 'rlhf':
-        extra_args = (f'--rlhf_type dpo '
-                      f'--beta 2.0 '
-                      )
+        extra_args = '--rlhf_type dpo --beta 2.0 '
     ga = 128 // torch.cuda.device_count() // 2
     train_cmd = (f'{conda_prefix} {gpu_prefix} swift {cmd} '
                  f'--model {model} --model_type {model_type} '
@@ -99,7 +103,7 @@ def do_train(model: str, model_type:str, datasets: List[str], iter, cmd='sft'):
                  f'--num_train_epochs 1 '
                  f'--load_args false '
                  f'--train_type full '
-                 f'{extra_args} ' 
+                 f'{extra_args} '
                  f'--eval_strategy no '
                  f'--split_dataset_ratio 0 '
                  f'--per_device_train_batch_size 2 '
@@ -110,8 +114,11 @@ def do_train(model: str, model_type:str, datasets: List[str], iter, cmd='sft'):
                  f'--learning_rate 4e-6 ')
 
     print(f'Training iter {iter}.', flush=True)
-    handler = subprocess.Popen(f'{train_cmd}' + f' > logs/train_iter_{iter}.log 2>&1', shell=True, env=os.environ.copy(),
-                               executable='/bin/bash')
+    handler = subprocess.Popen(
+        f'{train_cmd}' + f' > logs/train_iter_{iter}.log 2>&1',
+        shell=True,
+        env=os.environ.copy(),
+        executable='/bin/bash')
     handler.wait()
     ckpt = None
     with open(f'logs/train_iter_{iter}.log', 'r') as f:
@@ -124,7 +131,7 @@ def do_train(model: str, model_type:str, datasets: List[str], iter, cmd='sft'):
     return ckpt.strip()
 
 
-def do_eval(model, model_type:str, iter):
+def do_eval(model, model_type: str, iter):
     eval_cmd = (f'{conda_prefix} swift eval '
                 '--eval_dataset math '
                 '--infer_backend lmdeploy --eval_limit 500 '
@@ -132,15 +139,15 @@ def do_eval(model, model_type:str, iter):
                 '--model_type llama3_1 --system "You are a math model, you should **think step by step** carefully, '
                 'and always consider the basic math principles to avoid making calculating mistakes. '
                 'Give the final answer wrapped with \\boxed{}"')
-    print(f'Evaluating.', flush=True)
+    print('Evaluating.', flush=True)
     replace_math_dataset()
 
     if iter is None:
         iter = 'origin'
     env = os.environ.copy()
     env['CUDA_VISIBLE_DEVICES'] = '0'
-    handler = subprocess.Popen(f'{eval_cmd}' + f' > logs/eval_iter_{iter}.log 2>&1',
-                               shell=True, env=env, executable='/bin/bash')
+    handler = subprocess.Popen(
+        f'{eval_cmd}' + f' > logs/eval_iter_{iter}.log 2>&1', shell=True, env=env, executable='/bin/bash')
     handler.wait()
 
     acc = None
@@ -148,7 +155,7 @@ def do_eval(model, model_type:str, iter):
     with open(f'logs/eval_iter_{iter}.log', 'r') as f:
         for line in f.readlines():
             if '| math |' in line:
-                parts = [l for l in line.split('|') if l.strip()]
+                parts = [p for p in line.split('|') if p.strip()]
                 acc = float(parts[-1])
                 break
 
@@ -160,8 +167,9 @@ def replace_math_dataset():
     user_dir = os.path.expanduser('~')
     if os.path.exists(os.path.join(user_dir, '.cache', 'opencompass', 'data', 'math', 'math.json')):
         os.remove(os.path.join(user_dir, '.cache', 'opencompass', 'data', 'math', 'math.json'))
-    shutil.copy(os.path.join('scripts', 'math.json'),
-                os.path.join(user_dir, '.cache', 'opencompass', 'data', 'math', 'math.json'))
+    shutil.copy(
+        os.path.join('scripts', 'math.json'),
+        os.path.join(user_dir, '.cache', 'opencompass', 'data', 'math', 'math.json'))
 
 
 def main():

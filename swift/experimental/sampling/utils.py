@@ -1,9 +1,9 @@
 import hashlib
-from typing import List, Any, Optional
+from typing import Any, List, Optional
 
 import numpy as np
 
-from swift.llm import InferRequest, RequestConfig, Messages
+from swift.llm import InferRequest, Messages, RequestConfig
 
 
 def get_messages_md5(messages: Messages):
@@ -11,8 +11,10 @@ def get_messages_md5(messages: Messages):
     return hashlib.md5(key.encode('utf-8')).hexdigest()
 
 
-def get_reward(model: Any, infer_requests: List[InferRequest],
-                request_config: RequestConfig = None, threshold: Optional[float] = None):
+def get_reward(model: Any,
+               infer_requests: List[InferRequest],
+               request_config: RequestConfig = None,
+               threshold: Optional[float] = None):
     """Get reward from an RM model.
 
     Args:

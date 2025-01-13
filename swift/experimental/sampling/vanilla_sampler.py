@@ -1,14 +1,14 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import json
 from copy import deepcopy
 
+import json
 import numpy as np
 
 from swift.experimental.sampling.base import Sampler
 from swift.llm import RequestConfig
 from swift.llm.template.template_inputs import InferRequest
 from swift.utils import get_logger
-from .utils import get_reward, get_messages_md5
+from .utils import get_messages_md5, get_reward
 
 logger = get_logger()
 
@@ -50,9 +50,7 @@ class VanillaSampler(Sampler):
                     uuid = content['id']
                     messages = content['messages']
                     if uuid not in caches:
-                        caches[uuid] = {
-                            'choices': []
-                        }
+                        caches[uuid] = {'choices': []}
                     assert messages[-1]['role'] == 'assistant'
                     caches[uuid]['choices'].append(messages[-1]['content'])
         return caches
@@ -98,18 +96,12 @@ class VanillaSampler(Sampler):
             if uuid in self.caches:
                 choices = self.caches[uuid]['choices']
                 if len(choices) == self.args.num_return_sequences:
-                    resps = {
-                        'messages': _messages,
-                        'choices': choices
-                    }
+                    resps = {'messages': _messages, 'choices': choices}
                     resp_all.append(resps)
                     continue
 
-            resps = {
-                'messages': _messages,
-                'choices': []
-            }
-            for j in range(self.args.num_return_sequences*_cur, self.args.num_return_sequences*(_cur+1)):
+            resps = {'messages': _messages, 'choices': []}
+            for j in range(self.args.num_return_sequences * _cur, self.args.num_return_sequences * (_cur + 1)):
                 resps['choices'].append(resp_list[j].choices[0].message.content)
             resp_all.append(resps)
             _cur += 1
@@ -129,12 +121,10 @@ class VanillaSampler(Sampler):
             for decoded in choices:
                 _messages = deepcopy(messages)
                 _messages[-1]['content'] = decoded
-                infer_requests.append(InferRequest(messages=_messages,
-                                                   ground_truths=ground_truth))
+                infer_requests.append(InferRequest(messages=_messages, ground_truths=ground_truth))
             _messages = deepcopy(messages)
             _messages[-1]['content'] = ground_truth
-            infer_requests.append(InferRequest(messages=_messages,
-                                               ground_truths=ground_truth))
+            infer_requests.append(InferRequest(messages=_messages, ground_truths=ground_truth))
             if self.orm_model is not None:
                 orm_score, _orm_mask = get_reward(self.orm_model, infer_requests, threshold=0.0)
             else:
@@ -177,5 +167,10 @@ class VanillaSampler(Sampler):
                     for positive in positives:
                         messages = deepcopy(messages)
                         messages[-1]['content'] = str(positive)
-                        generated.append(json.dumps({'id': uuid, 'messages': messages, 'rejected_response': str(negative)}) + '\n')
+                        generated.append(
+                            json.dumps({
+                                'id': uuid,
+                                'messages': messages,
+                                'rejected_response': str(negative)
+                            }) + '\n')
         return generated

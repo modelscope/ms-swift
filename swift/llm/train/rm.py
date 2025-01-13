@@ -1,12 +1,12 @@
-from typing import Optional, List, Dict
+from typing import Dict, List, Optional
+
 import torch
 import torch.nn as nn
-from transformers import AutoConfig, AutoModel, AutoModelForCausalLM
 import torch.nn.functional as F
-from transformers import AutoTokenizer
+from transformers import AutoConfig, AutoModel, AutoModelForCausalLM, AutoTokenizer
 
 
-def get_tokenizer(pretrain, model, padding_side="left", use_fast=True):
+def get_tokenizer(pretrain, model, padding_side='left', use_fast=True):
     tokenizer = AutoTokenizer.from_pretrained(pretrain, trust_remote_code=True, use_fast=use_fast)
     tokenizer.padding_side = padding_side
     if tokenizer.pad_token is None:
@@ -16,8 +16,12 @@ def get_tokenizer(pretrain, model, padding_side="left", use_fast=True):
     return tokenizer
 
 
-def get_reward_model(base_causal_model, base_llm_model, is_general_preference: bool = False,
-                     add_prompt_head: bool = False, value_head_dim: int = 2):
+def get_reward_model(base_causal_model,
+                     base_llm_model,
+                     is_general_preference: bool = False,
+                     add_prompt_head: bool = False,
+                     value_head_dim: int = 2):
+
     class CustomRewardModel(base_causal_model):
 
         def __init__(self, config: AutoConfig):
@@ -35,17 +39,16 @@ def get_reward_model(base_causal_model, base_llm_model, is_general_preference: b
             self.post_init()
 
         def custom_forward(
-                self,
-                input_ids: torch.LongTensor = None,
-                attention_mask: Optional[torch.Tensor] = None,
-                return_output=False,
+            self,
+            input_ids: torch.LongTensor = None,
+            attention_mask: Optional[torch.Tensor] = None,
+            return_output=False,
         ) -> torch.Tensor:
             position_ids = attention_mask.long().cumsum(-1) - 1
             position_ids.masked_fill_(attention_mask == 0, 1)
             outputs = getattr(self, self.base_model_prefix)(
-                input_ids, attention_mask=attention_mask, position_ids=position_ids
-            )
-            last_hidden_states = outputs["last_hidden_state"]
+                input_ids, attention_mask=attention_mask, position_ids=position_ids)
+            last_hidden_states = outputs['last_hidden_state']
 
             if not self.is_general_preference:
                 values = self.value_head(last_hidden_states).squeeze(-1)
@@ -53,8 +56,8 @@ def get_reward_model(base_causal_model, base_llm_model, is_general_preference: b
                 if self.training:
                     reward = values[:, -1]
                 else:
-                    eos_indices = attention_mask.size(1) - 1 - attention_mask.long().fliplr().argmax(dim=1,
-                                                                                                     keepdim=True)
+                    eos_indices = attention_mask.size(1) - 1 - attention_mask.long().fliplr().argmax(
+                        dim=1, keepdim=True)
                     reward = values.gather(dim=1, index=eos_indices).squeeze(1)
                 if return_output:
                     return reward, outputs
@@ -95,9 +98,10 @@ def get_reward_model(base_causal_model, base_llm_model, is_general_preference: b
                 batch_size = prompt_hidden_states.shape[0]
 
                 # Ensure that dim is even, as we're creating blocks of size 2x2
-                assert dim % 2 == 0, "dim must be even for skew-symmetric block generation"
+                assert dim % 2 == 0, 'dim must be even for skew-symmetric block generation'
 
-                # Pass through the linear layer to get the block diagonal entries (half of the matrix's off-diagonal blocks)
+                # Pass through the linear layer to get the block diagonal entries
+                # (half of the matrix's off-diagonal blocks)
                 block_values = self.prompt_head(prompt_hidden_states).view(batch_size, dim // 2)
                 block_values = torch.softmax(block_values, dim=-1)
 
@@ -121,17 +125,26 @@ def generate_high_dim_result_with_prompt(model, value_head_dim, chosen_reward, r
     R_matrix = model.create_skew_symmetric_block_matrix(value_head_dim, chosen_reward.device, chosen_reward.dtype,
                                                         prompt_hidden_states)
     if chosen_reward.device == rejected_reward.device == R_matrix.device:
-        transformed_chosen = torch.bmm(chosen_reward.view(chosen_reward.shape[0], 1, value_head_dim),
-                                       R_matrix.transpose(1, 2))
+        transformed_chosen = torch.bmm(
+            chosen_reward.view(chosen_reward.shape[0], 1, value_head_dim), R_matrix.transpose(1, 2))
         result = torch.bmm(transformed_chosen, rejected_reward.view(rejected_reward.shape[0], value_head_dim, 1))
         result = result.view(chosen_reward.shape[0])
     return result
 
 
 class GPMPipeline:
-    def __init__(self, model_name_or_path, device=torch.device("cuda:0"), is_general_preference: bool = True,
-                 add_prompt_head: bool = True, value_head_dim: int = 2, bf16: bool = True, truncation: bool = True,
-                 max_length: int = 4096, padding: bool = True, tau: float = 0.1):
+
+    def __init__(self,
+                 model_name_or_path,
+                 device=torch.device('cuda:0'),
+                 is_general_preference: bool = True,
+                 add_prompt_head: bool = True,
+                 value_head_dim: int = 2,
+                 bf16: bool = True,
+                 truncation: bool = True,
+                 max_length: int = 4096,
+                 padding: bool = True,
+                 tau: float = 0.1):
         self.device = device
         self.is_general_preference = is_general_preference
         self.add_prompt_head = add_prompt_head
@@ -142,7 +155,7 @@ class GPMPipeline:
         self.tau = tau
 
         config = AutoConfig.from_pretrained(model_name_or_path, trust_remote_code=True)
-        config._attn_implementation = "flash_attention_2"
+        config._attn_implementation = 'flash_attention_2'
         base_class = AutoModel._model_mapping[type(config)]
         base_causal_class = AutoModelForCausalLM._model_mapping.get(type(config), None)
         cls_class = get_reward_model(base_causal_class, base_class, is_general_preference, add_prompt_head,
@@ -153,11 +166,11 @@ class GPMPipeline:
             model_name_or_path,
             config=config,
             trust_remote_code=True,
-            torch_dtype=torch.bfloat16 if bf16 else "auto",
+            torch_dtype=torch.bfloat16 if bf16 else 'auto',
         )
         # configure tokenizer
-        self.tokenizer = get_tokenizer(model_name_or_path, self.model, "left", use_fast=True)
-        self.tokenizer.truncation_side = "right"
+        self.tokenizer = get_tokenizer(model_name_or_path, self.model, 'left', use_fast=True)
+        self.tokenizer.truncation_side = 'right'
 
         # prepare model
         self.model.to(device)
@@ -171,11 +184,11 @@ class GPMPipeline:
             truncation=True,
             max_length=self.max_length,
             padding=True,
-            return_tensors="pt",
+            return_tensors='pt',
         ).to(self.device)
 
-        inputs["input_ids"][:, -1] = self.tokenizer.eos_token_id
-        inputs["attention_mask"][:, -1] = 1
+        inputs['input_ids'][:, -1] = self.tokenizer.eos_token_id
+        inputs['attention_mask'][:, -1] = 1
 
         with torch.no_grad():
             rewards, outputs = self.model.custom_forward(**inputs, return_output=return_prompt)
@@ -189,25 +202,25 @@ class GPMPipeline:
                     max_length=self.max_length,
                     padding=False,
                     truncation=True,
-                    return_tensors="pt",
+                    return_tensors='pt',
                 )
                 chosen_token = self.tokenizer(
                     input_texts[i],
                     max_length=self.max_length,
                     padding=False,
                     truncation=True,
-                    return_tensors="pt",
+                    return_tensors='pt',
                 )
-                chosen_response_len = chosen_token["attention_mask"].sum() - prompt_token["attention_mask"].sum()
+                chosen_response_len = chosen_token['attention_mask'].sum() - prompt_token['attention_mask'].sum()
                 chosen_response_len_list.append(chosen_response_len)
         chosen_response_len = torch.tensor(chosen_response_len_list).view(-1, 1).to(self.device)
         if return_prompt:
-            chosen_last_hidden_states = outputs["last_hidden_state"]
+            chosen_last_hidden_states = outputs['last_hidden_state']
             prompt_end_index = chosen_last_hidden_states.size(1) - chosen_response_len - 1
             prompt_end_index_expanded = prompt_end_index.unsqueeze(-1).expand(-1, -1,
                                                                               chosen_last_hidden_states.size(-1))
-            prompt_hidden_state = torch.gather(chosen_last_hidden_states, dim=1,
-                                               index=prompt_end_index_expanded).squeeze(1)
+            prompt_hidden_state = torch.gather(
+                chosen_last_hidden_states, dim=1, index=prompt_end_index_expanded).squeeze(1)
             return rewards, prompt_hidden_state
         else:
             return rewards

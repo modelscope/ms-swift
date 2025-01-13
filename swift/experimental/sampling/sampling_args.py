@@ -1,12 +1,14 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from dataclasses import dataclass
 import dataclasses
-from typing import Optional, Literal
+from dataclasses import dataclass
 from datetime import datetime
+from typing import List, Literal, Optional
+
+import json
+
 from swift.llm import BaseArguments
 from swift.utils import get_logger
-import json
-from typing import List
+
 logger = get_logger()
 
 
@@ -43,7 +45,7 @@ class SamplingArguments(BaseArguments):
     def __post_init__(self):
         if self.output_file is None:
             now = datetime.now()
-            formatted_time = now.strftime("%Y-%m-%d-%H-%M-%S")
+            formatted_time = now.strftime('%Y-%m-%d-%H-%M-%S')
             self.output_file = formatted_time + '.jsonl'
             logger.info(f'Setting output_file to {self.output_file}')
         else:

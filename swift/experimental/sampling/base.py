@@ -25,7 +25,7 @@ class Sampler:
     def _prepare_rm(self):
         if self.args.prm_model is None:
             self.prm_model = None
-            logger.warning(f'prm_model is None.')
+            logger.warning('prm_model is None.')
         elif self.args.prm_model in prms:
             self.prm_model = prms[self.args.prm_model]()
         else:
@@ -34,7 +34,7 @@ class Sampler:
 
         if self.args.orm_model is None:
             self.orm_model = None
-            logger.warning(f'orm_model is None.')
+            logger.warning('orm_model is None.')
         elif self.args.orm_model in orms:
             self.orm_model = orms[self.args.orm_model]()
         else:

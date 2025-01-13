@@ -1,9 +1,10 @@
-import json
-from typing import List
-import torch
 import re
+from typing import List
+
+import json
+import torch
+
 from swift.llm import InferRequest
-from swift.llm.infer.protocol import ChatCompletionResponse
 from swift.llm.infer.protocol import ChatCompletionResponse, ChatCompletionResponseChoice, ChatMessage
 
 
@@ -14,9 +15,7 @@ class ORM:
         pass
 
     @torch.inference_mode()
-    def infer(self,
-              infer_requests: List[InferRequest],
-              **kwargs) -> List[ChatCompletionResponse]:
+    def infer(self, infer_requests: List[InferRequest], **kwargs) -> List[ChatCompletionResponse]:
         raise NotImplementedError
 
 
@@ -36,14 +35,14 @@ class ReactORM(ORM):
             try:
                 ref_input_json = json.loads(ref_input)
                 ref_is_json = True
-            except:
+            except Exception:
                 ref_input_json = ref_input
 
             cand_is_json = False
             try:
                 cand_input_json = json.loads(cand_input)
                 cand_is_json = True
-            except:
+            except Exception:
                 cand_input_json = cand_input
 
             if ref_action != pred_action or (ref_is_json ^ cand_is_json):
@@ -85,7 +84,7 @@ class ReactORM(ORM):
                     precision = (0.5 * half_match + full_match) / (len(cand_input_json) + 1e-30)
                     try:
                         f1.append((2 * recall * precision) / (recall + precision))
-                    except:
+                    except Exception:
                         f1.append(0.0)
 
         if f1[0] == 1.0:
@@ -117,9 +116,7 @@ class ReactORM(ORM):
         return action, action_input
 
     @torch.inference_mode()
-    def infer(self,
-              infer_requests: List[InferRequest],
-              **kwargs) -> List[ChatCompletionResponse]:
+    def infer(self, infer_requests: List[InferRequest], **kwargs) -> List[ChatCompletionResponse]:
         rewards = []
         predictions = [request.messages[-1]['content'] for request in infer_requests]
         ground_truths = [request.ground_truths for request in infer_requests]
@@ -144,15 +141,17 @@ class ReactORM(ORM):
             else:
                 action_input_pred.append(pred_input)
 
-            reward = ReactORM.evaluate_action_reward(action_pred,
-                                                 action_ref,
-                                                 action_input_pred,
-                                                 action_input_ref
-                                                 )
+            reward = ReactORM.evaluate_action_reward(action_pred, action_ref, action_input_pred, action_input_ref)
             rewards.append(reward)
-        return [ChatCompletionResponse(choices=[ChatCompletionResponseChoice(
-            message=ChatMessage(content=1.0 if r else 0.0, role='assistant'), index=0, finish_reason='')],
-            model=None, usage=None) for r in rewards]
+        return [
+            ChatCompletionResponse(
+                choices=[
+                    ChatCompletionResponseChoice(
+                        message=ChatMessage(content=1.0 if r else 0.0, role='assistant'), index=0, finish_reason='')
+                ],
+                model=None,
+                usage=None) for r in rewards
+        ]
 
     @staticmethod
     def evaluate_rougel(cand_list: list, ref_list: list):
@@ -162,11 +161,10 @@ class ReactORM(ORM):
             from rouge import Rouge
             rouge = Rouge()
             rouge_score = rouge.get_scores(hyps=cand_list, refs=ref_list, avg=True)
-            rougel = rouge_score["rouge-l"]["f"]
+            rougel = rouge_score['rouge-l']['f']
             return rougel
-        except:
+        except Exception:
             return None
-
 
 
 class MathORM(ORM):
@@ -181,9 +179,7 @@ class MathORM(ORM):
             return None
 
     @torch.inference_mode()
-    def infer(self,
-              infer_requests: List[InferRequest],
-              **kwargs) -> List[ChatCompletionResponse]:
+    def infer(self, infer_requests: List[InferRequest], **kwargs) -> List[ChatCompletionResponse]:
         rewards = []
         predictions = [request.messages[-1]['content'] for request in infer_requests]
         ground_truths = [request.ground_truths for request in infer_requests]
@@ -192,10 +188,17 @@ class MathORM(ORM):
             res2 = MathORM.extract_boxed_result(ground_truth) or ''
             rewards.append(res1.strip() == res2.strip())
 
-        return [ChatCompletionResponse(choices=[ChatCompletionResponseChoice(
-            message=ChatMessage(content=1.0 if r else 0.0, role='assistant'), index=0, finish_reason='')],
-            model=None, usage=None) for r in rewards]
-        
+        return [
+            ChatCompletionResponse(
+                choices=[
+                    ChatCompletionResponseChoice(
+                        message=ChatMessage(content=1.0 if r else 0.0, role='assistant'), index=0, finish_reason='')
+                ],
+                model=None,
+                usage=None) for r in rewards
+        ]
+
+
 orms = {
     'toolbench': ReactORM,
     'math': MathORM,

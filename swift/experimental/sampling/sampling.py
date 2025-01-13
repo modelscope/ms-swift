@@ -30,8 +30,7 @@ class SwiftSampling(SwiftPipeline):
     def _get_dataset(self):
         args = self.args
         dataset_kwargs = args.get_dataset_kwargs()
-        sampling_dataset, _ = load_dataset(
-            args.dataset, split_dataset_ratio=0., **dataset_kwargs)
+        sampling_dataset, _ = load_dataset(args.dataset, split_dataset_ratio=0., **dataset_kwargs)
         logger.info(f'Sampling_dataset: {sampling_dataset}')
         dataset_len = len(sampling_dataset)
         piece_len = dataset_len // self.total_piece
@@ -40,8 +39,7 @@ class SwiftSampling(SwiftPipeline):
 
     def run(self):
         os.makedirs(self.args.output_dir, exist_ok=True)
-        iter_file = os.path.join(self.args.output_dir,
-                                 self.args.output_file)
+        iter_file = os.path.join(self.args.output_dir, self.args.output_file)
         if os.path.exists(iter_file) and not self.args.override_exist_file:
             return
         dataset = self._get_dataset()
@@ -49,14 +47,15 @@ class SwiftSampling(SwiftPipeline):
         total_iters = int(dataset_len // self.args.num_sampling_per_gpu_batch_size)
         if self.args.num_sampling_per_gpu_batches is None or self.args.num_sampling_per_gpu_batches > total_iters:
             self.args.num_sampling_per_gpu_batches = total_iters
-        
+
         with open(iter_file, 'a') as f:
             for _index in range(self.args.num_sampling_per_gpu_batches):
                 logger.info(f' Sampling index:{_index}')
-                generated = self.sampler.do_sample(dataset[self.args.num_sampling_per_gpu_batch_size * _index:
-                                                self.args.num_sampling_per_gpu_batch_size * (_index + 1)])
+                generated = self.sampler.do_sample(
+                    dataset[self.args.num_sampling_per_gpu_batch_size * _index:self.args.num_sampling_per_gpu_batch_size
+                            * (_index + 1)])
                 f.writelines(generated)
-            
+
 
 def sampling_main(args: Union[List[str], SamplingArguments, None] = None):
     return SwiftSampling(args).main()

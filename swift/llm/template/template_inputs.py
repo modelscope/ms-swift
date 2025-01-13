@@ -155,7 +155,6 @@ class StdTemplateInputs:
         else:
             system = None
 
-        keyword = None
         if tools is not None:
             if system is not None:
                 logger.warning_once(
@@ -163,7 +162,6 @@ class StdTemplateInputs:
             if isinstance(tools, str):
                 tools = json.loads(tools)
             system = get_tools_prompt(tools, tools_prompt)
-            keyword = get_tools_keyword(tools_prompt)
 
         media_kwargs = StdTemplateInputs.remove_messages_media(messages)
         for k in list(media_kwargs.keys()):

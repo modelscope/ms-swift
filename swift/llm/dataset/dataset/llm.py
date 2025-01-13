@@ -1,15 +1,16 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import ast
-import json
 import re
 from copy import copy
 from functools import partial
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import json
+
+from ...template import split_str_parts_by
 from ..preprocessor import (AlpacaPreprocessor, ClsGenerationPreprocessor, ClsPreprocessor, MessagesPreprocessor,
                             ResponsePreprocessor, RowPreprocessor, TextGenerationPreprocessor)
 from ..register import DatasetMeta, SubsetDataset, register_dataset
-from ...template import split_str_parts_by
 
 
 class AlpacaZhPreprocessor(AlpacaPreprocessor):
@@ -88,9 +89,8 @@ class MathTrnPreprocessor(ResponsePreprocessor):
 
 register_dataset(
     DatasetMeta(
-        ms_dataset_id='AI-ModelScope/math-trn-format',
-        preprocess_func=MathTrnPreprocessor(),
-        tags=['pretrain', '🔥']))
+        ms_dataset_id='AI-ModelScope/math-trn-format', preprocess_func=MathTrnPreprocessor(), tags=['pretrain', '🔥']))
+
 
 def _repair_ms_bench(messages: str) -> Optional[List[Dict[str, str]]]:
     if isinstance(messages, str):
@@ -381,14 +381,13 @@ register_dataset(
         preprocess_func=MultiRoleAgentPreprocessor(),
         tags=['chat', 'agent', 'multi-round', 'role-play', 'multi-agent']))
 
-register_dataset(DatasetMeta(
-    ms_dataset_id='swift/ToolBench',
-    subsets=[
-        SubsetDataset(
-            name='default',
-        ),
-    ],
-    tags=['chat', 'agent', 'multi-round']))
+register_dataset(
+    DatasetMeta(
+        ms_dataset_id='swift/ToolBench',
+        subsets=[
+            SubsetDataset(name='default', ),
+        ],
+        tags=['chat', 'agent', 'multi-round']))
 
 
 class CompetitionMathPreprocessor(ResponsePreprocessor):
@@ -403,24 +402,20 @@ class CompetitionMathPreprocessor(ResponsePreprocessor):
         return super().preprocess(row)
 
 
-register_dataset(DatasetMeta(
-    ms_dataset_id='tastelikefeet/competition_math',
-    subsets=[
-        SubsetDataset(
-            name='default',
-            subset='default',
-            split=['train', 'test'],
-            preprocess_func=CompetitionMathPreprocessor(),
-        ),
-    ],
-    tags=['qa', 'math']))
+register_dataset(
+    DatasetMeta(
+        ms_dataset_id='tastelikefeet/competition_math',
+        subsets=[
+            SubsetDataset(
+                name='default',
+                subset='default',
+                split=['train', 'test'],
+                preprocess_func=CompetitionMathPreprocessor(),
+            ),
+        ],
+        tags=['qa', 'math']))
 
-
-register_dataset(DatasetMeta(
-    ms_dataset_id='modelscope/gsm8k',
-    subsets=['main'],
-    split=['train'],
-    tags=['qa', 'math']))
+register_dataset(DatasetMeta(ms_dataset_id='modelscope/gsm8k', subsets=['main'], split=['train'], tags=['qa', 'math']))
 
 
 class HC3Preprocessor(ResponsePreprocessor):
@@ -629,7 +624,6 @@ class GuanacoPreprocessor(RowPreprocessor):
         output = row['output']
         history = []
         if instruction:
-            from swift.llm.template import split_str_parts_by
             parts = split_str_parts_by(
                 instruction, ['User:', 'User：', 'Assistant：', 'Assistant:', 'Asssistent:', 'Assistent:', 'Assistenz:'])
             for idx, part in enumerate(parts):

@@ -65,7 +65,7 @@ class SwiftArgumentsMixin:
         _, _, world_size, _ = get_dist_setting()
         try:
             self.world_size = world_size
-        except:
+        except Exception:
             pass
         super().__post_init__()
 
