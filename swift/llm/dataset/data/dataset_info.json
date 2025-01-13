@@ -15,14 +15,6 @@
         "hf_dataset_id": "Clinton/texttosqlv2_25000_v2"
     },
     {
-        "hf_dataset_id": "trl-internal-testing/descriptiveness-sentiment-trl-style",
-        "subsets": ["default"],
-        "split": ["descriptiveness"],
-        "columns": {
-            "prompt": "query"
-        }
-    },
-    {
         "ms_dataset_id": "AI-ModelScope/school_math_0.25M",
         "tags": ["chat", "math", "quality"],
         "hf_dataset_id": "BelleGroup/school_math_0.25M"
