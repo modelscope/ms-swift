@@ -28,8 +28,7 @@ def do_sample(model: str, model_type: str, dataset: List[str], iter: int):
                       f'--sampler_engine lmdeploy '
                       f'--max_new_tokens 768 '
                       f'--override_exist_file false '
-                      f'--num_sampling_per_gpu_batch_size 1 '
-                      f'--num_sampling_per_gpu_batches 5 '
+                      f'--num_sampling_per_gpu_batch_size 2 '
                       f'--num_return_sequences 64 '
                       f'--output_file iter_{iter}_proc_{device}_cache.jsonl '
                       f'--temperature 1.0 ')
@@ -62,9 +61,8 @@ def do_sample(model: str, model_type: str, dataset: List[str], iter: int):
                       f'--orm_model math '
                       f'--prm_model AI-ModelScope/GRM-llama3.2-3B-rewardmodel-ft '
                       f'--max_new_tokens 768 '
-                      f'--override_exist_file true '
-                      f'--num_sampling_per_gpu_batch_size 1 '
-                      f'--num_sampling_per_gpu_batches 5 '
+                      f'--override_exist_file false '
+                      f'--num_sampling_per_gpu_batch_size 2 '
                       f'--num_return_sequences 64 '
                       f'--output_file iter_{iter}_proc_{device}_sampling.jsonl '
                       f'--cache_files sample_output/iter_{iter}_proc_{device}_cache.jsonl ')
