@@ -15,7 +15,8 @@ class ORM:
         pass
 
     @torch.inference_mode()
-    def infer(self, infer_requests: List[InferRequest], **kwargs) -> List[ChatCompletionResponse]:
+    def infer(self, infer_requests: List[InferRequest], ground_truths: List[str],
+              **kwargs) -> List[ChatCompletionResponse]:
         raise NotImplementedError
 
 
@@ -116,10 +117,10 @@ class ReactORM(ORM):
         return action, action_input
 
     @torch.inference_mode()
-    def infer(self, infer_requests: List[InferRequest], **kwargs) -> List[ChatCompletionResponse]:
+    def infer(self, infer_requests: List[InferRequest], ground_truths: List[str],
+              **kwargs) -> List[ChatCompletionResponse]:
         rewards = []
         predictions = [request.messages[-1]['content'] for request in infer_requests]
-        ground_truths = [request.ground_truths for request in infer_requests]
         for prediction, ground_truth in zip(predictions, ground_truths):
             action_ref = []
             action_input_ref = []
@@ -179,10 +180,10 @@ class MathORM(ORM):
             return None
 
     @torch.inference_mode()
-    def infer(self, infer_requests: List[InferRequest], **kwargs) -> List[ChatCompletionResponse]:
+    def infer(self, infer_requests: List[InferRequest], ground_truths: List[str],
+              **kwargs) -> List[ChatCompletionResponse]:
         rewards = []
         predictions = [request.messages[-1]['content'] for request in infer_requests]
-        ground_truths = [request.ground_truths for request in infer_requests]
         for prediction, ground_truth in zip(predictions, ground_truths):
             res1 = MathORM.extract_boxed_result(prediction) or ''
             res2 = MathORM.extract_boxed_result(ground_truth) or ''
