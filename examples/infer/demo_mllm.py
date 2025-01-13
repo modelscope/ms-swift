@@ -111,13 +111,13 @@ if __name__ == '__main__':
         model = 'Qwen/Qwen2-VL-2B-Instruct'
         # If you encounter insufficient GPU memory, please reduce `max_model_len` and set `max_num_seqs=5`.
         engine = VllmEngine(model, max_model_len=32768, limit_mm_per_prompt={'image': 5, 'video': 2})
-        mm_type = 'video'
+        mm_type = 'video'  # or 'image'
     elif infer_backend == 'lmdeploy':
         # test env: lmdeploy==0.6.4
         from swift.llm import LmdeployEngine
         model = 'OpenGVLab/InternVL2_5-1B'
         engine = LmdeployEngine(model, vision_batch_size=8)
-        mm_type = 'video'
+        mm_type = 'video'  # or 'image'
 
     # infer dataset
     if mm_type == 'audio':
