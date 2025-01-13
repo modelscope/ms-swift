@@ -69,8 +69,8 @@ class JsonlWriter:
     def _write_buffer(self):
         if not self._cache_text:
             return
+        os.makedirs(os.path.dirname(self.fpath), exist_ok=True)
         try:
-            os.makedirs(os.path.dirname(self.fpath), exist_ok=True)
             with open(self.fpath, 'a', encoding=self.encoding) as f:
                 f.write(self._cache_text)
         except Exception:
