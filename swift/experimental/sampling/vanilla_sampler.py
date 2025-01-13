@@ -149,7 +149,7 @@ class VanillaSampler(Sampler):
                 for positive in positives:
                     messages = deepcopy(messages)
                     messages[-1]['content'] = str(positive)
-                    generated.append(json.dumps({'id': uuid, 'messages': messages}) + '\n')
+                    generated.append(json.dumps({'id': uuid, 'messages': messages}, ensure_ascii=False) + '\n')
             else:
                 score = np.array(prm_score) + np.array(orm_score * 10)
                 sorted_indices = np.argsort(score)[::-1]
@@ -172,5 +172,6 @@ class VanillaSampler(Sampler):
                                 'id': uuid,
                                 'messages': messages,
                                 'rejected_response': str(negative)
-                            }) + '\n')
+                            },
+                                       ensure_ascii=False) + '\n')
         return generated

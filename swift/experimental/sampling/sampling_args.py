@@ -26,7 +26,7 @@ class SamplingArguments(BaseArguments):
     output_file: Optional[str] = None
     override_exist_file: bool = False
     num_return_sequences: int = 64
-    num_sampling_per_gpu_batch_size: int = 2
+    num_sampling_per_gpu_batch_size: int = 1
     num_sampling_per_gpu_batches: Optional[int] = None
     n_best_to_keep: int = 5
     data_range: List[int] = dataclasses.field(default_factory=list)

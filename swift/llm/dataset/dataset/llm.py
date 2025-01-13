@@ -88,8 +88,7 @@ class MathTrnPreprocessor(ResponsePreprocessor):
 
 
 register_dataset(
-    DatasetMeta(
-        ms_dataset_id='AI-ModelScope/math-trn-format', preprocess_func=MathTrnPreprocessor(), tags=['math', 'for test']))
+    DatasetMeta(ms_dataset_id='AI-ModelScope/math-trn-format', preprocess_func=MathTrnPreprocessor(), tags=['math']))
 
 
 def _repair_ms_bench(messages: str) -> Optional[List[Dict[str, str]]]:

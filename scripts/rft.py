@@ -164,6 +164,10 @@ def do_eval(model, model_type: str, iter):
 
 
 def replace_math_dataset():
+    # Note: This may run failed because this is special for math test,
+    # and one must run swift eval --eval_dataset math first to make sure opencompass has created
+    # the folder.
+    # You can use original math dataset either. just comment this call.
     user_dir = os.path.expanduser('~')
     if os.path.exists(os.path.join(user_dir, '.cache', 'opencompass', 'data', 'math', 'math.json')):
         os.remove(os.path.join(user_dir, '.cache', 'opencompass', 'data', 'math', 'math.json'))
