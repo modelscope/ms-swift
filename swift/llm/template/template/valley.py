@@ -105,3 +105,12 @@ class ValleyTemplate(Template):
             res['image_sizes'] = sum([b['image_sizes'] for b in batch if 'image_sizes' in b], start=[])
         return res
 
+register_template(
+    Llama3TemplateMeta(
+        MLLMTemplateType.valley,
+        template_cls=ValleyTemplate,
+        default_system=("You are Valley, a large language and vision assistant trained by ByteDance."
+           "You are able to understand the visual content or video that the user provides, \
+and assist the user with a variety of tasks using natural language."
+           "Follow the instructions carefully and explain your answers in detail."),
+    ))
