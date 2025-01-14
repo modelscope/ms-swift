@@ -43,7 +43,7 @@ def write_to_jsonl(fpath: str, obj_list: List[Any], encoding: str = 'utf-8') -> 
 class JsonlWriter:
 
     def __init__(self, fpath: str, *, buffer_size: int = 0, encoding: str = 'utf-8', strict: bool = True):
-        self.fpath = fpath
+        self.fpath = os.path.abspath(os.path.expanduser(fpath))
         self.buffer_size = buffer_size
         self.encoding = encoding
         self.strict = strict
@@ -69,6 +69,7 @@ class JsonlWriter:
     def _write_buffer(self):
         if not self._cache_text:
             return
+        os.makedirs(os.path.dirname(self.fpath), exist_ok=True)
         try:
             with open(self.fpath, 'a', encoding=self.encoding) as f:
                 f.write(self._cache_text)

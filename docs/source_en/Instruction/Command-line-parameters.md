@@ -419,6 +419,32 @@ Export Arguments include the [basic arguments](#base-arguments) and [merge argum
 - hub_private_repo: Whether it is a private repo, default is False.
 - commit_message: Commit message, default is 'update files'.
 
+### Sampling Parameters
+
+- prm_model: The type of process reward model. It can be a model ID (triggered using `pt`) or a `prm` key defined in a plugin (for custom inference processes).
+- orm_model: The type of outcome reward model, typically a wildcard or test case, usually defined in a plugin.
+
+- sampler_type: The type of sampling. Currently supports `sample` (using `do_sample` method). Future support will include `mcts` and `dvts`.
+- sampler_engine: Supports `pt`, `lmdeploy`, `vllm`, `no`. Defaults to `pt`. Specifies the inference engine for the sampling model.
+- output_dir: The output directory. Defaults to `sample_output`.
+- output_file: The name of the output file. Defaults to `None`, which uses a timestamp as the filename. When provided, only the filename should be passed without the directory, and only JSONL format is supported.
+- override_exist_file: Whether to overwrite if `output_file` already exists.
+- num_sampling_per_gpu_batch_size: The batch size for each sampling operation.
+- num_sampling_per_gpu_batches: The total number of batches to sample.
+- n_best_to_keep: The number of best sequences to return.
+- data_range: The partition of the dataset being processed for this sampling operation. The format should be `2 3`, meaning the dataset is divided into 3 parts, and this instance is processing the 3rd partition (this implies that typically three `swift sample` processes are running in parallel).
+
+- temperature: Defaults to `1.0`.
+- prm_threshold: The PRM threshold. Results below this value will be filtered out. The default value is `0`.
+- easy_query_threshold: For each query, if the ORM evaluation is correct for more than this proportion of all samples, the query will be discarded to prevent overly simple queries from appearing in the results. Defaults to `None`, meaning no filtering is applied.
+
+- engine_kwargs: Additional parameters for the `sampler_engine`, passed as a JSON string, for example, `{"cache_max_entry_count":0.7}`.
+
+- num_return_sequences: The number of original sequences returned by sampling. Defaults to `64`. This parameter is effective for `sample` sampling.
+- cache_files: To avoid loading both `prm` and `generator` simultaneously and causing GPU memory OOM, sampling can be done in two steps. In the first step, set `prm` and `orm` to `None`, and all results will be output to a file. In the second run, set `sampler_engine` to `no` and pass `--cache_files` with the output file from the first sampling. This will use the results from the first run for `prm` and `orm` evaluation and output the final results.
+
+> Note: When using `cache_files`, the `--dataset` still needs to be provided because the ID for `cache_files` is calculated using the MD5 of the original data. Both pieces of information need to be used together.
+
 ## Specific Model Arguments
 
 Specific model arguments can be set using `--model_kwargs` or environment variables, for example: `--model_kwargs '{"fps_max_frames": 12}'` or `FPS_MAX_FRAMES=12`.

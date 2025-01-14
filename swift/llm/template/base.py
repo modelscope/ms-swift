@@ -710,11 +710,11 @@ class Template(ProcessorMixin):
 
     def replace_video2image(self, load_video_func, inputs, replace_tag: Callable) -> List[Context]:
         context_list = []
-        if self.mode == 'pt':
-            video = inputs.videos[inputs.video_idx]
-        else:
+        if self.mode in {'vllm', 'lmdeploy'}:
             video = inputs.videos.pop(inputs.video_idx)
             inputs.video_idx -= 1
+        else:
+            video = inputs.videos[inputs.video_idx]
         images = inputs.images
         new_images = load_video_func(video)
         inputs.images = images[:inputs.image_idx] + new_images + images[inputs.image_idx:]
