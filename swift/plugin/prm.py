@@ -58,7 +58,7 @@ class QwenMaxPRM(PRM):
                 base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
             )
             previous = request.messages[:-1]
-            if previous['0']['role'] == 'system':
+            if previous[0]['role'] == 'system':
                 previous = previous[1:]
 
             assert request.messages[-1]['role'] == 'assistant'
@@ -67,7 +67,7 @@ class QwenMaxPRM(PRM):
             query = query.replace('#response#', request.messages[-1]['content'])
             messages = [
                 {'role': 'system', 'content': SYSTEM},
-                {'role': 'query', 'content': query},
+                {'role': 'user', 'content': query},
             ]
             completion = client.chat.completions.create(
                 model="qwen-plus",
@@ -78,7 +78,7 @@ class QwenMaxPRM(PRM):
             if 'Reward:' not in content:
                 rewards.append(None)
             try:
-                reward = float(content.split('Reward:')[1])
+                reward = float(content.split('Reward:')[1].strip().replace('*', ''))
                 rewards.append(reward)
             except Exception:
                 rewards.append(None)
@@ -86,5 +86,4 @@ class QwenMaxPRM(PRM):
         return rewards
 
 
-prms = {'qwen_max', QwenMaxPRM}
-
+prms = {'qwen_max': QwenMaxPRM}

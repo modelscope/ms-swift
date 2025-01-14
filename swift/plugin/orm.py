@@ -193,15 +193,20 @@ class MathORM(ORM):
         try:
             expr = parse_latex(latex_str)
             return simplify(expr)
-        except (SympifyError, ValueError) as e:
-            print(f"解析错误: {latex_str} -> {e}")
+        except Exception as e:
             return None
 
     @staticmethod
     def compare_consecutive(first, second):
         cleaned_list = [MathORM.clean_latex(latex) for latex in [first, second]]
         parsed_exprs = [MathORM.parse_expression(latex) for latex in cleaned_list]
-        return parsed_exprs[0].equals(parsed_exprs[1])
+        if hasattr(parsed_exprs[0], 'equals') and hasattr(parsed_exprs[1], 'equals'):
+            value = parsed_exprs[0].equals(parsed_exprs[1])
+        else:
+            value = parsed_exprs[0] == parsed_exprs[1]
+        if value is None:
+            value = False
+        return value
 
     @torch.inference_mode()
     def infer(self, infer_requests: List[InferRequest], ground_truths: List[str],
@@ -213,9 +218,11 @@ class MathORM(ORM):
                 prediction = prediction.split('# Answer')[1]
             if '# Answer' in ground_truth:
                 ground_truth = ground_truth.split('# Answer')[1]
+            prediction = prediction.strip()
+            ground_truth = ground_truth.strip()
             prediction = MathORM.extract_boxed_result(prediction)
             ground_truth = MathORM.extract_boxed_result(ground_truth)
-            return MathORM.compare_consecutive(prediction, ground_truth)
+            rewards.append(MathORM.compare_consecutive(prediction, ground_truth))
 
         return [
             ChatCompletionResponse(
