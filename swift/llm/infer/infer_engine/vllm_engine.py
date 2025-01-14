@@ -341,6 +341,7 @@ class VllmEngine(InferEngine):
         use_tqdm: Optional[bool] = None,
         adapter_request: Optional[AdapterRequest] = None
     ) -> Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
+        self.engine.engine.model_executor.parallel_worker_tasks = None
         return super().infer(
             infer_requests,
             request_config,
