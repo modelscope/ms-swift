@@ -110,7 +110,7 @@ class VllmEngine(InferEngine):
         disable_log_stats = engine_kwargs.pop('disable_log_stats', True)
         engine_kwargs['disable_log_requests'] = True
 
-        parameters = inspect.signature(AsyncEngineArgs.__init__).parameters
+        parameters = inspect.signature(AsyncEngineArgs).parameters
         if 'enable_lora' in parameters and enable_lora:
             engine_kwargs['enable_lora'] = enable_lora
             engine_kwargs['max_loras'] = max_loras
@@ -167,7 +167,7 @@ class VllmEngine(InferEngine):
             max_new_tokens = kwargs.get('max_new_tokens')
             if max_new_tokens is not None:
                 kwargs['max_tokens'] = max_new_tokens
-            parameters = inspect.signature(SamplingParams.__init__).parameters
+            parameters = inspect.signature(SamplingParams).parameters
             for k, v in kwargs.copy().items():
                 if k not in parameters or v is None:
                     kwargs.pop(k)
