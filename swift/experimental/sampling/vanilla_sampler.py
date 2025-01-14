@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import os
 from copy import deepcopy
 
 import json
@@ -40,6 +41,9 @@ class VanillaSampler(Sampler):
         cache_files = self.args.cache_files
         caches = {}
         for file in cache_files:
+            if not os.path.exists(file):
+                logger.warning(f'Cache file does not exist: {file}')
+                continue
             with open(file, 'r') as f:
                 for line in f.readlines():
                     line = line.strip()
