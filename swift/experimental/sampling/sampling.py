@@ -48,7 +48,7 @@ class SwiftSampling(SwiftPipeline):
         if self.args.num_sampling_per_gpu_batches is None or self.args.num_sampling_per_gpu_batches > total_iters:
             self.args.num_sampling_per_gpu_batches = total_iters
 
-        with open(iter_file, 'a') as f:
+        with open(iter_file, 'w') as f:
             for _index in range(self.args.num_sampling_per_gpu_batches):
                 logger.info(f' Sampling index:{_index}')
                 generated = self.sampler.do_sample(
