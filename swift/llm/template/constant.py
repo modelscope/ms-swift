@@ -148,6 +148,7 @@ class MLLMTemplateType:
     florence = 'florence'
     molmo = 'molmo'
     megrez_omni = 'megrez_omni'
+    valley = 'valley'
 
 
 class TemplateType(LLMTemplateType, MLLMTemplateType, RMTemplateType):

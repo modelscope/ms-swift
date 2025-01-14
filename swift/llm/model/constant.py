@@ -185,6 +185,7 @@ class MLLMModelType:
     molmoe = 'molmoe'
     pixtral = 'pixtral'
     megrez_omni = 'megrez_omni'
+    valley = 'valley'
 
 
 class ModelType(LLMModelType, MLLMModelType, BertModelType, RMModelType):
