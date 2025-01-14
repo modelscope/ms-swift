@@ -177,7 +177,31 @@ class MathORM(ORM):
         if match:
             return match.group(1).strip()
         else:
+            return text
+
+    @staticmethod
+    def clean_latex(latex_str):
+        latex_str = re.sub(r"\\\(|\\\)|\\\[|\\]", "", latex_str)
+        latex_str = latex_str.replace("}}", "}").replace("{", "").replace("}", "")
+        return latex_str.strip()
+
+    @staticmethod
+    def parse_expression(latex_str):
+        from sympy import simplify
+        from sympy.parsing.latex import parse_latex
+        from sympy.core.sympify import SympifyError
+        try:
+            expr = parse_latex(latex_str)
+            return simplify(expr)
+        except (SympifyError, ValueError) as e:
+            print(f"解析错误: {latex_str} -> {e}")
             return None
+
+    @staticmethod
+    def compare_consecutive(first, second):
+        cleaned_list = [MathORM.clean_latex(latex) for latex in [first, second]]
+        parsed_exprs = [MathORM.parse_expression(latex) for latex in cleaned_list]
+        return parsed_exprs[0].equals(parsed_exprs[1])
 
     @torch.inference_mode()
     def infer(self, infer_requests: List[InferRequest], ground_truths: List[str],
@@ -185,9 +209,13 @@ class MathORM(ORM):
         rewards = []
         predictions = [request.messages[-1]['content'] for request in infer_requests]
         for prediction, ground_truth in zip(predictions, ground_truths):
-            res1 = MathORM.extract_boxed_result(prediction) or ''
-            res2 = MathORM.extract_boxed_result(ground_truth) or ''
-            rewards.append(res1.strip() == res2.strip())
+            if '# Answer' in prediction:
+                prediction = prediction.split('# Answer')[1]
+            if '# Answer' in ground_truth:
+                ground_truth = ground_truth.split('# Answer')[1]
+            prediction = MathORM.extract_boxed_result(prediction)
+            ground_truth = MathORM.extract_boxed_result(ground_truth)
+            return MathORM.compare_consecutive(prediction, ground_truth)
 
         return [
             ChatCompletionResponse(
