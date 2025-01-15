@@ -178,8 +178,7 @@ def replace_math_dataset():
 def main():
     os.makedirs('logs', exist_ok=True)
     max_acc = 0.
-    # A llama3.1 8b base model
-    first_model = '/mnt/nas3/yzhao/tastelikefeet/swift/output/checkpoint-2000/v0-20250111-163224/checkpoint-600'
+    first_model = 'LLM-Research/Meta-Llama-3.1-8B-Instruct'
     model_type = 'llama3_1'
 
     if False:
