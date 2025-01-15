@@ -124,7 +124,7 @@ class LLaMAPro(SwiftAdapter):
         if model_type == 'phi3-small':
             raise ValueError('phi3-small does not support llamapro currently')
         if model_type in ('llama', 'mistral', 'qwen2', 'yi', 'gemma', 'deepseek', 'openbuddy', 'xverse', 'orion',
-                          'bluelm', 'ziya', 'skywork', 'deepseek-v2', 'minicpm', 'phi3', 'internlm2'):
+                          'bluelm', 'ziya', 'skywork', 'deepseek-v2', 'minicpm', 'phi3', 'internlm2', 'internlm3'):
             for idx, module in enumerate(module_list):
                 try:
                     getattr(module, attention).layer_idx = idx
