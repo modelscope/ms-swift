@@ -1,9 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from contextlib import contextmanager
+from typing import List
 
 import torch
 from accelerate.utils import find_device
-from typing import List
+
 from swift.llm import to_device
 from swift.utils import get_logger
 
@@ -52,12 +53,16 @@ def patch_device_map():
     _get_no_split_modules = PreTrainedModel._get_no_split_modules
 
     def _new_get_no_split_modules(self, device_map: str):
+        for module in self.modules():
+            if isinstance(module, PreTrainedModel) and module._no_split_modules is None:
+                module.__class__._no_split_modules = []
         return _get_no_split_modules(self, device_map)
 
     PreTrainedModel._get_no_split_modules = _new_get_no_split_modules
-    yield
-
-    PreTrainedModel._get_no_split_modules = _get_no_split_modules
+    try:
+        yield
+    finally:
+        PreTrainedModel._get_no_split_modules = _get_no_split_modules
 
 
 @contextmanager
