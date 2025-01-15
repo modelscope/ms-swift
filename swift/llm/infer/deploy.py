@@ -203,7 +203,7 @@ def run_deploy(args: DeployArguments, return_url: bool = False):
         deploy_args = args
     else:
         args_dict = asdict(args)
-        parameters = inspect.signature(DeployArguments.__init__).parameters
+        parameters = inspect.signature(DeployArguments).parameters
         for k in list(args_dict.keys()):
             if k not in parameters or args_dict[k] is None:
                 args_dict.pop(k)
