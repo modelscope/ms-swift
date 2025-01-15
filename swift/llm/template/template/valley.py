@@ -73,7 +73,7 @@ class ValleyTemplate(Template):
         elif len(inputs.messages) > 1 and inputs.messages[-2]["role"] == "user":
             text = inputs.messages[-2]["content"]
         else:
-            raise ValueError("No user text found in the input messages")
+            text = ""
         video_images_tensor = self.preprocess_images(images_binary)
         img_length = len(video_images_tensor)
         video_images_tensor = [video_images_tensor]
