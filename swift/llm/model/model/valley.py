@@ -15,10 +15,10 @@ from ..utils import ModelInfo, git_clone_github, safe_snapshot_download
 
 
 def get_model_tokenizer_valley(model_dir: str,
-                              model_info: ModelInfo,
-                              model_kwargs: Dict[str, Any],
-                              load_model: bool = True,
-                              **kwargs):
+                               model_info: ModelInfo,
+                               model_kwargs: Dict[str, Any],
+                               load_model: bool = True,
+                               **kwargs):
     llm_model_type = kwargs.pop('llm_model_type')
     local_repo_path = kwargs.get('local_repo_path')
     if not local_repo_path:
@@ -29,21 +29,22 @@ def get_model_tokenizer_valley(model_dir: str,
     if llm_model_type == 'valley':
         from valley_eagle.model.language_model.valley_qwen2 import ValleyQwen2ForCausalLM, ValleyConfig
         model_config = ValleyConfig.from_pretrained(model_dir)
-        model_config.mm_vision_tower = safe_snapshot_download("AI-ModelScope/siglip-so400m-patch14-384")
-        model_config.eagle_vision_tower = safe_snapshot_download("Qwen/Qwen2-VL-7B-Instruct")
+        model_config.mm_vision_tower = safe_snapshot_download('AI-ModelScope/siglip-so400m-patch14-384')
+        model_config.eagle_vision_tower = safe_snapshot_download('Qwen/Qwen2-VL-7B-Instruct')
         automodel_class = ValleyQwen2ForCausalLM
 
     kwargs['model_config'] = model_config
     kwargs['automodel_class'] = automodel_class
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
-    model.generation_config.repetition_penalty = 1.0 # Otherwise, Error. Same for original code.
+    model.generation_config.repetition_penalty = 1.0  # Otherwise, Error. Same for original code.
     if model is not None:
         from transformers import AutoProcessor, SiglipImageProcessor
         tokenizer.image_processor = SiglipImageProcessor.from_pretrained(model.config.mm_vision_tower)
-        tokenizer.qwen2vl_processor = AutoProcessor.from_pretrained(model.config.eagle_vision_tower,
-                                                               max_pixels=1280 * 28 * 28)
-        tokenizer.image_processor.crop_size = tokenizer.image_processor.size["height"]
+        tokenizer.qwen2vl_processor = AutoProcessor.from_pretrained(
+            model.config.eagle_vision_tower, max_pixels=1280 * 28 * 28)
+        tokenizer.image_processor.crop_size = tokenizer.image_processor.size['height']
     return model, tokenizer
+
 
 register_model(
     ModelMeta(
