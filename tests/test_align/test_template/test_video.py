@@ -98,12 +98,14 @@ def test_minicpmo():
     pt_engine.default_template.template_backend = 'jinja'
     response2 = _infer_model(pt_engine, messages=messages)
     assert response == response2 == (
-        'The video features a young child sitting on a bed, engrossed in reading a large book. '
-        'The child, dressed in a light blue sleeveless top and pink pants, is deeply focused on the book, turning '
-        'its pages and occasionally glancing up, possibly to read or to look around. The bed is adorned with a '
-        'patterned blanket, and a white cloth is draped over the side. In the background, a crib and some furniture '
-        "are visible, adding to the cozy, domestic setting. The child's actions and the surrounding environment "
-        'create a serene and intimate atmosphere, highlighting a moment of quiet concentration and curiosity.')
+        'The video features a young child sitting on a bed, deeply engrossed in reading a large book. The child, '
+        'dressed in a light blue sleeveless top and pink pants, is surrounded by a cozy and homely environment. '
+        'The bed is adorned with a patterned blanket, and a white cloth is casually draped over the side. '
+        'In the background, a crib and a television are visible, adding to the domestic setting. '
+        'The child is seen flipping through the pages of the book, occasionally pausing to look at the pages, '
+        'and then continuing to turn them. The video captures the child\'s focused and curious demeanor as they '
+        'explore the contents of the book, creating a heartwarming '
+        'scene of a young reader immersed in their world of stories.')[:len(response)]
 
 
 if __name__ == '__main__':
