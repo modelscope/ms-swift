@@ -42,6 +42,7 @@ class LLMModelType:
 
     internlm = 'internlm'
     internlm2 = 'internlm2'
+    internlm3 = 'internlm3'
 
     deepseek = 'deepseek'
     deepseek_moe = 'deepseek_moe'

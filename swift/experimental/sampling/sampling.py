@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
+import time
 from typing import List, Union
 
 from swift.llm import SwiftPipeline, load_dataset
@@ -40,21 +41,27 @@ class SwiftSampling(SwiftPipeline):
     def run(self):
         os.makedirs(self.args.output_dir, exist_ok=True)
         iter_file = os.path.join(self.args.output_dir, self.args.output_file)
+        tmp_file = os.path.join(self.args.output_dir, self.args.output_file + '.tmp')
         if os.path.exists(iter_file) and not self.args.override_exist_file:
             return
+        if os.path.exists(tmp_file):
+            os.remove(tmp_file)
         dataset = self._get_dataset()
         dataset_len = len(dataset)
         total_iters = int(dataset_len // self.args.num_sampling_per_gpu_batch_size)
         if self.args.num_sampling_per_gpu_batches is None or self.args.num_sampling_per_gpu_batches > total_iters:
             self.args.num_sampling_per_gpu_batches = total_iters
 
-        with open(iter_file, 'w') as f:
+        with open(tmp_file, 'w') as f:
             for _index in range(self.args.num_sampling_per_gpu_batches):
                 logger.info(f' Sampling index:{_index}')
                 generated = self.sampler.do_sample(
                     dataset[self.args.num_sampling_per_gpu_batch_size * _index:self.args.num_sampling_per_gpu_batch_size
                             * (_index + 1)])
                 f.writelines(generated)
+        if os.path.exists(iter_file):
+            shutil.move(iter_file, iter_file + '.' + str(int(time.time())))
+        shutil.move(tmp_file, iter_file)
 
 
 def sampling_main(args: Union[List[str], SamplingArguments, None] = None):
