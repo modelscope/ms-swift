@@ -123,8 +123,8 @@ class Runtime(BaseUI):
     def break_log_event(cls, task):
         if not task:
             return
-        pid, all_args = Runtime.parse_info_from_cmdline(task)
-        cls.log_event[all_args['logging_dir']] = True
+        pid, all_args = cls.parse_info_from_cmdline(task)
+        cls.log_event[all_args['log_file']] = True
 
     @classmethod
     def update_log(cls):
@@ -136,7 +136,7 @@ class Runtime(BaseUI):
             return [None]
         _, args = cls.parse_info_from_cmdline(task)
         log_file = args['log_file']
-        cls.log_event[args['logging_dir']] = False
+        cls.log_event[log_file] = False
         offset = 0
         latest_data = ''
         lines = collections.deque(maxlen=int(os.environ.get('MAX_LOG_LINES', 50)))
