@@ -90,6 +90,22 @@ def test_minicpmv():
     _infer_model(pt_engine)
 
 
+def test_minicpmo():
+    os.environ['VIDEO_MAX_SLICE_NUMS'] = '2'
+    pt_engine = PtEngine('OpenBMB/MiniCPM-o-2_6')
+    messages = [{'role': 'user', 'content': '<video>Describe the video'}]
+    response = _infer_model(pt_engine, messages=messages)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=messages)
+    assert response == response2 == (
+        'The video features a young child sitting on a bed, engrossed in reading a large book. '
+        'The child, dressed in a light blue sleeveless top and pink pants, is deeply focused on the book, turning '
+        'its pages and occasionally glancing up, possibly to read or to look around. The bed is adorned with a patterned '
+        'blanket, and a white cloth is draped over the side. In the background, a crib and some furniture are visible, '
+        "adding to the cozy, domestic setting. The child's actions and the surrounding environment create a serene and "
+        'intimate atmosphere, highlighting a moment of quiet concentration and curiosity.')
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig, get_template
     from swift.utils import get_logger, seed_everything
@@ -98,5 +114,6 @@ if __name__ == '__main__':
     # test_internvl2_5()
     # test_xcomposer2_5()
     # test_internvl2_5_mpo()
-    test_mplug3()
-    test_minicpmv()
+    # test_mplug3()
+    # test_minicpmv()
+    test_minicpmo()
