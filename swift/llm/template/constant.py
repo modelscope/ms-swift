@@ -11,6 +11,7 @@ class LLMTemplateType:
     qwen = 'qwen'
     qwen2_5 = 'qwen2_5'
     qwen2_5_math = 'qwen2_5_math'
+    qwen2_5_math_prm = 'qwen2_5_math_prm'
     qwq = 'qwq'
     marco_o1 = 'marco_o1'
     modelscope_agent = 'modelscope_agent'

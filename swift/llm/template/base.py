@@ -41,6 +41,7 @@ class Template(ProcessorMixin):
     image_placeholder = ['<image>']
     video_placeholder = ['<video>']
     audio_placeholder = ['<audio>']
+    cot_process_placeholder = ['ки']
     load_images = True
     skip_prompt = True
     use_model = False
@@ -265,9 +266,30 @@ class Template(ProcessorMixin):
                     return generate_ids[:-i]
         return generate_ids
 
+    @staticmethod
+    def _get_seq_cls_logprobs(logprobs):
+        res = []
+        for i, logprob in enumerate(logprobs.tolist()):
+            res.append({'index': i, 'logprob': logprob})
+        return {'content': res}
+
+    def decode_seq_cls(self, logits: torch.Tensor):
+        assert isinstance(logits, torch.Tensor)
+        if logits.shape[-1] > 1:
+            preds = torch.argmax(logits, dim=-1).tolist()
+            logprobs = torch.log_softmax(logits, -1)
+            logprobs = [self._get_seq_cls_logprobs(logprobs[i]) for i in range(len(preds))]
+        else:
+            preds = logits.squeeze(dim=-1).tolist()
+            logprobs = [None] * len(preds)
+        return preds, logprobs
+
     def decode(self, generate_ids: List[int], is_finished: bool = True, tokenizer_kwargs=None, **kwargs) -> Any:
         tokenizer_kwargs = tokenizer_kwargs or {}
         return self._skip_stop_decode(generate_ids, is_finished, **tokenizer_kwargs)
+
+    def decode_prm(self, input_ids: torch.Tensor, logits: torch.Tensor) -> Any:
+        raise NotImplementedError
 
     def generate(self, model, *args, **kwargs):
         return model.generate(*args, **kwargs)
@@ -431,6 +453,18 @@ class Template(ProcessorMixin):
         """
         return [object_['caption']]
 
+    def replace_cot_process(self, inputs: StdTemplateInputs) -> List[Context]:
+        """Replace the cot process label for PRM training or inference.
+        Override this function to do your own replace operation.
+
+        Args:
+            inputs: The inputs
+
+        Returns:
+            The contents or input_ids replaced
+        """
+        return [self.cot_process_placeholder]
+
     def replace_box(self, object_: Dict[str, Any], index: int, inputs: StdTemplateInputs) -> List[Context]:
         """Replace bbox pointing to the objects to contents or input_ids. This is useful in the grounding task.
         Override this function to do your own replace operation.
@@ -487,6 +521,8 @@ class Template(ProcessorMixin):
                     idx = inputs.box_idx
                     c_list = self.replace_box(inputs.objects[idx], idx, inputs)
                     inputs.box_idx += 1
+                elif context == '<cot-process>':
+                    c_list = self.replace_cot_process(inputs)
                 else:
                     c_list = [context]
             res += c_list

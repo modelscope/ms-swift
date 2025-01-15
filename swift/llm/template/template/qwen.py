@@ -1,9 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from dataclasses import dataclass, field
 from functools import partial
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Union
 
 import torch
+import torch.nn.functional as F
 
 from swift.utils import get_env_args, is_deepspeed_enabled
 from ..base import Template
@@ -45,6 +46,31 @@ register_template(Qwen2_5TemplateMeta(LLMTemplateType.qwen2_5))
 register_template(QwqTemplateMeta(LLMTemplateType.qwq))
 
 register_template(Qwen2_5MathTemplateMeta(LLMTemplateType.qwen2_5_math))
+
+
+class QwenPRMTemplate(Template):
+    cot_process_placeholder = '<extra_0>'
+
+    @staticmethod
+    def make_step_rewards(logits, token_masks):
+        probabilities = F.softmax(logits, dim=-1)
+        probabilities = probabilities * token_masks.unsqueeze(-1)  # bs, seq_len, num_labels
+
+        all_scores_res = []
+        for i in range(probabilities.size(0)):
+            sample = probabilities[i]  # seq_len, num_labels
+            positive_probs = sample[sample != 0].view(-1, 2)[:, 1]  # valid_tokens, num_labels
+            non_zero_elements_list = positive_probs.cpu().tolist()
+            all_scores_res.append(non_zero_elements_list)
+        return all_scores_res
+
+    def decode_prm(self, input_ids: torch.Tensor, logits: torch.Tensor) -> Any:
+        step_sep_id = self.tokenizer.encode(self.cot_process_placeholder)[0]
+        token_masks = (input_ids == step_sep_id)
+        return self.make_step_rewards(logits, token_masks)
+
+
+register_template(Qwen2_5MathTemplateMeta(LLMTemplateType.qwen2_5_math_prm, template_cls=QwenPRMTemplate))
 
 
 class QwenVLTemplate(Template):
