@@ -89,7 +89,7 @@ class EvalRuntime(Runtime):
                     gr.Button(elem_id='refresh_tasks', scale=1, variant='primary')
                     gr.Button(elem_id='show_log', scale=1, variant='primary')
                     gr.Button(elem_id='stop_show_log', scale=1)
-                    gr.Button(elem_id='kill_task', scale=1)
+                    gr.Button(elem_id='kill_task', scale=1, size='lg')
                 with gr.Row():
                     gr.Textbox(elem_id='log', lines=6, visible=False)
 
@@ -99,7 +99,7 @@ class EvalRuntime(Runtime):
                 cls.log_event = base_tab.element('show_log').click(cls.update_log, [], [cls.element('log')]).then(
                     cls.wait, [base_tab.element('running_tasks')], [cls.element('log')], **concurrency_limit)
 
-                base_tab.element('stop_show_log').click(lambda: None, cancels=cls.log_event)
+                base_tab.element('stop_show_log').click(cls.break_log_event, [cls.element('running_tasks')], [])
 
                 base_tab.element('refresh_tasks').click(
                     cls.refresh_tasks,
