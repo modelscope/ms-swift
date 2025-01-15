@@ -136,7 +136,7 @@ class Qwen2AudioTemplate(Template):
         encoded = super()._encode(inputs)
         if inputs.audios:
             sampling_rate = get_env_args('sampling_rate', int, self.processor.feature_extractor.sampling_rate)
-            audios = load_batch(inputs.audios, load_func=partial(load_audio_qwen, sampling_rate=sampling_rate))
+            audios = load_batch(inputs.audios, load_func=partial(load_audio, sampling_rate=sampling_rate))
             audio_inputs = self.processor.feature_extractor(
                 audios, sampling_rate=sampling_rate, return_attention_mask=True, return_tensors='pt')
             audio_inputs['feature_attention_mask'] = audio_inputs.pop('attention_mask')
