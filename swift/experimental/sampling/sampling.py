@@ -1,7 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-from typing import List, Union
 import time
+from typing import List, Union
+
 from swift.llm import SwiftPipeline, load_dataset
 from swift.utils import get_logger
 from .sampling_args import SamplingArguments

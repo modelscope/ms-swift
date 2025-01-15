@@ -1,7 +1,7 @@
-import json
 import os
 from typing import List
 
+import json
 import torch
 
 from swift.llm import InferRequest
@@ -15,7 +15,8 @@ class PRM:
         pass
 
     @torch.inference_mode()
-    def infer(self, infer_requests: List[InferRequest], ground_truths: List[str], **kwargs) -> List[ChatCompletionResponse]:
+    def infer(self, infer_requests: List[InferRequest], ground_truths: List[str],
+              **kwargs) -> List[ChatCompletionResponse]:
         raise NotImplementedError
 
 
@@ -26,10 +27,10 @@ You are a process reward model, give the reward value of the answer, you must fo
 
 2. The answer may be incomplete, you must give the reward by the existing part of the answer, taking into account semantic coherence, logical correctness, and clarity.
 
-3. A ground truth answer will be given to you, it may be not the best one, consider it as a reference example. 
+3. A ground truth answer will be given to you, it may be not the best one, consider it as a reference example.
 
 Begin!
-"""
+""" # noqa
 
 QUERY = """
 The original question or the previous conversation:
@@ -48,14 +49,15 @@ Given the upper information, give your reward(-1.0~1.0) of the following answer:
 
 class QwenMaxPRM(PRM):
 
-    def infer(self, infer_requests: List[InferRequest], ground_truths: List[str], **kwargs) -> List[ChatCompletionResponse]:
+    def infer(self, infer_requests: List[InferRequest], ground_truths: List[str],
+              **kwargs) -> List[ChatCompletionResponse]:
         rewards = []
         for request, ground_truth in zip(infer_requests, ground_truths):
             from openai import OpenAI
 
             client = OpenAI(
-                api_key=os.getenv("DASHSCOPE_API_KEY"),
-                base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+                api_key=os.getenv('DASHSCOPE_API_KEY'),
+                base_url='https://dashscope.aliyuncs.com/compatible-mode/v1',
             )
             previous = request.messages[:-1]
             if previous[0]['role'] == 'system':
@@ -66,11 +68,17 @@ class QwenMaxPRM(PRM):
             query = query.replace('#ground_truth#', ground_truth)
             query = query.replace('#response#', request.messages[-1]['content'])
             messages = [
-                {'role': 'system', 'content': SYSTEM},
-                {'role': 'user', 'content': query},
+                {
+                    'role': 'system',
+                    'content': SYSTEM
+                },
+                {
+                    'role': 'user',
+                    'content': query
+                },
             ]
             completion = client.chat.completions.create(
-                model="qwen-plus",
+                model='qwen-plus',
                 messages=messages,
             )
 

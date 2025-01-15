@@ -1,3 +1,4 @@
+import os
 import re
 from typing import List
 
@@ -170,6 +171,11 @@ class ReactORM(ORM):
 
 class MathORM(ORM):
 
+    def __init__(self):
+        super().__init__()
+        from transformers.utils import strtobool
+        self.use_opencompass = strtobool(os.environ.get('USE_OPENCOMPASS_EVALUATOR'))
+
     @staticmethod
     def extract_boxed_result(text):
         pattern = r'\\boxed{([^}]*)}'
@@ -181,19 +187,18 @@ class MathORM(ORM):
 
     @staticmethod
     def clean_latex(latex_str):
-        latex_str = re.sub(r"\\\(|\\\)|\\\[|\\]", "", latex_str)
-        latex_str = latex_str.replace("}}", "}").replace("{", "").replace("}", "")
+        latex_str = re.sub(r'\\\(|\\\)|\\\[|\\]', '', latex_str)
+        latex_str = latex_str.replace('}}', '}').replace('{', '').replace('}', '')
         return latex_str.strip()
 
     @staticmethod
     def parse_expression(latex_str):
         from sympy import simplify
         from sympy.parsing.latex import parse_latex
-        from sympy.core.sympify import SympifyError
         try:
             expr = parse_latex(latex_str)
             return simplify(expr)
-        except Exception as e:
+        except Exception:
             return None
 
     @staticmethod
@@ -222,7 +227,12 @@ class MathORM(ORM):
             ground_truth = ground_truth.strip()
             prediction = MathORM.extract_boxed_result(prediction)
             ground_truth = MathORM.extract_boxed_result(ground_truth)
-            rewards.append(MathORM.compare_consecutive(prediction, ground_truth))
+            if self.use_opencompass:
+                from opencompass.datasets.math import MATHEvaluator
+                evaluator = MATHEvaluator()
+                rewards.append(evaluator.is_equiv(prediction, ground_truth))
+            else:
+                rewards.append(MathORM.compare_consecutive(prediction, ground_truth))
 
         return [
             ChatCompletionResponse(
