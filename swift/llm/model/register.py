@@ -184,7 +184,7 @@ def get_model_tokenizer_from_local(model_dir: str,
         tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
 
     num_labels = model_info.num_labels or getattr(model_config, 'num_labels', None)
-    if num_labels:
+    if num_labels and model_info.task_type != 'causal_lm':
         model_info.num_labels = num_labels
         model_config.num_labels = num_labels
 

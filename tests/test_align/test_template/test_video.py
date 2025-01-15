@@ -90,6 +90,24 @@ def test_minicpmv():
     _infer_model(pt_engine)
 
 
+def test_minicpmo():
+    os.environ['VIDEO_MAX_SLICE_NUMS'] = '2'
+    pt_engine = PtEngine('OpenBMB/MiniCPM-o-2_6')
+    messages = [{'role': 'user', 'content': '<video>Describe the video'}]
+    response = _infer_model(pt_engine, messages=messages)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=messages)
+    assert response == response2 == (
+        'The video features a young child sitting on a bed, deeply engrossed in reading a large book. The child, '
+        'dressed in a light blue sleeveless top and pink pants, is surrounded by a cozy and homely environment. '
+        'The bed is adorned with a patterned blanket, and a white cloth is casually draped over the side. '
+        'In the background, a crib and a television are visible, adding to the domestic setting. '
+        'The child is seen flipping through the pages of the book, occasionally pausing to look at the pages, '
+        'and then continuing to turn them. The video captures the child\'s focused and curious demeanor as they '
+        'explore the contents of the book, creating a heartwarming '
+        'scene of a young reader immersed in their world of stories.')[:len(response)]
+
+
 def test_valley():
     pt_engine = PtEngine('bytedance-research/Valley-Eagle-7B')
     _infer_model(pt_engine)
@@ -105,4 +123,5 @@ if __name__ == '__main__':
     # test_internvl2_5_mpo()
     # test_mplug3()
     # test_minicpmv()
-    test_valley()
+    test_minicpmo()
+    # test_valley()

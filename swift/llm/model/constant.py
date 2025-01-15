@@ -165,8 +165,9 @@ class MLLMModelType:
     deepseek_janus = 'deepseek_janus'
 
     minicpmv = 'minicpmv'
-    minicpmv2_6 = 'minicpmv2_6'
     minicpmv2_5 = 'minicpmv2_5'
+    minicpmv2_6 = 'minicpmv2_6'
+    minicpmo2_6 = 'minicpmo2_6'
 
     mplug_owl2 = 'mplug_owl2'
     mplug_owl2_1 = 'mplug_owl2_1'

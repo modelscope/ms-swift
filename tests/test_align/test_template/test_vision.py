@@ -109,6 +109,28 @@ def test_minicpmv():
     _infer_model(pt_engine)
 
 
+def test_minicpmo():
+    pt_engine = PtEngine('OpenBMB/MiniCPM-o-2_6')
+    messages = [{
+        'role':
+        'user',
+        'content':
+        '<image><image>Compare image 1 and image 2, tell me about the differences between image 1 and image 2.'
+    }]
+    images = [
+        'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png',
+        'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png'
+    ]
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=messages, images=images)
+    assert response == response2 == (
+        'The main difference between image 1 and image 2 is the subject matter. '
+        'Image 1 features a close-up of a kitten, while image 2 depicts a cartoon illustration of four sheep '
+        'standing in a grassy field. The setting, the number of subjects, and the overall style of the images '
+        'are distinct from each other.')
+
+
 def test_got_ocr():
     # https://github.com/modelscope/ms-swift/issues/2122
     pt_engine = PtEngine('stepfun-ai/GOT-OCR2_0')
@@ -377,4 +399,5 @@ if __name__ == '__main__':
     # test_molmo()
     # test_molmoe()
     # test_doc_owl2()
-    test_valley()
+    test_minicpmo()
+    # test_valley()
