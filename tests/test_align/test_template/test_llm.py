@@ -78,7 +78,7 @@ def test_internlm2():
 
 def test_internlm3():
     pt_engine = PtEngine('Shanghai_AI_Laboratory/internlm3-8b-instruct')
-    response = _infer_model(pt_engine)
+    response = _infer_model(pt_engine, system='')
     pt_engine.default_template.template_backend = 'jinja'
     response2 = _infer_model(pt_engine)
     assert response == response2
