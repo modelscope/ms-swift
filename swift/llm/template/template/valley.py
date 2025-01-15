@@ -77,7 +77,7 @@ class ValleyTemplate(Template):
         img_length = len(video_images_tensor)
         video_images_tensor = [video_images_tensor]
         if img_length:
-            images = [[item.to(self.model.device).to(self.model.dtype) for item in img] for img in video_images_tensor]
+            images = [[item.to(self.model.dtype) for item in img] for img in video_images_tensor]
 
         messages_qwen = []
         image_list = []
@@ -102,8 +102,8 @@ class ValleyTemplate(Template):
 
         results['images'] = images
         results['image_sizes'] = image_sizes
-        results['pixel_values'] = data_dict_qwen2vl['pixel_values'].to(self.model.device)
-        results['image_grid_thw'] = data_dict_qwen2vl['image_grid_thw'].to(self.model.device)
+        results['pixel_values'] = data_dict_qwen2vl['pixel_values']
+        results['image_grid_thw'] = data_dict_qwen2vl['image_grid_thw']
         return results
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
