@@ -9,10 +9,10 @@ from swift.llm import TemplateType
 from swift.utils import get_env_args
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
-from ..patcher import patch_output_clone
+from ..patcher import patch_ignore_check_imports, patch_output_clone
 from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,
                         get_model_tokenizer_with_flash_attn, register_model)
-from ..utils import ModelInfo, ignore_check_imports, use_submodel_func
+from ..utils import ModelInfo, use_submodel_func
 
 
 def get_model_tokenizer_phi3_vision(model_dir: str,
@@ -62,7 +62,7 @@ def get_model_tokenizer_florence(model_dir: str,
     if model_kwargs['device_map'] == 'auto':
         model_kwargs['device_map'] = 'cuda:0'
     kwargs['model_config'] = model_config
-    with ignore_check_imports():
+    with patch_ignore_check_imports():
         model, processor = get_model_tokenizer_multimodal(model_dir, model_info, model_kwargs, load_model, **kwargs)
 
     if model is not None:
