@@ -92,15 +92,14 @@ def get_model_tokenizer_minicpmv_2_x(model_dir: str,
     from transformers import AutoProcessor
     processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
     version = kwargs.get('version')
+    if version == 'o2.6':
+        model_kwargs.update({'init_vision': True, 'init_audio': False, 'init_tts': False})
     with patch_device_map():
         model, tokenizer = get_model_tokenizer_minicpmv(
             model_dir, model_info, model_kwargs, load_model, tokenizer=processor.tokenizer, **kwargs)
     if load_model:
         embedding = model.get_input_embeddings()
         patch_output_clone(embedding)
-        if version == 'o2.6':
-            model.init_tts()
-            model.tts.float()
 
     return model, processor
 
@@ -147,10 +146,10 @@ register_model(
         ],
         TemplateType.minicpmo2_6,
         partial(get_model_tokenizer_minicpmv_2_x, version='o2.6'),
-        architectures=['MiniCPMV'],
-        model_arch=ModelArch.minicpmv,
+        architectures=['MiniCPMO'],
+        model_arch=ModelArch.minicpmo,
         requires=['timm', 'transformers>=4.36', 'decord'],
-        tags=['vision', 'video'],
+        tags=['vision', 'video', 'omni', 'audio'],
     ))
 
 register_model(

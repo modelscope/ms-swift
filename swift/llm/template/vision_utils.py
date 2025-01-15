@@ -262,7 +262,7 @@ def load_video_minicpmv_mplug_owl3(video_io: BytesIO, max_num_frames):
 
 
 @load_file_decorator
-def load_audio_qwen(audio_io: BytesIO, sampling_rate: int):
+def load_audio(audio_io: BytesIO, sampling_rate: int):
     import librosa
     return librosa.load(audio_io, sr=sampling_rate)[0]
 

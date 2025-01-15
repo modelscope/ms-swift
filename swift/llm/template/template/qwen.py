@@ -12,7 +12,7 @@ from ..register import register_template
 from ..template_inputs import StdTemplateInputs
 from ..template_meta import TemplateMeta
 from ..utils import Context, Word, findall
-from ..vision_utils import load_audio_qwen, load_batch
+from ..vision_utils import load_audio, load_batch
 from .llama import Llama3TemplateMeta
 from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
 
@@ -127,6 +127,8 @@ class Qwen2AudioTemplate(Template):
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         assert media_type == 'audio'
+        sampling_rate = get_env_args('sampling_rate', int, processor.feature_extractor.sampling_rate)
+        inputs.audios[index] = load_audio(inputs.audios[index], sampling_rate=sampling_rate)
         if not self.use_chat_template:
             return ['<|audio_bos|><|AUDIO|><|audio_eos|>\n']
         else:
@@ -135,11 +137,9 @@ class Qwen2AudioTemplate(Template):
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
         processor = self.processor
-        sampling_rate = processor.feature_extractor.sampling_rate
-        audios = load_batch(inputs.audios, load_func=partial(load_audio_qwen, sampling_rate=sampling_rate))
-        if audios:
+        if inputs.audios:
             audio_inputs = processor.feature_extractor(
-                audios, sampling_rate=sampling_rate, return_attention_mask=True, return_tensors='pt')
+                inputs.audios, sampling_rate=sampling_rate, return_attention_mask=True, return_tensors='pt')
             audio_inputs['feature_attention_mask'] = audio_inputs.pop('attention_mask')
             encoded.update(audio_inputs)
         return encoded

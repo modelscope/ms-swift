@@ -127,7 +127,6 @@ class MLLMTemplateType:
     minicpmv = 'minicpmv'
     minicpmv2_5 = 'minicpmv2_5'
     minicpmv2_6 = 'minicpmv2_6'
-    minicpmo2_6 = 'minicpmo2_6'
 
     deepseek_vl = 'deepseek_vl'
     deepseek_vl2 = 'deepseek_vl2'
