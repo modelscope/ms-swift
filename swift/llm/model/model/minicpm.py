@@ -148,7 +148,7 @@ register_model(
         partial(get_model_tokenizer_minicpmv_2_x, version='o2.6'),
         architectures=['MiniCPMO'],
         model_arch=ModelArch.minicpmv,
-        requires=['timm', 'transformers>=4.36', 'decord'],
+        requires=['timm', 'transformers>=4.36', 'decord', 'soundfile'],
         tags=['vision', 'video', 'omni', 'audio'],
     ))
 
