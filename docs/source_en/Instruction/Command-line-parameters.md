@@ -464,6 +464,9 @@ For the meaning of the arguments, please refer to [here](https://github.com/Qwen
 - FPS_MIN_FRAMES: Default is 4
 - 🔥FPS_MAX_FRAMES: Default is 768, refer to [here](https://github.com/modelscope/ms-swift/blob/main/examples/train/multimodal/video.sh#L8)
 
+### qwen2_audio
+- SAMPLING_RATE: Default is 16000
+
 ### internvl, internvl_phi3
 For the meaning of the arguments, please refer to [here](https://modelscope.cn/models/OpenGVLab/Mini-InternVL-Chat-2B-V1-5)
 - MAX_NUM: Default is 12
@@ -480,6 +483,10 @@ For the meaning of the arguments, please refer to [here](https://modelscope.cn/m
 - MAX_SLICE_NUMS: Default is 9, refer to [here](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2_6/file/view/master?fileName=config.json&status=1)
 - VIDEO_MAX_SLICE_NUMS: Default is 1, which is the MAX_SLICE_NUMS for videos, refer to [here](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2_6)
 - MAX_NUM_FRAMES: Default is 64, refer to [here](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2_6)
+
+### minicpmo2_6
+- INIT_TTS: Default is False
+- INIT_AUDIO: Default is False
 
 ### ovis1_6
 - MAX_PARTITION: Refer to [here](https://github.com/AIDC-AI/Ovis/blob/d248e34d755a95d24315c40e2489750a869c5dbc/ovis/model/modeling_ovis.py#L312)

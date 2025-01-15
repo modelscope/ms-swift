@@ -100,10 +100,10 @@ def test_minicpmo():
     assert response == response2 == (
         'The video features a young child sitting on a bed, engrossed in reading a large book. '
         'The child, dressed in a light blue sleeveless top and pink pants, is deeply focused on the book, turning '
-        'its pages and occasionally glancing up, possibly to read or to look around. The bed is adorned with a patterned '
-        'blanket, and a white cloth is draped over the side. In the background, a crib and some furniture are visible, '
-        "adding to the cozy, domestic setting. The child's actions and the surrounding environment create a serene and "
-        'intimate atmosphere, highlighting a moment of quiet concentration and curiosity.')
+        'its pages and occasionally glancing up, possibly to read or to look around. The bed is adorned with a '
+        'patterned blanket, and a white cloth is draped over the side. In the background, a crib and some furniture '
+        "are visible, adding to the cozy, domestic setting. The child's actions and the surrounding environment "
+        'create a serene and intimate atmosphere, highlighting a moment of quiet concentration and curiosity.')
 
 
 if __name__ == '__main__':
