@@ -85,7 +85,8 @@ class SwiftMixin:
                 compute_metrics=compute_metrics,
                 callbacks=callbacks,
                 optimizers=optimizers,
-                preprocess_logits_for_metrics=preprocess_logits_for_metrics)
+                preprocess_logits_for_metrics=preprocess_logits_for_metrics,
+                **kwargs)
 
         self.compute_loss_func = compute_loss_func
         if get_function(model.__class__.forward) is not get_function(model.forward):

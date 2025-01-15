@@ -102,6 +102,14 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         )
 
     @staticmethod
+    def _update_usage_info(origin_use_info: UsageInfo, num_generated_tokens: int) -> UsageInfo:
+        return UsageInfo(
+            prompt_tokens=origin_use_info.prompt_tokens,
+            completion_tokens=origin_use_info.completion_tokens + num_generated_tokens,
+            total_tokens=origin_use_info.total_tokens + num_generated_tokens,
+        )
+
+    @staticmethod
     def _update_metrics(result, metrics: Optional[List[Metric]] = None):
         if metrics is None:
             return result
@@ -151,7 +159,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
                 result += res
                 i += max_batch_size
                 prog_bar.update(len(tasks_samples))
-            return self._update_metrics(res, metrics)
+            return self._update_metrics(result, metrics)
 
     def _get_toolcall(self,
                       response: Union[str, List[Dict[str, Any]]],

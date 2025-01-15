@@ -1,6 +1,6 @@
 if __name__ == '__main__':
     import os
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
     os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 
 import os
@@ -242,13 +242,14 @@ class TestRun(unittest.TestCase):
                        if rlhf_type != 'kto' else 'AI-ModelScope/ultrafeedback-binarized-preferences-cleaned-kto#100')
             train_kwargs = {}
             if rlhf_type == 'ppo':
-                train_kwargs['reward_model_type'] = 'Qwen/Qwen2-1.5B-Instruct'
+                train_kwargs['reward_model'] = 'Qwen/Qwen2-1.5B-Instruct'
             output = rlhf_main(
                 RLHFArguments(
                     rlhf_type=rlhf_type,
                     model='Qwen/Qwen2-1.5B-Instruct',
                     dataset=dataset,
                     eval_steps=5,
+                    split_dataset_ratio=0.05,
                     **train_kwargs,
                     **kwargs))
             if rlhf_type == 'ppo':

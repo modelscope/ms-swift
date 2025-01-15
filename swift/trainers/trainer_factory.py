@@ -50,7 +50,7 @@ class TrainerFactory:
     def get_training_args(cls, args):
         training_args_cls = cls.get_cls(args, cls.TRAINING_ARGS_MAPPING)
         args_dict = asdict(args)
-        parameters = inspect.signature(training_args_cls.__init__).parameters
+        parameters = inspect.signature(training_args_cls).parameters
 
         for k in list(args_dict.keys()):
             if k not in parameters:

@@ -1,14 +1,9 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-
-import os
-import tempfile
-
-import datasets.config
 import datasets.fingerprint
 from datasets import disable_caching
-from modelscope.hub.utils.utils import get_cache_dir
 
 from swift.utils.torch_utils import _find_local_mac
+from ..utils import get_temporary_cache_files_directory
 from . import dataset
 from .loader import DATASET_TYPE, load_dataset
 from .media import MediaResource
@@ -32,20 +27,9 @@ def _update_fingerprint_mac(*args, **kwargs):
     return fp
 
 
-def _new_get_temporary_cache_files_directory(*args, **kwargs):
-    global DATASET_TEMP_DIR
-    if DATASET_TEMP_DIR is None:
-        tmp_dir = os.path.join(get_cache_dir(), 'tmp')
-        os.makedirs(tmp_dir, exist_ok=True)
-        DATASET_TEMP_DIR = tempfile.TemporaryDirectory(prefix=datasets.config.TEMP_CACHE_DIR_PREFIX, dir=tmp_dir)
-
-    return DATASET_TEMP_DIR.name
-
-
 datasets.fingerprint.update_fingerprint = _update_fingerprint_mac
 datasets.arrow_dataset.update_fingerprint = _update_fingerprint_mac
-datasets.fingerprint.get_temporary_cache_files_directory = _new_get_temporary_cache_files_directory
-datasets.arrow_dataset.get_temporary_cache_files_directory = _new_get_temporary_cache_files_directory
-DATASET_TEMP_DIR = None
+datasets.fingerprint.get_temporary_cache_files_directory = get_temporary_cache_files_directory
+datasets.arrow_dataset.get_temporary_cache_files_directory = get_temporary_cache_files_directory
 register_dataset_info()
 disable_caching()

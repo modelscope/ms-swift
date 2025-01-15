@@ -175,6 +175,21 @@ register_model(
 
 register_model(
     ModelMeta(
+        LLMModelType.phi4,
+        [
+            ModelGroup([
+                Model('LLM-Research/phi-4', 'microsoft/phi-4'),
+            ]),
+        ],
+        TemplateType.phi4,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['Phi3ForCausalLM'],
+        requires=['transformers>=4.36'],
+        model_arch=ModelArch.phi3,
+    ))
+
+register_model(
+    ModelMeta(
         LLMModelType.phi3_moe,
         [
             ModelGroup([
