@@ -91,13 +91,11 @@ class LLMExport(BaseUI):
 
                 base_tab.element('running_tasks').change(
                     partial(ExportRuntime.task_changed, base_tab=base_tab), [base_tab.element('running_tasks')],
-                    list(base_tab.valid_elements().values()) + [cls.element('log')],
-                    cancels=ExportRuntime.log_event)
+                    list(base_tab.valid_elements().values()) + [cls.element('log')])
                 ExportRuntime.element('kill_task').click(
                     ExportRuntime.kill_task,
                     [ExportRuntime.element('running_tasks')],
                     [ExportRuntime.element('running_tasks')] + [ExportRuntime.element('log')],
-                    cancels=[ExportRuntime.log_event],
                 )
 
     @classmethod

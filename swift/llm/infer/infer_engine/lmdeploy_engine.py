@@ -130,7 +130,7 @@ class LmdeployEngine(InferEngine):
             max_new_tokens = kwargs.get('max_new_tokens')
             if max_new_tokens is None:
                 kwargs.pop('max_new_tokens', None)
-            parameters = inspect.signature(LmdeployGenerationConfig.__init__).parameters
+            parameters = inspect.signature(LmdeployGenerationConfig).parameters
             for k, v in kwargs.copy().items():
                 if k not in parameters or v is None:
                     kwargs.pop(k)
