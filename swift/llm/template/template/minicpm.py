@@ -14,7 +14,7 @@ from ..template_inputs import StdTemplateInputs
 from ..utils import Context, Prompt, findall
 from ..vision_utils import load_video_minicpmv_mplug_owl3
 from .llama import Llama3TemplateMeta
-from .qwen import QwenTemplateMeta
+from .qwen import Qwen2_5TemplateMeta, QwenTemplateMeta
 
 
 @dataclass
@@ -236,12 +236,13 @@ register_template(
         placeholder_tokens=['<unk>'],
     ))
 
+
 class MiniCPMO2_6Template(MiniCPMV2_6Template):
     pass
 
 
 register_template(
-    QwenTemplateMeta(
+    Qwen2_5TemplateMeta(
         MLLMTemplateType.minicpmo2_6,
         template_cls=MiniCPMO2_6Template,
         placeholder_tokens=['<unk>'],
