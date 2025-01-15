@@ -36,7 +36,7 @@ def get_model_tokenizer_valley(model_dir: str,
     kwargs['model_config'] = model_config
     kwargs['automodel_class'] = automodel_class
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
-
+    model.generation_config.repetition_penalty = 1.0
     if model is not None:
         from transformers import AutoProcessor, SiglipImageProcessor
         tokenizer.image_processor = SiglipImageProcessor.from_pretrained(model.config.mm_vision_tower)

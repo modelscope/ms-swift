@@ -15,18 +15,29 @@ from ..utils import Context, Prompt, findall
 from ..vision_utils import load_batch, load_video_llava
 from .llama import Llama3TemplateMeta
 from .qwen import QwenTemplateMeta
-from .utils import ChatmlTemplateMeta
+from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
+
+
+@dataclass
+class ValleyTemplateMeta(ChatmlTemplateMeta):
+    auto_add_bos: bool = False
+    default_system: Optional[str] = ("You are Valley, a large language and vision assistant trained by ByteDance."
+                                     "You are able to understand the visual content or video that the user provides,"
+                                     " and assist the user with a variety of tasks using natural language."
+                                     "Follow the instructions carefully and explain your answers in detail.")
+
 
 class ValleyTemplate(Template):
-    skip_prompt = False
+    skip_prompt = True
     use_model = True
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index,
                     inputs: StdTemplateInputs) -> List[Context]:
         assert media_type == 'image'
-        return [[-200], '\n']
+        return [[-200]]
 
-    def preprocess_images(self, image_binary_list) -> torch.FloatTensor:
+    def preprocess_images(self, image_binary_list):
+        from valley_eagle.util.mm_utils import process_anyres_image
         byte2image = lambda byte_data: Image.open(io.BytesIO(byte_data))
         images = []
         for binary in image_binary_list:
@@ -38,10 +49,11 @@ class ValleyTemplate(Template):
                 raise ValueError("unsupported type")
         video_pad = []
         for img in images:
-            image = self.image_processor(img, return_tensors="pt")["pixel_values"][0]
+            if self.model.config.anyres:
+                image = process_anyres_image(img, self.tokenizer.image_processor, self.model.config.grid_pinpoints)
+            else:
+                image = self.tokenizer.image_processor(img, return_tensors="pt")["pixel_values"][0]
             video_pad.append(image)
-
-        video_pad = [self.black_img] if len(video_pad) == 0 else video_pad
 
         if not self.model.config.anyres:
             video = torch.stack(video_pad, dim=0)
@@ -53,12 +65,17 @@ class ValleyTemplate(Template):
         import re
         from qwen_vl_utils import fetch_image
 
-        text = inputs.messages[-1].content[0].text
+        if inputs.messages[-1]["role"] == "user":
+            text = inputs.messages[-1]["content"]
+        elif len(inputs.messages) > 1 and inputs.messages[-2]["role"] == "user":
+            text = inputs.messages[-2]["content"]
+        else:
+            raise ValueError("No user text found in the input messages")
         video_images_tensor = self.preprocess_images(images_binary)
         img_length = len(video_images_tensor)
         video_images_tensor = [video_images_tensor]
         if img_length:
-            images = [[item.to(self.device).half() for item in img] for img in video_images_tensor]
+            images = [[item.to(self.model.device).half() for item in img] for img in video_images_tensor]
 
         messages_qwen = []
         image_list = []
@@ -72,45 +89,49 @@ class ValleyTemplate(Template):
             image_list.append(image)
         messages_qwen.append({"role": "user", "content": [{"type": "text", "text": text}]})
         messages_qwen.append({"role": "assistant", "content": [{"type": "text", "text": ""}]})
-        text = self.qwen2vl_processor.apply_chat_template(messages_qwen[:-1], tokenize=False, add_generation_prompt=True)
+        text = self.tokenizer.qwen2vl_processor.apply_chat_template(messages_qwen[:-1], tokenize=False, add_generation_prompt=True)
         text_segs = re.split("<image>", text)
         text = "<|vision_start|><|image_pad|><|vision_end|>".join(text_segs[: len(image_list) + 1]) + "".join(
             text_segs[len(image_list) + 1 :]
         )
-        data_dict_qwen2vl = self.qwen2vl_processor(text=[text], images=image_list, padding=True, return_tensors="pt")
+        data_dict_qwen2vl = self.tokenizer.qwen2vl_processor(text=[text], images=image_list, padding=True, return_tensors="pt")
         results = {}
 
         results["images"] = images
         results["image_sizes"] = image_sizes
-        results["pixel_values"] = data_dict_qwen2vl["pixel_values"].to(self.device)
-        results["image_grid_thw"] = data_dict_qwen2vl["image_grid_thw"].to(self.device)
+        results["pixel_values"] = data_dict_qwen2vl["pixel_values"].to(self.model.device)
+        results["image_grid_thw"] = data_dict_qwen2vl["image_grid_thw"].to(self.model.device)
         return results
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
         images = inputs.images or []
+        input_ids = encoded['input_ids']
+        labels = encoded['labels']
         if images:
             results = self.process_images(inputs, images)
             encoded['images'] = results['images']
             encoded['image_sizes'] = results['image_sizes']
             encoded['pixel_values'] = results['pixel_values']
             encoded['image_grid_thw'] = results['image_grid_thw']
+
+        encoded['input_ids'] = input_ids
+        encoded['labels'] = labels
         return encoded
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super()._data_collator(batch, padding_to=padding_to)
-        images = [b['images'] for b in batch if 'images' in b]
-        if images:
-            res['images'] = images
+        if 'images' in batch[0]:
+            res['images'] = sum([b['images'] for b in batch if 'images' in b], start=[])
             res['image_sizes'] = sum([b['image_sizes'] for b in batch if 'image_sizes' in b], start=[])
+            for media_type in ['image', 'video']:
+                grid_thw = [b[f'{media_type}_grid_thw'] for b in batch if b.get(f'{media_type}_grid_thw') is not None]
+                if grid_thw:
+                    res[f'{media_type}_grid_thw'] = torch.concat(grid_thw)
         return res
 
 register_template(
-    Llama3TemplateMeta(
+    ValleyTemplateMeta(
         MLLMTemplateType.valley,
         template_cls=ValleyTemplate,
-        default_system=("You are Valley, a large language and vision assistant trained by ByteDance."
-           "You are able to understand the visual content or video that the user provides, \
-and assist the user with a variety of tasks using natural language."
-           "Follow the instructions carefully and explain your answers in detail."),
     ))
