@@ -10,7 +10,7 @@ from swift.llm import TemplateType
 from swift.utils import get_env_args
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
-from ..patcher import patch_device_map, patch_fixed_device, patch_ignore_check_imports, patch_output_clone
+from ..patcher import patch_device_map, patch_fixed_device, patch_output_clone
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
 from ..utils import ModelInfo, use_submodel_func
 from .deepseek import get_model_tokenizer_deepseek_moe
