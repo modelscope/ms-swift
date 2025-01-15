@@ -33,8 +33,11 @@ class ValleyTemplate(Template):
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index,
                     inputs: StdTemplateInputs) -> List[Context]:
-        assert media_type == 'image'
-        return [[-200]]
+        # assert media_type == 'image'
+        if media_type == 'video':
+            from ..vision_utils import load_video_valley
+            return self.replace_video2image(load_video_valley, inputs, lambda i: [[151665,-200,151666]])
+        return [[151665,-200,151666]]
 
     def preprocess_images(self, image_binary_list):
         from valley_eagle.util.mm_utils import process_anyres_image
@@ -114,7 +117,6 @@ class ValleyTemplate(Template):
             encoded['image_sizes'] = results['image_sizes']
             encoded['pixel_values'] = results['pixel_values']
             encoded['image_grid_thw'] = results['image_grid_thw']
-
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
         return encoded

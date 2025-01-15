@@ -90,6 +90,11 @@ def test_minicpmv():
     _infer_model(pt_engine)
 
 
+def test_valley():
+    pt_engine = PtEngine('bytedance-research/Valley-Eagle-7B')
+    _infer_model(pt_engine)
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig, get_template
     from swift.utils import get_logger, seed_everything
@@ -98,5 +103,6 @@ if __name__ == '__main__':
     # test_internvl2_5()
     # test_xcomposer2_5()
     # test_internvl2_5_mpo()
-    test_mplug3()
-    test_minicpmv()
+    # test_mplug3()
+    # test_minicpmv()
+    test_valley()
