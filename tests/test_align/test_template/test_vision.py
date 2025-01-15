@@ -356,6 +356,11 @@ def test_doc_owl2():
         'more efficient and accurate OCR-free document understanding.')
 
 
+def test_valley():
+    pt_engine = PtEngine('bytedance-research/Valley-Eagle-7B')
+    _infer_model(pt_engine)
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig, get_template
     from swift.utils import get_logger, seed_everything
@@ -394,4 +399,5 @@ if __name__ == '__main__':
     # test_molmo()
     # test_molmoe()
     # test_doc_owl2()
-    test_minicpmo()
+    # test_minicpmo()
+    test_valley()

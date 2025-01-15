@@ -107,6 +107,10 @@ def test_minicpmo():
         'explore the contents of the book, creating a heartwarming '
         'scene of a young reader immersed in their world of stories.')[:len(response)]
 
+def test_valley():
+    pt_engine = PtEngine('bytedance-research/Valley-Eagle-7B')
+    _infer_model(pt_engine)
+
 
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig, get_template
@@ -118,4 +122,5 @@ if __name__ == '__main__':
     # test_internvl2_5_mpo()
     # test_mplug3()
     # test_minicpmv()
-    test_minicpmo()
+    # test_minicpmo()
+    test_valley()

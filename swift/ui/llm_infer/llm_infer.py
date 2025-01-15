@@ -179,13 +179,11 @@ class LLMInfer(BaseUI):
 
                 base_tab.element('running_tasks').change(
                     partial(Runtime.task_changed, base_tab=base_tab), [base_tab.element('running_tasks')],
-                    list(cls.valid_elements().values()) + [cls.element('log')],
-                    cancels=Runtime.log_event)
+                    list(cls.valid_elements().values()) + [cls.element('log')])
                 Runtime.element('kill_task').click(
                     Runtime.kill_task,
                     [Runtime.element('running_tasks')],
                     [Runtime.element('running_tasks')] + [Runtime.element('log')],
-                    cancels=[Runtime.log_event],
                 )
 
     @classmethod

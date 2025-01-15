@@ -93,13 +93,11 @@ class LLMEval(BaseUI):
 
                 base_tab.element('running_tasks').change(
                     partial(EvalRuntime.task_changed, base_tab=base_tab), [base_tab.element('running_tasks')],
-                    list(base_tab.valid_elements().values()) + [cls.element('log')],
-                    cancels=EvalRuntime.log_event)
+                    list(base_tab.valid_elements().values()) + [cls.element('log')])
                 EvalRuntime.element('kill_task').click(
                     EvalRuntime.kill_task,
                     [EvalRuntime.element('running_tasks')],
                     [EvalRuntime.element('running_tasks')] + [EvalRuntime.element('log')],
-                    cancels=[EvalRuntime.log_event],
                 )
 
     @classmethod
