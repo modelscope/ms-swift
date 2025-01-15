@@ -123,5 +123,5 @@ if __name__ == '__main__':
     # test_internvl2_5_mpo()
     # test_mplug3()
     # test_minicpmv()
-    # test_minicpmo()
-    test_valley()
+    test_minicpmo()
+    # test_valley()

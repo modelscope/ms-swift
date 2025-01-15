@@ -399,5 +399,5 @@ if __name__ == '__main__':
     # test_molmo()
     # test_molmoe()
     # test_doc_owl2()
-    # test_minicpmo()
-    test_valley()
+    test_minicpmo()
+    # test_valley()
