@@ -7,6 +7,7 @@ class LLMModelArch:
     qwen = 'qwen'
     llama = 'llama'
     internlm2 = 'internlm2'
+    internlm3 = 'internlm3'
     chatglm = 'chatglm'
     deepseek_v2 = 'deepseek_v2'
     baichuan = 'baichuan'
@@ -127,6 +128,21 @@ def register_model_arch(model_arch: ModelKeys, *, exist_ok: bool = False) -> Non
 register_model_arch(
     ModelKeys(
         LLMModelArch.llama,
+        module_list='model.layers',
+        mlp='model.layers.{}.mlp',
+        down_proj='model.layers.{}.mlp.down_proj',
+        attention='model.layers.{}.self_attn',
+        o_proj='model.layers.{}.self_attn.o_proj',
+        q_proj='model.layers.{}.self_attn.q_proj',
+        k_proj='model.layers.{}.self_attn.k_proj',
+        v_proj='model.layers.{}.self_attn.v_proj',
+        embedding='model.embed_tokens',
+        lm_head='lm_head',
+    ))
+
+register_model_arch(
+    ModelKeys(
+        LLMModelArch.internlm3,
         module_list='model.layers',
         mlp='model.layers.{}.mlp',
         down_proj='model.layers.{}.mlp.down_proj',

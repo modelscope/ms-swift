@@ -70,8 +70,14 @@ def test_internlm():
 
 
 def test_internlm2():
-    # pt_engine = PtEngine('Shanghai_AI_Laboratory/internlm2-1_8b')
     pt_engine = PtEngine('Shanghai_AI_Laboratory/internlm2_5-1_8b-chat')
+    _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    _infer_model(pt_engine)
+
+
+def test_internlm3():
+    pt_engine = PtEngine('Shanghai_AI_Laboratory/internlm3-8b-instruct')
     _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     _infer_model(pt_engine)
@@ -251,7 +257,7 @@ def test_skywork_reward():
 
 
 if __name__ == '__main__':
-    from swift.llm import PtEngine, RequestConfig, get_template, get_model_tokenizer, VllmEngine
+    from swift.llm import PtEngine, RequestConfig, get_template, get_model_tokenizer
     from swift.utils import get_logger, seed_everything
     logger = get_logger()
     # test_qwen2_5()
@@ -275,4 +281,5 @@ if __name__ == '__main__':
     # test_qwen2_reward()
     # test_qwen2_5_math()
     # test_skywork_reward()
-    test_phi4()
+    # test_phi4()
+    test_internlm3()

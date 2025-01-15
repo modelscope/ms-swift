@@ -72,6 +72,22 @@ register_model(
     ))
 
 
+register_model(
+    ModelMeta(
+        LLMModelType.internlm3,
+        [
+            ModelGroup([
+                Model('Shanghai_AI_Laboratory/internlm3-8b-instruct', 'internlm/internlm3-8b-instruct'),
+            ]),
+        ],
+        TemplateType.internlm3,
+        get_model_tokenizer_with_flash_attn,
+        requires=['transformers>=4.48'],
+        architectures=['InternLM3ForCausalLM'],
+        model_arch=ModelArch.internlm3,
+    ))
+
+
 def get_model_tokenizer_xcomposer2(model_dir: str,
                                    model_info: ModelInfo,
                                    model_kwargs: Dict[str, Any],
