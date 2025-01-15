@@ -267,6 +267,17 @@ def load_audio_qwen(audio_io: BytesIO, sampling_rate: int):
     return librosa.load(audio_io, sr=sampling_rate)[0]
 
 
+@load_file_decorator
+def load_video_valley(video_io: BytesIO):
+    import decord
+    from torchvision import transforms
+    video_reader = decord.VideoReader(video_io)
+    decord.bridge.set_bridge('torch')
+    video = video_reader.get_batch(np.linspace(0, len(video_reader) - 1, 8).astype(np.int_)).byte()
+    images = [transforms.ToPILImage()(image.permute(2, 0, 1)).convert('RGB') for image in video]
+    return images
+
+
 def normalize_bbox(objects: List[Dict[str, Any]], images: List[Image.Image], to_type: Literal['real', 'norm_1000',
                                                                                               'norm_1']) -> None:
     """Normalize bbox to needed.
