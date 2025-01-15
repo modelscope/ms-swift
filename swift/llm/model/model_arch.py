@@ -42,6 +42,7 @@ class MLLMModelArch:
     xcomposer = 'xcomposer'
     internvl = 'internvl'
     minicpmv = 'minicpmv'
+    minicpmo = 'minicpmo'
     deepseek_vl = 'deepseek_vl'
     deepseek_vl2 = 'deepseek_vl2'
     deepseek_janus = 'deepseek_janus'
@@ -394,6 +395,16 @@ register_model_arch(
         aligner='resampler',
         vision_tower='vpm',
     ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.minicpmo,
+        language_model='llm',
+        aligner=['resampler', 'audio_projection_layer'],
+        vision_tower=['vpm', 'apm'],
+        generator=[
+            'tts',
+        ]))
 
 register_model_arch(
     MultiModelKeys(

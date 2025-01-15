@@ -235,3 +235,14 @@ register_template(
         template_cls=MiniCPMV2_6Template,
         placeholder_tokens=['<unk>'],
     ))
+
+class MiniCPMO2_6Template(MiniCPMV2_6Template):
+    pass
+
+
+register_template(
+    QwenTemplateMeta(
+        MLLMTemplateType.minicpmo2_6,
+        template_cls=MiniCPMO2_6Template,
+        placeholder_tokens=['<unk>'],
+    ))
