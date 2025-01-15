@@ -75,7 +75,7 @@ class ValleyTemplate(Template):
         img_length = len(video_images_tensor)
         video_images_tensor = [video_images_tensor]
         if img_length:
-            images = [[item.to(self.model.device).half() for item in img] for img in video_images_tensor]
+            images = [[item.to(self.model.device).to(self.model.dtype) for item in img] for img in video_images_tensor]
 
         messages_qwen = []
         image_list = []
@@ -83,7 +83,7 @@ class ValleyTemplate(Template):
             images_pil = [img.convert("RGB") for img in images_binary]
         elif isinstance(images_binary[0], bytes):
             images_pil = [Image.open(io.BytesIO(img)).convert("RGB") for img in images_binary]
-        image_sizes = [[x.size for x in images_pil]]
+        image_sizes = torch.tensor([[x.size for x in images_pil]])
         for image_file in images_pil:
             image = fetch_image({"image": image_file})
             image_list.append(image)
@@ -123,7 +123,7 @@ class ValleyTemplate(Template):
         res = super()._data_collator(batch, padding_to=padding_to)
         if 'images' in batch[0]:
             res['images'] = sum([b['images'] for b in batch if 'images' in b], start=[])
-            res['image_sizes'] = sum([b['image_sizes'] for b in batch if 'image_sizes' in b], start=[])
+            res['image_sizes'] = torch.concat([b['image_sizes'] for b in batch if 'image_sizes' in b], dim=0)
             for media_type in ['image', 'video']:
                 grid_thw = [b[f'{media_type}_grid_thw'] for b in batch if b.get(f'{media_type}_grid_thw') is not None]
                 if grid_thw:
