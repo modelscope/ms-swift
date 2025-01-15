@@ -2,8 +2,11 @@
 from functools import partial
 from types import MethodType
 from typing import Any, Dict
+
 from transformers import AutoConfig
+
 from swift.llm import TemplateType
+from swift.utils import get_env_args
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
 from ..patcher import patch_device_map, patch_fixed_device, patch_ignore_check_imports, patch_output_clone
@@ -94,8 +97,8 @@ def get_model_tokenizer_minicpmv_2_x(model_dir: str,
     version = kwargs.get('version')
     if version == 'o2.6':
         model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-        model_config.init_tts = False
-        model_config.init_audio = False
+        model_config.init_tts = get_env_args('init_tts', bool, False)
+        model_config.init_audio = get_env_args('init_audio', bool, False)
         kwargs['model_config'] = model_config
     with patch_device_map():
         model, tokenizer = get_model_tokenizer_minicpmv(
