@@ -107,6 +107,7 @@ def test_minicpmo():
         'explore the contents of the book, creating a heartwarming '
         'scene of a young reader immersed in their world of stories.')[:len(response)]
 
+
 def test_valley():
     pt_engine = PtEngine('bytedance-research/Valley-Eagle-7B')
     _infer_model(pt_engine)
