@@ -226,6 +226,13 @@ class MiniCPMV2_6Template(MiniCPMVTemplate):
 
 
 register_template(
+    QwenTemplateMeta(
+        MLLMTemplateType.minicpmv2_6,
+        template_cls=MiniCPMV2_6Template,
+        placeholder_tokens=['<unk>'],
+    ))
+
+register_template(
     Qwen2_5TemplateMeta(
         MLLMTemplateType.minicpmo2_6,
         template_cls=MiniCPMV2_6Template,
