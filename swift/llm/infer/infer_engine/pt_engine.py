@@ -284,7 +284,7 @@ class PtEngine(InferEngine):
             preds, logprobs = template.decode_seq_cls(logits)
         elif template.mode == 'prm':
             preds = template.decode_prm(inputs['input_ids'], logits)
-            logprobs = [None]*len(preds)
+            logprobs = [None] * len(preds)
         else:
             raise ValueError(f'Unsupported mode: {template.mode}')
 
