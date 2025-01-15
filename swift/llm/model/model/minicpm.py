@@ -151,7 +151,7 @@ register_model(
                 Model('OpenBMB/MiniCPM-o-2_6', 'openbmb/MiniCPM-o-2_6'),
             ]),
         ],
-        TemplateType.minicpmv2_6,
+        TemplateType.minicpmo2_6,
         partial(get_model_tokenizer_minicpmv_2_x, version='o2.6'),
         architectures=['MiniCPMO'],
         model_arch=ModelArch.minicpmv,
