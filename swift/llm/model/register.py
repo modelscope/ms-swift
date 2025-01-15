@@ -64,6 +64,7 @@ class ModelMeta:
 
     is_multimodal: bool = False
     is_reward: bool = False
+    task_type: Optional[str] = None
 
     # File patterns to ignore when downloading the model.
     ignore_patterns: List[str] = field(default_factory=list)
@@ -391,6 +392,8 @@ def get_model_info_meta(
             task_type = 'seq_cls'
         if task_type == 'seq_cls':
             assert num_labels is not None, 'Please pass the parameter `num_labels`.'
+        if model_meta.task_type is not None:
+            task_type = model_meta.task_type
     model_info.task_type = task_type
     model_info.num_labels = num_labels
 

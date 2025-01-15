@@ -34,7 +34,7 @@ class MaxLengthError(ValueError):
 
 
 class Template(ProcessorMixin):
-    special_tokens = ['<image>', '<video>', '<audio>', '<bbox>', '<ref-object>']
+    special_tokens = ['<image>', '<video>', '<audio>', '<bbox>', '<ref-object>', '<cot-process>']
     special_keys = ['images', 'videos', 'audios', 'objects']
     grounding_type = 'norm_1000'
 
@@ -111,7 +111,7 @@ class Template(ProcessorMixin):
 
         self.mode: Literal['pt', 'vllm', 'lmdeploy',  # infer
                            'train', 'rlhf', 'kto',  # train
-                           'seq_cls'] = 'pt'
+                           'seq_cls', 'prm'] = 'pt'
         if self.model_info.task_type != 'causal_lm':
             self.mode = self.model_info.task_type
         self._handles = []
@@ -237,7 +237,7 @@ class Template(ProcessorMixin):
             encoded = Template._encode(self, inputs)
             for key in ['images', 'audios', 'videos']:
                 encoded[key] = getattr(inputs, key)
-        elif self.mode in {'pt', 'train'}:
+        elif self.mode in {'pt', 'train', 'prm'}:
             encoded = self._encode(inputs)
         elif self.mode == 'seq_cls':
             encoded = self._seq_cls_encode(inputs)
@@ -365,8 +365,7 @@ class Template(ProcessorMixin):
     def _simplify_context_list(self, context_list: List[Context], loss_scale_list: List[float],
                                inputs: StdTemplateInputs) -> Tuple[List[Context], List[float]]:
         """Merge anything in the context to simplify the inputs"""
-        if inputs.is_multimodal:
-            context_list, loss_scale_list = self._split_special_tokens(context_list, loss_scale_list)
+        context_list, loss_scale_list = self._split_special_tokens(context_list, loss_scale_list)
         context_list, loss_scale_list = self._pre_tokenize(context_list, loss_scale_list, inputs)
 
         res: List[Context] = []  # result of context_list
@@ -833,7 +832,7 @@ class Template(ProcessorMixin):
             return self._rlhf_data_collator(batch, padding_to=padding_to)
         elif self.mode == 'kto':
             return self._kto_data_collator(batch, padding_to=padding_to)
-        elif self.mode in {'pt', 'train'}:
+        elif self.mode in {'pt', 'train', 'prm'}:
             return self._data_collator(batch, padding_to=padding_to)
         elif self.mode == 'seq_cls':
             return self._seq_cls_data_collator(batch, padding_to=padding_to)

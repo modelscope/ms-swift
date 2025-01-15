@@ -283,7 +283,8 @@ class PtEngine(InferEngine):
         if template.mode == 'seq_cls':
             preds, logprobs = template.decode_seq_cls(logits)
         elif template.mode == 'prm':
-            preds, logprobs = template.decode_prm(logits)
+            preds = template.decode_prm(inputs['input_ids'], logits)
+            logprobs = [None]*len(preds)
         else:
             raise ValueError(f'Unsupported mode: {template.mode}')
 
@@ -441,7 +442,7 @@ class PtEngine(InferEngine):
 
             return _gen_wrapper()
         else:
-            infer_func = self._infer_prm if template.mode == 'seq_cls' else self._infer_full
+            infer_func = self._infer_forward if template.mode in ('seq_cls', 'prm') else self._infer_full
             return self._update_metrics(infer_func(**kwargs), metrics)
 
     def infer(
