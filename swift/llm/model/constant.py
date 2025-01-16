@@ -106,6 +106,7 @@ class BertModelType:
 class RMModelType:
     internlm2_reward = 'internlm2_reward'
     qwen2_reward = 'qwen2_reward'
+    qwen2_5_prm = 'qwen2_5_prm'
     qwen2_5_math_reward = 'qwen2_5_math_reward'
     llama3_2_reward = 'llama3_2_reward'
     gemma_reward = 'gemma_reward'
