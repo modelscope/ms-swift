@@ -1,11 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 import sys
-from cProfile import label
 from functools import partial, wraps
 from typing import Any, Dict
-
-from transformers import AutoConfig
 
 from swift.llm import TemplateType
 from ..constant import MLLMModelType
