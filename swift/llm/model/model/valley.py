@@ -41,28 +41,16 @@ def get_model_tokenizer_valley(model_dir: str,
             def new_forward(*args, **kwargs):
                 import torch
                 outputs = forward(*args, **kwargs)
-                if 'labels' in kwargs and kwargs['labels'] is not None:
-                    return_dict = kwargs['return_dict'] if kwargs['return_dict'] is not None else args[
-                        0].config.use_return_dict
-                    if not return_dict:
-                        loss = outputs[0]
-                        if loss is not None and loss.shape[-1] > 0:
-                            loss = torch.mean(loss, dim=-1)
-                        outputs[0] = loss
-                        return outputs
-                    else:
-                        loss = outputs.loss
-                        if loss is not None and loss.shape[-1] > 0:
-                            loss = torch.mean(loss, dim=-1)
-                        return CausalLMOutputWithPast(
-                            loss=loss,
-                            logits=outputs.logits,
-                            past_key_values=outputs.past_key_values,
-                            hidden_states=outputs.hidden_states,
-                            attentions=outputs.attentions,
-                        )
-                else:
-                    return outputs
+                loss = outputs.loss
+                if loss is not None and loss.shape[-1] > 0:
+                    loss = torch.mean(loss, dim=-1)
+                return CausalLMOutputWithPast(
+                    loss=loss,
+                    logits=outputs.logits,
+                    past_key_values=outputs.past_key_values,
+                    hidden_states=outputs.hidden_states,
+                    attentions=outputs.attentions,
+                )
 
             ValleyQwen2ForCausalLM.forward = new_forward
     kwargs['model_config'] = model_config
