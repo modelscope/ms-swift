@@ -365,7 +365,8 @@ class Template(ProcessorMixin):
     def _simplify_context_list(self, context_list: List[Context], loss_scale_list: List[float],
                                inputs: StdTemplateInputs) -> Tuple[List[Context], List[float]]:
         """Merge anything in the context to simplify the inputs"""
-        context_list, loss_scale_list = self._split_special_tokens(context_list, loss_scale_list)
+        if inputs.is_multimodal or self.mode == 'prm':
+            context_list, loss_scale_list = self._split_special_tokens(context_list, loss_scale_list)
         context_list, loss_scale_list = self._pre_tokenize(context_list, loss_scale_list, inputs)
 
         res: List[Context] = []  # result of context_list

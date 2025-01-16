@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from dataclasses import dataclass, field
 from functools import partial
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional
 
 import torch
 import torch.nn.functional as F
@@ -50,6 +50,15 @@ register_template(Qwen2_5MathTemplateMeta(LLMTemplateType.qwen2_5_math))
 
 class QwenPRMTemplate(Template):
     cot_process_placeholder = '<extra_0>'
+
+    def _preprocess_inputs(
+        self,
+        inputs: StdTemplateInputs,
+    ) -> None:
+        super()._preprocess_inputs(inputs)
+        total_content = '\n'.join([message['content'] or '' for message in inputs.messages])
+        if self.cot_process_placeholder not in total_content:
+            inputs.messages[-1]['content'] = inputs.messages[-1]['content'] + self.cot_process_placeholder
 
     @staticmethod
     def make_step_rewards(logits, token_masks):
