@@ -59,7 +59,7 @@ class QwenPRMTemplate(Template):
         total_content = '\n'.join([message['content'] or '' for message in inputs.messages])
         if self.cot_process_placeholder not in total_content:
             inputs.messages[-1]['content'] = inputs.messages[-1]['content'] + self.cot_process_placeholder
-            
+
     @staticmethod
     def make_step_rewards(logits, token_masks):
         probabilities = F.softmax(logits, dim=-1)

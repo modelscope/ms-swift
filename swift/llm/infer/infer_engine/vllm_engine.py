@@ -331,6 +331,10 @@ class VllmEngine(InferEngine):
             choices.append(choice)
         return ChatCompletionResponse(model=self.model_name, choices=choices, usage=usage_info, id=request_id)
 
+    def _batch_infer_stream(self, *args, **kwargs):
+        self.engine.engine.model_executor.parallel_worker_tasks = None
+        return super()._batch_infer_stream(*args, **kwargs)
+
     def infer(
         self,
         infer_requests: List[InferRequest],
@@ -341,7 +345,6 @@ class VllmEngine(InferEngine):
         use_tqdm: Optional[bool] = None,
         adapter_request: Optional[AdapterRequest] = None
     ) -> Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
-        self.engine.engine.model_executor.parallel_worker_tasks = None
         return super().infer(
             infer_requests,
             request_config,
