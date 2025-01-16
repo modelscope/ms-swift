@@ -48,8 +48,9 @@ def test_mllm_mp():
     from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
     result = sft_main(
         TrainArguments(
-            model='Qwen/Qwen2-VL-2B-Instruct',
-            dataset=['modelscope/coco_2014_caption:validation#20', 'AI-ModelScope/alpaca-gpt4-data-en#20'],
+            model='bytedance-research/Valley-Eagle-7B',
+            dataset=['modelscope/coco_2014_caption:validation#20'],
+            # dataset=['modelscope/coco_2014_caption:validation#20', 'AI-ModelScope/alpaca-gpt4-data-en#20'],
             train_type='lora',
             target_modules=['all-linear'],
             freeze_aligner=False,
