@@ -4,8 +4,6 @@ import sys
 from functools import partial, wraps
 from typing import Any, Dict
 
-from transformers import AutoConfig
-
 from swift.llm import TemplateType
 from ..constant import MLLMModelType
 from ..model_arch import ModelArch
@@ -27,12 +25,34 @@ def get_model_tokenizer_valley(model_dir: str,
     sys.path.append(os.path.join(local_repo_path))
 
     if llm_model_type == 'valley':
+        from torch.nn import CrossEntropyLoss
+        from transformers.modeling_outputs import CausalLMOutputWithPast
         from valley_eagle.model.language_model.valley_qwen2 import ValleyQwen2ForCausalLM, ValleyConfig
         model_config = ValleyConfig.from_pretrained(model_dir)
         model_config.mm_vision_tower = safe_snapshot_download('AI-ModelScope/siglip-so400m-patch14-384')
         model_config.eagle_vision_tower = safe_snapshot_download('Qwen/Qwen2-VL-7B-Instruct')
         automodel_class = ValleyQwen2ForCausalLM
 
+        if not hasattr(ValleyQwen2ForCausalLM, '_origin_forward'):
+            forward = ValleyQwen2ForCausalLM.forward
+            ValleyQwen2ForCausalLM._origin_forward = forward
+
+            @wraps(forward)
+            def new_forward(*args, **kwargs):
+                import torch
+                outputs = forward(*args, **kwargs)
+                loss = outputs.loss
+                if loss is not None and loss.shape[-1] > 0:
+                    loss = torch.mean(loss, dim=-1)
+                return CausalLMOutputWithPast(
+                    loss=loss,
+                    logits=outputs.logits,
+                    past_key_values=outputs.past_key_values,
+                    hidden_states=outputs.hidden_states,
+                    attentions=outputs.attentions,
+                )
+
+            ValleyQwen2ForCausalLM.forward = new_forward
     kwargs['model_config'] = model_config
     kwargs['automodel_class'] = automodel_class
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
