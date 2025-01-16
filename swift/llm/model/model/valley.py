@@ -39,44 +39,29 @@ def get_model_tokenizer_valley(model_dir: str,
 
             @wraps(forward)
             def new_forward(*args, **kwargs):
-                prepare_kwargs = {
-                    'input_ids': kwargs.get('input_ids'),
-                    'position_ids': kwargs.get('position_ids'),
-                    'attention_mask': kwargs.get('attention_mask'),
-                    'past_key_values': kwargs.get('past_key_values'),
-                    'labels': kwargs.get('labels'),
-                    'images': kwargs.get('images'),
-                    'image_sizes': kwargs.get('image_sizes'),
-                    'pixel_values': kwargs.get('pixel_values'),
-                    'pixel_values_videos': kwargs.get('pixel_values_videos'),
-                    'image_grid_thw': kwargs.get('image_grid_thw'),
-                    'video_grid_thw': kwargs.get('video_grid_thw'),
-                    'pack_ids': kwargs.get('pack_ids'),
-                }
-                _, _, _, _, _, new_labels = args[0].prepare_inputs_labels_for_multimodal(**prepare_kwargs)
+                import torch
                 outputs = forward(*args, **kwargs)
-                loss = outputs.loss
-                logits = outputs.logits
-                if 'labels' in kwargs:
-                    # Upcast to float if we need to compute the loss to avoid potential precision issues
-                    logits = logits.float()
-                    # Shift so that tokens < n predict n
-                    shift_logits = logits[..., :-1, :].contiguous()
-                    shift_labels = new_labels[..., 1:].contiguous()
-                    # Flatten the tokens
-                    loss_fct = CrossEntropyLoss()
-                    shift_logits = shift_logits.view(-1, args[0].config.vocab_size)
-                    shift_labels = shift_labels.view(-1)
-                    # Enable model parallelism
-                    shift_labels = shift_labels.to(shift_logits.device)
-                    loss = loss_fct(shift_logits, shift_labels)
-                return CausalLMOutputWithPast(
-                    loss=loss,
-                    logits=logits,
-                    past_key_values=outputs.past_key_values,
-                    hidden_states=outputs.hidden_states,
-                    attentions=outputs.attentions,
-                )
+                if kwargs['labels'] is not None:
+                    return_dict = kwargs['return_dict'] if kwargs['return_dict'] is not None else args[0].config.use_return_dict
+                    if not return_dict:
+                        loss = outputs[0]
+                        if loss is not None and loss.shape[-1] > 0:
+                            loss = torch.mean(loss, dim=-1)
+                        outputs[0] = loss
+                        return outputs
+                    else:
+                        loss = outputs.loss
+                        if loss is not None and loss.shape[-1] > 0:
+                            loss = torch.mean(loss, dim=-1)
+                        return CausalLMOutputWithPast(
+                            loss=loss,
+                            logits=outputs.logits,
+                            past_key_values=outputs.past_key_values,
+                            hidden_states=outputs.hidden_states,
+                            attentions=outputs.attentions,
+                        )
+                else:
+                    return outputs
 
             ValleyQwen2ForCausalLM.forward = new_forward
     kwargs['model_config'] = model_config
