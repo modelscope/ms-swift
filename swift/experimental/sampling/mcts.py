@@ -1,5 +1,6 @@
 from copy import deepcopy
 import numpy as np
+import json
 import time
 
 from swift.llm import InferRequest
@@ -252,12 +253,11 @@ class MctsSampler(Sampler):
                     end_path = history_messages[rollout_node_index]["content"]
                     if check_terminate(end_path)[0]:
                         orm_infer_requests = [InferRequest([history_messages[rollout_node_index]])]
-                        orm_response, _orm_mask = get_reward(
-                            self.orm_model, orm_infer_requests, ground_truths=[ground_truth] * len(orm_infer_requests),
+                        orm_score, _orm_mask = get_reward(
+                            self.orm_model, orm_infer_requests, ground_truths=[ground_truth] * len(infer_requests),
                             threshold=0.0)
-                        orm_score = float(orm_response[0].choices[0].message.content)
-                        node.active_children[index].outcome_reward = orm_score
-                        if orm_score == 1:
+                        node.active_children[index].outcome_reward = orm_score[0]
+                        if orm_score[0] == 1:
                             correct_answers.append(end_path)
                         else:
                             incorrect_answers.append(end_path)
@@ -281,14 +281,14 @@ class MctsSampler(Sampler):
                 results += _collect(child)
             curr_node.children = sorted(curr_node.children)
             if curr_node.children[-1].outcome_reward - curr_node.children[0].outcome_reward > 0.6:
-                results.append({
+                results.append(json.dumps({
                     "query": query,
                     "path": curr_node.path,
                     "good": curr_node.children[-1].path[-1],
                     "good_score": curr_node.children[-1].outcome_reward,
                     "bad": curr_node.children[0].path[-1],
                     "bad_score": curr_node.children[0].outcome_reward,
-                })
+                }, ensure_ascii=False) + '\n')
             return results
 
         _args = self.args
@@ -339,11 +339,11 @@ class MctsSampler(Sampler):
     def do_sample(self, data):
         if not isinstance(data, list):
             data = [data]
-        prefer_pairs = []
+        generated = []
         for item in data:
             messages = item['messages'][0]
             query = messages[0]['content']
             ground_truth = messages[1]['content']
-            prefer_pair = self.search_single(query, ground_truth)
-            prefer_pairs.append(prefer_pair)
-        return prefer_pairs
+            prefer_pairs = self.search_single(query, ground_truth)
+            generated += prefer_pairs
+        return generated
