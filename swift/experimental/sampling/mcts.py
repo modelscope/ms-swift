@@ -2,13 +2,14 @@ from copy import deepcopy
 import numpy as np
 import json
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from swift.llm import InferRequest
 from swift.llm.infer.protocol import UsageInfo
 from swift.utils import get_logger
 
 from .base import Sampler
-from .utils import get_reward
+from .utils import get_reward, perform_infer
 from .sampling_args import SamplingArguments
 
 from typing import Union, List
@@ -114,7 +115,7 @@ class MctsSampler(Sampler):
             from swift.llm import InferClient
             api_key = os.getenv('DASHSCOPE_API_KEY')
             base_url = 'https://dashscope.aliyuncs.com/compatible-mode/v1'
-            self.infer_engine = InferClient(base_url=base_url, api_key=api_key)
+            self.infer_engines = [InferClient(base_url=base_url, api_key=api_key) for _ in range(args.num_return_sequences)]
             self.infer_kwargs['model'] = args.model
         else:
             _Engine = self.get_infer_engine()
@@ -137,7 +138,30 @@ class MctsSampler(Sampler):
         return _Engine
 
     def _prepare_template(self) -> None:
-        pass
+        # Hack from super()
+        self._prepare_request_configs()
+
+    def _prepare_request_configs(self):
+        _args = self.args
+        request_config = _args.get_request_config()
+        request_config.stop = [SEP_TOKEN]
+        request_config.seed = _args.seed
+        self.expand_request_configs = []
+        for i in range(_args.num_return_sequences):
+            expand_request_config = deepcopy(request_config)
+            expand_request_config.n = 1
+            expand_request_config.num_beams = expand_request_config.n
+            expand_request_config.seed += i
+            self.expand_request_configs.append(expand_request_config)
+        self.rollout_request_config = deepcopy(request_config)
+        self.rollout_request_config.max_tokens = 500
+        self.rollout_request_config.temperature = 0.0
+        self.rollout_request_config.n = 1
+
+    def update_usage_info(self, response):
+        for key, value in self.usage_info.__dict__.items():
+            update_value = getattr(response.usage, key, None) + value
+            setattr(self.usage_info, key, update_value)
 
     def search_single(self, query, ground_truth):
         def _UCT(node: LanguageNode):
@@ -159,10 +183,6 @@ class MctsSampler(Sampler):
 
         def _expand(node: LanguageNode):
             # s_time = time.time()
-            prompt_message = {
-                "role": "user",
-                "content": query,
-            }
             if node.is_root():
                 infer_request = InferRequest([system_message, prompt_message])
             else:
@@ -171,41 +191,55 @@ class MctsSampler(Sampler):
                     "content": node.answer,
                 }
                 infer_request = InferRequest([system_message, prompt_message, history_message, next_message])
-            expand_request_config = deepcopy(request_config)
+
+            # 为了并行进行 Expand 操作，这里暂时不需要考虑顺序，因为 Prompt 是一样的
             n = _args.num_return_sequences - len(node.children)
-            while n > 0:
-                expand_request_config.n = n if n <= 4 else 4
-                expand_request_config.num_return_sequences = expand_request_config.n
-                expand_request_config.num_beams = expand_request_config.n
-                expand_request_config.seed += 1
-                responses = self.infer_engine.infer(
-                    [infer_request],
-                    expand_request_config,
-                    **self.infer_kwargs,
-                )
-                n -= len(responses[0].choices)
-                for key, value in self.usage_info.__dict__.items():
-                    update_value = getattr(responses[0].usage, key, None) + value
-                    setattr(self.usage_info, key, update_value)
-                for choice in responses[0].choices:
-                    output = choice.message.content.rstrip(SEP_TOKEN + '\n')
-                    output = output.split(SEP_TOKEN)[0]
-                    child = LanguageNode(step=output, parent=node)
-                    if check_terminate(child.answer)[0]:
-                        child._terminated = True
-                        orm_infer_requests = [InferRequest([{"role": "assistant", "content": output}])]
-                        orm_score, _orm_mask = get_reward(
-                            self.orm_model, orm_infer_requests, ground_truths=[ground_truth] * len(orm_infer_requests),
-                            threshold=0.0)
-                        child.init_and_update_value(orm_score[0])
-                        if child.outcome_reward == 1:
-                            terminate_correct.append(child.answer)
-                        else:
-                            terminate_incorrect.append(child.answer)
-                    node.add_child(child)
+            with ThreadPoolExecutor(max_workers=n) as executor:
+                futures = {executor.submit(perform_infer,
+                                           self.infer_engines[i],
+                                           infer_request,
+                                           self.expand_request_configs[i],
+                                           **self.infer_kwargs): i for i in range(n)}
+                responses = []
+                for future in as_completed(futures):
+                    task_id = futures[future]
+                    try:
+                        responses.append(future.result())
+                    except Exception as e:
+                        print(f"任务 {task_id} 执行请求时发生错误: {e}")
+
+            # 为了并行获取 Outcome Reward，这里获得的 OR 是顺序返回的，所以可以直接对应
+            orm_infer_requests = []
+            all_child_terminated = True
+            for response in responses:
+                self.update_usage_info(response)
+                output = response[0].choice[0].message.content.rstrip(SEP_TOKEN + '\n').split(SEP_TOKEN)[0]
+                orm_infer_requests.append(InferRequest([{"role": "assistant", "content": output}]))
+                child = LanguageNode(step=output, parent=node)
+                if check_terminate(child.answer)[0]:
+                    child._terminated = True
+                else:
+                    all_child_terminated = False
+                node.add_child(child)
+            if all_child_terminated:
+                node._terminated = True
+                if not node.is_root():
+                    node.parent.active_children.remove(node)
+
+            orm_score, _orm_mask = get_reward(
+                self.orm_model, orm_infer_requests, ground_truths=[ground_truth] * len(orm_infer_requests),
+                threshold=0.0)
+            for child in node.children:
+                child.init_and_update_value(orm_score[0])
+                if child.outcome_reward == 1:
+                    terminate_correct.append(child.answer)
+                else:
+                    terminate_incorrect.append(child.answer)
             # logger.info(f"expand time: {time.time() - s_time}")
             # s_time = time.time()
+
             if self.prm_model:
+                # 为了并行获取 PRM 的 Reward
                 prm_infer_requests = []
                 for child in node.children:
                     prm_message = {"role": "assistant", "content": child.answer}
@@ -221,50 +255,47 @@ class MctsSampler(Sampler):
 
         def _rollout(node: LanguageNode):
             rollout_iter_index = 0
-            prompt_message = {
-                "role": "user",
-                "content": query,
-            }
-            rollout_request_config = deepcopy(request_config)
-            rollout_request_config.temperature = 0.0
-            rollout_request_config.max_tokens = 500
-            rollout_nodes = node.active_children[:]
-            history_messages = []
-            for child in rollout_nodes:
-                history_message = {
-                    "role": "assistant",
-                    "content": child.answer,
+            rollout_nodes = {}
+            for i in range(len(node.active_children)):
+                rollout_nodes[i] = {
+                    "node": node.active_children[i],
+                    "history_messages": {
+                        "role": "assistant",
+                        "content": node.active_children[i].answer,
+                    },
                 }
-                history_messages.append(history_message)
-            while len(rollout_nodes) > 0 and rollout_iter_index < _args.max_rollout_iterations:
-                infer_requests = [InferRequest([system_message, prompt_message, h, next_message]) for h in history_messages]
-                # Because template will pop out last assistant message, so add an additional one.
-                responses = self.infer_engine.infer(infer_requests, rollout_request_config, **self.infer_kwargs)
-                rollout_iter_index += 1
-                rollout_node_index = 0
-                for index, response in enumerate(responses):
-                    for key, value in self.usage_info.__dict__.items():
-                        update_value = getattr(response.usage, key, None) + value
-                        setattr(self.usage_info, key, update_value)
-                    output = response.choices[0].message.content.rstrip(SEP_TOKEN + '\n')
-                    output = output.split(SEP_TOKEN)[0]
-                    output += SEP_TOKEN + '\n'
-                    history_messages[rollout_node_index]["content"] += output
-                    end_path = history_messages[rollout_node_index]["content"]
-                    if check_terminate(end_path)[0]:
-                        orm_infer_requests = [InferRequest([history_messages[rollout_node_index]])]
-                        orm_score, _orm_mask = get_reward(
-                            self.orm_model, orm_infer_requests, ground_truths=[ground_truth] * len(infer_requests),
-                            threshold=0.0)
-                        node.active_children[index].outcome_reward = orm_score[0]
-                        if orm_score[0] == 1:
-                            correct_answers.append(end_path)
+            active_rollout_nodes = list(rollout_nodes.keys())
+            while len(active_rollout_nodes) > 0 and rollout_iter_index < _args.max_rollout_iterations:
+                infer_requests = [InferRequest([system_message,
+                                                prompt_message,
+                                                rollout_nodes[index]['history_messages'],
+                                                next_message])
+                                  for index in active_rollout_nodes]
+                responses = self.infer_engine.infer(infer_requests,
+                                                    self.rollout_request_config,
+                                                    **self.infer_kwargs)
+                orm_infer_requests = []
+                end_paths = []
+                for index, response in zip(active_rollout_nodes, responses):
+                    self.update_usage_info(response)
+                    output = response.choices[0].message.content.rstrip(SEP_TOKEN + '\n').split(SEP_TOKEN)[0] + SEP_TOKEN + '\n'
+                    rollout_nodes[index]['history_messages']["content"] += output
+                    end_paths.append(rollout_nodes[index]['history_messages']["content"])
+                    orm_infer_requests.append(InferRequest([rollout_nodes[index]['history_messages']]))
+
+                orm_score, _orm_mask = get_reward(
+                    self.orm_model, orm_infer_requests, ground_truths=[ground_truth] * len(infer_requests),
+                    threshold=0.0)
+                terminated_state = check_terminate(end_paths)
+                for index, score, terminated in zip(active_rollout_nodes, orm_score, terminated_state):
+                    if terminated:
+                        node.active_children[index].outcome_reward = score
+                        if score == 1:
+                            correct_answers.append(rollout_nodes[index]['history_messages']["content"])
                         else:
-                            incorrect_answers.append(end_path)
-                        rollout_nodes.pop(rollout_node_index)
-                        history_messages.pop(rollout_node_index)
-                        rollout_node_index -= 1
-                    rollout_node_index += 1
+                            incorrect_answers.append(rollout_nodes[index]['history_messages']["content"])
+                        rollout_nodes.pop(index)
+                active_rollout_nodes = list(rollout_nodes.keys())
 
         def _back_propagate(curr_node: LanguageNode):
             while curr_node:
@@ -292,10 +323,11 @@ class MctsSampler(Sampler):
             return results
 
         _args = self.args
-        request_config = _args.get_request_config()
-        request_config.stop = [SEP_TOKEN]
-        request_config.seed = _args.seed
         _root = LanguageNode()
+        prompt_message = {
+            "role": "user",
+            "content": query,
+        }
 
         correct_answers, incorrect_answers, prefer_pair = [], [], []
         terminate_correct, terminate_incorrect = [], []
