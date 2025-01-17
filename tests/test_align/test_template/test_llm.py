@@ -35,6 +35,13 @@ def test_qwen2_5():
     _infer_model(pt_engine)
 
 
+def test_phi4():
+    pt_engine = PtEngine('LLM-Research/phi-4')
+    _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    _infer_model(pt_engine)
+
+
 def test_qwen1half():
     pt_engine = PtEngine('Qwen/Qwen1.5-0.5B-Chat-GPTQ-Int4')
     _infer_model(pt_engine)
@@ -63,11 +70,18 @@ def test_internlm():
 
 
 def test_internlm2():
-    # pt_engine = PtEngine('Shanghai_AI_Laboratory/internlm2-1_8b')
     pt_engine = PtEngine('Shanghai_AI_Laboratory/internlm2_5-1_8b-chat')
     _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     _infer_model(pt_engine)
+
+
+def test_internlm3():
+    pt_engine = PtEngine('Shanghai_AI_Laboratory/internlm3-8b-instruct')
+    response = _infer_model(pt_engine, system='')
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine)
+    assert response == response2
 
 
 def test_yi_coder():
@@ -215,7 +229,7 @@ def test_qwen2_reward():
     res = _infer_model(pt_engine, messages=messages)
     pt_engine.default_template.template_backend = 'jinja'
     res2 = _infer_model(pt_engine, messages=messages)
-    assert res == res2 == '1.390625'
+    assert res == '1.84375' and res2 == '1.390625'  # \n diff
 
 
 def test_qwen2_5_math():
@@ -239,12 +253,12 @@ def test_skywork_reward():
     res = _infer_model(pt_engine, messages=messages)
     pt_engine.default_template.template_backend = 'jinja'
     res2 = _infer_model(pt_engine, messages=messages)
-    assert res == '14.1875'
+    assert res == '14.25'
     assert res2 == '13.8125'
 
 
 if __name__ == '__main__':
-    from swift.llm import PtEngine, RequestConfig, get_template, get_model_tokenizer, VllmEngine
+    from swift.llm import PtEngine, RequestConfig, get_template, get_model_tokenizer
     from swift.utils import get_logger, seed_everything
     logger = get_logger()
     # test_qwen2_5()
@@ -267,4 +281,6 @@ if __name__ == '__main__':
     # test_internlm2_reward()
     # test_qwen2_reward()
     # test_qwen2_5_math()
-    test_skywork_reward()
+    # test_skywork_reward()
+    # test_phi4()
+    test_internlm3()

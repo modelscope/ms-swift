@@ -133,7 +133,6 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         self.rank, self.local_rank, self.global_world_size, self.local_world_size = get_dist_setting()
         logger.info(f'rank: {self.rank}, local_rank: {self.local_rank}, '
                     f'world_size: {self.global_world_size}, local_world_size: {self.local_world_size}')
-        assert len(self.adapters) <= 1, f'args.adapters: {self.adapters}'
         ModelArguments.__post_init__(self)
         QuantizeArguments.__post_init__(self)
         TemplateArguments.__post_init__(self)
@@ -235,14 +234,20 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             else:
                 torch.cuda.set_device(self.local_rank)
 
-    def get_template(self, processor: 'Processor', template_type=None) -> 'Template':
+    def get_template(self, processor: 'Processor') -> 'Template':
         template_kwargs = self.get_template_kwargs()
-        template_type = template_type or self.template
-        template = get_template(template_type, processor, **template_kwargs)
+        template = get_template(self.template, processor, **template_kwargs)
         logger.info(f'default_system: {template.template_meta.default_system}')
         return template
 
-    def get_model_processor(self, *, model=None, model_type=None, model_revision=None, task_type=None, **kwargs):
+    def get_model_processor(self,
+                            *,
+                            model=None,
+                            model_type=None,
+                            model_revision=None,
+                            task_type=None,
+                            num_labels=None,
+                            **kwargs):
         if self.tuner_backend == 'unsloth':
             return load_by_unsloth(self)
         kwargs.update(self.get_model_kwargs())
@@ -251,5 +256,6 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         kwargs['model_type'] = model_type or self.model_type
         kwargs['model_revision'] = model_revision or self.model_revision
         kwargs['task_type'] = task_type or self.task_type
+        kwargs['num_labels'] = num_labels or self.num_labels
 
         return get_model_tokenizer(**kwargs)

@@ -114,7 +114,7 @@ def align_image_inputs(input_ids: List[int], labels: List[int], new_input_ids,
     return input_ids, labels
 
 
-def split_str_parts_by(text: str, delimiters: List[str]):
+def split_str_parts_by(text: str, delimiters: List[str]) -> List[Dict[str, str]]:
     """Split the text field into parts.
 
     Args:

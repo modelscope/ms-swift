@@ -64,6 +64,7 @@ class ModelMeta:
 
     is_multimodal: bool = False
     is_reward: bool = False
+    task_type: Optional[str] = None
 
     # File patterns to ignore when downloading the model.
     ignore_patterns: List[str] = field(default_factory=list)
@@ -184,7 +185,7 @@ def get_model_tokenizer_from_local(model_dir: str,
         tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
 
     num_labels = model_info.num_labels or getattr(model_config, 'num_labels', None)
-    if num_labels:
+    if num_labels and model_info.task_type != 'causal_lm':
         model_info.num_labels = num_labels
         model_config.num_labels = num_labels
 
@@ -393,6 +394,8 @@ def get_model_info_meta(
             task_type = 'seq_cls'
         if task_type == 'seq_cls':
             assert num_labels is not None, 'Please pass the parameter `num_labels`.'
+        if model_meta.task_type is not None:
+            task_type = model_meta.task_type
     model_info.task_type = task_type
     model_info.num_labels = num_labels
 

@@ -589,5 +589,15 @@
         "ms_dataset_id": "AI-ModelScope/Magpie-Qwen2-Pro-200K-English",
         "tags": ["chat", "sft", "🔥", "en"],
         "hf_dataset_id": "Magpie-Align/Magpie-Qwen2-Pro-200K-English"
+    },
+    {
+        "ms_dataset_id": "PowerInfer/QWQ-LONGCOT-500K",
+        "tags": ["chat", "sft", "🔥", "cot"],
+        "hf_dataset_id": "PowerInfer/QWQ-LONGCOT-500K"
+    },
+    {
+        "ms_dataset_id": "PowerInfer/LONGCOT-Refine-500K",
+        "tags": ["chat", "sft", "🔥", "cot"],
+        "hf_dataset_id": "PowerInfer/LONGCOT-Refine-500K"
     }
 ]

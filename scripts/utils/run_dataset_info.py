@@ -59,8 +59,7 @@ def run_dataset(key, template, cache_mapping):
         dataset_size, stat_str = cache_mapping[dataset_id]
     else:
         num_proc = 4
-        dataset, _ = load_dataset(
-            f'{dataset_id}:all', strict=False, num_proc=num_proc, use_hf=use_hf, download_mode='force_redownload')
+        dataset, _ = load_dataset(f'{dataset_id}:all', strict=False, num_proc=num_proc, use_hf=use_hf)
         dataset_size = len(dataset)
         random_state = np.random.RandomState(42)
         idx_list = random_state.choice(dataset_size, size=min(dataset_size, 100000), replace=False)

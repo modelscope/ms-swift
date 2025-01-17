@@ -43,8 +43,10 @@ class Trainer(SwiftMixin, HfTrainer):
             return loss_function(logits=logits, labels=labels, **kwargs)
 
         model_cls.loss_function = new_loss_function
-        yield
-        model_cls.loss_function = _old_loss_function
+        try:
+            yield
+        finally:
+            model_cls.loss_function = _old_loss_function
 
     def train(self, *args, **kwargs):
         with self._patch_loss_function():

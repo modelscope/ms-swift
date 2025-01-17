@@ -72,6 +72,7 @@ class SwiftMixin:
             from swift.trainers.xtuner import init_sequence_parallel_xtuner
             init_sequence_parallel_xtuner(args.sequence_parallel_size)
 
+        self.model_meta = model.model_meta
         with self.hub.patch_hub():
             super().__init__(
                 model=model,
@@ -84,7 +85,8 @@ class SwiftMixin:
                 compute_metrics=compute_metrics,
                 callbacks=callbacks,
                 optimizers=optimizers,
-                preprocess_logits_for_metrics=preprocess_logits_for_metrics)
+                preprocess_logits_for_metrics=preprocess_logits_for_metrics,
+                **kwargs)
 
         self.compute_loss_func = compute_loss_func
         if get_function(model.__class__.forward) is not get_function(model.forward):
@@ -216,7 +218,7 @@ class SwiftMixin:
         # tokenizer
         if not is_adapter:
             from swift.llm import save_checkpoint
-            additional_saved_files = self.model.model_meta.additional_saved_files
+            additional_saved_files = self.model_meta.additional_saved_files
             save_checkpoint(None, self.template.processor, output_dir, additional_saved_files=additional_saved_files)
 
     def _fix_zero3_gather_all_parameters(self) -> None:
@@ -246,7 +248,7 @@ class SwiftMixin:
         return result
 
     def train(self, *args, **kwargs):
-        if self.model.model_meta.is_multimodal:
+        if self.model_meta.is_multimodal:
             models = list(
                 set([
                     v for k, v in self.__dict__.items()

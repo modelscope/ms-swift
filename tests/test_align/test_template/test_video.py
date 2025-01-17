@@ -75,6 +75,44 @@ def test_xcomposer2_5():
     assert response == std_response[:len(response)]
 
 
+def test_mplug3():
+    pt_engine = PtEngine('iic/mPLUG-Owl3-7B-240728')
+    # pt_engine = PtEngine('iic/mPLUG-Owl3-7B-241101')
+    _infer_model(pt_engine, system='')
+    pt_engine.default_template.template_backend = 'jinja'
+    _infer_model(pt_engine, system='')
+
+
+def test_minicpmv():
+    pt_engine = PtEngine('OpenBMB/MiniCPM-V-2_6')
+    _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    _infer_model(pt_engine)
+
+
+def test_minicpmo():
+    os.environ['VIDEO_MAX_SLICE_NUMS'] = '2'
+    pt_engine = PtEngine('OpenBMB/MiniCPM-o-2_6')
+    messages = [{'role': 'user', 'content': '<video>Describe the video'}]
+    response = _infer_model(pt_engine, messages=messages)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=messages)
+    assert response == response2 == (
+        'The video features a young child sitting on a bed, deeply engrossed in reading a large book. The child, '
+        'dressed in a light blue sleeveless top and pink pants, is surrounded by a cozy and homely environment. '
+        'The bed is adorned with a patterned blanket, and a white cloth is casually draped over the side. '
+        'In the background, a crib and a television are visible, adding to the domestic setting. '
+        'The child is seen flipping through the pages of the book, occasionally pausing to look at the pages, '
+        'and then continuing to turn them. The video captures the child\'s focused and curious demeanor as they '
+        'explore the contents of the book, creating a heartwarming '
+        'scene of a young reader immersed in their world of stories.')[:len(response)]
+
+
+def test_valley():
+    pt_engine = PtEngine('bytedance-research/Valley-Eagle-7B')
+    _infer_model(pt_engine)
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig, get_template
     from swift.utils import get_logger, seed_everything
@@ -82,4 +120,8 @@ if __name__ == '__main__':
     # test_qwen2_vl()
     # test_internvl2_5()
     # test_xcomposer2_5()
-    test_internvl2_5_mpo()
+    # test_internvl2_5_mpo()
+    # test_mplug3()
+    # test_minicpmv()
+    test_minicpmo()
+    # test_valley()

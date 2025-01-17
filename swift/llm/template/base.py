@@ -12,6 +12,7 @@ import json
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from modelscope.hub.utils.utils import get_cache_dir
 from peft import PeftModel
 from PIL import Image
 from torch.nn.utils.rnn import pad_sequence
@@ -33,13 +34,14 @@ class MaxLengthError(ValueError):
 
 
 class Template(ProcessorMixin):
-    special_tokens = ['<image>', '<video>', '<audio>', '<bbox>', '<ref-object>']
+    special_tokens = ['<image>', '<video>', '<audio>', '<bbox>', '<ref-object>', '<cot-process>']
     special_keys = ['images', 'videos', 'audios', 'objects']
     grounding_type = 'norm_1000'
 
     image_placeholder = ['<image>']
     video_placeholder = ['<video>']
     audio_placeholder = ['<audio>']
+    cot_process_placeholder = ['ки']
     load_images = True
     skip_prompt = True
     use_model = False
@@ -109,29 +111,28 @@ class Template(ProcessorMixin):
 
         self.mode: Literal['pt', 'vllm', 'lmdeploy',  # infer
                            'train', 'rlhf', 'kto',  # train
-                           'seq_cls'] = 'pt'
+                           'seq_cls', 'prm'] = 'pt'
         if self.model_info.task_type != 'causal_lm':
             self.mode = self.model_info.task_type
         self._handles = []
         self._deepspeed_initialize = None
 
     @staticmethod
-    def _load_images(images, load_images: bool) -> None:
-        for i, image in enumerate(images):
-            if load_images:
-                if isinstance(image, dict) and 'bytes' in image:
-                    image = image['bytes'] or image['path']
+    def _load_image(image, load_images: bool):
+        if load_images:
+            if isinstance(image, dict) and 'bytes' in image:
+                image = image['bytes'] or image['path']
+            image = load_image(image)
+        else:
+            if isinstance(image, dict):
+                path = image['path']
+                if path and (path.startswith('http') or os.path.exists(path)):
+                    image = path
+                else:
+                    image = load_image(image['bytes'])
+            elif not isinstance(image, str):
                 image = load_image(image)
-            else:
-                if isinstance(image, dict):
-                    path = image['path']
-                    if path and (path.startswith('http') or os.path.exists(path)):
-                        image = path
-                    else:
-                        image = load_image(image['bytes'])
-                elif not isinstance(image, str):
-                    image = load_image(image)
-            images[i] = image
+        return image
 
     def _preprocess_inputs(
         self,
@@ -143,7 +144,8 @@ class Template(ProcessorMixin):
         if self.max_pixels is not None or inputs.objects:
             load_images = True
         if images:
-            self._load_images(images, load_images)
+            for i, image in enumerate(images):
+                images[i] = self._load_image(images[i], load_images)
         if self.max_pixels is not None:
             assert self.grounding_type != 'real', 'not support'  # TODO:check
             images = [rescale_image(img, self.max_pixels) for img in images]
@@ -235,7 +237,7 @@ class Template(ProcessorMixin):
             encoded = Template._encode(self, inputs)
             for key in ['images', 'audios', 'videos']:
                 encoded[key] = getattr(inputs, key)
-        elif self.mode in {'pt', 'train'}:
+        elif self.mode in {'pt', 'train', 'prm'}:
             encoded = self._encode(inputs)
         elif self.mode == 'seq_cls':
             encoded = self._seq_cls_encode(inputs)
@@ -264,9 +266,30 @@ class Template(ProcessorMixin):
                     return generate_ids[:-i]
         return generate_ids
 
+    @staticmethod
+    def _get_seq_cls_logprobs(logprobs):
+        res = []
+        for i, logprob in enumerate(logprobs.tolist()):
+            res.append({'index': i, 'logprob': logprob})
+        return {'content': res}
+
+    def decode_seq_cls(self, logits: torch.Tensor):
+        assert isinstance(logits, torch.Tensor)
+        if logits.shape[-1] > 1:
+            preds = torch.argmax(logits, dim=-1).tolist()
+            logprobs = torch.log_softmax(logits, -1)
+            logprobs = [self._get_seq_cls_logprobs(logprobs[i]) for i in range(len(preds))]
+        else:
+            preds = logits.squeeze(dim=-1).tolist()
+            logprobs = [None] * len(preds)
+        return preds, logprobs
+
     def decode(self, generate_ids: List[int], is_finished: bool = True, tokenizer_kwargs=None, **kwargs) -> Any:
         tokenizer_kwargs = tokenizer_kwargs or {}
         return self._skip_stop_decode(generate_ids, is_finished, **tokenizer_kwargs)
+
+    def decode_prm(self, input_ids: torch.Tensor, logits: torch.Tensor) -> Any:
+        raise NotImplementedError
 
     def generate(self, model, *args, **kwargs):
         return model.generate(*args, **kwargs)
@@ -298,7 +321,10 @@ class Template(ProcessorMixin):
     def _save_pil_image(image: Image.Image) -> str:
         img_bytes = image.tobytes()
         img_hash = hashlib.sha256(img_bytes).hexdigest()
-        img_path = os.path.join('tmp', f'{img_hash}.png')
+        tmp_dir = os.path.join(get_cache_dir(), 'tmp', 'images')
+        logger.info_once(f'create tmp_dir: {tmp_dir}')
+        os.makedirs(tmp_dir, exist_ok=True)
+        img_path = os.path.join(tmp_dir, f'{img_hash}.png')
         if not os.path.exists(img_path):
             image.save(img_path)
         return img_path
@@ -339,7 +365,7 @@ class Template(ProcessorMixin):
     def _simplify_context_list(self, context_list: List[Context], loss_scale_list: List[float],
                                inputs: StdTemplateInputs) -> Tuple[List[Context], List[float]]:
         """Merge anything in the context to simplify the inputs"""
-        if inputs.is_multimodal:
+        if inputs.is_multimodal or self.mode == 'prm':
             context_list, loss_scale_list = self._split_special_tokens(context_list, loss_scale_list)
         context_list, loss_scale_list = self._pre_tokenize(context_list, loss_scale_list, inputs)
 
@@ -427,6 +453,18 @@ class Template(ProcessorMixin):
         """
         return [object_['caption']]
 
+    def replace_cot_process(self, inputs: StdTemplateInputs) -> List[Context]:
+        """Replace the cot process label for PRM training or inference.
+        Override this function to do your own replace operation.
+
+        Args:
+            inputs: The inputs
+
+        Returns:
+            The contents or input_ids replaced
+        """
+        return [self.cot_process_placeholder]
+
     def replace_box(self, object_: Dict[str, Any], index: int, inputs: StdTemplateInputs) -> List[Context]:
         """Replace bbox pointing to the objects to contents or input_ids. This is useful in the grounding task.
         Override this function to do your own replace operation.
@@ -483,6 +521,8 @@ class Template(ProcessorMixin):
                     idx = inputs.box_idx
                     c_list = self.replace_box(inputs.objects[idx], idx, inputs)
                     inputs.box_idx += 1
+                elif context == '<cot-process>':
+                    c_list = self.replace_cot_process(inputs)
                 else:
                     c_list = [context]
             res += c_list
@@ -598,7 +638,7 @@ class Template(ProcessorMixin):
             context_list = prompt.copy()
             extra_context_list = []
             extra_context_type = None
-            if i < n_round - 1 or self.mode == 'seq_cls' and response is not None:
+            if i < n_round - 1:
                 # Not the last round.
                 context_list.append('{{RESPONSE}}')
                 extra_context_list = template_meta.chat_sep
@@ -706,11 +746,11 @@ class Template(ProcessorMixin):
 
     def replace_video2image(self, load_video_func, inputs, replace_tag: Callable) -> List[Context]:
         context_list = []
-        if self.mode == 'pt':
-            video = inputs.videos[inputs.video_idx]
-        else:
+        if self.mode in {'vllm', 'lmdeploy'}:
             video = inputs.videos.pop(inputs.video_idx)
             inputs.video_idx -= 1
+        else:
+            video = inputs.videos[inputs.video_idx]
         images = inputs.images
         new_images = load_video_func(video)
         inputs.images = images[:inputs.image_idx] + new_images + images[inputs.image_idx:]
@@ -793,7 +833,7 @@ class Template(ProcessorMixin):
             return self._rlhf_data_collator(batch, padding_to=padding_to)
         elif self.mode == 'kto':
             return self._kto_data_collator(batch, padding_to=padding_to)
-        elif self.mode in {'pt', 'train'}:
+        elif self.mode in {'pt', 'train', 'prm'}:
             return self._data_collator(batch, padding_to=padding_to)
         elif self.mode == 'seq_cls':
             return self._seq_cls_data_collator(batch, padding_to=padding_to)

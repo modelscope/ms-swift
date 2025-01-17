@@ -60,6 +60,7 @@ class MLLMModelArch:
     molmo = 'molmo'
     emu3_chat = 'emu3_chat'
     megrez_omni = 'megrez_omni'
+    valley = 'valley'
 
 
 class ModelArch(LLMModelArch, MLLMModelArch):

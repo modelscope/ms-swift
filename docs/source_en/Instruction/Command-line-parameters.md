@@ -50,7 +50,7 @@ The introduction to command line parameters will cover base arguments, atomic ar
 - 🔥max_pixels: Maximum pixel count for pre-processing images in multimodal models (H*W), default is no scaling.
 - tools_prompt: The list of tools for agent training converted to system format, refer to [Agent Training](./Agent-support.md), default is 'react_en'.
 - padding_side: The padding_side used when training with `batch_size >= 2`, with optional values of 'left' and 'right', defaulting to 'right'. (When the batch_size in `generate` is >= 2, only left padding is applied.)
-- loss_scale: How to add token loss weight during training. Default is `'default'`, meaning all responses (including history) are treated as 1 for cross-entropy loss. For specifics, see [Pluginization](../Customization/Pluginization.md) and [Agent Training](./Agent-support.md).
+- loss_scale: How to add token loss weight during training. Default is `'default'`, meaning all responses (including history) are treated as 1 for cross-entropy loss. The optional values are 'default', 'last_round', 'all', and the loss scale required by the agent: 'react', 'agentflan', 'alpha_umi', 'qwen'. For specifics, see [Pluginization](../Customization/Pluginization.md) and [Agent Training](./Agent-support.md).
 - sequence_parallel_size: Number of sequence parallelism. Refer to [example](https://github.com/modelscope/ms-swift/tree/main/examples/train/sequence_parallel/train.sh).
 - use_chat_template: Use chat template or generation template, default is `True`. `swift pt` is automatically set to the generation template.
 - template_backend: Use swift or jinja for inference. If using jinja, it will utilize transformers' `apply_chat_template`. Default is swift.
@@ -311,22 +311,46 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
 
 RLHF arguments inherit from the [training arguments](#training-arguments).
 
-- 🔥rlhf_type: Alignment algorithm type, supports `dpo`, `orpo`, `simpo`, `kto`, `cpo`, `rm`.
+- 🔥rlhf_type: Alignment algorithm type, supports `dpo`, `orpo`, `simpo`, `kto`, `cpo`, `rm`, `ppo`.
 - ref_model: Original comparison model in algorithms like DPO.
 - ref_model_type: Same as model_type.
 - ref_model_revision: Same as model_revision.
 
 - 🔥beta: KL regularization term coefficient, default is `None`, i.e., for `simpo` algorithm default is `2.`, for other algorithms default is `0.1`. Refer to the [documentation](./Human-alignment.md) for specifics.
 - label_smoothing: Whether to use DPO smoothing, default value is `0`, generally set between 0~0.5.
--
+
 - 🔥rpo_alpha: Weight for adding sft_loss in DPO, default is `1`. The final loss is `KL_loss + rpo_alpha * sft_loss`.
--
+
 - cpo_alpha: The coefficient of nll loss in CPO/SimPO loss, default is `1.`.
--
+
 - simpo_gamma: Reward margin term in SimPO algorithm, recommended to set between 0.5-1.5 in the paper, default is `1.`.
--
+
 - desirable_weight: Loss weight for desirable response in KTO algorithm $\lambda_D$, default is `1.`.
 - undesirable_weight: Loss weight for undesirable response in KTO paper $\lambda_U$, default is `1.`.
+
+#### PPO Arguments
+
+- reward_model: Defaults to None
+- reward_adapters: Defaults to `[]`
+- reward_model_type: Defaults to None
+- reward_model_revision: Defaults to None
+
+The meanings of the following parameters can be referenced [here](https://huggingface.co/docs/trl/main/ppo_trainer):
+
+- num_ppo_epochs: Defaults to 4
+- whiten_rewards: Defaults to False
+- kl_coef: Defaults to 0.05
+- cliprange: Defaults to 0.2
+- vf_coef: Defaults to 0.1
+- cliprange_value: Defaults to 0.2
+- gamma: Defaults to 1.0
+- lam: Defaults to 0.95
+- num_mini_batches: Defaults to 1
+- local_rollout_forward_batch_size: Defaults to 64
+- num_sample_generations: Defaults to 10
+- response_length: Defaults to 512
+- temperature: Defaults to 0.7
+- missing_eos_penalty: Defaults to None
 
 ### Inference Arguments
 
@@ -395,6 +419,32 @@ Export Arguments include the [basic arguments](#base-arguments) and [merge argum
 - hub_private_repo: Whether it is a private repo, default is False.
 - commit_message: Commit message, default is 'update files'.
 
+### Sampling Parameters
+
+- prm_model: The type of process reward model. It can be a model ID (triggered using `pt`) or a `prm` key defined in a plugin (for custom inference processes).
+- orm_model: The type of outcome reward model, typically a wildcard or test case, usually defined in a plugin.
+
+- sampler_type: The type of sampling. Currently supports `sample` (using `do_sample` method). Future support will include `mcts` and `dvts`.
+- sampler_engine: Supports `pt`, `lmdeploy`, `vllm`, `no`. Defaults to `pt`. Specifies the inference engine for the sampling model.
+- output_dir: The output directory. Defaults to `sample_output`.
+- output_file: The name of the output file. Defaults to `None`, which uses a timestamp as the filename. When provided, only the filename should be passed without the directory, and only JSONL format is supported.
+- override_exist_file: Whether to overwrite if `output_file` already exists.
+- num_sampling_per_gpu_batch_size: The batch size for each sampling operation.
+- num_sampling_per_gpu_batches: The total number of batches to sample.
+- n_best_to_keep: The number of best sequences to return.
+- data_range: The partition of the dataset being processed for this sampling operation. The format should be `2 3`, meaning the dataset is divided into 3 parts, and this instance is processing the 3rd partition (this implies that typically three `swift sample` processes are running in parallel).
+
+- temperature: Defaults to `1.0`.
+- prm_threshold: The PRM threshold. Results below this value will be filtered out. The default value is `0`.
+- easy_query_threshold: For each query, if the ORM evaluation is correct for more than this proportion of all samples, the query will be discarded to prevent overly simple queries from appearing in the results. Defaults to `None`, meaning no filtering is applied.
+
+- engine_kwargs: Additional parameters for the `sampler_engine`, passed as a JSON string, for example, `{"cache_max_entry_count":0.7}`.
+
+- num_return_sequences: The number of original sequences returned by sampling. Defaults to `64`. This parameter is effective for `sample` sampling.
+- cache_files: To avoid loading both `prm` and `generator` simultaneously and causing GPU memory OOM, sampling can be done in two steps. In the first step, set `prm` and `orm` to `None`, and all results will be output to a file. In the second run, set `sampler_engine` to `no` and pass `--cache_files` with the output file from the first sampling. This will use the results from the first run for `prm` and `orm` evaluation and output the final results.
+
+> Note: When using `cache_files`, the `--dataset` still needs to be provided because the ID for `cache_files` is calculated using the MD5 of the original data. Both pieces of information need to be used together.
+
 ## Specific Model Arguments
 
 Specific model arguments can be set using `--model_kwargs` or environment variables, for example: `--model_kwargs '{"fps_max_frames": 12}'` or `FPS_MAX_FRAMES=12`.
@@ -414,6 +464,9 @@ For the meaning of the arguments, please refer to [here](https://github.com/Qwen
 - FPS_MIN_FRAMES: Default is 4
 - 🔥FPS_MAX_FRAMES: Default is 768, refer to [here](https://github.com/modelscope/ms-swift/blob/main/examples/train/multimodal/video.sh#L8)
 
+### qwen2_audio
+- SAMPLING_RATE: Default is 16000
+
 ### internvl, internvl_phi3
 For the meaning of the arguments, please refer to [here](https://modelscope.cn/models/OpenGVLab/Mini-InternVL-Chat-2B-V1-5)
 - MAX_NUM: Default is 12
@@ -426,10 +479,14 @@ For the meaning of the arguments, please refer to [here](https://modelscope.cn/m
 - VIDEO_MAX_NUM: Default is 1, which is the MAX_NUM for videos
 - VIDEO_SEGMENTS: Default is 8
 
-### minicpmv2_6
+### minicpmv2_6, minicpmo2_6
 - MAX_SLICE_NUMS: Default is 9, refer to [here](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2_6/file/view/master?fileName=config.json&status=1)
 - VIDEO_MAX_SLICE_NUMS: Default is 1, which is the MAX_SLICE_NUMS for videos, refer to [here](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2_6)
 - MAX_NUM_FRAMES: Default is 64, refer to [here](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2_6)
+
+### minicpmo2_6
+- INIT_TTS: Default is False
+- INIT_AUDIO: Default is False
 
 ### ovis1_6
 - MAX_PARTITION: Refer to [here](https://github.com/AIDC-AI/Ovis/blob/d248e34d755a95d24315c40e2489750a869c5dbc/ovis/model/modeling_ovis.py#L312)
