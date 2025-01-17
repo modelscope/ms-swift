@@ -204,7 +204,7 @@ class MctsSampler(Sampler):
                 for future in as_completed(futures):
                     task_id = futures[future]
                     try:
-                        responses.append(future.result())
+                        responses += future.result()
                     except Exception as e:
                         print(f"任务 {task_id} 执行请求时发生错误: {e}")
 
@@ -213,28 +213,29 @@ class MctsSampler(Sampler):
             all_child_terminated = True
             for response in responses:
                 self.update_usage_info(response)
-                output = response[0].choice[0].message.content.rstrip(SEP_TOKEN + '\n').split(SEP_TOKEN)[0]
+                output = response.choices[0].message.content.rstrip(SEP_TOKEN + '\n').split(SEP_TOKEN)[0]
                 orm_infer_requests.append(InferRequest([{"role": "assistant", "content": output}]))
                 child = LanguageNode(step=output, parent=node)
                 if check_terminate(child.answer)[0]:
-                    child._terminated = True
+                    child.terminated = True
                 else:
                     all_child_terminated = False
                 node.add_child(child)
             if all_child_terminated:
-                node._terminated = True
+                node.terminated = True
                 if not node.is_root():
                     node.parent.active_children.remove(node)
 
             orm_score, _orm_mask = get_reward(
                 self.orm_model, orm_infer_requests, ground_truths=[ground_truth] * len(orm_infer_requests),
                 threshold=0.0)
-            for child in node.children:
-                child.init_and_update_value(orm_score[0])
-                if child.outcome_reward == 1:
-                    terminate_correct.append(child.answer)
-                else:
-                    terminate_incorrect.append(child.answer)
+            for child, score in zip(node.children, orm_score):
+                if child.terminated:
+                    child.init_and_update_value(score)
+                    if child.outcome_reward == 1:
+                        terminate_correct.append(child.answer)
+                    else:
+                        terminate_incorrect.append(child.answer)
             # logger.info(f"expand time: {time.time() - s_time}")
             # s_time = time.time()
 
@@ -271,7 +272,7 @@ class MctsSampler(Sampler):
                                                 rollout_nodes[index]['history_messages'],
                                                 next_message])
                                   for index in active_rollout_nodes]
-                responses = self.infer_engine.infer(infer_requests,
+                responses = self.infer_engines[0].infer(infer_requests,
                                                     self.rollout_request_config,
                                                     **self.infer_kwargs)
                 orm_infer_requests = []
@@ -296,6 +297,7 @@ class MctsSampler(Sampler):
                             incorrect_answers.append(rollout_nodes[index]['history_messages']["content"])
                         rollout_nodes.pop(index)
                 active_rollout_nodes = list(rollout_nodes.keys())
+                rollout_iter_index += 1
 
         def _back_propagate(curr_node: LanguageNode):
             while curr_node:
