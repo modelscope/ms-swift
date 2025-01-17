@@ -20,8 +20,8 @@ class SamplingArguments(BaseArguments):
 
     # sampler settings
     # sample/mcts/dvts/xxx
-    sampler_type: str = 'sample'
-    sampler_engine: Literal['pt', 'lmdeploy', 'vllm', 'no'] = 'pt'
+    sampler_type: Literal['sample', 'mcts'] = 'sample'
+    sampler_engine: Literal['pt', 'lmdeploy', 'vllm', 'no', 'client'] = 'pt'
     output_dir: str = 'sample_output'
     output_file: Optional[str] = None
     override_exist_file: bool = False
@@ -41,6 +41,18 @@ class SamplingArguments(BaseArguments):
 
     # Vanilla
     cache_files: List[str] = dataclasses.field(default_factory=list)
+
+    # MCTS
+    max_rollout_iterations: int = 5
+    max_iterations: int = 100
+    process_reward_rate: float = 0.0
+    exploration_rate: float = 0.5
+
+    def _init_model_info(self):
+        if self.sampler_engine != 'client':
+            return super._init_model_info(self)
+        self.task_type = 'causal_lm'
+        return
 
     def __post_init__(self):
         if self.output_file is None:

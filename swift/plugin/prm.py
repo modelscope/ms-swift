@@ -5,7 +5,7 @@ import json
 import torch
 
 from swift.llm import InferRequest
-from swift.llm.infer.protocol import ChatCompletionResponse
+from swift.llm.infer.protocol import ChatCompletionResponse, ChatCompletionResponseChoice, ChatMessage
 
 
 class PRM:
@@ -91,7 +91,15 @@ class QwenMaxPRM(PRM):
             except Exception:
                 rewards.append(None)
 
-        return rewards
+        return [
+            ChatCompletionResponse(
+                choices=[
+                    ChatCompletionResponseChoice(
+                        message=ChatMessage(content=1.0 if r else 0.0, role='assistant'), index=0, finish_reason='')
+                ],
+                model=None,
+                usage=None) for r in rewards
+        ]
 
 
 prms = {'qwen_max': QwenMaxPRM}
