@@ -1,5 +1,6 @@
 from copy import deepcopy
 import numpy as np
+import time
 
 from swift.llm import InferRequest
 from swift.llm.infer.protocol import UsageInfo
@@ -33,12 +34,18 @@ Step 5: She spends 260 * 52 = <<260*52=13520>>13520 on music lessons in a year. 
 
 Now answer the question:
 """
+NXT_PROMPT = """Please continue.
+"""
 
-SEP_TOKEN = "ки"
+SEP_TOKEN = "ки\n"
 
 system_message = {
     "role": "system",
     "content": SYS_PROMPT,
+}
+next_message = {
+    "role": "user",
+    "content": NXT_PROMPT,
 }
 
 def check_terminate(answers: Union[str, List[str]]) -> List[bool]:
@@ -150,6 +157,7 @@ class MctsSampler(Sampler):
             return node
 
         def _expand(node: LanguageNode):
+            # s_time = time.time()
             prompt_message = {
                 "role": "user",
                 "content": query,
@@ -161,12 +169,11 @@ class MctsSampler(Sampler):
                     "role": "assistant",
                     "content": node.answer,
                 }
-                infer_request = InferRequest([system_message, prompt_message, history_message])
+                infer_request = InferRequest([system_message, prompt_message, history_message, next_message])
             expand_request_config = deepcopy(request_config)
             n = _args.num_return_sequences - len(node.children)
             while n > 0:
                 expand_request_config.n = n if n <= 4 else 4
-                n -= expand_request_config.n
                 expand_request_config.num_return_sequences = expand_request_config.n
                 expand_request_config.num_beams = expand_request_config.n
                 expand_request_config.seed += 1
@@ -175,6 +182,7 @@ class MctsSampler(Sampler):
                     expand_request_config,
                     **self.infer_kwargs,
                 )
+                n -= len(responses[0].choices)
                 for key, value in self.usage_info.__dict__.items():
                     update_value = getattr(responses[0].usage, key, None) + value
                     setattr(self.usage_info, key, update_value)
@@ -194,6 +202,8 @@ class MctsSampler(Sampler):
                         else:
                             terminate_incorrect.append(child.answer)
                     node.add_child(child)
+            # logger.info(f"expand time: {time.time() - s_time}")
+            # s_time = time.time()
             if self.prm_model:
                 prm_infer_requests = []
                 for child in node.children:
@@ -206,6 +216,7 @@ class MctsSampler(Sampler):
                     threshold=0.0)
                 for child, score in zip(node.children, prm_score):
                     child.process_reward = score
+            # logger.info(f"prm time: {time.time() - s_time}")
 
         def _rollout(node: LanguageNode):
             rollout_iter_index = 0
@@ -225,7 +236,7 @@ class MctsSampler(Sampler):
                 }
                 history_messages.append(history_message)
             while len(rollout_nodes) > 0 and rollout_iter_index < _args.max_rollout_iterations:
-                infer_requests = [InferRequest([system_message, prompt_message, h]) for h in history_messages]
+                infer_requests = [InferRequest([system_message, prompt_message, h, next_message]) for h in history_messages]
                 # Because template will pop out last assistant message, so add an additional one.
                 responses = self.infer_engine.infer(infer_requests, rollout_request_config, **self.infer_kwargs)
                 rollout_iter_index += 1

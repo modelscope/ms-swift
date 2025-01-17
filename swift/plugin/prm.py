@@ -52,13 +52,15 @@ class QwenMaxPRM(PRM):
     def infer(self, infer_requests: List[InferRequest], ground_truths: List[str],
               **kwargs) -> List[ChatCompletionResponse]:
         rewards = []
-        for request, ground_truth in zip(infer_requests, ground_truths):
-            from openai import OpenAI
 
-            client = OpenAI(
-                api_key=os.getenv('DASHSCOPE_API_KEY'),
-                base_url='https://dashscope.aliyuncs.com/compatible-mode/v1',
-            )
+        from openai import OpenAI
+
+        client = OpenAI(
+            api_key=os.getenv('DASHSCOPE_API_KEY'),
+            base_url='https://dashscope.aliyuncs.com/compatible-mode/v1',
+        )
+
+        for request, ground_truth in zip(infer_requests, ground_truths):
             previous = request.messages[:-1]
             if previous[0]['role'] == 'system':
                 previous = previous[1:]
@@ -102,4 +104,67 @@ class QwenMaxPRM(PRM):
         ]
 
 
-prms = {'qwen_max': QwenMaxPRM}
+class QwenPlusPRM(PRM):
+    def __init__(self):
+        super().__init__()
+        import os
+        from swift.llm import InferClient
+        api_key = os.getenv('DASHSCOPE_API_KEY')
+        base_url = 'https://dashscope.aliyuncs.com/compatible-mode/v1'
+        self.infer_engine = InferClient(base_url=base_url, api_key=api_key)
+        self.infer_kwargs = {
+            'model': 'qwen-plus',
+        }
+
+    def infer(self, infer_requests: List[InferRequest], ground_truths: List[str],
+              **kwargs) -> List[ChatCompletionResponse]:
+        prm_infer_requests = []
+        for request, ground_truth in zip(infer_requests, ground_truths):
+            previous = request.messages[:-1]
+            if previous[0]['role'] == 'system':
+                previous = previous[1:]
+
+            assert request.messages[-1]['role'] == 'assistant'
+            query = QUERY.replace('#query#', json.dumps(previous))
+            query = query.replace('#ground_truth#', ground_truth)
+            query = query.replace('#response#', request.messages[-1]['content'])
+            messages = [
+                {
+                    'role': 'system',
+                    'content': SYSTEM
+                },
+                {
+                    'role': 'user',
+                    'content': query
+                },
+            ]
+
+            prm_infer_requests.append(InferRequest(messages=messages))
+
+        responses = self.infer_engine.infer(prm_infer_requests, **self.infer_kwargs)
+        rewards = []
+        for response in responses:
+            content = response.choices[0].message.content
+            if 'Reward:' not in content:
+                rewards.append(None)
+            try:
+                reward = float(content.split('Reward:')[1].strip().replace('*', ''))
+                rewards.append(reward)
+            except Exception:
+                rewards.append(None)
+
+        return [
+            ChatCompletionResponse(
+                choices=[
+                    ChatCompletionResponseChoice(
+                        message=ChatMessage(content=1.0 if r else 0.0, role='assistant'), index=0, finish_reason='')
+                ],
+                model=None,
+                usage=None) for r in rewards
+        ]
+
+
+prms = {
+    'qwen_max': QwenMaxPRM,
+    'qwen_plus': QwenPlusPRM,
+}
