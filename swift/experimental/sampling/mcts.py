@@ -237,9 +237,7 @@ class MctsSampler(Sampler):
                     terminate_incorrect.append(child.answer)
             # logger.info(f"expand time: {time.time() - s_time}")
             # s_time = time.time()
-
             if self.prm_model:
-                # 为了并行获取 PRM 的 Reward
                 prm_infer_requests = []
                 for child in node.children:
                     prm_message = {"role": "assistant", "content": child.answer}
@@ -296,6 +294,7 @@ class MctsSampler(Sampler):
                             incorrect_answers.append(rollout_nodes[index]['history_messages']["content"])
                         rollout_nodes.pop(index)
                 active_rollout_nodes = list(rollout_nodes.keys())
+                rollout_iter_index += 1
 
         def _back_propagate(curr_node: LanguageNode):
             while curr_node:
