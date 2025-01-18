@@ -17,6 +17,7 @@ from transformers.utils.versions import require_version
 
 from swift.utils import get_dist_setting, get_logger, is_dist, is_mp, is_unsloth_available, patch_getattr, use_torchacc
 from .constant import ModelType
+from .patcher import patch_sequence_classification
 from .utils import AttnImpl, HfConfigFactory, ModelInfo, safe_snapshot_download
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]]
@@ -194,8 +195,6 @@ def get_model_tokenizer_from_local(model_dir: str,
         logger.info(f'model_kwargs: {model_kwargs}')
         model = automodel_class.from_pretrained(
             model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
-    if model_info.task_type == 'seq_cls' and 'SequenceClassification' not in model.__class__.__name__:
-        pass
 
     # fix not save modeling_xxx.py (transformers 4.45)
     # https://github.com/huggingface/transformers/issues/24737
@@ -499,4 +498,8 @@ def get_model_tokenizer(
         # fix llama2 warning
         if getattr(model, 'generation_config', None):
             fix_do_sample_warning(model.generation_config)
+        # fix seq_cls
+        if (model_info.task_type == 'seq_cls' and model_info.num_labels >= 2
+                and 'SequenceClassification' not in model.__class__.__name__):
+            patch_sequence_classification(model)
     return model, processor

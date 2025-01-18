@@ -69,7 +69,7 @@ def get_multimodal_target_regex(model_arch,
         ignore_pattern += ['emb', 'wte', 'shared']
         ignore_pattern += model_arch.embedding or []
     if ignore_lm_head:
-        ignore_pattern += ['lm_head', 'output', 'embed_out', 'output_layer']
+        ignore_pattern += ['lm_head', 'output']
         ignore_pattern += model_arch.lm_head or []
     ignore_pattern = '|'.join(ignore_pattern)
 
