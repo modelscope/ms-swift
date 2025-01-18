@@ -7,6 +7,7 @@ import torch
 import torch.nn as nn
 from accelerate.utils import find_device
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
+from transformers import PreTrainedModel
 from transformers.modeling_outputs import SequenceClassifierOutputWithPast
 
 from swift.llm import to_device
@@ -54,7 +55,6 @@ def patch_output_to_input_device(module: torch.nn.Module):
 
 @contextmanager
 def patch_device_map():
-    from transformers import PreTrainedModel
     _get_no_split_modules = PreTrainedModel._get_no_split_modules
 
     def _new_get_no_split_modules(self, device_map: str):
@@ -175,3 +175,18 @@ def _patch_sequence_classification(model):
         )
 
     model.forward = new_forward
+
+
+@contextmanager
+def patch_automodel_for_sequence_classification():
+    _load_pretrained_model = PreTrainedModel._load_pretrained_model
+
+    def _new_load_pretrained_model(self, model, *args, **kwargs):
+        if 'SequenceClassification' not in model.__class__.__name__:
+            _patch_sequence_classification(model)
+        return _load_pretrained_model(self, model, *args, **kwargs)
+
+    try:
+        yield
+    finally:
+        PreTrainedModel._load_pretrained_model = _new_load_pretrained_model
