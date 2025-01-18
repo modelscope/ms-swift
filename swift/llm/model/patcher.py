@@ -92,12 +92,11 @@ def _patch_sequence_classification(model):
         model.__class__.__name__ = model.__class__.__name__[:idx]
     model.__class__.__name__ += 'ForSequenceClassification'
 
-    model.num_labels = model.model_info.num_labels
+    model.num_labels = model.config.num_labels
     model.score = nn.Linear(model.config.hidden_size, model.num_labels, bias=False).to(model.dtype)
     model.score.weight.data.normal_(mean=0.0, std=model.config.initializer_range)
 
-    lm_heads = ['lm_head', 'output', 'embed_out', 'output_layer'] + (
-        get_model_arch(model.model_meta.model_arch).lm_head or [])
+    lm_heads = ['lm_head', 'output', 'embed_out', 'output_layer']
     for lm_head in lm_heads:
         if hasattr(model, lm_head):
             setattr(model, lm_head, nn.Identity())
@@ -181,12 +180,15 @@ def _patch_sequence_classification(model):
 def patch_automodel_for_sequence_classification():
     _load_pretrained_model = PreTrainedModel._load_pretrained_model
 
-    def _new_load_pretrained_model(self, model, *args, **kwargs):
-        if 'SequenceClassification' not in model.__class__.__name__:
-            _patch_sequence_classification(model)
-        return _load_pretrained_model(self, model, *args, **kwargs)
+    def _new_load_pretrained_model(self, *args, **kwargs):
+
+        if 'SequenceClassification' not in self.__class__.__name__:
+            _patch_sequence_classification(self)
+        return _load_pretrained_model(self, *args, **kwargs)
+
+    PreTrainedModel._load_pretrained_model = _new_load_pretrained_model
 
     try:
         yield
     finally:
-        PreTrainedModel._load_pretrained_model = _new_load_pretrained_model
+        PreTrainedModel._load_pretrained_model = _load_pretrained_model
