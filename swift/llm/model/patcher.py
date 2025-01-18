@@ -85,9 +85,15 @@ def patch_ignore_check_imports():
         td.check_imports = _old_check_imports
 
 
-def patch_sequence_classification(model):
+def _patch_sequence_classification(model):
+    # rename
+    idx = model.__class__.__name__.find('For')
+    if idx != -1:
+        model.__class__.__name__ = model.__class__.__name__[:idx]
+    model.__class__.__name__ += 'ForSequenceClassification'
+
     model.num_labels = model.model_info.num_labels
-    model.score = nn.Linear(model.config.hidden_size, model.num_labels, bias=False)
+    model.score = nn.Linear(model.config.hidden_size, model.num_labels, bias=False).to(model.dtype)
     model.score.weight.data.normal_(mean=0.0, std=model.config.initializer_range)
 
     lm_heads = ['lm_head', 'output', 'embed_out', 'output_layer'] + (
@@ -96,6 +102,8 @@ def patch_sequence_classification(model):
         if hasattr(model, lm_head):
             setattr(model, lm_head, nn.Identity())
             break
+    else:
+        raise ValueError(f'model: {model}, lm_heads: {lm_heads}')
 
     origin_forward = model.forward
 
@@ -104,10 +112,12 @@ def patch_sequence_classification(model):
         self = model
         labels = kwargs.pop('labels', None)
         return_dict = kwargs.pop('return_dict', None)
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
         input_ids = kwargs.get('input_ids')
         inputs_embeds = kwargs.get('inputs_embeds')
 
         output = origin_forward(*args, **kwargs)
+        self.score.to(output.logits.device)
         logits = self.score(output.logits)
         if input_ids is not None:
             batch_size = input_ids.shape[0]
