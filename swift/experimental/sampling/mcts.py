@@ -373,7 +373,7 @@ class MctsSampler(Sampler):
             data = [data]
         generated = []
         for item in data:
-            logger.info(f"time: {time.time()}")
+            logger.info(f"time: {time.ctime(time.time())}")
             try:
                 messages = item['messages'][0]
                 query = messages[0]['content']
