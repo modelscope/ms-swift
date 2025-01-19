@@ -18,7 +18,7 @@ def test_llm():
             model='Qwen/Qwen2.5-1.5B-Instruct',
             train_type='lora',
             num_labels=2,
-            dataset=['DAMO_NLP/jd:cls#100'],
+            dataset=['DAMO_NLP/jd:cls#2000'],
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
     infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True))
@@ -46,7 +46,7 @@ def test_mllm():
             model='Qwen/Qwen2-VL-7B-Instruct',
             train_type='lora',
             num_labels=2,
-            dataset=['DAMO_NLP/jd:cls#100'],
+            dataset=['DAMO_NLP/jd:cls#2000'],
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
     infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True))
