@@ -178,7 +178,7 @@ def _patch_sequence_classification(model):
 @contextmanager
 def patch_automodel_for_sequence_classification():
     from_pretrained = PreTrainedModel.from_pretrained
-    
+
     @classmethod
     def _new_from_pretrained(cls, *args, **kwargs):
         __init__ = cls.__init__

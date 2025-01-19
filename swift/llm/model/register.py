@@ -195,7 +195,7 @@ def get_model_tokenizer_from_local(model_dir: str,
     if load_model:
         logger.info(f'model_kwargs: {model_kwargs}')
         # fix seq_cls
-        if model_info.task_type == 'seq_cls' and model_info.num_labels >= 2:
+        if model_info.task_type == 'seq_cls':
             context = patch_automodel_for_sequence_classification
         else:
             context = nullcontext
