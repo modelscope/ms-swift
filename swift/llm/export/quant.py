@@ -187,7 +187,7 @@ class QuantEngine(ProcessorMixin):
     @staticmethod
     def _set_use_cache_false(model):
         for module in model.modules():
-            if hasattr(module, 'config') and getattr(module.config, 'use_cache', True):
+            if getattr(module, 'config', None) and getattr(module.config, 'use_cache', True):
                 module.config.use_cache = False
 
     def gptq_model_quantize(self):
