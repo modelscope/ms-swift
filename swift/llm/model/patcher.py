@@ -116,7 +116,6 @@ def _patch_sequence_classification(model):
         inputs_embeds = kwargs.get('inputs_embeds')
 
         output = origin_forward(*args, **kwargs)
-        self.score.to(output.logits.device)
         logits = self.score(output.logits)
         if input_ids is not None:
             batch_size = input_ids.shape[0]
@@ -178,17 +177,24 @@ def _patch_sequence_classification(model):
 
 @contextmanager
 def patch_automodel_for_sequence_classification():
-    _load_pretrained_model = PreTrainedModel._load_pretrained_model
+    from_pretrained = PreTrainedModel.from_pretrained.__func__
 
-    def _new_load_pretrained_model(self, *args, **kwargs):
+    def _new_from_pretrained(cls, *args, **kwargs):
+        __init__ = cls.__init__
 
-        if 'SequenceClassification' not in self.__class__.__name__:
-            _patch_sequence_classification(self)
-        return _load_pretrained_model(self, *args, **kwargs)
+        def __new_init__(self, *args, **kwargs):
+            __init__(self, *args, **kwargs)
+            if 'SequenceClassification' not in self.__class__.__name__:
+                _patch_sequence_classification(self)
 
-    PreTrainedModel._load_pretrained_model = _new_load_pretrained_model
+        cls.__init__ = __new_init__
+        res = from_pretrained(cls, *args, **kwargs)
+        cls.__init__ = __init__
+        return res
+
+    PreTrainedModel.from_pretrained = classmethod(_new_from_pretrained)
 
     try:
         yield
     finally:
-        PreTrainedModel._load_pretrained_model = _load_pretrained_model
+        PreTrainedModel.from_pretrained = from_pretrained
