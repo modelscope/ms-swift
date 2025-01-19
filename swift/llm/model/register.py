@@ -2,6 +2,7 @@
 import os
 import platform
 import re
+from contextlib import nullcontext
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
@@ -15,8 +16,9 @@ from transformers.utils import (is_torch_bf16_gpu_available, is_torch_cuda_avail
                                 is_torch_npu_available, strtobool)
 from transformers.utils.versions import require_version
 
-from swift.utils import get_dist_setting, get_logger, is_dist, is_mp, is_unsloth_available, patch_getattr, use_torchacc
+from swift.utils import get_dist_setting, get_logger, is_mp, is_unsloth_available, patch_getattr, use_torchacc
 from .constant import ModelType
+from .patcher import patch_automodel_for_sequence_classification
 from .utils import AttnImpl, HfConfigFactory, ModelInfo, safe_snapshot_download
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]]
@@ -192,8 +194,14 @@ def get_model_tokenizer_from_local(model_dir: str,
     model = None
     if load_model:
         logger.info(f'model_kwargs: {model_kwargs}')
-        model = automodel_class.from_pretrained(
-            model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
+        # fix seq_cls
+        if model_info.task_type == 'seq_cls':
+            context = patch_automodel_for_sequence_classification
+        else:
+            context = nullcontext
+        with context():
+            model = automodel_class.from_pretrained(
+                model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
 
     # fix not save modeling_xxx.py (transformers 4.45)
     # https://github.com/huggingface/transformers/issues/24737

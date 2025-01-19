@@ -3,12 +3,11 @@ import asyncio
 import inspect
 import os
 from copy import deepcopy
-from dataclasses import asdict
 from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
 
 import torch
 from packaging import version
-from transformers import GenerationConfig, PreTrainedTokenizerBase
+from transformers import GenerationConfig
 
 from swift.llm import InferRequest, Template, TemplateMeta, get_model_tokenizer
 from swift.plugin import Metric
@@ -216,34 +215,16 @@ class VllmEngine(InferEngine):
             result_generator = self.engine.generate(None, generation_config, request_id, input_ids, **kwargs)
         return result_generator
 
-    @staticmethod
-    def _get_logprobs(tokenizer: PreTrainedTokenizerBase,
+    def _get_logprobs(self,
                       logprobs_list: Optional[List[Dict[int, float]]],
                       token_ids: List[int],
                       top_logprobs: Optional[int] = None) -> Optional[Dict[str, Any]]:
-        if logprobs_list is None or len(token_ids) == 0:
+        if logprobs_list is None:
             return None
-        if len(token_ids) > 0:
-            logprobs_list = logprobs_list[-len(token_ids):]
-        res = []
-        for logprobs, token_id in zip(logprobs_list, token_ids):
-            logprob = logprobs[token_id]
-            chosen_token = tokenizer.decode(token_id)
-            _res = {'token': chosen_token, 'logprob': logprob.logprob, 'bytes': list(chosen_token.encode('utf8'))}
-            if top_logprobs is not None:
-                res_top_logprobs = []
-                for k, logprob in logprobs.items():
-                    token = tokenizer.decode(k)
-                    if logprob.logprob == float('-inf') or chosen_token == token:
-                        continue
-                    res_top_logprobs.append({
-                        'token': token,
-                        'logprob': logprob.logprob,
-                        'bytes': list(token.encode('utf8'))
-                    })
-                _res['top_logprobs'] = res_top_logprobs
-            res.append(_res)
-        return {'content': res}
+        for logprobs in logprobs_list:
+            for token_id, logprob in logprobs.items():
+                logprobs[token_id] = logprob.logprob
+        return super()._get_logprobs(logprobs_list, token_ids, top_logprobs)
 
     def _prepare_generation_config(self, request_config: RequestConfig) -> SamplingParams:
         kwargs = {'max_tokens': request_config.max_tokens}
@@ -289,8 +270,8 @@ class VllmEngine(InferEngine):
             usage_info = self._get_usage_info(len(result.prompt_token_ids), num_generated_tokens)
             choices = []
             for output in result.outputs:
-                logprobs = self._get_logprobs(template.tokenizer, output.logprobs,
-                                              output.token_ids[token_idxs[output.index]:], generation_config.logprobs)
+                logprobs = self._get_logprobs(output.logprobs, output.token_ids[token_idxs[output.index]:],
+                                              generation_config.logprobs)
                 token_idxs[output.index] = len(output.token_ids)
                 toolcall = None
                 if output.is_finished:
@@ -320,8 +301,7 @@ class VllmEngine(InferEngine):
         for output in result.outputs:
             output.token_ids = list(output.token_ids)
             response = template.decode(output.token_ids)
-            logprobs = self._get_logprobs(template.tokenizer, output.logprobs, output.token_ids,
-                                          generation_config.logprobs)
+            logprobs = self._get_logprobs(output.logprobs, output.token_ids, generation_config.logprobs)
             toolcall = self._get_toolcall(response, template.tools_prompt)
             choice = ChatCompletionResponseChoice(
                 index=output.index,
