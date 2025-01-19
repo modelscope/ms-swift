@@ -12,7 +12,6 @@ from transformers.modeling_outputs import SequenceClassifierOutputWithPast
 
 from swift.llm import to_device
 from swift.utils import get_logger
-from .model_arch import get_model_arch
 
 logger = get_logger()
 

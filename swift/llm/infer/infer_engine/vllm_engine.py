@@ -3,12 +3,11 @@ import asyncio
 import inspect
 import os
 from copy import deepcopy
-from dataclasses import asdict
 from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
 
 import torch
 from packaging import version
-from transformers import GenerationConfig, PreTrainedTokenizerBase
+from transformers import GenerationConfig
 
 from swift.llm import InferRequest, Template, TemplateMeta, get_model_tokenizer
 from swift.plugin import Metric

@@ -1,6 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from contextlib import contextmanager
-from types import MethodType
 from typing import Dict, List, Optional
 
 import torch

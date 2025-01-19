@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from queue import Queue
-from typing import List
+from typing import List, Optional
 
 import torch
 from transformers import GenerationConfig, LogitsProcessor
@@ -125,8 +125,8 @@ def _set_generation_config_default_value(model_generation_config: GenerationConf
     return generation_config
 
 
-def prepare_generation_config(model_generation_config: GenerationConfig, request_config: RequestConfig,
-                              tokenizer) -> GenerationConfig:
+def prepare_generation_config(model_generation_config: Optional[GenerationConfig], request_config: RequestConfig,
+                              tokenizer) -> Optional[GenerationConfig]:
     if model_generation_config is None or request_config is None:
         return model_generation_config
     kwargs = {'max_new_tokens': request_config.max_tokens}

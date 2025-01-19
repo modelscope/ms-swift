@@ -281,7 +281,6 @@ class Template(ProcessorMixin):
         }
 
     def decode_seq_cls(self, logits: torch.Tensor):
-        # top_logprobs
         assert isinstance(logits, torch.Tensor)
         if logits.shape[-1] > 1:
             preds = torch.argmax(logits, dim=-1).tolist()
