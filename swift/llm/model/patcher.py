@@ -177,8 +177,9 @@ def _patch_sequence_classification(model):
 
 @contextmanager
 def patch_automodel_for_sequence_classification():
-    from_pretrained = PreTrainedModel.from_pretrained.__func__
-
+    from_pretrained = PreTrainedModel.from_pretrained
+    
+    @classmethod
     def _new_from_pretrained(cls, *args, **kwargs):
         __init__ = cls.__init__
 
@@ -188,11 +189,11 @@ def patch_automodel_for_sequence_classification():
                 _patch_sequence_classification(self)
 
         cls.__init__ = __new_init__
-        res = from_pretrained(cls, *args, **kwargs)
+        res = from_pretrained.__func__(cls, *args, **kwargs)
         cls.__init__ = __init__
         return res
 
-    PreTrainedModel.from_pretrained = classmethod(_new_from_pretrained)
+    PreTrainedModel.from_pretrained = _new_from_pretrained
 
     try:
         yield

@@ -66,7 +66,7 @@ class QuantEngine(ProcessorMixin):
             inputs = to_device(self.template.data_collator(batched_inputs), self.model.device)
             if self.model.model_meta.is_multimodal:
                 _, inputs = self.template.pre_forward_hook(self.model, None, inputs)
-            res.append(inputs)
+            res.append(to_device(inputs, 'cpu'))
         return res
 
     @torch.inference_mode()
