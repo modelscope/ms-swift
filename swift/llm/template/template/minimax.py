@@ -7,7 +7,7 @@ from ..constant import LLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import Prompt, Context
-from ... import Template
+from ..base import Template
 
 logger = get_logger()
 
@@ -29,22 +29,20 @@ register_template(MinimaxTemplateMeta(LLMTemplateType.minimax, ))
 
 class MinimaxVLTemplate(Template):
     image_placeholder = ['<image>']
-    skip_prompt = False
+    skip_prompt = True
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         assert media_type == 'image'
-        return self.image_placeholder * self.all_image_tokens[index]
+        return self.image_placeholder * inputs.all_image_tokens[index]
 
-    def calc_num_image_tokens(self):
+    def calc_num_image_tokens(self, image_inputs):
         from transformers.image_utils import get_image_size, to_numpy_array
-        image_inputs = self.image_inputs
         pixel_values = image_inputs["pixel_values"]
         image_sizes = image_inputs["image_sizes"]
         all_image_tokens = []
         if not image_inputs:
-            self.all_image_tokens = all_image_tokens
-            return
+            return all_image_tokens
 
         if self.processor.process_image_mode == 'anyres':
             for pixel_value, image_size in zip(pixel_values, image_sizes):
@@ -81,7 +79,7 @@ class MinimaxVLTemplate(Template):
                 raise ValueError(
                     "You need to provide `patch_size` and `vision_feature_select_strategy` in the model's processing config to expand inputs for image tokens."
                 )
-        self.all_image_tokens = all_image_tokens
+        return all_image_tokens
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         output_kwargs = self.processor._merge_kwargs(
@@ -89,11 +87,11 @@ class MinimaxVLTemplate(Template):
             tokenizer_init_kwargs=self.tokenizer.init_kwargs,
         )
         if inputs.images:
-            image_inputs = self.processor.image_processor(inputs.images, **output_kwargs["images_kwargs"])
+            image_inputs = self.processor.image_processor(inputs.images, **output_kwargs["images_kwargs"], return_tensors='pt')
         else:
             image_inputs = {}
-        self.image_inputs = image_inputs
-        self.calc_num_image_tokens()
+        inputs.image_inputs = image_inputs
+        inputs.all_image_tokens = self.calc_num_image_tokens(image_inputs)
         encoded = super()._encode(inputs)
         for key in image_inputs:
             encoded[key] = image_inputs[key]
@@ -110,4 +108,4 @@ class MinimaxVLTemplate(Template):
         return res
 
 
-register_template(MinimaxTemplateMeta(LLMTemplateType.minimax_v, template_cls=MinimaxVLTemplate))
+register_template(MinimaxTemplateMeta(LLMTemplateType.minimax_vl, template_cls=MinimaxVLTemplate))

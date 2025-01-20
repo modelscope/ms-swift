@@ -397,6 +397,7 @@ Evaluation Arguments inherit from the [deployment arguments](#deployment-argumen
 - 🔥eval_dataset: Evaluation dataset, refer to [Evaluation documentation](./Evaluation.md).
 - eval_limit: Number of samples for each evaluation set, default is None.
 - eval_output_dir: Folder for storing evaluation results, default is 'eval_output'.
+- local_dataset: Some eval datasets like `CMB` cannot be loaded automatically, it should be downloaded manually. Setting this argument to `true` will download the full opencompass eval dataset package and create a soft link of `data` in the local dir. The default value of this argument is `false`. Note: This argument has a side effect that after downloading and creating a `data` dir, all evaluations with the same work dir will use the `data` folder, the default `~/.cache/opencompass` dataset will be skipped. The downloading will happen only once and the cache will be used in the later evaluations.
 - temperature: Default is 0.
 - verbose: This parameter is passed to DeployArguments during local evaluation, default is `False`.
 - eval_num_proc: Maximum concurrency for clients during evaluation. The default for text evaluation is 256, while for multimodal it is 16.

@@ -85,8 +85,7 @@ register_model(
         ],
         TemplateType.minimax_vl,
         get_model_tokenizer_minimax_vl,
-        architectures=['MiniMaxVL01ForConditionalGeneration'],
-        model_arch=ModelArch.llama))
+        architectures=['MiniMaxVL01ForConditionalGeneration']))
 
 
 def get_model_tokenizer_minimax_text(model_dir: str,
@@ -136,5 +135,4 @@ register_model(
         ],
         TemplateType.minimax,
         get_model_tokenizer_minimax_text,
-        architectures=['MiniMaxText01ForCausalLM'],
-        model_arch=ModelArch.llama))
+        architectures=['MiniMaxText01ForCausalLM']))
