@@ -20,7 +20,7 @@ class EvalArguments(DeployArguments):
     Args:
         eval_dataset (List[str]): List of evaluation datasets. Default is an empty list.
         eval_limit (Optional[str]): Limit number of each evaluation dataset. Default is None.
-        local_dataset(bool): Download
+        local_dataset(bool): Download extra dataset from opencompass, default False.
         eval_output_dir (str): The eval output dir.
         temperature (float): The temperature.
         verbose (bool): Output verbose information.
