@@ -24,8 +24,10 @@ class PPOTrainer(SwiftMixin, HFPPOv2Trainer):
             __init__(self, *args, **kwargs)
 
         DataLoader.__init__ = __new_init__
-        yield
-        DataLoader.__init__ = __init__
+        try:
+            yield
+        finally:
+            DataLoader.__init__ = __init__
 
     def __init__(self, model: PreTrainedModel, ref_model: PreTrainedModel, *_args, **kwargs):
         super().__init__(model, *_args, **kwargs)

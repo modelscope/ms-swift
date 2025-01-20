@@ -34,13 +34,14 @@ class MaxLengthError(ValueError):
 
 
 class Template(ProcessorMixin):
-    special_tokens = ['<image>', '<video>', '<audio>', '<bbox>', '<ref-object>']
+    special_tokens = ['<image>', '<video>', '<audio>', '<bbox>', '<ref-object>', '<cot-process>']
     special_keys = ['images', 'videos', 'audios', 'objects']
     grounding_type = 'norm_1000'
 
     image_placeholder = ['<image>']
     video_placeholder = ['<video>']
     audio_placeholder = ['<audio>']
+    cot_process_placeholder = ['ки']
     load_images = True
     skip_prompt = True
     use_model = False
@@ -110,7 +111,7 @@ class Template(ProcessorMixin):
 
         self.mode: Literal['pt', 'vllm', 'lmdeploy',  # infer
                            'train', 'rlhf', 'kto',  # train
-                           'seq_cls'] = 'pt'
+                           'seq_cls', 'prm'] = 'pt'
         if self.model_info.task_type != 'causal_lm':
             self.mode = self.model_info.task_type
         self._handles = []
@@ -236,7 +237,7 @@ class Template(ProcessorMixin):
             encoded = Template._encode(self, inputs)
             for key in ['images', 'audios', 'videos']:
                 encoded[key] = getattr(inputs, key)
-        elif self.mode in {'pt', 'train'}:
+        elif self.mode in {'pt', 'train', 'prm'}:
             encoded = self._encode(inputs)
         elif self.mode == 'seq_cls':
             encoded = self._seq_cls_encode(inputs)
@@ -265,9 +266,37 @@ class Template(ProcessorMixin):
                     return generate_ids[:-i]
         return generate_ids
 
+    @staticmethod
+    def _get_seq_cls_logprobs(pred: int, logprobs: torch.Tensor):
+        idxs = logprobs.argsort(descending=True, dim=-1)
+        return {
+            'content': {
+                'index': pred,
+                'logprob': logprobs[pred].item(),
+                'top_logprobs': [{
+                    'index': idx,
+                    'logprob': logprobs[idx].item()
+                } for idx in idxs.tolist()]
+            }
+        }
+
+    def decode_seq_cls(self, logits: torch.Tensor):
+        assert isinstance(logits, torch.Tensor)
+        if logits.shape[-1] > 1:
+            preds = torch.argmax(logits, dim=-1).tolist()
+            logprobs = torch.log_softmax(logits, -1)
+            logprobs = [self._get_seq_cls_logprobs(pred, logprobs[i]) for i, pred in enumerate(preds)]
+        else:
+            preds = logits.squeeze(dim=-1).tolist()
+            logprobs = [None] * len(preds)
+        return preds, logprobs
+
     def decode(self, generate_ids: List[int], is_finished: bool = True, tokenizer_kwargs=None, **kwargs) -> Any:
         tokenizer_kwargs = tokenizer_kwargs or {}
         return self._skip_stop_decode(generate_ids, is_finished, **tokenizer_kwargs)
+
+    def decode_prm(self, input_ids: torch.Tensor, logits: torch.Tensor) -> Any:
+        raise NotImplementedError
 
     def generate(self, model, *args, **kwargs):
         return model.generate(*args, **kwargs)
@@ -343,8 +372,7 @@ class Template(ProcessorMixin):
     def _simplify_context_list(self, context_list: List[Context], loss_scale_list: List[float],
                                inputs: StdTemplateInputs) -> Tuple[List[Context], List[float]]:
         """Merge anything in the context to simplify the inputs"""
-        if inputs.is_multimodal:
-            context_list, loss_scale_list = self._split_special_tokens(context_list, loss_scale_list)
+        context_list, loss_scale_list = self._split_special_tokens(context_list, loss_scale_list)
         context_list, loss_scale_list = self._pre_tokenize(context_list, loss_scale_list, inputs)
 
         res: List[Context] = []  # result of context_list
@@ -431,6 +459,18 @@ class Template(ProcessorMixin):
         """
         return [object_['caption']]
 
+    def replace_cot_process(self, inputs: StdTemplateInputs) -> List[Context]:
+        """Replace the cot process label for PRM training or inference.
+        Override this function to do your own replace operation.
+
+        Args:
+            inputs: The inputs
+
+        Returns:
+            The contents or input_ids replaced
+        """
+        return [self.cot_process_placeholder]
+
     def replace_box(self, object_: Dict[str, Any], index: int, inputs: StdTemplateInputs) -> List[Context]:
         """Replace bbox pointing to the objects to contents or input_ids. This is useful in the grounding task.
         Override this function to do your own replace operation.
@@ -473,20 +513,22 @@ class Template(ProcessorMixin):
 
         for context, loss_scale in zip(context_list, loss_scale_list):
             for k in ['image', 'video', 'audio']:
-                if context == f'<{k}>':
+                if context == f'<{k}>' and inputs.is_multimodal:
                     c_list = self.replace_tag(k, getattr(inputs, f'{k}_idx'), inputs)
                     setattr(inputs, f'{k}_idx', getattr(inputs, f'{k}_idx') + 1)
                     loss_scale = 0.
                     break
             else:
-                if context == '<ref-object>':
+                if context == '<ref-object>' and inputs.object_idx < len(inputs.objects):
                     idx = inputs.object_idx
                     c_list = self.replace_object(inputs.objects[idx], idx, inputs)
                     inputs.object_idx += 1
-                elif context == '<bbox>':
+                elif context == '<bbox>' and inputs.box_idx < len(inputs.objects):
                     idx = inputs.box_idx
                     c_list = self.replace_box(inputs.objects[idx], idx, inputs)
                     inputs.box_idx += 1
+                elif context == '<cot-process>' and self.mode == 'prm':
+                    c_list = self.replace_cot_process(inputs)
                 else:
                     c_list = [context]
             res += c_list
@@ -710,11 +752,11 @@ class Template(ProcessorMixin):
 
     def replace_video2image(self, load_video_func, inputs, replace_tag: Callable) -> List[Context]:
         context_list = []
-        if self.mode == 'pt':
-            video = inputs.videos[inputs.video_idx]
-        else:
+        if self.mode in {'vllm', 'lmdeploy'}:
             video = inputs.videos.pop(inputs.video_idx)
             inputs.video_idx -= 1
+        else:
+            video = inputs.videos[inputs.video_idx]
         images = inputs.images
         new_images = load_video_func(video)
         inputs.images = images[:inputs.image_idx] + new_images + images[inputs.image_idx:]
@@ -797,7 +839,7 @@ class Template(ProcessorMixin):
             return self._rlhf_data_collator(batch, padding_to=padding_to)
         elif self.mode == 'kto':
             return self._kto_data_collator(batch, padding_to=padding_to)
-        elif self.mode in {'pt', 'train'}:
+        elif self.mode in {'pt', 'train', 'prm'}:
             return self._data_collator(batch, padding_to=padding_to)
         elif self.mode == 'seq_cls':
             return self._seq_cls_data_collator(batch, padding_to=padding_to)

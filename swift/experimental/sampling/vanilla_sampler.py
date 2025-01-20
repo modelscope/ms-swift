@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import os
 from copy import deepcopy
 
 import json
@@ -40,6 +41,9 @@ class VanillaSampler(Sampler):
         cache_files = self.args.cache_files
         caches = {}
         for file in cache_files:
+            if not os.path.exists(file):
+                logger.warning(f'Cache file does not exist: {file}')
+                continue
             with open(file, 'r') as f:
                 for line in f.readlines():
                     line = line.strip()
@@ -132,7 +136,11 @@ class VanillaSampler(Sampler):
                 orm_score = np.array([1.0] * len(infer_requests))
                 _orm_mask = np.array([True] * len(infer_requests))
             if self.prm_model is not None:
-                prm_score, _prm_mask = get_reward(self.prm_model, infer_requests, threshold=self.args.prm_threshold)
+                prm_score, _prm_mask = get_reward(
+                    self.prm_model,
+                    infer_requests,
+                    ground_truths=[ground_truth] * len(infer_requests),
+                    threshold=self.args.prm_threshold)
             else:
                 prm_score = np.array([1.0] * len(infer_requests))
                 _prm_mask = np.array([True] * len(infer_requests))

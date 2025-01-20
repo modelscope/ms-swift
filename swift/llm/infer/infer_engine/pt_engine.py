@@ -226,7 +226,7 @@ class PtEngine(InferEngine):
                 if not delta_text and not is_finished[i]:
                     res.append(None)
                     continue
-                logprobs = self._get_logprobs(self.tokenizer, logprobs_list, generate_ids[token_idxs[i]:],
+                logprobs = self._get_logprobs(logprobs_list, generate_ids[token_idxs[i]:],
                                               generation_config.top_logprobs)
                 token_idxs[i] = len(generate_ids)
 
@@ -261,14 +261,7 @@ class PtEngine(InferEngine):
             self._add_adapter(adapter_request.path, adapter_name)
         return [adapter_name]
 
-    @staticmethod
-    def _get_seq_cls_logprobs(logprobs):
-        res = []
-        for i, logprob in enumerate(logprobs.tolist()):
-            res.append({'index': i, 'logprob': logprob})
-        return {'content': res}
-
-    def _infer_seq_cls(self,
+    def _infer_forward(self,
                        template: Template,
                        inputs: Dict[str, Any],
                        adapter_request: Optional[AdapterRequest] = None,
@@ -280,13 +273,14 @@ class PtEngine(InferEngine):
         num_prompt_tokens = self._get_num_tokens(inputs)
         inputs.pop('labels', None)
         logits = self.model(**inputs, **call_kwargs).logits
-        if logits.shape[-1] > 1:
-            preds = torch.argmax(logits, dim=-1).tolist()
-            logprobs = torch.log_softmax(logits, -1)
-            logprobs = [self._get_seq_cls_logprobs(logprobs[i]) for i in range(len(preds))]
-        else:
-            preds = logits.squeeze(dim=-1).tolist()
+        if template.mode == 'seq_cls':
+            preds, logprobs = template.decode_seq_cls(logits)
+        elif template.mode == 'prm':
+            preds = template.decode_prm(inputs['input_ids'], logits)
             logprobs = [None] * len(preds)
+        else:
+            raise ValueError(f'Unsupported mode: {template.mode}')
+
         res = []
         for i, pred in enumerate(preds):
             usage_info = self._get_usage_info(num_prompt_tokens, 1)
@@ -340,8 +334,7 @@ class PtEngine(InferEngine):
                         logprobs for m, logprobs in zip(masks, batched_logprobs[batched_index]) if m.item()
                     ]
 
-                logprobs = self._get_logprobs(self.tokenizer, logprobs_list, generate_ids,
-                                              generation_config.top_logprobs)
+                logprobs = self._get_logprobs(logprobs_list, generate_ids, generation_config.top_logprobs)
                 usage_info = self._update_usage_info(usage_info, len(generate_ids))
                 response = template.decode(generate_ids, template_inputs=template_inputs[i])
                 finish_reason = self._get_finish_reason(generation_config.max_new_tokens, num_prompt_tokens, True)
@@ -441,7 +434,7 @@ class PtEngine(InferEngine):
 
             return _gen_wrapper()
         else:
-            infer_func = self._infer_seq_cls if template.mode == 'seq_cls' else self._infer_full
+            infer_func = self._infer_forward if template.mode in ('seq_cls', 'prm') else self._infer_full
             return self._update_metrics(infer_func(**kwargs), metrics)
 
     def infer(

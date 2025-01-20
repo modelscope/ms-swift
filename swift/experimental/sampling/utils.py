@@ -2,6 +2,7 @@ import hashlib
 import inspect
 from typing import Any, List, Optional
 
+import json
 import numpy as np
 
 from swift.llm import InferRequest, Messages, RequestConfig
@@ -36,7 +37,17 @@ def get_reward(model: Any,
     if 'ground_truths' in parameters:
         gt_param = {'ground_truths': ground_truths}
     resp_list = model.infer(infer_requests, request_config=request_config, **gt_param)
-    arr = [float(resp_list[i].choices[0].message.content) for i in range(len(resp_list))]
+    arr = []
+    for i in range(len(resp_list)):
+        content = resp_list[i].choices[0].message.content
+        if isinstance(content, str) and '[' in content:
+            try:
+                content = json.loads(content)
+            except Exception:
+                content = eval(content)
+            arr.append(min(content))
+        else:
+            arr.append(float(content))
 
     _mask = np.array([True] * len(arr))
     if threshold is not None:

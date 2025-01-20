@@ -689,6 +689,22 @@ register_model(
 
 register_model(
     ModelMeta(
+        RMModelType.qwen2_5_prm,
+        [
+            ModelGroup([
+                Model('Qwen/Qwen2.5-Math-PRM-7B', 'Qwen/Qwen2.5-Math-PRM-7B'),
+                Model('Qwen/Qwen2.5-Math-PRM-72B', 'Qwen/Qwen2.5-Math-PRM-72B'),
+            ]),
+        ],
+        TemplateType.qwen2_5_math_prm,
+        get_model_tokenizer_reward_model,
+        task_type='prm',
+        architectures=['Qwen2ForProcessRewardModel'],
+        requires=['transformers>=4.37'],
+    ))
+
+register_model(
+    ModelMeta(
         RMModelType.qwen2_5_math_reward,
         [
             ModelGroup([

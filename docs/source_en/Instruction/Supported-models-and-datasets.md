@@ -320,6 +320,7 @@ The table below introduces the models integrated with ms-swift:
 |[Shanghai_AI_Laboratory/internlm2_5-7b-chat-1m](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm2_5-7b-chat-1m)|internlm2|internlm2|transformers>=4.38|-|[internlm/internlm2_5-7b-chat-1m](https://huggingface.co/internlm/internlm2_5-7b-chat-1m)|
 |[Shanghai_AI_Laboratory/internlm2_5-20b](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm2_5-20b)|internlm2|internlm2|transformers>=4.38|-|[internlm/internlm2_5-20b](https://huggingface.co/internlm/internlm2_5-20b)|
 |[Shanghai_AI_Laboratory/internlm2_5-20b-chat](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm2_5-20b-chat)|internlm2|internlm2|transformers>=4.38|-|[internlm/internlm2_5-20b-chat](https://huggingface.co/internlm/internlm2_5-20b-chat)|
+|[Shanghai_AI_Laboratory/internlm3-8b-instruct](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm3-8b-instruct)|internlm3|internlm2|transformers>=4.48|-|[internlm/internlm3-8b-instruct](https://huggingface.co/internlm/internlm3-8b-instruct)|
 |[deepseek-ai/deepseek-llm-7b-base](https://modelscope.cn/models/deepseek-ai/deepseek-llm-7b-base)|deepseek|deepseek|-|-|[deepseek-ai/deepseek-llm-7b-base](https://huggingface.co/deepseek-ai/deepseek-llm-7b-base)|
 |[deepseek-ai/deepseek-llm-7b-chat](https://modelscope.cn/models/deepseek-ai/deepseek-llm-7b-chat)|deepseek|deepseek|-|-|[deepseek-ai/deepseek-llm-7b-chat](https://huggingface.co/deepseek-ai/deepseek-llm-7b-chat)|
 |[deepseek-ai/deepseek-llm-67b-base](https://modelscope.cn/models/deepseek-ai/deepseek-llm-67b-base)|deepseek|deepseek|-|-|[deepseek-ai/deepseek-llm-67b-base](https://huggingface.co/deepseek-ai/deepseek-llm-67b-base)|
@@ -469,6 +470,8 @@ The table below introduces the models integrated with ms-swift:
 |[Shanghai_AI_Laboratory/internlm2-7b-reward](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm2-7b-reward)|internlm2_reward|internlm2_reward|transformers>=4.38|-|[internlm/internlm2-7b-reward](https://huggingface.co/internlm/internlm2-7b-reward)|
 |[Shanghai_AI_Laboratory/internlm2-20b-reward](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm2-20b-reward)|internlm2_reward|internlm2_reward|transformers>=4.38|-|[internlm/internlm2-20b-reward](https://huggingface.co/internlm/internlm2-20b-reward)|
 |[Qwen/Qwen2-Math-RM-72B](https://modelscope.cn/models/Qwen/Qwen2-Math-RM-72B)|qwen2_reward|qwen|transformers>=4.37|-|[Qwen/Qwen2-Math-RM-72B](https://huggingface.co/Qwen/Qwen2-Math-RM-72B)|
+|[Qwen/Qwen2.5-Math-PRM-7B](https://modelscope.cn/models/Qwen/Qwen2.5-Math-PRM-7B)|qwen2_5_prm|qwen2_5_math_prm|transformers>=4.37|-|[Qwen/Qwen2.5-Math-PRM-7B](https://huggingface.co/Qwen/Qwen2.5-Math-PRM-7B)|
+|[Qwen/Qwen2.5-Math-PRM-72B](https://modelscope.cn/models/Qwen/Qwen2.5-Math-PRM-72B)|qwen2_5_prm|qwen2_5_math_prm|transformers>=4.37|-|[Qwen/Qwen2.5-Math-PRM-72B](https://huggingface.co/Qwen/Qwen2.5-Math-PRM-72B)|
 |[Qwen/Qwen2.5-Math-RM-72B](https://modelscope.cn/models/Qwen/Qwen2.5-Math-RM-72B)|qwen2_5_math_reward|qwen2_5_math|transformers>=4.37|-|[Qwen/Qwen2.5-Math-RM-72B](https://huggingface.co/Qwen/Qwen2.5-Math-RM-72B)|
 |[AI-ModelScope/Skywork-Reward-Llama-3.1-8B](https://modelscope.cn/models/AI-ModelScope/Skywork-Reward-Llama-3.1-8B)|llama3_2_reward|llama3_2|transformers>=4.43|-|[Skywork/Skywork-Reward-Llama-3.1-8B](https://huggingface.co/Skywork/Skywork-Reward-Llama-3.1-8B)|
 |[AI-ModelScope/Skywork-Reward-Llama-3.1-8B-v0.2](https://modelscope.cn/models/AI-ModelScope/Skywork-Reward-Llama-3.1-8B-v0.2)|llama3_2_reward|llama3_2|transformers>=4.43|-|[Skywork/Skywork-Reward-Llama-3.1-8B-v0.2](https://huggingface.co/Skywork/Skywork-Reward-Llama-3.1-8B-v0.2)|
@@ -604,8 +607,9 @@ The table below introduces the models integrated with ms-swift:
 |[deepseek-ai/Janus-1.3B](https://modelscope.cn/models/deepseek-ai/Janus-1.3B)|deepseek_janus|deepseek_janus|-|vision|[deepseek-ai/Janus-1.3B](https://huggingface.co/deepseek-ai/Janus-1.3B)|
 |[OpenBMB/MiniCPM-V](https://modelscope.cn/models/OpenBMB/MiniCPM-V)|minicpmv|minicpmv|timm, transformers<4.42|vision|[openbmb/MiniCPM-V](https://huggingface.co/openbmb/MiniCPM-V)|
 |[OpenBMB/MiniCPM-V-2](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2)|minicpmv|minicpmv|timm, transformers<4.42|vision|[openbmb/MiniCPM-V-2](https://huggingface.co/openbmb/MiniCPM-V-2)|
-|[OpenBMB/MiniCPM-V-2_6](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2_6)|minicpmv2_6|minicpmv2_6|timm, transformers>=4.36, decord|vision, video|[openbmb/MiniCPM-V-2_6](https://huggingface.co/openbmb/MiniCPM-V-2_6)|
 |[OpenBMB/MiniCPM-Llama3-V-2_5](https://modelscope.cn/models/OpenBMB/MiniCPM-Llama3-V-2_5)|minicpmv2_5|minicpmv2_5|timm, transformers>=4.36|vision|[openbmb/MiniCPM-Llama3-V-2_5](https://huggingface.co/openbmb/MiniCPM-Llama3-V-2_5)|
+|[OpenBMB/MiniCPM-V-2_6](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2_6)|minicpmv2_6|minicpmv2_6|timm, transformers>=4.36, decord|vision, video|[openbmb/MiniCPM-V-2_6](https://huggingface.co/openbmb/MiniCPM-V-2_6)|
+|[OpenBMB/MiniCPM-o-2_6](https://modelscope.cn/models/OpenBMB/MiniCPM-o-2_6)|minicpmo2_6|minicpmo2_6|timm, transformers>=4.36, decord, soundfile|vision, video, omni, audio|[openbmb/MiniCPM-o-2_6](https://huggingface.co/openbmb/MiniCPM-o-2_6)|
 |[iic/mPLUG-Owl2](https://modelscope.cn/models/iic/mPLUG-Owl2)|mplug_owl2|mplug_owl2|transformers<4.35, icecream|vision|[MAGAer13/mplug-owl2-llama2-7b](https://huggingface.co/MAGAer13/mplug-owl2-llama2-7b)|
 |[iic/mPLUG-Owl2.1](https://modelscope.cn/models/iic/mPLUG-Owl2.1)|mplug_owl2_1|mplug_owl2|transformers<4.35, icecream|vision|[Mizukiluke/mplug_owl_2_1](https://huggingface.co/Mizukiluke/mplug_owl_2_1)|
 |[iic/mPLUG-Owl3-1B-241014](https://modelscope.cn/models/iic/mPLUG-Owl3-1B-241014)|mplug_owl3|mplug_owl3|transformers>=4.36, icecream, decord|vision, video|[mPLUG/mPLUG-Owl3-1B-241014](https://huggingface.co/mPLUG/mPLUG-Owl3-1B-241014)|
@@ -645,6 +649,7 @@ The table below introduces the models integrated with ms-swift:
 |[LLM-Research/MolmoE-1B-0924](https://modelscope.cn/models/LLM-Research/MolmoE-1B-0924)|molmoe|molmo|transformers>=4.45|vision|[allenai/MolmoE-1B-0924](https://huggingface.co/allenai/MolmoE-1B-0924)|
 |[AI-ModelScope/pixtral-12b](https://modelscope.cn/models/AI-ModelScope/pixtral-12b)|pixtral|pixtral|transformers>=4.45|vision|[mistral-community/pixtral-12b](https://huggingface.co/mistral-community/pixtral-12b)|
 |[InfiniAI/Megrez-3B-Omni](https://modelscope.cn/models/InfiniAI/Megrez-3B-Omni)|megrez_omni|megrez_omni|-|vision, audio|[Infinigence/Megrez-3B-Omni](https://huggingface.co/Infinigence/Megrez-3B-Omni)|
+|[bytedance-research/Valley-Eagle-7B](https://modelscope.cn/models/bytedance-research/Valley-Eagle-7B)|valley|valley|transformers>=4.42, av|vision|-|
 
 
 ## Datasets
@@ -700,6 +705,7 @@ The table below introduces information about the datasets integrated with ms-swi
 |[AI-ModelScope/lawyer_llama_data](https://modelscope.cn/datasets/AI-ModelScope/lawyer_llama_data)|default|21476|224.4±83.9, min=69, max=832|chat, law|[Skepsun/lawyer_llama_data](https://huggingface.co/datasets/Skepsun/lawyer_llama_data)|
 |[AI-ModelScope/leetcode-solutions-python](https://modelscope.cn/datasets/AI-ModelScope/leetcode-solutions-python)|default|2359|723.8±233.5, min=259, max=2117|chat, coding, 🔥|-|
 |[AI-ModelScope/lmsys-chat-1m](https://modelscope.cn/datasets/AI-ModelScope/lmsys-chat-1m)|default|166211|545.8±3272.8, min=22, max=219116|chat, em|[lmsys/lmsys-chat-1m](https://huggingface.co/datasets/lmsys/lmsys-chat-1m)|
+|[AI-ModelScope/math-trn-format](https://modelscope.cn/datasets/AI-ModelScope/math-trn-format)|default|11500|102.2±88.9, min=36, max=1683|math|-|
 |[AI-ModelScope/ms_agent_for_agentfabric](https://modelscope.cn/datasets/AI-ModelScope/ms_agent_for_agentfabric)|default<br>addition|30000|615.7±198.7, min=251, max=2055|chat, agent, multi-round, 🔥|-|
 |[AI-ModelScope/orpo-dpo-mix-40k](https://modelscope.cn/datasets/AI-ModelScope/orpo-dpo-mix-40k)|default|43666|938.1±694.2, min=36, max=8483|dpo, orpo, en, quality|[mlabonne/orpo-dpo-mix-40k](https://huggingface.co/datasets/mlabonne/orpo-dpo-mix-40k)|
 |[AI-ModelScope/pile](https://modelscope.cn/datasets/AI-ModelScope/pile)|default|huge dataset|-|pretrain|[EleutherAI/pile](https://huggingface.co/datasets/EleutherAI/pile)|
@@ -757,6 +763,7 @@ The table below introduces information about the datasets integrated with ms-swi
 |[modelscope/chinese-poetry-collection](https://modelscope.cn/datasets/modelscope/chinese-poetry-collection)|default|1710|58.1±8.1, min=31, max=71|text-generation, poetry|-|
 |[modelscope/clue](https://modelscope.cn/datasets/modelscope/clue)|cmnli|391783|81.6±16.0, min=54, max=157|text-generation, classification|[clue](https://huggingface.co/datasets/clue)|
 |[modelscope/coco_2014_caption](https://modelscope.cn/datasets/modelscope/coco_2014_caption)|train<br>validation|454617|389.6±68.4, min=70, max=587|chat, multi-modal, vision, 🔥|-|
+|[modelscope/gsm8k](https://modelscope.cn/datasets/modelscope/gsm8k)|main|7473|88.6±21.6, min=41, max=241|qa, math|-|
 |[shenweizhou/alpha-umi-toolbench-processed-v2](https://modelscope.cn/datasets/shenweizhou/alpha-umi-toolbench-processed-v2)|backbone<br>caller<br>planner<br>summarizer|huge dataset|-|chat, agent, 🔥|-|
 |[simpleai/HC3](https://modelscope.cn/datasets/simpleai/HC3)|finance<br>finance_cls<br>medicine<br>medicine_cls|11021|296.0±153.3, min=65, max=2267|text-generation, classification, 🔥|[Hello-SimpleAI/HC3](https://huggingface.co/datasets/Hello-SimpleAI/HC3)|
 |[simpleai/HC3-Chinese](https://modelscope.cn/datasets/simpleai/HC3-Chinese)|baike<br>baike_cls<br>open_qa<br>open_qa_cls<br>nlpcc_dbqa<br>nlpcc_dbqa_cls<br>finance<br>finance_cls<br>medicine<br>medicine_cls<br>law<br>law_cls<br>psychology<br>psychology_cls|39781|179.9±70.2, min=90, max=1070|text-generation, classification, 🔥|[Hello-SimpleAI/HC3-Chinese](https://huggingface.co/datasets/Hello-SimpleAI/HC3-Chinese)|
@@ -812,6 +819,8 @@ The table below introduces information about the datasets integrated with ms-swi
 |[swift/train_3.5M_CN](https://modelscope.cn/datasets/swift/train_3.5M_CN)|default|huge dataset|-|common, zh, quality|[BelleGroup/train_3.5M_CN](https://huggingface.co/datasets/BelleGroup/train_3.5M_CN)|
 |[swift/ultrachat_200k](https://modelscope.cn/datasets/swift/ultrachat_200k)|default|207843|1188.0±571.1, min=170, max=4068|chat, en, quality|[HuggingFaceH4/ultrachat_200k](https://huggingface.co/datasets/HuggingFaceH4/ultrachat_200k)|
 |[swift/wikipedia](https://modelscope.cn/datasets/swift/wikipedia)|default|huge dataset|-|pretrain, quality|[wikipedia](https://huggingface.co/datasets/wikipedia)|
+|[tany0699/garbage265](https://modelscope.cn/datasets/tany0699/garbage265)|default|132673|39.0±0.0, min=39, max=39|cls, 🔥, multi-modal|-|
+|[tastelikefeet/competition_math](https://modelscope.cn/datasets/tastelikefeet/competition_math)|default|12000|101.9±87.3, min=36, max=1683|qa, math|-|
 |-|default|huge dataset|-|pretrain, quality|[tiiuae/falcon-refinedweb](https://huggingface.co/datasets/tiiuae/falcon-refinedweb)|
 |[wyj123456/GPT4all](https://modelscope.cn/datasets/wyj123456/GPT4all)|default|806199|97.3±20.9, min=62, max=414|chat, general|-|
 |[wyj123456/code_alpaca_en](https://modelscope.cn/datasets/wyj123456/code_alpaca_en)|default|20022|99.3±57.6, min=30, max=857|chat, coding|[sahil2801/CodeAlpaca-20k](https://huggingface.co/datasets/sahil2801/CodeAlpaca-20k)|

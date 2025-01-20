@@ -130,7 +130,7 @@ class LmdeployEngine(InferEngine):
             max_new_tokens = kwargs.get('max_new_tokens')
             if max_new_tokens is None:
                 kwargs.pop('max_new_tokens', None)
-            parameters = inspect.signature(LmdeployGenerationConfig.__init__).parameters
+            parameters = inspect.signature(LmdeployGenerationConfig).parameters
             for k, v in kwargs.copy().items():
                 if k not in parameters or v is None:
                     kwargs.pop(k)
@@ -204,8 +204,7 @@ class LmdeployEngine(InferEngine):
                 if not delta_text and not is_finished:
                     continue
 
-                logprobs = self._get_logprobs(template.tokenizer, output.logprobs, output.token_ids[token_idx:],
-                                              generation_config.logprobs)
+                logprobs = self._get_logprobs(output.logprobs, output.token_ids[token_idx:], generation_config.logprobs)
                 token_idx = len(output.token_ids)
 
                 usage_info = self._get_usage_info(len(inputs['input_ids']), output.num_token)
@@ -234,7 +233,7 @@ class LmdeployEngine(InferEngine):
                 pass
 
         response = template.decode(output.token_ids)
-        logprobs = self._get_logprobs(template.tokenizer, output.logprobs, output.token_ids, generation_config.logprobs)
+        logprobs = self._get_logprobs(output.logprobs, output.token_ids, generation_config.logprobs)
 
         usage_info = self._get_usage_info(len(inputs['input_ids']), output.num_token)
         toolcall = self._get_toolcall(response, template.tools_prompt)
