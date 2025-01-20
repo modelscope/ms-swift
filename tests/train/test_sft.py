@@ -347,8 +347,13 @@ def test_agent():
     os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
     from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
 
-    result = sft_main(TrainArguments(model='Qwen/Qwen2-7B-Instruct', dataset=['swift/ToolBench#500'], 
-                      loss_scale='react', tools_prompt='react_zh',**kwargs))
+    result = sft_main(
+        TrainArguments(
+            model='Qwen/Qwen2-7B-Instruct',
+            dataset=['swift/ToolBench#500'],
+            loss_scale='react',
+            tools_prompt='react_zh',
+            **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
     infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True))
 
