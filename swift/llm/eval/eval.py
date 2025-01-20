@@ -71,7 +71,7 @@ class SwiftEval(SwiftPipeline):
                         'https://modelscope.cn/datasets/'
                         'opencompass/OpenCompassDataComplete/'
                         'resolve/master/OpenCompassData-complete-20240207.zip', 'OpenCompassData')
-                    os.link(os.path.join(local_dir, 'data'), 'data')
+                    os.symlink(os.path.join(local_dir, 'data'), 'data')
 
             task_cfg = self.get_opencompass_task_cfg(dataset, url)
         else:
