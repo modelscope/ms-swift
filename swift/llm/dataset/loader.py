@@ -70,11 +70,11 @@ class DatasetSyntax:
     def parse(cls, dataset: str) -> 'DatasetSyntax':
         """Parse the dataset from the command line"""
         # dataset_id or dataset_path:subset1/subset2/subset3#dataset_sample
-        if os.path.isfile(dataset):
+        if os.path.exists(dataset):
             other, dataset_sample = dataset, None
         else:
             other, dataset_sample = cls._safe_split(dataset, '#', True, 'right')
-        if os.path.isfile(other):
+        if os.path.exists(other):
             dataset, subsets = other, None
         else:
             dataset, subsets = cls._safe_split(other, ':', True)

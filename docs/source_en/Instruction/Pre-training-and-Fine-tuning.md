@@ -9,7 +9,7 @@ The data needed for fine-tuning can vary from a few thousand to a million rows. 
 
 ## Pre-training
 
-Examples for pre-training can be found [here](https://github.com/modelscope/swift/blob/main/examples/train/pt/train.sh).
+Examples for pre-training can be found [here](https://github.com/modelscope/swift/blob/main/examples/train/pretrain/train.sh).
 
 If you are pre-training using multiple machines and GPUs, please refer to the guide [here](https://github.com/modelscope/swift/blob/main/examples/train/multi-node).
 
