@@ -110,6 +110,8 @@ register_model(
                 Model('deepseek-ai/DeepSeek-V2.5-1210', 'deepseek-ai/DeepSeek-V2.5-1210'),
                 Model('deepseek-ai/DeepSeek-V3-Base', 'deepseek-ai/DeepSeek-V3-Base'),
                 Model('deepseek-ai/DeepSeek-V3', 'deepseek-ai/DeepSeek-V3'),
+                Model('deepseek-ai/DeepSeek-R1', 'deepseek-ai/DeepSeek-R1'),
+                Model('deepseek-ai/DeepSeek-R1-Zero', 'deepseek-ai/DeepSeek-R1-Zero'),
             ]),
         ],
         TemplateType.deepseek_v2_5,

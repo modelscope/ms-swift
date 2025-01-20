@@ -8,8 +8,6 @@ swift sft \
     --model BAAI/Emu3-Gen \
     --train_type lora \
     --dataset 'swift/TextCaps#40' \
-    --loss_scale react \
-    --tools_prompt react_zh \
     --torch_dtype bfloat16 \
     --num_train_epochs 10 \
     --per_device_train_batch_size 1 \
