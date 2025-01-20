@@ -62,15 +62,15 @@ class SwiftEval(SwiftPipeline):
             if self.args.local_dataset:
                 if os.path.exists('data'):
                     if not os.path.exists(os.path.join('data', 'CMB')):
-                        raise RuntimeError(f'Opencompass need a `data` folder in your work dir('
-                                           f'which will be created automatically by swift eval), '
-                                           f'but a local path named `data` already exists, '
-                                           f'please consider moving the dir to another location.')
+                        raise RuntimeError('Opencompass need a `data` folder in your work dir('
+                                           'which will be created automatically by swift eval), '
+                                           'but a local path named `data` already exists, '
+                                           'please consider moving the dir to another location.')
                 else:
-                    local_dir = MediaResource.download('https://modelscope.cn/datasets/'
-                                                       'opencompass/OpenCompassDataComplete/'
-                                                       'resolve/master/OpenCompassData-complete-20240207.zip',
-                                                       'OpenCompassData')
+                    local_dir = MediaResource.download(
+                        'https://modelscope.cn/datasets/'
+                        'opencompass/OpenCompassDataComplete/'
+                        'resolve/master/OpenCompassData-complete-20240207.zip', 'OpenCompassData')
                     os.link(os.path.join(local_dir, 'data'), 'data')
 
             task_cfg = self.get_opencompass_task_cfg(dataset, url)

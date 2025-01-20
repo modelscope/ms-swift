@@ -1,13 +1,13 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from dataclasses import dataclass, field
-from typing import Optional, Dict, Any, List, Literal
+from typing import Any, Dict, List, Literal, Optional
 
 from swift.utils import get_logger
+from ..base import Template
 from ..constant import LLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
-from ..utils import Prompt, Context
-from ..base import Template
+from ..utils import Context, Prompt
 
 logger = get_logger()
 
@@ -15,9 +15,10 @@ logger = get_logger()
 @dataclass
 class MinimaxTemplateMeta(TemplateMeta):
     prefix: Prompt = field(default_factory=lambda: [])
-    prompt: Prompt = field(
-        default_factory=lambda: ['<beginning_of_sentence>user name=user\n{{QUERY}}<end_of_sentence>\n'
-                                 '<beginning_of_sentence>ai name=assistant\n'])
+    prompt: Prompt = field(default_factory=lambda: [
+        '<beginning_of_sentence>user name=user\n{{QUERY}}<end_of_sentence>\n'
+        '<beginning_of_sentence>ai name=assistant\n'
+    ])
     chat_sep: Optional[Prompt] = field(default_factory=lambda: ['<end_of_sentence>\n'])
     suffix: Prompt = field(default_factory=lambda: ['<end_of_sentence>'])
     system_prefix: Optional[Prompt] = field(
@@ -38,8 +39,8 @@ class MinimaxVLTemplate(Template):
 
     def calc_num_image_tokens(self, image_inputs):
         from transformers.image_utils import get_image_size, to_numpy_array
-        pixel_values = image_inputs["pixel_values"]
-        image_sizes = image_inputs["image_sizes"]
+        pixel_values = image_inputs['pixel_values']
+        image_sizes = image_inputs['image_sizes']
         all_image_tokens = []
         if not image_inputs:
             return all_image_tokens
@@ -47,38 +48,38 @@ class MinimaxVLTemplate(Template):
         if self.processor.process_image_mode == 'anyres':
             for pixel_value, image_size in zip(pixel_values, image_sizes):
                 height, width = image_size
-                num_image_tokens = self.processor.get_num_token(height, width,
-                                                                self.processor.grid_pinpoints,
+                num_image_tokens = self.processor.get_num_token(height, width, self.processor.grid_pinpoints,
                                                                 self.processor.patch_size)
                 all_image_tokens.append(num_image_tokens)
         elif self.processor.process_image_mode == 'resize':
-            pixel_values = image_inputs["pixel_values"]
+            pixel_values = image_inputs['pixel_values']
             all_image_tokens = []
             for pixel_value in pixel_values:
                 height, width = get_image_size(to_numpy_array(pixel_value))
-                all_image_tokens.append(int(height * width / self.processor.patch_size ** 2))
+                all_image_tokens.append(int(height * width / self.processor.patch_size**2))
         else:
             if self.processor.patch_size is not None:
-                pixel_values = image_inputs["pixel_values"]
+                pixel_values = image_inputs['pixel_values']
                 all_image_tokens = []
                 for pixel_value in pixel_values:
                     height, width = get_image_size(to_numpy_array(pixel_value))
-                    new_width, new_height = self.processor.get_hw_multiple_of((width, height),
-                                                                              self.processor.patch_size,
-                                                                              self.processor.max_size)
+                    new_width, new_height = self.processor.get_hw_multiple_of(
+                        (width, height), self.processor.patch_size, self.processor.max_size)
                     num_image_tokens = ((new_height // self.processor.patch_size) *
                                         (new_width // self.processor.patch_size))  # + 1
                     all_image_tokens.append(num_image_tokens)
             else:
                 logger.warning_once(
-                    "Expanding inputs for image tokens in MiniMaxVL01 should be done in processing. "
-                    "Please add `patch_size` and `vision_feature_select_strategy` to the model's processing config or set directly "
-                    "with `processor.patch_size = {{patch_size}}` and processor.vision_feature_select_strategy = {{vision_feature_select_strategy}}`. "
-                    "Using processors without these attributes in the config is deprecated and will throw an error in v4.47."
-                )
+                    'Expanding inputs for image tokens in MiniMaxVL01 should be done in processing. '
+                    "Please add `patch_size` and `vision_feature_select_strategy` to the model's "
+                    'processing config or set directly '
+                    'with `processor.patch_size = {{patch_size}}` and processor.vision_feature_select_strategy = '
+                    '{{vision_feature_select_strategy}}`. '
+                    'Using processors without these attributes in the config is deprecated '
+                    'and will throw an error in v4.47.')
                 raise ValueError(
-                    "You need to provide `patch_size` and `vision_feature_select_strategy` in the model's processing config to expand inputs for image tokens."
-                )
+                    "You need to provide `patch_size` and `vision_feature_select_strategy` in the model's processing "
+                    'config to expand inputs for image tokens.')
         return all_image_tokens
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
@@ -87,7 +88,8 @@ class MinimaxVLTemplate(Template):
             tokenizer_init_kwargs=self.tokenizer.init_kwargs,
         )
         if inputs.images:
-            image_inputs = self.processor.image_processor(inputs.images, **output_kwargs["images_kwargs"], return_tensors='pt')
+            image_inputs = self.processor.image_processor(
+                inputs.images, **output_kwargs['images_kwargs'], return_tensors='pt')
         else:
             image_inputs = {}
         inputs.image_inputs = image_inputs
