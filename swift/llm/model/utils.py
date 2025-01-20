@@ -1,6 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import wraps
 from types import MethodType
@@ -332,19 +331,3 @@ def use_submodel_func(model, submodel_name: str, func_list: Optional[List[str]] 
             submodel.__class__.device = model.device
         if key == 'forward' and 'generate' in func_list:
             setattr(submodel, key, MethodType(_get_new_func(key), submodel))  # fix device_map
-
-
-@contextmanager
-def ignore_check_imports():
-    import transformers.dynamic_module_utils as td
-
-    @wraps(td.check_imports)
-    def _check_imports(filename) -> List[str]:
-        return td.get_relative_imports(filename)
-
-    _old_check_imports = td.check_imports
-    td.check_imports = _check_imports
-    try:
-        yield
-    finally:
-        td.check_imports = _old_check_imports

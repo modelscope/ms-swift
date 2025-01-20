@@ -66,8 +66,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
         logger.info(f'model_info: {self.model.model_info}')
 
-        if getattr(self.model, 'generation_config', None):
-            self._prepare_generation_config()
+        self._prepare_generation_config()
         self._prepare_gradient_checkpointing()
 
     def _prepare_template(self) -> None:

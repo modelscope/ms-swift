@@ -14,7 +14,7 @@ from ..template_inputs import StdTemplateInputs
 from ..utils import Context, Prompt, findall
 from ..vision_utils import load_video_minicpmv_mplug_owl3
 from .llama import Llama3TemplateMeta
-from .qwen import QwenTemplateMeta
+from .qwen import Qwen2_5TemplateMeta, QwenTemplateMeta
 
 
 @dataclass
@@ -172,7 +172,6 @@ class MiniCPMV2_6Template(MiniCPMVTemplate):
         encoded = Template._encode(self, inputs)
         images = inputs.images
         use_video = bool(inputs.videos)
-        is_plain_text = not images and not use_video
         use_image_id = True
         max_slice_nums = get_env_args('max_slice_nums', int, None)
         video_max_slice_nums = get_env_args('video_max_slice_nums', int, 1)  # or 2
@@ -182,28 +181,25 @@ class MiniCPMV2_6Template(MiniCPMVTemplate):
         input_ids = encoded['input_ids']
         labels = encoded['labels']
         idx_list = findall(input_ids, -100)
-        idx_list.insert(0, -1)
 
         image_processor = self.processor.image_processor
         image_inputs = image_processor([images], return_tensors='pt',
                                        max_slice_nums=max_slice_nums).to(self.config.torch_dtype)
 
-        res_input_ids = []
-        res_labels = []
-        for i in range(len(idx_list) - 1):
+        n_new_tokens = 0
+        for i in range(len(idx_list)):
             placeholder = image_processor.get_slice_image_placeholder(
                 image_inputs.image_sizes[0][i], image_idx=i, max_slice_nums=max_slice_nums, use_image_id=use_image_id)
             placeholder += '\n'
             placeholder_id = self.processor.encode(placeholder, add_special_tokens=False)
-            res_input_ids += input_ids[idx_list[i] + 1:idx_list[i + 1]] + placeholder_id
+            input_ids = input_ids[:idx_list[i] + n_new_tokens] + placeholder_id + input_ids[idx_list[i] + n_new_tokens
+                                                                                            + 1:]
             if labels is not None:
-                res_labels += labels[idx_list[i] + 1:idx_list[i + 1]] + [-100] * len(placeholder_id)
-        res_input_ids += input_ids[idx_list[-1] + 1:]
-        input_ids = res_input_ids
-        if labels is not None:
-            res_labels += labels[idx_list[-1] + 1:]
-            labels = res_labels
-        if not is_plain_text:
+                labels = labels[:idx_list[i]
+                                + n_new_tokens] + [-100] * len(placeholder_id) + labels[idx_list[i] + n_new_tokens + 1:]
+            n_new_tokens += len(placeholder_id) - 1
+
+        if inputs.images:
             input_tensor_ids = torch.tensor(input_ids)
             unk_token = self.processor.encode('<unk>', add_special_tokens=False)[0]
             indices = (input_tensor_ids == unk_token).nonzero(as_tuple=True)[0].tolist()
@@ -232,6 +228,13 @@ class MiniCPMV2_6Template(MiniCPMVTemplate):
 register_template(
     QwenTemplateMeta(
         MLLMTemplateType.minicpmv2_6,
+        template_cls=MiniCPMV2_6Template,
+        placeholder_tokens=['<unk>'],
+    ))
+
+register_template(
+    Qwen2_5TemplateMeta(
+        MLLMTemplateType.minicpmo2_6,
         template_cls=MiniCPMV2_6Template,
         placeholder_tokens=['<unk>'],
     ))

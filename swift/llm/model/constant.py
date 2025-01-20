@@ -42,6 +42,7 @@ class LLMModelType:
 
     internlm = 'internlm'
     internlm2 = 'internlm2'
+    internlm3 = 'internlm3'
 
     deepseek = 'deepseek'
     deepseek_moe = 'deepseek_moe'
@@ -105,6 +106,7 @@ class BertModelType:
 class RMModelType:
     internlm2_reward = 'internlm2_reward'
     qwen2_reward = 'qwen2_reward'
+    qwen2_5_prm = 'qwen2_5_prm'
     qwen2_5_math_reward = 'qwen2_5_math_reward'
     llama3_2_reward = 'llama3_2_reward'
     gemma_reward = 'gemma_reward'
@@ -164,8 +166,9 @@ class MLLMModelType:
     deepseek_janus = 'deepseek_janus'
 
     minicpmv = 'minicpmv'
-    minicpmv2_6 = 'minicpmv2_6'
     minicpmv2_5 = 'minicpmv2_5'
+    minicpmv2_6 = 'minicpmv2_6'
+    minicpmo2_6 = 'minicpmo2_6'
 
     mplug_owl2 = 'mplug_owl2'
     mplug_owl2_1 = 'mplug_owl2_1'
@@ -185,6 +188,7 @@ class MLLMModelType:
     molmoe = 'molmoe'
     pixtral = 'pixtral'
     megrez_omni = 'megrez_omni'
+    valley = 'valley'
 
 
 class ModelType(LLMModelType, MLLMModelType, BertModelType, RMModelType):

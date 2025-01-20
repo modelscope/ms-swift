@@ -55,7 +55,7 @@ class SwiftWebUI(SwiftPipeline):
         LLMInfer.set_lang(lang)
         LLMExport.set_lang(lang)
         LLMEval.set_lang(lang)
-        with gr.Blocks(title='SWIFT WebUI') as app:
+        with gr.Blocks(title='SWIFT WebUI', theme=gr.themes.Base()) as app:
             try:
                 _version = swift.__version__
             except AttributeError:

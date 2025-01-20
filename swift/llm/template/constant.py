@@ -11,6 +11,7 @@ class LLMTemplateType:
     qwen = 'qwen'
     qwen2_5 = 'qwen2_5'
     qwen2_5_math = 'qwen2_5_math'
+    qwen2_5_math_prm = 'qwen2_5_math_prm'
     qwq = 'qwq'
     marco_o1 = 'marco_o1'
     modelscope_agent = 'modelscope_agent'
@@ -35,6 +36,7 @@ class LLMTemplateType:
 
     internlm = 'internlm'
     internlm2 = 'internlm2'
+    internlm3 = 'internlm3'
 
     deepseek = 'deepseek'
     deepseek_coder = 'deepseek_coder'
@@ -127,6 +129,7 @@ class MLLMTemplateType:
     minicpmv = 'minicpmv'
     minicpmv2_5 = 'minicpmv2_5'
     minicpmv2_6 = 'minicpmv2_6'
+    minicpmo2_6 = 'minicpmo2_6'
 
     deepseek_vl = 'deepseek_vl'
     deepseek_vl2 = 'deepseek_vl2'
@@ -148,6 +151,7 @@ class MLLMTemplateType:
     florence = 'florence'
     molmo = 'molmo'
     megrez_omni = 'megrez_omni'
+    valley = 'valley'
 
 
 class TemplateType(LLMTemplateType, MLLMTemplateType, RMTemplateType):
