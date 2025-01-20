@@ -22,6 +22,7 @@ class QuantEngine(ProcessorMixin):
             from awq import AutoAWQForCausalLM
             kwargs['automodel_class'] = AutoAWQForCausalLM
         self.model, self.template = prepare_model_template(args, **kwargs)
+        self.template.set_mode('train')
         self._set_use_cache_false(self.model)
         self.processor = self.template.processor
 
