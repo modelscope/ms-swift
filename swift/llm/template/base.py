@@ -372,8 +372,7 @@ class Template(ProcessorMixin):
     def _simplify_context_list(self, context_list: List[Context], loss_scale_list: List[float],
                                inputs: StdTemplateInputs) -> Tuple[List[Context], List[float]]:
         """Merge anything in the context to simplify the inputs"""
-        if inputs.is_multimodal or self.mode == 'prm':
-            context_list, loss_scale_list = self._split_special_tokens(context_list, loss_scale_list)
+        context_list, loss_scale_list = self._split_special_tokens(context_list, loss_scale_list)
         context_list, loss_scale_list = self._pre_tokenize(context_list, loss_scale_list, inputs)
 
         res: List[Context] = []  # result of context_list
@@ -514,21 +513,21 @@ class Template(ProcessorMixin):
 
         for context, loss_scale in zip(context_list, loss_scale_list):
             for k in ['image', 'video', 'audio']:
-                if context == f'<{k}>':
+                if context == f'<{k}>' and inputs.is_multimodal:
                     c_list = self.replace_tag(k, getattr(inputs, f'{k}_idx'), inputs)
                     setattr(inputs, f'{k}_idx', getattr(inputs, f'{k}_idx') + 1)
                     loss_scale = 0.
                     break
             else:
-                if context == '<ref-object>':
+                if context == '<ref-object>' and inputs.object_idx < len(inputs.objects):
                     idx = inputs.object_idx
                     c_list = self.replace_object(inputs.objects[idx], idx, inputs)
                     inputs.object_idx += 1
-                elif context == '<bbox>':
+                elif context == '<bbox>' and inputs.box_idx < len(inputs.objects):
                     idx = inputs.box_idx
                     c_list = self.replace_box(inputs.objects[idx], idx, inputs)
                     inputs.box_idx += 1
-                elif context == '<cot-process>':
+                elif context == '<cot-process>' and self.mode == 'prm':
                     c_list = self.replace_cot_process(inputs)
                 else:
                     c_list = [context]
