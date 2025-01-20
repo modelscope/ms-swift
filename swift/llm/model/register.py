@@ -198,16 +198,17 @@ def get_model_tokenizer_from_local(model_dir: str,
                 model = AutoModelForSequenceClassification.from_pretrained(
                     model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
             except ValueError:
-                pass
+                model = None
 
-        if model_info.task_type == 'seq_cls':
-            context = partial(patch_automodel_for_sequence_classification, model_meta=kwargs['model_meta'])
-        else:
-            context = nullcontext
-        with context():
-            automodel_class = automodel_class or AutoModelForCausalLM
-            model = automodel_class.from_pretrained(
-                model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
+        if model is None:
+            if model_info.task_type == 'seq_cls':
+                context = partial(patch_automodel_for_sequence_classification, model_meta=kwargs['model_meta'])
+            else:
+                context = nullcontext
+            with context():
+                automodel_class = automodel_class or AutoModelForCausalLM
+                model = automodel_class.from_pretrained(
+                    model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
 
     # fix not save modeling_xxx.py (transformers 4.45)
     # https://github.com/huggingface/transformers/issues/24737
