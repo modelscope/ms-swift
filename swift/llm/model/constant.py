@@ -78,6 +78,8 @@ class LLMModelType:
     phi3_moe = 'phi3_moe'
     phi4 = 'phi4'
 
+    minimax = 'minimax'
+
     gemma = 'gemma'
     gemma2 = 'gemma2'
 
@@ -169,6 +171,8 @@ class MLLMModelType:
     minicpmv2_5 = 'minicpmv2_5'
     minicpmv2_6 = 'minicpmv2_6'
     minicpmo2_6 = 'minicpmo2_6'
+
+    minimax_vl = 'minimax_vl'
 
     mplug_owl2 = 'mplug_owl2'
     mplug_owl2_1 = 'mplug_owl2_1'

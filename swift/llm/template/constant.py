@@ -24,6 +24,9 @@ class LLMTemplateType:
     yi_coder = 'yi_coder'
     sus = 'sus'
 
+    minimax = 'minimax'
+    minimax_vl = 'minimax_vl'
+
     numina = 'numina'
     ziya = 'ziya'
     atom = 'atom'

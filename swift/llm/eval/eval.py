@@ -8,6 +8,7 @@ from evalscope.run import run_task
 from evalscope.summarizer import Summarizer
 
 from swift.utils import append_to_jsonl, get_logger
+from .. import MediaResource
 from ..argument import EvalArguments
 from ..base import SwiftPipeline
 from ..infer import run_deploy
@@ -58,6 +59,20 @@ class SwiftEval(SwiftPipeline):
         args = self.args
         assert eval_backend in {'opencompass', 'vlmeval'}
         if eval_backend == 'opencompass':
+            if self.args.local_dataset:
+                if os.path.exists('data'):
+                    if not os.path.exists(os.path.join('data', 'CMB')):
+                        raise RuntimeError('Opencompass need a `data` folder in your work dir('
+                                           'which will be created automatically by swift eval), '
+                                           'but a local path named `data` already exists, '
+                                           'please consider moving the dir to another location.')
+                else:
+                    local_dir = MediaResource.download(
+                        'https://modelscope.cn/datasets/'
+                        'opencompass/OpenCompassDataComplete/'
+                        'resolve/master/OpenCompassData-complete-20240207.zip', 'OpenCompassData')
+                    os.symlink(os.path.join(local_dir, 'data'), 'data')
+
             task_cfg = self.get_opencompass_task_cfg(dataset, url)
         else:
             task_cfg = self.get_vlmeval_task_cfg(dataset, url)
