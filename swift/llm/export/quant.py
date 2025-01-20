@@ -6,8 +6,8 @@ import torch
 import torch.nn as nn
 from tqdm import tqdm
 
-from swift.llm import (ExportArguments, MaxLengthError, ProcessorMixin, deep_getattr, get_model_arch, load_dataset,
-                       prepare_model_template, save_checkpoint, to_device)
+from swift.llm import (ExportArguments, HfConfigFactory, MaxLengthError, ProcessorMixin, deep_getattr, get_model_arch,
+                       load_dataset, prepare_model_template, save_checkpoint, to_device)
 from swift.utils import get_logger, get_model_parameter_info
 
 logger = get_logger()
@@ -23,6 +23,8 @@ class QuantEngine(ProcessorMixin):
             kwargs['automodel_class'] = AutoAWQForCausalLM
         self.model, self.template = prepare_model_template(args, **kwargs)
         self.template.set_mode('train')
+
+        HfConfigFactory.set_model_config_attr(self.model, 'use_cache', True)
         self._set_use_cache_false(self.model)
         self.processor = self.template.processor
 
@@ -183,12 +185,6 @@ class QuantEngine(ProcessorMixin):
         if module_lists:
             module_list = max(module_lists, key=lambda x: len(x[1]))
             return f'{prefix}.{module_list[0]}'.strip('.')
-
-    @staticmethod
-    def _set_use_cache_false(model):
-        for module in model.modules():
-            if getattr(module, 'config', None) and getattr(module.config, 'use_cache', True):
-                module.config.use_cache = False
 
     def gptq_model_quantize(self):
         from optimum.gptq import GPTQQuantizer

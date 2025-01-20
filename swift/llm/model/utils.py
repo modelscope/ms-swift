@@ -120,6 +120,12 @@ class HfConfigFactory:
                 setattr(config, attr_name, value)
 
     @staticmethod
+    def set_model_config_attr(model, attr_name: str, value: Any) -> None:
+        for module in model.modules():
+            if getattr(module, 'config', None) and getattr(module.config, attr_name, value) != value:
+                setattr(module.config, attr_name, value)
+
+    @staticmethod
     def get_max_model_len(config: Union[PretrainedConfig, Dict[str, Any]]) -> Optional[int]:
         """Get the max length supported by the model"""
         INF = int(1e9)
@@ -310,11 +316,11 @@ def use_submodel_func(model, submodel_name: str, func_list: Optional[List[str]] 
     submodel = getattr(model, submodel_name)
 
     def _get_new_func(func_name: str):
-        _old_func = getattr(submodel.__class__, func_name)
+        _old_func = getattr(submodel, func_name)
 
         @wraps(_old_func)
         def _new_func(self, *args, **kwargs):
-            res = _old_func(submodel, *args, **kwargs)
+            res = _old_func.__func__(submodel, *args, **kwargs)
             if func_name == 'forward':
                 device = find_device(args)
                 if device is None:
