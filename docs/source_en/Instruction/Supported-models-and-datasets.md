@@ -417,6 +417,7 @@ The table below introduces the models integrated with ms-swift:
 |[LLM-Research/Phi-3.5-mini-instruct](https://modelscope.cn/models/LLM-Research/Phi-3.5-mini-instruct)|phi3|phi3|transformers>=4.36|-|[microsoft/Phi-3.5-mini-instruct](https://huggingface.co/microsoft/Phi-3.5-mini-instruct)|
 |[LLM-Research/Phi-3.5-MoE-instruct](https://modelscope.cn/models/LLM-Research/Phi-3.5-MoE-instruct)|phi3_moe|phi3|transformers>=4.36|-|[microsoft/Phi-3.5-MoE-instruct](https://huggingface.co/microsoft/Phi-3.5-MoE-instruct)|
 |[LLM-Research/phi-4](https://modelscope.cn/models/LLM-Research/phi-4)|phi4|phi4|transformers>=4.36|-|[microsoft/phi-4](https://huggingface.co/microsoft/phi-4)|
+|[MiniMaxAI/MiniMax-Text-01](https://modelscope.cn/models/MiniMaxAI/MiniMax-Text-01)|minimax|minimax|-|-|[MiniMaxAI/MiniMax-Text-01](https://huggingface.co/MiniMaxAI/MiniMax-Text-01)|
 |[AI-ModelScope/gemma-2b-it](https://modelscope.cn/models/AI-ModelScope/gemma-2b-it)|gemma|gemma|transformers>=4.38|-|[google/gemma-2b-it](https://huggingface.co/google/gemma-2b-it)|
 |[AI-ModelScope/gemma-2b](https://modelscope.cn/models/AI-ModelScope/gemma-2b)|gemma|gemma|transformers>=4.38|-|[google/gemma-2b](https://huggingface.co/google/gemma-2b)|
 |[AI-ModelScope/gemma-7b](https://modelscope.cn/models/AI-ModelScope/gemma-7b)|gemma|gemma|transformers>=4.38|-|[google/gemma-7b](https://huggingface.co/google/gemma-7b)|
@@ -612,6 +613,7 @@ The table below introduces the models integrated with ms-swift:
 |[OpenBMB/MiniCPM-Llama3-V-2_5](https://modelscope.cn/models/OpenBMB/MiniCPM-Llama3-V-2_5)|minicpmv2_5|minicpmv2_5|timm, transformers>=4.36|vision|[openbmb/MiniCPM-Llama3-V-2_5](https://huggingface.co/openbmb/MiniCPM-Llama3-V-2_5)|
 |[OpenBMB/MiniCPM-V-2_6](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2_6)|minicpmv2_6|minicpmv2_6|timm, transformers>=4.36, decord|vision, video|[openbmb/MiniCPM-V-2_6](https://huggingface.co/openbmb/MiniCPM-V-2_6)|
 |[OpenBMB/MiniCPM-o-2_6](https://modelscope.cn/models/OpenBMB/MiniCPM-o-2_6)|minicpmo2_6|minicpmo2_6|timm, transformers>=4.36, decord, soundfile|vision, video, omni, audio|[openbmb/MiniCPM-o-2_6](https://huggingface.co/openbmb/MiniCPM-o-2_6)|
+|[MiniMaxAI/MiniMax-VL-01](https://modelscope.cn/models/MiniMaxAI/MiniMax-VL-01)|minimax_vl|minimax_vl|-|-|[MiniMaxAI/MiniMax-VL-01](https://huggingface.co/MiniMaxAI/MiniMax-VL-01)|
 |[iic/mPLUG-Owl2](https://modelscope.cn/models/iic/mPLUG-Owl2)|mplug_owl2|mplug_owl2|transformers<4.35, icecream|vision|[MAGAer13/mplug-owl2-llama2-7b](https://huggingface.co/MAGAer13/mplug-owl2-llama2-7b)|
 |[iic/mPLUG-Owl2.1](https://modelscope.cn/models/iic/mPLUG-Owl2.1)|mplug_owl2_1|mplug_owl2|transformers<4.35, icecream|vision|[Mizukiluke/mplug_owl_2_1](https://huggingface.co/Mizukiluke/mplug_owl_2_1)|
 |[iic/mPLUG-Owl3-1B-241014](https://modelscope.cn/models/iic/mPLUG-Owl3-1B-241014)|mplug_owl3|mplug_owl3|transformers>=4.36, icecream, decord|vision, video|[mPLUG/mPLUG-Owl3-1B-241014](https://huggingface.co/mPLUG/mPLUG-Owl3-1B-241014)|
