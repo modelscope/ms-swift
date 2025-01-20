@@ -409,7 +409,7 @@ Export Arguments include the [basic arguments](#base-arguments) and [merge argum
 - 🔥output_dir: Path for storing export results, default is None.
 
 - 🔥quant_method: Options are 'gptq' and 'awq', default is None.
-- quant_n_samples: Sampling size for the validation set in gptq/awq, default is 128.
+- quant_n_samples: Sampling size for the validation set in gptq/awq, default is 256.
 - max_length: Max length for the calibration set, default value is 2048.
 - quant_batch_size: Quantization batch size, default is 1.
 - group_size: Group size for quantization, default is 128.
