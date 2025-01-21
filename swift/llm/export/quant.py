@@ -6,8 +6,8 @@ import torch
 import torch.nn as nn
 from tqdm import tqdm
 
-from swift.llm import (ExportArguments, MaxLengthError, ProcessorMixin, deep_getattr, get_model_arch, load_dataset,
-                       prepare_model_template, save_checkpoint, to_device)
+from swift.llm import (ExportArguments, HfConfigFactory, MaxLengthError, ProcessorMixin, deep_getattr, get_model_arch,
+                       load_dataset, prepare_model_template, save_checkpoint, to_device)
 from swift.utils import get_logger, get_model_parameter_info
 
 logger = get_logger()
@@ -17,13 +17,16 @@ class QuantEngine(ProcessorMixin):
 
     def __init__(self, args: ExportArguments):
         self.args = args
+        if args.output_dir:
+            args.save_args()
         kwargs = {}
         if args.quant_method == 'awq':
             from awq import AutoAWQForCausalLM
             kwargs['automodel_class'] = AutoAWQForCausalLM
         self.model, self.template = prepare_model_template(args, **kwargs)
         self.template.set_mode('train')
-        self._set_use_cache_false(self.model)
+
+        HfConfigFactory.set_model_config_attr(self.model, 'use_cache', True)
         self.processor = self.template.processor
 
     def quantize(self):
@@ -168,7 +171,7 @@ class QuantEngine(ProcessorMixin):
             quantizer.get_dataset = _get_dataset_origin
             quantizer.prepare_dataset = _prepare_dataset_origin
 
-    def get_block_name_to_quantize(self, model: nn.Module, model_type: str) -> Optional[str]:
+    def get_block_name_to_quantize(self, model: nn.Module) -> Optional[str]:
         model_arch = get_model_arch(model.model_meta.model_arch)
         prefix = ''
         if hasattr(model_arch, 'language_model'):
@@ -184,12 +187,6 @@ class QuantEngine(ProcessorMixin):
             module_list = max(module_lists, key=lambda x: len(x[1]))
             return f'{prefix}.{module_list[0]}'.strip('.')
 
-    @staticmethod
-    def _set_use_cache_false(model):
-        for module in model.modules():
-            if getattr(module, 'config', None) and getattr(module.config, 'use_cache', True):
-                module.config.use_cache = False
-
     def gptq_model_quantize(self):
         from optimum.gptq import GPTQQuantizer
         args = self.args
@@ -200,7 +197,7 @@ class QuantEngine(ProcessorMixin):
                 group_size=args.group_size,
                 dataset=','.join(args.dataset),
                 batch_size=args.quant_batch_size,
-                block_name_to_quantize=self.get_block_name_to_quantize(self.model, args.model_type),
+                block_name_to_quantize=self.get_block_name_to_quantize(self.model),
             )
             gptq_quantizer.serialization_keys.append('block_name_to_quantize')
             logger.info('Start quantizing the model...')

@@ -35,6 +35,20 @@ def test_ppo():
     infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True, merge_lora=True))
 
 
+def test_ppo2():
+    from swift.llm import rlhf_main, RLHFArguments, infer_main, InferArguments
+    result = rlhf_main(
+        RLHFArguments(
+            rlhf_type='ppo',
+            model='Qwen/Qwen2.5-7B-Instruct',
+            reward_model='Qwen/Qwen2.5-7B-Instruct',
+            dataset=['AI-ModelScope/alpaca-gpt4-data-zh#100', 'AI-ModelScope/alpaca-gpt4-data-en#100'],
+            **kwargs))
+    last_model_checkpoint = result['last_model_checkpoint']
+    infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True, merge_lora=True))
+
+
 if __name__ == '__main__':
     # test_rm()
-    test_ppo()
+    # test_ppo()
+    test_ppo2()
