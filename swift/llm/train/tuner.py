@@ -42,13 +42,14 @@ def apply_liger(model_type: str):
         raise ValueError(f'Unsupported liger model_type: {model_type}')
 
 
-def get_multimodal_target_regex(model_arch,
-                                *,
-                                freeze_llm: bool = False,
-                                freeze_vit: bool = True,
-                                freeze_aligner: bool = True,
-                                ignore_embedding: bool = True,
-                                ) -> str:
+def get_multimodal_target_regex(
+    model_arch,
+    *,
+    freeze_llm: bool = False,
+    freeze_vit: bool = True,
+    freeze_aligner: bool = True,
+    ignore_embedding: bool = True,
+) -> str:
     modules = []
     rejected_modules = []
     if not freeze_llm:

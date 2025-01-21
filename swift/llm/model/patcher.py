@@ -10,9 +10,8 @@ from accelerate.utils import find_device
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 from transformers import PreTrainedModel
 from transformers.modeling_outputs import SequenceClassifierOutputWithPast
-from transformers.modeling_utils import no_init_weights
 
-from swift.llm import deep_getattr, to_device
+from swift.llm import to_device
 from swift.utils import get_logger
 from .model_arch import get_model_arch
 from .utils import HfConfigFactory
