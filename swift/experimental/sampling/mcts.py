@@ -163,7 +163,6 @@ class MctsSampler(Sampler):
             return node
 
         def _expand(node: LanguageNode):
-            # s_time = time.time()
             if node.is_root():
                 infer_request = InferRequest([system_message, prompt_message])
             else:
@@ -173,6 +172,7 @@ class MctsSampler(Sampler):
                 }
                 infer_request = InferRequest([system_message, prompt_message, history_message])
 
+            # e_time = time.time()
             # 为了并行进行 Expand 操作，这里暂时不需要考虑顺序，因为 Prompt 是一样的
             n = _args.num_return_sequences - len(node.children)
             with ThreadPoolExecutor(max_workers=n) as executor:
@@ -188,6 +188,7 @@ class MctsSampler(Sampler):
                         responses += future.result()
                     except Exception as e:
                         print(f"任务 {task_id} 执行请求时发生错误: {e}")
+            # logger.info(f"expand.expand time: {time.time() - e_time}")
 
             # 为了并行获取 Outcome Reward，这里获得的 OR 是顺序返回的，所以可以直接对应
             orm_infer_requests = []
@@ -211,9 +212,11 @@ class MctsSampler(Sampler):
                 if not node.is_root():
                     node.parent.active_children.remove(node)
 
+            # e_time = time.time()
             orm_score, _orm_mask = get_reward(
                 self.orm_model, orm_infer_requests, ground_truths=[ground_truth] * len(orm_infer_requests),
                 threshold=0.0)
+            # logger.info(f"expand.orm time: {time.time() - e_time}")
             for child, score in zip(node.children, orm_score):
                 if child.terminated:
                     child.init_and_update_value(score)
@@ -221,8 +224,8 @@ class MctsSampler(Sampler):
                         terminate_correct.append(child.answer)
                     else:
                         terminate_incorrect.append(child.answer)
-            # logger.info(f"expand time: {time.time() - s_time}")
-            # s_time = time.time()
+
+            # e_time = time.time()
             if self.prm_model:
                 prm_infer_requests = []
                 for child in node.children:
@@ -235,7 +238,7 @@ class MctsSampler(Sampler):
                     threshold=0.0)
                 for child, score in zip(node.children, prm_score):
                     child.process_reward = score
-            # logger.info(f"prm time: {time.time() - s_time}")
+            # logger.info(f"expand.prm time: {time.time() - e_time}")
 
         def _rollout(node: LanguageNode):
             rollout_iter_index = 0
@@ -250,25 +253,46 @@ class MctsSampler(Sampler):
                 }
             active_rollout_nodes = list(rollout_nodes.keys())
             while len(active_rollout_nodes) > 0 and rollout_iter_index < _args.max_rollout_iterations:
+                # r_time = time.time()
                 infer_requests = [InferRequest([system_message,
                                                 prompt_message,
                                                 rollout_nodes[index]['history_messages']])
                                   for index in active_rollout_nodes]
-                responses = self.infer_engines[0].infer(infer_requests,
-                                                    self.rollout_request_config,
-                                                    **self.infer_kwargs)
+                # logger.info(f"rollout.prepare time: {time.time() - r_time}")
+                # r_time = time.time()
+                n = len(infer_requests)
+                with ThreadPoolExecutor(max_workers=n) as executor:
+                    futures = {executor.submit(perform_infer,
+                                               self.infer_engines[i],
+                                               infer_requests[i],
+                                               self.rollout_request_config,
+                                               **self.infer_kwargs): i for i in range(n)}
+                    responses = []
+                    for future in as_completed(futures):
+                        task_id = futures[future]
+                        try:
+                            responses += future.result()
+                        except Exception as e:
+                            print(f"任务 {task_id} 执行请求时发生错误: {e}")
+                # logger.info(f"rollout.infer time: {time.time() - r_time}")
+
+                # r_time = time.time()
                 orm_infer_requests = []
                 end_paths = []
                 for index, response in zip(active_rollout_nodes, responses):
                     self.update_usage_info(response)
-                    output = response.choices[0].message.content.rstrip(SEP_TOKEN + '\n').split(SEP_TOKEN)[0] + SEP_TOKEN + '\n'
+                    output = response.choices[0].message.content.rstrip(SEP_TOKEN + '\n').split(SEP_TOKEN)[
+                                 0] + SEP_TOKEN + '\n'
                     rollout_nodes[index]['history_messages']["content"] += output
                     end_paths.append(rollout_nodes[index]['history_messages']["content"])
                     orm_infer_requests.append(InferRequest([rollout_nodes[index]['history_messages']]))
+                # logger.info(f"rollout.orm_prepare time: {time.time() - r_time}")
 
+                # r_time = time.time()
                 orm_score, _orm_mask = get_reward(
                     self.orm_model, orm_infer_requests, ground_truths=[ground_truth] * len(infer_requests),
                     threshold=0.0)
+                # logger.info(f"rollout.get_orm tiem: {time.time() - r_time}")
                 terminated_state = check_terminate(end_paths)
                 for index, score, terminated in zip(active_rollout_nodes, orm_score, terminated_state):
                     if terminated:
