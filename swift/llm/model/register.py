@@ -5,6 +5,7 @@ import re
 from contextlib import nullcontext
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
+from functools import partial
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
@@ -164,9 +165,6 @@ def get_model_tokenizer_from_local(model_dir: str,
                                    automodel_class=None,
                                    **kwargs):
     """Load the model and tokenizer from the local model_dir."""
-    automodel_class_mapping = {'seq_cls': AutoModelForSequenceClassification, 'causal_lm': AutoModelForCausalLM}
-    if automodel_class is None:
-        automodel_class = automodel_class_mapping[model_info.task_type]
     if model_config is None:
         model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     # fix prediction_step (internvl2, ovis, ...)
@@ -195,13 +193,22 @@ def get_model_tokenizer_from_local(model_dir: str,
     if load_model:
         logger.info(f'model_kwargs: {model_kwargs}')
         # fix seq_cls
-        if model_info.task_type == 'seq_cls':
-            context = patch_automodel_for_sequence_classification
-        else:
-            context = nullcontext
-        with context():
-            model = automodel_class.from_pretrained(
-                model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
+        if model_info.task_type == 'seq_cls' and automodel_class is None:
+            try:
+                model = AutoModelForSequenceClassification.from_pretrained(
+                    model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
+            except ValueError:
+                model = None
+
+        if model is None:
+            if model_info.task_type == 'seq_cls':
+                context = partial(patch_automodel_for_sequence_classification, model_meta=kwargs['model_meta'])
+            else:
+                context = nullcontext
+            with context():
+                automodel_class = automodel_class or AutoModelForCausalLM
+                model = automodel_class.from_pretrained(
+                    model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
 
     # fix not save modeling_xxx.py (transformers 4.45)
     # https://github.com/huggingface/transformers/issues/24737
@@ -470,6 +477,7 @@ def get_model_tokenizer(
     kwargs['automodel_class'] = automodel_class
     kwargs['attn_impl'] = attn_impl
     kwargs['rope_scaling'] = rope_scaling
+    kwargs['model_meta'] = model_meta
     model, processor = get_function(model_dir, model_info, model_kwargs, load_model, **kwargs)
 
     if not isinstance(processor, PreTrainedTokenizerBase) and hasattr(processor, 'tokenizer'):
@@ -492,8 +500,8 @@ def get_model_tokenizer(
 
     if model is not None:
         # fix seq classification task
-        if model.config.pad_token_id is None:
-            model.config.pad_token_id = tokenizer.pad_token_id
+        pad_token_id = model.config.pad_token_id or tokenizer.pad_token_id
+        HfConfigFactory.set_model_config_attr(model, 'pad_token_id', pad_token_id)
         model.model_info = model_info
         model.model_meta = model_meta
         model.model_dir = model_dir

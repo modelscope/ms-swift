@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from contextlib import contextmanager
 from functools import wraps
+from types import MethodType
 from typing import List
 
 import torch
@@ -12,6 +13,8 @@ from transformers.modeling_outputs import SequenceClassifierOutputWithPast
 
 from swift.llm import to_device
 from swift.utils import get_logger
+from .model_arch import get_model_arch
+from .utils import HfConfigFactory
 
 logger = get_logger()
 
@@ -84,30 +87,38 @@ def patch_ignore_check_imports():
         td.check_imports = _old_check_imports
 
 
-def _patch_sequence_classification(model):
+def _patch_sequence_classification(model, model_meta):
     # rename
     idx = model.__class__.__name__.find('For')
     if idx != -1:
         model.__class__.__name__ = model.__class__.__name__[:idx]
     model.__class__.__name__ += 'ForSequenceClassification'
 
-    model.num_labels = model.config.num_labels
-    model.score = nn.Linear(model.config.hidden_size, model.num_labels, bias=False).to(model.dtype)
-    model.score.weight.data.normal_(mean=0.0, std=model.config.initializer_range)
+    hidden_size = HfConfigFactory.get_config_attr(model.config, 'hidden_size')
+    initializer_range = HfConfigFactory.get_config_attr(model.config, 'initializer_range')
 
     lm_heads = ['lm_head', 'output', 'embed_out', 'output_layer']
-    for lm_head in lm_heads:
-        if hasattr(model, lm_head):
-            setattr(model, lm_head, nn.Identity())
-            break
+    llm_prefix = getattr(get_model_arch(model_meta.model_arch), 'language_model', None)
+    if llm_prefix:
+        llm_model = getattr(model, llm_prefix[0])
     else:
-        raise ValueError(f'model: {model}, lm_heads: {lm_heads}')
+        llm_model = model
+    if 'CausalLM' not in llm_model.__class__.__name__:
+        llm_model = model
+    llm_model.num_labels = model.config.num_labels
+    llm_model.score = nn.Linear(hidden_size, llm_model.num_labels, bias=False)
+    if llm_model.score.weight.device == torch.device('meta'):
+        llm_model.score.to_empty(device='cpu')
+    llm_model.score.weight.data.normal_(mean=0.0, std=initializer_range)
+    for lm_head in lm_heads:
+        if hasattr(llm_model, lm_head):
+            setattr(llm_model, lm_head, nn.Identity())
+            break
 
-    origin_forward = model.forward
+    origin_forward = llm_model.forward
 
     @wraps(origin_forward)
-    def new_forward(*args, **kwargs):
-        self = model
+    def new_forward(self, *args, **kwargs):
         labels = kwargs.pop('labels', None)
         return_dict = kwargs.pop('return_dict', None)
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
@@ -171,11 +182,11 @@ def _patch_sequence_classification(model):
             attentions=output.attentions,
         )
 
-    model.forward = new_forward
+    llm_model.forward = MethodType(new_forward, llm_model)
 
 
 @contextmanager
-def patch_automodel_for_sequence_classification():
+def patch_automodel_for_sequence_classification(model_meta):
     from_pretrained = PreTrainedModel.from_pretrained
 
     @classmethod
@@ -185,7 +196,7 @@ def patch_automodel_for_sequence_classification():
         def __new_init__(self, *args, **kwargs):
             __init__(self, *args, **kwargs)
             if 'SequenceClassification' not in self.__class__.__name__:
-                _patch_sequence_classification(self)
+                _patch_sequence_classification(self, model_meta)
 
         cls.__init__ = __new_init__
         res = from_pretrained.__func__(cls, *args, **kwargs)
