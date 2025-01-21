@@ -19,16 +19,24 @@ log_filename = f"./output/sampler/mcts/mcts_{time.strftime('%Y%m%d_%H%M%S')}.log
 logger = get_logger(log_filename)
 
 
-SYS_PROMPT = """You are a super intelligent AI, you can solve any math problem step by step. 
-
+SYS_PROMPT = """You are a super intelligent AI, you can solve any math problem step by step.
+Each step should end with 'ки'.
 Now answer the question:
 """
 
-SEP_TOKEN = "\n\n"
+NXT_PROMPT = """Continue.
+"""
+
+SEP_TOKEN = "ки"
 
 system_message = {
     "role": "system",
     "content": SYS_PROMPT,
+}
+
+next_message = {
+    "role": "user",
+    "content": NXT_PROMPT,
 }
 
 def check_terminate(answers: Union[str, List[str]]) -> List[bool]:
@@ -170,7 +178,7 @@ class MctsSampler(Sampler):
                     "role": "assistant",
                     "content": node.answer,
                 }
-                infer_request = InferRequest([system_message, prompt_message, history_message])
+                infer_request = InferRequest([system_message, prompt_message, history_message, next_message])
 
             # e_time = time.time()
             # 为了并行进行 Expand 操作，这里暂时不需要考虑顺序，因为 Prompt 是一样的
@@ -256,7 +264,8 @@ class MctsSampler(Sampler):
                 # r_time = time.time()
                 infer_requests = [InferRequest([system_message,
                                                 prompt_message,
-                                                rollout_nodes[index]['history_messages']])
+                                                rollout_nodes[index]['history_messages'],
+                                                next_message])
                                   for index in active_rollout_nodes]
                 # logger.info(f"rollout.prepare time: {time.time() - r_time}")
                 # r_time = time.time()
