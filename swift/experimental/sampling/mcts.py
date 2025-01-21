@@ -19,35 +19,14 @@ logger = get_logger('./output/sampler/mcts.log')
 
 SYS_PROMPT = """You are a super intelligent AI, you can solve any math problem step by step. 
 
-REMEMBER: Each step should stop with a 'ки'. Final answer should start with '# Answer'. 
-
-Here is an example:
-
-user
-Janet pays $40/hour for 3 hours per week of clarinet lessons and $28/hour for 5 hours a week of piano lessons. How much more does she spend on piano lessons than clarinet lessons in a year? 
-
-assistant
-Step 1: Janet spends 3 hours + 5 hours = <<3+5=8>>8 hours per week on music lessons. ки 
-Step 2: She spends 40 * 3 = <<40*3=120>>120 on clarinet lessons per week. ки 
-Step 3: She spends 28 * 5 = <<28*5=140>>140 on piano lessons per week. ки 
-Step 4: Janet spends 120 + 140 = <<120+140=260>>260 on music lessons per week. ки 
-Step 5: She spends 260 * 52 = <<260*52=13520>>13520 on music lessons in a year. ки 
-# Answer 13520 ки 
-
 Now answer the question:
 """
-NXT_PROMPT = """Please continue.
-"""
 
-SEP_TOKEN = "ки\n"
+SEP_TOKEN = "\n\n"
 
 system_message = {
     "role": "system",
     "content": SYS_PROMPT,
-}
-next_message = {
-    "role": "user",
-    "content": NXT_PROMPT,
 }
 
 def check_terminate(answers: Union[str, List[str]]) -> List[bool]:
@@ -55,7 +34,7 @@ def check_terminate(answers: Union[str, List[str]]) -> List[bool]:
         answers = [answers]
     results = []
     for answer in answers:
-        results.append("# Answer" in answer)
+        results.append("\\boxed" in answer)
     return results
 
 class LanguageNode:
@@ -190,7 +169,7 @@ class MctsSampler(Sampler):
                     "role": "assistant",
                     "content": node.answer,
                 }
-                infer_request = InferRequest([system_message, prompt_message, history_message, next_message])
+                infer_request = InferRequest([system_message, prompt_message, history_message])
 
             # 为了并行进行 Expand 操作，这里暂时不需要考虑顺序，因为 Prompt 是一样的
             n = _args.num_return_sequences - len(node.children)
@@ -267,8 +246,7 @@ class MctsSampler(Sampler):
             while len(active_rollout_nodes) > 0 and rollout_iter_index < _args.max_rollout_iterations:
                 infer_requests = [InferRequest([system_message,
                                                 prompt_message,
-                                                rollout_nodes[index]['history_messages'],
-                                                next_message])
+                                                rollout_nodes[index]['history_messages']])
                                   for index in active_rollout_nodes]
                 responses = self.infer_engines[0].infer(infer_requests,
                                                     self.rollout_request_config,
