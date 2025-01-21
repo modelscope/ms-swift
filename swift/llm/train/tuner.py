@@ -48,7 +48,7 @@ def get_multimodal_target_regex(model_arch,
                                 freeze_vit: bool = True,
                                 freeze_aligner: bool = True,
                                 ignore_embedding: bool = True,
-                                ignore_lm_head: bool = True) -> str:
+                                ) -> str:
     modules = []
     rejected_modules = []
     if not freeze_llm:
@@ -68,9 +68,9 @@ def get_multimodal_target_regex(model_arch,
     if ignore_embedding:
         ignore_pattern += ['emb', 'wte', 'shared']
         ignore_pattern += model_arch.embedding or []
-    if ignore_lm_head:
-        ignore_pattern += ['lm_head', 'output']
-        ignore_pattern += model_arch.lm_head or []
+    # lm_head
+    ignore_pattern += ['lm_head', 'output', 'score', 'v_head', 'classifier']
+    ignore_pattern += model_arch.lm_head or []
     ignore_pattern = '|'.join(ignore_pattern)
 
     target_regex = f'^({prefix_pattern})'
