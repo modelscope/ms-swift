@@ -4,10 +4,11 @@ def infer_hf():
     from modelscope import snapshot_download
     model_dir = snapshot_download('Qwen/Qwen2.5-7B-Instruct')
     adapter_dir = snapshot_download('swift/test_lora')
-    model = AutoModelForCausalLM.from_pretrained(model_dir, torch_dtype='auto', device_map='auto')
+    model = AutoModelForCausalLM.from_pretrained(
+        model_dir, torch_dtype='auto', device_map='auto', trust_remote_code=True)
     model = PeftModel.from_pretrained(model, adapter_dir)
 
-    tokenizer = AutoTokenizer.from_pretrained(model_dir)
+    tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
 
     messages = [{
         'role': 'system',
@@ -17,7 +18,7 @@ def infer_hf():
         'content': 'who are you?'
     }]
     text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-    model_inputs = tokenizer([text], return_tensors='pt').to(model.device)
+    model_inputs = tokenizer([text], return_tensors='pt', add_special_tokens=False).to(model.device)
 
     generated_ids = model.generate(**model_inputs, max_new_tokens=512, do_sample=False)
     generated_ids = [
