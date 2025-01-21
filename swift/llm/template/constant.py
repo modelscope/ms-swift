@@ -44,6 +44,7 @@ class LLMTemplateType:
     deepseek = 'deepseek'
     deepseek_coder = 'deepseek_coder'
     deepseek_v2_5 = 'deepseek_v2_5'
+    deepseek_r1 = 'deepseek_r1'
 
     openbuddy = 'openbuddy'
     openbuddy2 = 'openbuddy2'
