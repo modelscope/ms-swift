@@ -14,7 +14,9 @@ from .sampling_args import SamplingArguments
 
 from typing import Union, List
 
-logger = get_logger('./output/sampler/mcts.log')
+
+log_filename = f"./output/sampler/mcts/mcts_{time.strftime('%Y%m%d_%H%M%S')}.log"
+logger = get_logger(log_filename)
 
 
 SYS_PROMPT = """You are a super intelligent AI, you can solve any math problem step by step. 
@@ -151,7 +153,7 @@ class MctsSampler(Sampler):
 
             exploitation_score = value
             exploration_score = (_args.exploration_rate
-                                 * np.sqrt(np.log(node.parent.visit_count) / (node.visit_count + 1)))
+                                 * np.sqrt(np.log(node.parent.visit_count + 1) / (node.visit_count + 1)))
 
             return exploration_score + exploitation_score
 
@@ -189,10 +191,14 @@ class MctsSampler(Sampler):
 
             # 为了并行获取 Outcome Reward，这里获得的 OR 是顺序返回的，所以可以直接对应
             orm_infer_requests = []
+            unique_output = set() # 用于去重
             all_child_terminated = True
             for response in responses:
                 self.update_usage_info(response)
                 output = response.choices[0].message.content.rstrip(SEP_TOKEN + '\n').split(SEP_TOKEN)[0]
+                if output in unique_output:
+                    continue
+                unique_output.add(output)
                 orm_infer_requests.append(InferRequest([{"role": "assistant", "content": output}]))
                 child = LanguageNode(step=output, parent=node)
                 if check_terminate(child.answer)[0]:
