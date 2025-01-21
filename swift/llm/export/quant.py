@@ -171,7 +171,7 @@ class QuantEngine(ProcessorMixin):
             quantizer.get_dataset = _get_dataset_origin
             quantizer.prepare_dataset = _prepare_dataset_origin
 
-    def get_block_name_to_quantize(self, model: nn.Module, model_type: str) -> Optional[str]:
+    def get_block_name_to_quantize(self, model: nn.Module) -> Optional[str]:
         model_arch = get_model_arch(model.model_meta.model_arch)
         prefix = ''
         if hasattr(model_arch, 'language_model'):
@@ -197,7 +197,7 @@ class QuantEngine(ProcessorMixin):
                 group_size=args.group_size,
                 dataset=','.join(args.dataset),
                 batch_size=args.quant_batch_size,
-                block_name_to_quantize=self.get_block_name_to_quantize(self.model, args.model_type),
+                block_name_to_quantize=self.get_block_name_to_quantize(self.model),
             )
             gptq_quantizer.serialization_keys.append('block_name_to_quantize')
             logger.info('Start quantizing the model...')
