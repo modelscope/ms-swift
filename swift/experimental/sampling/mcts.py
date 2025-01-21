@@ -321,15 +321,19 @@ class MctsSampler(Sampler):
             and len(terminate_incorrect) + len(terminate_correct) < _args.num_return_sequences
             and iter_count < _args.max_iterations):
             logger.info(f"iter_count: {iter_count}" + "." * 10)
-            logger.info("select" + "=" * 10)
+            s_time = time.time()
             curr_node = _select(_root)
-            logger.info("expand" + "=" * 10)
+            logger.info("select" + "=" * 10+ f"time: {time.time() - s_time}")
+            s_time = time.time()
             _expand(curr_node)
+            logger.info("expand" + "=" * 10 + f"time: {time.time() - s_time}")
             if curr_node.depth > 3:
-                logger.info("rollout" + "=" * 10)
+                s_time = time.time()
                 _rollout(curr_node)
-                logger.info("back propagate" + "=" * 10)
+                logger.info("rollout" + "=" * 10 + f"time: {time.time() - s_time}")
+                s_time = time.time()
                 _back_propagate(curr_node)
+                logger.info("back propagate" + "=" * 10 + f"time: {time.time() - s_time}")
             if len(correct_answers) + len(incorrect_answers) >= _args.num_return_sequences:
                 if 4 * len(incorrect_answers) < len(correct_answers):
                     logger.info("too easy" + "!" * 20)
