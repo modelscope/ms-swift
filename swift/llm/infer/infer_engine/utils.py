@@ -60,6 +60,7 @@ class InferStreamer(InferTools):
         if response.endswith('\n') or is_finished:
             printable_text = response[self.print_idx:]
             self.cache_idx += len(self.token_cache)
+            self.first_num_space = -1
             self.print_idx = 0
         # If the last token is a CJK character, we print the characters.
         elif len(response) > 0 and self._is_chinese_char(ord(response[-1])):
