@@ -106,7 +106,7 @@ def _patch_sequence_classification(model, model_meta):
     if 'CausalLM' not in llm_model.__class__.__name__:
         llm_model = model
     llm_model.num_labels = model.config.num_labels
-    llm_model.score = nn.Linear(hidden_size, llm_model.num_labels, bias=False)
+    llm_model.score = nn.Linear(hidden_size, llm_model.num_labels, bias=False, dtype=llm_model.dtype)
     if llm_model.score.weight.device == torch.device('meta'):
         llm_model.score.to_empty(device='cpu')
     llm_model.score.weight.data.normal_(mean=0.0, std=initializer_range)
@@ -126,6 +126,7 @@ def _patch_sequence_classification(model, model_meta):
         inputs_embeds = kwargs.get('inputs_embeds')
 
         output = origin_forward(*args, **kwargs)
+        output.logits = output.logits.to(self.score.weight.dtype)
         logits = self.score(output.logits)
         if input_ids is not None:
             batch_size = input_ids.shape[0]
