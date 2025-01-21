@@ -210,11 +210,11 @@ def get_model_tokenizer_from_local(model_dir: str,
                 model = automodel_class.from_pretrained(
                     model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
 
-    # fix not save modeling_xxx.py (transformers 4.45)
-    # https://github.com/huggingface/transformers/issues/24737
-    has_remote_code = hasattr(model_config, 'auto_map') and automodel_class.__name__ in model_config.auto_map
-    if model is not None and has_remote_code and model._auto_class is None:
-        model._auto_class = automodel_class.__name__
+        # fix not save modeling_xxx.py (transformers 4.45)
+        # https://github.com/huggingface/transformers/issues/24737
+        has_remote_code = hasattr(model_config, 'auto_map') and automodel_class.__name__ in model_config.auto_map
+        if has_remote_code and model._auto_class is None:
+            model._auto_class = automodel_class.__name__
     return model, tokenizer
 
 
