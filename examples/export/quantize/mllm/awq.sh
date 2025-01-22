@@ -8,4 +8,4 @@ swift export \
     --max_length 2048 \
     --quant_method awq \
     --quant_bits 4 \
-    --output_dir Qwen/Qwen2-VL-2B-Instruct-AWQ
+    --output_dir Qwen2-VL-2B-Instruct-AWQ
