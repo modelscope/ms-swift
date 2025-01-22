@@ -40,7 +40,7 @@ class PPOTrainer(SwiftMixin, HFPPOv2Trainer):
             ppo_trainer_init(
                 self, config=kwargs['args'], tokenizer=self.tokenizer, policy=model, ref_policy=ref_model, **new_kwargs)
         unwrap_model = self.accelerator.unwrap_model(self.model)
-        patch_getattr(unwrap_model, 'policy')
+        patch_getattr(unwrap_model.__class__, 'policy')
 
     def train(self, *args, **kwargs):
         # remove args that are not needed for the HFPPOTrainer
