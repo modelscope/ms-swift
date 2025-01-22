@@ -49,6 +49,8 @@ class SamplingArguments(BaseArguments):
     process_reward_rate: float = 0.0
     exploration_rate: float = 0.5
     collect_filter_threshold: float = 0.5
+    api_key: str = "EMPTY"
+    base_url: str = 'https://dashscope.aliyuncs.com/compatible-mode/v1'
 
     def _init_model_info(self):
         if self.sampler_engine != 'client':
@@ -80,5 +82,7 @@ class SamplingArguments(BaseArguments):
             "role": "system",
             "content": self.system,
         }
+        if self.sampler_type == 'mcts' and self.sampler_engine != 'client':
+            raise ValueError(f'`mcts` sampler only supports `client` engine yet, but now is: {self.sampler_engine}')
 
         super().__post_init__()

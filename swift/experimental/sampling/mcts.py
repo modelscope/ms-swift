@@ -93,10 +93,9 @@ class MctsSampler(Sampler):
         args = self.args
         self.infer_kwargs = {}
         if args.sampler_engine == 'client':
-            import os
             from swift.llm import InferClient
-            api_key = os.getenv('DASHSCOPE_API_KEY')
-            base_url = 'https://dashscope.aliyuncs.com/compatible-mode/v1'
+            api_key = args.api_key
+            base_url = args.base_url
             self.infer_engines = [InferClient(base_url=base_url, api_key=api_key) for _ in range(args.num_return_sequences)]
             self.infer_kwargs['model'] = args.model
         else:
