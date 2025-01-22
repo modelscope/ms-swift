@@ -1,1 +1,2 @@
-evalscope[all]>=0.5.2
+evalscope[opencompass]
+evalscope[vlmeval]

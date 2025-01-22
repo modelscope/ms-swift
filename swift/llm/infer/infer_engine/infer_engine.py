@@ -5,9 +5,7 @@ from queue import Queue
 from threading import Thread
 from typing import Any, Dict, Iterator, List, Optional, Union
 
-import torch
 from tqdm import tqdm
-from transformers import PreTrainedTokenizerBase
 
 from swift.llm import InferRequest, ProcessorMixin, get_template
 from swift.llm.template import split_action_action_input
@@ -213,8 +211,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
                                f'Setting max_tokens: {max_model_len - num_tokens}')
                 request_config.max_tokens = max_max_tokens
 
-    @staticmethod
-    def _get_logprobs(tokenizer: PreTrainedTokenizerBase,
+    def _get_logprobs(self,
                       logprobs_list: Optional[List[Dict[int, float]]],
                       token_ids: List[int],
                       top_logprobs: Optional[int] = None) -> Optional[Dict[str, Any]]:
@@ -224,14 +221,15 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
             logprobs_list = logprobs_list[-len(token_ids):]
         res = []
         for logprobs, token_id in zip(logprobs_list, token_ids):
-            token = tokenizer.decode(token_id)
+            token = self.tokenizer.decode(token_id)
             _res = {'token': token, 'logprob': logprobs[token_id], 'bytes': list(token.encode('utf8'))}
             if top_logprobs is not None:
+                logprobs = {k: logprobs[k] for k in sorted(logprobs, key=lambda k: -logprobs[k])[:top_logprobs]}
                 res_top_logprobs = []
                 for k, logprob in logprobs.items():
-                    if k == token_id:
+                    if logprob == float('-inf'):
                         continue
-                    token = tokenizer.decode(k)
+                    token = self.tokenizer.decode(k)
                     res_top_logprobs.append({'token': token, 'logprob': logprob, 'bytes': list(token.encode('utf8'))})
                 _res['top_logprobs'] = res_top_logprobs
             res.append(_res)

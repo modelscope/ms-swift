@@ -1,14 +1,13 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from contextlib import contextmanager
-from types import MethodType
 from typing import Dict, List, Optional
 
 import torch
 import torch.nn as nn
 from tqdm import tqdm
 
-from swift.llm import (ExportArguments, MaxLengthError, ProcessorMixin, deep_getattr, get_model_arch, load_dataset,
-                       prepare_model_template, save_checkpoint, to_device)
+from swift.llm import (ExportArguments, HfConfigFactory, MaxLengthError, ProcessorMixin, deep_getattr, get_model_arch,
+                       load_dataset, prepare_model_template, save_checkpoint, to_device)
 from swift.utils import get_logger, get_model_parameter_info
 
 logger = get_logger()
@@ -23,7 +22,12 @@ class QuantEngine(ProcessorMixin):
             from awq import AutoAWQForCausalLM
             kwargs['automodel_class'] = AutoAWQForCausalLM
         self.model, self.template = prepare_model_template(args, **kwargs)
+        self.template.set_mode('train')
+
+        HfConfigFactory.set_model_config_attr(self.model, 'use_cache', False)
         self.processor = self.template.processor
+        if args.output_dir:
+            args.save_args()
 
     def quantize(self):
         args = self.args
@@ -66,7 +70,7 @@ class QuantEngine(ProcessorMixin):
             inputs = to_device(self.template.data_collator(batched_inputs), self.model.device)
             if self.model.model_meta.is_multimodal:
                 _, inputs = self.template.pre_forward_hook(self.model, None, inputs)
-            res.append(inputs)
+            res.append(to_device(inputs, 'cpu'))
         return res
 
     @torch.inference_mode()
@@ -167,24 +171,7 @@ class QuantEngine(ProcessorMixin):
             quantizer.get_dataset = _get_dataset_origin
             quantizer.prepare_dataset = _prepare_dataset_origin
 
-    def _patch_gptq_model_forward(self, module_list):
-
-        def _new_forward(self, *args, **kwargs):
-            if 'use_cache' in kwargs:
-                kwargs['use_cache'] = False
-            layer_ret = self.__old_forward(*args, **kwargs)
-            return layer_ret + args[len(layer_ret):]
-
-        for module in module_list:
-            if hasattr(module, '_old_forward'):  # device_map
-                __old_forward = module._old_forward
-                module._old_forward = MethodType(_new_forward, module)
-            else:
-                __old_forward = module.forward
-                module.forward = MethodType(_new_forward, module)
-            module.__old_forward = __old_forward
-
-    def get_block_name_to_quantize(self, model: nn.Module, model_type: str) -> Optional[str]:
+    def get_block_name_to_quantize(self, model: nn.Module) -> Optional[str]:
         model_arch = get_model_arch(model.model_meta.model_arch)
         prefix = ''
         if hasattr(model_arch, 'language_model'):
@@ -198,7 +185,6 @@ class QuantEngine(ProcessorMixin):
                 module_lists.append((n, m))
         if module_lists:
             module_list = max(module_lists, key=lambda x: len(x[1]))
-            self._patch_gptq_model_forward(module_list[1])
             return f'{prefix}.{module_list[0]}'.strip('.')
 
     def gptq_model_quantize(self):
@@ -211,13 +197,12 @@ class QuantEngine(ProcessorMixin):
                 group_size=args.group_size,
                 dataset=','.join(args.dataset),
                 batch_size=args.quant_batch_size,
-                block_name_to_quantize=self.get_block_name_to_quantize(self.model, args.model_type))
+                block_name_to_quantize=self.get_block_name_to_quantize(self.model),
+            )
             gptq_quantizer.serialization_keys.append('block_name_to_quantize')
             logger.info('Start quantizing the model...')
             logger.warning('The process of packing the model takes a long time and there is no progress bar. '
                            'Please be patient and wait...')
-            if not hasattr(self.model.config, 'use_cache'):
-                self.model.config.use_cache = None
             gptq_quantizer.quantize_model(self.model, self.tokenizer)
             self.model.config.quantization_config.pop('dataset', None)
         return gptq_quantizer

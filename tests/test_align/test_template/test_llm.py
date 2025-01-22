@@ -257,6 +257,14 @@ def test_skywork_reward():
     assert res2 == '13.8125'
 
 
+def test_deepseek_r1_distill():
+    pt_engine = PtEngine('deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B')
+    res = _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    res2 = _infer_model(pt_engine)
+    assert res == res2, f'res: {res}, res2: {res2}'
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig, get_template, get_model_tokenizer
     from swift.utils import get_logger, seed_everything
@@ -283,4 +291,5 @@ if __name__ == '__main__':
     # test_qwen2_5_math()
     # test_skywork_reward()
     # test_phi4()
-    test_internlm3()
+    # test_internlm3()
+    test_deepseek_r1_distill()

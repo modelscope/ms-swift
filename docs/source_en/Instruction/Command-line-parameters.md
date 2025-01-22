@@ -69,6 +69,7 @@ Refer to the [generation_config](https://huggingface.co/docs/transformers/main_c
 - 🔥stream: Stream output, default is `False`.
 - stop_words: Additional stop words, default is `[]`.
 - logprobs: Whether to output logprobs, default is False.
+- top_logprobs: Default is `None`.
 
 ### Quantization Arguments
 
@@ -397,6 +398,7 @@ Evaluation Arguments inherit from the [deployment arguments](#deployment-argumen
 - 🔥eval_dataset: Evaluation dataset, refer to [Evaluation documentation](./Evaluation.md).
 - eval_limit: Number of samples for each evaluation set, default is None.
 - eval_output_dir: Folder for storing evaluation results, default is 'eval_output'.
+- local_dataset: Some eval datasets like `CMB` cannot be loaded automatically, it should be downloaded manually. Setting this argument to `true` will download the full opencompass eval dataset package and create a soft link of `data` in the local dir. The default value of this argument is `false`. Note: This argument has a side effect that after downloading and creating a `data` dir, all evaluations with the same work dir will use the `data` folder, the default `~/.cache/opencompass` dataset will be skipped. The downloading will happen only once and the cache will be used in the later evaluations.
 - temperature: Default is 0.
 - verbose: This parameter is passed to DeployArguments during local evaluation, default is `False`.
 - eval_num_proc: Maximum concurrency for clients during evaluation. The default for text evaluation is 256, while for multimodal it is 16.
@@ -409,7 +411,7 @@ Export Arguments include the [basic arguments](#base-arguments) and [merge argum
 - 🔥output_dir: Path for storing export results, default is None.
 
 - 🔥quant_method: Options are 'gptq' and 'awq', default is None.
-- quant_n_samples: Sampling size for the validation set in gptq/awq, default is 128.
+- quant_n_samples: Sampling size for the validation set in gptq/awq, default is 256.
 - max_length: Max length for the calibration set, default value is 2048.
 - quant_batch_size: Quantization batch size, default is 1.
 - group_size: Group size for quantization, default is 128.

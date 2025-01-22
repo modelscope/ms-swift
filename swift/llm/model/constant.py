@@ -48,6 +48,8 @@ class LLMModelType:
     deepseek_moe = 'deepseek_moe'
     deepseek_v2 = 'deepseek_v2'
     deepseek_v2_5 = 'deepseek_v2_5'
+    deepseek_r1 = 'deepseek_r1'
+    deepseek_r1_distill = 'deepseek_r1_distill'
 
     openbuddy_llama = 'openbuddy_llama'
     openbuddy_llama3 = 'openbuddy_llama3'
@@ -77,6 +79,8 @@ class LLMModelType:
     phi3 = 'phi3'
     phi3_moe = 'phi3_moe'
     phi4 = 'phi4'
+
+    minimax = 'minimax'
 
     gemma = 'gemma'
     gemma2 = 'gemma2'
@@ -169,6 +173,8 @@ class MLLMModelType:
     minicpmv2_5 = 'minicpmv2_5'
     minicpmv2_6 = 'minicpmv2_6'
     minicpmo2_6 = 'minicpmo2_6'
+
+    minimax_vl = 'minimax_vl'
 
     mplug_owl2 = 'mplug_owl2'
     mplug_owl2_1 = 'mplug_owl2_1'

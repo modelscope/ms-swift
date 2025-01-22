@@ -159,7 +159,7 @@ class SwiftDeploy(SwiftInfer):
             res_or_gen = await self.infer_async(infer_request, request_config, template=self.template, **infer_kwargs)
         except Exception as e:
             import traceback
-            print(traceback.format_exc())
+            logger.info(traceback.format_exc())
             return self.create_error_response(HTTPStatus.BAD_REQUEST, str(e))
         if request_config.stream:
 

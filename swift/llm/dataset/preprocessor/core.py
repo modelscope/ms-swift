@@ -143,7 +143,9 @@ class RowPreprocessor:
                 new_k = k[len('__@'):]
                 row[new_k] = row.pop(k)
 
-    def batched_preprocess(self, batched_row: Dict[str, Any], *, strict: bool) -> Dict[str, Any]:
+    def batched_preprocess(self, batched_row: Dict[str, Any], *, strict: bool,
+                           ignore_max_length_error: bool) -> Dict[str, Any]:
+        from ...template import MaxLengthError
         batched_row = dict(batched_row)
         assert len(batched_row) > 0
         self._fix_streaming_keys(batched_row)
@@ -162,13 +164,15 @@ class RowPreprocessor:
                     self._check_messages(r)
                     self._check_rejected_response(r)
                     self._cast_images(r)
-            except Exception:
+            except Exception as e:
                 if strict:
                     logger.warning('To avoid errors, you can pass `strict=False`.')
                     raise
-                if self.traceback_limit is not None and self._traceback_counter < self.traceback_limit:
+                if isinstance(e, MaxLengthError) and ignore_max_length_error:
+                    pass
+                elif self.traceback_limit is not None and self._traceback_counter < self.traceback_limit:
                     import traceback
-                    print(traceback.format_exc())
+                    logger.info(traceback.format_exc())
                     logger.error('👆👆👆There are errors in the dataset, the data will be deleted')
                     self._traceback_counter += 1
                 row = []
@@ -256,15 +260,21 @@ class RowPreprocessor:
         dataset = self.prepare_dataset(dataset)
         dataset = self._cast_pil_image(dataset)
         map_kwargs = {}
+        ignore_max_length_error = False
         if isinstance(dataset, HfDataset):
             map_kwargs['num_proc'] = num_proc
+            if num_proc > 1:
+                ignore_max_length_error = True
         with self._patch_arrow_writer():
             try:
                 dataset_mapped = dataset.map(
                     self.batched_preprocess,
                     batched=True,
                     batch_size=batch_size,
-                    fn_kwargs={'strict': strict},
+                    fn_kwargs={
+                        'strict': strict,
+                        'ignore_max_length_error': ignore_max_length_error
+                    },
                     remove_columns=list(dataset.features.keys()),
                     **map_kwargs)
             except NotImplementedError:

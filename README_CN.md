@@ -162,7 +162,7 @@ Web-UI是基于gradio界面技术的**零门槛**训练、部署界面方案，�
 ```shell
 swift web-ui
 ```
-![image.png](./docs/resources/web-ui.png)
+![image.png](./docs/resources/web-ui.jpg)
 
 ### 使用Python
 ms-swift也支持使用python的方式进行训练和推理。下面给出训练和推理的**伪代码**，具体可以查看[这里](https://github.com/modelscope/ms-swift/tree/main/examples/notebook)。

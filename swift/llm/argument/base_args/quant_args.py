@@ -26,10 +26,10 @@ class QuantizeArguments:
     # awq, gptq, and aqlm need to be pre-quantized models.
     #   It can be detected automatically, without the need to pass in.
     # while bnb, hqq, and eetq can be quantized during SFT using the original models.
-    quant_method: Literal['bnb', 'hqq', 'eetq'] = None
+    quant_method: Literal['bnb', 'hqq', 'eetq', 'quanto'] = None
     # bnb: 4,8; hqq: 1,2,3,4,8'; eetq: 8
     # awq: 4; gptq: 2,3,4,8
-    quant_bits: Literal[1, 2, 3, 4, 8] = None
+    quant_bits: Literal[1, 2, 3, 4, 8, 'float8'] = None
     # hqq
     hqq_axis: Optional[int] = None
     # bnb
@@ -41,7 +41,7 @@ class QuantizeArguments:
     def get_quantization_config(self):
         if self.quant_method is None or self.quant_method in {'awq', 'gptq'}:
             return None
-        assert self.quant_method in {'bnb', 'hqq', 'eetq'}
+        assert self.quant_method in {'bnb', 'hqq', 'eetq', 'quanto'}
         if self.quant_bits is None:
             raise ValueError(f'Please set the quant_bits. args.quant_bits: {self.quant_bits}')
         if self.quant_method == 'bnb':
@@ -63,6 +63,19 @@ class QuantizeArguments:
         elif self.quant_method == 'hqq':
             from transformers import HqqConfig
             quantization_config = HqqConfig(nbits=self.quant_bits, axis=self.hqq_axis)
+        elif self.quant_method == 'quanto':
+            from transformers import QuantoConfig
+            if self.quant_bits == 8:
+                weights = 'int8'
+            elif self.quant_bits == 'float8':
+                weights = 'float8'
+            elif self.quant_bits == 4:
+                weights = 'int4'
+            elif self.quant_bits == 2:
+                weights = 'int2'
+            else:
+                raise ValueError('quanto quantization only support quant bits 2/4/8/float8')
+            quantization_config = QuantoConfig(weights=weights, )
         else:  # 'eetq'
             from transformers import EetqConfig
             quantization_config = EetqConfig(f'int{self.quant_bits}')

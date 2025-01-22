@@ -30,7 +30,7 @@ class PPOTrainer(SwiftMixin, HFPPOv2Trainer):
             DataLoader.__init__ = __init__
 
     def __init__(self, model: PreTrainedModel, ref_model: PreTrainedModel, *_args, **kwargs):
-        super().__init__(model, *_args, **kwargs)
+        super().__init__(model, *_args, **{k: v for k, v in kwargs.items() if k not in {'reward_model', 'value_model'}})
         with self._patch_dataloader(kwargs['data_collator']):
             new_kwargs = {
                 k: v

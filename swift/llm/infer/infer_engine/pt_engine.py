@@ -226,7 +226,7 @@ class PtEngine(InferEngine):
                 if not delta_text and not is_finished[i]:
                     res.append(None)
                     continue
-                logprobs = self._get_logprobs(self.tokenizer, logprobs_list, generate_ids[token_idxs[i]:],
+                logprobs = self._get_logprobs(logprobs_list, generate_ids[token_idxs[i]:],
                                               generation_config.top_logprobs)
                 token_idxs[i] = len(generate_ids)
 
@@ -260,13 +260,6 @@ class PtEngine(InferEngine):
             self._adapters_pool[adapter_name] = adapter_request
             self._add_adapter(adapter_request.path, adapter_name)
         return [adapter_name]
-
-    @staticmethod
-    def _get_seq_cls_logprobs(logprobs):
-        res = []
-        for i, logprob in enumerate(logprobs.tolist()):
-            res.append({'index': i, 'logprob': logprob})
-        return {'content': res}
 
     def _infer_forward(self,
                        template: Template,
@@ -341,8 +334,7 @@ class PtEngine(InferEngine):
                         logprobs for m, logprobs in zip(masks, batched_logprobs[batched_index]) if m.item()
                     ]
 
-                logprobs = self._get_logprobs(self.tokenizer, logprobs_list, generate_ids,
-                                              generation_config.top_logprobs)
+                logprobs = self._get_logprobs(logprobs_list, generate_ids, generation_config.top_logprobs)
                 usage_info = self._update_usage_info(usage_info, len(generate_ids))
                 response = template.decode(generate_ids, template_inputs=template_inputs[i])
                 finish_reason = self._get_finish_reason(generation_config.max_new_tokens, num_prompt_tokens, True)

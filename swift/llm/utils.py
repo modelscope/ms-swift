@@ -45,7 +45,7 @@ class ProcessorMixin:
             raise AttributeError('Please use `self.processor` for assignment.')
 
 
-def to_device(data: Any, device: torch.device) -> Any:
+def to_device(data: Any, device: Union[str, torch.device, int]) -> Any:
     """Move inputs to a device"""
     if isinstance(data, Mapping):
         return type(data)({k: to_device(v, device) for k, v in data.items()})
