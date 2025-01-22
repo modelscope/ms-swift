@@ -17,8 +17,6 @@ class QuantEngine(ProcessorMixin):
 
     def __init__(self, args: ExportArguments):
         self.args = args
-        if args.output_dir:
-            args.save_args()
         kwargs = {}
         if args.quant_method == 'awq':
             from awq import AutoAWQForCausalLM
@@ -28,6 +26,8 @@ class QuantEngine(ProcessorMixin):
 
         HfConfigFactory.set_model_config_attr(self.model, 'use_cache', True)
         self.processor = self.template.processor
+        if args.output_dir:
+            args.save_args()
 
     def quantize(self):
         args = self.args
