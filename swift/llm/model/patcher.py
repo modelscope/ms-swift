@@ -3,6 +3,7 @@ from contextlib import contextmanager
 from functools import wraps
 from types import MethodType
 from typing import List
+from copy import deepcopy
 
 import torch
 import torch.nn as nn
@@ -89,6 +90,7 @@ def patch_ignore_check_imports():
 
 def _patch_sequence_classification(model, model_meta):
     # rename
+    model.__class__ = deepcopy(model.__class__)
     idx = model.__class__.__name__.find('For')
     if idx != -1:
         model.__class__.__name__ = model.__class__.__name__[:idx]
@@ -203,6 +205,23 @@ def patch_automodel_for_sequence_classification(model_meta):
         res = from_pretrained.__func__(cls, *args, **kwargs)
         cls.__init__ = __init__
         return res
+
+    PreTrainedModel.from_pretrained = _new_from_pretrained
+
+    try:
+        yield
+    finally:
+        PreTrainedModel.from_pretrained = from_pretrained
+
+
+@contextmanager
+def patch_automodel_for_awq():
+    from_pretrained = PreTrainedModel.from_pretrained
+
+    @classmethod
+    def _new_from_pretrained(cls, *args, **kwargs):
+        kwargs.pop('use_cache', None)
+        return from_pretrained.__func__(cls, *args, **kwargs)
 
     PreTrainedModel.from_pretrained = _new_from_pretrained
 
