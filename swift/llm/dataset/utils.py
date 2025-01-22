@@ -185,7 +185,7 @@ class LazyLLMDataset(Dataset):
                     import traceback
                     logger.info(traceback.format_exc())
                     logger.warning('👆👆👆There are errors in the template.encode, '
-                                 'and another piece of data will be randomly selected.')
+                                   'and another piece of data will be randomly selected.')
                     self._traceback_counter += 1
 
     def __len__(self) -> int:
