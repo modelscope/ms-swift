@@ -3,7 +3,6 @@ from contextlib import contextmanager
 from functools import wraps
 from types import MethodType
 from typing import List
-from copy import deepcopy
 
 import torch
 import torch.nn as nn
@@ -90,7 +89,6 @@ def patch_ignore_check_imports():
 
 def _patch_sequence_classification(model, model_meta):
     # rename
-    model.__class__ = deepcopy(model.__class__)
     idx = model.__class__.__name__.find('For')
     if idx != -1:
         model.__class__.__name__ = model.__class__.__name__[:idx]

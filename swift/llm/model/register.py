@@ -19,7 +19,7 @@ from transformers.utils.versions import require_version
 
 from swift.utils import get_dist_setting, get_logger, is_mp, is_unsloth_available, patch_getattr, use_torchacc
 from .constant import ModelType
-from .patcher import patch_automodel_for_sequence_classification, patch_automodel_for_awq
+from .patcher import patch_automodel_for_awq, patch_automodel_for_sequence_classification
 from .utils import AttnImpl, HfConfigFactory, ModelInfo, safe_snapshot_download
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]]
