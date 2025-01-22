@@ -173,7 +173,7 @@ class RowPreprocessor:
                 elif self.traceback_limit is not None and self._traceback_counter < self.traceback_limit:
                     import traceback
                     logger.info(traceback.format_exc())
-                    logger.error('👆👆👆There are errors in the dataset, the data will be deleted')
+                    logger.warning('👆👆👆There are errors in the dataset, the data will be deleted')
                     self._traceback_counter += 1
                 row = []
             new_rows += row
