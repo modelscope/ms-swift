@@ -83,18 +83,18 @@ class VllmArguments:
         if hasattr(self, 'adapter_mapping'):
             adapters = adapters + list(self.adapter_mapping.values())
         return {
-            "gpu_memory_utilization": self.gpu_memory_utilization,
-            "tensor_parallel_size": self.tensor_parallel_size,
-            "pipeline_parallel_size": self.pipeline_parallel_size,
-            "max_num_seqs": self.max_num_seqs,
-            "max_model_len": self.max_model_len,
-            "disable_custom_all_reduce": self.disable_custom_all_reduce,
-            "enforce_eager": self.enforce_eager,
-            "limit_mm_per_prompt": self.limit_mm_per_prompt,
-            "max_lora_rank": self.vllm_max_lora_rank,
-            "enable_lora": len(adapters) > 0,
-            "max_loras": max(len(adapters), 1),
-            "enable_prefix_caching": self.enable_prefix_caching,
+            'gpu_memory_utilization': self.gpu_memory_utilization,
+            'tensor_parallel_size': self.tensor_parallel_size,
+            'pipeline_parallel_size': self.pipeline_parallel_size,
+            'max_num_seqs': self.max_num_seqs,
+            'max_model_len': self.max_model_len,
+            'disable_custom_all_reduce': self.disable_custom_all_reduce,
+            'enforce_eager': self.enforce_eager,
+            'limit_mm_per_prompt': self.limit_mm_per_prompt,
+            'max_lora_rank': self.vllm_max_lora_rank,
+            'enable_lora': len(adapters) > 0,
+            'max_loras': max(len(adapters), 1),
+            'enable_prefix_caching': self.enable_prefix_caching,
         }
 
 
