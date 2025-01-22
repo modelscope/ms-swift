@@ -275,7 +275,7 @@ class VllmEngine(InferEngine):
             choices = []
             for output in result.outputs:
                 logprobs = self._get_logprobs(output.logprobs, output.token_ids[token_idxs[output.index]:],
-                                              generation_config.logprobs)
+                                              generation_config.top_logprobs)
                 token_idxs[output.index] = len(output.token_ids)
                 toolcall = None
                 if output.is_finished:

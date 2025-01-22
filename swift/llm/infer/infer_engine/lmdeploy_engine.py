@@ -236,7 +236,7 @@ class LmdeployEngine(InferEngine):
                 pass
 
         response = template.decode(output.token_ids)
-        logprobs = self._get_logprobs(output.logprobs, output.token_ids, generation_config.logprobs)
+        logprobs = self._get_logprobs(output.logprobs, output.token_ids, generation_config.top_logprobs)
 
         usage_info = self._get_usage_info(len(inputs['input_ids']), output.num_token)
         toolcall = self._get_toolcall(response, template.tools_prompt)
