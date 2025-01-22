@@ -1,6 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from contextlib import contextmanager
 
+import transformers
+from packaging import version
 from torch.utils.data import DataLoader
 from transformers import PreTrainedModel
 from trl import PPOv2Trainer as HFPPOv2Trainer
@@ -45,3 +47,9 @@ class PPOTrainer(SwiftMixin, HFPPOv2Trainer):
     def train(self, *args, **kwargs):
         # remove args that are not needed for the HFPPOTrainer
         super().train()
+
+    def _save_checkpoint(self, *args, **kwargs):
+        if version.parse(transformers.__version__) >= version.parse('4.47'):
+            metrics = kwargs.pop('metrics', None)
+            self._determine_best_metric(metrics=metrics, trial=trial)
+        return super()._save_checkpoint(*args, **kwargs)
