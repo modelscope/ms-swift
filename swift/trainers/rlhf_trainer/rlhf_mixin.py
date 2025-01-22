@@ -39,8 +39,9 @@ class ModelWrapper(nn.Module):
     def parameters(self, *args, **kwargs):
         return self._model.parameters(*args, **kwargs)
 
+    @staticmethod
     @contextmanager
-    def _save_load_context(cls, trainer):
+    def _save_load_context(trainer):
         # fix zero3 & save/load model
         deepspeed_model = trainer.deepspeed
         _new_model = deepspeed_model._model

@@ -1,7 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-import shutil
-import tempfile
 
 from swift.llm import ExportArguments, prepare_model_template, save_checkpoint
 from swift.tuners import Swift

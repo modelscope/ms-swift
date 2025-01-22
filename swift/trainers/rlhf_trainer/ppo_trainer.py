@@ -51,5 +51,6 @@ class PPOTrainer(SwiftMixin, HFPPOv2Trainer):
     def _save_checkpoint(self, *args, **kwargs):
         if version.parse(transformers.__version__) >= version.parse('4.47'):
             metrics = kwargs.pop('metrics', None)
+            trial = kwargs.get('trial')
             self._determine_best_metric(metrics=metrics, trial=trial)
         return super()._save_checkpoint(*args, **kwargs)

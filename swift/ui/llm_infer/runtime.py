@@ -7,7 +7,6 @@ from datetime import datetime
 from typing import Dict, List, Tuple, Type
 
 import gradio as gr
-import json
 import psutil
 from packaging import version
 

@@ -8,7 +8,7 @@ from transformers import Seq2SeqTrainingArguments
 from transformers.utils.versions import require_version
 
 from swift.plugin import LOSS_MAPPING
-from swift.trainers import IntervalStrategy, TrainerFactory
+from swift.trainers import TrainerFactory
 from swift.utils import (add_version_to_work_dir, get_logger, get_pai_tensorboard_dir, is_liger_available,
                          is_local_master, is_mp, is_pai_training_job, use_torchacc)
 from .base_args import BaseArguments, to_abspath
