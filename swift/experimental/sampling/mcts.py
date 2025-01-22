@@ -321,15 +321,13 @@ class MctsSampler(Sampler):
                 results += _collect(child)
             curr_node.children = sorted(curr_node.children)
             if curr_node.children[-1].outcome_reward - curr_node.children[0].outcome_reward > collect_filter_threshold:
-                results.append(json.dumps({
-                    "query": query,
-                    "ground_truth": ground_truth,
+                results.append({
                     "path": curr_node.path,
                     "good": curr_node.children[-1].path[-1],
                     "good_score": curr_node.children[-1].outcome_reward,
                     "bad": curr_node.children[0].path[-1],
                     "bad_score": curr_node.children[0].outcome_reward,
-                }, ensure_ascii=False) + '\n')
+                })
             return results
 
         _args = self.args
@@ -366,24 +364,36 @@ class MctsSampler(Sampler):
             if len(correct_answers) + len(incorrect_answers) >= _args.num_return_sequences:
                 if 4 * len(incorrect_answers) < len(correct_answers):
                     logger.info("too easy" + "!" * 20)
-                    logger.info(f"correct_answers: {correct_answers}")
-                    logger.info(f"incorrect_answers: {incorrect_answers}")
+                    #logger.info(f"correct_answers: {correct_answers}")
+                    #logger.info(f"incorrect_answers: {incorrect_answers}")
                     too_easy = True
                 elif 4 * len(correct_answers) < len(incorrect_answers):
                     logger.info("too hard" + "!" * 20)
-                    logger.info(f"correct_answers: {correct_answers}")
-                    logger.info(f"incorrect_answers: {incorrect_answers}")
+                    #logger.info(f"correct_answers: {correct_answers}")
+                    #logger.info(f"incorrect_answers: {incorrect_answers}")
                     too_hard = True
             iter_count += 1
         if iter_count == _args.max_iterations:
             logger.info("too hard" + "!" * 20)
-            logger.info(f"correct_answers: {correct_answers}")
-            logger.info(f"incorrect_answers: {incorrect_answers}")
             too_hard = True
-        if not too_easy and not too_hard:
-            prefer_pair = _collect(_root)
-            logger.info(f"prefer_pair: {prefer_pair}")
-        return prefer_pair
+        #logger.info(f"correct_answers: {correct_answers}")
+        #logger.info(f"incorrect_answers: {incorrect_answers}")
+        prefer_pair = _collect(_root)
+        #logger.info(f"prefer_pair: {prefer_pair}")
+
+        result = {
+            "query": query,
+            "ground_truth": ground_truth,
+            "prefer_pair": prefer_pair,
+            "correct_answers": correct_answers,
+            "incorrect_answers": incorrect_answers,
+            "terminate_correct": terminate_correct,
+            "terminate_incorrect": terminate_incorrect,
+        }
+        results = json.dumps(result, ensure_ascii=False)
+        logger.info(results)
+
+        return results
 
     def do_sample(self, data):
         if not isinstance(data, list):
@@ -395,8 +405,7 @@ class MctsSampler(Sampler):
                 messages = item['messages'][0]
                 query = messages[0]['content']
                 ground_truth = messages[1]['content']
-                prefer_pairs = self.search_single(query, ground_truth)
-                generated += prefer_pairs
+                generated.append(self.search_single(query, ground_truth))
             except Exception as e:
                 logger.error(f"Error: {e}")
         return generated
