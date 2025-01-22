@@ -24,7 +24,7 @@ class QuantEngine(ProcessorMixin):
         self.model, self.template = prepare_model_template(args, **kwargs)
         self.template.set_mode('train')
 
-        HfConfigFactory.set_model_config_attr(self.model, 'use_cache', True)
+        HfConfigFactory.set_model_config_attr(self.model, 'use_cache', False)
         self.processor = self.template.processor
         if args.output_dir:
             args.save_args()
