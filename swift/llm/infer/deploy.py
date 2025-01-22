@@ -5,7 +5,6 @@ import multiprocessing
 import time
 from contextlib import contextmanager
 from dataclasses import asdict
-from functools import partial
 from http import HTTPStatus
 from threading import Thread
 from typing import List, Optional, Union

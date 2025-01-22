@@ -184,8 +184,8 @@ class LazyLLMDataset(Dataset):
                 if self.traceback_limit is not None and self._traceback_counter < self.traceback_limit:
                     import traceback
                     logger.info(traceback.format_exc())
-                    logger.error('👆👆👆There are errors in the template.encode, '
-                                 'and another piece of data will be randomly selected.')
+                    logger.warning('👆👆👆There are errors in the template.encode, '
+                                   'and another piece of data will be randomly selected.')
                     self._traceback_counter += 1
 
     def __len__(self) -> int:

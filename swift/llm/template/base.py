@@ -354,7 +354,6 @@ class Template(ProcessorMixin):
             if isinstance(context, str):
                 if '{{RESPONSE}}' == context:
                     assert response is not None
-                    context = response
                     res_context_list.append(response)
                     res_context_type.append(ContextType.RESPONSE)
                     continue
