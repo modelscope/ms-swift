@@ -15,24 +15,10 @@ from .sampling_args import SamplingArguments
 from typing import Union, List
 
 
-log_filename = f"./output/sampler/mcts/mcts_{time.strftime('%Y%m%d_%H%M%S')}.log"
-logger = get_logger(log_filename)
-
-
-SYS_PROMPT = """You are a super intelligent AI, you can solve any math problem step by step.
-Each step should end with 'ки'.
-Now answer the question:
-"""
+logger = get_logger()
 
 NXT_PROMPT = """Continue.
 """
-
-SEP_TOKEN = "ки"
-
-system_message = {
-    "role": "system",
-    "content": SYS_PROMPT,
-}
 
 next_message = {
     "role": "user",
@@ -51,11 +37,18 @@ class LanguageNode:
 
     def __init__(self,
                  step: str = None,
+                 sep_token: str = None,
                  parent: "LanguageNode" = None,):
         self.parent = parent
+
+        if sep_token:
+            self.sep_token = sep_token
+        else:
+            self.sep_token = parent.sep_token
+
         if parent:
             self.path = parent.path[:] + [step]
-            self.answer = parent.answer + step + SEP_TOKEN
+            self.answer = parent.answer + step + self.sep_token
             self.depth = parent.depth + 1
         else:
             self.path = []
@@ -133,7 +126,7 @@ class MctsSampler(Sampler):
     def _prepare_request_configs(self):
         _args = self.args
         request_config = _args.get_request_config()
-        request_config.stop = [SEP_TOKEN]
+        request_config.stop = _args.stop_words
         request_config.seed = _args.seed
         self.expand_request_configs = []
         for i in range(_args.num_return_sequences):
@@ -204,7 +197,7 @@ class MctsSampler(Sampler):
             all_child_terminated = True
             for response in responses:
                 self.update_usage_info(response)
-                output = response.choices[0].message.content.rstrip(SEP_TOKEN + '\n').split(SEP_TOKEN)[0]
+                output = response.choices[0].message.content.rstrip(sep_token + '\n').split(sep_token)[0]
                 if output in unique_output:
                     continue
                 unique_output.add(output)
@@ -290,8 +283,8 @@ class MctsSampler(Sampler):
                 end_paths = []
                 for index, response in zip(active_rollout_nodes, responses):
                     self.update_usage_info(response)
-                    output = response.choices[0].message.content.rstrip(SEP_TOKEN + '\n').split(SEP_TOKEN)[
-                                 0] + SEP_TOKEN + '\n'
+                    output = response.choices[0].message.content.rstrip(sep_token + '\n').split(sep_token)[
+                                 0] + sep_token + '\n'
                     rollout_nodes[index]['history_messages']["content"] += output
                     end_paths.append(rollout_nodes[index]['history_messages']["content"])
                     orm_infer_requests.append(InferRequest([rollout_nodes[index]['history_messages']]))
@@ -340,7 +333,9 @@ class MctsSampler(Sampler):
             return results
 
         _args = self.args
-        _root = LanguageNode()
+        system_message = _args.system_message
+        sep_token = _args.stop_words[0]
+        _root = LanguageNode(sep_token=sep_token)
         prompt_message = {
             "role": "user",
             "content": query,

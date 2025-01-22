@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import os
 import dataclasses
 from dataclasses import dataclass
 from datetime import datetime
@@ -70,4 +71,13 @@ class SamplingArguments(BaseArguments):
             self.engine_kwargs = json.loads(self.engine_kwargs)
         else:
             self.engine_kwargs = {}
+
+        if os.path.isfile(self.system):
+            with open(self.system, 'r') as f:
+                self.system = f.read()
+        self.system_message = {
+            "role": "system",
+            "content": self.system,
+        }
+
         super().__post_init__()
