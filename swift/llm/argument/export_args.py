@@ -75,6 +75,8 @@ class ExportArguments(MergeArguments, BaseArguments):
         assert not os.path.exists(self.output_dir), f'args.output_dir: {self.output_dir} already exists.'
 
     def __post_init__(self):
+        if self.quant_batch_size == -1:
+            self.quant_batch_size = None
         if self.quant_bits and self.quant_method is None:
             raise ValueError('Please specify the quantization method using `--quant_method awq/gptq/bnb`.')
         if self.quant_method and self.quant_bits is None:
