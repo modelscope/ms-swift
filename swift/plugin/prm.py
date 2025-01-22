@@ -104,16 +104,20 @@ class QwenMaxPRM(PRM):
         ]
 
 
-class QwenPlusPRM(PRM):
-    def __init__(self):
+class ClientPRM(PRM):
+    def __init__(self, api_key = None, base_url = None, model = None):
         super().__init__()
-        import os
         from swift.llm import InferClient
-        api_key = os.getenv('DASHSCOPE_API_KEY')
-        base_url = 'https://dashscope.aliyuncs.com/compatible-mode/v1'
+        import os
+        if api_key is None:
+            api_key = os.getenv('DASHSCOPE_API_KEY')
+        if base_url is None:
+            base_url = 'https://dashscope.aliyuncs.com/compatible-mode/v1'
+        if model is None:
+            model = 'qwen-plus'
         self.infer_engine = InferClient(base_url=base_url, api_key=api_key)
         self.infer_kwargs = {
-            'model': 'qwen-plus',
+            'model': model,
         }
 
     def infer(self, infer_requests: List[InferRequest], ground_truths: List[str],
@@ -166,5 +170,5 @@ class QwenPlusPRM(PRM):
 
 prms = {
     'qwen_max': QwenMaxPRM,
-    'qwen_plus': QwenPlusPRM,
+    'client': ClientPRM,
 }
