@@ -321,7 +321,7 @@ class MctsSampler(Sampler):
             for child in curr_node.children:
                 results += _collect(child)
             curr_node.children = sorted(curr_node.children)
-            if curr_node.children[-1].outcome_reward - curr_node.children[0].outcome_reward > 0.6:
+            if curr_node.children[-1].outcome_reward - curr_node.children[0].outcome_reward > collect_filter_threshold:
                 results.append(json.dumps({
                     "query": query,
                     "ground_truth": ground_truth,
@@ -336,6 +336,7 @@ class MctsSampler(Sampler):
         _args = self.args
         system_message = _args.system_message
         sep_token = _args.stop_words[0]
+        collect_filter_threshold = _args.collect_filter_threshold
         _root = LanguageNode(sep_token=sep_token)
         prompt_message = {
             "role": "user",
