@@ -143,7 +143,8 @@ class RowPreprocessor:
                 new_k = k[len('__@'):]
                 row[new_k] = row.pop(k)
 
-    def batched_preprocess(self, batched_row: Dict[str, Any], *, strict: bool, ignore_max_length_error: bool) -> Dict[str, Any]:
+    def batched_preprocess(self, batched_row: Dict[str, Any], *, strict: bool,
+                           ignore_max_length_error: bool) -> Dict[str, Any]:
         from ...template import MaxLengthError
         batched_row = dict(batched_row)
         assert len(batched_row) > 0
@@ -171,7 +172,7 @@ class RowPreprocessor:
                     pass
                 elif self.traceback_limit is not None and self._traceback_counter < self.traceback_limit:
                     import traceback
-                    print(traceback.format_exc())
+                    logger.info(traceback.format_exc())
                     logger.error('👆👆👆There are errors in the dataset, the data will be deleted')
                     self._traceback_counter += 1
                 row = []
@@ -270,7 +271,10 @@ class RowPreprocessor:
                     self.batched_preprocess,
                     batched=True,
                     batch_size=batch_size,
-                    fn_kwargs={'strict': strict, 'ignore_max_length_error': ignore_max_length_error},
+                    fn_kwargs={
+                        'strict': strict,
+                        'ignore_max_length_error': ignore_max_length_error
+                    },
                     remove_columns=list(dataset.features.keys()),
                     **map_kwargs)
             except NotImplementedError:
