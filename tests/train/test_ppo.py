@@ -49,6 +49,7 @@ def test_ppo2():
 
 
 def test_ppo_vl():
+    # PPO currently does not support VL, and the image has not been uploaded.
     os.environ['MAX_PIXELS'] = '1003520'
     from swift.llm import rlhf_main, RLHFArguments, infer_main, InferArguments
     result = rlhf_main(
