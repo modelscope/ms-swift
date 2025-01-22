@@ -1,6 +1,6 @@
 import os
 import re
-from typing import List
+from typing import List, Union
 
 import json
 import torch
@@ -178,6 +178,15 @@ class MathORM(ORM):
         if self.use_opencompass:
             from opencompass.datasets.math import MATHEvaluator
             self.evaluator = MATHEvaluator()
+
+    @staticmethod
+    def check_terminate(answers: Union[str, List[str]]) -> List[bool]:
+        if isinstance(answers, str):
+            answers = [answers]
+        results = []
+        for answer in answers:
+            results.append("\\boxed" in answer)
+        return results
 
     @staticmethod
     def extract_boxed_result(text):

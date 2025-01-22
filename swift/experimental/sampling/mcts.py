@@ -12,8 +12,6 @@ from .base import Sampler
 from .utils import get_reward, perform_infer
 from .sampling_args import SamplingArguments
 
-from typing import Union, List
-
 
 logger = get_logger()
 
@@ -25,13 +23,6 @@ next_message = {
     "content": NXT_PROMPT,
 }
 
-def check_terminate(answers: Union[str, List[str]]) -> List[bool]:
-    if isinstance(answers, str):
-        answers = [answers]
-    results = []
-    for answer in answers:
-        results.append("\\boxed" in answer)
-    return results
 
 class LanguageNode:
 
@@ -202,7 +193,7 @@ class MctsSampler(Sampler):
                 unique_output.add(output)
                 orm_infer_requests.append(InferRequest([{"role": "assistant", "content": output}]))
                 child = LanguageNode(step=output, parent=node)
-                if check_terminate(child.answer)[0]:
+                if self.orm_model.check_terminate(child.answer)[0]:
                     child.terminated = True
                 else:
                     all_child_terminated = False
@@ -294,7 +285,7 @@ class MctsSampler(Sampler):
                     self.orm_model, orm_infer_requests, ground_truths=[ground_truth] * len(infer_requests),
                     threshold=0.0)
                 # logger.info(f"rollout.get_orm tiem: {time.time() - r_time}")
-                terminated_state = check_terminate(end_paths)
+                terminated_state = self.orm_model.check_terminate(end_paths)
                 for index, score, terminated in zip(active_rollout_nodes, orm_score, terminated_state):
                     if terminated:
                         node.active_children[index].outcome_reward = score
