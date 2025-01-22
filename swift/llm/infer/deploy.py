@@ -5,7 +5,6 @@ import multiprocessing
 import time
 from contextlib import contextmanager
 from dataclasses import asdict
-from functools import partial
 from http import HTTPStatus
 from threading import Thread
 from typing import List, Optional, Union
@@ -159,7 +158,7 @@ class SwiftDeploy(SwiftInfer):
             res_or_gen = await self.infer_async(infer_request, request_config, template=self.template, **infer_kwargs)
         except Exception as e:
             import traceback
-            print(traceback.format_exc())
+            logger.info(traceback.format_exc())
             return self.create_error_response(HTTPStatus.BAD_REQUEST, str(e))
         if request_config.stream:
 

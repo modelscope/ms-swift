@@ -1,4 +1,5 @@
 # Currently, it only supports the case where the model and reward_model use the same template/tokenizer.
+# Currently, multimodal model PPO is not supported.
 nproc_per_node=4
 
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
@@ -27,4 +28,5 @@ swift rlhf \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 4 \
     --deepspeed zero2 \
-    --response_length 512
+    --response_length 512 \
+    --dataset_num_proc 4

@@ -181,7 +181,9 @@ class LmdeployEngine(InferEngine):
             if request_config.top_logprobs is not None:
                 kwargs['logprobs'] = max(1, request_config.top_logprobs)
 
-        return LmdeployGenerationConfig(**kwargs)
+        res = LmdeployGenerationConfig(**kwargs)
+        res.top_logprobs = request_config.top_logprobs
+        return res
 
     async def _infer_stream_async(
             self, template: Template, inputs: Dict[str, Any],
@@ -204,7 +206,8 @@ class LmdeployEngine(InferEngine):
                 if not delta_text and not is_finished:
                     continue
 
-                logprobs = self._get_logprobs(output.logprobs, output.token_ids[token_idx:], generation_config.logprobs)
+                logprobs = self._get_logprobs(output.logprobs, output.token_ids[token_idx:],
+                                              generation_config.top_logprobs)
                 token_idx = len(output.token_ids)
 
                 usage_info = self._get_usage_info(len(inputs['input_ids']), output.num_token)
@@ -233,7 +236,7 @@ class LmdeployEngine(InferEngine):
                 pass
 
         response = template.decode(output.token_ids)
-        logprobs = self._get_logprobs(output.logprobs, output.token_ids, generation_config.logprobs)
+        logprobs = self._get_logprobs(output.logprobs, output.token_ids, generation_config.top_logprobs)
 
         usage_info = self._get_usage_info(len(inputs['input_ids']), output.num_token)
         toolcall = self._get_toolcall(response, template.tools_prompt)

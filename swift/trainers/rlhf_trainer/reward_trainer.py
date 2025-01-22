@@ -66,7 +66,7 @@ class RewardTrainer(RLHFTrainerMixin, SwiftMixin, HFRewardTrainer):
             table['rejected_text'].extend(gather_object(rejected_text))
             table['logits'].extend(
                 gather_object([[round(inner_item, 4) for inner_item in item] for item in logits.tolist()]))
-            if num_print_samples >= 0 and len(table['chosen_text']) >= num_print_samples:
+            if 0 <= num_print_samples <= len(table['chosen_text']):
                 break
         df = pd.DataFrame(table)
         if self.accelerator.process_index == 0:
