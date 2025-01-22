@@ -27,4 +27,5 @@ swift rlhf \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 4 \
     --deepspeed zero2 \
-    --response_length 512
+    --response_length 512 \
+    --dataset_num_proc 4

@@ -69,6 +69,7 @@ Refer to the [generation_config](https://huggingface.co/docs/transformers/main_c
 - 🔥stream: Stream output, default is `False`.
 - stop_words: Additional stop words, default is `[]`.
 - logprobs: Whether to output logprobs, default is False.
+- top_logprobs: Default is `None`.
 
 ### Quantization Arguments
 

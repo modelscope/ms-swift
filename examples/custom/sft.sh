@@ -21,4 +21,5 @@ swift sft \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 4 \
     --max_length 2048 \
-    --output_dir output
+    --output_dir output \
+    --dataset_num_proc 4
