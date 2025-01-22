@@ -187,9 +187,7 @@ def patch_automodel_for_sequence_classification(model_meta):
     @classmethod
     def _new_from_pretrained(cls, *args, **kwargs):
         cls_name = cls.__name__
-        idx = cls_name.find('For')
-        if idx != -1:
-            cls_name = cls_name[:idx]
+        cls_name = cls_name.split('For', 1)[0]
         cls_name += 'ForSequenceClassification'
         cls = type(cls_name, (cls, ), {})  # new_cls
         __init__ = cls.__init__
