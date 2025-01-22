@@ -324,6 +324,7 @@ class MctsSampler(Sampler):
             if curr_node.children[-1].outcome_reward - curr_node.children[0].outcome_reward > 0.6:
                 results.append(json.dumps({
                     "query": query,
+                    "ground_truth": ground_truth,
                     "path": curr_node.path,
                     "good": curr_node.children[-1].path[-1],
                     "good_score": curr_node.children[-1].outcome_reward,
