@@ -88,12 +88,6 @@ def patch_ignore_check_imports():
 
 
 def _patch_sequence_classification(model, model_meta):
-    # rename
-    idx = model.__class__.__name__.find('For')
-    if idx != -1:
-        model.__class__.__name__ = model.__class__.__name__[:idx]
-    model.__class__.__name__ += 'ForSequenceClassification'
-
     hidden_size = HfConfigFactory.get_config_attr(model.config, 'hidden_size')
     initializer_range = HfConfigFactory.get_config_attr(model.config, 'initializer_range')
 
@@ -115,7 +109,7 @@ def _patch_sequence_classification(model, model_meta):
             setattr(llm_model, lm_head, nn.Identity())
             break
 
-    origin_forward = llm_model.forward
+    origin_forward = llm_model.forward.__func__
 
     @wraps(origin_forward)
     def new_forward(self, *args, **kwargs):
@@ -125,7 +119,7 @@ def _patch_sequence_classification(model, model_meta):
         input_ids = kwargs.get('input_ids')
         inputs_embeds = kwargs.get('inputs_embeds')
 
-        output = origin_forward(*args, **kwargs)
+        output = origin_forward(self, *args, **kwargs)
         output.logits = output.logits.to(self.score.weight.dtype)
         logits = self.score(output.logits)
         if input_ids is not None:
@@ -188,19 +182,22 @@ def _patch_sequence_classification(model, model_meta):
 
 @contextmanager
 def patch_automodel_for_sequence_classification(model_meta):
-    from_pretrained = PreTrainedModel.from_pretrained
+    from_pretrained = PreTrainedModel.from_pretrained.__func__
 
     @classmethod
     def _new_from_pretrained(cls, *args, **kwargs):
+        cls_name = cls.__name__
+        cls_name = cls_name.split('For', 1)[0]
+        cls_name += 'ForSequenceClassification'
+        cls = type(cls_name, (cls, ), {})  # new_cls
         __init__ = cls.__init__
 
         def __new_init__(self, *args, **kwargs):
             __init__(self, *args, **kwargs)
-            if 'SequenceClassification' not in self.__class__.__name__:
-                _patch_sequence_classification(self, model_meta)
+            _patch_sequence_classification(self, model_meta)
 
         cls.__init__ = __new_init__
-        res = from_pretrained.__func__(cls, *args, **kwargs)
+        res = from_pretrained(cls, *args, **kwargs)
         cls.__init__ = __init__
         return res
 
@@ -209,21 +206,21 @@ def patch_automodel_for_sequence_classification(model_meta):
     try:
         yield
     finally:
-        PreTrainedModel.from_pretrained = from_pretrained
+        PreTrainedModel.from_pretrained = classmethod(from_pretrained)
 
 
 @contextmanager
 def patch_automodel_for_awq():
-    from_pretrained = PreTrainedModel.from_pretrained
+    from_pretrained = PreTrainedModel.from_pretrained.__func__
 
     @classmethod
     def _new_from_pretrained(cls, *args, **kwargs):
         kwargs.pop('use_cache', None)
-        return from_pretrained.__func__(cls, *args, **kwargs)
+        return from_pretrained(cls, *args, **kwargs)
 
     PreTrainedModel.from_pretrained = _new_from_pretrained
 
     try:
         yield
     finally:
-        PreTrainedModel.from_pretrained = from_pretrained
+        PreTrainedModel.from_pretrained = classmethod(from_pretrained)
