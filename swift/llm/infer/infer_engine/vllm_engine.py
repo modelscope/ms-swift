@@ -219,8 +219,10 @@ class VllmEngine(InferEngine):
                       logprobs_list: Optional[List[Dict[int, float]]],
                       token_ids: List[int],
                       top_logprobs: Optional[int] = None) -> Optional[Dict[str, Any]]:
-        if logprobs_list is None:
+        if logprobs_list is None or len(token_ids) == 0:
             return None
+        if len(token_ids) > 0:
+            logprobs_list = logprobs_list[-len(token_ids):]
         for logprobs in logprobs_list:
             for token_id, logprob in logprobs.items():
                 logprobs[token_id] = logprob.logprob
@@ -244,7 +246,9 @@ class VllmEngine(InferEngine):
         for key in ['n', 'best_of', 'frequency_penalty', 'presence_penalty', 'seed']:
             kwargs[key] = getattr(request_config, key)
 
-        return SamplingParams(**kwargs)
+        res = SamplingParams(**kwargs)
+        res.top_logprobs = request_config.top_logprobs
+        return res
 
     async def _infer_stream_async(self, template: Template, inputs: Dict[str, Any], generation_config: SamplingParams,
                                   **kwargs) -> AsyncIterator[ChatCompletionStreamResponse]:
@@ -271,7 +275,7 @@ class VllmEngine(InferEngine):
             choices = []
             for output in result.outputs:
                 logprobs = self._get_logprobs(output.logprobs, output.token_ids[token_idxs[output.index]:],
-                                              generation_config.logprobs)
+                                              generation_config.top_logprobs)
                 token_idxs[output.index] = len(output.token_ids)
                 toolcall = None
                 if output.is_finished:
@@ -301,7 +305,7 @@ class VllmEngine(InferEngine):
         for output in result.outputs:
             output.token_ids = list(output.token_ids)
             response = template.decode(output.token_ids)
-            logprobs = self._get_logprobs(output.logprobs, output.token_ids, generation_config.logprobs)
+            logprobs = self._get_logprobs(output.logprobs, output.token_ids, generation_config.top_logprobs)
             toolcall = self._get_toolcall(response, template.tools_prompt)
             choice = ChatCompletionResponseChoice(
                 index=output.index,

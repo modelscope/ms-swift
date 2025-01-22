@@ -210,3 +210,20 @@ def patch_automodel_for_sequence_classification(model_meta):
         yield
     finally:
         PreTrainedModel.from_pretrained = from_pretrained
+
+
+@contextmanager
+def patch_automodel_for_awq():
+    from_pretrained = PreTrainedModel.from_pretrained
+
+    @classmethod
+    def _new_from_pretrained(cls, *args, **kwargs):
+        kwargs.pop('use_cache', None)
+        return from_pretrained.__func__(cls, *args, **kwargs)
+
+    PreTrainedModel.from_pretrained = _new_from_pretrained
+
+    try:
+        yield
+    finally:
+        PreTrainedModel.from_pretrained = from_pretrained
