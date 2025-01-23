@@ -1,5 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
+import platform
+import re
 import shutil
 from contextlib import nullcontext
 from dataclasses import dataclass, field
@@ -92,17 +94,10 @@ class DatasetSyntax:
         dataset_type = self.dataset_type
         if dataset_type == 'path':
             dataset_meta = dataset_meta_mapping.get((dataset_type, self.dataset.lower()))
-            if dataset_meta is None:
-                dataset_meta = DatasetMeta(dataset_path=self.dataset)
         else:
             dataset_type = {True: 'hf', False: 'ms'}[use_hf]
             dataset_meta = dataset_meta_mapping.get((dataset_type, self.dataset.lower()))
-            if dataset_meta is None:
-                if use_hf:
-                    dataset_meta = DatasetMeta(hf_dataset_id=self.dataset)
-                else:
-                    dataset_meta = DatasetMeta(ms_dataset_id=self.dataset)
-        return dataset_meta
+        return dataset_meta or self._get_matched_dataset_meta(dataset_meta_mapping) or DatasetMeta()
 
     @staticmethod
     def _get_dataset_meta_mapping() -> Dict[Tuple[str, str], DatasetMeta]:
@@ -118,6 +113,28 @@ class DatasetSyntax:
             if dataset_meta.hf_dataset_id is not None:
                 _dataset_meta_mapping[('hf', dataset_meta.hf_dataset_id.lower())] = dataset_meta
         return _dataset_meta_mapping
+
+    @staticmethod
+    def get_dataset_name(dataset_id: str) -> str:
+        # compat hf hub
+        dataset_id = dataset_id.rstrip('/')
+        match_ = re.search('/datasets--.+?--(.+?)/snapshots/', dataset_id)
+        if match_ is not None:
+            return match_.group(1)
+
+        dataset_name = dataset_id.rsplit('/', 1)[-1]
+        if platform.system().lower() == 'windows':
+            dataset_name = dataset_name.rsplit('\\', 1)[-1]
+        return dataset_name
+
+    def _get_matched_dataset_meta(self, dataset_meta_mapping):
+        suffix_dataset_meta_mapping = {}
+        for dataset_name, dataset_meta in dataset_meta_mapping.items():
+            dataset_name = self.get_dataset_name(dataset_name[1]).lower()
+            suffix_dataset_meta_mapping[dataset_name] = dataset_meta
+        dataset_name = self.get_dataset_name(self.dataset).lower()
+        dataset_meta = suffix_dataset_meta_mapping.get(dataset_name)
+        return dataset_meta
 
 
 class DatasetLoader:
@@ -161,13 +178,12 @@ class DatasetLoader:
         return concatenate_datasets(datasets)
 
     @staticmethod
-    def _load_dataset_path(dataset_meta: DatasetMeta,
+    def _load_dataset_path(dataset_path: str,
+                           dataset_meta: DatasetMeta,
                            *,
                            num_proc: int = 1,
                            strict: bool = False,
                            streaming: bool = False) -> HfDataset:
-        dataset_path = dataset_meta.dataset_path
-
         ext = os.path.splitext(dataset_path)[1].lstrip('.')
         file_type = {'jsonl': 'json', 'txt': 'text'}.get(ext) or ext
         kwargs = {'split': 'train', 'streaming': streaming, 'num_proc': num_proc}
@@ -197,7 +213,7 @@ class DatasetLoader:
             retry = 1
             load_context = nullcontext
             use_hf = True
-            dataset_str = f'Use local folder, dataset_id: {dataset_id}'
+            dataset_str = f'Use local folder, dataset_dir: {dataset_id}'
             # The dataset downloaded from modelscope will have an additional dataset_infos.json file.
             dataset_infos_path = os.path.join(dataset_id, 'dataset_infos.json')
             if os.path.isfile(dataset_infos_path):
@@ -338,9 +354,9 @@ class DatasetLoader:
         strict: bool = False,
         download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists',
     ) -> HfDataset:
-
-        if dataset_meta.dataset_path:
+        if dataset_syntax.dataset_type == 'path':
             dataset = DatasetLoader._load_dataset_path(
+                dataset_syntax.dataset,
                 dataset_meta=dataset_meta,
                 num_proc=num_proc,
                 strict=strict,
@@ -348,18 +364,11 @@ class DatasetLoader:
             )
         else:
             subsets: List[SubsetDataset] = DatasetLoader._select_subsets(dataset_syntax.subsets, dataset_meta)
-            if use_hf:
-                dataset_id = dataset_meta.hf_dataset_id
-                revision = dataset_meta.hf_revision
-            else:
-                dataset_id = dataset_meta.ms_dataset_id
-                revision = dataset_meta.ms_revision
-            assert dataset_id is not None, (f'dataset: {dataset_syntax.dataset}, use_hf: {use_hf}, '
-                                            f'dataset_id: {dataset_id}.')
+            revision = dataset_meta.hf_revision if use_hf else dataset_meta.ms_revision
             datasets = []
             for subset in subsets:
                 dataset = DatasetLoader._load_repo_dataset(
-                    dataset_id,
+                    dataset_syntax.dataset,
                     subset,
                     use_hf=use_hf,
                     hub_token=hub_token,
