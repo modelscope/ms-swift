@@ -173,7 +173,7 @@ def replace_math_dataset():
     if os.path.exists(os.path.join(user_dir, '.cache', 'opencompass', 'data', 'math', 'math.json')):
         os.remove(os.path.join(user_dir, '.cache', 'opencompass', 'data', 'math', 'math.json'))
     shutil.copy(
-        os.path.join('scripts', 'rft', 'math.json'),
+        os.path.join('examples', 'train', 'rft', 'math.json'),
         os.path.join(user_dir, '.cache', 'opencompass', 'data', 'math', 'math.json'))
 
 
