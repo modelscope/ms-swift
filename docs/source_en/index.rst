@@ -21,8 +21,10 @@ Swift DOCUMENTATION
    Instruction/Pre-training-and-Fine-tuning.md
    Instruction/RLHF.md
    Instruction/Inference-and-deployment.md
+   Instruction/Sample.md
    Instruction/Evaluation.md
    Instruction/Export.md
+   Instruction/Reinforced_fine_tuning.md
    Instruction/Supported-models-and-datasets.md
    Instruction/Use-tuners.md
    Instruction/Agent-support.md

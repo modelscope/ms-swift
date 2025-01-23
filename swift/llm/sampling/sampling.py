@@ -5,8 +5,8 @@ import time
 from typing import List, Union
 
 from swift.llm import SwiftPipeline, load_dataset
+from swift.llm.argument.sampling_args import SamplingArguments
 from swift.utils import get_logger
-from .sampling_args import SamplingArguments
 
 logger = get_logger()
 
@@ -26,7 +26,7 @@ class SwiftSampling(SwiftPipeline):
             self.cur_piece, self.total_piece = self.args.data_range
 
         if self.args.sampler_type == 'sample':
-            from swift.experimental.sampling.vanilla_sampler import VanillaSampler
+            from swift.llm.sampling.vanilla_sampler import VanillaSampler
             self.sampler = VanillaSampler(self.args)
 
     def _get_dataset(self):
