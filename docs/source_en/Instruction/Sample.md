@@ -53,7 +53,7 @@ class CustomPRM:
         pass
 
     @torch.inference_mode()
-    def infer(self, infer_requests: List[InferRequest], **kwargs) -> List[ChatCompletionResponse]:
+    def infer(self, infer_requests: List[InferRequest],  ground_truths: List[str], **kwargs) -> List[ChatCompletionResponse]:
         ...
 
 
@@ -64,6 +64,6 @@ Afterward, use `--prm_model custom` in the command line.
 
 ## Practical Example
 
-Please refer to the [Reinforcement Fine-Tuning Script](https://github.com/modelscope/ms-swift/tree/main/scripts/rft.py). This script provides a practical example of using sampling for reinforcement fine-tuning.
+Please refer to the [Reinforcement Fine-Tuning Script](https://github.com/modelscope/ms-swift/tree/main/examples/train/rft/rft.py). This script provides a practical example of using sampling for reinforcement fine-tuning.
 
 > **Note:** The actual effectiveness of this script is strongly related to the quality of the model, data, and RM. Therefore, it is presented only as an example. Users should modify this script and train their own RM and generator models accordingly.
