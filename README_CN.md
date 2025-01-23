@@ -74,6 +74,7 @@
 - **模型量化**：支持AWQ、GPTQ和BNB的量化导出，导出的模型支持使用vLLM/LmDeploy推理加速，并支持继续训练。
 
 ## 🎉 新闻
+- 🎁 2024.01.23: SWIFT支持了`sample`命令, 这是一个对CoT和RFT非常重要的命令. 同时, 我们支持了一个[强化微调脚本](docs/source/Instruction/强化微调.md)。
 - 🎁 2024.12.04: **SWIFT3.0**大版本更新. 请查看[发布说明和更改](https://swift.readthedocs.io/zh-cn/latest/Instruction/ReleaseNote3.0.html)。
 - 🎉 2024.08.12: SWIFT论文已经发布到arXiv上，可以点击[这里](https://arxiv.org/abs/2408.05517)阅读。
 - 🔥 2024.08.05: 支持使用[evalscope](https://github.com/modelscope/evalscope/)作为后端进行大模型和多模态模型的评测。
@@ -286,6 +287,15 @@ CUDA_VISIBLE_DEVICES=0 swift app \
 CUDA_VISIBLE_DEVICES=0 swift deploy \
     --model Qwen/Qwen2.5-7B-Instruct \
     --infer_backend vllm
+```
+
+### 采样
+```shell
+CUDA_VISIBLE_DEVICES=0 swift sample \
+    --model LLM-Research/Meta-Llama-3.1-8B-Instruct \
+    --sampler_engine pt \
+    --num_return_sequences 5 \
+    --dataset AI-ModelScope/alpaca-gpt4-data-zh#5
 ```
 
 ### 评测

@@ -5,8 +5,8 @@ from copy import deepcopy
 import json
 import numpy as np
 
-from swift.experimental.sampling.base import Sampler
 from swift.llm import RequestConfig
+from swift.llm.sampling.base import Sampler
 from swift.llm.template.template_inputs import InferRequest
 from swift.utils import get_logger
 from .utils import get_messages_md5, get_reward
