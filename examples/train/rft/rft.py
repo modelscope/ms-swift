@@ -62,7 +62,7 @@ def do_sample(model: str, model_type: str, dataset: List[str], iter: int):
                       f'--sampler_engine no '
                       f'--orm_model math '
                       f'--prm_model Qwen/Qwen2.5-Math-PRM-7B '
-                      f'--prm_threshold 0.7 '
+                      f'--prm_threshold {min(0.7 + 0.1*iter, 0.9)} '
                       f'--max_new_tokens 768 '
                       f'--override_exist_file true '
                       f'--num_sampling_per_gpu_batch_size 1 '
@@ -95,7 +95,7 @@ def do_train(model: str, model_type: str, datasets: List[str], iter, cmd='sft'):
         ds_config = '--deepspeed zero3 '
     extra_args = ''
     if cmd == 'rlhf':
-        extra_args = '--rlhf_type dpo --beta 2.0 '
+        extra_args = '--rlhf_type dpo --beta 0.3 '
     ga = 128 // torch.cuda.device_count() // 2
     train_cmd = (f'{conda_prefix} {gpu_prefix} swift {cmd} '
                  f'--model {model} --model_type {model_type} '
@@ -180,8 +180,8 @@ def replace_math_dataset():
 def main():
     os.makedirs('logs', exist_ok=True)
     max_acc = 0.
-    first_model = 'LLM-Research/Meta-Llama-3.1-8B-Instruct'
-    model_type = 'llama3_1'
+    first_model = 'Qwen/Qwen2.5-Math-7B-Instruct'
+    model_type = 'qwen2_5_math'
 
     if False:
         do_eval(first_model, None)
