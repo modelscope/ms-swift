@@ -109,6 +109,7 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
     add_version: bool = True
     resume_only_model: bool = False
     check_model: bool = True
+    create_checkpoint_symlink: bool = False
 
     # dataset
     packing: bool = False

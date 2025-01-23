@@ -158,6 +158,13 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         training_args = trainer.args
         state = trainer.state
 
+        if self.args.create_checkpoint_symlink:
+            last_checkpoint = os.path.join(self.args.output_dir, 'last')
+            best_checkpoint = os.path.join(self.args.output_dir, 'best')
+            os.symlink(state.last_model_checkpoint, last_checkpoint)
+            os.symlink(state.best_model_checkpoint, best_checkpoint)
+            state.last_model_checkpoint = last_checkpoint
+            state.best_model_checkpoint = best_checkpoint
         logger.info(f'last_model_checkpoint: {state.last_model_checkpoint}')
         logger.info(f'best_model_checkpoint: {state.best_model_checkpoint}')
 

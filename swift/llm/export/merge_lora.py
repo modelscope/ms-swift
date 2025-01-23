@@ -14,8 +14,7 @@ def merge_lora(args: ExportArguments, device_map=None, replace_if_exists=False) 
     output_dir = getattr(args, 'output_dir', None) or f'{args.adapters[0]}-merged'
     if os.path.exists(output_dir) and not replace_if_exists:
         logger.info(f'The weight directory for the merged LoRA already exists in {output_dir}, '
-                    'skipping the saving process. '
-                    'you can pass `replace_if_exists=True` to overwrite it.')
+                    'skipping the saving process.')
     else:
         origin_device_map = args.device_map
         args.device_map = device_map or args.device_map

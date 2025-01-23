@@ -299,6 +299,7 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
 - add_version: Add directory to output_dir with `'<version>-<timestamp>'` to prevent weight overwrite, default is True.
 - resume_only_model: If resume_from_checkpoint, only resume model weights, default is False.
 - check_model: Check local model files for corruption or modification and give a prompt, default is True. If in an offline environment, please set to False.
+- create_checkpoint_symlink: Create additional checkpoint symlinks. best_model and last_model are f'{output_dir}/best' and f'{output_dir}/last', respectively.
 - loss_type: Type of loss, default uses the model's built-in loss function.
 - packing: Whether to use packing, default is False.
 - 🔥lazy_tokenize: Whether to use lazy_tokenize, default is False during LLM training, default is True during MLLM training.
