@@ -34,28 +34,30 @@ dtype_mapping = {torch.float16: 'float16', torch.bfloat16: 'bfloat16', torch.flo
 class VllmEngine(InferEngine):
 
     def __init__(
-            self,
-            model_id_or_path: str,
-            torch_dtype: Optional[torch.dtype] = None,
-            *,
-            model_type: Optional[str] = None,
-            use_hf: Optional[bool] = None,
-            hub_token: Optional[str] = None,
-            revision: Optional[str] = None,
-            # engine_kwargs
-            gpu_memory_utilization: float = 0.9,
-            tensor_parallel_size: int = 1,
-            pipeline_parallel_size: int = 1,
-            max_model_len: Optional[int] = None,
-            max_num_seqs: int = 256,
-            disable_custom_all_reduce: bool = False,
-            enforce_eager: bool = False,
-            limit_mm_per_prompt: Optional[Dict[str, Any]] = None,
-            # lora
-            enable_lora: bool = False,
-            max_loras: int = 1,
-            max_lora_rank: int = 16,
-            engine_kwargs: Optional[Dict[str, Any]] = None) -> None:
+        self,
+        model_id_or_path: str,
+        torch_dtype: Optional[torch.dtype] = None,
+        *,
+        model_type: Optional[str] = None,
+        use_hf: Optional[bool] = None,
+        hub_token: Optional[str] = None,
+        revision: Optional[str] = None,
+        # engine_kwargs
+        gpu_memory_utilization: float = 0.9,
+        tensor_parallel_size: int = 1,
+        pipeline_parallel_size: int = 1,
+        max_model_len: Optional[int] = None,
+        max_num_seqs: int = 256,
+        disable_custom_all_reduce: bool = False,
+        enforce_eager: bool = False,
+        limit_mm_per_prompt: Optional[Dict[str, Any]] = None,
+        # lora
+        enable_lora: bool = False,
+        max_loras: int = 1,
+        max_lora_rank: int = 16,
+        enable_prefix_caching: bool = False,
+        engine_kwargs: Optional[Dict[str, Any]] = None,
+    ) -> None:
         self.processor = get_model_tokenizer(
             model_id_or_path,
             torch_dtype,
@@ -79,7 +81,9 @@ class VllmEngine(InferEngine):
             enable_lora=enable_lora,
             max_loras=max_loras,
             max_lora_rank=max_lora_rank,
-            engine_kwargs=engine_kwargs)
+            enable_prefix_caching=enable_prefix_caching,
+            engine_kwargs=engine_kwargs,
+        )
 
         self._prepare_engine()
         self._load_generation_config()
@@ -91,19 +95,22 @@ class VllmEngine(InferEngine):
             engine = AsyncLLMEngine.from_engine_args(self.engine_args)
         self.engine = engine
 
-    def _prepare_engine_kwargs(self,
-                               gpu_memory_utilization: float = 0.9,
-                               tensor_parallel_size: int = 1,
-                               pipeline_parallel_size: int = 1,
-                               max_model_len: Optional[int] = None,
-                               max_num_seqs: int = 256,
-                               disable_custom_all_reduce: bool = False,
-                               enforce_eager: bool = False,
-                               limit_mm_per_prompt: Optional[Dict[str, Any]] = None,
-                               enable_lora: bool = False,
-                               max_loras: int = 1,
-                               max_lora_rank: int = 16,
-                               engine_kwargs: Optional[Dict[str, Any]] = None) -> None:
+    def _prepare_engine_kwargs(
+        self,
+        gpu_memory_utilization: float = 0.9,
+        tensor_parallel_size: int = 1,
+        pipeline_parallel_size: int = 1,
+        max_model_len: Optional[int] = None,
+        max_num_seqs: int = 256,
+        disable_custom_all_reduce: bool = False,
+        enforce_eager: bool = False,
+        limit_mm_per_prompt: Optional[Dict[str, Any]] = None,
+        enable_lora: bool = False,
+        max_loras: int = 1,
+        max_lora_rank: int = 16,
+        enable_prefix_caching: bool = False,
+        engine_kwargs: Optional[Dict[str, Any]] = None,
+    ) -> None:
         if engine_kwargs is None:
             engine_kwargs = {}
         disable_log_stats = engine_kwargs.pop('disable_log_stats', True)
@@ -136,7 +143,9 @@ class VllmEngine(InferEngine):
             disable_custom_all_reduce=disable_custom_all_reduce,
             enforce_eager=enforce_eager,
             trust_remote_code=True,
-            **engine_kwargs)
+            enable_prefix_caching=enable_prefix_caching,
+            **engine_kwargs,
+        )
         self.engine_args = engine_args
         self.enable_lora = enable_lora
         if max_model_len is not None:
