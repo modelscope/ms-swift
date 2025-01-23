@@ -1,4 +1,5 @@
 CUDA_VISIBLE_DEVICES=0,1 \
+MAX_PIXELS=1003520 \
 swift infer \
     --model Qwen/Qwen2-VL-2B-Instruct \
     --infer_backend vllm \

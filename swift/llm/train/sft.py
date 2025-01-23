@@ -5,7 +5,7 @@ from typing import List, Union
 
 from datasets import Dataset as HfDataset
 
-from swift.plugin import extra_callbacks, get_loss_func, get_metric, optimizers_map
+from swift.plugin import extra_callbacks, get_loss_func, get_metric
 from swift.trainers import IntervalStrategy, TrainerFactory
 from swift.utils import (append_to_jsonl, get_logger, get_model_parameter_info, is_master, plot_images, stat_array,
                          use_torchacc)
@@ -66,8 +66,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
         logger.info(f'model_info: {self.model.model_info}')
 
-        if getattr(self.model, 'generation_config', None):
-            self._prepare_generation_config()
+        self._prepare_generation_config()
         self._prepare_gradient_checkpointing()
 
     def _prepare_template(self) -> None:

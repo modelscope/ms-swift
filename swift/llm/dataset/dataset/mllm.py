@@ -78,6 +78,24 @@ register_dataset(
     ))
 
 
+class GarbagePreprocessor(ResponsePreprocessor):
+
+    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        row['query'] = 'Task: Classify household waste.'
+        return super().preprocess(row)
+
+
+register_dataset(
+    DatasetMeta(
+        ms_dataset_id='tany0699/garbage265',
+        preprocess_func=GarbagePreprocessor(columns_mapping={
+            'category': 'label',
+            'image:FILE': 'images'
+        }),
+        tags=['cls', '🔥', 'multi-modal'],
+    ))
+
+
 class SA1BPairedCaptionPreprocessor(RowPreprocessor):
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:

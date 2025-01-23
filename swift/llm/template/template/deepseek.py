@@ -113,13 +113,28 @@ class DeepseekJanus(DeepseekVLTemplate):
 
 register_template(DeepseekVLTemplateMeta(MLLMTemplateType.deepseek_janus, template_cls=DeepseekJanus))
 
-register_template(
-    TemplateMeta(
-        LLMTemplateType.deepseek_v2_5,
-        prefix=['<｜begin▁of▁sentence｜>{{SYSTEM}}'],
-        prompt=['<｜User｜>{{QUERY}}<｜Assistant｜>'],
-        chat_sep=['<｜end▁of▁sentence｜>'],
-        suffix=['<｜end▁of▁sentence｜>']))
+
+@dataclass
+class DeepseekV2_5TemplateMeta(TemplateMeta):
+    prefix: Prompt = field(default_factory=lambda: ['<｜begin▁of▁sentence｜>{{SYSTEM}}'])
+    prompt: Prompt = field(default_factory=lambda: ['<｜User｜>{{QUERY}}<｜Assistant｜>'])
+    chat_sep: Optional[Prompt] = field(default_factory=lambda: ['<｜end▁of▁sentence｜>'])
+    suffix: Prompt = field(default_factory=lambda: ['<｜end▁of▁sentence｜>'])
+
+
+register_template(DeepseekV2_5TemplateMeta(LLMTemplateType.deepseek_v2_5))
+
+
+class DeepseekR1Template(Template):
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        for message in inputs.messages:
+            if message['role'] == 'assistant' and isinstance(message['content'], str):
+                message['content'] = message['content'].split('</think>')[-1]
+        return super()._encode(inputs)
+
+
+register_template(DeepseekV2_5TemplateMeta(LLMTemplateType.deepseek_r1, template_cls=DeepseekR1Template))
 
 
 class DeepseekVL2Template(DeepseekVLTemplate):
@@ -164,11 +179,8 @@ class DeepseekVL2Template(DeepseekVLTemplate):
 
 
 register_template(
-    TemplateMeta(
+    DeepseekV2_5TemplateMeta(
         MLLMTemplateType.deepseek_vl2,
-        prefix=['<｜begin▁of▁sentence｜>{{SYSTEM}}'],
         prompt=['<|User|>: {{QUERY}}\n\n<|Assistant|>:'],
-        chat_sep=['<｜end▁of▁sentence｜>'],
-        suffix=['<｜end▁of▁sentence｜>'],
         template_cls=DeepseekVL2Template,
         placeholder_tokens=['<image>']))
