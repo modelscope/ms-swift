@@ -62,6 +62,15 @@ prms = {'custom': CustomPRM}
 
 Afterward, use `--prm_model custom` in the command line.
 
+## Memory Control
+
+If the sampled model and PRM are loaded into memory simultaneously, it may lead to an OOM (Out of Memory) issue. To address this, sampling can be divided into two stages:
+
+- **Stage 1**: Specify `--model` and `--sampler_engine` without specifying `--orm_model` and `--prm_model`. Perform sampling only and save the results to a file.
+- **Stage 2**: Specify `--sampler_engine no`, along with `--orm_model` and `--prm_model`, and also specify `--cache_files`. Perform only RM data filtering without re-sampling.
+
+By dividing the process into two stages, only one model is loaded at a time, avoiding OOM issues.
+
 ## Practical Example
 
 Please refer to the [Reinforcement Fine-Tuning Script](https://github.com/modelscope/ms-swift/tree/main/examples/train/rft/rft.py). This script provides a practical example of using sampling for reinforcement fine-tuning.
