@@ -59,12 +59,12 @@ class ExportArguments(MergeArguments, BaseArguments):
             ckpt_dir, ckpt_name = os.path.split(ckpt_dir)
             if self.to_peft_format:
                 suffix = 'peft'
-            elif self.merge_lora:
-                suffix = 'merged'
             elif self.quant_method:
                 suffix = f'{self.quant_method}-int{self.quant_bits}'
             elif self.to_ollama:
                 suffix = 'ollama'
+            elif self.merge_lora:
+                suffix = 'merged'
             else:
                 return
 
