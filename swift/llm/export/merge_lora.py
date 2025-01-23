@@ -11,9 +11,6 @@ logger = get_logger()
 def merge_lora(args: ExportArguments, device_map=None, replace_if_exists=False) -> None:
     if replace_if_exists:
         logger.info(f'replace_if_exists: {replace_if_exists}')
-    assert args.quant_method is None, (f'args.quant_method: {args.quant_method}, '
-                                       'quantized model and does not support merge-lora.')
-
     output_dir = getattr(args, 'output_dir', None) or f'{args.adapters[0]}-merged'
     if os.path.exists(output_dir) and not replace_if_exists:
         logger.info(f'The weight directory for the merged LoRA already exists in {output_dir}, '
@@ -24,6 +21,9 @@ def merge_lora(args: ExportArguments, device_map=None, replace_if_exists=False) 
         args.device_map = device_map or args.device_map
         logger.info(f'merge_device_map: {device_map}')
         model, template = prepare_model_template(args)
+        quant_method = model.model_info.quant_method
+        assert quant_method is None, (f'quant_method: {quant_method}, '
+                                      'quantized model and does not support merge-lora.')
         logger.info('Merge LoRA...')
         Swift.merge_and_unload(model)
         model = model.model
@@ -41,4 +41,5 @@ def merge_lora(args: ExportArguments, device_map=None, replace_if_exists=False) 
         args.device_map = origin_device_map
 
     args.model = output_dir
+    args.model_dir = output_dir
     args.adapters = []

@@ -417,6 +417,8 @@ Export Arguments include the [basic arguments](#base-arguments) and [merge argum
 - quant_batch_size: Quantization batch size, default is 1.
 - group_size: Group size for quantization, default is 128.
 
+- exist_ok: If it exists, no exception is raised. Defaults to False.
+
 - 🔥push_to_hub: Whether to push to the hub, default is False.
 - hub_model_id: Model ID for pushing, default is None.
 - hub_private_repo: Whether it is a private repo, default is False.
