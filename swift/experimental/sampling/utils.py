@@ -67,3 +67,10 @@ def get_reward(model: Any,
         return normalized
 
     return normalize(arr), _mask
+
+def perform_infer(infer_engine, infer_request, request_config, **infer_kwargs):
+    return infer_engine.infer(
+        [infer_request],
+        request_config,
+        **infer_kwargs,
+    )
