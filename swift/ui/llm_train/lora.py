@@ -23,8 +23,8 @@ class LoRA(BaseUI):
                 'en': 'LoRA target modules'
             },
             'info': {
-                'zh': '设置LoRA目标模块，如训练所有Linear请改为ALL',
-                'en': 'Set the LoRA target modules, fill in ALL if train all Linears'
+                'zh': '设置LoRA目标模块，如训练所有Linear请改为`all-linear`',
+                'en': 'Set the LoRA target modules, fill in `all-linear` if train all Linears'
             }
         },
         'lora_rank': {
@@ -91,8 +91,8 @@ class LoRA(BaseUI):
             with gr.Blocks():
                 with gr.Row():
                     gr.Textbox(elem_id='target_modules', lines=1, scale=5, value='all-linear', is_list=True)
-                    gr.Slider(elem_id='lora_rank', value=32, minimum=1, maximum=512, step=8, scale=2)
-                    gr.Slider(elem_id='lora_alpha', value=8, minimum=1, maximum=512, step=8, scale=2)
+                    gr.Slider(elem_id='lora_rank', value=8, minimum=1, maximum=512, step=8, scale=2)
+                    gr.Slider(elem_id='lora_alpha', value=32, minimum=1, maximum=512, step=8, scale=2)
                     gr.Textbox(elem_id='lora_dropout', scale=2)
                 with gr.Row():
                     gr.Dropdown(elem_id='lora_dtype', scale=2, value=None)
