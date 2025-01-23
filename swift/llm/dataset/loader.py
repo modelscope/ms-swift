@@ -370,8 +370,6 @@ class DatasetLoader:
         else:
             subsets: List[SubsetDataset] = DatasetLoader._select_subsets(dataset_syntax.subsets, dataset_meta)
             revision = dataset_meta.hf_revision if use_hf else dataset_meta.ms_revision
-            assert dataset_syntax.dataset is not None, (f'dataset: {dataset_syntax.dataset}, use_hf: {use_hf}, '
-                                                        f'dataset_id: {dataset_id}.')
             datasets = []
             for subset in subsets:
                 dataset = DatasetLoader._load_repo_dataset(
