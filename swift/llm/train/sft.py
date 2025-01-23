@@ -167,6 +167,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             state.best_model_checkpoint = best_checkpoint
         logger.info(f'last_model_checkpoint: {state.last_model_checkpoint}')
         logger.info(f'best_model_checkpoint: {state.best_model_checkpoint}')
+
         # Visualization
         if is_master() and not use_torchacc():
             if 'tensorboard' in training_args.report_to:
