@@ -41,4 +41,5 @@ def merge_lora(args: ExportArguments, device_map=None, replace_if_exists=False) 
         args.device_map = origin_device_map
 
     args.model = output_dir
+    args.model_dir = output_dir
     args.adapters = []
