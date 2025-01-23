@@ -188,6 +188,9 @@ class LazyLLMDataset(Dataset):
                                    'and another piece of data will be randomly selected.')
                     self._traceback_counter += 1
 
+        raise ValueError('Failed to retrieve the dataset. You can avoid this issue by increasing `max_length` or '
+                         'modifying the `truncation_strategy`.')
+
     def __len__(self) -> int:
         return len(self.dataset)
 
