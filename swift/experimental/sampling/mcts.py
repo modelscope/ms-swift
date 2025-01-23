@@ -323,7 +323,7 @@ class MctsSampler(Sampler):
 
         _args = self.args
         system_message = _args.system_message
-        sep_token = _args.stop_words[0]
+        sep_token = _args.stop_words[0] + '\n'
         collect_filter_threshold = _args.collect_filter_threshold
         _root = LanguageNode(sep_token=sep_token)
         prompt_message = {
