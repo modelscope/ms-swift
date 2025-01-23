@@ -97,12 +97,7 @@ class DatasetSyntax:
         else:
             dataset_type = {True: 'hf', False: 'ms'}[use_hf]
             dataset_meta = dataset_meta_mapping.get((dataset_type, self.dataset.lower()))
-        if dataset_meta is None:
-            dataset_meta = self._get_matched_dataset_meta(dataset_meta_mapping)
-        if dataset_meta is None:
-            key = {'path': 'dataset_path', 'ms': 'ms_dataset_id', 'hf': 'hf_dataset_id'}[dataset_type]
-            dataset_meta = DatasetMeta(**{key: self.dataset})
-        return dataset_meta
+        return dataset_meta or self._get_matched_dataset_meta(dataset_meta_mapping) or DatasetMeta()
 
     @staticmethod
     def _get_dataset_meta_mapping() -> Dict[Tuple[str, str], DatasetMeta]:
