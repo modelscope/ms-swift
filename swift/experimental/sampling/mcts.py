@@ -243,7 +243,7 @@ class MctsSampler(Sampler):
                     },
                 }
             active_rollout_nodes = list(rollout_nodes.keys())
-            while len(active_rollout_nodes) > 0 and rollout_iter_index < _args.max_rollout_iterations:
+            while len(active_rollout_nodes) > 0 and rollout_iter_index < _args.rollout_depth:
                 # r_time = time.time()
                 infer_requests = [InferRequest([system_message,
                                                 prompt_message,
@@ -345,7 +345,7 @@ class MctsSampler(Sampler):
             s_time = time.time()
             _expand(curr_node)
             logger.info("expand" + "=" * 10 + f"time: {time.time() - s_time}")
-            if curr_node.depth > 3:
+            if curr_node.depth > _args.rollout_start_depth:
                 s_time = time.time()
                 _rollout(curr_node)
                 logger.info("rollout" + "=" * 10 + f"time: {time.time() - s_time}")

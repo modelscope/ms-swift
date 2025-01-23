@@ -44,7 +44,8 @@ class SamplingArguments(BaseArguments):
     cache_files: List[str] = dataclasses.field(default_factory=list)
 
     # MCTS
-    max_rollout_iterations: int = 5
+    rollout_depth: int = 5
+    rollout_start_depth: int = 3
     max_iterations: int = 100
     process_reward_rate: float = 0.0
     exploration_rate: float = 0.5
