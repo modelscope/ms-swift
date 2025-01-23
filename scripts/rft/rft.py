@@ -6,8 +6,8 @@ from typing import List
 
 import torch.cuda
 
-conda_prefix = 'source /root/miniconda3/etc/profile.d/conda.sh && conda activate py311 && '
-# conda_prefix = ''
+# conda_prefix = 'source /root/miniconda3/etc/profile.d/conda.sh && conda activate py311 && '
+conda_prefix = ''
 
 
 def do_sample(model: str, model_type: str, dataset: List[str], iter: int):
@@ -62,7 +62,7 @@ def do_sample(model: str, model_type: str, dataset: List[str], iter: int):
                       f'--sampler_engine no '
                       f'--orm_model math '
                       f'--prm_model Qwen/Qwen2.5-Math-PRM-7B '
-                      f'--prm_threshold 0.5 '
+                      f'--prm_threshold 0.7 '
                       f'--max_new_tokens 768 '
                       f'--override_exist_file true '
                       f'--num_sampling_per_gpu_batch_size 1 '
@@ -180,8 +180,7 @@ def replace_math_dataset():
 def main():
     os.makedirs('logs', exist_ok=True)
     max_acc = 0.
-    # first_model = 'LLM-Research/Meta-Llama-3.1-8B-Instruct'
-    first_model = '/mnt/nas3/yzhao/tastelikefeet/swift/output/checkpoint-2000/v0-20250111-163224/checkpoint-600'
+    first_model = 'LLM-Research/Meta-Llama-3.1-8B-Instruct'
     model_type = 'llama3_1'
 
     if False:
