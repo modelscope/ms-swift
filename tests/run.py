@@ -468,7 +468,7 @@ class TimeCostTextTestResult(TextTestResult):
 
     def __init__(self, stream, descriptions, verbosity):
         self.successes = []
-        return super(TimeCostTextTestResult,
+        super(TimeCostTextTestResult,
                      self).__init__(stream, descriptions, verbosity)
 
     def startTest(self, test):

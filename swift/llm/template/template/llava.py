@@ -3,15 +3,13 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional
 
 import torch
-import transformers
-from packaging import version
 
 from ..base import Template
 from ..constant import MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import Context, Prompt, findall
-from ..vision_utils import load_batch, load_video_llava
+from ..vision_utils import load_video_llava
 from .llama import Llama3TemplateMeta
 from .qwen import QwenTemplateMeta
 from .utils import ChatmlTemplateMeta

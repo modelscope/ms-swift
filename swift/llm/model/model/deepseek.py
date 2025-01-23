@@ -55,9 +55,6 @@ def get_model_tokenizer_deepseek_moe(model_dir: str,
         # fix dtype bug
         mlp_cls = model.model.layers[1].mlp.__class__
 
-        def _dtype_hook(module, input, output):
-            return output.to(input[0].dtype)
-
         for module in model.modules():
             if isinstance(module, mlp_cls):
                 patch_output_to_input_device(module)

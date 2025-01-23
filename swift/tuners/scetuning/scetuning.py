@@ -1,5 +1,4 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import inspect
 import re
 import types
 from dataclasses import dataclass, field
@@ -7,7 +6,6 @@ from typing import List, Optional, Union
 
 import torch
 from torch import nn
-from transformers.activations import ACT2CLS
 
 from swift import get_logger
 from swift.tuners.utils import ActivationMixin, SwiftAdapter, SwiftConfig, SwiftOutput

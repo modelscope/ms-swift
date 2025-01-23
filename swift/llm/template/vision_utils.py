@@ -53,7 +53,7 @@ def _dynamic_preprocess(image, min_num=1, max_num=12, image_size=448, use_thumbn
 
     # calculate the existing image aspect ratio
     target_ratios = set((i, j) for n in range(min_num, max_num + 1) for i in range(1, n + 1) for j in range(1, n + 1)
-                        if i * j <= max_num and i * j >= min_num)
+                        if min_num <= i * j <= max_num)
     target_ratios = sorted(target_ratios, key=lambda x: x[0] * x[1])
 
     # find the closest aspect ratio to the target

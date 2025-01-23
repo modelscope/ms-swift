@@ -1,7 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-from copy import copy
-from dataclasses import fields
 from functools import partial
 from typing import List, Union
 

@@ -1,5 +1,4 @@
-from typing import List
-
+# Copyright (c) Alibaba, Inc. and its affiliates.
 from swift.llm import InferClient, InferRequest
 
 if __name__ == '__main__':
