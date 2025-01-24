@@ -76,9 +76,6 @@ class SamplingArguments(BaseArguments):
         else:
             self.engine_kwargs = {}
 
-        if os.path.isfile(self.system):
-            with open(self.system, 'r') as f:
-                self.system = f.read()
         self.system_message = {
             "role": "system",
             "content": self.system,

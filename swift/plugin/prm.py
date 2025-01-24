@@ -80,7 +80,7 @@ class QwenMaxPRM(PRM):
                 },
             ]
             completion = client.chat.completions.create(
-                model='qwen-plus',
+                model='qwen-max',
                 messages=messages,
             )
 

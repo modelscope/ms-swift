@@ -7,10 +7,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from swift.llm import InferRequest
 from swift.llm.infer.protocol import UsageInfo
 from swift.utils import get_logger
+from swift.llm.argument.sampling_args import SamplingArguments
 
 from .base import Sampler
 from .utils import get_reward, perform_infer
-from .sampling_args import SamplingArguments
 
 
 logger = get_logger()
@@ -136,36 +136,36 @@ class MctsSampler(Sampler):
             setattr(self.usage_info, key, update_value)
 
     def search_single(self, query, ground_truth):
-        def _UCT(node: LanguageNode):
+        def _uct(uct_curr_node: LanguageNode):
             alpha = _args.process_reward_rate
-            value = alpha * node.process_reward + (1 - alpha) * node.outcome_reward
-            if node.is_root():
+            value = alpha * uct_curr_node.process_reward + (1 - alpha) * uct_curr_node.outcome_reward
+            if uct_curr_node.is_root():
                 return value
 
             exploitation_score = value
             exploration_score = (_args.exploration_rate
-                                 * np.sqrt(np.log(node.parent.visit_count + 1) / (node.visit_count + 1)))
+                                 * np.sqrt(np.log(uct_curr_node.parent.visit_count + 1) / (uct_curr_node.visit_count + 1)))
 
             return exploration_score + exploitation_score
 
-        def _select(node: LanguageNode):
-            while not node.is_leaf():
-                node = max(node.active_children, key=lambda x: _UCT(x))
-            return node
+        def _select(select_curr_node: LanguageNode):
+            while not select_curr_node.is_leaf():
+                select_curr_node = max(select_curr_node.active_children, key=lambda x: _uct(x))
+            return select_curr_node
 
-        def _expand(node: LanguageNode):
-            if node.is_root():
+        def _expand(expand_curr_node: LanguageNode):
+            if expand_curr_node.is_root():
                 infer_request = InferRequest([system_message, prompt_message])
             else:
                 history_message = {
                     "role": "assistant",
-                    "content": node.answer,
+                    "content": expand_curr_node.answer,
                 }
                 infer_request = InferRequest([system_message, prompt_message, history_message, next_message])
 
             # e_time = time.time()
             # 为了并行进行 Expand 操作，这里暂时不需要考虑顺序，因为 Prompt 是一样的
-            n = _args.num_return_sequences - len(node.children)
+            n = _args.num_return_sequences - len(expand_curr_node.children)
             with ThreadPoolExecutor(max_workers=n) as executor:
                 futures = {executor.submit(perform_infer,
                                            self.infer_engines[i],
@@ -191,30 +191,27 @@ class MctsSampler(Sampler):
                     continue
                 unique_output.add(output)
                 orm_infer_requests.append(InferRequest([{"role": "assistant", "content": output}]))
-                child = LanguageNode(step=output, parent=node)
+                child = LanguageNode(step=output, parent=expand_curr_node)
                 if self.orm_model.check_terminate(child.answer)[0]:
                     child.terminated = True
                 else:
                     all_child_terminated = False
-                node.add_child(child)
+                expand_curr_node.add_child(child)
 
             # e_time = time.time()
             orm_score, _orm_mask = get_reward(
                 self.orm_model, orm_infer_requests, ground_truths=[ground_truth] * len(orm_infer_requests),
                 threshold=0.0)
             # logger.info(f"expand.orm time: {time.time() - e_time}")
-            for child, score in zip(node.children, orm_score):
+            for child, score in zip(expand_curr_node.children, orm_score):
                 if child.terminated:
                     child.init_and_update_value(score)
-                    if child.outcome_reward == 1:
-                        terminate_correct.append(child.answer)
-                    else:
-                        terminate_incorrect.append(child.answer)
+                    terminated_nodes.append(child)
 
             # e_time = time.time()
             if self.prm_model:
                 prm_infer_requests = []
-                for child in node.children:
+                for child in expand_curr_node.children:
                     prm_message = {"role": "assistant", "content": child.answer}
                     prm_infer_requests.append(InferRequest([prompt_message, prm_message]))
                 prm_score, _prm_mask = get_reward(
@@ -222,19 +219,19 @@ class MctsSampler(Sampler):
                     prm_infer_requests,
                     ground_truths=[ground_truth] * len(prm_infer_requests),
                     threshold=0.0)
-                for child, score in zip(node.children, prm_score):
+                for child, score in zip(expand_curr_node.children, prm_score):
                     child.process_reward = score
             # logger.info(f"expand.prm time: {time.time() - e_time}")
 
-        def _rollout(node: LanguageNode):
+        def _rollout(rollout_curr_node: LanguageNode):
             rollout_iter_index = 0
             rollout_nodes = {}
-            for i in range(len(node.active_children)):
+            for i in range(len(rollout_curr_node.active_children)):
                 rollout_nodes[i] = {
-                    "node": node.active_children[i],
+                    "node": rollout_curr_node.active_children[i],
                     "history_messages": {
                         "role": "assistant",
-                        "content": node.active_children[i].answer,
+                        "content": rollout_curr_node.active_children[i].answer,
                     },
                 }
             active_rollout_nodes = list(rollout_nodes.keys())
@@ -283,40 +280,57 @@ class MctsSampler(Sampler):
                 terminated_state = self.orm_model.check_terminate(end_paths)
                 for index, score, terminated in zip(active_rollout_nodes, orm_score, terminated_state):
                     if terminated:
-                        node.active_children[index].outcome_reward = score
+                        rollout_curr_node.active_children[index].outcome_reward = score
                         if score == 1:
-                            correct_answers.append(rollout_nodes[index]['history_messages']["content"])
+                            rollout_correct_answers.append(rollout_nodes[index]['history_messages']["content"])
                         else:
-                            incorrect_answers.append(rollout_nodes[index]['history_messages']["content"])
+                            rollout_incorrect_answers.append(rollout_nodes[index]['history_messages']["content"])
                         rollout_nodes.pop(index)
                 active_rollout_nodes = list(rollout_nodes.keys())
                 rollout_iter_index += 1
 
-        def _back_propagate(curr_node: LanguageNode):
-            while curr_node:
-                best_child_value = max([child.outcome_reward for child in curr_node.children])
-                curr_node.init_and_update_value(best_child_value)
-                curr_node.visit()
-                if len(curr_node.active_children) == 0 and not curr_node.is_root():
-                    curr_node.parent.active_children.remove(curr_node)
-                curr_node = curr_node.parent
+        def _back_propagate(back_curr_node: LanguageNode):
+            while back_curr_node:
+                best_child_value = max([child.outcome_reward for child in back_curr_node.children])
+                back_curr_node.init_and_update_value(best_child_value)
+                back_curr_node.visit()
+                if len(back_curr_node.active_children) == 0 and not back_curr_node.is_root():
+                    back_curr_node.parent.active_children.remove(back_curr_node)
+                back_curr_node = back_curr_node.parent
 
-        def _collect(curr_node: LanguageNode):
-            if curr_node.is_leaf():
-                return []
-            results = []
-            for child in curr_node.children:
-                results += _collect(child)
-            curr_node.children = sorted(curr_node.children)
-            if curr_node.children[-1].outcome_reward - curr_node.children[0].outcome_reward > collect_filter_threshold:
-                results.append({
-                    "path": curr_node.path,
-                    "good": curr_node.children[-1].path[-1],
-                    "good_score": curr_node.children[-1].outcome_reward,
-                    "bad": curr_node.children[0].path[-1],
-                    "bad_score": curr_node.children[0].outcome_reward,
-                })
-            return results
+        def _collect(collect_curr_node: LanguageNode, _outcome_rewards: list[float], _process_rewards: list[float]):
+            _prefer_pairs, _correct_answers, _incorrect_answers = [], [], []
+            _outcome_rewards = _outcome_rewards[:] + [collect_curr_node.outcome_reward]
+            _process_rewards = _process_rewards[:] + [collect_curr_node.process_reward]
+            if not collect_curr_node.is_leaf():
+                for child in collect_curr_node.children:
+                    p, c, i = _collect(child, _outcome_rewards, _process_rewards)
+                    _prefer_pairs += p
+                    _correct_answers += c
+                    _incorrect_answers += i
+                collect_curr_node.children = sorted(collect_curr_node.children)
+                if collect_curr_node.children[-1].outcome_reward - collect_curr_node.children[0].outcome_reward > collect_filter_threshold:
+                    prefer_pair = {
+                        "path": collect_curr_node.answer,
+                        "good": collect_curr_node.children[-1].path[-1],
+                        "good_score": collect_curr_node.children[-1].outcome_reward,
+                        "bad": collect_curr_node.children[0].path[-1],
+                        "bad_score": collect_curr_node.children[0].outcome_reward,
+                    }
+                    prefer_pairs.append(prefer_pair)
+            if collect_curr_node.terminated:
+                _answer = {
+                    "answer": collect_curr_node.answer,
+                    "mean_outcome_reward": np.mean(_outcome_rewards),
+                    "min_outcome_reward": np.min(_outcome_rewards),
+                    "mean_process_reward": np.mean(_process_rewards),
+                    "min_process_reward": np.min(_process_rewards),
+                }
+                if collect_curr_node.outcome_reward == 1:
+                    _correct_answers.append(_answer)
+                else:
+                    _incorrect_answers.append(_answer)
+            return _prefer_pairs, _correct_answers, _incorrect_answers
 
         _args = self.args
         system_message = _args.system_message
@@ -328,12 +342,11 @@ class MctsSampler(Sampler):
             "content": query,
         }
 
-        correct_answers, incorrect_answers, prefer_pair = [], [], []
-        terminate_correct, terminate_incorrect = [], []
+        rollout_correct_answers, rollout_incorrect_answers, prefer_pairs, terminated_nodes = [], [], [], []
         too_easy, too_hard = False, False
         iter_count = 0
         while (not too_easy and not too_hard
-            and len(terminate_incorrect) + len(terminate_correct) < _args.num_return_sequences
+            and len(terminated_nodes) < _args.num_return_sequences
             and iter_count < _args.max_iterations):
             logger.info(f"iter_count: {iter_count}" + "." * 10)
             s_time = time.time()
@@ -349,13 +362,13 @@ class MctsSampler(Sampler):
                 s_time = time.time()
                 _back_propagate(curr_node)
                 logger.info("back propagate" + "=" * 10 + f"time: {time.time() - s_time}")
-            if len(correct_answers) + len(incorrect_answers) >= _args.num_return_sequences:
-                if 4 * len(incorrect_answers) < len(correct_answers):
+            if len(rollout_correct_answers) + len(rollout_incorrect_answers) >= _args.num_return_sequences:
+                if 4 * len(rollout_incorrect_answers) < len(rollout_correct_answers):
                     logger.info("too easy" + "!" * 20)
-                    #logger.info(f"correct_answers: {correct_answers}")
-                    #logger.info(f"incorrect_answers: {incorrect_answers}")
+                    #logger.info(f"rollout_correct_answers: {rollout_correct_answers}")
+                    #logger.info(f"rollout_incorrect_answers: {rollout_incorrect_answers}")
                     too_easy = True
-                elif 4 * len(correct_answers) < len(incorrect_answers):
+                elif 4 * len(rollout_correct_answers) < len(rollout_incorrect_answers):
                     logger.info("too hard" + "!" * 20)
                     #logger.info(f"correct_answers: {correct_answers}")
                     #logger.info(f"incorrect_answers: {incorrect_answers}")
@@ -364,19 +377,19 @@ class MctsSampler(Sampler):
         if iter_count == _args.max_iterations:
             logger.info("too hard" + "!" * 20)
             too_hard = True
-        #logger.info(f"correct_answers: {correct_answers}")
-        #logger.info(f"incorrect_answers: {incorrect_answers}")
-        prefer_pair = _collect(_root)
-        #logger.info(f"prefer_pair: {prefer_pair}")
+        #logger.info(f"rollout_correct_answers: {rollout_correct_answers}")
+        #logger.info(f"rollout_incorrect_answers: {rollout_incorrect_answers}")
+        prefer_pairs, correct_answers, incorrect_answers = _collect(_root, [], [])
+        #logger.info(f"prefer_pairs: {prefer_pairs}")
 
         result = {
             "query": query,
             "ground_truth": ground_truth,
-            "prefer_pair": prefer_pair,
+            "prefer_pairs": prefer_pairs,
+            "rollout_correct_answers": rollout_correct_answers,
+            "rollout_incorrect_answers": rollout_incorrect_answers,
             "correct_answers": correct_answers,
             "incorrect_answers": incorrect_answers,
-            "terminate_correct": terminate_correct,
-            "terminate_incorrect": terminate_incorrect,
         }
         results = json.dumps(result, ensure_ascii=False)
         logger.info(results)

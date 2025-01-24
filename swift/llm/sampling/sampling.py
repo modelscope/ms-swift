@@ -29,7 +29,7 @@ class SwiftSampling(SwiftPipeline):
             from swift.llm.sampling.vanilla_sampler import VanillaSampler
             self.sampler = VanillaSampler(self.args)
         elif self.args.sampler_type == 'mcts':
-            from swift.experimental.sampling.mcts import MctsSampler
+            from swift.llm.sampling.mcts import MctsSampler
             self.sampler = MctsSampler(self.args)
 
     def _get_dataset(self):
@@ -70,6 +70,3 @@ class SwiftSampling(SwiftPipeline):
 
 def sampling_main(args: Union[List[str], SamplingArguments, None] = None):
     return SwiftSampling(args).main()
-
-if __name__ == "__main__":
-    sampling_main()
