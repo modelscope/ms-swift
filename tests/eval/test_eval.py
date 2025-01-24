@@ -2,7 +2,7 @@ import os
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-infer_backend = 'pt'
+infer_backend = 'vllm'
 
 
 def test_eval_native():
@@ -48,6 +48,6 @@ def test_eval_url():
 
 if __name__ == '__main__':
     # test_eval_llm()
-    test_eval_mllm()
+    # test_eval_mllm()
     # test_eval_url()
-    # test_eval_native()
+    test_eval_native()
