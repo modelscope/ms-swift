@@ -184,7 +184,6 @@ class MctsSampler(Sampler):
             # 为了并行获取 Outcome Reward，这里获得的 OR 是顺序返回的，所以可以直接对应
             orm_infer_requests = []
             unique_output = set() # 用于去重
-            all_child_terminated = True
             for response in responses:
                 self.update_usage_info(response)
                 output = response.choices[0].message.content.rstrip(sep_token + '\n').split(sep_token)[0]
@@ -198,10 +197,6 @@ class MctsSampler(Sampler):
                 else:
                     all_child_terminated = False
                 node.add_child(child)
-            if all_child_terminated:
-                node.terminated = True
-                if not node.is_root():
-                    node.parent.active_children.remove(node)
 
             # e_time = time.time()
             orm_score, _orm_mask = get_reward(
@@ -302,6 +297,8 @@ class MctsSampler(Sampler):
                 best_child_value = max([child.outcome_reward for child in curr_node.children])
                 curr_node.init_and_update_value(best_child_value)
                 curr_node.visit()
+                if len(curr_node.active_children) == 0 and not curr_node.is_root():
+                    curr_node.parent.active_children.remove(curr_node)
                 curr_node = curr_node.parent
 
         def _collect(curr_node: LanguageNode):
