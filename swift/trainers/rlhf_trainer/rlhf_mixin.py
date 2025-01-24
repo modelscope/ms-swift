@@ -131,18 +131,6 @@ class RLHFTrainerMixin:
         if self.__class__.__name__ == 'ORPOTrainer':  # Pass-through labels
             model_kwargs['concatenated_input_ids'] = model_kwargs['concatenated_labels']
 
-        # fill elements to avoid errors in trl v0.13
-        concatenated_sequence_length = model_kwargs['concatenated_input_ids'].shape[1]
-        batch_size = model_kwargs['concatenated_input_ids'].shape[0] // 2
-
-        fake_prompt_length = concatenated_sequence_length // 2
-        fake_completion_length = concatenated_sequence_length - fake_prompt_length
-
-        model_kwargs["prompt_input_ids"] = torch.ones([batch_size*2, fake_prompt_length])
-        model_kwargs["prompt_attention_mask"] = torch.ones([batch_size*2, fake_prompt_length])
-        model_kwargs["completion_input_ids"] = torch.ones([batch_size*2, fake_completion_length])
-        model_kwargs["completion_attention_mask"] = torch.ones([batch_size*2, fake_completion_length])
-
         @contextmanager
         def _patch_concatenated_forward():
             _old_concatenated_inputs = self.concatenated_inputs

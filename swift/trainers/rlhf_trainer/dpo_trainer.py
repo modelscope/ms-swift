@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import Optional, Union
+from typing import Optional, Union, Dict, List, Tuple
+import torch
 
 import torch.nn as nn
 from peft import PeftModel
@@ -30,3 +31,76 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, HFDPOTrainer):
         self.ref_adapter_name = args.ref_adapter_name
         self.reference_free = args.reference_free
         super().__init__(model, ref_model, *_args, **kwargs)
+
+    def concatenated_forward(
+        self, model: nn.Module, batch: Dict[str, Union[List, torch.LongTensor]]
+    ) -> Tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
+        """Run the given model on the given batch of inputs, concatenating the chosen and rejected inputs together.
+
+        We do this to avoid doing two forward passes, because it's faster for FSDP.
+        """
+        num_examples = batch['labels'].shape[0] // 2
+        labels = batch.pop('labels', None)
+        if self.is_encoder_decoder:
+            batch['labels'] = labels
+
+        if self.aux_loss_enabled:
+            batch['output_router_logits'] = True
+        outputs = model(**batch, use_cache=False)
+        batch['labels'] = labels
+        if outputs.logits.shape[1] != labels.shape[1]:
+            # for llava, the model returns logits for the entire sequence, including the image tokens
+            # (placed before the text tokens)
+            outputs.logits = outputs.logits[:, -labels.shape[1]:]
+        for key in ['input_ids', 'attention_mask', 'labels']:
+            batch[f'concatenated_{key}'] = batch.pop(key, None)
+        if self.__class__.__name__ == 'ORPOTrainer':  # Pass-through labels
+            batch['concatenated_input_ids'] = batch['concatenated_labels']
+        
+        all_logits = outputs.logits
+
+        if all_logits.shape[:2] != batch["concatenated_labels"].shape[:2]:
+            # for llava, the model returns logits for the entire sequence, including the image tokens (placed before the text tokens)
+            seq_len = batch["concatenated_labels"].shape[1]
+            all_logits = all_logits[:, -seq_len:]
+
+        all_logps, size_completion = self.get_batch_logps(
+            all_logits,
+            batch["concatenated_labels"],
+            # average_log_prob=self.loss_type == "ipo",
+            is_encoder_decoder=self.is_encoder_decoder,
+            label_pad_token_id=self.label_pad_token_id,
+        )
+
+        output = {}
+
+        def cross_entropy_loss(logits, labels):
+            if not self.is_encoder_decoder:
+                # Shift so that tokens < n predict n
+                logits = logits[..., :-1, :].contiguous()
+                labels = labels[..., 1:].contiguous()
+            # Flatten the tokens
+            loss_fct = nn.CrossEntropyLoss(ignore_index=self.label_pad_token_id)
+            logits = logits.view(-1, logits.shape[-1])
+            labels = labels.view(-1)
+            # Enable model parallelism
+            labels = labels.to(logits.device)
+            loss = loss_fct(logits, labels)
+            return loss
+
+        if self.args.rpo_alpha is not None:
+            labels = batch["concatenated_labels"].clone()
+            outputs['nll_loss'] = cross_entropy_loss(all_logits[:num_examples], labels[:num_examples])
+
+        if self.loss_type == "ipo":
+            all_logps = all_logps / size_completion
+
+        output['chosen_logps'] = all_logps[:num_examples]
+        output['rejected_logps'] = all_logps[num_examples:]
+        output["mean_chosen_logits"] = all_logits[:num_examples]
+        output["mean_rejected_logits"] = all_logits[num_examples:]
+
+        if self.aux_loss_enabled:
+            output["aux_loss"] = outputs.aux_loss
+        
+        return output
