@@ -47,7 +47,7 @@ class TemplateArguments:
     def __post_init__(self):
         if self.template is None and hasattr(self, 'model_meta'):
             self.template = self.model_meta.template
-        if self.system.endswith('.txt') and os.path.isfile(self.system):
+        if self.system is not None and self.system.endswith('.txt') and os.path.isfile(self.system):
             with open(self.system, 'r') as f:
                 self.system = f.read()
 
