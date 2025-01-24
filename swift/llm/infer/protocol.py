@@ -49,7 +49,7 @@ class RequestConfig:
     top_p: Optional[float] = None
     repetition_penalty: Optional[float] = None
     num_beams: int = 1
-    stop: List[str] = field(default_factory=list)
+    stop: Optional[List[str]] = field(default_factory=list)
 
     seed: Optional[int] = None
     stream: bool = False
