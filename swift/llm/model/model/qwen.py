@@ -336,7 +336,11 @@ register_model(
                     Model('Qwen/Qwen2-Math-72B', 'Qwen/Qwen2-Math-72B'),
                 ],
                 tags=['math']),
-            ModelGroup([Model('PowerInfer/SmallThinker-3B-Preview', 'PowerInfer/SmallThinker-3B-Preview')])
+            ModelGroup([Model('PowerInfer/SmallThinker-3B-Preview', 'PowerInfer/SmallThinker-3B-Preview')]),
+            ModelGroup([
+                Model('Qwen/Qwen2.5-7B-Instruct-1M', 'Qwen/Qwen2.5-7B-Instruct-1M'),
+                Model('Qwen/Qwen2.5-14B-Instruct-1M', 'Qwen/Qwen2.5-14B-Instruct-1M'),
+            ])
         ],
         TemplateType.qwen,
         get_model_tokenizer_with_flash_attn,
@@ -693,6 +697,7 @@ register_model(
         [
             ModelGroup([
                 Model('Qwen/Qwen2.5-Math-PRM-7B', 'Qwen/Qwen2.5-Math-PRM-7B'),
+                Model('Qwen/Qwen2.5-Math-7B-PRM800K', 'Qwen/Qwen2.5-Math-7B-PRM800K'),
                 Model('Qwen/Qwen2.5-Math-PRM-72B', 'Qwen/Qwen2.5-Math-PRM-72B'),
             ]),
         ],
