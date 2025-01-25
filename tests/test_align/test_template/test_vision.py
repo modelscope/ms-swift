@@ -361,6 +361,56 @@ def test_valley():
     _infer_model(pt_engine)
 
 
+def test_ui_tars():
+    os.environ['MAX_PIXELS'] = str(1280 * 28 * 28)
+    pt_engine = PtEngine('bytedance-research/UI-TARS-2B-SFT')
+    prompt = r"""You are a GUI agent. You are given a task and your action history, with screenshots. \
+You need to perform the next action to complete the task.
+
+## Output Format
+```\nThought: ...
+Action: ...\n```
+
+## Action Space
+
+click(start_box='<|box_start|>(x1,y1)<|box_end|>')
+left_double(start_box='<|box_start|>(x1,y1)<|box_end|>')
+right_single(start_box='<|box_start|>(x1,y1)<|box_end|>')
+drag(start_box='<|box_start|>(x1,y1)<|box_end|>', end_box='<|box_start|>(x3,y3)<|box_end|>')
+hotkey(key='')
+type(content='') #If you want to submit your input, use \"\
+\" at the end of `content`.
+scroll(start_box='<|box_start|>(x1,y1)<|box_end|>', direction='down or up or right or left')
+wait() #Sleep for 5s and take a screenshot to check for any changes.
+finished()
+call_user() # Submit the task and call the user when the task is unsolvable, or when you need the user's help.
+
+
+## Note
+- Use Chinese in `Thought` part.
+- Summarize your next action (with its target element) in one sentence in `Thought` part.
+
+## User Instruction
+"""
+    instruction = "I'm looking for a software to \"edit my photo with grounding\""
+    messages = [
+        {
+            'role': 'user',
+            'content': [
+                {
+                    'type': 'text',
+                    'text': prompt + instruction
+                },
+            ],
+        },
+    ]
+    images = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/agent.png']
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=messages, images=images)
+    assert response == response2
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig, get_template
     from swift.utils import get_logger, seed_everything
@@ -399,5 +449,6 @@ if __name__ == '__main__':
     # test_molmo()
     # test_molmoe()
     # test_doc_owl2()
-    test_minicpmo()
+    # test_minicpmo()
     # test_valley()
+    test_ui_tars()
