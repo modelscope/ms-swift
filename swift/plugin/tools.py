@@ -107,10 +107,20 @@ def format_qwen(tool_names, tool_descs):
 
 {tool_list}
 
-## 你可以在回复中插入以下命令以调用这些工具：
+## 你可以在回复中插入以下命令以并行调用N个工具：
 
-{format_list}
-    '''
+✿FUNCTION✿: 工具1的名称，必须是[{tool_names}]之一
+✿ARGS✿: 工具1的输入
+✿FUNCTION✿: 工具2的名称
+✿ARGS✿: 工具2的输入
+...
+✿FUNCTION✿: 工具N的名称
+✿ARGS✿: 工具N的输入
+✿RESULT✿: 工具1的结果
+✿RESULT✿: 工具2的结果
+...
+✿RESULT✿: 工具N的结果
+✿RETURN✿: 根据工具结果进行回复，需将图片用![](url)渲染出来'''
     # 定义星期映射
     weekdays = {0: '星期一', 1: '星期二', 2: '星期三', 3: '星期四', 4: '星期五', 5: '星期六', 6: '星期日'}
     now = dt.datetime.now()
@@ -125,11 +135,7 @@ def format_qwen(tool_names, tool_descs):
         tool_list += f'### {name} \n{name}: {tool["description"]} 输入参数: {json.dumps(tool["parameters"])}\n'
 
     PROMPT = PROMPT.replace('{tool_list}', tool_list)
-
-    format_list = ''
-    for i, _ in enumerate(tool_names):
-        format_list += f'✿FUNCTION✿:工具{i+1}的名称\n✿ARGS✿:工具{i + 1}的输入\n✿RESULT✿:工具{i + 1}的结果\n'
-    PROMPT = PROMPT.replace('{format_list}', format_list)
+    PROMPT = PROMPT.replace('{tool_names}', ','.join(tool_names))
     return PROMPT
 
 
