@@ -36,6 +36,12 @@ def _infer_model(pt_engine, system=None, messages=None):
 
 class TestTemplate(unittest.TestCase):
 
+    def test_template(self):
+        pt_engine = PtEngine('Qwen/Qwen2.5-3B-Instruct-GPTQ-Int4')
+        response = _infer_model(pt_engine)
+        pt_engine.default_template.template_backend = 'jinja'
+        response2 = _infer_model(pt_engine)
+        assert response == response2
 
     def test_tool_message_join(self):
         from copy import deepcopy
@@ -72,7 +78,7 @@ class TestTemplate(unittest.TestCase):
         for tool_prompt in ('react_en', 'qwen'):
             tool_prompt = 'react_en'
             test_messages = deepcopy(messages)
-            obs_word = get_tools_keyword(tool_prompt).get("observation")
+            obs_word = get_tools_keyword(tool_prompt).get('observation')
             test_messages[1]['content'] = f'{obs_word}'
             test_messages[2]['content'] = 'first_round_result\n'
             test_messages[3]['content'] = f'{obs_word}'
