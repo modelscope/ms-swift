@@ -35,7 +35,7 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, HFDPOTrainer):
     def concatenated_forward(
         self, model: nn.Module, batch: Dict[str, Union[List, torch.LongTensor]]
     ) -> Tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
-        num_examples = batch['labels'].shape[0] // 2
+        num_examples = batch['concatenated_labels'].shape[0] // 2
         labels = batch.pop('labels', None)
         if self.is_encoder_decoder:
             batch['labels'] = labels
