@@ -104,10 +104,10 @@ class QwenVLTemplate(Template):
                 assert isinstance(image, str)
                 return [f'Picture {index + 1}: <img>{image}</img>\n']
 
-    def replace_object(self, object_: Dict[str, Any], index: int, inputs: StdTemplateInputs) -> List[Context]:
-        return [f'<ref>{object_["caption"]}</ref>']
+    def replace_ref(self, ref: str, index: int, inputs: StdTemplateInputs) -> List[Context]:
+        return [f'<ref>{ref}</ref>']
 
-    def replace_box(self, object_: Dict[str, Any], index: int, inputs: StdTemplateInputs) -> List[Context]:
+    def replace_bbox(self, bbox: Dict[str, Any], index: int, inputs: StdTemplateInputs) -> List[Context]:
         if isinstance(object_['bbox'][0], list):
             all_objects = ''
             for sub_object in object_['bbox']:
@@ -208,27 +208,14 @@ class Qwen2VLTemplate(Template):
             inputs.videos[index] = fetch_video({'video': inputs.videos[index]}).to(torch.uint8)
             return ['<|vision_start|><|video_pad|><|vision_end|>']
 
-    def replace_object(self, object_: Dict[str, Any], index: int, inputs: StdTemplateInputs) -> List[Context]:
-        if object_:
-            return ['<|object_ref_start|>', object_['caption'], '<|object_ref_end|>']
-        else:
-            return ['<ref-object>']
+    def replace_ref(self, ref: str, index: int, inputs: StdTemplateInputs) -> List[Context]:
+        return [f'<|object_ref_start|>{ref}<|object_ref_end|>']
 
-    def replace_box(self, object_: Dict[str, Any], index: int, inputs: StdTemplateInputs) -> List[Context]:
-        if object_:
-            if isinstance(object_['bbox'][0], list):
-                all_objects = ''
-                for sub_object in object_['bbox']:
-                    all_objects += (f'<|box_start|>({sub_object[0]},{sub_object[1]}),'
-                                    f'({sub_object[2]},{sub_object[3]})<|box_end|>')
-                return [all_objects]
-            else:
-                return [
-                    f'<|box_start|>({object_["bbox"][0]},{object_["bbox"][1]}),'
-                    f'({object_["bbox"][2]},{object_["bbox"][3]})<|box_end|>'
-                ]
-        else:
-            return ['<bbox>']
+    def replace_bbox(self, bbox: List[int], index: int, inputs: StdTemplateInputs) -> List[Context]:
+        point = []
+        for x, y in zip(bbox[::2], bbox[1::2]):
+            point.append(f'({x},{y})')
+        return [f'<|box_start|>{",".join(point)}<|box_end|>']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
