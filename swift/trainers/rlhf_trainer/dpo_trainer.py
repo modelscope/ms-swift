@@ -35,10 +35,6 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, HFDPOTrainer):
     def concatenated_forward(
         self, model: nn.Module, batch: Dict[str, Union[List, torch.LongTensor]]
     ) -> Tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
-        """Run the given model on the given batch of inputs, concatenating the chosen and rejected inputs together.
-
-        We do this to avoid doing two forward passes, because it's faster for FSDP.
-        """
         num_examples = batch['labels'].shape[0] // 2
         labels = batch.pop('labels', None)
         if self.is_encoder_decoder:
@@ -67,7 +63,6 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, HFDPOTrainer):
         all_logps, size_completion = self.get_batch_logps(
             all_logits,
             batch["concatenated_labels"],
-            # average_log_prob=self.loss_type == "ipo",
             is_encoder_decoder=self.is_encoder_decoder,
             label_pad_token_id=self.label_pad_token_id,
         )
