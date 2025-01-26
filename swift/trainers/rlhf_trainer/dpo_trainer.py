@@ -30,6 +30,8 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, HFDPOTrainer):
 
         self.ref_adapter_name = args.ref_adapter_name
         self.reference_free = args.reference_free
+        self.use_weighting = False
+
         super().__init__(model, ref_model, *_args, **kwargs)
 
     def concatenated_forward(
@@ -93,8 +95,8 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, HFDPOTrainer):
 
         output['chosen_logps'] = all_logps[:num_examples]
         output['rejected_logps'] = all_logps[num_examples:]
-        output["mean_chosen_logits"] = all_logits[:num_examples]
-        output["mean_rejected_logits"] = all_logits[num_examples:]
+        output["mean_chosen_logits"] = all_logits[:num_examples].mean()
+        output["mean_rejected_logits"] = all_logits[num_examples:].mean()
 
         if self.aux_loss_enabled:
             output["aux_loss"] = outputs.aux_loss
