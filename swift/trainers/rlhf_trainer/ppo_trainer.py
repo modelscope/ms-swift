@@ -40,7 +40,7 @@ class PPOTrainer(SwiftMixin, HFPPOTrainer):
                 if k in ['train_dataset', 'data_collator', 'reward_model', 'value_model', 'eval_dataset']
             }
             ppo_trainer_init(
-                self, config=kwargs['args'], tokenizer=self.tokenizer, policy=model, ref_policy=ref_model, **new_kwargs)
+                self, config=kwargs['args'], tokenizer=self.tokenizer, model=model, ref_model=ref_model, **new_kwargs)
         unwrap_model = self.accelerator.unwrap_model(self.model)
         patch_getattr(unwrap_model.__class__, 'policy')
 
