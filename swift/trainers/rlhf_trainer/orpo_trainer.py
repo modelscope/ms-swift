@@ -10,6 +10,7 @@ from .rlhf_mixin import RLHFTrainerMixin
 
 del HFORPOTrainer.__init__
 
+
 class ORPOTrainer(RLHFTrainerMixin, SwiftMixin, HFORPOTrainer):
 
     def __init__(self, model: Optional[Union[PreTrainedModel, nn.Module, str]] = None, *_args, **kwargs):

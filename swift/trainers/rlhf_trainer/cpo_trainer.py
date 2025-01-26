@@ -11,6 +11,7 @@ from .rlhf_mixin import RLHFTrainerMixin
 
 del HFCPOTrainer.__init__
 
+
 class CPOTrainer(RLHFTrainerMixin, SwiftMixin, HFCPOTrainer):
 
     def __init__(self, model: Optional[Union[PreTrainedModel, nn.Module, str]] = None, *_args, **kwargs):

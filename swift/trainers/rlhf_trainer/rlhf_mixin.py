@@ -154,15 +154,14 @@ class RLHFTrainerMixin:
         is_encoder_decoder: bool = False,
     ) -> Tuple[torch.FloatTensor, torch.LongTensor]:
         if logits.shape[:-1] != labels.shape:
-            raise ValueError(
-                f"Logits (batch and sequence length dim) {logits.shape[:-1]} and labels must have the same shape {labels.shape}"
-            ) 
+            raise ValueError(f'Logits (batch and sequence length dim) {logits.shape[:-1]}'
+                             'and labels must have the same shape {labels.shape}')
         if not is_encoder_decoder:
             labels = labels[:, 1:].clone()
-            logits = logits[:,:-1,:]
+            logits = logits[:, :-1, :]
         else:
             labels = labels.clone()
-        
+
         loss_mask = labels != label_pad_token_id
 
         labels[labels == label_pad_token_id] = 0
@@ -170,7 +169,6 @@ class RLHFTrainerMixin:
         per_token_logps = torch.gather(logits.log_softmax(-1), dim=2, index=labels.unsqueeze(2)).squeeze(2)
 
         return (per_token_logps * loss_mask).sum(-1), loss_mask.sum(-1)
-
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         res = super().compute_loss(model, inputs, return_outputs=return_outputs)

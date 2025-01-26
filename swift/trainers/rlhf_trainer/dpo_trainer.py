@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import Optional, Union, Dict, List, Tuple
-import torch
+from typing import Dict, List, Optional, Tuple, Union
 
+import torch
 import torch.nn as nn
 from peft import PeftModel
 from transformers import PreTrainedModel
@@ -11,6 +11,7 @@ from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 
 del HFDPOTrainer.__init__
+
 
 class DPOTrainer(RLHFTrainerMixin, SwiftMixin, HFDPOTrainer):
 
@@ -55,17 +56,18 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, HFDPOTrainer):
             batch[f'concatenated_{key}'] = batch.pop(key, None)
         if self.__class__.__name__ == 'ORPOTrainer':  # Pass-through labels
             batch['concatenated_input_ids'] = batch['concatenated_labels']
-        
+
         all_logits = outputs.logits
 
-        if all_logits.shape[:2] != batch["concatenated_labels"].shape[:2]:
-            # for llava, the model returns logits for the entire sequence, including the image tokens (placed before the text tokens)
-            seq_len = batch["concatenated_labels"].shape[1]
+        if all_logits.shape[:2] != batch['concatenated_labels'].shape[:2]:
+            # for llava, the model returns logits for the entire sequence,
+            # including the image tokens (placed before the text tokens)
+            seq_len = batch['concatenated_labels'].shape[1]
             all_logits = all_logits[:, -seq_len:]
 
         all_logps, size_completion = self.get_batch_logps(
             all_logits,
-            batch["concatenated_labels"],
+            batch['concatenated_labels'],
             is_encoder_decoder=self.is_encoder_decoder,
             label_pad_token_id=self.label_pad_token_id,
         )
@@ -87,18 +89,18 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, HFDPOTrainer):
             return loss
 
         if self.args.rpo_alpha is not None:
-            labels = batch["concatenated_labels"].clone()
+            labels = batch['concatenated_labels'].clone()
             output['nll_loss'] = cross_entropy_loss(all_logits[:num_examples], labels[:num_examples])
 
-        if self.loss_type == "ipo":
+        if self.loss_type == 'ipo':
             all_logps = all_logps / size_completion
 
         output['chosen_logps'] = all_logps[:num_examples]
         output['rejected_logps'] = all_logps[num_examples:]
-        output["mean_chosen_logits"] = all_logits[:num_examples].mean()
-        output["mean_rejected_logits"] = all_logits[num_examples:].mean()
+        output['mean_chosen_logits'] = all_logits[:num_examples].mean()
+        output['mean_rejected_logits'] = all_logits[num_examples:].mean()
 
         if self.aux_loss_enabled:
-            output["aux_loss"] = outputs.aux_loss
-        
+            output['aux_loss'] = outputs.aux_loss
+
         return output

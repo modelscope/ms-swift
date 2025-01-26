@@ -16,6 +16,7 @@ logger = get_logger()
 
 del HFKTOTrainer.__init__
 
+
 class KTOTrainer(RLHFTrainerMixin, SwiftMixin, HFKTOTrainer):
 
     def __init__(self,
