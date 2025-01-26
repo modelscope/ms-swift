@@ -36,10 +36,7 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, HFDPOTrainer):
         self, model: nn.Module, batch: Dict[str, Union[List, torch.LongTensor]]
     ) -> Tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
         batch = batch.copy()
-        if 'labels' in batch:
-            num_examples = batch['labels'].shape[0] // 2
-        else:
-            num_examples = batch['concatenated_labels'].shape[0] // 2
+        num_examples = batch['labels'].shape[0] // 2
         labels = batch.pop('labels', None)
         if self.is_encoder_decoder:
             batch['labels'] = labels
