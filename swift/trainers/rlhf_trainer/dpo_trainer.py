@@ -35,7 +35,11 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, HFDPOTrainer):
     def concatenated_forward(
         self, model: nn.Module, batch: Dict[str, Union[List, torch.LongTensor]]
     ) -> Tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
-        num_examples = batch['concatenated_labels'].shape[0] // 2
+        batch = batch.copy()
+        if 'labels' in batch:
+            num_examples = batch['labels'].shape[0] // 2
+        else:
+            num_examples = batch['concatenated_labels'].shape[0] // 2
         labels = batch.pop('labels', None)
         if self.is_encoder_decoder:
             batch['labels'] = labels
@@ -85,7 +89,7 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, HFDPOTrainer):
 
         if self.args.rpo_alpha is not None:
             labels = batch["concatenated_labels"].clone()
-            outputs['nll_loss'] = cross_entropy_loss(all_logits[:num_examples], labels[:num_examples])
+            output['nll_loss'] = cross_entropy_loss(all_logits[:num_examples], labels[:num_examples])
 
         if self.loss_type == "ipo":
             all_logps = all_logps / size_completion
