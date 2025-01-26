@@ -29,6 +29,8 @@ def infer_stream(engine: 'InferEngine', infer_request: 'InferRequest'):
     query = infer_request.messages[0]['content']
     print(f'query: {query}\nresponse: ', end='')
     for resp_list in gen:
+        if resp_list[0] is None:
+            continue
         print(resp_list[0].choices[0].delta.content, end='', flush=True)
     print()
     print(f'metric: {metric.compute()}')
