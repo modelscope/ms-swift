@@ -29,7 +29,7 @@ Final Answer: the final answer to the original input question
 
 Begin!
 """
-    tool_descs = [json.dumps(t) if not isinstance(t, str) else t for t in tool_descs]
+    tool_descs = [json.dumps(t, ensure_ascii=False) if not isinstance(t, str) else t for t in tool_descs]
     return REACT_PROMPT.format(tool_list='\n\n'.join(tool_descs), tool_names=','.join(tool_names))
 
 
@@ -49,7 +49,7 @@ Final Answer: 对输入问题的最终答案
 
 开始！
 """
-    tool_descs = [json.dumps(t) if not isinstance(t, str) else t for t in tool_descs]
+    tool_descs = [json.dumps(t, ensure_ascii=False) if not isinstance(t, str) else t for t in tool_descs]
     return REACT_ZH_PROMPT.format(tool_list='\n\n'.join(tool_descs), tool_names=','.join(tool_names))
 
 
@@ -59,7 +59,7 @@ def format_glm4(tool_names, tool_descs):
 # 可用工具
 
 {tool_list}"""
-    tool_descs = [json.dumps(t) if not isinstance(t, str) else t for t in tool_descs]
+    tool_descs = [json.dumps(t, ensure_ascii=False) if not isinstance(t, str) else t for t in tool_descs]
     tool_list = ''
     for name, tool in zip(tool_names, tool_descs):
         tool_list += f'## {name}\n\n{tool}\n\n'
@@ -92,7 +92,7 @@ or you find that function calls always fail(the function is not valid now), \
 use function Finish->give_up_and_restart.
 2.Do not use origin tool names, use only subfunctions' names.
 Specifically, you have access to the following APIs: {tool_list}"""
-    tool_descs = [json.dumps(t) if not isinstance(t, str) else t for t in tool_descs]
+    tool_descs = [json.dumps(t, ensure_ascii=False) if not isinstance(t, str) else t for t in tool_descs]
     return TOOLBENCH_PROMPT.format(tool_list='\n\n'.join(tool_descs))
 
 
@@ -133,7 +133,7 @@ def format_qwen(tool_names, tool_descs):
     tool_list = ''
     for name, tool in zip(tool_names, tool_descs):
         desc = tool.get('description', '')
-        parameters = json.dumps(params, ensure_ascii=False) if (params := tool.get("parameters")) else ''
+        parameters = json.dumps(params, ensure_ascii=False) if (params := tool.get('parameters')) else ''
         tool_list += f'### {name}\n\n{name}: {desc} 输入参数: {parameters} 此工具的输入应为JSON对象。'
 
     PROMPT = PROMPT.replace('{tool_list}', tool_list)
@@ -148,7 +148,7 @@ def format_custom(tool_names, tool_descs):
 
     {tool_list}'''
     tool_list = ''
-    tool_descs = [json.dumps(t) if not isinstance(t, str) else t for t in tool_descs]
+    tool_descs = [json.dumps(t, ensure_ascii=False) if not isinstance(t, str) else t for t in tool_descs]
     for name, tool in zip(tool_names, tool_descs):
         tool_list += f'## {name}\n\n{tool}\n\n'
     return PROMPT.format(tool_list=tool_list)
