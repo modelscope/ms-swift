@@ -1102,7 +1102,7 @@ class CocoPreprocessor(ResponsePreprocessor):
         row['query'] = 'Task: Object Detection'
         objects = row['objects']
         objects['ref'] = [self.category[c] for c in objects['category']]
-        row['response'] = ','.join(['<ref-object><bbox>'] * len(objects['ref']))
+        row['response'] = '<ref-object><bbox>' * len(objects['ref'])
         return super().preprocess(row)
 
 
