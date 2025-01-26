@@ -104,3 +104,27 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, HFDPOTrainer):
             output['aux_loss'] = outputs.aux_loss
 
         return output
+
+    @staticmethod
+    def get_batch_logps(
+        logits: torch.FloatTensor,
+        labels: torch.LongTensor,
+        label_pad_token_id: int = -100,
+        is_encoder_decoder: bool = False,
+    ) -> Tuple[torch.FloatTensor, torch.LongTensor]:
+        if logits.shape[:-1] != labels.shape:
+            raise ValueError(f'Logits (batch and sequence length dim) {logits.shape[:-1]}'
+                             'and labels must have the same shape {labels.shape}')
+        if not is_encoder_decoder:
+            labels = labels[:, 1:].clone()
+            logits = logits[:, :-1, :]
+        else:
+            labels = labels.clone()
+
+        loss_mask = labels != label_pad_token_id
+
+        labels[labels == label_pad_token_id] = 0
+
+        per_token_logps = torch.gather(logits.log_softmax(-1), dim=2, index=labels.unsqueeze(2)).squeeze(2)
+
+        return (per_token_logps * loss_mask).sum(-1), loss_mask.sum(-1)
