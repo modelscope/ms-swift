@@ -44,7 +44,7 @@ The introduction to command line parameters will cover base arguments, atomic ar
 
 ### Template Arguments
 - 🔥template: Type of dialogue template, which defaults to the template type corresponding to the model. `swift pt` will convert the dialogue template into a generation template for use.
-- 🔥system: Custom system field, could be a txt file path, default is None, uses the default system of the template.
+- 🔥system: Custom system field, can take a string or txt file path as input. Default is None, uses the default system of the template.
 - 🔥max_length: The maximum length of tokens for a single sample. Defaults to None, set to the maximum length of tokens supported by the model (max_model_len).
 - truncation_strategy: How to handle overly long tokens, supports `delete`, `left`, `right`, representing deletion, left trimming, and right trimming, default is 'delete'.
 - 🔥max_pixels: Maximum pixel count for pre-processing images in multimodal models (H*W), default is no scaling.
