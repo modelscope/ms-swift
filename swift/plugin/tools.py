@@ -120,7 +120,7 @@ def format_qwen(tool_names, tool_descs):
 ✿RESULT✿: 工具2的结果
 ...
 ✿RESULT✿: 工具N的结果
-✿RETURN✿: 根据工具结果进行回复，需将图片用![](url)渲染出来'''
+✿RETURN✿: 根据工具结果进行回复'''
     # 定义星期映射
     weekdays = {0: '星期一', 1: '星期二', 2: '星期三', 3: '星期四', 4: '星期五', 5: '星期六', 6: '星期日'}
     now = dt.datetime.now()
@@ -132,11 +132,13 @@ def format_qwen(tool_names, tool_descs):
     PROMPT = PROMPT.replace('{date}', formatted_date)
     tool_list = ''
     for name, tool in zip(tool_names, tool_descs):
-        tool_list += f'### {name} \n{name}: {tool["description"]} 输入参数: {json.dumps(tool["parameters"])}\n'
+        desc = tool.get('description', '')
+        parameters = json.dumps(params, ensure_ascii=False) if (params := tool.get("parameters")) else ''
+        tool_list += f'### {name}\n\n{name}: {desc} 输入参数: {parameters} 此工具的输入应为JSON对象。'
 
     PROMPT = PROMPT.replace('{tool_list}', tool_list)
     PROMPT = PROMPT.replace('{tool_names}', ','.join(tool_names))
-    return PROMPT
+    return PROMPT.rstrip()
 
 
 def format_custom(tool_names, tool_descs):
