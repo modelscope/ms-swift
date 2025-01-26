@@ -52,6 +52,7 @@ class LanguageNode:
         self.process_reward = 0.0
         self.outcome_reward = 0.0
         self.terminated = False
+        self.correct = False
 
     def is_leaf(self):
         return len(self.children) == 0
@@ -206,6 +207,7 @@ class MctsSampler(Sampler):
             for child, score in zip(expand_curr_node.children, orm_score):
                 if child.terminated:
                     child.init_and_update_value(score)
+                    child.correct = score > 0.9
                     terminated_nodes.append(child)
 
             # e_time = time.time()
@@ -280,8 +282,8 @@ class MctsSampler(Sampler):
                 terminated_state = self.orm_model.check_terminate(end_paths)
                 for index, score, terminated in zip(active_rollout_nodes, orm_score, terminated_state):
                     if terminated:
-                        rollout_curr_node.active_children[index].outcome_reward = score
-                        if score == 1:
+                        rollout_curr_node.active_children[index].init_and_update_value(score)
+                        if score > 0.9:
                             rollout_correct_answers.append(rollout_nodes[index]['history_messages']["content"])
                         else:
                             rollout_incorrect_answers.append(rollout_nodes[index]['history_messages']["content"])
@@ -317,7 +319,7 @@ class MctsSampler(Sampler):
                         "bad": collect_curr_node.children[0].path[-1],
                         "bad_score": collect_curr_node.children[0].outcome_reward,
                     }
-                    prefer_pairs.append(prefer_pair)
+                    _prefer_pairs.append(prefer_pair)
             if collect_curr_node.terminated:
                 _answer = {
                     "answer": collect_curr_node.answer,
@@ -326,7 +328,7 @@ class MctsSampler(Sampler):
                     "mean_process_reward": np.mean(_process_rewards),
                     "min_process_reward": np.min(_process_rewards),
                 }
-                if collect_curr_node.outcome_reward == 1:
+                if collect_curr_node.correct:
                     _correct_answers.append(_answer)
                 else:
                     _incorrect_answers.append(_answer)
@@ -362,7 +364,7 @@ class MctsSampler(Sampler):
                 s_time = time.time()
                 _back_propagate(curr_node)
                 logger.info("back propagate" + "=" * 10 + f"time: {time.time() - s_time}")
-            if len(rollout_correct_answers) + len(rollout_incorrect_answers) >= _args.num_return_sequences:
+            if len(rollout_correct_answers) + len(rollout_incorrect_answers) >= 2 * _args.num_return_sequences:
                 if 4 * len(rollout_incorrect_answers) < len(rollout_correct_answers):
                     logger.info("too easy" + "!" * 20)
                     #logger.info(f"rollout_correct_answers: {rollout_correct_answers}")
