@@ -107,18 +107,8 @@ class QwenVLTemplate(Template):
     def replace_ref(self, ref: str, index: int, inputs: StdTemplateInputs) -> List[Context]:
         return [f'<ref>{ref}</ref>']
 
-    def replace_bbox(self, bbox: Dict[str, Any], index: int, inputs: StdTemplateInputs) -> List[Context]:
-        if isinstance(object_['bbox'][0], list):
-            all_objects = ''
-            for sub_object in object_['bbox']:
-                all_objects += f'<box>({sub_object[0]},{sub_object[1]}),({sub_object[2]},{sub_object[3]})</box>'
-            return [all_objects]
-        else:
-            return [
-                f'<box>({object_["bbox"][0]},{object_["bbox"][1]}),'
-                f'({object_["bbox"][2]},{object_["bbox"][3]})</box>'
-            ]
-
+    def replace_bbox(self, bbox: List[int], index: int, inputs: StdTemplateInputs) -> List[Context]:
+        return [f'<box>{self._get_bbox_str(bbox)}</box>']
 
 register_template(QwenTemplateMeta(MLLMTemplateType.qwen_vl, template_cls=QwenVLTemplate))
 
@@ -213,10 +203,7 @@ class Qwen2VLTemplate(Template):
         return [f'<|object_ref_start|>{ref}<|object_ref_end|>']
 
     def replace_bbox(self, bbox: List[int], index: int, inputs: StdTemplateInputs) -> List[Context]:
-        point = []
-        for x, y in zip(bbox[::2], bbox[1::2]):
-            point.append(f'({x},{y})')
-        return [f'<|box_start|>{",".join(point)}<|box_end|>']
+        return [f'<|box_start|>{self._get_bbox_str(bbox)}<|box_end|>']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)

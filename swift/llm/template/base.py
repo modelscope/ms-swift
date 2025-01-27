@@ -22,9 +22,10 @@ from transformers.utils import strtobool
 
 from swift.utils import get_dist_setting, get_logger, use_torchacc
 from ..utils import Processor, ProcessorMixin
+from .grounding import normalize_bbox
 from .template_inputs import InferRequest, StdTemplateInputs, TemplateInputs
 from .utils import Context, ContextType, StopWordsCriteria, fetch_one, findall, split_str_parts_by
-from .vision_utils import load_image, normalize_bbox, rescale_image
+from .vision_utils import load_image, rescale_image
 
 logger = get_logger()
 
@@ -147,10 +148,11 @@ class Template(ProcessorMixin):
         if images:
             for i, image in enumerate(images):
                 images[i] = self._load_image(images[i], load_images)
-        if self.max_pixels is not None:
-            images = [rescale_image(img, self.max_pixels) for img in images]
         if inputs.objects:
             normalize_bbox(inputs.images, inputs.objects, bbox_type=self.bbox_type)
+        if self.max_pixels is not None:
+            # Scale the image proportionally without affecting the scaled objects.
+            images = [rescale_image(img, self.max_pixels) for img in images]
         if images and not load_images_origin:  # fix pt & qwen-vl
             for i, image in enumerate(images):
                 if isinstance(image, Image.Image):
@@ -454,7 +456,7 @@ class Template(ProcessorMixin):
         Returns:
             The contents or input_ids replaced
         """
-        return [object_['caption']]
+        return [ref]
 
     def replace_cot_process(self, inputs: StdTemplateInputs) -> List[Context]:
         """Replace the cot process label for PRM training or inference.
@@ -468,6 +470,13 @@ class Template(ProcessorMixin):
         """
         return [self.cot_process_placeholder]
 
+    @staticmethod
+    def _get_bbox_str(bbox: List[int]) -> str:
+        point = []
+        for x, y in zip(bbox[::2], bbox[1::2]):
+            point.append(f'({x},{y})')
+        return ','.join(point)
+
     def replace_bbox(self, bbox: List[int], index: int, inputs: StdTemplateInputs) -> List[Context]:
         """Replace bbox pointing to the objects to contents or input_ids. This is useful in the grounding task.
         Override this function to do your own replace operation.
@@ -480,14 +489,7 @@ class Template(ProcessorMixin):
         Returns:
             The contents or input_ids replaced
         """
-        if isinstance(object_['bbox'][0], list):
-            all_objects = ''
-            for sub_object in object_['bbox']:
-                all_objects += f'[({sub_object[0]},{sub_object[1]}),' f'({sub_object[2]},{sub_object[3]})],'
-            all_objects = all_objects[:-1]
-            return [all_objects]
-        else:
-            return [f'[({object_["bbox"][0]},{object_["bbox"][1]}),({object_["bbox"][2]},{object_["bbox"][3]})]']
+        return [f'[{self._get_bbox_str(bbox)}]']
 
     def _pre_tokenize(self, context_list: List[Context], loss_scale_list: List[float],
                       inputs: StdTemplateInputs) -> Tuple[List[Context], List[float]]:
