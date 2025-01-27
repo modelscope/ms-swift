@@ -2,6 +2,7 @@ from typing import Any, Dict, List, Literal
 
 from PIL import Image, ImageDraw
 
+
 def normalize_bbox(images: List[Image.Image],
                    objects: Dict[str, List[Any]],
                    bbox_type: Literal['norm1000', 'none'] = 'norm1000') -> None:

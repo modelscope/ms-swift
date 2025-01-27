@@ -98,7 +98,7 @@ Supervised Fine-tuning:
 
 ```jsonl
 {"messages": [{"role": "user", "content": "Where is the capital of Zhejiang?"}, {"role": "assistant", "content": "The capital of Zhejiang is Hangzhou."}]}
-{"messages": [{"role": "user", "content": "<image><image>What is the difference between the two images?"}, {"role": "assistant", "content": "The first one is a kitten, and the second one is a puppy."}], "images": ["/xxx/x.jpg", "xxx/x.png"]}
+{"messages": [{"role": "user", "content": "<image><image>What is the difference between the two images?"}, {"role": "assistant", "content": "The first one is a kitten, and the second one is a puppy."}], "images": ["/xxx/x.jpg", "/xxx/x.png"]}
 {"messages": [{"role": "user", "content": "<audio>What did the audio say?"}, {"role": "assistant", "content": "The weather is really nice today."}], "audios": ["/xxx/x.mp3"]}
 {"messages": [{"role": "system", "content": "You are a helpful and harmless assistant."}, {"role": "user", "content": "<image>What is in the image, <video>What is in the video?"}, {"role": "assistant", "content": "The image shows an elephant, and the video shows a puppy running on the grass."}], "images": ["/xxx/x.jpg"], "videos": ["/xxx/x.mp4"]}
 ```
