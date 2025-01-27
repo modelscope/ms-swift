@@ -13,11 +13,11 @@ def normalize_bbox(images: List[Image.Image],
     image_id_list = objects.pop('image_id', None) or []
     image_id_list += [0] * (len(bbox_list) - len(image_id_list))
     for bbox, image_id in zip(bbox_list, image_id_list):
-        image = images[image_id]
         if norm_bbox == 'norm1000':
             if bbox_type == 'norm1':
                 width, height = 1, 1
             else:
+                image = images[image_id]
                 width, height = image.width, image.height
             for i, (x, y) in enumerate(zip(bbox[::2], bbox[1::2])):
                 bbox[2 * i] = int(x / width * 1000)
