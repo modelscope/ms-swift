@@ -249,9 +249,6 @@ class RowPreprocessor:
                     'content': Value(dtype='string', id=None)
                 }]
                 features['images'] = [{'bytes': Value(dtype='binary', id=None), 'path': Value(dtype='string', id=None)}]
-                features['bbox'] = Sequence(feature=Sequence(feature=Value(dtype='float64'), length=4))
-                features['ref'] = Sequence(feature=Value(dtype='string'))
-
             ArrowWriter.__origin_init__(self, schema, features, *args, **kwargs)
 
         ArrowWriter.__origin_init__ = ArrowWriter.__init__
