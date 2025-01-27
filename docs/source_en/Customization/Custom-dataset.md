@@ -107,29 +107,33 @@ The data format for RLHF can refer to the format used for pure text large models
 #### Grounding
 
 For grounding (object detection) tasks, SWIFT supports two methods:
-1. Maintain consistency with the above multimodal dataset format, adding special characters in the dataset, for example:
-```jsonl
-{"messages": [{"role": "system", "content": "You are a useful and harmless assistant"}, {"role": "user", "content": "<image>Find a <ref> elephant </ref>"}, {"role": "assistant", "content": "<box>(200,450),(500,800)</box>"}], "images": ["/xxx/x.jpg"]}
+
+1. Directly use the data format of the grounding task corresponding to the model. For example, the format for qwen2-vl is as follows:
+
 ```
-With this type of data, please note:
-  - Grounding tasks often require special characters. You need to determine which model to use, read the model paper to identify special characters for grounding tasks, and combine the data accordingly.
-  - The bbox coordinates may use actual image coordinates or thousandth coordinates. Please confirm this before assembling data.
-  - Different models require different data formats; you need to recreate the dataset if switching models.
-
-2. Use SWIFT's grounding data format:
-
-```jsonl
-# Object detection
-{"messages": [{"role": "system", "content": "You are a useful and harmless assistant"}, {"role": "user", "content": "<image>Identify <bbox>"}, {"role": "assistant", "content": "<ref-object>"}], "images": ["/coco2014/train2014/COCO_train2014_000000001507.jpg"], "objects": "[{\"caption\": \"guy in red\", \"bbox\": [138, 136, 235, 359], \"bbox_type\": \"real\", \"image\": 0}]"}
-# Grounding to multiple bboxes
-{"messages": [{"role": "system", "content": "You are a useful and harmless assistant"}, {"role": "user", "content": "<image>Find <ref-object>"}, {"role": "assistant", "content": "<bbox>"}], "images": ["/coco2014/train2014/COCO_train2014_000000001507.jpg"], "objects": "[{\"caption\": \"guy in red\", \"bbox\": [[138, 136, 235, 359], [1,2,3,4]], \"bbox_type\": \"real\", \"image\": 0}]"}
+{"messages": [{"role": "system", "content": "You are a helpful assistant."}, {"role": "user", "content": "<image>Describe the image."}, {"role": "assistant", "content": "<|object_ref_start|>a dog<|object_ref_end|><|box_start|>(221,423),(569,886)<|box_end|> and <|object_ref_start|>a woman<|object_ref_end|><|box_start|>(451,381),(733,793)<|box_end|> are playing on the beach"}], "images": ["/xxx/x.jpg"]}
+{"messages": [{"role": "system", "content": "You are a helpful assistant."}, {"role": "user", "content": "<image>Find the <|object_ref_start|>sheep<|object_ref_end|> in the image"}, {"role": "assistant", "content": "<|box_start|>(101,201),(150,266)<|box_end|><|box_start|>(401,601),(550,666)<|box_end|>"}], "images": ["/xxx/x.jpg"]}
+{"messages": [{"role": "system", "content": "You are a helpful assistant."}, {"role": "user", "content": "<image>Help me open Google Chrome"}, {"role": "assistant", "content": "Action: click(start_box='<|box_start|>(246,113)<|box_end|>')"}], "images": ["/xxx/x.jpg"]}
 ```
 
-This format adds the objects field, which includes:
- - caption: description of the object corresponding to the bbox
- - bbox: coordinates, suggested as four integers (not floats), representing x_min, y_min, x_max, y_max
- - bbox_type: bbox type, currently supporting three types: real/norm_1000/norm_1, representing actual pixel coordinates/thousandth ratio coordinates/normalized ratio coordinates
- - image: index of the image corresponding to the bbox, starting from 0
+When using this type of data, please note:
+
+- Different models have different special characters and data format for the grounding task.
+- It is necessary to normalize the coordinates of the bounding boxes, for example by using thousandth-scale coordinates for normalization.
+
+1. Use SWIFT's grounding data format:
+
+```
+{"messages": [{"role": "system", "content": "You are a helpful assistant."}, {"role": "user", "content": "<image>Describe the image."}, {"role": "assistant", "content": "<ref-object><bbox> and <ref-object><bbox> are playing on the beach"}], "images": ["/xxx/x.jpg"], "objects": {"ref": ["a dog", "a woman"], "bbox": [[331.5, 761.4, 853.5, 1594.8], [676.5, 685.8, 1099.5, 1427.4]]}}
+{"messages": [{"role": "system", "content": "You are a helpful assistant."}, {"role": "user", "content": "<image>Find the <ref-object> in the image"}, {"role": "assistant", "content": "<bbox><bbox>"}], "images": ["/xxx/x.jpg"], "objects": {"ref": ["sheep"], "bbox": [[90.9, 160.8, 135, 212.8], [360.9, 480.8, 495, 532.8]]}}
+{"messages": [{"role": "system", "content": "You are a helpful assistant."}, {"role": "user", "content": "<image>Help me open Google Chrome"}, {"role": "assistant", "content": "Action: click(start_box='<bbox>')"}], "images": ["/xxx/x.jpg"], "objects": {"ref": [], "bbox": [[615, 226]]}}
+```
+
+This format contains an additional `objects` field compared to the general format, which includes:
+
+- ref: Used to replace `<ref-object>`.
+- bbox: Used to replace `<bbox>`. These should be actual bbox values, not normalized ones.
+- image_id: Indicates which image the bounding box corresponds to. This is used for scaling the bounding box. Indexing starts from 0, and by default, all are set to the 0th image.
 
 ### Text-to-Image Format
 

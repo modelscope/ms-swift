@@ -27,6 +27,7 @@ def get_template(
         truncation_strategy: Literal['raise', 'left', 'right'] = 'raise',
         max_pixels: Optional[int] = None,  # h * w
         tools_prompt: str = 'react_en',
+        bbox_type: Literal['norm1000', 'none'] = 'norm1000',
         # train
         padding_side: Literal['left', 'right'] = 'right',
         loss_scale: str = 'default',

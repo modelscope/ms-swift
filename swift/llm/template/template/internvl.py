@@ -100,32 +100,11 @@ class Internvl2Template(InternvlTemplate):
             load_video = partial(load_video_internvl, num_segments=video_segments)
             return self.replace_video2image(load_video, inputs, lambda i: [f'Frame{i + 1}: '] + image_context)
 
-    def replace_object(self, object_: Dict[str, Any], index: int, inputs: StdTemplateInputs) -> List[Context]:
-        objects = inputs.objects
-        if objects:
-            object_ = objects[index]
-            return [f'<ref>{object_["caption"]}</ref>']
-        else:
-            return ['<ref-object>']
+    def replace_ref(self, ref: str, index: int, inputs: StdTemplateInputs) -> List[Context]:
+        return [f'<ref>{ref}</ref>']
 
-    def replace_box(self, object_: Dict[str, Any], index: int, inputs: StdTemplateInputs) -> List[Context]:
-        objects = inputs.objects
-        if objects:
-            object_ = objects[index]
-            if isinstance(object_['bbox'][0], list):
-                all_objects = '<box> ['
-                for sub_object in object_['bbox']:
-                    all_objects += (f'[{sub_object[0]}, {sub_object[1]}, ' f'{sub_object[2]}, {sub_object[3]}],')
-                all_objects = all_objects[:-1]
-                all_objects += '] </box>'
-                return [all_objects]
-            else:
-                return [
-                    f'<box> [[{object_["bbox"][0]}, {object_["bbox"][1]}, '
-                    f'{object_["bbox"][2]}, {object_["bbox"][3]}]] </box>'
-                ]
-        else:
-            return ['<bbox>']
+    def replace_bbox(self, bbox: List[int], index: int, inputs: StdTemplateInputs) -> List[Context]:
+        return [f'<box>[{bbox}]</box>']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super(InternvlTemplate, self)._encode(inputs)
