@@ -85,6 +85,7 @@ class MLLMTemplateType:
     qwen_vl = 'qwen_vl'
     qwen_audio = 'qwen_audio'
     qwen2_vl = 'qwen2_vl'
+    qwen2_5_vl = 'qwen2_5_vl'
     qwen2_audio = 'qwen2_audio'
     qvq = 'qvq'
     ovis1_6 = 'ovis1_6'
