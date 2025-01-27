@@ -593,7 +593,7 @@ register_model(
                 Model('Qwen/Qwen2.5-VL-7B-Instruct', 'Qwen/Qwen2.5-VL-7B-Instruct'),
             ])
         ],
-        TemplateType.qwen2_vl,
+        TemplateType.qwen2_5_vl,
         get_model_tokenizer_qwen2_5_vl,
         model_arch=ModelArch.qwen2_vl,
         architectures=['Qwen2_5_VLForConditionalGeneration'],
