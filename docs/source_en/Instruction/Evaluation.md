@@ -16,9 +16,9 @@ Below are the names of the supported datasets. For detailed information on the d
 
     Primarily supports pure text evaluation, while **supporting** visualization of evaluation results.
     ```text
-    'arc', 'bbh', 'ceval', 'cmmlu', 'competition_math', 
-    'general_qa', 'gpqa', 'gsm8k', 'hellaswag', 'humaneval', 
-    'ifeval', 'iquiz', 'mmlu', 'mmlu_pro', 
+    'arc', 'bbh', 'ceval', 'cmmlu', 'competition_math',
+    'general_qa', 'gpqa', 'gsm8k', 'hellaswag', 'humaneval',
+    'ifeval', 'iquiz', 'mmlu', 'mmlu_pro',
     'race', 'trivia_qa', 'truthful_qa'
     ```
 
