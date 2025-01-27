@@ -36,6 +36,7 @@ class TemplateArguments:
     truncation_strategy: Literal['delete', 'left', 'right'] = 'delete'
     max_pixels: Optional[int] = None
     tools_prompt: str = 'react_en'  # Override the default_tools_prompt in the template.
+    norm_bbox: Literal['norm1000', 'none'] = 'norm1000'
     # train
     padding_side: Literal['left', 'right'] = 'right'
     loss_scale: str = 'default'
@@ -61,6 +62,7 @@ class TemplateArguments:
             'truncation_strategy': truncation_strategy,
             'max_pixels': self.max_pixels,
             'tools_prompt': self.tools_prompt,
+            'norm_bbox': self.norm_bbox,
             'loss_scale': self.loss_scale,
             'padding_side': self.padding_side,
             'sequence_parallel_size': self.sequence_parallel_size,

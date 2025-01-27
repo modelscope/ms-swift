@@ -49,6 +49,7 @@ The introduction to command line parameters will cover base arguments, atomic ar
 - truncation_strategy: How to handle overly long tokens, supports `delete`, `left`, `right`, representing deletion, left trimming, and right trimming, default is 'delete'.
 - 🔥max_pixels: Maximum pixel count for pre-processing images in multimodal models (H*W), default is no scaling.
 - tools_prompt: The list of tools for agent training converted to system format, refer to [Agent Training](./Agent-support.md), default is 'react_en'.
+- norm_bbox: Controls how the bounding box (bbox) is scaled. Options are 'norm1000' and 'none'. The default is 'norm1000', which applies scaling to thousandths.
 - padding_side: The padding_side used when training with `batch_size >= 2`, with optional values of 'left' and 'right', defaulting to 'right'. (When the batch_size in `generate` is >= 2, only left padding is applied.)
 - loss_scale: How to add token loss weight during training. Default is `'default'`, meaning all responses (including history) are treated as 1 for cross-entropy loss. The optional values are 'default', 'last_round', 'all', and the loss scale required by the agent: 'react', 'agentflan', 'alpha_umi', 'qwen'. For specifics, see [Pluginization](../Customization/Pluginization.md) and [Agent Training](./Agent-support.md).
 - sequence_parallel_size: Number of sequence parallelism. Refer to [example](https://github.com/modelscope/ms-swift/tree/main/examples/train/sequence_parallel/train.sh).

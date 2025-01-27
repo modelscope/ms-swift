@@ -777,12 +777,10 @@ class RefCOCOPreprocessor(ResponsePreprocessor, GroundingMixin):
             bbox[i] = round(float(bbox[i]))
         res = {}
 
-        objects = [{
-            'caption': caption,
-            'bbox': bbox,
-            'bbox_type': 'real',
-            'image': 0,
-        }]
+        objects = {
+            'ref': [caption],
+            'bbox': [bbox],
+        }
         res['query'], res['response'] = self.construct_grounding_prompt()
         res['images'] = [image_path]
         res['objects'] = objects
@@ -996,10 +994,10 @@ class GritPreprocessor(RowPreprocessor, GroundingMixin):
         return ''.join(result)
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        images = row['url']
+        images = row['images']
         caption = row['caption']
         ref_exps = row['ref_exps']
-        objects = []
+        objects = {'ref': [], 'bbox': [], 'bbox_type': 'norm1'}
         start_end_pairs = []
         for ref_exp in ref_exps:
             start = ref_exp[0]
@@ -1008,10 +1006,11 @@ class GritPreprocessor(RowPreprocessor, GroundingMixin):
             start_end_pairs.append(ref_exp[0:2])
 
             object_part = caption[int(start):int(end)]
-            objects.append({'caption': object_part, 'bbox': ref_exp[2:6], 'bbox_type': 'real', 'image': 0})
+            objects['ref'].append(object_part)
+            objects['bbox'].append(ref_exp[2:6])
 
         start_end_pairs.sort(key=lambda x: (x[0], x[1]))
-        if self.has_overlap(start_end_pairs) or not objects:
+        if self.has_overlap(start_end_pairs) or not ref_exps:
             return
 
         if self.task_type in ('grounding', 'caption'):
@@ -1038,15 +1037,15 @@ register_dataset(
         hf_dataset_id='zzliang/GRIT',
         subsets=[
             SubsetDataset(
-                subset='caption',
+                name='caption',
                 preprocess_func=GritPreprocessor('caption', columns_mapping={'url': 'images'}),
             ),
             SubsetDataset(
-                subset='grounding',
+                name='grounding',
                 preprocess_func=GritPreprocessor('grounding', columns_mapping={'url': 'images'}),
             ),
             SubsetDataset(
-                subset='vqa',
+                name='vqa',
                 preprocess_func=GritPreprocessor('vqa', columns_mapping={'url': 'images'}),
             )
         ],
@@ -1082,6 +1081,35 @@ register_dataset(
         hf_dataset_id='lmms-lab/GQA',
         split=['train_all_instructions'],
         preprocess_func=GQAPreprocessor(),
+        huge_dataset=True,
+        tags=['multi-modal', 'en', 'vqa', 'quality']))
+
+
+class CocoPreprocessor(ResponsePreprocessor):
+    category = [
+        'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat', 'traffic light',
+        'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse', 'sheep', 'cow',
+        'elephant', 'bear', 'zebra', 'giraffe', 'backpack', 'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee', 'skis',
+        'snowboard', 'sports ball', 'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard',
+        'tennis racket', 'bottle', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple', 'sandwich',
+        'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair', 'couch', 'potted plant', 'bed',
+        'dining table', 'toilet', 'tv', 'laptop', 'mouse', 'remote', 'keyboard', 'cell phone', 'microwave', 'oven',
+        'toaster', 'sink', 'refrigerator', 'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush'
+    ]
+
+    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        row['query'] = 'Task: Object Detection'
+        objects = row['objects']
+        objects['ref'] = [self.category[c] for c in objects['category']]
+        row['response'] = '\n'.join(['<ref-object><bbox>'] * len(objects['ref']))
+        return super().preprocess(row)
+
+
+register_dataset(
+    DatasetMeta(
+        ms_dataset_id='AI-ModelScope/coco',
+        hf_dataset_id='detection-datasets/coco',
+        preprocess_func=CocoPreprocessor(),
         huge_dataset=True,
         tags=['multi-modal', 'en', 'vqa', 'quality']))
 
