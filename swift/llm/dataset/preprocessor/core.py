@@ -145,20 +145,18 @@ class RowPreprocessor:
 
     @staticmethod
     def _check_objects(row):
-        if 'objects' not in row:
+        objects = row.get('objects')
+        if objects is None:
             return
-        objects = row['objects']
         for k in list(objects.keys()):
             if k not in {'bbox', 'ref', 'image_id'}:
                 objects.pop(k)
         bbox = objects['bbox']
-        assert len(bbox) == len(
-            objects['ref']), (f"len(objects['bbox']): {len(bbox)}, len(objects['ref']): {len(objects['ref'])}")
 
         # check bbox
         for box in bbox:
-            assert len(box) % 2 == 0, f'len(box): {len(box)}'
-            if len(box) != 4:
+            assert len(box) in {2, 4}, f'len(box): {len(box)}'
+            if len(box) == 2:
                 continue
             if box[0] > box[2]:
                 box[0], box[2] = box[2], box[0]

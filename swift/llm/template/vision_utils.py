@@ -4,12 +4,12 @@ import math
 import os
 import re
 from io import BytesIO
-from typing import Any, Callable, Dict, List, Literal, TypeVar, Union
+from typing import Any, Callable, List, TypeVar, Union
 
 import numpy as np
 import requests
 import torch
-from PIL import Image, ImageDraw
+from PIL import Image
 
 from swift.utils import get_env_args
 
@@ -183,15 +183,6 @@ def load_video_internvl(video: Union[str, bytes], bound=None, num_segments=32):
     return images
 
 
-def draw_plot(image: Image, bbox: List[int], bbox_type: Literal['norm1000', 'none'] = 'norm1000'):
-    objects = [{'bbox': bbox, 'bbox_type': bbox_type, 'image': 0}]
-    normalize_bbox(objects, [image], 'real')
-    bbox = objects[0]['bbox']
-    draw = ImageDraw.Draw(image)
-    draw.rectangle(bbox, outline='red', width=2)
-    return draw
-
-
 def load_video_cogvlm2(video: Union[str, bytes]) -> np.ndarray:
     from decord import cpu, VideoReader, bridge
     video_io = load_file(video)
@@ -265,27 +256,3 @@ def load_video_valley(video: Union[str, bytes]):
     video = video_reader.get_batch(np.linspace(0, len(video_reader) - 1, 8).astype(np.int_)).byte()
     images = [transforms.ToPILImage()(image.permute(2, 0, 1)).convert('RGB') for image in video]
     return images
-
-
-def normalize_bbox(images: List[Image.Image],
-                   objects: Dict[str, List[Any]],
-                   bbox_type: Literal['norm1000', 'none'] = 'norm1000') -> None:
-    if not objects or not images or bbox_type == 'none':
-        return
-    bbox_list = objects['bbox']
-    ref_list = objects['ref']
-    image_id_list = objects.get('image_id') or []
-    image_id_list += [0] * (len(ref_list) - len(image_id_list))
-    for bbox, ref, image_id in zip(bbox_list, ref_list, image_id_list):
-        image = images[image_id]
-        if bbox_type == 'norm1000':
-            width, height = image.width, image.height
-            for i, (x, y) in enumerate(zip(bbox[::2], bbox[1::2])):
-                bbox[2 * i] = int(x / width * 1000)
-                bbox[2 * i + 1] = int(y / height * 1000)
-
-
-if __name__ == '__main__':
-    # TODO:remove
-    # A test main to draw bbox
-    draw_plot('man.jpg', [354, 462, 580, 738], 'norm_1000', 'man_bbox.jpg')
