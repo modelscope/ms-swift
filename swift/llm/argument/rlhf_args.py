@@ -67,6 +67,12 @@ class RLHFArguments(PPOArguments, TrainArguments):
     # KTO
     desirable_weight: float = 1.0
     undesirable_weight: float = 1.0
+    # GRPO
+    num_generations: int = 8 # G in the GRPO paper
+    max_prompt_length: Optional[int] = None
+
+
+
 
     # Use last_round by default
     loss_scale: str = 'last_round'

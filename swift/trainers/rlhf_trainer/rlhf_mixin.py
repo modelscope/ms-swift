@@ -72,8 +72,8 @@ class RLHFTrainerMixin:
                     return val
 
     def __init__(self,
-                 model: Optional[Union[PreTrainedModel, nn.Module, str]] = None,
-                 ref_model: Optional[Union[PreTrainedModel, nn.Module, str]] = None,
+                 model: Optional[Union[PreTrainedModel, nn.Module]] = None,
+                 ref_model: Optional[Union[PreTrainedModel, nn.Module]] = None,
                  *_args,
                  **kwargs):
         from trl.trainer import disable_dropout_in_model
