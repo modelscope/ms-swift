@@ -62,6 +62,7 @@ class TemplateArguments:
             'truncation_strategy': truncation_strategy,
             'max_pixels': self.max_pixels,
             'tools_prompt': self.tools_prompt,
+            'bbox_type': self.bbox_type,
             'loss_scale': self.loss_scale,
             'padding_side': self.padding_side,
             'sequence_parallel_size': self.sequence_parallel_size,

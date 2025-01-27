@@ -44,6 +44,7 @@ def get_template(
         truncation_strategy=truncation_strategy,
         max_pixels=max_pixels,
         tools_prompt=tools_prompt,
+        bbox_type=bbox_type,
         padding_side=padding_side,
         loss_scale=loss_scale,
         sequence_parallel_size=sequence_parallel_size,
