@@ -100,15 +100,10 @@ class Internvl2Template(InternvlTemplate):
             load_video = partial(load_video_internvl, num_segments=video_segments)
             return self.replace_video2image(load_video, inputs, lambda i: [f'Frame{i + 1}: '] + image_context)
 
-    def replace_object(self, object_: Dict[str, Any], index: int, inputs: StdTemplateInputs) -> List[Context]:
-        objects = inputs.objects
-        if objects:
-            object_ = objects[index]
-            return [f'<ref>{object_["caption"]}</ref>']
-        else:
-            return ['<ref-object>']
+    def replace_ref(self, ref: str, index: int, inputs: StdTemplateInputs) -> List[Context]:
+        return [f'<ref>{ref}</ref>']
 
-    def replace_box(self, object_: Dict[str, Any], index: int, inputs: StdTemplateInputs) -> List[Context]:
+    def replace_bbox(self, object_: Dict[str, Any], index: int, inputs: StdTemplateInputs) -> List[Context]:
         objects = inputs.objects
         if objects:
             object_ = objects[index]
