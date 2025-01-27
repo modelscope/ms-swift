@@ -58,7 +58,7 @@ class Template(ProcessorMixin):
         truncation_strategy: Literal['raise', 'left', 'right'] = 'raise',
         max_pixels: Optional[int] = None,
         tools_prompt: Optional[str] = None,
-        bbox_type: Literal['norm1000', 'norm100', 'none'] = 'norm1000',
+        bbox_type: Literal['norm1000', 'none'] = 'norm1000',
         # only for train
         padding_side: Literal['left', 'right'] = 'right',
         loss_scale: str = 'default',

@@ -183,7 +183,7 @@ def load_video_internvl(video: Union[str, bytes], bound=None, num_segments=32):
     return images
 
 
-def draw_plot(image: Image, bbox: List[int], bbox_type: Literal['norm1000', 'norm100', 'none'] = 'norm1000'):
+def draw_plot(image: Image, bbox: List[int], bbox_type: Literal['norm1000', 'none'] = 'norm1000'):
     objects = [{'bbox': bbox, 'bbox_type': bbox_type, 'image': 0}]
     normalize_bbox(objects, [image], 'real')
     bbox = objects[0]['bbox']
@@ -269,7 +269,7 @@ def load_video_valley(video: Union[str, bytes]):
 
 def normalize_bbox(images: List[Image.Image],
                    objects: Dict[str, List[Any]],
-                   bbox_type: Literal['norm1000', 'norm100', 'none'] = 'norm1000') -> None:
+                   bbox_type: Literal['norm1000', 'none'] = 'norm1000') -> None:
     if not objects or not images or bbox_type == 'none':
         return
     bbox_list = objects['bbox']
