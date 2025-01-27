@@ -1,6 +1,13 @@
 from typing import Any, Dict, List, Literal
 
-from PIL import Image
+from PIL import Image, ImageDraw
+
+
+def draw_bbox(image: Image.Image, objects: Dict[str, List[Any]], bbox_type: Literal['norm1000', 'none'] = 'norm1000'):
+    normalize_bbox([image], objects, bbox_type)
+    bbox = objects[0]['bbox']
+    draw = ImageDraw.Draw(image)
+    draw.rectangle(bbox, outline='red', width=2)
 
 
 def normalize_bbox(images: List[Image.Image],
