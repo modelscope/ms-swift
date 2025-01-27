@@ -110,6 +110,7 @@ class QwenVLTemplate(Template):
     def replace_bbox(self, bbox: List[int], index: int, inputs: StdTemplateInputs) -> List[Context]:
         return [f'<box>{self._get_bbox_str(bbox)}</box>']
 
+
 register_template(QwenTemplateMeta(MLLMTemplateType.qwen_vl, template_cls=QwenVLTemplate))
 
 
