@@ -149,7 +149,7 @@ class RowPreprocessor:
         if objects is None:
             return
         for k in list(objects.keys()):
-            if k not in {'bbox', 'ref', 'image_id'}:
+            if k not in {'bbox', 'ref', 'bbox_type', 'image_id'}:
                 objects.pop(k)
         bbox = objects['bbox']
 
@@ -249,8 +249,6 @@ class RowPreprocessor:
                     'content': Value(dtype='string', id=None)
                 }]
                 features['images'] = [{'bytes': Value(dtype='binary', id=None), 'path': Value(dtype='string', id=None)}]
-                features['bbox'] = Sequence(feature=Sequence(feature=Value(dtype='float64')))
-                features['ref'] = Sequence(feature=Value(dtype='string'))
 
             ArrowWriter.__origin_init__(self, schema, features, *args, **kwargs)
 

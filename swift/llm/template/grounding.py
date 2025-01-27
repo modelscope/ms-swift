@@ -9,11 +9,10 @@ def normalize_bbox(images: List[Image.Image],
     if not objects or not images or norm_bbox == 'none':
         return
     bbox_list = objects['bbox']
-    ref_list = objects['ref']
-    bbox_type = objects.get('bbox_type') or 'real'
-    image_id_list = objects.get('image_id') or []
-    image_id_list += [0] * (len(ref_list) - len(image_id_list))
-    for bbox, ref, image_id in zip(bbox_list, ref_list, image_id_list):
+    bbox_type = objects.pop('bbox_type', None) or 'real'
+    image_id_list = objects.pop('image_id', None) or []
+    image_id_list += [0] * (len(bbox_list) - len(image_id_list))
+    for bbox, image_id in zip(bbox_list, image_id_list):
         image = images[image_id]
         if norm_bbox == 'norm1000':
             if bbox_type == 'norm1':

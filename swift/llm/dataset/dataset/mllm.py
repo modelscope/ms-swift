@@ -997,11 +997,7 @@ class GritPreprocessor(RowPreprocessor, GroundingMixin):
         images = row['images']
         caption = row['caption']
         ref_exps = row['ref_exps']
-        objects = {
-            'ref': [],
-            'bbox': [],
-            'bbox_type': 'norm1'
-        }
+        objects = {'ref': [], 'bbox': [], 'bbox_type': 'norm1'}
         start_end_pairs = []
         for ref_exp in ref_exps:
             start = ref_exp[0]
