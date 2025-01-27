@@ -27,6 +27,8 @@ def infer_stream(engine: 'InferEngine', infer_request: 'InferRequest'):
     tool = '{"temperature": 72, "condition": "Sunny", "humidity": 50}\n'
     print(f'query: {query}')
     for resp_list in gen:
+        if resp_list[0] is None:
+            continue
         delta = resp_list[0].choices[0].delta.content
         response += delta
         print(delta, end='', flush=True)
@@ -35,6 +37,8 @@ def infer_stream(engine: 'InferEngine', infer_request: 'InferRequest'):
     infer_request.messages += [{'role': 'assistant', 'content': response}, {'role': 'tool', 'content': tool}]
     gen = engine.infer([infer_request], request_config)
     for resp_list in gen:
+        if resp_list[0] is None:
+            continue
         print(resp_list[0].choices[0].delta.content, end='', flush=True)
     print()
 

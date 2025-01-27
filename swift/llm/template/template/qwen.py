@@ -280,6 +280,8 @@ class Qwen2VLTemplate(Template):
         video_grid_thw = inputs.get('video_grid_thw')
 
         inputs_embeds = _model.embed_tokens(input_ids)
+        # The model.visual of v2_5 does not have a get_dtype attribute.
+        dtype = model.visual.get_dtype() if hasattr(model.visual, 'get_dtype') else model.visual.dtype
         if pixel_values is None and pixel_values_videos is None:  # plain-text
             if is_deepspeed_enabled():
                 from PIL import Image
@@ -288,19 +290,19 @@ class Qwen2VLTemplate(Template):
                 device = input_ids.device
                 pixel_values = media_inputs['pixel_values'].to(device)
 
-                pixel_values = pixel_values.type(model.visual.get_dtype())
+                pixel_values = pixel_values.type(dtype)
                 image_embeds = model.visual(pixel_values, grid_thw=media_inputs['image_grid_thw'])
                 inputs_embeds += image_embeds.mean() * 0.
         else:
             if pixel_values is not None:
-                pixel_values = pixel_values.type(model.visual.get_dtype())
+                pixel_values = pixel_values.type(dtype)
                 image_embeds = model.visual(pixel_values, grid_thw=image_grid_thw)
                 image_mask = (input_ids == model.config.image_token_id).unsqueeze(-1).expand_as(inputs_embeds)
                 image_embeds = image_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
                 inputs_embeds = inputs_embeds.masked_scatter(image_mask, image_embeds)
 
             if pixel_values_videos is not None:
-                pixel_values_videos = pixel_values_videos.type(model.visual.get_dtype())
+                pixel_values_videos = pixel_values_videos.type(dtype)
                 video_embeds = model.visual(pixel_values_videos, grid_thw=video_grid_thw)
                 video_mask = (input_ids == model.config.video_token_id).unsqueeze(-1).expand_as(inputs_embeds)
                 video_embeds = video_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
