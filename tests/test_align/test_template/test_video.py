@@ -28,14 +28,14 @@ def _infer_model(pt_engine, system=None, messages=None, videos=None, max_tokens=
 
 
 def test_qwen2_vl():
-    os.environ['NFRAMES'] = '24'
+    os.environ['FPS_MAX_FRAMES'] = '24'
     os.environ['MAX_PIXELS'] = '100352'
     os.environ['VIDEO_MAX_PIXELS'] = str(100352 // 4)
-    os.environ['SIZE_FACTOR'] = '12'
     pt_engine = PtEngine('Qwen/Qwen2-VL-2B-Instruct')
-    _infer_model(pt_engine)
+    response = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
-    _infer_model(pt_engine)
+    response2 = _infer_model(pt_engine)
+    assert response == response2
 
 
 def test_internvl2_5():
@@ -113,6 +113,21 @@ def test_valley():
     _infer_model(pt_engine)
 
 
+def test_qwen2_5_vl():
+    os.environ['FPS'] = '1'
+    pt_engine = PtEngine('Qwen/Qwen2.5-VL-7B-Instruct')
+    messages = [{'role': 'user', 'content': '<video>What happened in the video?'}]
+    videos = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4']
+    response = _infer_model(pt_engine, messages=messages, videos=videos)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=messages, videos=videos)
+    assert response == response2 == (
+        'In the video, a baby is sitting on a bed and appears to be interacting with an open book. '
+        'The baby seems curious and is touching the pages of the book, possibly exploring its contents or '
+        'simply playing with it. The setting looks like a cozy bedroom, and the baby is wearing sunglasses, '
+        'which adds a playful and endearing touch to the scene.')
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig, get_template
     from swift.utils import get_logger, seed_everything
@@ -123,5 +138,6 @@ if __name__ == '__main__':
     # test_internvl2_5_mpo()
     # test_mplug3()
     # test_minicpmv()
-    test_minicpmo()
+    # test_minicpmo()
     # test_valley()
+    test_qwen2_5_vl()

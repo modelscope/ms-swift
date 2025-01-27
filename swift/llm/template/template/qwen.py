@@ -196,6 +196,7 @@ register_template(QwenTemplateMeta(MLLMTemplateType.qwen2_audio, template_cls=Qw
 class Qwen2VLTemplate(Template):
     image_token_id = 151655
     video_token_id = 151656
+    version = 'v2'
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -249,6 +250,11 @@ class Qwen2VLTemplate(Template):
                         images=None, videos=videos, return_tensors='pt', do_resize=False)
                     media_grid_thw = media_inputs['video_grid_thw']
                     media_token = self.video_token_id
+                    if self.version == 'v2_5':
+                        from qwen_vl_utils import vision_process
+                        media_inputs['second_per_grid_ts'] = [
+                            processor.image_processor.temporal_patch_size / vision_process.FPS
+                        ] * len(media_grid_thw)
                 idx_list = findall(input_ids, media_token)
                 added_tokens_len = 0
                 for i, idx in enumerate(idx_list):
@@ -278,10 +284,11 @@ class Qwen2VLTemplate(Template):
         pixel_values_videos = inputs.get('pixel_values_videos')
         image_grid_thw = inputs.get('image_grid_thw')
         video_grid_thw = inputs.get('video_grid_thw')
+        second_per_grid_ts = inputs.get('second_per_grid_ts')
 
         inputs_embeds = _model.embed_tokens(input_ids)
-        # The model.visual of v2_5 does not have a get_dtype attribute.
-        dtype = model.visual.get_dtype() if hasattr(model.visual, 'get_dtype') else model.visual.dtype
+
+        dtype = model.visual.get_dtype() if self.version == 'v2' else model.visual.dtype
         if pixel_values is None and pixel_values_videos is None:  # plain-text
             if is_deepspeed_enabled():
                 from PIL import Image
@@ -309,11 +316,18 @@ class Qwen2VLTemplate(Template):
                 inputs_embeds = inputs_embeds.masked_scatter(video_mask, video_embeds)
 
         # fix https://github.com/huggingface/transformers/pull/33487
-        position_ids, _ = model.get_rope_index(input_ids, image_grid_thw, video_grid_thw, inputs['attention_mask'])
+        kwargs = {}
+        if self.version == 'v2_5':
+            kwargs = {'second_per_grid_ts': second_per_grid_ts}
+        position_ids, _ = model.get_rope_index(
+            input_ids, image_grid_thw, video_grid_thw, attention_mask=inputs['attention_mask'], **kwargs)
         return {'inputs_embeds': inputs_embeds, 'position_ids': position_ids.contiguous()}
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super()._data_collator(batch, padding_to=padding_to)
+        second_per_grid_ts = self.gather_list(batch, 'second_per_grid_ts')
+        if second_per_grid_ts:
+            res['second_per_grid_ts'] = second_per_grid_ts
         for media_type in ['image', 'video']:
             grid_thw = [b[f'{media_type}_grid_thw'] for b in batch if b.get(f'{media_type}_grid_thw') is not None]
             if grid_thw:
@@ -331,6 +345,17 @@ register_template(
         default_system=('You are a helpful and harmless assistant. You are Qwen developed by Alibaba. '
                         'Answer in the language of the question. You should think step-by-step.'),
         template_cls=Qwen2VLTemplate,
+        placeholder_tokens=['<|image_pad|>', '<|video_pad|>']))
+
+
+class Qwen2_5VLTemplate(Qwen2VLTemplate):
+    version = 'v2_5'
+
+
+register_template(
+    QwenTemplateMeta(
+        MLLMTemplateType.qwen2_5_vl,
+        template_cls=Qwen2_5VLTemplate,
         placeholder_tokens=['<|image_pad|>', '<|video_pad|>']))
 
 
