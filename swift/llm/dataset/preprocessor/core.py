@@ -149,7 +149,7 @@ class RowPreprocessor:
         if objects is None:
             return
         for k in list(objects.keys()):
-            if k not in {'bbox', 'ref', 'image_id'}:
+            if k not in {'bbox', 'ref', 'bbox_type', 'image_id'}:
                 objects.pop(k)
         bbox = objects['bbox']
 

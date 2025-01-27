@@ -777,12 +777,10 @@ class RefCOCOPreprocessor(ResponsePreprocessor, GroundingMixin):
             bbox[i] = round(float(bbox[i]))
         res = {}
 
-        objects = [{
-            'caption': caption,
-            'bbox': bbox,
-            'bbox_type': 'real',
-            'image': 0,
-        }]
+        objects = {
+            'ref': [caption],
+            'bbox': [bbox],
+        }
         res['query'], res['response'] = self.construct_grounding_prompt()
         res['images'] = [image_path]
         res['objects'] = objects
@@ -996,10 +994,10 @@ class GritPreprocessor(RowPreprocessor, GroundingMixin):
         return ''.join(result)
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        images = row['url']
+        images = row['images']
         caption = row['caption']
         ref_exps = row['ref_exps']
-        objects = []
+        objects = {'ref': [], 'bbox': [], 'bbox_type': 'norm1'}
         start_end_pairs = []
         for ref_exp in ref_exps:
             start = ref_exp[0]
@@ -1008,10 +1006,11 @@ class GritPreprocessor(RowPreprocessor, GroundingMixin):
             start_end_pairs.append(ref_exp[0:2])
 
             object_part = caption[int(start):int(end)]
-            objects.append({'caption': object_part, 'bbox': ref_exp[2:6], 'bbox_type': 'real', 'image': 0})
+            objects['ref'].append(object_part)
+            objects['bbox'].append(ref_exp[2:6])
 
         start_end_pairs.sort(key=lambda x: (x[0], x[1]))
-        if self.has_overlap(start_end_pairs) or not objects:
+        if self.has_overlap(start_end_pairs) or not ref_exps:
             return
 
         if self.task_type in ('grounding', 'caption'):
@@ -1038,15 +1037,15 @@ register_dataset(
         hf_dataset_id='zzliang/GRIT',
         subsets=[
             SubsetDataset(
-                subset='caption',
+                name='caption',
                 preprocess_func=GritPreprocessor('caption', columns_mapping={'url': 'images'}),
             ),
             SubsetDataset(
-                subset='grounding',
+                name='grounding',
                 preprocess_func=GritPreprocessor('grounding', columns_mapping={'url': 'images'}),
             ),
             SubsetDataset(
-                subset='vqa',
+                name='vqa',
                 preprocess_func=GritPreprocessor('vqa', columns_mapping={'url': 'images'}),
             )
         ],
