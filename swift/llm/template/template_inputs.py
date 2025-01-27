@@ -81,7 +81,7 @@ class TemplateInputs(InferRequest):
     """
     rejected_response: Optional[str] = None
     label: Optional[bool] = None
-    objects: Dict[str, List[Any]] = field(default_factory=dict)  # List[Dict[str, Any]]
+    objects: Dict[str, List[Any]] = field(default_factory=dict)
 
 
 @dataclass

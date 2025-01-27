@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Literal
 
-from PIL import Image, ImageDraw
+from PIL import Image
 
 
 def normalize_bbox(images: List[Image.Image],
