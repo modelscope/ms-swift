@@ -76,11 +76,15 @@ class SamplingArguments(BaseArguments):
         else:
             self.engine_kwargs = {}
 
-        self.system_message = {
-            "role": "system",
-            "content": self.system,
-        }
         if self.sampler_type == 'mcts' and self.sampler_engine != 'client':
             raise ValueError(f'`mcts` sampler only supports `client` engine yet, but now is: {self.sampler_engine}')
 
         super().__post_init__()
+
+        if self.system is not None:
+            self.system_message = [{
+                "role": "system",
+                "content": self.system,
+            }]
+        else:
+            self.system_message = []

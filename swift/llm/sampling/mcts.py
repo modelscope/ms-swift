@@ -156,13 +156,13 @@ class MctsSampler(Sampler):
 
         def _expand(expand_curr_node: LanguageNode):
             if expand_curr_node.is_root():
-                infer_request = InferRequest([system_message, prompt_message])
+                infer_request = InferRequest(system_message + [prompt_message])
             else:
                 history_message = {
                     "role": "assistant",
                     "content": expand_curr_node.answer,
                 }
-                infer_request = InferRequest([system_message, prompt_message, history_message, next_message])
+                infer_request = InferRequest(system_message + [prompt_message, history_message, next_message])
 
             # e_time = time.time()
             # 为了并行进行 Expand 操作，这里暂时不需要考虑顺序，因为 Prompt 是一样的
@@ -239,8 +239,7 @@ class MctsSampler(Sampler):
             active_rollout_nodes = list(rollout_nodes.keys())
             while len(active_rollout_nodes) > 0 and rollout_iter_index < _args.rollout_depth:
                 # r_time = time.time()
-                infer_requests = [InferRequest([system_message,
-                                                prompt_message,
+                infer_requests = [InferRequest(system_message + [prompt_message,
                                                 rollout_nodes[index]['history_messages'],
                                                 next_message])
                                   for index in active_rollout_nodes]
@@ -335,7 +334,7 @@ class MctsSampler(Sampler):
             return _prefer_pairs, _correct_answers, _incorrect_answers
 
         _args = self.args
-        system_message = _args.system_message
+        system_message = [] + _args.system_message
         sep_token = _args.stop_words[0] + '\n'
         collect_filter_threshold = _args.collect_filter_threshold
         _root = LanguageNode(sep_token=sep_token)
@@ -408,7 +407,7 @@ class MctsSampler(Sampler):
                 messages = item['messages'][0]
                 query = messages[0]['content']
                 ground_truth = messages[1]['content']
-                generated.append(self.search_single(query, ground_truth))
+                generated.append(self.search_single(query, ground_truth) + '\n')
             except Exception as e:
                 logger.error(f"Error: {e}")
         return generated
