@@ -555,7 +555,7 @@ register_model(
                 Model('bytedance-research/UI-TARS-7B-DPO', 'bytedance-research/UI-TARS-7B-DPO'),
                 Model('bytedance-research/UI-TARS-72B-SFT', 'bytedance-research/UI-TARS-72B-SFT'),
                 Model('bytedance-research/UI-TARS-72B-DPO', 'bytedance-research/UI-TARS-72B-DPO'),
-            ]),
+            ])
         ],
         TemplateType.qwen2_vl,
         get_model_tokenizer_qwen2_vl,

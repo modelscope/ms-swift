@@ -281,7 +281,7 @@ class Qwen2VLTemplate(Template):
 
         inputs_embeds = _model.embed_tokens(input_ids)
         # The model.visual of v2_5 does not have a get_dtype attribute.
-        dtype = model.visual.get_dtype()if hasattr(model.visual, 'get_dtype') else model.visual.dtype
+        dtype = model.visual.get_dtype() if hasattr(model.visual, 'get_dtype') else model.visual.dtype
         if pixel_values is None and pixel_values_videos is None:  # plain-text
             if is_deepspeed_enabled():
                 from PIL import Image
