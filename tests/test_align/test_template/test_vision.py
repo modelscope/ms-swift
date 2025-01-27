@@ -36,6 +36,20 @@ def test_qwen2_vl():
     assert response == response2 == '这是一只小猫的图片。它有黑白相间的毛发，眼睛大而圆，显得非常可爱。'
 
 
+def test_qwen2_5_vl():
+    pt_engine = PtEngine('Qwen/Qwen2.5-VL-7B-Instruct')
+    messages = [{'role': 'user', 'content': '<image>What kind of dog is this?'}]
+    images = ['https://qianwen-res.oss-accelerate-overseas.aliyuncs.com/Qwen2-VL/demo_small.jpg']
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=messages, images=images)
+    assert response == response2 == (
+        'The dog in the picture appears to be a Labrador Retriever. Labradors are known for their friendly and '
+        'energetic nature, which is evident in the image where the dog seems to be interacting playfully with '
+        'the person. The breed is characterized by its thick, water-repellent coat, which can come in various '
+        'colors including yellow, black, and chocolate.')
+
+
 def test_qvq():
     pt_engine = PtEngine('Qwen/QVQ-72B-Preview')
     response = _infer_model(pt_engine)
@@ -364,8 +378,8 @@ def test_valley():
 def test_ui_tars():
     os.environ['MAX_PIXELS'] = str(1280 * 28 * 28)
     pt_engine = PtEngine('bytedance-research/UI-TARS-2B-SFT')
-    prompt = r"""You are a GUI agent. You are given a task and your action history, with screenshots. \
-You need to perform the next action to complete the task.
+    prompt = ('You are a GUI agent. You are given a task and your action history, with screenshots. '
+              'You need to perform the next action to complete the task.' + r"""
 
 ## Output Format
 ```\nThought: ...
@@ -391,7 +405,7 @@ call_user() # Submit the task and call the user when the task is unsolvable, or 
 - Summarize your next action (with its target element) in one sentence in `Thought` part.
 
 ## User Instruction
-"""
+""")
     instruction = "I'm looking for a software to \"edit my photo with grounding\""
     messages = [
         {
@@ -417,6 +431,7 @@ if __name__ == '__main__':
 
     logger = get_logger()
     # test_qwen2_vl()
+    test_qwen2_5_vl()
     # test_internvl2()
     # test_internvl2_phi3()
     # test_llava()
@@ -451,4 +466,4 @@ if __name__ == '__main__':
     # test_doc_owl2()
     # test_minicpmo()
     # test_valley()
-    test_ui_tars()
+    # test_ui_tars()
