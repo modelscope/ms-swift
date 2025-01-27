@@ -58,7 +58,7 @@ class Template(ProcessorMixin):
         truncation_strategy: Literal['raise', 'left', 'right'] = 'raise',
         max_pixels: Optional[int] = None,
         tools_prompt: Optional[str] = None,
-        bbox_type: Literal['norm1000', 'none'] = 'norm1000',
+        norm_bbox: Literal['norm1000', 'none'] = 'norm1000',
         # only for train
         padding_side: Literal['left', 'right'] = 'right',
         loss_scale: str = 'default',
@@ -106,7 +106,7 @@ class Template(ProcessorMixin):
         self.padding_side = padding_side
         self.sequence_parallel_size = sequence_parallel_size
         self.tools_prompt = tools_prompt or template_meta.default_tools_prompt
-        self.bbox_type = bbox_type
+        self.norm_bbox = norm_bbox
         if self.is_encoder_decoder:
             self.skip_prompt = False
 
@@ -148,7 +148,7 @@ class Template(ProcessorMixin):
             for i, image in enumerate(images):
                 images[i] = self._load_image(images[i], load_images)
         if inputs.objects:
-            normalize_bbox(inputs.images, inputs.objects, bbox_type=self.bbox_type)
+            normalize_bbox(inputs.images, inputs.objects, norm_bbox=self.norm_bbox)
         if self.max_pixels is not None:
             # Scale the image proportionally without affecting the scaled objects.
             images = [rescale_image(img, self.max_pixels) for img in images]

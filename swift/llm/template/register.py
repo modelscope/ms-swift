@@ -27,7 +27,7 @@ def get_template(
         truncation_strategy: Literal['raise', 'left', 'right'] = 'raise',
         max_pixels: Optional[int] = None,  # h * w
         tools_prompt: str = 'react_en',
-        bbox_type: Literal['norm1000', 'none'] = 'norm1000',
+        norm_bbox: Literal['norm1000', 'none'] = 'norm1000',
         # train
         padding_side: Literal['left', 'right'] = 'right',
         loss_scale: str = 'default',
@@ -44,7 +44,7 @@ def get_template(
         truncation_strategy=truncation_strategy,
         max_pixels=max_pixels,
         tools_prompt=tools_prompt,
-        bbox_type=bbox_type,
+        norm_bbox=norm_bbox,
         padding_side=padding_side,
         loss_scale=loss_scale,
         sequence_parallel_size=sequence_parallel_size,

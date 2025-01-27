@@ -129,11 +129,12 @@ When using this type of data, please note:
 {"messages": [{"role": "system", "content": "You are a helpful assistant."}, {"role": "user", "content": "<image>Help me open Google Chrome"}, {"role": "assistant", "content": "Action: click(start_box='<bbox>')"}], "images": ["/xxx/x.jpg"], "objects": {"ref": [], "bbox": [[615, 226]]}}
 ```
 
-This format contains an additional `objects` field compared to the general format, which includes:
+The format includes an additional "objects" field compared to the general format. This field contains the following subfields:
 
-- ref: Used to replace `<ref-object>`.
-- bbox: Used to replace `<bbox>`. These should be actual bbox values, not normalized ones.
-- image_id: Indicates which image the bounding box corresponds to. This is used for scaling the bounding box. Indexing starts from 0, and by default, all are set to the 0th image.
+- ref: Used to replace <ref-object>.
+- bbox: Used to replace <bbox>.
+- bbox_type: Optional values are 'real' and 'norm1'. The default is 'real', meaning the bbox represents the actual bounding box value. If set to 'norm1', the bbox is normalized to the range 0~1.
+- image_id: This parameter is only effective when bbox_type is 'real'. It indicates the index of the image corresponding to the bbox, used for scaling the bbox. The index starts from 0, and the default is 0 for all.
 
 ### Text-to-Image Format
 
