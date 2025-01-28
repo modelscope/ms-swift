@@ -5,16 +5,16 @@ import transformers
 from packaging import version
 from torch.utils.data import DataLoader
 from transformers import PreTrainedModel
-from trl import PPOv2Trainer as HFPPOv2Trainer
+from trl import PPOTrainer as HFPPOTrainer
 
 from swift.utils import patch_getattr
 from ..mixin import SwiftMixin
 
-ppo_trainer_init = HFPPOv2Trainer.__init__
-del HFPPOv2Trainer.__init__
+ppo_trainer_init = HFPPOTrainer.__init__
+del HFPPOTrainer.__init__
 
 
-class PPOTrainer(SwiftMixin, HFPPOv2Trainer):
+class PPOTrainer(SwiftMixin, HFPPOTrainer):
 
     @staticmethod
     @contextmanager
@@ -40,7 +40,7 @@ class PPOTrainer(SwiftMixin, HFPPOv2Trainer):
                 if k in ['train_dataset', 'data_collator', 'reward_model', 'value_model', 'eval_dataset']
             }
             ppo_trainer_init(
-                self, config=kwargs['args'], tokenizer=self.tokenizer, policy=model, ref_policy=ref_model, **new_kwargs)
+                self, config=kwargs['args'], tokenizer=self.tokenizer, model=model, ref_model=ref_model, **new_kwargs)
         unwrap_model = self.accelerator.unwrap_model(self.model)
         patch_getattr(unwrap_model.__class__, 'policy')
 

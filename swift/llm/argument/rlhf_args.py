@@ -78,7 +78,7 @@ class RLHFArguments(PPOArguments, TrainArguments):
         super().__post_init__()
         self._init_ppo()
 
-        if self.rlhf_type in ['dpo', 'kto'] and self.train_type == 'full' or self.rlhf_type == 'ppo':
+        if self.rlhf_type in ['dpo', 'kto', 'ppo'] and self.train_type == 'full':
             self.ref_model = self.ref_model or self.model
             self.ref_model_type = self.ref_model_type or self.model_type
             self.ref_model_revision = self.ref_model_revision or self.model_revision

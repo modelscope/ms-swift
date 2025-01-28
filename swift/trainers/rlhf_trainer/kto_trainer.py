@@ -15,7 +15,6 @@ from .rlhf_mixin import RLHFTrainerMixin
 logger = get_logger()
 
 del HFKTOTrainer.__init__
-del HFKTOTrainer.get_batch_samples
 
 
 class KTOTrainer(RLHFTrainerMixin, SwiftMixin, HFKTOTrainer):
