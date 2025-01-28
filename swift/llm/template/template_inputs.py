@@ -232,5 +232,10 @@ class StdTemplateInputs:
                 assert isinstance(pre_content, str)
                 pre_message['content'] = pre_content + content  # assistant
                 messages.pop(i)  # remove tool
+            elif (pre_role == 'assistant' and role == 'assistant' and isinstance(pre_content, str)
+                  and isinstance(content, str)):
+                # Consecutive messages from the assistant role need to be merged to prevent errors.
+                pre_message['content'] = pre_content + content
+                messages.pop(i)
             else:
                 i += 1
