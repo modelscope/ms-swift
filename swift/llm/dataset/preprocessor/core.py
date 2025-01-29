@@ -8,7 +8,7 @@ import numpy as np
 from datasets import Dataset as HfDataset
 from datasets import Image
 from datasets import IterableDataset as HfIterableDataset
-from datasets import Sequence, Value
+from datasets import Value
 
 from swift.llm import history_to_messages
 from swift.utils import get_logger
@@ -232,6 +232,15 @@ class RowPreprocessor:
     def _rename_columns(self, dataset: DATASET_TYPE) -> DATASET_TYPE:
         dataset = dataset.rename_columns(self.origin_columns)
         return self.safe_rename_columns(dataset, self.columns)
+
+    @staticmethod
+    def remove_useless_columns(dataset: DATASET_TYPE) -> DATASET_TYPE:
+        dataset = RowPreprocessor.get_features_dataset(dataset)
+        features = dataset.features
+        k_list = [k for k in RowPreprocessor.standard_keys if k in features]
+        if len(k_list) != len(features):
+            dataset = dataset.select_columns(k_list)
+        return dataset
 
     @staticmethod
     @contextmanager
