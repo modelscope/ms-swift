@@ -15,35 +15,27 @@ from swift.utils import get_logger
 
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
-standard_keys = ['messages', 'rejected_response', 'label', 'images', 'videos', 'audios', 'tools', 'objects']
-
 logger = get_logger()
 
 
-def get_features_dataset(dataset: DATASET_TYPE) -> DATASET_TYPE:
-    if dataset.features is None:
-        assert isinstance(dataset, HfIterableDataset)
-        dataset = dataset._resolve_features()
-    return dataset
-
-
 class RowPreprocessor:
+    standard_keys = ['messages', 'rejected_response', 'label', 'images', 'videos', 'audios', 'tools', 'objects']
 
     def __init__(self,
                  *,
-                 columns_mapping: Optional[Dict[str, str]] = None,
+                 columns: Optional[Dict[str, str]] = None,
                  dataset_sample: Optional[int] = None,
                  random_state: Union[np.random.RandomState, int, None] = None,
                  traceback_limit: int = 10) -> None:
-        self.columns_mapping = columns_mapping or {}
-        self.origin_columns_mapping = self.columns_mapping.copy()  # Higher priority and raise Error
+        self.columns = columns or {}
+        self.origin_columns = self.columns.copy()  # Higher priority and raise Error
         images_keys = ['images', 'image']
         audios_keys = ['audios', 'audio']
         videos_keys = ['videos', 'video']
         for mm_type in ['images', 'audios', 'videos']:
             keys = locals()[f'{mm_type}_keys']
             for key in keys:
-                self.columns_mapping[key] = mm_type
+                self.columns[key] = mm_type
 
         self.traceback_limit = traceback_limit
         self._traceback_counter = 0
@@ -205,35 +197,41 @@ class RowPreprocessor:
 
         return res
 
-    def _rename_columns(self, dataset: DATASET_TYPE) -> DATASET_TYPE:
-        dataset = get_features_dataset(dataset)
-        dataset = dataset.rename_columns(self.origin_columns_mapping)
+    @staticmethod
+    def get_features_dataset(dataset: DATASET_TYPE) -> DATASET_TYPE:
+        if dataset.features is None:
+            assert isinstance(dataset, HfIterableDataset)
+            dataset = dataset._resolve_features()
+        return dataset
 
+    @staticmethod
+    def safe_rename_columns(dataset, columns):
+        dataset = RowPreprocessor.get_features_dataset(dataset)
         columns_keys = {k.lower(): k for k in dataset.features.keys()}  # lower -> lower/upper
-        safe_columns_mapping = {
-            columns_keys[k.lower()]: v
-            for k, v in self.columns_mapping.items() if k.lower() in columns_keys
-        }
+        safe_columns = {columns_keys[k.lower()]: v for k, v in columns.items() if k.lower() in columns_keys}
 
-        counter = Counter(safe_columns_mapping.values())
-        for k, new_k in list(safe_columns_mapping.items()):
+        counter = Counter(safe_columns.values())
+        for k, new_k in list(safe_columns.items()):
             if counter[new_k] > 1:
                 # For example, if "response" and "answer" match, then no processing is done.
-                safe_columns_mapping.pop(k)
+                safe_columns.pop(k)
                 continue
 
         # e.g. Keep {'query': 'query'} to ensure that the query has the highest priority.
-        safe_columns_mapping = {k: v for k, v in safe_columns_mapping.items() if k != v}
-        if safe_columns_mapping:
-            dataset = dataset.rename_columns(safe_columns_mapping)
+        safe_columns = {k: v for k, v in safe_columns.items() if k != v}
+        if safe_columns:
+            dataset = dataset.rename_columns(safe_columns)
 
         if isinstance(dataset, HfIterableDataset):
             # fix: https://github.com/huggingface/datasets/issues/6408
-            columns_mapping = {k: f'__@{k}' for k in standard_keys if k in dataset.features}
-            if columns_mapping:
-                dataset = dataset.rename_columns(columns_mapping)
-
+            columns = {k: f'__@{k}' for k in RowPreprocessor.standard_keys if k in dataset.features}
+            if columns:
+                dataset = dataset.rename_columns(columns)
         return dataset
+
+    def _rename_columns(self, dataset: DATASET_TYPE) -> DATASET_TYPE:
+        dataset = dataset.rename_columns(self.origin_columns)
+        return self.safe_rename_columns(dataset, self.columns)
 
     @staticmethod
     @contextmanager
@@ -310,18 +308,18 @@ class RowPreprocessor:
 class ResponsePreprocessor(RowPreprocessor):
     """Dataset compatible with older versions of ms-swift"""
 
-    def __init__(self, *, columns_mapping: Optional[Dict[str, str]] = None, **kwargs) -> None:
-        super().__init__(columns_mapping=columns_mapping, **kwargs)
+    def __init__(self, *, columns: Optional[Dict[str, str]] = None, **kwargs) -> None:
+        super().__init__(columns=columns, **kwargs)
         system_keys = ['system', 'system_prompt']
         query_keys = ['query', 'prompt', 'input', 'instruction', 'question']
         response_keys = ['response', 'answer', 'output', 'targets', 'target', 'answer_key', 'solution', 'answers'
                          ] + ['text', 'completion', 'content']
         for key in system_keys:
-            self.columns_mapping[key] = 'system'
+            self.columns[key] = 'system'
         for key in query_keys:
-            self.columns_mapping[key] = 'query'
+            self.columns[key] = 'query'
         for key in response_keys:
-            self.columns_mapping[key] = 'response'
+            self.columns[key] = 'response'
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         response = row.pop('response', None)
@@ -380,12 +378,12 @@ class MessagesPreprocessor(RowPreprocessor):
             system_role: str = 'system',
             tool_role: str = 'tool',
             # 'conversation', 'conversations' -> 'messages'
-            columns_mapping: Optional[Dict[str, str]] = None,
+            columns: Optional[Dict[str, str]] = None,
             repair_messages: Callable[[Union[str, List[Dict[str, str]]]],
                                       Optional[List[Dict[str, str]]]] = default_repair_messages,
             inner_key: Optional[str] = None,
             **kwargs):
-        super().__init__(columns_mapping=columns_mapping, **kwargs)
+        super().__init__(columns=columns, **kwargs)
         self.role_keys = ['role', 'from'] if role_key is None else [role_key]
         self.content_keys = ['content', 'value'] if content_key is None else [content_key]
         self.user_roles = ['user', 'human'] if user_role is None else [user_role]
@@ -398,13 +396,13 @@ class MessagesPreprocessor(RowPreprocessor):
 
         message_keys = ['messages', 'conversation', 'conversations']
         for key in message_keys:
-            self.columns_mapping[key] = 'messages'
+            self.columns[key] = 'messages'
         # sharegptq
         system_keys = ['system', 'system_prompt']
         if system_role not in system_keys:
             system_keys.append(system_role)
         for key in system_keys:
-            self.columns_mapping[key] = 'system'
+            self.columns[key] = 'system'
 
     @staticmethod
     def _is_sharegpt_format(message: Dict[str, str]) -> bool:
@@ -481,8 +479,8 @@ class ClsPreprocessor(ResponsePreprocessor):
 
 class AutoPreprocessor:
 
-    def __init__(self, *, columns_mapping: Optional[Dict[str, str]] = None, **kwargs) -> None:
-        self.columns_mapping = columns_mapping or {}
+    def __init__(self, *, columns: Optional[Dict[str, str]] = None, **kwargs) -> None:
+        self.columns = columns or {}
         self.kwargs = kwargs
 
     def _get_preprocessor(self, dataset: DATASET_TYPE) -> RowPreprocessor:
@@ -501,7 +499,7 @@ class AutoPreprocessor:
         num_proc: int = 1,
         strict: bool = False,
     ) -> DATASET_TYPE:
-        dataset = get_features_dataset(dataset)
-        dataset = dataset.rename_columns(self.columns_mapping)
+        dataset = RowPreprocessor.get_features_dataset(dataset)
+        dataset = dataset.rename_columns(self.columns)
         preprocessor = self._get_preprocessor(dataset)
         return preprocessor(dataset, num_proc=num_proc, strict=strict)
