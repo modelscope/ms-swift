@@ -230,7 +230,7 @@ class RowPreprocessor:
         return dataset
 
     def _rename_columns(self, dataset: DATASET_TYPE) -> DATASET_TYPE:
-        dataset = dataset.rename_columns(self.origin_columns)
+        dataset = self.safe_rename_columns(dataset, self.origin_columns)
         return self.safe_rename_columns(dataset, self.columns)
 
     @staticmethod
@@ -426,10 +426,13 @@ class MessagesPreprocessor(RowPreprocessor):
             new_messages.append(assistant_message)
         return new_messages
 
-    def to_std_messages(self, messages: List[Dict[str, str]]) -> None:
+    def to_std_messages(self, messages: List[Dict[str, str]], system: Optional[str]) -> None:
         start_idx = 0
         if messages[0]['role'] == self.system_role:
             messages[0]['role'] = 'system'
+            start_idx = 1
+        elif system is not None:
+            messages.insert(0, {'role': 'system', 'content': system})
             start_idx = 1
         for user_message, assistant_message in zip(messages[start_idx::2], messages[start_idx + 1::2]):
             user_role = user_message['role']
@@ -460,11 +463,11 @@ class MessagesPreprocessor(RowPreprocessor):
             return
         self._to_std_key(messages, 'role', self.role_keys)
         self._to_std_key(messages, 'content', self.content_keys)
+        system = row.pop('system', None)
         if self._is_sharegpt_format(messages[0]):
-            system = row.pop('system', None)
             messages = self.sharegpt_to_messages(messages, system)
         else:
-            self.to_std_messages(messages)  # inplace
+            self.to_std_messages(messages, system)  # inplace
         row['messages'] = messages
         return row
 
@@ -499,7 +502,6 @@ class AutoPreprocessor:
         num_proc: int = 1,
         strict: bool = False,
     ) -> DATASET_TYPE:
-        dataset = RowPreprocessor.get_features_dataset(dataset)
-        dataset = dataset.rename_columns(self.columns)
+        dataset = RowPreprocessor.safe_rename_columns(dataset, self.columns)
         preprocessor = self._get_preprocessor(dataset)
         return preprocessor(dataset, num_proc=num_proc, strict=strict)
