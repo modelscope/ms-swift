@@ -96,6 +96,7 @@ def perform_infer(infer_engines, infer_requests, request_configs, **infer_kwargs
     )
 
 def collect_from_mct(monte_carlo_tree, args: SamplingArguments):
+    from transformers.utils import strtobool
     if isinstance(monte_carlo_tree, str):
         monte_carlo_tree = json.loads(monte_carlo_tree)
     def _collect(collect_curr_node, _outcome_rewards: list[float], _process_rewards: list[float]):
@@ -119,7 +120,7 @@ def collect_from_mct(monte_carlo_tree, args: SamplingArguments):
                     "bad_score": sorted_children[0]["outcome_reward"],
                 }
                 _prefer_pairs.append(prefer_pair)
-        if collect_curr_node["terminated"]:
+        if strtobool(collect_curr_node["terminated"]):
             _answer = {
                 "answer": collect_curr_node["answer"],
                 "mean_outcome_reward": np.mean(_outcome_rewards),
@@ -127,7 +128,7 @@ def collect_from_mct(monte_carlo_tree, args: SamplingArguments):
                 "mean_process_reward": np.mean(_process_rewards),
                 "min_process_reward": np.min(_process_rewards),
             }
-            if collect_curr_node["correct"]:
+            if strtobool(collect_curr_node["correct"]):
                 _correct_answers.append(_answer)
             else:
                 _incorrect_answers.append(_answer)

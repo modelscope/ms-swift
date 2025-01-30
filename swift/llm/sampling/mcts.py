@@ -78,8 +78,8 @@ class LanguageNode:
             "visit_count": self.visit_count,
             "process_reward": self.process_reward,
             "outcome_reward": self.outcome_reward,
-            "terminated": self.terminated,
-            "correct": self.correct,
+            "terminated": str(self.terminated),
+            "correct": str(self.correct),
             "children": [child.collect() for child in self.children],
         }
         return result
@@ -101,7 +101,7 @@ class MctsSampler(Sampler):
             from swift.llm import InferClient
             api_key = args.api_key
             base_url = args.base_url
-            self.infer_engines = [InferClient(base_url=base_url, api_key=api_key) for _ in range(args.num_return_sequences)]
+            self.infer_engine = [InferClient(base_url=base_url, api_key=api_key) for _ in range(args.num_return_sequences)]
             self.infer_kwargs['model'] = args.model
         else:
             _Engine = self.get_infer_engine()
@@ -172,7 +172,7 @@ class MctsSampler(Sampler):
         def _expand(expand_curr_node: LanguageNode):
             n = _args.num_return_sequences - len(expand_curr_node.children)
             if expand_curr_node.is_root():
-                infer_requests = [InferRequest(system_message + [prompt_message]) for _ in n]
+                infer_requests = [InferRequest(system_message + [prompt_message]) for _ in range(n)]
             else:
                 history_message = {
                     "role": "assistant",
