@@ -345,6 +345,8 @@ class MctsSampler(Sampler):
         #logger.info(f"rollout_incorrect_answers: {rollout_incorrect_answers}")
 
         result = _root.collect()
+        result['query'] = query
+        result['ground_truth'] = ground_truth
         result_json = json.dumps(result, ensure_ascii=False)
         logger.info(result_json)
         return result_json
