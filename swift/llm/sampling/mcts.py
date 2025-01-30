@@ -2,6 +2,7 @@ from copy import deepcopy
 import numpy as np
 import json
 import time
+import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from swift.llm import InferRequest
@@ -285,8 +286,10 @@ class MctsSampler(Sampler):
                 best_child_value = max([child.outcome_reward for child in back_curr_node.children])
                 back_curr_node.init_and_update_value(best_child_value)
                 back_curr_node.visit()
-                if len(back_curr_node.active_children) == 0 and not back_curr_node.is_root():
-                    back_curr_node.parent.active_children.remove(back_curr_node)
+                if len(back_curr_node.active_children) == 0:
+                    back_curr_node.terminated = True
+                    if not back_curr_node.is_root():
+                        back_curr_node.parent.active_children.remove(back_curr_node)
                 back_curr_node = back_curr_node.parent
 
         _args = self.args
@@ -302,9 +305,8 @@ class MctsSampler(Sampler):
         rollout_correct_answers, rollout_incorrect_answers, prefer_pairs, terminated_nodes = [], [], [], []
         too_easy, too_hard = False, False
         iter_count = 0
-        while (not too_easy and not too_hard
-            and len(terminated_nodes) < _args.num_return_sequences
-            and iter_count < _args.max_iterations):
+        stop_reason = None
+        while True:
             logger.info(f"iter_count: {iter_count}" + "." * 10)
             s_time = time.time()
             curr_node = _select(_root)
@@ -316,24 +318,29 @@ class MctsSampler(Sampler):
                 s_time = time.time()
                 _rollout(curr_node)
                 logger.info("rollout" + "=" * 10 + f"time: {time.time() - s_time}")
-                s_time = time.time()
-                _back_propagate(curr_node)
-                logger.info("back propagate" + "=" * 10 + f"time: {time.time() - s_time}")
+            s_time = time.time()
+            _back_propagate(curr_node)
+            logger.info("back propagate" + "=" * 10 + f"time: {time.time() - s_time}")
             if len(rollout_correct_answers) + len(rollout_incorrect_answers) >= 2 * _args.num_return_sequences:
                 if 4 * len(rollout_incorrect_answers) < len(rollout_correct_answers):
-                    logger.info("too easy" + "!" * 20)
-                    #logger.info(f"rollout_correct_answers: {rollout_correct_answers}")
-                    #logger.info(f"rollout_incorrect_answers: {rollout_incorrect_answers}")
-                    too_easy = True
+                    stop_reason = "too easy"
+                    break
                 elif 4 * len(rollout_correct_answers) < len(rollout_incorrect_answers):
-                    logger.info("too hard" + "!" * 20)
-                    #logger.info(f"correct_answers: {correct_answers}")
-                    #logger.info(f"incorrect_answers: {incorrect_answers}")
-                    too_hard = True
+                    stop_reason = "too hard"
+                    break
+            elif _root.terminated:
+                stop_reason = "root terminated"
+                break
+            elif len(terminated_nodes) >= _args.num_return_sequences:
+                stop_reason = "enough nodes"
+                break
+            elif iter_count >= _args.max_iterations:
+                stop_reason = "max_iterations"
+                break
             iter_count += 1
-        if iter_count == _args.max_iterations:
-            logger.info("too hard" + "!" * 20)
-            too_hard = True
+        if stop_reason is None and iter_count == _args.max_iterations:
+            stop_reason = "too hard"
+        logger.info(f"stop_reason: {stop_reason}")
         #logger.info(f"rollout_correct_answers: {rollout_correct_answers}")
         #logger.info(f"rollout_incorrect_answers: {rollout_incorrect_answers}")
 
@@ -355,4 +362,5 @@ class MctsSampler(Sampler):
                 generated.append(self.search_single(query, ground_truth) + '\n')
             except Exception as e:
                 logger.error(f"Error: {e}")
+                logger.error(f"Traceback: {traceback.format_exc()}")
         return generated

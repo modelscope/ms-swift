@@ -71,7 +71,7 @@ def get_reward(model: Any,
 
 def perform_infer(infer_engines, infer_requests, request_configs, **infer_kwargs):
     if isinstance(infer_engines, list):
-        assert len(infer_engines) >= len(infer_requests) == len(request_configs)
+        assert len(infer_engines) >= len(request_configs) >= len(infer_requests)
         from concurrent.futures import ThreadPoolExecutor, as_completed
         n = len(infer_requests)
         with ThreadPoolExecutor(max_workers=n) as executor:
