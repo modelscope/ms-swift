@@ -5,6 +5,7 @@ from typing import Any, List, Optional
 import json
 import numpy as np
 
+from swift.llm.argument.sampling_args import SamplingArguments
 from swift.llm import InferRequest, Messages, RequestConfig
 
 
@@ -68,9 +69,71 @@ def get_reward(model: Any,
 
     return normalize(arr), _mask
 
-def perform_infer(infer_engine, infer_request, request_config, **infer_kwargs):
-    return infer_engine.infer(
-        [infer_request],
-        request_config,
+def perform_infer(infer_engines, infer_requests, request_configs, **infer_kwargs):
+    if isinstance(infer_engines, list):
+        assert len(infer_engines) >= len(infer_requests) == len(request_configs)
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        n = len(infer_requests)
+        with ThreadPoolExecutor(max_workers=n) as executor:
+            futures = {executor.submit(perform_infer,
+                                       infer_engines[i],
+                                       infer_requests[i],
+                                       request_configs[i],
+                                       **infer_kwargs): i for i in range(n)}
+            responses = []
+            for future in as_completed(futures):
+                task_id = futures[future]
+                try:
+                    responses += future.result()
+                except Exception as e:
+                    print(f"任务 {task_id} 执行请求时发生错误: {e}")
+        return responses
+
+    return infer_engines.infer(
+        [infer_requests],
+        request_configs,
         **infer_kwargs,
     )
+
+def collect_from_mct(monte_carlo_tree, args: SamplingArguments):
+    if isinstance(monte_carlo_tree, str):
+        monte_carlo_tree = json.loads(monte_carlo_tree)
+    def _collect(collect_curr_node, _outcome_rewards: list[float], _process_rewards: list[float]):
+        _prefer_pairs, _correct_answers, _incorrect_answers = [], [], []
+        _outcome_rewards = _outcome_rewards[:] + [collect_curr_node["outcome_reward"]]
+        _process_rewards = _process_rewards[:] + [collect_curr_node["process_reward"]]
+        if not len(collect_curr_node["children"]) > 0:
+            for child in collect_curr_node["children"]:
+                p, c, i = _collect(child, _outcome_rewards, _process_rewards)
+                _prefer_pairs += p
+                _correct_answers += c
+                _incorrect_answers += i
+            sorted_children = sorted(collect_curr_node["children"], key=lambda x: x["outcome_reward"])
+            if sorted_children[-1].outcome_reward - sorted_children[0].outcome_reward > collect_filter_threshold:
+                # TODO: filter with visit count
+                prefer_pair = {
+                    "path": collect_curr_node["answer"],
+                    "good": sorted_children[-1]["path"][-1],
+                    "good_score": sorted_children[-1]["outcome_reward"],
+                    "bad": sorted_children[0]["path"][-1],
+                    "bad_score": sorted_children[0]["outcome_reward"],
+                }
+                _prefer_pairs.append(prefer_pair)
+        if collect_curr_node["terminated"]:
+            _answer = {
+                "answer": collect_curr_node["answer"],
+                "mean_outcome_reward": np.mean(_outcome_rewards),
+                "min_outcome_reward": np.min(_outcome_rewards),
+                "mean_process_reward": np.mean(_process_rewards),
+                "min_process_reward": np.min(_process_rewards),
+            }
+            if collect_curr_node["correct"]:
+                _correct_answers.append(_answer)
+            else:
+                _incorrect_answers.append(_answer)
+        return _prefer_pairs, _correct_answers, _incorrect_answers
+
+    collect_filter_threshold = args.collect_filter_threshold
+    _root = monte_carlo_tree
+    prefer_pairs, correct_answers, incorrect_answers = _collect(_root, [], [])
+    return prefer_pairs, correct_answers, incorrect_answers
