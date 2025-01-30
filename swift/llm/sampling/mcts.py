@@ -184,7 +184,14 @@ class MctsSampler(Sampler):
 
             # e_time = time.time()
             # 为了并行进行 Expand 操作，这里暂时不需要考虑顺序，因为 Prompt 是一样的
-            responses = perform_infer(self.infer_engine, infer_requests, self.expand_request_configs, **self.infer_kwargs)
+            expand_iter_index = 0
+            while True:
+                responses = perform_infer(self.infer_engine, infer_requests, self.expand_request_configs, **self.infer_kwargs)
+                if len(responses) > 0:
+                    break
+                if expand_iter_index == 5:
+                    raise ValueError("Expand should not return any response")
+                expand_iter_index += 1
             # logger.info(f"expand.expand time: {time.time() - e_time}")
 
             # 为了并行获取 Outcome Reward，这里获得的 OR 是顺序返回的，所以可以直接对应
@@ -229,7 +236,7 @@ class MctsSampler(Sampler):
             # logger.info(f"expand.prm time: {time.time() - e_time}")
 
         def _rollout(rollout_curr_node: LanguageNode):
-            rollout_iter_index = 0
+            rollout_depth = 0
             rollout_nodes = {}
             for i in range(len(rollout_curr_node.active_children)):
                 rollout_nodes[i] = {
@@ -240,7 +247,7 @@ class MctsSampler(Sampler):
                     },
                 }
             active_rollout_nodes = list(rollout_nodes.keys())
-            while len(active_rollout_nodes) > 0 and rollout_iter_index < _args.rollout_depth:
+            while len(active_rollout_nodes) > 0 and rollout_depth < _args.rollout_depth:
                 # r_time = time.time()
                 infer_requests = [InferRequest(system_message + [prompt_message,
                                                 rollout_nodes[index]['history_messages'],
@@ -248,8 +255,14 @@ class MctsSampler(Sampler):
                                   for index in active_rollout_nodes]
                 # logger.info(f"rollout.prepare time: {time.time() - r_time}")
                 # r_time = time.time()
-                n = len(infer_requests)
-                responses = perform_infer(self.infer_engine, infer_requests, self.rollout_request_configs, **self.infer_kwargs)
+                rollout_iter_index = 0
+                while True:
+                    responses = perform_infer(self.infer_engine, infer_requests, self.rollout_request_configs, **self.infer_kwargs)
+                    if len(responses) > 0:
+                        break
+                    if rollout_iter_index == 5:
+                        raise ValueError("Rollout should not return any response")
+                    rollout_iter_index += 1
                 # logger.info(f"rollout.infer time: {time.time() - r_time}")
 
                 # r_time = time.time()
@@ -279,7 +292,7 @@ class MctsSampler(Sampler):
                             rollout_incorrect_answers.append(rollout_nodes[index]['history_messages']["content"])
                         rollout_nodes.pop(index)
                 active_rollout_nodes = list(rollout_nodes.keys())
-                rollout_iter_index += 1
+                rollout_depth += 1
 
         def _back_propagate(back_curr_node: LanguageNode):
             while back_curr_node:
@@ -328,25 +341,28 @@ class MctsSampler(Sampler):
                 elif 4 * len(rollout_correct_answers) < len(rollout_incorrect_answers):
                     stop_reason = "too hard"
                     break
-            elif _root.terminated:
+            if _root.terminated:
                 stop_reason = "root terminated"
                 break
-            elif len(terminated_nodes) >= _args.num_return_sequences:
+            if len(terminated_nodes) >= _args.num_return_sequences:
                 stop_reason = "enough nodes"
                 break
-            elif iter_count >= _args.max_iterations:
+            if iter_count >= _args.max_iterations:
                 stop_reason = "max_iterations"
                 break
             iter_count += 1
-        if stop_reason is None and iter_count == _args.max_iterations:
-            stop_reason = "too hard"
         logger.info(f"stop_reason: {stop_reason}")
         #logger.info(f"rollout_correct_answers: {rollout_correct_answers}")
         #logger.info(f"rollout_incorrect_answers: {rollout_incorrect_answers}")
 
-        result = _root.collect()
-        result['query'] = query
-        result['ground_truth'] = ground_truth
+        monte_carlo_tree = _root.collect()
+        result = {
+            "query": query,
+            "ground_truth": ground_truth,
+            "rollout_correct_answers": rollout_correct_answers,
+            "rollout_incorrect_answers": rollout_incorrect_answers,
+            "monte_carlo_tree": monte_carlo_tree,
+        }
         result_json = json.dumps(result, ensure_ascii=False)
         logger.info(result_json)
         return result_json
