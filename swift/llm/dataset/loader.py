@@ -196,7 +196,7 @@ class DatasetLoader:
         if columns:
             dataset = RowPreprocessor.safe_rename_columns(dataset, columns)
         dataset = dataset_meta.preprocess_func(dataset, num_proc=num_proc, strict=strict)
-        dataset = DatasetLoader._remove_useless_columns(dataset)
+        dataset = RowPreprocessor.remove_useless_columns(dataset)
         return dataset
 
     @staticmethod
@@ -265,7 +265,7 @@ class DatasetLoader:
             if columns:
                 dataset = RowPreprocessor.safe_rename_columns(dataset, columns)
             dataset = subset.preprocess_func(dataset, num_proc=num_proc, strict=strict)
-            dataset = DatasetLoader._remove_useless_columns(dataset)
+            dataset = RowPreprocessor.remove_useless_columns(dataset)
             datasets.append(dataset)
         return DatasetLoader._concat_datasets(datasets, streaming)
 
@@ -339,15 +339,6 @@ class DatasetLoader:
                     test_size=val_sample, seed=get_seed(random_state)).values()
                 train_dataset = sample_dataset(train_dataset, train_sample, random_state)
         return train_dataset, val_dataset
-
-    @staticmethod
-    def _remove_useless_columns(dataset: DATASET_TYPE) -> DATASET_TYPE:
-        dataset = RowPreprocessor.get_features_dataset(dataset)
-        features = dataset.features
-        k_list = [k for k in RowPreprocessor.standard_keys if k in features]
-        if len(k_list) != len(features):
-            dataset = dataset.select_columns(k_list)
-        return dataset
 
     @staticmethod
     def load(
