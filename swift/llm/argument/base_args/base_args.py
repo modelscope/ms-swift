@@ -203,7 +203,8 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             'split_dataset_ratio',
             # template_args
             'tools_prompt',
-            'use_chat_template'
+            'use_chat_template',
+            'norm_bbox'
         ]
         skip_keys = list(f.name for f in fields(GenerationArguments) + fields(CompatArguments)) + ['adapters']
         if not isinstance(self, TrainArguments):
