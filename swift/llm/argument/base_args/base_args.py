@@ -164,6 +164,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
     @classmethod
     def from_pretrained(cls, checkpoint_dir: str):
         self = super().__new__(cls)
+        self.load_data_args = True
         self.ckpt_dir = checkpoint_dir
         self.load_args_from_ckpt()
         return self
