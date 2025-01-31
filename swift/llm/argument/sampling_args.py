@@ -55,7 +55,7 @@ class SamplingArguments(BaseArguments):
 
     def _init_model_info(self):
         if self.sampler_engine != 'client':
-            return super._init_model_info(self)
+            return super()._init_model_info()
         self.task_type = 'causal_lm'
         return
 
@@ -75,9 +75,6 @@ class SamplingArguments(BaseArguments):
             self.engine_kwargs = json.loads(self.engine_kwargs)
         else:
             self.engine_kwargs = {}
-
-        if self.sampler_type == 'mcts' and self.sampler_engine != 'client':
-            raise ValueError(f'`mcts` sampler only supports `client` engine yet, but now is: {self.sampler_engine}')
 
         super().__post_init__()
 

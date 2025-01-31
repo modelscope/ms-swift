@@ -88,9 +88,26 @@ def perform_infer(infer_engines, infer_requests, request_configs, **infer_kwargs
                 except Exception as e:
                     print(f"任务 {task_id} 执行请求时发生错误: {e}")
         return responses
-
+    elif isinstance(infer_requests, list):
+        responses = []
+        if isinstance(request_configs, list):
+            assert len(infer_requests) <= len(request_configs)
+            for i in range(len(infer_requests)):
+                responses += infer_engines.infer(
+                    [infer_requests[i]],
+                    request_configs[i],
+                    **infer_kwargs,
+                )
+        elif isinstance(request_configs, RequestConfig):
+            for infer_request in infer_requests:
+                responses += infer_engines.infer(
+                    infer_request,
+                    request_configs,
+                    **infer_kwargs,
+                )
+        return responses
     return infer_engines.infer(
-        [infer_requests],
+        infer_requests,
         request_configs,
         **infer_kwargs,
     )
