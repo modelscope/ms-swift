@@ -2,27 +2,29 @@ import os
 import re
 from typing import Literal
 
-from swift.llm import load_image
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-
-
-def draw_bbox(image, response):
-    matchs = re.findall(
+def draw_bbox_qwen2_vl(image, response, norm_bbox: Literal['norm1000', 'none']):
+    matches = re.findall(
         r'<\|object_ref_start\|>(.*?)<\|object_ref_end\|><\|box_start\|>\((\d+),(\d+)\),\((\d+),(\d+)\)<\|box_end\|>',
         response)
+    ref = []
+    bbox = []
+    for match_ in matches:
+        ref.append(match_[0])
+        bbox.append(list(match_[1:]))
+    draw_bbox(image, ref, bbox, norm_bbox=norm_bbox)
 
 
 def infer_grounding():
     from swift.llm import (PtEngine, RequestConfig, AdapterRequest, get_template, BaseArguments, InferRequest,
                            safe_snapshot_download, get_model_tokenizer)
     from swift.tuners import Swift
+    output_path = 'animal_bbox.png'
     image = load_image('http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png')
     infer_request = InferRequest(messages=[{'role': 'user', 'content': 'Task: Object Detection'}], images=[image])
 
     request_config = RequestConfig(max_tokens=512, temperature=0)
-    adapter_path = safe_snapshot_download(
-        '/mnt/nas2/huangjintao.hjt/work/llmscope/output/v92-20250126-173609/checkpoint-1237')
+    adapter_path = safe_snapshot_download('output/vx-xxx/checkpoint-xxx')
     args = BaseArguments.from_pretrained(adapter_path)
 
     engine = PtEngine(args.model, adapters=[adapter_path])
@@ -30,9 +32,13 @@ def infer_grounding():
     response = resp_list[0].choices[0].message.content
     print(f'lora-response: {response}')
 
-    new_image = draw_bbox(image, response)
-    new_image.save('animal_bbox.png')
+    draw_bbox_qwen2_vl(image, response, norm_bbox=args.norm_bbox)
+    print(f'output_path: {output_path}')
+    image.save(output_path)
 
 
 if __name__ == '__main__':
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+    os.environ['MAX_PIXELS'] = '1003520'
+    from swift.llm import draw_bbox, load_image
     infer_grounding()
