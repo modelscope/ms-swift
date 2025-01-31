@@ -16,9 +16,7 @@ def draw_bbox_qwen2_vl(image, response, norm_bbox: Literal['norm1000', 'none']):
 
 
 def infer_grounding():
-    from swift.llm import (PtEngine, RequestConfig, AdapterRequest, get_template, BaseArguments, InferRequest,
-                           safe_snapshot_download, get_model_tokenizer)
-    from swift.tuners import Swift
+    from swift.llm import PtEngine, RequestConfig, BaseArguments, InferRequest, safe_snapshot_download
     output_path = 'animal_bbox.png'
     image = load_image('http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png')
     infer_request = InferRequest(messages=[{'role': 'user', 'content': 'Task: Object Detection'}], images=[image])
