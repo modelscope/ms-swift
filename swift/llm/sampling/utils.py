@@ -6,7 +6,6 @@ import json
 import numpy as np
 
 from swift.llm import InferRequest, Messages, RequestConfig
-from swift.llm.argument.sampling_args import SamplingArguments
 
 
 def get_messages_md5(messages: Messages):
