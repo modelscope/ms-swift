@@ -95,7 +95,7 @@ def perform_infer(infer_engines, infer_requests, request_configs, **infer_kwargs
         **infer_kwargs,
     )
 
-def collect_from_mct(monte_carlo_tree, args: SamplingArguments):
+def collect_from_mct(monte_carlo_tree, collect_filter_threshold):
     from transformers.utils import strtobool
     if isinstance(monte_carlo_tree, str):
         monte_carlo_tree = json.loads(monte_carlo_tree)
@@ -103,17 +103,17 @@ def collect_from_mct(monte_carlo_tree, args: SamplingArguments):
         _prefer_pairs, _correct_answers, _incorrect_answers = [], [], []
         _outcome_rewards = _outcome_rewards[:] + [collect_curr_node["outcome_reward"]]
         _process_rewards = _process_rewards[:] + [collect_curr_node["process_reward"]]
-        if not len(collect_curr_node["children"]) > 0:
+        if len(collect_curr_node["children"]) > 0:
             for child in collect_curr_node["children"]:
                 p, c, i = _collect(child, _outcome_rewards, _process_rewards)
                 _prefer_pairs += p
                 _correct_answers += c
                 _incorrect_answers += i
             sorted_children = sorted(collect_curr_node["children"], key=lambda x: x["outcome_reward"])
-            if sorted_children[-1].outcome_reward - sorted_children[0].outcome_reward > collect_filter_threshold:
+            if sorted_children[-1]["outcome_reward"] - sorted_children[0]["outcome_reward"] > collect_filter_threshold:
                 # TODO: filter with visit count
                 prefer_pair = {
-                    "path": collect_curr_node["answer"],
+                    "path": "ки\n".join(collect_curr_node["path"]),
                     "good": sorted_children[-1]["path"][-1],
                     "good_score": sorted_children[-1]["outcome_reward"],
                     "bad": sorted_children[0]["path"][-1],
@@ -122,7 +122,7 @@ def collect_from_mct(monte_carlo_tree, args: SamplingArguments):
                 _prefer_pairs.append(prefer_pair)
         if strtobool(collect_curr_node["terminated"]):
             _answer = {
-                "answer": collect_curr_node["answer"],
+                "answer": "ки\n".join(collect_curr_node["path"]),
                 "mean_outcome_reward": np.mean(_outcome_rewards),
                 "min_outcome_reward": np.min(_outcome_rewards),
                 "mean_process_reward": np.mean(_process_rewards),
@@ -134,7 +134,6 @@ def collect_from_mct(monte_carlo_tree, args: SamplingArguments):
                 _incorrect_answers.append(_answer)
         return _prefer_pairs, _correct_answers, _incorrect_answers
 
-    collect_filter_threshold = args.collect_filter_threshold
     _root = monte_carlo_tree
     prefer_pairs, correct_answers, incorrect_answers = _collect(_root, [], [])
     return prefer_pairs, correct_answers, incorrect_answers
