@@ -59,11 +59,11 @@ class TextGenerationPreprocessor(ResponsePreprocessor):
                  *,
                  prompt: str,
                  query_tag: str = '{{QUERY}}',
-                 columns_mapping: Optional[Dict[str, str]] = None,
+                 columns: Optional[Dict[str, str]] = None,
                  **kwargs) -> None:
         self.query_tag = query_tag
         self.prompt = prompt
-        super().__init__(columns_mapping=columns_mapping, **kwargs)
+        super().__init__(columns=columns, **kwargs)
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         row['query'] = self.prompt.replace(self.query_tag, row['query'])
@@ -77,7 +77,7 @@ class ClsGenerationPreprocessor(ResponsePreprocessor):
                  *,
                  task: str,
                  is_pair_seq: bool = False,
-                 columns_mapping: Optional[Dict[str, str]] = None,
+                 columns: Optional[Dict[str, str]] = None,
                  **kwargs) -> None:
         self.labels = labels
         self.task = task
@@ -96,7 +96,7 @@ class ClsGenerationPreprocessor(ResponsePreprocessor):
 {inputs}
 Category: {category}
 Output:"""
-        super().__init__(columns_mapping=columns_mapping, **kwargs)
+        super().__init__(columns=columns, **kwargs)
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         label = row.pop(self.label_key, None)

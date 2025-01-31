@@ -101,14 +101,14 @@ def register_dataset(dataset_meta: DatasetMeta, *, exist_ok: bool = False) -> No
 def _preprocess_d_info(d_info: Dict[str, Any], *, base_dir: Optional[str] = None) -> Dict[str, Any]:
     d_info = deepcopy(d_info)
 
-    columns_mapping = None
+    columns = None
     if 'columns' in d_info:
-        columns_mapping = d_info.pop('columns')
+        columns = d_info.pop('columns')
 
     if 'messages' in d_info:
-        d_info['preprocess_func'] = MessagesPreprocessor(**d_info.pop('messages'), columns_mapping=columns_mapping)
+        d_info['preprocess_func'] = MessagesPreprocessor(**d_info.pop('messages'), columns=columns)
     else:
-        d_info['preprocess_func'] = AutoPreprocessor(columns_mapping=columns_mapping)
+        d_info['preprocess_func'] = AutoPreprocessor(columns=columns)
 
     if 'dataset_path' in d_info:
         dataset_path = d_info.pop('dataset_path')

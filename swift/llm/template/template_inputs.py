@@ -81,16 +81,7 @@ class TemplateInputs(InferRequest):
     """
     rejected_response: Optional[str] = None
     label: Optional[bool] = None
-    objects: Union[str, None, List[Dict[str, Any]]] = None  # List[Dict[str, Any]]
-
-    def __post_init__(self):
-        InferRequest.__post_init__(self)
-        # Format objects(groundings/refs) to json
-        if isinstance(self.objects, str):
-            # reload grounding from str
-            self.objects = json.loads(self.objects)
-        elif self.objects is None:
-            self.objects = []
+    objects: Dict[str, List[Any]] = field(default_factory=dict)
 
 
 @dataclass
@@ -106,7 +97,7 @@ class StdTemplateInputs:
     images: List[Union[str, Image.Image]] = field(default_factory=list)
     audios: List[str] = field(default_factory=list)
     videos: List[str] = field(default_factory=list)
-    objects: List[Dict[str, Any]] = field(default_factory=list)
+    objects: Dict[str, List[Any]] = field(default_factory=dict)
 
     agent_keyword: Optional[Dict[str, str]] = None
 
@@ -114,8 +105,8 @@ class StdTemplateInputs:
         self.image_idx = 0
         self.audio_idx = 0
         self.video_idx = 0
-        self.object_idx = 0
-        self.box_idx = 0
+        self.ref_idx = 0
+        self.bbox_idx = 0
         if self.images and not isinstance(self.images, (list, tuple)):
             self.images = [self.images]
         if self.videos and not isinstance(self.videos, (list, tuple)):
@@ -144,7 +135,7 @@ class StdTemplateInputs:
                 kwargs[key] = inputs[key]
         messages = inputs['messages']
         tools = inputs.get('tools')
-        objects = inputs.get('objects') or []
+        objects = inputs.get('objects') or {}
 
         if messages and messages[0]['role'] == 'system':
             message = messages.pop(0)
