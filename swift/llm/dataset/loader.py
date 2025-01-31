@@ -418,6 +418,7 @@ def load_dataset(
 
     Args:
         download_mode: Download mode, default is `reuse_dataset_if_exists`.
+        columns: Used for manual column mapping of datasets.
         strict: Raise if any row is not correct.
         hub_token: The token of the hub.
         use_hf: Use hf dataset or ms dataset.
