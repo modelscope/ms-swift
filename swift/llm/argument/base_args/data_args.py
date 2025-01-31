@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from dataclasses import dataclass, field
-from typing import List, Literal, Optional
+from typing import Dict, List, Literal, Optional, Union
 
 from datasets import enable_caching
 
@@ -24,6 +24,7 @@ class DataArguments:
         streaming (bool): Flag to enable streaming of datasets. Default is False.
         enable_cache (bool): Flag to load dataset from cache file. Default is False.
         download_mode (Literal): Mode for downloading datasets. Default is 'reuse_dataset_if_exists'.
+        columns: Used for manual column mapping of datasets.
         model_name (List[str]): List containing Chinese and English names of the model. Default is [None, None].
         model_author (List[str]): List containing Chinese and English names of the model author.
             Default is [None, None].
@@ -42,6 +43,7 @@ class DataArguments:
 
     enable_cache: bool = False
     download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists'
+    columns: Optional[Union[Dict[str, str], str]] = None
     strict: bool = False
     # Chinese name and English name
     model_name: List[str] = field(default_factory=lambda: [None, None], metadata={'help': "e.g. ['小黄', 'Xiao Huang']"})
@@ -60,6 +62,7 @@ class DataArguments:
     def __post_init__(self):
         if self.data_seed is None:
             self.data_seed = self.seed
+        self.columns = self.parse_to_dict(self.columns)
         if self.enable_cache:
             enable_caching()
         if len(self.val_dataset) > 0 or self.streaming:
@@ -79,6 +82,7 @@ class DataArguments:
             'use_hf': self.use_hf,
             'hub_token': self.hub_token,
             'download_mode': self.download_mode,
+            'columns': self.columns,
             'strict': self.strict,
             'model_name': self.model_name,
             'model_author': self.model_author,
