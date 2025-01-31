@@ -185,7 +185,7 @@ class MathORM(ORM):
             answers = [answers]
         results = []
         for answer in answers:
-            results.append("\\boxed" in answer)
+            results.append('\\boxed' in answer)
         return results
 
     @staticmethod

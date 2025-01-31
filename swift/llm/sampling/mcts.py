@@ -1,18 +1,17 @@
-from copy import deepcopy
-import numpy as np
-import json
 import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from copy import deepcopy
+
+import json
+import numpy as np
 
 from swift.llm import InferRequest
+from swift.llm.argument.sampling_args import SamplingArguments
 from swift.llm.infer.protocol import UsageInfo
 from swift.utils import get_logger
-from swift.llm.argument.sampling_args import SamplingArguments
-
 from .base import Sampler
 from .utils import get_reward, perform_infer
-
 
 logger = get_logger()
 
@@ -20,17 +19,19 @@ NXT_PROMPT = """Continue.
 """
 
 next_message = {
-    "role": "user",
-    "content": NXT_PROMPT,
+    'role': 'user',
+    'content': NXT_PROMPT,
 }
 
 
 class LanguageNode:
 
-    def __init__(self,
-                 step: str = None,
-                 sep_token: str = None,
-                 parent: "LanguageNode" = None,):
+    def __init__(
+        self,
+        step: str = None,
+        sep_token: str = None,
+        parent: 'LanguageNode' = None,
+    ):
         self.parent = parent
 
         if sep_token:
@@ -44,7 +45,7 @@ class LanguageNode:
             self.depth = parent.depth + 1
         else:
             self.path = []
-            self.answer = ""
+            self.answer = ''
             self.depth = 0
 
         self.active_children = []
@@ -67,21 +68,21 @@ class LanguageNode:
     def init_and_update_value(self, value):
         self.outcome_reward = (self.outcome_reward * self.visit_count + value) / (self.visit_count + 1)
 
-    def add_child(self, child: "LanguageNode"):
+    def add_child(self, child: 'LanguageNode'):
         self.children.append(child)
         if not child.terminated:
             self.active_children.append(child)
 
     def collect(self):
         result = {
-            "path": self.path,
-            "depth": self.depth,
-            "visit_count": self.visit_count,
-            "process_reward": self.process_reward,
-            "outcome_reward": self.outcome_reward,
-            "terminated": str(self.terminated),
-            "correct": str(self.correct),
-            "children": [child.collect() for child in self.children],
+            'path': self.path,
+            'depth': self.depth,
+            'visit_count': self.visit_count,
+            'process_reward': self.process_reward,
+            'outcome_reward': self.outcome_reward,
+            'terminated': str(self.terminated),
+            'correct': str(self.correct),
+            'children': [child.collect() for child in self.children],
         }
         return result
 
@@ -93,7 +94,7 @@ class MctsSampler(Sampler):
 
     def __init__(self, input_args: SamplingArguments):
         super().__init__(input_args)
-        self.usage_info = UsageInfo(0,0,0)
+        self.usage_info = UsageInfo(0, 0, 0)
 
     def _prepare_model_tokenizer(self):
         args = self.args
@@ -102,7 +103,9 @@ class MctsSampler(Sampler):
             from swift.llm import InferClient
             api_key = args.api_key
             base_url = args.base_url
-            self.infer_engine = [InferClient(base_url=base_url, api_key=api_key) for _ in range(args.num_return_sequences)]
+            self.infer_engine = [
+                InferClient(base_url=base_url, api_key=api_key) for _ in range(args.num_return_sequences)
+            ]
             self.infer_kwargs['model'] = args.model
         else:
             _Engine = self.get_infer_engine()
@@ -153,6 +156,7 @@ class MctsSampler(Sampler):
             setattr(self.usage_info, key, update_value)
 
     def search_single(self, query, ground_truth):
+
         def _uct(uct_curr_node: LanguageNode):
             alpha = _args.process_reward_rate
             value = alpha * uct_curr_node.process_reward + (1 - alpha) * uct_curr_node.outcome_reward
@@ -160,8 +164,9 @@ class MctsSampler(Sampler):
                 return value
 
             exploitation_score = value
-            exploration_score = (_args.exploration_rate
-                                 * np.sqrt(np.log(uct_curr_node.parent.visit_count + 1) / (uct_curr_node.visit_count + 1)))
+            exploration_score = (
+                _args.exploration_rate
+                * np.sqrt(np.log(uct_curr_node.parent.visit_count + 1) / (uct_curr_node.visit_count + 1)))
 
             return exploration_score + exploitation_score
 
@@ -176,8 +181,8 @@ class MctsSampler(Sampler):
                 infer_requests = [InferRequest(system_message + [prompt_message]) for _ in range(n)]
             else:
                 history_message = {
-                    "role": "assistant",
-                    "content": expand_curr_node.answer,
+                    'role': 'assistant',
+                    'content': expand_curr_node.answer,
                 }
                 infer_request = InferRequest(system_message + [prompt_message, history_message, next_message])
                 infer_requests = [infer_request for _ in range(n)]
@@ -186,24 +191,25 @@ class MctsSampler(Sampler):
             # 为了并行进行 Expand 操作，这里暂时不需要考虑顺序，因为 Prompt 是一样的
             expand_iter_index = 0
             while True:
-                responses = perform_infer(self.infer_engine, infer_requests, self.expand_request_configs, **self.infer_kwargs)
+                responses = perform_infer(self.infer_engine, infer_requests, self.expand_request_configs,
+                                          **self.infer_kwargs)
                 if len(responses) > 0:
                     break
                 if expand_iter_index == 5:
-                    raise ValueError("Expand should not return any response")
+                    raise ValueError('Expand should not return any response')
                 expand_iter_index += 1
             # logger.info(f"expand.expand time: {time.time() - e_time}")
 
             # 为了并行获取 Outcome Reward，这里获得的 OR 是顺序返回的，所以可以直接对应
             orm_infer_requests = []
-            unique_output = set() # 用于去重
+            unique_output = set()  # 用于去重
             for response in responses:
                 self.update_usage_info(response)
                 output = response.choices[0].message.content.rstrip(sep_token + '\n').split(sep_token)[0]
                 if output in unique_output:
                     continue
                 unique_output.add(output)
-                orm_infer_requests.append(InferRequest([{"role": "assistant", "content": output}]))
+                orm_infer_requests.append(InferRequest([{'role': 'assistant', 'content': output}]))
                 child = LanguageNode(step=output, parent=expand_curr_node)
                 if self.orm_model.check_terminate(child.answer)[0]:
                     child.terminated = True
@@ -211,7 +217,9 @@ class MctsSampler(Sampler):
 
             # e_time = time.time()
             orm_score, _orm_mask = get_reward(
-                self.orm_model, orm_infer_requests, ground_truths=[ground_truth] * len(orm_infer_requests),
+                self.orm_model,
+                orm_infer_requests,
+                ground_truths=[ground_truth] * len(orm_infer_requests),
                 threshold=0.0)
             # logger.info(f"expand.orm time: {time.time() - e_time}")
             for child, score in zip(expand_curr_node.children, orm_score):
@@ -224,7 +232,7 @@ class MctsSampler(Sampler):
             if self.prm_model:
                 prm_infer_requests = []
                 for child in expand_curr_node.children:
-                    prm_message = {"role": "assistant", "content": child.answer}
+                    prm_message = {'role': 'assistant', 'content': child.answer}
                     prm_infer_requests.append(InferRequest([prompt_message, prm_message]))
                 prm_score, _prm_mask = get_reward(
                     self.prm_model,
@@ -240,28 +248,30 @@ class MctsSampler(Sampler):
             rollout_nodes = {}
             for i in range(len(rollout_curr_node.active_children)):
                 rollout_nodes[i] = {
-                    "node": rollout_curr_node.active_children[i],
-                    "history_messages": {
-                        "role": "assistant",
-                        "content": rollout_curr_node.active_children[i].answer,
+                    'node': rollout_curr_node.active_children[i],
+                    'history_messages': {
+                        'role': 'assistant',
+                        'content': rollout_curr_node.active_children[i].answer,
                     },
                 }
             active_rollout_nodes = list(rollout_nodes.keys())
             while len(active_rollout_nodes) > 0 and rollout_depth < _args.rollout_depth:
                 # r_time = time.time()
-                infer_requests = [InferRequest(system_message + [prompt_message,
-                                                rollout_nodes[index]['history_messages'],
-                                                next_message])
-                                  for index in active_rollout_nodes]
+                infer_requests = [
+                    InferRequest(system_message
+                                 + [prompt_message, rollout_nodes[index]['history_messages'], next_message])
+                    for index in active_rollout_nodes
+                ]
                 # logger.info(f"rollout.prepare time: {time.time() - r_time}")
                 # r_time = time.time()
                 rollout_iter_index = 0
                 while True:
-                    responses = perform_infer(self.infer_engine, infer_requests, self.rollout_request_configs, **self.infer_kwargs)
+                    responses = perform_infer(self.infer_engine, infer_requests, self.rollout_request_configs,
+                                              **self.infer_kwargs)
                     if len(responses) > 0:
                         break
                     if rollout_iter_index == 5:
-                        raise ValueError("Rollout should not return any response")
+                        raise ValueError('Rollout should not return any response')
                     rollout_iter_index += 1
                 # logger.info(f"rollout.infer time: {time.time() - r_time}")
 
@@ -270,16 +280,18 @@ class MctsSampler(Sampler):
                 end_paths = []
                 for index, response in zip(active_rollout_nodes, responses):
                     self.update_usage_info(response)
-                    output = response.choices[0].message.content.rstrip(sep_token + '\n').split(sep_token)[
-                                 0] + sep_token + '\n'
-                    rollout_nodes[index]['history_messages']["content"] += output
-                    end_paths.append(rollout_nodes[index]['history_messages']["content"])
+                    output = response.choices[0].message.content.rstrip(sep_token
+                                                                        + '\n').split(sep_token)[0] + sep_token + '\n'
+                    rollout_nodes[index]['history_messages']['content'] += output
+                    end_paths.append(rollout_nodes[index]['history_messages']['content'])
                     orm_infer_requests.append(InferRequest([rollout_nodes[index]['history_messages']]))
                 # logger.info(f"rollout.orm_prepare time: {time.time() - r_time}")
 
                 # r_time = time.time()
                 orm_score, _orm_mask = get_reward(
-                    self.orm_model, orm_infer_requests, ground_truths=[ground_truth] * len(infer_requests),
+                    self.orm_model,
+                    orm_infer_requests,
+                    ground_truths=[ground_truth] * len(infer_requests),
                     threshold=0.0)
                 # logger.info(f"rollout.get_orm time: {time.time() - r_time}")
                 terminated_state = self.orm_model.check_terminate(end_paths)
@@ -287,9 +299,9 @@ class MctsSampler(Sampler):
                     if terminated:
                         rollout_curr_node.active_children[index].init_and_update_value(score)
                         if score > 0.9:
-                            rollout_correct_answers.append(rollout_nodes[index]['history_messages']["content"])
+                            rollout_correct_answers.append(rollout_nodes[index]['history_messages']['content'])
                         else:
-                            rollout_incorrect_answers.append(rollout_nodes[index]['history_messages']["content"])
+                            rollout_incorrect_answers.append(rollout_nodes[index]['history_messages']['content'])
                         rollout_nodes.pop(index)
                 active_rollout_nodes = list(rollout_nodes.keys())
                 rollout_depth += 1
@@ -311,8 +323,8 @@ class MctsSampler(Sampler):
         collect_filter_threshold = _args.collect_filter_threshold
         _root = LanguageNode(sep_token=sep_token)
         prompt_message = {
-            "role": "user",
-            "content": query,
+            'role': 'user',
+            'content': query,
         }
 
         rollout_correct_answers, rollout_incorrect_answers, prefer_pairs, terminated_nodes = [], [], [], []
@@ -320,48 +332,48 @@ class MctsSampler(Sampler):
         iter_count = 0
         stop_reason = None
         while True:
-            logger.info(f"iter_count: {iter_count}" + "." * 10)
+            logger.info(f'iter_count: {iter_count}' + '.' * 10)
             s_time = time.time()
             curr_node = _select(_root)
-            logger.info("select" + "=" * 10+ f"time: {time.time() - s_time}")
+            logger.info('select' + '=' * 10 + f'time: {time.time() - s_time}')
             s_time = time.time()
             _expand(curr_node)
-            logger.info("expand" + "=" * 10 + f"time: {time.time() - s_time}")
+            logger.info('expand' + '=' * 10 + f'time: {time.time() - s_time}')
             if curr_node.depth > _args.rollout_start_depth:
                 s_time = time.time()
                 _rollout(curr_node)
-                logger.info("rollout" + "=" * 10 + f"time: {time.time() - s_time}")
+                logger.info('rollout' + '=' * 10 + f'time: {time.time() - s_time}')
             s_time = time.time()
             _back_propagate(curr_node)
-            logger.info("back propagate" + "=" * 10 + f"time: {time.time() - s_time}")
+            logger.info('back propagate' + '=' * 10 + f'time: {time.time() - s_time}')
             if len(rollout_correct_answers) + len(rollout_incorrect_answers) >= 2 * _args.num_return_sequences:
                 if 4 * len(rollout_incorrect_answers) < len(rollout_correct_answers):
-                    stop_reason = "too easy"
+                    stop_reason = 'too easy'
                     break
                 elif 4 * len(rollout_correct_answers) < len(rollout_incorrect_answers):
-                    stop_reason = "too hard"
+                    stop_reason = 'too hard'
                     break
             if _root.terminated:
-                stop_reason = "root terminated"
+                stop_reason = 'root terminated'
                 break
             if len(terminated_nodes) >= _args.num_return_sequences:
-                stop_reason = "enough nodes"
+                stop_reason = 'enough nodes'
                 break
             if iter_count >= _args.max_iterations:
-                stop_reason = "max_iterations"
+                stop_reason = 'max_iterations'
                 break
             iter_count += 1
-        logger.info(f"stop_reason: {stop_reason}")
+        logger.info(f'stop_reason: {stop_reason}')
         #logger.info(f"rollout_correct_answers: {rollout_correct_answers}")
         #logger.info(f"rollout_incorrect_answers: {rollout_incorrect_answers}")
 
         monte_carlo_tree = _root.collect()
         result = {
-            "query": query,
-            "ground_truth": ground_truth,
-            "rollout_correct_answers": rollout_correct_answers,
-            "rollout_incorrect_answers": rollout_incorrect_answers,
-            "monte_carlo_tree": monte_carlo_tree,
+            'query': query,
+            'ground_truth': ground_truth,
+            'rollout_correct_answers': rollout_correct_answers,
+            'rollout_incorrect_answers': rollout_incorrect_answers,
+            'monte_carlo_tree': monte_carlo_tree,
         }
         result_json = json.dumps(result, ensure_ascii=False)
         logger.info(result_json)
@@ -372,13 +384,13 @@ class MctsSampler(Sampler):
             data = [data]
         generated = []
         for item in data:
-            logger.info(f"time: {time.ctime(time.time())}")
+            logger.info(f'time: {time.ctime(time.time())}')
             try:
                 messages = item['messages'][0]
                 query = messages[0]['content']
                 ground_truth = messages[1]['content']
                 generated.append(self.search_single(query, ground_truth) + '\n')
             except Exception as e:
-                logger.error(f"Error: {e}")
-                logger.error(f"Traceback: {traceback.format_exc()}")
+                logger.error(f'Error: {e}')
+                logger.error(f'Traceback: {traceback.format_exc()}')
         return generated

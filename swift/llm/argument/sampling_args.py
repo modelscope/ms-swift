@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import os
 import dataclasses
+import os
 from dataclasses import dataclass
 from datetime import datetime
 from typing import List, Literal, Optional
@@ -50,7 +50,7 @@ class SamplingArguments(BaseArguments):
     process_reward_rate: float = 0.0
     exploration_rate: float = 0.5
     collect_filter_threshold: float = 0.5
-    api_key: str = "EMPTY"
+    api_key: str = 'EMPTY'
     base_url: str = 'https://dashscope.aliyuncs.com/compatible-mode/v1'
 
     def _init_model_info(self):
@@ -80,8 +80,8 @@ class SamplingArguments(BaseArguments):
 
         if self.system is not None:
             self.system_message = [{
-                "role": "system",
-                "content": self.system,
+                'role': 'system',
+                'content': self.system,
             }]
         else:
             self.system_message = []

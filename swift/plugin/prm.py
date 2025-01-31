@@ -105,7 +105,8 @@ class QwenMaxPRM(PRM):
 
 
 class ClientPRM(PRM):
-    def __init__(self, api_key = None, base_url = None, model = None):
+
+    def __init__(self, api_key=None, base_url=None, model=None):
         super().__init__()
         from swift.llm import InferClient
         import os
