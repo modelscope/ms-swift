@@ -101,13 +101,13 @@ def perform_infer(infer_engines, infer_requests, request_configs, **infer_kwargs
         elif isinstance(request_configs, RequestConfig):
             for infer_request in infer_requests:
                 responses += infer_engines.infer(
-                    infer_request,
+                    [infer_request],
                     request_configs,
                     **infer_kwargs,
                 )
         return responses
     return infer_engines.infer(
-        infer_requests,
+        [infer_requests],
         request_configs,
         **infer_kwargs,
     )
