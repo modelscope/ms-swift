@@ -544,14 +544,14 @@
     {
         "ms_dataset_id": "swift/medical_zh",
         "subsets": [{
-            "name": "en",
+            "subset": "en",
             "columns": {
                 "input": "query",
                 "output": "response"
             }
         },
         {
-            "name": "zh",
+            "subset": "zh",
             "columns": {
                 "instruction": "query",
                 "output": "response"
@@ -599,5 +599,44 @@
         "ms_dataset_id": "PowerInfer/LONGCOT-Refine-500K",
         "tags": ["chat", "sft", "🔥", "cot"],
         "hf_dataset_id": "PowerInfer/LONGCOT-Refine-500K"
+    },
+    {
+        "ms_dataset_id": "ServiceNow-AI/R1-Distill-SFT",
+        "hf_dataset_id": "ServiceNow-AI/R1-Distill-SFT",
+        "tags": ["chat", "sft", "cot", "r1"],
+        "subsets": [{
+            "subset": "v0",
+            "columns": {
+                "problem": "query",
+                "reannotated_assistant_content": "response"
+            }
+        },
+        {
+            "subset": "v1",
+            "columns": {
+                "messages": "_",
+                "reannotated_messages": "messages"
+            }
+        }]
+    },
+    {
+        "ms_dataset_id": "bespokelabs/Bespoke-Stratos-17k",
+        "hf_dataset_id": "bespokelabs/Bespoke-Stratos-17k",
+        "tags": ["chat", "sft", "cot", "r1"]
+    },
+    {
+        "ms_dataset_id": "open-thoughts/OpenThoughts-114k",
+        "hf_dataset_id": "open-thoughts/OpenThoughts-114k",
+        "tags": ["chat", "sft", "cot", "r1"]
+    },
+    {
+        "ms_dataset_id": "HumanLLMs/Human-Like-DPO-Dataset",
+        "hf_dataset_id": "HumanLLMs/Human-Like-DPO-Dataset",
+        "columns": {
+            "prompt": "query",
+            "chosen": "response",
+            "rejected": "rejected_response"
+        },
+        "tags": ["rlhf", "dpo"]
     }
 ]

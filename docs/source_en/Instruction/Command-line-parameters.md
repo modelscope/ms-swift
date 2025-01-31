@@ -37,6 +37,7 @@ The introduction to command line parameters will cover base arguments, atomic ar
 - enable_cache: Use cache for dataset preprocessing, default is False.
   - Note: If set to True, it may not take effect if the dataset changes. If modifying this parameter leads to issues during training, consider setting it to False.
 - download_mode: Dataset download mode, including `reuse_dataset_if_exists` and `force_redownload`, default is reuse_dataset_if_exists.
+- columns: Used for column mapping of the dataset to ensure that the dataset conforms to the format that AutoPreprocessor can handle. For more details, see [here](../Customization/Custom-dataset.md). You can pass in a JSON string, for example: `'{"text1": "query", "text2": "response"}'`, with the default being None.
 - strict: If True, the dataset will throw an error if any row has a problem; otherwise, it will discard the erroneous row. Default is False.
 - 🔥model_name: For self-awareness tasks, input the model's Chinese and English names separated by space.
 - 🔥model_author: For self-awareness tasks, input the model author's Chinese and English names separated by space.
