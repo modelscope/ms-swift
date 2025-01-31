@@ -48,6 +48,14 @@ colors = generate_colors()
 color_mapping = {}
 
 
+def _calculate_brightness(image, region: List[int]):
+    cropped_image = image.crop(region)
+    grayscale_image = cropped_image.convert('L')
+    pixels = list(grayscale_image.getdata())
+    average_brightness = sum(pixels) / len(pixels)
+    return average_brightness
+
+
 def draw_bbox(image: Image.Image,
               ref: List[str],
               bbox: List[List[int]],
@@ -73,6 +81,9 @@ def draw_bbox(image: Image.Image,
         draw.rectangle([(left, top), (right, bottom)], outline=color, width=3)
     # draw text
     file_path = download_file(font_path)
-    font = ImageFont.truetype(file_path, 24)
+    font = ImageFont.truetype(file_path, 20)
     for (left, top, _, _), box_ref in zip(bbox, ref):
-        draw.text((left, top), box_ref, fill='black', font=font)
+        brightness = _calculate_brightness(
+            image, [left, top, min(left + 100, image.width),
+                    min(top + 20, image.height)])
+        draw.text((left, top), box_ref, fill='white' if brightness < 128 else 'black', font=font)

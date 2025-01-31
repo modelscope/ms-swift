@@ -16,15 +16,13 @@ def draw_bbox_qwen2_vl(image, response, norm_bbox: Literal['norm1000', 'none']):
 
 
 def infer_grounding():
-    from swift.llm import (PtEngine, RequestConfig, AdapterRequest, get_template, BaseArguments, InferRequest,
-                           safe_snapshot_download, get_model_tokenizer)
-    from swift.tuners import Swift
-    output_path = 'animal_bbox.png'
+    from swift.llm import PtEngine, RequestConfig, BaseArguments, InferRequest, safe_snapshot_download
+    output_path = 'bbox.png'
     image = load_image('http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png')
     infer_request = InferRequest(messages=[{'role': 'user', 'content': 'Task: Object Detection'}], images=[image])
 
     request_config = RequestConfig(max_tokens=512, temperature=0)
-    adapter_path = safe_snapshot_download('output/vx-xxx/checkpoint-xxx')
+    adapter_path = safe_snapshot_download('swift/test_grounding')
     args = BaseArguments.from_pretrained(adapter_path)
 
     engine = PtEngine(args.model, adapters=[adapter_path])
@@ -39,6 +37,5 @@ def infer_grounding():
 
 if __name__ == '__main__':
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-    os.environ['MAX_PIXELS'] = '1003520'
     from swift.llm import draw_bbox, load_image
     infer_grounding()
