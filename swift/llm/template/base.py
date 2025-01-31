@@ -182,8 +182,6 @@ class Template(ProcessorMixin):
         if inputs.objects:
             self._get_height_width(inputs)
         if self.max_pixels is not None:
-            if inputs.objects and self.norm_bbox == 'none':
-                logger.warning_one('Adjusting the image size will affect the bounding box of the grounding task.')
             # Scale the image proportionally without affecting the scaled objects.
             images = [rescale_image(img, self.max_pixels) for img in images]
         if images and not load_images_origin:  # fix pt & qwen-vl

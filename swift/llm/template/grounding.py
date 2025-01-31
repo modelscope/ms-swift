@@ -1,7 +1,7 @@
 import colorsys
 import itertools
 import os
-from typing import Any, Dict, List, Literal
+from typing import Any, List, Literal
 
 import requests
 from modelscope.hub.utils.utils import get_cache_dir
