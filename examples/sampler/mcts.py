@@ -1,11 +1,10 @@
 import os
-import json
-from modelscope.msdatasets import MsDataset
 import subprocess
 import time
 from typing import List
 
-from pyarrow.dataset import dataset
+import json
+from modelscope.msdatasets import MsDataset
 
 conda_prefix = ''
 
@@ -17,9 +16,9 @@ def client_sample(model: str, orm: str, dataset_path: str, iter: int, device_cou
 
     for device in range(device_count):
 
-        output_file = f"iter_{iter}_proc_{device}.jsonl"
-        cache_file = f"iter_{iter}_proc_{device}_cache.jsonl"
-        dataset = f"train_{device:02}.jsonl"
+        output_file = f'iter_{iter}_proc_{device}.jsonl'
+        cache_file = f'iter_{iter}_proc_{device}_cache.jsonl'
+        dataset = f'train_{device:02}.jsonl'
 
         # output_file_path = os.path.join(output_dir, output_file)
         cache_file_path = os.path.join(output_dir, cache_file)
@@ -51,7 +50,6 @@ def client_sample(model: str, orm: str, dataset_path: str, iter: int, device_cou
                       f'--output_file {output_file} '
                       f'--temperature 1.0 ')
         print(f'Sampling caches of iter {iter}, part {device}.', flush=True)
-        env = os.environ.copy()
         # env['CUDA_VISIBLE_DEVICES'] = str(device)
         handler = subprocess.Popen(
             f'{sample_cmd}' + f' > mcts_logs/sample_iter_{iter}_proc_{device}_cache.log 2>&1',
@@ -66,7 +64,6 @@ def client_sample(model: str, orm: str, dataset_path: str, iter: int, device_cou
         assert os.path.exists(os.path.join(output_dir, f'iter_{iter}_proc_{proc}.jsonl'))
         datasets.append(os.path.join('sample_output', f'iter_{iter}_proc_{proc}.jsonl'))
     print(f'Sampling done, files:{datasets}', flush=True)
-    return datasets
 
 
 def split_dataset(ds, split_size, out_path):
@@ -76,18 +73,21 @@ def split_dataset(ds, split_size, out_path):
         file_name = f'train_{i:02}.jsonl'
         file_path = os.path.join(out_path, file_name)
         print(file_path)
-        ds_split = ds[data_size * i: min(data_size * (i + 1), len(ds))]
+        ds_split = ds[data_size * i:min(data_size * (i + 1), len(ds))]
         print(f"split_size: {len(ds_split['problem'])}")
         with open(file_path, 'w', encoding='utf-8') as file:
             for problem, solution in zip(ds_split['problem'], ds_split['solution']):
                 message = {
-                    'messages': [{
-                        'role': 'user',
-                        'content': problem,
-                    }, {
-                        'role': 'assistant',
-                        'content': solution,
-                    }, ]
+                    'messages': [
+                        {
+                            'role': 'user',
+                            'content': problem,
+                        },
+                        {
+                            'role': 'assistant',
+                            'content': solution,
+                        },
+                    ]
                 }
                 file.write(json.dumps(message, ensure_ascii=False) + '\n')
 
@@ -107,7 +107,7 @@ def main():
     split_dataset(ds, device_count, dataset_dir)
 
     ts = time.time()
-    client_data = client_sample(server_model, orm, dataset_dir, 0, device_count, output_dir)
+    client_sample(server_model, orm, dataset_dir, 0, device_count, output_dir)
     print(f'do sample cost: {(time.time() - ts) / 60:.1f} minutes.', flush=True)
 
 
