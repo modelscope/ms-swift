@@ -320,15 +320,13 @@ class MctsSampler(Sampler):
         _args = self.args
         system_message = [] + _args.system_message
         sep_token = _args.stop_words[0] + '\n'
-        collect_filter_threshold = _args.collect_filter_threshold
         _root = LanguageNode(sep_token=sep_token)
         prompt_message = {
             'role': 'user',
             'content': query,
         }
 
-        rollout_correct_answers, rollout_incorrect_answers, prefer_pairs, terminated_nodes = [], [], [], []
-        too_easy, too_hard = False, False
+        rollout_correct_answers, rollout_incorrect_answers, terminated_nodes = [], [], []
         iter_count = 0
         stop_reason = None
         while True:
@@ -364,8 +362,8 @@ class MctsSampler(Sampler):
                 break
             iter_count += 1
         logger.info(f'stop_reason: {stop_reason}')
-        #logger.info(f"rollout_correct_answers: {rollout_correct_answers}")
-        #logger.info(f"rollout_incorrect_answers: {rollout_incorrect_answers}")
+        # logger.info(f"rollout_correct_answers: {rollout_correct_answers}")
+        # logger.info(f"rollout_incorrect_answers: {rollout_incorrect_answers}")
 
         monte_carlo_tree = _root.collect()
         result = {
