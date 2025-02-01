@@ -205,7 +205,6 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             # template_args
             'tools_prompt',
             'use_chat_template',
-            'norm_bbox'
         ]
         skip_keys = list(f.name for f in fields(GenerationArguments) + fields(CompatArguments)) + ['adapters']
         if not isinstance(self, TrainArguments):
