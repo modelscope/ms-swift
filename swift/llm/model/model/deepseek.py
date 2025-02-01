@@ -179,7 +179,11 @@ register_model(
         [
             ModelGroup([
                 Model('deepseek-ai/Janus-1.3B', 'deepseek-ai/Janus-1.3B'),
-            ], ),
+            ]), 
+            ModelGroup([
+                Model('deepseek-ai/Janus-Pro-1B', 'deepseek-ai/Janus-Pro-1B'),
+                Model('deepseek-ai/Janus-Pro-7B', 'deepseek-ai/Janus-Pro-7B'),
+            ]),
         ],
         TemplateType.deepseek_janus,
         get_model_tokenizer_deepseek_janus,
