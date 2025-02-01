@@ -4,12 +4,12 @@ import math
 import os
 import re
 from io import BytesIO
-from typing import Any, Callable, Dict, List, Literal, TypeVar, Union
+from typing import Any, Callable, List, TypeVar, Union
 
 import numpy as np
 import requests
 import torch
-from PIL import Image, ImageDraw
+from PIL import Image
 
 from swift.utils import get_env_args
 
@@ -100,7 +100,7 @@ def rescale_image(img: Image.Image, max_pixels: int) -> Image.Image:
 _T = TypeVar('_T')
 
 
-def load_file(path: Union[str, _T]) -> Union[BytesIO, _T]:
+def load_file(path: Union[str, bytes, _T]) -> Union[BytesIO, _T]:
     res = path
     if isinstance(path, str):
         path = path.strip()
@@ -128,18 +128,8 @@ def load_file(path: Union[str, _T]) -> Union[BytesIO, _T]:
     return res
 
 
-def load_file_decorator(func):
-
-    def new_func(path, *args, **kwargs):
-        path = load_file(path)
-        res = func(path, *args, **kwargs)
-        return res
-
-    return new_func
-
-
-@load_file_decorator
-def load_image(image: Union[Image.Image, BytesIO]) -> Image.Image:
+def load_image(image: Union[str, bytes, Image.Image]) -> Image.Image:
+    image = load_file(image)
     if isinstance(image, BytesIO):
         image = Image.open(image)
     if image.mode != 'RGB':
@@ -179,9 +169,9 @@ def transform_image(image, input_size=448, max_num=12):
     return pixel_values
 
 
-@load_file_decorator
-def load_video_internvl(video_io: BytesIO, bound=None, num_segments=32):
+def load_video_internvl(video: Union[str, bytes], bound=None, num_segments=32):
     from decord import VideoReader, cpu
+    video_io = load_file(video)
     vr = VideoReader(video_io, ctx=cpu(0), num_threads=1)
     max_frame = len(vr) - 1
     fps = float(vr.get_avg_fps())
@@ -193,20 +183,9 @@ def load_video_internvl(video_io: BytesIO, bound=None, num_segments=32):
     return images
 
 
-def draw_plot(img_dir: str, bbox: List[int], bbox_type: str, output_file: str):
-    image = Image.open(img_dir)
-
-    objects = [{'bbox': bbox, 'bbox_type': bbox_type, 'image': 0}]
-    normalize_bbox(objects, [image], 'real')
-    bbox = objects[0]['bbox']
-    draw = ImageDraw.Draw(image)
-    draw.rectangle(bbox, outline='red', width=2)
-    image.save(output_file)
-
-
-@load_file_decorator
-def load_video_cogvlm2(video_io: BytesIO) -> np.ndarray:
+def load_video_cogvlm2(video: Union[str, bytes]) -> np.ndarray:
     from decord import cpu, VideoReader, bridge
+    video_io = load_file(video)
     bridge.set_bridge('torch')
     clip_end_sec = 60
     clip_start_sec = 0
@@ -222,9 +201,9 @@ def load_video_cogvlm2(video_io: BytesIO) -> np.ndarray:
     return video_data
 
 
-@load_file_decorator
-def load_video_llava(video_io: BytesIO) -> np.ndarray:
+def load_video_llava(video: Union[str, bytes]) -> np.ndarray:
     import av
+    video_io = load_file(video)
     container = av.open(video_io)
     total_frames = container.streams.video[0].frames
     num_frames = get_env_args('num_frames', int, 16)
@@ -241,8 +220,8 @@ def load_video_llava(video_io: BytesIO) -> np.ndarray:
     return np.stack([x.to_ndarray(format='rgb24') for x in frames])
 
 
-@load_file_decorator
-def load_video_minicpmv_mplug_owl3(video_io: BytesIO, max_num_frames):
+def load_video_minicpmv_mplug_owl3(video: Union[str, bytes], max_num_frames):
+
     from decord import VideoReader, cpu  # pip install decord
 
     def uniform_sample(_l, _n):
@@ -250,6 +229,7 @@ def load_video_minicpmv_mplug_owl3(video_io: BytesIO, max_num_frames):
         idxs = [int(i * gap + gap / 2) for i in range(_n)]
         return [_l[i] for i in idxs]
 
+    video_io = load_file(video)
     vr = VideoReader(video_io, ctx=cpu(0))
     sample_fps = round(vr.get_avg_fps() / 1)  # FPS
     frame_idx = [i for i in range(0, len(vr), sample_fps)]
@@ -261,81 +241,18 @@ def load_video_minicpmv_mplug_owl3(video_io: BytesIO, max_num_frames):
     return frames
 
 
-@load_file_decorator
-def load_audio(audio_io: BytesIO, sampling_rate: int):
+def load_audio(audio: Union[str, bytes], sampling_rate: int):
     import librosa
+    audio_io = load_file(audio)
     return librosa.load(audio_io, sr=sampling_rate)[0]
 
 
-@load_file_decorator
-def load_video_valley(video_io: BytesIO):
+def load_video_valley(video: Union[str, bytes]):
     import decord
     from torchvision import transforms
+    video_io = load_file(video)
     video_reader = decord.VideoReader(video_io)
     decord.bridge.set_bridge('torch')
     video = video_reader.get_batch(np.linspace(0, len(video_reader) - 1, 8).astype(np.int_)).byte()
     images = [transforms.ToPILImage()(image.permute(2, 0, 1)).convert('RGB') for image in video]
     return images
-
-
-def normalize_bbox(objects: List[Dict[str, Any]], images: List[Image.Image], to_type: Literal['real', 'norm_1000',
-                                                                                              'norm_1']) -> None:
-    """Normalize bbox to needed.
-    to_type support real/norm_1000/norm_1, which literally means the coordinates in real, or normalized by 1000,
-        or normalized by 1.
-
-    Args:
-        objects: The objects containing the bbox
-        images: The images list
-        to_type: The coordinate type needed by the model.
-    """
-    if not objects or not images:
-        return
-
-    for object_ in objects:
-        bbox = object_['bbox']
-        bbox_type = object_['bbox_type']
-        idx = object_['image']
-        image = images[idx]
-        if bbox_type == 'real':
-            if to_type == 'real':
-                continue
-            width, height = image.width, image.height
-            if isinstance(bbox[0], list):
-                bboxes = []
-                for _box in bbox:
-                    bboxes.append([
-                        int(coord / dim * 999) if to_type == 'norm_1000' else coord / dim
-                        for coord, dim in zip(_box, [width, height, width, height])
-                    ])
-                object_['bbox'] = bboxes
-            else:
-                object_['bbox'] = [
-                    int(coord / dim * 999) if to_type == 'norm_1000' else coord / dim
-                    for coord, dim in zip(bbox, [width, height, width, height])
-                ]
-            object_['bbox_type'] = to_type
-        elif bbox_type == 'norm_1000':
-            if to_type == 'norm_1000':
-                continue
-            if to_type == 'norm_1':
-                object_['bbox'] = [coord / 999. for coord in bbox]
-            elif to_type == 'real':
-                width, height = image.width, image.height
-                object_['bbox'] = [int(coord / 999. * dim) for coord, dim in zip(bbox, [width, height, width, height])]
-            object_['bbox_type'] = to_type
-        elif bbox_type == 'norm_1':
-            if to_type == 'norm_1':
-                continue
-            if to_type == 'norm_1000':
-                object_['bbox'] = [int(coord * 999) for coord in bbox]
-            elif to_type == 'real':
-                width, height = image.width, image.height
-                object_['bbox'] = [int(coord * dim) for coord, dim in zip(bbox, [width, height, width, height])]
-            object_['bbox_type'] = to_type
-
-
-if __name__ == '__main__':
-    # TODO:remove
-    # A test main to draw bbox
-    draw_plot('man.jpg', [354, 462, 580, 738], 'norm_1000', 'man_bbox.jpg')

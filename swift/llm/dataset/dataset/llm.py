@@ -145,7 +145,7 @@ register_dataset(
         ms_dataset_id='lvjianjin/AdvertiseGen',
         hf_dataset_id='shibing624/AdvertiseGen',
         preprocess_func=TextGenerationPreprocessor(
-            prompt=advertise_gen_prompt, columns_mapping={
+            prompt=advertise_gen_prompt, columns={
                 'content': 'query',
                 'summary': 'response'
             }),
@@ -202,7 +202,7 @@ register_dataset(
             SubsetDataset(
                 'cls',
                 'default',
-                preprocess_func=ClsPreprocessor(columns_mapping={'sentence': 'query'}),
+                preprocess_func=ClsPreprocessor(columns={'sentence': 'query'}),
             ),
         ],
         tags=['text-generation', 'classification', '🔥'],
@@ -264,7 +264,7 @@ register_dataset(
     DatasetMeta(
         ms_dataset_id='AI-ModelScope/sql-create-context',
         hf_dataset_id='b-mc2/sql-create-context',
-        preprocess_func=AlpacaPreprocessor(columns_mapping={
+        preprocess_func=AlpacaPreprocessor(columns={
             'question': 'instruction',
             'context': 'input',
             'answer': 'output'
@@ -297,7 +297,7 @@ register_dataset(
 register_dataset(
     DatasetMeta(
         ms_dataset_id='codefuse-ai/CodeExercise-Python-27k',
-        preprocess_func=MessagesPreprocessor(columns_mapping={'chat_rounds': 'messages'}),
+        preprocess_func=MessagesPreprocessor(columns={'chat_rounds': 'messages'}),
         tags=['chat', 'coding', '🔥']))
 
 
@@ -557,7 +557,7 @@ register_dataset(
     DatasetMeta(
         ms_dataset_id='AI-ModelScope/hh_rlhf_cn',
         subsets=['hh_rlhf', 'harmless_base_cn', 'harmless_base_en', 'helpful_base_cn', 'helpful_base_en'],
-        preprocess_func=HHRLHFCNPreprocessor(columns_mapping={'context': 'messages'}, content_key='text'),
+        preprocess_func=HHRLHFCNPreprocessor(columns={'context': 'messages'}, content_key='text'),
         split=['train', 'test'],
         tags=['rlhf', 'dpo', '🔥']))
 
@@ -583,7 +583,7 @@ register_dataset(
     DatasetMeta(
         ms_dataset_id='hjh0119/shareAI-Llama3-DPO-zh-en-emoji',
         hf_dataset_id='shareAI/DPO-zh-en-emoji',
-        preprocess_func=ResponsePreprocessor(columns_mapping={
+        preprocess_func=ResponsePreprocessor(columns={
             'answer_zh': 'response',
             'answer_en': 'rejected_response'
         }),
@@ -693,7 +693,7 @@ register_dataset(
     DatasetMeta(
         ms_dataset_id='AI-ModelScope/orpo-dpo-mix-40k',
         hf_dataset_id='mlabonne/orpo-dpo-mix-40k',
-        preprocess_func=OrpoDPOMix40kPreprocessor(columns_mapping={
+        preprocess_func=OrpoDPOMix40kPreprocessor(columns={
             'chosen': 'messages',
             'rejected': 'rejected_messages'
         }),

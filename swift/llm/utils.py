@@ -20,6 +20,9 @@ try:
 except ImportError:
     Processor = Union[PreTrainedTokenizerBase, FeatureExtractionMixin, HfProcessorMixin]
 
+if 'TOKENIZERS_PARALLELISM' not in os.environ:
+    os.environ['TOKENIZERS_PARALLELISM'] = 'false'
+
 logger = get_logger()
 
 Tool = Dict[str, Union[str, Dict]]

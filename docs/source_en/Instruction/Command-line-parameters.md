@@ -37,6 +37,7 @@ The introduction to command line parameters will cover base arguments, atomic ar
 - enable_cache: Use cache for dataset preprocessing, default is False.
   - Note: If set to True, it may not take effect if the dataset changes. If modifying this parameter leads to issues during training, consider setting it to False.
 - download_mode: Dataset download mode, including `reuse_dataset_if_exists` and `force_redownload`, default is reuse_dataset_if_exists.
+- columns: Used for column mapping of the dataset to ensure that the dataset conforms to the format that AutoPreprocessor can handle. For more details, see [here](../Customization/Custom-dataset.md). You can pass in a JSON string, for example: `'{"text1": "query", "text2": "response"}'`, with the default being None.
 - strict: If True, the dataset will throw an error if any row has a problem; otherwise, it will discard the erroneous row. Default is False.
 - 🔥model_name: For self-awareness tasks, input the model's Chinese and English names separated by space.
 - 🔥model_author: For self-awareness tasks, input the model author's Chinese and English names separated by space.
@@ -44,11 +45,12 @@ The introduction to command line parameters will cover base arguments, atomic ar
 
 ### Template Arguments
 - 🔥template: Type of dialogue template, which defaults to the template type corresponding to the model. `swift pt` will convert the dialogue template into a generation template for use.
-- 🔥system: Custom system field, could be a txt file path, default is None, uses the default system of the template.
+- 🔥system: Custom system field, can take a string or txt file path as input. Default is None, uses the default system of the template.
 - 🔥max_length: The maximum length of tokens for a single sample. Defaults to None, set to the maximum length of tokens supported by the model (max_model_len).
 - truncation_strategy: How to handle overly long tokens, supports `delete`, `left`, `right`, representing deletion, left trimming, and right trimming, default is 'delete'.
 - 🔥max_pixels: Maximum pixel count for pre-processing images in multimodal models (H*W), default is no scaling.
 - tools_prompt: The list of tools for agent training converted to system format, refer to [Agent Training](./Agent-support.md), default is 'react_en'.
+- norm_bbox: Controls how to scale the bounding box (bbox). Options are 'norm1000' and 'none'. 'norm1000' stands for scaling the bbox coordinates by a factor of a thousand, while 'none' means no scaling is applied. The default is None, which allows automatic selection based on the model.
 - padding_side: The padding_side used when training with `batch_size >= 2`, with optional values of 'left' and 'right', defaulting to 'right'. (When the batch_size in `generate` is >= 2, only left padding is applied.)
 - loss_scale: How to add token loss weight during training. Default is `'default'`, meaning all responses (including history) are treated as 1 for cross-entropy loss. The optional values are 'default', 'last_round', 'all', and the loss scale required by the agent: 'react', 'agentflan', 'alpha_umi', 'qwen'. For specifics, see [Pluginization](../Customization/Pluginization.md) and [Agent Training](./Agent-support.md).
 - sequence_parallel_size: Number of sequence parallelism. Refer to [example](https://github.com/modelscope/ms-swift/tree/main/examples/train/sequence_parallel/train.sh).
@@ -455,7 +457,7 @@ Export Arguments include the [basic arguments](#base-arguments) and [merge argum
 
 Specific model arguments can be set using `--model_kwargs` or environment variables, for example: `--model_kwargs '{"fps_max_frames": 12}'` or `FPS_MAX_FRAMES=12`.
 
-### qwen2_vl, qvq
+### qwen2_vl, qvq, qwen2_5_vl
 For the meaning of the arguments, please refer to [here](https://github.com/QwenLM/Qwen2-VL/blob/main/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L24)
 
 - IMAGE_FACTOR: Default is 28

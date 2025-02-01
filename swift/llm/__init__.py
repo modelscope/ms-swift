@@ -15,7 +15,7 @@ if TYPE_CHECKING:
                            RLHFArguments, WebUIArguments, BaseArguments, AppArguments)
     from .template import (TEMPLATE_MAPPING, Template, Word, get_template, TemplateType, register_template,
                            TemplateInputs, TemplateMeta, get_template_meta, InferRequest, load_image, MaxLengthError,
-                           load_file)
+                           load_file, draw_bbox)
     from .model import (register_model, MODEL_MAPPING, ModelType, get_model_tokenizer, safe_snapshot_download,
                         HfConfigFactory, ModelInfo, ModelMeta, ModelKeys, register_model_arch, MultiModelKeys,
                         ModelArch, get_model_arch, MODEL_ARCH_MAPPING, get_model_info_meta, get_model_name, ModelGroup,
@@ -23,10 +23,10 @@ if TYPE_CHECKING:
                         git_clone_github, get_matched_model_meta)
     from .dataset import (AlpacaPreprocessor, ResponsePreprocessor, MessagesPreprocessor, AutoPreprocessor,
                           DATASET_MAPPING, MediaResource, register_dataset, register_dataset_info, EncodePreprocessor,
-                          LazyLLMDataset, ConstantLengthDataset, standard_keys, load_dataset, DATASET_TYPE,
-                          sample_dataset, RowPreprocessor, DatasetMeta)
+                          LazyLLMDataset, ConstantLengthDataset, load_dataset, DATASET_TYPE, sample_dataset,
+                          RowPreprocessor, DatasetMeta)
     from .utils import (deep_getattr, to_device, History, Messages, history_to_messages, messages_to_history, Processor,
-                        save_checkpoint, ProcessorMixin, get_temporary_cache_files_directory)
+                        save_checkpoint, ProcessorMixin, get_temporary_cache_files_directory, get_cache_dir)
     from .base import SwiftPipeline
 else:
     _extra_objects = {k: v for k, v in globals().items() if not k.startswith('_')}
@@ -47,7 +47,7 @@ else:
         'template': [
             'TEMPLATE_MAPPING', 'Template', 'Word', 'get_template', 'TemplateType', 'register_template',
             'TemplateInputs', 'TemplateMeta', 'get_template_meta', 'InferRequest', 'load_image', 'MaxLengthError',
-            'load_file'
+            'load_file', 'draw_bbox'
         ],
         'model': [
             'MODEL_MAPPING', 'ModelType', 'get_model_tokenizer', 'safe_snapshot_download', 'HfConfigFactory',
@@ -66,7 +66,6 @@ else:
             'EncodePreprocessor',
             'LazyLLMDataset',
             'ConstantLengthDataset',
-            'standard_keys',
             'load_dataset',
             'DATASET_TYPE',
             'sample_dataset',
@@ -76,7 +75,7 @@ else:
         ],
         'utils': [
             'deep_getattr', 'to_device', 'History', 'Messages', 'history_to_messages', 'messages_to_history',
-            'Processor', 'save_checkpoint', 'ProcessorMixin', 'get_temporary_cache_files_directory'
+            'Processor', 'save_checkpoint', 'ProcessorMixin', 'get_temporary_cache_files_directory', 'get_cache_dir'
         ],
         'base': ['SwiftPipeline'],
     }
