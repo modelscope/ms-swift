@@ -115,6 +115,7 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
     infer_backend: Literal['vllm', 'pt', 'lmdeploy'] = 'pt'
 
     result_path: Optional[str] = None
+    metric: Literal['acc', 'rouge'] = None
     # for pt engine
     max_batch_size: int = 1
     ddp_backend: Optional[str] = None
