@@ -39,6 +39,7 @@ class InferRequest:
     videos: List[str] = field(default_factory=list)
 
     tools: Optional[List[Tool]] = None
+    objects: Dict[str, List[Any]] = field(default_factory=dict)
 
     def __post_init__(self):
         for key in ['images', 'audios', 'videos']:
@@ -81,7 +82,6 @@ class TemplateInputs(InferRequest):
     """
     rejected_response: Optional[str] = None
     label: Optional[bool] = None
-    objects: Dict[str, List[Any]] = field(default_factory=dict)
 
 
 @dataclass

@@ -119,7 +119,7 @@ For grounding (object detection) tasks, SWIFT supports two methods:
 When using this type of data, please note:
 
 - Different models have different special characters and data format for the grounding task.
-- It is necessary to normalize the coordinates of the bounding boxes, for example by using thousandth-scale coordinates for normalization.
+- The handling of bounding box normalization varies across different models: for example, qwen2.5-vl uses absolute coordinates, while qwen2-vl and internvl2.5 require bounding box coordinates to be normalized to the thousandth scale.
 
 1. Use SWIFT's grounding data format:
 
