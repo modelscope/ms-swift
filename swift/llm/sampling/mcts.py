@@ -333,17 +333,17 @@ class MctsSampler(Sampler):
             logger.info(f'iter_count: {iter_count}' + '.' * 10)
             s_time = time.time()
             curr_node = _select(_root)
-            logger.info('select' + '=' * 10 + f'time: {time.time() - s_time}')
+            logger.debug('select' + '=' * 10 + f'time: {time.time() - s_time}')
             s_time = time.time()
             _expand(curr_node)
-            logger.info('expand' + '=' * 10 + f'time: {time.time() - s_time}')
+            logger.debug('expand' + '=' * 10 + f'time: {time.time() - s_time}')
             if curr_node.depth > _args.rollout_start_depth:
                 s_time = time.time()
                 _rollout(curr_node)
-                logger.info('rollout' + '=' * 10 + f'time: {time.time() - s_time}')
+                logger.debug('rollout' + '=' * 10 + f'time: {time.time() - s_time}')
             s_time = time.time()
             _back_propagate(curr_node)
-            logger.info('back propagate' + '=' * 10 + f'time: {time.time() - s_time}')
+            logger.debug('back propagate' + '=' * 10 + f'time: {time.time() - s_time}')
             if len(rollout_correct_answers) + len(rollout_incorrect_answers) >= 2 * _args.num_return_sequences:
                 if 4 * len(rollout_incorrect_answers) < len(rollout_correct_answers):
                     stop_reason = 'too easy'
