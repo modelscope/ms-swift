@@ -325,6 +325,7 @@ register_template(
 
 class Qwen2_5VLTemplate(Qwen2VLTemplate):
     version = 'v2_5'
+    norm_bbox = 'none'
 
 
 register_template(

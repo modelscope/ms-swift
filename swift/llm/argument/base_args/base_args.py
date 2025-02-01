@@ -164,6 +164,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
     @classmethod
     def from_pretrained(cls, checkpoint_dir: str):
         self = super().__new__(cls)
+        self.load_data_args = True
         self.ckpt_dir = checkpoint_dir
         self.load_args_from_ckpt()
         return self
@@ -203,7 +204,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             'split_dataset_ratio',
             # template_args
             'tools_prompt',
-            'use_chat_template'
+            'use_chat_template',
         ]
         skip_keys = list(f.name for f in fields(GenerationArguments) + fields(CompatArguments)) + ['adapters']
         if not isinstance(self, TrainArguments):
