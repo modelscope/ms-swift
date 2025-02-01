@@ -365,6 +365,7 @@ Inference arguments include the [base arguments](#base-arguments), [merge argume
 - 🔥max_batch_size: Batch size for pt backend, default is 1.
 - ddp_backend: The distributed backend for multi-gpu inference using the pt backend, default is None. Examples of multi-card inference can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/infer/pt).
 - result_path: Path to store inference results (jsonl), default is None, saved in the checkpoint directory or './result' directory.
+- metric: Evaluate the results of the inference, currently supporting 'acc' and 'rouge'. The default is None, meaning no evaluation is performed.
 - val_dataset_sample: Number of samples from the inference dataset, default is None.
 
 ### Deployment Arguments

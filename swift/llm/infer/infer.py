@@ -8,8 +8,8 @@ import torch.distributed as dist
 from datasets import Dataset as HfDataset
 
 from swift.llm import InferArguments, InferRequest, SwiftPipeline, load_dataset, prepare_model_template, sample_dataset
-from swift.plugin import InferStats
-from swift.utils import get_logger, is_master, open_jsonl_writer
+from swift.plugin import InferStats, MeanMetric, compute_rouge_bleu
+from swift.utils import get_logger, is_master, open_jsonl_writer, read_from_jsonl
 from .infer_engine import AdapterRequest, PtEngine
 from .protocol import RequestConfig
 from .utils import InferCliState
@@ -168,6 +168,24 @@ class SwiftInfer(SwiftPipeline):
         val_dataset = sample_dataset(val_dataset, args.val_dataset_sample, self.random_state)
         return val_dataset
 
+    def _calc_metric(self):
+        args = self.args
+        if args.rank not in {-1, 0}:
+            return
+        data_list = read_from_jsonl(self.jsonl_writer.fpath)
+        preds, labels = [], []
+        for data in data_list:
+            preds.append(data['response'])
+            labels.append(data['labels'])
+        if args.metric == 'acc':
+            mean_metric = MeanMetric()
+            for pred, label in zip(preds, labels):
+                mean_metric.update(pred == label)
+            res = {'acc': mean_metric.compute()['value']}
+        elif args.metric == 'rouge':
+            res = compute_rouge_bleu(preds, labels)
+        logger.info(res)
+
     def infer_dataset(self) -> List[Dict[str, Any]]:
         args = self.args
         request_config = args.get_request_config()
@@ -220,6 +238,8 @@ class SwiftInfer(SwiftPipeline):
                 self.jsonl_writer.append(result_list)
         metrics = self.infer_kwargs.pop('metrics')
         print(f'[rank{args.rank}] {metrics[0].compute()}')
+        if args.metric is not None:
+            self._calc_metric()
         return result_list
 
 
