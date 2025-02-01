@@ -8,6 +8,7 @@ import torch.distributed as dist
 from datasets import Dataset as HfDataset
 
 from swift.llm import InferArguments, InferRequest, SwiftPipeline, load_dataset, prepare_model_template, sample_dataset
+from swift.plugin import InferStats
 from swift.utils import get_logger, is_master, open_jsonl_writer
 from .infer_engine import AdapterRequest, PtEngine
 from .protocol import RequestConfig
@@ -175,6 +176,7 @@ class SwiftInfer(SwiftPipeline):
         val_dataset = self._prepare_val_dataset()
         logger.info(f'val_dataset: {val_dataset}')
         result_list = []
+        self.infer_kwargs['metrics'] = [InferStats()]
         if request_config and request_config.stream:
             for data in val_dataset:
                 labels = InferRequest.remove_response(data['messages'])
@@ -216,6 +218,8 @@ class SwiftInfer(SwiftPipeline):
 
             if is_master() and self.jsonl_writer and result_list:
                 self.jsonl_writer.append(result_list)
+        metrics = self.infer_kwargs.pop('metrics')
+        print(f'[rank{args.rank}] {metrics[0].compute()}')
         return result_list
 
 
