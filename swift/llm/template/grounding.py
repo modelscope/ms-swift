@@ -64,7 +64,7 @@ def draw_bbox(image: Image.Image,
     # norm bbox
     for i, box in enumerate(bbox):
         for i in range(len(box)):
-            box[i] = int(round(box[i]))
+            box[i] = int(box[i])
         if norm_bbox == 'norm1000':
             box[0] = box[0] / 1000 * image.width
             box[2] = box[2] / 1000 * image.width
