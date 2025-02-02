@@ -186,8 +186,7 @@ register_template(
         placeholder_tokens=['<image>']))
 
 register_template(
-    DeepseekV2_5TemplateMeta(
+    DeepseekVLTemplateMeta(
         MLLMTemplateType.deepseek_janus_pro,
         prompt=['<|User|>: {{QUERY}}\n\n<|Assistant|>:'],
-        template_cls=DeepseekJanus,
-    ))
+        template_cls=DeepseekJanus))
