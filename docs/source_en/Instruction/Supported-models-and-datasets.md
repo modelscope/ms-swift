@@ -625,6 +625,8 @@ The table below introduces the models integrated with ms-swift:
 |[deepseek-ai/deepseek-vl2-small](https://modelscope.cn/models/deepseek-ai/deepseek-vl2-small)|deepseek_vl2|deepseek_vl2|transformers<4.42|vision|[deepseek-ai/deepseek-vl2-small](https://huggingface.co/deepseek-ai/deepseek-vl2-small)|
 |[deepseek-ai/deepseek-vl2](https://modelscope.cn/models/deepseek-ai/deepseek-vl2)|deepseek_vl2|deepseek_vl2|transformers<4.42|vision|[deepseek-ai/deepseek-vl2](https://huggingface.co/deepseek-ai/deepseek-vl2)|
 |[deepseek-ai/Janus-1.3B](https://modelscope.cn/models/deepseek-ai/Janus-1.3B)|deepseek_janus|deepseek_janus|-|vision|[deepseek-ai/Janus-1.3B](https://huggingface.co/deepseek-ai/Janus-1.3B)|
+|[deepseek-ai/Janus-Pro-1B](https://modelscope.cn/models/deepseek-ai/Janus-Pro-1B)|deepseek_janus_pro|deepseek_janus_pro|-|vision|[deepseek-ai/Janus-Pro-1B](https://huggingface.co/deepseek-ai/Janus-Pro-1B)|
+|[deepseek-ai/Janus-Pro-7B](https://modelscope.cn/models/deepseek-ai/Janus-Pro-7B)|deepseek_janus_pro|deepseek_janus_pro|-|vision|[deepseek-ai/Janus-Pro-7B](https://huggingface.co/deepseek-ai/Janus-Pro-7B)|
 |[OpenBMB/MiniCPM-V](https://modelscope.cn/models/OpenBMB/MiniCPM-V)|minicpmv|minicpmv|timm, transformers<4.42|vision|[openbmb/MiniCPM-V](https://huggingface.co/openbmb/MiniCPM-V)|
 |[OpenBMB/MiniCPM-V-2](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2)|minicpmv|minicpmv|timm, transformers<4.42|vision|[openbmb/MiniCPM-V-2](https://huggingface.co/openbmb/MiniCPM-V-2)|
 |[OpenBMB/MiniCPM-Llama3-V-2_5](https://modelscope.cn/models/OpenBMB/MiniCPM-Llama3-V-2_5)|minicpmv2_5|minicpmv2_5|timm, transformers>=4.36|vision|[openbmb/MiniCPM-Llama3-V-2_5](https://huggingface.co/openbmb/MiniCPM-Llama3-V-2_5)|
