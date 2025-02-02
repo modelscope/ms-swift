@@ -357,7 +357,7 @@ CUDA_VISIBLE_DEVICES=0 swift export \
     --model <model-path> \
     --push_to_hub true \
     --hub_model_id '<model-id>' \
-    --hub_token '<sdk-token>' \
+    --hub_token '<sdk-token>'
 ```
 
 
