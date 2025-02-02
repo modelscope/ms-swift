@@ -53,7 +53,7 @@
 <img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
 ## 📝 简介
-🍲 ms-swift是魔搭社区提供的大模型与多模态大模型微调部署框架，现已支持450+大模型与150+多模态大模型的训练（预训练、微调、人类对齐）、推理、评测、量化与部署。其中大模型包括：Qwen2.5、InternLM3、GLM4、Llama3.3、Mistral、DeepSeek3、Yi1.5、TeleChat2、Baichuan2、Gemma2等模型，多模态大模型包括：Qwen2.5-VL、Qwen2-Audio、Llama3.2-Vision、Llava、InternVL2.5、MiniCPM-V-2.6、GLM4v、Xcomposer2.5、Yi-VL、DeepSeek-VL2、Phi3.5-Vision、GOT-OCR2等模型。
+🍲 ms-swift是魔搭社区提供的大模型与多模态大模型微调部署框架，现已支持450+大模型与150+多模态大模型的训练（预训练、微调、人类对齐）、推理、评测、量化与部署。其中大模型包括：Qwen2.5、InternLM3、GLM4、Llama3.3、Mistral、DeepSeek-R1、Yi1.5、TeleChat2、Baichuan2、Gemma2等模型，多模态大模型包括：Qwen2.5-VL、Qwen2-Audio、Llama3.2-Vision、Llava、InternVL2.5、MiniCPM-V-2.6、GLM4v、Xcomposer2.5、Yi-VL、DeepSeek-VL2、Phi3.5-Vision、GOT-OCR2等模型。
 
 🍔 除此之外，ms-swift汇集了最新的训练技术，包括LoRA、QLoRA、Llama-Pro、LongLoRA、GaLore、Q-GaLore、LoRA+、LISA、DoRA、FourierFt、ReFT、UnSloth、和Liger等。ms-swift支持使用vLLM和LMDeploy对推理、评测和部署模块进行加速，并支持使用GPTQ、AWQ、BNB等技术对大模型和多模态大模型进行量化。为了帮助研究者和开发者更轻松地微调和应用大模型，ms-swift还提供了基于Gradio的Web-UI界面及丰富的最佳实践。
 
@@ -74,8 +74,8 @@
 - **模型量化**：支持AWQ、GPTQ和BNB的量化导出，导出的模型支持使用vLLM/LmDeploy推理加速，并支持继续训练。
 
 ## 🎉 新闻
-- 🎁 2024.01.23: SWIFT支持了`sample`命令, 这是一个对CoT和RFT非常重要的命令. 同时, 我们支持了一个[强化微调脚本](docs/source/Instruction/强化微调.md)。
-- 🎁 2024.12.04: **SWIFT3.0**大版本更新. 请查看[发布说明和更改](https://swift.readthedocs.io/zh-cn/latest/Instruction/ReleaseNote3.0.html)。
+- 🎁 2024.01.23: SWIFT支持了`sample`命令, 这是一个对CoT和RFT非常重要的命令。同时, 我们支持了一个[强化微调脚本](docs/source/Instruction/强化微调.md)。
+- 🎁 2024.12.04: **SWIFT3.0**大版本更新。请查看[发布说明和更改](https://swift.readthedocs.io/zh-cn/latest/Instruction/ReleaseNote3.0.html)。
 - 🎉 2024.08.12: SWIFT论文已经发布到arXiv上，可以点击[这里](https://arxiv.org/abs/2408.05517)阅读。
 - 🔥 2024.08.05: 支持使用[evalscope](https://github.com/modelscope/evalscope/)作为后端进行大模型和多模态模型的评测。
 - 🔥 2024.07.29: 支持使用[vllm](https://github.com/vllm-project/vllm), [lmdeploy](https://github.com/InternLM/lmdeploy)对大模型和多模态大模型进行推理加速，在infer/deploy/eval时额外指定`--infer_backend vllm/lmdeploy`即可。
@@ -96,6 +96,24 @@ git clone https://github.com/modelscope/ms-swift.git
 cd ms-swift
 pip install -e .
 ```
+
+运行环境：
+
+|        | 范围  | 推荐 | 备注 |
+| ------ | ----- | ---- | --|
+| python | >=3.8 | 3.10 ||
+| cuda |  | cuda12 |使用cpu、npu、mps则无需安装|
+| torch | >=2.0 |  ||
+| transformers | >=4.33 | 4.48.1 ||
+| modelscope | >=1.19 |  ||
+| peft | >=0.11.0,<0.15.0 | ||
+| trl | >=0.13,<0.15 | 0.14.0 |RLHF|
+| vllm | >=0.5.1 | 0.6.5 |推理/部署/评测|
+| lmdeploy | lmdeploy>=0.5,<0.6.5 | 0.6.4 |推理/部署/评测|
+| deepspeed |  | 0.14.5 |训练|
+
+更多可选依赖可以参考[这里](https://github.com/modelscope/ms-swift/blob/main/requirements/install_all.sh)。
+
 
 ## 🚀 快速开始
 
@@ -133,7 +151,7 @@ swift sft \
     --model_name swift-robot
 ```
 
-训练完成后，使用以下命令对训练后的权重进行推理，这里的`--adapters`替换成训练生成的last checkpoint文件夹. 由于adapters文件夹中包含了训练的参数文件，因此不需要额外指定`--model`, `--system`.
+训练完成后，使用以下命令对训练后的权重进行推理，这里的`--adapters`替换成训练生成的last checkpoint文件夹。由于adapters文件夹中包含了训练的参数文件，因此不需要额外指定`--model`, `--system`。
 
 ```shell
 # 使用交互式命令行进行推理
@@ -166,7 +184,7 @@ swift web-ui
 ![image.png](./docs/resources/web-ui.jpg)
 
 ### 使用Python
-ms-swift也支持使用python的方式进行训练和推理。下面给出训练和推理的**伪代码**，具体可以查看[这里](https://github.com/modelscope/ms-swift/tree/main/examples/notebook)。
+ms-swift也支持使用python的方式进行训练和推理。下面给出训练和推理的**伪代码**，具体可以查看[这里](https://github.com/modelscope/ms-swift/blob/main/examples/notebook/qwen2_5-self-cognition/self-cognition-sft.ipynb)。
 
 训练：
 ```python
@@ -205,16 +223,34 @@ print(f'response: {resp_list[0].choices[0].message.content}')
 
 ## ✨ 如何使用
 
-这里给出使用ms-swift进行训练到部署到最简示例，具体可以查看[examples](https://github.com/modelscope/ms-swift/tree/main/examples).
+这里给出使用ms-swift进行训练到部署到最简示例，具体可以查看[examples](https://github.com/modelscope/ms-swift/tree/main/examples)。
+
+- 若想使用其他模型或者数据集（含多模态模型和数据集），你只需要修改`--model`指定对应模型的id或者path，修改`--dataset`指定对应数据集的id或者path即可。
+- 默认使用ModelScope进行模型和数据集的下载。如果要使用HuggingFace，指定`--use_hf true`即可。
 
 |   常用链接 |
 | ------ |
-|   [命令行参数](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.html)   |
+|   [🔥命令行参数](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.html)   |
 |   [支持的模型和数据集](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E6%94%AF%E6%8C%81%E7%9A%84%E6%A8%A1%E5%9E%8B%E5%92%8C%E6%95%B0%E6%8D%AE%E9%9B%86.html)   |
-|   [自定义模型](https://swift.readthedocs.io/zh-cn/latest/Customization/%E8%87%AA%E5%AE%9A%E4%B9%89%E6%A8%A1%E5%9E%8B.html), [自定义数据集](https://swift.readthedocs.io/zh-cn/latest/Customization/%E8%87%AA%E5%AE%9A%E4%B9%89%E6%95%B0%E6%8D%AE%E9%9B%86.html)   |
+|   [自定义模型](https://swift.readthedocs.io/zh-cn/latest/Customization/%E8%87%AA%E5%AE%9A%E4%B9%89%E6%A8%A1%E5%9E%8B.html), [🔥自定义数据集](https://swift.readthedocs.io/zh-cn/latest/Customization/%E8%87%AA%E5%AE%9A%E4%B9%89%E6%95%B0%E6%8D%AE%E9%9B%86.html)   |
 |   [大模型教程](https://github.com/modelscope/modelscope-classroom/tree/main/LLM-tutorial)   |
 
 ### 训练
+支持的训练方法：
+
+| 方法   | 全参数 | LoRA | QLoRA | Deepspeed | 多模态 |
+| ------ | ------ | ---- | ----- | ------ | ------ |
+| 预训练 |    [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/pretrain/train.sh)    | ✅ | ✅ | ✅ | ✅ |
+| 指令监督微调 |  [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/full/train.sh)     |   [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/lora_sft.sh)   | [✅](https://github.com/modelscope/ms-swift/tree/main/examples/train/qlora) | [✅](https://github.com/modelscope/ms-swift/tree/main/examples/train/multi-gpu/deepspeed) | [✅](https://github.com/modelscope/ms-swift/tree/main/examples/train/multimodal) |
+| DPO训练 | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/dpo.sh) | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/dpo.sh) | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/multimodal/rlhf/dpo.sh) |
+| 奖励模型训练 | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/rm.sh) | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/rm.sh) | ✅ |
+| PPO训练 | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/ppo.sh) | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/ppo.sh) | ❌ |
+| KTO训练 | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/kto.sh) | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/kto.sh) | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/multimodal/rlhf/kto.sh) |
+| CPO训练 | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/cpo.sh) | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/cpo.sh) | ✅ |
+| SimPO训练 | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/simpo.sh) | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/simpo.sh) | ✅ |
+| ORPO训练 | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/orpo.sh) | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/orpo.sh) | ✅ |
+| 分类模型训练 | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/seq_cls/qwen2_5/sft.sh) | ✅ | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/seq_cls/qwen2_vl/sft.sh) |
+
 
 预训练：
 ```shell
@@ -313,6 +349,15 @@ CUDA_VISIBLE_DEVICES=0 swift export \
     --quant_bits 4 --quant_method awq \
     --dataset AI-ModelScope/alpaca-gpt4-data-zh \
     --output_dir Qwen2.5-7B-Instruct-AWQ
+```
+
+### 推送模型
+```shell
+CUDA_VISIBLE_DEVICES=0 swift export \
+    --model <model-path> \
+    --push_to_hub true \
+    --hub_model_id '<model-id>' \
+    --hub_token '<sdk-token>'
 ```
 
 
