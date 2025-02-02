@@ -184,3 +184,10 @@ register_template(
         prompt=['<|User|>: {{QUERY}}\n\n<|Assistant|>:'],
         template_cls=DeepseekVL2Template,
         placeholder_tokens=['<image>']))
+
+register_template(
+    DeepseekV2_5TemplateMeta(
+        MLLMTemplateType.deepseek_janus_pro,
+        prompt=['<|User|>: {{QUERY}}\n\n<|Assistant|>:'],
+        template_cls=DeepseekJanus,
+    ))
