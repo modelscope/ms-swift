@@ -240,7 +240,7 @@ Here is a minimal example of training to deployment using ms-swift. For more det
 | ------ |
 |   [🔥Command Line Parameters](https://swift.readthedocs.io/en/latest/Instruction/Command-line-parameters.html)   |
 |   [Supported Models and Datasets](https://swift.readthedocs.io/en/latest/Instruction/Supported-models-and-datasets.html)   |
-|   [Custom Models](https://swift.readthedocs.io/en/latest/Customization/Custom-model.html), [Custom Datasets](https://swift.readthedocs.io/en/latest/Customization/Custom-dataset.html)   |
+|   [Custom Models](https://swift.readthedocs.io/en/latest/Customization/Custom-model.html), [🔥Custom Datasets](https://swift.readthedocs.io/en/latest/Customization/Custom-dataset.html)   |
 |   [LLM Tutorial](https://github.com/modelscope/modelscope-classroom/tree/main/LLM-tutorial)   |
 
 ### Training
