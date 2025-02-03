@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from dataclasses import dataclass, field
-from typing import Dict, List, Literal, Optional, Union
+from typing import List, Literal, Optional, Union
 
 from datasets import enable_caching
 
@@ -43,7 +43,7 @@ class DataArguments:
 
     enable_cache: bool = False
     download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists'
-    columns: Optional[Union[Dict[str, str], str]] = None
+    columns: Optional[Union[dict, str]] = None
     strict: bool = False
     # Chinese name and English name
     model_name: List[str] = field(default_factory=lambda: [None, None], metadata={'help': "e.g. ['小黄', 'Xiao Huang']"})
