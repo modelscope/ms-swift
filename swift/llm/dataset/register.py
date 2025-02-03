@@ -49,7 +49,7 @@ class DatasetMeta:
     ms_revision: Optional[str] = None
     hf_revision: Optional[str] = None
 
-    subsets: List[Union[SubsetDataset, str]] = field(default_factory=lambda: [SubsetDataset()])
+    subsets: List[Union[SubsetDataset, str]] = field(default_factory=lambda: ['default'])
     # Applicable to all subsets.
     split: List[str] = field(default_factory=lambda: ['train'])
     # First perform column mapping, then proceed with the preprocess_func.
