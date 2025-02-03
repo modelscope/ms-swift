@@ -2,11 +2,12 @@ from dataclasses import dataclass
 
 from trl import CPOConfig as HfCPOConfig
 from trl import DPOConfig as HfDPOConfig
+from trl import GRPOConfig as HfGRPOConfig
 from trl import KTOConfig as HfKTOConfig
 from trl import ORPOConfig as HfORPOConfig
 from trl import PPOv2Config as HfPPOv2Config
 from trl import RewardConfig as HfRewardConfig
-from trl import GRPOConfig as HfGRPOConfig
+
 from .arguments import SwiftArgumentsMixin
 
 
@@ -38,6 +39,7 @@ class RewardConfig(SwiftArgumentsMixin, HfRewardConfig):
 @dataclass
 class PPOConfig(SwiftArgumentsMixin, HfPPOv2Config):
     pass
+
 
 @dataclass
 class GRPOConfig(SwiftArgumentsMixin, HfGRPOConfig):

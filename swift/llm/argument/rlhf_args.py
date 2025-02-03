@@ -50,7 +50,7 @@ class RLHFArguments(PPOArguments, TrainArguments):
         desirable_weight (float): Weight for desirable outcomes in KTO. Default is 1.0.
         undesirable_weight (float): Weight for undesirable outcomes in KTO. Default is 1.0.
     """
-    rlhf_type: Literal['dpo', 'orpo', 'simpo', 'kto', 'cpo', 'rm', 'ppo'] = 'dpo'
+    rlhf_type: Literal['dpo', 'orpo', 'simpo', 'kto', 'cpo', 'rm', 'ppo', 'grpo'] = 'dpo'
     ref_model: Optional[str] = None
     ref_model_type: Optional[str] = field(
         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
@@ -68,11 +68,8 @@ class RLHFArguments(PPOArguments, TrainArguments):
     desirable_weight: float = 1.0
     undesirable_weight: float = 1.0
     # GRPO
-    num_generations: int = 8 # G in the GRPO paper
+    num_generations: int = 8  # G in the GRPO paper
     max_prompt_length: Optional[int] = None
-
-
-
 
     # Use last_round by default
     loss_scale: str = 'last_round'
