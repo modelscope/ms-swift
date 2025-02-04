@@ -10,7 +10,6 @@ from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 
 del HFCPOTrainer.__init__
-del HFCPOTrainer.get_batch_samples
 
 
 class CPOTrainer(RLHFTrainerMixin, SwiftMixin, HFCPOTrainer):

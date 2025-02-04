@@ -8,7 +8,7 @@ import numpy as np
 from datasets import Dataset as HfDataset
 from datasets import Image
 from datasets import IterableDataset as HfIterableDataset
-from datasets import Value
+from datasets import Sequence, Value
 
 from swift.llm import history_to_messages
 from swift.utils import get_logger
@@ -143,6 +143,26 @@ class RowPreprocessor:
                 new_k = k[len('__@'):]
                 row[new_k] = row.pop(k)
 
+    @staticmethod
+    def _check_objects(row):
+        objects = row.get('objects')
+        if objects is None:
+            return
+        for k in list(objects.keys()):
+            if k not in {'bbox', 'ref', 'bbox_type', 'image_id'}:
+                objects.pop(k)
+        bbox = objects['bbox']
+
+        # check bbox
+        for box in bbox:
+            assert len(box) in {2, 4}, f'len(box): {len(box)}'
+            if len(box) == 2:
+                continue
+            if box[0] > box[2]:
+                box[0], box[2] = box[2], box[0]
+            if box[1] > box[3]:
+                box[1], box[3] = box[3], box[1]
+
     def batched_preprocess(self, batched_row: Dict[str, Any], *, strict: bool,
                            ignore_max_length_error: bool) -> Dict[str, Any]:
         from ...template import MaxLengthError
@@ -161,6 +181,7 @@ class RowPreprocessor:
                 if isinstance(row, dict):
                     row = [row]
                 for r in row:
+                    self._check_objects(r)
                     self._check_messages(r)
                     self._check_rejected_response(r)
                     self._cast_images(r)

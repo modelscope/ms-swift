@@ -1,6 +1,6 @@
 import os
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '2'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 kwargs = {
     'per_device_train_batch_size': 2,
@@ -358,6 +358,17 @@ def test_agent():
     infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True))
 
 
+def test_grounding():
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+    from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
+
+    result = sft_main(
+        TrainArguments(
+            model='Qwen/Qwen2.5-VL-7B-Instruct', dataset=['AI-ModelScope/coco#200'], dataset_num_proc=4, **kwargs))
+    last_model_checkpoint = result['last_model_checkpoint']
+    infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True, stream=True, max_new_tokens=2048))
+
+
 if __name__ == '__main__':
     # test_llm_ddp()
     # test_mllm_mp()
@@ -383,4 +394,5 @@ if __name__ == '__main__':
     # test_unsloth()
     # test_eval_strategy()
     # test_epoch()
-    test_agent()
+    # test_agent()
+    test_grounding()
