@@ -79,7 +79,6 @@ swift infer \
     --max_new_tokens 2048
 ```
 
-> [!TIP]
-> More examples can be found here: [examples](https://github.com/modelscope/ms-swift/tree/main/examples).
->
-> Examples of training and inference using Python can be found in the [notebook](https://github.com/modelscope/ms-swift/tree/main/examples/notebook).
+## Learn More
+- More Shell scripts: [https://github.com/modelscope/ms-swift/tree/main/examples](https://github.com/modelscope/ms-swift/tree/main/examples)
+- Using Python: [https://github.com/modelscope/ms-swift/blob/main/examples/notebook/qwen2_5-self-cognition/self-cognition-sft.ipynb](https://github.com/modelscope/ms-swift/blob/main/examples/notebook/qwen2_5-self-cognition/self-cognition-sft.ipynb)

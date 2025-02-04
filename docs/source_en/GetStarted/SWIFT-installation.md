@@ -37,7 +37,23 @@ pip install ms-swift==2.*
 
 You can view the image [here](https://modelscope.cn/docs/intro/environment-setup#%E6%9C%80%E6%96%B0%E9%95%9C%E5%83%8F).
 
-You can also use [install_all.sh](https://github.com/modelscope/ms-swift/blob/main/requirements/install_all.sh) for installation.
+
+## Running Environment
+
+|              | Range                | Recommended | Notes                                     |
+| ------------ | -------------------- | ----------- | ----------------------------------------- |
+| python       | >=3.8                | 3.10        |                                           |
+| cuda         |                      | cuda12      | No need to install if using CPU, NPU, MPS |
+| torch        | >=2.0                |             |                                           |
+| transformers | >=4.33               | 4.48.1      |                                           |
+| modelscope   | >=1.19               |             |                                           |
+| peft         | >=0.11.0,<0.15.0     |             |                                           |
+| trl          | >=0.13,<0.15         | 0.14.0      | RLHF                                      |
+| vllm         | >=0.5.1              | 0.6.5       | Inference/Deployment/Evaluation           |
+| lmdeploy     | lmdeploy>=0.5,<0.6.5 | 0.6.4       | Inference/Deployment/Evaluation           |
+| deepspeed    |                      | 0.14.5      | Training                                  |
+
+For more optional dependencies, you can refer to [here](https://github.com/modelscope/ms-swift/blob/main/requirements/install_all.sh).
 
 ## Notebook Environment
 
