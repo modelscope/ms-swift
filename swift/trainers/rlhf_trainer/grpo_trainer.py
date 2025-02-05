@@ -57,9 +57,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         prompt_inputs = self.template._encode(inputs)
         if inputs.messages[-1]['role'] == 'assistant':
             inputs.messages.pop(-1)
-        prompt_inputs = super()._prepare_inputs(prompt_inputs)
         if 'attention_mask' not in prompt_inputs:
-            prompt_inputs['attention_mask'] = torch.ones_like(prompt_inputs['input_ids'])
+            prompt_inputs['attention_mask'] = attention_mask = [1] * len(prompt_inputs['input_ids'])
+        self.template.mode = 'train'
+        prompt_inputs = self.template.data_collator([prompt_inputs])
+        prompt_inputs = super()._prepare_inputs(prompt_inputs)
 
         prompt_ids, prompt_mask = prompt_inputs['input_ids'], prompt_inputs['attention_mask']
 
@@ -105,15 +107,25 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # Decode the generated completions
         completions = self.processing_class.batch_decode(completion_ids, skip_special_tokens=True)
-        messages = [inputs.messages for _ in self.num_generations]
-        combined_messages = [message.append(completion) for message, completion in zip(messages, completions)]
+        messages = [inputs.messages for _ in range(self.num_generations)]
+        combined_messages = [
+            message + [{
+                'role': 'assistant',
+                'content': completion
+            }] for message, completion in zip(messages, completions)
+        ]
 
-        rewards_per_func = torch.zeros(len(self.num_generations), len(self.reward_funcs), device=device)
-        for i, (reward_func, reward_template) in enumerate(zip(self.reward_funcs, self.reward_templates)):
+        rewards_per_func = torch.zeros((self.num_generations, len(self.reward_funcs)), device=device)
+        for i, (reward_func, reward_template) in enumerate(zip(self.reward_funcs, [self.reward_template])):
             if isinstance(reward_func, nn.Module):  # Module instead of PretrainedModel for compat with compiled models
-                reward_inputs = StdTemplateInputs.from_dict({'messages': combined_messages})
-                reward_template._preprocess_inputs(reward_inputs)
-                reward_inputs = self.template._encode(reward_inputs)
+                reward_inputs = []
+                for completion in completions:
+                    combined_message = inputs.messages + [{'role': 'assistant', 'content': completion}]
+                    reward_input = StdTemplateInputs.from_dict({'messages': combined_message})
+                    reward_template._preprocess_inputs(reward_input)
+                    reward_input = self.reward_template._encode(reward_input)
+                    reward_inputs.append(reward_input)
+                reward_inputs = self.reward_template.data_collator([reward_inputs])
                 reward_inputs = super()._prepare_inputs(reward_inputs)
                 if 'attention_mask' not in reward_inputs:
                     reward_inputs['attention_mask'] = torch.ones_like(reward_inputs['input_ids'])

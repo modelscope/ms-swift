@@ -62,6 +62,13 @@ class SwiftRLHF(SwiftSft):
     def _prepare_template(self) -> None:
         args = self.args
         super()._prepare_template()
+
+        if hasattr(self, 'reward_processor') and self.args.rlhf_type == 'grpo':
+            reward_template = self.args.get_template(self.reward_processor)
+            reward_template.set_mode('train')
+            if reward_template.use_model:
+                reward_template.model = self.model
+            self.reward_template = reward_template
         model_mapping = {'kto': 'kto', 'ppo': 'pt', 'grpo': 'grpo'}
         self.template.set_mode(model_mapping.get(args.rlhf_type, 'rlhf'))
 
@@ -87,8 +94,8 @@ class SwiftRLHF(SwiftSft):
             model = getattr(self, key, None)
             if model or self.args.rlhf_type == 'ppo':
                 trainer_kwargs[key] = model
-        if hasattr(self.args, 'reward_template'):
-            trainer_kwargs['reward_template'] = self.args.reward_template
+        if hasattr(self, 'reward_template'):
+            trainer_kwargs['reward_template'] = self.reward_template
         return trainer_kwargs
 
 
