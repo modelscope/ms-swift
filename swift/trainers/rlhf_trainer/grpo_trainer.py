@@ -25,7 +25,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         args = kwargs['args']
 
-        processing_class = kwargs.get('tokenizer', None) or kwargs.get('processing_class', None)
+        processing_class = kwargs.get('template').tokenizer
+        # kwargs.get('tokenizer', None) or kwargs.get('processing_class', None)
         # reward_processing_class = kwargs.get('reward_processing_class', None)
         # if reward_processing_class is None:
         #     reward_processing_class = AutoTokenizer.from_pretrained(reward_model.config._name_or_path)
@@ -34,7 +35,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         #     reward_processing_class.pad_token = reward_processing_class.eos_token
         # self.reward_processing_class = reward_processing_class  # TODO
 
-        # self.reward_model = reward_model
+        self.reward_model = reward_model
         # self.reward_model.config.pad_token_id = reward_processing_class.pad_token_id
 
         # kwargs['']

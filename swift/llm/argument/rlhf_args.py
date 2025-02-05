@@ -79,6 +79,7 @@ class RLHFArguments(PPOArguments, TrainArguments):
         self._init_simpo()
         self._set_default()
         super().__post_init__()
+        self._init_grpo()
         self._init_ppo()
 
         if self.rlhf_type in ['dpo', 'kto', 'ppo'] and self.train_type == 'full':
@@ -118,3 +119,7 @@ class RLHFArguments(PPOArguments, TrainArguments):
                 self.loss_type = 'sigmoid'  # else None
             elif self.rlhf_type in ['kto']:
                 self.loss_type = 'kto'
+
+    def _init_grpo(self):
+        if self.rlhf_type == 'grpo':
+            self.training_args.max_new_tokens = self.max_new_tokens
