@@ -61,6 +61,7 @@ Tips:
 - If you want to train with a custom dataset, you can refer to [this guide](https://idealab.alibaba-inc.com/Customization/Custom_Dataset.md) to organize your dataset format and specify `--dataset <dataset_path>`.
 - The `--model_author` and `--model_name` parameters are only effective when the dataset includes `swift/self-cognition`.
 - To train with a different model, simply modify `--model <model_id/model_path>`.
+- By default, ModelScope is used for downloading models and datasets. If you want to use HuggingFace, simply specify `--use_hf true`.
 
 After training is complete, use the following command to infer with the trained weights:
 
@@ -95,7 +96,8 @@ swift export \
     --adapters output/vx-xxx/checkpoint-xxx \
     --push_to_hub true \
     --hub_model_id '<your-model-id>' \
-    --hub_token '<your-sdk-token>'
+    --hub_token '<your-sdk-token>' \
+    --use_hf false
 ```
 
 ## Learn More
