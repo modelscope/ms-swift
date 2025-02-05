@@ -87,7 +87,7 @@ The following outlines the standard dataset format for ms-swift, where the "syst
 
 ### Multimodal
 
-For multimodal datasets, the format is the same as the aforementioned tasks. The difference lies in the addition of several keys: `images`, `videos`, and `audios`, which respectively represent the URLs or paths (absolute paths are recommended) of multimodal resources. The tags `<image>`, `<video>`, and `<audio>` indicate the positions where images, videos, and audio should be inserted. MS-Swift supports the inclusion of multiple images, videos, and audio. The four examples provided below respectively demonstrate data formats for plain text and those containing image, video, and audio data.
+For multimodal datasets, the format is the same as the aforementioned tasks. The difference lies in the addition of several keys: `images`, `videos`, and `audios`, which represent the URLs or paths (preferably absolute paths) of multimodal resources. The tags `<image>`, `<video>`, and `<audio>` indicate where to insert images, videos, or audio. MS-Swift supports multiple images, videos, and audio files. These special tokens will be replaced during preprocessing, as referenced [here](https://github.com/modelscope/ms-swift/blob/main/swift/llm/template/template/qwen.py#L198). The four examples below respectively demonstrate the data format for plain text, as well as formats containing image, video, and audio data.
 
 
 Pre-training:

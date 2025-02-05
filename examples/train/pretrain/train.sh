@@ -13,8 +13,8 @@ swift pt \
     --learning_rate 1e-5 \
     --gradient_accumulation_steps $(expr 256 / $nproc_per_node) \
     --warmup_ratio 0.03 \
-    --eval_steps 100 \
-    --save_steps 100 \
+    --eval_steps 500 \
+    --save_steps 500 \
     --save_total_limit 2 \
     --logging_steps 5 \
     --deepspeed zero3 \
