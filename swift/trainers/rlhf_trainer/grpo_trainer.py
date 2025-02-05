@@ -3,6 +3,7 @@ from typing import Any, Optional, Union
 
 import torch
 import torch.nn as nn
+from accelerate.utils.other import is_compiled_module
 from peft import PeftModel
 from transformers import AutoTokenizer, GenerationConfig, PreTrainedModel
 from trl import GRPOTrainer as HFGRPOTrainer
@@ -27,8 +28,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         args = kwargs['args']
 
-        processing_class = kwargs.get('template').tokenizer
-        self.reward_model = reward_model
+        self.processing_class = kwargs.get('template').tokenizer
+        self.reward_funcs = [reward_model]
         self.max_prompt_length = args.max_prompt_length
         self.num_generations = args.num_generations
 
@@ -37,12 +38,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             do_sample=True,
             temperature=args.temperature,
             num_return_sequences=self.num_generations,
-            pad_token_id=processing_class.pad_token_id,
+            pad_token_id=self.processing_class.pad_token_id,
         )
         model.warnings_issued['estimate_tokens'] = True
 
         self._metrics = {'kl': [], 'reward': [], 'reward_std': []}
         self.reward_template = kwargs.pop('reward_template', None)
+        self.use_vllm = False  # just debug
 
         super().__init__(model, ref_model, *_args, **kwargs)
 
@@ -53,6 +55,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if inputs.messages[-1]['role'] == 'assistant':
             inputs.messages[-1]['content'] = None  # remove response
         prompt_inputs = self.template._encode(inputs)
+        if inputs.messages[-1]['role'] == 'assistant':
+            inputs.messages.pop(-1)
         prompt_inputs = super()._prepare_inputs(prompt_inputs)
         if 'attention_mask' not in prompt_inputs:
             prompt_inputs['attention_mask'] = torch.ones_like(prompt_inputs['input_ids'])
@@ -65,43 +69,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # Generate completions using either vLLM or regular generation
         if self.args.use_vllm:
-            # First, have main process load weights if needed
-            if self.state.global_step != self._last_loaded_step:
-                with unwrap_model_for_generation(
-                        self.model, self.accelerator,
-                        gather_deepspeed3_params=self.args.ds3_gather_for_generation) as unwrapped_model:
-                    if is_compiled_module(unwrapped_model):
-                        state_dict = unwrapped_model._orig_mod.state_dict()
-                    else:
-                        state_dict = unwrapped_model.state_dict()
-                if self.accelerator.is_main_process:
-                    llm_model = self.llm.llm_engine.model_executor.driver_worker.model_runner.model
-                    llm_model.load_weights(state_dict.items())
-                self._last_loaded_step = self.state.global_step
-
-            # Generate completions using vLLM: gather all prompts and use them in a single call in the main process
-            all_prompts_text = gather_object(prompts_text)
-            if self.accelerator.is_main_process:
-                outputs = self.llm.generate(all_prompts_text, sampling_params=self.sampling_params, use_tqdm=False)
-                completion_ids = [out.token_ids for completions in outputs for out in completions.outputs]
-            else:
-                completion_ids = [None] * len(all_prompts_text) * self.num_generations
-
-            # Broadcast the completions from the main process to all processes, ensuring each process receives its
-            # corresponding slice.
-            completion_ids = broadcast_object_list(completion_ids, from_process=0)
-            process_slice = slice(
-                self.accelerator.process_index * len(prompts) * self.num_generations,
-                (self.accelerator.process_index + 1) * len(prompts) * self.num_generations,
-            )
-            completion_ids = completion_ids[process_slice]
-
-            # Pad the completions, and concatenate them with the prompts
-            completion_ids = [torch.tensor(ids, device=device) for ids in completion_ids]
-            completion_ids = pad(completion_ids, padding_value=self.processing_class.pad_token_id)
-            prompt_ids = torch.repeat_interleave(prompt_ids, self.num_generations, dim=0)
-            prompt_mask = torch.repeat_interleave(prompt_mask, self.num_generations, dim=0)
-            prompt_completion_ids = torch.cat([prompt_ids, completion_ids], dim=1)
+            raise NotImplementedError
         else:
             # Regular generation path
             with unwrap_model_for_generation(self.model, self.accelerator) as unwrapped_model:
@@ -137,24 +105,18 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # Decode the generated completions
         completions = self.processing_class.batch_decode(completion_ids, skip_special_tokens=True)
-        if is_conversational(inputs[0]):
-            completions = [[{'role': 'assistant', 'content': completion}] for completion in completions]
+        messages = [inputs.messages for _ in self.num_generations]
+        combined_messages = [message.append(completion) for message, completion in zip(messages, completions)]
 
-        # Compute the rewards
-        prompts = [prompt for prompt in prompts for _ in range(self.num_generations)]  # repeat prompts
-
-        rewards_per_func = torch.zeros(len(prompts), len(self.reward_funcs), device=device)
-        for i, (reward_func,
-                reward_processing_class) in enumerate(zip(self.reward_funcs, self.reward_processing_classes)):
+        rewards_per_func = torch.zeros(len(self.num_generations), len(self.reward_funcs), device=device)
+        for i, (reward_func, reward_template) in enumerate(zip(self.reward_funcs, self.reward_templates)):
             if isinstance(reward_func, nn.Module):  # Module instead of PretrainedModel for compat with compiled models
-                if is_conversational(inputs[0]):
-                    messages = [{'messages': p + c} for p, c in zip(prompts, completions)]
-                    texts = [apply_chat_template(x, reward_processing_class)['text'] for x in messages]
-                else:
-                    texts = [p + c for p, c in zip(prompts, completions)]
-                reward_inputs = reward_processing_class(
-                    texts, return_tensors='pt', padding=True, padding_side='right', add_special_tokens=False)
+                reward_inputs = StdTemplateInputs.from_dict({'messages': combined_messages})
+                reward_template._preprocess_inputs(reward_inputs)
+                reward_inputs = self.template._encode(reward_inputs)
                 reward_inputs = super()._prepare_inputs(reward_inputs)
+                if 'attention_mask' not in reward_inputs:
+                    reward_inputs['attention_mask'] = torch.ones_like(reward_inputs['input_ids'])
                 with torch.inference_mode():
                     rewards_per_func[:, i] = reward_func(**reward_inputs).logits[:, 0]  # Shape (B*G,)
             else:
@@ -164,7 +126,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     for example in inputs:
                         # Repeat each value in the column for `num_generations` times
                         reward_kwargs[key].extend([example[key]] * self.num_generations)
-                output_reward_func = reward_func(prompts=prompts, completions=completions, **reward_kwargs)
+                output_reward_func = reward_func(prompts=inputs.messages, completions=completions, **reward_kwargs)
                 rewards_per_func[:, i] = torch.tensor(output_reward_func, dtype=torch.float32, device=device)
 
         # Sum the rewards from all reward functions
