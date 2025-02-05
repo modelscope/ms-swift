@@ -12,6 +12,7 @@ from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 
 del HFGRPOTrainer.__init__
+del HFGRPOTrainer._prepare_inputs
 
 
 class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
@@ -108,27 +109,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         completion_mask = (sequence_indices <= eos_idx.unsqueeze(1)).int()
 
         reward_inputs = {}
-        reward_inputs['input_ids'] = [p + c for p, c in zip(inputs['input_ids'], completion_ids)]
+        reward_inputs['input_ids'] = [inputs['input_ids'] + c for c in completion_ids]
         reward_inputs['attention_mask'] = [
-            torch.cat([p, torch.ones_like(c)]) for p, c in zip(inputs['attention_mask'], completion_ids)
+            torch.cat([inputs['attention_mask'], torch.ones_like(c)] for c in completion_ids)
         ]
-        # Decode the generated completions
-        # completions = self.template.tokenizer.batch_decode(completion_ids, skip_special_tokens=True)
-        # Compute the rewards
-        # prompts = [prompt for prompt in prompts for _ in range(self.num_generations)]
-        # if is_conversational(inputs[0]):
-        #     completions = [[{'role': 'assistant', 'content': completion}] for completion in completions]
-        #     messages = [{'messages': p + c} for p, c in zip(prompts, completions)]
-        #     texts = [apply_chat_template(x, self.reward_processing_class)['text'] for x in messages]
-        #     reward_inputs = self.reward_processing_class(
-        #         texts, return_tensors='pt', padding=True, padding_side='right', add_special_tokens=False)
-        # else:
-        #     texts = [p + c for p, c in zip(prompts, completions)]
-        #     reward_inputs = self.reward_processing_class(
-        #         texts, return_tensors='pt', padding=True, padding_side='right', add_special_tokens=False)
         reward_inputs = super()._prepare_inputs(reward_inputs)
-        with torch.inference_mode():
-            rewards = self.reward_model(**reward_inputs).logits[:, 0]  # Shape (B*G,)
+        rewards = self.reward(**reward_inputs)
 
         # Compute grouped-wise rewards
         mean_grouped_rewards = rewards.view(-1, self.num_generations).mean(dim=1)
@@ -153,3 +139,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self._metrics['kl'].append(self.accelerator.gather_for_metrics(mean_kl).mean().item())
 
         return loss
+
+    def reward(self, *args, **kwargs):
+        with torch.inference_mode():
+            return self.reward_model(*args, **kwargs).logits[:, 0]  # Shape (B*G,)
