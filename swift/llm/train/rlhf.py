@@ -60,7 +60,7 @@ class SwiftRLHF(SwiftSft):
     def _prepare_template(self) -> None:
         args = self.args
         super()._prepare_template()
-        model_mapping = {'kto': 'kto', 'ppo': 'pt'}
+        model_mapping = {'kto': 'kto', 'ppo': 'pt', 'grpo': 'pt'}
         self.template.set_mode(model_mapping.get(args.rlhf_type, 'rlhf'))
 
         if args.rlhf_type == 'orpo' and not args.model_meta.is_multimodal:
