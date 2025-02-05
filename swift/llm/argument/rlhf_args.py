@@ -2,8 +2,11 @@
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional
 
-from swift.llm import MODEL_MAPPING
+from swift.llm import MODEL_MAPPING, get_matched_model_meta
+from swift.utils import get_logger
 from .train_args import TrainArguments
+
+logger = get_logger()
 
 
 @dataclass
@@ -123,3 +126,13 @@ class RLHFArguments(PPOArguments, TrainArguments):
     def _init_grpo(self):
         if self.rlhf_type == 'grpo':
             self.training_args.max_new_tokens = self.max_new_tokens
+            self.reward_template = self._get_reward_template()
+
+    def _get_reward_template(self):
+        model_meta = get_matched_model_meta(self.reward_model)
+        if model_meta is None and self.reward_model_type is not None:
+            model_meta = MODEL_MAPPING[model_type]
+        if model_meta is None:
+            logger.info(f'The reward model {self.reward_model} is not registered; using a dummy template instead.')
+            return 'dummy'
+        return model_meta.template

@@ -599,5 +599,13 @@
         "ms_dataset_id": "PowerInfer/LONGCOT-Refine-500K",
         "tags": ["chat", "sft", "🔥", "cot"],
         "hf_dataset_id": "PowerInfer/LONGCOT-Refine-500K"
+    },
+    {
+        "ms_dataset_id": "AI-MO/NuminaMath-TIR",
+        "tags": ["grpo", "math"],
+        "hf_dataset_id": "AI-MO/NuminaMath-TIR",
+        "columns": {
+            "problem": "query"
+        }
     }
 ]

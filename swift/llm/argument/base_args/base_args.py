@@ -237,6 +237,8 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
     def get_template(self, processor: 'Processor') -> 'Template':
         template_kwargs = self.get_template_kwargs()
         template = get_template(self.template, processor, **template_kwargs)
+        if hasattr(self, 'reward_processor') and self.rlhf_type == 'grpo':
+            self.reward_template = get_template(self.reward_template, reward_processor, **template_kwargs)
         logger.info(f'default_system: {template.template_meta.default_system}')
         return template
 

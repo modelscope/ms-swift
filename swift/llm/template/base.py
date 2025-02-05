@@ -246,9 +246,10 @@ class Template(ProcessorMixin):
             encoded = self._kto_encode(inputs)
         elif self.mode == 'grpo':
             encoded = inputs
-        for key in list(encoded.keys()):
-            if encoded[key] is None:
-                encoded.pop(key)
+        if isinstance(encoded, dict):  # compat grpo
+            for key in list(encoded.keys()):
+                if encoded[key] is None:
+                    encoded.pop(key)
         if return_template_inputs:
             encoded['template_inputs'] = inputs
         return encoded
