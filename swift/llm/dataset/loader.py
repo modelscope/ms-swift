@@ -186,6 +186,7 @@ class DatasetLoader:
         strict: bool = False,
         streaming: bool = False,
         columns: Optional[Dict[str, str]] = None,
+        remove_unused_columns: bool = False,
     ) -> HfDataset:
         ext = os.path.splitext(dataset_path)[1].lstrip('.')
         file_type = {'jsonl': 'json', 'txt': 'text'}.get(ext) or ext
@@ -196,7 +197,8 @@ class DatasetLoader:
         if columns:
             dataset = RowPreprocessor.safe_rename_columns(dataset, columns)
         dataset = dataset_meta.preprocess_func(dataset, num_proc=num_proc, strict=strict)
-        dataset = RowPreprocessor.remove_useless_columns(dataset)
+        if remove_unused_columns:
+            dataset = DatasetLoader._remove_useless_columns(dataset)
         return dataset
 
     @staticmethod
@@ -212,7 +214,7 @@ class DatasetLoader:
         revision: Optional[str] = None,
         download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists',
         columns: Optional[Dict[str, str]] = None,
-        remove_useless_columns: bool = False,
+        remove_unused_columns: bool = False,
     ) -> HfDataset:
         datasets = []
         if os.path.isdir(dataset_id):
@@ -266,7 +268,8 @@ class DatasetLoader:
             if columns:
                 dataset = RowPreprocessor.safe_rename_columns(dataset, columns)
             dataset = subset.preprocess_func(dataset, num_proc=num_proc, strict=strict)
-            dataset = RowPreprocessor.remove_useless_columns(dataset)
+            if remove_unused_columns:
+                dataset = DatasetLoader._remove_useless_columns(dataset)
             datasets.append(dataset)
         return DatasetLoader._concat_datasets(datasets, streaming)
 

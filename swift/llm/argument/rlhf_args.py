@@ -132,6 +132,8 @@ class RLHFArguments(PPOArguments, TrainArguments):
             self.reward_template = self._get_reward_template()
 
     def _get_reward_template(self):
+        if self.reward_model is None:
+            return
         model_meta = get_matched_model_meta(self.reward_model)
         if model_meta is None and self.reward_model_type is not None:
             model_meta = MODEL_MAPPING[self.reward_model_type]
