@@ -73,7 +73,10 @@ class RLHFArguments(PPOArguments, TrainArguments):
     # GRPO
     num_generations: int = 8  # G in the GRPO paper
     max_prompt_length: Optional[int] = None
-
+    # vLLM in GRPO
+    use_vllm: bool = False
+    vllm_device: Optional[str] = 'auto'  # 'cuda:1'
+    vllm_gpu_memory_utilization: float = 0.9
     # Use last_round by default
     loss_scale: str = 'last_round'
 

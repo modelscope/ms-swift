@@ -1,19 +1,27 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from collections import defaultdict
 from typing import Any, Callable, Optional, Union
+from unittest.mock import patch
 
 import torch
 import torch.nn as nn
+from accelerate.utils import broadcast_object_list, gather_object
+from accelerate.utils.other import is_compiled_module
 from transformers import GenerationConfig, PreTrainedModel
 from trl import GRPOTrainer as HFGRPOTrainer
 from trl.models import unwrap_model_for_generation
+from trl.trainer.utils import pad
 
+from swift.llm import InferRequest, RequestConfig
 from swift.llm.template.template_inputs import StdTemplateInputs
+from swift.utils import get_logger, is_vllm_available
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 
 del HFGRPOTrainer.__init__
 del HFGRPOTrainer._prepare_inputs
+
+logger = get_logger()
 
 
 class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
@@ -23,6 +31,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                  ref_model: Optional[Union[PreTrainedModel, nn.Module]] = None,
                  reward_model: Optional[Union[PreTrainedModel, nn.Module]] = None,
                  reward_funcs: Optional[Union[Callable, list[Callable]]] = None,
+                 use_vllm: bool = False,
                  *_args,
                  **kwargs):
 
@@ -42,18 +51,62 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         self.max_prompt_length = args.max_prompt_length
         self.num_generations = args.num_generations
-
-        self.generation_config = GenerationConfig(
-            max_new_tokens=args.max_new_tokens,
-            do_sample=True,
-            temperature=args.temperature,
-            num_return_sequences=self.num_generations,
-            pad_token_id=self.processing_class.pad_token_id,
-        )
         model.warnings_issued['estimate_tokens'] = True
 
         self._metrics = defaultdict(list)
-        self.use_vllm = False  # just debug
+
+        self.use_vllm = use_vllm
+
+        if use_vllm:
+            if not is_vllm_available():
+                raise ImportError('vLLM is not available and `use_vllm` is set to True. Please install vLLM with '
+                                  '`pip install vllm` to use it.')
+            if self.accelerator.is_main_process:
+                vllm_device = self.args.vllm_device
+                if vllm_device == 'auto':
+                    vllm_device = f'cuda:{self.accelerator.num_processes}'  # take the next GPU idx
+                # Check that the requested device is available
+                if vllm_device.split(':')[0] == 'cuda' and int(vllm_device.split(':')[1]) >= torch.cuda.device_count():
+                    raise ValueError(
+                        f'The requested device for vllm ({vllm_device}) is not available. You are likely using vLLM '
+                        'without restricting the number of GPUs for training. Set the `--num_processes` argument to a '
+                        'value lower than the number of GPUs available on your machine—typically, reducing it by one '
+                        f'is sufficient. In your case: `--num_processes {torch.cuda.device_count() - 1}`.')
+                # Check that the requested device is not also used for training
+                if vllm_device in {f'cuda:{idx}' for idx in range(self.accelerator.num_processes)}:
+                    logger.warning(
+                        f'The requested device {vllm_device} is also used for training. This may lead to unexpected '
+                        'behavior. It is recommended to use a dedicated device for vLLM.')
+                from swift.llm import VllmEngine
+                world_size_patch = patch('torch.distributed.get_world_size', return_value=1)
+                profiling_patch = patch(
+                    'vllm.worker.worker.Worker._assert_memory_footprint_increased_during_profiling', return_value=None)
+                with world_size_patch, profiling_patch:
+                    self.engine = VllmEngine(
+                        model.name_or_path,
+                        device=vllm_device,
+                        vllm_gpu_memory_utilization=args.vllm_gpu_memory_utilization,
+                        enable_prefix_caching=True)
+
+                self.request_config = RequestConfig(
+                    max_tokens=args.max_new_tokens,
+                    temperature=args.temperature,
+                    n=self.num_generations,
+                )
+                self._last_loaded_step = 0
+                self.accelerator.wait_for_everyone()
+        else:
+            self.generation_config = GenerationConfig(
+                max_new_tokens=args.max_new_tokens,
+                do_sample=True,
+                temperature=args.temperature,
+                num_return_sequences=self.num_generations,
+                pad_token_id=self.processing_class.pad_token_id,
+            )
+        self.model_accepts_loss_kwargs = False
+        for i, reward_func in enumerate(self.reward_funcs):
+            if isinstance(reward_func, PreTrainedModel):
+                self.reward_funcs[i] = self.accelerator.prepare_model(reward_func, evaluation_mode=True)
 
         super().__init__(model, ref_model, *_args, **kwargs)
 
@@ -80,7 +133,44 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # Generate completions using either vLLM or regular generation
         if self.args.use_vllm:
-            raise NotImplementedError
+            # First, have main process load weights if needed
+            if self.state.global_step != self._last_loaded_step:
+                with unwrap_model_for_generation(
+                        self.model, self.accelerator,
+                        gather_deepspeed3_params=self.args.ds3_gather_for_generation) as unwrapped_model:
+                    if is_compiled_module(unwrapped_model):
+                        state_dict = unwrapped_model._orig_mod.state_dict()
+                    else:
+                        state_dict = unwrapped_model.state_dict()
+                if self.accelerator.is_main_process:
+                    llm_model = self.engine.model_executor.driver_worker.model_runner.model
+                    llm_model.load_weights(state_dict.items())
+                self._last_loaded_step = self.state.global_step
+
+            # Generate completions using vLLM: gather all prompts and use them in a single call in the main process
+            all_prompts_text = gather_object(prompts_text)
+            infer_requests = [InferRequest(**data) for data in dataset]
+            if self.accelerator.is_main_process:
+                outputs = self.engine.infer(infer_requests, request_config=self.request_config, use_tqdm=False)
+                completion_ids = [out.token_ids for completions in outputs for out in completions.outputs]
+            else:
+                completion_ids = [None] * len(all_prompts_text) * self.num_generations
+
+            # Broadcast the completions from the main process to all processes, ensuring each process receives its
+            # corresponding slice.
+            completion_ids = broadcast_object_list(completion_ids, from_process=0)
+            process_slice = slice(
+                self.accelerator.process_index * len(prompts) * self.num_generations,
+                (self.accelerator.process_index + 1) * len(prompts) * self.num_generations,
+            )
+            completion_ids = completion_ids[process_slice]
+
+            # Pad the completions, and concatenate them with the prompts
+            completion_ids = [torch.tensor(ids, device=device) for ids in completion_ids]
+            completion_ids = pad(completion_ids, padding_value=self.processing_class.pad_token_id)
+            prompt_ids = torch.repeat_interleave(prompt_ids, self.num_generations, dim=0)
+            prompt_mask = torch.repeat_interleave(prompt_mask, self.num_generations, dim=0)
+            prompt_completion_ids = torch.cat([prompt_ids, completion_ids], dim=1)
         else:
             # Regular generation path
             with unwrap_model_for_generation(self.model, self.accelerator) as unwrapped_model:

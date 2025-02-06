@@ -57,6 +57,7 @@ class VllmEngine(InferEngine):
         max_lora_rank: int = 16,
         enable_prefix_caching: bool = False,
         engine_kwargs: Optional[Dict[str, Any]] = None,
+        device: str = 'auto',
     ) -> None:
         self.processor = get_model_tokenizer(
             model_id_or_path,
@@ -83,6 +84,7 @@ class VllmEngine(InferEngine):
             max_lora_rank=max_lora_rank,
             enable_prefix_caching=enable_prefix_caching,
             engine_kwargs=engine_kwargs,
+            device=device,
         )
 
         self._prepare_engine()
@@ -110,6 +112,7 @@ class VllmEngine(InferEngine):
         max_lora_rank: int = 16,
         enable_prefix_caching: bool = False,
         engine_kwargs: Optional[Dict[str, Any]] = None,
+        device: str = 'auto',
     ) -> None:
         if engine_kwargs is None:
             engine_kwargs = {}
@@ -144,6 +147,7 @@ class VllmEngine(InferEngine):
             enforce_eager=enforce_eager,
             trust_remote_code=True,
             enable_prefix_caching=enable_prefix_caching,
+            device=device,
             **engine_kwargs,
         )
         self.engine_args = engine_args
