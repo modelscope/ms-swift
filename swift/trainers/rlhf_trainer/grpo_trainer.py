@@ -112,18 +112,25 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     def _prepare_inputs(self, inputs) -> dict[str, Union[torch.Tensor, Any]]:
         device = self.accelerator.device
-        template_inputs = StdTemplateInputs.from_dict(inputs[0])
-        self.template._preprocess_inputs(template_inputs)
-        if template_inputs.messages[-1]['role'] == 'assistant':
-            template_inputs.messages[-1]['content'] = None  # remove response
-        prompt_inputs = self.template._encode(template_inputs)
-        if template_inputs.messages[-1]['role'] == 'assistant':
-            template_inputs.messages.pop(-1)
-        if 'attention_mask' not in prompt_inputs:
-            prompt_inputs['attention_mask'] = attention_mask = [1] * len(prompt_inputs['input_ids'])
+        prompt_inputs = defaultdict(list)
+        messages = []
+        for example in inputs:
+            template_input = StdTemplateInputs.from_dict(example)
+            self.template._preprocess_inputs(template_input)
+            if template_input.messages[-1]['role'] == 'assistant':
+                template_input.messages[-1]['content'] = None  # set response None before encode
+            prompt_input = self.template._encode(template_input)
+            if template_input.messages[-1]['role'] == 'assistant': # remove after encode
+                template_input.messages.pop(-1)
+            messages.append(template_input.messages)
+            if 'attention_mask' not in prompt_input:
+                prompt_input['attention_mask'] = attention_mask = [1] * len(prompt_input['input_ids'])
+            for key in prompt_input:
+                prompt_inputs[key].append(prompt_input[key])
+
         self.template.mode = 'train'
-        prompt_inputs = self.template.data_collator([prompt_inputs])
-        prompt_inputs = super()._prepare_inputs(prompt_inputs)
+        prompt_inputs = self.template.data_collator([dict(prompt_inputs)]) # convert list to tensor
+        prompt_inputs = super()._prepare_inputs(prompt_inputs) # move device
 
         prompt_ids, prompt_mask = prompt_inputs['input_ids'], prompt_inputs['attention_mask']
 
@@ -148,20 +155,20 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self._last_loaded_step = self.state.global_step
 
             # Generate completions using vLLM: gather all prompts and use them in a single call in the main process
-            all_prompts_text = gather_object(prompts_text)
-            infer_requests = [InferRequest(**data) for data in dataset]
+            all_messages = gather_object(messages)
+            infer_requests = [InferRequest(all_messages)]
             if self.accelerator.is_main_process:
                 outputs = self.engine.infer(infer_requests, request_config=self.request_config, use_tqdm=False)
                 completion_ids = [out.token_ids for completions in outputs for out in completions.outputs]
             else:
-                completion_ids = [None] * len(all_prompts_text) * self.num_generations
+                completion_ids = [None] * len(all_messages) * self.num_generations
 
             # Broadcast the completions from the main process to all processes, ensuring each process receives its
             # corresponding slice.
             completion_ids = broadcast_object_list(completion_ids, from_process=0)
             process_slice = slice(
-                self.accelerator.process_index * len(prompts) * self.num_generations,
-                (self.accelerator.process_index + 1) * len(prompts) * self.num_generations,
+                self.accelerator.process_index * len(messages) * self.num_generations,
+                (self.accelerator.process_index + 1) * len(messages) * self.num_generations,
             )
             completion_ids = completion_ids[process_slice]
 
@@ -212,7 +219,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if isinstance(reward_func, nn.Module):  # Module instead of PretrainedModel for compat with compiled models
                 reward_inputs = []
                 for completion in completions:
-                    combined_message = template_inputs.messages + [{'role': 'assistant', 'content': completion}]
+                    combined_message = messages + [{'role': 'assistant', 'content': completion}]
                     reward_input = StdTemplateInputs.from_dict({'messages': combined_message})
                     reward_template._preprocess_inputs(reward_input)
                     reward_input = self.reward_template._encode(reward_input)
