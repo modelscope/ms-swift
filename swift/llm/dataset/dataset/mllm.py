@@ -56,7 +56,7 @@ register_dataset(
     DatasetMeta(
         ms_dataset_id='swift/gpt4v-dataset',
         hf_dataset_id='laion/gpt4v-dataset',
-        preprocess_func=GPT4vDataset(columns_mapping={
+        preprocess_func=GPT4vDataset(columns={
             'link': 'images',
             'caption': 'response'
         }),
@@ -69,7 +69,7 @@ register_dataset(
     DatasetMeta(
         ms_dataset_id='swift/RLAIF-V-Dataset',
         hf_dataset_id='openbmb/RLAIF-V-Dataset',
-        preprocess_func=ResponsePreprocessor(columns_mapping={
+        preprocess_func=ResponsePreprocessor(columns={
             'question': 'query',
             'chosen': 'response',
             'rejected': 'rejected_response'
@@ -88,7 +88,7 @@ class GarbagePreprocessor(ResponsePreprocessor):
 register_dataset(
     DatasetMeta(
         ms_dataset_id='tany0699/garbage265',
-        preprocess_func=GarbagePreprocessor(columns_mapping={
+        preprocess_func=GarbagePreprocessor(columns={
             'category': 'label',
             'image:FILE': 'images'
         }),
@@ -116,7 +116,7 @@ class SA1BPairedCaptionPreprocessor(RowPreprocessor):
 register_dataset(
     DatasetMeta(
         ms_dataset_id='Tongyi-DataEngine/SA1B-Paired-Captions-Images',
-        preprocess_func=SA1BPairedCaptionPreprocessor(columns_mapping={
+        preprocess_func=SA1BPairedCaptionPreprocessor(columns={
             'opensource_url': 'images',
         }),
         tags=['zh', 'multi-modal', 'vqa'],
@@ -147,7 +147,7 @@ class SA1BDenseCaptionPreprocessor(RowPreprocessor):
 register_dataset(
     DatasetMeta(
         ms_dataset_id='Tongyi-DataEngine/SA1B-Dense-Caption',
-        preprocess_func=SA1BDenseCaptionPreprocessor(columns_mapping={
+        preprocess_func=SA1BDenseCaptionPreprocessor(columns={
             'url': 'images',
         }),
         tags=['zh', 'multi-modal', 'vqa'],
@@ -181,9 +181,9 @@ register_dataset(
 
 class MantisPreprocessor(MessagesPreprocessor):
 
-    def __init__(self, *, subset: str, columns_mapping: Optional[Dict[str, str]] = None) -> None:
+    def __init__(self, *, subset: str, columns: Optional[Dict[str, str]] = None) -> None:
         self.subset = subset
-        super().__init__(columns_mapping=columns_mapping)
+        super().__init__(columns=columns)
 
     def prepare_dataset(self, dataset: HfDataset) -> HfDataset:
         url = (f'https://www.modelscope.cn/api/v1/datasets/swift/Mantis-Instruct/repo?Revision='
@@ -315,7 +315,7 @@ register_dataset(
             SubsetDataset('validation', split=['validation']),
             SubsetDataset('test', split=['test']),
         ],
-        preprocess_func=AIShell1Preprocessor(columns_mapping={'Audio:FILE': 'audios'}),
+        preprocess_func=AIShell1Preprocessor(columns={'Audio:FILE': 'audios'}),
         tags=['chat', 'multi-modal', 'audio'],
     ))
 
@@ -384,9 +384,9 @@ def _generate_url_list(_url, _range):
 
 class LLaVAVideo178KPreprocessor(MessagesPreprocessor):
 
-    def __init__(self, *, subset: str, columns_mapping: Optional[Dict[str, str]] = None) -> None:
+    def __init__(self, *, subset: str, columns: Optional[Dict[str, str]] = None) -> None:
         self.subset = subset
-        super().__init__(columns_mapping=columns_mapping)
+        super().__init__(columns=columns)
 
     video_resources = {
         '0_30_s_academic_v0_1':
@@ -672,7 +672,7 @@ register_dataset(
             'visual-dialog-rephrased', 'iqa', 'vcr', 'visual-mrc', 'ivqa', 'msrvtt-qa', 'msvd-qa', 'gqa', 'text-vqa',
             'ocr-vqa', 'st-vqa', 'flickr8k-cn'
         ],
-        preprocess_func=ResponsePreprocessor(columns_mapping={
+        preprocess_func=ResponsePreprocessor(columns={
             'instruction': 'system',
             'inputs': 'query',
             'image_base64_str': 'images',
@@ -747,7 +747,7 @@ register_dataset(
     DatasetMeta(
         ms_dataset_id='swift/TextCaps',
         hf_dataset_id='HuggingFaceM4/TextCaps',
-        preprocess_func=TextCapsPreprocessor(columns_mapping={'reference_strs': 'response'}),
+        preprocess_func=TextCapsPreprocessor(columns={'reference_strs': 'response'}),
         split=['train', 'validation'],
         huge_dataset=True,
         tags=['multi-modal', 'en', 'caption', 'quality']))
@@ -920,7 +920,7 @@ register_dataset(
         ms_dataset_id='swift/A-OKVQA',
         hf_dataset_id='HuggingFaceM4/A-OKVQA',
         split=['train', 'validation'],
-        preprocess_func=ResponsePreprocessor(columns_mapping={'rationales': 'response'}),
+        preprocess_func=ResponsePreprocessor(columns={'rationales': 'response'}),
         tags=['multi-modal', 'en', 'vqa', 'quality']))
 
 
@@ -1038,15 +1038,15 @@ register_dataset(
         subsets=[
             SubsetDataset(
                 name='caption',
-                preprocess_func=GritPreprocessor('caption', columns_mapping={'url': 'images'}),
+                preprocess_func=GritPreprocessor('caption', columns={'url': 'images'}),
             ),
             SubsetDataset(
                 name='grounding',
-                preprocess_func=GritPreprocessor('grounding', columns_mapping={'url': 'images'}),
+                preprocess_func=GritPreprocessor('grounding', columns={'url': 'images'}),
             ),
             SubsetDataset(
                 name='vqa',
-                preprocess_func=GritPreprocessor('vqa', columns_mapping={'url': 'images'}),
+                preprocess_func=GritPreprocessor('vqa', columns={'url': 'images'}),
             )
         ],
         huge_dataset=True,
