@@ -59,13 +59,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     def _prepare_inputs(self, inputs) -> dict[str, Union[torch.Tensor, Any]]:
         device = self.accelerator.device
-        inputs = StdTemplateInputs.from_dict(inputs[0])
-        self.template._preprocess_inputs(inputs)
-        if inputs.messages[-1]['role'] == 'assistant':
-            inputs.messages[-1]['content'] = None  # remove response
-        prompt_inputs = self.template._encode(inputs)
-        if inputs.messages[-1]['role'] == 'assistant':
-            inputs.messages.pop(-1)
+        template_inputs = StdTemplateInputs.from_dict(inputs[0])
+        self.template._preprocess_inputs(template_inputs)
+        if template_inputs.messages[-1]['role'] == 'assistant':
+            template_inputs.messages[-1]['content'] = None  # remove response
+        prompt_inputs = self.template._encode(template_inputs)
+        if template_inputs.messages[-1]['role'] == 'assistant':
+            template_inputs.messages.pop(-1)
         if 'attention_mask' not in prompt_inputs:
             prompt_inputs['attention_mask'] = attention_mask = [1] * len(prompt_inputs['input_ids'])
         self.template.mode = 'train'
@@ -122,7 +122,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if isinstance(reward_func, nn.Module):  # Module instead of PretrainedModel for compat with compiled models
                 reward_inputs = []
                 for completion in completions:
-                    combined_message = inputs.messages + [{'role': 'assistant', 'content': completion}]
+                    combined_message = template_inputs.messages + [{'role': 'assistant', 'content': completion}]
                     reward_input = StdTemplateInputs.from_dict({'messages': combined_message})
                     reward_template._preprocess_inputs(reward_input)
                     reward_input = self.reward_template._encode(reward_input)
@@ -137,12 +137,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     rewards_per_func[:, i] = reward_func(**reward_inputs).logits[:, 0]  # Shape (B*G,)
             else:
                 # Repeat all input columns (but "messages" and "completion") to match the number of generations
-                reward_kwargs = {key: [] for key in inputs[0].keys() if key not in ['messages', 'completion']}
+                reward_kwargs = {key: [] for key in inputs[0].keys()}
                 for key in reward_kwargs:
                     for example in inputs:
                         # Repeat each value in the column for `num_generations` times
                         reward_kwargs[key].extend([example[key]] * self.num_generations)
-                output_reward_func = reward_func(messages=inputs.messages, completions=completions, **reward_kwargs)
+                output_reward_func = reward_func(completions=completions, **reward_kwargs)
                 rewards_per_func[:, i] = torch.tensor(output_reward_func, dtype=torch.float32, device=device)
 
         # Sum the rewards from all reward functions

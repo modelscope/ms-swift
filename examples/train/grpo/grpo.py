@@ -14,6 +14,55 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 logger = get_logger()
 
+# 确保已安装以下库：
+# 1. pip install math_verify
+# 2. pip install git+https://github.com/huggingface/trl.git
+
+
+# reward function in R1 paper
+def accuracy_reward(completions, solution, **kwargs):
+    """Reward function that checks if the completion is the same as the ground truth."""
+    rewards = []
+    for content, sol in zip(completions, solution):
+        gold_parsed = parse(sol, extraction_mode='first_match', extraction_config=[LatexExtractionConfig()])
+        if len(gold_parsed) != 0:
+            # We require the answer to be provided in correct latex (no malformed operators)
+            answer_parsed = parse(
+                content,
+                extraction_config=[
+                    LatexExtractionConfig(
+                        normalization_config=NormalizationConfig(
+                            nits=False,
+                            malformed_operators=False,
+                            basic_latex=True,
+                            equations=True,
+                            boxed=True,
+                            units=True,
+                        ),
+                        # Ensures that boxed is tried first
+                        boxed_match_priority=0,
+                        try_extract_without_anchor=False,
+                    )
+                ],
+                extraction_mode='first_match',
+            )
+            # Reward 1 if the content is the same as the ground truth, 0 otherwise
+            reward = float(verify(answer_parsed, gold_parsed))
+        else:
+            # If the gold solution is not parseable, we reward 1 to skip this example
+            reward = 1.0
+            print('Failed to parse gold solution: ', sol)
+        rewards.append(reward)
+
+    return rewards
+
+
+def format_reward(completions, **kwargs):
+    """Reward function that checks if the completion has a specific format."""
+    pattern = r'^<think>.*?</think><answer>.*?</answer>$'
+    matches = [re.match(pattern, content) for content in completions]
+    return [1.0 if match else 0.0 for match in matches]
+
 
 class CustomGRPO(SwiftRLHF):
     args_class = RLHFArguments
@@ -36,6 +85,7 @@ class CustomGRPO(SwiftRLHF):
             eval_dataset=val_dataset,
             callbacks=self.callbacks,
             template=self.template,
+            reward_funcs=[accuracy_reward, format_reward],
             **self._get_trainer_kwargs(),
         )
         return self.train(trainer)
@@ -43,17 +93,12 @@ class CustomGRPO(SwiftRLHF):
 
 if __name__ == '__main__':
     model_id_or_path = 'Qwen/Qwen2.5-7B-Instruct'  # model_id or model_path
-    SYSTEM_PROMPT = (
-        'A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant '
-        'first thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning '
-        'process and answer are enclosed within <think> </think> and <answer> </answer> tags, respectively, i.e., '
-        '<think> reasoning process here </think><answer> answer here </answer>')
     output_dir = 'output'
 
     # dataset
     dataset = ['AI-MO/NuminaMath-TIR#100']  # dataset_id or dataset_path
     data_seed = 42
-    max_length = 2048
+    max_new_tokens = 4096
     split_dataset_ratio = 0.01  # Split validation set
     num_proc = 4  # The number of processes for data loading.
 
@@ -67,63 +112,22 @@ if __name__ == '__main__':
 
     # reward_model_id_or_path = ''
 
-    # reward function
-    def accuracy_reward(completions, solution, **kwargs):
-        """Reward function that checks if the completion is the same as the ground truth."""
-        contents = [completion[0]['content'] for completion in completions]
-        rewards = []
-        for content, sol in zip(contents, solution):
-            gold_parsed = parse(sol, extraction_mode='first_match', extraction_config=[LatexExtractionConfig()])
-            if len(gold_parsed) != 0:
-                # We require the answer to be provided in correct latex (no malformed operators)
-                answer_parsed = parse(
-                    content,
-                    extraction_config=[
-                        LatexExtractionConfig(
-                            normalization_config=NormalizationConfig(
-                                nits=False,
-                                malformed_operators=False,
-                                basic_latex=True,
-                                equations=True,
-                                boxed=True,
-                                units=True,
-                            ),
-                            # Ensures that boxed is tried first
-                            boxed_match_priority=0,
-                            try_extract_without_anchor=False,
-                        )
-                    ],
-                    extraction_mode='first_match',
-                )
-                # Reward 1 if the content is the same as the ground truth, 0 otherwise
-                reward = float(verify(answer_parsed, gold_parsed))
-            else:
-                # If the gold solution is not parseable, we reward 1 to skip this example
-                reward = 1.0
-                print('Failed to parse gold solution: ', sol)
-            rewards.append(reward)
-
-        return rewards
-
-    def format_reward(completions, **kwargs):
-        """Reward function that checks if the completion has a specific format."""
-        pattern = r'^<think>.*?</think><answer>.*?</answer>$'
-        completion_contents = [completion[0]['content'] for completion in completions]
-        matches = [re.match(pattern, content) for content in completion_contents]
-        return [1.0 if match else 0.0 for match in matches]
-
     # set system prompt in R1 paper
     SYSTEM_PROMPT = (
-        'A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant '
-        'first thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning '
-        'process and answer are enclosed within <think> </think> and <answer> </answer> tags, respectively, i.e., '
-        '<think> reasoning process here </think><answer> answer here </answer>')
+        'A conversation between User and Assistant. The user asks a question, and the Assistant solves it. '
+        'The assistant first thinks about the reasoning process in the mind and then provides the user '
+        'with the answer. The reasoning process and answer are enclosed within <think> </think> '
+        'and <answer> </answer> tags, respectively, i.e., <think> reasoning process here </think><answer> '
+        'answer here </answer>')
     # training_args
     training_args = RLHFArguments(
         rlhf_type='grpo',
         num_generations=num_generations,
-        reward_funcs=[accuracy_reward, format_reward],
         system=SYSTEM_PROMPT,
+        model=model_id_or_path,
+        max_new_tokens=max_new_tokens,
+        dataset=dataset,
+        split_dataset_ratio=split_dataset_ratio,
         output_dir=output_dir,
         learning_rate=1e-4,
         gradient_checkpointing=True,

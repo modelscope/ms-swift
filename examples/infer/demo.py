@@ -2,7 +2,7 @@
 import os
 from typing import List
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ['CUDA_VISIBLE_DEVICES'] = '7'
 
 
 def infer_batch(engine: 'InferEngine', infer_requests: List['InferRequest']):

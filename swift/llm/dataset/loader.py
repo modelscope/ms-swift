@@ -192,7 +192,8 @@ class DatasetLoader:
         dataset = hf_load_dataset(file_type, data_files=dataset_path, **kwargs)
 
         dataset = dataset_meta.preprocess_func(dataset, num_proc=num_proc, strict=strict)
-        dataset = DatasetLoader._remove_useless_columns(dataset)
+        if remove_unused_columns:
+            dataset = DatasetLoader._remove_useless_columns(dataset)
         return dataset
 
     @staticmethod
@@ -207,7 +208,7 @@ class DatasetLoader:
         strict: bool = False,
         revision: Optional[str] = None,
         download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists',
-        remove_useless_columns: bool = False,
+        remove_unused_columns: bool = False,
     ) -> HfDataset:
         datasets = []
         if os.path.isdir(dataset_id):
@@ -259,7 +260,8 @@ class DatasetLoader:
                     if streaming and isinstance(dataset, HfDataset):
                         dataset = dataset.to_iterable_dataset()
             dataset = subset.preprocess_func(dataset, num_proc=num_proc, strict=strict)
-            dataset = DatasetLoader._remove_useless_columns(dataset)
+            if remove_unused_columns:
+                dataset = DatasetLoader._remove_useless_columns(dataset)
             datasets.append(dataset)
         return DatasetLoader._concat_datasets(datasets, streaming)
 
