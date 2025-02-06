@@ -1,4 +1,4 @@
-# 2 * 76GiB
+# 2 * 30GiB
 CUDA_VISIBLE_DEVICES=0,1 \
 MAX_PIXELS=1003520 \
 swift sft \
