@@ -117,7 +117,6 @@ class ModelArguments:
 
     def _init_model_info(self) -> torch.dtype:
         self.model_info, self.model_meta = get_model_info_meta(**self.get_model_kwargs())
-
         self.task_type = self.model_info.task_type
         self.num_labels = self.model_info.num_labels
         self.model_dir = self.model_info.model_dir

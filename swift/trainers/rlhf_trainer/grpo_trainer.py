@@ -120,7 +120,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if template_input.messages[-1]['role'] == 'assistant':
                 template_input.messages[-1]['content'] = None  # set response None before encode
             prompt_input = self.template._encode(template_input)
-            if template_input.messages[-1]['role'] == 'assistant': # remove after encode
+            if template_input.messages[-1]['role'] == 'assistant':  # remove after encode
                 template_input.messages.pop(-1)
             messages.append(template_input.messages)
             if 'attention_mask' not in prompt_input:
@@ -129,8 +129,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 prompt_inputs[key].append(prompt_input[key])
 
         self.template.mode = 'train'
-        prompt_inputs = self.template.data_collator([dict(prompt_inputs)]) # convert list to tensor
-        prompt_inputs = super()._prepare_inputs(prompt_inputs) # move device
+        prompt_inputs = self.template.data_collator([dict(prompt_inputs)])  # convert list to tensor
+        prompt_inputs = super()._prepare_inputs(prompt_inputs)  # move device
 
         prompt_ids, prompt_mask = prompt_inputs['input_ids'], prompt_inputs['attention_mask']
 
