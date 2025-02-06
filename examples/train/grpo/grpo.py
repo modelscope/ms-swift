@@ -1,33 +1,19 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-
-import logging
 import os
 import re
-import sys
-from dataclasses import dataclass, field
-
-import datasets
-import transformers
-from datasets import load_dataset
-from transformers import set_seed
-from transformers.trainer_utils import get_last_checkpoint
 
 from latex2sympy2_extended import NormalizationConfig
 from math_verify import LatexExtractionConfig, parse, verify
-from open_r1.configs import GRPOConfig
-from open_r1.utils.callbacks import get_callbacks
-from trl import GRPOTrainer, ModelConfig, ScriptArguments, TrlParser, get_peft_config
 
-import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-
-from swift.llm import get_model_tokenizer, load_dataset, get_template, EncodePreprocessor, RLHFArguments
-from swift.utils import get_logger, find_all_linears, get_model_parameter_info, plot_images, seed_everything
-from swift.tuners import Swift, LoraConfig
-from swift.trainers import Seq2SeqTrainer, Seq2SeqTrainingArguments
-from functools import partial
+from swift.llm import RLHFArguments
 from swift.llm.train import SwiftRLHF
 from swift.trainers import GRPOTrainer
+from swift.utils import get_logger, get_model_parameter_info
+
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
+logger = get_logger()
+
 
 class CustomGRPO(SwiftRLHF):
     args_class = RLHFArguments
@@ -54,18 +40,14 @@ class CustomGRPO(SwiftRLHF):
         )
         return self.train(trainer)
 
+
 if __name__ == '__main__':
-
-    logger = get_logger()
-    seed_everything(42)
-
-    model_id_or_path = 'Qwen/Qwen2.5-3B-Instruct'  # model_id or model_path
+    model_id_or_path = 'Qwen/Qwen2.5-7B-Instruct'  # model_id or model_path
     SYSTEM_PROMPT = (
-        "A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant "
-        "first thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning "
-        "process and answer are enclosed within <think> </think> and <answer> </answer> tags, respectively, i.e., "
-        "<think> reasoning process here </think><answer> answer here </answer>"
-    )
+        'A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant '
+        'first thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning '
+        'process and answer are enclosed within <think> </think> and <answer> </answer> tags, respectively, i.e., '
+        '<think> reasoning process here </think><answer> answer here </answer>')
     output_dir = 'output'
 
     # dataset
@@ -80,17 +62,18 @@ if __name__ == '__main__':
     lora_alpha = 32
 
     # GRPO hyperarguments
-    num_generations = 8 # G in GRPO paper
-    max_prompt_length = 1024 # truncation to avoid OOM
-    reward_model_id_or_path = ''
+    num_generations = 8  # G in GRPO paper
+    max_prompt_length = 1024  # truncation to avoid OOM
+
+    # reward_model_id_or_path = ''
 
     # reward function
     def accuracy_reward(completions, solution, **kwargs):
         """Reward function that checks if the completion is the same as the ground truth."""
-        contents = [completion[0]["content"] for completion in completions]
+        contents = [completion[0]['content'] for completion in completions]
         rewards = []
         for content, sol in zip(contents, solution):
-            gold_parsed = parse(sol, extraction_mode="first_match", extraction_config=[LatexExtractionConfig()])
+            gold_parsed = parse(sol, extraction_mode='first_match', extraction_config=[LatexExtractionConfig()])
             if len(gold_parsed) != 0:
                 # We require the answer to be provided in correct latex (no malformed operators)
                 answer_parsed = parse(
@@ -110,31 +93,37 @@ if __name__ == '__main__':
                             try_extract_without_anchor=False,
                         )
                     ],
-                    extraction_mode="first_match",
+                    extraction_mode='first_match',
                 )
                 # Reward 1 if the content is the same as the ground truth, 0 otherwise
                 reward = float(verify(answer_parsed, gold_parsed))
             else:
                 # If the gold solution is not parseable, we reward 1 to skip this example
                 reward = 1.0
-                print("Failed to parse gold solution: ", sol)
+                print('Failed to parse gold solution: ', sol)
             rewards.append(reward)
 
         return rewards
 
-
     def format_reward(completions, **kwargs):
         """Reward function that checks if the completion has a specific format."""
-        pattern = r"^<think>.*?</think><answer>.*?</answer>$"
-        completion_contents = [completion[0]["content"] for completion in completions]
+        pattern = r'^<think>.*?</think><answer>.*?</answer>$'
+        completion_contents = [completion[0]['content'] for completion in completions]
         matches = [re.match(pattern, content) for content in completion_contents]
         return [1.0 if match else 0.0 for match in matches]
-    
+
+    # set system prompt in R1 paper
+    SYSTEM_PROMPT = (
+        'A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant '
+        'first thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning '
+        'process and answer are enclosed within <think> </think> and <answer> </answer> tags, respectively, i.e., '
+        '<think> reasoning process here </think><answer> answer here </answer>')
     # training_args
     training_args = RLHFArguments(
         rlhf_type='grpo',
         num_generations=num_generations,
-        reward_funcs = [accuracy_reward, format_reward],
+        reward_funcs=[accuracy_reward, format_reward],
+        system=SYSTEM_PROMPT,
         output_dir=output_dir,
         learning_rate=1e-4,
         gradient_checkpointing=True,
@@ -150,15 +139,3 @@ if __name__ == '__main__':
         data_seed=data_seed,
     )
     CustomGRPO(training_args).main()
-
-    output_dir = os.path.abspath(os.path.expanduser(output_dir))
-    logger.info(f'output_dir: {output_dir}')
-
-    logger = logging.getLogger(__name__)
-
-    SYSTEM_PROMPT = (
-        "A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant "
-        "first thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning "
-        "process and answer are enclosed within <think> </think> and <answer> </answer> tags, respectively, i.e., "
-        "<think> reasoning process here </think><answer> answer here </answer>"
-    )

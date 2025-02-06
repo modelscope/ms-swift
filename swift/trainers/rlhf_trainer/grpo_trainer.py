@@ -1,12 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from collections import defaultdict
-from typing import Any, Optional, Union
+from typing import Any, Callable, Optional, Union
 
 import torch
 import torch.nn as nn
-from accelerate.utils.other import is_compiled_module
-from peft import PeftModel
-from transformers import AutoTokenizer, GenerationConfig, PreTrainedModel
+from transformers import GenerationConfig, PreTrainedModel
 from trl import GRPOTrainer as HFGRPOTrainer
 from trl.models import unwrap_model_for_generation
 
@@ -24,13 +22,24 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                  model: Optional[Union[PreTrainedModel, nn.Module]] = None,
                  ref_model: Optional[Union[PreTrainedModel, nn.Module]] = None,
                  reward_model: Optional[Union[PreTrainedModel, nn.Module]] = None,
+                 reward_funcs: Optional[Union[Callable, list[Callable]]] = None,
                  *_args,
                  **kwargs):
 
         args = kwargs['args']
 
         self.processing_class = kwargs.get('template').tokenizer
-        self.reward_funcs = [reward_model]
+
+        if reward_funcs is not None and not isinstance(reward_funcs, list):
+            reward_funcs = [reward_funcs]
+        self.reward_funcs = reward_funcs or []
+        self.reward_templates = [None] * len(self.reward_funcs)
+        if reward_model is not None:
+            self.reward_templates.append(kwargs.pop('reward_template', None))
+            self.reward_funcs.append(reward_model)
+        if not self.reward_funcs:
+            raise ValueError('You must specify reward_funcs or reward_model')
+
         self.max_prompt_length = args.max_prompt_length
         self.num_generations = args.num_generations
 
@@ -44,7 +53,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         model.warnings_issued['estimate_tokens'] = True
 
         self._metrics = defaultdict(list)
-        self.reward_template = kwargs.pop('reward_template', None)
         self.use_vllm = False  # just debug
 
         super().__init__(model, ref_model, *_args, **kwargs)
@@ -110,7 +118,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         completions = self.processing_class.batch_decode(completion_ids, skip_special_tokens=True)
 
         rewards_per_func = torch.zeros((self.num_generations, len(self.reward_funcs)), device=device)
-        for i, (reward_func, reward_template) in enumerate(zip(self.reward_funcs, [self.reward_template])):
+        for i, (reward_func, reward_template) in enumerate(zip(self.reward_funcs, self.reward_templates)):
             if isinstance(reward_func, nn.Module):  # Module instead of PretrainedModel for compat with compiled models
                 reward_inputs = []
                 for completion in completions:
@@ -128,13 +136,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 with torch.inference_mode():
                     rewards_per_func[:, i] = reward_func(**reward_inputs).logits[:, 0]  # Shape (B*G,)
             else:
-                # Repeat all input columns (but "prompt" and "completion") to match the number of generations
-                reward_kwargs = {key: [] for key in inputs[0].keys() if key not in ['prompt', 'completion']}
+                # Repeat all input columns (but "messages" and "completion") to match the number of generations
+                reward_kwargs = {key: [] for key in inputs[0].keys() if key not in ['messages', 'completion']}
                 for key in reward_kwargs:
                     for example in inputs:
                         # Repeat each value in the column for `num_generations` times
                         reward_kwargs[key].extend([example[key]] * self.num_generations)
-                output_reward_func = reward_func(prompts=inputs.messages, completions=completions, **reward_kwargs)
+                output_reward_func = reward_func(messages=inputs.messages, completions=completions, **reward_kwargs)
                 rewards_per_func[:, i] = torch.tensor(output_reward_func, dtype=torch.float32, device=device)
 
         # Sum the rewards from all reward functions
