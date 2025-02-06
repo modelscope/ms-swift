@@ -9,7 +9,6 @@ from typing import List, Literal, Optional, Union
 import huggingface_hub
 from huggingface_hub import RepoUrl
 from huggingface_hub.hf_api import api, future_compatible
-from modelscope.utils.repo_utils import CommitInfo
 from requests.exceptions import HTTPError
 from transformers import trainer
 from transformers.utils import logging, strtobool
@@ -155,6 +154,7 @@ class MSHub(HubOperation):
         ignore_patterns: Optional[Union[List[str], str]] = None,
         **kwargs,
     ):
+        from modelscope.utils.repo_utils import CommitInfo
         MSHub.push_to_hub(repo_id, folder_path, path_in_repo, commit_message, commit_description, token, True, revision,
                           ignore_patterns)
         return CommitInfo(
