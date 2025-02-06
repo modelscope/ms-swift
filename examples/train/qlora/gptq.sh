@@ -1,11 +1,10 @@
-# 9GB
-CUDA_VISIBLE_DEVICES=0 \
+# 2 * 76GiB
+CUDA_VISIBLE_DEVICES=0,1 \
+MAX_PIXELS=1003520 \
 swift sft \
-    --model Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4 \
+    --model Qwen/Qwen2-VL-72B-Instruct-GPTQ-Int4 \
+    --dataset 'modelscope/coco_2014_caption:validation#20000' \
     --train_type lora \
-    --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
-              'AI-ModelScope/alpaca-gpt4-data-en#500' \
-              'swift/self-cognition#500' \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \
@@ -14,15 +13,13 @@ swift sft \
     --lora_rank 8 \
     --lora_alpha 32 \
     --target_modules all-linear \
+    --freeze_vit true \
     --gradient_accumulation_steps 16 \
-    --eval_steps 50 \
-    --save_steps 50 \
+    --eval_steps 100 \
+    --save_steps 100 \
     --save_total_limit 5 \
     --logging_steps 5 \
     --max_length 2048 \
     --output_dir output \
-    --system 'You are a helpful assistant.' \
     --warmup_ratio 0.05 \
-    --dataloader_num_workers 4 \
-    --model_author swift \
-    --model_name swift-robot
+    --dataloader_num_workers 4
