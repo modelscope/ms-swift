@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+from collections import defaultdict
 from typing import Any, Optional, Union
 
 import torch
@@ -42,7 +43,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         )
         model.warnings_issued['estimate_tokens'] = True
 
-        self._metrics = {'kl': [], 'reward': [], 'reward_std': []}
+        self._metrics = defaultdict(list)
         self.reward_template = kwargs.pop('reward_template', None)
         self.use_vllm = False  # just debug
 
@@ -107,13 +108,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # Decode the generated completions
         completions = self.processing_class.batch_decode(completion_ids, skip_special_tokens=True)
-        messages = [inputs.messages for _ in range(self.num_generations)]
-        combined_messages = [
-            message + [{
-                'role': 'assistant',
-                'content': completion
-            }] for message, completion in zip(messages, completions)
-        ]
 
         rewards_per_func = torch.zeros((self.num_generations, len(self.reward_funcs)), device=device)
         for i, (reward_func, reward_template) in enumerate(zip(self.reward_funcs, [self.reward_template])):
@@ -125,10 +119,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     reward_template._preprocess_inputs(reward_input)
                     reward_input = self.reward_template._encode(reward_input)
                     reward_inputs.append(reward_input)
-                reward_inputs = self.reward_template.data_collator([reward_inputs])
-                reward_inputs = super()._prepare_inputs(reward_inputs)
+                reward_inputs = self.reward_template.data_collator(reward_inputs)
+                reward_inputs.pop('labels', None)
                 if 'attention_mask' not in reward_inputs:
                     reward_inputs['attention_mask'] = torch.ones_like(reward_inputs['input_ids'])
+                reward_inputs = super(type(self), self)._prepare_inputs(reward_inputs)
+
                 with torch.inference_mode():
                     rewards_per_func[:, i] = reward_func(**reward_inputs).logits[:, 0]  # Shape (B*G,)
             else:
