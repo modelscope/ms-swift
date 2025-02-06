@@ -207,6 +207,7 @@ class DatasetLoader:
         strict: bool = False,
         revision: Optional[str] = None,
         download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists',
+        remove_useless_columns: bool = False,
     ) -> HfDataset:
         datasets = []
         if os.path.isdir(dataset_id):
@@ -343,17 +344,16 @@ class DatasetLoader:
         return dataset
 
     @staticmethod
-    def load(
-        dataset_syntax: Optional[DatasetSyntax] = None,
-        dataset_meta: Optional[DatasetMeta] = None,
-        *,
-        num_proc: int = 1,
-        streaming: bool = False,
-        use_hf: Optional[bool] = None,
-        hub_token: Optional[str] = None,
-        strict: bool = False,
-        download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists',
-    ) -> HfDataset:
+    def load(dataset_syntax: Optional[DatasetSyntax] = None,
+             dataset_meta: Optional[DatasetMeta] = None,
+             *,
+             num_proc: int = 1,
+             streaming: bool = False,
+             use_hf: Optional[bool] = None,
+             hub_token: Optional[str] = None,
+             strict: bool = False,
+             download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists',
+             remove_unused_columns: bool = False) -> HfDataset:
         if dataset_syntax.dataset_type == 'path':
             dataset = DatasetLoader._load_dataset_path(
                 dataset_syntax.dataset,
@@ -361,6 +361,7 @@ class DatasetLoader:
                 num_proc=num_proc,
                 strict=strict,
                 streaming=streaming,
+                remove_unused_columns=remove_unused_columns,
             )
         else:
             subsets: List[SubsetDataset] = DatasetLoader._select_subsets(dataset_syntax.subsets, dataset_meta)
@@ -376,7 +377,8 @@ class DatasetLoader:
                     strict=strict,
                     revision=revision,
                     streaming=streaming,
-                    download_mode=download_mode)
+                    download_mode=download_mode,
+                    remove_unused_columns=remove_unused_columns)
                 datasets.append(dataset)
             dataset = DatasetLoader._concat_datasets(datasets, streaming)
         return dataset
@@ -411,6 +413,7 @@ def load_dataset(
     # self-cognition
     model_name: Union[Tuple[str, str], List[str], None] = None,  # zh, en
     model_author: Union[Tuple[str, str], List[str], None] = None,
+    remove_unused_columns: bool = False,
 ) -> Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]:
     """The interface to load any registered dataset
 
@@ -444,7 +447,8 @@ def load_dataset(
         'strict': strict,
         'download_mode': download_mode,
         'streaming': streaming,
-        'hub_token': hub_token
+        'hub_token': hub_token,
+        'remove_unused_columns': remove_unused_columns,
     }
 
     for dataset in datasets:

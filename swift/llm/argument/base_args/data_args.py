@@ -82,4 +82,5 @@ class DataArguments:
             'strict': self.strict,
             'model_name': self.model_name,
             'model_author': self.model_author,
+            'remove_unused_columns': getattr(self, 'remove_unused_columns', False),
         }
