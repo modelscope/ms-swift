@@ -110,7 +110,7 @@ Running Environment:
 | python       | >=3.8                | 3.10        |                                           |
 | cuda         |                      | cuda12      | No need to install if using CPU, NPU, MPS |
 | torch        | >=2.0                |             |                                           |
-| transformers | >=4.33               | 4.48.1      |                                           |
+| transformers | >=4.33               | 4.48.2      |                                           |
 | modelscope   | >=1.19               |             |                                           |
 | peft         | >=0.11.0,<0.15.0     |             |                                           |
 | trl          | >=0.13,<0.15         | 0.14.0      | RLHF                                      |
