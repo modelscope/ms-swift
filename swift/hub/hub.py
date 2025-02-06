@@ -8,7 +8,8 @@ from typing import List, Literal, Optional, Union
 
 import huggingface_hub
 from huggingface_hub import RepoUrl
-from huggingface_hub.hf_api import CommitInfo, api, future_compatible
+from huggingface_hub.hf_api import api, future_compatible
+from modelscope.utils.repo_utils import CommitInfo
 from requests.exceptions import HTTPError
 from transformers import trainer
 from transformers.utils import logging, strtobool
@@ -122,13 +123,8 @@ class HubOperation:
 class MSHub(HubOperation):
     ms_token = None
 
-    @classmethod
-    def create_repo(cls,
-                    repo_id: str,
-                    *,
-                    token: Union[str, bool, None] = None,
-                    private: bool = False,
-                    **kwargs) -> RepoUrl:
+    @staticmethod
+    def create_repo(repo_id: str, *, token: Union[str, bool, None] = None, private: bool = False, **kwargs) -> RepoUrl:
         """
         Create a new repository on the hub.
 
@@ -141,13 +137,13 @@ class MSHub(HubOperation):
         Returns:
             RepoUrl: The URL of the created repository.
         """
-        hub_model_id = cls.create_model_repo(repo_id, token, private)
+        hub_model_id = MSHub.create_model_repo(repo_id, token, private)
         return RepoUrl(url=hub_model_id, )
 
-    @classmethod
+    @staticmethod
     @future_compatible
     def upload_folder(
-        cls,
+        self,
         *,
         repo_id: str,
         folder_path: Union[str, Path],
@@ -159,8 +155,8 @@ class MSHub(HubOperation):
         ignore_patterns: Optional[Union[List[str], str]] = None,
         **kwargs,
     ):
-        cls.push_to_hub(repo_id, folder_path, path_in_repo, commit_message, commit_description, token, True, revision,
-                        ignore_patterns)
+        MSHub.push_to_hub(repo_id, folder_path, path_in_repo, commit_message, commit_description, token, True, revision,
+                          ignore_patterns)
         return CommitInfo(
             commit_url=f'https://www.modelscope.cn/models/{repo_id}/files',
             commit_message=commit_message,
