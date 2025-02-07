@@ -60,6 +60,7 @@ class LLMTemplateType:
     skywork_o1 = 'skywork_o1'
 
     mistral_nemo = 'mistral_nemo'
+    mistral_2501 = 'mistral_2501'
     zephyr = 'zephyr'
     wizardlm2 = 'wizardlm2'
     wizardlm2_moe = 'wizardlm2_moe'
