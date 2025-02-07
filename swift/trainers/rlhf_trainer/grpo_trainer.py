@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import torch
 import torch.nn as nn
-from accelerate.utils import broadcast_object_list, gather_object
+from accelerate.utils import broadcast_object_list, gather, gather_object
 from accelerate.utils.other import is_compiled_module
 from transformers import GenerationConfig, PreTrainedModel
 from trl import GRPOTrainer as HFGRPOTrainer
@@ -57,6 +57,25 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         self.use_vllm = use_vllm
 
+        super().__init__(model, ref_model, *_args, **kwargs)
+
+        num_processes = self.accelerator.num_processes
+        global_batch_size = args.per_device_train_batch_size * num_processes
+        possible_values = [n_gen for n_gen in range(2, global_batch_size + 1) if (global_batch_size) % n_gen == 0]
+        if self.num_generations not in possible_values:
+            raise ValueError(
+                f'The global train batch size ({num_processes} x {args.per_device_train_batch_size}) must be evenly '
+                f'divisible by the number of generations per prompt ({self.num_generations}). Given the current train '
+                f'batch size, the valid values for the number of generations are: {possible_values}.')
+        if self.args.eval_strategy != 'no':
+            global_batch_size = args.per_device_eval_batch_size * num_processes
+            possible_values = [n_gen for n_gen in range(2, global_batch_size + 1) if (global_batch_size) % n_gen == 0]
+            if self.num_generations not in possible_values:
+                raise ValueError(
+                    f'The global eval batch size ({num_processes} x {args.per_device_eval_batch_size}) must be evenly '
+                    f'divisible by the number of generations per prompt ({self.num_generations}). Given the current '
+                    f'eval batch size, the valid values for the number of generations are: {possible_values}.')
+
         if use_vllm:
             if not is_vllm_available():
                 raise ImportError('vLLM is not available and `use_vllm` is set to True. Please install vLLM with '
@@ -85,13 +104,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     self.engine = VllmEngine(
                         model.name_or_path,
                         device=vllm_device,
-                        vllm_gpu_memory_utilization=args.vllm_gpu_memory_utilization,
-                        enable_prefix_caching=True)
+                        gpu_memory_utilization=args.vllm_gpu_memory_utilization,
+                        enable_prefix_caching=True,
+                        max_model_len=self.args.vllm_max_model_len)
 
                 self.request_config = RequestConfig(
                     max_tokens=args.max_new_tokens,
                     temperature=args.temperature,
-                    n=self.num_generations,
                 )
                 self._last_loaded_step = 0
                 self.accelerator.wait_for_everyone()
@@ -100,15 +119,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 max_new_tokens=args.max_new_tokens,
                 do_sample=True,
                 temperature=args.temperature,
-                num_return_sequences=self.num_generations,
                 pad_token_id=self.processing_class.pad_token_id,
             )
         self.model_accepts_loss_kwargs = False
         for i, reward_func in enumerate(self.reward_funcs):
             if isinstance(reward_func, PreTrainedModel):
                 self.reward_funcs[i] = self.accelerator.prepare_model(reward_func, evaluation_mode=True)
-
-        super().__init__(model, ref_model, *_args, **kwargs)
 
     def _prepare_inputs(self, inputs) -> dict[str, Union[torch.Tensor, Any]]:
         device = self.accelerator.device
@@ -127,8 +143,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             prompt_inputs.append(prompt_input)
 
         self.template.mode = 'train'
-        prompt_inputs = self.template.data_collator(prompt_inputs) # convert list to tensor
-        prompt_inputs = super()._prepare_inputs(prompt_inputs) # move device
+        prompt_inputs = self.template.data_collator(prompt_inputs)  # convert list to tensor
+        prompt_inputs = super()._prepare_inputs(prompt_inputs)  # move device
 
         prompt_ids, prompt_mask = prompt_inputs['input_ids'], prompt_inputs['attention_mask']
 
@@ -159,22 +175,20 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 outputs = self.engine.infer(infer_requests, request_config=self.request_config, use_tqdm=False)
                 completion_ids = [out.token_ids for completions in outputs for out in completions.outputs]
             else:
-                completion_ids = [None] * len(all_messages) * self.num_generations
+                completion_ids = [None] * len(all_messages)
 
             # Broadcast the completions from the main process to all processes, ensuring each process receives its
             # corresponding slice.
             completion_ids = broadcast_object_list(completion_ids, from_process=0)
             process_slice = slice(
-                self.accelerator.process_index * len(messages) * self.num_generations,
-                (self.accelerator.process_index + 1) * len(messages) * self.num_generations,
+                self.accelerator.process_index * len(messages),
+                (self.accelerator.process_index + 1) * len(messages),
             )
             completion_ids = completion_ids[process_slice]
 
             # Pad the completions, and concatenate them with the prompts
             completion_ids = [torch.tensor(ids, device=device) for ids in completion_ids]
             completion_ids = pad(completion_ids, padding_value=self.processing_class.pad_token_id)
-            prompt_ids = torch.repeat_interleave(prompt_ids, self.num_generations, dim=0)
-            prompt_mask = torch.repeat_interleave(prompt_mask, self.num_generations, dim=0)
             prompt_completion_ids = torch.cat([prompt_ids, completion_ids], dim=1)
         else:
             # Regular generation path
@@ -186,7 +200,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             prompt_length = prompt_ids.size(1)
             prompt_ids = prompt_completion_ids[:, :prompt_length]
             completion_ids = prompt_completion_ids[:, prompt_length:]
-            prompt_mask = prompt_mask.repeat_interleave(self.num_generations, dim=0)
 
         # Mask everything after the first EOS token
         is_eos = completion_ids == self.processing_class.eos_token_id
@@ -212,7 +225,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # Decode the generated completions
         completions = self.processing_class.batch_decode(completion_ids, skip_special_tokens=True)
 
-        rewards_per_func = torch.zeros((self.num_generations, len(self.reward_funcs)), device=device)
+        rewards_per_func = torch.zeros((len(inputs), len(self.reward_funcs)), device=device)
         for i, (reward_func, reward_template) in enumerate(zip(self.reward_funcs, self.reward_templates)):
             if isinstance(reward_func, nn.Module):  # Module instead of PretrainedModel for compat with compiled models
                 reward_inputs = []
@@ -224,22 +237,17 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     reward_inputs.append(reward_input)
                 reward_inputs = self.reward_template.data_collator(reward_inputs)
                 reward_inputs.pop('labels', None)
-                if 'attention_mask' not in reward_inputs:
-                    reward_inputs['attention_mask'] = torch.ones_like(reward_inputs['input_ids'])
+                reward_inputs.pop('loss_scale', None)
                 reward_inputs = super(type(self), self)._prepare_inputs(reward_inputs)
 
                 with torch.inference_mode():
-                    rewards_per_func[:, i] = reward_func(**reward_inputs).logits[:, 0]  # Shape (B*G,)
+                    rewards_per_func[:, i] = reward_func(**reward_inputs).logits[:, 0]
             else:
                 # Repeat all input columns (but "messages" and "completion") to match the number of generations
-                reward_kwargs = {key: [] for key in inputs[0].keys()}
-                for key in reward_kwargs:
-                    for example in inputs:
-                        # Repeat each value in the column for `num_generations` times
-                        reward_kwargs[key].extend([example[key]] * self.num_generations)
-                output_reward_func = reward_func(completions=completions, **reward_kwargs)
+                output_reward_func = reward_func(completions=completions, **inputs)
                 rewards_per_func[:, i] = torch.tensor(output_reward_func, dtype=torch.float32, device=device)
 
+        rewards_per_func = gather(rewards_per_func)
         # Sum the rewards from all reward functions
         rewards = rewards_per_func.sum(dim=1)
 
@@ -252,8 +260,15 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         std_grouped_rewards = std_grouped_rewards.repeat_interleave(self.num_generations, dim=0)
         advantages = (rewards - mean_grouped_rewards) / (std_grouped_rewards + 1e-4)
 
+        # Slice to keep only the local part of the data
+        process_slice = slice(
+            self.accelerator.process_index * len(prompts),
+            (self.accelerator.process_index + 1) * len(prompts),
+        )
+        advantages = advantages[process_slice]
+
         # Log the metrics
-        reward_per_func = self.accelerator.gather_for_metrics(rewards_per_func).mean(0)
+        reward_per_func = rewards_per_func.mean(0)
         for i, reward_func in enumerate(self.reward_funcs):
             if isinstance(reward_func, nn.Module):  # Module instead of PretrainedModel for compat with compiled models
                 reward_func_name = reward_func.config._name_or_path.split('/')[-1]
@@ -261,8 +276,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 reward_func_name = reward_func.__name__
             self._metrics[f'rewards/{reward_func_name}'].append(reward_per_func[i].item())
 
-        self._metrics['reward'].append(self.accelerator.gather_for_metrics(rewards).mean().item())
-        self._metrics['reward_std'].append(self.accelerator.gather_for_metrics(std_grouped_rewards).mean().item())
+        self._metrics['reward'].append(rewards.mean().item())
+        self._metrics['reward_std'].append(std_grouped_rewards.mean().item())
 
         return {
             'prompt_ids': prompt_ids,
