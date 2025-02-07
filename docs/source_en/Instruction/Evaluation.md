@@ -76,12 +76,13 @@ Supports four methods of evaluation: pure text evaluation, multimodal evaluation
 **Basic Example**
 
 ```shell
+CUDA_VISIBLE_DEVICES=0 \
 swift eval \
- --model Qwen/Qwen2.5-0.5B-Instruct \
- --eval_backend Native \
- --infer_backend pt \
- --eval_limit 10 \
- --eval_dataset gsm8k
+    --model Qwen/Qwen2.5-0.5B-Instruct \
+    --eval_backend Native \
+    --infer_backend pt \
+    --eval_limit 10 \
+    --eval_dataset gsm8k
 ```
 Where:
 - eval_backend: options are Native, OpenCompass, VLMEvalKit
