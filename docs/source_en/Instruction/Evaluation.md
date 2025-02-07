@@ -87,7 +87,7 @@ Where:
 - eval_backend: options are Native, OpenCompass, VLMEvalKit
 - infer_backend: options are pt, vllm, lmdeploy
 
-For a specific list of evaluation parameters, please refer to [here](command_line_parameters.md#evaluation-parameters).
+For a specific list of evaluation parameters, please refer to [here](./Command-line-parameters.md#evaluation-arguments).
 
 More evaluation examples can be found in [examples](https://github.com/modelscope/ms-swift/tree/main/examples/eval).
 
