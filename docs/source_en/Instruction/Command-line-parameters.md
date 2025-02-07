@@ -117,6 +117,7 @@ This parameter list inherits from transformers `Seq2SeqTrainingArguments`, with 
 - remove_unused_columns: Whether to remove unused columns in the dataset, defaults to False.
 - logging_first_step: Whether to log the first step, defaults to True.
 - logging_steps: Interval for logging, defaults to 5.
+- predict_with_generate: Whether to use generative method during validation, default is False.
 - metric_for_best_model: Defaults to None, which sets it to 'loss' when `predict_with_generate` is False, otherwise sets it to 'rouge-l'.
 - greater_is_better: Defaults to None, which sets it to False when `metric_for_best_model` contains 'loss', otherwise sets to True.
 
