@@ -200,6 +200,13 @@ def get_model_tokenizer_from_local(model_dir: str,
             except ValueError:
                 model = None
 
+        if model_info.task_type == 'embedding' and automodel_class is None:
+            try:
+                model = AutoModel.from_pretrained(
+                    model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
+            except ValueError:
+                model = None
+
         automodel_class = automodel_class or AutoModelForCausalLM
         if model is None:
             if model_info.task_type == 'seq_cls':

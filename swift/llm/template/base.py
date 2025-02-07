@@ -112,7 +112,7 @@ class Template(ProcessorMixin):
 
         self.mode: Literal['pt', 'vllm', 'lmdeploy',  # infer
         'train', 'rlhf', 'kto',  # train
-        'seq_cls', 'prm'] = 'pt'
+        'seq_cls', 'embedding', 'prm'] = 'pt'
         if self.model_info.task_type != 'causal_lm':
             self.mode = self.model_info.task_type
         self._handles = []
