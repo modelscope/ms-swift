@@ -68,8 +68,7 @@ class RLHFArguments(PPOArguments, TrainArguments):
     desirable_weight: float = 1.0
     undesirable_weight: float = 1.0
 
-    # Use last_round by default
-    loss_scale: str = 'last_round'
+    loss_scale: Optional[str] = None
 
     def __post_init__(self):
         self._init_rm()
@@ -77,7 +76,12 @@ class RLHFArguments(PPOArguments, TrainArguments):
         self._set_default()
         super().__post_init__()
         self._init_ppo()
-
+        if self.loss_scale is None:
+            if self.rlhf_type == 'orpo' and not self.model_meta.is_multimodal:
+                # Avoid padding labels during the model's forward pass in multimodal models.
+                self.loss_scale = 'default'
+            else:
+                self.loss_scale = 'last_round'
         if self.rlhf_type in ['dpo', 'kto', 'ppo'] and self.train_type == 'full':
             self.ref_model = self.ref_model or self.model
             self.ref_model_type = self.ref_model_type or self.model_type

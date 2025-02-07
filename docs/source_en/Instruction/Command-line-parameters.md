@@ -340,6 +340,7 @@ RLHF arguments inherit from the [training arguments](#training-arguments).
 - simpo_gamma: Reward margin term in the SimPO algorithm, with a paper-suggested setting of 0.5-1.5, default is `1.`.
 - desirable_weight: Loss weight $\lambda_D$ for desirable response in the KTO algorithm, default is `1.`.
 - undesirable_weight: Loss weight $\lambda_U$ for undesirable response in the KTO algorithm, default is `1.`.
+- loss_scale: Override template arguments, default is 'last_round'.
 
 #### PPO Arguments
 
