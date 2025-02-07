@@ -1,3 +1,4 @@
+# https://help.aliyun.com/zh/pai/user-guide/general-environment-variables
 NNODES=$WORLD_SIZE \
 NODE_RANK=$RANK \
 swift sft \
