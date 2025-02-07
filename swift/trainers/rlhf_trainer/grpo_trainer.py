@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from collections import defaultdict
 from contextlib import contextmanager
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Optional, Union, Dict
 from unittest.mock import patch
 
 import torch
@@ -101,16 +101,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 profiling_patch = patch(
                     'vllm.worker.worker.Worker._assert_memory_footprint_increased_during_profiling', return_value=None)
                 with world_size_patch, profiling_patch:
-                    # self.engine = VllmEngine(
-                    #     model.name_or_path,
-                    #     device=vllm_device,
-                    #     gpu_memory_utilization=args.vllm_gpu_memory_utilization,
-                    #     enable_prefix_caching=True,
-                    #     max_model_len=self.args.vllm_max_model_len)
-                    # self.engine = PTEngine(
-                    #     model.name_or_path,
-                    #     max_model_len=self.args.vllm_max_model_len
-                    # )
+                    self.engine = VllmEngine(
+                        model.name_or_path,
+                        device=vllm_device,
+                        gpu_memory_utilization=args.vllm_gpu_memory_utilization,
+                        enable_prefix_caching=True,
+                        max_model_len=self.args.vllm_max_model_len)
                     pass
                 self.request_config = RequestConfig(
                     max_tokens=args.max_new_tokens,
@@ -139,7 +135,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         finally:
             self.template.padding_side = original_padding_side
 
-    def _prepare_inputs(self, inputs) -> dict[str, Union[torch.Tensor, Any]]:
+    def _prepare_inputs(self, inputs) -> Dict[str, Union[torch.Tensor, Any]]:
         device = self.accelerator.device
         prompt_inputs = []
         messages = []
