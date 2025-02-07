@@ -2,11 +2,13 @@
 from typing import Callable, Optional
 
 import torch
-from torch.nn import CrossEntropyLoss
+from torch import nn
+from torch.nn import CrossEntropyLoss, MSELoss
 
 
 class LossType:
     loss_scale = 'loss_scale'
+    cosine_similarity = 'cosine_similarity'
 
 
 LOSS_MAPPING = {}
@@ -69,6 +71,17 @@ def loss_scale_func(outputs, labels, loss_scale=None, num_items_in_batch=None) -
         # compat transformers>=4.46
         loss = loss.sum() / num_items_in_batch
     return loss
+
+
+@register_loss_func(LossType.cosine_similarity)
+def cosine_similarity_func(outputs, labels, loss_scale=None, num_items_in_batch=None) -> torch.Tensor:
+    cos_score_transformation = nn.Identity()
+    loss_fct = MSELoss()
+    batch_size = outputs.shape[0]
+    sentence1 = outputs[0:batch_size]
+    sentence2 = outputs[batch_size:]
+    output = cos_score_transformation(torch.cosine_similarity(sentence1, sentence2))
+    return loss_fct(output, labels.float().view(-1))
 
 
 def get_loss_func(loss_type: Optional[str]) -> Optional[Callable]:
