@@ -207,6 +207,8 @@ class HfConfigFactory:
         res = {}
         for model_type, model_meta in MODEL_MAPPING.items():
             architectures = model_meta.architectures
+            if not architectures:
+                architectures.append('null')
             for arch in architectures:
                 if arch not in res:
                     res[arch] = []
@@ -216,7 +218,7 @@ class HfConfigFactory:
     @staticmethod
     def get_matched_model_types(config: Union[PretrainedConfig, Dict[str, Any]]) -> List[str]:
         """Get possible model_type."""
-        arch = HfConfigFactory.get_config_attr(config, 'architectures')
+        arch = HfConfigFactory.get_config_attr(config, 'architectures') or ['null']
         if arch:
             arch = arch[0]
         arch_mapping = HfConfigFactory._get_arch_mapping()
