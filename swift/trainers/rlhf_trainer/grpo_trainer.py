@@ -120,7 +120,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if template_input.messages[-1]['role'] == 'assistant':
                 template_input.messages[-1]['content'] = None  # set response None before encode
             prompt_input = self.template._encode(template_input)
-            if template_input.messages[-1]['role'] == 'assistant': # remove after encode
+            if template_input.messages[-1]['role'] == 'assistant':  # remove after encode
                 template_input.messages.pop(-1)
             messages.append(template_input.messages)
             prompt_input.pop('loss_scale', None)

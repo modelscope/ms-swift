@@ -345,17 +345,19 @@ class DatasetLoader:
         return train_dataset, val_dataset
 
     @staticmethod
-    def load(dataset_syntax: Optional[DatasetSyntax] = None,
-             dataset_meta: Optional[DatasetMeta] = None,
-             *,
-             num_proc: int = 1,
-             streaming: bool = False,
-             use_hf: Optional[bool] = None,
-             hub_token: Optional[str] = None,
-             strict: bool = False,
-             download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists',
-             columns: Optional[Dict[str, str]] = None,
-             remove_unused_columns: bool = False) -> HfDataset:
+    def load(
+        dataset_syntax: Optional[DatasetSyntax] = None,
+        dataset_meta: Optional[DatasetMeta] = None,
+        *,
+        num_proc: int = 1,
+        streaming: bool = False,
+        use_hf: Optional[bool] = None,
+        hub_token: Optional[str] = None,
+        strict: bool = False,
+        download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists',
+        columns: Optional[Dict[str, str]] = None,
+        remove_unused_columns: bool = False,
+    ) -> HfDataset:
         if dataset_syntax.dataset_type == 'path':
             dataset = DatasetLoader._load_dataset_path(
                 dataset_syntax.dataset,
@@ -381,7 +383,8 @@ class DatasetLoader:
                     streaming=streaming,
                     download_mode=download_mode,
                     columns=columns,
-                    remove_unused_columns=remove_unused_columns)
+                    remove_unused_columns=remove_unused_columns,
+                )
                 datasets.append(dataset)
             dataset = DatasetLoader._concat_datasets(datasets, streaming)
         return dataset

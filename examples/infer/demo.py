@@ -2,11 +2,11 @@
 import os
 from typing import List
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '7'
+os.environ['CUDA_VISIBLE_DEVICES'] = '2'
 
 
 def infer_batch(engine: 'InferEngine', infer_requests: List['InferRequest']):
-    request_config = RequestConfig(max_tokens=512, temperature=0)
+    request_config = RequestConfig(max_tokens=512, temperature=0.8, n=8)
     metric = InferStats()
     resp_list = engine.infer(infer_requests, request_config, metrics=[metric])
     query0 = infer_requests[0].messages[0]['content']
@@ -34,7 +34,7 @@ if __name__ == '__main__':
     from swift.llm import InferEngine, InferRequest, PtEngine, RequestConfig, load_dataset
     from swift.plugin import InferStats
     model = 'Qwen/Qwen2.5-1.5B-Instruct'
-    infer_backend = 'pt'
+    infer_backend = 'vllm'
 
     if infer_backend == 'pt':
         engine = PtEngine(model, max_batch_size=64)
@@ -46,7 +46,7 @@ if __name__ == '__main__':
         engine = LmdeployEngine(model)
 
     # Here, `load_dataset` is used for convenience; `infer_batch` does not require creating a dataset.
-    dataset = load_dataset(['AI-ModelScope/alpaca-gpt4-data-zh#1000'], seed=42)[0]
+    dataset = load_dataset(['AI-ModelScope/alpaca-gpt4-data-zh#100'], seed=42)[0]
     print(f'dataset: {dataset}')
     infer_requests = [InferRequest(**data) for data in dataset]
     infer_batch(engine, infer_requests)
