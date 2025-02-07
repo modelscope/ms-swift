@@ -96,18 +96,22 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     logger.warning(
                         f'The requested device {vllm_device} is also used for training. This may lead to unexpected '
                         'behavior. It is recommended to use a dedicated device for vLLM.')
-                from swift.llm import VllmEngine
+                from swift.llm import VllmEngine # , PtEngine
                 world_size_patch = patch('torch.distributed.get_world_size', return_value=1)
                 profiling_patch = patch(
                     'vllm.worker.worker.Worker._assert_memory_footprint_increased_during_profiling', return_value=None)
                 with world_size_patch, profiling_patch:
-                    self.engine = VllmEngine(
-                        model.name_or_path,
-                        device=vllm_device,
-                        gpu_memory_utilization=args.vllm_gpu_memory_utilization,
-                        enable_prefix_caching=True,
-                        max_model_len=self.args.vllm_max_model_len)
-
+                    # self.engine = VllmEngine(
+                    #     model.name_or_path,
+                    #     device=vllm_device,
+                    #     gpu_memory_utilization=args.vllm_gpu_memory_utilization,
+                    #     enable_prefix_caching=True,
+                    #     max_model_len=self.args.vllm_max_model_len)
+                    # self.engine = PTEngine(
+                    #     model.name_or_path,
+                    #     max_model_len=self.args.vllm_max_model_len
+                    # )
+                    pass
                 self.request_config = RequestConfig(
                     max_tokens=args.max_new_tokens,
                     temperature=args.temperature,

@@ -117,8 +117,8 @@ if __name__ == '__main__':
         'answer here </answer>')
     # vllm args
     use_vllm = True
-    vllm_gpu_memory_utilization = 0.8
-    vllm_device = 'cuda:0'
+    vllm_gpu_memory_utilization = 0.9
+    vllm_device = 'auto' # 'cuda:2'
     # training_args
     training_args = RLHFArguments(
         rlhf_type='grpo',
@@ -145,7 +145,7 @@ if __name__ == '__main__':
         logging_steps=5,
         dataloader_num_workers=1,
         data_seed=data_seed,
-        per_device_train_batch_size=1,
-        per_device_eval_batch_size=1,
+        per_device_train_batch_size=3,
+        per_device_eval_batch_size=3,
     )
     CustomGRPO(training_args).main()
