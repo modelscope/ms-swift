@@ -348,6 +348,7 @@ CUDA_VISIBLE_DEVICES=0 swift sample \
 CUDA_VISIBLE_DEVICES=0 swift eval \
     --model Qwen/Qwen2.5-7B-Instruct \
     --infer_backend lmdeploy \
+    --eval_backend OpenCompass \
     --eval_dataset ARC_c
 ```
 
