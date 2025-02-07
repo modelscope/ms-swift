@@ -10,7 +10,7 @@ from swift.llm.train import SwiftRLHF
 from swift.trainers import GRPOTrainer
 from swift.utils import get_logger, get_model_parameter_info
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '2'
+# os.environ['CUDA_VISIBLE_DEVICES'] = '2'
 
 logger = get_logger()
 
@@ -118,6 +118,7 @@ if __name__ == '__main__':
     # vllm args
     use_vllm = True
     vllm_gpu_memory_utilization = 0.8
+    vllm_device = 'cuda:0'
     # training_args
     training_args = RLHFArguments(
         rlhf_type='grpo',
@@ -129,6 +130,7 @@ if __name__ == '__main__':
         dataset=dataset,
         use_vllm=use_vllm,
         vllm_gpu_memory_utilization=vllm_gpu_memory_utilization,
+        vllm_device=vllm_device,
         split_dataset_ratio=split_dataset_ratio,
         output_dir=output_dir,
         learning_rate=1e-4,
@@ -143,7 +145,7 @@ if __name__ == '__main__':
         logging_steps=5,
         dataloader_num_workers=1,
         data_seed=data_seed,
-        per_device_train_batch_size=3,
-        per_device_eval_batch_size=3,
+        per_device_train_batch_size=1,
+        per_device_eval_batch_size=1,
     )
     CustomGRPO(training_args).main()

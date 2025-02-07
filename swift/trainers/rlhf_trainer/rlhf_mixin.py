@@ -36,6 +36,9 @@ class ModelWrapper(nn.Module):
     def load_state_dict(self, *args, **kwargs):
         return self._model.load_state_dict(*args, **kwargs)
 
+    def state_dict(self, *args, **kwargs):
+        return self._model.state_dict(*args, **kwargs)
+
     def parameters(self, *args, **kwargs):
         return self._model.parameters(*args, **kwargs)
 
