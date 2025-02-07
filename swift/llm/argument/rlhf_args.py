@@ -76,6 +76,7 @@ class RLHFArguments(PPOArguments, TrainArguments):
         self._set_default()
         super().__post_init__()
         self._init_ppo()
+
         if self.loss_scale is None:
             if self.rlhf_type == 'orpo' and not self.model_meta.is_multimodal:
                 # Avoid padding labels during the model's forward pass in multimodal models.
