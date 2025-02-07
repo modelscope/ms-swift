@@ -112,7 +112,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     def _prepare_inputs(self, inputs) -> dict[str, Union[torch.Tensor, Any]]:
         device = self.accelerator.device
-        prompt_inputs = defaultdict(list)
+        prompt_inputs = []
         messages = []
         for example in inputs:
             template_input = StdTemplateInputs.from_dict(example)
@@ -123,13 +123,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if template_input.messages[-1]['role'] == 'assistant': # remove after encode
                 template_input.messages.pop(-1)
             messages.append(template_input.messages)
-            if 'attention_mask' not in prompt_input:
-                prompt_input['attention_mask'] = attention_mask = [1] * len(prompt_input['input_ids'])
-            for key in prompt_input:
-                prompt_inputs[key].append(prompt_input[key])
+            prompt_input.pop('loss_scale', None)
+            prompt_inputs.append(prompt_input)
 
         self.template.mode = 'train'
-        prompt_inputs = self.template.data_collator([dict(prompt_inputs)]) # convert list to tensor
+        prompt_inputs = self.template.data_collator(prompt_inputs) # convert list to tensor
         prompt_inputs = super()._prepare_inputs(prompt_inputs) # move device
 
         prompt_ids, prompt_mask = prompt_inputs['input_ids'], prompt_inputs['attention_mask']

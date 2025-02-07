@@ -10,7 +10,7 @@ from swift.llm.train import SwiftRLHF
 from swift.trainers import GRPOTrainer
 from swift.utils import get_logger, get_model_parameter_info
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ['CUDA_VISIBLE_DEVICES'] = '2'
 
 logger = get_logger()
 
@@ -92,7 +92,7 @@ class CustomGRPO(SwiftRLHF):
 
 
 if __name__ == '__main__':
-    model_id_or_path = 'Qwen/Qwen2.5-7B-Instruct'  # model_id or model_path
+    model_id_or_path = 'Qwen/Qwen2.5-1.5B-Instruct'  # model_id or model_path
     output_dir = 'output'
 
     # dataset
