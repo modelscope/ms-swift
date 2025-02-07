@@ -98,7 +98,7 @@ if __name__ == '__main__':
     # dataset
     dataset = ['AI-MO/NuminaMath-TIR#100']  # dataset_id or dataset_path
     data_seed = 42
-    max_new_tokens = 512
+    max_new_tokens = 4096
     split_dataset_ratio = 0.01  # Split validation set
     num_proc = 4  # The number of processes for data loading.
 
@@ -115,14 +115,20 @@ if __name__ == '__main__':
         'with the answer. The reasoning process and answer are enclosed within <think> </think> '
         'and <answer> </answer> tags, respectively, i.e., <think> reasoning process here </think><answer> '
         'answer here </answer>')
+    # vllm args
+    use_vllm = True
+    vllm_gpu_memory_utilization = 0.8
     # training_args
     training_args = RLHFArguments(
         rlhf_type='grpo',
+        train_type='full',
         num_generations=num_generations,
         system=SYSTEM_PROMPT,
         model=model_id_or_path,
         max_new_tokens=max_new_tokens,
         dataset=dataset,
+        use_vllm=use_vllm,
+        vllm_gpu_memory_utilization=vllm_gpu_memory_utilization,
         split_dataset_ratio=split_dataset_ratio,
         output_dir=output_dir,
         learning_rate=1e-4,

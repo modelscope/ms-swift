@@ -305,13 +305,16 @@ class VllmEngine(InferEngine):
                                 template: Template,
                                 inputs: Dict[str, Any],
                                 generation_config: SamplingParams,
-                                adapter_request: Optional[AdapterRequest] = None) -> ChatCompletionResponse:
+                                adapter_request: Optional[AdapterRequest] = None,
+                                return_outputs: bool = False) -> ChatCompletionResponse:
         request_id = random_uuid()
         result_generator = self._add_request(inputs, generation_config, request_id, adapter_request=adapter_request)
         result = None
         async for result in result_generator:
             pass
         assert result is not None
+        if return_outputs:
+            return result
         num_generated_tokens = sum(len(output.token_ids) for output in result.outputs)
         usage_info = self._get_usage_info(len(result.prompt_token_ids), num_generated_tokens)
         choices = []
@@ -340,7 +343,8 @@ class VllmEngine(InferEngine):
         *,
         template: Optional[Template] = None,
         use_tqdm: Optional[bool] = None,
-        adapter_request: Optional[AdapterRequest] = None
+        adapter_request: Optional[AdapterRequest] = None,
+        return_outputs: bool = False,
     ) -> Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
         return super().infer(
             infer_requests,
@@ -348,7 +352,8 @@ class VllmEngine(InferEngine):
             metrics,
             template=template,
             use_tqdm=use_tqdm,
-            adapter_request=adapter_request)
+            adapter_request=adapter_request,
+            return_outputs=return_outputs)
 
     async def infer_async(
         self,
@@ -358,6 +363,7 @@ class VllmEngine(InferEngine):
         template: Optional[Template] = None,
         adapter_request: Optional[AdapterRequest] = None,
         pre_infer_hook=None,
+        return_outputs: bool = False,
     ) -> Union[ChatCompletionResponse, AsyncIterator[ChatCompletionStreamResponse]]:
         request_config = deepcopy(request_config or RequestConfig())
         if template is None:
@@ -374,7 +380,8 @@ class VllmEngine(InferEngine):
             'template': template,
             'inputs': inputs,
             'generation_config': generation_config,
-            'adapter_request': adapter_request
+            'adapter_request': adapter_request,
+            'return_outputs': return_outputs,
         }
         if pre_infer_hook:
             kwargs = pre_infer_hook(kwargs)

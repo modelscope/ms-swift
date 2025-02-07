@@ -56,6 +56,7 @@ def is_dist():
 
 
 def is_mp() -> bool:
+    return False  # temp debug
     if use_torchacc():
         return False
     n_gpu = torch.cuda.device_count()
