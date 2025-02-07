@@ -2,7 +2,7 @@
 import datetime as dt
 import os
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from swift.utils import get_logger
 from .base_args import to_abspath
@@ -29,7 +29,7 @@ class EvalArguments(DeployArguments):
     eval_dataset: List[str] = field(default_factory=list)
     eval_limit: Optional[int] = None
     eval_output_dir: str = 'eval_output'
-
+    eval_backend: Literal['Native', 'OpenCompass', 'VLMEvalKit'] = 'Native'
     local_dataset: bool = False
 
     temperature: Optional[float] = 0.
@@ -53,38 +53,33 @@ class EvalArguments(DeployArguments):
 
     @staticmethod
     def list_eval_dataset():
+        from evalscope.constants import EvalBackend
+        from evalscope.benchmarks.benchmark import BENCHMARK_MAPPINGS
         from evalscope.backend.opencompass import OpenCompassBackendManager
         from evalscope.backend.vlm_eval_kit import VLMEvalKitBackendManager
         return {
-            'opencompass': OpenCompassBackendManager.list_datasets(),
-            'vlmeval': VLMEvalKitBackendManager.list_supported_datasets()
+            EvalBackend.NATIVE: list(BENCHMARK_MAPPINGS.keys()),
+            EvalBackend.OPEN_COMPASS: OpenCompassBackendManager.list_datasets(),
+            EvalBackend.VLM_EVAL_KIT: VLMEvalKitBackendManager.list_supported_datasets()
         }
 
     def _init_eval_dataset(self):
         if isinstance(self.eval_dataset, str):
             self.eval_dataset = [self.eval_dataset]
 
-        eval_dataset = self.list_eval_dataset()
-        from evalscope.backend.opencompass import OpenCompassBackendManager
-        from evalscope.backend.vlm_eval_kit import VLMEvalKitBackendManager
-        self.opencompass_dataset = set(eval_dataset['opencompass'])
-        self.vlmeval_dataset = set(eval_dataset['vlmeval'])
-        eval_dataset_mapping = {dataset.lower(): dataset for dataset in self.opencompass_dataset | self.vlmeval_dataset}
-        self.eval_dataset_oc = []
-        self.eval_dataset_vlm = []
+        all_eval_dataset = self.list_eval_dataset()
+        dataset_mapping = {dataset.lower(): dataset for dataset in all_eval_dataset[self.eval_backend]}
+        valid_dataset = []
         for dataset in self.eval_dataset:
-            dataset = eval_dataset_mapping.get(dataset.lower(), dataset)
-            if dataset in self.opencompass_dataset:
-                self.eval_dataset_oc.append(dataset)
-            elif dataset in self.vlmeval_dataset:
-                self.eval_dataset_vlm.append(dataset)
-            else:
-                raise ValueError(f'eval_dataset: {dataset} is not supported.\n'
-                                 f'opencompass_dataset: {OpenCompassBackendManager.list_datasets()}.\n\n'
-                                 f'vlmeval_dataset: {VLMEvalKitBackendManager.list_supported_datasets()}.')
+            if dataset.lower() not in dataset_mapping:
+                raise ValueError(
+                    f'eval_dataset: {dataset} is not supported.\n'
+                    f'eval_backend: {self.eval_backend} supported datasets: {all_eval_dataset[self.eval_backend]}')
+            valid_dataset.append(dataset_mapping[dataset.lower()])
+        self.eval_dataset = valid_dataset
 
-        logger.info(f'opencompass dataset: {self.eval_dataset_oc}')
-        logger.info(f'vlmeval dataset: {self.eval_dataset_vlm}')
+        logger.info(f'eval_backend: {self.eval_backend}')
+        logger.info(f'eval_dataset: {self.eval_dataset}')
 
     def _init_result_path(self, folder_name: str) -> None:
         self.time = dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')
