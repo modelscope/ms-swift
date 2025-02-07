@@ -79,7 +79,7 @@ You can contact us and communicate with us by adding our group:
 
 ## 🎉 News
 
-- 🎁 2024.01.23: SWIFT support the `sample` command, this is a very important feature for complex CoT and RFT. Meanwhile, we support an [Reinforced Fine-tuning script](docs/source_en/Instruction/Reinforced_Fine_tuning.md).
+- 🎁 2025.01.23: SWIFT support the `sample` command, this is a very important feature for complex CoT and RFT. Meanwhile, we support an [Reinforced Fine-tuning script](docs/source_en/Instruction/Reinforced_Fine_tuning.md).
 - 🎁 2024.12.04: **SWIFT3.0** major version update. Please check the [Release Notes and Changes](https://swift.readthedocs.io/en/latest/Instruction/ReleaseNote3.0.html).
 - 🎉 2024.08.12: The SWIFT paper has been published on arXiv, and you can read it [here](https://arxiv.org/abs/2408.05517).
 - 🔥 2024.08.05: Support for using [evalscope](https://github.com/modelscope/evalscope/) as a backend for evaluating large models and multimodal models.
@@ -110,7 +110,7 @@ Running Environment:
 | python       | >=3.8                | 3.10        |                                           |
 | cuda         |                      | cuda12      | No need to install if using CPU, NPU, MPS |
 | torch        | >=2.0                |             |                                           |
-| transformers | >=4.33               | 4.48.1      |                                           |
+| transformers | >=4.33               | 4.48.2      |                                           |
 | modelscope   | >=1.19               |             |                                           |
 | peft         | >=0.11.0,<0.15.0     |             |                                           |
 | trl          | >=0.13,<0.15         | 0.14.0      | RLHF                                      |
