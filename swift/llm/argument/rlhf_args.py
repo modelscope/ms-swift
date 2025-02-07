@@ -79,6 +79,7 @@ class RLHFArguments(PPOArguments, TrainArguments):
         if self.loss_scale is None:
             if self.rlhf_type == 'orpo' and not self.model_meta.is_multimodal:
                 # Avoid padding labels during the model's forward pass in multimodal models.
+                # Some multimodal models do not expand the image pad token.
                 self.loss_scale = 'default'
             else:
                 self.loss_scale = 'last_round'
