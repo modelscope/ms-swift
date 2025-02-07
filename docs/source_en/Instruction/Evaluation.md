@@ -1,45 +1,59 @@
 # Evaluation
 
-SWIFT supports eval(evaluation) capabilities to provide standardized assessment metrics for both the raw model and the trained model.
+SWIFT supports eval (evaluation) capabilities to provide standardized evaluation metrics for both raw models and trained models.
 
 ## Capability Introduction
 
-SWIFT's eval capability uses the [evalution framework EvalScope](https://github.com/modelscope/eval-scope) from the ModelScope, with high-level encapsulation to meet various model evaluation needs.
+SWIFT's eval capability utilizes the EvalScope evaluation framework from the Magic Tower community, which has been advanced in its encapsulation to support the evaluation needs of various models.
 
-Currently, we support evaluation processes for **standard evaluation sets** as well as **user-defined** evaluation sets. The **standard evaluation sets** include:
+> Note: EvalScope supports many other complex capabilities, such as [model performance evaluation](https://evalscope.readthedocs.io/en/latest/user_guides/stress_test/quick_start.html), so please use the EvalScope framework directly.
 
-> Note: EvalScope supports many other complex capabilities, such as model performance evaluation. Please use the EvalScope framework directly for those features.
+Currently, we support the evaluation process of **standard evaluation datasets** as well as the evaluation process of **user-defined** evaluation datasets. The **standard evaluation datasets** are supported by three evaluation backends:
 
-Pure Text Evaluation:
-```text
-'obqa', 'cmb', 'AX_b', 'siqa', 'nq', 'mbpp', 'winogrande', 'mmlu', 'BoolQ', 'cluewsc', 'ocnli', 'lambada',
-'CMRC', 'ceval', 'csl', 'cmnli', 'bbh', 'ReCoRD', 'math', 'humaneval', 'eprstmt', 'WSC', 'storycloze',
-'MultiRC', 'RTE', 'chid', 'gsm8k', 'AX_g', 'bustm', 'afqmc', 'piqa', 'lcsts', 'strategyqa', 'Xsum', 'agieval',
-'ocnli_fc', 'C3', 'tnews', 'race', 'triviaqa', 'CB', 'WiC', 'hellaswag', 'summedits', 'GaokaoBench',
-'ARC_e', 'COPA', 'ARC_c', 'DRCD'
-```
-For detailed information on the datasets, please visit: https://hub.opencompass.org.cn/home
+Below are the names of the supported datasets. For detailed information on the datasets, please refer to [all supported datasets](https://evalscope.readthedocs.io/en/latest/get_started/supported_dataset.html).
 
-Multimodal Evaluation:
-```text
-'COCO_VAL', 'MME', 'HallusionBench', 'POPE', 'MMBench_DEV_EN', 'MMBench_TEST_EN', 'MMBench_DEV_CN', 'MMBench_TEST_CN',
-'MMBench', 'MMBench_CN', 'MMBench_DEV_EN_V11', 'MMBench_TEST_EN_V11', 'MMBench_DEV_CN_V11',
-'MMBench_TEST_CN_V11', 'MMBench_V11', 'MMBench_CN_V11', 'SEEDBench_IMG', 'SEEDBench2',
-'SEEDBench2_Plus', 'ScienceQA_VAL', 'ScienceQA_TEST', 'MMT-Bench_ALL_MI', 'MMT-Bench_ALL',
-'MMT-Bench_VAL_MI', 'MMT-Bench_VAL', 'AesBench_VAL', 'AesBench_TEST', 'CCBench', 'AI2D_TEST', 'MMStar',
-'RealWorldQA', 'MLLMGuard_DS', 'BLINK', 'OCRVQA_TEST', 'OCRVQA_TESTCORE', 'TextVQA_VAL', 'DocVQA_VAL',
-'DocVQA_TEST', 'InfoVQA_VAL', 'InfoVQA_TEST', 'ChartQA_TEST', 'MathVision', 'MathVision_MINI',
-'MMMU_DEV_VAL', 'MMMU_TEST', 'OCRBench', 'MathVista_MINI', 'LLaVABench', 'MMVet', 'MTVQA_TEST',
-'MMLongBench_DOC', 'VCR_EN_EASY_500', 'VCR_EN_EASY_100', 'VCR_EN_EASY_ALL', 'VCR_EN_HARD_500',
-'VCR_EN_HARD_100', 'VCR_EN_HARD_ALL', 'VCR_ZH_EASY_500', 'VCR_ZH_EASY_100', 'VCR_ZH_EASY_ALL',
-'VCR_ZH_HARD_500', 'VCR_ZH_HARD_100', 'VCR_ZH_HARD_ALL', 'MMDU', 'MMBench-Video', 'Video-MME',
-'MMBench_DEV_EN', 'MMBench_TEST_EN', 'MMBench_DEV_CN', 'MMBench_TEST_CN', 'MMBench', 'MMBench_CN',
-'MMBench_DEV_EN_V11', 'MMBench_TEST_EN_V11', 'MMBench_DEV_CN_V11', 'MMBench_TEST_CN_V11', 'MMBench_V11',
-'MMBench_CN_V11', 'SEEDBench_IMG', 'SEEDBench2', 'SEEDBench2_Plus', 'ScienceQA_VAL', 'ScienceQA_TEST',
-'MMT-Bench_ALL_MI', 'MMT-Bench_ALL', 'MMT-Bench_VAL_MI', 'MMT-Bench_VAL', 'AesBench_VAL',
-'AesBench_TEST', 'CCBench', 'AI2D_TEST', 'MMStar', 'RealWorldQA', 'MLLMGuard_DS', 'BLINK'
-```
-For detailed information on the datasets, please visit: https://github.com/open-compass/VLMEvalKit
+1. Native (default):
+
+    Primarily supports pure text evaluation, while **supporting** visualization of evaluation results.
+    ```text
+    'arc', 'bbh', 'ceval', 'cmmlu', 'competition_math',
+    'general_qa', 'gpqa', 'gsm8k', 'hellaswag', 'humaneval',
+    'ifeval', 'iquiz', 'mmlu', 'mmlu_pro',
+    'race', 'trivia_qa', 'truthful_qa'
+    ```
+
+2. OpenCompass:
+
+    Primarily supports pure text evaluation, currently **does not support** visualization of evaluation results.
+    ```text
+    'obqa', 'cmb', 'AX_b', 'siqa', 'nq', 'mbpp', 'winogrande', 'mmlu', 'BoolQ', 'cluewsc', 'ocnli', 'lambada',
+    'CMRC', 'ceval', 'csl', 'cmnli', 'bbh', 'ReCoRD', 'math', 'humaneval', 'eprstmt', 'WSC', 'storycloze',
+    'MultiRC', 'RTE', 'chid', 'gsm8k', 'AX_g', 'bustm', 'afqmc', 'piqa', 'lcsts', 'strategyqa', 'Xsum', 'agieval',
+    'ocnli_fc', 'C3', 'tnews', 'race', 'triviaqa', 'CB', 'WiC', 'hellaswag', 'summedits', 'GaokaoBench',
+    'ARC_e', 'COPA', 'ARC_c', 'DRCD'
+    ```
+
+3. VLMEvalKit:
+
+    Primarily supports multimodal evaluation and currently **does not support** visualization of evaluation results.
+    ```text
+    'COCO_VAL', 'MME', 'HallusionBench', 'POPE', 'MMBench_DEV_EN', 'MMBench_TEST_EN', 'MMBench_DEV_CN', 'MMBench_TEST_CN',
+    'MMBench', 'MMBench_CN', 'MMBench_DEV_EN_V11', 'MMBench_TEST_EN_V11', 'MMBench_DEV_CN_V11',
+    'MMBench_TEST_CN_V11', 'MMBench_V11', 'MMBench_CN_V11', 'SEEDBench_IMG', 'SEEDBench2',
+    'SEEDBench2_Plus', 'ScienceQA_VAL', 'ScienceQA_TEST', 'MMT-Bench_ALL_MI', 'MMT-Bench_ALL',
+    'MMT-Bench_VAL_MI', 'MMT-Bench_VAL', 'AesBench_VAL', 'AesBench_TEST', 'CCBench', 'AI2D_TEST', 'MMStar',
+    'RealWorldQA', 'MLLMGuard_DS', 'BLINK', 'OCRVQA_TEST', 'OCRVQA_TESTCORE', 'TextVQA_VAL', 'DocVQA_VAL',
+    'DocVQA_TEST', 'InfoVQA_VAL', 'InfoVQA_TEST', 'ChartQA_TEST', 'MathVision', 'MathVision_MINI',
+    'MMMU_DEV_VAL', 'MMMU_TEST', 'OCRBench', 'MathVista_MINI', 'LLaVABench', 'MMVet', 'MTVQA_TEST',
+    'MMLongBench_DOC', 'VCR_EN_EASY_500', 'VCR_EN_EASY_100', 'VCR_EN_EASY_ALL', 'VCR_EN_HARD_500',
+    'VCR_EN_HARD_100', 'VCR_EN_HARD_ALL', 'VCR_ZH_EASY_500', 'VCR_ZH_EASY_100', 'VCR_ZH_EASY_ALL',
+    'VCR_ZH_HARD_500', 'VCR_ZH_HARD_100', 'VCR_ZH_HARD_ALL', 'MMDU', 'MMBench-Video', 'Video-MME',
+    'MMBench_DEV_EN', 'MMBench_TEST_EN', 'MMBench_DEV_CN', 'MMBench_TEST_CN', 'MMBench', 'MMBench_CN',
+    'MMBench_DEV_EN_V11', 'MMBench_TEST_EN_V11', 'MMBench_DEV_CN_V11', 'MMBench_TEST_CN_V11', 'MMBench_V11',
+    'MMBench_CN_V11', 'SEEDBench_IMG', 'SEEDBench2', 'SEEDBench2_Plus', 'ScienceQA_VAL', 'ScienceQA_TEST',
+    'MMT-Bench_ALL_MI', 'MMT-Bench_ALL', 'MMT-Bench_VAL_MI', 'MMT-Bench_VAL', 'AesBench_VAL',
+    'AesBench_TEST', 'CCBench', 'AI2D_TEST', 'MMStar', 'RealWorldQA', 'MLLMGuard_DS', 'BLINK'
+    ```
 
 ## Environment Preparation
 
@@ -47,7 +61,7 @@ For detailed information on the datasets, please visit: https://github.com/open-
 pip install ms-swift[eval] -U
 ```
 
-Or install from the source code:
+Or install from source:
 
 ```shell
 git clone https://github.com/modelscope/ms-swift.git
@@ -57,11 +71,25 @@ pip install -e '.[eval]'
 
 ## Evaluation
 
-We support four types of evaluation: pure text evaluation, multimodal evaluation, URL evaluation, and custom dataset evaluation.
+Supports four methods of evaluation: pure text evaluation, multimodal evaluation, URL evaluation, and custom dataset evaluation.
 
-For sample evaluations, please refer to [examples](https://github.com/modelscope/ms-swift/tree/main/examples/eval).
+**Basic Example**
 
-The list of evaluation parameters can be found [here](Commend-line-parameters#评测参数).
+```shell
+swift eval \
+ --model Qwen/Qwen2.5-0.5B-Instruct \
+ --eval_backend Native \
+ --infer_backend pt \
+ --eval_limit 10 \
+ --eval_dataset gsm8k
+```
+Where:
+- eval_backend: options are Native, OpenCompass, VLMEvalKit
+- infer_backend: options are pt, vllm, lmdeploy
+
+For a specific list of evaluation parameters, please refer to [here](./Command-line-parameters.md#evaluation-arguments).
+
+More evaluation examples can be found in [examples](https://github.com/modelscope/ms-swift/tree/main/examples/eval).
 
 ## Custom Evaluation Sets
 

@@ -171,6 +171,8 @@ class Template(ProcessorMixin):
         self,
         inputs: StdTemplateInputs,
     ) -> None:
+        if self.model_meta.is_multimodal:
+            self._replace_image_tags(inputs)
         images = inputs.images
         load_images = self.load_images or self.mode in {'vllm', 'lmdeploy'}
         load_images_origin = load_images
@@ -197,8 +199,6 @@ class Template(ProcessorMixin):
                 'The template does not support multi-round chat. Only use the last round of the conversation.')
             inputs.messages = inputs.messages[-2:]
 
-        if self.model_meta.is_multimodal:
-            self._replace_image_tags(inputs)
         if inputs.is_multimodal:
             self._add_default_tags(inputs)
 
