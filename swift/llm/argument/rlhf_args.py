@@ -72,7 +72,6 @@ class RLHFArguments(PPOArguments, TrainArguments):
     undesirable_weight: float = 1.0
     # GRPO
     num_generations: int = 8  # G in the GRPO paper
-    max_prompt_length: Optional[int] = None
     # vLLM in GRPO
     use_vllm: bool = False
     vllm_device: Optional[str] = 'auto'  # 'cuda:1'
@@ -85,7 +84,6 @@ class RLHFArguments(PPOArguments, TrainArguments):
         self._init_simpo()
         self._set_default()
         super().__post_init__()
-        self._init_grpo()
         self._init_ppo()
 
         if self.loss_scale is None:
@@ -132,19 +130,3 @@ class RLHFArguments(PPOArguments, TrainArguments):
                 self.loss_type = 'sigmoid'  # else None
             elif self.rlhf_type in ['kto']:
                 self.loss_type = 'kto'
-
-    def _init_grpo(self):
-        if self.rlhf_type == 'grpo':
-            self.training_args.max_new_tokens = self.max_new_tokens
-            self.reward_template = self._get_reward_template()
-
-    def _get_reward_template(self):
-        if self.reward_model is None:
-            return
-        model_meta = get_matched_model_meta(self.reward_model)
-        if model_meta is None and self.reward_model_type is not None:
-            model_meta = MODEL_MAPPING[self.reward_model_type]
-        if model_meta is None:
-            logger.info(f'The reward model {self.reward_model} is not registered; using a dummy template instead.')
-            return 'dummy'
-        return model_meta.template
