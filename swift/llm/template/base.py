@@ -111,7 +111,7 @@ class Template(ProcessorMixin):
             self.skip_prompt = False
 
         self.mode: Literal['pt', 'vllm', 'lmdeploy',  # infer
-                           'train', 'rlhf', 'kto', 'grpo',  # train
+                           'train', 'rlhf', 'kto',  # train
                            'seq_cls', 'prm'] = 'pt'
         if self.model_info.task_type != 'causal_lm':
             self.mode = self.model_info.task_type
@@ -277,12 +277,9 @@ class Template(ProcessorMixin):
             encoded = self._rlhf_encode(inputs)
         elif self.mode == 'kto':
             encoded = self._kto_encode(inputs)
-        elif self.mode == 'grpo':
-            encoded = inputs
-        if isinstance(encoded, dict):  # compat grpo
-            for key in list(encoded.keys()):
-                if encoded[key] is None:
-                    encoded.pop(key)
+        for key in list(encoded.keys()):
+            if encoded[key] is None:
+                encoded.pop(key)
         if return_template_inputs:
             encoded['template_inputs'] = inputs
         return encoded
@@ -834,7 +831,7 @@ class Template(ProcessorMixin):
     def is_training(self):
         return self.mode not in {'vllm', 'lmdeploy', 'pt'}
 
-    def set_mode(self, mode: Literal['vllm', 'lmdeploy', 'pt', 'seq_cls', 'train', 'rlhf', 'kto', 'grpo']) -> None:
+    def set_mode(self, mode: Literal['vllm', 'lmdeploy', 'pt', 'seq_cls', 'train', 'rlhf', 'kto']) -> None:
         self.mode = mode
 
     def register_post_encode_hook(self, models: List[nn.Module]) -> None:
@@ -881,8 +878,6 @@ class Template(ProcessorMixin):
             return self._data_collator(batch, padding_to=padding_to)
         elif self.mode == 'seq_cls':
             return self._seq_cls_data_collator(batch, padding_to=padding_to)
-        elif self.mode == 'grpo':
-            return batch
 
     @staticmethod
     def _fetch_inputs_startswith(batch: List[Dict[str, Any]], prefix: str) -> List[Dict[str, Any]]:

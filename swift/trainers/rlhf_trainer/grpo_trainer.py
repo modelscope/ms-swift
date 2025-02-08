@@ -31,21 +31,20 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                  model: Optional[Union[PreTrainedModel, nn.Module]] = None,
                  ref_model: Optional[Union[PreTrainedModel, nn.Module]] = None,
                  reward_model: Optional[Union[PreTrainedModel, nn.Module]] = None,
-                 reward_funcs: Optional[Union[Callable, List[Callable]]] = None,
+                 reward_funcs: List[str] = None,
                  *_args,
                  **kwargs):
 
         args = kwargs['args']
 
         self.processing_class = kwargs.get('template').tokenizer
-        reward_funcs = args.pop('reward_funcs', [])
         if not isinstance(reward_funcs, list):
             reward_funcs = [reward_funcs]
 
         if reward_funcs:
             for i, reward_func in enumerate(reward_funcs):
                 if reward_func in orms:
-                    reward_func[i] = orms[reward_func]
+                    reward_funcs[i] = orms[reward_func]()
                 else:
                     raise ValueError(f'reward_function {reward_func} is not implemented in swift.llm.plugin')
 
@@ -227,7 +226,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if isinstance(reward_func, nn.Module):  # Module instead of PretrainedModel for compat with compiled models
                 reward_func_name = reward_func.config._name_or_path.split('/')[-1]
             else:
-                reward_func_name = reward_func.__name__
+                reward_func_name = reward_func.name
             self._metrics[f'rewards/{reward_func_name}'].append(reward_per_func[i].item())
 
         self._metrics['reward'].append(rewards.mean().item())
