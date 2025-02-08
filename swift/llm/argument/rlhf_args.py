@@ -82,16 +82,12 @@ class RLHFArguments(PPOArguments, TrainArguments):
     loss_scale: Optional[str] = None
 
     def __post_init__(self):
-        if self.use_vllm:
-            os.environ['USE_VLLM'] = '1'
+        self._init_grpo()
         self._init_rm()
         self._init_simpo()
         self._set_default()
         super().__post_init__()
         self._init_ppo()
-        if self.rlhf_type == 'grpo':
-            self.remove_unused_columns = False
-            logger.info(f'Setting args.remove_unused_columns: {self.remove_unused_columns}')
 
         if self.loss_scale is None:
             if self.rlhf_type == 'orpo' and not self.model_meta.is_multimodal:
@@ -106,6 +102,13 @@ class RLHFArguments(PPOArguments, TrainArguments):
             self.ref_model_revision = self.ref_model_revision or self.model_revision
         elif self.ref_model is not None:
             raise ValueError('CPO/ORPO or LoRA training does not require a ref_model to be passed in.')
+
+    def _init_grpo(self):
+        if self.rlhf_type == 'grpo':
+            if self.use_vllm:
+                os.environ['USE_VLLM'] = '1'
+            self.remove_unused_columns = False
+            logger.info(f'Setting args.remove_unused_columns: {self.remove_unused_columns}')
 
     def _init_ppo(self):
         if self.rlhf_type == 'ppo':
