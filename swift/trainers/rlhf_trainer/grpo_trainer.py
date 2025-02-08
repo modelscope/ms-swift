@@ -175,7 +175,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
             # Generate completions using vLLM: gather all prompts and use them in a single call in the main process
             all_messages = gather_object(messages)
-            infer_requests = [InferRequest(message) for message in messages]
+            infer_requests = [InferRequest(message) for message in all_messages]
             if self.accelerator.is_main_process:
                 outputs = self.engine.infer(
                     infer_requests, request_config=self.request_config, use_tqdm=False, return_outputs=True)
