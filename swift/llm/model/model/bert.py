@@ -28,6 +28,18 @@ register_model(
         requires=['transformers>=4.48'],
         tags=['bert']))
 
+
+register_model(
+    ModelMeta(
+        BertModelType.modern_bert_gte, [ModelGroup([
+            Model('iic/gte-modernbert-base', 'Alibaba-NLP/gte-modernbert-base'),
+        ])],
+        None,
+        get_model_tokenizer_from_local,
+        requires=['transformers>=4.48'],
+        tags=['bert', 'embedding']))
+
+
 register_model(
     ModelMeta(
         BertModelType.bert, [ModelGroup([

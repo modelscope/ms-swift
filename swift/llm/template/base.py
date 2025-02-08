@@ -237,6 +237,13 @@ class Template(ProcessorMixin):
         encoded['label'] = bool(label)
         return encoded
 
+    def _embedding_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded = self._rlhf_encode(inputs)
+        encoded.pop('labels', None)
+        if inputs.label is not None:
+            encoded['labels'] = float(inputs.label)
+        return encoded
+
     def _seq_cls_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = self._encode(inputs)
         encoded.pop('labels', None)
@@ -277,7 +284,7 @@ class Template(ProcessorMixin):
         elif self.mode == 'kto':
             encoded = self._kto_encode(inputs)
         elif self.mode == 'embedding':
-            encoded = self._rlhf_encode(inputs)
+            encoded = self._embedding_encode(inputs)
         for key in list(encoded.keys()):
             if encoded[key] is None:
                 encoded.pop(key)
@@ -880,7 +887,7 @@ class Template(ProcessorMixin):
         elif self.mode == 'seq_cls':
             return self._seq_cls_data_collator(batch, padding_to=padding_to)
         elif self.mode == 'embedding':
-            return self._rlhf_data_collator(batch, padding_to=padding_to)
+            return self._embedding_data_collator(batch, padding_to=padding_to)
 
     @staticmethod
     def _fetch_inputs_startswith(batch: List[Dict[str, Any]], prefix: str) -> List[Dict[str, Any]]:
@@ -935,6 +942,16 @@ class Template(ProcessorMixin):
         label = [b['label'] for b in batch if b.get('label') is not None]
         if label:
             res['label'] = label
+        return res
+
+    def _embedding_data_collator(self,
+                               batch: List[Dict[str, Any]],
+                               *,
+                               padding_to: Optional[int] = None) -> Dict[str, Any]:
+        labels = [b.pop('labels') for b in batch if b.get('labels') is not None]
+        res = self._rlhf_data_collator(batch, padding_to=padding_to)
+        if labels:
+            res['labels'] = torch.tensor(labels, dtype=torch.float32)
         return res
 
     def _seq_cls_data_collator(self,

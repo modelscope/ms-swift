@@ -77,9 +77,15 @@ def loss_scale_func(outputs, labels, loss_scale=None, num_items_in_batch=None) -
 def cosine_similarity_func(outputs, labels, loss_scale=None, num_items_in_batch=None) -> torch.Tensor:
     cos_score_transformation = nn.Identity()
     loss_fct = MSELoss()
-    batch_size = outputs.shape[0]
-    sentence1 = outputs[0:batch_size]
-    sentence2 = outputs[batch_size:]
+    last_hidden_state = outputs['last_hidden_state']
+    batch_size = last_hidden_state.shape[0]
+    shape_len = len(last_hidden_state.shape)
+    if shape_len == 3:
+        sentence1 = last_hidden_state[0:batch_size // 2][:, 0].squeeze(dim=1)
+        sentence2 = last_hidden_state[batch_size // 2:][:, 0].squeeze(dim=1)
+    else:
+        sentence1 = last_hidden_state[0:batch_size // 2]
+        sentence2 = last_hidden_state[batch_size // 2:]
     output = cos_score_transformation(torch.cosine_similarity(sentence1, sentence2))
     return loss_fct(output, labels.float().view(-1))
 
