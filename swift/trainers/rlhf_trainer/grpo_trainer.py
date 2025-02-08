@@ -112,8 +112,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     max_tokens=args.max_new_tokens,
                     temperature=args.temperature,
                 )
-                self._last_loaded_step = 0
-                self.accelerator.wait_for_everyone()
+            self._last_loaded_step = 0
+            self.accelerator.wait_for_everyone()
         else:
             self.generation_config = GenerationConfig(
                 max_new_tokens=args.max_new_tokens,
