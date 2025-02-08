@@ -143,32 +143,20 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self._last_loaded_step = self.state.global_step
 
             # Generate completions using vLLM: gather all prompts and use them in a single call in the main process
-            all_messages = gather_object(messages)
-            infer_requests = [InferRequest(message) for message in all_messages]
+            inputs = gather_object(inputs)
             if self.accelerator.is_main_process:
-                outputs = self.engine.infer(infer_requests, use_tqdm=False, return_outputs=True)
-                completion_ids = [out.token_ids for completions in outputs for out in completions.outputs]
+                outputs = self.engine.infer(inputs, use_tqdm=False)
             else:
-                completion_ids = [None] * len(all_messages)
+                outputs = [None] * len(inputs)
 
             # Broadcast the completions from the main process to all processes, ensuring each process receives its
             # corresponding slice.
-            completion_ids = broadcast_object_list(completion_ids, from_process=0)
-            process_slice = slice(
-                self.accelerator.process_index * len(messages),
-                (self.accelerator.process_index + 1) * len(messages),
-            )
-            completion_ids = completion_ids[process_slice]
-
-            # Pad the completions, and concatenate them with the prompts
-            completion_ids = [torch.tensor(ids, device=device) for ids in completion_ids]
-            completion_ids = pad(completion_ids, padding_value=self.processing_class.pad_token_id)
-            prompt_completion_ids = torch.cat([prompt_ids, completion_ids], dim=1)
+            outputs = broadcast_object_list(outputs, from_process=0)
         else:
             # Regular generation path
             outputs = self.engine.infer(inputs, use_tqdm=False)
-            for i, output in enumerate(outputs):
-                inputs[i]['messages'].append({'role': 'assistant', 'content': output.choices[0].message.content})
+        for i, output in enumerate(outputs):
+            inputs[i]['messages'].append({'role': 'assistant', 'content': output.choices[0].message.content})
 
         self.template.set_mode('train')
         batched_inputs = [self.template.encode(infer_request) for infer_request in inputs]
