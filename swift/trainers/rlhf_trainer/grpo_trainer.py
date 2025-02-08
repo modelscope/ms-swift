@@ -151,7 +151,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # Regular generation path
             outputs = self.engine.infer(inputs, self.request_config, use_tqdm=False)
         for i, output in enumerate(outputs):
-            inputs[i]['messages'].append({'role': 'assistant', 'content': output.choices[0].message.content})
+            messages = inputs[i]['messages']
+            InferRequest.remove_response(messages)
+            messages.append({'role': 'assistant', 'content': output.choices[0].message.content})
 
         self.template.set_mode('train')
         batched_inputs = [self.template.encode(infer_request) for infer_request in inputs]
