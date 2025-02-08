@@ -63,11 +63,6 @@ class SwiftRLHF(SwiftSft):
         model_mapping = {'kto': 'kto', 'ppo': 'pt'}
         self.template.set_mode(model_mapping.get(args.rlhf_type, 'rlhf'))
 
-        if args.rlhf_type == 'orpo' and not args.model_meta.is_multimodal:
-            # Avoid padding labels during the model's forward pass in multimodal models.
-            args.loss_scale = 'default'
-        self.template.loss_scale = args.loss_scale
-
         if args.rlhf_type == 'ppo':
             args.training_args.stop_token_id = self.template.template_meta.stop_token_id
 

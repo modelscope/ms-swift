@@ -218,6 +218,15 @@ def test_deepseek_vl():
     _infer_model(pt_engine)
 
 
+def test_deepseek_janus():
+    pt_engine = PtEngine('deepseek-ai/Janus-Pro-7B')
+    messages = [{'role': 'user', 'content': '描述图片'}]
+    response = _infer_model(pt_engine, messages=messages)
+    assert response == ('这是一张非常可爱的猫咪图片。猫咪的毛色主要是白色，并带有灰色的条纹。它的眼睛非常大，呈现出明亮的蓝色，'
+                        '显得非常可爱和无辜。猫咪的耳朵竖立着，显得非常警觉和好奇。背景模糊，使得猫咪成为图片的焦点。'
+                        '整体画面给人一种温暖和愉悦的感觉。')
+
+
 def test_deepseek_vl2():
     pt_engine = PtEngine('deepseek-ai/deepseek-vl2-small')
     response = _infer_model(pt_engine)
@@ -431,7 +440,7 @@ if __name__ == '__main__':
 
     logger = get_logger()
     # test_qwen2_vl()
-    test_qwen2_5_vl()
+    # test_qwen2_5_vl()
     # test_internvl2()
     # test_internvl2_phi3()
     # test_llava()
@@ -439,6 +448,7 @@ if __name__ == '__main__':
     # test_ovis1_6_llama3()
     # test_yi_vl()
     # test_deepseek_vl()
+    test_deepseek_janus()
     # test_deepseek_vl2()
     # test_qwen_vl()
     # test_glm4v()

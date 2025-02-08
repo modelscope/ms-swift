@@ -38,14 +38,14 @@ class TemplateMeta:
     chat_sep: Optional[Prompt]
     suffix: Prompt = field(default_factory=lambda: [['eos_token_id']])
     template_cls: Type[Template] = Template
-    tool_prompt: Optional[Prompt] = None
     system_prefix: Optional[Prompt] = None
+    default_system: Optional[str] = None
 
     auto_add_bos: bool = False
-    default_system: Optional[str] = None
     stop_words: List[Word] = field(default_factory=list)
     placeholder_tokens: List[Union[int, str]] = field(default_factory=list)
 
+    tool_prompt: Optional[Prompt] = None
     default_tools_prompt: str = 'react_en'
 
     def to_generate_template_meta(self) -> 'TemplateMeta':
