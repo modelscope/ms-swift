@@ -117,8 +117,8 @@ if __name__ == '__main__':
         'answer here </answer>')
     # vllm args
     use_vllm = True
-    vllm_gpu_memory_utilization = 0.8
-    vllm_device = 'auto' # 'cuda:2'
+    vllm_gpu_memory_utilization = 0.7
+    vllm_device = 'cuda:0'
     # training_args
     training_args = RLHFArguments(
         rlhf_type='grpo',

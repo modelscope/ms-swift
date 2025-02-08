@@ -69,7 +69,7 @@ class SwiftRLHF(SwiftSft):
             if reward_template.use_model:
                 reward_template.model = self.model
             self.reward_template = reward_template
-        model_mapping = {'kto': 'kto', 'ppo': 'pt', 'grpo': 'grpo'}
+        model_mapping = {'kto': 'kto', 'ppo': 'pt', 'grpo': 'pt'}
         self.template.set_mode(model_mapping.get(args.rlhf_type, 'rlhf'))
 
         if args.rlhf_type == 'ppo':
