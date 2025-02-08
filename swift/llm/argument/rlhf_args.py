@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import os
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional
 
@@ -80,6 +81,8 @@ class RLHFArguments(PPOArguments, TrainArguments):
     loss_scale: Optional[str] = None
 
     def __post_init__(self):
+        if self.use_vllm:
+            os.environ['USE_VLLM'] = '1'
         self._init_rm()
         self._init_simpo()
         self._set_default()
