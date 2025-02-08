@@ -69,11 +69,10 @@ def is_mp() -> bool:
 
 
 def is_mp_ddp() -> bool:
-    if is_dist():
-        n_gpu = torch.cuda.device_count()
-        local_world_size = get_dist_setting()[3]
-        if n_gpu != local_world_size + 1 and is_mp():  # fix grpo
-            logger.info('Using MP + DDP(device_map)')
+    n_gpu = torch.cuda.device_count()
+    local_world_size = get_dist_setting()[3]
+    if is_dist() and n_gpu != local_world_size + 1 and is_mp():  # fix grpo
+        logger.info('Using MP + DDP(device_map)')
         return True
     return False
 

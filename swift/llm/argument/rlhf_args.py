@@ -73,6 +73,7 @@ class RLHFArguments(PPOArguments, TrainArguments):
     undesirable_weight: float = 1.0
     # GRPO
     num_generations: int = 8  # G in the GRPO paper
+    max_completion_length: int = 512
     # vLLM in GRPO
     use_vllm: bool = False
     vllm_device: Optional[str] = 'auto'  # 'cuda:1'

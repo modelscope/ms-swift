@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+# Part of the implementation is borrowed from huggingface/trl.
 from collections import defaultdict
-from contextlib import contextmanager
 from typing import Any, Callable, Dict, List, Optional, Union
 from unittest.mock import patch
 
@@ -107,21 +107,16 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self.accelerator.wait_for_everyone()
         else:
             from swift.llm import PtEngine
-            self.engine = PtEngine.from_model_template(
-                self.model, self.template, max_batch_size=8)  # TODO: args.max_batch_size
+            self.engine = PtEngine.from_model_template(self.model, self.template, max_batch_size=0)  # 0: no limit
+        self.request_config = RequestConfig(
+            max_tokens=args.max_completion_length,
+            temperature=args.temperature,
+        )
+
         self.model_accepts_loss_kwargs = False
         for i, reward_func in enumerate(self.reward_funcs):
             if isinstance(reward_func, PreTrainedModel):
                 self.reward_funcs[i] = self.accelerator.prepare_model(reward_func, evaluation_mode=True)
-
-    @contextmanager
-    def set_padding_side_left(self):
-        original_padding_side = self.template.padding_side
-        self.template.padding_side = 'left'
-        try:
-            yield
-        finally:
-            self.template.padding_side = original_padding_side
 
     def _prepare_inputs(self, inputs) -> Dict[str, Union[torch.Tensor, Any]]:
         device = self.accelerator.device
@@ -145,7 +140,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # Generate completions using vLLM: gather all prompts and use them in a single call in the main process
             inputs = gather_object(inputs)
             if self.accelerator.is_main_process:
-                outputs = self.engine.infer(inputs, use_tqdm=False)
+                outputs = self.engine.infer(inputs, self.request_config, use_tqdm=False)
             else:
                 outputs = [None] * len(inputs)
 
@@ -154,14 +149,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             outputs = broadcast_object_list(outputs, from_process=0)
         else:
             # Regular generation path
-            outputs = self.engine.infer(inputs, use_tqdm=False)
+            outputs = self.engine.infer(inputs, self.request_config, use_tqdm=False)
         for i, output in enumerate(outputs):
             inputs[i]['messages'].append({'role': 'assistant', 'content': output.choices[0].message.content})
 
         self.template.set_mode('train')
         batched_inputs = [self.template.encode(infer_request) for infer_request in inputs]
         outputs = to_device(self.template.data_collator(batched_inputs), self.model.device)
-        self.template.set_mode('pt')
+        self.template.set_mode('pt')  # recover
 
         # we only need to compute the logits for the completion tokens
         labels = outputs.pop('labels')
