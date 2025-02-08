@@ -409,7 +409,7 @@ App parameters inherit from [deployment arguments](#deployment-arguments) and [W
 
 Evaluation Arguments inherit from the [deployment arguments](#deployment-arguments).
 
-- 🔥eval_backend: Evaluation backend, default is Native, but can also be specified as OpenCompass or VLMEvalKit
+- 🔥eval_backend: Evaluation backend, default is 'Native', but can also be specified as 'OpenCompass' or 'VLMEvalKit'
 - 🔥eval_dataset: Evaluation dataset, refer to [Evaluation documentation](./Evaluation.md).
 - eval_limit: Number of samples for each evaluation set, default is None.
 - eval_output_dir: Folder for storing evaluation results, default is 'eval_output'.
