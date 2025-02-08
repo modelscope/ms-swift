@@ -45,7 +45,7 @@ class DataArguments:
     download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists'
     columns: Optional[Union[dict, str]] = None
     strict: bool = False
-    remove_unused_columns: bool = False
+    remove_unused_columns: bool = True
     # Chinese name and English name
     model_name: List[str] = field(default_factory=lambda: [None, None], metadata={'help': "e.g. ['小黄', 'Xiao Huang']"})
     model_author: List[str] = field(

@@ -85,6 +85,9 @@ class RLHFArguments(PPOArguments, TrainArguments):
         self._set_default()
         super().__post_init__()
         self._init_ppo()
+        if self.rlhf_type == 'grpo':
+            self.remove_unused_columns = False
+            logger.info(f'Setting args.remove_unused_columns: {self.remove_unused_columns}')
 
         if self.loss_scale is None:
             if self.rlhf_type == 'orpo' and not self.model_meta.is_multimodal:

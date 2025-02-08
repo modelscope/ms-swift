@@ -1,6 +1,4 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import concurrent.futures
-import os
 from collections import defaultdict
 from contextlib import contextmanager
 from typing import Any, Callable, Dict, List, Optional, Union
@@ -196,7 +194,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         for i, (reward_func, reward_template) in enumerate(zip(self.reward_funcs, self.reward_templates)):
             if isinstance(reward_func, nn.Module):  # Module instead of PretrainedModel for compat with compiled models
                 batched_inputs = [reward_template.encode(infer_request) for infer_request in inputs]
-                reward_inputs = to_device(reward_template.data_collator(batched_inputs), self.model.device)
+                reward_inputs = to_device(reward_template.data_collator(batched_inputs), reward_func.device)
 
                 with torch.inference_mode():
                     rewards_per_func[:, i] = reward_func(**reward_inputs).logits[:, 0]

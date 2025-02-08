@@ -186,7 +186,7 @@ class DatasetLoader:
         strict: bool = False,
         streaming: bool = False,
         columns: Optional[Dict[str, str]] = None,
-        remove_unused_columns: bool = False,
+        remove_unused_columns: bool = True,
     ) -> HfDataset:
         ext = os.path.splitext(dataset_path)[1].lstrip('.')
         file_type = {'jsonl': 'json', 'txt': 'text'}.get(ext) or ext
@@ -198,7 +198,7 @@ class DatasetLoader:
             dataset = RowPreprocessor.safe_rename_columns(dataset, columns)
         dataset = dataset_meta.preprocess_func(dataset, num_proc=num_proc, strict=strict)
         if remove_unused_columns:
-            dataset = DatasetLoader._remove_useless_columns(dataset)
+            dataset = RowPreprocessor.remove_useless_columns(dataset)
         return dataset
 
     @staticmethod
@@ -214,7 +214,7 @@ class DatasetLoader:
         revision: Optional[str] = None,
         download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists',
         columns: Optional[Dict[str, str]] = None,
-        remove_unused_columns: bool = False,
+        remove_unused_columns: bool = True,
     ) -> HfDataset:
         datasets = []
         if os.path.isdir(dataset_id):
@@ -269,7 +269,7 @@ class DatasetLoader:
                 dataset = RowPreprocessor.safe_rename_columns(dataset, columns)
             dataset = subset.preprocess_func(dataset, num_proc=num_proc, strict=strict)
             if remove_unused_columns:
-                dataset = DatasetLoader._remove_useless_columns(dataset)
+                dataset = RowPreprocessor.remove_useless_columns(dataset)
             datasets.append(dataset)
         return DatasetLoader._concat_datasets(datasets, streaming)
 
@@ -356,7 +356,7 @@ class DatasetLoader:
         strict: bool = False,
         download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists',
         columns: Optional[Dict[str, str]] = None,
-        remove_unused_columns: bool = False,
+        remove_unused_columns: bool = True,
     ) -> HfDataset:
         if dataset_syntax.dataset_type == 'path':
             dataset = DatasetLoader._load_dataset_path(
@@ -417,7 +417,7 @@ def load_dataset(
     strict: bool = False,
     download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists',
     columns: Optional[Dict[str, str]] = None,
-    remove_unused_columns: bool = False,
+    remove_unused_columns: bool = True,
     # self-cognition
     model_name: Union[Tuple[str, str], List[str], None] = None,  # zh, en
     model_author: Union[Tuple[str, str], List[str], None] = None,
