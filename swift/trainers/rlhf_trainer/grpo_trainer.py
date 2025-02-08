@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+# Part of the implementation is borrowed from huggingface/trl.
 from collections import defaultdict
-from contextlib import contextmanager
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 from unittest.mock import patch
 
 import torch
@@ -13,8 +13,7 @@ from trl import GRPOTrainer as HFGRPOTrainer
 from trl.models import unwrap_model_for_generation
 from trl.trainer.utils import pad
 
-from swift.llm import InferRequest, RequestConfig
-from swift.llm.template.template_inputs import StdTemplateInputs
+from swift.llm import InferRequest, RequestConfig, to_device
 from swift.plugin.orm import orms
 from swift.utils import get_logger, is_vllm_available
 from ..mixin import SwiftMixin
@@ -32,7 +31,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                  model: Optional[Union[PreTrainedModel, nn.Module]] = None,
                  ref_model: Optional[Union[PreTrainedModel, nn.Module]] = None,
                  reward_model: Optional[Union[PreTrainedModel, nn.Module]] = None,
-                 reward_funcs: Optional[Union[Callable, list[Callable]]] = None,
+                 reward_funcs: Optional[Union[Callable, List[Callable]]] = None,
                  *_args,
                  **kwargs):
 
@@ -58,7 +57,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if not self.reward_funcs:
             raise ValueError('You must specify reward_funcs or reward_model')
 
-        self.max_prompt_length = args.max_prompt_length
         self.num_generations = args.num_generations
         model.warnings_issued['estimate_tokens'] = True
         kwargs['data_collator'] = lambda x: x
@@ -111,60 +109,28 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     'vllm.worker.worker.Worker._assert_memory_footprint_increased_during_profiling', return_value=None)
                 with world_size_patch, profiling_patch:
                     self.engine = VllmEngine(
-                        model.name_or_path,
+                        model.model_dir,
                         device=vllm_device,
                         gpu_memory_utilization=args.vllm_gpu_memory_utilization,
                         enable_prefix_caching=True,
                         max_model_len=self.args.vllm_max_model_len)
-
-                self.request_config = RequestConfig(
-                    max_tokens=args.max_new_tokens,
-                    temperature=args.temperature,
-                )
             self._last_loaded_step = 0
             self.accelerator.wait_for_everyone()
         else:
-            self.generation_config = GenerationConfig(
-                max_new_tokens=args.max_new_tokens,
-                do_sample=True,
-                temperature=args.temperature,
-                pad_token_id=self.processing_class.pad_token_id,
-            )
+            from swift.llm import PtEngine
+            self.engine = PtEngine.from_model_template(self.model, self.template, max_batch_size=0)  # 0: no limit
+        self.request_config = RequestConfig(
+            max_tokens=args.max_completion_length,
+            temperature=args.temperature,
+        )
+
         self.model_accepts_loss_kwargs = False
         for i, reward_func in enumerate(self.reward_funcs):
             if isinstance(reward_func, PreTrainedModel):
                 self.reward_funcs[i] = self.accelerator.prepare_model(reward_func, evaluation_mode=True)
 
-    @contextmanager
-    def set_padding_side_left(self):
-        original_padding_side = self.template.padding_side
-        self.template.padding_side = 'left'
-        try:
-            yield
-        finally:
-            self.template.padding_side = original_padding_side
-
     def _prepare_inputs(self, inputs) -> Dict[str, Union[torch.Tensor, Any]]:
         device = self.accelerator.device
-        prompt_inputs = []
-        messages = []
-        for example in inputs:
-            prompt_input = self.template.encode(example, return_template_inputs=True)
-            message = prompt_input.pop('template_inputs').messages
-            if message[-1]['role'] == 'assistant':
-                message.pop(-1)
-            messages.append(message)
-            prompt_inputs.append(prompt_input)
-        # left padding for generate
-        with self.set_padding_side_left():
-            prompt_inputs = self.template.data_collator(prompt_inputs)  # convert list to tensor
-        prompt_inputs = super()._prepare_inputs(prompt_inputs)  # move device
-
-        prompt_ids, prompt_mask = prompt_inputs['input_ids'], prompt_inputs['attention_mask']
-
-        if self.max_prompt_length is not None:
-            prompt_ids = prompt_ids[:, -self.max_prompt_length:]
-            prompt_mask = prompt_mask[:, -self.max_prompt_length:]
 
         # Generate completions using either vLLM or regular generation
         if self.args.use_vllm:
@@ -183,80 +149,55 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self._last_loaded_step = self.state.global_step
 
             # Generate completions using vLLM: gather all prompts and use them in a single call in the main process
-            all_messages = gather_object(messages)
-            infer_requests = [InferRequest(message) for message in all_messages]
+            inputs = gather_object(inputs)
             if self.accelerator.is_main_process:
-                outputs = self.engine.infer(
-                    infer_requests, request_config=self.request_config, use_tqdm=False, return_outputs=True)
-                completion_ids = [out.token_ids for completions in outputs for out in completions.outputs]
+                outputs = self.engine.infer(inputs, self.request_config, use_tqdm=False)
             else:
-                completion_ids = [None] * len(all_messages)
+                outputs = [None] * len(inputs)
 
             # Broadcast the completions from the main process to all processes, ensuring each process receives its
             # corresponding slice.
-            completion_ids = broadcast_object_list(completion_ids, from_process=0)
-            process_slice = slice(
-                self.accelerator.process_index * len(messages),
-                (self.accelerator.process_index + 1) * len(messages),
-            )
-            completion_ids = completion_ids[process_slice]
-
-            # Pad the completions, and concatenate them with the prompts
-            completion_ids = [torch.tensor(ids, device=device) for ids in completion_ids]
-            completion_ids = pad(completion_ids, padding_value=self.processing_class.pad_token_id)
-            prompt_completion_ids = torch.cat([prompt_ids, completion_ids], dim=1)
+            outputs = broadcast_object_list(outputs, from_process=0)
         else:
             # Regular generation path
-            with unwrap_model_for_generation(self.model, self.accelerator) as unwrapped_model:
-                prompt_completion_ids = unwrapped_model.generate(
-                    prompt_ids, attention_mask=prompt_mask, generation_config=self.generation_config)
+            outputs = self.engine.infer(inputs, self.request_config, use_tqdm=False)
+        for i, output in enumerate(outputs):
+            messages = inputs[i]['messages']
+            InferRequest.remove_response(messages)
+            messages.append({'role': 'assistant', 'content': output.choices[0].message.content})
 
-            # Compute prompt length and extract completion ids
-            prompt_length = prompt_ids.size(1)
-            prompt_ids = prompt_completion_ids[:, :prompt_length]
-            completion_ids = prompt_completion_ids[:, prompt_length:]
+        self.template.set_mode('train')
+        batched_inputs = [self.template.encode(infer_request) for infer_request in inputs]
+        outputs = to_device(self.template.data_collator(batched_inputs), self.model.device)
+        self.template.set_mode('pt')  # recover
 
-        # Mask everything after the first EOS token
-        is_eos = completion_ids == self.processing_class.eos_token_id
-        eos_idx = torch.full((is_eos.size(0), ), is_eos.size(1), dtype=torch.long, device=device)
-        eos_idx[is_eos.any(dim=1)] = is_eos.int().argmax(dim=1)[is_eos.any(dim=1)]
-        sequence_indices = torch.arange(is_eos.size(1), device=device).expand(is_eos.size(0), -1)
-        completion_mask = (sequence_indices <= eos_idx.unsqueeze(1)).int()
-
-        # Concatenate prompt_mask with completion_mask for logit computation
-        attention_mask = torch.cat([prompt_mask, completion_mask], dim=1)  # (B*G, P+C)
-
-        logits_to_keep = completion_ids.size(1)  # we only need to compute the logits for the completion tokens
+        # we only need to compute the logits for the completion tokens
+        labels = outputs.pop('labels')
+        logits_to_keep = labels.shape[-1] - (torch.ne(labels, -100).int().argmax(-1)).max().item()
+        outputs['logits_to_keep'] = logits_to_keep
+        outputs['completion_mask'] = labels[:, -logits_to_keep:] != -100
 
         with torch.inference_mode():
             if self.ref_model is not None:
-                ref_per_token_logps = self._get_per_token_logps(self.ref_model, prompt_completion_ids, attention_mask,
-                                                                logits_to_keep)
+                ref_per_token_logps = self._get_per_token_logps(self.ref_model, outputs['input_ids'],
+                                                                outputs['attention_mask'], logits_to_keep)
             else:
                 with self.accelerator.unwrap_model(self.model).disable_adapter():
-                    ref_per_token_logps = self._get_per_token_logps(self.model, prompt_completion_ids, attention_mask,
-                                                                    logits_to_keep)
+                    ref_per_token_logps = self._get_per_token_logps(self.model, outputs['input_ids'],
+                                                                    outputs['attention_mask'], logits_to_keep)
 
-        # Decode the generated completions
-        completions = self.processing_class.batch_decode(completion_ids, skip_special_tokens=True)
-
-        rewards_per_func = torch.zeros((len(messages), len(self.reward_funcs)), device=device)
+        rewards_per_func = torch.zeros((len(inputs), len(self.reward_funcs)), device=device)
         for i, (reward_func, reward_template) in enumerate(zip(self.reward_funcs, self.reward_templates)):
             if isinstance(reward_func, nn.Module):  # Module instead of PretrainedModel for compat with compiled models
-                reward_inputs = []
-                for message, completion in zip(messages, completions):
-                    combined_message = message + [{'role': 'assistant', 'content': completion}]
-                    reward_input = reward_template.encode({'messages': combined_message})
-                    reward_input.pop('labels', None)
-                    reward_inputs.append(reward_input)
-                reward_inputs = reward_template.data_collator(reward_inputs)
-                reward_inputs = super(type(self), self)._prepare_inputs(reward_inputs)
+                batched_inputs = [reward_template.encode(infer_request) for infer_request in inputs]
+                reward_inputs = to_device(reward_template.data_collator(batched_inputs), reward_func.device)
 
                 with torch.inference_mode():
                     rewards_per_func[:, i] = reward_func(**reward_inputs).logits[:, 0]
             else:
                 # Repeat all input columns (but "messages" and "completion") to match the number of generations
                 reward_kwargs = {key: [example[key] for example in inputs] for key in inputs[0]}
+                completions = [message[-1]['content'] for message in reward_kwargs['messages']]
                 output_reward_func = reward_func(completions, **reward_kwargs)
                 rewards_per_func[:, i] = torch.tensor(output_reward_func, dtype=torch.float32, device=device)
 
@@ -275,8 +216,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # Slice to keep only the local part of the data
         process_slice = slice(
-            self.accelerator.process_index * len(messages),
-            (self.accelerator.process_index + 1) * len(messages),
+            self.accelerator.process_index * len(inputs),
+            (self.accelerator.process_index + 1) * len(inputs),
         )
         advantages = advantages[process_slice]
 
@@ -291,12 +232,37 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         self._metrics['reward'].append(rewards.mean().item())
         self._metrics['reward_std'].append(std_grouped_rewards.mean().item())
-
-        return {
-            'prompt_ids': prompt_ids,
-            'prompt_mask': prompt_mask,
-            'completion_ids': completion_ids,
-            'completion_mask': completion_mask,
+        outputs.update({
             'ref_per_token_logps': ref_per_token_logps,
             'advantages': advantages,
-        }
+        })
+        return outputs
+
+    def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+        if return_outputs:
+            raise ValueError('The GRPOTrainer does not support returning outputs')
+        # Compute the per-token log probabilities for the model
+        logits_to_keep = inputs['logits_to_keep']  # we only need to compute the logits for the completion tokens
+        completion_mask = inputs['completion_mask']
+        per_token_logps = self._get_per_token_logps(model, inputs['input_ids'], inputs['attention_mask'],
+                                                    logits_to_keep)
+
+        # Compute the KL divergence between the model and the reference model
+        ref_per_token_logps = inputs['ref_per_token_logps']
+        per_token_kl = torch.exp(ref_per_token_logps - per_token_logps) - (ref_per_token_logps - per_token_logps) - 1
+
+        # x - x.detach() allows for preserving gradients from x
+        advantages = inputs['advantages']
+        per_token_loss = torch.exp(per_token_logps - per_token_logps.detach()) * advantages.unsqueeze(1)
+        per_token_loss = -(per_token_loss - self.beta * per_token_kl)
+
+        loss = ((per_token_loss * completion_mask).sum(dim=1) / completion_mask.sum(dim=1)).mean()
+
+        # Log the metrics
+        completion_length = self.accelerator.gather_for_metrics(completion_mask.sum(1)).float().mean().item()
+        self._metrics['completion_length'].append(completion_length)
+
+        mean_kl = ((per_token_kl * completion_mask).sum(dim=1) / completion_mask.sum(dim=1)).mean()
+        self._metrics['kl'].append(self.accelerator.gather_for_metrics(mean_kl).mean().item())
+
+        return loss

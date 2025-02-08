@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import os
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional
 
@@ -72,7 +73,7 @@ class RLHFArguments(PPOArguments, TrainArguments):
     undesirable_weight: float = 1.0
     # GRPO
     num_generations: int = 8  # G in the GRPO paper
-    max_prompt_length: Optional[int] = None
+    max_completion_length: int = 512
     reward_funcs: List[str] = field(default_factory=list)
     # vLLM in GRPO
     use_vllm: bool = False
@@ -82,11 +83,11 @@ class RLHFArguments(PPOArguments, TrainArguments):
     loss_scale: Optional[str] = None
 
     def __post_init__(self):
+        self._init_grpo()
         self._init_rm()
         self._init_simpo()
         self._set_default()
         super().__post_init__()
-        self._init_grpo()
         self._init_ppo()
 
         if self.loss_scale is None:
@@ -102,6 +103,13 @@ class RLHFArguments(PPOArguments, TrainArguments):
             self.ref_model_revision = self.ref_model_revision or self.model_revision
         elif self.ref_model is not None:
             raise ValueError('CPO/ORPO or LoRA training does not require a ref_model to be passed in.')
+
+    def _init_grpo(self):
+        if self.rlhf_type == 'grpo':
+            if self.use_vllm:
+                os.environ['USE_VLLM'] = '1'
+            self.remove_unused_columns = False
+            logger.info(f'Setting args.remove_unused_columns: {self.remove_unused_columns}')
 
     def _init_ppo(self):
         if self.rlhf_type == 'ppo':
@@ -133,19 +141,3 @@ class RLHFArguments(PPOArguments, TrainArguments):
                 self.loss_type = 'sigmoid'  # else None
             elif self.rlhf_type in ['kto']:
                 self.loss_type = 'kto'
-
-    def _init_grpo(self):
-        if self.rlhf_type == 'grpo':
-            self.training_args.max_new_tokens = self.max_new_tokens
-            self.reward_template = self._get_reward_template()
-
-    def _get_reward_template(self):
-        if self.reward_model is None:
-            return
-        model_meta = get_matched_model_meta(self.reward_model)
-        if model_meta is None and self.reward_model_type is not None:
-            model_meta = MODEL_MAPPING[self.reward_model_type]
-        if model_meta is None:
-            logger.info(f'The reward model {self.reward_model} is not registered; using a dummy template instead.')
-            return 'dummy'
-        return model_meta.template

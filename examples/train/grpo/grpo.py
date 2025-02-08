@@ -10,7 +10,7 @@ from swift.llm.train import SwiftRLHF
 from swift.trainers import GRPOTrainer
 from swift.utils import get_logger, get_model_parameter_info
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '2'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 logger = get_logger()
 
