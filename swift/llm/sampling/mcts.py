@@ -188,7 +188,8 @@ class MctsSampler(Sampler):
                 infer_requests = [infer_request for _ in range(n)]
 
             # e_time = time.time()
-            # 为了并行进行 Expand 操作，这里暂时不需要考虑顺序，因为 Prompt 是一样的
+            # To perform the Expand operation in parallel,
+            # there's no need to consider the order for now, since the Prompt is the same.
             expand_iter_index = 0
             while True:
                 responses = perform_infer(self.infer_engine, infer_requests, self.expand_request_configs,
@@ -200,9 +201,10 @@ class MctsSampler(Sampler):
                 expand_iter_index += 1
             # logger.info(f"expand.expand time: {time.time() - e_time}")
 
-            # 为了并行获取 Outcome Reward，这里获得的 OR 是顺序返回的，所以可以直接对应
+            # To fetch Outcome Reward in parallel,
+            # the Outcome-Reward obtained is returned in order, so they can be directly matched accordingly.
             orm_infer_requests = []
-            unique_output = set()  # 用于去重
+            unique_output = set()
             for response in responses:
                 self.update_usage_info(response)
                 output = response.choices[0].message.content.rstrip(sep_token + '\n').split(sep_token)[0]
@@ -308,8 +310,13 @@ class MctsSampler(Sampler):
 
         def _back_propagate(back_curr_node: LanguageNode):
             while back_curr_node:
-                best_child_value = max([child.outcome_reward for child in back_curr_node.children])
-                back_curr_node.init_and_update_value(best_child_value)
+                if back_curr_node == curr_node:
+                    best_child_value = max([child.outcome_reward for child in back_curr_node.children])
+                    back_curr_node.init_and_update_value(best_child_value)
+                    last_child_value = back_curr_node.outcome_reward
+                else:
+                    back_curr_node.init_and_update_value(last_child_value)
+                    last_child_value = back_curr_node.outcome_reward
                 back_curr_node.visit()
                 if len(back_curr_node.active_children) == 0:
                     back_curr_node.terminated = True

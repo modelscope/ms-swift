@@ -49,7 +49,6 @@ class SamplingArguments(BaseArguments):
     max_iterations: int = 100
     process_reward_rate: float = 0.0
     exploration_rate: float = 0.5
-    collect_filter_threshold: float = 0.5
     api_key: str = 'EMPTY'
     base_url: str = 'https://dashscope.aliyuncs.com/compatible-mode/v1'
 

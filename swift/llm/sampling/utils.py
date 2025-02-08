@@ -6,6 +6,9 @@ import json
 import numpy as np
 
 from swift.llm import InferRequest, Messages, RequestConfig
+from swift.utils import get_logger
+
+logger = get_logger()
 
 
 def get_messages_md5(messages: Messages):
@@ -86,7 +89,7 @@ def perform_infer(infer_engines, infer_requests, request_configs, **infer_kwargs
                 try:
                     responses += future.result()
                 except Exception as e:
-                    print(f'任务 {task_id} 执行请求时发生错误: {e}')
+                    logger.info(f'Perform infer task: {task_id} get an error: {e}')
         return responses
     elif isinstance(infer_requests, list):
         responses = []
