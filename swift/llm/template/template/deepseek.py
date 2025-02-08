@@ -128,9 +128,10 @@ register_template(DeepseekV2_5TemplateMeta(LLMTemplateType.deepseek_v2_5))
 class DeepseekR1Template(Template):
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        for message in inputs.messages:
-            if message['role'] == 'assistant' and isinstance(message['content'], str):
-                message['content'] = message['content'].split('</think>')[-1]
+        if not self.is_training:
+            for message in inputs.messages:
+                if message['role'] == 'assistant' and isinstance(message['content'], str):
+                    message['content'] = message['content'].split('</think>')[-1]
         return super()._encode(inputs)
 
 
@@ -184,3 +185,9 @@ register_template(
         prompt=['<|User|>: {{QUERY}}\n\n<|Assistant|>:'],
         template_cls=DeepseekVL2Template,
         placeholder_tokens=['<image>']))
+
+register_template(
+    DeepseekVLTemplateMeta(
+        MLLMTemplateType.deepseek_janus_pro,
+        prompt=['<|User|>: {{QUERY}}\n\n<|Assistant|>:'],
+        template_cls=DeepseekJanus))

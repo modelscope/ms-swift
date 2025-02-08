@@ -18,7 +18,7 @@ Swift DOCUMENTATION
    :caption: Instruction
 
    Instruction/命令行参数.md
-   Instruction/预训练及微调.md
+   Instruction/预训练与微调.md
    Instruction/人类对齐.md
    Instruction/推理和部署.md
    Instruction/采样.md

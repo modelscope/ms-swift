@@ -60,6 +60,7 @@ class LLMTemplateType:
     skywork_o1 = 'skywork_o1'
 
     mistral_nemo = 'mistral_nemo'
+    mistral_2501 = 'mistral_2501'
     zephyr = 'zephyr'
     wizardlm2 = 'wizardlm2'
     wizardlm2_moe = 'wizardlm2_moe'
@@ -139,6 +140,7 @@ class MLLMTemplateType:
     deepseek_vl = 'deepseek_vl'
     deepseek_vl2 = 'deepseek_vl2'
     deepseek_janus = 'deepseek_janus'
+    deepseek_janus_pro = 'deepseek_janus_pro'
 
     mplug_owl2 = 'mplug_owl2'
     mplug_owl3 = 'mplug_owl3'
