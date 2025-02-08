@@ -73,6 +73,7 @@ class RLHFArguments(PPOArguments, TrainArguments):
     # GRPO
     num_generations: int = 8  # G in the GRPO paper
     max_prompt_length: Optional[int] = None
+    reward_funcs: List[str] = field(default_factory=list)
     # vLLM in GRPO
     use_vllm: bool = False
     vllm_device: Optional[str] = 'auto'  # 'cuda:1'

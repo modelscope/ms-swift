@@ -15,6 +15,7 @@ from trl.trainer.utils import pad
 
 from swift.llm import InferRequest, RequestConfig
 from swift.llm.template.template_inputs import StdTemplateInputs
+from swift.plugin.orm import orms
 from swift.utils import get_logger, is_vllm_available
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
@@ -38,10 +39,18 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         args = kwargs['args']
 
         self.processing_class = kwargs.get('template').tokenizer
-
-        if reward_funcs is not None and not isinstance(reward_funcs, list):
+        reward_funcs = args.pop('reward_funcs', [])
+        if not isinstance(reward_funcs, list):
             reward_funcs = [reward_funcs]
-        self.reward_funcs = reward_funcs or []
+
+        if reward_funcs:
+            for i, reward_func in enumerate(reward_funcs):
+                if reward_func in orms:
+                    reward_func[i] = orms[reward_func]
+                else:
+                    raise ValueError(f'reward_function {reward_func} is not implemented in swift.llm.plugin')
+
+        self.reward_funcs = reward_funcs
         self.reward_templates = [None] * len(self.reward_funcs)
         if reward_model is not None:
             self.reward_templates.append(kwargs.pop('reward_template', None))
