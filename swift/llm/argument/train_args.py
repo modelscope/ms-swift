@@ -34,7 +34,6 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
     report_to: List[str] = field(default_factory=lambda: ['tensorboard'])
     eval_strategy: Optional[str] = None  # steps, epoch
 
-    remove_unused_columns: bool = False
     logging_first_step: bool = True
 
     def _init_output_dir(self):
@@ -162,6 +161,7 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
         if getattr(self, 'accelerator_config', None) is None:
             self.accelerator_config = {'dispatch_batches': False}
         self.training_args = TrainerFactory.get_training_args(self)
+        self.training_args.remove_unused_columns = False
 
         self._add_version()
 
