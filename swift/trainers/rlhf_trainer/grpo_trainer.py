@@ -3,7 +3,7 @@ from collections import defaultdict
 from contextlib import contextmanager
 from typing import Any, Callable, Optional, Union, Dict
 from unittest.mock import patch
-
+import os
 import torch
 import torch.nn as nn
 from accelerate.utils import broadcast_object_list, gather, gather_object
@@ -13,9 +13,9 @@ from trl import GRPOTrainer as HFGRPOTrainer
 from trl.models import unwrap_model_for_generation
 from trl.trainer.utils import pad
 
-from swift.llm import InferRequest, RequestConfig
-from swift.llm.template.template_inputs import StdTemplateInputs
+from swift.llm import InferRequest, RequestConfig, to_device
 from swift.utils import get_logger, is_vllm_available
+import concurrent.futures
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 
@@ -37,8 +37,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         args = kwargs['args']
 
-        self.processing_class = kwargs.get('template').tokenizer
-
         if reward_funcs is not None and not isinstance(reward_funcs, list):
             reward_funcs = [reward_funcs]
         self.reward_funcs = reward_funcs or []
@@ -49,7 +47,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if not self.reward_funcs:
             raise ValueError('You must specify reward_funcs or reward_model')
 
-        self.max_prompt_length = args.max_prompt_length
         self.num_generations = args.num_generations
         model.warnings_issued['estimate_tokens'] = True
 
@@ -59,7 +56,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         super().__init__(model, ref_model, *_args, **kwargs)
 
-        num_processes = self.accelerator.num_processes
+        num_processes = self.accelerator.num_processes  # check: 梯度累加
         global_batch_size = args.per_device_train_batch_size * num_processes
         possible_values = [n_gen for n_gen in range(2, global_batch_size + 1) if (global_batch_size) % n_gen == 0]
         if self.num_generations not in possible_values:
@@ -102,25 +99,16 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     'vllm.worker.worker.Worker._assert_memory_footprint_increased_during_profiling', return_value=None)
                 with world_size_patch, profiling_patch:
                     self.engine = VllmEngine(
-                        model.name_or_path,
+                        model.model_dir,
                         device=vllm_device,
                         gpu_memory_utilization=args.vllm_gpu_memory_utilization,
-                        enable_prefix_caching=True,
-                        max_model_len=self.args.vllm_max_model_len)
-                    pass
-                self.request_config = RequestConfig(
-                    max_tokens=args.max_new_tokens,
-                    temperature=args.temperature,
-                )
+                        enable_prefix_caching=True)
                 self._last_loaded_step = 0
                 self.accelerator.wait_for_everyone()
+                self.engine.template = self.template
         else:
-            self.generation_config = GenerationConfig(
-                max_new_tokens=args.max_new_tokens,
-                do_sample=True,
-                temperature=args.temperature,
-                pad_token_id=self.processing_class.pad_token_id,
-            )
+            from swift.llm import PtEngine
+            self.engine = PtEngine.from_model_template(self.model, self.template, max_batch_size=8)  # TODO: args.max_batch_size
         self.model_accepts_loss_kwargs = False
         for i, reward_func in enumerate(self.reward_funcs):
             if isinstance(reward_func, PreTrainedModel):
@@ -137,31 +125,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     def _prepare_inputs(self, inputs) -> Dict[str, Union[torch.Tensor, Any]]:
         device = self.accelerator.device
-        prompt_inputs = []
-        messages = []
-        for example in inputs:
-            template_input = StdTemplateInputs.from_dict(example)
-            self.template._preprocess_inputs(template_input)
-            if template_input.messages[-1]['role'] == 'assistant':
-                template_input.messages[-1]['content'] = None  # set response None before encode
-            prompt_input = self.template._encode(template_input)
-            if template_input.messages[-1]['role'] == 'assistant':  # remove after encode
-                template_input.messages.pop(-1)
-            messages.append(template_input.messages)
-            prompt_input.pop('loss_scale', None)
-            prompt_inputs.append(prompt_input)
-
-        self.template.mode = 'train'
-        # left padding for generate
-        with self.set_padding_side_left():
-            prompt_inputs = self.template.data_collator(prompt_inputs)  # convert list to tensor
-        prompt_inputs = super()._prepare_inputs(prompt_inputs)  # move device
-
-        prompt_ids, prompt_mask = prompt_inputs['input_ids'], prompt_inputs['attention_mask']
-
-        if self.max_prompt_length is not None:
-            prompt_ids = prompt_ids[:, -self.max_prompt_length:]
-            prompt_mask = prompt_mask[:, -self.max_prompt_length:]
 
         # Generate completions using either vLLM or regular generation
         if self.args.use_vllm:
@@ -184,7 +147,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             infer_requests = [InferRequest(message) for message in messages]
             if self.accelerator.is_main_process:
                 outputs = self.engine.infer(
-                    infer_requests, request_config=self.request_config, use_tqdm=False, return_outputs=True)
+                    infer_requests, use_tqdm=False, return_outputs=True)
                 completion_ids = [out.token_ids for completions in outputs for out in completions.outputs]
             else:
                 completion_ids = [None] * len(all_messages)
@@ -204,24 +167,23 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             prompt_completion_ids = torch.cat([prompt_ids, completion_ids], dim=1)
         else:
             # Regular generation path
-            with unwrap_model_for_generation(self.model, self.accelerator) as unwrapped_model:
-                prompt_completion_ids = unwrapped_model.generate(
-                    prompt_ids, attention_mask=prompt_mask, generation_config=self.generation_config)
+            outputs = self.engine.infer(inputs, use_tqdm=False)
+            for i, output in enumerate(outputs):
+                inputs[i]['messages'].append({'role': 'assistant', 'content': output.choices[0].message.content})
 
-            # Compute prompt length and extract completion ids
-            prompt_length = prompt_ids.size(1)
-            prompt_ids = prompt_completion_ids[:, :prompt_length]
-            completion_ids = prompt_completion_ids[:, prompt_length:]
-
-        # Mask everything after the first EOS token
-        is_eos = completion_ids == self.processing_class.eos_token_id
-        eos_idx = torch.full((is_eos.size(0), ), is_eos.size(1), dtype=torch.long, device=device)
-        eos_idx[is_eos.any(dim=1)] = is_eos.int().argmax(dim=1)[is_eos.any(dim=1)]
-        sequence_indices = torch.arange(is_eos.size(1), device=device).expand(is_eos.size(0), -1)
-        completion_mask = (sequence_indices <= eos_idx.unsqueeze(1)).int()
-
-        # Concatenate prompt_mask with completion_mask for logit computation
-        attention_mask = torch.cat([prompt_mask, completion_mask], dim=1)  # (B*G, P+C)
+        self.template.set_mode('train')
+        max_workers = min(32, os.cpu_count(), len(inputs))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [
+                executor.submit(self.template.encode, infer_request)
+                for infer_request in inputs
+            ]
+            concurrent.futures.wait(futures)
+            batched_inputs = [future.result() for future in futures]
+        inputs = to_device(self.template.data_collator(batched_inputs), self.model.device)
+        if self.model.model_meta.is_multimodal:
+            _, inputs = self.template.pre_forward_hook(self.model, None, inputs)
+        self.template.set_mode('pt')
 
         logits_to_keep = completion_ids.size(1)  # we only need to compute the logits for the completion tokens
 
