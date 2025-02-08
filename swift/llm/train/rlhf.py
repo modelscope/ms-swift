@@ -56,9 +56,8 @@ class SwiftRLHF(SwiftSft):
             setattr(self, f'{origin_key}_model', model)
             if origin_key == 'reward':
                 reward_template = self.args.get_template(processor)
-                reward_template.set_mode('train')
                 if reward_template.use_model:
-                    reward_template.model = self.model
+                    reward_template.model = model
                 self.reward_template = reward_template
 
         super()._prepare_model_tokenizer()

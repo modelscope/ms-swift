@@ -417,10 +417,10 @@ def load_dataset(
     strict: bool = False,
     download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists',
     columns: Optional[Dict[str, str]] = None,
+    remove_unused_columns: bool = False,
     # self-cognition
     model_name: Union[Tuple[str, str], List[str], None] = None,  # zh, en
     model_author: Union[Tuple[str, str], List[str], None] = None,
-    remove_unused_columns: bool = False,
 ) -> Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]:
     """The interface to load any registered dataset
 
