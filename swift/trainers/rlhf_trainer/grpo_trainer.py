@@ -101,10 +101,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         model.model_dir,
                         device=vllm_device,
                         gpu_memory_utilization=args.vllm_gpu_memory_utilization,
-                        enable_prefix_caching=True)
-                self._last_loaded_step = 0
-                self.accelerator.wait_for_everyone()
-                self.engine.template = self.template
+                        enable_prefix_caching=True,
+                        max_model_len=self.args.vllm_max_model_len)
+            self._last_loaded_step = 0
+            self.accelerator.wait_for_everyone()
         else:
             from swift.llm import PtEngine
             self.engine = PtEngine.from_model_template(
@@ -144,7 +144,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
             # Generate completions using vLLM: gather all prompts and use them in a single call in the main process
             all_messages = gather_object(messages)
-            infer_requests = [InferRequest(message) for message in messages]
+            infer_requests = [InferRequest(message) for message in all_messages]
             if self.accelerator.is_main_process:
                 outputs = self.engine.infer(infer_requests, use_tqdm=False, return_outputs=True)
                 completion_ids = [out.token_ids for completions in outputs for out in completions.outputs]
