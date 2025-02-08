@@ -51,13 +51,13 @@ class VllmEngine(InferEngine):
         disable_custom_all_reduce: bool = False,
         enforce_eager: bool = False,
         limit_mm_per_prompt: Optional[Dict[str, Any]] = None,
+        device: str = 'auto',
         # lora
         enable_lora: bool = False,
         max_loras: int = 1,
         max_lora_rank: int = 16,
         enable_prefix_caching: bool = False,
         engine_kwargs: Optional[Dict[str, Any]] = None,
-        device: str = 'auto',
     ) -> None:
         self.processor = get_model_tokenizer(
             model_id_or_path,
@@ -83,8 +83,8 @@ class VllmEngine(InferEngine):
             max_loras=max_loras,
             max_lora_rank=max_lora_rank,
             enable_prefix_caching=enable_prefix_caching,
-            engine_kwargs=engine_kwargs,
             device=device,
+            engine_kwargs=engine_kwargs,
         )
 
         self._prepare_engine()
@@ -107,12 +107,12 @@ class VllmEngine(InferEngine):
         disable_custom_all_reduce: bool = False,
         enforce_eager: bool = False,
         limit_mm_per_prompt: Optional[Dict[str, Any]] = None,
+        device: str = 'auto',
         enable_lora: bool = False,
         max_loras: int = 1,
         max_lora_rank: int = 16,
         enable_prefix_caching: bool = False,
         engine_kwargs: Optional[Dict[str, Any]] = None,
-        device: str = 'auto',
     ) -> None:
         if engine_kwargs is None:
             engine_kwargs = {}
