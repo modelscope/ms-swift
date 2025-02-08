@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from collections import defaultdict
 from contextlib import contextmanager
-from typing import Any, Callable, Optional, Union, Dict
+from typing import Any, Callable, Dict, Optional, Union
 from unittest.mock import patch
 import os
 import torch
@@ -49,7 +49,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         self.num_generations = args.num_generations
         model.warnings_issued['estimate_tokens'] = True
-
+        kwargs['data_collator'] = lambda x: x
         self._metrics = defaultdict(list)
 
         use_vllm = args.use_vllm
@@ -93,7 +93,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     logger.warning(
                         f'The requested device {vllm_device} is also used for training. This may lead to unexpected '
                         'behavior. It is recommended to use a dedicated device for vLLM.')
-                from swift.llm import VllmEngine # , PtEngine
+                from swift.llm import VllmEngine  # , PtEngine
                 world_size_patch = patch('torch.distributed.get_world_size', return_value=1)
                 profiling_patch = patch(
                     'vllm.worker.worker.Worker._assert_memory_footprint_increased_during_profiling', return_value=None)
@@ -203,15 +203,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         for i, (reward_func, reward_template) in enumerate(zip(self.reward_funcs, self.reward_templates)):
             if isinstance(reward_func, nn.Module):  # Module instead of PretrainedModel for compat with compiled models
                 reward_inputs = []
-                for completion in completions:
-                    combined_message = messages + [{'role': 'assistant', 'content': completion}]
-                    reward_input = StdTemplateInputs.from_dict({'messages': combined_message})
-                    reward_template._preprocess_inputs(reward_input)
-                    reward_input = self.reward_template._encode(reward_input)
+                for message, completion in zip(messages, completions):
+                    combined_message = message + [{'role': 'assistant', 'content': completion}]
+                    reward_input = reward_template.encode({'messages': combined_message})
+                    reward_input.pop('labels', None)
                     reward_inputs.append(reward_input)
-                reward_inputs = self.reward_template.data_collator(reward_inputs)
-                reward_inputs.pop('labels', None)
-                reward_inputs.pop('loss_scale', None)
+                reward_inputs = reward_template.data_collator(reward_inputs)
                 reward_inputs = super(type(self), self)._prepare_inputs(reward_inputs)
 
                 with torch.inference_mode():
