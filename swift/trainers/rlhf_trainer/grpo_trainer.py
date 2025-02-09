@@ -1,17 +1,16 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Part of the implementation is borrowed from huggingface/trl.
 from collections import defaultdict
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 from unittest.mock import patch
 
 import torch
 import torch.nn as nn
 from accelerate.utils import broadcast_object_list, gather, gather_object
 from accelerate.utils.other import is_compiled_module
-from transformers import GenerationConfig, PreTrainedModel
+from transformers import PreTrainedModel
 from trl import GRPOTrainer as HFGRPOTrainer
 from trl.models import unwrap_model_for_generation
-from trl.trainer.utils import pad
 
 from swift.llm import InferRequest, RequestConfig, to_device
 from swift.plugin.orm import orms
@@ -102,7 +101,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     logger.warning(
                         f'The requested device {vllm_device} is also used for training. This may lead to unexpected '
                         'behavior. It is recommended to use a dedicated device for vLLM.')
-                from swift.llm import VllmEngine  # , PtEngine
+                from swift.llm import VllmEngine
                 world_size_patch = patch('torch.distributed.get_world_size', return_value=1)
                 profiling_patch = patch(
                     'vllm.worker.worker.Worker._assert_memory_footprint_increased_during_profiling', return_value=None)

@@ -1,5 +1,4 @@
-from dataclasses import dataclass, field
-from typing import List
+from dataclasses import dataclass
 
 from trl import CPOConfig as HfCPOConfig
 from trl import DPOConfig as HfDPOConfig
