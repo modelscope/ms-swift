@@ -89,6 +89,9 @@ class EmbeddingTrainer(Trainer):
 
         embeddings1 = np.concatenate(embeddings1)
         embeddings2 = np.concatenate(embeddings2)
+        if len(embeddings1.shape) == 3:
+            embeddings1 = embeddings1[:, 0]
+            embeddings2 = embeddings2[:, 0]
         cosine_scores = 1 - (paired_cosine_distances(embeddings1, embeddings2))
         manhattan_distances = -paired_manhattan_distances(embeddings1, embeddings2)
         euclidean_distances = -paired_euclidean_distances(embeddings1, embeddings2)
