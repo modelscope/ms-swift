@@ -148,11 +148,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self._last_loaded_step = self.state.global_step
 
             # Generate completions using vLLM: gather all prompts and use them in a single call in the main process
-            inputs = gather_object(inputs)
+            all_inputs = gather_object(inputs)
             if self.accelerator.is_main_process:
-                outputs = self.engine.infer(inputs, self.request_config, use_tqdm=False)
+                outputs = self.engine.infer(all_inputs, self.request_config, use_tqdm=False)
             else:
-                outputs = [None] * len(inputs)
+                outputs = [None] * len(all_inputs)
 
             # Broadcast the completions from the main process to all processes, ensuring each process receives its
             # corresponding slice.
@@ -165,6 +165,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             outputs = self.engine.infer(inputs, self.request_config, use_tqdm=False)
             if is_multimodal:
                 self.template.register_post_encode_hook([self.model])
+
+        # Slice to keep only the local part of the data
+        process_slice = slice(
+            self.accelerator.process_index * len(inputs),
+            (self.accelerator.process_index + 1) * len(inputs),
+        )
+        outputs = outputs[process_slice]
+
         for i, output in enumerate(outputs):
             messages = inputs[i]['messages']
             InferRequest.remove_response(messages)
@@ -217,12 +225,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         mean_grouped_rewards = mean_grouped_rewards.repeat_interleave(self.num_generations, dim=0)
         std_grouped_rewards = std_grouped_rewards.repeat_interleave(self.num_generations, dim=0)
         advantages = (rewards - mean_grouped_rewards) / (std_grouped_rewards + 1e-4)
-
-        # Slice to keep only the local part of the data
-        process_slice = slice(
-            self.accelerator.process_index * len(inputs),
-            (self.accelerator.process_index + 1) * len(inputs),
-        )
         advantages = advantages[process_slice]
 
         # Log the metrics
