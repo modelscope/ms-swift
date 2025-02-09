@@ -276,7 +276,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         logits_to_keep = inputs['logits_to_keep']
         input_ids = inputs['input_ids']
         parameters = inspect.signature(model.forward).parameters
-        if model.model_meta.is_multimodal and 'logits_to_keep' in parameters:
+        if not model.model_meta.is_multimodal and 'logits_to_keep' in parameters:
             # save memory
             return super()._get_per_token_logps(model, input_ids, inputs['attention_mask'], logits_to_keep)
         inputs = {
