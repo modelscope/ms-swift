@@ -226,21 +226,20 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         template = self.template
         args = self.args
         is_grpo = hasattr(args, 'rlhf_type') and args.rlhf_type == 'grpo'
-        if args.lazy_tokenize:
-            train_dataset = LazyLLMDataset(
-                train_dataset, template.encode, strict=args.strict, random_state=args.data_seed)
-            if val_dataset is not None and not args.predict_with_generate:
-                val_dataset = LazyLLMDataset(
-                    val_dataset, template.encode, strict=args.strict, random_state=args.data_seed)
-        elif is_grpo:
-            pass
-        else:
-            preprocessor_cls = PackingPreprocessor if args.packing else EncodePreprocessor
-            preprocessor = preprocessor_cls(template=template)
-            train_dataset = preprocessor(train_dataset, num_proc=args.dataset_num_proc, strict=args.strict)
-            if val_dataset is not None and not args.predict_with_generate:
-                val_dataset = preprocessor(val_dataset, num_proc=args.dataset_num_proc, strict=args.strict)
         if not is_grpo:
+            if args.lazy_tokenize:
+                train_dataset = LazyLLMDataset(
+                    train_dataset, template.encode, strict=args.strict, random_state=args.data_seed)
+                if val_dataset is not None and not args.predict_with_generate:
+                    val_dataset = LazyLLMDataset(
+                        val_dataset, template.encode, strict=args.strict, random_state=args.data_seed)
+            else:
+                preprocessor_cls = PackingPreprocessor if args.packing else EncodePreprocessor
+                preprocessor = preprocessor_cls(template=template)
+                train_dataset = preprocessor(train_dataset, num_proc=args.dataset_num_proc, strict=args.strict)
+                if val_dataset is not None and not args.predict_with_generate:
+                    val_dataset = preprocessor(val_dataset, num_proc=args.dataset_num_proc, strict=args.strict)
+
             inputs = train_dataset[0] if hasattr(train_dataset, '__len__') else next(iter(train_dataset))
             template.print_inputs(inputs, tokenizer_kwargs=inputs.pop('tokenizer_kwargs', None) or {})
             if isinstance(train_dataset, HfDataset):

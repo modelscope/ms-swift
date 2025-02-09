@@ -87,6 +87,8 @@ class SwiftRLHF(SwiftSft):
                 trainer_kwargs[key] = model
         if hasattr(self, 'reward_template'):
             trainer_kwargs['reward_template'] = self.reward_template
+        if self.args.rlhf_type == 'grpo':
+            trainer_kwargs['reward_funcs'] = self.args.reward_funcs
         return trainer_kwargs
 
 

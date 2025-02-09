@@ -3,7 +3,7 @@ import os
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional
 
-from swift.llm import MODEL_MAPPING, get_matched_model_meta
+from swift.llm import MODEL_MAPPING
 from swift.utils import get_logger
 from .train_args import TrainArguments
 
@@ -104,10 +104,24 @@ class RLHFArguments(PPOArguments, TrainArguments):
         elif self.ref_model is not None:
             raise ValueError('CPO/ORPO or LoRA training does not require a ref_model to be passed in.')
 
+    @staticmethod
+    def _set_default_ddp_config():
+        # It runs normally with Python as well.
+        rank = int(os.getenv('RANK', -1))
+        if rank == -1:
+            os.environ['NPROC_PER_NODE'] = '1'
+            os.environ['RANK'] = '0'
+            os.environ['LOCAL_RANK'] = '0'
+            os.environ['WORLD_SIZE'] = '1'
+            os.environ['LOCAL_WORLD_SIZE'] = '1'
+            os.environ['MASTER_ADDR'] = '127.0.0.1'
+            os.environ['MASTER_PORT'] = '29500'
+
     def _init_grpo(self):
         if self.rlhf_type == 'grpo':
             if self.use_vllm:
                 os.environ['USE_VLLM'] = '1'
+                self._set_default_ddp_config()
             self.remove_unused_columns = False
             logger.info(f'Setting args.remove_unused_columns: {self.remove_unused_columns}')
 

@@ -1,17 +1,17 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Part of the implementation is borrowed from huggingface/trl.
 from collections import defaultdict
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 from unittest.mock import patch
 
 import torch
 import torch.nn as nn
 from accelerate.utils import broadcast_object_list, gather, gather_object
 from accelerate.utils.other import is_compiled_module
-from transformers import GenerationConfig, PreTrainedModel
+from transformers import PreTrainedModel
 from trl import GRPOTrainer as HFGRPOTrainer
 from trl.models import unwrap_model_for_generation
-from trl.trainer.utils import pad
+from trl.trainer.utils import selective_log_softmax
 
 from swift.llm import InferRequest, RequestConfig, to_device
 from swift.plugin.orm import orms
@@ -31,21 +31,20 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                  model: Optional[Union[PreTrainedModel, nn.Module]] = None,
                  ref_model: Optional[Union[PreTrainedModel, nn.Module]] = None,
                  reward_model: Optional[Union[PreTrainedModel, nn.Module]] = None,
-                 reward_funcs: Optional[Union[Callable, List[Callable]]] = None,
+                 reward_funcs: List[str] = None,
                  *_args,
                  **kwargs):
 
         args = kwargs['args']
 
         self.processing_class = kwargs.get('template').tokenizer
-        reward_funcs = args.pop('reward_funcs', [])
         if not isinstance(reward_funcs, list):
             reward_funcs = [reward_funcs]
 
         if reward_funcs:
             for i, reward_func in enumerate(reward_funcs):
                 if reward_func in orms:
-                    reward_func[i] = orms[reward_func]
+                    reward_funcs[i] = orms[reward_func]()
                 else:
                     raise ValueError(f'reward_function {reward_func} is not implemented in swift.llm.plugin')
 
@@ -103,7 +102,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     logger.warning(
                         f'The requested device {vllm_device} is also used for training. This may lead to unexpected '
                         'behavior. It is recommended to use a dedicated device for vLLM.')
-                from swift.llm import VllmEngine  # , PtEngine
+                from swift.llm import VllmEngine
                 world_size_patch = patch('torch.distributed.get_world_size', return_value=1)
                 profiling_patch = patch(
                     'vllm.worker.worker.Worker._assert_memory_footprint_increased_during_profiling', return_value=None)
@@ -113,7 +112,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         device=vllm_device,
                         gpu_memory_utilization=args.vllm_gpu_memory_utilization,
                         enable_prefix_caching=True,
-                        max_model_len=self.args.vllm_max_model_len)
+                        max_model_len=args.vllm_max_model_len)
+                self.engine.default_template = self.template
             self._last_loaded_step = 0
             self.accelerator.wait_for_everyone()
         else:
@@ -149,18 +149,31 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self._last_loaded_step = self.state.global_step
 
             # Generate completions using vLLM: gather all prompts and use them in a single call in the main process
-            inputs = gather_object(inputs)
+            all_inputs = gather_object(inputs)
             if self.accelerator.is_main_process:
-                outputs = self.engine.infer(inputs, self.request_config, use_tqdm=False)
+                outputs = self.engine.infer(all_inputs, self.request_config, use_tqdm=False)
             else:
-                outputs = [None] * len(inputs)
+                outputs = [None] * len(all_inputs)
 
             # Broadcast the completions from the main process to all processes, ensuring each process receives its
             # corresponding slice.
             outputs = broadcast_object_list(outputs, from_process=0)
         else:
             # Regular generation path
+            is_multimodal = self.model.model_meta.is_multimodal
+            if is_multimodal:
+                self.template.remove_post_encode_hook()
             outputs = self.engine.infer(inputs, self.request_config, use_tqdm=False)
+            if is_multimodal:
+                self.template.register_post_encode_hook([self.model])
+
+        # Slice to keep only the local part of the data
+        process_slice = slice(
+            self.accelerator.process_index * len(inputs),
+            (self.accelerator.process_index + 1) * len(inputs),
+        )
+        outputs = outputs[process_slice]
+
         for i, output in enumerate(outputs):
             messages = inputs[i]['messages']
             InferRequest.remove_response(messages)
@@ -179,12 +192,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         with torch.inference_mode():
             if self.ref_model is not None:
-                ref_per_token_logps = self._get_per_token_logps(self.ref_model, outputs['input_ids'],
-                                                                outputs['attention_mask'], logits_to_keep)
+                ref_per_token_logps = self._get_per_token_logps(self.ref_model, outputs)
             else:
                 with self.accelerator.unwrap_model(self.model).disable_adapter():
-                    ref_per_token_logps = self._get_per_token_logps(self.model, outputs['input_ids'],
-                                                                    outputs['attention_mask'], logits_to_keep)
+                    ref_per_token_logps = self._get_per_token_logps(self.model, outputs)
 
         rewards_per_func = torch.zeros((len(inputs), len(self.reward_funcs)), device=device)
         for i, (reward_func, reward_template) in enumerate(zip(self.reward_funcs, self.reward_templates)):
@@ -213,12 +224,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         mean_grouped_rewards = mean_grouped_rewards.repeat_interleave(self.num_generations, dim=0)
         std_grouped_rewards = std_grouped_rewards.repeat_interleave(self.num_generations, dim=0)
         advantages = (rewards - mean_grouped_rewards) / (std_grouped_rewards + 1e-4)
-
-        # Slice to keep only the local part of the data
-        process_slice = slice(
-            self.accelerator.process_index * len(inputs),
-            (self.accelerator.process_index + 1) * len(inputs),
-        )
         advantages = advantages[process_slice]
 
         # Log the metrics
@@ -227,7 +232,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if isinstance(reward_func, nn.Module):  # Module instead of PretrainedModel for compat with compiled models
                 reward_func_name = reward_func.config._name_or_path.split('/')[-1]
             else:
-                reward_func_name = reward_func.__name__
+                reward_func_name = reward_func.name
             self._metrics[f'rewards/{reward_func_name}'].append(reward_per_func[i].item())
 
         self._metrics['reward'].append(rewards.mean().item())
@@ -242,10 +247,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if return_outputs:
             raise ValueError('The GRPOTrainer does not support returning outputs')
         # Compute the per-token log probabilities for the model
-        logits_to_keep = inputs['logits_to_keep']  # we only need to compute the logits for the completion tokens
         completion_mask = inputs['completion_mask']
-        per_token_logps = self._get_per_token_logps(model, inputs['input_ids'], inputs['attention_mask'],
-                                                    logits_to_keep)
+        per_token_logps = self._get_per_token_logps(model, inputs)
 
         # Compute the KL divergence between the model and the reference model
         ref_per_token_logps = inputs['ref_per_token_logps']
@@ -266,3 +269,19 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self._metrics['kl'].append(self.accelerator.gather_for_metrics(mean_kl).mean().item())
 
         return loss
+
+    # Get the per-token log probabilities for the completions for the model and the reference model
+    def _get_per_token_logps(self, model, inputs):
+        logits_to_keep = inputs['logits_to_keep']
+        input_ids = inputs['input_ids']
+        inputs = {
+            k: v
+            for k, v in inputs.items()
+            if k not in ['logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages']
+        }
+        # We add 1 to `logits_to_keep` because the last logits of the sequence is later excluded
+        logits = model(**inputs).logits
+        # exclude the last logit: it corresponds to the next token pred
+        logits = logits[:, -(logits_to_keep + 1):-1, :]
+        input_ids = input_ids[:, -logits_to_keep:]
+        return selective_log_softmax(logits, input_ids)  # compute logprobs for the input tokens
