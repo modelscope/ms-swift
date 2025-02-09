@@ -340,6 +340,13 @@ RLHF arguments inherit from the [training arguments](#training-arguments).
 - simpo_gamma: Reward margin term in the SimPO algorithm, with a paper-suggested setting of 0.5-1.5, default is `1.`.
 - desirable_weight: Loss weight $\lambda_D$ for desirable response in the KTO algorithm, default is `1.`.
 - undesirable_weight: Loss weight $\lambda_U$ for undesirable response in the KTO algorithm, default is `1.`.
+- num_generations: The G value in the GRPO algorithm, with a default of 8.
+- max_completion_length: The maximum generation length in the GRPO algorithm, with a default of 512.
+- reward_funcs: Reward functions for the GRPO algorithm, with options being accuracy and format. See swift/plugin/orm.py for details.
+- use_vllm: Whether to use vLLM as the backend for GRPO generation, with a default of False.
+- vllm_device: Set the device for vLLM deployment. For example, to deploy on GPU 0, use cuda:1. The default is auto, which uses the last available GPU.
+- vllm_gpu_memory_utilization: A parameter passed through to vLLM.
+- vllm_max_model_len: A parameter passed through to vLLM.
 - loss_scale: Override template arguments, default is 'last_round'.
 
 #### PPO Arguments

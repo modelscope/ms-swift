@@ -79,7 +79,7 @@ class RLHFArguments(PPOArguments, TrainArguments):
     use_vllm: bool = False
     vllm_device: Optional[str] = 'auto'  # 'cuda:1'
     vllm_gpu_memory_utilization: float = 0.9
-
+    vllm_max_model_len: Optional[int] = None
     loss_scale: Optional[str] = None
 
     def __post_init__(self):
