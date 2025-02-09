@@ -111,7 +111,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         device=vllm_device,
                         gpu_memory_utilization=args.vllm_gpu_memory_utilization,
                         enable_prefix_caching=True,
-                        max_model_len=self.args.vllm_max_model_len)
+                        max_model_len=args.vllm_max_model_len)
                 self.engine.default_template = self.template
             self._last_loaded_step = 0
             self.accelerator.wait_for_everyone()
@@ -159,7 +159,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             outputs = broadcast_object_list(outputs, from_process=0)
         else:
             # Regular generation path
+            is_multimodal = self.model.model_meta.is_multimodal
+            if is_multimodal:
+                self.template.remove_post_encode_hook()
             outputs = self.engine.infer(inputs, self.request_config, use_tqdm=False)
+            if is_multimodal:
+                self.template.register_post_encode_hook([self.model])
         for i, output in enumerate(outputs):
             messages = inputs[i]['messages']
             InferRequest.remove_response(messages)

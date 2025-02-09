@@ -1,6 +1,6 @@
 import os
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 kwargs = {
     'per_device_train_batch_size': 2,
@@ -34,7 +34,7 @@ def test_llm():
     infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True, merge_lora=True))
 
 
-def test_llm_zero3():
+def test_llm_zero2():
     from swift.llm import rlhf_main, RLHFArguments, infer_main, InferArguments
     result = rlhf_main(
         RLHFArguments(
@@ -70,7 +70,46 @@ def test_llm_vllm():
     infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True, merge_lora=True))
 
 
+def test_llm_vllm_zero2():
+    from swift.llm import rlhf_main, RLHFArguments, infer_main, InferArguments
+    result = rlhf_main(
+        RLHFArguments(
+            rlhf_type='grpo',
+            model='Qwen/Qwen2.5-1.5B-Instruct',
+            train_type='full',
+            dataset=['AI-MO/NuminaMath-TIR#100'],
+            system=SYSTEM_PROMPT,
+            reward_funcs=['accuracy', 'format'],
+            use_vllm=True,
+            max_completion_length=4096,
+            num_generations=2,
+            deepspeed='zero2',
+            **kwargs))
+    last_model_checkpoint = result['last_model_checkpoint']
+    infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True, merge_lora=True))
+
+
+def test_mllm():
+    from swift.llm import rlhf_main, RLHFArguments, infer_main, InferArguments
+    result = rlhf_main(
+        RLHFArguments(
+            rlhf_type='grpo',
+            model='Qwen/Qwen2-VL-2B-Instruct',
+            train_type='full',
+            # dataset=['AI-MO/NuminaMath-TIR#100'],
+            dataset=['modelscope/coco_2014_caption:validation#100'],
+            system=SYSTEM_PROMPT,
+            reward_funcs=['accuracy', 'format'],
+            max_completion_length=4096,
+            num_generations=2,
+            **kwargs))
+    last_model_checkpoint = result['last_model_checkpoint']
+    infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True, merge_lora=True))
+
+
 if __name__ == '__main__':
     # test_llm()
     # test_llm_zero3()
-    test_llm_vllm()
+    # test_llm_vllm()
+    # test_llm_vllm_zero2()
+    test_mllm()
