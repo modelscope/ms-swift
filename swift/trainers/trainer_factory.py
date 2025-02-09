@@ -13,7 +13,7 @@ class TrainerFactory:
     TRAINER_MAPPING = {
         'causal_lm': 'swift.trainers.Seq2SeqTrainer',
         'seq_cls': 'swift.trainers.Trainer',
-        'embedding': 'swift.trainers.Trainer',
+        'embedding': 'swift.trainers.EmbeddingTrainer',
         'dpo': 'swift.trainers.DPOTrainer',
         'orpo': 'swift.trainers.ORPOTrainer',
         'kto': 'swift.trainers.KTOTrainer',

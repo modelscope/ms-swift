@@ -68,8 +68,8 @@ class EmbeddingTrainer(Trainer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        if self.compute_metrics is None:
-            self.compute_metrics = self.calculate_metric
+        self.compute_metrics = self.calculate_metric
+        self.preprocess_logits_for_metrics = None
 
     def calculate_metric(self, eval_prediction: EvalPrediction) -> Dict[str, float]:
         from sklearn.metrics.pairwise import paired_cosine_distances, paired_euclidean_distances, \
@@ -78,16 +78,17 @@ class EmbeddingTrainer(Trainer):
 
         embeddings = eval_prediction.predictions
         labels = eval_prediction.label_ids
-        half_batch_size = self.args.per_device_eval_batch_size // 2
+        batch_size = 2 * self.args.per_device_eval_batch_size
+        half_batch_size = self.args.per_device_eval_batch_size
         embeddings1 = []
         embeddings2 = []
-        for i in embeddings.shape[0] // self.args.per_device_eval_batch_size:
+        for i in range(embeddings.shape[0] // batch_size):
             embeddings1.append(
-                embeddings[i * self.args.per_device_eval_batch_size:i * self.args.per_device_eval_batch_size
-                           + half_batch_size])
-            embeddings2.append(embeddings[i * self.args.per_device_eval_batch_size + half_batch_size:(i + 1)
-                                          * self.args.per_device_eval_batch_size])
+                embeddings[i * batch_size: i * batch_size + half_batch_size])
+            embeddings2.append(embeddings[i * batch_size + half_batch_size: (i + 1) * batch_size])
 
+        embeddings1 = np.concatenate(embeddings1)
+        embeddings2 = np.concatenate(embeddings2)
         cosine_scores = 1 - (paired_cosine_distances(embeddings1, embeddings2))
         manhattan_distances = -paired_manhattan_distances(embeddings1, embeddings2)
         euclidean_distances = -paired_euclidean_distances(embeddings1, embeddings2)
@@ -111,22 +112,6 @@ class EmbeddingTrainer(Trainer):
             'manhattan': eval_pearson_manhattan,
             'dot_product': eval_spearman_dot,
         }
-
-    def prediction_step(
-        self,
-        model: nn.Module,
-        inputs: Dict[str, Union[torch.Tensor, Any]],
-        prediction_loss_only: bool,
-        ignore_keys: Optional[List[str]] = None,
-        **gen_kwargs,
-    ) -> Tuple[Optional[float], Optional[torch.Tensor], Optional[torch.Tensor]]:
-        if not self.args.predict_with_generate or prediction_loss_only:
-            return super().prediction_step(
-                model, inputs, prediction_loss_only=prediction_loss_only, ignore_keys=ignore_keys)
-
-        labels = inputs.pop('labels', None)
-        outputs = model(**inputs)
-        return None, nested_detach(outputs['last_hidden_state']), labels
 
 
 class Seq2SeqTrainer(TorchAccMixin, SwiftMixin, HfSeq2SeqTrainer):
