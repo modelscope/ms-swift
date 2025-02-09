@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import Callable, Optional
 from enum import Enum
+from typing import Callable, Optional
+
 import torch
 import torch.nn.functional as F
 from torch import nn
@@ -99,12 +100,13 @@ def cosine_similarity_func(outputs, labels, loss_scale=None, num_items_in_batch=
     return loss_fct(output, labels.float().view(-1))
 
 
+# Code borrowed from sentence_transformers
 class SiameseDistanceMetric(Enum):
     """The metric for the contrastive loss"""
 
-    EUCLIDEAN = lambda x, y: F.pairwise_distance(x, y, p=2)
-    MANHATTAN = lambda x, y: F.pairwise_distance(x, y, p=1)
-    COSINE_DISTANCE = lambda x, y: 1 - F.cosine_similarity(x, y)
+    EUCLIDEAN = lambda x, y: F.pairwise_distance(x, y, p=2)  # noqa
+    MANHATTAN = lambda x, y: F.pairwise_distance(x, y, p=1)  # noqa
+    COSINE_DISTANCE = lambda x, y: 1 - F.cosine_similarity(x, y)  # noqa
 
 
 @register_loss_func(LossType.constrastive)
@@ -113,9 +115,7 @@ def constrastive_loss(outputs, labels, loss_scale=None, num_items_in_batch=None)
     distance_metric = SiameseDistanceMetric.COSINE_DISTANCE
     distances = distance_metric(sentence1, sentence2)
     margin = 0.5
-    losses = 0.5 * (
-        labels.float() * distances.pow(2) + (1 - labels).float() * F.relu(margin - distances).pow(2)
-    )
+    losses = 0.5 * (labels.float() * distances.pow(2) + (1 - labels).float() * F.relu(margin - distances).pow(2))
     return losses.mean()
 
 
@@ -141,7 +141,7 @@ def online_constrastive_loss(outputs, labels, loss_scale=None, num_items_in_batc
 @register_loss_func(LossType.cosent)
 def cosent_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> torch.Tensor:
     sentence1, sentence2 = _parse_pair_sentence(outputs)
-    from sentence_transformers.util import pairwise_cos_sim # pairwise_angle_sim
+    from sentence_transformers.util import pairwise_cos_sim  # pairwise_angle_sim
     scale = 20.0
     scores = pairwise_cos_sim(sentence1, sentence2)
     scores = scores * scale

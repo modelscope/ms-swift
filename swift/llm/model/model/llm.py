@@ -1,15 +1,15 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+from types import MethodType
 from typing import Any, Dict
 
-from transformers import AutoTokenizer, AutoConfig
-from types import MethodType
+from transformers import AutoConfig, AutoTokenizer
+
 from swift.llm import TemplateType
 from swift.utils import get_logger
 from ..constant import LLMModelType
 from ..model_arch import ModelArch
-from ..utils import AttnImpl, HfConfigFactory
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
-from ..utils import ModelInfo, safe_snapshot_download
+from ..utils import AttnImpl, HfConfigFactory, ModelInfo, safe_snapshot_download
 
 logger = get_logger()
 
@@ -228,15 +228,14 @@ register_model(
 
 
 def get_model_tokenizer_qwen2_gte(model_dir: str,
-                                   model_info: ModelInfo,
-                                   model_kwargs: Dict[str, Any],
-                                   load_model: bool = True,
-                                   *,
-                                   tokenizer=None,
-                                   model_config=None,
-                                   automodel_class=None,
-                                   **kwargs
-                                   ):
+                                  model_info: ModelInfo,
+                                  model_kwargs: Dict[str, Any],
+                                  load_model: bool = True,
+                                  *,
+                                  tokenizer=None,
+                                  model_config=None,
+                                  automodel_class=None,
+                                  **kwargs):
     from sentence_transformers import SentenceTransformer
     if model_config is None:
         model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
@@ -250,6 +249,7 @@ def get_model_tokenizer_qwen2_gte(model_dir: str,
         model.config = model_config
 
         def enable_input_require_grads(self):
+
             def make_inputs_require_grads(module, input, output):
                 output.requires_grad_(True)
 
@@ -257,11 +257,11 @@ def get_model_tokenizer_qwen2_gte(model_dir: str,
 
         model.enable_input_require_grads = MethodType(enable_input_require_grads, model)
         tokenizer = model.tokenizer
+
         def forward(self, **kwargs):
             output = self._forward_origin(input=kwargs)
-            return {
-                'last_hidden_state': output['sentence_embedding']
-            }
+            return {'last_hidden_state': output['sentence_embedding']}
+
         if not hasattr(model, '_forward_origin'):
             model._forward_origin = model.forward
             model.forward = MethodType(forward, model)

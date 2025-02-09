@@ -334,9 +334,7 @@ class StsbPreprocessor(ResponsePreprocessor):
 
 register_dataset(
     DatasetMeta(
-        ms_dataset_id='sentence-transformers/stsb',
-        preprocess_func=StsbPreprocessor(),
-        tags=['similarity', '🔥']))
+        ms_dataset_id='sentence-transformers/stsb', preprocess_func=StsbPreprocessor(), tags=['similarity', '🔥']))
 
 
 def _repair_conversations_agent_instruct(s: str) -> List[Dict[str, Any]]:

@@ -48,23 +48,23 @@ class Template(ProcessorMixin):
     is_encoder_decoder = False
 
     def __init__(
-            self,
-            processor: Processor,
-            template_meta: 'TemplateMeta',
-            default_system: Optional[str] = None,
-            max_length: Optional[int] = None,
-            *,
-            use_chat_template: bool = True,
-            truncation_strategy: Literal['raise', 'left', 'right'] = 'raise',
-            max_pixels: Optional[int] = None,
-            tools_prompt: Optional[str] = None,
-            norm_bbox: Literal['norm1000', 'none', None] = None,
-            # only for train
-            padding_side: Literal['left', 'right'] = 'right',
-            loss_scale: str = 'default',
-            sequence_parallel_size: int = 1,
-            # infer/deploy
-            template_backend: Literal['swift', 'jinja'] = 'swift',
+        self,
+        processor: Processor,
+        template_meta: 'TemplateMeta',
+        default_system: Optional[str] = None,
+        max_length: Optional[int] = None,
+        *,
+        use_chat_template: bool = True,
+        truncation_strategy: Literal['raise', 'left', 'right'] = 'raise',
+        max_pixels: Optional[int] = None,
+        tools_prompt: Optional[str] = None,
+        norm_bbox: Literal['norm1000', 'none', None] = None,
+        # only for train
+        padding_side: Literal['left', 'right'] = 'right',
+        loss_scale: str = 'default',
+        sequence_parallel_size: int = 1,
+        # infer/deploy
+        template_backend: Literal['swift', 'jinja'] = 'swift',
     ) -> None:
         """
         default_system: Override the default_system in the template.
@@ -111,8 +111,8 @@ class Template(ProcessorMixin):
             self.skip_prompt = False
 
         self.mode: Literal['pt', 'vllm', 'lmdeploy',  # infer
-        'train', 'rlhf', 'kto',  # train
-        'seq_cls', 'embedding', 'prm'] = 'pt'
+                           'train', 'rlhf', 'kto',  # train
+                           'seq_cls', 'embedding', 'prm'] = 'pt'
         if self.model_info.task_type != 'causal_lm':
             self.mode = self.model_info.task_type
         self._handles = []
@@ -168,8 +168,8 @@ class Template(ProcessorMixin):
                 bbox[2 * i + 1] = int(round(y / height * norm_height))
 
     def _preprocess_inputs(
-            self,
-            inputs: StdTemplateInputs,
+        self,
+        inputs: StdTemplateInputs,
     ) -> None:
         if self.model_meta.is_multimodal:
             self._replace_image_tags(inputs)
@@ -948,9 +948,9 @@ class Template(ProcessorMixin):
         return res
 
     def _embedding_data_collator(self,
-                               batch: List[Dict[str, Any]],
-                               *,
-                               padding_to: Optional[int] = None) -> Dict[str, Any]:
+                                 batch: List[Dict[str, Any]],
+                                 *,
+                                 padding_to: Optional[int] = None) -> Dict[str, Any]:
         labels = [b.pop('labels') for b in batch if b.get('labels') is not None]
         res = self._rlhf_data_collator(batch, padding_to=padding_to)
         if labels:
@@ -1080,7 +1080,7 @@ class Template(ProcessorMixin):
         if tokenizer_kwargs is None:
             tokenizer_kwargs = {}
         for key in [
-            'input', 'labels', 'generate', 'chosen_input', 'chosen_labels', 'rejected_input', 'rejected_labels'
+                'input', 'labels', 'generate', 'chosen_input', 'chosen_labels', 'rejected_input', 'rejected_labels'
         ]:
             val = inputs.get(key)  # fix val is a tensor
             if val is None:
