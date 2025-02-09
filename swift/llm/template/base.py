@@ -239,9 +239,12 @@ class Template(ProcessorMixin):
 
     def _embedding_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = self._rlhf_encode(inputs)
-        encoded.pop('labels', None)
+        encoded.pop('chosen_labels', None)
+        encoded.pop('rejected_labels', None)
         if inputs.label is not None:
             encoded['labels'] = float(inputs.label)
+        else:
+            encoded['labels'] = 0.0
         return encoded
 
     def _seq_cls_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:

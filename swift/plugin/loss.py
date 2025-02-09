@@ -1,7 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Callable, Optional
-
+from enum import Enum
 import torch
+import torch.nn.functional as F
 from torch import nn
 from torch.nn import CrossEntropyLoss, MSELoss
 
@@ -9,6 +10,9 @@ from torch.nn import CrossEntropyLoss, MSELoss
 class LossType:
     loss_scale = 'loss_scale'
     cosine_similarity = 'cosine_similarity'
+    constrastive = 'constrastive'
+    online_constrastive = 'online_constrastive'
+    cosent = 'cosent'
 
 
 LOSS_MAPPING = {}
@@ -73,10 +77,7 @@ def loss_scale_func(outputs, labels, loss_scale=None, num_items_in_batch=None) -
     return loss
 
 
-@register_loss_func(LossType.cosine_similarity)
-def cosine_similarity_func(outputs, labels, loss_scale=None, num_items_in_batch=None) -> torch.Tensor:
-    cos_score_transformation = nn.Identity()
-    loss_fct = MSELoss()
+def _parse_pair_sentence(outputs):
     last_hidden_state = outputs['last_hidden_state']
     batch_size = last_hidden_state.shape[0]
     shape_len = len(last_hidden_state.shape)
@@ -86,8 +87,78 @@ def cosine_similarity_func(outputs, labels, loss_scale=None, num_items_in_batch=
     else:
         sentence1 = last_hidden_state[0:batch_size // 2]
         sentence2 = last_hidden_state[batch_size // 2:]
+    return sentence1, sentence2
+
+
+@register_loss_func(LossType.cosine_similarity)
+def cosine_similarity_func(outputs, labels, loss_scale=None, num_items_in_batch=None) -> torch.Tensor:
+    cos_score_transformation = nn.Identity()
+    loss_fct = MSELoss()
+    sentence1, sentence2 = _parse_pair_sentence(outputs)
     output = cos_score_transformation(torch.cosine_similarity(sentence1, sentence2))
     return loss_fct(output, labels.float().view(-1))
+
+
+class SiameseDistanceMetric(Enum):
+    """The metric for the contrastive loss"""
+
+    EUCLIDEAN = lambda x, y: F.pairwise_distance(x, y, p=2)
+    MANHATTAN = lambda x, y: F.pairwise_distance(x, y, p=1)
+    COSINE_DISTANCE = lambda x, y: 1 - F.cosine_similarity(x, y)
+
+
+@register_loss_func(LossType.constrastive)
+def constrastive_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> torch.Tensor:
+    sentence1, sentence2 = _parse_pair_sentence(outputs)
+    distance_metric = SiameseDistanceMetric.COSINE_DISTANCE
+    distances = distance_metric(sentence1, sentence2)
+    margin = 0.5
+    losses = 0.5 * (
+        labels.float() * distances.pow(2) + (1 - labels).float() * F.relu(margin - distances).pow(2)
+    )
+    return losses.mean()
+
+
+@register_loss_func(LossType.online_constrastive)
+def online_constrastive_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> torch.Tensor:
+    sentence1, sentence2 = _parse_pair_sentence(outputs)
+    distance_metric = SiameseDistanceMetric.COSINE_DISTANCE
+    distance_matrix = distance_metric(sentence1, sentence2)
+    negs = distance_matrix[labels == 0]
+    poss = distance_matrix[labels == 1]
+
+    # select hard positive and hard negative pairs
+    negative_pairs = negs[negs < (poss.max() if len(poss) > 1 else negs.mean())]
+    positive_pairs = poss[poss > (negs.min() if len(negs) > 1 else poss.mean())]
+
+    positive_loss = positive_pairs.pow(2).sum()
+    margin = 0.5
+    negative_loss = F.relu(margin - negative_pairs).pow(2).sum()
+    loss = positive_loss + negative_loss
+    return loss
+
+
+@register_loss_func(LossType.cosent)
+def cosent_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> torch.Tensor:
+    sentence1, sentence2 = _parse_pair_sentence(outputs)
+    from sentence_transformers.util import pairwise_cos_sim # pairwise_angle_sim
+    scale = 20.0
+    scores = pairwise_cos_sim(sentence1, sentence2)
+    scores = scores * scale
+    scores = scores[:, None] - scores[None, :]
+
+    # label matrix indicating which pairs are relevant
+    labels = labels[:, None] < labels[None, :]
+    labels = labels.float()
+
+    # mask out irrelevant pairs so they are negligible after exp()
+    scores = scores - (1 - labels) * 1e12
+
+    # append a zero as e^0 = 1
+    scores = torch.cat((torch.zeros(1).to(scores.device), scores.view(-1)), dim=0)
+    loss = torch.logsumexp(scores, dim=0)
+
+    return loss
 
 
 def get_loss_func(loss_type: Optional[str]) -> Optional[Callable]:
