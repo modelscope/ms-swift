@@ -152,7 +152,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if self.accelerator.is_main_process:
                 outputs = self.engine.infer(all_inputs, self.request_config, use_tqdm=False)
             else:
-                outputs = [None] * len(inputs)
+                outputs = [None] * len(all_inputs)
 
             # Broadcast the completions from the main process to all processes, ensuring each process receives its
             # corresponding slice.
