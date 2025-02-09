@@ -3,7 +3,7 @@ import os
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional
 
-from swift.llm import MODEL_MAPPING, get_matched_model_meta
+from swift.llm import MODEL_MAPPING
 from swift.utils import get_logger
 from .train_args import TrainArguments
 
