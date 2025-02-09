@@ -3,6 +3,7 @@ import datetime as dt
 import os
 from contextlib import nullcontext
 from typing import List, Union
+from urllib.parse import urljoin
 
 from evalscope.constants import EvalBackend, EvalType
 from evalscope.run import TaskConfig, run_task
@@ -27,7 +28,7 @@ class SwiftEval(SwiftPipeline):
         deploy_context = nullcontext() if args.eval_url else run_deploy(args, return_url=True)
         with deploy_context as base_url:
             base_url = args.eval_url or base_url
-            url = os.path.join(base_url, 'chat/completions')
+            url = urljoin(base_url, 'chat/completions')
 
             task_cfg = self.get_task_cfg(args.eval_dataset, args.eval_backend, url)
             result = self.get_task_result(task_cfg)
