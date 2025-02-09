@@ -276,8 +276,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         from trl.trainer.utils import selective_log_softmax
         logits_to_keep = inputs['logits_to_keep']
         input_ids = inputs['input_ids']
-        parameters = inspect.signature(model.forward).parameters
         unwrapped_model = self.accelerator.unwrap_model(model)
+        parameters = inspect.signature(unwrapped_model.forward).parameters
         if not unwrapped_model.model_meta.is_multimodal and 'logits_to_keep' in parameters:
             # save memory
             return super()._get_per_token_logps(model, input_ids, inputs['attention_mask'], logits_to_keep)
