@@ -112,6 +112,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         gpu_memory_utilization=args.vllm_gpu_memory_utilization,
                         enable_prefix_caching=True,
                         max_model_len=self.args.vllm_max_model_len)
+                self.engine.default_template = self.template
             self._last_loaded_step = 0
             self.accelerator.wait_for_everyone()
         else:
