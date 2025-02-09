@@ -148,9 +148,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self._last_loaded_step = self.state.global_step
 
             # Generate completions using vLLM: gather all prompts and use them in a single call in the main process
-            inputs = gather_object(inputs)
+            all_inputs = gather_object(inputs)
             if self.accelerator.is_main_process:
-                outputs = self.engine.infer(inputs, self.request_config, use_tqdm=False)
+                outputs = self.engine.infer(all_inputs, self.request_config, use_tqdm=False)
             else:
                 outputs = [None] * len(inputs)
 
@@ -160,6 +160,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         else:
             # Regular generation path
             outputs = self.engine.infer(inputs, self.request_config, use_tqdm=False)
+
+        # Slice to keep only the local part of the data
+        process_slice = slice(
+            self.accelerator.process_index * len(inputs),
+            (self.accelerator.process_index + 1) * len(inputs),
+        )
+        outputs = outputs[process_slice]
+
         for i, output in enumerate(outputs):
             messages = inputs[i]['messages']
             InferRequest.remove_response(messages)
@@ -212,13 +220,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         mean_grouped_rewards = mean_grouped_rewards.repeat_interleave(self.num_generations, dim=0)
         std_grouped_rewards = std_grouped_rewards.repeat_interleave(self.num_generations, dim=0)
         advantages = (rewards - mean_grouped_rewards) / (std_grouped_rewards + 1e-4)
-
-        # Slice to keep only the local part of the data
-        process_slice = slice(
-            self.accelerator.process_index * len(inputs),
-            (self.accelerator.process_index + 1) * len(inputs),
-        )
-        advantages = advantages[process_slice]
 
         # Log the metrics
         reward_per_func = rewards_per_func.mean(0)
