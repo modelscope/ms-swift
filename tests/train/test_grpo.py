@@ -1,6 +1,6 @@
 import os
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
 
 kwargs = {
     'per_device_train_batch_size': 2,
@@ -89,7 +89,7 @@ def test_llm_vllm_zero2():
     infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True, merge_lora=True))
 
 
-def test_mllm():
+def test_mllm_zero2():
     from swift.llm import rlhf_main, RLHFArguments, infer_main, InferArguments
     result = rlhf_main(
         RLHFArguments(
@@ -102,6 +102,7 @@ def test_mllm():
             reward_funcs=['accuracy', 'format'],
             max_completion_length=4096,
             num_generations=2,
+            deepspeed='zero2',
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
     infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True, merge_lora=True))
@@ -112,4 +113,4 @@ if __name__ == '__main__':
     # test_llm_zero3()
     # test_llm_vllm()
     # test_llm_vllm_zero2()
-    test_mllm()
+    test_mllm_zero2()

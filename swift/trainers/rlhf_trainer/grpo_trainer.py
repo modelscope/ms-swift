@@ -11,6 +11,7 @@ from accelerate.utils.other import is_compiled_module
 from transformers import PreTrainedModel
 from trl import GRPOTrainer as HFGRPOTrainer
 from trl.models import unwrap_model_for_generation
+from trl.trainer.utils import selective_log_softmax
 
 from swift.llm import InferRequest, RequestConfig, to_device
 from swift.plugin.orm import orms
@@ -191,12 +192,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         with torch.inference_mode():
             if self.ref_model is not None:
-                ref_per_token_logps = self._get_per_token_logps(self.ref_model, outputs['input_ids'],
-                                                                outputs['attention_mask'], logits_to_keep)
+                ref_per_token_logps = self._get_per_token_logps(self.ref_model, outputs)
             else:
                 with self.accelerator.unwrap_model(self.model).disable_adapter():
-                    ref_per_token_logps = self._get_per_token_logps(self.model, outputs['input_ids'],
-                                                                    outputs['attention_mask'], logits_to_keep)
+                    ref_per_token_logps = self._get_per_token_logps(self.model, outputs)
 
         rewards_per_func = torch.zeros((len(inputs), len(self.reward_funcs)), device=device)
         for i, (reward_func, reward_template) in enumerate(zip(self.reward_funcs, self.reward_templates)):
@@ -248,10 +247,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if return_outputs:
             raise ValueError('The GRPOTrainer does not support returning outputs')
         # Compute the per-token log probabilities for the model
-        logits_to_keep = inputs['logits_to_keep']  # we only need to compute the logits for the completion tokens
         completion_mask = inputs['completion_mask']
-        per_token_logps = self._get_per_token_logps(model, inputs['input_ids'], inputs['attention_mask'],
-                                                    logits_to_keep)
+        per_token_logps = self._get_per_token_logps(model, inputs)
 
         # Compute the KL divergence between the model and the reference model
         ref_per_token_logps = inputs['ref_per_token_logps']
@@ -272,3 +269,19 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self._metrics['kl'].append(self.accelerator.gather_for_metrics(mean_kl).mean().item())
 
         return loss
+
+    # Get the per-token log probabilities for the completions for the model and the reference model
+    def _get_per_token_logps(self, model, inputs):
+        logits_to_keep = inputs['logits_to_keep']
+        input_ids = inputs['input_ids']
+        inputs = {
+            k: v
+            for k, v in inputs.items()
+            if k not in ['logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages']
+        }
+        # We add 1 to `logits_to_keep` because the last logits of the sequence is later excluded
+        logits = model(**inputs).logits
+        # exclude the last logit: it corresponds to the next token pred
+        logits = logits[:, -(logits_to_keep + 1):-1, :]
+        input_ids = input_ids[:, -logits_to_keep:]
+        return selective_log_softmax(logits, input_ids)  # compute logprobs for the input tokens
