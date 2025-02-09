@@ -12,7 +12,6 @@ from accelerate.utils.other import is_compiled_module
 from transformers import PreTrainedModel
 from trl import GRPOTrainer as HFGRPOTrainer
 from trl.models import unwrap_model_for_generation
-from trl.trainer.utils import selective_log_softmax
 
 from swift.llm import InferRequest, RequestConfig, to_device
 from swift.plugin.orm import orms
@@ -273,6 +272,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     # Get the per-token log probabilities for the completions for the model and the reference model
     def _get_per_token_logps(self, model, inputs):
+        # pip install trl>=0.15
+        from trl.trainer.utils import selective_log_softmax
         logits_to_keep = inputs['logits_to_keep']
         input_ids = inputs['input_ids']
         parameters = inspect.signature(model.forward).parameters
