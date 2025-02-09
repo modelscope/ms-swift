@@ -104,7 +104,7 @@ pip install -e .
 | python | >=3.9 | 3.10 ||
 | cuda |  | cuda12 |使用cpu、npu、mps则无需安装|
 | torch | >=2.0 |  ||
-| transformers | >=4.33 | 4.48.2 ||
+| transformers | >=4.33 | 4.48.3 ||
 | modelscope | >=1.19 |  ||
 | peft | >=0.11.0,<0.15.0 | ||
 | trl | >=0.13,<0.16 | 0.14.0 |RLHF|

@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Part of the implementation is borrowed from huggingface/trl.
+import inspect
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Union
 from unittest.mock import patch
@@ -274,12 +275,15 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def _get_per_token_logps(self, model, inputs):
         logits_to_keep = inputs['logits_to_keep']
         input_ids = inputs['input_ids']
+        parameters = inspect.signature(model.forward).parameters
+        if model.model_meta.is_multimodal and 'logits_to_keep' in parameters:
+            # save memory
+            return super()._get_per_token_logps(model, input_ids, inputs['attention_mask'], logits_to_keep)
         inputs = {
             k: v
             for k, v in inputs.items()
             if k not in ['logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages']
         }
-        # We add 1 to `logits_to_keep` because the last logits of the sequence is later excluded
         logits = model(**inputs).logits
         # exclude the last logit: it corresponds to the next token pred
         logits = logits[:, -(logits_to_keep + 1):-1, :]
