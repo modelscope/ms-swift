@@ -1,9 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import datetime as dt
-import json
 import os
 from dataclasses import dataclass, field
-from typing import List, Literal, Optional, Dict, Union
+from typing import Dict, List, Literal, Optional, Union
+
+import json
 
 from swift.utils import get_logger
 from .base_args import to_abspath
@@ -50,7 +51,7 @@ class EvalArguments(DeployArguments):
     def _init_dataset_args(self):
         if isinstance(self.dataset_args, str):
             self.dataset_args = json.loads(self.dataset_args)
-    
+
     def __post_init__(self):
         super().__post_init__()
         self._init_eval_url()
