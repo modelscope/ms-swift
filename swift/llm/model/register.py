@@ -6,9 +6,11 @@ from contextlib import nullcontext
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from functools import partial
+from types import MethodType
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
+import torch.nn.functional as F
 from peft import PeftModel
 from transformers import (AutoConfig, AutoModel, AutoModelForCausalLM, AutoModelForSequenceClassification,
                           AutoTokenizer, GenerationConfig, PretrainedConfig, PreTrainedModel, PreTrainedTokenizerBase)
@@ -197,6 +199,15 @@ def get_model_tokenizer_from_local(model_dir: str,
             try:
                 model = AutoModelForSequenceClassification.from_pretrained(
                     model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
+            except ValueError:
+                model = None
+
+        if model_info.task_type == 'embedding' and automodel_class is None:
+            try:
+                model = AutoModel.from_pretrained(
+                    model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
+                from swift.llm.model.patcher import patch_output_normalizer
+                patch_output_normalizer(model)
             except ValueError:
                 model = None
 

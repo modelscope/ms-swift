@@ -180,6 +180,8 @@ The table below introduces the models integrated with ms-swift:
 |[Qwen/Qwen2-57B-A14B](https://modelscope.cn/models/Qwen/Qwen2-57B-A14B)|qwen2_moe|qwen|transformers>=4.40|-|[Qwen/Qwen2-57B-A14B](https://huggingface.co/Qwen/Qwen2-57B-A14B)|
 |[Qwen/Qwen2-57B-A14B-Instruct-GPTQ-Int4](https://modelscope.cn/models/Qwen/Qwen2-57B-A14B-Instruct-GPTQ-Int4)|qwen2_moe|qwen|transformers>=4.40|-|[Qwen/Qwen2-57B-A14B-Instruct-GPTQ-Int4](https://huggingface.co/Qwen/Qwen2-57B-A14B-Instruct-GPTQ-Int4)|
 |[Qwen/QwQ-32B-Preview](https://modelscope.cn/models/Qwen/QwQ-32B-Preview)|qwq|qwq|transformers>=4.37|-|[Qwen/QwQ-32B-Preview](https://huggingface.co/Qwen/QwQ-32B-Preview)|
+|[iic/gte_Qwen2-1.5B-instruct](https://modelscope.cn/models/iic/gte_Qwen2-1.5B-instruct)|qwen2_gte|dummy|-|-|-|
+|[iic/gte_Qwen2-7B-instruct](https://modelscope.cn/models/iic/gte_Qwen2-7B-instruct)|qwen2_gte|dummy|-|-|-|
 |[codefuse-ai/CodeFuse-QWen-14B](https://modelscope.cn/models/codefuse-ai/CodeFuse-QWen-14B)|codefuse_qwen|codefuse|-|coding|[codefuse-ai/CodeFuse-QWen-14B](https://huggingface.co/codefuse-ai/CodeFuse-QWen-14B)|
 |[iic/ModelScope-Agent-7B](https://modelscope.cn/models/iic/ModelScope-Agent-7B)|modelscope_agent|modelscope_agent|-|-|-|
 |[iic/ModelScope-Agent-14B](https://modelscope.cn/models/iic/ModelScope-Agent-14B)|modelscope_agent|modelscope_agent|-|-|-|
@@ -478,6 +480,7 @@ The table below introduces the models integrated with ms-swift:
 |[AI-ModelScope/aya-expanse-32b](https://modelscope.cn/models/AI-ModelScope/aya-expanse-32b)|aya|aya|transformers>=4.44.0|-|[CohereForAI/aya-expanse-32b](https://huggingface.co/CohereForAI/aya-expanse-32b)|
 |[answerdotai/ModernBERT-base](https://modelscope.cn/models/answerdotai/ModernBERT-base)|modern_bert|dummy|transformers>=4.48|bert|[answerdotai/ModernBERT-base](https://huggingface.co/answerdotai/ModernBERT-base)|
 |[answerdotai/ModernBERT-large](https://modelscope.cn/models/answerdotai/ModernBERT-large)|modern_bert|dummy|transformers>=4.48|bert|[answerdotai/ModernBERT-large](https://huggingface.co/answerdotai/ModernBERT-large)|
+|[iic/gte-modernbert-base](https://modelscope.cn/models/iic/gte-modernbert-base)|modern_bert_gte|dummy|transformers>=4.48|bert, embedding|[Alibaba-NLP/gte-modernbert-base](https://huggingface.co/Alibaba-NLP/gte-modernbert-base)|
 |[iic/nlp_structbert_backbone_base_std](https://modelscope.cn/models/iic/nlp_structbert_backbone_base_std)|bert|dummy|-|bert|-|
 |[Shanghai_AI_Laboratory/internlm2-1_8b-reward](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm2-1_8b-reward)|internlm2_reward|internlm2_reward|transformers>=4.38|-|[internlm/internlm2-1_8b-reward](https://huggingface.co/internlm/internlm2-1_8b-reward)|
 |[Shanghai_AI_Laboratory/internlm2-7b-reward](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm2-7b-reward)|internlm2_reward|internlm2_reward|transformers>=4.38|-|[internlm/internlm2-7b-reward](https://huggingface.co/internlm/internlm2-7b-reward)|

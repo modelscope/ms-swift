@@ -12,6 +12,8 @@ class LLMModelType:
     qwen2_moe = 'qwen2_moe'
     qwq = 'qwq'
 
+    qwen2_gte = 'qwen2_gte'
+
     codefuse_qwen = 'codefuse_qwen'
     modelscope_agent = 'modelscope_agent'
     marco_o1 = 'marco_o1'
@@ -105,6 +107,7 @@ class LLMModelType:
 
 class BertModelType:
     modern_bert = 'modern_bert'
+    modern_bert_gte = 'modern_bert_gte'
     bert = 'bert'
 
 
