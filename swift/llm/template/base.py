@@ -665,9 +665,15 @@ class Template(ProcessorMixin):
 
         res_context_list: List[Context] = []
         res_context_types: List[ContextType] = []
+        eos_token = None
         if template_meta.auto_add_bos:
-            bos_tokens = self.tokenizer.encode('')
-            res_context_list.append(bos_tokens)
+            all_tokens = self.tokenizer.encode('0')
+            single_zero = self.tokenizer.encode('0', add_special_tokens=False)
+            assert len(single_zero) == 1
+            idx = all_tokens.index(single_zero[0])
+            bos_token = all_tokens[:idx]
+            eos_token = all_tokens[idx+1:]
+            res_context_list.append(bos_token)
             res_context_types.append(ContextType.OTHER)
 
         prefix = template_meta.system_prefix if system else template_meta.prefix
@@ -699,8 +705,10 @@ class Template(ProcessorMixin):
                 # It is the final round, and the response exists (during training).
                 context_list.append('{{RESPONSE}}')
                 if self.is_training:
-                    extra_context_list = template_meta.suffix
-                    extra_context_type = ContextType.SUFFIX
+                    if eos_token is None:
+                        extra_context_list = template_meta.suffix
+                        extra_context_type = ContextType.SUFFIX
+
 
             self._concat_context_list(
                 context_list,
@@ -712,6 +720,9 @@ class Template(ProcessorMixin):
                 round0=i)
             res_context_list += extra_context_list
             res_context_types += [extra_context_type] * len(extra_context_list)
+        if template_meta.auto_add_bos and eos_token:
+            res_context_list.append(eos_token)
+            res_context_types.append(ContextType.SUFFIX)
         from swift.plugin import loss_scale_map
         res_context_list, loss_scale_list = loss_scale_map[self.loss_scale](res_context_list, res_context_types,
                                                                             inputs.messages)
