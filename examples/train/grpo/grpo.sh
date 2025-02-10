@@ -1,26 +1,32 @@
-nproc_per_node=7 \
-MASTER_PORT=29600 \
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
-NPROC_PER_NODE=$nproc_per_node \
+# pip install math_verify # reward function
+# pip install git+https://github.com/huggingface/trl.git # trl >=0.15.0.dev0
+# GPU memory: 80GiB
+CUDA_VISIBLE_DEVICES=0 \
 swift rlhf \
     --rlhf_type grpo \
-    --model Qwen/Qwen2.5-Math-7B \
+    --model Qwen/Qwen2.5-7B-Instruct \
     --reward_funcs accuracy format \
-    --vllm_device auto \
-    --vllm_gpu_memory_utilization 0.8 \
-    --train_type full \
+    --train_type lora \
+    --lora_rank 8 \
+    --lora_alpha 32 \
+    --target_modules all-linear \
     --torch_dtype bfloat16 \
-    --dataset 'AI-MO/NuminaMath-TIR' \
-    --max_completion_length 2048 \
+    --dataset 'AI-MO/NuminaMath-TIR#1000' \
+    --max_completion_length 1024 \
     --num_train_epochs 1 \
-    --per_device_train_batch_size 2 \
-    --per_device_eval_batch_size 2 \
-    --learning_rate 2e-6 \
-    --gradient_accumulation_steps 8 \
+    --per_device_train_batch_size 4 \
+    --per_device_eval_batch_size 4 \
+    --learning_rate 1e-5 \
+    --gradient_accumulation_steps 1 \
+    --eval_steps 100 \
+    --save_steps 100 \
     --save_total_limit 2 \
     --logging_steps 5 \
+    --max_length 2048 \
+    --output_dir output \
+    --warmup_ratio 0.05 \
+    --dataloader_num_workers 4 \
     --dataset_num_proc 4 \
-    --num_generations 7 \
-    --use_vllm true \
-    --system 'swift/example/train/grpo/prompt.txt' \
-    --deepspeed zero3
+    --num_generations 4 \
+    --temperature 0.7 \
+    --system 'examples/train/grpo/prompt.txt'
