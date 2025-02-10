@@ -251,24 +251,21 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             'ref_per_token_logps': ref_per_token_logps,
             'advantages': advantages,
         })
-        if (
-            self.log_completions
-            and self.state.global_step % self.args.logging_steps == 0
-            and "wandb" in self.args.report_to
-        ):
+        if (self.log_completions and self.state.global_step % self.args.logging_steps == 0
+                and 'wandb' in self.args.report_to):
             import pandas as pd
 
             # For logging
             table = {
-                "step": [str(self.state.global_step)] * len(rewards),
-                "messages": gather_object(inputs['messages'][:-1]),
-                "completion": gather_object(completions),
-                "reward": rewards.tolist(),
+                'step': [str(self.state.global_step)] * len(rewards),
+                'messages': gather_object(inputs['messages'][:-1]),
+                'completion': gather_object(completions),
+                'reward': rewards.tolist(),
             }
             df = pd.DataFrame(table)
 
             if wandb.run is not None and self.accelerator.is_main_process:
-                wandb.log({"completions": wandb.Table(dataframe=df)})
+                wandb.log({'completions': wandb.Table(dataframe=df)})
 
         return outputs
 

@@ -16,6 +16,7 @@ logger = get_logger()
 # 1. pip install math_verify
 # 2. pip install git+https://github.com/huggingface/trl.git
 
+
 class CustomGRPO(SwiftRLHF):
     args_class = RLHFArguments
     args: args_class
@@ -57,7 +58,7 @@ if __name__ == '__main__':
     num_generations = 3  # G in GRPO paper
     max_prompt_length = 1024  # truncation to avoid OOM
 
-    reward_funcs = ['accuracy', 'format'] # see details in swift/plugin/orm.py
+    reward_funcs = ['accuracy', 'format']  # see details in swift/plugin/orm.py
     # set system prompt in R1 paper
     SYSTEM_PROMPT = (
         'A conversation between User and Assistant. The user asks a question, and the Assistant solves it. '

@@ -4,6 +4,13 @@ Paper Links
 [DeepSeekMath: Pushing the Limits of Mathematical Reasoning in Open Language Models](https://arxiv.org/abs/2402.03300)
 [DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning](https://arxiv.org/abs/2501.12948)
 
+environments
+
+```bash
+pip install math_verify # reward function
+pip install git+https://github.com/huggingface/trl.git # trl >=0.15.0.dev0
+```
+
 Hyperparameters
 
 - num_generations: The number of samples for each prompt, referred to as the G value in the paper, needs to be divisible by per_device_eval_batch_size * - nproc_per_node.
