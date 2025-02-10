@@ -50,7 +50,6 @@ if __name__ == '__main__':
     # dataset
     dataset = ['AI-MO/NuminaMath-TIR']  # dataset_id or dataset_path
     data_seed = 42
-    max_new_tokens = 512
     split_dataset_ratio = 0.01  # Split validation set
     num_proc = 4  # The number of processes for data loading.
 
@@ -80,7 +79,7 @@ if __name__ == '__main__':
         reward_funcs=reward_funcs,
         split_dataset_ratio=split_dataset_ratio,
         output_dir=output_dir,
-        learning_rate=2e-5,
+        learning_rate=2e-6,
         gradient_checkpointing=True,
         weight_decay=0.1,
         lr_scheduler_type='cosine',
