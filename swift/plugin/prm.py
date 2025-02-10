@@ -191,7 +191,7 @@ class DummyPRM(PRM):
 
 
 prms = {
-prms = {'qwen_max': QwenMaxPRM}
+    'qwen_max': QwenMaxPRM,
     'client': ClientPRM,
     'dummy': DummyPRM,
 }
