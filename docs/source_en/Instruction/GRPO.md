@@ -27,7 +27,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 NPROC_PER_NODE=$nproc_per_node \
 swift rlhf \
     --rlhf_type grpo \
-    --model Qwen/Qwen2.5-1.5B-Instruct \
+    --model Qwen/Qwen2.5-Math-7B \
     --reward_funcs accuracy format \
     --vllm_device auto \
     --train_type full \
@@ -41,10 +41,11 @@ swift rlhf \
     --save_total_limit 2 \
     --logging_steps 5 \
     --dataset_num_proc 4 \
-    --num_generations 2 \
+    --num_generations 7 \
     --use_vllm true \
     --system 'swift/example/train/grpo/ds_prompt.txt' \
-    --vllm_gpu_memory_utilization 0.8
+    --vllm_gpu_memory_utilization 0.8 \
+    --deepspeed zero3
 ```
 
 Single-GPU vLLM
@@ -52,7 +53,7 @@ Single-GPU vLLM
 CUDA_VISIBLE_DEVICES=0 \
 swift rlhf \
     --rlhf_type grpo \
-    --model Qwen/Qwen2.5-1.5B-Instruct \
+    --model Qwen/Qwen2.5-Math-7B \
     --reward_funcs accuracy format \
     --vllm_device auto \
     --train_type full \
