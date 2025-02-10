@@ -206,14 +206,8 @@ def get_model_tokenizer_from_local(model_dir: str,
             try:
                 model = AutoModel.from_pretrained(
                     model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
-
-                def forward(self, *args, **kwargs):
-                    outputs = self._forward_origin(*args, **kwargs)
-                    outputs.last_hidden_state = F.normalize(outputs.last_hidden_state[:, 0], p=2, dim=1)
-                    return outputs
-
-                model._forward_origin = model.forward
-                model.forward = MethodType(forward, model)
+                from swift.llm.model.patcher import patch_output_normalizer
+                patch_output_normalizer(model)
             except ValueError:
                 model = None
 

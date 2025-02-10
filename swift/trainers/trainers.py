@@ -14,7 +14,6 @@ from transformers import EvalPrediction
 from transformers import Seq2SeqTrainer as HfSeq2SeqTrainer
 from transformers import Trainer as HfTrainer
 from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
-from transformers.trainer_pt_utils import nested_detach
 from transformers.utils import is_peft_available
 
 from swift.utils import JsonlWriter, Serializer
