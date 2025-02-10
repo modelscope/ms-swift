@@ -83,9 +83,8 @@ class EmbeddingTrainer(Trainer):
         embeddings1 = []
         embeddings2 = []
         for i in range(embeddings.shape[0] // batch_size):
-            embeddings1.append(
-                embeddings[i * batch_size: i * batch_size + half_batch_size])
-            embeddings2.append(embeddings[i * batch_size + half_batch_size: (i + 1) * batch_size])
+            embeddings1.append(embeddings[i * batch_size:i * batch_size + half_batch_size])
+            embeddings2.append(embeddings[i * batch_size + half_batch_size:(i + 1) * batch_size])
 
         embeddings1 = np.concatenate(embeddings1)
         embeddings2 = np.concatenate(embeddings2)

@@ -1,7 +1,9 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from transformers import AutoConfig
 from types import MethodType
+
 import torch.nn.functional as F
+from transformers import AutoConfig
+
 from swift.utils import get_logger
 from ..constant import BertModelType
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local, register_model
@@ -33,11 +35,11 @@ register_model(
 def get_model_tokenizer_gte_bert(*args, **kwargs):
     model, tokenizer = get_model_tokenizer_from_local(*args, **kwargs)
     if model is not None:
+
         def forward(self, *args, **kwargs):
             outputs = self._forward_origin(*args, **kwargs)
             outputs.last_hidden_state = F.normalize(outputs.last_hidden_state[:, 0], p=2, dim=1)
             return outputs
-
 
         model._forward_origin = model.forward
         model.forward = MethodType(forward, model)

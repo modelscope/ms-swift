@@ -2,15 +2,15 @@
 import os
 import platform
 import re
-import torch.nn.functional as F
 from contextlib import nullcontext
-from types import MethodType
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from functools import partial
+from types import MethodType
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
+import torch.nn.functional as F
 from peft import PeftModel
 from transformers import (AutoConfig, AutoModel, AutoModelForCausalLM, AutoModelForSequenceClassification,
                           AutoTokenizer, GenerationConfig, PretrainedConfig, PreTrainedModel, PreTrainedTokenizerBase)
@@ -211,7 +211,6 @@ def get_model_tokenizer_from_local(model_dir: str,
                     outputs = self._forward_origin(*args, **kwargs)
                     outputs.last_hidden_state = F.normalize(outputs.last_hidden_state[:, 0], p=2, dim=1)
                     return outputs
-
 
                 model._forward_origin = model.forward
                 model.forward = MethodType(forward, model)

@@ -672,7 +672,7 @@ class Template(ProcessorMixin):
             assert len(single_zero) == 1
             idx = all_tokens.index(single_zero[0])
             bos_token = all_tokens[:idx]
-            eos_token = all_tokens[idx+1:]
+            eos_token = all_tokens[idx + 1:]
             if bos_token:
                 res_context_list.append(bos_token)
                 res_context_types.append(ContextType.OTHER)
@@ -709,7 +709,6 @@ class Template(ProcessorMixin):
                     if eos_token is None:
                         extra_context_list = template_meta.suffix
                         extra_context_type = ContextType.SUFFIX
-
 
             self._concat_context_list(
                 context_list,
