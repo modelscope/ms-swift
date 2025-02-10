@@ -85,6 +85,20 @@ The following outlines the standard dataset format for ms-swift, where the "syst
 {"messages": [{"role": "user", "content": "So happy"}], "label": 1}
 ```
 
+### Embedding
+label means the similarity between sentences, use together with loss `cosine_similarity`
+```jsonl
+{"messages": [{"role": "assistant", "content": "今天天气真好呀"}], "rejected_response": "今天天气不错", "label": 0.8}
+{"messages": [{"role": "assistant", "content": "这本书不错"}], "rejected_response": "这个汽车开着有异响", "label": 0.2}
+{"messages": [{"role": "assistant", "content": "天空是蓝色的"}], "rejected_response": "教练我想打篮球", "label": 0.0}
+```
+Also, can be the format below（label only support two values: 0.0 and 1.0）, use loss `contrastive` or `online_contrastive`（contrastive learning）:
+```jsonl
+{"messages": [{"role": "assistant", "content": "今天天气真好呀"}], "rejected_response": "今天天气不错", "label": 1.0}
+{"messages": [{"role": "assistant", "content": "这本书不错"}], "rejected_response": "这个汽车开着有异响", "label": 0.0}
+{"messages": [{"role": "assistant", "content": "天空是蓝色的"}], "rejected_response": "教练我想打篮球", "label": 0.0}
+```
+
 ### Multimodal
 
 For multimodal datasets, the format is the same as the aforementioned tasks. The difference lies in the addition of several keys: `images`, `videos`, and `audios`, which represent the URLs or paths (preferably absolute paths) of multimodal resources. The tags `<image>`, `<video>`, and `<audio>` indicate where to insert images, videos, or audio. MS-Swift supports multiple images, videos, and audio files. These special tokens will be replaced during preprocessing, as referenced [here](https://github.com/modelscope/ms-swift/blob/main/swift/llm/template/template/qwen.py#L198). The four examples below respectively demonstrate the data format for plain text, as well as formats containing image, video, and audio data.
@@ -138,7 +152,7 @@ When using this type of data, please note:
 The format will automatically convert the dataset format to the corresponding model's grounding task format and select the appropriate model's bbox normalization method. Compared to the general format, this format includes an additional "objects" field, which contains the following subfields:
 
 - ref: Used to replace `<ref-object>`.
-- bbox: Used to replace `<bbox>`.
+- bbox: Used to replace `<bbox>`. If the length of each box in the bbox is 2, it represents the x and y coordinates. If the box length is 4, it represents the x and y coordinates of two points.
 - bbox_type: Optional values are 'real' and 'norm1'. The default is 'real', meaning the bbox represents the actual bounding box value. If set to 'norm1', the bbox is normalized to the range 0~1.
 - image_id: This parameter is only effective when bbox_type is 'real'. It indicates the index of the image corresponding to the bbox, used for scaling the bbox. The index starts from 0, and the default is 0 for all.
 

@@ -28,6 +28,9 @@ class SwiftSampling(SwiftPipeline):
         if self.args.sampler_type == 'sample':
             from swift.llm.sampling.vanilla_sampler import VanillaSampler
             self.sampler = VanillaSampler(self.args)
+        elif self.args.sampler_type == 'mcts':
+            from swift.llm.sampling.mcts import MctsSampler
+            self.sampler = MctsSampler(self.args)
 
     def _get_dataset(self):
         args = self.args
@@ -63,6 +66,7 @@ class SwiftSampling(SwiftPipeline):
         if os.path.exists(iter_file):
             shutil.move(iter_file, iter_file + '.' + str(int(time.time())))
         shutil.move(tmp_file, iter_file)
+        logger.info(f'Sample file {iter_file} generated.')
 
 
 def sampling_main(args: Union[List[str], SamplingArguments, None] = None):

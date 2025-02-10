@@ -1,4 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+from types import MethodType
+
+import torch.nn.functional as F
 from transformers import AutoConfig
 
 from swift.utils import get_logger
@@ -27,6 +30,26 @@ register_model(
         get_model_tokenizer_modern_bert,
         requires=['transformers>=4.48'],
         tags=['bert']))
+
+
+def get_model_tokenizer_gte_bert(*args, **kwargs):
+    model, tokenizer = get_model_tokenizer_from_local(*args, **kwargs)
+    if model is not None:
+        from swift.llm.model.patcher import patch_output_normalizer
+        patch_output_normalizer(model)
+    return model, tokenizer
+
+
+register_model(
+    ModelMeta(
+        BertModelType.modern_bert_gte,
+        [ModelGroup([
+            Model('iic/gte-modernbert-base', 'Alibaba-NLP/gte-modernbert-base'),
+        ])],
+        None,
+        get_model_tokenizer_gte_bert,
+        requires=['transformers>=4.48'],
+        tags=['bert', 'embedding']))
 
 register_model(
     ModelMeta(
