@@ -1,6 +1,6 @@
 import os
 import re
-from typing import List, Union
+from typing import Dict, List, Union
 
 import json
 import torch
@@ -16,7 +16,7 @@ class ORM:
         pass
 
     @torch.inference_mode()
-    def infer(self, infer_requests: List[InferRequest], ground_truths: List[str],
+    def infer(self, infer_requests: Union[List[InferRequest], List[Dict]], ground_truths: List[str],
               **kwargs) -> List[ChatCompletionResponse]:
         raise NotImplementedError
 
@@ -118,10 +118,10 @@ class ReactORM(ORM):
         return action, action_input
 
     @torch.inference_mode()
-    def infer(self, infer_requests: List[InferRequest], ground_truths: List[str],
+    def infer(self, infer_requests: Union[List[InferRequest], List[Dict]], ground_truths: List[str],
               **kwargs) -> List[ChatCompletionResponse]:
         rewards = []
-        predictions = [request.messages[-1]['content'] for request in infer_requests]
+        predictions = [request['messages'][-1]['content'] for request in infer_requests]
         for prediction, ground_truth in zip(predictions, ground_truths):
             action_ref = []
             action_input_ref = []
@@ -226,10 +226,10 @@ class MathORM(ORM):
         return value
 
     @torch.inference_mode()
-    def infer(self, infer_requests: List[InferRequest], ground_truths: List[str],
+    def infer(self, infer_requests: Union[List[InferRequest], List[Dict]], ground_truths: List[str],
               **kwargs) -> List[ChatCompletionResponse]:
         rewards = []
-        predictions = [request.messages[-1]['content'] for request in infer_requests]
+        predictions = [request['messages'][-1]['content'] for request in infer_requests]
         for prediction, ground_truth in zip(predictions, ground_truths):
             if '# Answer' in prediction:
                 prediction = prediction.split('# Answer')[1]
@@ -255,7 +255,29 @@ class MathORM(ORM):
         ]
 
 
+class DummyORM(ORM):
+    """An example"""
+
+    def __init__(self):
+        # init here
+        pass
+
+    @torch.inference_mode()
+    def infer(self, infer_requests: Union[List[InferRequest], List[Dict]], ground_truths: List[str],
+              **kwargs) -> List[ChatCompletionResponse]:
+        return [
+            ChatCompletionResponse(
+                choices=[
+                    ChatCompletionResponseChoice(
+                        message=ChatMessage(content=1.0, role='assistant'), index=0, finish_reason='')
+                ],
+                model=None,
+                usage=None)
+        ] * len(ground_truths)
+
+
 orms = {
     'toolbench': ReactORM,
     'math': MathORM,
+    'dummy': DummyORM,
 }

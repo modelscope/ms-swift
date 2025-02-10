@@ -66,6 +66,7 @@ class SwiftSampling(SwiftPipeline):
         if os.path.exists(iter_file):
             shutil.move(iter_file, iter_file + '.' + str(int(time.time())))
         shutil.move(tmp_file, iter_file)
+        logger.info(f'Sample file {iter_file} generated.')
 
 
 def sampling_main(args: Union[List[str], SamplingArguments, None] = None):
