@@ -67,7 +67,6 @@ swift rlhf \
 Single-GPU vLLM
 ```bash
 CUDA_VISIBLE_DEVICES=0 \
-NPROC_PER_NODE=$nproc_per_node \
 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-0.5B-Instruct \
