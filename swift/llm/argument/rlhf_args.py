@@ -124,6 +124,8 @@ class RLHFArguments(PPOArguments, TrainArguments):
                 self._set_default_ddp_config()
             self.remove_unused_columns = False
             logger.info(f'Setting args.remove_unused_columns: {self.remove_unused_columns}')
+            if self.truncation_strategy == 'delete':
+                self.truncation_strategy = 'left'
 
     def _init_ppo(self):
         if self.rlhf_type == 'ppo':

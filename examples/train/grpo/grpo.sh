@@ -12,7 +12,7 @@ swift rlhf \
     --target_modules all-linear \
     --torch_dtype bfloat16 \
     --dataset 'AI-MO/NuminaMath-TIR#1000' \
-    --max_completion_length 2048 \
+    --max_completion_length 1024 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 4 \
     --per_device_eval_batch_size 4 \
@@ -22,7 +22,7 @@ swift rlhf \
     --save_steps 100 \
     --save_total_limit 2 \
     --logging_steps 5 \
-    --max_length 4096 \
+    --max_length 2048 \
     --output_dir output \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 4 \
