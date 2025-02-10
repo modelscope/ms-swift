@@ -76,7 +76,6 @@ class TestTemplate(unittest.TestCase):
 
         # testing two template type.
         for tool_prompt in ('react_en', 'qwen'):
-            tool_prompt = 'react_en'
             test_messages = deepcopy(messages)
             obs_word = get_tools_keyword(tool_prompt).get('observation')
             test_messages[1]['content'] = f'{obs_word}'

@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 from copy import deepcopy
+from typing import Any, Dict, List
 
 import json
 import numpy as np
@@ -59,13 +60,35 @@ class VanillaSampler(Sampler):
                     caches[uuid]['choices'].append(messages[-1]['content'])
         return caches
 
+    @staticmethod
+    def convert_data_to_rows(data):
+        rows = []
+        key = list(data.keys())[0]
+        data_len = len(data[key])
+        for idx in range(data_len):
+            row = {key: data[key][idx] for key in data}
+            if row.get('images') and 'bytes' in row['images'][0]:
+                row['images'] = [img['path'] for img in row['images']]
+            rows.append(row)
+        VanillaSampler.check_row_valid(rows)
+        return rows
+
+    @staticmethod
+    def check_row_valid(rows):
+        for row in rows:
+            assert not row.get('images') or all([isinstance(img, str) and img for img in row['images']])
+            assert not row.get('videos') or all([isinstance(video, str) and video for video in row['videos']])
+            assert not row.get('audios') or all([isinstance(audio, str) and audio for audio in row['audios']])
+
     def generate(self, data):
         resp_all = []
         infer_requests = []
         sent = 0
-        for _messages in data['messages']:
-            messages = deepcopy(_messages)
-            uuid = get_messages_md5(messages)
+        rows = self.convert_data_to_rows(data)
+        for idx, row in enumerate(rows):
+            row = deepcopy(row)
+            messages = row['messages']
+            uuid = get_messages_md5(row)
             if uuid in self.caches:
                 choices = self.caches[uuid]['choices']
                 if len(choices) == self.args.num_return_sequences:
@@ -78,7 +101,8 @@ class VanillaSampler(Sampler):
             if messages[-1]['role'] == 'assistant':
                 messages = messages[:-1]
 
-            infer_request = InferRequest(messages=messages)
+            row['messages'] = messages
+            infer_request = row
             for i in range(self.args.num_return_sequences):
                 infer_requests.append(deepcopy(infer_request))
             sent += 1
@@ -95,16 +119,18 @@ class VanillaSampler(Sampler):
             resp_list = self.infer_engine.infer(infer_requests, request_config=request_config)
 
         _cur = 0
-        for _messages in data['messages']:
-            uuid = get_messages_md5(_messages)
+        for idx, row in enumerate(rows):
+            row = deepcopy(row)
+            uuid = get_messages_md5(row)
             if uuid in self.caches:
                 choices = self.caches[uuid]['choices']
                 if len(choices) == self.args.num_return_sequences:
-                    resps = {'messages': _messages, 'choices': choices}
-                    resp_all.append(resps)
+                    row['choices'] = choices
+                    resp_all.append(row)
                     continue
 
-            resps = {'messages': _messages, 'choices': []}
+            resps = row
+            resps['choices'] = []
             for j in range(self.args.num_return_sequences * _cur, self.args.num_return_sequences * (_cur + 1)):
                 resps['choices'].append(resp_list[j].choices[0].message.content)
             resp_all.append(resps)
@@ -116,19 +142,20 @@ class VanillaSampler(Sampler):
         resp_all = self.generate(data)
         for i, resps in enumerate(resp_all):
             choices = resps['choices']
-            messages = deepcopy(resps['messages'])
-            uuid = get_messages_md5(messages)
+            messages = resps['messages']
+            uuid = get_messages_md5(resps)
             assert messages[-1]['role'] == 'assistant'
             ground_truth = messages[-1]['content']
 
             infer_requests = []
             for decoded in choices:
-                _messages = deepcopy(messages)
-                _messages[-1]['content'] = decoded
-                infer_requests.append(InferRequest(messages=_messages))
-            _messages = deepcopy(messages)
-            _messages[-1]['content'] = ground_truth
-            infer_requests.append(InferRequest(messages=_messages))
+                _resps = deepcopy(resps)
+                _resps['messages'][-1]['content'] = decoded
+                infer_requests.append(_resps)
+
+            _resps = deepcopy(resps)
+            _resps['messages'][-1]['content'] = ground_truth
+            infer_requests.append(_resps)
             if self.orm_model is not None:
                 orm_score, _orm_mask = get_reward(
                     self.orm_model, infer_requests, ground_truths=[ground_truth] * len(infer_requests), threshold=0.0)
@@ -156,9 +183,11 @@ class VanillaSampler(Sampler):
             if self.orm_model is None and self.prm_model is None:
                 positives = choices[:-1]
                 for positive in positives:
-                    messages = deepcopy(messages)
-                    messages[-1]['content'] = str(positive)
-                    generated.append(json.dumps({'id': uuid, 'messages': messages}, ensure_ascii=False) + '\n')
+                    _resps = deepcopy(resps)
+                    _resps.pop('choices', None)
+                    _resps['id'] = uuid
+                    _resps['messages'][-1]['content'] = str(positive)
+                    generated.append(json.dumps(_resps, ensure_ascii=False) + '\n')
             else:
                 score = np.array(prm_score) + np.array(orm_score * 10)
                 sorted_indices = np.argsort(score)[::-1]
@@ -174,13 +203,11 @@ class VanillaSampler(Sampler):
                     positives = choices[pos_indexes]
                     negative = choices[neg_index]
                     for positive in positives:
+                        _resps = deepcopy(resps)
                         messages = deepcopy(messages)
-                        messages[-1]['content'] = str(positive)
-                        generated.append(
-                            json.dumps({
-                                'id': uuid,
-                                'messages': messages,
-                                'rejected_response': str(negative)
-                            },
-                                       ensure_ascii=False) + '\n')
+                        _resps.pop('choices', None)
+                        _resps['messages'][-1]['content'] = str(positive)
+                        _resps['rejected_response'] = str(negative)
+                        _resps['id'] = uuid
+                        generated.append(json.dumps(_resps, ensure_ascii=False) + '\n')
         return generated
