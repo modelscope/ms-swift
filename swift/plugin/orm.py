@@ -288,8 +288,20 @@ class MathAccuracy(ORM):
             rewards.append(reward)
             return rewards
 
-    def infer(self, infer_requests, ground_truths, **kwargs):
-        return super().infer(infer_requests, ground_truths, **kwargs)
+    def infer(self, infer_requests: List[InferRequest], ground_truths: List[str],
+              **kwargs) -> List[ChatCompletionResponse]:
+        rewards = []
+        predictions = [request.messages[-1]['content'] for request in infer_requests]
+        rewards = self.__call__(predictions, solution=ground_truths)
+        return [
+            ChatCompletionResponse(
+                choices=[
+                    ChatCompletionResponseChoice(
+                        message=ChatMessage(content=r if r else 0.0, role='assistant'), index=0, finish_reason='')
+                ],
+                model=None,
+                usage=None) for r in rewards
+        ]
 
 
 class MathFormat(ORM):
@@ -303,8 +315,20 @@ class MathFormat(ORM):
         matches = [re.match(pattern, content) for content in completions]
         return [1.0 if match else 0.0 for match in matches]
 
-    def infer(self, infer_requests, ground_truths, **kwargs):
-        return super().infer(infer_requests, ground_truths, **kwargs)
+    def infer(self, infer_requests: List[InferRequest], ground_truths: List[str],
+              **kwargs) -> List[ChatCompletionResponse]:
+        rewards = []
+        predictions = [request.messages[-1]['content'] for request in infer_requests]
+        rewards = self.__call__(predictions)
+        return [
+            ChatCompletionResponse(
+                choices=[
+                    ChatCompletionResponseChoice(
+                        message=ChatMessage(content=r if r else 0.0, role='assistant'), index=0, finish_reason='')
+                ],
+                model=None,
+                usage=None) for r in rewards
+        ]
 
 
 orms = {'toolbench': ReactORM, 'math': MathORM, 'accuracy': MathAccuracy, 'format': MathFormat}
