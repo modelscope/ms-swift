@@ -58,6 +58,7 @@ def test_llm_vllm():
         RLHFArguments(
             rlhf_type='grpo',
             model='Qwen/Qwen2.5-1.5B-Instruct',
+            reward_model='AI-ModelScope/GRM_Llama3.1_8B_rewardmodel-ft',
             train_type='full',
             dataset=['AI-MO/NuminaMath-TIR#100'],
             system=SYSTEM_PROMPT,
@@ -111,6 +112,6 @@ def test_mllm_zero2():
 if __name__ == '__main__':
     # test_llm()
     # test_llm_zero3()
-    # test_llm_vllm()
+    test_llm_vllm()
     # test_llm_vllm_zero2()
-    test_mllm_zero2()
+    # test_mllm_zero2()

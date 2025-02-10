@@ -48,7 +48,7 @@ if __name__ == '__main__':
     output_dir = 'output'
 
     # dataset
-    dataset = ['AI-MO/NuminaMath-TIR']  # dataset_id or dataset_path
+    dataset = ['AI-MO/NuminaMath-TIR#5000']  # dataset_id or dataset_path
     data_seed = 42
     split_dataset_ratio = 0.01  # Split validation set
     num_proc = 4  # The number of processes for data loading.
@@ -79,15 +79,16 @@ if __name__ == '__main__':
         reward_funcs=reward_funcs,
         split_dataset_ratio=split_dataset_ratio,
         output_dir=output_dir,
-        learning_rate=2e-6,
+        learning_rate=1e-6,
+        dataset_num_proc=num_proc,
         gradient_checkpointing=True,
         weight_decay=0.1,
         lr_scheduler_type='cosine',
         warmup_ratio=0.05,
         report_to=['tensorboard'],
         logging_first_step=True,
-        gradient_accumulation_steps=16,
-        save_total_limit=5,
+        gradient_accumulation_steps=8,
+        save_total_limit=2,
         logging_steps=5,
         dataloader_num_workers=1,
         data_seed=data_seed,
