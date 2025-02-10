@@ -15,7 +15,7 @@ from trl.trainer.utils import selective_log_softmax
 
 from swift.llm import InferRequest, RequestConfig, to_device
 from swift.plugin.orm import orms
-from swift.utils import get_logger, is_vllm_available
+from swift.utils import get_logger, is_vllm_available, is_wandb_available
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 
@@ -23,6 +23,8 @@ del HFGRPOTrainer.__init__
 del HFGRPOTrainer._prepare_inputs
 
 logger = get_logger()
+if is_wandb_available():
+    import wandb
 
 
 class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
@@ -232,7 +234,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if isinstance(reward_func, nn.Module):  # Module instead of PretrainedModel for compat with compiled models
                 reward_func_name = reward_func.config._name_or_path.split('/')[-1]
             else:
-                reward_func_name = reward_func.name
+                reward_func_name = reward_func.__class__.__name__
             self._metrics[f'rewards/{reward_func_name}'].append(reward_per_func[i].item())
 
         self._metrics['reward'].append(rewards.mean().item())
@@ -241,6 +243,25 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             'ref_per_token_logps': ref_per_token_logps,
             'advantages': advantages,
         })
+        # if (
+        #     self.log_completions
+        #     and self.state.global_step % self.args.logging_steps == 0
+        #     and "wandb" in self.args.report_to
+        # ):
+        #     import pandas as pd
+
+        #     # For logging
+        #     table = {
+        #         "step": [str(self.state.global_step)] * len(rewards),
+        #         "messages": gather_object(inputs['messages']),
+        #         "completion": gather_object(completions),
+        #         "reward": rewards.tolist(),
+        #     }
+        #     df = pd.DataFrame(table)
+
+        #     if wandb.run is not None and self.accelerator.is_main_process:
+        #         wandb.log({"completions": wandb.Table(dataframe=df)})
+
         return outputs
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):

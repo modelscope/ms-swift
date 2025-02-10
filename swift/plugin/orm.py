@@ -252,7 +252,6 @@ class MathAccuracy(ORM):
         import importlib.util
         assert importlib.util.find_spec('math_verify') is not None, (
             "The math_verify package is required but not installed. Please install it using 'pip install math_verify'.")
-        self.name = 'accuracy'
 
     def __call__(self, completions, solution, **kwargs):
         from latex2sympy2_extended import NormalizationConfig
@@ -297,7 +296,6 @@ class MathFormat(ORM):
 
     def __init__(self):
         super().__init__()
-        self.name = 'format'
 
     def __call__(self, completions, **kwargs):
         """Reward function that checks if the completion has a specific format."""
