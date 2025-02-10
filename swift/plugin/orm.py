@@ -312,7 +312,7 @@ class MathFormat(ORM):
     def __call__(self, completions, **kwargs):
         """Reward function that checks if the completion has a specific format."""
         pattern = r'^<think>.*?</think>\s*<answer>.*?</answer>$'
-        matches = [re.match(pattern, content) for content in completions]
+        matches = [re.match(pattern, content, re.DOTALL | re.MULTILINE) for content in completions]
         return [1.0 if match else 0.0 for match in matches]
 
     def infer(self, infer_requests: List[InferRequest], ground_truths: List[str],
