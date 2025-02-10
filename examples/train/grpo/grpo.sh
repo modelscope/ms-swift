@@ -1,5 +1,6 @@
 # pip install math_verify # reward function
 # pip install git+https://github.com/huggingface/trl.git # trl >=0.15.0.dev0
+# GPU memory: 80GiB
 CUDA_VISIBLE_DEVICES=0 \
 NPROC_PER_NODE=$nproc_per_node \
 swift rlhf \
