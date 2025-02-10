@@ -60,7 +60,7 @@ swift rlhf \
     --dataset_num_proc 4 \
     --num_generations 7 \
     --temperature 0.7 \
-    --system 'example/train/grpo/prompt.txt' \
+    --system 'examples/train/grpo/prompt.txt' \
     --deepspeed zero2
 ```
 
@@ -91,5 +91,5 @@ swift rlhf \
     --dataset_num_proc 4 \
     --num_generations 8 \
     --temperature 0.7 \
-    --system 'example/train/grpo/prompt.txt'
+    --system 'examples/train/grpo/prompt.txt'
 ```
