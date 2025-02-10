@@ -1,16 +1,19 @@
 import hashlib
 import inspect
-from typing import Any, List, Optional
+from copy import copy
+from typing import Any, List, Optional, Dict
 
 import json
 import numpy as np
 
-from swift.llm import InferRequest, Messages, RequestConfig
+from swift.llm import InferRequest, RequestConfig
 
 
-def get_messages_md5(messages: Messages):
-    key = ''.join([m['content'] for m in messages])
-    return hashlib.md5(key.encode('utf-8')).hexdigest()
+def get_messages_md5(row: Dict[str, Any]):
+    row = copy(row)
+    row.pop('choices', None)
+    serialized = json.dumps(row, sort_keys=True)
+    return hashlib.md5(serialized.encode('utf-8')).hexdigest()
 
 
 def get_reward(model: Any,
