@@ -47,7 +47,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             for i, reward_func in enumerate(reward_funcs):
                 if reward_func in orms:
                     reward_funcs[i] = orms[reward_func]()
-                elif not isinstance(reward_func, callable):
+                elif not callable(reward_func):
                     raise ValueError(f'reward_function {reward_func} is not implemented in swift.llm.plugin')
 
         self.reward_funcs = reward_funcs
