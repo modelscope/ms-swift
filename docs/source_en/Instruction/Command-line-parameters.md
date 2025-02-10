@@ -47,6 +47,7 @@ Hints:
 - download_mode: Dataset download mode, including `reuse_dataset_if_exists` and `force_redownload`, default is reuse_dataset_if_exists.
 - columns: Used for column mapping of the dataset to ensure that the dataset conforms to the format that AutoPreprocessor can handle. For more details, see [here](../Customization/Custom-dataset.md). You can pass in a JSON string, for example: `'{"text1": "query", "text2": "response"}'`, with the default being None.
 - strict: If set to True, any row with an issue in the dataset will throw an error immediately, otherwise, erroneous data samples will be discarded. Default is False.
+- remove_unused_columns: Whether to remove unused columns in the dataset, defaults to True.
 - 🔥model_name: Only applicable to the self-cognition task and effective only on the `swift/self-cognition` dataset. It replaces the `{{NAME}}` placeholder in the dataset. Input the model's name in both Chinese and English, separated by a space, for example: `--model_name 小黄 'Xiao Huang'`. Default is None.
 - 🔥model_author: Only applicable to the self-cognition task and effective only on the `swift/self-cognition` dataset. It replaces the `{{AUTHOR}}` placeholder in the dataset. Input the model author's name in both Chinese and English, separated by a space, for example: `--model_author '魔搭' 'ModelScope'`. Default is None.
 - custom_dataset_info: The path to the JSON file for custom dataset registration. Refer to [Custom Dataset](../Customization/Custom-dataset.md). Default is `[]`.
@@ -114,7 +115,6 @@ This parameter list inherits from transformers `Seq2SeqTrainingArguments`, with 
 - lr_scheduler_kwargs: Other parameters for the lr_scheduler, defaults to None.
 - 🔥gradient_checkpointing_kwargs: Parameters for `torch.utils.checkpoint`. For example, set as `--gradient_checkpointing_kwargs '{"use_reentrant": false}'`. Defaults to None.
 - report_to: Default value is `tensorboard`. You can also specify `--report_to tensorboard wandb` or `--report_to all`.
-- remove_unused_columns: Whether to remove unused columns in the dataset, defaults to False.
 - logging_first_step: Whether to log the first step, defaults to True.
 - logging_steps: Interval for logging, defaults to 5.
 - predict_with_generate: Whether to use generative method during validation, default is False.
@@ -340,6 +340,13 @@ RLHF arguments inherit from the [training arguments](#training-arguments).
 - simpo_gamma: Reward margin term in the SimPO algorithm, with a paper-suggested setting of 0.5-1.5, default is `1.`.
 - desirable_weight: Loss weight $\lambda_D$ for desirable response in the KTO algorithm, default is `1.`.
 - undesirable_weight: Loss weight $\lambda_U$ for undesirable response in the KTO algorithm, default is `1.`.
+- num_generations: The G value in the GRPO algorithm, with a default of 8.
+- max_completion_length: The maximum generation length in the GRPO algorithm, with a default of 512.
+- reward_funcs: Reward functions for the GRPO algorithm, with options being accuracy and format. See swift/plugin/orm.py for details.
+- use_vllm: Whether to use vLLM as the backend for GRPO generation, with a default of False.
+- vllm_device: Set the device for vLLM deployment. For example, to deploy on GPU 0, use cuda:1. The default is auto, which uses the last available GPU.
+- vllm_gpu_memory_utilization: A parameter passed through to vLLM.
+- vllm_max_model_len: A parameter passed through to vLLM.
 - loss_scale: Override template arguments, default is 'last_round'.
 
 #### PPO Arguments

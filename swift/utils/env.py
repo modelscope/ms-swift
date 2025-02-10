@@ -58,6 +58,8 @@ def is_dist():
 def is_mp() -> bool:
     if use_torchacc():
         return False
+    if strtobool(os.environ.get('USE_VLLM', 'false')):
+        return False
     n_gpu = torch.cuda.device_count()
     local_world_size = get_dist_setting()[3]
     assert n_gpu % local_world_size == 0, f'n_gpu: {n_gpu}, local_world_size: {local_world_size}'
@@ -67,7 +69,10 @@ def is_mp() -> bool:
 
 
 def is_mp_ddp() -> bool:
-    if is_dist() and is_mp():
+    # patch_mp_ddp will occur when `import swift`.
+    n_gpu = torch.cuda.device_count()
+    local_world_size = get_dist_setting()[3]
+    if is_dist() and n_gpu != local_world_size + 1 and is_mp():  # fix grpo
         logger.info('Using MP + DDP(device_map)')
         return True
     return False

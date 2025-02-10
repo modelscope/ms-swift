@@ -15,7 +15,7 @@ from swift.utils.torch_utils import _get_max_memory, _sync_max_memory
 logger = get_logger()
 
 
-def patch_ddp_mp():
+def patch_mp_ddp():
     """Patch ddp with device_map.
     After patching, the ddp can run with the device_map.
     This should be called before any training starts.
@@ -52,4 +52,4 @@ def patch_ddp_mp():
         trainer.Accelerator.verify_device_map = lambda *args, **kwargs: False
 
 
-patch_ddp_mp()
+patch_mp_ddp()

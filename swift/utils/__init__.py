@@ -3,7 +3,7 @@
 from .env import (get_dist_setting, get_pai_tensorboard_dir, is_deepspeed_enabled, is_dist, is_dist_ta, is_local_master,
                   is_master, is_mp, is_mp_ddp, is_pai_training_job, torchacc_trim_graph, use_hf_hub, use_torchacc)
 from .import_utils import (is_liger_available, is_lmdeploy_available, is_megatron_available, is_unsloth_available,
-                           is_vllm_available, is_xtuner_available)
+                           is_vllm_available, is_wandb_available, is_xtuner_available)
 from .io_utils import (JsonlWriter, append_to_jsonl, download_ms_file, get_file_mm_type, open_jsonl_writer,
                        read_from_jsonl, write_to_jsonl)
 from .logger import get_logger

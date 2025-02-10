@@ -17,7 +17,7 @@ except ImportError:
 if TYPE_CHECKING:
     from .arguments import Seq2SeqTrainingArguments, TrainingArguments
     from .rlhf_trainer import (CPOTrainer, DPOTrainer, KTOTrainer, ORPOTrainer, RLHFTrainerMixin, PPOTrainer,
-                               RewardTrainer)
+                               RewardTrainer, GRPOTrainer)
     from .rlhf_arguments import DPOConfig, CPOConfig, KTOConfig, ORPOConfig, PPOConfig, RewardConfig
     from .trainer_factory import TrainerFactory
     from .trainers import Seq2SeqTrainer, Trainer, EmbeddingTrainer
@@ -27,9 +27,12 @@ else:
     _extra_objects = {k: v for k, v in globals().items() if not k.startswith('_')}
     _import_structure = {
         'arguments': ['Seq2SeqTrainingArguments', 'TrainingArguments'],
-        'rlhf_arguments': ['DPOConfig', 'CPOConfig', 'KTOConfig', 'ORPOConfig', 'PPOConfig', 'RewardConfig'],
-        'rlhf_trainer':
-        ['CPOTrainer', 'DPOTrainer', 'KTOTrainer', 'ORPOTrainer', 'RLHFTrainerMixin', 'PPOTrainer', 'RewardTrainer'],
+        'rlhf_arguments':
+        ['DPOConfig', 'CPOConfig', 'KTOConfig', 'ORPOConfig', 'PPOConfig', 'RewardConfig', 'GRPOConfig'],
+        'rlhf_trainer': [
+            'CPOTrainer', 'DPOTrainer', 'KTOTrainer', 'ORPOTrainer', 'RLHFTrainerMixin', 'PPOTrainer', 'RewardTrainer',
+            'GRPOTrainer'
+        ],
         'trainer_factory': ['TrainerFactory'],
         'trainers': ['Seq2SeqTrainer', 'Trainer', 'EmbeddingTrainer'],
         'mixin': ['SwiftMixin'],

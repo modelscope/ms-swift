@@ -40,6 +40,10 @@ def is_pyreft_available() -> bool:
     return importlib.util.find_spec('pyreft') is not None
 
 
+def is_wandb_available() -> bool:
+    return importlib.util.find_spec('wandb') is not None
+
+
 class _LazyModule(ModuleType):
     """
     Module class that surfaces all objects but only performs associated imports when the objects are requested.

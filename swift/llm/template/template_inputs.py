@@ -128,7 +128,6 @@ class StdTemplateInputs:
     @classmethod
     def from_dict(cls, inputs: Dict[str, Any], *, tools_prompt: str = 'react_en') -> 'StdTemplateInputs':
         from swift.plugin import get_tools_prompt, get_tools_keyword
-        inputs = deepcopy(inputs)
         kwargs = {}
         for key in ['rejected_response', 'label']:
             if key in inputs:
