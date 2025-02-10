@@ -50,7 +50,7 @@ swift rlhf \
     --dataset_num_proc 4 \
     --num_generations 7 \
     --use_vllm true \
-    --system 'swift/example/train/grpo/ds_prompt.txt' \
+    --system 'swift/example/train/grpo/prompt.txt' \
     --vllm_gpu_memory_utilization 0.8 \
     --deepspeed zero3
 ```

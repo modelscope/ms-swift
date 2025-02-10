@@ -12,9 +12,9 @@ from swift.utils import get_logger, get_model_parameter_info
 
 logger = get_logger()
 
-# 确保已安装以下库：
-# 1. pip install math_verify
-# 2. pip install git+https://github.com/huggingface/trl.git
+# environments
+# pip install math_verify
+# pip install git+https://github.com/huggingface/trl.git
 
 
 class CustomGRPO(SwiftRLHF):

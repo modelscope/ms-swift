@@ -44,13 +44,13 @@ swift rlhf \
     --per_device_train_batch_size 2 \
     --per_device_eval_batch_size 2 \
     --learning_rate 2e-5 \
-    --gradient_accumulation_steps 16 \
+    --gradient_accumulation_steps 8 \
     --save_total_limit 2 \
     --logging_steps 5 \
     --dataset_num_proc 4 \
     --num_generations 7 \
     --use_vllm true \
-    --system 'swift/example/train/grpo/ds_prompt.txt' \
+    --system 'swift/example/train/grpo/prompt.txt' \
     --vllm_gpu_memory_utilization 0.8 \
     --deepspeed zero3
 ```
@@ -70,7 +70,7 @@ swift rlhf \
     --per_device_train_batch_size 2 \
     --per_device_eval_batch_size 2 \
     --learning_rate 2e-5 \
-    --gradient_accumulation_steps 16 \
+    --gradient_accumulation_steps 8 \
     --save_total_limit 2 \
     --logging_steps 5 \
     --dataset_num_proc 4 \
