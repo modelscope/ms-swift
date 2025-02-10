@@ -1,10 +1,9 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 from copy import deepcopy
+from typing import Any, Dict, List
 
 import json
-from typing import Dict, Any, List
-
 import numpy as np
 
 from swift.llm import RequestConfig
@@ -64,19 +63,22 @@ class VanillaSampler(Sampler):
     @staticmethod
     def convert_data_to_rows(data):
         rows = []
-        key = data.keys()[0]
+        key = list(data.keys())[0]
         data_len = len(data[key])
         for idx in range(data_len):
-            rows.append({key: data[key][idx] for key in data})
+            row = {key: data[key][idx] for key in data}
+            if row.get('images') and 'bytes' in row['images'][0]:
+                row['images'] = [img['path'] for img in row['images']]
+            rows.append(row)
         VanillaSampler.check_row_valid(rows)
         return rows
 
     @staticmethod
     def check_row_valid(rows):
         for row in rows:
-            assert not row.get('images') or all([isinstance(img, str) for img in row['images']])
-            assert not row.get('videos') or all([isinstance(img, str) for img in row['videos']])
-            assert not row.get('audios') or all([isinstance(img, str) for img in row['audios']])
+            assert not row.get('images') or all([isinstance(img, str) and img for img in row['images']])
+            assert not row.get('videos') or all([isinstance(video, str) and video for video in row['videos']])
+            assert not row.get('audios') or all([isinstance(audio, str) and audio for audio in row['audios']])
 
     def generate(self, data):
         resp_all = []
@@ -183,6 +185,7 @@ class VanillaSampler(Sampler):
                 for positive in positives:
                     _resps = deepcopy(resps)
                     _resps.pop('choices', None)
+                    _resps['id'] = uuid
                     _resps['messages'][-1]['content'] = str(positive)
                     generated.append(json.dumps(_resps, ensure_ascii=False) + '\n')
             else:
