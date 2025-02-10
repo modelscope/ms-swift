@@ -2,7 +2,7 @@
 # Part of the implementation is borrowed from huggingface/trl.
 import inspect
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Union, Callable
+from typing import Any, Callable, Dict, List, Optional, Union
 from unittest.mock import patch
 
 import torch
@@ -33,8 +33,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                  model: Optional[Union[PreTrainedModel, nn.Module]] = None,
                  ref_model: Optional[Union[PreTrainedModel, nn.Module]] = None,
                  reward_model: Optional[Union[PreTrainedModel, nn.Module]] = None,
-                 reward_funcs: Optional[List[Union[str, Callable]]] = None
-                 *_args,
+                 reward_funcs: Optional[List[Union[str, Callable]]] = None * _args,
                  **kwargs):
 
         args = kwargs['args']
