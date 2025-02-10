@@ -27,5 +27,4 @@ swift sft \
     --dataloader_num_workers 4 \
     --task_type embedding \
     --loss_type cosine_similarity \
-    --label_names labels \
     --dataloader_drop_last true \

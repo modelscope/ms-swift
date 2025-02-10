@@ -69,6 +69,7 @@ class EmbeddingTrainer(Trainer):
         super().__init__(*args, **kwargs)
         self.compute_metrics = self.calculate_metric
         self.preprocess_logits_for_metrics = None
+        self.label_names = ['labels']
 
     def calculate_metric(self, eval_prediction: EvalPrediction) -> Dict[str, float]:
         from sklearn.metrics.pairwise import paired_cosine_distances, paired_euclidean_distances, \
