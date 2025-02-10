@@ -52,22 +52,29 @@ class EvalArguments(DeployArguments):
         logger.info(f'eval_output_dir: {self.eval_output_dir}')
 
     @staticmethod
-    def list_eval_dataset():
+    def list_eval_dataset(eval_backend=None):
         from evalscope.constants import EvalBackend
         from evalscope.benchmarks.benchmark import BENCHMARK_MAPPINGS
         from evalscope.backend.opencompass import OpenCompassBackendManager
-        from evalscope.backend.vlm_eval_kit import VLMEvalKitBackendManager
-        return {
+        res = {
             EvalBackend.NATIVE: list(BENCHMARK_MAPPINGS.keys()),
             EvalBackend.OPEN_COMPASS: OpenCompassBackendManager.list_datasets(),
-            EvalBackend.VLM_EVAL_KIT: VLMEvalKitBackendManager.list_supported_datasets()
         }
+        try:
+            from evalscope.backend.vlm_eval_kit import VLMEvalKitBackendManager
+            vlm_datasets = VLMEvalKitBackendManager.list_supported_datasets()
+            res[EvalBackend.VLM_EVAL_KIT] = vlm_datasets
+        except ImportError:
+            # fix cv2 import error
+            if eval_backend == 'VLMEvalKit':
+                raise
+        return res
 
     def _init_eval_dataset(self):
         if isinstance(self.eval_dataset, str):
             self.eval_dataset = [self.eval_dataset]
 
-        all_eval_dataset = self.list_eval_dataset()
+        all_eval_dataset = self.list_eval_dataset(self.eval_backend)
         dataset_mapping = {dataset.lower(): dataset for dataset in all_eval_dataset[self.eval_backend]}
         valid_dataset = []
         for dataset in self.eval_dataset:

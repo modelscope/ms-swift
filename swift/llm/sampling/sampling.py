@@ -28,6 +28,9 @@ class SwiftSampling(SwiftPipeline):
         if self.args.sampler_type == 'sample':
             from swift.llm.sampling.vanilla_sampler import VanillaSampler
             self.sampler = VanillaSampler(self.args)
+        elif self.args.sampler_type == 'mcts':
+            from swift.llm.sampling.mcts import MctsSampler
+            self.sampler = MctsSampler(self.args)
 
     def _get_dataset(self):
         args = self.args

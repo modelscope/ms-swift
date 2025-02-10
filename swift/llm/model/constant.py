@@ -71,6 +71,7 @@ class LLMModelType:
     zephyr = 'zephyr'
     mixtral = 'mixtral'
     mistral_nemo = 'mistral_nemo'
+    mistral_2501 = 'mistral_2501'
     wizardlm2 = 'wizardlm2'
     wizardlm2_moe = 'wizardlm2_moe'
 

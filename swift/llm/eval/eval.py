@@ -27,7 +27,7 @@ class SwiftEval(SwiftPipeline):
         deploy_context = nullcontext() if args.eval_url else run_deploy(args, return_url=True)
         with deploy_context as base_url:
             base_url = args.eval_url or base_url
-            url = os.path.join(base_url, 'chat/completions')
+            url = f"{base_url.rstrip('/')}/chat/completions"
 
             task_cfg = self.get_task_cfg(args.eval_dataset, args.eval_backend, url)
             result = self.get_task_result(task_cfg)
