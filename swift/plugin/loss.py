@@ -11,8 +11,8 @@ from torch.nn import CrossEntropyLoss, MSELoss
 class LossType:
     loss_scale = 'loss_scale'
     cosine_similarity = 'cosine_similarity'
-    constrastive = 'constrastive'
-    online_constrastive = 'online_constrastive'
+    contrastive = 'contrastive'
+    online_contrastive = 'online_contrastive'
     cosent = 'cosent'
 
 
@@ -109,8 +109,8 @@ def cosine_similarity_func(outputs, labels, loss_scale=None, num_items_in_batch=
     return loss_fct(output, labels.to(output.dtype).view(-1))
 
 
-@register_loss_func(LossType.constrastive)
-def constrastive_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> torch.Tensor:
+@register_loss_func(LossType.contrastive)
+def contrastive_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> torch.Tensor:
     sentence1, sentence2 = _parse_pair_sentence(outputs)
     distance_metric = SiameseDistanceMetric.COSINE_DISTANCE
     distances = distance_metric(sentence1, sentence2)
@@ -120,8 +120,8 @@ def constrastive_loss(outputs, labels, loss_scale=None, num_items_in_batch=None)
     return losses.mean()
 
 
-@register_loss_func(LossType.online_constrastive)
-def online_constrastive_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> torch.Tensor:
+@register_loss_func(LossType.online_contrastive)
+def online_contrastive_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> torch.Tensor:
     sentence1, sentence2 = _parse_pair_sentence(outputs)
     distance_metric = SiameseDistanceMetric.COSINE_DISTANCE
     distance_matrix = distance_metric(sentence1, sentence2)

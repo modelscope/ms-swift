@@ -1,5 +1,9 @@
 nproc_per_node=8
 
+# losses: plugin/loss.py
+# data format: docs/source_en/Customization/Custom-dataset.md
+# --use_chat_template must be false to use generation template
+# --dataloader_drop_last must be true or eval gather will throw error
 NPROC_PER_NODE=$nproc_per_node \
 swift sft \
     --model iic/gte-modernbert-base \
@@ -22,8 +26,6 @@ swift sft \
     --deepspeed zero3 \
     --dataloader_num_workers 4 \
     --task_type embedding \
-    --loss_type cosent \
+    --loss_type cosine_similarity \
     --label_names labels \
-    --metric_for_best_model cosine \
-    --greater_is_better true \
     --dataloader_drop_last true \
