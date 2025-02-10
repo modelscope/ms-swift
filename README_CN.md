@@ -104,7 +104,7 @@ pip install -e .
 | python | >=3.9 | 3.10 ||
 | cuda |  | cuda12 |使用cpu、npu、mps则无需安装|
 | torch | >=2.0 |  ||
-| transformers | >=4.33 | 4.48.2 ||
+| transformers | >=4.33 | 4.48.3 ||
 | modelscope | >=1.19 |  ||
 | peft | >=0.11.0,<0.15.0 | ||
 | trl | >=0.13,<0.16 | 0.14.0 |RLHF|
@@ -243,6 +243,7 @@ print(f'response: {resp_list[0].choices[0].message.content}')
 | 预训练 |    [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/pretrain/train.sh)    | ✅ | ✅ | ✅ | ✅ |
 | 指令监督微调 |  [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/full/train.sh)     |   [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/lora_sft.sh)   | [✅](https://github.com/modelscope/ms-swift/tree/main/examples/train/qlora) | [✅](https://github.com/modelscope/ms-swift/tree/main/examples/train/multi-gpu/deepspeed) | [✅](https://github.com/modelscope/ms-swift/tree/main/examples/train/multimodal) |
 | DPO训练 | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/dpo.sh) | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/dpo.sh) | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/multimodal/rlhf/dpo.sh) |
+| GRPO训练 | ✅ | ✅ | ✅ | ✅ | ✅ |
 | 奖励模型训练 | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/rm.sh) | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/rm.sh) | ✅ |
 | PPO训练 | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/ppo.sh) | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/ppo.sh) | ❌ |
 | KTO训练 | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/kto.sh) | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/kto.sh) | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/multimodal/rlhf/kto.sh) |

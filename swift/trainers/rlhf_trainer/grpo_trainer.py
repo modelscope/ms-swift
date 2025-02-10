@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Part of the implementation is borrowed from huggingface/trl.
+import inspect
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Union
 from unittest.mock import patch
@@ -11,7 +12,6 @@ from accelerate.utils.other import is_compiled_module
 from transformers import PreTrainedModel
 from trl import GRPOTrainer as HFGRPOTrainer
 from trl.models import unwrap_model_for_generation
-from trl.trainer.utils import selective_log_softmax
 
 from swift.llm import InferRequest, RequestConfig, to_device
 from swift.plugin.orm import orms
@@ -293,14 +293,20 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     # Get the per-token log probabilities for the completions for the model and the reference model
     def _get_per_token_logps(self, model, inputs):
+        # pip install trl>=0.15
+        from trl.trainer.utils import selective_log_softmax
         logits_to_keep = inputs['logits_to_keep']
         input_ids = inputs['input_ids']
+        unwrapped_model = self.accelerator.unwrap_model(model)
+        parameters = inspect.signature(unwrapped_model.forward).parameters
+        if not unwrapped_model.model_meta.is_multimodal and 'logits_to_keep' in parameters:
+            # save memory
+            return super()._get_per_token_logps(model, input_ids, inputs['attention_mask'], logits_to_keep)
         inputs = {
             k: v
             for k, v in inputs.items()
             if k not in ['logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages']
         }
-        # We add 1 to `logits_to_keep` because the last logits of the sequence is later excluded
         logits = model(**inputs).logits
         # exclude the last logit: it corresponds to the next token pred
         logits = logits[:, -(logits_to_keep + 1):-1, :]
