@@ -130,6 +130,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         for i, reward_func in enumerate(self.reward_funcs):
             if isinstance(reward_func, PreTrainedModel):
                 self.reward_funcs[i] = self.accelerator.prepare_model(reward_func, evaluation_mode=True)
+        self.log_completions = args.log_completions
 
     def _prepare_inputs(self, inputs) -> Dict[str, Union[torch.Tensor, Any]]:
         device = self.accelerator.device
@@ -200,6 +201,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     ref_per_token_logps = self._get_per_token_logps(self.model, outputs)
 
         rewards_per_func = torch.zeros((len(inputs), len(self.reward_funcs)), device=device)
+        completions = [example['messages'][-1]['content'] for example in inputs]
+
         for i, (reward_func, reward_template) in enumerate(zip(self.reward_funcs, self.reward_templates)):
             if isinstance(reward_func, nn.Module):  # Module instead of PretrainedModel for compat with compiled models
                 batched_inputs = [reward_template.encode(infer_request) for infer_request in inputs]
@@ -210,7 +213,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             else:
                 # Repeat all input columns (but "messages" and "completion") to match the number of generations
                 reward_kwargs = {key: [example[key] for example in inputs] for key in inputs[0]}
-                completions = [message[-1]['content'] for message in reward_kwargs['messages']]
                 output_reward_func = reward_func(completions, **reward_kwargs)
                 rewards_per_func[:, i] = torch.tensor(output_reward_func, dtype=torch.float32, device=device)
 
@@ -243,24 +245,24 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             'ref_per_token_logps': ref_per_token_logps,
             'advantages': advantages,
         })
-        # if (
-        #     self.log_completions
-        #     and self.state.global_step % self.args.logging_steps == 0
-        #     and "wandb" in self.args.report_to
-        # ):
-        #     import pandas as pd
+        if (
+            self.log_completions
+            and self.state.global_step % self.args.logging_steps == 0
+            and "wandb" in self.args.report_to
+        ):
+            import pandas as pd
 
-        #     # For logging
-        #     table = {
-        #         "step": [str(self.state.global_step)] * len(rewards),
-        #         "messages": gather_object(inputs['messages']),
-        #         "completion": gather_object(completions),
-        #         "reward": rewards.tolist(),
-        #     }
-        #     df = pd.DataFrame(table)
+            # For logging
+            table = {
+                "step": [str(self.state.global_step)] * len(rewards),
+                "messages": gather_object(inputs['messages'][:-1]),
+                "completion": gather_object(completions),
+                "reward": rewards.tolist(),
+            }
+            df = pd.DataFrame(table)
 
-        #     if wandb.run is not None and self.accelerator.is_main_process:
-        #         wandb.log({"completions": wandb.Table(dataframe=df)})
+            if wandb.run is not None and self.accelerator.is_main_process:
+                wandb.log({"completions": wandb.Table(dataframe=df)})
 
         return outputs
 
