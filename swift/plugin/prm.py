@@ -167,8 +167,8 @@ class ClientPRM(PRM):
                 model=None,
                 usage=None) for r in rewards
         ]
-		
-		
+
+
 class DummyPRM(PRM):
     """An example"""
 
@@ -189,8 +189,9 @@ class DummyPRM(PRM):
                 usage=None)
         ] * len(ground_truths)
 
+
 prms = {
     'qwen_max': QwenMaxPRM,
     'client': ClientPRM,
-	'dummy': DummyPRM,
+    'dummy': DummyPRM,
 }
