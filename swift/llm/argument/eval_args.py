@@ -1,8 +1,9 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import datetime as dt
+import json
 import os
 from dataclasses import dataclass, field
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Dict, Union
 
 from swift.utils import get_logger
 from .base_args import to_abspath
@@ -28,6 +29,8 @@ class EvalArguments(DeployArguments):
     """
     eval_dataset: List[str] = field(default_factory=list)
     eval_limit: Optional[int] = None
+    eval_repeat: int = 1
+    dataset_args: Optional[Union[Dict, str]] = None
     eval_output_dir: str = 'eval_output'
     eval_backend: Literal['Native', 'OpenCompass', 'VLMEvalKit'] = 'Native'
     local_dataset: bool = False
@@ -44,10 +47,15 @@ class EvalArguments(DeployArguments):
         if self.eval_url and 'chat/completions' in self.eval_url:
             self.eval_url = self.eval_url.split('/chat/completions', 1)[0]
 
+    def _init_dataset_args(self):
+        if isinstance(self.dataset_args, str):
+            self.dataset_args = json.loads(self.dataset_args)
+    
     def __post_init__(self):
         super().__post_init__()
         self._init_eval_url()
         self._init_eval_dataset()
+        self._init_dataset_args()
         self.eval_output_dir = to_abspath(self.eval_output_dir)
         logger.info(f'eval_output_dir: {self.eval_output_dir}')
 
