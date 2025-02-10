@@ -56,8 +56,9 @@ if __name__ == '__main__':
 
     # GRPO hyperarguments
     num_generations = 3  # G in GRPO paper
-    max_prompt_length = 1024  # truncation to avoid OOM
-
+    max_completion_length = 1024
+    use_vllm = True
+    vllm_gpu_memory_utilization = 0.3
     reward_funcs = ['accuracy', 'format']  # see details in swift/plugin/orm.py
     # set system prompt in R1 paper
     SYSTEM_PROMPT = (
@@ -70,14 +71,16 @@ if __name__ == '__main__':
     training_args = RLHFArguments(
         rlhf_type='grpo',
         num_generations=num_generations,
+        max_completion_length=max_completion_length,
+        use_vllm=use_vllm,
+        vllm_gpu_memory_utilization=vllm_gpu_memory_utilization,
         system=SYSTEM_PROMPT,
         model=model_id_or_path,
-        max_new_tokens=max_new_tokens,
         dataset=dataset,
         reward_funcs=reward_funcs,
         split_dataset_ratio=split_dataset_ratio,
         output_dir=output_dir,
-        learning_rate=1e-4,
+        learning_rate=2e-5,
         gradient_checkpointing=True,
         weight_decay=0.1,
         lr_scheduler_type='cosine',
