@@ -91,15 +91,6 @@ def _parse_pair_sentence(outputs):
     return sentence1, sentence2
 
 
-@register_loss_func(LossType.cosine_similarity)
-def cosine_similarity_func(outputs, labels, loss_scale=None, num_items_in_batch=None) -> torch.Tensor:
-    cos_score_transformation = nn.Identity()
-    loss_fct = MSELoss()
-    sentence1, sentence2 = _parse_pair_sentence(outputs)
-    output = cos_score_transformation(torch.cosine_similarity(sentence1, sentence2))
-    return loss_fct(output, labels.float().view(-1))
-
-
 # Code borrowed from sentence_transformers
 class SiameseDistanceMetric(Enum):
     """The metric for the contrastive loss"""
@@ -109,13 +100,23 @@ class SiameseDistanceMetric(Enum):
     COSINE_DISTANCE = lambda x, y: 1 - F.cosine_similarity(x, y)  # noqa
 
 
+@register_loss_func(LossType.cosine_similarity)
+def cosine_similarity_func(outputs, labels, loss_scale=None, num_items_in_batch=None) -> torch.Tensor:
+    cos_score_transformation = nn.Identity()
+    loss_fct = MSELoss()
+    sentence1, sentence2 = _parse_pair_sentence(outputs)
+    output = cos_score_transformation(torch.cosine_similarity(sentence1, sentence2))
+    return loss_fct(output, labels.to(output.dtype).view(-1))
+
+
 @register_loss_func(LossType.constrastive)
 def constrastive_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> torch.Tensor:
     sentence1, sentence2 = _parse_pair_sentence(outputs)
     distance_metric = SiameseDistanceMetric.COSINE_DISTANCE
     distances = distance_metric(sentence1, sentence2)
     margin = 0.5
-    losses = 0.5 * (labels.float() * distances.pow(2) + (1 - labels).float() * F.relu(margin - distances).pow(2))
+    labels = labels.to(sentence1.dtype)
+    losses = 0.5 * (labels * distances.pow(2) + (1 - labels) * F.relu(margin - distances).pow(2))
     return losses.mean()
 
 
@@ -135,29 +136,6 @@ def online_constrastive_loss(outputs, labels, loss_scale=None, num_items_in_batc
     margin = 0.5
     negative_loss = F.relu(margin - negative_pairs).pow(2).sum()
     loss = positive_loss + negative_loss
-    return loss
-
-
-@register_loss_func(LossType.cosent)
-def cosent_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> torch.Tensor:
-    sentence1, sentence2 = _parse_pair_sentence(outputs)
-    from sentence_transformers.util import pairwise_cos_sim  # pairwise_angle_sim
-    scale = 20.0
-    scores = pairwise_cos_sim(sentence1, sentence2)
-    scores = scores * scale
-    scores = scores[:, None] - scores[None, :]
-
-    # label matrix indicating which pairs are relevant
-    labels = labels[:, None] < labels[None, :]
-    labels = labels.float()
-
-    # mask out irrelevant pairs so they are negligible after exp()
-    scores = scores - (1 - labels) * 1e12
-
-    # append a zero as e^0 = 1
-    scores = torch.cat((torch.zeros(1).to(scores.device), scores.view(-1)), dim=0)
-    loss = torch.logsumexp(scores, dim=0)
-
     return loss
 
 

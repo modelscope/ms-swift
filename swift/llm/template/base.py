@@ -673,8 +673,9 @@ class Template(ProcessorMixin):
             idx = all_tokens.index(single_zero[0])
             bos_token = all_tokens[:idx]
             eos_token = all_tokens[idx+1:]
-            res_context_list.append(bos_token)
-            res_context_types.append(ContextType.OTHER)
+            if bos_token:
+                res_context_list.append(bos_token)
+                res_context_types.append(ContextType.OTHER)
 
         prefix = template_meta.system_prefix if system else template_meta.prefix
         self._concat_context_list(prefix, res_context_list, res_context_types, system=system)
