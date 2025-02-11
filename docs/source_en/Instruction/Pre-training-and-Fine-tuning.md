@@ -63,9 +63,7 @@ Additionally, we offer a series of scripts to help you understand the training c
 - Embedding Model Training: Refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/embedding).
 - Agent Training: Refer to [here](https://github.com/modelscope/swift/blob/main/examples/train/agent).
 - Any-to-Any Model Training: Refer to [here](https://github.com/modelscope/swift/blob/main/examples/train/all_to_all).
-
 - Other Capabilities:
-
   - Streaming Data Reading: Reduces memory usage when handling large datasets. Refer to [here](https://github.com/modelscope/swift/blob/main/examples/train/streaming/train.sh).
   - Sequence Parallelism: Refer to [here](https://github.com/modelscope/swift/blob/main/examples/train/sequence_parallel).
   - Packing: Combines multiple sequences into one, making each training sample as close to max_length as possible to improve GPU utilization. Refer to [here](https://github.com/modelscope/swift/blob/main/examples/train/packing/train.sh).
