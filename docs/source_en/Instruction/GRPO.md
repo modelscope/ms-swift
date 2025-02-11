@@ -8,7 +8,7 @@ environments
 
 ```bash
 pip install math_verify # reward function
-pip install git+https://github.com/huggingface/trl.git # trl >=0.15.0.dev0
+pip install git+https://github.com/huggingface/trl.git # trl>=0.15.0.dev0
 ```
 
 Hyperparameters

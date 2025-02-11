@@ -101,6 +101,9 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
     ignore_args_error: bool = False  # True: notebook compatibility
     use_swift_lora: bool = False  # True for using tuner_backend == swift, don't specify this unless you know what you are doing # noqa
 
+    def _prepare_training_args(self, training_args: Dict[str, Any]) -> None:
+        pass
+
     def _init_custom_register(self) -> None:
         """Register custom .py file to datasets"""
         if isinstance(self.custom_register_path, str):
