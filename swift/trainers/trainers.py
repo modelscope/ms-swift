@@ -5,10 +5,12 @@ from contextlib import contextmanager, nullcontext
 from functools import wraps
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import numpy as np
 import torch
 from peft import PeftModel
 from torch import nn
 from torch.nn.utils.rnn import pad_sequence
+from transformers import EvalPrediction
 from transformers import Seq2SeqTrainer as HfSeq2SeqTrainer
 from transformers import Trainer as HfTrainer
 from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
@@ -59,6 +61,59 @@ class Trainer(SwiftMixin, HfTrainer):
         if num_items_in_batch is not None:
             loss /= self.args.gradient_accumulation_steps
         return (loss, outputs) if return_outputs else loss
+
+
+class EmbeddingTrainer(Trainer):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.compute_metrics = self.calculate_metric
+        self.preprocess_logits_for_metrics = None
+        self.label_names = ['labels']
+
+    def calculate_metric(self, eval_prediction: EvalPrediction) -> Dict[str, float]:
+        from sklearn.metrics.pairwise import paired_cosine_distances, paired_euclidean_distances, \
+            paired_manhattan_distances
+        from scipy.stats import pearsonr, spearmanr
+
+        embeddings = eval_prediction.predictions
+        labels = eval_prediction.label_ids
+        batch_size = 2 * self.args.per_device_eval_batch_size
+        half_batch_size = self.args.per_device_eval_batch_size
+        embeddings1 = []
+        embeddings2 = []
+        for i in range(embeddings.shape[0] // batch_size):
+            embeddings1.append(embeddings[i * batch_size:i * batch_size + half_batch_size])
+            embeddings2.append(embeddings[i * batch_size + half_batch_size:(i + 1) * batch_size])
+
+        embeddings1 = np.concatenate(embeddings1)
+        embeddings2 = np.concatenate(embeddings2)
+        if len(embeddings1.shape) == 3:
+            embeddings1 = embeddings1[:, 0]
+            embeddings2 = embeddings2[:, 0]
+        cosine_scores = 1 - (paired_cosine_distances(embeddings1, embeddings2))
+        manhattan_distances = -paired_manhattan_distances(embeddings1, embeddings2)
+        euclidean_distances = -paired_euclidean_distances(embeddings1, embeddings2)
+        dot_products = [np.dot(emb1, emb2) for emb1, emb2 in zip(embeddings1, embeddings2)]
+
+        eval_pearson_cosine, _ = pearsonr(labels, cosine_scores)
+        eval_spearman_cosine, _ = spearmanr(labels, cosine_scores)
+
+        eval_pearson_manhattan, _ = pearsonr(labels, manhattan_distances)
+        eval_spearman_manhattan, _ = spearmanr(labels, manhattan_distances)
+
+        eval_pearson_euclidean, _ = pearsonr(labels, euclidean_distances)
+        eval_spearman_euclidean, _ = spearmanr(labels, euclidean_distances)
+
+        eval_pearson_dot, _ = pearsonr(labels, dot_products)
+        eval_spearman_dot, _ = spearmanr(labels, dot_products)
+
+        return {
+            'cosine': eval_spearman_cosine,
+            'euclidean': eval_pearson_euclidean,
+            'manhattan': eval_pearson_manhattan,
+            'dot_product': eval_spearman_dot,
+        }
 
 
 class Seq2SeqTrainer(TorchAccMixin, SwiftMixin, HfSeq2SeqTrainer):

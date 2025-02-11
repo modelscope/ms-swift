@@ -70,7 +70,7 @@ The following outlines the standard dataset format for ms-swift, where the "syst
 {"messages": [{"role": "system", "content": "You are a useful and harmless math calculator"}, {"role": "user", "content": "What is 1 + 1?"}, {"role": "assistant", "content": "It equals 2"}, {"role": "user", "content": "What about adding 1?"}, {"role": "assistant", "content": "It equals 3"}], "label": true}
 ```
 
-#### PPO
+#### PPO & GRPO
 
 ```jsonl
 {"messages": [{"role": "system", "content": "You are a useful and harmless assistant"}, {"role": "user", "content": "Tell me tomorrow's weather"}]}
@@ -83,6 +83,20 @@ The following outlines the standard dataset format for ms-swift, where the "syst
 {"messages": [{"role": "user", "content": "The weather is really nice today"}], "label": 1}
 {"messages": [{"role": "user", "content": "Today is really unlucky"}], "label": 0}
 {"messages": [{"role": "user", "content": "So happy"}], "label": 1}
+```
+
+### Embedding
+label means the similarity between sentences, use together with loss `cosine_similarity`
+```jsonl
+{"messages": [{"role": "assistant", "content": "今天天气真好呀"}], "rejected_response": "今天天气不错", "label": 0.8}
+{"messages": [{"role": "assistant", "content": "这本书不错"}], "rejected_response": "这个汽车开着有异响", "label": 0.2}
+{"messages": [{"role": "assistant", "content": "天空是蓝色的"}], "rejected_response": "教练我想打篮球", "label": 0.0}
+```
+Also, can be the format below（label only support two values: 0.0 and 1.0）, use loss `contrastive` or `online_contrastive`（contrastive learning）:
+```jsonl
+{"messages": [{"role": "assistant", "content": "今天天气真好呀"}], "rejected_response": "今天天气不错", "label": 1.0}
+{"messages": [{"role": "assistant", "content": "这本书不错"}], "rejected_response": "这个汽车开着有异响", "label": 0.0}
+{"messages": [{"role": "assistant", "content": "天空是蓝色的"}], "rejected_response": "教练我想打篮球", "label": 0.0}
 ```
 
 ### Multimodal
@@ -138,7 +152,7 @@ When using this type of data, please note:
 The format will automatically convert the dataset format to the corresponding model's grounding task format and select the appropriate model's bbox normalization method. Compared to the general format, this format includes an additional "objects" field, which contains the following subfields:
 
 - ref: Used to replace `<ref-object>`.
-- bbox: Used to replace `<bbox>`.
+- bbox: Used to replace `<bbox>`. If the length of each box in the bbox is 2, it represents the x and y coordinates. If the box length is 4, it represents the x and y coordinates of two points.
 - bbox_type: Optional values are 'real' and 'norm1'. The default is 'real', meaning the bbox represents the actual bounding box value. If set to 'norm1', the bbox is normalized to the range 0~1.
 - image_id: This parameter is only effective when bbox_type is 'real'. It indicates the index of the image corresponding to the bbox, used for scaling the bbox. The index starts from 0, and the default is 0 for all.
 

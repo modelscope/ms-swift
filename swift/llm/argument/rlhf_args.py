@@ -1,9 +1,13 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import os
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional
 
 from swift.llm import MODEL_MAPPING
+from swift.utils import get_logger
 from .train_args import TrainArguments
+
+logger = get_logger()
 
 
 @dataclass
@@ -50,7 +54,7 @@ class RLHFArguments(PPOArguments, TrainArguments):
         desirable_weight (float): Weight for desirable outcomes in KTO. Default is 1.0.
         undesirable_weight (float): Weight for undesirable outcomes in KTO. Default is 1.0.
     """
-    rlhf_type: Literal['dpo', 'orpo', 'simpo', 'kto', 'cpo', 'rm', 'ppo'] = 'dpo'
+    rlhf_type: Literal['dpo', 'orpo', 'simpo', 'kto', 'cpo', 'rm', 'ppo', 'grpo'] = 'dpo'
     ref_model: Optional[str] = None
     ref_model_type: Optional[str] = field(
         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
@@ -67,10 +71,19 @@ class RLHFArguments(PPOArguments, TrainArguments):
     # KTO
     desirable_weight: float = 1.0
     undesirable_weight: float = 1.0
-
+    # GRPO
+    num_generations: int = 8  # G in the GRPO paper
+    max_completion_length: int = 512
+    reward_funcs: List[str] = field(default_factory=list)
+    # vLLM in GRPO
+    use_vllm: bool = False
+    vllm_device: Optional[str] = 'auto'  # 'cuda:1'
+    vllm_gpu_memory_utilization: float = 0.9
+    vllm_max_model_len: Optional[int] = None
     loss_scale: Optional[str] = None
 
     def __post_init__(self):
+        self._init_grpo()
         self._init_rm()
         self._init_simpo()
         self._set_default()
@@ -84,12 +97,35 @@ class RLHFArguments(PPOArguments, TrainArguments):
                 self.loss_scale = 'default'
             else:
                 self.loss_scale = 'last_round'
-        if self.rlhf_type in ['dpo', 'kto', 'ppo'] and self.train_type == 'full':
+        if self.rlhf_type in ['dpo', 'kto', 'ppo', 'grpo'] and self.train_type == 'full':
             self.ref_model = self.ref_model or self.model
             self.ref_model_type = self.ref_model_type or self.model_type
             self.ref_model_revision = self.ref_model_revision or self.model_revision
         elif self.ref_model is not None:
             raise ValueError('CPO/ORPO or LoRA training does not require a ref_model to be passed in.')
+
+    @staticmethod
+    def _set_default_ddp_config():
+        # It runs normally with Python as well.
+        rank = int(os.getenv('RANK', -1))
+        if rank == -1:
+            os.environ['NPROC_PER_NODE'] = '1'
+            os.environ['RANK'] = '0'
+            os.environ['LOCAL_RANK'] = '0'
+            os.environ['WORLD_SIZE'] = '1'
+            os.environ['LOCAL_WORLD_SIZE'] = '1'
+            os.environ['MASTER_ADDR'] = '127.0.0.1'
+            os.environ['MASTER_PORT'] = '29500'
+
+    def _init_grpo(self):
+        if self.rlhf_type == 'grpo':
+            if self.use_vllm:
+                os.environ['USE_VLLM'] = '1'
+                self._set_default_ddp_config()
+            self.remove_unused_columns = False
+            logger.info(f'Setting args.remove_unused_columns: {self.remove_unused_columns}')
+            if self.truncation_strategy == 'delete':
+                self.truncation_strategy = 'left'
 
     def _init_ppo(self):
         if self.rlhf_type == 'ppo':

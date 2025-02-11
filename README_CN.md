@@ -74,6 +74,8 @@
 - **模型量化**：支持AWQ、GPTQ和BNB的量化导出，导出的模型支持使用vLLM/LmDeploy推理加速，并支持继续训练。
 
 ## 🎉 新闻
+- 🔥 2025.02.12: 支持GRPO(Group Relative Policy Optimization) 训练算法，训练脚本可以在[这里](docs/source/Instruction/GRPO.md)找到
+- 🎁 2025.02.10: SWIFT支持了embedding模型的微调，请查看[训练脚本](examples/train/embedding/train.sh)。
 - 🎁 2025.01.23: SWIFT支持了`sample`命令, 这是一个对CoT和RFT非常重要的命令。同时, 我们支持了一个[强化微调脚本](docs/source/Instruction/强化微调.md)。
 - 🎁 2024.12.04: **SWIFT3.0**大版本更新。请查看[发布说明和更改](https://swift.readthedocs.io/zh-cn/latest/Instruction/ReleaseNote3.0.html)。
 - 🎉 2024.08.12: SWIFT论文已经发布到arXiv上，可以点击[这里](https://arxiv.org/abs/2408.05517)阅读。
@@ -101,13 +103,13 @@ pip install -e .
 
 |        | 范围  | 推荐 | 备注 |
 | ------ | ----- | ---- | --|
-| python | >=3.8 | 3.10 ||
+| python | >=3.9 | 3.10 ||
 | cuda |  | cuda12 |使用cpu、npu、mps则无需安装|
 | torch | >=2.0 |  ||
-| transformers | >=4.33 | 4.48.2 ||
+| transformers | >=4.33 | 4.48.3 ||
 | modelscope | >=1.19 |  ||
 | peft | >=0.11.0,<0.15.0 | ||
-| trl | >=0.13,<0.15 | 0.14.0 |RLHF|
+| trl | >=0.13,<0.16 | 0.14.0 |RLHF|
 | vllm | >=0.5.1 | 0.6.5 |推理/部署/评测|
 | lmdeploy | lmdeploy>=0.5,<0.6.5 | 0.6.4 |推理/部署/评测|
 | deepspeed |  | 0.14.5 |训练|
@@ -243,6 +245,7 @@ print(f'response: {resp_list[0].choices[0].message.content}')
 | 预训练 |    [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/pretrain/train.sh)    | ✅ | ✅ | ✅ | ✅ |
 | 指令监督微调 |  [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/full/train.sh)     |   [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/lora_sft.sh)   | [✅](https://github.com/modelscope/ms-swift/tree/main/examples/train/qlora) | [✅](https://github.com/modelscope/ms-swift/tree/main/examples/train/multi-gpu/deepspeed) | [✅](https://github.com/modelscope/ms-swift/tree/main/examples/train/multimodal) |
 | DPO训练 | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/dpo.sh) | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/dpo.sh) | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/multimodal/rlhf/dpo.sh) |
+| GRPO训练 | [✅]((https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/grpo_zero2.sh)) | ✅ | ✅ | ✅ | ✅ |
 | 奖励模型训练 | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/rm.sh) | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/rm.sh) | ✅ |
 | PPO训练 | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/ppo.sh) | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/ppo.sh) | ❌ |
 | KTO训练 | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/kto.sh) | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/kto.sh) | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/multimodal/rlhf/kto.sh) |
@@ -250,6 +253,7 @@ print(f'response: {resp_list[0].choices[0].message.content}')
 | SimPO训练 | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/simpo.sh) | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/simpo.sh) | ✅ |
 | ORPO训练 | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/orpo.sh) | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/orpo.sh) | ✅ |
 | 分类模型训练 | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/seq_cls/qwen2_5/sft.sh) | ✅ | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/seq_cls/qwen2_vl/sft.sh) |
+| Embedding模型训练 | ✅ | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/embedding/train.sh)     | ✅ | ✅ | ❌ |
 
 
 预训练：

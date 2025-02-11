@@ -6,6 +6,7 @@ from typing import List
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from accelerate.utils import find_device
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 from transformers import PreTrainedModel
@@ -39,6 +40,15 @@ def patch_output_clone(module: torch.nn.Module):
         return output.requires_grad_(True).clone()
 
     module.register_forward_hook(_clone_hook)
+
+
+def patch_output_normalizer(module: torch.nn.Module):
+
+    def _normalizer_hook(module, input, output):
+        output.last_hidden_state = F.normalize(output.last_hidden_state[:, 0], p=2, dim=1)
+        return output
+
+    module.register_forward_hook(_normalizer_hook)
 
 
 def patch_output_to_input_device(module: torch.nn.Module):

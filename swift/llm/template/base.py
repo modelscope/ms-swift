@@ -112,7 +112,7 @@ class Template(ProcessorMixin):
 
         self.mode: Literal['pt', 'vllm', 'lmdeploy',  # infer
                            'train', 'rlhf', 'kto',  # train
-                           'seq_cls', 'prm'] = 'pt'
+                           'seq_cls', 'embedding', 'prm'] = 'pt'
         if self.model_info.task_type != 'causal_lm':
             self.mode = self.model_info.task_type
         self._handles = []
@@ -237,6 +237,16 @@ class Template(ProcessorMixin):
         encoded['label'] = bool(label)
         return encoded
 
+    def _embedding_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded = self._rlhf_encode(inputs)
+        encoded.pop('chosen_labels', None)
+        encoded.pop('rejected_labels', None)
+        if inputs.label is not None:
+            encoded['labels'] = float(inputs.label)
+        else:
+            encoded['labels'] = 0.0
+        return encoded
+
     def _seq_cls_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = self._encode(inputs)
         encoded.pop('labels', None)
@@ -256,6 +266,7 @@ class Template(ProcessorMixin):
             inputs = asdict(inputs)
 
         if isinstance(inputs, dict):
+            inputs = deepcopy(inputs)
             if not self.is_training:
                 InferRequest.remove_response(inputs['messages'])
             inputs = StdTemplateInputs.from_dict(inputs, tools_prompt=self.tools_prompt)
@@ -276,6 +287,8 @@ class Template(ProcessorMixin):
             encoded = self._rlhf_encode(inputs)
         elif self.mode == 'kto':
             encoded = self._kto_encode(inputs)
+        elif self.mode == 'embedding':
+            encoded = self._embedding_encode(inputs)
         for key in list(encoded.keys()):
             if encoded[key] is None:
                 encoded.pop(key)
@@ -653,10 +666,17 @@ class Template(ProcessorMixin):
 
         res_context_list: List[Context] = []
         res_context_types: List[ContextType] = []
+        sep_token = None
         if template_meta.auto_add_bos:
-            bos_tokens = self.tokenizer.encode('')
-            res_context_list.append(bos_tokens)
-            res_context_types.append(ContextType.OTHER)
+            all_tokens = self.tokenizer.encode('0')
+            single_zero = self.tokenizer.encode('0', add_special_tokens=False)
+            assert len(single_zero) == 1
+            idx = all_tokens.index(single_zero[0])
+            bos_token = all_tokens[:idx]
+            sep_token = all_tokens[idx + 1:]
+            if bos_token:
+                res_context_list.append(bos_token)
+                res_context_types.append(ContextType.OTHER)
 
         prefix = template_meta.system_prefix if system else template_meta.prefix
         self._concat_context_list(prefix, res_context_list, res_context_types, system=system)
@@ -686,7 +706,7 @@ class Template(ProcessorMixin):
             elif response is not None:
                 # It is the final round, and the response exists (during training).
                 context_list.append('{{RESPONSE}}')
-                if self.is_training:
+                if self.is_training and not sep_token:
                     extra_context_list = template_meta.suffix
                     extra_context_type = ContextType.SUFFIX
 
@@ -700,6 +720,9 @@ class Template(ProcessorMixin):
                 round0=i)
             res_context_list += extra_context_list
             res_context_types += [extra_context_type] * len(extra_context_list)
+        if template_meta.auto_add_bos and sep_token:
+            res_context_list.append(sep_token)
+            res_context_types.append(ContextType.SUFFIX)
         from swift.plugin import loss_scale_map
         res_context_list, loss_scale_list = loss_scale_map[self.loss_scale](res_context_list, res_context_types,
                                                                             inputs.messages)
@@ -877,6 +900,8 @@ class Template(ProcessorMixin):
             return self._data_collator(batch, padding_to=padding_to)
         elif self.mode == 'seq_cls':
             return self._seq_cls_data_collator(batch, padding_to=padding_to)
+        elif self.mode == 'embedding':
+            return self._embedding_data_collator(batch, padding_to=padding_to)
 
     @staticmethod
     def _fetch_inputs_startswith(batch: List[Dict[str, Any]], prefix: str) -> List[Dict[str, Any]]:
@@ -931,6 +956,16 @@ class Template(ProcessorMixin):
         label = [b['label'] for b in batch if b.get('label') is not None]
         if label:
             res['label'] = label
+        return res
+
+    def _embedding_data_collator(self,
+                                 batch: List[Dict[str, Any]],
+                                 *,
+                                 padding_to: Optional[int] = None) -> Dict[str, Any]:
+        labels = [b.pop('labels') for b in batch if b.get('labels') is not None]
+        res = self._rlhf_data_collator(batch, padding_to=padding_to)
+        if labels:
+            res['labels'] = torch.tensor(labels, dtype=torch.float32)
         return res
 
     def _seq_cls_data_collator(self,

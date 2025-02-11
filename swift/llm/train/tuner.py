@@ -163,6 +163,8 @@ def prepare_adapter(args: TrainArguments, model, *, template=None, train_dataset
             model = Swift.prepare_model(model, lora_config)
             logger.info(f'lora_config: {lora_config}')
         elif args.tuner_backend == 'peft':
+            if task_type == 'EMBEDDING':
+                task_type = None
             lora_config = LoraConfig(task_type=task_type, lora_dtype=args.lora_dtype, **lora_kwargs)
             if args.init_weights == 'lora-ga':
                 try:

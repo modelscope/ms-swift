@@ -70,7 +70,7 @@ class InferClient(InferEngine):
         return request_kwargs
 
     async def get_model_list_async(self) -> ModelList:
-        url = os.path.join(self.base_url, 'models')
+        url = f"{self.base_url.rstrip('/')}/models"
         async with aiohttp.ClientSession() as session:
             async with session.get(url, **self._get_request_kwargs()) as resp:
                 resp_obj = await resp.json()
@@ -133,7 +133,7 @@ class InferClient(InferEngine):
                 model = self.models[0]
             else:
                 raise ValueError(f'Please explicitly specify the model. Available models: {self.models}.')
-        url = os.path.join(self.base_url, 'chat/completions')
+        url = f"{self.base_url.rstrip('/')}/chat/completions"
 
         request_data = self._prepare_request_data(model, infer_request, request_config)
         if request_config.stream:

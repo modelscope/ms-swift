@@ -452,13 +452,14 @@ class PtEngine(InferEngine):
         if use_tqdm is None:
             use_tqdm = not request_config.stream and len(infer_requests) > 1
         prog_bar = tqdm(total=len(infer_requests), dynamic_ncols=True, disable=not use_tqdm)
-
+        # If self.max_batch_size is None or 0, then process all infer_requests at once.
+        max_batch_size = self.max_batch_size or len(infer_requests)
         if request_config.stream:
 
             def _gen_wrapper() -> Iterator[List[Optional[ChatCompletionStreamResponse]]]:
                 i = 0
                 while i < len(infer_requests):
-                    infer_requests_samples = infer_requests[i:i + self.max_batch_size]
+                    infer_requests_samples = infer_requests[i:i + max_batch_size]
                     gen = self._infer(
                         infer_requests_samples,
                         request_config,
@@ -467,9 +468,9 @@ class PtEngine(InferEngine):
                         adapter_request=adapter_request)
                     for response in gen:
                         res = [None] * len(infer_requests)
-                        res[i:i + self.max_batch_size] = response
+                        res[i:i + max_batch_size] = response
                         yield res
-                    i += self.max_batch_size
+                    i += max_batch_size
                     prog_bar.update(len(infer_requests_samples))
 
             return _gen_wrapper()
@@ -477,9 +478,9 @@ class PtEngine(InferEngine):
             res = []
             i = 0
             while i < len(infer_requests):
-                infer_requests_samples = infer_requests[i:i + self.max_batch_size]
+                infer_requests_samples = infer_requests[i:i + max_batch_size]
                 res += self._infer(
                     infer_requests_samples, request_config, metrics, template=template, adapter_request=adapter_request)
-                i += self.max_batch_size
+                i += max_batch_size
                 prog_bar.update(len(infer_requests_samples))
             return res

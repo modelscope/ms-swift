@@ -321,6 +321,22 @@ register_dataset(
         tags=['chat', 'coding', '🔥']))
 
 
+class StsbPreprocessor(ResponsePreprocessor):
+
+    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        row = {
+            'response': row['sentence1'],
+            'rejected_response': row['sentence2'],
+            'label': row['score'],
+        }
+        return super().preprocess(row)
+
+
+register_dataset(
+    DatasetMeta(
+        ms_dataset_id='sentence-transformers/stsb', preprocess_func=StsbPreprocessor(), tags=['similarity', '🔥']))
+
+
 def _repair_conversations_agent_instruct(s: str) -> List[Dict[str, Any]]:
     s = s.replace('}\n {', '},\n {')
     if isinstance(s, str):
