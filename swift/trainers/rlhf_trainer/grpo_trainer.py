@@ -111,9 +111,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 with world_size_patch, profiling_patch:
                     self.engine = VllmEngine(
                         model.model_dir,
+                        model.model_info.torch_dtype,
+                        model_type=model.model_meta.model_type,
                         device=vllm_device,
                         gpu_memory_utilization=args.vllm_gpu_memory_utilization,
-                        enable_prefix_caching=True,
+                        enable_prefix_caching=args.vllm_enable_prefix_caching,
+                        max_num_seqs=args.vllm_max_num_seqs,
+                        enforce_eager=args.vllm_enforce_eager,
+                        limit_mm_per_prompt=args.vllm_limit_mm_per_prompt,
                         max_model_len=args.vllm_max_model_len)
                 self.engine.default_template = self.template
             self._last_loaded_step = 0
@@ -124,6 +129,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.request_config = RequestConfig(
             max_tokens=args.max_completion_length,
             temperature=args.temperature,
+            top_p=args.top_p,
+            top_k=args.top_k,
+            repetition_penalty=args.repetition_penalty,
         )
 
         self.model_accepts_loss_kwargs = False

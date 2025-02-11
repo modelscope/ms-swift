@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Optional
 
 from trl import CPOConfig as HfCPOConfig
 from trl import DPOConfig as HfDPOConfig
@@ -8,7 +9,7 @@ from trl import ORPOConfig as HfORPOConfig
 from trl import PPOConfig as HfPPOConfig
 from trl import RewardConfig as HfRewardConfig
 
-from .arguments import SwiftArgumentsMixin
+from .arguments import GRPOVllmArguments, SwiftArgumentsMixin
 
 
 @dataclass
@@ -42,5 +43,7 @@ class PPOConfig(SwiftArgumentsMixin, HfPPOConfig):
 
 
 @dataclass
-class GRPOConfig(SwiftArgumentsMixin, HfGRPOConfig):
-    pass
+class GRPOConfig(GRPOVllmArguments, SwiftArgumentsMixin, HfGRPOConfig):
+    top_k: Optional[int] = None
+    top_p: Optional[float] = None
+    repetition_penalty: Optional[float] = None

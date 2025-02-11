@@ -58,13 +58,13 @@
 🍔 除此之外，ms-swift汇集了最新的训练技术，包括LoRA、QLoRA、Llama-Pro、LongLoRA、GaLore、Q-GaLore、LoRA+、LISA、DoRA、FourierFt、ReFT、UnSloth、和Liger等。ms-swift支持使用vLLM和LMDeploy对推理、评测和部署模块进行加速，并支持使用GPTQ、AWQ、BNB等技术对大模型和多模态大模型进行量化。为了帮助研究者和开发者更轻松地微调和应用大模型，ms-swift还提供了基于Gradio的Web-UI界面及丰富的最佳实践。
 
 **为什么选择ms-swift？**
-- 🍎 **模型类型**：支持450+纯文本大模型、**150+多模态大模型**，All-to-All全模态模型的**训练到部署全流程**。
+- 🍎 **模型类型**：支持450+纯文本大模型、**150+多模态大模型**以及All-to-All全模态模型、序列分类模型、Embedding模型**训练到部署全流程**。
 - **数据集类型**：内置150+预训练、微调、人类对齐、多模态等各种类型的数据集，并支持自定义数据集。
 - **硬件支持**：CPU、RTX系列、T4/V100、A10/A100/H100、Ascend NPU等。
 - 🍊 **轻量训练**：支持了LoRA、QLoRA、DoRA、LoRA+、ReFT、RS-LoRA、LLaMAPro、Adapter、GaLore、Q-Galore、LISA、UnSloth、Liger-Kernel等轻量微调方式。
 - **分布式训练**：支持分布式数据并行（DDP）、device_map简易模型并行、DeepSpeed ZeRO2 ZeRO3、FSDP等分布式训练技术。
 - **量化训练**：支持对BNB、AWQ、GPTQ、AQLM、HQQ、EETQ量化模型进行训练。
-- **RLHF训练**：支持纯文本大模型和多模态大模型的DPO、CPO、SimPO、ORPO、KTO、RM、PPO等人类对齐训练方法。
+- **RLHF训练**：支持纯文本大模型和多模态大模型的DPO、CPO、SimPO、ORPO、KTO、RM、PPO、GRPO等人类对齐训练方法。
 - 🍓 **多模态训练**：支持对图像、视频和语音不同模态模型进行训练，支持VQA、Caption、OCR、Grounding任务的训练。
 - **界面训练**：以界面的方式提供训练、推理、评测、量化的能力，完成大模型的全链路。
 - **插件化与拓展**：支持自定义模型和数据集拓展，支持对loss、metric、trainer、loss-scale、callback、optimizer等组件进行自定义。
@@ -153,7 +153,14 @@ swift sft \
     --model_name swift-robot
 ```
 
-训练完成后，使用以下命令对训练后的权重进行推理，这里的`--adapters`替换成训练生成的last checkpoint文件夹。由于adapters文件夹中包含了训练的参数文件，因此不需要额外指定`--model`, `--system`。
+小贴士：
+- 如果要使用自定义数据集进行训练，你可以参考[这里](https://swift.readthedocs.io/zh-cn/latest/Customization/%E8%87%AA%E5%AE%9A%E4%B9%89%E6%95%B0%E6%8D%AE%E9%9B%86.html)组织数据集格式，并指定`--dataset <dataset_path>`。
+- `--model_author`和`--model_name`参数只有当数据集中包含`swift/self-cognition`时才生效。
+- 如果要使用其他模型进行训练，你只需要修改`--model <model_id/model_path>`即可。
+- 默认使用ModelScope进行模型和数据集的下载。如果要使用HuggingFace，指定`--use_hf true`即可。
+
+训练完成后，使用以下命令对训练后的权重进行推理：
+- 这里的`--adapters`需要替换成训练生成的last checkpoint文件夹。由于adapters文件夹中包含了训练的参数文件`args.json`，因此不需要额外指定`--model`，`--system`，swift会自动读取这些参数。如果要关闭此行为，可以设置`--load_args false`。
 
 ```shell
 # 使用交互式命令行进行推理
@@ -174,6 +181,17 @@ swift infer \
     --max_model_len 8192 \
     --temperature 0 \
     --max_new_tokens 2048
+```
+
+最后，使用以下命令将模型推送到ModelScope：
+```shell
+CUDA_VISIBLE_DEVICES=0 \
+swift export \
+    --adapters output/vx-xxx/checkpoint-xxx \
+    --push_to_hub true \
+    --hub_model_id '<your-model-id>' \
+    --hub_token '<your-sdk-token>' \
+    --use_hf false
 ```
 
 ### Web-UI
