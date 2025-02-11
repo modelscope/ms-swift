@@ -344,7 +344,7 @@ RLHF arguments inherit from the [training arguments](#training-arguments).
 - max_completion_length: The maximum generation length in the GRPO algorithm, with a default of 512.
 - reward_funcs: Reward functions for the GRPO algorithm, with options being accuracy and format. See swift/plugin/orm.py for details.
 - use_vllm: Whether to use vLLM as the backend for GRPO generation, with a default of False.
-- vllm_device: Set the device for vLLM deployment. For example, to deploy on GPU 0, use cuda:1. The default is auto, which uses the last available GPU.
+- vllm_device: Set the device for vLLM deployment. For example, to deploy on GPU 0, use `cuda:0`. The default is auto, which automatically select the next available GPU after the last one used for training.
 - vllm_gpu_memory_utilization: A parameter passed through to vLLM.
 - vllm_max_model_len: A parameter passed through to vLLM.
 - loss_scale: Override template arguments, default is 'last_round'.
