@@ -101,6 +101,3 @@ class MathFormat(ORM):
 
 orms['external_math_acc'] = MathAccuracy
 orms['external_math_format'] = MathFormat
-
-
-
