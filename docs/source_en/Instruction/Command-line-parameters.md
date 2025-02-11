@@ -341,7 +341,7 @@ RLHF arguments inherit from the [training arguments](#training-arguments).
 - desirable_weight: Loss weight $\lambda_D$ for desirable response in the KTO algorithm, default is `1.`.
 - undesirable_weight: Loss weight $\lambda_U$ for undesirable response in the KTO algorithm, default is `1.`.
 - loss_scale: Override template arguments, default is 'last_round'.
-- temperature: Defaults to 0.7
+temperature: Default is 0.7; this parameter will be used in PPO and GRPO.
 
 
 #### Reward Model Parameters
