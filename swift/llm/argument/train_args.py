@@ -169,13 +169,16 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
         self.import_plugin()
 
     def import_plugin(self):
+        if not self.external_plugin:
+            return
         py_dir = os.path.dirname(self.external_plugin)
+        assert os.path.isdir(py_dir)
         py_file = os.path.basename(self.external_plugin)
         sys.path.insert(0, py_dir)
         try:
             import importlib
-            importlib.import_module(py_file.split(py_file.split('.'[0])))
-        except ImportError:
+            importlib.import_module(py_file.split('.')[0])
+        except Exception: # noqa
             import traceback
             logger.warn('⚠️⚠️⚠️Plugin import failed.')
             logger.warn(traceback.format_exc())
