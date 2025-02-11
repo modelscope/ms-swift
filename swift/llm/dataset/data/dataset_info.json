@@ -643,7 +643,8 @@
         "ms_dataset_id": "DigitalLearningGmbH/MATH-lighteval",
         "hf_dataset_id": "AI-ModelScope/MATH-lighteval",
         "columns": {
-            "problem": "query"
+            "problem": "query",
+            "solution": "solution"
         },
         "tags": ["grpo", "math"]
 
