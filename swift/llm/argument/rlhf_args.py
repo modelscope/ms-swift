@@ -1,9 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 from dataclasses import dataclass, field
-from typing import List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from swift.llm import MODEL_MAPPING
+from swift.trainers.arguments import GRPOVllmArguments
 from swift.utils import get_logger
 from .train_args import TrainArguments
 
@@ -11,13 +12,16 @@ logger = get_logger()
 
 
 @dataclass
-class PPOArguments:
+class RewardModelArguments:
     reward_model: Optional[str] = None
     reward_adapters: List[str] = field(default_factory=list)
     reward_model_type: Optional[str] = field(
         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
     reward_model_revision: Optional[str] = None
 
+
+@dataclass
+class PPOArguments:
     num_ppo_epochs: int = 4
     whiten_rewards: bool = False
     kl_coef: float = 0.05
@@ -31,12 +35,23 @@ class PPOArguments:
     local_rollout_forward_batch_size: int = 64
     num_sample_generations: int = 10
     response_length: int = 512
-    temperature: float = 0.7
     missing_eos_penalty: Optional[float] = None
 
 
 @dataclass
-class RLHFArguments(PPOArguments, TrainArguments):
+class GRPOArguments(GRPOVllmArguments):
+    num_generations: int = 8  # G in the GRPO paper
+    max_completion_length: int = 512
+    reward_funcs: List[str] = field(default_factory=list)
+    # vLLM in GRPO
+    use_vllm: bool = False
+    vllm_device: Optional[str] = 'auto'  # 'cuda:1'
+    vllm_gpu_memory_utilization: float = 0.9
+    vllm_max_model_len: Optional[int] = None
+
+
+@dataclass
+class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArguments):
     """
     RLHFArguments is a dataclass that holds arguments specific to the Reinforcement
         Learning with Human Feedback (RLHF) training backend.
@@ -62,6 +77,7 @@ class RLHFArguments(PPOArguments, TrainArguments):
 
     beta: Optional[float] = None
     label_smoothing: float = 0
+    loss_scale: Optional[str] = None  # 'last_round'
     # DPO
     rpo_alpha: float = 1.
     # CPO
@@ -71,16 +87,12 @@ class RLHFArguments(PPOArguments, TrainArguments):
     # KTO
     desirable_weight: float = 1.0
     undesirable_weight: float = 1.0
-    # GRPO
-    num_generations: int = 8  # G in the GRPO paper
-    max_completion_length: int = 512
-    reward_funcs: List[str] = field(default_factory=list)
-    # vLLM in GRPO
-    use_vllm: bool = False
-    vllm_device: Optional[str] = 'auto'  # 'cuda:1'
-    vllm_gpu_memory_utilization: float = 0.9
-    vllm_max_model_len: Optional[int] = None
-    loss_scale: Optional[str] = None
+    # PPO/GRPO
+    temperature: float = 0.7
+
+    def _prepare_training_args(self, training_args: Dict[str, Any]) -> None:
+        if self.rlhf_type == 'ppo':
+            training_args['world_size'] = self.global_world_size
 
     def __post_init__(self):
         self._init_grpo()

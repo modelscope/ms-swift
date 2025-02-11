@@ -340,21 +340,20 @@ RLHF arguments inherit from the [training arguments](#training-arguments).
 - simpo_gamma: Reward margin term in the SimPO algorithm, with a paper-suggested setting of 0.5-1.5, default is `1.`.
 - desirable_weight: Loss weight $\lambda_D$ for desirable response in the KTO algorithm, default is `1.`.
 - undesirable_weight: Loss weight $\lambda_U$ for undesirable response in the KTO algorithm, default is `1.`.
-- num_generations: The G value in the GRPO algorithm, with a default of 8.
-- max_completion_length: The maximum generation length in the GRPO algorithm, with a default of 512.
-- reward_funcs: Reward functions for the GRPO algorithm, with options being accuracy and format. See swift/plugin/orm.py for details.
-- use_vllm: Whether to use vLLM as the backend for GRPO generation, with a default of False.
-- vllm_device: Set the device for vLLM deployment. For example, to deploy on GPU 0, use cuda:1. The default is auto, which uses the last available GPU.
-- vllm_gpu_memory_utilization: A parameter passed through to vLLM.
-- vllm_max_model_len: A parameter passed through to vLLM.
 - loss_scale: Override template arguments, default is 'last_round'.
+- temperature: Default is 0.7; this parameter will be used in PPO and GRPO.
+
+
+#### Reward Model Parameters
+
+The reward model parameters will be used in PPO and GRPO.
+
+- reward_model: Default is None.
+- reward_adapters: Default is `[]`.
+- reward_model_type: Default is None.
+- reward_model_revision: Default is None.
 
 #### PPO Arguments
-
-- reward_model: Defaults to None
-- reward_adapters: Defaults to `[]`
-- reward_model_type: Defaults to None
-- reward_model_revision: Defaults to None
 
 The meanings of the following parameters can be referenced [here](https://huggingface.co/docs/trl/main/ppo_trainer):
 
@@ -370,8 +369,24 @@ The meanings of the following parameters can be referenced [here](https://huggin
 - local_rollout_forward_batch_size: Defaults to 64
 - num_sample_generations: Defaults to 10
 - response_length: Defaults to 512
-- temperature: Defaults to 0.7
 - missing_eos_penalty: Defaults to None
+
+
+#### GRPO Arguments
+- num_generations: The G value in the GRPO algorithm, default is 8.
+- max_completion_length: The maximum generation length in the GRPO algorithm, default is 512.
+- reward_funcs: Reward functions in the GRPO algorithm; options include `accuracy` and `format`, as seen in `swift/plugin/orm.py`. You can also customize your own reward functions in the plugin. Default is `[]`.
+- use_vllm: Whether to use vLLM as the infer_backend for GRPO generation, default is False.
+- vllm_device: Set the device for vLLM deployment. For example, if deployed on card 0, use `cuda:0`; default is `auto`, which means using the last available GPU.
+- vllm_gpu_memory_utilization: vLLM passthrough parameter, default is 0.9.
+- vllm_max_model_len: vLLM passthrough parameter, default is None.
+- vllm_max_num_seqs: vLLM passthrough parameter, default is 256.
+- vllm_enforce_eager: vLLM passthrough parameter, default is False.
+- vllm_limit_mm_per_prompt: vLLM passthrough parameter, default is None.
+- vllm_enable_prefix_caching: vLLM passthrough parameter, default is True.
+- top_k: Default is None. Read from `generation_config.json`.
+- top_p: Default is None. Read from `generation_config.json`.
+- repetition_penalty: Repetition penalty term. Default is None, read from `generation_config.json`.
 
 ### Inference Arguments
 

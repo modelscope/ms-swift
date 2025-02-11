@@ -159,7 +159,16 @@ swift sft \
     --model_name swift-robot
 ```
 
-After training is complete, use the following command to perform inference with the trained weights. The `--adapters` option should be replaced with the last checkpoint folder generated from the training. Since the adapters folder contains the parameter files from the training, there is no need to specify `--model` or `--system` separately.
+Tips:
+
+- If you want to train with a custom dataset, you can refer to [this guide](../Customization/Custom-dataset.md) to organize your dataset format and specify `--dataset <dataset_path>`.
+- The `--model_author` and `--model_name` parameters are only effective when the dataset includes `swift/self-cognition`.
+- To train with a different model, simply modify `--model <model_id/model_path>`.
+- By default, ModelScope is used for downloading models and datasets. If you want to use HuggingFace, simply specify `--use_hf true`.
+
+After training is complete, use the following command to infer with the trained weights:
+
+- Here, `--adapters` should be replaced with the last checkpoint folder generated during training. Since the adapters folder contains the training parameter file `args.json`, there is no need to specify `--model`, `--system` separately; Swift will automatically read these parameters. To disable this behavior, you can set `--load_args false`.
 
 ```shell
 # Using an interactive command line for inference.
@@ -181,6 +190,19 @@ swift infer \
     --temperature 0 \
     --max_new_tokens 2048
 ```
+
+Finally, use the following command to push the model to ModelScope:
+
+```shell
+CUDA_VISIBLE_DEVICES=0 \
+swift export \
+    --adapters output/vx-xxx/checkpoint-xxx \
+    --push_to_hub true \
+    --hub_model_id '<your-model-id>' \
+    --hub_token '<your-sdk-token>' \
+    --use_hf false
+```
+
 
 ### Web-UI
 The Web-UI is a **zero-threshold** training and deployment interface solution based on Gradio interface technology. For more details, you can check [here](https://swift.readthedocs.io/en/latest/GetStarted/Web-UI.html).
