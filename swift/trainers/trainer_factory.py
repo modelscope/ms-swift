@@ -60,7 +60,5 @@ class TrainerFactory:
             if k not in parameters:
                 args_dict.pop(k)
 
-        if 'ppo' in training_args_cls.__name__.lower():
-            args_dict['world_size'] = args.global_world_size
-
+        args._prepare_training_args(args_dict)
         return training_args_cls(**args_dict)

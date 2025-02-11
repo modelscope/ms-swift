@@ -8,7 +8,7 @@ from trl import ORPOConfig as HfORPOConfig
 from trl import PPOConfig as HfPPOConfig
 from trl import RewardConfig as HfRewardConfig
 
-from .arguments import SwiftArgumentsMixin
+from .arguments import GRPOVllmArguments, SwiftArgumentsMixin
 
 
 @dataclass
@@ -42,5 +42,5 @@ class PPOConfig(SwiftArgumentsMixin, HfPPOConfig):
 
 
 @dataclass
-class GRPOConfig(SwiftArgumentsMixin, HfGRPOConfig):
+class GRPOConfig(GRPOVllmArguments, SwiftArgumentsMixin, HfGRPOConfig):
     pass

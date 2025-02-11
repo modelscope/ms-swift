@@ -2,7 +2,7 @@
 import os
 from dataclasses import dataclass
 from functools import wraps
-from typing import Any, Dict, Literal, Optional
+from typing import Any, Dict, Literal, Optional, Union
 
 import torch
 import torch.utils.checkpoint
@@ -66,6 +66,15 @@ class SwiftArgumentsMixin:
     @property
     def place_model_on_device(self):
         return False if use_torchacc() else super().place_model_on_device
+
+
+@dataclass
+class GRPOVllmArguments:
+    # vllm_device, vllm_gpu_memory_utilization, and vllm_max_model_len are defined in HfGRPOConfig.
+    vllm_max_num_seqs: int = 256
+    vllm_enforce_eager: bool = False
+    vllm_limit_mm_per_prompt: Optional[Union[dict, str]] = None  # '{"image": 10, "video": 5}'
+    vllm_enable_prefix_caching: bool = True
 
 
 @dataclass
