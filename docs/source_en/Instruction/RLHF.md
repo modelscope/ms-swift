@@ -3,10 +3,11 @@
 This document provides training scripts for various human preference alignment algorithms. If you want to learn more about the algorithms and how to choose them, please refer to the [documentation](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/M.%E4%BA%BA%E7%B1%BB%E5%81%8F%E5%A5%BD%E5%AF%B9%E9%BD%90%E8%AE%AD%E7%BB%83.md).
 
 ## Dataset
+The data required by the PPO algorithm consists solely of model inputs, which include the system prompt (optional) and the query.
 
-Human preference alignment training generally requires data in the format $(x,y_w,y_l)$, where $x$ is the model input, $y_w$ is the preferred answer that aligns with human preferences, and $y_l$ is the rejected answer that does not align with human preferences, as shown in ![dpo_data](../../resources/dpo_data.png).
+For RM and DPO-type algorithms such as ORPO, CPO, and SimPO, $(x,y_w,y_l)$ formatted data is required, where $x$ is the model input, $y_w$ is the preferred answer that aligns with human preferences, and $y_l$ is the rejected answer that does not align with human preferences, as shown in ![dpo_data](../../resources/dpo_data.png).
 
-The KTO algorithm has a special data format that only requires $(x,y,\text{label})$, where $x$ is the model input, $y$ is the model output, and the label indicates whether the answer aligns with human preferences, as shown in ![kto_data](../../resources/kto_data.png).
+In contrast, the KTO algorithm has a special data format that only requires $(x,y,\text{label})$, where $x$ is the model input, $y$ is the model output, and the label indicates whether the answer aligns with human preferences, as shown in ![kto_data](../../resources/kto_data.png).
 
 ## DPO
 [Paper on arXiv](https://arxiv.org/abs/2305.18290)
