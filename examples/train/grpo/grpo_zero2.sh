@@ -2,6 +2,7 @@
 # pip install math_verify # reward function
 # pip install git+https://github.com/huggingface/trl.git # trl >=0.15.0.dev0
 # GPU memory: 8 * 80GiB
+# You can set `--reward_model` to use a reward model to provide rewards.
 nproc_per_node=7
 
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
