@@ -129,6 +129,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.request_config = RequestConfig(
             max_tokens=args.max_completion_length,
             temperature=args.temperature,
+            top_p=args.top_p,
+            top_k=args.top_k,
+            repetition_penalty=args.repetition_penalty,
         )
 
         self.model_accepts_loss_kwargs = False

@@ -88,11 +88,11 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
     desirable_weight: float = 1.0
     undesirable_weight: float = 1.0
     # PPO/GRPO
-    temperature: float = 0.9
+    temperature: float = 0.7
 
     def _prepare_training_args(self, training_args: Dict[str, Any]) -> None:
         if self.rlhf_type == 'ppo':
-            args_dict['world_size'] = self.global_world_size
+            training_args['world_size'] = self.global_world_size
 
     def __post_init__(self):
         self._init_grpo()
