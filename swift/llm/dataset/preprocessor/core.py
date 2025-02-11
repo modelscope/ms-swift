@@ -321,7 +321,7 @@ class ResponsePreprocessor(RowPreprocessor):
         super().__init__(columns=columns, **kwargs)
         system_keys = ['system', 'system_prompt']
         query_keys = ['query', 'prompt', 'input', 'instruction', 'question']
-        response_keys = ['response', 'answer', 'output', 'targets', 'target', 'answer_key', 'solution', 'answers'
+        response_keys = ['response', 'answer', 'output', 'targets', 'target', 'answer_key', 'answers'
                          ] + ['text', 'completion', 'content']
         for key in system_keys:
             self.columns[key] = 'system'
