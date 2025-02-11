@@ -384,8 +384,8 @@ The meanings of the following parameters can be referenced [here](https://huggin
 - vllm_enforce_eager: vLLM passthrough parameter, default is False.
 - vllm_limit_mm_per_prompt: vLLM passthrough parameter, default is None.
 - vllm_enable_prefix_caching: vLLM passthrough parameter, default is True.
-- top_k: Top-k parameter, default is None. Read from `generation_config.json`.
-- top_p: Top-p parameter, default is None. Read from `generation_config.json`.
+- top_k: Default is None. Read from `generation_config.json`.
+- top_p: Default is None. Read from `generation_config.json`.
 - repetition_penalty: Repetition penalty term. Default is None, read from `generation_config.json`.
 
 ### Inference Arguments
