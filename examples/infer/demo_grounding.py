@@ -4,6 +4,7 @@ from typing import Literal
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
+
 def draw_bbox_qwen2_vl(image, response, norm_bbox: Literal['norm1000', 'none']):
     matches = re.findall(
         r'<\|object_ref_start\|>(.*?)<\|object_ref_end\|><\|box_start\|>\((\d+),(\d+)\),\((\d+),(\d+)\)<\|box_end\|>',

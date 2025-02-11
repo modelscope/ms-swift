@@ -189,7 +189,7 @@ request_config = RequestConfig(max_tokens=512, temperature=0)
 # Using 2 infer_requests to demonstrate batch inference
 infer_requests = [
     InferRequest(messages=[{'role': 'user', 'content': 'who are you?'}]),
-    InferRequest(messages=[{'role': 'user', 'content': 'Where is the capital of Zhejiang?'}, 
+    InferRequest(messages=[{'role': 'user', 'content': 'Where is the capital of Zhejiang?'},
                            {'role': 'assistant', 'content': 'Where is the capital of Zhejiang?'},
                            {'role': 'user', 'content': 'What is good to eat here?'},]),
 ]
@@ -227,7 +227,7 @@ request_config = RequestConfig(max_tokens=512, temperature=0)
 # Using 2 infer_requests to demonstrate batch inference
 infer_requests = [
     InferRequest(messages=[{'role': 'user', 'content': 'who are you?'}]),
-    InferRequest(messages=[{'role': 'user', 'content': '<image>Task: Object Detection'}], 
+    InferRequest(messages=[{'role': 'user', 'content': '<image>Task: Object Detection'}],
                  images=['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png']),
 ]
 resp_list = engine.infer(infer_requests, request_config)
@@ -243,4 +243,3 @@ print(f'response1: {resp_list[1].choices[0].message.content}')
 - If you have trained multiple LoRAs and need to switch among them, refer to the [inference](https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo_lora.py) and [deployment](https://github.com/modelscope/ms-swift/tree/main/examples/deploy/lora) examples.
 - For grounding tasks in multi-modal models, you can refer to [here](https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo_grounding.py).
 - For inference on a LoRA fine-tuned BERT model, see [here](https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo_bert.py).
-
