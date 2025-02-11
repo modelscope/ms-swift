@@ -174,7 +174,7 @@ class MathORM(ORM):
     def __init__(self):
         super().__init__()
         from transformers.utils import strtobool
-        self.use_opencompass = strtobool(os.environ.get('USE_OPENCOMPASS_EVALUATOR'))
+        self.use_opencompass = strtobool(os.environ.get('USE_OPENCOMPASS_EVALUATOR', 'False'))
         if self.use_opencompass:
             from opencompass.datasets.math import MATHEvaluator
             self.evaluator = MATHEvaluator()
