@@ -160,7 +160,7 @@ swift infer \
 ```
 
 
-### Example of Inference on LoRA-Trained Model Using Python:
+Example of Inference on LoRA-Trained Model Using Python:
 
 ```python
 import os
@@ -198,7 +198,7 @@ print(f'response0: {resp_list[0].choices[0].message.content}')
 print(f'response1: {resp_list[1].choices[0].message.content}')
 ```
 
-### Example of LoRA Inference for Multi-Modal Model:
+Example of LoRA Inference for Multi-Modal Model:
 
 ```python
 import os
