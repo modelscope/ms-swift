@@ -1,8 +1,10 @@
+# pip install git+https://github.com/huggingface/transformers.git  # transformers>=4.49
 import os
 import re
 from typing import Literal
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
 
 def draw_bbox_qwen2_vl(image, response, norm_bbox: Literal['norm1000', 'none']):
     matches = re.findall(
