@@ -17,13 +17,13 @@ swift rlhf \
     --vllm_max_model_len 8192 \
     --train_type full \
     --torch_dtype bfloat16 \
-    --dataset 'AI-MO/NuminaMath-TIR#5000' \
+    --dataset 'AI-MO/NuminaMath-TIR#2000' \
     --max_completion_length 2048 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \
-    --learning_rate 1e-6 \
-    --gradient_accumulation_steps 2 \
+    --learning_rate 5e-7 \
+    --gradient_accumulation_steps 1 \
     --eval_steps 200 \
     --save_steps 200 \
     --save_total_limit 2 \
@@ -34,6 +34,7 @@ swift rlhf \
     --dataloader_num_workers 4 \
     --dataset_num_proc 4 \
     --num_generations 7 \
-    --temperature 0.7 \
+    --temperature 0.9 \
+    --beta 0.001 \
     --system 'examples/train/grpo/prompt.txt' \
     --deepspeed zero2

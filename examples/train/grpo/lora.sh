@@ -5,7 +5,7 @@ NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 swift rlhf \
     --rlhf_type grpo \
-    --model Qwen/Qwen2.5-7B-Instruct \
+    --model Qwen/Qwen2.5-3B-Instruct \
     --reward_funcs accuracy format \
     --train_type lora \
     --lora_rank 8 \
@@ -29,6 +29,7 @@ swift rlhf \
     --dataloader_num_workers 4 \
     --dataset_num_proc 4 \
     --num_generations 8 \
-    --temperature 0.7 \
+    --beta 0.001 \
+    --temperature 0.9 \
     --system 'examples/train/grpo/prompt.txt' \
     --deepspeed zero2
