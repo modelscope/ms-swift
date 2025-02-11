@@ -38,6 +38,18 @@ pip install ms-swift==2.*
 
 镜像可以查看[这里](https://modelscope.cn/docs/intro/environment-setup#%E6%9C%80%E6%96%B0%E9%95%9C%E5%83%8F)
 
+## 支持的硬件
+
+| 硬件环境        | 备注                        |
+| --------------- | --------------------------- |
+| A10/A100/H100   |                             |
+| RTX20/30/40系列 |                             |
+| T4/V100         | 部分模型出现NAN             |
+| Ascend NPU      | 部分模型出现NAN或算子不支持 |
+| MPS             |                             |
+| CPU             |                             |
+
+
 ## 运行环境
 
 |        | 范围  | 推荐 | 备注 |

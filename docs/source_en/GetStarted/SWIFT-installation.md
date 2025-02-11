@@ -39,6 +39,17 @@ pip install ms-swift==2.*
 
 You can view the image [here](https://modelscope.cn/docs/intro/environment-setup#%E6%9C%80%E6%96%B0%E9%95%9C%E5%83%8F).
 
+## Supported Hardware
+
+| Hardware Environment | Remarks                                                |
+| -------------------- | ------------------------------------------------------ |
+| A10/A100/H100        |                                                        |
+| RTX 20/30/40 Series  |                                                        |
+| T4/V100              | Some models may encounter NAN                          |
+| Ascend NPU           | Some models may encounter NAN or unsupported operators |
+| MPS                  |                                                        |
+| CPU                  |                                                        |
+
 
 ## Running Environment
 
