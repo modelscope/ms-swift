@@ -2,6 +2,7 @@ import os
 import re
 from typing import Literal
 
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 def draw_bbox_qwen2_vl(image, response, norm_bbox: Literal['norm1000', 'none']):
     matches = re.findall(
@@ -36,6 +37,5 @@ def infer_grounding():
 
 
 if __name__ == '__main__':
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
     from swift.llm import draw_bbox, load_image
     infer_grounding()

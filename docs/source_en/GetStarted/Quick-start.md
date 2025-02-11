@@ -2,13 +2,13 @@
 
 ms-swift is a comprehensive training and deployment framework for large language models and multimodal large models, provided by the ModelScope Community. It currently supports the training (CPT, SFT, RLHF), inference, evaluation, quantization, and deployment of 450+ LLM and 150+ MLLM. Model developers can fulfill all kinds of needs related to large models in a single platform within the ms-swift framework. The main capabilities of ms-swift include:
 
-- 🍎 Model Types: Supports the full process from training to deployment of 450+ text-based large models and 150+ multimodal large models, including All-to-All all-modality models.
+- 🍎 Model Types: Supports 450+ pure text large models, 150+ multi-modal large models, as well as All-to-All multi-modal models, sequence classification models, and embedding models, covering the entire process from training to deployment.
 - Dataset Types: Comes with more than 150 pre-built datasets for pre-training, fine-tuning, human alignment, multimodal, and supports custom datasets.
 - Hardware Support: Compatible with CPU, RTX series, T4/V100, A10/A100/H100, Ascend NPU, and others.
 - 🍊 Lightweight Training: Supports lightweight fine-tuning methods like LoRA, QLoRA, DoRA, LoRA+, ReFT, RS-LoRA, LLaMAPro, Adapter, GaLore, Q-Galore, LISA, UnSloth, Liger-Kernel, and more.
 - Distributed Training: Supports distributed data parallel (DDP), simple model parallelism via device_map, DeepSpeed ZeRO2 ZeRO3, FSDP, and other distributed training technologies.
 - Quantization Training: Provides training for quantized models like BNB, AWQ, GPTQ, AQLM, HQQ, EETQ.
-- RLHF Training: Supports human alignment training methods like DPO, CPO, SimPO, ORPO, KTO, RM, PPO for both text-based and multimodal large models.
+- RLHF Training: Supports human alignment training methods like DPO, CPO, SimPO, ORPO, KTO, RM, PPO, GRPO for both text-based and multimodal large models.
 - 🍓 Multimodal Training: Capable of training models for different modalities such as images, videos, and audios; supports tasks like VQA (Visual Question Answering), Captioning, OCR (Optical Character Recognition), and Grounding.
 - Interface-driven Training: Offers training, inference, evaluation, and quantization capabilities through an interface, enabling a complete workflow for large models.
 - Plugins and Extensions: Allows customization and extension of models and datasets, and supports customizations for components like loss, metric, trainer, loss-scale, callback, optimizer, etc.
@@ -58,7 +58,7 @@ swift sft \
 
 Tips:
 
-- If you want to train with a custom dataset, you can refer to [this guide](https://idealab.alibaba-inc.com/Customization/Custom_Dataset.md) to organize your dataset format and specify `--dataset <dataset_path>`.
+- If you want to train with a custom dataset, you can refer to [this guide](../Customization/Custom-dataset.md) to organize your dataset format and specify `--dataset <dataset_path>`.
 - The `--model_author` and `--model_name` parameters are only effective when the dataset includes `swift/self-cognition`.
 - To train with a different model, simply modify `--model <model_id/model_path>`.
 - By default, ModelScope is used for downloading models and datasets. If you want to use HuggingFace, simply specify `--use_hf true`.
