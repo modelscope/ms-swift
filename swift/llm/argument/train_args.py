@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
+import sys
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional, Union
 
@@ -115,6 +116,7 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
     lazy_tokenize: Optional[bool] = None
 
     # plugin
+    external_plugins: List[str] = field(default_factory=lambda: [])
     loss_type: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
     optimizer: Optional[str] = None
     metric: Optional[str] = None
@@ -164,6 +166,24 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
         self.training_args.remove_unused_columns = False
 
         self._add_version()
+        self.import_plugin()
+
+    def import_plugin(self):
+        if not self.external_plugins:
+            return
+
+        for external_plugin in self.external_plugins:
+            py_dir = os.path.dirname(external_plugin)
+            assert os.path.isdir(py_dir)
+            py_file = os.path.basename(external_plugin)
+            sys.path.insert(0, py_dir)
+            try:
+                import importlib
+                importlib.import_module(py_file.split('.')[0])
+            except Exception:  # noqa
+                import traceback
+                logger.warn(f'⚠️⚠️⚠️Plugin {external_plugin} import failed.')
+                logger.warn(traceback.format_exc())
 
     def _init_deepspeed(self):
         if self.deepspeed:
