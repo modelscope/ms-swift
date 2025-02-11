@@ -334,7 +334,7 @@ RLHF arguments inherit from the [training arguments](#training-arguments).
 - ref_model: Required for full parameter training when using the dpo, kto, or ppo algorithms. Default is None.
 - ref_model_type: Same as model_type. Default is None.
 - ref_model_revision: Same as model_revision. Default is None.
-- 🔥beta: Coefficient for the KL regularization term. Default is `None`, meaning `simpo` algorithm defaults to `2.`, and other algorithms default to `0.1`. For more details, refer to the [documentation](./RLHF.md).
+- 🔥beta: Coefficient for the KL regularization term. Default is `None`, meaning `simpo` algorithm defaults to `2.`, `grpo` algorithm defaults to `0.04`, and other algorithms default to `0.1`. For more details, refer to the [documentation](./RLHF.md).
 - label_smoothing: Whether to use DPO smoothing, default value is `0`.
 - 🔥rpo_alpha: The weight of sft_loss added to DPO, default is `1`. The final loss is `KL_loss + rpo_alpha * sft_loss`.
 - cpo_alpha: Coefficient for nll loss in CPO/SimPO loss, default is `1.`.

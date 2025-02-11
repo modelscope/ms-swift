@@ -14,7 +14,7 @@ logger = get_logger()
 
 @dataclass
 class MinimaxTemplateMeta(TemplateMeta):
-    prefix: Prompt = field(default_factory=lambda: [])
+    prefix: Prompt = field(default_factory=list)
     prompt: Prompt = field(default_factory=lambda: [
         '<beginning_of_sentence>user name=user\n{{QUERY}}<end_of_sentence>\n'
         '<beginning_of_sentence>ai name=assistant\n'

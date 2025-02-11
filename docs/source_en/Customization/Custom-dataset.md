@@ -77,6 +77,7 @@ The following outlines the standard dataset format for ms-swift, where the "syst
 {"messages": [{"role": "system", "content": "You are a useful and harmless math calculator"}, {"role": "user", "content": "What is 1 + 1?"}, {"role": "assistant", "content": "It equals 2"}, {"role": "user", "content": "What about adding 1?"}]}
 {"messages": [{"role": "user", "content": "What is your name?"}]}
 ```
+- Note: GRPO will passthrough all additional field contents to ORM, unlike other training methods that default to removing extra fields. For example, you can additionally pass in 'solution'.
 
 ### Sequence Classification
 ```jsonl

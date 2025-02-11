@@ -116,7 +116,7 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
     lazy_tokenize: Optional[bool] = None
 
     # plugin
-    external_plugins: List[str] = field(default_factory=lambda: [])
+    external_plugins: List[str] = field(default_factory=list)
     loss_type: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
     optimizer: Optional[str] = None
     metric: Optional[str] = None
