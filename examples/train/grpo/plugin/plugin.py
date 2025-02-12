@@ -1,13 +1,13 @@
 import re
 
-from swift.plugin.orm import RuleBasedReward, orms
+from swift.plugin.orm import ORM, orms
 from swift.utils import get_logger
 
 logger = get_logger()
 
 
 # Code borrowed from plugin/orm.py
-class MathAccuracy(RuleBasedReward):
+class MathAccuracy(ORM):
 
     def __init__(self):
         super().__init__()
@@ -51,7 +51,7 @@ class MathAccuracy(RuleBasedReward):
         return rewards
 
 
-class MathFormat(RuleBasedReward):
+class MathFormat(ORM):
 
     def __init__(self):
         super().__init__()
