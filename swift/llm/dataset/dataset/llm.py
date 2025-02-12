@@ -423,6 +423,15 @@ register_dataset(
 
 register_dataset(DatasetMeta(ms_dataset_id='modelscope/gsm8k', subsets=['main'], split=['train'], tags=['qa', 'math']))
 
+register_dataset(
+    DatasetMeta(ms_dataset_id='modelscope/MathR', subsets=['default', 'clean'], split=['train'], tags=['qa', 'math']))
+register_dataset(
+    DatasetMeta(
+        ms_dataset_id='modelscope/MathR-32B-Distill',
+        subsets=['default', 'clean'],
+        split=['train'],
+        tags=['qa', 'math']))
+
 
 class HC3Preprocessor(ResponsePreprocessor):
     prompt = """Classification Task: Are the following responses from a human or from ChatGPT?
