@@ -52,7 +52,7 @@ class CustomPRM:
         # Initialize here
         pass
 
-    def infer(self, infer_requests: List[InferRequest],  ground_truths: List[str], **kwargs) -> List[Any]:
+    def __call__(self, infer_requests: List[InferRequest],  ground_truths: List[str], **kwargs) -> List[Union[float, List[float]]]:
         ...
 
 
