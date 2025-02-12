@@ -344,6 +344,19 @@ RLHF arguments inherit from the [training arguments](#training-arguments).
 - loss_scale: Override template arguments, default is 'last_round'.
 - temperature: Default is 0.7; this parameter will be used in PPO and GRPO.
 
+GRPO reward function arguments
+1. cosine
+
+- `cosine_min_len_value_wrong` (default: 0.0): Reward value corresponding to the minimum length when the answer is incorrect.
+- `cosine_max_len_value_wrong` (default: -0.5): Reward value corresponding to the maximum length when the answer is incorrect.
+- `cosine_min_len_value_correct` (default: 1.0): Reward value corresponding to the minimum length when the answer is correct.
+- `cosine_max_len_value_correct` (default: 0.5): Reward value corresponding to the maximum length when the answer is correct.
+- `cosine_max_len` (default value equal to the model's maximum generation capacity): Maximum length limit for generated text.
+
+2. repetition
+
+- `repetition_n_grams` (default: 3): Size of the n-gram used to detect repetition.
+- `repetition_max_penalty` (default: -1.0): Maximum penalty value, which controls the intensity of the penalty.
 
 #### Reward Model Parameters
 

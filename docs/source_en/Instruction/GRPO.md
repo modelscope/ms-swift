@@ -61,7 +61,7 @@ Parameters:
 - `cosine_max_len_value_correct` (default: 0.5): Reward value corresponding to the maximum length when the answer is correct.
 - `cosine_max_len` (default value equal to the model's maximum generation capacity): Maximum length limit for generated text.
 
-4. Repetition
+4. repetition
 
 This function penalizes repetition in generated text by detecting repeated n-gram patterns and assigning penalties based on the level of repetition.
 
