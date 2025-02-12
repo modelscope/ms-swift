@@ -11,7 +11,7 @@ pip install math_verify # reward function
 pip install git+https://github.com/huggingface/trl.git # trl>=0.15.0.dev0
 ```
 
-**Note**: It is normal for the loss to approach zero during training. Refer to this [issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646039631) for more details.
+**Note**: It is normal for the loss to approach zero during training. Refer to this [issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851) for more details.
 
 
 ## Reward Functions
