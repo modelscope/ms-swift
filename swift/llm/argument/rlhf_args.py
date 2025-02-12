@@ -98,9 +98,9 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
         self._init_grpo()
         self._init_rm()
         self._init_simpo()
+        self._init_ppo()
         self._set_default()
         super().__post_init__()
-        self._init_ppo()
 
         if self.loss_scale is None:
             if self.rlhf_type == 'orpo' and not self.model_meta.is_multimodal:
@@ -134,6 +134,7 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
             if self.use_vllm:
                 os.environ['USE_VLLM'] = '1'
                 self._set_default_ddp_config()
+            self.metric_for_best_model = 'reward'
             self.remove_unused_columns = False
             logger.info(f'Setting args.remove_unused_columns: {self.remove_unused_columns}')
             if self.truncation_strategy == 'delete':
@@ -145,7 +146,6 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
         if self.rlhf_type == 'ppo':
             self.padding_side = 'left'
             self.metric_for_best_model = None
-            self.training_args.metric_for_best_model = None
             # TODO: streaming, MLLM
 
     def _init_simpo(self):
