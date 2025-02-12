@@ -276,7 +276,31 @@ class DummyORM(ORM):
         ] * len(ground_truths)
 
 
-class MathAccuracy(ORM):
+class RuleBasedReward(ORM):
+
+    def __init__(self):
+        super().__init__()
+
+    def __call__(self, *args, **kwds):
+        raise NotImplementedError
+
+    @torch.inference_mode()
+    def infer(self, infer_requests: Union[List[InferRequest], List[Dict]], ground_truths: List[str],
+              **kwargs) -> List[ChatCompletionResponse]:
+        predictions = [request.messages[-1]['content'] for request in infer_requests]
+        rewards = self.__call__(predictions, ground_truths, **kwargs)
+        return [
+            ChatCompletionResponse(
+                choices=[
+                    ChatCompletionResponseChoice(
+                        message=ChatMessage(content=r if r else 0.0, role='assistant'), index=0, finish_reason='')
+                ],
+                model=None,
+                usage=None) for r in rewards
+        ]
+
+
+class MathAccuracy(RuleBasedReward):
 
     def __init__(self):
         super().__init__()
@@ -319,24 +343,8 @@ class MathAccuracy(ORM):
             rewards.append(reward)
         return rewards
 
-    @torch.inference_mode()
-    def infer(self, infer_requests: Union[List[InferRequest], List[Dict]], ground_truths: List[str],
-              **kwargs) -> List[ChatCompletionResponse]:
-        rewards = []
-        predictions = [request.messages[-1]['content'] for request in infer_requests]
-        rewards = self.__call__(predictions, solution=ground_truths)
-        return [
-            ChatCompletionResponse(
-                choices=[
-                    ChatCompletionResponseChoice(
-                        message=ChatMessage(content=r if r else 0.0, role='assistant'), index=0, finish_reason='')
-                ],
-                model=None,
-                usage=None) for r in rewards
-        ]
 
-
-class MathFormat(ORM):
+class Format(RuleBasedReward):
 
     def __init__(self):
         super().__init__()
@@ -347,50 +355,33 @@ class MathFormat(ORM):
         matches = [re.match(pattern, content, re.DOTALL | re.MULTILINE) for content in completions]
         return [1.0 if match else 0.0 for match in matches]
 
-    @torch.inference_mode()
-    def infer(self, infer_requests: Union[List[InferRequest], List[Dict]], ground_truths: List[str],
-              **kwargs) -> List[ChatCompletionResponse]:
-        rewards = []
-        predictions = [request.messages[-1]['content'] for request in infer_requests]
-        rewards = self.__call__(predictions)
-        return [
-            ChatCompletionResponse(
-                choices=[
-                    ChatCompletionResponseChoice(
-                        message=ChatMessage(content=r if r else 0.0, role='assistant'), index=0, finish_reason='')
-                ],
-                model=None,
-                usage=None) for r in rewards
-        ]
 
-
-class CosineReward(ORM):
-
+class CosineReward(RuleBasedReward):
+    # https://arxiv.org/abs/2502.03373
     def __init__(
         self,
-        min_len_value_wrong: float = 0.0,
-        max_len_value_wrong: float = -0.5,
-        min_len_value_correct: float = 1.0,
-        max_len_value_correct: float = 0.5,
-        max_len: int = 1000,
+        cosine_min_len_value_wrong: float = 0.0,
+        cosine_max_len_value_wrong: float = -0.5,
+        cosine_min_len_value_correct: float = 1.0,
+        cosine_max_len_value_correct: float = 0.5,
+        cosine_max_len: int = 1000,
     ):
         super().__init__()
         import importlib.util
         assert importlib.util.find_spec('math_verify') is not None, (
             "The math_verify package is required but not installed. Please install it using 'pip install math_verify'.")
-        self.min_len_value_wrong = min_len_value_wrong
-        self.max_len_value_wrong = max_len_value_wrong
-        self.min_len_value_correct = min_len_value_correct
-        self.max_len_value_correct = max_len_value_correct
-        self.max_len = max_len
+        self.min_len_value_wrong = cosine_min_len_value_wrong
+        self.max_len_value_wrong = cosine_max_len_value_wrong
+        self.min_len_value_correct = cosine_min_len_value_correct
+        self.max_len_value_correct = cosine_max_len_value_correct
+        self.max_len = cosine_max_len
 
     @staticmethod
     def cosfn(t, T, min_value, max_value):
         import math
         return max_value - (max_value - min_value) * (1 - math.cos(t * math.pi / T)) / 2
 
-    def __call__(self, completions, solution, **kwds):
-        import math
+    def __call__(self, completions, solution, **kwargs):
         from latex2sympy2_extended import NormalizationConfig
         from math_verify import LatexExtractionConfig, parse, verify
         rewards = []
@@ -425,10 +416,10 @@ class CosineReward(ORM):
             gen_len = len(content)
 
             if is_correct:
+                # Swap min/max for correct answers
                 min_value = self.max_len_value_correct
                 max_value = self.min_len_value_correct
             else:
-                # Swap min/max for incorrect answers
                 min_value = self.min_len_value_wrong
                 max_value = self.max_len_value_wrong
 
@@ -436,21 +427,47 @@ class CosineReward(ORM):
             rewards.append(float(reward))
         return rewards
 
-    @torch.inference_mode()
-    def infer(self, infer_requests: Union[List[InferRequest], List[Dict]], ground_truths: List[str],
-              **kwargs) -> List[ChatCompletionResponse]:
+
+class RepetitionPenalty(RuleBasedReward):
+    # https://arxiv.org/abs/2502.03373
+    def __init__(self, repetition_n_grams: int = 3, repetition_max_penalty: float = -1.0):
+        super().__init__()
+        self.ngram_size = repetition_n_grams
+        self.max_penalty = repetition_max_penalty
+
+    @staticmethod
+    def zipngram(text: str, ngram_size: int):
+        words = text.lower().split()
+        return zip(*[words[i:] for i in range(ngram_size)])
+
+    def __call__(self, completions, **kwargs) -> float:
+        """
+        reward function the penalizes repetitions
+
+        Args:
+            completions: List of model completions
+        """
+
+        contents = [completion[0]['content'] for completion in completions]
         rewards = []
-        predictions = [request.messages[-1]['content'] for request in infer_requests]
-        rewards = self.__call__(predictions, solution=ground_truths)
-        return [
-            ChatCompletionResponse(
-                choices=[
-                    ChatCompletionResponseChoice(
-                        message=ChatMessage(content=r if r else 0.0, role='assistant'), index=0, finish_reason='')
-                ],
-                model=None,
-                usage=None) for r in rewards
-        ]
+        for completion in contents:
+            if completion == '':
+                rewards.append(0.0)
+                continue
+            if len(completion.split()) < self.ngram_size:
+                rewards.append(0.0)
+                continue
+
+            ngrams = set()
+            total = 0
+            for ng in self.zipngram(completion, self.ngram_size):
+                ngrams.add(ng)
+                total += 1
+
+            scaling = 1 - len(ngrams) / total
+            reward = scaling * self.max_penalty
+            rewards.append(reward)
+        return rewards
 
 
 orms = {
@@ -458,6 +475,7 @@ orms = {
     'math': MathORM,
     'dummy': DummyORM,
     'accuracy': MathAccuracy,
-    'format': MathFormat,
-    'cosine': CosineReward
+    'format': Format,
+    'cosine': CosineReward,
+    'repetition': RepetitionPenalty,
 }

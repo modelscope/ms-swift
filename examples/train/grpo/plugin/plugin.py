@@ -1,18 +1,13 @@
 import re
-from typing import Dict, List, Union
 
-import torch
-
-from swift.llm import InferRequest
-from swift.llm.infer.protocol import ChatCompletionResponse, ChatCompletionResponseChoice, ChatMessage
-from swift.plugin.orm import ORM, orms
+from swift.plugin.orm import RuleBasedReward, orms
 from swift.utils import get_logger
 
 logger = get_logger()
 
 
 # Code borrowed from plugin/orm.py
-class MathAccuracy(ORM):
+class MathAccuracy(RuleBasedReward):
 
     def __init__(self):
         super().__init__()
@@ -55,24 +50,8 @@ class MathAccuracy(ORM):
             rewards.append(reward)
         return rewards
 
-    @torch.inference_mode()
-    def infer(self, infer_requests: Union[List[InferRequest], List[Dict]], ground_truths: List[str],
-              **kwargs) -> List[ChatCompletionResponse]:
-        rewards = []
-        predictions = [request.messages[-1]['content'] for request in infer_requests]
-        rewards = self.__call__(predictions, solution=ground_truths)
-        return [
-            ChatCompletionResponse(
-                choices=[
-                    ChatCompletionResponseChoice(
-                        message=ChatMessage(content=r if r else 0.0, role='assistant'), index=0, finish_reason='')
-                ],
-                model=None,
-                usage=None) for r in rewards
-        ]
 
-
-class MathFormat(ORM):
+class MathFormat(RuleBasedReward):
 
     def __init__(self):
         super().__init__()
@@ -82,21 +61,6 @@ class MathFormat(ORM):
         pattern = r'^<think>.*?</think>\s*<answer>.*?</answer>$'
         matches = [re.match(pattern, content, re.DOTALL | re.MULTILINE) for content in completions]
         return [1.0 if match else 0.0 for match in matches]
-
-    @torch.inference_mode()
-    def infer(self, infer_requests: Union[List[InferRequest], List[Dict]], ground_truths: List[str],
-              **kwargs) -> List[ChatCompletionResponse]:
-        predictions = [request.messages[-1]['content'] for request in infer_requests]
-        rewards = self.__call__(predictions)
-        return [
-            ChatCompletionResponse(
-                choices=[
-                    ChatCompletionResponseChoice(
-                        message=ChatMessage(content=r if r else 0.0, role='assistant'), index=0, finish_reason='')
-                ],
-                model=None,
-                usage=None) for r in rewards
-        ]
 
 
 orms['external_math_acc'] = MathAccuracy
