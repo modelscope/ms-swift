@@ -364,7 +364,7 @@ class MathFormat(ORM):
         ]
 
 
-class ConsineReward(ORM):
+class CosineReward(ORM):
 
     def __init__(
         self,
@@ -467,5 +467,5 @@ orms = {
     'dummy': DummyORM,
     'accuracy': MathAccuracy,
     'format': MathFormat,
-    'cosine': ConsineReward
+    'cosine': CosineReward
 }

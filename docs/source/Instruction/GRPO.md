@@ -15,7 +15,7 @@ pip install git+https://github.com/huggingface/trl.git # trl>=0.15.0.dev0
 超参数
 - num_generations: 每个prompt采样的数量，论文中的G值，需要被 per_device_eval_batch_size * nproc_per_node 整除
 - max_completion_length: 采样生成的最大长度，默认为512
-- reward_funcs: 奖励函数，根据模型生成结果进行打分，内置accuracy和format两个rule-based函数，详细见 swift/plugin/orm.py 文件
+- reward_funcs: 奖励函数，根据模型生成结果进行打分，内置accuracy、format和cosine三个rule-based函数，详细见 swift/plugin/orm.py 文件
 - use_vllm: 是否使用vLLM作为采样的生成后端，默认为False，建议使用加快训练速度
 - vllm_device: 设置vLLM部署的设备，默认为`auto`, 即未被使用的第一张显卡，使用`cuda:x`来设置特定的卡。
 - vllm_gpu_memory_utilization: vLLM透传参数
@@ -35,7 +35,7 @@ NPROC_PER_NODE=$nproc_per_node \
 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-7B-Instruct \
-    --reward_funcs accuracy format \
+    --reward_funcs accuracy format cosine\
     --use_vllm true \
     --vllm_device auto \
     --vllm_gpu_memory_utilization 0.7 \
@@ -70,7 +70,7 @@ CUDA_VISIBLE_DEVICES=0 \
 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-7B-Instruct \
-    --reward_funcs accuracy format \
+    --reward_funcs accuracy format cosine\
     --train_type lora \
     --lora_rank 8 \
     --lora_alpha 32 \
