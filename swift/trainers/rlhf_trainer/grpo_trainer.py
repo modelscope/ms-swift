@@ -46,8 +46,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         if reward_funcs:
             reward_function_args = {
-                'cosine': (args.cosine_min_value_wrong, args.cosine_max_value_wrong, args.cosine_min_value_correct,
-                           args.cosine_max_value_correct, args.cosine_max_len)
+                'cosine': (args.cosine_min_len_value_wrong, args.cosine_max_len_value_wrong,
+                           args.cosine_min_len_value_correct, args.cosine_max_len_value_correct, args.cosine_max_len)
             }
             for i, reward_func in enumerate(reward_funcs):
                 if reward_func in orms:
