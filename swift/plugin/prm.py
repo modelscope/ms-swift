@@ -1,22 +1,14 @@
 import os
-from typing import Dict, List, Union
+from typing import Any, Dict, List, Union
 
 import json
-import torch
 
 from swift.llm import InferRequest
-from swift.llm.infer.protocol import ChatCompletionResponse, ChatCompletionResponseChoice, ChatMessage
 
 
 class PRM:
 
-    def __init__(self):
-        # init here
-        pass
-
-    @torch.inference_mode()
-    def infer(self, infer_requests: Union[List[InferRequest], List[Dict]], ground_truths: List[str],
-              **kwargs) -> List[ChatCompletionResponse]:
+    def __call__(self, **kwargs) -> List[Any]:
         raise NotImplementedError
 
 
@@ -49,8 +41,9 @@ Given the upper information, give your reward(-1.0~1.0) of the following answer:
 
 class QwenMaxPRM(PRM):
 
-    def infer(self, infer_requests: Union[List[InferRequest], List[Dict]], ground_truths: List[str],
-              **kwargs) -> List[ChatCompletionResponse]:
+    def __call__(self, infer_requests: List[Union[InferRequest, Dict]], ground_truths: List[str],
+                 **kwargs) -> List[float]:
+        # TODO: check request_config
         rewards = []
 
         from openai import OpenAI
@@ -86,28 +79,20 @@ class QwenMaxPRM(PRM):
 
             content = completion.choices[0].message.content
             if 'Reward:' not in content:
-                rewards.append(None)
-            try:
-                reward = float(content.split('Reward:')[1].strip().replace('*', ''))
-                rewards.append(reward)
-            except Exception:
-                rewards.append(None)
+                rewards.append(0.)
+            else:
+                try:
+                    reward = float(content.split('Reward:')[1].strip().replace('*', ''))
+                    rewards.append(reward)
+                except Exception:
+                    rewards.append(0.)
 
-        return [
-            ChatCompletionResponse(
-                choices=[
-                    ChatCompletionResponseChoice(
-                        message=ChatMessage(content=1.0 if r else 0.0, role='assistant'), index=0, finish_reason='')
-                ],
-                model=None,
-                usage=None) for r in rewards
-        ]
+        return rewards
 
 
 class ClientPRM(PRM):
 
     def __init__(self, api_key=None, base_url=None, model=None):
-        super().__init__()
         from swift.llm import InferClient
         import os
         if api_key is None:
@@ -121,9 +106,10 @@ class ClientPRM(PRM):
             'model': model,
         }
 
-    def infer(self, infer_requests: Union[List[InferRequest], List[Dict]], ground_truths: List[str],
-              **kwargs) -> List[ChatCompletionResponse]:
+    def __call__(self, infer_requests: List[Union[InferRequest, Dict]], ground_truths: List[str],
+                 **kwargs) -> List[float]:
         prm_infer_requests = []
+        request_config = kwargs.get('request_config')
         for request, ground_truth in zip(infer_requests, ground_truths):
             previous = request['messages'][:-1]
             if previous[0]['role'] == 'system':
@@ -146,52 +132,22 @@ class ClientPRM(PRM):
 
             prm_infer_requests.append(InferRequest(messages=messages))
 
-        responses = self.infer_engine.infer(prm_infer_requests, **self.infer_kwargs)
+        responses = self.infer_engine.infer(prm_infer_requests, request_config=request_config, **self.infer_kwargs)
         rewards = []
         for response in responses:
             content = response.choices[0].message.content
             if 'Reward:' not in content:
-                rewards.append(None)
-            try:
-                reward = float(content.split('Reward:')[1].strip().replace('*', ''))
-                rewards.append(reward)
-            except Exception:
-                rewards.append(None)
-
-        return [
-            ChatCompletionResponse(
-                choices=[
-                    ChatCompletionResponseChoice(
-                        message=ChatMessage(content=1.0 if r else 0.0, role='assistant'), index=0, finish_reason='')
-                ],
-                model=None,
-                usage=None) for r in rewards
-        ]
-
-
-class DummyPRM(PRM):
-    """An example"""
-
-    def __init__(self):
-        # init here
-        pass
-
-    @torch.inference_mode()
-    def infer(self, infer_requests: Union[List[InferRequest], List[Dict]], ground_truths: List[str],
-              **kwargs) -> List[ChatCompletionResponse]:
-        return [
-            ChatCompletionResponse(
-                choices=[
-                    ChatCompletionResponseChoice(
-                        message=ChatMessage(content=1.0, role='assistant'), index=0, finish_reason='')
-                ],
-                model=None,
-                usage=None)
-        ] * len(ground_truths)
+                rewards.append(0.)
+            else:
+                try:
+                    reward = float(content.split('Reward:')[1].strip().replace('*', ''))
+                    rewards.append(reward)
+                except Exception:
+                    rewards.append(0.)
+        return rewards
 
 
 prms = {
     'qwen_max': QwenMaxPRM,
     'client': ClientPRM,
-    'dummy': DummyPRM,
 }

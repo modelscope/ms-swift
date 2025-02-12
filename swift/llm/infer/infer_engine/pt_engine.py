@@ -376,6 +376,7 @@ class PtEngine(InferEngine):
         else:
             return res_or_gen[0]
 
+    # Ensure `template.encode` has no gradient.
     @torch.inference_mode()
     def _infer(
         self,

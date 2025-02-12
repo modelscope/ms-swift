@@ -4,8 +4,7 @@ import shutil
 import time
 from typing import List, Union
 
-from swift.llm import SwiftPipeline, load_dataset
-from swift.llm.argument.sampling_args import SamplingArguments
+from swift.llm import SamplingArguments, SwiftPipeline, load_dataset
 from swift.utils import get_logger
 
 logger = get_logger()

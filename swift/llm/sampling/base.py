@@ -1,6 +1,6 @@
 from typing import Any, Dict, List
 
-from swift.llm.argument.sampling_args import SamplingArguments
+from swift.llm import SamplingArguments
 from swift.plugin.orm import orms
 from swift.plugin.prm import prms
 from swift.utils import get_logger

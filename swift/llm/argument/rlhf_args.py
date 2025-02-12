@@ -136,8 +136,7 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
                 self._set_default_ddp_config()
             self.remove_unused_columns = False
             logger.info(f'Setting args.remove_unused_columns: {self.remove_unused_columns}')
-            if self.truncation_strategy == 'delete':
-                self.truncation_strategy = 'left'
+            self.truncation_strategy = 'left'  # Used for trimming the excessively long parts of a prompt.
             if self.beta is None:
                 self.beta = 0.04  # https://arxiv.org/abs/2402.03300
 
