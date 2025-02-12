@@ -368,30 +368,26 @@ class CosineReward(ORM):
 
     def __init__(
         self,
-        min_value_wrong: float = -1.0,
-        max_value_wrong: float = -0.5,
-        min_value_correct: float = 0.5,
-        max_value_correct: float = 1.0,
+        min_len_value_wrong: float = 0.0,
+        max_len_value_wrong: float = -0.5,
+        min_len_value_correct: float = 1.0,
+        max_len_value_correct: float = 0.5,
         max_len: int = 1000,
     ):
-        """
-        Implements the piecewise cosine function for reward calculation.
-        min_value_wrong: Minimum reward for wrong answers
-        max_value_wrong: Maximum reward for wrong answers
-        min_value_correct: Minimum reward for correct answers
-        max_value_correct: Maximum reward for correct answers
-        max_len: Maximum length for scaling
-        """
-
         super().__init__()
         import importlib.util
         assert importlib.util.find_spec('math_verify') is not None, (
             "The math_verify package is required but not installed. Please install it using 'pip install math_verify'.")
-        self.min_value_wrong = min_value_wrong
-        self.max_value_wrong = max_value_wrong
-        self.min_value_correct = min_value_correct
-        self.max_value_correct = max_value_correct
+        self.min_len_value_wrong = min_len_value_wrong
+        self.max_len_value_wrong = max_len_value_wrong
+        self.min_len_value_correct = min_len_value_correct
+        self.max_len_value_correct = max_len_value_correct
         self.max_len = max_len
+
+    @staticmethod
+    def cosfn(t, T, min_value, max_value):
+        import math
+        return max_value - (max_value - min_value) * (1 - math.cos(t * math.pi / T)) / 2
 
     def __call__(self, completions, solution, **kwds):
         import math
@@ -428,19 +424,15 @@ class CosineReward(ORM):
             is_correct = verify(answer_parsed, gold_parsed)
             gen_len = len(content)
 
-            # Apply cosine scaling based on length
-            progress = gen_len / self.max_len
-            cosine = math.cos(progress * math.pi)
-
             if is_correct:
-                min_value = self.min_value_correct
-                max_value = self.max_value_correct
+                min_value = self.max_len_value_correct
+                max_value = self.min_len_value_correct
             else:
                 # Swap min/max for incorrect answers
-                min_value = self.max_value_wrong
-                max_value = self.min_value_wrong
+                min_value = self.min_len_value_wrong
+                max_value = self.max_len_value_wrong
 
-            reward = min_value + 0.5 * (max_value - min_value) * (1.0 + cosine)
+            reward = self.cosfn(gen_len, self.max_len, min_value, max_value)
             rewards.append(float(reward))
         return rewards
 

@@ -45,15 +45,15 @@ class GRPOArguments(GRPOVllmArguments):
     reward_funcs: List[str] = field(default_factory=list)
     # vLLM in GRPO
     use_vllm: bool = False
-    vllm_device: Optional[str] = 'auto'  # 'cuda:1'
+    vllm_device: Optional[str] = 'auto'  # 'cuda:0'
     vllm_gpu_memory_utilization: float = 0.9
     vllm_max_model_len: Optional[int] = None
     # cosine reward, https://arxiv.org/abs/2502.03373
-    cosine_min_value_wrong: float = -0.5  # r^w_L in paper, Reward for wrong answers with comletion length= Lmax.
-    cosine_max_value_wrong: float = 0.0  # r^w_0 in paper, Reward for wrong answers with comletion length = 0.
-    cosine_min_value_correct: float = 1.0  # r^c_0 in paper, Reward for correct answers with comletion length = 0.
-    cosine_max_value_correct: float = 0.5  # r^c_L in paper, Reward for correct answers with comletion length = Lmax.
-    cosine_max_len: Optional[int] = None  # Lmax in paper
+    cosine_min_len_value_wrong: float = 0.0  # r^w_0 in paper, Reward for wrong answers with zero comletion length.
+    cosine_max_len_value_wrong: float = -0.5  # r^w_L in paper, Reward for wrong answers with max comletion length.
+    cosine_min_len_value_correct: float = 1.0  # r^c_0 in paper, Reward for correct answers with zero comletion length.
+    cosine_max_len_value_correct: float = 0.5  # r^c_L in paper, Reward for correct answers with max comletion length.
+    cosine_max_len: Optional[int] = None  # Lmax in paper, default equal to max_completion_length
 
 
 @dataclass
