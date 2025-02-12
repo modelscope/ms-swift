@@ -119,8 +119,8 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
     @staticmethod
     def _check_is_adapter(adapter_dir: str) -> bool:
         if (os.path.exists(os.path.join(adapter_dir, 'adapter_config.json'))
-                         or os.path.exists(os.path.join(adapter_dir, 'default', 'adapter_config.json'))
-                         or os.path.exists(os.path.join(adapter_dir, 'reft'))):
+                or os.path.exists(os.path.join(adapter_dir, 'default', 'adapter_config.json'))
+                or os.path.exists(os.path.join(adapter_dir, 'reft'))):
             return True
         return False
 
