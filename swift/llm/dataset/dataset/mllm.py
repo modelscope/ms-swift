@@ -1172,5 +1172,5 @@ register_dataset(
     DatasetMeta(
         ms_dataset_id='AI-ModelScope/captcha-images',
         split=['train', 'validation'],
-        preprocess_func=CapchaImagesPreprocessor(),
+        preprocess_func=CapchaImagesPreprocessor(columns={'solution': 'response'}),
         tags=['chat', 'multi-modal', 'vision']))

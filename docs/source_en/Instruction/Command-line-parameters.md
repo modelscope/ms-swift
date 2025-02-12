@@ -118,7 +118,7 @@ This parameter list inherits from transformers `Seq2SeqTrainingArguments`, with 
 - logging_first_step: Whether to log the first step, defaults to True.
 - logging_steps: Interval for logging, defaults to 5.
 - predict_with_generate: Whether to use generative method during validation, default is False.
-- metric_for_best_model: Defaults to None, which sets it to 'loss' when `predict_with_generate` is False, otherwise sets it to 'rouge-l'.
+- metric_for_best_model: The default is None, which means it is set to 'loss' when `predict_with_generate` is set to False, otherwise it is set to 'rouge-l' (No default value is set during PPO and GRPO training).
 - greater_is_better: Defaults to None, which sets it to False when `metric_for_best_model` contains 'loss', otherwise sets to True.
 
 Other important parameters:
@@ -334,7 +334,7 @@ RLHF arguments inherit from the [training arguments](#training-arguments).
 - ref_model: Required for full parameter training when using the dpo, kto, or ppo algorithms. Default is None.
 - ref_model_type: Same as model_type. Default is None.
 - ref_model_revision: Same as model_revision. Default is None.
-- 🔥beta: Coefficient for the KL regularization term. Default is `None`, meaning `simpo` algorithm defaults to `2.`, and other algorithms default to `0.1`. For more details, refer to the [documentation](./RLHF.md).
+- 🔥beta: Coefficient for the KL regularization term. Default is `None`, meaning `simpo` algorithm defaults to `2.`, `grpo` algorithm defaults to `0.04`, and other algorithms default to `0.1`. For more details, refer to the [documentation](./RLHF.md).
 - label_smoothing: Whether to use DPO smoothing, default value is `0`.
 - 🔥rpo_alpha: The weight of sft_loss added to DPO, default is `1`. The final loss is `KL_loss + rpo_alpha * sft_loss`.
 - cpo_alpha: Coefficient for nll loss in CPO/SimPO loss, default is `1.`.

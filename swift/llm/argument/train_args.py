@@ -53,11 +53,14 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
             self.eval_steps = self.save_steps
         self.evaluation_strategy = self.eval_strategy
 
-    def __post_init__(self):
-        self._init_output_dir()
+    def _init_metric_for_best_model(self):
         if self.metric_for_best_model is None:
             self.metric_for_best_model = 'rouge-l' if self.predict_with_generate else 'loss'
-        if self.greater_is_better is None:
+
+    def __post_init__(self):
+        self._init_output_dir()
+        self._init_metric_for_best_model()
+        if self.greater_is_better is None and self.metric_for_best_model is not None:
             self.greater_is_better = 'loss' not in self.metric_for_best_model
 
         if self.learning_rate is None:
@@ -116,7 +119,7 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
     lazy_tokenize: Optional[bool] = None
 
     # plugin
-    external_plugins: List[str] = field(default_factory=lambda: [])
+    external_plugins: List[str] = field(default_factory=list)
     loss_type: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
     optimizer: Optional[str] = None
     metric: Optional[str] = None

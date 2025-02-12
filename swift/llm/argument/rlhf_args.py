@@ -104,9 +104,9 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
         self._init_grpo()
         self._init_rm()
         self._init_simpo()
+        self._init_ppo()
         self._set_default()
         super().__post_init__()
-        self._init_ppo()
 
         if self.loss_scale is None:
             if self.rlhf_type == 'orpo' and not self.model_meta.is_multimodal:
@@ -152,9 +152,11 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
     def _init_ppo(self):
         if self.rlhf_type == 'ppo':
             self.padding_side = 'left'
-            self.metric_for_best_model = None
-            self.training_args.metric_for_best_model = None
             # TODO: streaming, MLLM
+
+    def _init_metric_for_best_model(self):
+        if self.rlhf_type not in {'ppo', 'grpo'}:
+            super()._init_metric_for_best_model()
 
     def _init_simpo(self):
         if self.rlhf_type != 'simpo':
