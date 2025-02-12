@@ -198,7 +198,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # we only need to compute the logits for the completion tokens
         labels = outputs.pop('labels')
-        logits_to_keep = labels.shape[-1] - (torch.ne(labels, -100).int().argmax(-1)).max().item()
+        logits_to_keep = labels.shape[-1] - (torch.ne(labels, -100).int().argmax(-1))
+        # If you encounter the following issues, please open an issue.
+        assert (logits_to_keep.max() == logits_to_keep.min()).item(), f'logits_to_keep: {logits_to_keep}'
+        logits_to_keep = logits_to_keep.max().item()
         outputs['logits_to_keep'] = logits_to_keep
         outputs['completion_mask'] = labels[:, -logits_to_keep:] != -100
 
