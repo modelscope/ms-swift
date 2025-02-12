@@ -193,7 +193,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self.template.remove_post_encode_hook()
             outputs = self.engine.infer(inputs, self.request_config, use_tqdm=False)
             if is_multimodal:
-                self.template.register_post_encode_hook([self.model])
+                self.template.register_post_encode_hook([self.model, self.ref_model])
 
         # Slice to keep only the local part of the data
         process_slice = slice(
