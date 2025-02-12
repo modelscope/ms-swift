@@ -52,8 +52,7 @@ class CustomPRM:
         # Initialize here
         pass
 
-    @torch.inference_mode()
-    def infer(self, infer_requests: List[InferRequest],  ground_truths: List[str], **kwargs) -> List[ChatCompletionResponse]:
+    def infer(self, infer_requests: List[InferRequest],  ground_truths: List[str], **kwargs) -> List[Any]:
         ...
 
 
