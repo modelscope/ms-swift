@@ -49,10 +49,10 @@ class GRPOArguments(GRPOVllmArguments):
     vllm_gpu_memory_utilization: float = 0.9
     vllm_max_model_len: Optional[int] = None
     # cosine reward, https://arxiv.org/abs/2502.03373
-    cosine_min_value_wrong: float = -0.5  # r^w_L in paper, Reward for wrong answers with comletion length (Lgen) = Lmax.
-    cosine_max_value_wrong: float = 0.0  # r^w_0 in paper, Reward for wrong answers with comletion length (Lgen) = 0.
-    cosine_min_value_correct: float = 1.0  # r^c_0 in paper, Reward for correct answers with comletion length (Lgen) = 0.
-    cosine_max_value_correct: float = 0.5  # r^c_L in paper, Reward for correct answers with comletion length (Lgen) = Lmax.
+    cosine_min_value_wrong: float = -0.5  # r^w_L in paper, Reward for wrong answers with comletion length= Lmax.
+    cosine_max_value_wrong: float = 0.0  # r^w_0 in paper, Reward for wrong answers with comletion length = 0.
+    cosine_min_value_correct: float = 1.0  # r^c_0 in paper, Reward for correct answers with comletion length = 0.
+    cosine_max_value_correct: float = 0.5  # r^c_L in paper, Reward for correct answers with comletion length = Lmax.
     cosine_max_len: Optional[int] = None  # Lmax in paper
 
 
