@@ -8,7 +8,7 @@ export NPROC_PER_NODE=3
 torchrun --nproc_per_node=$NPROC_PER_NODE --nnodes=$NNODES --node_rank=$NODE_RANK --master_addr=$MASTER_ADDR --master_port=$MASTER_PORT /mnt/workspace/hjh/swift/swift/cli/rlhf.py \
     --rlhf_type grpo \
     --model /mnt/workspace/hjh/Qwen2.5-Math-7B \
-    --reward_funcs accuracy format cosine\
+    --reward_funcs accuracy format cosine repetition \
     --use_vllm true \
     --vllm_device 'cuda:3' \
     --vllm_gpu_memory_utilization 0.5 \
