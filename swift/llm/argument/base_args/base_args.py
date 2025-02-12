@@ -132,7 +132,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         ]
         for adapter in self.adapters:
             assert self._check_is_adapter(adapter), (
-                f'`{adapter}` is not an adapter, please try using --model to pass it.')
+                f'`{adapter}` is not an adapter, please try using `--model` to pass it.')
 
     def __post_init__(self):
         if self.use_hf or use_hf_hub():
