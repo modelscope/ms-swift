@@ -140,13 +140,13 @@ class Seq2SeqTrainer(TorchAccMixin, SwiftMixin, HfSeq2SeqTrainer):
         origin_data_collator = self.data_collator
 
         if is_multimodal:
-            self.template.remove_post_encode_hook()
+            models = self.template.remove_post_encode_hook()
         self.data_collator = self._predict_data_collator
         try:
             yield
         finally:
             if is_multimodal:
-                self.template.register_post_encode_hook([self.model])
+                self.template.register_post_encode_hook(models)
             self.data_collator = origin_data_collator
             self.template.set_mode(origin_mode)
 
