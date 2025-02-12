@@ -108,7 +108,7 @@ if __name__ == '__main__':
         mm_type = 'audio'
         engine = PtEngine(model, max_batch_size=64)
     elif infer_backend == 'vllm':
-        # test env: vllm==0.6.5, transformers==4.48.*
+        # test env: vllm==0.7.2, transformers==4.48.*
         from swift.llm import VllmEngine
         model = 'Qwen/Qwen2-VL-2B-Instruct'
         # If you encounter insufficient GPU memory, please reduce `max_model_len` and set `max_num_seqs=5`.
