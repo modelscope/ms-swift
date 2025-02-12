@@ -57,7 +57,7 @@ class GRPOArguments(GRPOVllmArguments):
     cosine_max_len_value_correct: float = 0.5  # r^c_L in paper, Reward for correct answers with max comletion length.
     cosine_max_len: Optional[int] = None  # Lmax in paper, default equal to max_completion_length
     # repetition penalty, https://arxiv.org/abs/2502.03373
-    repetition_max_penalty: int = 3
+    repetition_n_grams: int = 3
     repetition_max_penalty: float = -1.0
 
 
