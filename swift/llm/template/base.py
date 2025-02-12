@@ -866,7 +866,7 @@ class Template(ProcessorMixin):
         for model in models:
             # please use torch>=2.0
             handle = model.register_forward_pre_hook(self.pre_forward_hook, with_kwargs=True)
-            self._handles.append(handle)
+            self._handles.append((model, handle))
 
         if is_deepspeed_zero3_enabled():
             import deepspeed
@@ -875,14 +875,16 @@ class Template(ProcessorMixin):
             @wraps(self._deepspeed_initialize)
             def _initialize(*args, **kwargs):
                 res = self._deepspeed_initialize(*args, **kwargs)
-                for model, handle in zip(models, self._handles):
+                for model, handle in self._handles:
                     model._forward_pre_hooks.move_to_end(handle.id)
                 return res
 
             deepspeed.initialize = _initialize
 
     def remove_post_encode_hook(self):
-        for handle in self._handles:
+        models = []
+        for model, handle in self._handles:
+            models.append(model)
             handle.remove()
         self._handles = []
 
@@ -890,6 +892,7 @@ class Template(ProcessorMixin):
             import deepspeed
             deepspeed.initialize = self._deepspeed_initialize
         self._deepspeed_initialize = None
+        return models
 
     def data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         if self.mode == 'rlhf':

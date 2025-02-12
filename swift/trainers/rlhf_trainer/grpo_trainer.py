@@ -190,10 +190,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # Regular generation path
             is_multimodal = self.model.model_meta.is_multimodal
             if is_multimodal:
-                self.template.remove_post_encode_hook()
+                models = self.template.remove_post_encode_hook()
             outputs = self.engine.infer(inputs, self.request_config, use_tqdm=False)
             if is_multimodal:
-                self.template.register_post_encode_hook([self.model])
+                self.template.register_post_encode_hook(models)
 
         # Slice to keep only the local part of the data
         process_slice = slice(
