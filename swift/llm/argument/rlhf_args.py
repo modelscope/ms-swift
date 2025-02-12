@@ -134,7 +134,6 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
             if self.use_vllm:
                 os.environ['USE_VLLM'] = '1'
                 self._set_default_ddp_config()
-            self.metric_for_best_model = 'reward'
             self.remove_unused_columns = False
             logger.info(f'Setting args.remove_unused_columns: {self.remove_unused_columns}')
             if self.truncation_strategy == 'delete':
@@ -145,8 +144,11 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
     def _init_ppo(self):
         if self.rlhf_type == 'ppo':
             self.padding_side = 'left'
-            self.metric_for_best_model = None
             # TODO: streaming, MLLM
+
+    def _init_metric_for_best_model(self):
+        if self.rlhf_type not in {'ppo', 'grpo'}:
+            super()._init_metric_for_best_model()
 
     def _init_simpo(self):
         if self.rlhf_type != 'simpo':

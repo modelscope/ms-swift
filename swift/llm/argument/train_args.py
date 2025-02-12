@@ -53,11 +53,14 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
             self.eval_steps = self.save_steps
         self.evaluation_strategy = self.eval_strategy
 
-    def __post_init__(self):
-        self._init_output_dir()
+    def _init_metric_for_best_model(self):
         if self.metric_for_best_model is None:
             self.metric_for_best_model = 'rouge-l' if self.predict_with_generate else 'loss'
-        if self.greater_is_better is None:
+
+    def __post_init__(self):
+        self._init_output_dir()
+        self._init_metric_for_best_model()
+        if self.greater_is_better is None and self.metric_for_best_model is not None:
             self.greater_is_better = 'loss' not in self.metric_for_best_model
 
         if self.learning_rate is None:
