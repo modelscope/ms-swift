@@ -293,8 +293,14 @@ def get_default_torch_dtype(torch_dtype: Optional[torch.dtype]):
     if torch_dtype is not None:
         return torch_dtype
 
+    try:
+        is_bf16_available = is_torch_bf16_gpu_available() or (is_torch_npu_available()
+                                                              and torch.npu.is_bf16_supported())
+    except:  # noqa
+        is_bf16_available = False
+
     if is_torch_cuda_available() or is_torch_npu_available():
-        if is_torch_bf16_gpu_available():
+        if is_bf16_available:
             return torch.bfloat16
         else:
             return torch.float16
