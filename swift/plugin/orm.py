@@ -276,31 +276,7 @@ class DummyORM(ORM):
         ] * len(ground_truths)
 
 
-class RuleBasedReward(ORM):
-
-    def __init__(self):
-        super().__init__()
-
-    def __call__(self, *args, **kwds):
-        raise NotImplementedError
-
-    @torch.inference_mode()
-    def infer(self, infer_requests: Union[List[InferRequest], List[Dict]], ground_truths: List[str],
-              **kwargs) -> List[ChatCompletionResponse]:
-        predictions = [request.messages[-1]['content'] for request in infer_requests]
-        rewards = self.__call__(predictions, ground_truths, **kwargs)
-        return [
-            ChatCompletionResponse(
-                choices=[
-                    ChatCompletionResponseChoice(
-                        message=ChatMessage(content=r if r else 0.0, role='assistant'), index=0, finish_reason='')
-                ],
-                model=None,
-                usage=None) for r in rewards
-        ]
-
-
-class MathAccuracy(RuleBasedReward):
+class MathAccuracy(ORM):
 
     def __init__(self):
         super().__init__()
@@ -308,7 +284,7 @@ class MathAccuracy(RuleBasedReward):
         assert importlib.util.find_spec('math_verify') is not None, (
             "The math_verify package is required but not installed. Please install it using 'pip install math_verify'.")
 
-    def __call__(self, completions, solution, **kwargs):
+    def __call__(self, completions, solution, **kwargs) -> List[float]:
         from latex2sympy2_extended import NormalizationConfig
         from math_verify import LatexExtractionConfig, parse, verify
         rewards = []
@@ -344,19 +320,19 @@ class MathAccuracy(RuleBasedReward):
         return rewards
 
 
-class Format(RuleBasedReward):
+class Format(ORM):
 
     def __init__(self):
         super().__init__()
 
-    def __call__(self, completions, **kwargs):
+    def __call__(self, completions, **kwargs) -> List[float]:
         """Reward function that checks if the completion has a specific format."""
         pattern = r'^<think>.*?</think>\s*<answer>.*?</answer>$'
         matches = [re.match(pattern, content, re.DOTALL | re.MULTILINE) for content in completions]
         return [1.0 if match else 0.0 for match in matches]
 
 
-class CosineReward(RuleBasedReward):
+class CosineReward(ORM):
     # https://arxiv.org/abs/2502.03373
     def __init__(
         self,
@@ -381,7 +357,7 @@ class CosineReward(RuleBasedReward):
         import math
         return max_value - (max_value - min_value) * (1 - math.cos(t * math.pi / T)) / 2
 
-    def __call__(self, completions, solution, **kwargs):
+    def __call__(self, completions, solution, **kwargs) -> List[float]:
         from latex2sympy2_extended import NormalizationConfig
         from math_verify import LatexExtractionConfig, parse, verify
         rewards = []
@@ -428,7 +404,7 @@ class CosineReward(RuleBasedReward):
         return rewards
 
 
-class RepetitionPenalty(RuleBasedReward):
+class RepetitionPenalty(ORM):
     # https://arxiv.org/abs/2502.03373
     def __init__(self, repetition_n_grams: int = 3, repetition_max_penalty: float = -1.0):
         super().__init__()
@@ -440,7 +416,7 @@ class RepetitionPenalty(RuleBasedReward):
         words = text.lower().split()
         return zip(*[words[i:] for i in range(ngram_size)])
 
-    def __call__(self, completions, **kwargs) -> float:
+    def __call__(self, completions, **kwargs) -> List[float]:
         """
         reward function the penalizes repetitions
 
