@@ -48,6 +48,12 @@ class GRPOArguments(GRPOVllmArguments):
     vllm_device: Optional[str] = 'auto'  # 'cuda:1'
     vllm_gpu_memory_utilization: float = 0.9
     vllm_max_model_len: Optional[int] = None
+    # cosine reward, https://arxiv.org/abs/2502.03373
+    cosine_min_value_wrong: float = -0.5  # r^w_L in paper, Reward for wrong answers with comletion length (Lgen) = Lmax.
+    cosine_max_value_wrong: float = 0.0  # r^w_0 in paper, Reward for wrong answers with comletion length (Lgen) = 0.
+    cosine_min_value_correct: float = 1.0  # r^c_0 in paper, Reward for correct answers with comletion length (Lgen) = 0.
+    cosine_max_value_correct: float = 0.5  # r^c_L in paper, Reward for correct answers with comletion length (Lgen) = Lmax.
+    cosine_max_len: Optional[int] = None  # Lmax in paper
 
 
 @dataclass
@@ -140,6 +146,8 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
                 self.truncation_strategy = 'left'
             if self.beta is None:
                 self.beta = 0.04  # https://arxiv.org/abs/2402.03300
+            if self.cosine_max_len is None:
+                self.cosine_max_len = self.max_completion_length
 
     def _init_ppo(self):
         if self.rlhf_type == 'ppo':

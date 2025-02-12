@@ -317,7 +317,7 @@ class MathAccuracy(ORM):
                 # If the gold solution is not parseable, we reward 1 to skip this example
                 reward = 1.0
             rewards.append(reward)
-            return rewards
+        return rewards
 
     @torch.inference_mode()
     def infer(self, infer_requests: Union[List[InferRequest], List[Dict]], ground_truths: List[str],
@@ -364,4 +364,108 @@ class MathFormat(ORM):
         ]
 
 
-orms = {'toolbench': ReactORM, 'math': MathORM, 'dummy': DummyORM, 'accuracy': MathAccuracy, 'format': MathFormat}
+class ConsineReward(ORM):
+
+    def __init__(
+        self,
+        min_value_wrong: float = -1.0,
+        max_value_wrong: float = -0.5,
+        min_value_correct: float = 0.5,
+        max_value_correct: float = 1.0,
+        max_len: int = 1000,
+    ):
+        """
+        Implements the piecewise cosine function for reward calculation.
+        min_value_wrong: Minimum reward for wrong answers
+        max_value_wrong: Maximum reward for wrong answers
+        min_value_correct: Minimum reward for correct answers
+        max_value_correct: Maximum reward for correct answers
+        max_len: Maximum length for scaling
+        """
+
+        super().__init__()
+        import importlib.util
+        assert importlib.util.find_spec('math_verify') is not None, (
+            "The math_verify package is required but not installed. Please install it using 'pip install math_verify'.")
+        self.min_value_wrong = min_value_wrong
+        self.max_value_wrong = max_value_wrong
+        self.min_value_correct = min_value_correct
+        self.max_value_correct = max_value_correct
+        self.max_len = max_len
+
+    def __call__(self, completions, solution, **kwds):
+        import math
+        from latex2sympy2_extended import NormalizationConfig
+        from math_verify import LatexExtractionConfig, parse, verify
+        rewards = []
+
+        for content, sol in zip(completions, solution):
+            gold_parsed = parse(sol, extraction_mode='first_match', extraction_config=[LatexExtractionConfig()])
+            if len(gold_parsed) == 0:
+                rewards.append(1.0)  # Skip unparseable examples
+                print('Failed to parse gold solution: ', sol)
+                continue
+
+            answer_parsed = parse(
+                content,
+                extraction_config=[
+                    LatexExtractionConfig(
+                        normalization_config=NormalizationConfig(
+                            nits=False,
+                            malformed_operators=False,
+                            basic_latex=True,
+                            equations=True,
+                            boxed=True,
+                            units=True,
+                        ),
+                        boxed_match_priority=0,
+                        try_extract_without_anchor=False,
+                    )
+                ],
+                extraction_mode='first_match',
+            )
+
+            is_correct = verify(answer_parsed, gold_parsed)
+            gen_len = len(content)
+
+            # Apply cosine scaling based on length
+            progress = gen_len / self.max_len
+            cosine = math.cos(progress * math.pi)
+
+            if is_correct:
+                min_value = self.min_value_correct
+                max_value = self.max_value_correct
+            else:
+                # Swap min/max for incorrect answers
+                min_value = self.max_value_wrong
+                max_value = self.min_value_wrong
+
+            reward = min_value + 0.5 * (max_value - min_value) * (1.0 + cosine)
+            rewards.append(float(reward))
+        return rewards
+
+    @torch.inference_mode()
+    def infer(self, infer_requests: Union[List[InferRequest], List[Dict]], ground_truths: List[str],
+              **kwargs) -> List[ChatCompletionResponse]:
+        rewards = []
+        predictions = [request.messages[-1]['content'] for request in infer_requests]
+        rewards = self.__call__(predictions, solution=ground_truths)
+        return [
+            ChatCompletionResponse(
+                choices=[
+                    ChatCompletionResponseChoice(
+                        message=ChatMessage(content=r if r else 0.0, role='assistant'), index=0, finish_reason='')
+                ],
+                model=None,
+                usage=None) for r in rewards
+        ]
+
+
+orms = {
+    'toolbench': ReactORM,
+    'math': MathORM,
+    'dummy': DummyORM,
+    'accuracy': MathAccuracy,
+    'format': MathFormat,
+    'cosine': ConsineReward
+}
