@@ -53,7 +53,7 @@ class MathAccuracy(ORM):
                 # If the gold solution is not parseable, we reward 1 to skip this example
                 reward = 1.0
             rewards.append(reward)
-            return rewards
+        return rewards
 
     @torch.inference_mode()
     def infer(self, infer_requests: Union[List[InferRequest], List[Dict]], ground_truths: List[str],
