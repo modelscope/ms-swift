@@ -1,10 +1,6 @@
 import re
-from typing import Dict, List, Union
+from typing import List
 
-import torch
-
-from swift.llm import InferRequest
-from swift.llm.infer.protocol import ChatCompletionResponse, ChatCompletionResponseChoice, ChatMessage
 from swift.plugin.orm import ORM, orms
 from swift.utils import get_logger
 

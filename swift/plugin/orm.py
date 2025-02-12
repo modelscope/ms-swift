@@ -3,7 +3,6 @@ import re
 from typing import Dict, List, Union
 
 import json
-import torch
 
 from swift.llm import InferRequest
 

@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 import json
 import numpy as np
 
-from swift.llm import InferRequest, Messages, RequestConfig
+from swift.llm import InferRequest, RequestConfig
 from swift.utils import get_logger
 
 logger = get_logger()
