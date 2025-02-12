@@ -17,7 +17,7 @@ from swift.ui.base import BaseUI
 from swift.ui.llm_eval.eval import Eval
 from swift.ui.llm_eval.model import Model
 from swift.ui.llm_eval.runtime import EvalRuntime
-from swift.utils.torch_utils import get_device_count
+from swift.utils import get_device_count
 
 
 class LLMEval(BaseUI):

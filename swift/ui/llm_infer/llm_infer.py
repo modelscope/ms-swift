@@ -18,8 +18,7 @@ from swift.llm import DeployArguments, InferArguments, InferClient, InferRequest
 from swift.ui.base import BaseUI
 from swift.ui.llm_infer.model import Model
 from swift.ui.llm_infer.runtime import Runtime
-from swift.utils import get_logger
-from swift.utils.torch_utils import get_device_count
+from swift.utils import get_device_count, get_logger
 
 logger = get_logger()
 

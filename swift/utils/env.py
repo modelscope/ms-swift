@@ -60,7 +60,7 @@ def is_mp() -> bool:
         return False
     if strtobool(os.environ.get('USE_VLLM', 'false')):
         return False
-    from swift.utils.torch_utils import get_device_count
+    from swift.utils import get_device_count
     n_gpu = get_device_count()
     local_world_size = get_dist_setting()[3]
     assert n_gpu % local_world_size == 0, f'n_gpu: {n_gpu}, local_world_size: {local_world_size}'
@@ -71,7 +71,7 @@ def is_mp() -> bool:
 
 def is_mp_ddp() -> bool:
     # patch_mp_ddp will occur when `import swift`.
-    from swift.utils.torch_utils import get_device_count
+    from swift.utils import get_device_count
     n_gpu = get_device_count()
     local_world_size = get_dist_setting()[3]
     if is_dist() and n_gpu != local_world_size + 1 and is_mp():  # fix grpo

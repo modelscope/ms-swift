@@ -16,8 +16,7 @@ from trl.models import unwrap_model_for_generation
 
 from swift.llm import InferRequest, RequestConfig, to_device
 from swift.plugin.orm import orms
-from swift.utils import get_logger, is_vllm_available, is_wandb_available
-from ...utils.torch_utils import get_device, get_device_count
+from swift.utils import get_device, get_device_count, get_logger, is_vllm_available, is_wandb_available
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 

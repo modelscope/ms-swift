@@ -29,8 +29,7 @@ from swift.ui.llm_train.rlhf import RLHF
 from swift.ui.llm_train.runtime import Runtime
 from swift.ui.llm_train.save import Save
 from swift.ui.llm_train.self_cog import SelfCog
-from swift.utils import get_logger
-from swift.utils.torch_utils import get_device_count
+from swift.utils import get_device_count, get_logger
 
 logger = get_logger()
 

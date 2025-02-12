@@ -6,7 +6,7 @@ from typing import Any, Dict
 from transformers import AutoConfig
 
 from swift.llm import TemplateType
-from swift.utils.torch_utils import get_device
+from swift.utils import get_device
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
 from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,

@@ -17,7 +17,7 @@ from swift.ui.base import BaseUI
 from swift.ui.llm_export.export import Export
 from swift.ui.llm_export.model import Model
 from swift.ui.llm_export.runtime import ExportRuntime
-from swift.utils.torch_utils import get_device_count
+from swift.utils import get_device_count
 
 
 class LLMExport(BaseUI):

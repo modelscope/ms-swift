@@ -2,7 +2,7 @@ import os
 
 import torch
 
-from swift.utils.torch_utils import get_device
+from swift.utils import get_device
 
 os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 

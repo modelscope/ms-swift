@@ -4,7 +4,7 @@ import subprocess
 import time
 from typing import List
 
-from swift.utils.torch_utils import get_device_count
+from swift.utils import get_device_count
 
 # NOTE: this script supports at most 8 GPUS in a node, if using multi node, please use custom logic.
 

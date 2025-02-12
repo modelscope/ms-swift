@@ -7,8 +7,7 @@ import json
 from transformers import AutoConfig, AutoProcessor
 
 from swift.llm import TemplateType
-from swift.utils import get_dist_setting, get_logger
-from swift.utils.torch_utils import get_device, get_device_count
+from swift.utils import get_device, get_device_count, get_dist_setting, get_logger
 from ..constant import LLMModelType, MLLMModelType
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
 from ..utils import ModelInfo

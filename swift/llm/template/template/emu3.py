@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 import torch
 from PIL import Image
 
-from swift.utils.torch_utils import get_device
+from swift.utils import get_device
 from ..base import Template
 from ..constant import MLLMTemplateType
 from ..register import register_template
