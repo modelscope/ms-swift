@@ -131,8 +131,8 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             safe_snapshot_download(adapter, use_hf=self.use_hf, hub_token=self.hub_token) for adapter in self.adapters
         ]
         for adapter in self.adapters:
-            assert self._check_is_adapter(adapter), f'adapter: `{adapter}`'
-        assert not self._check_is_adapter(self.model), f'model: `{self.model}`'
+            assert self._check_is_adapter(adapter), (
+                f'`{adapter}` is not an adapter, please try using --model to pass it.')
 
     def __post_init__(self):
         if self.use_hf or use_hf_hub():
