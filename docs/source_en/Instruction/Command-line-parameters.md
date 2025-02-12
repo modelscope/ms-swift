@@ -296,7 +296,7 @@ Parameter meanings can be found in the [vllm documentation](https://docs.vllm.ai
 - 🔥max_model_len: Default is `None`.
 - disable_custom_all_reduce: Default is `False`.
 - enforce_eager: Determines whether vllm uses PyTorch eager mode or constructs a CUDA graph, default is `False`. Setting it to True can save memory but may affect efficiency.
-- 🔥limit_mm_per_prompt: Controls the use of multiple media in vllm, default is `None`. For example, you can pass in `--limit_mm_per_prompt '{"image": 10, "video": 5}'`.
+- 🔥limit_mm_per_prompt: Controls the use of multiple media in vllm, default is `None`. For example, you can pass in `--limit_mm_per_prompt '{"image": 5, "video": 2}'`.
 - vllm_max_lora_rank: Default is `16`. This is the parameter supported by vllm for lora.
 - enable_prefix_caching: Enable the automatic prefix caching of vllm to save processing time for querying repeated prefixes. The default is `False`.
 

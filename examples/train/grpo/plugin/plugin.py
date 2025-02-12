@@ -1,5 +1,5 @@
-import re
 
+from typing import List
 from swift.plugin.orm import ORM, orms
 from swift.utils import get_logger
 
@@ -10,12 +10,11 @@ logger = get_logger()
 class MathAccuracy(ORM):
 
     def __init__(self):
-        super().__init__()
         import importlib.util
         assert importlib.util.find_spec('math_verify') is not None, (
             "The math_verify package is required but not installed. Please install it using 'pip install math_verify'.")
 
-    def __call__(self, completions, solution, **kwargs):
+    def __call__(self, completions, solution, **kwargs) -> List[float]:
         from latex2sympy2_extended import NormalizationConfig
         from math_verify import LatexExtractionConfig, parse, verify
         rewards = []
@@ -53,10 +52,7 @@ class MathAccuracy(ORM):
 
 class MathFormat(ORM):
 
-    def __init__(self):
-        super().__init__()
-
-    def __call__(self, completions, **kwargs):
+    def __call__(self, completions, **kwargs) -> List[float]:
         """Reward function that checks if the completion has a specific format."""
         pattern = r'^<think>.*?</think>\s*<answer>.*?</answer>$'
         matches = [re.match(pattern, content, re.DOTALL | re.MULTILINE) for content in completions]
