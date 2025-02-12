@@ -6,8 +6,7 @@ from copy import deepcopy
 import json
 import numpy as np
 
-from swift.llm import InferRequest
-from swift.llm.argument.sampling_args import SamplingArguments
+from swift.llm import InferRequest, SamplingArguments
 from swift.llm.infer.protocol import UsageInfo
 from swift.utils import get_logger
 from .base import Sampler
