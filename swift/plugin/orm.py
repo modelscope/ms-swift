@@ -447,10 +447,8 @@ class RepetitionPenalty(RuleBasedReward):
         Args:
             completions: List of model completions
         """
-
-        contents = [completion[0]['content'] for completion in completions]
         rewards = []
-        for completion in contents:
+        for completion in completions:
             if completion == '':
                 rewards.append(0.0)
                 continue
