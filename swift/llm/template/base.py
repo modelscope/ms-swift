@@ -882,9 +882,9 @@ class Template(ProcessorMixin):
             deepspeed.initialize = _initialize
 
     def remove_post_encode_hook(self):
-        _models = []
+        models = []
         for model, handle in self._handles:
-            _models.append(model)
+            models.append(model)
             handle.remove()
         self._handles = []
 
@@ -892,7 +892,7 @@ class Template(ProcessorMixin):
             import deepspeed
             deepspeed.initialize = self._deepspeed_initialize
         self._deepspeed_initialize = None
-        return _models
+        return models
 
     def data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         if self.mode == 'rlhf':
