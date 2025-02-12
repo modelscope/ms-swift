@@ -272,11 +272,13 @@ class MathAccuracy(ORM):
 
 
 class Format(ORM):
+
     def __call__(self, completions, **kwargs) -> List[float]:
         """Reward function that checks if the completion has a specific format."""
         pattern = r'^<think>.*?</think>\s*<answer>.*?</answer>$'
         matches = [re.match(pattern, content, re.DOTALL | re.MULTILINE) for content in completions]
         return [1.0 if match else 0.0 for match in matches]
+
 
 class CosineReward(ORM):
     # https://arxiv.org/abs/2502.03373
@@ -393,7 +395,6 @@ class RepetitionPenalty(ORM):
 orms = {
     'toolbench': ReactORM,
     'math': MathORM,
-    'dummy': DummyORM,
     'accuracy': MathAccuracy,
     'format': Format,
     'cosine': CosineReward,
