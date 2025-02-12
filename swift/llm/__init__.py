@@ -11,8 +11,9 @@ if TYPE_CHECKING:
     from .eval import eval_main
     from .app import app_main
     from .train import sft_main, pt_main, rlhf_main, get_multimodal_target_regex
+    from .sampling import sampling_main
     from .argument import (EvalArguments, InferArguments, TrainArguments, ExportArguments, DeployArguments,
-                           RLHFArguments, WebUIArguments, BaseArguments, AppArguments)
+                           RLHFArguments, WebUIArguments, BaseArguments, AppArguments, SamplingArguments)
     from .template import (TEMPLATE_MAPPING, Template, Word, get_template, TemplateType, register_template,
                            TemplateInputs, TemplateMeta, get_template_meta, InferRequest, load_image, MaxLengthError,
                            load_file, draw_bbox)
@@ -40,9 +41,10 @@ else:
         'app': ['app_main'],
         'eval': ['eval_main'],
         'train': ['sft_main', 'pt_main', 'rlhf_main', 'get_multimodal_target_regex'],
+        'sampling': ['sampling_main'],
         'argument': [
             'EvalArguments', 'InferArguments', 'TrainArguments', 'ExportArguments', 'WebUIArguments', 'DeployArguments',
-            'RLHFArguments', 'BaseArguments', 'AppArguments'
+            'RLHFArguments', 'BaseArguments', 'AppArguments', 'SamplingArguments'
         ],
         'template': [
             'TEMPLATE_MAPPING', 'Template', 'Word', 'get_template', 'TemplateType', 'register_template',
