@@ -9,6 +9,9 @@
 pip install math_verify # reward function
 pip install git+https://github.com/huggingface/trl.git # trl>=0.15.0.dev0
 ```
+
+**注意**：训练过程中 loss 接近0 是正常情况， 参考[issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646039631)
+
 ## 奖励函数
 ### 自定义奖励函数
 奖励函数接受模型生成的文本 completions 以及其他数据集中的列作为参数，并对模型生成的文本进行打分。以下是一个示例，展示了如何实现一个简单的长度奖励函数。该函数会在模型生成的文本长度超过 1024 时，给予 1.0 的奖励信号；否则，奖励信号为 0.0。
@@ -31,11 +34,11 @@ swift内置了四种基于规则的奖励函数，分别是 accuracy、format、
 
 其中 accuracy 和 format 奖励函数源于论文[DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning](https://arxiv.org/abs/2501.12948), cosine 和 repetition 奖励函数源于论文[Demystifying Long Chain-of-Thought Reasoning in LLMs](https://arxiv.org/abs/2502.03373)
 
-1. accuracy
+1. **accuracy**
 
 该函数将模型的生成结果与数据集中的 solution 列进行比较，计算准确率分数。如果生成结果与标准答案一致，则得分为 1.0；否则为 0.0。
 
-2. format
+2. **format**
 
 论文中使用以下system prompt要求模型按照固定格式进行返回
 ```
@@ -44,7 +47,7 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 
 该函数检查模型是否按照 `<think>think content</think><answer>answer content</answer>` 的格式进行生成。如果生成文本符合格式要求，则得分为 1.0；否则为 0.0。
 
-3. cosine
+3. **cosine**
 
 论文发现，仅使用 accuracy 奖励函数进行训练会导致模型的生成长度趋于超长，从而影响训练效果。cosine 奖励函数通过控制模型的生成长度来优化训练过程：
 
@@ -61,7 +64,7 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 - cosine_max_len（默认值等于模型生成的最大程度）：生成文本的最大长度限制。
 
 
-4. repetition
+4. **repetition**
 
 惩罚模型生成文本中的重复内容，通过检测生成文本中的重复 n-gram 模式来评估重复程度，并给予相应的惩罚。
 
@@ -72,7 +75,7 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 - repetition_max_penalty（默认值：-1.0）：最大惩罚值，用于控制惩罚的强度。
 
 
-5. 奖励函数
+5. **奖励模型**
 
 除了基于规则的奖励函数外，本框架还支持使用奖励模型作为奖励函数。在使用奖励模型时，需要指定 reward_model 参数，该参数与 model 参数类似，用于指定奖励模型的路径或名称。需要注意的是，reward_model 和 reward_funcs 至少需要指定一个。
 
@@ -81,7 +84,7 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 超参数
 - num_generations: 每个prompt采样的数量，论文中的G值，需要被 per_device_eval_batch_size * nproc_per_node 整除
 - max_completion_length: 采样生成的最大长度，默认为512
-- reward_funcs: 奖励函数，根据模型生成结果进行打分，内置accuracy、format和cosine三个rule-based函数，详细见 swift/plugin/orm.py 文件
+- reward_funcs: 奖励函数，根据模型生成结果进行打分，内置accuracy、format、cosine和repetition四个rule-based函数，详细见 swift/plugin/orm.py 文件
 - use_vllm: 是否使用vLLM作为采样的生成后端，默认为False，建议使用加快训练速度
 - vllm_device: 设置vLLM部署的设备，默认为`auto`, 即未被使用的第一张显卡，使用`cuda:x`来设置特定的卡。
 - vllm_gpu_memory_utilization: vLLM透传参数
