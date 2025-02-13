@@ -26,6 +26,7 @@ del HFGRPOTrainer._prepare_inputs
 logger = get_logger()
 if is_wandb_available():
     import wandb
+    wandb.init(mode='disabled')
 
 
 class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
@@ -144,7 +145,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         for i, reward_func in enumerate(self.reward_funcs):
             if isinstance(reward_func, PreTrainedModel):
                 self.reward_funcs[i] = self.accelerator.prepare_model(reward_func, evaluation_mode=True)
-        self.log_completions = args.log_completions
+        self.log_completions = True
 
     @staticmethod
     @contextmanager
@@ -285,7 +286,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # For logging
             table = {
                 'step': [str(self.state.global_step)] * len(rewards),
-                'messages': gather_object(inputs['messages'][:-1]),
+                'messages': [inputs['messages'][:-1] for inputs in gather_object(inputs)],
                 'completion': gather_object(completions),
                 'reward': rewards.tolist(),
             }
