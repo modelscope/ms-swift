@@ -48,7 +48,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if reward_funcs:
             for i, reward_func in enumerate(reward_funcs):
                 if reward_func in orms:
-                    reward_funcs[i] = orms[reward_func]()
+                    reward_func_class = orms[reward_func]
+                    reward_func_args = list(inspect.signature(reward_func_class.__init__).parameters)
+                    reward_func_args = [
+                        getattr(args, param) for param in reward_func_args if param not in ['self', 'args', 'kwargs']
+                    ]
+                    reward_funcs[i] = reward_func_class(*reward_func_args)
                 elif not callable(reward_func):
                     raise ValueError(f'reward_function {reward_func} is not implemented in swift.llm.plugin')
 
@@ -277,7 +282,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # For logging
             table = {
                 'step': [str(self.state.global_step)] * len(rewards),
-                'messages': gather_object(inputs['messages'][:-1]),
+                'messages': [inputs['messages'][:-1] for inputs in gather_object(inputs)],
                 'completion': gather_object(completions),
                 'reward': rewards.tolist(),
             }
