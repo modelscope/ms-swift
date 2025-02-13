@@ -2,11 +2,9 @@
 # pip install math_verify # reward function
 # pip install git+https://github.com/huggingface/trl.git # trl>=0.15.0.dev0
 # GPU memory: 8 * 80GiB
-# You can set `--reward_model` to use a reward model to provide rewards.
-nproc_per_node=7
 
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
-NPROC_PER_NODE=$nproc_per_node \
+NPROC_PER_NODE=7 \
 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-7B-Instruct \
@@ -34,6 +32,6 @@ swift rlhf \
     --dataloader_num_workers 4 \
     --dataset_num_proc 4 \
     --num_generations 7 \
-    --temperature 0.7 \
+    --temperature 0.9 \
     --system 'examples/train/grpo/prompt.txt' \
     --deepspeed zero2

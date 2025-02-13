@@ -85,116 +85,149 @@ swift eval \
     --eval_dataset gsm8k
 ```
 Where:
-- eval_backend: options are Native, OpenCompass, VLMEvalKit
-- infer_backend: options are pt, vllm, lmdeploy
+- model: Can specify a local model path or a model ID on modelscope
+- eval_backend: Options are Native, OpenCompass, VLMEvalKit; default is Native
+- infer_backend: Options are pt, vllm, lmdeploy; default is pt
+- eval_limit: Sample size for each evaluation set; default is None, which means using all data; can be used for quick validation
+- eval_dataset: Evaluation dataset(s); multiple datasets can be set, separated by spaces
 
 For a specific list of evaluation parameters, please refer to [here](./Command-line-parameters.md#evaluation-arguments).
 
 More evaluation examples can be found in [examples](https://github.com/modelscope/ms-swift/tree/main/examples/eval).
 
-## Custom Evaluation Sets
+## Custom Evaluation Datasets
 
-Note: The documentation below is not supported in version 3.0; please use version 2.x for evaluation.
+This framework supports two predefined dataset formats: multiple-choice questions (MCQ) and question-and-answer (QA). The usage process is as follows:
 
-Additionally, we support users to create their own evaluation sets. Custom evaluation sets must match the data format (pattern) of an official evaluation set. Below we explain how to use your evaluation set step by step.
+*Note: When using a custom evaluation, the `eval_backend` parameter must be set to `Native`.*
 
-### Create Your Custom Evaluation Set
+### Multiple-Choice Question Format (MCQ)
+This format is suitable for scenarios involving multiple-choice questions, and the evaluation metric is accuracy.
 
-Currently, we support two patterns for evaluation sets: the multiple-choice format CEval and the question-answer format General-QA.
+**Data Preparation**
 
-#### Multiple-Choice: CEval Format
-
-The CEval format is suitable for multiple-choice scenarios, where one correct answer is selected from four options. The evaluation metric is `accuracy`. It is recommended to **directly modify** the [CEval scaffold directory](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/eval_example/custom_ceval). This directory contains two files:
-
-```text
-default_dev.csv # For fewshot evaluation, it must have at least the number of data entries specified by the input parameter `eval_few_shot`. For 0-shot evaluation, this CSV can be empty.
-default_val.csv # For actual evaluation data.
-```
-
-The CSV file for CEval needs to follow this format:
-
-```csv
-id,question,A,B,C,D,answer,explanation
-1,Generally speaking, there are ____, 4, 22, 20, 19 kinds of amino acids that make up animal proteins, C,1. Currently, it is known that there are 20 kinds of amino acids that constitute animal proteins.
-2. Among the substances present in the blood, the one that is not a metabolic end product is ____. Urea, Uric acid, Pyruvic acid, Carbon dioxide, C. "Metabolic end products refer to substances that are produced during metabolic processes in living organisms and cannot be utilized further, needing to be expelled from the body through excretion or other means. Pyruvic acid is a product of carbohydrate metabolism and can be further metabolized for energy or synthesized into other substances, thus it is not a metabolic end product."
-```
-
-Here, `id` is the sequence number, `question` is the question, A, B, C, D are the options (leave empty if there are less than four options), `answer` is the correct option, and `explanation` is the explanation.
-
-The name of `default` files is the name of the CEval sub-dataset, which can be changed and will be used in the configuration below.
-
-#### Question-Answer: General-QA
-
-General-QA is suitable for question-answer scenarios, with evaluation metrics being `rouge` and `bleu`. It is recommended to **directly modify** the [General-QA scaffold directory](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/eval_example/custom_general_qa). This directory contains one file:
+Prepare a CSV file in the multiple-choice question format, structured as follows:
 
 ```text
-default.jsonl
+mcq/
+├── example_dev.csv  # (Optional) The filename should follow the format `{subset_name}_dev.csv` for few-shot evaluation
+└── example_val.csv  # The filename should follow the format `{subset_name}_val.csv` for the actual evaluation data
 ```
 
-This jsonline file must follow this format:
+The CSV file should follow this format:
 
-```jsonline
-{"history": [], "query": "What is the capital of China?", "response": "The capital of China is Beijing."}
-{"history": [], "query": "Which is the highest mountain in the world?", "response": "It is Mount Everest."}
-{"history": [], "query": "Why can't penguins be seen in the Arctic?", "response": "Because penguins mostly live in Antarctica."}
+```text
+id,question,A,B,C,D,answer
+1,Generally speaking, the amino acids that make up animal proteins are____,4 types,22 types,20 types,19 types,C
+2,Among the substances present in the blood, which is not a metabolic end product?____,Urea,Uric acid,Pyruvate,Carbon dioxide,C
 ```
 
-Note that `history` is currently a reserved field and is not supported yet.
+Where:
+- `id` is an optional index
+- `question` is the question
+- `A`, `B`, `C`, `D`, etc. are the options, with a maximum of 10 options
+- `answer` is the correct option
 
-### Define a Configuration File for the Eval Command
+**Launching Evaluation**
 
-After defining the above files, a JSON file needs to be created to pass to the eval command. It is suggested to directly modify the [official configuration scaffold file](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/eval_example/custom_config.json). The file content should be as follows:
+Run the following command:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 \
+swift eval \
+    --model Qwen/Qwen2.5-0.5B-Instruct \
+    --eval_backend Native \
+    --infer_backend pt \
+    --eval_dataset general_mcq \
+    --dataset_args '{"general_mcq": {"local_path": "/path/to/mcq", "subset_list": ["example"]}}'
+```
+
+Where:
+- `eval_dataset` should be set to `general_mcq`
+- `dataset_args` should be set with:
+    - `local_path` as the path to the custom dataset folder
+    - `subset_list` as the name of the evaluation dataset, taken from the `*_dev.csv` mentioned above
+
+**Running Results**
+
+```text
++---------------------+-------------+-----------------+----------+-------+---------+---------+
+| Model               | Dataset     | Metric          | Subset   |   Num |   Score | Cat.0   |
++=====================+=============+=================+==========+=======+=========+=========+
+| Qwen2-0.5B-Instruct | general_mcq | AverageAccuracy | example  |    12 |  0.5833 | default |
++---------------------+-------------+-----------------+----------+-------+---------+---------+
+```
+
+## Question-and-Answer Format (QA)
+This format is suitable for scenarios involving question-and-answer, and the evaluation metrics are `ROUGE` and `BLEU`.
+
+**Data Preparation**
+
+Prepare a JSON Lines file in the question-and-answer format, containing one file in the following structure:
+
+```text
+qa/
+└── example.jsonl
+```
+
+The JSON Lines file should follow this format:
 
 ```json
-[
-    {
-        "name": "custom_general_qa", # Name of the evaluation item, can be freely specified
-        "pattern": "general_qa", # Pattern of the evaluation set
-        "dataset": "eval_example/custom_general_qa", # Directory of the evaluation set, it is strongly recommended to use an absolute path to prevent read failure
-        "subset_list": ["default"] # The sub-dataset to evaluate, i.e., the above `default_x` filename
-    },
-    {
-        "name": "custom_ceval",
-        "pattern": "ceval",
-        "dataset": "eval_example/custom_ceval", # Directory of the evaluation set, it is strongly recommended to use an absolute path to prevent read failure
-        "subset_list": ["default"]
-    }
-]
+{"query": "What is the capital of China?", "response": "The capital of China is Beijing"}
+{"query": "What is the highest mountain in the world?", "response": "It is Mount Everest"}
+{"query": "Why can't penguins be seen in the Arctic?", "response": "Because most penguins live in Antarctica"}
 ```
 
-You can then pass this configuration file for evaluation:
+**Launching Evaluation**
 
-```shell
-# Use arc evaluation, limit 10 evaluation entries per sub-dataset, inference backend using pt
-# cd examples/pytorch/llm
-# eval_dataset can also be set, official datasets and custom datasets can run together
+Run the following command:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 \
 swift eval \
-    --model_type "qwen-7b-chat" \
-    --eval_dataset no \
+    --model Qwen/Qwen2.5-0.5B-Instruct \
+    --eval_backend Native \
     --infer_backend pt \
-    --custom_eval_config eval_example/custom_config.json
+    --eval_dataset general_qa \
+    --dataset_args '{"general_qa": {"local_path": "/path/to/qa", "subset_list": ["example"]}}'
 ```
 
-The output will be as follows:
+Where:
+- `eval_dataset` should be set to `general_qa`
+- `dataset_args` is a JSON string that needs to be set with:
+    - `local_path` as the path to the custom dataset folder
+    - `subset_list` as the name of the evaluation dataset, taken from the `*.jsonl` mentioned above
+
+**Running Results**
 
 ```text
-2024-04-10 17:21:33,275 - llmuses - INFO - *** Report table ***
-+------------------------------+----------------+---------------------------------+
-| Model                        | custom_ceval   | custom_general_qa               |
-+==============================+================+=================================+
-| qa-custom_ceval_qwen-7b-chat | 1.0 (acc)      | 0.8888888888888888 (rouge-1-r)  |
-|                              |                | 0.33607503607503614 (rouge-1-p) |
-|                              |                | 0.40616618868713145 (rouge-1-f) |
-|                              |                | 0.39999999999999997 (rouge-2-r) |
-|                              |                | 0.27261904761904765 (rouge-2-p) |
-|                              |                | 0.30722525589718247 (rouge-2-f) |
-|                              |                | 0.8333333333333334 (rouge-l-r)  |
-|                              |                | 0.30742204655248134 (rouge-l-p) |
-|                              |                | 0.3586824745225346 (rouge-l-f)  |
-|                              |                | 0.3122529644268775 (bleu-1)     |
-|                              |                | 0.27156862745098037 (bleu-2)    |
-|                              |                | 0.25 (bleu-3)                   |
-|                              |                | 0.2222222222222222 (bleu-4)     |
-+------------------------------+----------------+---------------------------------+
-Final report:{'report': [{'name': 'custom_general_qa', 'metric': 'WeightedAverageBLEU', 'score': {'rouge-1-r': 0.8888888888888888, 'rouge-1-p': 0.33607503607503614, 'rouge-1-f': 0.40616618868713145, 'rouge-2-r': 0.39999999999999997, 'rouge-2-p': 0.27261904761904765, 'rouge-2-f': 0.30722525589718247, 'rouge-l-r': 0.8333333333333334, 'rouge-l-p': 0.30742204655248134, 'rouge-l-f': 0.3586824745225346, 'bleu-1': 0.3122529644268775, 'bleu-2': 0.27156862745098037, 'bleu-3': 0.25, 'bleu-4': 0.2222222222222222}, 'category': [{'name': 'DEFAULT', 'score': {'rouge-1-r': 0.8888888888888888, 'rouge-1-p': 0.33607503607503614, 'rouge-1-f': 0.40616618868713145, 'rouge-2-r': 0.39999999999999997, 'rouge-2-p': 0.27261904761904765, 'rouge-2-f': 0.30722525589718247, 'rouge-l-r': 0.8333333333333334, 'rouge-l-p': 0.30742204655248134, 'rouge-l-f': 0.3586824745225346, 'bleu-1': 0.3122529644268775, 'bleu-2': 0.27156862745098037, 'bleu-3': 0.25, 'bleu-4': 0.2222222222222222}, 'subset': [{'name': 'default', 'score': {'rouge-1-r': 0.8888888888888888, 'rouge-1-p': 0.33607503607503614, 'rouge-1-f': 0.40616618868713145, 'rouge-2-r': 0.39999999999999997, 'rouge-2-p': 0.27261904761904765, 'rouge-2-f': 0.30722525589718247, 'rouge-l-r': 0.8333333333333334, 'rouge-l-p': 0.30742204655248134, 'rouge-l-f': 0.3586824745225346, 'bleu-1': 0.3122529644268775, 'bleu-2': 0.27156862745098037, 'bleu-3': 0.25, 'bleu-4': 0.2222222222222222}}]}], 'total_num': 3}, {'name': 'custom_ceval', 'metric': 'WeightedAverageAccuracy', 'score': 1.0, 'category': [{'name': 'DEFAULT', 'score': 1.0, 'subset': [{'name': 'default', 'score': 1.0}]}], 'total_num': 2}], 'generation_info': {'time': 34.23462510108948, 'tokens': 219}}
++---------------------+-------------+-----------------+----------+-------+---------+---------+
+| Model               | Dataset     | Metric          | Subset   |   Num |   Score | Cat.0   |
++=====================+=============+=================+==========+=======+=========+=========+
+| Qwen2-0.5B-Instruct | general_qa  | bleu-1          | default  |    12 |  0.2324 | default |
++---------------------+-------------+-----------------+----------+-------+---------+---------+
+| Qwen2-0.5B-Instruct | general_qa  | bleu-2          | default  |    12 |  0.1451 | default |
++---------------------+-------------+-----------------+----------+-------+---------+---------+
+| Qwen2-0.5B-Instruct | general_qa  | bleu-3          | default  |    12 |  0.0625 | default |
++---------------------+-------------+-----------------+----------+-------+---------+---------+
+| Qwen2-0.5B-Instruct | general_qa  | bleu-4          | default  |    12 |  0.0556 | default |
++---------------------+-------------+-----------------+----------+-------+---------+---------+
+| Qwen2-0.5B-Instruct | general_qa  | rouge-1-f       | default  |    12 |  0.3441 | default |
++---------------------+-------------+-----------------+----------+-------+---------+---------+
+| Qwen2-0.5B-Instruct | general_qa  | rouge-1-p       | default  |    12 |  0.2393 | default |
++---------------------+-------------+-----------------+----------+-------+---------+---------+
+| Qwen2-0.5B-Instruct | general_qa  | rouge-1-r       | default  |    12 |  0.8889 | default |
++---------------------+-------------+-----------------+----------+-------+---------+---------+
+| Qwen2-0.5B-Instruct | general_qa  | rouge-2-f       | default  |    12 |  0.2062 | default |
++---------------------+-------------+-----------------+----------+-------+---------+---------+
+| Qwen2-0.5B-Instruct | general_qa  | rouge-2-p       | default  |    12 |  0.1453 | default |
++---------------------+-------------+-----------------+----------+-------+---------+---------+
+| Qwen2-0.5B-Instruct | general_qa  | rouge-2-r       | default  |    12 |  0.6167 | default |
++---------------------+-------------+-----------------+----------+-------+---------+---------+
+| Qwen2-0.5B-Instruct | general_qa  | rouge-l-f       | default  |    12 |  0.333  | default |
++---------------------+-------------+-----------------+----------+-------+---------+---------+
+| Qwen2-0.5B-Instruct | general_qa  | rouge-l-p       | default  |    12 |  0.2324 | default |
++---------------------+-------------+-----------------+----------+-------+---------+---------+
+| Qwen2-0.5B-Instruct | general_qa  | rouge-l-r       | default  |    12 |  0.8889 | default |
++---------------------+-------------+-----------------+----------+-------+---------+---------+
 ```

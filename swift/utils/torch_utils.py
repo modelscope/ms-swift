@@ -240,7 +240,7 @@ def safe_ddp_context(hash_id: str):
         yield
 
 
-def get_device(rank: Optional[Union[str, int]] = None) -> 'torch.device':
+def get_device(rank: Optional[Union[str, int]] = None) -> str:
     if rank is None:
         rank = get_dist_setting()[1]
         if rank < 0 or rank is None:
@@ -256,7 +256,7 @@ def get_device(rank: Optional[Union[str, int]] = None) -> 'torch.device':
     else:
         device = 'cpu'
 
-    return torch.device(device)
+    return device
 
 
 def get_device_count() -> int:

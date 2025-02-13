@@ -98,7 +98,9 @@ class SwiftEval(SwiftPipeline):
             api_key=args.api_key or 'EMPTY',
             datasets=dataset,
             work_dir=work_dir,
-            limit=args.eval_limit)
+            limit=args.eval_limit,
+            eval_batch_size=args.eval_num_proc or 16,
+            dataset_args=args.dataset_args)
 
     def get_opencompass_task_cfg(self, dataset: List[str], url: str):
         args = self.args
