@@ -69,12 +69,23 @@ class SwiftArgumentsMixin:
 
 
 @dataclass
-class GRPOVllmArguments:
+class GRPOArgumentsMixin:
+    log_completions: bool = False
     # vllm_device, vllm_gpu_memory_utilization, and vllm_max_model_len are defined in HfGRPOConfig.
     vllm_max_num_seqs: int = 256
     vllm_enforce_eager: bool = False
     vllm_limit_mm_per_prompt: Optional[Union[dict, str]] = None  # '{"image": 5, "video": 2}'
     vllm_enable_prefix_caching: bool = True
+    # reward function args, see details in swift/plugin/orm.py
+    # cosine reward, https://arxiv.org/abs/2502.03373
+    cosine_min_len_value_wrong: float = 0.0  # r^w_0 in paper, Reward for wrong answers with zero comletion length.
+    cosine_max_len_value_wrong: float = -0.5  # r^w_L in paper, Reward for wrong answers with max comletion length.
+    cosine_min_len_value_correct: float = 1.0  # r^c_0 in paper, Reward for correct answers with zero comletion length.
+    cosine_max_len_value_correct: float = 0.5  # r^c_L in paper, Reward for correct answers with max comletion length.
+    cosine_max_len: Optional[int] = None  # Lmax in paper, default equal to max_completion_length
+    # repetition penalty, https://arxiv.org/abs/2502.03373
+    repetition_n_grams: int = 3
+    repetition_max_penalty: float = -1.0
 
 
 @dataclass

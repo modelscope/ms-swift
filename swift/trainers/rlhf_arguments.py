@@ -9,7 +9,7 @@ from trl import ORPOConfig as HfORPOConfig
 from trl import PPOConfig as HfPPOConfig
 from trl import RewardConfig as HfRewardConfig
 
-from swift.llm.argument.rlhf_args import GRPOArguments
+from swift.llm.argument.rlhf_args import GRPOArgumentsMixin
 from .arguments import SwiftArgumentsMixin
 
 
@@ -44,7 +44,7 @@ class PPOConfig(SwiftArgumentsMixin, HfPPOConfig):
 
 
 @dataclass
-class GRPOConfig(GRPOArguments, SwiftArgumentsMixin, HfGRPOConfig):
+class GRPOConfig(GRPOArgumentsMixin, SwiftArgumentsMixin, HfGRPOConfig):
     top_k: Optional[int] = None
     top_p: Optional[float] = None
     repetition_penalty: Optional[float] = None
