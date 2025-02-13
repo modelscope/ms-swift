@@ -9,7 +9,7 @@ from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
 
 from swift.llm import TemplateType
-from swift.utils import get_dist_setting, get_logger
+from swift.utils import get_device_count, get_dist_setting, get_logger
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
 from ..patcher import patch_output_to_input_device
@@ -163,7 +163,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     tokenizer.init_kwargs['image_size'] = 1120
     if load_model:
         # fix device_map 4
-        n_gpu = torch.cuda.device_count()
+        n_gpu = get_device_count()
         local_world_size = get_dist_setting()[3]
         if n_gpu // local_world_size >= 4:
             for layer in model.transformer.vision.transformer.layers:

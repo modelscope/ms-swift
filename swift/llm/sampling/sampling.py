@@ -58,9 +58,10 @@ class SwiftSampling(SwiftPipeline):
         with open(tmp_file, 'w') as f:
             for _index in range(self.args.num_sampling_per_gpu_batches):
                 logger.info(f' Sampling index:{_index}')
-                generated = self.sampler.do_sample(
-                    dataset[self.args.num_sampling_per_gpu_batch_size * _index:self.args.num_sampling_per_gpu_batch_size
-                            * (_index + 1)])
+                slices = dataset[self.args.num_sampling_per_gpu_batch_size
+                                 * _index:self.args.num_sampling_per_gpu_batch_size * (_index + 1)]
+                slices = self.sampler.truncate_input(slices)
+                generated = self.sampler.do_sample(slices)
                 f.writelines(generated)
         if os.path.exists(iter_file):
             shutil.move(iter_file, iter_file + '.' + str(int(time.time())))

@@ -16,7 +16,7 @@ from trl.models import unwrap_model_for_generation
 
 from swift.llm import InferRequest, RequestConfig, to_device
 from swift.plugin.orm import orms
-from swift.utils import get_logger, is_vllm_available, is_wandb_available
+from swift.utils import get_device, get_device_count, get_logger, is_vllm_available, is_wandb_available
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 
@@ -92,16 +92,16 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if self.accelerator.is_main_process:
                 vllm_device = self.args.vllm_device
                 if vllm_device == 'auto':
-                    vllm_device = f'cuda:{self.accelerator.num_processes}'  # take the next GPU idx
+                    vllm_device = get_device(self.accelerator.num_processes)
                 # Check that the requested device is available
-                if vllm_device.split(':')[0] == 'cuda' and int(vllm_device.split(':')[1]) >= torch.cuda.device_count():
+                if vllm_device.split(':')[0] == 'cuda' and int(vllm_device.split(':')[1]) >= get_device_count():
                     raise ValueError(
                         f'The requested device for vllm ({vllm_device}) is not available. You are likely using vLLM '
                         'without restricting the number of GPUs for training. Set the `--num_processes` argument to a '
                         'value lower than the number of GPUs available on your machine—typically, reducing it by one '
-                        f'is sufficient. In your case: `--num_processes {torch.cuda.device_count() - 1}`.')
+                        f'is sufficient. In your case: `--num_processes {get_device_count() - 1}`.')
                 # Check that the requested device is not also used for training
-                if vllm_device in {f'cuda:{idx}' for idx in range(self.accelerator.num_processes)}:
+                if vllm_device in {get_device(idx) for idx in range(self.accelerator.num_processes)}:
                     logger.warning(
                         f'The requested device {vllm_device} is also used for training. This may lead to unexpected '
                         'behavior. It is recommended to use a dedicated device for vLLM.')
