@@ -29,4 +29,5 @@ swift rlhf \
     --dataloader_num_workers 4 \
     --deepspeed zero2 \
     --response_length 512 \
+    --temperature 0.7 \
     --dataset_num_proc 4
