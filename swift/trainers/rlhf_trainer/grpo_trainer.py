@@ -11,6 +11,7 @@ import torch.nn as nn
 from accelerate.utils import broadcast_object_list, gather, gather_object
 from transformers import PreTrainedModel
 from trl import GRPOTrainer as HFGRPOTrainer
+from trl.models import unwrap_model_for_generation
 
 from swift.llm import InferRequest, RequestConfig, to_device
 from swift.plugin.orm import orms
@@ -201,7 +202,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             is_multimodal = self.model.model_meta.is_multimodal
             if is_multimodal:
                 models = self.template.remove_post_encode_hook()
-            outputs = self.engine.infer(inputs, self.request_config, use_tqdm=False)
+            with unwrap_model_for_generation(self.model, self.accelerator):
+                # same reference
+                outputs = self.engine.infer(inputs, self.request_config, use_tqdm=False)
             if is_multimodal:
                 self.template.register_post_encode_hook(models)
 
