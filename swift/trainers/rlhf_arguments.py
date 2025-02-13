@@ -9,8 +9,7 @@ from trl import ORPOConfig as HfORPOConfig
 from trl import PPOConfig as HfPPOConfig
 from trl import RewardConfig as HfRewardConfig
 
-from swift.llm.argument.rlhf_args import GRPOArgumentsMixin
-from .arguments import SwiftArgumentsMixin
+from .arguments import GRPOArgumentsMixin, SwiftArgumentsMixin
 
 
 @dataclass
