@@ -105,13 +105,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if self.accelerator.is_main_process:
                 vllm_device = self.args.vllm_device
                 if vllm_device == 'auto':
-                    if torch.cuda.device_count() == 1:
-                        vllm_device = 'cuda:0'  # particular case when training with onyl 1 GPU: share it
+                    if get_device_count() == 1:
+                        vllm_device = get_device()  # particular case when training with onyl 1 GPU: share it
                     else:
                         local_world_size = get_dist_setting()[3]
-                        vllm_device = f'cuda:{local_world_size}'  # take the next GPU idx
+                        vllm_device = get_device(local_world_size)  # take the next GPU idx
                 # Check that the requested device is available
-                if vllm_device.split(':')[0] == 'cuda' and int(vllm_device.split(':')[1]) >= get_device_count():
+                if vllm_device.split(':')[0] in {'cuda', 'npu'
+                                                 } and int(vllm_device.split(':')[1]) >= get_device_count():
                     raise ValueError(
                         f'The requested device for vllm ({vllm_device}) is not available. You are likely using vLLM '
                         'without restricting the number of GPUs for training. Set the `--num_processes` argument to a '
