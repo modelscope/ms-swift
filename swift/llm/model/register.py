@@ -6,11 +6,9 @@ from contextlib import nullcontext
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from functools import partial
-from types import MethodType
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
-import torch.nn.functional as F
 from peft import PeftModel
 from transformers import (AutoConfig, AutoModel, AutoModelForCausalLM, AutoModelForSequenceClassification,
                           AutoTokenizer, GenerationConfig, PretrainedConfig, PreTrainedModel, PreTrainedTokenizerBase)
@@ -138,12 +136,23 @@ def load_by_unsloth(args):
         from unsloth import FastVisionModel as UnslothModel
     else:
         from unsloth import FastLanguageModel as UnslothModel
+    from swift.llm import RLHFArguments
+    fast_inference_params = {}
+    if isinstance(args, RLHFArguments) and args.rlhf_type == 'grpo' and args.tuner_backend == 'unsloth':
+        try:
+            from unsloth import PatchFastRL
+            PatchFastRL('GRPO', UnslothModel)
+            fast_inference_params = {'fast_inference': True}
+        except ImportError as e:
+            logger.error('You are using unsloth as GRPO\'s backend, please install `pip install unsloth -U`')
+            raise e
     model, processor = UnslothModel.from_pretrained(
         model_name=args.adapters and args.adapters[0] or args.model_dir,
         dtype=args.torch_dtype,
         max_seq_length=model_info.max_model_len,
         load_in_4bit=args.quant_bits == 4,
         trust_remote_code=True,
+        **fast_inference_params,
     )
     if isinstance(model, PeftModel):
         base_model = model.model
