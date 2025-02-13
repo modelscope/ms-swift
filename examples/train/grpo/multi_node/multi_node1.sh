@@ -8,7 +8,7 @@ export NPROC_PER_NODE=3
 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-Math-7B \
-    --reward_funcs accuracy format cosine repetition \
+    --reward_funcs accuracy format \
     --use_vllm true \
     --vllm_device cuda:3 \
     --vllm_gpu_memory_utilization 0.5 \

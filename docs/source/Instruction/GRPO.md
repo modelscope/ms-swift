@@ -106,7 +106,7 @@ NPROC_PER_NODE=$nproc_per_node \
 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-7B-Instruct \
-    --reward_funcs accuracy format cosine repetition\
+    --reward_funcs accuracy format \
     --use_vllm true \
     --vllm_device auto \
     --vllm_gpu_memory_utilization 0.7 \
@@ -141,7 +141,7 @@ CUDA_VISIBLE_DEVICES=0 \
 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-7B-Instruct \
-    --reward_funcs accuracy format cosine repetition\
+    --reward_funcs accuracy format \
     --train_type lora \
     --lora_rank 8 \
     --lora_alpha 32 \
