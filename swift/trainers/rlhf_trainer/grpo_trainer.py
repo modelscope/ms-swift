@@ -53,6 +53,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     raise ValueError(f'reward_function {reward_func} is not implemented in swift.llm.plugin')
 
         self.reward_funcs = reward_funcs
+        self.reward_templates = [None] * len(self.reward_funcs)
+        if reward_model is not None:
+            self.reward_templates.append(kwargs.pop('reward_template', None))
+            self.reward_funcs.append(reward_model)
+        if not self.reward_funcs:
+            raise ValueError('You must specify reward_funcs or reward_model')
+
         # Reward weights
         if args.reward_weights is not None:
             if len(args.reward_weights) != len(reward_funcs):
@@ -62,13 +69,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self.reward_weights = torch.tensor(args.reward_weights, dtype=torch.float32)
         else:
             self.reward_weights = torch.ones(len(reward_funcs), dtype=torch.float32)
-
-        self.reward_templates = [None] * len(self.reward_funcs)
-        if reward_model is not None:
-            self.reward_templates.append(kwargs.pop('reward_template', None))
-            self.reward_funcs.append(reward_model)
-        if not self.reward_funcs:
-            raise ValueError('You must specify reward_funcs or reward_model')
 
         self.num_generations = args.num_generations
         model.warnings_issued['estimate_tokens'] = True
