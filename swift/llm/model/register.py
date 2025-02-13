@@ -137,12 +137,12 @@ def load_by_unsloth(args):
     else:
         from unsloth import FastLanguageModel as UnslothModel
     from swift.llm import RLHFArguments
-    fast_inference_params = {}
+    fast_inference_params = {'trust_remote_code': True}
     if isinstance(args, RLHFArguments) and args.rlhf_type == 'grpo' and args.tuner_backend == 'unsloth':
         try:
             from unsloth import PatchFastRL
             PatchFastRL('GRPO', UnslothModel)
-            fast_inference_params = {'fast_inference': True}
+            fast_inference_params = {'fast_inference': True, 'trust_remote_code': False}
         except ImportError as e:
             logger.error('You are using unsloth as GRPO\'s backend, please install `pip install unsloth -U`')
             raise e
@@ -151,7 +151,6 @@ def load_by_unsloth(args):
         dtype=args.torch_dtype,
         max_seq_length=args.max_length,
         load_in_4bit=args.quant_bits == 4,
-        trust_remote_code=True,
         **fast_inference_params,
     )
     if isinstance(model, PeftModel):
