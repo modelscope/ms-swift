@@ -4,7 +4,7 @@ import subprocess
 import time
 from typing import List
 
-import torch.cuda
+from swift.utils import get_device_count
 
 # NOTE: this script supports at most 8 GPUS in a node, if using multi node, please use custom logic.
 
@@ -14,7 +14,7 @@ conda_prefix = ''
 
 
 def do_sample(model: str, model_type: str, dataset: List[str], iter: int):
-    device_count = torch.cuda.device_count()
+    device_count = get_device_count()
     handlers = []
     datasets = []
     # Sampling cache, to avoid lmdeploy & PRM run at the same time
@@ -99,13 +99,13 @@ def do_sample(model: str, model_type: str, dataset: List[str], iter: int):
 def do_train(model: str, model_type: str, datasets: List[str], iter, cmd='sft'):
     gpu_prefix = ''
     ds_config = ''
-    if torch.cuda.device_count() > 1:
-        gpu_prefix = f'NPROC_PER_NODE={torch.cuda.device_count()} '
+    if get_device_count() > 1:
+        gpu_prefix = f'NPROC_PER_NODE={get_device_count()} '
         ds_config = '--deepspeed zero3 '
     extra_args = ''
     if cmd == 'rlhf':
         extra_args = '--rlhf_type dpo --beta 0.3 '  # use another reinforce learning method supported by swift
-    ga = 128 // torch.cuda.device_count() // 2
+    ga = 128 // get_device_count() // 2
     train_cmd = (f'{conda_prefix} {gpu_prefix} swift {cmd} '
                  f'--model {model} --model_type {model_type} '
                  f'--dataset {" ".join(datasets)} '

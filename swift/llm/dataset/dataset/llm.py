@@ -400,7 +400,7 @@ class CompetitionMathPreprocessor(ResponsePreprocessor):
 
     def preprocess(self, row: Dict[str, Any], all_tools=None) -> Optional[Dict[str, Any]]:
         query = row['problem']
-        response = row['response']
+        response = row['solution']
         row = {
             'query': query,
             'response': response,

@@ -19,6 +19,7 @@ from transformers import Trainer
 
 from swift.utils.constants import DEFAULT_ADAPTER, SWIFT_TYPE_KEY
 from swift.utils.logger import get_logger
+from ..utils.torch_utils import get_device_count
 from .mapping import SwiftTuners
 from .peft import PeftConfig, PeftModel, get_peft_model
 from .utils import SwiftConfig, SwiftOutput
@@ -677,7 +678,7 @@ class SwiftModel(nn.Module):
         return f'trainable params: {trainable_params:,d} || all params: {all_param:,d} ' \
                f'|| trainable%: {100 * trainable_params / all_param:.4f}' \
                '|| cuda memory: ' \
-               f'{sum([torch.cuda.memory_allocated(i) for i in range(torch.cuda.device_count())])/1024/1024/1024:.2f}' \
+               f'{sum([torch.cuda.memory_allocated(i) for i in range(get_device_count())])/1024/1024/1024:.2f}' \
                'GiB.'
 
 

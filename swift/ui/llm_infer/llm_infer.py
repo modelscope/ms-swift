@@ -18,7 +18,7 @@ from swift.llm import DeployArguments, InferArguments, InferClient, InferRequest
 from swift.ui.base import BaseUI
 from swift.ui.llm_infer.model import Model
 from swift.ui.llm_infer.runtime import Runtime
-from swift.utils import get_logger
+from swift.utils import get_device_count, get_logger
 
 logger = get_logger()
 
@@ -123,10 +123,9 @@ class LLMInfer(BaseUI):
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
         with gr.TabItem(elem_id='llm_infer', label=''):
-            gpu_count = 0
             default_device = 'cpu'
-            if torch.cuda.is_available():
-                gpu_count = torch.cuda.device_count()
+            device_count = get_device_count()
+            if device_count > 0:
                 default_device = '0'
             with gr.Blocks():
                 infer_request = gr.State(None)
@@ -136,7 +135,7 @@ class LLMInfer(BaseUI):
                     gr.Dropdown(
                         elem_id='gpu_id',
                         multiselect=True,
-                        choices=[str(i) for i in range(gpu_count)] + ['cpu'],
+                        choices=[str(i) for i in range(device_count)] + ['cpu'],
                         value=default_device,
                         scale=8)
                     infer_model_type = gr.Textbox(elem_id='infer_model_type', scale=4)

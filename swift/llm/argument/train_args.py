@@ -10,8 +10,8 @@ from transformers.utils.versions import require_version
 
 from swift.plugin import LOSS_MAPPING
 from swift.trainers import TrainerFactory
-from swift.utils import (add_version_to_work_dir, get_logger, get_pai_tensorboard_dir, is_liger_available,
-                         is_local_master, is_mp, is_pai_training_job, use_torchacc)
+from swift.utils import (add_version_to_work_dir, get_device_count, get_logger, get_pai_tensorboard_dir,
+                         is_liger_available, is_local_master, is_mp, is_pai_training_job, use_torchacc)
 from .base_args import BaseArguments, to_abspath
 from .tuner_args import TunerArguments
 
@@ -193,7 +193,7 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
             require_version('deepspeed')
             if is_mp():
                 raise ValueError('DeepSpeed is not compatible with MP. '
-                                 f'n_gpu: {torch.cuda.device_count()}, '
+                                 f'n_gpu: {get_device_count()}, '
                                  f'local_world_size: {self.local_world_size}.')
 
             ds_config_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'ds_config'))
