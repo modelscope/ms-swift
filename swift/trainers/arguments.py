@@ -70,7 +70,6 @@ class SwiftArgumentsMixin:
 
 @dataclass
 class GRPOArgumentsMixin:
-    log_completions: bool = False
     # vllm_device, vllm_gpu_memory_utilization, and vllm_max_model_len are defined in HfGRPOConfig.
     vllm_max_num_seqs: int = 256
     vllm_enforce_eager: bool = False
