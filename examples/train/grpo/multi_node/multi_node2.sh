@@ -5,9 +5,9 @@ export MASTER_ADDR=xxx.xxx.xxx.xxx
 export MASTER_PORT=29500
 export NPROC_PER_NODE=4
 
-torchrun --nproc_per_node=$NPROC_PER_NODE --nnodes=$NNODES --node_rank=$NODE_RANK --master_addr=$MASTER_ADDR --master_port=$MASTER_PORT /mnt/workspace/hjh/swift/swift/cli/rlhf.py \
+swift rlhf \
     --rlhf_type grpo \
-    --model /mnt/workspace/hjh/Qwen2.5-Math-7B \
+    --model Qwen/Qwen2.5-Math-7B \
     --reward_funcs accuracy format \
     --use_vllm true \
     --vllm_device cuda:3 \
@@ -32,6 +32,6 @@ torchrun --nproc_per_node=$NPROC_PER_NODE --nnodes=$NNODES --node_rank=$NODE_RAN
     --dataloader_num_workers 4 \
     --dataset_num_proc 4 \
     --num_generations 7 \
-    --temperature 0.7 \
-    --system '/mnt/workspace/hjh/swift/examples/train/grpo/prompt.txt' \
+    --temperature 0.9 \
+    --system 'examples/train/grpo/prompt.txt' \
     --deepspeed zero2

@@ -88,7 +88,7 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
     desirable_weight: float = 1.0
     undesirable_weight: float = 1.0
     # PPO/GRPO
-    temperature: float = 0.7
+    temperature: float = 0.9
 
     def _prepare_training_args(self, training_args: Dict[str, Any]) -> None:
         if self.rlhf_type == 'ppo':
