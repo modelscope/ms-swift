@@ -1,7 +1,7 @@
 # pip install math_verify # reward function
 # pip install git+https://github.com/huggingface/trl.git # trl>=0.15.0.dev0
 # GPU memory: 80GiB
-# You can set `--reward_model` to use a reward model to provide rewards.
+
 CUDA_VISIBLE_DEVICES=0 \
 swift rlhf \
     --rlhf_type grpo \
