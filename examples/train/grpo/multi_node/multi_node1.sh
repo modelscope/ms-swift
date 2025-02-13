@@ -1,3 +1,5 @@
+# pip install math_verify # reward function
+# pip install git+https://github.com/huggingface/trl.git # trl>=0.15.0.dev0
 export CUDA_VISIBLE_DEVICES=0,1,2,3
 export NNODES=2
 export NODE_RANK=0
@@ -10,7 +12,7 @@ swift rlhf \
     --model Qwen/Qwen2.5-Math-7B \
     --reward_funcs accuracy format \
     --use_vllm true \
-    --vllm_device cuda:3 \
+    --vllm_device auto \
     --vllm_gpu_memory_utilization 0.5 \
     --vllm_max_model_len 4096 \
     --train_type full \

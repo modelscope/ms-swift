@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Part of the implementation is borrowed from huggingface/trl.
 import inspect
-from collections import defaultdict
+from collections import defaultdict, namedtuple
 from contextlib import contextmanager
 from typing import Any, Callable, Dict, List, Optional, Union
 from unittest.mock import patch
@@ -16,7 +16,8 @@ from trl.models import unwrap_model_for_generation
 
 from swift.llm import InferRequest, RequestConfig, to_device
 from swift.plugin.orm import orms
-from swift.utils import get_device, get_device_count, get_logger, is_vllm_available, is_wandb_available
+from swift.utils import (get_device, get_device_count, get_dist_setting, get_logger, is_vllm_available,
+                         is_wandb_available)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 
@@ -92,7 +93,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if self.accelerator.is_main_process:
                 vllm_device = self.args.vllm_device
                 if vllm_device == 'auto':
-                    vllm_device = get_device(self.accelerator.num_processes)
+                    if torch.cuda.device_count() == 1:
+                        vllm_device = 'cuda:0'  # particular case when training with onyl 1 GPU: share it
+                    else:
+                        local_world_size = get_dist_setting()[3]
+                        vllm_device = f'cuda:{local_world_size}'  # take the next GPU idx
                 # Check that the requested device is available
                 if vllm_device.split(':')[0] == 'cuda' and int(vllm_device.split(':')[1]) >= get_device_count():
                     raise ValueError(
@@ -121,6 +126,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         enforce_eager=args.vllm_enforce_eager,
                         limit_mm_per_prompt=args.vllm_limit_mm_per_prompt,
                         max_model_len=args.vllm_max_model_len)
+                    # compat _move_model_to_vllm
+                    self.llm = namedtuple('LLM', ['llm_engine'])(self.engine.engine.engine)
                 self.engine.default_template = self.template
             self._last_loaded_step = 0
             self.accelerator.wait_for_everyone()
@@ -163,17 +170,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.args.use_vllm:
             # First, have main process load weights if needed
             if self.state.global_step != self._last_loaded_step:
-                with unwrap_model_for_generation(
-                        self.model, self.accelerator,
-                        gather_deepspeed3_params=self.args.ds3_gather_for_generation) as unwrapped_model:
-                    if is_compiled_module(unwrapped_model):
-                        state_dict = unwrapped_model._orig_mod.state_dict()
-                    else:
-                        state_dict = unwrapped_model.state_dict()
-                if self.accelerator.is_main_process:
-                    llm_model = self.engine.engine.engine.model_executor.driver_worker.model_runner.model
-                    # use_vllm only support 'full'
-                    llm_model.load_weights(state_dict.items())
+                self._move_model_to_vllm()
                 self._last_loaded_step = self.state.global_step
 
             # Generate completions using vLLM: gather all prompts and use them in a single call in the main process

@@ -28,10 +28,8 @@ pip install git+https://github.com/huggingface/trl.git # trl>=0.15.0.dev0
 多卡vLLM
 ```bash
 # nproc_per_node 比显卡数少一，vLLM默认单独部署于最后一张卡，即卡7
-nproc_per_node=7
-
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
-NPROC_PER_NODE=$nproc_per_node \
+NPROC_PER_NODE=7 \
 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-7B-Instruct \
