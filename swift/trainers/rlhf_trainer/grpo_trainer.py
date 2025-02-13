@@ -26,7 +26,6 @@ del HFGRPOTrainer._prepare_inputs
 logger = get_logger()
 if is_wandb_available():
     import wandb
-    wandb.init(mode='disabled')
 
 
 class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
