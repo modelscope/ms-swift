@@ -145,7 +145,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         for i, reward_func in enumerate(self.reward_funcs):
             if isinstance(reward_func, PreTrainedModel):
                 self.reward_funcs[i] = self.accelerator.prepare_model(reward_func, evaluation_mode=True)
-        self.log_completions = args.log_comletions
+        self.log_completions = args.log_completions
 
     @staticmethod
     @contextmanager
