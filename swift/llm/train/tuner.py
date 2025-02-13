@@ -202,7 +202,7 @@ def prepare_adapter(args: TrainArguments, model, *, template=None, train_dataset
                 model = UnslothModel.get_peft_model(
                     model,
                     use_gradient_checkpointing=True,
-                    max_seq_length=args.max_length,
+                    max_seq_length=args.max_length or 2048,  # 2048 is the default value of unsloth
                     **lora_kwargs,
                 )
                 logger.info(f'unsloth_config: {lora_kwargs}')
