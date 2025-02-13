@@ -47,3 +47,8 @@ class GRPOConfig(GRPOArgumentsMixin, SwiftArgumentsMixin, HfGRPOConfig):
     top_k: Optional[int] = None
     top_p: Optional[float] = None
     repetition_penalty: Optional[float] = None
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.cosine_max_len is None:
+            self.cosine_max_len = self.max_completion_length

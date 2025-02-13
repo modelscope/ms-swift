@@ -139,8 +139,6 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
             self.truncation_strategy = 'left'  # Used for trimming the excessively long parts of a prompt.
             if self.beta is None:
                 self.beta = 0.04  # https://arxiv.org/abs/2402.03300
-            if self.cosine_max_len is None:
-                self.cosine_max_len = self.max_completion_length
 
     def _init_ppo(self):
         if self.rlhf_type == 'ppo':
