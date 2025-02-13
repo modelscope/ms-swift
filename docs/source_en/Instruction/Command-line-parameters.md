@@ -378,6 +378,7 @@ The meanings of the following parameters can be referenced [here](https://huggin
 - max_completion_length: The maximum generation length in the GRPO algorithm, default is 512.
 - reward_funcs: Reward functions in the GRPO algorithm; options include `accuracy` and `format`, as seen in `swift/plugin/orm.py`. You can also customize your own reward functions in the plugin. Default is `[]`.
 - reward_weights: Weights for each reward function. Must match the number of reward functions. If `None`, all rewards are weighted equally with weight `1.0`.
+  - Note: If `--reward_model` is included in GRPO training, it is added to the end of the reward functions.
 - log_completions: Whether to log the model-generated content during training, to be used in conjunction with `--report_to wandb`, default is False.
 - use_vllm: Whether to use vLLM as the infer_backend for GRPO generation, default is False.
 - vllm_device: Set the device for vLLM deployment. For example, if deployed on card 0, use `cuda:0`; default is `auto`, which means using the last available GPU.
