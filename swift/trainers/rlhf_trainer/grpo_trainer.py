@@ -9,10 +9,8 @@ from unittest.mock import patch
 import torch
 import torch.nn as nn
 from accelerate.utils import broadcast_object_list, gather, gather_object
-from accelerate.utils.other import is_compiled_module
 from transformers import PreTrainedModel
 from trl import GRPOTrainer as HFGRPOTrainer
-from trl.models import unwrap_model_for_generation
 
 from swift.llm import InferRequest, RequestConfig, to_device
 from swift.plugin.orm import orms
@@ -68,9 +66,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # Reward weights
         if args.reward_weights is not None:
             if len(args.reward_weights) != len(reward_funcs):
-                raise ValueError(
-                    f'Number of reward weights ({len(len(args.reward_weights))}) must match number of reward '
-                    f'functions ({len(reward_funcs)})')
+                raise ValueError(f'Number of reward weights ({len(args.reward_weights)}) must match number of reward '
+                                 f'functions ({len(reward_funcs)})')
             self.reward_weights = torch.tensor(args.reward_weights, dtype=torch.float32)
         else:
             self.reward_weights = torch.ones(len(reward_funcs), dtype=torch.float32)
