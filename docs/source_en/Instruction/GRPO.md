@@ -28,10 +28,8 @@ It is recommended to use vLLM for sampling. In a multi-GPU environment, it is ad
 Multi-GPU vLLM
 ```bash
 # nproc_per_node is one less than the number of GPUs, with vLLM by default deployed on the last card, i.e., cuda:7
-nproc_per_node=7
-
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
-NPROC_PER_NODE=$nproc_per_node \
+NPROC_PER_NODE=7 \
 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-7B-Instruct \
