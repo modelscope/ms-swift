@@ -6,7 +6,7 @@ from typing import Any, Dict
 from transformers import AutoConfig
 
 from swift.llm import TemplateType
-from swift.utils import get_env_args
+from swift.utils import get_device, get_env_args
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
 from ..patcher import patch_ignore_check_imports, patch_output_clone
@@ -60,7 +60,7 @@ def get_model_tokenizer_florence(model_dir: str,
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     model_config.vision_config.model_type = 'davit'  # fix merge-lora
     if model_kwargs['device_map'] == 'auto':
-        model_kwargs['device_map'] = 'cuda:0'
+        model_kwargs['device_map'] = get_device()
     kwargs['model_config'] = model_config
     with patch_ignore_check_imports():
         model, processor = get_model_tokenizer_multimodal(model_dir, model_info, model_kwargs, load_model, **kwargs)

@@ -103,14 +103,15 @@ class Eval(BaseUI):
             default_backend = EvalArguments.eval_backend
         except Exception as e:
             logger.warn(e)
-            eval_dataset_dict = []
+            eval_dataset_dict = {}
+            default_backend = None
 
         with gr.Row():
             gr.Dropdown(elem_id='eval_backend', choices=list(eval_dataset_dict.keys()), value=default_backend, scale=20)
             gr.Dropdown(
                 elem_id='eval_dataset',
                 is_list=True,
-                choices=eval_dataset_dict[default_backend],
+                choices=eval_dataset_dict.get(default_backend, []),
                 multiselect=True,
                 allow_custom_value=True,
                 scale=20)
