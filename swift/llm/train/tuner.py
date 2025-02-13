@@ -199,10 +199,13 @@ def prepare_adapter(args: TrainArguments, model, *, template=None, train_dataset
                     from unsloth import FastLanguageModel as UnslothModel
                 assert args.train_type == 'lora', 'Unsloth does not support LongLoRA'
                 lora_kwargs.pop('lorap_lr_ratio')
+                if not lora_kwargs['modules_to_save']:
+                    # unsloth throws error with empty list
+                    lora_kwargs['modules_to_save'] = None
                 model = UnslothModel.get_peft_model(
                     model,
                     use_gradient_checkpointing=True,
-                    max_seq_length=args.max_length,
+                    max_seq_length=args.max_length or 2048, # 2048 is the default value of unsloth
                     **lora_kwargs,
                 )
                 logger.info(f'unsloth_config: {lora_kwargs}')
