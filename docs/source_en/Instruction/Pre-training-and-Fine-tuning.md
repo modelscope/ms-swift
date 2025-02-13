@@ -128,7 +128,7 @@ swift infer \
 
 - If you are using full parameter training, please replace `--adapters` with `--model` to specify the directory of the trained checkpoint.
 - You can choose to merge LoRA (by additionally specifying `--merge_lora true`) and then specify `--infer_backend vllm/lmdeploy` for inference acceleration.
-- You can use `swift app` instead of `--swift infer` for interface-based inference.
+- You can use `swift app` instead of `swift infer` for interface-based inference.
 
 For batch inference on the validation set of the dataset:
 
