@@ -16,6 +16,8 @@ pip install git+https://github.com/huggingface/trl.git # trl>=0.15.0.dev0
 - num_generations: 每个prompt采样的数量，论文中的G值，需要被 per_device_eval_batch_size * nproc_per_node 整除
 - max_completion_length: 采样生成的最大长度，默认为512
 - reward_funcs: 奖励函数，根据模型生成结果进行打分，内置accuracy和format两个rule-based函数，详细见 swift/plugin/orm.py 文件
+- reward_weights: 每个奖励函数的权重。必须与奖励函数的数量匹配。如果为 None，则所有奖励的权重都相等，为`1.0`
+- log_completions: 是否记录训练中的模型生成内容，搭配 `--report_to wandb` 使用，默认为False
 - use_vllm: 是否使用vLLM作为采样的生成后端，默认为False，建议使用加快训练速度
 - vllm_device: 设置vLLM部署的设备，默认为`auto`, 即未被使用的第一张显卡，使用`cuda:x`来设置特定的卡。
 - vllm_gpu_memory_utilization: vLLM透传参数
