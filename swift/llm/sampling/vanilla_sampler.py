@@ -35,6 +35,7 @@ class VanillaSampler(Sampler):
             raise ValueError(f'Cannot find engine name: {self.args.sampler_engine}')
         self.infer_engine = None
         if _Engine:
+            self.template = self.args.get_model_processor(model=self.args.model, load_model=False)
             self.infer_engine = _Engine(self.args.model, model_type=self.args.model_type, **self.args.engine_kwargs)
         self.caches = self.read_cache()
 

@@ -7,7 +7,7 @@ from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
 
 from swift.llm import TemplateType
-from swift.utils import get_dist_setting, get_env_args, get_logger
+from swift.utils import get_device_count, get_dist_setting, get_env_args, get_logger
 from ..constant import LLMModelType, MLLMModelType, RMModelType
 from ..model_arch import ModelArch
 from ..patcher import patch_fixed_device, patch_output_clone, patch_output_to_input_device
@@ -201,7 +201,7 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
         tokenizer_cls._old_decode = tokenizer_cls._decode
         tokenizer_cls._decode = _qwen_vl_audio_decode
     # fix device_map is 4
-    n_gpu = torch.cuda.device_count()
+    n_gpu = get_device_count()
     local_world_size = get_dist_setting()[3]
     if n_gpu // local_world_size >= 4:
         visual_block_cls = get_class_from_dynamic_module('visual.VisualAttentionBlock', model_dir)
