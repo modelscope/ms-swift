@@ -205,7 +205,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self.template.register_post_encode_hook(models)
 
         # Slice to keep only the local part of the data
-        
         process_slice = slice(
             self.accelerator.process_index * len(inputs),
             (self.accelerator.process_index + 1) * len(inputs),
