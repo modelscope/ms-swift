@@ -43,6 +43,9 @@ class GRPOArguments(GRPOArgumentsMixin):
     num_generations: int = 8  # G in the GRPO paper
     max_completion_length: int = 512
     reward_funcs: List[str] = field(default_factory=list)
+    reward_weights: List[float] = None
+    log_completions: bool = False
+
     # vLLM in GRPO
     use_vllm: bool = False
     vllm_device: Optional[str] = 'auto'  # 'cuda:0'
