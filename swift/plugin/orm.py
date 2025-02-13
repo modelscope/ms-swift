@@ -3,21 +3,13 @@ import re
 from typing import Dict, List, Union
 
 import json
-import torch
 
 from swift.llm import InferRequest
-from swift.llm.infer.protocol import ChatCompletionResponse, ChatCompletionResponseChoice, ChatMessage
 
 
 class ORM:
 
-    def __init__(self):
-        # init here
-        pass
-
-    @torch.inference_mode()
-    def infer(self, infer_requests: Union[List[InferRequest], List[Dict]], ground_truths: List[str],
-              **kwargs) -> List[ChatCompletionResponse]:
+    def __call__(self, **kwargs) -> List[float]:
         raise NotImplementedError
 
 
@@ -117,9 +109,8 @@ class ReactORM(ORM):
         action, action_input = ReactORM.parse_action(text)
         return action, action_input
 
-    @torch.inference_mode()
-    def infer(self, infer_requests: Union[List[InferRequest], List[Dict]], ground_truths: List[str],
-              **kwargs) -> List[ChatCompletionResponse]:
+    def __call__(self, infer_requests: List[Union[InferRequest, Dict]], ground_truths: List[str],
+                 **kwargs) -> List[float]:
         rewards = []
         predictions = [request['messages'][-1]['content'] for request in infer_requests]
         for prediction, ground_truth in zip(predictions, ground_truths):
@@ -144,16 +135,8 @@ class ReactORM(ORM):
                 action_input_pred.append(pred_input)
 
             reward = ReactORM.evaluate_action_reward(action_pred, action_ref, action_input_pred, action_input_ref)
-            rewards.append(reward)
-        return [
-            ChatCompletionResponse(
-                choices=[
-                    ChatCompletionResponseChoice(
-                        message=ChatMessage(content=1.0 if r else 0.0, role='assistant'), index=0, finish_reason='')
-                ],
-                model=None,
-                usage=None) for r in rewards
-        ]
+            rewards.append(float(reward))
+        return rewards
 
     @staticmethod
     def evaluate_rougel(cand_list: list, ref_list: list):
@@ -172,7 +155,6 @@ class ReactORM(ORM):
 class MathORM(ORM):
 
     def __init__(self):
-        super().__init__()
         from transformers.utils import strtobool
         self.use_opencompass = strtobool(os.environ.get('USE_OPENCOMPASS_EVALUATOR', 'False'))
         if self.use_opencompass:
@@ -225,9 +207,8 @@ class MathORM(ORM):
             value = False
         return value
 
-    @torch.inference_mode()
-    def infer(self, infer_requests: Union[List[InferRequest], List[Dict]], ground_truths: List[str],
-              **kwargs) -> List[ChatCompletionResponse]:
+    def __call__(self, infer_requests: List[Union[InferRequest, Dict]], ground_truths: List[str],
+                 **kwargs) -> List[float]:
         rewards = []
         predictions = [request['messages'][-1]['content'] for request in infer_requests]
         for prediction, ground_truth in zip(predictions, ground_truths):
@@ -240,51 +221,21 @@ class MathORM(ORM):
             prediction = MathORM.extract_boxed_result(prediction)
             ground_truth = MathORM.extract_boxed_result(ground_truth)
             if self.use_opencompass:
-                rewards.append(self.evaluator.is_equiv(prediction, ground_truth))
+                reward = self.evaluator.is_equiv(prediction, ground_truth)
             else:
-                rewards.append(MathORM.compare_consecutive(prediction, ground_truth))
-
-        return [
-            ChatCompletionResponse(
-                choices=[
-                    ChatCompletionResponseChoice(
-                        message=ChatMessage(content=1.0 if r else 0.0, role='assistant'), index=0, finish_reason='')
-                ],
-                model=None,
-                usage=None) for r in rewards
-        ]
-
-
-class DummyORM(ORM):
-    """An example"""
-
-    def __init__(self):
-        # init here
-        pass
-
-    @torch.inference_mode()
-    def infer(self, infer_requests: Union[List[InferRequest], List[Dict]], ground_truths: List[str],
-              **kwargs) -> List[ChatCompletionResponse]:
-        return [
-            ChatCompletionResponse(
-                choices=[
-                    ChatCompletionResponseChoice(
-                        message=ChatMessage(content=1.0, role='assistant'), index=0, finish_reason='')
-                ],
-                model=None,
-                usage=None)
-        ] * len(ground_truths)
+                reward = MathORM.compare_consecutive(prediction, ground_truth)
+            rewards.append(float(reward))
+        return rewards
 
 
 class MathAccuracy(ORM):
 
     def __init__(self):
-        super().__init__()
         import importlib.util
         assert importlib.util.find_spec('math_verify') is not None, (
             "The math_verify package is required but not installed. Please install it using 'pip install math_verify'.")
 
-    def __call__(self, completions, solution, **kwargs):
+    def __call__(self, completions, solution, **kwargs) -> List[float]:
         from latex2sympy2_extended import NormalizationConfig
         from math_verify import LatexExtractionConfig, parse, verify
         rewards = []
@@ -319,49 +270,133 @@ class MathAccuracy(ORM):
             rewards.append(reward)
         return rewards
 
-    @torch.inference_mode()
-    def infer(self, infer_requests: Union[List[InferRequest], List[Dict]], ground_truths: List[str],
-              **kwargs) -> List[ChatCompletionResponse]:
-        rewards = []
-        predictions = [request.messages[-1]['content'] for request in infer_requests]
-        rewards = self.__call__(predictions, solution=ground_truths)
-        return [
-            ChatCompletionResponse(
-                choices=[
-                    ChatCompletionResponseChoice(
-                        message=ChatMessage(content=r if r else 0.0, role='assistant'), index=0, finish_reason='')
-                ],
-                model=None,
-                usage=None) for r in rewards
-        ]
 
+class Format(ORM):
 
-class MathFormat(ORM):
-
-    def __init__(self):
-        super().__init__()
-
-    def __call__(self, completions, **kwargs):
+    def __call__(self, completions, **kwargs) -> List[float]:
         """Reward function that checks if the completion has a specific format."""
         pattern = r'^<think>.*?</think>\s*<answer>.*?</answer>$'
         matches = [re.match(pattern, content, re.DOTALL | re.MULTILINE) for content in completions]
         return [1.0 if match else 0.0 for match in matches]
 
-    @torch.inference_mode()
-    def infer(self, infer_requests: Union[List[InferRequest], List[Dict]], ground_truths: List[str],
-              **kwargs) -> List[ChatCompletionResponse]:
+
+class CosineReward(ORM):
+    # https://arxiv.org/abs/2502.03373
+    def __init__(
+        self,
+        cosine_min_len_value_wrong: float = 0.0,
+        cosine_max_len_value_wrong: float = -0.5,
+        cosine_min_len_value_correct: float = 1.0,
+        cosine_max_len_value_correct: float = 0.5,
+        cosine_max_len: int = 1000,
+    ):
+        super().__init__()
+        import importlib.util
+        assert importlib.util.find_spec('math_verify') is not None, (
+            "The math_verify package is required but not installed. Please install it using 'pip install math_verify'.")
+        self.min_len_value_wrong = cosine_min_len_value_wrong
+        self.max_len_value_wrong = cosine_max_len_value_wrong
+        self.min_len_value_correct = cosine_min_len_value_correct
+        self.max_len_value_correct = cosine_max_len_value_correct
+        self.max_len = cosine_max_len
+
+    @staticmethod
+    def cosfn(t, T, min_value, max_value):
+        import math
+        return max_value - (max_value - min_value) * (1 - math.cos(t * math.pi / T)) / 2
+
+    def __call__(self, completions, solution, **kwargs) -> List[float]:
+        from latex2sympy2_extended import NormalizationConfig
+        from math_verify import LatexExtractionConfig, parse, verify
         rewards = []
-        predictions = [request.messages[-1]['content'] for request in infer_requests]
-        rewards = self.__call__(predictions)
-        return [
-            ChatCompletionResponse(
-                choices=[
-                    ChatCompletionResponseChoice(
-                        message=ChatMessage(content=r if r else 0.0, role='assistant'), index=0, finish_reason='')
+
+        for content, sol in zip(completions, solution):
+            gold_parsed = parse(sol, extraction_mode='first_match', extraction_config=[LatexExtractionConfig()])
+            if len(gold_parsed) == 0:
+                rewards.append(1.0)  # Skip unparseable examples
+                print('Failed to parse gold solution: ', sol)
+                continue
+
+            answer_parsed = parse(
+                content,
+                extraction_config=[
+                    LatexExtractionConfig(
+                        normalization_config=NormalizationConfig(
+                            nits=False,
+                            malformed_operators=False,
+                            basic_latex=True,
+                            equations=True,
+                            boxed=True,
+                            units=True,
+                        ),
+                        boxed_match_priority=0,
+                        try_extract_without_anchor=False,
+                    )
                 ],
-                model=None,
-                usage=None) for r in rewards
-        ]
+                extraction_mode='first_match',
+            )
+
+            is_correct = verify(answer_parsed, gold_parsed)
+            gen_len = len(content)
+
+            if is_correct:
+                # Swap min/max for correct answers
+                min_value = self.max_len_value_correct
+                max_value = self.min_len_value_correct
+            else:
+                min_value = self.min_len_value_wrong
+                max_value = self.max_len_value_wrong
+
+            reward = self.cosfn(gen_len, self.max_len, min_value, max_value)
+            rewards.append(float(reward))
+        return rewards
 
 
-orms = {'toolbench': ReactORM, 'math': MathORM, 'dummy': DummyORM, 'accuracy': MathAccuracy, 'format': MathFormat}
+class RepetitionPenalty(ORM):
+    # https://arxiv.org/abs/2502.03373
+    def __init__(self, repetition_n_grams: int = 3, repetition_max_penalty: float = -1.0):
+        super().__init__()
+        self.ngram_size = repetition_n_grams
+        self.max_penalty = repetition_max_penalty
+
+    @staticmethod
+    def zipngram(text: str, ngram_size: int):
+        words = text.lower().split()
+        return zip(*[words[i:] for i in range(ngram_size)])
+
+    def __call__(self, completions, **kwargs) -> List[float]:
+        """
+        reward function the penalizes repetitions
+
+        Args:
+            completions: List of model completions
+        """
+        rewards = []
+        for completion in completions:
+            if completion == '':
+                rewards.append(0.0)
+                continue
+            if len(completion.split()) < self.ngram_size:
+                rewards.append(0.0)
+                continue
+
+            ngrams = set()
+            total = 0
+            for ng in self.zipngram(completion, self.ngram_size):
+                ngrams.add(ng)
+                total += 1
+
+            scaling = 1 - len(ngrams) / total
+            reward = scaling * self.max_penalty
+            rewards.append(reward)
+        return rewards
+
+
+orms = {
+    'toolbench': ReactORM,
+    'math': MathORM,
+    'accuracy': MathAccuracy,
+    'format': Format,
+    'cosine': CosineReward,
+    'repetition': RepetitionPenalty,
+}

@@ -1,10 +1,6 @@
 import re
-from typing import Dict, List, Union
+from typing import List
 
-import torch
-
-from swift.llm import InferRequest
-from swift.llm.infer.protocol import ChatCompletionResponse, ChatCompletionResponseChoice, ChatMessage
 from swift.plugin.orm import ORM, orms
 from swift.utils import get_logger
 
@@ -15,12 +11,11 @@ logger = get_logger()
 class MathAccuracy(ORM):
 
     def __init__(self):
-        super().__init__()
         import importlib.util
         assert importlib.util.find_spec('math_verify') is not None, (
             "The math_verify package is required but not installed. Please install it using 'pip install math_verify'.")
 
-    def __call__(self, completions, solution, **kwargs):
+    def __call__(self, completions, solution, **kwargs) -> List[float]:
         from latex2sympy2_extended import NormalizationConfig
         from math_verify import LatexExtractionConfig, parse, verify
         rewards = []
@@ -55,48 +50,14 @@ class MathAccuracy(ORM):
             rewards.append(reward)
         return rewards
 
-    @torch.inference_mode()
-    def infer(self, infer_requests: Union[List[InferRequest], List[Dict]], ground_truths: List[str],
-              **kwargs) -> List[ChatCompletionResponse]:
-        rewards = []
-        predictions = [request.messages[-1]['content'] for request in infer_requests]
-        rewards = self.__call__(predictions, solution=ground_truths)
-        return [
-            ChatCompletionResponse(
-                choices=[
-                    ChatCompletionResponseChoice(
-                        message=ChatMessage(content=r if r else 0.0, role='assistant'), index=0, finish_reason='')
-                ],
-                model=None,
-                usage=None) for r in rewards
-        ]
-
 
 class MathFormat(ORM):
 
-    def __init__(self):
-        super().__init__()
-
-    def __call__(self, completions, **kwargs):
+    def __call__(self, completions, **kwargs) -> List[float]:
         """Reward function that checks if the completion has a specific format."""
         pattern = r'^<think>.*?</think>\s*<answer>.*?</answer>$'
         matches = [re.match(pattern, content, re.DOTALL | re.MULTILINE) for content in completions]
         return [1.0 if match else 0.0 for match in matches]
-
-    @torch.inference_mode()
-    def infer(self, infer_requests: Union[List[InferRequest], List[Dict]], ground_truths: List[str],
-              **kwargs) -> List[ChatCompletionResponse]:
-        predictions = [request.messages[-1]['content'] for request in infer_requests]
-        rewards = self.__call__(predictions)
-        return [
-            ChatCompletionResponse(
-                choices=[
-                    ChatCompletionResponseChoice(
-                        message=ChatMessage(content=r if r else 0.0, role='assistant'), index=0, finish_reason='')
-                ],
-                model=None,
-                usage=None) for r in rewards
-        ]
 
 
 orms['external_math_acc'] = MathAccuracy

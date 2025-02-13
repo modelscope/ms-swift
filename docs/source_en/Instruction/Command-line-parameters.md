@@ -296,7 +296,7 @@ Parameter meanings can be found in the [vllm documentation](https://docs.vllm.ai
 - 🔥max_model_len: Default is `None`.
 - disable_custom_all_reduce: Default is `False`.
 - enforce_eager: Determines whether vllm uses PyTorch eager mode or constructs a CUDA graph, default is `False`. Setting it to True can save memory but may affect efficiency.
-- 🔥limit_mm_per_prompt: Controls the use of multiple media in vllm, default is `None`. For example, you can pass in `--limit_mm_per_prompt '{"image": 10, "video": 5}'`.
+- 🔥limit_mm_per_prompt: Controls the use of multiple media in vllm, default is `None`. For example, you can pass in `--limit_mm_per_prompt '{"image": 5, "video": 2}'`.
 - vllm_max_lora_rank: Default is `16`. This is the parameter supported by vllm for lora.
 - enable_prefix_caching: Enable the automatic prefix caching of vllm to save processing time for querying repeated prefixes. The default is `False`.
 
@@ -342,8 +342,7 @@ RLHF arguments inherit from the [training arguments](#training-arguments).
 - desirable_weight: Loss weight $\lambda_D$ for desirable response in the KTO algorithm, default is `1.`.
 - undesirable_weight: Loss weight $\lambda_U$ for undesirable response in the KTO algorithm, default is `1.`.
 - loss_scale: Override template arguments, default is 'last_round'.
-- temperature: Default is 0.7; this parameter will be used in PPO and GRPO.
-
+- temperature: Default is 0.9; this parameter will be used in PPO and GRPO.
 
 #### Reward Model Parameters
 
@@ -376,7 +375,10 @@ The meanings of the following parameters can be referenced [here](https://huggin
 #### GRPO Arguments
 - num_generations: The G value in the GRPO algorithm, default is 8.
 - max_completion_length: The maximum generation length in the GRPO algorithm, default is 512.
-- reward_funcs: Reward functions in the GRPO algorithm; options include `accuracy` and `format`, as seen in `swift/plugin/orm.py`. You can also customize your own reward functions in the plugin. Default is `[]`.
+- reward_funcs: Reward functions in the GRPO algorithm; options include `accuracy`,`format`,`cosine` and `repetition`, as seen in `swift/plugin/orm.py`. You can also customize your own reward functions in the plugin. Default is `[]`.
+- reward_weights: Weights for each reward function. Must match the number of reward functions. If `None`, all rewards are weighted equally with weight `1.0`.
+  - Note: If `--reward_model` is included in GRPO training, it is added to the end of the reward functions.
+- log_completions: Whether to log the model-generated content during training, to be used in conjunction with `--report_to wandb`, default is False.
 - use_vllm: Whether to use vLLM as the infer_backend for GRPO generation, default is False.
 - vllm_device: Set the device for vLLM deployment. For example, if deployed on card 0, use `cuda:0`; default is `auto`, which means using the last available GPU.
 - vllm_gpu_memory_utilization: vLLM passthrough parameter, default is 0.9.
@@ -388,6 +390,18 @@ The meanings of the following parameters can be referenced [here](https://huggin
 - top_k: Default is None. Read from `generation_config.json`.
 - top_p: Default is None. Read from `generation_config.json`.
 - repetition_penalty: Repetition penalty term. Default is None, read from `generation_config.json`.
+
+cosine reward function arguments
+- `cosine_min_len_value_wrong` (default: 0.0): Reward value corresponding to the minimum length when the answer is incorrect. Default is 0.0
+- `cosine_max_len_value_wrong` (default: -0.5): Reward value corresponding to the maximum length when the answer is incorrect. Default is -0.5
+- `cosine_min_len_value_correct` (default: 1.0): Reward value corresponding to the minimum length when the answer is correct. Default is 1.0
+- `cosine_max_len_value_correct` (default: 0.5): Reward value corresponding to the maximum length when the answer is correct. Default is 0.5
+- `cosine_max_len` (default value equal to the model's maximum generation capacity): Maximum length limit for generated text. Default value equal to max_completion_length
+
+repetition penalty function arguments
+
+- `repetition_n_grams` (default: 3): Size of the n-gram used to detect repetition.
+- `repetition_max_penalty` (default: -1.0): Maximum penalty value, which controls the intensity of the penalty.
 
 ### Inference Arguments
 

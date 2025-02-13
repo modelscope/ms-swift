@@ -17,6 +17,7 @@ from swift.ui.base import BaseUI
 from swift.ui.llm_eval.eval import Eval
 from swift.ui.llm_eval.model import Model
 from swift.ui.llm_eval.runtime import EvalRuntime
+from swift.utils import get_device_count
 
 
 class LLMEval(BaseUI):
@@ -68,10 +69,9 @@ class LLMEval(BaseUI):
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
         with gr.TabItem(elem_id='llm_eval', label=''):
-            gpu_count = 0
             default_device = 'cpu'
-            if torch.cuda.is_available():
-                gpu_count = torch.cuda.device_count()
+            device_count = get_device_count()
+            if device_count > 0:
                 default_device = '0'
             with gr.Blocks():
                 Model.build_ui(base_tab)
@@ -83,7 +83,7 @@ class LLMEval(BaseUI):
                 gr.Dropdown(
                     elem_id='gpu_id',
                     multiselect=True,
-                    choices=[str(i) for i in range(gpu_count)] + ['cpu'],
+                    choices=[str(i) for i in range(device_count)] + ['cpu'],
                     value=default_device,
                     scale=8)
 

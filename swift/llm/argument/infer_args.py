@@ -71,7 +71,7 @@ class VllmArguments:
     max_model_len: Optional[int] = None
     disable_custom_all_reduce: bool = False
     enforce_eager: bool = False
-    limit_mm_per_prompt: Optional[Union[dict, str]] = None  # '{"image": 10, "video": 5}'
+    limit_mm_per_prompt: Optional[Union[dict, str]] = None  # '{"image": 5, "video": 2}'
     vllm_max_lora_rank: int = 16
     enable_prefix_caching: bool = False
 

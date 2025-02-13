@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional
 
 from swift.llm import MODEL_MAPPING
-from swift.trainers.arguments import GRPOVllmArguments
+from swift.trainers.arguments import GRPOArgumentsMixin
 from swift.utils import get_logger
 from .train_args import TrainArguments
 
@@ -39,13 +39,16 @@ class PPOArguments:
 
 
 @dataclass
-class GRPOArguments(GRPOVllmArguments):
+class GRPOArguments(GRPOArgumentsMixin):
     num_generations: int = 8  # G in the GRPO paper
     max_completion_length: int = 512
     reward_funcs: List[str] = field(default_factory=list)
+    reward_weights: List[float] = None
+    log_completions: bool = False
+
     # vLLM in GRPO
     use_vllm: bool = False
-    vllm_device: Optional[str] = 'auto'  # 'cuda:1'
+    vllm_device: Optional[str] = 'auto'  # 'cuda:0'
     vllm_gpu_memory_utilization: float = 0.9
     vllm_max_model_len: Optional[int] = None
 
@@ -88,7 +91,7 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
     desirable_weight: float = 1.0
     undesirable_weight: float = 1.0
     # PPO/GRPO
-    temperature: float = 0.7
+    temperature: float = 0.9
 
     def _prepare_training_args(self, training_args: Dict[str, Any]) -> None:
         if self.rlhf_type == 'ppo':

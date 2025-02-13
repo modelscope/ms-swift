@@ -202,15 +202,14 @@ PRM stands for Process Reward Model, which is used in the `swift sample` command
 class PRM:
 
     def __init__(self):
-        # Initialize here
+        # init here
         pass
 
-    @torch.inference_mode()
-    def infer(self, infer_requests: List[InferRequest], **kwargs) -> List[ChatCompletionResponse]:
+    def __call__(self, infer_requests: List[InferRequest], **kwargs) -> List[Union[float, List[float]]]:
         raise NotImplementedError
 ```
 
-The `InferRequest` comes from `swift.llm`, and the returned `List[ChatCompletionResponse]` can be viewed as OpenAI's standard format. Developers can access queries and responses in `infer_requests` and split them as needed. For example:
+The InferRequest comes from `swift.llm`, and the returned `List[Union[float, List[float]]]` may contain a reward or several rewards. Developers can access queries and responses in infer_requests and split them according to their own methods, for example:
 
 ```text
 Let's think step by step.
@@ -222,7 +221,7 @@ Step2: xxx
 So, the answer is ...
 ```
 
-Developers can split the process here, batch them into PRM for inference, and return scores. More generally, developers can call a remote URL here, such as a closed-source PRM large model, and return scores.
+Developers can split the process here, batch them into PRM for inference, and return rewards. More generally, developers can call a remote URL here, such as a closed-source PRM large model, and return rewards.
 
 ## ORM (Outcome Reward Model)
 
@@ -242,25 +241,16 @@ class MathORM(ORM):
         else:
             return None
 
-    @torch.inference_mode()
-    def infer(self, infer_requests: List[InferRequest], ground_truths: List[str],
-              **kwargs) -> List[ChatCompletionResponse]:
+    def __call__(self, infer_requests: List[InferRequest], ground_truths: List[str],
+                **kwargs) -> List[float]:
         rewards = []
         predictions = [request.messages[-1]['content'] for request in infer_requests]
         for prediction, ground_truth in zip(predictions, ground_truths):
             res1 = MathORM.extract_boxed_result(prediction) or ''
             res2 = MathORM.extract_boxed_result(ground_truth) or ''
-            rewards.append(res1.strip() == res2.strip())
+            rewards.append(float(res1.strip() == res2.strip()))
 
-        return [
-            ChatCompletionResponse(
-                choices=[
-                    ChatCompletionResponseChoice(
-                        message=ChatMessage(content=1.0 if r else 0.0, role='assistant'), index=0, finish_reason='')
-                ],
-                model=None,
-                usage=None) for r in rewards
-        ]
+        return rewards
 
 
 orms = {

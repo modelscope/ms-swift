@@ -1,3 +1,4 @@
+# Test environment: transformers==4.47.1, autoawq==0.2.8
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
     --model Qwen/Qwen2-VL-2B-Instruct \

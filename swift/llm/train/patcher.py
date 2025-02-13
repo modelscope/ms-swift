@@ -10,7 +10,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from transformers import trainer
 
 from swift.utils import get_dist_setting, get_logger, is_mp_ddp, use_torchacc
-from swift.utils.torch_utils import _get_max_memory, _sync_max_memory
+from swift.utils.torch_utils import _get_max_memory, _sync_max_memory, get_device_count
 
 logger = get_logger()
 
@@ -30,7 +30,7 @@ def patch_mp_ddp():
             """The auxiliary function for supports MP + DDP. Monkey Patching.
             add feat in accelerate to support MP + DDP"""
             verbose = kwargs.pop('verbose', False)
-            n_gpu = torch.cuda.device_count()
+            n_gpu = get_device_count()
             _, local_rank, _, local_world_size = get_dist_setting()
             device_ids = list(range(local_rank, n_gpu, local_world_size))
             max_memory = _get_max_memory(device_ids)
