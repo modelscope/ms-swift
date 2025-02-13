@@ -209,7 +209,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self.accelerator.process_index * len(inputs),
             (self.accelerator.process_index + 1) * len(inputs),
         )
-        outputs = outputs[process_slice]
+        if self.args.use_vllm:
+            outputs = outputs[process_slice]
 
         for i, output in enumerate(outputs):
             messages = inputs[i]['messages']
