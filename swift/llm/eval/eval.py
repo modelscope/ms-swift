@@ -100,7 +100,6 @@ class SwiftEval(SwiftPipeline):
             work_dir=work_dir,
             limit=args.eval_limit,
             eval_batch_size=args.eval_num_proc or 16,
-            repeat=args.eval_repeat,
             dataset_args=args.dataset_args)
 
     def get_opencompass_task_cfg(self, dataset: List[str], url: str):
