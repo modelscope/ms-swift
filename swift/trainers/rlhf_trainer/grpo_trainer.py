@@ -289,8 +289,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             'ref_per_token_logps': ref_per_token_logps,
             'advantages': advantages,
         })
-        if (self.log_completions and self.state.global_step % self.args.logging_steps == 0
-                and self.accelerator.is_main_process):
+        if self.log_completions and self.state.global_step % self.args.logging_steps == 0:
             # For logging
             table = {
                 'step': [str(self.state.global_step)] * len(rewards),
@@ -299,7 +298,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 'reward': rewards.tolist(),
             }
             self.jsonl_writer.append(table)
-            if 'wandb' in self.args.report_to and wandb.run is not None:
+            if ('wandb' in self.args.report_to and wandb.run is not None and self.accelerator.is_main_process):
                 import pandas as pd
                 df = pd.DataFrame(table)
                 wandb.log({'completions': wandb.Table(dataframe=df)})
