@@ -42,6 +42,7 @@ class PPOArguments:
 class GRPOArguments(GRPOArgumentsMixin):
     num_generations: int = 8  # G in the GRPO paper
     max_completion_length: int = 512
+    ds3_gather_for_generation: bool = True
     reward_funcs: List[str] = field(default_factory=list)
     reward_weights: List[float] = None
     log_completions: bool = False
