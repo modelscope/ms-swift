@@ -1,15 +1,13 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from contextlib import nullcontext
-from itertools import chain
 from typing import Any, Dict, List, Union
 
 import numpy as np
-import torch.distributed as dist
 from datasets import Dataset as HfDataset
 
 from swift.llm import InferArguments, InferRequest, SwiftPipeline, load_dataset, prepare_model_template, sample_dataset
 from swift.plugin import InferStats, MeanMetric, compute_rouge_bleu
-from swift.utils import get_logger, is_master, read_from_jsonl
+from swift.utils import JsonlWriter, get_logger, is_master, read_from_jsonl
 from .infer_engine import AdapterRequest, PtEngine
 from .protocol import RequestConfig
 from .utils import InferCliState

@@ -1,6 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-from contextlib import contextmanager
 from typing import Any, Dict, List, Literal, Union
 
 import json
@@ -10,7 +9,7 @@ from accelerate.utils import gather_object
 from modelscope.hub.api import ModelScopeConfig
 from tqdm import tqdm
 
-from .env import is_dist, is_master
+from .env import is_master
 from .logger import get_logger
 from .utils import check_json_format
 
