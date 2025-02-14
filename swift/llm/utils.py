@@ -243,7 +243,11 @@ def get_temporary_cache_files_directory(prefix=None):
     else:
         tmp_dir = os.path.join(get_cache_dir(), 'tmp')
         os.makedirs(tmp_dir, exist_ok=True)
-        TEMP_DIR = tempfile.TemporaryDirectory(prefix=prefix, dir=tmp_dir)
+        kwargs = {}
+        parameters = inspect.signature(tempfile.TemporaryDirectory.__init__).parameters
+        if 'ignore_cleanup_errors' in parameters:
+            kwargs['ignore_cleanup_errors'] = True
+        TEMP_DIR = tempfile.TemporaryDirectory(prefix=prefix, dir=tmp_dir, **kwargs)
         logger.info(f'create tmp_dir: {TEMP_DIR.name}')
         TEMP_DIR_POOL[prefix] = TEMP_DIR
 

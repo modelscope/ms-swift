@@ -741,6 +741,7 @@ class Swift:
     @staticmethod
     @contextmanager
     def grpo_context(model: Union[SwiftModel, torch.nn.Module], processor):
+        # Save the model and temporarily modify model.model_dir.
         if not isinstance(model, SwiftModel):
             yield
             return
