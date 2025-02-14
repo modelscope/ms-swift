@@ -297,15 +297,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 'completion': gather_object(completions),
                 'reward': rewards.tolist(),
             }
+            self.jsonl_writer.append(table, gather_obj=True)
             if 'wandb' in self.args.report_to:
                 import pandas as pd
                 df = pd.DataFrame(table)
 
                 if wandb.run is not None and self.accelerator.is_main_process:
                     wandb.log({'completions': wandb.Table(dataframe=df)})
-            else:
-                # write to output_dir
-                self.jsonl_writer.append(table, gather_obj=True)
 
         return outputs
 
