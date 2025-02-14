@@ -11,6 +11,7 @@ import torch
 import torch.nn as nn
 from accelerate.utils import broadcast_object_list, gather, gather_object
 from transformers import PreTrainedModel
+from transformers.utils.versions import require_version
 from trl import GRPOTrainer as HFGRPOTrainer
 from trl.models import unwrap_model_for_generation
 
@@ -38,7 +39,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                  reward_funcs: Optional[List[Union[str, Callable]]] = None,
                  *_args,
                  **kwargs):
-
+        require_version('trl>=0.15')
         args = kwargs['args']
 
         self.processing_class = kwargs.get('template').tokenizer
