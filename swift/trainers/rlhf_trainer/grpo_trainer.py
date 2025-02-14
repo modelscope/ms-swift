@@ -129,7 +129,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 profiling_patch = patch(
                     'vllm.worker.worker.Worker._assert_memory_footprint_increased_during_profiling', return_value=None)
                 from swift import Swift
-                with world_size_patch, profiling_patch, Swift.grpo_context(model):
+                with world_size_patch, profiling_patch, Swift.grpo_context(model, self.tokenizer):
                     self.engine = VllmEngine(
                         model.model_dir,
                         model.model_info.torch_dtype,

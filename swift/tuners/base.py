@@ -1,6 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Copyright 2023-present the HuggingFace Inc. team.
-import json
 import os
 import re
 import shutil
@@ -12,6 +11,7 @@ from inspect import Parameter, Signature, signature
 from types import MethodType
 from typing import Dict, List, Literal, Optional, Union
 
+import json
 import torch
 from modelscope import snapshot_download
 from peft.utils import CONFIG_NAME
@@ -21,10 +21,10 @@ from transformers import Trainer
 
 from swift.utils.constants import DEFAULT_ADAPTER, SWIFT_TYPE_KEY
 from swift.utils.logger import get_logger
+from ..utils.torch_utils import get_device_count
 from .mapping import SwiftTuners
 from .peft import PeftConfig, PeftModel, get_peft_model
 from .utils import SwiftConfig, SwiftOutput
-from ..utils.torch_utils import get_device_count
 
 logger = get_logger()
 
@@ -739,17 +739,23 @@ class Swift:
                     LoRA.unpatch_lora(model, output.config, adapter)
 
     @staticmethod
-    def grpo_context(model: Union[SwiftModel, torch.nn.Module]):
+    @contextmanager
+    def grpo_context(model: Union[SwiftModel, torch.nn.Module], processor):
         if not isinstance(model, SwiftModel):
             yield
             return
         else:
             assert len(model.adapters) == 1
-            adapter = next(model.adapters.values())
+            adapter = list(model.adapters.values())[0]
             if adapter.config.swift_type == SwiftTuners.LLAMAPRO:
-                temp_dir = tempfile.gettempdir()
+                from modelscope.hub.utils.utils import get_cache_dir
+                temp_dir = tempfile.mkdtemp(dir=get_cache_dir())
                 model_dir = model.model_dir
+                from transformers.integrations import is_deepspeed_zero3_enabled
+                if is_deepspeed_zero3_enabled():
+                    raise ValueError('DeepSpeed ZeRO3 not supported for LLaMAPro&GRPO currently.')
                 model.base_model.save_pretrained(temp_dir)
+                processor.save_pretrained(temp_dir)
                 model.model_dir = temp_dir
             yield
             if adapter.config.swift_type == SwiftTuners.LLAMAPRO:
