@@ -6,12 +6,12 @@ from collections import defaultdict, namedtuple
 from contextlib import contextmanager
 from typing import Any, Callable, Dict, List, Optional, Union
 from unittest.mock import patch
-from transformers.utils.versions import require_version
 
 import torch
 import torch.nn as nn
 from accelerate.utils import broadcast_object_list, gather, gather_object
 from transformers import PreTrainedModel
+from transformers.utils.versions import require_version
 from trl import GRPOTrainer as HFGRPOTrainer
 from trl.models import unwrap_model_for_generation
 
