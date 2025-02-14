@@ -49,7 +49,7 @@ Legend:
   SYS  = Path traversing PCIe and NUMA nodes. Nodes are connected through SMP, such as QPI, UPI.
   PHB  = Path traversing PCIe and the PCIe host bridge of a CPU.
   PIX  = Path traversing a single PCIe switch
-  PXB  = Path traversing multipul PCIe switches
+  PXB  = Path traversing multiple PCIe switches
   HCCS = Connection traversing HCCS.
   NA   = Unknown relationship.
 ```

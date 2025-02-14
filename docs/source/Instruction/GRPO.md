@@ -20,7 +20,7 @@ pip install git+https://github.com/huggingface/trl.git # trl>=0.15.0.dev0
 from swift.plugin.orm import ORM, orms
 class DummyLengthRewardFunction(ORM)
     def __call__(completions, **kwargs):
-        return [1.0 if len(completion) > 1024 else 0.0 for comletion in comletions]
+        return [1.0 if len(completion) > 1024 else 0.0 for completion in completions]
 
 orms['dummy']= DummyLengthRewardFunction
 ```
