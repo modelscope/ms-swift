@@ -1,16 +1,17 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Copyright 2023-present the HuggingFace Inc. team.
+import json
 import os
 import re
 import shutil
+import tempfile
+from contextlib import contextmanager
 from copy import copy
-from contextlib import contextmanager, nullcontext
 from functools import partial
 from inspect import Parameter, Signature, signature
 from types import MethodType
 from typing import Dict, List, Literal, Optional, Union
 
-import json
 import torch
 from modelscope import snapshot_download
 from peft.utils import CONFIG_NAME
@@ -20,10 +21,10 @@ from transformers import Trainer
 
 from swift.utils.constants import DEFAULT_ADAPTER, SWIFT_TYPE_KEY
 from swift.utils.logger import get_logger
-from ..utils.torch_utils import get_device_count
 from .mapping import SwiftTuners
 from .peft import PeftConfig, PeftModel, get_peft_model
 from .utils import SwiftConfig, SwiftOutput
+from ..utils.torch_utils import get_device_count
 
 logger = get_logger()
 
@@ -607,7 +608,7 @@ class SwiftModel(nn.Module):
                 output_state_dict, os.path.join(save_directory, SAFETENSORS_WEIGHTS_NAME), metadata={'format': 'pt'})
         else:
             torch.save(output_state_dict, os.path.join(save_directory, WEIGHTS_NAME))
-        
+
     @contextmanager
     def disable_adapter(self):
         try:
@@ -736,6 +737,24 @@ class Swift:
             for adapter, output in model.adapters.items():
                 if isinstance(output.config, LoRAConfig) and (adapter_name is None or adapter in adapter_name):
                     LoRA.unpatch_lora(model, output.config, adapter)
+
+    @staticmethod
+    def grpo_context(model: Union[SwiftModel, torch.nn.Module]):
+        if not isinstance(model, SwiftModel):
+            yield
+            return
+        else:
+            assert len(model.adapters) == 1
+            adapter = next(model.adapters.values())
+            if adapter.config.swift_type == SwiftTuners.LLAMAPRO:
+                temp_dir = tempfile.gettempdir()
+                model_dir = model.model_dir
+                model.base_model.save_pretrained(temp_dir)
+                model.model_dir = temp_dir
+            yield
+            if adapter.config.swift_type == SwiftTuners.LLAMAPRO:
+                model.model_dir = model_dir
+                shutil.rmtree(temp_dir)
 
     @staticmethod
     def merge(model: Union[PeftModel, SwiftModel], **kwargs):
