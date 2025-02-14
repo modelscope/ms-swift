@@ -4,6 +4,7 @@ import os
 import re
 import shutil
 from copy import copy
+from contextlib import contextmanager, nullcontext
 from functools import partial
 from inspect import Parameter, Signature, signature
 from types import MethodType
@@ -606,6 +607,14 @@ class SwiftModel(nn.Module):
                 output_state_dict, os.path.join(save_directory, SAFETENSORS_WEIGHTS_NAME), metadata={'format': 'pt'})
         else:
             torch.save(output_state_dict, os.path.join(save_directory, WEIGHTS_NAME))
+        
+    @contextmanager
+    def disable_adapter(self):
+        try:
+            self.set_active_adapters(adapter_names=[])
+            yield
+        finally:
+            self.set_active_adapters(adapter_names=self.adapters.keys())
 
     def set_active_adapters(self, adapter_names: Union[List[str], str], offload: str = None):
         """Set activated adapters

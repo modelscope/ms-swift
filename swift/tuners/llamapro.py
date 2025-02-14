@@ -95,6 +95,14 @@ class LLaMAPro(SwiftAdapter):
         model.config.num_hidden_layers = len(new_module_list)
         LLaMAPro._set_module_list(config, model, new_module_list)
 
+        def activate_module(activate: bool):
+            if activate:
+                LLaMAPro._update_module_attr(config, new_module_list)
+                LLaMAPro._set_module_list(config, model, new_module_list)
+            else:
+                LLaMAPro._update_module_attr(config, module_list)
+                LLaMAPro._set_module_list(config, model, module_list)
+
         def state_dict_callback(state_dict, adapter_name, **kwargs):
             model_key_mapping = LLaMAPro.get_model_key_mapping(model_type, config)
             new_module_list = [model_key_mapping.module_list + f'.{i}' for i in new_module_idx]
@@ -112,6 +120,7 @@ class LLaMAPro(SwiftAdapter):
                     parameter.requires_grad = True
 
         config.model_type = origin_model_type
+        model.activate_module = activate_module
         return SwiftOutput(
             config=config, state_dict_callback=state_dict_callback, mark_trainable_callback=mark_trainable_callback)
 
@@ -217,9 +226,7 @@ class LLaMAPro(SwiftAdapter):
 
     @staticmethod
     def activate_adapter(module: torch.nn.Module, adapter_name: str, activate: bool, offload: str = None):
-        for sub_module in module.modules():
-            if isinstance(sub_module, torch.nn.Embedding):
-                sub_module.nef_activated = activate
+        module.activate_module(activate)
 
     @staticmethod
     def has_additional_modules():
