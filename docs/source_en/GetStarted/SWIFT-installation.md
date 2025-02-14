@@ -62,9 +62,10 @@ You can view the image [here](https://modelscope.cn/docs/intro/environment-setup
 | modelscope   | >=1.19               |             |                                           |
 | peft         | >=0.11.0,<0.15.0     |             |                                           |
 | trl          | >=0.13,<0.16         | 0.14.0      | RLHF                                      |
+| deepspeed    | >=0.14 |  | Training                                  |
 | vllm         | >=0.5.1              | 0.6.5       | Inference/Deployment/Evaluation           |
 | lmdeploy     | lmdeploy>=0.5,<0.6.5 | 0.6.4       | Inference/Deployment/Evaluation           |
-| deepspeed    | >=0.14 |  | Training                                  |
+| evalscope | | >=0.11 | Evaluation |
 
 For more optional dependencies, you can refer to [here](https://github.com/modelscope/ms-swift/blob/main/requirements/install_all.sh).
 

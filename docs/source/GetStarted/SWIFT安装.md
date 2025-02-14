@@ -61,9 +61,10 @@ pip install ms-swift==2.*
 | modelscope | >=1.19 |  ||
 | peft | >=0.11.0,<0.15.0 | ||
 | trl | >=0.13,<0.16 | 0.14.0 |RLHF|
+| deepspeed | >=0.14 |  |训练|
 | vllm | >=0.5.1 | 0.6.5 |推理/部署/评测|
 | lmdeploy | lmdeploy>=0.5,<0.6.5 | 0.6.4 |推理/部署/评测|
-| deepspeed | >=0.14 |  |训练|
+| evalscope |  | >=0.11 |评测|
 
 更多可选依赖可以参考[这里](https://github.com/modelscope/ms-swift/blob/main/requirements/install_all.sh)。
 

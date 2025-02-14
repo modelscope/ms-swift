@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Part of the implementation is borrowed from huggingface/trl.
 import inspect
+import os
 from collections import defaultdict, namedtuple
 from contextlib import contextmanager
 from typing import Any, Callable, Dict, List, Optional, Union
@@ -15,7 +16,7 @@ from trl.models import unwrap_model_for_generation
 
 from swift.llm import InferRequest, RequestConfig, to_device
 from swift.plugin.orm import orms
-from swift.utils import (get_device, get_device_count, get_dist_setting, get_logger, is_vllm_available,
+from swift.utils import (JsonlWriter, get_device, get_device_count, get_dist_setting, get_logger, is_vllm_available,
                          is_wandb_available)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
@@ -161,6 +162,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if isinstance(reward_func, PreTrainedModel):
                 self.reward_funcs[i] = self.accelerator.prepare_model(reward_func, evaluation_mode=True)
         self.log_completions = args.log_completions
+        self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'completions.jsonl'))
 
     @staticmethod
     @contextmanager
@@ -287,10 +289,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             'ref_per_token_logps': ref_per_token_logps,
             'advantages': advantages,
         })
-        if (self.log_completions and self.state.global_step % self.args.logging_steps == 0
-                and 'wandb' in self.args.report_to):
-            import pandas as pd
-
+        if self.log_completions and self.state.global_step % self.args.logging_steps == 0:
             # For logging
             table = {
                 'step': [str(self.state.global_step)] * len(rewards),
@@ -298,9 +297,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 'completion': gather_object(completions),
                 'reward': rewards.tolist(),
             }
-            df = pd.DataFrame(table)
-
-            if wandb.run is not None and self.accelerator.is_main_process:
+            self.jsonl_writer.append(table)
+            if 'wandb' in self.args.report_to and wandb.run is not None and self.accelerator.is_main_process:
+                import pandas as pd
+                df = pd.DataFrame(table)
                 wandb.log({'completions': wandb.Table(dataframe=df)})
 
         return outputs
