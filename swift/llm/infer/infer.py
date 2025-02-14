@@ -201,7 +201,8 @@ class SwiftInfer(SwiftPipeline):
                 if self.jsonl_writer:
                     self.jsonl_writer.append(data)
         else:
-            val_dataset = val_dataset.shard(args.global_world_size, args.rank, contiguous=True)
+            if args.rank >= 0 and args.global_world_size > 1:
+                val_dataset = val_dataset.shard(args.global_world_size, args.rank, contiguous=True)
             val_dataset = list(val_dataset)
             labels_list = []
             for data in val_dataset:
