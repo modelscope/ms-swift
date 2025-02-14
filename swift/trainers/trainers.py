@@ -176,11 +176,13 @@ class Seq2SeqTrainer(TorchAccMixin, SwiftMixin, HfSeq2SeqTrainer):
             template=self.template)
 
         response_list = []
+        jsonl_cache = []
         device = self.args.device
         for data, resp, labels in zip(data_list, resp_list, labels_list):
             response = resp.choices[0].message.content
-            self.jsonl_writer.append({'response': response, 'labels': labels, **data})
+            jsonl_cache.append({'response': response, 'labels': labels, **data})
             response_list.append(Serializer.to_tensor(resp.choices[0].message.content).to(device=device))
+        self.jsonl_writer.append(jsonl_cache, gather_obj=True)
         labels_list = [Serializer.to_tensor(labels).to(device=device) for labels in labels_list]
         response_list = pad_sequence(response_list, batch_first=True, padding_value=0)
         labels_list = pad_sequence(labels_list, batch_first=True, padding_value=0)
