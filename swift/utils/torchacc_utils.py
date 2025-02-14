@@ -79,7 +79,7 @@ def pad_and_split_batch(padding_to, input_ids, attention_mask, labels, loss_scal
             loss_scale = F.pad(loss_scale, pad_tuple, 'constant', 0.)
         labels = F.pad(labels, pad_tuple, 'constant', -100)
 
-    # manully split the batch to different DP rank.
+    # manually split the batch to different DP rank.
     batch_size = input_ids.shape[0] // world_size
     if batch_size > 0:
         start = rank * batch_size
@@ -862,7 +862,7 @@ def patch_clip_grad_norm(accelerator):
                     while isinstance(opt, AcceleratedOptimizer):
                         opt = opt.optimizer
                     gradients = xm._fetch_gradients(opt)
-                    # Use xm.all_reduce to perform an in-place all-reduce. Recusrsive all-reduce each tensor
+                    # Use xm.all_reduce to perform an in-place all-reduce. Recursive all-reduce each tensor
                     # one by one in self.reduce is non-inplace.
                     xm.all_reduce('sum', gradients, scale=1.0 / self.num_processes)
                     # Set is_xla_gradients_synced to True to avoid all-reduce twice in the AcceleratedOptimizer step.

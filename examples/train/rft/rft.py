@@ -60,7 +60,7 @@ def do_sample(model: str, model_type: str, dataset: List[str], iter: int):
     for device in range(device_count):
         sample_cmd = (
             f'{conda_prefix} CUDA_VISIBLE_DEVICES={device} swift sample '
-            f'--model {model} --model_type {model_type} '  # change to --resume_from_checkpoint to use the lastest optimzer state # noqa
+            f'--model {model} --model_type {model_type} '  # change to --resume_from_checkpoint to use the latest optimizer state # noqa
             f'--dataset {" ".join(dataset)} '
             f'--data_range {device} {device_count} '
             f'--max_length 2048 '

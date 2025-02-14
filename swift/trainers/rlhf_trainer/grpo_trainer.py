@@ -108,7 +108,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 vllm_device = self.args.vllm_device
                 if vllm_device == 'auto':
                     if get_device_count() == 1:
-                        vllm_device = get_device()  # particular case when training with onyl 1 GPU: share it
+                        vllm_device = get_device()  # particular case when training with only 1 GPU: share it
                     else:
                         local_world_size = get_dist_setting()[3]
                         vllm_device = get_device(local_world_size)  # take the next GPU idx

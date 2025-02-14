@@ -70,7 +70,7 @@ def format_toolbench(tool_names, tool_descs):
     TOOLBENCH_PROMPT = """You can use many tools(functions) to do the following task.
 First I will give you the task description, and your task start.
 At each step, you need to give your thought to analyze the status now and what to do next, \
-with a function call to actually excute your step. Your output should follow this format:
+with a function call to actually execute your step. Your output should follow this format:
 Thought:
 Action:
 Action Input:

@@ -77,10 +77,10 @@ class GRPOArgumentsMixin:
     vllm_enable_prefix_caching: bool = True
     # reward function args, see details in swift/plugin/orm.py
     # cosine reward, https://arxiv.org/abs/2502.03373
-    cosine_min_len_value_wrong: float = 0.0  # r^w_0 in paper, Reward for wrong answers with zero comletion length.
-    cosine_max_len_value_wrong: float = -0.5  # r^w_L in paper, Reward for wrong answers with max comletion length.
-    cosine_min_len_value_correct: float = 1.0  # r^c_0 in paper, Reward for correct answers with zero comletion length.
-    cosine_max_len_value_correct: float = 0.5  # r^c_L in paper, Reward for correct answers with max comletion length.
+    cosine_min_len_value_wrong: float = 0.0  # r^w_0 in paper, Reward for wrong answers with zero completion length.
+    cosine_max_len_value_wrong: float = -0.5  # r^w_L in paper, Reward for wrong answers with max completion length.
+    cosine_min_len_value_correct: float = 1.0  # r^c_0 in paper, Reward for correct answers with zero completion length.
+    cosine_max_len_value_correct: float = 0.5  # r^c_L in paper, Reward for correct answers with max completion length.
     cosine_max_len: Optional[int] = None  # Lmax in paper, default equal to max_completion_length
     # repetition penalty, https://arxiv.org/abs/2502.03373
     repetition_n_grams: int = 3
