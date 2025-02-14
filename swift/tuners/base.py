@@ -3,6 +3,8 @@
 import os
 import re
 import shutil
+import tempfile
+from contextlib import contextmanager
 from copy import copy
 from functools import partial
 from inspect import Parameter, Signature, signature
@@ -607,6 +609,14 @@ class SwiftModel(nn.Module):
         else:
             torch.save(output_state_dict, os.path.join(save_directory, WEIGHTS_NAME))
 
+    @contextmanager
+    def disable_adapter(self):
+        try:
+            self.set_active_adapters(adapter_names=[])
+            yield
+        finally:
+            self.set_active_adapters(adapter_names=self.adapters.keys())
+
     def set_active_adapters(self, adapter_names: Union[List[str], str], offload: str = None):
         """Set activated adapters
 
@@ -727,6 +737,30 @@ class Swift:
             for adapter, output in model.adapters.items():
                 if isinstance(output.config, LoRAConfig) and (adapter_name is None or adapter in adapter_name):
                     LoRA.unpatch_lora(model, output.config, adapter)
+
+    @staticmethod
+    @contextmanager
+    def grpo_context(model: Union[SwiftModel, torch.nn.Module], processor):
+        if not isinstance(model, SwiftModel):
+            yield
+            return
+        else:
+            assert len(model.adapters) == 1
+            adapter = list(model.adapters.values())[0]
+            if adapter.config.swift_type == SwiftTuners.LLAMAPRO:
+                from modelscope.hub.utils.utils import get_cache_dir
+                temp_dir = tempfile.mkdtemp(dir=get_cache_dir())
+                model_dir = model.model_dir
+                from transformers.integrations import is_deepspeed_zero3_enabled
+                if is_deepspeed_zero3_enabled():
+                    raise ValueError('DeepSpeed ZeRO3 not supported for LLaMAPro&GRPO currently.')
+                model.base_model.save_pretrained(temp_dir)
+                processor.save_pretrained(temp_dir)
+                model.model_dir = temp_dir
+            yield
+            if adapter.config.swift_type == SwiftTuners.LLAMAPRO:
+                model.model_dir = model_dir
+                shutil.rmtree(temp_dir)
 
     @staticmethod
     def merge(model: Union[PeftModel, SwiftModel], **kwargs):
