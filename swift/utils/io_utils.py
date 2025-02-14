@@ -74,7 +74,7 @@ class JsonlWriter:
         except Exception:
             if self.strict:
                 raise
-            logger.error(f'Cannot write content to jsonl file. cache_text: {text}')
+            logger.error(f'Cannot write content to jsonl file. text: {text}')
 
 
 def append_to_jsonl(fpath: str, obj: Union[Dict, List[Dict]], *, encoding: str = 'utf-8', strict: bool = True) -> None:
