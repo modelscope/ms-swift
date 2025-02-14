@@ -114,8 +114,9 @@ class SwiftDeploy(SwiftInfer):
         if is_finished:
             if args.log_interval > 0:
                 self.infer_stats.update(response)
-            data = {'response': asdict(response), **request_info}
-            self.jsonl_writer.append(data)
+            if self.jsonl_writer:
+                data = {'response': asdict(response), **request_info}
+                self.jsonl_writer.append(data)
         return response
 
     def _set_request_config(self, request_config) -> None:
@@ -177,7 +178,7 @@ class SwiftDeploy(SwiftInfer):
 
     def run(self):
         args = self.args
-        self.jsonl_writer = JsonlWriter(args.result_path) if args.result_path else nullcontext()
+        self.jsonl_writer = JsonlWriter(args.result_path) if args.result_path else None
         logger.info(f'model_list: {self._get_model_list()}')
         uvicorn.run(
             self.app, host=args.host, port=args.port, ssl_keyfile=args.ssl_keyfile, ssl_certfile=args.ssl_certfile)

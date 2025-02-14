@@ -99,7 +99,7 @@ class SwiftEval(SwiftPipeline):
             datasets=dataset,
             work_dir=work_dir,
             limit=args.eval_limit,
-            eval_batch_size=args.eval_num_proc or 16,
+            eval_batch_size=args.eval_num_proc,
             dataset_args=args.dataset_args)
 
     def get_opencompass_task_cfg(self, dataset: List[str], url: str):
@@ -111,7 +111,7 @@ class SwiftEval(SwiftPipeline):
                 'datasets':
                 dataset,
                 'batch_size':
-                args.eval_num_proc or 256,
+                args.eval_num_proc,
                 'work_dir':
                 work_dir,
                 'models': [{
@@ -140,7 +140,7 @@ class SwiftEval(SwiftPipeline):
                     'key': args.api_key or 'EMPTY',
                 }],
                 'nproc':
-                args.eval_num_proc or 16,
+                args.eval_num_proc,
                 'limit':
                 args.eval_limit
             },

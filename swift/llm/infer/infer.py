@@ -74,7 +74,7 @@ class SwiftInfer(SwiftPipeline):
 
     def run(self) -> List[Dict[str, Any]]:
         args = self.args
-        self.jsonl_writer = JsonlWriter(args.result_path) if args.result_path else nullcontext()
+        self.jsonl_writer = JsonlWriter(args.result_path) if args.result_path else None
         if args.eval_human:
             result = self.infer_cli()
         else:
@@ -144,7 +144,8 @@ class SwiftInfer(SwiftPipeline):
                 infer_state.add_response(response)
                 data = {'response': response, **data}
             result_list.append(data)
-            self.jsonl_writer.append(data)
+            if self.jsonl_writer:
+                self.jsonl_writer.append(data)
 
         return result_list
 
@@ -197,7 +198,8 @@ class SwiftInfer(SwiftPipeline):
                 response = self.infer_single(data, request_config)
                 data = {'response': response, 'labels': labels, **data}
                 result_list.append(data)
-                self.jsonl_writer.append(data)
+                if self.jsonl_writer:
+                    self.jsonl_writer.append(data)
         else:
             val_dataset = val_dataset.shard(args.global_world_size, args.rank, contiguous=True)
             val_dataset = list(val_dataset)
@@ -217,8 +219,8 @@ class SwiftInfer(SwiftPipeline):
                 response = resp.choices[0].message.content
                 data = {'response': response, 'labels': labels, 'logprobs': resp.choices[0].logprobs, **data}
                 result_list.append(data)
-
-            self.jsonl_writer.append(result_list, gather_obj=True)
+            if self.jsonl_writer:
+                self.jsonl_writer.append(result_list, gather_obj=True)
         metrics = self.infer_kwargs.pop('metrics')
         print(f'[rank{args.rank}] {metrics[0].compute()}')
         if args.metric is not None:
