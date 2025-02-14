@@ -162,7 +162,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if isinstance(reward_func, PreTrainedModel):
                 self.reward_funcs[i] = self.accelerator.prepare_model(reward_func, evaluation_mode=True)
         self.log_completions = args.log_completions
-        self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'predict.jsonl'))
+        self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'completions.jsonl'))
 
     @staticmethod
     @contextmanager
@@ -297,7 +297,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 'completion': gather_object(completions),
                 'reward': rewards.tolist(),
             }
-            self.jsonl_writer.append(table, gather_obj=True)
+            self.jsonl_writer.append(table)
             if 'wandb' in self.args.report_to:
                 import pandas as pd
                 df = pd.DataFrame(table)
