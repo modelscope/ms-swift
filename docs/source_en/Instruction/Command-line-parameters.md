@@ -57,6 +57,7 @@ Hints:
 - 🔥template: Type of dialogue template. Default is None, which automatically selects the corresponding model's template type.
 - 🔥system: Custom system field, can take a string or txt file path as input. Default is None, uses the default system of the template.
 - 🔥max_length: The maximum length of tokens for a single sample. Defaults to None, set to the maximum length of tokens supported by the model (max_model_len).
+  - Note: In the cases of PPO, GRPO, and inference, max_length represents max_prompt_length.
 - truncation_strategy: Strategy for handling single sample tokens that exceed `max_length`. Options are `delete`, `left`, and `right`, representing deletion, left-side truncation, and right-side truncation, respectively. The default is 'delete'.
 - 🔥max_pixels: The maximum number of pixels (H*W) for input images to a multimodal model. Images exceeding this limit will be scaled. Default is None, meaning no maximum pixel limit.
 - tools_prompt: Converts the tool list during agent training to the system format. Please refer to [Agent Training](./Agent-support.md). Options are 'react_en', 'react_zh', 'glm4', 'toolbench', 'qwen', with 'react_en' as the default.
@@ -375,6 +376,7 @@ The meanings of the following parameters can be referenced [here](https://huggin
 #### GRPO Arguments
 - num_generations: The G value in the GRPO algorithm, default is 8.
 - max_completion_length: The maximum generation length in the GRPO algorithm, default is 512.
+- ds3_gather_for_generation: This parameter applies to DeepSpeed ZeRO-3. If enabled, the policy model weights are gathered for generation, improving generation speed. However, disabling this option allows training models that exceed the VRAM capacity of a single GPU, albeit at the cost of slower generation. Disabling this option is not compatible with vLLM generation. The default is True.
 - reward_funcs: Reward functions in the GRPO algorithm; options include `accuracy`,`format`,`cosine` and `repetition`, as seen in `swift/plugin/orm.py`. You can also customize your own reward functions in the plugin. Default is `[]`.
 - reward_weights: Weights for each reward function. Must match the number of reward functions. If `None`, all rewards are weighted equally with weight `1.0`.
   - Note: If `--reward_model` is included in GRPO training, it is added to the end of the reward functions.

@@ -25,7 +25,7 @@ Refer to the [SWIFT installation documentation](../GetStarted/SWIFT-installation
 pip install ms-swift -U
 
 # If using deepspeed zero2/zero3
-pip install deepspeed==0.14.5
+pip install deepspeed -U
 ```
 
 ## Pre-training
@@ -77,7 +77,7 @@ Additionally, we offer a series of scripts to help you understand the training c
 - Merging LoRA for models trained with QLoRA is not possible, so it is not recommended to use QLoRA for fine-tuning, as it cannot utilize vLLM/LMDeploy for inference acceleration during inference and deployment. It is recommended to use LoRA or full parameter fine-tuning, merge them into complete weights, and then use GPTQ/AWQ/BNB for [quantization](https://github.com/modelscope/ms-swift/tree/main/examples/export/quantize).
 - By default, SWIFT sets `--gradient_checkpointing true` during training to save memory, which may slightly slow down the training speed.
 - If you are using DDP for training and encounter the error: `RuntimeError: Expected to mark a variable ready only once.`, please additionally set the parameter `--gradient_checkpointing_kwargs '{"use_reentrant": false}'` or use DeepSpeed for training.
-- To use DeepSpeed, you need to install it: `pip install deepspeed==0.14.5`. Using DeepSpeed can save memory but may slightly reduce training speed.
+- To use DeepSpeed, you need to install it: `pip install deepspeed -U`. Using DeepSpeed can save memory but may slightly reduce training speed.
 - If your machine has high-performance GPUs like A100 and the model supports flash-attn, it is recommended to install [flash-attn](https://github.com/Dao-AILab/flash-attention/releases) and set `--attn_impl flash_attn`, as this will accelerate training and inference while slightly reducing memory usage.
 
 **How to debug:**
