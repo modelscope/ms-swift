@@ -383,13 +383,13 @@ class SwiftModel(nn.Module):
         assert (hasattr(config, SWIFT_TYPE_KEY))
         from .mapping import SWIFT_MAPPING
 
-        adatper_cls = SWIFT_MAPPING[config.swift_type][1]
-        if adatper_cls.has_additional_modules() and not getattr(model, 'model_frozen', False):
+        adapter_cls = SWIFT_MAPPING[config.swift_type][1]
+        if adapter_cls.has_additional_modules() and not getattr(model, 'model_frozen', False):
             for _, p in model.named_parameters():
                 p.requires_grad = False
             model.model_frozen = True
-        config.has_additional_modules = adatper_cls.has_additional_modules()
-        return adatper_cls.prepare_model(model, config, adapter_name)
+        config.has_additional_modules = adapter_cls.has_additional_modules()
+        return adapter_cls.prepare_model(model, config, adapter_name)
 
     def create_or_update_model_card(self, output_dir: str):
         """
