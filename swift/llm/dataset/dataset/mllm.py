@@ -586,7 +586,7 @@ def preprocess_mind2web(dataset, **kwargs):
             'Input some text into a web element like <input> or <textbox>',
             'parameter': [{
                 'element': 'string, the element in the web page to input to',
-                'content': 'string, what content to input into the textbox elment'
+                'content': 'string, what content to input into the textbox element'
             }]
         }
     }, {

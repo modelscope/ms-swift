@@ -383,7 +383,7 @@ def get_selected_cases():
 
 
 def run_in_subprocess(args):
-    # only case args.isolated_cases run in subporcess, all other run in a subprocess
+    # only case args.isolated_cases run in subprocess, all other run in a subprocess
     if not args.no_diff:  # run based on git diff
         try:
             test_suite_files = get_selected_cases()

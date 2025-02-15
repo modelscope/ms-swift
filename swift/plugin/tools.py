@@ -77,7 +77,7 @@ Action Input:
 
 After the call, you will get the call result, and you are now in a new state.
 Then you will analyze your status now, then decide what to do next...
-After many (Thought-call) pairs, you finally perform the task, then you can give your finial answer.
+After many (Thought-call) pairs, you finally perform the task, then you can give your final answer.
 Remember:
 1.the state change is irreversible, you can't go back to one of the former state, if you want to restart the task, \
 say \"I give up and restart\".
