@@ -18,7 +18,7 @@ from trl.models import unwrap_model_for_generation
 from swift.llm import InferRequest, RequestConfig, to_device
 from swift.plugin.orm import orms
 from swift.utils import (JsonlWriter, get_device, get_device_count, get_dist_setting, get_logger, is_vllm_available,
-                         is_wandb_available)
+                         is_wandb_available, is_lmdeploy_available)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 
@@ -81,6 +81,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self._metrics = defaultdict(list)
 
         use_vllm = args.use_vllm
+        use_lmdeploy = args.use_lmdeploy
 
         super().__init__(model, ref_model, *_args, **kwargs)
 
@@ -101,10 +102,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     f'divisible by the number of generations per prompt ({self.num_generations}). Given the current '
                     f'eval batch size, the valid values for the number of generations are: {possible_values}.')
 
-        if use_vllm:
-            if not is_vllm_available():
-                raise ImportError('vLLM is not available and `use_vllm` is set to True. Please install vLLM with '
-                                  '`pip install vllm` to use it.')
+        if use_vllm or use_lmdeploy:
             if self.accelerator.is_main_process:
                 vllm_device = self.args.vllm_device
                 if vllm_device == 'auto':
@@ -126,28 +124,53 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     logger.warning(
                         f'The requested device {vllm_device} is also used for training. This may lead to unexpected '
                         'behavior. It is recommended to use a dedicated device for vLLM.')
-                from swift.llm import VllmEngine
-                world_size_patch = patch('torch.distributed.get_world_size', return_value=1)
-                profiling_patch = patch(
-                    'vllm.worker.worker.Worker._assert_memory_footprint_increased_during_profiling', return_value=None)
-                from swift.tuners import Swift
-                with world_size_patch, profiling_patch, Swift.grpo_context(model, self.template.processor):
-                    self.engine = VllmEngine(
-                        model.model_dir,
-                        model.model_info.torch_dtype,
-                        model_type=model.model_meta.model_type,
-                        device=vllm_device,
-                        gpu_memory_utilization=args.vllm_gpu_memory_utilization,
-                        enable_prefix_caching=args.vllm_enable_prefix_caching,
-                        max_num_seqs=args.vllm_max_num_seqs,
-                        enforce_eager=args.vllm_enforce_eager,
-                        limit_mm_per_prompt=args.vllm_limit_mm_per_prompt,
-                        max_model_len=args.vllm_max_model_len)
-                    # compat _move_model_to_vllm
-                    self.llm = namedtuple('LLM', ['llm_engine'])(self.engine.engine.engine)
-                self.engine.default_template = self.template
-            self._last_loaded_step = 0
-            self.accelerator.wait_for_everyone()
+                if use_vllm:
+                    if not is_vllm_available():
+                        raise ImportError('vLLM is not available and `use_vllm` is set to True. '
+                                          'Please install vLLM with `pip install vllm` to use it.')
+                    from swift.llm import VllmEngine
+                    world_size_patch = patch('torch.distributed.get_world_size', return_value=1)
+                    profiling_patch = patch(
+                        'vllm.worker.worker.Worker._assert_memory_footprint_increased_during_profiling',
+                        return_value=None)
+                    from swift.tuners import Swift
+                    with world_size_patch, profiling_patch, Swift.grpo_context(model, self.template.processor):
+                        self.engine = VllmEngine(
+                            model.model_dir,
+                            model.model_info.torch_dtype,
+                            model_type=model.model_meta.model_type,
+                            device=vllm_device,
+                            gpu_memory_utilization=args.vllm_gpu_memory_utilization,
+                            enable_prefix_caching=args.vllm_enable_prefix_caching,
+                            max_num_seqs=args.vllm_max_num_seqs,
+                            enforce_eager=args.vllm_enforce_eager,
+                            limit_mm_per_prompt=args.vllm_limit_mm_per_prompt,
+                            max_model_len=args.vllm_max_model_len)
+                        # compat _move_model_to_vllm
+                        self.llm = namedtuple('LLM', ['llm_engine'])(self.engine.engine.engine)
+                    self.engine.default_template = self.template
+                elif use_lmdeploy:
+                    # https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/lmdeploy-0.6.4-cp311-cp311-linux_x86_64.whl
+                    # https://github.com/tastelikefeet/lmdeploy.git@feat/reload_state_dict
+                    if not is_lmdeploy_available():
+                        raise ImportError('Install lmdeploy by `pip install https://modelscope-open.oss-cn-'
+                                          'hangzhou.aliyuncs.com/lmdeploy-0.6.4-cp311-cp311-linux_x86_64.whl`')
+                    from swift.llm import LmdeployEngine
+                    from swift.tuners import Swift
+                    with Swift.grpo_context(model, self.template.processor):
+                        vllm_device = int(vllm_device.split(':')[1])
+                        self.engine = LmdeployEngine(
+                            model.model_dir,
+                            model.model_info.torch_dtype,
+                            model_type=model.model_meta.model_type,
+                            device=vllm_device,
+                            session_len=args.vllm_max_model_len,
+                            cache_max_entry_count=args.vllm_gpu_memory_utilization)
+                        # compat _move_model_to_vllm
+                        self.llm = namedtuple('LLM', ['llm_engine'])(self.engine.engine)
+                    self.engine.default_template = self.template
+                self._last_loaded_step = 0
+                self.accelerator.wait_for_everyone()
         else:
             from swift.llm import PtEngine
             self.engine = PtEngine.from_model_template(self.model, self.template, max_batch_size=0)  # 0: no limit
