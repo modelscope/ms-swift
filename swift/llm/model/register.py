@@ -21,7 +21,7 @@ from transformers.utils.versions import require_version
 
 from swift.utils import get_dist_setting, get_logger, is_mp, is_unsloth_available, patch_getattr, use_torchacc
 from .constant import ModelType
-from .patcher import patch_automodel_for_awq, patch_automodel_for_sequence_classification
+from .patcher import patch_automodel_for_awq, patch_automodel_for_sequence_classification, patch_mp_ddp
 from .utils import AttnImpl, HfConfigFactory, ModelInfo, safe_snapshot_download
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]]
@@ -468,7 +468,7 @@ def get_model_tokenizer(
         If set to None : It will be automatically selected between sdpa and eager.
     download_model: Whether to download the model weights. If `None`, it will be selected based on load_model.
     """
-
+    patch_mp_ddp()
     if model_kwargs is None:
         model_kwargs = {}
     if download_model is None:

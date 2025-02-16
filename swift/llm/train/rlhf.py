@@ -54,7 +54,7 @@ class SwiftRLHF(SwiftSft):
                 self.train_msg['value_model_parameter_info'] = model_parameter_info
                 logger.info(f'value_model_parameter_info: {model_parameter_info}')
             setattr(self, f'{origin_key}_model', model)
-            if origin_key == 'reward':
+            if origin_key == 'reward' and args.rlhf_type == 'grpo':
                 reward_template = self.args.get_template(processor)
                 if reward_template.use_model:
                     reward_template.model = model
