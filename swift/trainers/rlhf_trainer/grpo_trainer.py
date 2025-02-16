@@ -192,7 +192,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             }
                         })
                     self.engine.default_template = self.template
-            self._last_loaded_step = 0
+            self._last_loaded_step = 0  # tag to avoid useless loading during grad accumulation
+
+            # When using vLLM, the main process is responsible for loading the model weights. This can cause process
+            # desynchronization and seems to lead to DeepSpeed hanging during initialization. To prevent this, we
+            # synchronize all processes after vLLM has been fully initialized.
             self.accelerator.wait_for_everyone()
         else:
             from swift.llm import PtEngine

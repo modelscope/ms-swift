@@ -1,4 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import os
+import shutil
 import sys
 
 from transformers import AutoModel
@@ -35,6 +37,8 @@ def get_model_tokenizer_step_audio(*args, **kwargs):
     if not local_repo_path:
         local_repo_path = git_clone_github('https://github.com/stepfun-ai/Step-Audio.git')
     sys.path.append(local_repo_path)
+    if not os.path.exists('speakers'):
+        shutil.copytree(os.path.join(local_repo_path, 'speakers'), 'speakers')
     from tokenizer import StepAudioTokenizer
     from tts import StepAudioTTS
     encoder_path = safe_snapshot_download('stepfun-ai/Step-Audio-Tokenizer')
@@ -55,5 +59,6 @@ register_model(
         TemplateType.step_audio,
         get_model_tokenizer_step_audio,
         model_arch=ModelArch.step_audio,
-        architectures=['GOTQwenForCausalLM'],
-        tags=['vision']))
+        architectures=['Step1ForCausalLM'],
+        requires=['funasr', 'sox', 'conformer', 'openai-whisper', 'librosa'],
+        tags=['audio']))

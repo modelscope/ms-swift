@@ -1,6 +1,6 @@
 import os
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
 
 
 def _infer_model(pt_engine, system=None):
@@ -43,10 +43,20 @@ def test_xcomposer2d5_ol():
     _infer_model(pt_engine)
 
 
+def test_step_audio_chat():
+    pt_engine = PtEngine(
+        '/mnt/data/jintao/.cache/modelscope/models/stepfun-ai/Step-Audio-Chat',
+        local_repo_path='/mnt/nas2/huangjintao.hjt/work/step_audio/Step-Audio-main')
+    _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    _infer_model(pt_engine)
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig, get_template
     from swift.utils import get_logger, seed_everything
     logger = get_logger()
     # test_qwen_audio()
     # test_qwen2_audio()
-    test_xcomposer2d5_ol()
+    # test_xcomposer2d5_ol()
+    test_step_audio_chat()
