@@ -150,8 +150,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         self.llm = namedtuple('LLM', ['llm_engine'])(self.engine.engine.engine)
                     self.engine.default_template = self.template
                 elif use_lmdeploy:
-                    # https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/lmdeploy-0.6.4-cp311-cp311-linux_x86_64.whl
                     # https://github.com/tastelikefeet/lmdeploy.git@feat/reload_state_dict
+                    # Compile:https://github.com/tastelikefeet/lmdeploy/blob/main/docs/en/get_started/installation.md
                     if not is_lmdeploy_available():
                         raise ImportError('Install lmdeploy by `pip install https://modelscope-open.oss-cn-'
                                           'hangzhou.aliyuncs.com/lmdeploy-0.6.4-cp311-cp311-linux_x86_64.whl`')
