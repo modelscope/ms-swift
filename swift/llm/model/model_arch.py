@@ -482,7 +482,7 @@ register_model_arch(
     ))
 
 register_model_arch(
-    MultiModelKeys(MLLMModelArch.step_audio, language_model='model', vision_tower='encoder', generator='decoder'))
+    MultiModelKeys(MLLMModelArch.step_audio, language_model='model', generator='decoder'))
 
 register_model_arch(
     MultiModelKeys(
