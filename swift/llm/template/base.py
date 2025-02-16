@@ -254,6 +254,7 @@ class Template(ProcessorMixin):
             encoded['labels'] = int(inputs.label)
         return encoded
 
+    @torch.inference_mode()
     def encode(self,
                inputs: Union[TemplateInputs, Dict[str, Any], InferRequest],
                return_template_inputs: bool = False) -> Dict[str, Any]:

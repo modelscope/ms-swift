@@ -13,7 +13,7 @@ class Sampler:
     def __init__(self, input_args: SamplingArguments):
         self.args = input_args
         self.template = None
-        self.processer = None
+        self.processor = None
         self.prm_model = None
         self.orm_model = None
         self._prepare_model_tokenizer()

@@ -3,6 +3,8 @@
 import os
 import re
 import shutil
+import tempfile
+from contextlib import contextmanager
 from copy import copy
 from functools import partial
 from inspect import Parameter, Signature, signature
@@ -381,13 +383,13 @@ class SwiftModel(nn.Module):
         assert (hasattr(config, SWIFT_TYPE_KEY))
         from .mapping import SWIFT_MAPPING
 
-        adatper_cls = SWIFT_MAPPING[config.swift_type][1]
-        if adatper_cls.has_additional_modules() and not getattr(model, 'model_frozen', False):
+        adapter_cls = SWIFT_MAPPING[config.swift_type][1]
+        if adapter_cls.has_additional_modules() and not getattr(model, 'model_frozen', False):
             for _, p in model.named_parameters():
                 p.requires_grad = False
             model.model_frozen = True
-        config.has_additional_modules = adatper_cls.has_additional_modules()
-        return adatper_cls.prepare_model(model, config, adapter_name)
+        config.has_additional_modules = adapter_cls.has_additional_modules()
+        return adapter_cls.prepare_model(model, config, adapter_name)
 
     def create_or_update_model_card(self, output_dir: str):
         """
@@ -607,6 +609,14 @@ class SwiftModel(nn.Module):
         else:
             torch.save(output_state_dict, os.path.join(save_directory, WEIGHTS_NAME))
 
+    @contextmanager
+    def disable_adapter(self):
+        try:
+            self.set_active_adapters(adapter_names=[])
+            yield
+        finally:
+            self.set_active_adapters(adapter_names=self.adapters.keys())
+
     def set_active_adapters(self, adapter_names: Union[List[str], str], offload: str = None):
         """Set activated adapters
 
@@ -727,6 +737,31 @@ class Swift:
             for adapter, output in model.adapters.items():
                 if isinstance(output.config, LoRAConfig) and (adapter_name is None or adapter in adapter_name):
                     LoRA.unpatch_lora(model, output.config, adapter)
+
+    @staticmethod
+    @contextmanager
+    def grpo_context(model: Union[SwiftModel, torch.nn.Module], processor):
+        # Save the model and temporarily modify model.model_dir.
+        if not isinstance(model, SwiftModel):
+            yield
+            return
+        else:
+            assert len(model.adapters) == 1
+            adapter = list(model.adapters.values())[0]
+            if adapter.config.swift_type == SwiftTuners.LLAMAPRO:
+                from modelscope.hub.utils.utils import get_cache_dir
+                temp_dir = tempfile.mkdtemp(dir=get_cache_dir())
+                model_dir = model.model_dir
+                from transformers.integrations import is_deepspeed_zero3_enabled
+                if is_deepspeed_zero3_enabled():
+                    raise ValueError('DeepSpeed ZeRO3 not supported for LLaMAPro&GRPO currently.')
+                model.base_model.save_pretrained(temp_dir)
+                processor.save_pretrained(temp_dir)
+                model.model_dir = temp_dir
+            yield
+            if adapter.config.swift_type == SwiftTuners.LLAMAPRO:
+                model.model_dir = model_dir
+                shutil.rmtree(temp_dir)
 
     @staticmethod
     def merge(model: Union[PeftModel, SwiftModel], **kwargs):

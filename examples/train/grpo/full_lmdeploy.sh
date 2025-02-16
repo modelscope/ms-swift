@@ -1,20 +1,18 @@
-# pip install math_verify # reward function
-# pip install "trl>=0.15"
-export CUDA_VISIBLE_DEVICES=0,1,2,3
-export NNODES=2
-export NODE_RANK=0
-export MASTER_ADDR=127.0.0.1
-export MASTER_PORT=29500
-export NPROC_PER_NODE=3
+# pip install lmdeploy==0.6.4
+# Replace three files:
+# 1. https://github.com/tastelikefeet/lmdeploy/blob/feat/reload_state_dict/lmdeploy/messages.py
+# 2. https://github.com/tastelikefeet/lmdeploy/blob/feat/reload_state_dict/lmdeploy/turbomind/turbomind.py
+# 3. https://github.com/tastelikefeet/lmdeploy/blob/feat/reload_state_dict/lmdeploy/turbomind/deploy/loader.py
 
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+NPROC_PER_NODE=3 \
 swift rlhf \
     --rlhf_type grpo \
-    --model Qwen/Qwen2.5-Math-7B \
+    --model Qwen/Qwen2.5-7B-Instruct \
     --reward_funcs accuracy format \
-    --use_vllm true \
-    --vllm_device auto \
-    --vllm_gpu_memory_utilization 0.5 \
-    --vllm_max_model_len 4096 \
+    --use_lmdeploy true \
+    --lmdeploy_session_len 2048 \
+    --lmdeploy_cache_max_entry_count 0.8 \
     --train_type full \
     --torch_dtype bfloat16 \
     --dataset 'AI-MO/NuminaMath-TIR#5000' \
@@ -33,7 +31,7 @@ swift rlhf \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 4 \
     --dataset_num_proc 4 \
-    --num_generations 7 \
+    --num_generations 3 \
     --temperature 0.9 \
     --system 'examples/train/grpo/prompt.txt' \
-    --deepspeed zero2
+    --deepspeed zero3

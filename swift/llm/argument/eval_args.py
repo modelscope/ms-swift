@@ -4,8 +4,6 @@ import os
 from dataclasses import dataclass, field
 from typing import Dict, List, Literal, Optional, Union
 
-import json
-
 from swift.utils import get_logger
 from .base_args import to_abspath
 from .deploy_args import DeployArguments
@@ -37,7 +35,7 @@ class EvalArguments(DeployArguments):
 
     temperature: Optional[float] = 0.
     verbose: bool = False
-    eval_num_proc: Optional[int] = None
+    eval_num_proc: int = 16
     # If eval_url is set, ms-swift will not perform deployment operations and
     # will directly use the URL for evaluation.
     eval_url: Optional[str] = None
@@ -47,15 +45,11 @@ class EvalArguments(DeployArguments):
         if self.eval_url and 'chat/completions' in self.eval_url:
             self.eval_url = self.eval_url.split('/chat/completions', 1)[0]
 
-    def _init_dataset_args(self):
-        if isinstance(self.dataset_args, str):
-            self.dataset_args = json.loads(self.dataset_args)
-
     def __post_init__(self):
         super().__post_init__()
         self._init_eval_url()
         self._init_eval_dataset()
-        self._init_dataset_args()
+        self.dataset_args = self.parse_to_dict(self.dataset_args)
         self.eval_output_dir = to_abspath(self.eval_output_dir)
         logger.info(f'eval_output_dir: {self.eval_output_dir}')
 

@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import inspect
 from contextlib import contextmanager
 
 import transformers
@@ -39,8 +40,16 @@ class PPOTrainer(SwiftMixin, HFPPOTrainer):
                 for k, v in kwargs.items()
                 if k in ['train_dataset', 'data_collator', 'reward_model', 'value_model', 'eval_dataset']
             }
-            ppo_trainer_init(
-                self, config=kwargs['args'], tokenizer=self.tokenizer, model=model, ref_model=ref_model, **new_kwargs)
+            parameters = inspect.signature(ppo_trainer_init).parameters
+            if 'config' in parameters:
+                new_kwargs['config'] = kwargs['args']
+            else:
+                new_kwargs['args'] = kwargs['args']
+            if 'processing_class' in parameters:
+                new_kwargs['processing_class'] = self.tokenizer
+            else:
+                new_kwargs['tokenizer'] = self.tokenizer
+            ppo_trainer_init(self, model=model, ref_model=ref_model, **new_kwargs)
         unwrap_model = self.accelerator.unwrap_model(self.model)
         patch_getattr(unwrap_model.__class__, 'policy')
 

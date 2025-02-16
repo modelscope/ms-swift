@@ -70,14 +70,14 @@ def format_toolbench(tool_names, tool_descs):
     TOOLBENCH_PROMPT = """You can use many tools(functions) to do the following task.
 First I will give you the task description, and your task start.
 At each step, you need to give your thought to analyze the status now and what to do next, \
-with a function call to actually excute your step. Your output should follow this format:
+with a function call to actually execute your step. Your output should follow this format:
 Thought:
 Action:
 Action Input:
 
 After the call, you will get the call result, and you are now in a new state.
 Then you will analyze your status now, then decide what to do next...
-After many (Thought-call) pairs, you finally perform the task, then you can give your finial answer.
+After many (Thought-call) pairs, you finally perform the task, then you can give your final answer.
 Remember:
 1.the state change is irreversible, you can't go back to one of the former state, if you want to restart the task, \
 say \"I give up and restart\".

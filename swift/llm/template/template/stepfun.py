@@ -3,9 +3,10 @@ from typing import Any, Dict, List, Literal, Optional
 
 from ..base import Template
 from ..constant import MLLMTemplateType
-from ..register import register_template
+from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import Context
+from ..vision_utils import load_file
 from .qwen import QwenTemplateMeta
 
 
@@ -65,4 +66,28 @@ register_template(
         default_system='        You should follow the instructions carefully and explain your answers in detail.',
         template_cls=GOT_OCR2Template,
         placeholder_tokens=['<imgpad>'],
+    ))
+
+
+class StepAudioTemplate(Template):
+    use_model = True
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    inputs: StdTemplateInputs) -> List[Context]:
+        assert media_type == 'audio', f'media_type: {media_type}'
+        from utils import load_audio
+        audio_wav, sr = load_audio(load_file(inputs.audios[index]))
+        audio_tokens = self.model.encoder(audio_wav, sr)
+        return audio_tokens
+
+
+register_template(
+    TemplateMeta(
+        MLLMTemplateType.step_audio,
+        template_cls=StepAudioTemplate,
+        prefix=['<s>'],
+        prompt=['<|BOT|>human\n{{QUERY}}<|EOT|><|BOT|>assistant\n'],
+        system_prefix=['<s><|BOT|>system\n{{SYSTEM}}<|EOT|>'],
+        chat_sep=['<|EOT|>'],
+        suffix=['<|EOT|>'],
     ))

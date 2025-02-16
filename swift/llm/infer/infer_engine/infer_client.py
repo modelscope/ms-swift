@@ -105,9 +105,9 @@ class InferClient(InferEngine):
     def _prepare_request_data(model: str, infer_request: InferRequest, request_config: RequestConfig) -> Dict[str, Any]:
         res = asdict(ChatCompletionRequest(model, **asdict(infer_request), **asdict(request_config)))
         # ignore empty
-        empty_requset = ChatCompletionRequest('', [])
+        empty_request = ChatCompletionRequest('', [])
         for k in list(res.keys()):
-            if res[k] == getattr(empty_requset, k):
+            if res[k] == getattr(empty_request, k):
                 res.pop(k)
         return res
 

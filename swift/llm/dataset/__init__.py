@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import datasets.fingerprint
+from datasets import Dataset as HfDataset
 from datasets import disable_caching
 
 from swift.utils.torch_utils import _find_local_mac
@@ -9,7 +10,7 @@ from .loader import DATASET_TYPE, load_dataset
 from .media import MediaResource
 from .preprocessor import (AlpacaPreprocessor, AutoPreprocessor, MessagesPreprocessor, ResponsePreprocessor,
                            RowPreprocessor)
-from .register import DATASET_MAPPING, DatasetMeta, register_dataset, register_dataset_info
+from .register import DATASET_MAPPING, DatasetMeta, SubsetDataset, register_dataset, register_dataset_info
 from .utils import (ConstantLengthDataset, EncodePreprocessor, GetLengthPreprocessor, LazyLLMDataset,
                     PackingPreprocessor, sample_dataset)
 

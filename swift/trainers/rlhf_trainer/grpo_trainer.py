@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Part of the implementation is borrowed from huggingface/trl.
 import inspect
+import os
 from collections import defaultdict, namedtuple
 from contextlib import contextmanager
 from typing import Any, Callable, Dict, List, Optional, Union
@@ -10,12 +11,14 @@ import torch
 import torch.nn as nn
 from accelerate.utils import broadcast_object_list, gather, gather_object
 from transformers import PreTrainedModel
+from transformers.utils.versions import require_version
 from trl import GRPOTrainer as HFGRPOTrainer
+from trl.models import unwrap_model_for_generation
 
 from swift.llm import InferRequest, RequestConfig, to_device
 from swift.plugin.orm import orms
-from swift.utils import (get_device, get_device_count, get_dist_setting, get_logger, is_vllm_available,
-                         is_wandb_available)
+from swift.utils import (JsonlWriter, get_device, get_device_count, get_dist_setting, get_logger, is_lmdeploy_available,
+                         is_vllm_available, is_wandb_available)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 
@@ -36,7 +39,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                  reward_funcs: Optional[List[Union[str, Callable]]] = None,
                  *_args,
                  **kwargs):
-
+        require_version('trl>=0.15')
         args = kwargs['args']
 
         self.processing_class = kwargs.get('template').tokenizer
@@ -78,6 +81,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self._metrics = defaultdict(list)
 
         use_vllm = args.use_vllm
+        use_lmdeploy = args.use_lmdeploy
 
         super().__init__(model, ref_model, *_args, **kwargs)
 
@@ -98,50 +102,101 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     f'divisible by the number of generations per prompt ({self.num_generations}). Given the current '
                     f'eval batch size, the valid values for the number of generations are: {possible_values}.')
 
-        if use_vllm:
-            if not is_vllm_available():
-                raise ImportError('vLLM is not available and `use_vllm` is set to True. Please install vLLM with '
-                                  '`pip install vllm` to use it.')
+        if use_vllm or use_lmdeploy:
             if self.accelerator.is_main_process:
-                vllm_device = self.args.vllm_device
-                if vllm_device == 'auto':
-                    if torch.cuda.device_count() == 1:
-                        vllm_device = 'cuda:0'  # particular case when training with onyl 1 GPU: share it
+                fast_infer_device = self.args.vllm_device or self.args.lmdeploy_device
+                if fast_infer_device == 'auto':
+                    if get_device_count() == 1:
+                        fast_infer_device = get_device()  # particular case when training with only 1 GPU: share it
                     else:
                         local_world_size = get_dist_setting()[3]
-                        vllm_device = f'cuda:{local_world_size}'  # take the next GPU idx
+                        fast_infer_device = get_device(local_world_size)  # take the next GPU idx
                 # Check that the requested device is available
-                if vllm_device.split(':')[0] == 'cuda' and int(vllm_device.split(':')[1]) >= get_device_count():
+                if fast_infer_device.split(':')[0] in {'cuda', 'npu'
+                                                       } and int(fast_infer_device.split(':')[1]) >= get_device_count():
                     raise ValueError(
-                        f'The requested device for vllm ({vllm_device}) is not available. You are likely using vLLM '
+                        f'The requested device for vllm ({fast_infer_device}) is not available. '
+                        f'You are likely using vLLM '
                         'without restricting the number of GPUs for training. Set the `--num_processes` argument to a '
                         'value lower than the number of GPUs available on your machine—typically, reducing it by one '
                         f'is sufficient. In your case: `--num_processes {get_device_count() - 1}`.')
                 # Check that the requested device is not also used for training
-                if vllm_device in {get_device(idx) for idx in range(self.accelerator.num_processes)}:
+                if fast_infer_device in {get_device(idx) for idx in range(self.accelerator.num_processes)}:
                     logger.warning(
-                        f'The requested device {vllm_device} is also used for training. This may lead to unexpected '
-                        'behavior. It is recommended to use a dedicated device for vLLM.')
-                from swift.llm import VllmEngine
-                world_size_patch = patch('torch.distributed.get_world_size', return_value=1)
-                profiling_patch = patch(
-                    'vllm.worker.worker.Worker._assert_memory_footprint_increased_during_profiling', return_value=None)
-                with world_size_patch, profiling_patch:
-                    self.engine = VllmEngine(
-                        model.model_dir,
-                        model.model_info.torch_dtype,
-                        model_type=model.model_meta.model_type,
-                        device=vllm_device,
-                        gpu_memory_utilization=args.vllm_gpu_memory_utilization,
-                        enable_prefix_caching=args.vllm_enable_prefix_caching,
-                        max_num_seqs=args.vllm_max_num_seqs,
-                        enforce_eager=args.vllm_enforce_eager,
-                        limit_mm_per_prompt=args.vllm_limit_mm_per_prompt,
-                        max_model_len=args.vllm_max_model_len)
-                    # compat _move_model_to_vllm
-                    self.llm = namedtuple('LLM', ['llm_engine'])(self.engine.engine.engine)
-                self.engine.default_template = self.template
-            self._last_loaded_step = 0
+                        f'The requested device {fast_infer_device} is also used for training. '
+                        f'This may lead to unexpected behavior. It is recommended to use a dedicated device for vLLM.')
+                if use_vllm and not use_lmdeploy:
+                    if not is_vllm_available():
+                        raise ImportError('vLLM is not available and `use_vllm` is set to True. '
+                                          'Please install vLLM with `pip install vllm` to use it.')
+                    from swift.llm import VllmEngine
+                    world_size_patch = patch('torch.distributed.get_world_size', return_value=1)
+                    profiling_patch = patch(
+                        'vllm.worker.worker.Worker._assert_memory_footprint_increased_during_profiling',
+                        return_value=None)
+                    from swift.tuners import Swift
+                    with world_size_patch, profiling_patch, Swift.grpo_context(model, self.template.processor):
+                        self.engine = VllmEngine(
+                            model.model_dir,
+                            model.model_info.torch_dtype,
+                            model_type=model.model_meta.model_type,
+                            device=fast_infer_device,
+                            gpu_memory_utilization=args.vllm_gpu_memory_utilization,
+                            enable_prefix_caching=args.vllm_enable_prefix_caching,
+                            max_num_seqs=args.vllm_max_num_seqs,
+                            enforce_eager=args.vllm_enforce_eager,
+                            limit_mm_per_prompt=args.vllm_limit_mm_per_prompt,
+                            max_model_len=args.vllm_max_model_len)
+                        # compat _move_model_to_vllm
+                        self.llm = namedtuple('LLM', ['llm_engine'])(self.engine.engine.engine)
+                    self.engine.default_template = self.template
+                elif use_lmdeploy:
+                    # https://github.com/tastelikefeet/lmdeploy.git@feat/reload_state_dict
+                    # Compile:https://github.com/tastelikefeet/lmdeploy/blob/main/docs/en/get_started/installation.md
+                    if not is_lmdeploy_available():
+                        raise ImportError('Please install `pip install lmdeploy==0.6.4`'
+                                          ' and replace three files with:\n'
+                                          '1. https://github.com/tastelikefeet/lmdeploy/blob/feat/'
+                                          'reload_state_dict/lmdeploy/messages.py\n'
+                                          '2. https://github.com/tastelikefeet/lmdeploy/blob/feat/'
+                                          'reload_state_dict/lmdeploy/turbomind/turbomind.py\n'
+                                          '3. https://github.com/tastelikefeet/lmdeploy/blob/feat/'
+                                          'reload_state_dict/lmdeploy/turbomind/deploy/loader.py\n')
+                    from swift.llm import LmdeployEngine
+                    from swift.tuners import Swift
+                    with Swift.grpo_context(model, self.template.processor):
+                        fast_infer_device = int(fast_infer_device.split(':')[1])
+                        self.engine = LmdeployEngine(
+                            model.model_dir,
+                            model.model_info.torch_dtype,
+                            model_type=model.model_meta.model_type,
+                            device=[fast_infer_device],
+                            session_len=args.lmdeploy_session_len,
+                            cache_max_entry_count=args.lmdeploy_cache_max_entry_count)
+                        # compat _move_model_to_vllm
+                        import collections
+                        import collections.abc
+                        for type_name in collections.abc.__all__:
+                            # AttrDict may throw not modules `Mapping` error
+                            setattr(collections, type_name, getattr(collections.abc, type_name))
+                        from attrdict import AttrDict
+                        self.llm = AttrDict({
+                            'llm_engine': {
+                                'model_executor': {
+                                    'driver_worker': {
+                                        'model_runner': {
+                                            'model': self.engine.engine.engine
+                                        }
+                                    }
+                                }
+                            }
+                        })
+                    self.engine.default_template = self.template
+            self._last_loaded_step = 0  # tag to avoid useless loading during grad accumulation
+
+            # When using vLLM, the main process is responsible for loading the model weights. This can cause process
+            # desynchronization and seems to lead to DeepSpeed hanging during initialization. To prevent this, we
+            # synchronize all processes after vLLM has been fully initialized.
             self.accelerator.wait_for_everyone()
         else:
             from swift.llm import PtEngine
@@ -159,6 +214,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if isinstance(reward_func, PreTrainedModel):
                 self.reward_funcs[i] = self.accelerator.prepare_model(reward_func, evaluation_mode=True)
         self.log_completions = args.log_completions
+        self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'completions.jsonl'))
 
     @staticmethod
     @contextmanager
@@ -200,7 +256,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             is_multimodal = self.model.model_meta.is_multimodal
             if is_multimodal:
                 models = self.template.remove_post_encode_hook()
-            outputs = self.engine.infer(inputs, self.request_config, use_tqdm=False)
+            with unwrap_model_for_generation(self.model, self.accelerator):
+                # same reference
+                outputs = self.engine.infer(inputs, self.request_config, use_tqdm=False)
             if is_multimodal:
                 self.template.register_post_encode_hook(models)
 
@@ -209,7 +267,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self.accelerator.process_index * len(inputs),
             (self.accelerator.process_index + 1) * len(inputs),
         )
-        outputs = outputs[process_slice]
+        if self.args.use_vllm or self.args.use_lmdeploy:
+            outputs = outputs[process_slice]
 
         for i, output in enumerate(outputs):
             messages = inputs[i]['messages']
@@ -282,10 +341,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             'ref_per_token_logps': ref_per_token_logps,
             'advantages': advantages,
         })
-        if (self.log_completions and self.state.global_step % self.args.logging_steps == 0
-                and 'wandb' in self.args.report_to):
-            import pandas as pd
-
+        if self.log_completions and self.state.global_step % self.args.logging_steps == 0:
             # For logging
             table = {
                 'step': [str(self.state.global_step)] * len(rewards),
@@ -293,9 +349,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 'completion': gather_object(completions),
                 'reward': rewards.tolist(),
             }
-            df = pd.DataFrame(table)
-
-            if wandb.run is not None and self.accelerator.is_main_process:
+            self.jsonl_writer.append(table)
+            if 'wandb' in self.args.report_to and wandb.run is not None and self.accelerator.is_main_process:
+                import pandas as pd
+                df = pd.DataFrame(table)
                 wandb.log({'completions': wandb.Table(dataframe=df)})
 
         return outputs

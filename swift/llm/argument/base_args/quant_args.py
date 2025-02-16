@@ -21,7 +21,7 @@ class QuantizeArguments:
             The compute dtype for bnb 4-bit quantization.
         bnb_4bit_quant_type (Literal['fp4', 'nf4']): The quantization type for bnb 4-bit quantization.
         bnb_4bit_use_double_quant (bool): Whether to use double quantization for bnb 4-bit quantization.
-        bnb_4bit_quant_storage (Optional[str]): This sets the storage type to pack the quanitzed 4-bit prarams.
+        bnb_4bit_quant_storage (Optional[str]): This sets the storage type to pack the quantized 4-bit params.
     """
     # awq, gptq, and aqlm need to be pre-quantized models.
     #   It can be detected automatically, without the need to pass in.
