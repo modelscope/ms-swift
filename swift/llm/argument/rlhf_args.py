@@ -113,10 +113,6 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
                 self.loss_scale = 'default'
             else:
                 self.loss_scale = 'last_round'
-        if self.rlhf_type == 'grpo':
-            if self.use_lmdeploy:
-                # In case trl GRPOTrainer need use_vllm
-                self.use_vllm = True
         if self.rlhf_type in ['dpo', 'kto', 'ppo', 'grpo'] and self.train_type == 'full':
             self.ref_model = self.ref_model or self.model
             self.ref_model_type = self.ref_model_type or self.model_type
@@ -139,6 +135,9 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
 
     def _init_grpo(self):
         if self.rlhf_type == 'grpo':
+            if self.use_lmdeploy:
+                # In case trl GRPOTrainer need use_vllm
+                self.use_vllm = True
             if self.use_vllm or self.use_lmdeploy:
                 os.environ['USE_FAST_INFERENCE'] = '1'
                 self._set_default_ddp_config()
