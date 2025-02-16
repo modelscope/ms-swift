@@ -115,7 +115,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 if fast_infer_device.split(':')[0] in {'cuda', 'npu'
                                                        } and int(fast_infer_device.split(':')[1]) >= get_device_count():
                     raise ValueError(
-                        f'The requested device for vllm ({fast_infer_device}) is not available. You are likely using vLLM '
+                        f'The requested device for vllm ({fast_infer_device}) is not available. '
+                        f'You are likely using vLLM '
                         'without restricting the number of GPUs for training. Set the `--num_processes` argument to a '
                         'value lower than the number of GPUs available on your machine—typically, reducing it by one '
                         f'is sufficient. In your case: `--num_processes {get_device_count() - 1}`.')
@@ -153,9 +154,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     # https://github.com/tastelikefeet/lmdeploy.git@feat/reload_state_dict
                     # Compile:https://github.com/tastelikefeet/lmdeploy/blob/main/docs/en/get_started/installation.md
                     if not is_lmdeploy_available():
-                        raise ImportError('Install lmdeploy by manually compile lmdeploy,see: '
-                                          'https://github.com/tastelikefeet/lmdeploy/blob/main/docs'
-                                          '/en/get_started/installation.md')
+                        raise ImportError('Please install `pip install lmdeploy==0.6.4`'
+                                          ' and replace three files with:\n'
+                                          '1. https://github.com/tastelikefeet/lmdeploy/blob/feat/'
+                                          'reload_state_dict/lmdeploy/messages.py\n'
+                                          '2. https://github.com/tastelikefeet/lmdeploy/blob/feat/'
+                                          'reload_state_dict/lmdeploy/turbomind/turbomind.py\n'
+                                          '3. https://github.com/tastelikefeet/lmdeploy/blob/feat/'
+                                          'reload_state_dict/lmdeploy/turbomind/deploy/loader.py\n')
                     from swift.llm import LmdeployEngine
                     from swift.tuners import Swift
                     with Swift.grpo_context(model, self.template.processor):
