@@ -42,10 +42,10 @@ def get_model_tokenizer_step_audio(*args, **kwargs):
     from tokenizer import StepAudioTokenizer
     from tts import StepAudioTTS
     encoder_path = safe_snapshot_download('stepfun-ai/Step-Audio-Tokenizer')
-    decoder_path = safe_snapshot_download('stepfun-ai/Step-Audio-TTS-3B')
     model, tokenizer = get_model_tokenizer_with_flash_attn(*args, **kwargs)
     model.encoder = StepAudioTokenizer(encoder_path)
-    model.decoder = StepAudioTTS(decoder_path, model.encoder)
+    # decoder_path = safe_snapshot_download('stepfun-ai/Step-Audio-TTS-3B')
+    # model.decoder = StepAudioTTS(decoder_path, model.encoder)
     return model, tokenizer
 
 
@@ -58,7 +58,6 @@ register_model(
         ],
         TemplateType.step_audio,
         get_model_tokenizer_step_audio,
-        model_arch=ModelArch.step_audio,
         architectures=['Step1ForCausalLM'],
         requires=['funasr', 'sox', 'conformer', 'openai-whisper', 'librosa'],
         tags=['audio']))

@@ -89,8 +89,8 @@ def get_target_modules(args, model) -> Union[str, List[str]]:
         return args.target_modules
     target_modules = args.target_modules.copy()
     if 'all-linear' in target_modules:
-        if model_meta.is_multimodal:
-            model_arch = get_model_arch(args.model_meta.model_arch)
+        model_arch = get_model_arch(args.model_meta.model_arch)
+        if model_meta.is_multimodal and model_arch:
             return get_multimodal_target_regex(
                 model_arch,
                 freeze_llm=args.freeze_llm,

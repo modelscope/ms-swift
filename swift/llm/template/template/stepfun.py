@@ -74,6 +74,7 @@ class StepAudioTemplate(Template):
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
+        assert media_type == 'audio', f'media_type: {media_type}'
         from utils import load_audio
         audio_wav, sr = load_audio(load_file(inputs.audios[index]))
         audio_tokens = self.model.encoder(audio_wav, sr)

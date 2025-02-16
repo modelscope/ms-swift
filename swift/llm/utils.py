@@ -132,7 +132,7 @@ def dynamic_gradient_checkpointing(model) -> None:
     from .model import ModelMeta, get_model_arch
     model_meta: ModelMeta = model.model_meta
     model_arch = get_model_arch(model_meta.model_arch)
-    if model_meta.is_multimodal:
+    if model_meta.is_multimodal and model_arch:
         tower_names = model_arch.language_model + model_arch.vision_tower
     else:
         tower_names = [None]
