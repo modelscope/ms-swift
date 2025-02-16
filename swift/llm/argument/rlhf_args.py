@@ -53,6 +53,11 @@ class GRPOArguments(GRPOArgumentsMixin):
     vllm_gpu_memory_utilization: float = 0.9
     vllm_max_model_len: Optional[int] = None
 
+    def __post_init__(self):
+        if self.use_lmdeploy:
+            # In case trl GRPOTrainer need use_vllm
+            self.use_vllm = True
+
 
 @dataclass
 class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArguments):
