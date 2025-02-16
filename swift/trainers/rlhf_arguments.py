@@ -47,7 +47,6 @@ class GRPOConfig(GRPOArgumentsMixin, SwiftArgumentsMixin, HfGRPOConfig):
     top_k: Optional[int] = None
     top_p: Optional[float] = None
     repetition_penalty: Optional[float] = None
-    use_lmdeploy: bool = False
 
     def __post_init__(self):
         super().__post_init__()

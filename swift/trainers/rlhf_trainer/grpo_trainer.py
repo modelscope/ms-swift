@@ -104,26 +104,26 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         if use_vllm or use_lmdeploy:
             if self.accelerator.is_main_process:
-                vllm_device = self.args.vllm_device
-                if vllm_device == 'auto':
+                fast_infer_device = self.args.vllm_device or self.args.lmdeploy_device
+                if fast_infer_device == 'auto':
                     if get_device_count() == 1:
-                        vllm_device = get_device()  # particular case when training with only 1 GPU: share it
+                        fast_infer_device = get_device()  # particular case when training with only 1 GPU: share it
                     else:
                         local_world_size = get_dist_setting()[3]
-                        vllm_device = get_device(local_world_size)  # take the next GPU idx
+                        fast_infer_device = get_device(local_world_size)  # take the next GPU idx
                 # Check that the requested device is available
-                if vllm_device.split(':')[0] in {'cuda', 'npu'
-                                                 } and int(vllm_device.split(':')[1]) >= get_device_count():
+                if fast_infer_device.split(':')[0] in {'cuda', 'npu'
+                                                       } and int(fast_infer_device.split(':')[1]) >= get_device_count():
                     raise ValueError(
-                        f'The requested device for vllm ({vllm_device}) is not available. You are likely using vLLM '
+                        f'The requested device for vllm ({fast_infer_device}) is not available. You are likely using vLLM '
                         'without restricting the number of GPUs for training. Set the `--num_processes` argument to a '
                         'value lower than the number of GPUs available on your machine—typically, reducing it by one '
                         f'is sufficient. In your case: `--num_processes {get_device_count() - 1}`.')
                 # Check that the requested device is not also used for training
-                if vllm_device in {get_device(idx) for idx in range(self.accelerator.num_processes)}:
+                if fast_infer_device in {get_device(idx) for idx in range(self.accelerator.num_processes)}:
                     logger.warning(
-                        f'The requested device {vllm_device} is also used for training. This may lead to unexpected '
-                        'behavior. It is recommended to use a dedicated device for vLLM.')
+                        f'The requested device {fast_infer_device} is also used for training. '
+                        f'This may lead to unexpected behavior. It is recommended to use a dedicated device for vLLM.')
                 if use_vllm and not use_lmdeploy:
                     if not is_vllm_available():
                         raise ImportError('vLLM is not available and `use_vllm` is set to True. '
@@ -139,7 +139,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             model.model_dir,
                             model.model_info.torch_dtype,
                             model_type=model.model_meta.model_type,
-                            device=vllm_device,
+                            device=fast_infer_device,
                             gpu_memory_utilization=args.vllm_gpu_memory_utilization,
                             enable_prefix_caching=args.vllm_enable_prefix_caching,
                             max_num_seqs=args.vllm_max_num_seqs,
@@ -153,21 +153,21 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     # https://github.com/tastelikefeet/lmdeploy.git@feat/reload_state_dict
                     # Compile:https://github.com/tastelikefeet/lmdeploy/blob/main/docs/en/get_started/installation.md
                     if not is_lmdeploy_available():
-                        raise ImportError('Install lmdeploy by `pip install https://modelscope-open.oss-cn-'
-                                          'hangzhou.aliyuncs.com/lmdeploy-0.6.4-cp311-cp311-linux_x86_64.whl`')
+                        raise ImportError('Install lmdeploy by manually compile lmdeploy,see: '
+                                          'https://github.com/tastelikefeet/lmdeploy/blob/main/docs'
+                                          '/en/get_started/installation.md')
                     from swift.llm import LmdeployEngine
                     from swift.tuners import Swift
                     with Swift.grpo_context(model, self.template.processor):
-                        vllm_device = int(vllm_device.split(':')[1])
+                        fast_infer_device = int(fast_infer_device.split(':')[1])
                         self.engine = LmdeployEngine(
                             model.model_dir,
                             model.model_info.torch_dtype,
                             model_type=model.model_meta.model_type,
-                            device=[vllm_device],
-                            session_len=args.vllm_max_model_len,
-                            cache_max_entry_count=args.vllm_gpu_memory_utilization)
+                            device=[fast_infer_device],
+                            session_len=args.lmdeploy_session_len,
+                            cache_max_entry_count=args.lmdeploy_cache_max_entry_count)
                         # compat _move_model_to_vllm
-                        # self.llm.llm_engine.model_executor.driver_worker.model_runner.model
                         import collections
                         import collections.abc
                         for type_name in collections.abc.__all__:

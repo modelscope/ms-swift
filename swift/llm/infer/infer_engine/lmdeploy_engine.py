@@ -34,22 +34,23 @@ logger = get_logger()
 class LmdeployEngine(InferEngine):
 
     def __init__(
-            self,
-            model_id_or_path: str,
-            torch_dtype: Optional[torch.dtype] = None,
-            *,
-            model_type: Optional[str] = None,
-            use_hf: Optional[bool] = None,
-            hub_token: Optional[str] = None,
-            revision: Optional[str] = None,
-            # engine_kwargs
-            tp: int = 1,
-            session_len: Optional[int] = None,
-            cache_max_entry_count: float = 0.8,
-            quant_policy: int = 0,  # e.g. 4, 8
-            vision_batch_size: int = 1,  # max_batch_size in VisionConfig
-            engine_kwargs: Optional[Dict[str, Any]] = None,
-            device: Optional[List[int]] = None) -> None:
+        self,
+        model_id_or_path: str,
+        torch_dtype: Optional[torch.dtype] = None,
+        *,
+        model_type: Optional[str] = None,
+        use_hf: Optional[bool] = None,
+        hub_token: Optional[str] = None,
+        revision: Optional[str] = None,
+        # engine_kwargs
+        tp: int = 1,
+        session_len: Optional[int] = None,
+        cache_max_entry_count: float = 0.8,
+        quant_policy: int = 0,  # e.g. 4, 8
+        vision_batch_size: int = 1,  # max_batch_size in VisionConfig
+        device: Optional[List[int]] = None,
+        engine_kwargs: Optional[Dict[str, Any]] = None,
+    ) -> None:
 
         self.processor = get_model_tokenizer(
             model_id_or_path,

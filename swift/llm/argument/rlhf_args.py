@@ -49,7 +49,6 @@ class GRPOArguments(GRPOArgumentsMixin):
 
     # vLLM in GRPO
     use_vllm: bool = False
-    use_lmdeploy: bool = False
     vllm_device: Optional[str] = 'auto'  # 'cuda:0'
     vllm_gpu_memory_utilization: float = 0.9
     vllm_max_model_len: Optional[int] = None
@@ -98,8 +97,6 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
     def _prepare_training_args(self, training_args: Dict[str, Any]) -> None:
         if self.rlhf_type == 'ppo':
             training_args['world_size'] = self.global_world_size
-        if self.rlhf_type == 'grpo':
-            training_args['use_lmdeploy'] = self.use_lmdeploy
 
     def __post_init__(self):
         self._init_grpo()
@@ -139,7 +136,7 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
     def _init_grpo(self):
         if self.rlhf_type == 'grpo':
             if self.use_vllm or self.use_lmdeploy:
-                os.environ['USE_VLLM'] = '1'
+                os.environ['USE_FAST_INFERENCE'] = '1'
                 self._set_default_ddp_config()
             self.remove_unused_columns = False
             logger.info(f'Setting args.remove_unused_columns: {self.remove_unused_columns}')
