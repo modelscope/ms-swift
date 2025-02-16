@@ -3,9 +3,10 @@ from typing import Any, Dict, List, Literal, Optional
 
 from ..base import Template
 from ..constant import MLLMTemplateType
-from ..register import register_template
+from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import Context
+from ..vision_utils import load_file
 from .qwen import QwenTemplateMeta
 
 
@@ -69,13 +70,18 @@ register_template(
 
 
 class StepAudioTemplate(Template):
+    use_model = True
 
-    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        pass
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    inputs: StdTemplateInputs) -> List[Context]:
+        from utils import load_audio
+        audio_wav, sr = load_audio(load_file(inputs.audios[index]))
+        audio_tokens = self.model.encoder(audio_wav, sr)
+        return audio_tokens
 
 
 register_template(
-    QwenTemplateMeta(
+    TemplateMeta(
         MLLMTemplateType.step_audio,
         template_cls=StepAudioTemplate,
         prefix=['<s>'],
