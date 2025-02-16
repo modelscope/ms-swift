@@ -191,6 +191,7 @@ class MLLMModelType:
     emu3_gen = 'emu3_gen'
     emu3_chat = 'emu3_chat'
     got_ocr2 = 'got_ocr2'
+    step_audio = 'step_audio'
 
     phi3_vision = 'phi3_vision'
     florence = 'florence'

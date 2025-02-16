@@ -56,6 +56,7 @@ class MLLMModelArch:
     idefics3 = 'idefics3'
 
     got_ocr2 = 'got_ocr2'
+
     ovis1_6 = 'ovis1_6'
     molmo = 'molmo'
     emu3_chat = 'emu3_chat'

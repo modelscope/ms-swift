@@ -78,7 +78,7 @@ def find_module_list(model) -> Optional[nn.ModuleList]:
     for m in model.modules():
         if hasattr(m, 'gradient_checkpointing'):
             return
-        if isinstance(m, nn.ModuleList) and len(m) >= 10:
+        if isinstance(m, (nn.ModuleList, nn.Sequential)) and len(m) >= 10:
             module_lists.append(m)
     if module_lists:
         return max(module_lists, key=lambda x: len(x))
@@ -132,7 +132,7 @@ def dynamic_gradient_checkpointing(model) -> None:
     from .model import ModelMeta, get_model_arch
     model_meta: ModelMeta = model.model_meta
     model_arch = get_model_arch(model_meta.model_arch)
-    if model_meta.is_multimodal:
+    if model_meta.is_multimodal and model_arch:
         tower_names = model_arch.language_model + model_arch.vision_tower
     else:
         tower_names = [None]
