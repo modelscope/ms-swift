@@ -98,6 +98,8 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
     def _prepare_training_args(self, training_args: Dict[str, Any]) -> None:
         if self.rlhf_type == 'ppo':
             training_args['world_size'] = self.global_world_size
+        if self.rlhf_type == 'grpo':
+            training_args['use_lmdeploy'] = self.use_lmdeploy
 
     def __post_init__(self):
         self._init_grpo()
@@ -136,7 +138,7 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
 
     def _init_grpo(self):
         if self.rlhf_type == 'grpo':
-            if self.use_vllm:
+            if self.use_vllm or self.use_lmdeploy:
                 os.environ['USE_VLLM'] = '1'
                 self._set_default_ddp_config()
             self.remove_unused_columns = False

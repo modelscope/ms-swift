@@ -124,7 +124,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     logger.warning(
                         f'The requested device {vllm_device} is also used for training. This may lead to unexpected '
                         'behavior. It is recommended to use a dedicated device for vLLM.')
-                if use_vllm:
+                if use_vllm and not use_lmdeploy:
                     if not is_vllm_available():
                         raise ImportError('vLLM is not available and `use_vllm` is set to True. '
                                           'Please install vLLM with `pip install vllm` to use it.')
@@ -163,17 +163,33 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             model.model_dir,
                             model.model_info.torch_dtype,
                             model_type=model.model_meta.model_type,
-                            device=vllm_device,
+                            device=[vllm_device],
                             session_len=args.vllm_max_model_len,
                             cache_max_entry_count=args.vllm_gpu_memory_utilization)
                         # compat _move_model_to_vllm
-                        self.llm = namedtuple('LLM', ['llm_engine'])(self.engine.engine)
+                        # self.llm.llm_engine.model_executor.driver_worker.model_runner.model
+                        import collections
+                        import collections.abc
+                        for type_name in collections.abc.__all__:
+                            setattr(collections, type_name, getattr(collections.abc, type_name))
+                        from attrdict import AttrDict
+                        self.llm = AttrDict({
+                            'llm_engine': {
+                                'model_executor': {
+                                    'driver_worker': {
+                                        "model_runner": {
+                                            'model': self.engine.engine.engine
+                                        } 
+                                    }
+                                }
+                            }
+                        })
                     self.engine.default_template = self.template
-                self._last_loaded_step = 0
-                self.accelerator.wait_for_everyone()
         else:
             from swift.llm import PtEngine
             self.engine = PtEngine.from_model_template(self.model, self.template, max_batch_size=0)  # 0: no limit
+        self._last_loaded_step = 0
+        self.accelerator.wait_for_everyone()
         self.request_config = RequestConfig(
             max_tokens=args.max_completion_length,
             temperature=args.temperature,
@@ -240,7 +256,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self.accelerator.process_index * len(inputs),
             (self.accelerator.process_index + 1) * len(inputs),
         )
-        if self.args.use_vllm:
+        if self.args.use_vllm or self.args.use_lmdeploy:
             outputs = outputs[process_slice]
 
         for i, output in enumerate(outputs):

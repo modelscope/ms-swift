@@ -91,12 +91,12 @@ class LmdeployEngine(InferEngine):
         engine_kwargs['session_len'] = session_len
         engine_kwargs['cache_max_entry_count'] = cache_max_entry_count
         engine_kwargs['quant_policy'] = quant_policy
-        if hasattr(TurbomindEngineConfig, 'devices'):
-            if device is None:
-                device = [0]
-            engine_kwargs['devices'] = device
         backend_config = TurbomindEngineConfig(**engine_kwargs)
         backend_config = autoget_backend_config(self.model_dir, backend_config)
+        if hasattr(backend_config, 'devices'):
+            if device is None:
+                device = [0]
+            backend_config.devices = device
         if isinstance(backend_config, PytorchEngineConfig):
             backend_config.thread_safe = True
         self.backend_config = backend_config
