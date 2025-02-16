@@ -17,8 +17,8 @@ from trl.models import unwrap_model_for_generation
 
 from swift.llm import InferRequest, RequestConfig, to_device
 from swift.plugin.orm import orms
-from swift.utils import (JsonlWriter, get_device, get_device_count, get_dist_setting, get_logger, is_vllm_available,
-                         is_wandb_available, is_lmdeploy_available)
+from swift.utils import (JsonlWriter, get_device, get_device_count, get_dist_setting, get_logger, is_lmdeploy_available,
+                         is_vllm_available, is_wandb_available)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 
@@ -171,15 +171,16 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         import collections
                         import collections.abc
                         for type_name in collections.abc.__all__:
+                            # AttrDict may throw not modules `Mapping` error
                             setattr(collections, type_name, getattr(collections.abc, type_name))
                         from attrdict import AttrDict
                         self.llm = AttrDict({
                             'llm_engine': {
                                 'model_executor': {
                                     'driver_worker': {
-                                        "model_runner": {
+                                        'model_runner': {
                                             'model': self.engine.engine.engine
-                                        } 
+                                        }
                                     }
                                 }
                             }
