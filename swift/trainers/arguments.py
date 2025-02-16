@@ -70,6 +70,7 @@ class SwiftArgumentsMixin:
 
 @dataclass
 class GRPOArgumentsMixin:
+
     # vllm_device, vllm_gpu_memory_utilization, and vllm_max_model_len are defined in HfGRPOConfig.
     vllm_max_num_seqs: int = 256
     vllm_enforce_eager: bool = False
@@ -85,6 +86,12 @@ class GRPOArgumentsMixin:
     # repetition penalty, https://arxiv.org/abs/2502.03373
     repetition_n_grams: int = 3
     repetition_max_penalty: float = -1.0
+
+    # LMDeploy in GRPO
+    use_lmdeploy: bool = False
+    lmdeploy_device: Optional[str] = 'auto'
+    lmdeploy_session_len: Optional[int] = None
+    lmdeploy_cache_max_entry_count: float = 0.8
 
 
 @dataclass

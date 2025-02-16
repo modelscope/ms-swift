@@ -58,7 +58,7 @@ def is_dist():
 def is_mp() -> bool:
     if use_torchacc():
         return False
-    if strtobool(os.environ.get('USE_VLLM', 'false')):
+    if strtobool(os.environ.get('USE_FAST_INFERENCE', 'false')):
         return False
     from swift.utils import get_device_count
     n_gpu = get_device_count()
