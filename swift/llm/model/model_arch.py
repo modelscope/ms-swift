@@ -56,6 +56,8 @@ class MLLMModelArch:
     idefics3 = 'idefics3'
 
     got_ocr2 = 'got_ocr2'
+    step_audio = 'step_audio'
+
     ovis1_6 = 'ovis1_6'
     molmo = 'molmo'
     emu3_chat = 'emu3_chat'
@@ -478,6 +480,9 @@ register_model_arch(
         aligner='model.mm_projector_vary',
         vision_tower='model.vision_tower_high',
     ))
+
+register_model_arch(
+    MultiModelKeys(MLLMModelArch.step_audio, language_model='model', vision_tower='encoder', generator='decoder'))
 
 register_model_arch(
     MultiModelKeys(

@@ -66,3 +66,21 @@ register_template(
         template_cls=GOT_OCR2Template,
         placeholder_tokens=['<imgpad>'],
     ))
+
+
+class StepAudioTemplate(Template):
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        pass
+
+
+register_template(
+    QwenTemplateMeta(
+        MLLMTemplateType.step_audio,
+        template_cls=StepAudioTemplate,
+        prefix=['<s>'],
+        prompt=['<|BOT|>human\n{{QUERY}}<|EOT|><|BOT|>assistant\n'],
+        system_prefix=['<s><|BOT|>system\n{{SYSTEM}}<|EOT|>'],
+        chat_sep=['<|EOT|>'],
+        suffix=['<|EOT|>'],
+    ))
