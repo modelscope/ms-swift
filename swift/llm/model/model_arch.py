@@ -481,8 +481,7 @@ register_model_arch(
         vision_tower='model.vision_tower_high',
     ))
 
-register_model_arch(
-    MultiModelKeys(MLLMModelArch.step_audio, language_model='model', generator='decoder'))
+register_model_arch(MultiModelKeys(MLLMModelArch.step_audio, language_model='model', generator='decoder'))
 
 register_model_arch(
     MultiModelKeys(
