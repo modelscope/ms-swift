@@ -14,14 +14,24 @@ class Eval(BaseUI):
     group = 'llm_eval'
 
     locale_dict = {
+        'eval_backend': {
+            'label': {
+                'zh': '评测后端',
+                'en': 'Eval backend'
+            },
+            'info': {
+                'zh': '选择评测后端',
+                'en': 'Select eval backend'
+            }
+        },
         'eval_dataset': {
             'label': {
                 'zh': '评测数据集',
                 'en': 'Evaluation dataset'
             },
             'info': {
-                'zh': '选择评测数据集，支持多选',
-                'en': 'Select eval dataset, multiple datasets supported'
+                'zh': '选择评测数据集，支持多选 (先选择评测后端)',
+                'en': 'Select eval dataset, multiple datasets supported (select eval backend first)'
             }
         },
         'eval_limit': {
@@ -88,46 +98,20 @@ class Eval(BaseUI):
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
         try:
-            from evalscope.backend.opencompass import OpenCompassBackendManager
-            from evalscope.backend.vlm_eval_kit import VLMEvalKitBackendManager
-            eval_dataset_list = (
-                OpenCompassBackendManager.list_datasets() + VLMEvalKitBackendManager.list_supported_datasets())
-            logger.warn('If you encounter an error message👆🏻👆🏻👆🏻 of `.env` file, please ignore.')
+            from swift.llm.argument.eval_args import EvalArguments
+            eval_dataset_dict = EvalArguments.list_eval_dataset()
+            default_backend = EvalArguments.eval_backend
         except Exception as e:
             logger.warn(e)
-            logger.warn(
-                ('The error message 👆🏻👆🏻👆🏻above will have no bad effects, '
-                 'only means evalscope is not installed, and default eval datasets will be listed in the web-ui.'))
-            eval_dataset_list = [
-                'AX_b', 'cmb', 'winogrande', 'mmlu', 'afqmc', 'COPA', 'commonsenseqa', 'CMRC', 'lcsts', 'nq',
-                'ocnli_fc', 'math', 'mbpp', 'DRCD', 'TheoremQA', 'CB', 'ReCoRD', 'lambada', 'tnews', 'flores',
-                'humaneval', 'AX_g', 'ceval', 'bbh', 'BoolQ', 'MultiRC', 'piqa', 'csl', 'ARC_c', 'agieval', 'cmnli',
-                'strategyqa', 'gsm8k', 'summedits', 'eprstmt', 'WiC', 'cluewsc', 'Xsum', 'ocnli', 'triviaqa',
-                'hellaswag', 'race', 'bustm', 'RTE', 'C3', 'GaokaoBench', 'storycloze', 'ARC_e', 'siqa', 'obqa', 'WSC',
-                'chid', 'COCO_VAL', 'MME', 'HallusionBench', 'POPE', 'MMBench_DEV_EN', 'MMBench_TEST_EN',
-                'MMBench_DEV_CN', 'MMBench_TEST_CN', 'MMBench', 'MMBench_CN', 'MMBench_DEV_EN_V11',
-                'MMBench_TEST_EN_V11', 'MMBench_DEV_CN_V11', 'MMBench_TEST_CN_V11', 'MMBench_V11', 'MMBench_CN_V11',
-                'SEEDBench_IMG', 'SEEDBench2', 'SEEDBench2_Plus', 'ScienceQA_VAL', 'ScienceQA_TEST', 'MMT-Bench_ALL_MI',
-                'MMT-Bench_ALL', 'MMT-Bench_VAL_MI', 'MMT-Bench_VAL', 'AesBench_VAL', 'AesBench_TEST', 'CCBench',
-                'AI2D_TEST', 'MMStar', 'RealWorldQA', 'MLLMGuard_DS', 'BLINK', 'OCRVQA_TEST', 'OCRVQA_TESTCORE',
-                'TextVQA_VAL', 'DocVQA_VAL', 'DocVQA_TEST', 'InfoVQA_VAL', 'InfoVQA_TEST', 'ChartQA_TEST', 'MathVision',
-                'MathVision_MINI', 'MMMU_DEV_VAL', 'MMMU_TEST', 'OCRBench', 'MathVista_MINI', 'LLaVABench', 'MMVet',
-                'MTVQA_TEST', 'MMLongBench_DOC', 'VCR_EN_EASY_500', 'VCR_EN_EASY_100', 'VCR_EN_EASY_ALL',
-                'VCR_EN_HARD_500', 'VCR_EN_HARD_100', 'VCR_EN_HARD_ALL', 'VCR_ZH_EASY_500', 'VCR_ZH_EASY_100',
-                'VCR_ZH_EASY_ALL', 'VCR_ZH_HARD_500', 'VCR_ZH_HARD_100', 'VCR_ZH_HARD_ALL', 'MMDU', 'MMBench-Video',
-                'Video-MME', 'MMBench_DEV_EN', 'MMBench_TEST_EN', 'MMBench_DEV_CN', 'MMBench_TEST_CN', 'MMBench',
-                'MMBench_CN', 'MMBench_DEV_EN_V11', 'MMBench_TEST_EN_V11', 'MMBench_DEV_CN_V11', 'MMBench_TEST_CN_V11',
-                'MMBench_V11', 'MMBench_CN_V11', 'SEEDBench_IMG', 'SEEDBench2', 'SEEDBench2_Plus', 'ScienceQA_VAL',
-                'ScienceQA_TEST', 'MMT-Bench_ALL_MI', 'MMT-Bench_ALL', 'MMT-Bench_VAL_MI', 'MMT-Bench_VAL',
-                'AesBench_VAL', 'AesBench_TEST', 'CCBench', 'AI2D_TEST', 'MMStar', 'RealWorldQA', 'MLLMGuard_DS',
-                'BLINK'
-            ]
+            eval_dataset_dict = {}
+            default_backend = None
 
         with gr.Row():
+            gr.Dropdown(elem_id='eval_backend', choices=list(eval_dataset_dict.keys()), value=default_backend, scale=20)
             gr.Dropdown(
                 elem_id='eval_dataset',
                 is_list=True,
-                choices=eval_dataset_list,
+                choices=eval_dataset_dict.get(default_backend, []),
                 multiselect=True,
                 allow_custom_value=True,
                 scale=20)
@@ -138,3 +122,9 @@ class Eval(BaseUI):
             gr.Textbox(elem_id='eval_output_dir', scale=20)
             gr.Textbox(elem_id='eval_url', scale=20)
             gr.Textbox(elem_id='api_key', scale=20)
+
+        def update_eval_dataset(backend):
+            return gr.update(choices=eval_dataset_dict[backend])
+
+        cls.element('eval_backend').change(update_eval_dataset, [cls.element('eval_backend')],
+                                           [cls.element('eval_dataset')])

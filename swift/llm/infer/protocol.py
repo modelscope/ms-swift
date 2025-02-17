@@ -49,7 +49,7 @@ class RequestConfig:
     top_p: Optional[float] = None
     repetition_penalty: Optional[float] = None
     num_beams: int = 1
-    stop: List[str] = field(default_factory=list)
+    stop: Optional[List[str]] = field(default_factory=list)
 
     seed: Optional[int] = None
     stream: bool = False
@@ -100,6 +100,7 @@ class MultiModalRequestMixin:
     images: List[str] = field(default_factory=list)
     audios: List[str] = field(default_factory=list)
     videos: List[str] = field(default_factory=list)
+    objects: Dict[str, List[Any]] = field(default_factory=dict)
 
     @staticmethod
     def to_base64(mm_data: Union[str, Image.Image, bytes]) -> str:
@@ -166,7 +167,7 @@ class ChatCompletionRequest(RequestConfig, MultiModalRequestMixin, ChatCompletio
                 if isinstance(value, dict):
                     is_dict = True
                     value = value['url']
-                if isinstance(value, str) and value.startswith('data:') or value.startswith('http'):
+                if isinstance(value, str) and (value.startswith('data:') or value.startswith('http')):
                     continue
 
                 # local_path / PIL.Image

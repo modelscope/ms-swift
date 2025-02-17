@@ -55,19 +55,19 @@ You can contact us and communicate with us by adding our group:
 
 
 ## 📝 Introduction
-🍲 ms-swift is an official framework provided by the ModelScope community for fine-tuning and deploying large language models and multi-modal large models. It currently supports the training (pre-training, fine-tuning, human alignment), inference, evaluation, quantization, and deployment of 450+ large models and 150+ multi-modal large models. These large language models (LLMs) include models such as Qwen2.5, InternLM3, GLM4, Llama3.3, Mistral, DeepSeek3, Yi1.5, TeleChat2, Baichuan2, and Gemma2. The multi-modal LLMs include models such as Qwen2-VL, Qwen2-Audio, Llama3.2-Vision, Llava, InternVL2.5, MiniCPM-V-2.6, GLM4v, Xcomposer2.5, Yi-VL, DeepSeek-VL2, Phi3.5-Vision, and GOT-OCR2.
+🍲 ms-swift is an official framework provided by the ModelScope community for fine-tuning and deploying large language models and multi-modal large models. It currently supports the training (pre-training, fine-tuning, human alignment), inference, evaluation, quantization, and deployment of 450+ large models and 150+ multi-modal large models. These large language models (LLMs) include models such as Qwen2.5, InternLM3, GLM4, Llama3.3, Mistral, DeepSeek-R1, Yi1.5, TeleChat2, Baichuan2, and Gemma2. The multi-modal LLMs include models such as Qwen2.5-VL, Qwen2-Audio, Llama3.2-Vision, Llava, InternVL2.5, MiniCPM-V-2.6, GLM4v, Xcomposer2.5, Yi-VL, DeepSeek-VL2, Phi3.5-Vision, and GOT-OCR2.
 
-🍔 In addition, ms-swift gathers the latest training technologies, including LoRA, QLoRA, Llama-Pro, LongLoRA, GaLore, Q-GaLore, LoRA+, LISA, DoRA, FourierFt, ReFT, UnSloth, and Liger. ms-swift supports acceleration of inference, evaluation, and deployment modules using vLLM and LMDeploy, and supports the quantization of large models and multi-modal large models using technologies such as GPTQ, AWQ, and BNB. To help researchers and developers fine-tune and apply large models more easily, ms-swift also provides a Gradio-based Web-UI interface and a wealth of best practices.
+🍔 Additionally, ms-swift incorporates the latest training technologies, including lightweight techniques such as LoRA, QLoRA, Llama-Pro, LongLoRA, GaLore, Q-GaLore, LoRA+, LISA, DoRA, FourierFt, ReFT, UnSloth, and Liger, as well as human alignment training methods like DPO, GRPO, RM, PPO, KTO, CPO, SimPO, and ORPO. ms-swift supports acceleration of inference, evaluation, and deployment modules using vLLM and LMDeploy, and it supports model quantization with technologies like GPTQ, AWQ, and BNB. Furthermore, ms-swift offers a Gradio-based Web UI and a wealth of best practices.
 
 **Why choose ms-swift?**
 
-- 🍎 **Model Types**: Supports 450+ large language models and **150+ multi-modal large models** and all-to-all models, **providing a comprehensive solution from training to deployment**.
+- 🍎 **Model Types**: Supports 450+ pure text large models, **150+ multi-modal large models**, as well as All-to-All multi-modal models, sequence classification models, and embedding models, **covering the entire process from training to deployment**.
 - **Dataset Types**: Comes with 150+ pre-training, fine-tuning, human alignment, multi-modal datasets, and supports custom datasets.
 - **Hardware Support**: Compatible with CPU, RTX series, T4/V100, A10/A100/H100, Ascend NPU, etc.
 - 🍊 **Lightweight Training**: Supports lightweight fine-tuning methods like LoRA, QLoRA, DoRA, LoRA+, ReFT, RS-LoRA, LLaMAPro, Adapter, GaLore, Q-Galore, LISA, UnSloth, Liger-Kernel.
 - **Distributed Training**: Supports distributed data parallel (DDP), device_map simple model parallelism, DeepSpeed ZeRO2/ZeRO3, FSDP, and other distributed training techniques.
 - **Quantization Training**: Supports training quantized models like BNB, AWQ, GPTQ, AQLM, HQQ, EETQ.
-- **RLHF Training**: Supports human alignment training methods such as DPO, CPO, SimPO, ORPO, KTO, RM, PPO for both pure text and multi-modal large models.
+- **RLHF Training**: Supports human alignment training methods such as DPO, GRPO, RM, PPO, KTO, CPO, SimPO, ORPO for both pure text and multi-modal large models.
 - 🍓 **Multi-Modal Training**: Supports training on different modalities like images, videos, and audio, for tasks like VQA, captioning, OCR, and grounding.
 - **Interface Training**: Provides capabilities for training, inference, evaluation, quantization through an interface, completing the whole large model pipeline.
 - **Plugin and Extension**: Supports custom model and dataset extensions, as well as customization of components like loss, metric, trainer, loss-scale, callback, optimizer.
@@ -78,7 +78,10 @@ You can contact us and communicate with us by adding our group:
 
 
 ## 🎉 News
-
+- 🎁 2025.02.16: Support LMDeploy in GRPO, use `--use_lmdeploy true`. Please check [this script](examples/train/grpo/full_lmdeploy.sh)
+- 🔥 2025.02.12: Support for GRPO(Group Relative Policy Optimization) algorithm for llm and mllm, document can be found in [here](docs/source_en/Instruction/GRPO.md)
+- 🎁 2025.02.10: SWIFT support the fine-tuning of embedding models，please check the [training script](examples/train/embedding/train.sh)。
+- 🎁 2025.01.23: SWIFT support the `sample` command, this is a very important feature for complex CoT and RFT. Meanwhile, we support an [Reinforced Fine-tuning script](docs/source_en/Instruction/Reinforced_Fine_tuning.md).
 - 🎁 2024.12.04: **SWIFT3.0** major version update. Please check the [Release Notes and Changes](https://swift.readthedocs.io/en/latest/Instruction/ReleaseNote3.0.html).
 - 🎉 2024.08.12: The SWIFT paper has been published on arXiv, and you can read it [here](https://arxiv.org/abs/2408.05517).
 - 🔥 2024.08.05: Support for using [evalscope](https://github.com/modelscope/evalscope/) as a backend for evaluating large models and multimodal models.
@@ -101,6 +104,25 @@ git clone https://github.com/modelscope/ms-swift.git
 cd ms-swift
 pip install -e .
 ```
+
+Running Environment:
+
+|              | Range                | Recommended | Notes                                     |
+| ------------ | -------------------- | ----------- | ----------------------------------------- |
+| python       | >=3.9                | 3.10        |                                           |
+| cuda         |                      | cuda12      | No need to install if using CPU, NPU, MPS |
+| torch        | >=2.0                |             |                                           |
+| transformers | >=4.33               | 4.48.3      |                                           |
+| modelscope   | >=1.19               |             |                                           |
+| peft         | >=0.11.0,<0.15.0     |             |                                           |
+| trl          | >=0.13,<0.16         | 0.15      | RLHF                                      |
+| deepspeed    | >=0.14 |  | Training                                  |
+| vllm         | >=0.5.1              | 0.6.5       | Inference/Deployment/Evaluation           |
+| lmdeploy     | lmdeploy>=0.5,<0.6.5 | 0.6.4       | Inference/Deployment/Evaluation           |
+| evalscope | | >=0.11 | Evaluation |
+
+For more optional dependencies, you can refer to [here](https://github.com/modelscope/ms-swift/blob/main/requirements/install_all.sh).
+
 
 ## 🚀 Quick Start
 
@@ -139,7 +161,16 @@ swift sft \
     --model_name swift-robot
 ```
 
-After training is complete, use the following command to perform inference with the trained weights. The `--adapters` option should be replaced with the last checkpoint folder generated from the training. Since the adapters folder contains the parameter files from the training, there is no need to specify `--model` or `--system` separately.
+Tips:
+
+- If you want to train with a custom dataset, you can refer to [this guide](../Customization/Custom-dataset.md) to organize your dataset format and specify `--dataset <dataset_path>`.
+- The `--model_author` and `--model_name` parameters are only effective when the dataset includes `swift/self-cognition`.
+- To train with a different model, simply modify `--model <model_id/model_path>`.
+- By default, ModelScope is used for downloading models and datasets. If you want to use HuggingFace, simply specify `--use_hf true`.
+
+After training is complete, use the following command to infer with the trained weights:
+
+- Here, `--adapters` should be replaced with the last checkpoint folder generated during training. Since the adapters folder contains the training parameter file `args.json`, there is no need to specify `--model`, `--system` separately; Swift will automatically read these parameters. To disable this behavior, you can set `--load_args false`.
 
 ```shell
 # Using an interactive command line for inference.
@@ -162,6 +193,19 @@ swift infer \
     --max_new_tokens 2048
 ```
 
+Finally, use the following command to push the model to ModelScope:
+
+```shell
+CUDA_VISIBLE_DEVICES=0 \
+swift export \
+    --adapters output/vx-xxx/checkpoint-xxx \
+    --push_to_hub true \
+    --hub_model_id '<your-model-id>' \
+    --hub_token '<your-sdk-token>' \
+    --use_hf false
+```
+
+
 ### Web-UI
 The Web-UI is a **zero-threshold** training and deployment interface solution based on Gradio interface technology. For more details, you can check [here](https://swift.readthedocs.io/en/latest/GetStarted/Web-UI.html).
 
@@ -173,7 +217,7 @@ SWIFT_UI_LANG=en swift web-ui
 
 ### Using Python
 
-ms-swift also supports training and inference using Python. Below is pseudocode for training and inference. For more details, you can refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/notebook).
+ms-swift also supports training and inference using Python. Below is pseudocode for training and inference. For more details, you can refer to [here](https://github.com/modelscope/ms-swift/blob/main/examples/notebook/qwen2_5-self-cognition/self-cognition-sft.ipynb).
 
 Training:
 
@@ -212,16 +256,38 @@ print(f'response: {resp_list[0].choices[0].message.content}')
 ```
 
 ## ✨ Usage
-Here is the simplest example of training to deployment using ms-swift. For more details, you can check the [examples](https://github.com/modelscope/ms-swift/tree/main/examples).
+Here is a minimal example of training to deployment using ms-swift. For more details, you can check the [examples](https://github.com/modelscope/ms-swift/tree/main/examples).
+
+- If you want to use other models or datasets (including multimodal models and datasets), you only need to modify `--model` to specify the corresponding model's ID or path, and modify `--dataset` to specify the corresponding dataset's ID or path.
+- By default, ModelScope is used for downloading models and datasets. If you want to use HuggingFace, simply specify `--use_hf true`.
 
 |   Useful Links |
 | ------ |
-|   [Command Line Parameters](https://swift.readthedocs.io/en/latest/Instruction/Command-line-parameters.html)   |
+|   [🔥Command Line Parameters](https://swift.readthedocs.io/en/latest/Instruction/Command-line-parameters.html)   |
 |   [Supported Models and Datasets](https://swift.readthedocs.io/en/latest/Instruction/Supported-models-and-datasets.html)   |
-|   [Custom Models](https://swift.readthedocs.io/en/latest/Customization/Custom-model.html), [Custom Datasets](https://swift.readthedocs.io/en/latest/Customization/Custom-dataset.html)   |
+|   [Custom Models](https://swift.readthedocs.io/en/latest/Customization/Custom-model.html), [🔥Custom Datasets](https://swift.readthedocs.io/en/latest/Customization/Custom-dataset.html)   |
 |   [LLM Tutorial](https://github.com/modelscope/modelscope-classroom/tree/main/LLM-tutorial)   |
 
 ### Training
+
+Supported Training Methods:
+
+| Method                             | Full-Parameter                                               | LoRA                                                         | QLoRA                                                        | Deepspeed                                                    | Multi-Node                                                   | Multi-Modal                                                  |
+|------------------------------------|--------------------------------------------------------------|--------------------------------------------------------------|--------------------------------------------------------------|--------------------------------------------------------------|--------------------------------------------------------------|--------------------------------------------------------------|
+| Pre-training                       | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/pretrain/train.sh) | ✅                                                            | ✅                                                            | ✅                                                            | ✅                                                            | ✅                                                            |
+| Instruction Supervised Fine-tuning | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/full/train.sh) | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/lora_sft.sh) | [✅](https://github.com/modelscope/ms-swift/tree/main/examples/train/qlora) | [✅](https://github.com/modelscope/ms-swift/tree/main/examples/train/multi-gpu/deepspeed) | [✅](https://github.com/modelscope/ms-swift/tree/main/examples/train/multi-node)                                                            | [✅](https://github.com/modelscope/ms-swift/tree/main/examples/train/multimodal) |
+| DPO Training                       | ✅                                                            | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/dpo.sh) | ✅                                                            | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/dpo.sh) | ✅                                                            | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/multimodal/rlhf/dpo.sh) |
+| GRPO Training                      | [✅]((https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/grpo_zero2.sh)) | ✅                                                            | ✅                                                            | ✅                                                            | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/multi_node)                                    | ✅                                                            |
+| Reward Model Training              | ✅                                                            | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/rm.sh) | ✅                                                            | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/rm.sh) | ✅                                                            | ✅                                                            |
+| PPO Training                       | ✅                                                            | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/ppo.sh) | ✅                                                            | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/ppo.sh) | ✅                                                            | ❌                                                            |
+| KTO Training                       | ✅                                                            | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/kto.sh) | ✅                                                            | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/kto.sh) | ✅                                                            | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/multimodal/rlhf/kto.sh) |
+| CPO Training                       | ✅                                                            | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/cpo.sh) | ✅                                                            | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/cpo.sh) | ✅                                                            | ✅                                                            |
+| SimPO Training                     | ✅                                                            | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/simpo.sh) | ✅                                                            | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/simpo.sh) | ✅                                                            | ✅                                                            |
+| ORPO Training                      | ✅                                                            | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/orpo.sh) | ✅                                                            | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/orpo.sh) | ✅                                                            | ✅                                                            |
+| Classification Model Training      | ✅                                                            | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/seq_cls/qwen2_5/sft.sh) | ✅                                                            | ✅                                                            | ✅                                                            | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/seq_cls/qwen2_vl/sft.sh) |
+| Embedding Model Training           | ✅                                                            | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/train/embedding/train.sh) | ✅                                                            | ✅                                                            | ✅                                                            | ❌                                                            |
+
+
 
 Pre-training:
 ```shell
@@ -295,11 +361,21 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
     --infer_backend vllm
 ```
 
+### Sampling
+```shell
+CUDA_VISIBLE_DEVICES=0 swift sample \
+    --model LLM-Research/Meta-Llama-3.1-8B-Instruct \
+    --sampler_engine pt \
+    --num_return_sequences 5 \
+    --dataset AI-ModelScope/alpaca-gpt4-data-zh#5
+```
+
 ### Evaluation
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift eval \
     --model Qwen/Qwen2.5-7B-Instruct \
     --infer_backend lmdeploy \
+    --eval_backend OpenCompass \
     --eval_dataset ARC_c
 ```
 
@@ -310,6 +386,15 @@ CUDA_VISIBLE_DEVICES=0 swift export \
     --quant_bits 4 --quant_method awq \
     --dataset AI-ModelScope/alpaca-gpt4-data-zh \
     --output_dir Qwen2.5-7B-Instruct-AWQ
+```
+
+### Push Model
+```shell
+CUDA_VISIBLE_DEVICES=0 swift export \
+    --model <model-path> \
+    --push_to_hub true \
+    --hub_model_id '<model-id>' \
+    --hub_token '<sdk-token>'
 ```
 
 ## 🏛 License

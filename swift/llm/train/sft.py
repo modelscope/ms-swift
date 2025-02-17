@@ -5,7 +5,7 @@ from typing import List, Union
 
 from datasets import Dataset as HfDataset
 
-from swift.plugin import extra_callbacks, get_loss_func, get_metric, optimizers_map
+from swift.plugin import extra_callbacks, get_loss_func, get_metric
 from swift.trainers import IntervalStrategy, TrainerFactory
 from swift.utils import (append_to_jsonl, get_logger, get_model_parameter_info, is_master, plot_images, stat_array,
                          use_torchacc)
@@ -158,6 +158,13 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         training_args = trainer.args
         state = trainer.state
 
+        if self.args.create_checkpoint_symlink:
+            last_checkpoint = os.path.join(self.args.output_dir, 'last')
+            best_checkpoint = os.path.join(self.args.output_dir, 'best')
+            os.symlink(state.last_model_checkpoint, last_checkpoint)
+            os.symlink(state.best_model_checkpoint, best_checkpoint)
+            state.last_model_checkpoint = last_checkpoint
+            state.best_model_checkpoint = best_checkpoint
         logger.info(f'last_model_checkpoint: {state.last_model_checkpoint}')
         logger.info(f'best_model_checkpoint: {state.best_model_checkpoint}')
 
@@ -218,26 +225,27 @@ class SwiftSft(SwiftPipeline, TunerMixin):
     def _encode_dataset(self, train_dataset, val_dataset):
         template = self.template
         args = self.args
+        is_grpo = hasattr(args, 'rlhf_type') and args.rlhf_type == 'grpo'
+        if not is_grpo:
+            if args.lazy_tokenize:
+                train_dataset = LazyLLMDataset(
+                    train_dataset, template.encode, strict=args.strict, random_state=args.data_seed)
+                if val_dataset is not None and not args.predict_with_generate:
+                    val_dataset = LazyLLMDataset(
+                        val_dataset, template.encode, strict=args.strict, random_state=args.data_seed)
+            else:
+                preprocessor_cls = PackingPreprocessor if args.packing else EncodePreprocessor
+                preprocessor = preprocessor_cls(template=template)
+                train_dataset = preprocessor(train_dataset, num_proc=args.dataset_num_proc, strict=args.strict)
+                if val_dataset is not None and not args.predict_with_generate:
+                    val_dataset = preprocessor(val_dataset, num_proc=args.dataset_num_proc, strict=args.strict)
 
-        if args.lazy_tokenize:
-            train_dataset = LazyLLMDataset(
-                train_dataset, template.encode, strict=args.strict, random_state=args.data_seed)
-            if val_dataset is not None and not args.predict_with_generate:
-                val_dataset = LazyLLMDataset(
-                    val_dataset, template.encode, strict=args.strict, random_state=args.data_seed)
-        else:
-            preprocessor_cls = PackingPreprocessor if args.packing else EncodePreprocessor
-            preprocessor = preprocessor_cls(template=template)
-            train_dataset = preprocessor(train_dataset, num_proc=args.dataset_num_proc, strict=args.strict)
-            if val_dataset is not None and not args.predict_with_generate:
-                val_dataset = preprocessor(val_dataset, num_proc=args.dataset_num_proc, strict=args.strict)
-
-        inputs = train_dataset[0] if hasattr(train_dataset, '__len__') else next(iter(train_dataset))
-        template.print_inputs(inputs, tokenizer_kwargs=inputs.pop('tokenizer_kwargs', None) or {})
-        if isinstance(train_dataset, HfDataset):
-            self.train_msg['train_dataset'] = self._stat_dataset(train_dataset)
-            if val_dataset is not None and not args.predict_with_generate:
-                self.train_msg['val_dataset'] = self._stat_dataset(val_dataset)
+            inputs = train_dataset[0] if hasattr(train_dataset, '__len__') else next(iter(train_dataset))
+            template.print_inputs(inputs, tokenizer_kwargs=inputs.pop('tokenizer_kwargs', None) or {})
+            if isinstance(train_dataset, HfDataset):
+                self.train_msg['train_dataset'] = self._stat_dataset(train_dataset)
+                if val_dataset is not None and not args.predict_with_generate:
+                    self.train_msg['val_dataset'] = self._stat_dataset(val_dataset)
 
         if val_dataset is None:
             args.training_args.evaluation_strategy = IntervalStrategy.NO

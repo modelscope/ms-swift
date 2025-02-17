@@ -2,13 +2,13 @@
 
 ms-swift is a comprehensive training and deployment framework for large language models and multimodal large models, provided by the ModelScope Community. It currently supports the training (CPT, SFT, RLHF), inference, evaluation, quantization, and deployment of 450+ LLM and 150+ MLLM. Model developers can fulfill all kinds of needs related to large models in a single platform within the ms-swift framework. The main capabilities of ms-swift include:
 
-- 🍎 Model Types: Supports the full process from training to deployment of 450+ text-based large models and 150+ multimodal large models, including All-to-All all-modality models.
+- 🍎 Model Types: Supports 450+ pure text large models, 150+ multi-modal large models, as well as All-to-All multi-modal models, sequence classification models, and embedding models, covering the entire process from training to deployment.
 - Dataset Types: Comes with more than 150 pre-built datasets for pre-training, fine-tuning, human alignment, multimodal, and supports custom datasets.
 - Hardware Support: Compatible with CPU, RTX series, T4/V100, A10/A100/H100, Ascend NPU, and others.
 - 🍊 Lightweight Training: Supports lightweight fine-tuning methods like LoRA, QLoRA, DoRA, LoRA+, ReFT, RS-LoRA, LLaMAPro, Adapter, GaLore, Q-Galore, LISA, UnSloth, Liger-Kernel, and more.
 - Distributed Training: Supports distributed data parallel (DDP), simple model parallelism via device_map, DeepSpeed ZeRO2 ZeRO3, FSDP, and other distributed training technologies.
 - Quantization Training: Provides training for quantized models like BNB, AWQ, GPTQ, AQLM, HQQ, EETQ.
-- RLHF Training: Supports human alignment training methods like DPO, CPO, SimPO, ORPO, KTO, RM, PPO for both text-based and multimodal large models.
+- RLHF Training: Supports human alignment training methods like DPO, GRPO, RM, PPO, KTO, CPO, SimPO, ORPO for both text-based and multimodal large models.
 - 🍓 Multimodal Training: Capable of training models for different modalities such as images, videos, and audios; supports tasks like VQA (Visual Question Answering), Captioning, OCR (Optical Character Recognition), and Grounding.
 - Interface-driven Training: Offers training, inference, evaluation, and quantization capabilities through an interface, enabling a complete workflow for large models.
 - Plugins and Extensions: Allows customization and extension of models and datasets, and supports customizations for components like loss, metric, trainer, loss-scale, callback, optimizer, etc.
@@ -56,7 +56,16 @@ swift sft \
     --model_name swift-robot
 ```
 
-After training is complete, use the following command to perform inference with the trained weights. The `--adapters` option should be replaced with the last checkpoint folder generated from the training. Since the adapters folder contains the parameter files from the training, there is no need to specify `--model` or `--system` separately.
+Tips:
+
+- If you want to train with a custom dataset, you can refer to [this guide](../Customization/Custom-dataset.md) to organize your dataset format and specify `--dataset <dataset_path>`.
+- The `--model_author` and `--model_name` parameters are only effective when the dataset includes `swift/self-cognition`.
+- To train with a different model, simply modify `--model <model_id/model_path>`.
+- By default, ModelScope is used for downloading models and datasets. If you want to use HuggingFace, simply specify `--use_hf true`.
+
+After training is complete, use the following command to infer with the trained weights:
+
+- Here, `--adapters` should be replaced with the last checkpoint folder generated during training. Since the adapters folder contains the training parameter file `args.json`, there is no need to specify `--model`, `--system` separately; Swift will automatically read these parameters. To disable this behavior, you can set `--load_args false`.
 
 ```shell
 # Using an interactive command line for inference.
@@ -79,7 +88,18 @@ swift infer \
     --max_new_tokens 2048
 ```
 
-> [!TIP]
-> More examples can be found here: [examples](https://github.com/modelscope/ms-swift/tree/main/examples).
->
-> Examples of training and inference using Python can be found in the [notebook](https://github.com/modelscope/ms-swift/tree/main/examples/notebook).
+Finally, use the following command to push the model to ModelScope:
+
+```shell
+CUDA_VISIBLE_DEVICES=0 \
+swift export \
+    --adapters output/vx-xxx/checkpoint-xxx \
+    --push_to_hub true \
+    --hub_model_id '<your-model-id>' \
+    --hub_token '<your-sdk-token>' \
+    --use_hf false
+```
+
+## Learn More
+- More Shell scripts: [https://github.com/modelscope/ms-swift/tree/main/examples](https://github.com/modelscope/ms-swift/tree/main/examples)
+- Using Python: [https://github.com/modelscope/ms-swift/blob/main/examples/notebook/qwen2_5-self-cognition/self-cognition-sft.ipynb](https://github.com/modelscope/ms-swift/blob/main/examples/notebook/qwen2_5-self-cognition/self-cognition-sft.ipynb)

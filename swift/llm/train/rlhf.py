@@ -37,12 +37,12 @@ class SwiftRLHF(SwiftSft):
                 task_type = 'seq_cls'
                 num_labels = 1
             # Be aware of the unexpected behavior caused by double monkey patching.
-            model = args.get_model_processor(
+            model, processor = args.get_model_processor(
                 model=model_id_or_path,
                 model_type=model_type,
                 model_revision=model_revision,
                 task_type=task_type,
-                num_labels=num_labels)[0]
+                num_labels=num_labels)
 
             model = prepare_adapter(args, model, adapters)
             if origin_key in {'ref', 'reward'}:
@@ -54,19 +54,19 @@ class SwiftRLHF(SwiftSft):
                 self.train_msg['value_model_parameter_info'] = model_parameter_info
                 logger.info(f'value_model_parameter_info: {model_parameter_info}')
             setattr(self, f'{origin_key}_model', model)
+            if origin_key == 'reward' and args.rlhf_type == 'grpo':
+                reward_template = self.args.get_template(processor)
+                if reward_template.use_model:
+                    reward_template.model = model
+                self.reward_template = reward_template
 
         super()._prepare_model_tokenizer()
 
     def _prepare_template(self) -> None:
         args = self.args
         super()._prepare_template()
-        model_mapping = {'kto': 'kto', 'ppo': 'pt'}
+        model_mapping = {'kto': 'kto', 'ppo': 'pt', 'grpo': 'pt'}
         self.template.set_mode(model_mapping.get(args.rlhf_type, 'rlhf'))
-
-        if args.rlhf_type == 'orpo' and not args.model_meta.is_multimodal:
-            # Avoid padding labels during the model's forward pass in multimodal models.
-            args.loss_scale = 'default'
-        self.template.loss_scale = args.loss_scale
 
         if args.rlhf_type == 'ppo':
             args.training_args.stop_token_id = self.template.template_meta.stop_token_id
@@ -83,8 +83,12 @@ class SwiftRLHF(SwiftSft):
         for key in ['ref', 'reward', 'value']:
             key = f'{key}_model'
             model = getattr(self, key, None)
-            if model:
+            if model or self.args.rlhf_type == 'ppo':
                 trainer_kwargs[key] = model
+        if hasattr(self, 'reward_template'):
+            trainer_kwargs['reward_template'] = self.reward_template
+        if self.args.rlhf_type == 'grpo':
+            trainer_kwargs['reward_funcs'] = self.args.reward_funcs
         return trainer_kwargs
 
 

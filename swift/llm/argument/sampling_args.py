@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import dataclasses
+import os
 from dataclasses import dataclass
 from datetime import datetime
 from typing import List, Literal, Optional
@@ -20,8 +21,8 @@ class SamplingArguments(BaseArguments):
 
     # sampler settings
     # sample/mcts/dvts/xxx
-    sampler_type: str = 'sample'
-    sampler_engine: Literal['pt', 'lmdeploy', 'vllm', 'no'] = 'pt'
+    sampler_type: Literal['sample', 'mcts'] = 'sample'
+    sampler_engine: Literal['pt', 'lmdeploy', 'vllm', 'no', 'client'] = 'pt'
     output_dir: str = 'sample_output'
     output_file: Optional[str] = None
     override_exist_file: bool = False
@@ -42,6 +43,21 @@ class SamplingArguments(BaseArguments):
     # Vanilla
     cache_files: List[str] = dataclasses.field(default_factory=list)
 
+    # MCTS
+    rollout_depth: int = 5
+    rollout_start_depth: int = 3
+    max_iterations: int = 100
+    process_reward_rate: float = 0.0
+    exploration_rate: float = 0.5
+    api_key: str = 'EMPTY'
+    base_url: str = 'https://dashscope.aliyuncs.com/compatible-mode/v1'
+
+    def _init_model_info(self):
+        if self.sampler_engine != 'client':
+            return super()._init_model_info()
+        self.task_type = 'causal_lm'
+        return
+
     def __post_init__(self):
         if self.output_file is None:
             now = datetime.now()
@@ -58,4 +74,13 @@ class SamplingArguments(BaseArguments):
             self.engine_kwargs = json.loads(self.engine_kwargs)
         else:
             self.engine_kwargs = {}
+
         super().__post_init__()
+
+        if self.system is not None:
+            self.system_message = [{
+                'role': 'system',
+                'content': self.system,
+            }]
+        else:
+            self.system_message = []

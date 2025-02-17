@@ -25,17 +25,8 @@ class FlorenceTemplate(Template):
                     inputs: StdTemplateInputs) -> List[Context]:
         return []
 
-    def replace_box(self, object_: Dict[str, Any], index: int, inputs: StdTemplateInputs) -> List[Context]:
-        object_ = inputs.objects[index]
-        if isinstance(object_['bbox'][0], list):
-            all_objects = ''
-            for sub_object in object_['bbox']:
-                x1, y1, x2, y2 = sub_object
-                all_objects += f'<loc_{x1}><loc_{y1}><loc_{x2}><loc_{y2}>,'
-            return [all_objects[:-1]]
-        else:
-            x1, y1, x2, y2 = object_['bbox']
-            return [f'<loc_{x1}><loc_{y1}><loc_{x2}><loc_{y2}>']
+    def replace_bbox(self, bbox: List[int], index: int, inputs: StdTemplateInputs) -> List[Context]:
+        return [''.join(f'<loc_{box}>' for box in bbox)]
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         processor = self.processor

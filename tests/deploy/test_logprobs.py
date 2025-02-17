@@ -94,7 +94,7 @@ def test_pt():
     _test('pt')
 
 
-def test_vllm_orgin():
+def test_vllm_origin():
     import os
     import subprocess
     import sys
@@ -107,7 +107,7 @@ def test_vllm_orgin():
 
 
 if __name__ == '__main__':
-    # test_vllm_orgin()
+    # test_vllm_origin()
     # test_vllm()
     test_vllm_vlm()
     # test_lmdeploy()

@@ -58,7 +58,10 @@ def is_dist():
 def is_mp() -> bool:
     if use_torchacc():
         return False
-    n_gpu = torch.cuda.device_count()
+    if strtobool(os.environ.get('USE_FAST_INFERENCE', 'false')):
+        return False
+    from swift.utils import get_device_count
+    n_gpu = get_device_count()
     local_world_size = get_dist_setting()[3]
     assert n_gpu % local_world_size == 0, f'n_gpu: {n_gpu}, local_world_size: {local_world_size}'
     if n_gpu // local_world_size >= 2:
@@ -67,6 +70,7 @@ def is_mp() -> bool:
 
 
 def is_mp_ddp() -> bool:
+    # patch_mp_ddp will occur when `import swift`.
     if is_dist() and is_mp():
         logger.info('Using MP + DDP(device_map)')
         return True

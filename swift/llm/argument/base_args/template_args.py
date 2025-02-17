@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import os
 from dataclasses import dataclass, field
 from typing import Literal, Optional
 
@@ -35,6 +36,7 @@ class TemplateArguments:
     truncation_strategy: Literal['delete', 'left', 'right'] = 'delete'
     max_pixels: Optional[int] = None
     tools_prompt: str = 'react_en'  # Override the default_tools_prompt in the template.
+    norm_bbox: Literal['norm1000', 'none', None] = None
     # train
     padding_side: Literal['left', 'right'] = 'right'
     loss_scale: str = 'default'
@@ -46,6 +48,10 @@ class TemplateArguments:
     def __post_init__(self):
         if self.template is None and hasattr(self, 'model_meta'):
             self.template = self.model_meta.template
+        if self.system is not None and self.system.endswith('.txt'):
+            assert os.path.isfile(self.system), f'self.system: {self.system}'
+            with open(self.system, 'r') as f:
+                self.system = f.read()
 
     def get_template_kwargs(self):
         truncation_strategy = self.truncation_strategy
@@ -57,6 +63,7 @@ class TemplateArguments:
             'truncation_strategy': truncation_strategy,
             'max_pixels': self.max_pixels,
             'tools_prompt': self.tools_prompt,
+            'norm_bbox': self.norm_bbox,
             'loss_scale': self.loss_scale,
             'padding_side': self.padding_side,
             'sequence_parallel_size': self.sequence_parallel_size,

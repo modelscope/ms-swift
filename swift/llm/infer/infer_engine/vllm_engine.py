@@ -34,28 +34,31 @@ dtype_mapping = {torch.float16: 'float16', torch.bfloat16: 'bfloat16', torch.flo
 class VllmEngine(InferEngine):
 
     def __init__(
-            self,
-            model_id_or_path: str,
-            torch_dtype: Optional[torch.dtype] = None,
-            *,
-            model_type: Optional[str] = None,
-            use_hf: Optional[bool] = None,
-            hub_token: Optional[str] = None,
-            revision: Optional[str] = None,
-            # engine_kwargs
-            gpu_memory_utilization: float = 0.9,
-            tensor_parallel_size: int = 1,
-            pipeline_parallel_size: int = 1,
-            max_model_len: Optional[int] = None,
-            max_num_seqs: int = 256,
-            disable_custom_all_reduce: bool = False,
-            enforce_eager: bool = False,
-            limit_mm_per_prompt: Optional[Dict[str, Any]] = None,
-            # lora
-            enable_lora: bool = False,
-            max_loras: int = 1,
-            max_lora_rank: int = 16,
-            engine_kwargs: Optional[Dict[str, Any]] = None) -> None:
+        self,
+        model_id_or_path: str,
+        torch_dtype: Optional[torch.dtype] = None,
+        *,
+        model_type: Optional[str] = None,
+        use_hf: Optional[bool] = None,
+        hub_token: Optional[str] = None,
+        revision: Optional[str] = None,
+        # engine_kwargs
+        gpu_memory_utilization: float = 0.9,
+        tensor_parallel_size: int = 1,
+        pipeline_parallel_size: int = 1,
+        max_model_len: Optional[int] = None,
+        max_num_seqs: int = 256,
+        disable_custom_all_reduce: bool = False,
+        enforce_eager: bool = False,
+        limit_mm_per_prompt: Optional[Dict[str, Any]] = None,
+        device: str = 'auto',
+        # lora
+        enable_lora: bool = False,
+        max_loras: int = 1,
+        max_lora_rank: int = 16,
+        enable_prefix_caching: bool = False,
+        engine_kwargs: Optional[Dict[str, Any]] = None,
+    ) -> None:
         self.processor = get_model_tokenizer(
             model_id_or_path,
             torch_dtype,
@@ -79,7 +82,10 @@ class VllmEngine(InferEngine):
             enable_lora=enable_lora,
             max_loras=max_loras,
             max_lora_rank=max_lora_rank,
-            engine_kwargs=engine_kwargs)
+            enable_prefix_caching=enable_prefix_caching,
+            device=device,
+            engine_kwargs=engine_kwargs,
+        )
 
         self._prepare_engine()
         self._load_generation_config()
@@ -91,19 +97,23 @@ class VllmEngine(InferEngine):
             engine = AsyncLLMEngine.from_engine_args(self.engine_args)
         self.engine = engine
 
-    def _prepare_engine_kwargs(self,
-                               gpu_memory_utilization: float = 0.9,
-                               tensor_parallel_size: int = 1,
-                               pipeline_parallel_size: int = 1,
-                               max_model_len: Optional[int] = None,
-                               max_num_seqs: int = 256,
-                               disable_custom_all_reduce: bool = False,
-                               enforce_eager: bool = False,
-                               limit_mm_per_prompt: Optional[Dict[str, Any]] = None,
-                               enable_lora: bool = False,
-                               max_loras: int = 1,
-                               max_lora_rank: int = 16,
-                               engine_kwargs: Optional[Dict[str, Any]] = None) -> None:
+    def _prepare_engine_kwargs(
+        self,
+        gpu_memory_utilization: float = 0.9,
+        tensor_parallel_size: int = 1,
+        pipeline_parallel_size: int = 1,
+        max_model_len: Optional[int] = None,
+        max_num_seqs: int = 256,
+        disable_custom_all_reduce: bool = False,
+        enforce_eager: bool = False,
+        limit_mm_per_prompt: Optional[Dict[str, Any]] = None,
+        device: str = 'auto',
+        enable_lora: bool = False,
+        max_loras: int = 1,
+        max_lora_rank: int = 16,
+        enable_prefix_caching: bool = False,
+        engine_kwargs: Optional[Dict[str, Any]] = None,
+    ) -> None:
         if engine_kwargs is None:
             engine_kwargs = {}
         disable_log_stats = engine_kwargs.pop('disable_log_stats', True)
@@ -136,7 +146,10 @@ class VllmEngine(InferEngine):
             disable_custom_all_reduce=disable_custom_all_reduce,
             enforce_eager=enforce_eager,
             trust_remote_code=True,
-            **engine_kwargs)
+            enable_prefix_caching=enable_prefix_caching,
+            device=device,
+            **engine_kwargs,
+        )
         self.engine_args = engine_args
         self.enable_lora = enable_lora
         if max_model_len is not None:
@@ -219,8 +232,10 @@ class VllmEngine(InferEngine):
                       logprobs_list: Optional[List[Dict[int, float]]],
                       token_ids: List[int],
                       top_logprobs: Optional[int] = None) -> Optional[Dict[str, Any]]:
-        if logprobs_list is None:
+        if logprobs_list is None or len(token_ids) == 0:
             return None
+        if len(token_ids) > 0:
+            logprobs_list = logprobs_list[-len(token_ids):]
         for logprobs in logprobs_list:
             for token_id, logprob in logprobs.items():
                 logprobs[token_id] = logprob.logprob
@@ -244,7 +259,9 @@ class VllmEngine(InferEngine):
         for key in ['n', 'best_of', 'frequency_penalty', 'presence_penalty', 'seed']:
             kwargs[key] = getattr(request_config, key)
 
-        return SamplingParams(**kwargs)
+        res = SamplingParams(**kwargs)
+        res.top_logprobs = request_config.top_logprobs
+        return res
 
     async def _infer_stream_async(self, template: Template, inputs: Dict[str, Any], generation_config: SamplingParams,
                                   **kwargs) -> AsyncIterator[ChatCompletionStreamResponse]:
@@ -271,7 +288,7 @@ class VllmEngine(InferEngine):
             choices = []
             for output in result.outputs:
                 logprobs = self._get_logprobs(output.logprobs, output.token_ids[token_idxs[output.index]:],
-                                              generation_config.logprobs)
+                                              generation_config.top_logprobs)
                 token_idxs[output.index] = len(output.token_ids)
                 toolcall = None
                 if output.is_finished:
@@ -284,11 +301,13 @@ class VllmEngine(InferEngine):
                 choices.append(choice)
             yield ChatCompletionStreamResponse(model=self.model_name, choices=choices, usage=usage_info, id=request_id)
 
-    async def _infer_full_async(self,
-                                template: Template,
-                                inputs: Dict[str, Any],
-                                generation_config: SamplingParams,
-                                adapter_request: Optional[AdapterRequest] = None) -> ChatCompletionResponse:
+    async def _infer_full_async(
+        self,
+        template: Template,
+        inputs: Dict[str, Any],
+        generation_config: SamplingParams,
+        adapter_request: Optional[AdapterRequest] = None,
+    ) -> ChatCompletionResponse:
         request_id = random_uuid()
         result_generator = self._add_request(inputs, generation_config, request_id, adapter_request=adapter_request)
         result = None
@@ -301,7 +320,7 @@ class VllmEngine(InferEngine):
         for output in result.outputs:
             output.token_ids = list(output.token_ids)
             response = template.decode(output.token_ids)
-            logprobs = self._get_logprobs(output.logprobs, output.token_ids, generation_config.logprobs)
+            logprobs = self._get_logprobs(output.logprobs, output.token_ids, generation_config.top_logprobs)
             toolcall = self._get_toolcall(response, template.tools_prompt)
             choice = ChatCompletionResponseChoice(
                 index=output.index,
@@ -323,7 +342,7 @@ class VllmEngine(InferEngine):
         *,
         template: Optional[Template] = None,
         use_tqdm: Optional[bool] = None,
-        adapter_request: Optional[AdapterRequest] = None
+        adapter_request: Optional[AdapterRequest] = None,
     ) -> Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
         return super().infer(
             infer_requests,
@@ -331,7 +350,8 @@ class VllmEngine(InferEngine):
             metrics,
             template=template,
             use_tqdm=use_tqdm,
-            adapter_request=adapter_request)
+            adapter_request=adapter_request,
+        )
 
     async def infer_async(
         self,
@@ -357,7 +377,7 @@ class VllmEngine(InferEngine):
             'template': template,
             'inputs': inputs,
             'generation_config': generation_config,
-            'adapter_request': adapter_request
+            'adapter_request': adapter_request,
         }
         if pre_infer_hook:
             kwargs = pre_infer_hook(kwargs)

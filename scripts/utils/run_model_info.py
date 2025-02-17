@@ -26,7 +26,6 @@ def get_model_info_table():
     for model_type in ModelType.get_model_name_list():
         model_meta = MODEL_MAPPING[model_type]
         template = model_meta.template
-        r = ''
         for group in model_meta.model_groups:
             for model in group.models:
                 ms_model_id = model.ms_model_id

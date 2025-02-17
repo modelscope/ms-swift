@@ -183,10 +183,13 @@ class LazyLLMDataset(Dataset):
                     raise
                 if self.traceback_limit is not None and self._traceback_counter < self.traceback_limit:
                     import traceback
-                    print(traceback.format_exc())
-                    logger.error('👆👆👆There are errors in the template.encode, '
-                                 'and another piece of data will be randomly selected.')
+                    logger.info(traceback.format_exc())
+                    logger.warning('👆👆👆There are errors in the template.encode, '
+                                   'and another piece of data will be randomly selected.')
                     self._traceback_counter += 1
+
+        raise ValueError('Failed to retrieve the dataset. You can avoid this issue by increasing `max_length` or '
+                         'modifying the `truncation_strategy`.')
 
     def __len__(self) -> int:
         return len(self.dataset)

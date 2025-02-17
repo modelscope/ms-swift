@@ -1,17 +1,25 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from contextlib import contextmanager
 from functools import wraps
-from typing import List
+from types import MethodType
+from typing import Dict, List, Optional, Union
 
+import accelerate
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+import transformers
 from accelerate.utils import find_device
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
-from transformers import PreTrainedModel
+from torch.nn.parallel import DistributedDataParallel as DDP
+from transformers import PreTrainedModel, trainer
 from transformers.modeling_outputs import SequenceClassifierOutputWithPast
 
 from swift.llm import to_device
-from swift.utils import get_logger
+from swift.utils import get_dist_setting, get_logger, is_mp_ddp, use_torchacc
+from swift.utils.torch_utils import _get_max_memory, _sync_max_memory, get_device_count
+from .model_arch import get_model_arch
+from .utils import HfConfigFactory
 
 logger = get_logger()
 
@@ -36,6 +44,15 @@ def patch_output_clone(module: torch.nn.Module):
         return output.requires_grad_(True).clone()
 
     module.register_forward_hook(_clone_hook)
+
+
+def patch_output_normalizer(module: torch.nn.Module):
+
+    def _normalizer_hook(module, input, output):
+        output.last_hidden_state = F.normalize(output.last_hidden_state[:, 0], p=2, dim=1)
+        return output
+
+    module.register_forward_hook(_normalizer_hook)
 
 
 def patch_output_to_input_device(module: torch.nn.Module):
@@ -84,37 +101,40 @@ def patch_ignore_check_imports():
         td.check_imports = _old_check_imports
 
 
-def _patch_sequence_classification(model):
-    # rename
-    idx = model.__class__.__name__.find('For')
-    if idx != -1:
-        model.__class__.__name__ = model.__class__.__name__[:idx]
-    model.__class__.__name__ += 'ForSequenceClassification'
-
-    model.num_labels = model.config.num_labels
-    model.score = nn.Linear(model.config.hidden_size, model.num_labels, bias=False).to(model.dtype)
-    model.score.weight.data.normal_(mean=0.0, std=model.config.initializer_range)
+def _patch_sequence_classification(model, model_meta):
+    hidden_size = HfConfigFactory.get_config_attr(model.config, 'hidden_size')
+    initializer_range = HfConfigFactory.get_config_attr(model.config, 'initializer_range')
 
     lm_heads = ['lm_head', 'output', 'embed_out', 'output_layer']
-    for lm_head in lm_heads:
-        if hasattr(model, lm_head):
-            setattr(model, lm_head, nn.Identity())
-            break
+    llm_prefix = getattr(get_model_arch(model_meta.model_arch), 'language_model', None)
+    if llm_prefix:
+        llm_model = getattr(model, llm_prefix[0])
     else:
-        raise ValueError(f'model: {model}, lm_heads: {lm_heads}')
+        llm_model = model
+    if 'CausalLM' not in llm_model.__class__.__name__:
+        llm_model = model
+    llm_model.num_labels = model.config.num_labels
+    llm_model.score = nn.Linear(hidden_size, llm_model.num_labels, bias=False, dtype=llm_model.dtype)
+    if llm_model.score.weight.device == torch.device('meta'):
+        llm_model.score.to_empty(device='cpu')
+    llm_model.score.weight.data.normal_(mean=0.0, std=initializer_range)
+    for lm_head in lm_heads:
+        if hasattr(llm_model, lm_head):
+            setattr(llm_model, lm_head, nn.Identity())
+            break
 
-    origin_forward = model.forward
+    origin_forward = llm_model.forward.__func__
 
     @wraps(origin_forward)
-    def new_forward(*args, **kwargs):
-        self = model
+    def new_forward(self, *args, **kwargs):
         labels = kwargs.pop('labels', None)
         return_dict = kwargs.pop('return_dict', None)
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
         input_ids = kwargs.get('input_ids')
         inputs_embeds = kwargs.get('inputs_embeds')
 
-        output = origin_forward(*args, **kwargs)
+        output = origin_forward(self, *args, **kwargs)
+        output.logits = output.logits.to(self.score.weight.dtype)
         logits = self.score(output.logits)
         if input_ids is not None:
             batch_size = input_ids.shape[0]
@@ -171,24 +191,27 @@ def _patch_sequence_classification(model):
             attentions=output.attentions,
         )
 
-    model.forward = new_forward
+    llm_model.forward = MethodType(new_forward, llm_model)
 
 
 @contextmanager
-def patch_automodel_for_sequence_classification():
-    from_pretrained = PreTrainedModel.from_pretrained
+def patch_automodel_for_sequence_classification(model_meta):
+    from_pretrained = PreTrainedModel.from_pretrained.__func__
 
     @classmethod
     def _new_from_pretrained(cls, *args, **kwargs):
+        cls_name = cls.__name__
+        cls_name = cls_name.split('For', 1)[0]
+        cls_name += 'ForSequenceClassification'
+        cls = type(cls_name, (cls, ), {})  # new_cls
         __init__ = cls.__init__
 
         def __new_init__(self, *args, **kwargs):
             __init__(self, *args, **kwargs)
-            if 'SequenceClassification' not in self.__class__.__name__:
-                _patch_sequence_classification(self)
+            _patch_sequence_classification(self, model_meta)
 
         cls.__init__ = __new_init__
-        res = from_pretrained.__func__(cls, *args, **kwargs)
+        res = from_pretrained(cls, *args, **kwargs)
         cls.__init__ = __init__
         return res
 
@@ -197,4 +220,63 @@ def patch_automodel_for_sequence_classification():
     try:
         yield
     finally:
-        PreTrainedModel.from_pretrained = from_pretrained
+        PreTrainedModel.from_pretrained = classmethod(from_pretrained)
+
+
+@contextmanager
+def patch_automodel_for_awq():
+    from_pretrained = PreTrainedModel.from_pretrained.__func__
+
+    @classmethod
+    def _new_from_pretrained(cls, *args, **kwargs):
+        kwargs.pop('use_cache', None)
+        return from_pretrained(cls, *args, **kwargs)
+
+    PreTrainedModel.from_pretrained = _new_from_pretrained
+
+    try:
+        yield
+    finally:
+        PreTrainedModel.from_pretrained = classmethod(from_pretrained)
+
+
+_mp_ddp_patched = False
+
+
+def patch_mp_ddp():
+    """Patch ddp with device_map.
+    After patching, the ddp can run with the device_map.
+    This should be called before any training starts.
+    """
+    global _mp_ddp_patched
+    if is_mp_ddp() and not _mp_ddp_patched:
+        _mp_ddp_patched = True
+        from accelerate.utils.modeling import get_balanced_memory, infer_auto_device_map
+
+        @wraps(infer_auto_device_map)
+        def _infer_auto_device_map_patch(model: nn.Module,
+                                         max_memory: Optional[Dict[Union[int, str], Union[int, str]]] = None,
+                                         **kwargs) -> Dict[str, Union[int, str, torch.device]]:
+            """The auxiliary function for supports MP + DDP. Monkey Patching.
+            add feat in accelerate to support MP + DDP"""
+            verbose = kwargs.pop('verbose', False)
+            n_gpu = get_device_count()
+            _, local_rank, _, local_world_size = get_dist_setting()
+            device_ids = list(range(local_rank, n_gpu, local_world_size))
+            max_memory = _get_max_memory(device_ids)
+            max_memory = _sync_max_memory(max_memory)
+            max_memory = get_balanced_memory(model, max_memory, low_zero=False, **kwargs)
+            max_memory = {k: v for k, v in max_memory.items() if v > 0}
+            return infer_auto_device_map(model, max_memory, verbose=verbose, **kwargs)
+
+        _old_ddp_init = DDP.__init__
+        accelerate.accelerator.torch.nn.parallel.DistributedDataParallel.__init__ = (
+            lambda self, model, device_ids, output_device, *args, **kwargs: _old_ddp_init(self, model, *args, **kwargs))
+        transformers.modeling_utils.get_balanced_memory = lambda *args, **kwargs: None
+        transformers.modeling_utils.infer_auto_device_map = _infer_auto_device_map_patch
+
+    if is_mp_ddp() or use_torchacc():
+        _old_accelerator_init = trainer.Accelerator.__init__
+        trainer.Accelerator.__init__ = (lambda self, device_placement=False, *args, **kwargs: _old_accelerator_init(
+            self, device_placement=device_placement, *args, **kwargs))
+        trainer.Accelerator.verify_device_map = lambda *args, **kwargs: False

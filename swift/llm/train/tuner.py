@@ -42,13 +42,14 @@ def apply_liger(model_type: str):
         raise ValueError(f'Unsupported liger model_type: {model_type}')
 
 
-def get_multimodal_target_regex(model_arch,
-                                *,
-                                freeze_llm: bool = False,
-                                freeze_vit: bool = True,
-                                freeze_aligner: bool = True,
-                                ignore_embedding: bool = True,
-                                ignore_lm_head: bool = True) -> str:
+def get_multimodal_target_regex(
+    model_arch,
+    *,
+    freeze_llm: bool = False,
+    freeze_vit: bool = True,
+    freeze_aligner: bool = True,
+    ignore_embedding: bool = True,
+) -> str:
     modules = []
     rejected_modules = []
     if not freeze_llm:
@@ -68,9 +69,9 @@ def get_multimodal_target_regex(model_arch,
     if ignore_embedding:
         ignore_pattern += ['emb', 'wte', 'shared']
         ignore_pattern += model_arch.embedding or []
-    if ignore_lm_head:
-        ignore_pattern += ['lm_head', 'output']
-        ignore_pattern += model_arch.lm_head or []
+    # lm_head
+    ignore_pattern += ['lm_head', 'output', 'score', 'v_head', 'classifier']
+    ignore_pattern += model_arch.lm_head or []
     ignore_pattern = '|'.join(ignore_pattern)
 
     target_regex = f'^({prefix_pattern})'
@@ -88,8 +89,8 @@ def get_target_modules(args, model) -> Union[str, List[str]]:
         return args.target_modules
     target_modules = args.target_modules.copy()
     if 'all-linear' in target_modules:
-        if model_meta.is_multimodal:
-            model_arch = get_model_arch(args.model_meta.model_arch)
+        model_arch = get_model_arch(args.model_meta.model_arch)
+        if model_meta.is_multimodal and model_arch:
             return get_multimodal_target_regex(
                 model_arch,
                 freeze_llm=args.freeze_llm,
@@ -162,6 +163,8 @@ def prepare_adapter(args: TrainArguments, model, *, template=None, train_dataset
             model = Swift.prepare_model(model, lora_config)
             logger.info(f'lora_config: {lora_config}')
         elif args.tuner_backend == 'peft':
+            if task_type == 'EMBEDDING':
+                task_type = None
             lora_config = LoraConfig(task_type=task_type, lora_dtype=args.lora_dtype, **lora_kwargs)
             if args.init_weights == 'lora-ga':
                 try:
@@ -199,7 +202,7 @@ def prepare_adapter(args: TrainArguments, model, *, template=None, train_dataset
                 model = UnslothModel.get_peft_model(
                     model,
                     use_gradient_checkpointing=True,
-                    max_seq_length=args.max_length,
+                    max_seq_length=args.max_length or 2048,  # 2048 is the default value of unsloth
                     **lora_kwargs,
                 )
                 logger.info(f'unsloth_config: {lora_kwargs}')

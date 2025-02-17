@@ -24,6 +24,9 @@ class LLMTemplateType:
     yi_coder = 'yi_coder'
     sus = 'sus'
 
+    minimax = 'minimax'
+    minimax_vl = 'minimax_vl'
+
     numina = 'numina'
     ziya = 'ziya'
     atom = 'atom'
@@ -41,6 +44,7 @@ class LLMTemplateType:
     deepseek = 'deepseek'
     deepseek_coder = 'deepseek_coder'
     deepseek_v2_5 = 'deepseek_v2_5'
+    deepseek_r1 = 'deepseek_r1'
 
     openbuddy = 'openbuddy'
     openbuddy2 = 'openbuddy2'
@@ -56,6 +60,7 @@ class LLMTemplateType:
     skywork_o1 = 'skywork_o1'
 
     mistral_nemo = 'mistral_nemo'
+    mistral_2501 = 'mistral_2501'
     zephyr = 'zephyr'
     wizardlm2 = 'wizardlm2'
     wizardlm2_moe = 'wizardlm2_moe'
@@ -81,6 +86,7 @@ class MLLMTemplateType:
     qwen_vl = 'qwen_vl'
     qwen_audio = 'qwen_audio'
     qwen2_vl = 'qwen2_vl'
+    qwen2_5_vl = 'qwen2_5_vl'
     qwen2_audio = 'qwen2_audio'
     qvq = 'qvq'
     ovis1_6 = 'ovis1_6'
@@ -134,6 +140,7 @@ class MLLMTemplateType:
     deepseek_vl = 'deepseek_vl'
     deepseek_vl2 = 'deepseek_vl2'
     deepseek_janus = 'deepseek_janus'
+    deepseek_janus_pro = 'deepseek_janus_pro'
 
     mplug_owl2 = 'mplug_owl2'
     mplug_owl3 = 'mplug_owl3'
@@ -144,6 +151,8 @@ class MLLMTemplateType:
     emu3_gen = 'emu3_gen'
 
     got_ocr2 = 'got_ocr2'
+    step_audio = 'step_audio'
+
     idefics3 = 'idefics3'
     pixtral = 'pixtral'
     paligemma = 'paligemma'

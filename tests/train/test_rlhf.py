@@ -24,6 +24,7 @@ def test_llm():
 
 def test_mllm():
     from swift.llm import rlhf_main, RLHFArguments, infer_main, InferArguments
+    os.environ['MAX_PIXLES'] = f'{1280 * 28 * 28}'
     result = rlhf_main(
         RLHFArguments(
             rlhf_type='dpo',
@@ -38,6 +39,7 @@ def test_mllm():
 
 def test_mllm_zero3():
     os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+    os.environ['MAX_PIXLES'] = f'{1280 * 28 * 28}'
     from swift.llm import rlhf_main, RLHFArguments, infer_main, InferArguments
     rlhf_main(
         RLHFArguments(
