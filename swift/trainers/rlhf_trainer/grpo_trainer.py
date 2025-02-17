@@ -4,6 +4,7 @@ import inspect
 import os
 from collections import defaultdict
 from contextlib import contextmanager
+from itertools import chain
 from typing import Any, Callable, Dict, List, Optional, Union
 from unittest.mock import patch
 
@@ -108,7 +109,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         set_seed(args.seed, device_specific=True)
 
         if use_vllm or use_lmdeploy:
-            if self.accelerator.is_main_process:
+            if self.accelerator.process_index % (self.accelerator.num_processes // args.num_infer_engine) == 0:
                 fast_infer_device = self.args.vllm_device or self.args.lmdeploy_device
                 if fast_infer_device == 'auto':
                     if get_device_count() == 1:
@@ -236,7 +237,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 }
             else:
                 state_dict = unwrapped_model.state_dict()
-        if self.accelerator.is_main_process:
+        if self.accelerator.process_index % (self.accelerator.num_processes // self.args.num_infer_engine) == 0:
             if self.args.use_vllm:
                 llm_model = self.engine.engine.engine.model_executor.driver_worker.model_runner.model
             else:
@@ -263,14 +264,16 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     self._last_loaded_step = self.state.global_step
                 # Generate completions using vLLM: gather all prompts and use them in a single call in the main process
                 all_inputs = gather_object(inputs)
-                if self.accelerator.is_main_process:
-                    outputs = self.engine.infer(all_inputs, self.request_config, use_tqdm=False)
-                else:
-                    outputs = [None] * len(all_inputs)
 
-                # Broadcast the completions from the main process to all processes, ensuring each process receives its
-                # corresponding slice.
-                outputs = broadcast_object_list(outputs, from_process=0)
+                device_count = self.accelerator.num_processes // self.args.num_infer_engine
+                if self.accelerator.process_index % device_count == 0:
+                    idx = slice((self.accelerator.process_index - device_count + 1) * len(inputs),
+                                (self.accelerator.process_index + 1) * len(inputs))
+                    infer_inputs = all_inputs[idx]
+                    outputs = self.engine.infer(infer_inputs, self.request_config, use_tqdm=False)
+                else:
+                    outputs = []
+                outputs = chain.from_iterable(gather_object(outputs))
                 if is_peft_model(unwrapped_model):
                     unwrapped_model.unmerge_adapter()
         else:
