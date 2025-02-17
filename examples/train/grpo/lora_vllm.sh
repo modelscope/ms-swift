@@ -36,4 +36,5 @@ swift rlhf \
     --num_generations 16 \
     --temperature 0.9 \
     --deepspeed zero2 \
-    --system 'examples/train/grpo/prompt.txt'
+    --system 'examples/train/grpo/prompt.txt' \
+    --log_completions true
