@@ -78,7 +78,3 @@ class DynamicLayerActivationCallback(TrainerCallback):
         for idx in self.active_layers_indices:
             for param in layers[idx].parameters():
                 param.requires_grad = True
-
-
-class SwanLabCallback(TrainerCallback):
-

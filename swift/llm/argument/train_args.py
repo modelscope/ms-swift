@@ -38,7 +38,7 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
     logging_first_step: bool = True
 
     swanlab_token: Optional[str] = None
-    swanlab_project: str = 'ms-swift'
+    swanlab_project: Optional[str] = None
     swanlab_workspace: Optional[str] = None
     swanlab_exp_name: Optional[str] = None
     swanlab_mode: Literal['cloud', 'local'] = 'cloud'
@@ -64,21 +64,6 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
             self.metric_for_best_model = 'rouge-l' if self.predict_with_generate else 'loss'
 
     def __post_init__(self):
-        if 'swanlab' in self.report_to:
-            if not is_swanlab_available():
-                raise ValueError(f'You are using swanlab as `report_to`, please install swanlab by '
-                                 f'`pip install swanlab`')
-            from transformers.integrations import INTEGRATION_TO_CALLBACK
-            import swanlab
-            from swanlab.integration.transformers import SwanLabCallback
-            if self.swanlab_token:
-                swanlab.login(self.swanlab_token)
-            INTEGRATION_TO_CALLBACK['swanlab'] = SwanLabCallback(
-                project=self.swanlab_project,
-                workspace=self.swanlab_workspace,
-                experiment_name=self.swanlab_exp_name,
-                mode=self.swanlab_mode,
-            )
         self._init_output_dir()
         self._init_metric_for_best_model()
         if self.greater_is_better is None and self.metric_for_best_model is not None:
@@ -94,6 +79,26 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
         if getattr(self, 'gradient_checkpointing_kwargs', None):
             self.gradient_checkpointing_kwargs = self.parse_to_dict(self.gradient_checkpointing_kwargs)
         self._init_eval_strategy()
+    
+    def _init_swanlab(self):  
+        if not is_swanlab_available():
+            raise ValueError(f'You are using swanlab as `report_to`, please install swanlab by '
+                                f'`pip install swanlab`')
+        if not self.swanlab_project:
+            raise ValueError(f'Please specify a project existed in your swanlab page(https://swanlab.cn/space/~)')
+        if not self.swanlab_exp_name:
+            self.swanlab_exp_name = self.output_dir
+        from transformers.integrations import INTEGRATION_TO_CALLBACK
+        import swanlab
+        from swanlab.integration.transformers import SwanLabCallback
+        if self.swanlab_token:
+            swanlab.login(self.swanlab_token)
+        INTEGRATION_TO_CALLBACK['swanlab'] = SwanLabCallback(
+            project=self.swanlab_project,
+            workspace=self.swanlab_workspace,
+            experiment_name=self.swanlab_exp_name,
+            mode=self.swanlab_mode,
+        )
 
 
 @dataclass
@@ -150,8 +155,6 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
     max_new_tokens: int = 64
     temperature: float = 0.
 
-    use_swanlab: bool = False
-
     def __post_init__(self) -> None:
         if self.resume_from_checkpoint:
             self.resume_from_checkpoint = to_abspath(self.resume_from_checkpoint, True)
@@ -193,6 +196,9 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
 
         self._add_version()
         self.import_plugin()
+
+        if 'swanlab' in self.report_to:
+            self._init_swanlab()
 
     def import_plugin(self):
         if not self.external_plugins:

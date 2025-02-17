@@ -31,6 +31,7 @@ from swift.ui.llm_train.runtime import Runtime
 from swift.ui.llm_train.save import Save
 from swift.ui.llm_train.self_cog import SelfCog
 from swift.utils import get_device_count, get_logger
+from transformers.utils import is_torch_cuda_available, is_torch_npu_available
 
 logger = get_logger()
 
@@ -143,6 +144,12 @@ class LLMTrain(BaseUI):
                 'en': 'Select the training precision'
             }
         },
+        'envs': {
+            'label': {
+                'zh': '环境变量',
+                'en': 'Extra env vars'
+            },
+        },
         'use_ddp': {
             'label': {
                 'zh': '使用DDP',
@@ -236,6 +243,7 @@ class LLMTrain(BaseUI):
                         choices=[str(i) for i in range(device_count)] + ['cpu'],
                         value=default_device,
                         scale=8)
+                    gr.Textbox(elem_id='envs', scale=8)
                     gr.Checkbox(elem_id='dry_run', value=False, scale=4)
                     submit = gr.Button(elem_id='submit', scale=4, variant='primary')
 
@@ -279,7 +287,7 @@ class LLMTrain(BaseUI):
 
     @classmethod
     def train(cls, *args):
-        ignore_elements = ('logging_dir', 'more_params', 'train_stage')
+        ignore_elements = ('logging_dir', 'more_params', 'train_stage', 'envs')
         default_args = cls.get_default_value_from_dataclass(RLHFArguments)
         kwargs = {}
         kwargs_is_list = {}
@@ -342,6 +350,8 @@ class LLMTrain(BaseUI):
                   f'--logging_dir {sft_args.logging_dir} --ignore_args_error True'
         ddp_param = ''
         devices = other_kwargs['gpu_id']
+        envs = other_kwargs['envs'] or ''
+        envs = envs.strip()
         devices = [d for d in devices if d]
         if other_kwargs['use_ddp']:
             assert int(other_kwargs['ddp_num']) > 0
@@ -350,22 +360,33 @@ class LLMTrain(BaseUI):
         gpus = ','.join(devices)
         cuda_param = ''
         if gpus != 'cpu':
-            cuda_param = f'CUDA_VISIBLE_DEVICES={gpus}'
-
+            if is_torch_npu_available():
+                cuda_param = f'ASCEND_RT_VISIBLE_DEVICES={gpus}'
+            elif is_torch_cuda_available():
+                cuda_param = f'CUDA_VISIBLE_DEVICES={gpus}'
+            else:
+                cuda_param = ''
+            
         log_file = os.path.join(sft_args.logging_dir, 'run.log')
         if sys.platform == 'win32':
             if cuda_param:
                 cuda_param = f'set {cuda_param} && '
             if ddp_param:
                 ddp_param = f'set {ddp_param} && '
-            run_command = f'{cuda_param}{ddp_param}start /b swift sft {params} > {log_file} 2>&1'
+            if envs:
+                envs = [env.strip() for env in envs.split(' ') if env.strip()]
+                _envs = ''
+                for env in envs:
+                    _envs += f'set {env} && '
+                envs = _envs
+            run_command = f'{cuda_param}{ddp_param}{envs}start /b swift sft {params} > {log_file} 2>&1'
         else:
-            run_command = f'{cuda_param} {ddp_param} nohup swift {cmd} {params} > {log_file} 2>&1 &'
+            run_command = f'{cuda_param} {ddp_param} {envs} nohup swift {cmd} {params} > {log_file} 2>&1 &'
         logger.info(f'Run training: {run_command}')
         if model:
             record = {}
             for key, value in zip(keys, args):
-                if key in default_args or key in ('more_params', 'train_stage', 'use_ddp', 'ddp_num', 'gpu_id'):
+                if key in default_args or key in ('more_params', 'train_stage', 'use_ddp', 'ddp_num', 'gpu_id', 'envs'):
                     record[key] = value or None
             cls.save_cache(model, record)
         return run_command, sft_args, other_kwargs

@@ -292,6 +292,8 @@ class BaseUI:
     @classmethod
     def update_input_model(cls, model, allow_keys=None, has_record=True, arg_cls=BaseArguments, is_ref_model=False):
         keys = cls.valid_element_keys()
+        if allow_keys:
+            keys = [key for key in keys if key in allow_keys]
 
         if not model:
             ret = [gr.update()] * (len(keys) + int(has_record))
@@ -320,8 +322,6 @@ class BaseUI:
                 return [gr.update()] * (len(keys) + int(has_record))
             values = []
             for key in keys:
-                if allow_keys is not None and key not in allow_keys:
-                    continue
                 arg_value = getattr(args, key, None)
                 if arg_value and key != 'model':
                     if key in ('torch_dtype', 'bnb_4bit_compute_dtype'):
@@ -342,8 +342,6 @@ class BaseUI:
         else:
             values = []
             for key in keys:
-                if allow_keys is not None and key not in allow_keys:
-                    continue
                 if key not in ('template', 'model_type', 'ref_model_type', 'system'):
                     values.append(gr.update())
                 elif key in ('template', 'model_type', 'ref_model_type'):
@@ -370,7 +368,7 @@ class BaseUI:
             return [gr.update()] * len(cls.elements())
         cache = cls.load_cache(model, train_record)
         updates = []
-        for key, value in cls.valid_elements().items():
+        for key, value in base_tab.valid_elements().items():
             if key in cache:
                 updates.append(gr.update(value=cache[key]))
             else:
