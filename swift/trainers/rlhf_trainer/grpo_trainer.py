@@ -109,14 +109,15 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         set_seed(args.seed, device_specific=True)
 
         if use_vllm or use_lmdeploy:
-            if self.accelerator.process_index % (self.accelerator.num_processes // args.num_infer_engine) == 0:
+            processes_count = self.accelerator.num_processes // args.num_infer_engine
+            if self.accelerator.process_index % processes_count == 0:
                 fast_infer_device = self.args.vllm_device or self.args.lmdeploy_device
                 if fast_infer_device == 'auto':
                     if get_device_count() == 1:
                         fast_infer_device = get_device()  # particular case when training with only 1 GPU: share it
                     else:
-                        local_world_size = get_dist_setting()[3]
-                        fast_infer_device = get_device(local_world_size)  # take the next GPU idx
+                        _, local_rank, _, local_world_size = get_dist_setting()
+                        fast_infer_device = get_device(local_world_size + local_rank)  # take the next GPU idx
                 # Check that the requested device is available
                 if fast_infer_device.split(':')[0] in {'cuda', 'npu'
                                                        } and int(fast_infer_device.split(':')[1]) >= get_device_count():
@@ -265,15 +266,15 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 # Generate completions using vLLM: gather all prompts and use them in a single call in the main process
                 all_inputs = gather_object(inputs)
 
-                device_count = self.accelerator.num_processes // self.args.num_infer_engine
-                if self.accelerator.process_index % device_count == 0:
-                    idx = slice((self.accelerator.process_index - device_count + 1) * len(inputs),
-                                (self.accelerator.process_index + 1) * len(inputs))
+                processes_count = self.accelerator.num_processes // self.args.num_infer_engine
+                if self.accelerator.process_index % processes_count == 0:
+                    idx = slice((self.accelerator.process_index) * len(inputs),
+                                (self.accelerator.process_index + processes_count) * len(inputs))
                     infer_inputs = all_inputs[idx]
                     outputs = self.engine.infer(infer_inputs, self.request_config, use_tqdm=False)
                 else:
                     outputs = []
-                outputs = chain.from_iterable(gather_object(outputs))
+                outputs = gather_object(outputs)
                 if is_peft_model(unwrapped_model):
                     unwrapped_model.unmerge_adapter()
         else:
