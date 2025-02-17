@@ -231,6 +231,7 @@ def safe_snapshot_download(model_id_or_path: str,
                            use_hf: Optional[bool] = None,
                            hub_token: Optional[str] = None,
                            ignore_patterns: Optional[List[str]] = None,
+                           check_local: bool = False,
                            **kwargs) -> str:
     """Download model protected by DDP context
 
@@ -243,6 +244,12 @@ def safe_snapshot_download(model_id_or_path: str,
     Returns:
         model_dir
     """
+    if check_local:
+        model_suffix = model_id_or_path.rsplit('/', 1)[-1]
+        if os.path.exists(model_suffix):
+            model_dir = os.path.abspath(os.path.expanduser(model_suffix))
+            logger.info(f'Loading the model using local model_dir: {model_dir}')
+            return model_dir
     if ignore_patterns is None:
         ignore_patterns = []
     ignore_patterns += [
