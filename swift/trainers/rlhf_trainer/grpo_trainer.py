@@ -103,7 +103,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     f'eval batch size, the valid values for the number of generations are: {possible_values}.')
 
         set_seed(args.seed, device_specific=True)
-                   
+
         if use_vllm or use_lmdeploy:
             if self.accelerator.is_main_process:
                 fast_infer_device = self.args.vllm_device or self.args.lmdeploy_device
