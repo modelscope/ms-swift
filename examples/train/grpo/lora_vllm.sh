@@ -1,12 +1,12 @@
 # pip install math_verify # reward function
 # pip install "trl>=0.15"
 # GPU memory: 2 * 80GiB
-# You can set `--reward_model` to use a reward model to provide rewards.
+
 MASTER_PORT=29501 \
 CUDA_VISIBLE_DEVICES=0,1 \
 swift rlhf \
     --rlhf_type grpo \
-    --model Qwen/Qwen2.5-7B-Instruct \
+    --model Qwen/Qwen2.5-7B \
     --reward_funcs accuracy format \
     --train_type lora \
     --use_vllm true \
@@ -35,4 +35,5 @@ swift rlhf \
     --dataset_num_proc 4 \
     --num_generations 16 \
     --temperature 0.9 \
+    --deepspeed zero2 \
     --system 'examples/train/grpo/prompt.txt'
