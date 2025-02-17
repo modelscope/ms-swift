@@ -60,9 +60,13 @@ class ReportTo(BaseUI):
         with gr.Accordion(elem_id='reporter', open=False):
             with gr.Blocks():
                 with gr.Row():
-                    gr.Dropdown(elem_id='report_to', multiselect=True,
-                                is_list=True, choices=['tensorboard', 'wandb', 'swanlab'],
-                                allow_custom_value=True, scale=20)
+                    gr.Dropdown(
+                        elem_id='report_to',
+                        multiselect=True,
+                        is_list=True,
+                        choices=['tensorboard', 'wandb', 'swanlab'],
+                        allow_custom_value=True,
+                        scale=20)
                     gr.Textbox(elem_id='swanlab_token', lines=1, scale=20)
                     gr.Textbox(elem_id='swanlab_project', lines=1, scale=20)
                 with gr.Row():

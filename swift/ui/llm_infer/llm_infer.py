@@ -13,10 +13,10 @@ import gradio as gr
 import json
 import torch
 from json import JSONDecodeError
+from transformers.utils import is_torch_cuda_available, is_torch_npu_available
 
 from swift.llm import DeployArguments, InferArguments, InferClient, InferRequest, RequestConfig
 from swift.ui.base import BaseUI
-from transformers.utils import is_torch_cuda_available, is_torch_npu_available
 from swift.ui.llm_infer.model import Model
 from swift.ui.llm_infer.runtime import Runtime
 from swift.utils import get_device_count, get_logger

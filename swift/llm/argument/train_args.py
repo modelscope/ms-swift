@@ -11,7 +11,8 @@ from transformers.utils.versions import require_version
 from swift.plugin import LOSS_MAPPING
 from swift.trainers import TrainerFactory
 from swift.utils import (add_version_to_work_dir, get_device_count, get_logger, get_pai_tensorboard_dir,
-                         is_liger_available, is_swanlab_available, is_local_master, is_mp, is_pai_training_job, use_torchacc)
+                         is_liger_available, is_local_master, is_mp, is_pai_training_job, is_swanlab_available,
+                         use_torchacc)
 from .base_args import BaseArguments, to_abspath
 from .tuner_args import TunerArguments
 
@@ -79,13 +80,12 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
         if getattr(self, 'gradient_checkpointing_kwargs', None):
             self.gradient_checkpointing_kwargs = self.parse_to_dict(self.gradient_checkpointing_kwargs)
         self._init_eval_strategy()
-    
-    def _init_swanlab(self):  
+
+    def _init_swanlab(self):
         if not is_swanlab_available():
-            raise ValueError(f'You are using swanlab as `report_to`, please install swanlab by '
-                                f'`pip install swanlab`')
+            raise ValueError('You are using swanlab as `report_to`, please install swanlab by ' '`pip install swanlab`')
         if not self.swanlab_project:
-            raise ValueError(f'Please specify a project existed in your swanlab page(https://swanlab.cn/space/~)')
+            raise ValueError('Please specify a project existed in your swanlab page(https://swanlab.cn/space/~)')
         if not self.swanlab_exp_name:
             self.swanlab_exp_name = self.output_dir
         from transformers.integrations import INTEGRATION_TO_CALLBACK

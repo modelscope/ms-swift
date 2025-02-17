@@ -12,6 +12,7 @@ import gradio as gr
 import json
 import torch
 from json import JSONDecodeError
+from transformers.utils import is_torch_cuda_available, is_torch_npu_available
 
 from swift.llm import RLHFArguments
 from swift.llm.argument.base_args.base_args import get_supported_tuners
@@ -31,7 +32,6 @@ from swift.ui.llm_train.runtime import Runtime
 from swift.ui.llm_train.save import Save
 from swift.ui.llm_train.self_cog import SelfCog
 from swift.utils import get_device_count, get_logger
-from transformers.utils import is_torch_cuda_available, is_torch_npu_available
 
 logger = get_logger()
 
@@ -366,7 +366,7 @@ class LLMTrain(BaseUI):
                 cuda_param = f'CUDA_VISIBLE_DEVICES={gpus}'
             else:
                 cuda_param = ''
-            
+
         log_file = os.path.join(sft_args.logging_dir, 'run.log')
         if sys.platform == 'win32':
             if cuda_param:
