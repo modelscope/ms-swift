@@ -37,6 +37,12 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
 
     logging_first_step: bool = True
 
+    swanlab_token: Optional[str] = None
+    swanlab_project: str = 'ms-swift'
+    swanlab_workspace: Optional[str] = None
+    swanlab_exp_name: Optional[str] = None
+    swanlab_mode: Literal['cloud', 'local'] = 'cloud'
+
     def _init_output_dir(self):
         if self.output_dir is not None:
             return
@@ -58,6 +64,18 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
             self.metric_for_best_model = 'rouge-l' if self.predict_with_generate else 'loss'
 
     def __post_init__(self):
+        if 'swanlab' in self.report_to:
+            from transformers.integrations import INTEGRATION_TO_CALLBACK
+            import swanlab
+            from swanlab.integration.transformers import SwanLabCallback
+            if self.swanlab_token:
+                swanlab.login(self.swanlab_token)
+            INTEGRATION_TO_CALLBACK['swanlab'] = SwanLabCallback(
+                project=self.swanlab_project,
+                workspace=self.swanlab_workspace,
+                experiment_name=self.swanlab_exp_name,
+                mode=self.swanlab_mode,
+            )
         self._init_output_dir()
         self._init_metric_for_best_model()
         if self.greater_is_better is None and self.metric_for_best_model is not None:
@@ -128,6 +146,8 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
     acc_strategy: Literal['token', 'seq'] = 'token'
     max_new_tokens: int = 64
     temperature: float = 0.
+
+    use_swanlab: bool = False
 
     def __post_init__(self) -> None:
         if self.resume_from_checkpoint:

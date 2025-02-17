@@ -25,6 +25,7 @@ from swift.ui.llm_train.llamapro import LlamaPro
 from swift.ui.llm_train.lora import LoRA
 from swift.ui.llm_train.model import Model
 from swift.ui.llm_train.quantization import Quantization
+from swift.ui.llm_train.report_to import ReportTo
 from swift.ui.llm_train.rlhf import RLHF
 from swift.ui.llm_train.runtime import Runtime
 from swift.ui.llm_train.save import Save
@@ -51,6 +52,7 @@ class LLMTrain(BaseUI):
         Lisa,
         Galore,
         LlamaPro,
+        ReportTo,
     ]
 
     locale_dict: Dict[str, Dict] = {
@@ -245,6 +247,7 @@ class LLMTrain(BaseUI):
                 LlamaPro.build_ui(base_tab)
                 SelfCog.build_ui(base_tab)
                 Save.build_ui(base_tab)
+                ReportTo.build_ui(base_tab)
                 Advanced.build_ui(base_tab)
 
                 cls.element('train_type').change(
