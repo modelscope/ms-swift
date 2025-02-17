@@ -1,8 +1,8 @@
 # pip install lmdeploy==0.6.4
 # Replace three files:
-# 1. https://github.com/tastelikefeet/lmdeploy/blob/feat/reload_state_dict/lmdeploy/messages.py
-# 2. https://github.com/tastelikefeet/lmdeploy/blob/feat/reload_state_dict/lmdeploy/turbomind/turbomind.py
-# 3. https://github.com/tastelikefeet/lmdeploy/blob/feat/reload_state_dict/lmdeploy/turbomind/deploy/loader.py
+# 1. https://github.com/tastelikefeet/lmdeploy/blob/feat/reload_state_dict_064/lmdeploy/messages.py
+# 2. https://github.com/tastelikefeet/lmdeploy/blob/feat/reload_state_dict_064/lmdeploy/turbomind/turbomind.py
+# 3. https://github.com/tastelikefeet/lmdeploy/blob/feat/reload_state_dict_064/lmdeploy/turbomind/deploy/loader.py
 
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=3 \
