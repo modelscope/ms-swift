@@ -74,6 +74,7 @@
 - **模型量化**：支持AWQ、GPTQ和BNB的量化导出，导出的模型支持使用vLLM/LmDeploy推理加速，并支持继续训练。
 
 ## 🎉 新闻
+- 🎁 2025.02.16: 在GRPO算法中支持LMDeploy, 请查看`--use_lmdeploy true`. 具体参考[这个脚本](examples/train/grpo/full_lmdeploy.sh)
 - 🔥 2025.02.12: 支持GRPO(Group Relative Policy Optimization) 训练算法，训练脚本可以在[这里](docs/source/Instruction/GRPO.md)找到
 - 🎁 2025.02.10: SWIFT支持了embedding模型的微调，请查看[训练脚本](examples/train/embedding/train.sh)。
 - 🎁 2025.01.23: SWIFT支持了`sample`命令, 这是一个对CoT和RFT非常重要的命令。同时, 我们支持了一个[强化微调脚本](docs/source/Instruction/强化微调.md)。

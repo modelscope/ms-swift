@@ -1,5 +1,4 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from . import patcher
 from .pt import SwiftPt, pt_main
 from .rlhf import SwiftRLHF, rlhf_main
 from .sft import SwiftSft, sft_main

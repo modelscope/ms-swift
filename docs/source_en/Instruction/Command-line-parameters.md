@@ -135,6 +135,7 @@ Other important parameters:
 - save_on_each_node: Default is False. Should be considered in multi-node training.
 - save_only_model: Whether to save only the model weights without including optimizer state, random seed state, etc. Default is False.
 - 🔥resume_from_checkpoint: Parameter for resuming training from a checkpoint, pass the checkpoint path. Default is None.
+  - Note: `resume_from_checkpoint` will load the model weights, optimizer weights, and random seed, and continue training from the last trained steps. You can specify `--resume_only_model` to load only the model weights.
 - 🔥ddp_backend: Default is None, options include "nccl", "gloo", "mpi", "ccl", "hccl", "cncl", "mccl".
 - 🔥ddp_find_unused_parameters: Default is None.
 - 🔥dataloader_num_workers: Default is 0.

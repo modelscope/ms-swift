@@ -15,7 +15,7 @@ logger = get_logger()
 
 
 def get_model_tokenizer_grok(*args, **kwargs):
-    tokenizer_dir = safe_snapshot_download('AI-ModelScope/grok-1-tokenizer', download_model=False)
+    tokenizer_dir = safe_snapshot_download('AI-ModelScope/grok-1-tokenizer', download_model=False, check_local=True)
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_dir, trust_remote_code=True)
     kwargs['tokenizer'] = tokenizer
     model, _ = get_model_tokenizer_with_flash_attn(*args, **kwargs)

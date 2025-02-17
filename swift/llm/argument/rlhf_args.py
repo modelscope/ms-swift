@@ -135,8 +135,8 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
 
     def _init_grpo(self):
         if self.rlhf_type == 'grpo':
-            if self.use_vllm:
-                os.environ['USE_VLLM'] = '1'
+            if self.use_vllm or self.use_lmdeploy:
+                os.environ['USE_FAST_INFERENCE'] = '1'
                 self._set_default_ddp_config()
             self.remove_unused_columns = False
             logger.info(f'Setting args.remove_unused_columns: {self.remove_unused_columns}')

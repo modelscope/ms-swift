@@ -151,6 +151,8 @@ class MLLMTemplateType:
     emu3_gen = 'emu3_gen'
 
     got_ocr2 = 'got_ocr2'
+    step_audio = 'step_audio'
+
     idefics3 = 'idefics3'
     pixtral = 'pixtral'
     paligemma = 'paligemma'

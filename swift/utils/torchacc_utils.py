@@ -53,16 +53,16 @@ def _get_closet_bucket(bucket_sizes, data_length):
     """Select the one from bucket_sizes that is closest in distance to
     data_length. This is required for TorchAcc.
     """
-    cloest_length = sys.maxsize
+    closest_length = sys.maxsize
     for b in bucket_sizes:
-        if b == data_length or ((b < cloest_length) and (b > data_length)):
-            cloest_length = b
+        if b == data_length or ((b < closest_length) and (b > data_length)):
+            closest_length = b
 
-    if cloest_length == sys.maxsize:
+    if closest_length == sys.maxsize:
         bucket_sizes.append(data_length)
-        cloest_length = data_length
+        closest_length = data_length
 
-    return cloest_length
+    return closest_length
 
 
 def pad_and_split_batch(padding_to, input_ids, attention_mask, labels, loss_scale, max_length, tokenizer, rank,
@@ -672,7 +672,7 @@ def patch_qwen2_model(model):
             key_states = key_states.to(target_dtype)
             value_states = value_states.to(target_dtype)
 
-        # Reashape to the expected shape for Flash Attention
+        # Reshape to the expected shape for Flash Attention
         query_states = query_states.transpose(1, 2)
         key_states = key_states.transpose(1, 2)
         value_states = value_states.transpose(1, 2)

@@ -103,7 +103,7 @@ class BaseUI:
         'local_dir_alert': {
             'value': {
                 'zh': '无法识别model_type和template,请手动选择',
-                'en': 'Cannot recognize the model_type and template, please choose manully'
+                'en': 'Cannot recognize the model_type and template, please choose manually'
             }
         },
     }
