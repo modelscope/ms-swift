@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import torch
 import torch.nn as nn
-from accelerate.utils import broadcast_object_list, gather, gather_object
+from accelerate.utils import broadcast_object_list, gather, gather_object, set_seed
 from transformers import PreTrainedModel
 from transformers.utils.versions import require_version
 from trl import GRPOTrainer as HFGRPOTrainer
@@ -101,6 +101,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     f'The global eval batch size ({num_processes} x {args.per_device_eval_batch_size}) must be evenly '
                     f'divisible by the number of generations per prompt ({self.num_generations}). Given the current '
                     f'eval batch size, the valid values for the number of generations are: {possible_values}.')
+
+        set_seed(args.seed, device_specific=True)
 
         if use_vllm or use_lmdeploy:
             if self.accelerator.is_main_process:
