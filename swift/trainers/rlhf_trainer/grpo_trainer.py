@@ -16,7 +16,7 @@ from trl import GRPOTrainer as HFGRPOTrainer
 from trl.models import unwrap_model_for_generation
 
 from swift.llm import InferRequest, RequestConfig, to_device
-from swift.plugin.orm import orms
+from swift.plugin import orms
 from swift.utils import (JsonlWriter, get_device, get_device_count, get_dist_setting, get_logger, is_lmdeploy_available,
                          is_vllm_available, is_wandb_available)
 from ..mixin import SwiftMixin
@@ -233,7 +233,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     def _move_model_to_vllm(self, unwrapped_model):
         with unwrap_model_for_generation(
-                self.model, self.accelerator,
+                self.model_wrapped, self.accelerator,
                 gather_deepspeed3_params=self.args.ds3_gather_for_generation) as unwrapped_model:
             if is_peft_model(unwrapped_model):
                 state_dict = unwrapped_model.state_dict()
@@ -263,7 +263,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # ref: https://github.com/huggingface/trl/issues/2856
             from accelerate.utils.other import is_compiled_module
             with unwrap_model_for_generation(
-                    self.model, self.accelerator,
+                    self.model_wrapped, self.accelerator,
                     gather_deepspeed3_params=self.args.ds3_gather_for_generation) as unwrapped_model:
                 if is_compiled_module(unwrapped_model):
                     unwrapped_model = unwrapped_model._orig_mod
@@ -290,9 +290,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             is_multimodal = self.model.model_meta.is_multimodal
             if is_multimodal:
                 models = self.template.remove_post_encode_hook()
-            with unwrap_model_for_generation(self.model, self.accelerator):
+            with unwrap_model_for_generation(self.model_wrapped, self.accelerator):
                 # same reference
                 outputs = self.engine.infer(inputs, self.request_config, use_tqdm=False)
+                self.model.train()
             if is_multimodal:
                 self.template.register_post_encode_hook(models)
 
