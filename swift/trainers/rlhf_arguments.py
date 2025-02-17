@@ -49,9 +49,6 @@ class GRPOConfig(GRPOArgumentsMixin, SwiftArgumentsMixin, HfGRPOConfig):
     repetition_penalty: Optional[float] = None
 
     def __post_init__(self):
-        if self.use_lmdeploy:
-            # In case trl GRPOTrainer need use_vllm
-            self.use_vllm = True
         super().__post_init__()
         if self.cosine_max_len is None:
             self.cosine_max_len = self.max_completion_length

@@ -1,13 +1,18 @@
 # pip install math_verify # reward function
 # pip install "trl>=0.15"
-# GPU memory: 80GiB
-# You can set `--reward_model` to use a reward model to provide rewards.
-CUDA_VISIBLE_DEVICES=0 \
+# GPU memory: 2 * 80GiB
+
+MASTER_PORT=29501 \
+CUDA_VISIBLE_DEVICES=0,1 \
 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-7B \
     --reward_funcs accuracy format \
     --train_type lora \
+    --use_vllm true \
+    --vllm_device auto \
+    --vllm_gpu_memory_utilization 0.7 \
+    --vllm_max_model_len 8192 \
     --lora_rank 8 \
     --lora_alpha 32 \
     --target_modules all-linear \
@@ -15,8 +20,8 @@ swift rlhf \
     --dataset 'AI-MO/NuminaMath-TIR#1000' \
     --max_completion_length 1024 \
     --num_train_epochs 1 \
-    --per_device_train_batch_size 4 \
-    --per_device_eval_batch_size 4 \
+    --per_device_train_batch_size 16 \
+    --per_device_eval_batch_size 16 \
     --learning_rate 1e-5 \
     --gradient_accumulation_steps 1 \
     --eval_steps 100 \
@@ -28,7 +33,8 @@ swift rlhf \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 4 \
     --dataset_num_proc 4 \
-    --num_generations 4 \
+    --num_generations 16 \
     --temperature 0.9 \
+    --deepspeed zero2 \
     --system 'examples/train/grpo/prompt.txt' \
     --log_completions true
