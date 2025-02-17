@@ -38,12 +38,6 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
 
     logging_first_step: bool = True
 
-    swanlab_token: Optional[str] = None
-    swanlab_project: Optional[str] = None
-    swanlab_workspace: Optional[str] = None
-    swanlab_exp_name: Optional[str] = None
-    swanlab_mode: Literal['cloud', 'local'] = 'cloud'
-
     def _init_output_dir(self):
         if self.output_dir is not None:
             return
@@ -81,6 +75,16 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
             self.gradient_checkpointing_kwargs = self.parse_to_dict(self.gradient_checkpointing_kwargs)
         self._init_eval_strategy()
 
+
+@dataclass
+class SwanlabArguments:
+
+    swanlab_token: Optional[str] = None
+    swanlab_project: Optional[str] = None
+    swanlab_workspace: Optional[str] = None
+    swanlab_exp_name: Optional[str] = None
+    swanlab_mode: Literal['cloud', 'local'] = 'cloud'
+
     def _init_swanlab(self):
         if not is_swanlab_available():
             raise ValueError('You are using swanlab as `report_to`, please install swanlab by ' '`pip install swanlab`')
@@ -117,7 +121,8 @@ class TorchAccArguments:
 
 
 @dataclass
-class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideArguments, BaseArguments):
+class TrainArguments(SwanlabArguments, TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideArguments,
+                     BaseArguments):
     """
     TrainArguments class is a dataclass that inherits from multiple argument classes:
     TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideArguments, and BaseArguments.
