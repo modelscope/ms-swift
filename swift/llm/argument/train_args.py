@@ -11,7 +11,7 @@ from transformers.utils.versions import require_version
 from swift.plugin import LOSS_MAPPING
 from swift.trainers import TrainerFactory
 from swift.utils import (add_version_to_work_dir, get_device_count, get_logger, get_pai_tensorboard_dir,
-                         is_liger_available, is_local_master, is_mp, is_pai_training_job, use_torchacc)
+                         is_liger_available, is_swanlab_available, is_local_master, is_mp, is_pai_training_job, use_torchacc)
 from .base_args import BaseArguments, to_abspath
 from .tuner_args import TunerArguments
 
@@ -65,6 +65,9 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
 
     def __post_init__(self):
         if 'swanlab' in self.report_to:
+            if not is_swanlab_available():
+                raise ValueError(f'You are using swanlab as `report_to`, please install swanlab by '
+                                 f'`pip install swanlab`')
             from transformers.integrations import INTEGRATION_TO_CALLBACK
             import swanlab
             from swanlab.integration.transformers import SwanLabCallback
