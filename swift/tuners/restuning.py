@@ -233,7 +233,7 @@ class ResTuning(SwiftAdapter):
         if target_module_ins is None:
             raise Exception('Cannot match target modules')
 
-        def state_dict_callback(state_dict, adapter_name):
+        def state_dict_callback(state_dict, adapter_name, **kwargs):
             return {key: value for key, value in state_dict.items() if f'restuning_{adapter_name}' in key}
 
         def mark_trainable_callback(model):

@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 import collections
 import os.path
 import sys
@@ -10,7 +11,7 @@ import gradio as gr
 import json
 import matplotlib.pyplot as plt
 import psutil
-from gradio import Accordion, Tab
+from packaging import version
 from transformers import is_tensorboard_available
 
 from swift.ui.base import BaseUI
@@ -29,9 +30,7 @@ class Runtime(BaseUI):
 
     all_plots = None
 
-    log_event = None
-
-    is_studio = os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio'
+    log_event = {}
 
     sft_plot = [
         {
@@ -232,20 +231,18 @@ class Runtime(BaseUI):
             with gr.Blocks():
                 with gr.Row():
                     gr.Textbox(elem_id='running_cmd', lines=1, scale=20, interactive=False, max_lines=1)
-                    if not cls.is_studio:
-                        gr.Textbox(elem_id='logging_dir', lines=1, scale=20, max_lines=1)
-                        gr.Button(elem_id='show_log', scale=2, variant='primary')
-                        gr.Button(elem_id='stop_show_log', scale=2)
-                        gr.Textbox(elem_id='tb_url', lines=1, scale=10, interactive=False, max_lines=1)
-                        gr.Button(elem_id='start_tb', scale=2, variant='primary')
-                        gr.Button(elem_id='close_tb', scale=2)
+                    gr.Textbox(elem_id='logging_dir', lines=1, scale=20, max_lines=1)
+                    gr.Button(elem_id='show_log', scale=2, variant='primary')
+                    gr.Button(elem_id='stop_show_log', scale=2)
+                    gr.Textbox(elem_id='tb_url', lines=1, scale=10, interactive=False, max_lines=1)
+                    gr.Button(elem_id='start_tb', scale=2, variant='primary')
+                    gr.Button(elem_id='close_tb', scale=2)
                 with gr.Row():
                     gr.Textbox(elem_id='log', lines=6, visible=False)
-                if not cls.is_studio:
-                    with gr.Row():
-                        gr.Dropdown(elem_id='running_tasks', scale=10)
-                        gr.Button(elem_id='refresh_tasks', scale=1)
-                        gr.Button(elem_id='kill_task', scale=1)
+                with gr.Row():
+                    gr.Dropdown(elem_id='running_tasks', scale=10)
+                    gr.Button(elem_id='refresh_tasks', scale=1)
+                    gr.Button(elem_id='kill_task', scale=1)
 
                 with gr.Row():
                     cls.all_plots = []
@@ -253,36 +250,38 @@ class Runtime(BaseUI):
                         name = k['name']
                         cls.all_plots.append(gr.Plot(elem_id=str(idx), label=name))
 
-                if not cls.is_studio:
-                    cls.log_event = base_tab.element('show_log').click(
-                        Runtime.update_log,
-                        [base_tab.element('running_tasks')], [cls.element('log')] + cls.all_plots).then(
-                            Runtime.wait, [base_tab.element('logging_dir'),
-                                           base_tab.element('running_tasks')], [cls.element('log')] + cls.all_plots)
+                concurrency_limit = {}
+                if version.parse(gr.__version__) >= version.parse('4.0.0'):
+                    concurrency_limit = {'concurrency_limit': 5}
+                base_tab.element('show_log').click(
+                    Runtime.update_log, [base_tab.element('running_tasks')], [cls.element('log')] + cls.all_plots).then(
+                        Runtime.wait, [base_tab.element('logging_dir'),
+                                       base_tab.element('running_tasks')], [cls.element('log')] + cls.all_plots,
+                        **concurrency_limit)
 
-                    base_tab.element('stop_show_log').click(lambda: None, cancels=cls.log_event)
+                base_tab.element('stop_show_log').click(cls.break_log_event, [cls.element('running_tasks')], [])
 
-                    base_tab.element('start_tb').click(
-                        Runtime.start_tb,
-                        [base_tab.element('logging_dir')],
-                        [base_tab.element('tb_url')],
-                    )
+                base_tab.element('start_tb').click(
+                    Runtime.start_tb,
+                    [base_tab.element('logging_dir')],
+                    [base_tab.element('tb_url')],
+                )
 
-                    base_tab.element('close_tb').click(
-                        Runtime.close_tb,
-                        [base_tab.element('logging_dir')],
-                        [],
-                    )
+                base_tab.element('close_tb').click(
+                    Runtime.close_tb,
+                    [base_tab.element('logging_dir')],
+                    [],
+                )
 
-                    base_tab.element('refresh_tasks').click(
-                        Runtime.refresh_tasks,
-                        [base_tab.element('running_tasks')],
-                        [base_tab.element('running_tasks')],
-                    )
+                base_tab.element('refresh_tasks').click(
+                    Runtime.refresh_tasks,
+                    [base_tab.element('running_tasks')],
+                    [base_tab.element('running_tasks')],
+                )
 
     @classmethod
     def get_plot(cls, task):
-        if not task or 'swift sft' in task:
+        if not task or 'swift sft' in task or 'swift pt' in task:
             return cls.sft_plot
 
         args: dict = cls.parse_info_from_cmdline(task)[1]
@@ -316,11 +315,12 @@ class Runtime(BaseUI):
         if not logging_dir:
             return [None] + Runtime.plot(task)
         log_file = os.path.join(logging_dir, 'run.log')
+        cls.log_event[logging_dir] = False
         offset = 0
         latest_data = ''
         lines = collections.deque(maxlen=int(os.environ.get('MAX_LOG_LINES', 50)))
         try:
-            with open(log_file, 'r') as input:
+            with open(log_file, 'r', encoding='utf-8') as input:
                 input.seek(offset)
                 fail_cnt = 0
                 while True:
@@ -333,6 +333,10 @@ class Runtime(BaseUI):
                         fail_cnt += 1
                         if fail_cnt > 50:
                             break
+
+                    if cls.log_event.get(logging_dir, False):
+                        cls.log_event[logging_dir] = False
+                        break
 
                     if '\n' not in latest_data:
                         continue
@@ -355,6 +359,13 @@ class Runtime(BaseUI):
                     yield ['\n'.join(lines)] + Runtime.plot(task)
         except IOError:
             pass
+
+    @classmethod
+    def break_log_event(cls, task):
+        if not task:
+            return
+        pid, all_args = Runtime.parse_info_from_cmdline(task)
+        cls.log_event[all_args['logging_dir']] = True
 
     @classmethod
     def show_log(cls, logging_dir):
@@ -394,7 +405,7 @@ class Runtime(BaseUI):
         output_dir = running_task if not running_task or 'pid:' not in running_task else None
         process_name = 'swift'
         negative_name = 'swift.exe'
-        cmd_name = ['sft', 'rlhf']
+        cmd_name = ['pt', 'sft', 'rlhf']
         process = []
         selected = None
         for proc in psutil.process_iter():
@@ -438,6 +449,8 @@ class Runtime(BaseUI):
                 task = task[slash + 1:]
         if 'swift sft' in task:
             args = task.split('swift sft')[1]
+        elif 'swift pt' in task:
+            args = task.split('swift pt')[1]
         elif 'swift rlhf' in task:
             args = task.split('swift rlhf')[1]
         else:
@@ -450,8 +463,8 @@ class Runtime(BaseUI):
             all_args[splits[0]] = splits[1]
 
         output_dir = all_args['output_dir']
-        if os.path.exists(os.path.join(output_dir, 'sft_args.json')):
-            with open(os.path.join(output_dir, 'sft_args.json'), 'r') as f:
+        if os.path.exists(os.path.join(output_dir, 'args.json')):
+            with open(os.path.join(output_dir, 'args.json'), 'r', encoding='utf-8') as f:
                 _json = json.load(f)
             for key in all_args.keys():
                 all_args[key] = _json.get(key)
@@ -463,13 +476,15 @@ class Runtime(BaseUI):
 
     @staticmethod
     def kill_task(task):
-        pid, all_args = Runtime.parse_info_from_cmdline(task)
-        output_dir = all_args['output_dir']
-        if sys.platform == 'win32':
-            os.system(f'taskkill /f /t /pid "{pid}"')
-        else:
-            os.system(f'pkill -9 -f {output_dir}')
-        time.sleep(1)
+        if task:
+            pid, all_args = Runtime.parse_info_from_cmdline(task)
+            output_dir = all_args['output_dir']
+            if sys.platform == 'win32':
+                os.system(f'taskkill /f /t /pid "{pid}"')
+            else:
+                os.system(f'pkill -9 -f {output_dir}')
+            time.sleep(1)
+            Runtime.break_log_event(task)
         return [Runtime.refresh_tasks()] + [gr.update(value=None)] * (len(Runtime.get_plot(task)) + 1)
 
     @staticmethod
@@ -482,7 +497,7 @@ class Runtime(BaseUI):
             _, all_args = Runtime.parse_info_from_cmdline(task)
         else:
             all_args = {}
-        elements = [value for value in base_tab.elements().values() if not isinstance(value, (Tab, Accordion))]
+        elements = list(base_tab.valid_elements().values())
         ret = []
         for e in elements:
             if e.elem_id in all_args:
@@ -493,6 +508,7 @@ class Runtime(BaseUI):
                 ret.append(gr.update(value=arg))
             else:
                 ret.append(gr.update())
+        Runtime.break_log_event(task)
         return ret + [gr.update(value=None)] * (len(Runtime.get_plot(task)) + 1)
 
     @staticmethod
@@ -519,6 +535,16 @@ class Runtime(BaseUI):
         for k in plot:
             name = k['name']
             smooth = k['smooth']
+            if name == 'train/acc':
+                if 'train/token_acc' in data:
+                    name = 'train/token_acc'
+                if 'train/seq_acc' in data:
+                    name = 'train/seq_acc'
+            if name == 'eval/acc':
+                if 'eval/token_acc' in data:
+                    name = 'eval/token_acc'
+                if 'eval/seq_acc' in data:
+                    name = 'eval/seq_acc'
             if name not in data:
                 plots.append(None)
                 continue

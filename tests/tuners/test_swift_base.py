@@ -209,7 +209,7 @@ class TestSwift(unittest.TestCase):
 
     def test_save_to_peft_param(self):
         model = SbertForSequenceClassification(SbertConfig())
-        lora_config = LoRAConfig(target_modules=['query', 'key', 'value'], lora_dtype='fp16')
+        lora_config = LoRAConfig(target_modules=['query', 'key', 'value'], lora_dtype='float16')
         model = Swift.prepare_model(model, config={'lora': lora_config})
         model.save_pretrained(os.path.join(self.tmp_dir, 'original'))
         try:

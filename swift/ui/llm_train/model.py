@@ -1,8 +1,11 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
+from functools import partial
 from typing import Type
 
 import gradio as gr
 
-from swift.llm import MODEL_MAPPING, TEMPLATE_MAPPING, ModelType
+from swift.llm import TEMPLATE_MAPPING, ModelType, RLHFArguments
+from swift.llm.model.register import get_all_models
 from swift.ui.base import BaseUI
 
 
@@ -12,15 +15,15 @@ class Model(BaseUI):
     locale_dict = {
         'model_type': {
             'label': {
-                'zh': '选择模型',
-                'en': 'Select Model'
+                'zh': '模型类型',
+                'en': 'Select Model Type'
             },
             'info': {
-                'zh': 'SWIFT已支持的模型名称',
-                'en': 'Base model supported by SWIFT'
+                'zh': 'SWIFT已支持的模型类型',
+                'en': 'Base model type supported by SWIFT'
             }
         },
-        'model_id_or_path': {
+        'model': {
             'label': {
                 'zh': '模型id或路径',
                 'en': 'Model id or path'
@@ -30,7 +33,7 @@ class Model(BaseUI):
                 'en': 'The actual model id or model path'
             }
         },
-        'template_type': {
+        'template': {
             'label': {
                 'zh': '模型Prompt模板类型',
                 'en': 'Prompt template type'
@@ -78,63 +81,47 @@ class Model(BaseUI):
                 'en': 'Model settings'
             },
         },
+        'checkpoint': {
+            'value': {
+                'zh': '训练后的模型',
+                'en': 'Trained model'
+            }
+        },
     }
 
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
         with gr.Accordion(elem_id='model_param', open=True):
             with gr.Row():
-                model_type = gr.Dropdown(
-                    elem_id='model_type',
-                    choices=ModelType.get_model_name_list() + cls.get_custom_name_list(),
-                    scale=20)
-                model_id_or_path = gr.Textbox(elem_id='model_id_or_path', lines=1, scale=20, interactive=True)
-                template_type = gr.Dropdown(
-                    elem_id='template_type', choices=list(TEMPLATE_MAPPING.keys()) + ['AUTO'], scale=20)
+                model = gr.Dropdown(
+                    elem_id='model',
+                    scale=20,
+                    choices=get_all_models(),
+                    value='Qwen/Qwen2.5-7B-Instruct',
+                    allow_custom_value=True)
+                gr.Dropdown(elem_id='model_type', choices=ModelType.get_model_name_list(), scale=20)
+                gr.Dropdown(elem_id='template', choices=list(TEMPLATE_MAPPING.keys()), scale=20)
                 train_record = gr.Dropdown(elem_id='train_record', choices=[], scale=20)
                 clear_cache = gr.Button(elem_id='clear_cache', scale=2)
-                model_state = gr.State({})
             with gr.Row():
-                system = gr.Textbox(elem_id='system', lines=1, scale=20)
-                reset_btn = gr.Button(elem_id='reset', scale=2)
+                gr.Textbox(elem_id='system', lines=1, scale=20)
 
-        def update_input_model(choice, model_state=None):
-            if choice is None:
-                return None, None, None, None
-            if model_state and choice in model_state:
-                model_id_or_path = model_state[choice]
-            else:
-                model_id_or_path = MODEL_MAPPING[choice]['model_id_or_path']
-            default_system = getattr(TEMPLATE_MAPPING[MODEL_MAPPING[choice]['template']]['template'], 'default_system',
-                                     None)
-            template = MODEL_MAPPING[choice]['template']
-            all_records = cls.list_cache(choice)
-            return model_id_or_path, default_system, template, gr.update(choices=all_records)
-
-        def update_model_id_or_path(model_type, model_id_or_path, model_state):
-            if model_type is None or isinstance(model_type, list):
-                return model_state
-            model_state[model_type] = model_id_or_path
-            return model_state
-
-        def reset(model_type):
-            model_id_or_path, default_system, template, _ = update_input_model(model_type)
-            return model_id_or_path, default_system, template, {}
-
-        model_type.change(
-            update_input_model,
-            inputs=[model_type, model_state],
-            outputs=[model_id_or_path, system, template_type, train_record])
-
-        model_id_or_path.change(
-            update_model_id_or_path, inputs=[model_type, model_id_or_path, model_state], outputs=[model_state])
-
-        def clear_record(model_type):
-            if model_type:
-                cls.clear_cache(model_type)
+        def clear_record(model):
+            if model:
+                cls.clear_cache(model)
                 return gr.update(choices=[])
             return gr.update()
 
-        clear_cache.click(clear_record, inputs=[model_type], outputs=[train_record])
+        clear_cache.click(clear_record, inputs=[model], outputs=[train_record])
 
-        reset_btn.click(reset, inputs=[model_type], outputs=[model_id_or_path, system, template_type, model_state])
+    @classmethod
+    def after_build_ui(cls, base_tab: Type['BaseUI']):
+        cls.element('model').change(
+            partial(base_tab.update_input_model, arg_cls=RLHFArguments),
+            inputs=[cls.element('model')],
+            outputs=[cls.element('train_record')] + list(base_tab.valid_elements().values()))
+
+        cls.element('train_record').change(
+            partial(base_tab.update_all_settings, base_tab=base_tab),
+            inputs=[cls.element('model'), cls.element('train_record')],
+            outputs=list(base_tab.valid_elements().values()))

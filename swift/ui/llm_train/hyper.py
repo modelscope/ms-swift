@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Type
 
 import gradio as gr
@@ -16,7 +17,7 @@ class Hyper(BaseUI):
                 'en': 'Hyper settings(more params->Advanced settings)',
             },
         },
-        'batch_size': {
+        'per_device_train_batch_size': {
             'label': {
                 'zh': '训练batch size',
                 'en': 'Train batch size',
@@ -66,15 +67,11 @@ class Hyper(BaseUI):
                 'en': 'Set the gradient accumulation steps',
             }
         },
-        'use_flash_attn': {
+        'attn_impl': {
             'label': {
-                'zh': '使用Flash Attention',
-                'en': 'Use Flash Attention',
+                'zh': 'Flash Attention类型',
+                'en': 'Flash Attention Type',
             },
-            'info': {
-                'zh': '使用Flash Attention减小显存占用',
-                'en': 'Use Flash Attention to reduce memory',
-            }
         },
         'neftune_noise_alpha': {
             'label': {
@@ -113,10 +110,10 @@ class Hyper(BaseUI):
         with gr.Accordion(elem_id='hyper_param', open=False):
             with gr.Blocks():
                 with gr.Row():
-                    gr.Slider(elem_id='batch_size', minimum=1, maximum=256, step=2, scale=20)
+                    gr.Slider(elem_id='per_device_train_batch_size', minimum=1, maximum=256, step=2, scale=20)
                     gr.Textbox(elem_id='learning_rate', value='1e-4', lines=1, scale=20)
                     gr.Textbox(elem_id='num_train_epochs', lines=1, scale=20)
-                    gr.Checkbox(elem_id='use_flash_attn', scale=20)
+                    gr.Dropdown(elem_id='attn_impl', scale=20, value='flash_attn')
                     gr.Slider(elem_id='gradient_accumulation_steps', minimum=1, maximum=256, step=2, value=16, scale=20)
                 with gr.Row():
                     gr.Textbox(elem_id='eval_steps', lines=1, value='500', scale=20)

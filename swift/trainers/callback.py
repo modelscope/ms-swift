@@ -2,14 +2,28 @@
 import os
 import time
 
-from tqdm.auto import tqdm
-from transformers.trainer_callback import (DefaultFlowCallback, ProgressCallback, TrainerCallback, TrainerControl,
+from tqdm import tqdm
+from transformers import trainer
+from transformers.trainer_callback import (DefaultFlowCallback, PrinterCallback, ProgressCallback, TrainerControl,
                                            TrainerState)
 from transformers.trainer_utils import IntervalStrategy, has_length, speed_metrics
 
 from swift.utils import append_to_jsonl, is_pai_training_job, use_torchacc
 from ..utils.utils import format_time
 from .arguments import TrainingArguments
+
+
+def add_train_message(logs, state, start_time) -> None:
+    logs['global_step/max_steps'] = f'{state.global_step}/{state.max_steps}'
+    train_percentage = state.global_step / state.max_steps if state.max_steps else 0.
+    logs['percentage'] = f'{train_percentage * 100:.2f}%'
+    elapsed = time.time() - start_time
+    logs['elapsed_time'] = format_time(elapsed)
+    if train_percentage != 0:
+        logs['remaining_time'] = format_time(elapsed / train_percentage - elapsed)
+    for k, v in logs.items():
+        if isinstance(v, float):
+            logs[k] = round(logs[k], 8)
 
 
 class ProgressCallbackNew(ProgressCallback):
@@ -35,13 +49,6 @@ class ProgressCallbackNew(ProgressCallback):
             self.prediction_bar.update()
 
     def on_log(self, args: TrainingArguments, state: TrainerState, control, logs=None, **kwargs):
-        logs['global_step/max_steps'] = f'{state.global_step}/{state.max_steps}'
-        train_percentage = state.global_step / state.max_steps if state.max_steps else 0.
-        logs['percentage'] = f'{train_percentage * 100:.2f}%'
-        elapsed = time.time() - self.start_time
-        elapsed = max(0., elapsed)
-        logs['elapsed_time'] = format_time(elapsed)
-        logs['remaining_time'] = format_time(elapsed / train_percentage - elapsed)
 
         if use_torchacc():
             if state.global_step >= self.metric_warmup_step and self.warmup_start_time == 0:
@@ -58,9 +65,8 @@ class ProgressCallbackNew(ProgressCallback):
             if 'train_samples_per_second' in logs:
                 logs.update(self.warmup_metric)
                 state.log_history[-1] = logs
-        for k, v in logs.items():
-            if isinstance(v, float):
-                logs[k] = round(logs[k], 8)
+
+        add_train_message(logs, state, self.start_time)
         if not is_pai_training_job() and state.is_world_process_zero:
             jsonl_path = os.path.join(args.output_dir, 'logging.jsonl')
             append_to_jsonl(jsonl_path, logs)
@@ -83,13 +89,14 @@ class DefaultFlowCallbackNew(DefaultFlowCallback):
         return control
 
 
-class PrinterCallbackNew(TrainerCallback):
+class PrinterCallbackNew(PrinterCallback):
+
+    def on_train_begin(self, args, state, control, **kwargs):
+        self.start_time = time.time()
+        return super().on_train_begin(args, state, control, **kwargs)
 
     def on_log(self, args, state, control, logs=None, **kwargs):
-        logs['global_step'] = state.global_step
-        for k, v in logs.items():
-            if isinstance(v, float):
-                logs[k] = round(logs[k], 8)
+        add_train_message(logs, state, self.start_time)
         if not is_pai_training_job() and state.is_world_process_zero:
             jsonl_path = os.path.join(args.output_dir, 'logging.jsonl')
             append_to_jsonl(jsonl_path, logs)
@@ -97,3 +104,9 @@ class PrinterCallbackNew(TrainerCallback):
         _ = logs.pop('total_flos', None)
         if state.is_world_process_zero:
             print(logs, flush=True)
+
+
+# monkey patching
+trainer.DEFAULT_PROGRESS_CALLBACK = ProgressCallbackNew
+trainer.DEFAULT_CALLBACKS = [DefaultFlowCallbackNew]
+trainer.PrinterCallback = PrinterCallbackNew

@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 import collections
 import os.path
 import sys
@@ -6,9 +7,7 @@ from datetime import datetime
 from typing import Dict, List, Tuple, Type
 
 import gradio as gr
-import json
 import psutil
-from gradio import Accordion, Tab
 from packaging import version
 
 from swift.ui.base import BaseUI
@@ -25,7 +24,7 @@ class Runtime(BaseUI):
 
     cmd = 'deploy'
 
-    log_event = None
+    log_event = {}
 
     locale_dict = {
         'runtime_tab': {
@@ -95,7 +94,7 @@ class Runtime(BaseUI):
         with gr.Accordion(elem_id='runtime_tab', open=False, visible=True):
             with gr.Blocks():
                 with gr.Row():
-                    gr.Dropdown(elem_id='running_tasks', scale=10)
+                    gr.Dropdown(elem_id='running_tasks', scale=10, allow_custom_value=True)
                     gr.Button(elem_id='refresh_tasks', scale=1, variant='primary')
                     gr.Button(elem_id='show_log', scale=1, variant='primary')
                     gr.Button(elem_id='stop_show_log', scale=1)
@@ -104,19 +103,27 @@ class Runtime(BaseUI):
                     gr.Textbox(elem_id='log', lines=6, visible=False)
 
                 concurrency_limit = {}
-                if version.parse(gr.__version__) >= version.parse('4.0.0') and os.environ.get(
-                        'MODELSCOPE_ENVIRONMENT') != 'studio':
+                if version.parse(gr.__version__) >= version.parse('4.0.0'):
                     concurrency_limit = {'concurrency_limit': 5}
-                cls.log_event = base_tab.element('show_log').click(cls.update_log, [], [cls.element('log')]).then(
-                    cls.wait, [base_tab.element('running_tasks')], [cls.element('log')], **concurrency_limit)
+                base_tab.element('show_log').click(cls.update_log, [],
+                                                   [cls.element('log')]).then(cls.wait,
+                                                                              [base_tab.element('running_tasks')],
+                                                                              [cls.element('log')], **concurrency_limit)
 
-                base_tab.element('stop_show_log').click(lambda: None, cancels=cls.log_event)
+                base_tab.element('stop_show_log').click(cls.break_log_event, [cls.element('running_tasks')], [])
 
                 base_tab.element('refresh_tasks').click(
                     cls.refresh_tasks,
                     [base_tab.element('running_tasks')],
                     [base_tab.element('running_tasks')],
                 )
+
+    @classmethod
+    def break_log_event(cls, task):
+        if not task:
+            return
+        pid, all_args = cls.parse_info_from_cmdline(task)
+        cls.log_event[all_args['log_file']] = True
 
     @classmethod
     def update_log(cls):
@@ -128,11 +135,12 @@ class Runtime(BaseUI):
             return [None]
         _, args = cls.parse_info_from_cmdline(task)
         log_file = args['log_file']
+        cls.log_event[log_file] = False
         offset = 0
         latest_data = ''
         lines = collections.deque(maxlen=int(os.environ.get('MAX_LOG_LINES', 50)))
         try:
-            with open(log_file, 'r') as input:
+            with open(log_file, 'r', encoding='utf-8') as input:
                 input.seek(offset)
                 fail_cnt = 0
                 while True:
@@ -145,6 +153,10 @@ class Runtime(BaseUI):
                         fail_cnt += 1
                         if fail_cnt > 50:
                             break
+
+                    if cls.log_event.get(log_file, False):
+                        cls.log_event[log_file] = False
+                        break
 
                     if '\n' not in latest_data:
                         continue
@@ -234,13 +246,15 @@ class Runtime(BaseUI):
 
     @classmethod
     def kill_task(cls, task):
-        pid, all_args = cls.parse_info_from_cmdline(task)
-        log_file = all_args['log_file']
-        if sys.platform == 'win32':
-            os.system(f'taskkill /f /t /pid "{pid}"')
-        else:
-            os.system(f'pkill -9 -f {log_file}')
-        time.sleep(1)
+        if task:
+            pid, all_args = cls.parse_info_from_cmdline(task)
+            log_file = all_args['log_file']
+            if sys.platform == 'win32':
+                os.system(f'taskkill /f /t /pid "{pid}"')
+            else:
+                os.system(f'pkill -9 -f {log_file}')
+            time.sleep(1)
+            cls.break_log_event(task)
         return [cls.refresh_tasks()] + [gr.update(value=None)]
 
     @classmethod
@@ -249,7 +263,7 @@ class Runtime(BaseUI):
             _, all_args = cls.parse_info_from_cmdline(task)
         else:
             all_args = {}
-        elements = [value for value in base_tab.elements().values() if not isinstance(value, (Tab, Accordion))]
+        elements = list(base_tab.valid_elements().values())
         ret = []
         is_custom_path = 'ckpt_dir' in all_args
         for e in elements:
@@ -257,24 +271,15 @@ class Runtime(BaseUI):
                 if isinstance(e, gr.Dropdown) and e.multiselect:
                     arg = all_args[e.elem_id].split(' ')
                 else:
-                    if e.elem_id == 'model_type':
-                        if is_custom_path:
-                            arg = base_tab.locale('checkpoint', base_tab.lang)['value']
-                        else:
-                            arg = all_args[e.elem_id]
-                    elif e.elem_id == 'model_id_or_path':
+                    if e.elem_id == 'model':
                         if is_custom_path:
                             arg = all_args['ckpt_dir']
                         else:
-                            arg = all_args['model_id_or_path']
+                            arg = all_args[e.elem_id]
                     else:
                         arg = all_args[e.elem_id]
                 ret.append(gr.update(value=arg))
             else:
                 ret.append(gr.update())
-        sft_type = None
-        if is_custom_path:
-            with open(os.path.join(all_args['ckpt_dir'], 'sft_args.json'), 'r') as f:
-                _json = json.load(f)
-                sft_type = _json['sft_type']
-        return ret + [gr.update(value=None), [all_args.get('model_type'), all_args.get('template_type'), sft_type]]
+        cls.break_log_event(task)
+        return ret + [gr.update(value=None)]

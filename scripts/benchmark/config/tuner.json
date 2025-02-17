@@ -9,21 +9,17 @@
     },
     "eval_dataset": ["ceval", "gsm8k", "arc"],
     "args": {
-      "model_type": "qwen-7b-chat",
-      "dataset": "ms-agent",
-      "train_dataset_mix_ratio": 2.0,
-      "batch_size": 1,
+      "model": "Qwen/Qwen-7B-Chat",
+      "dataset": "iic/ms_agent",
+      "per_device_train_batch_size": 1,
       "max_length": 2048,
-      "use_loss_scale": true,
+      "loss_scale": "react",
       "gradient_accumulation_steps": 16,
       "learning_rate": 5e-5,
-      "use_flash_attn": true,
+      "attn_impl": "flash_attn",
       "eval_steps": 2000,
       "save_steps": 2000,
-      "train_dataset_sample": -1,
-      "val_dataset_sample": 5000,
       "num_train_epochs": 2,
-      "check_dataset_strategy": "none",
       "gradient_checkpointing": true,
       "weight_decay": 0.01,
       "warmup_ratio": 0.03,
@@ -34,8 +30,7 @@
       {
         "name": "lora",
         "args": {
-          "sft_type": "lora",
-          "lora_target_modules": "ALL",
+          "train_type": "lora",
           "lora_rank": 8,
           "lora_alpha": 32
         }
@@ -43,8 +38,7 @@
       {
         "name": "lora+packing",
         "args": {
-          "sft_type": "lora",
-          "lora_target_modules": "ALL",
+          "train_type": "lora",
           "lora_rank": 8,
           "lora_alpha": 32,
           "packing": true,
@@ -59,8 +53,7 @@
           "ddp": "2"
         },
         "args": {
-          "sft_type": "lora",
-          "lora_target_modules": "ALL",
+          "train_type": "lora",
           "lora_rank": 8,
           "lora_alpha": 32,
           "packing": true,
@@ -71,8 +64,7 @@
       {
         "name": "lora+packing+lazytokenize",
         "args": {
-          "sft_type": "lora",
-          "lora_target_modules": "ALL",
+          "train_type": "lora",
           "lora_rank": 8,
           "lora_alpha": 32,
           "packing": true,
@@ -84,18 +76,16 @@
       {
         "name": "lora+",
         "args": {
-          "sft_type": "lora",
-          "lora_target_modules": "ALL",
+          "train_type": "lora",
           "lora_rank": 8,
           "lora_alpha": 32,
-          "lora_lr_ratio": 16.0
+          "lorap_lr_ratio": 16.0
         }
       },
       {
         "name": "rslora",
         "args": {
-          "sft_type": "lora",
-          "lora_target_modules": "ALL",
+          "train_type": "lora",
           "lora_rank": 8,
           "lora_alpha": 32,
           "use_rslora": true
@@ -104,8 +94,7 @@
       {
         "name": "dora",
         "args": {
-          "sft_type": "lora",
-          "lora_target_modules": "ALL",
+          "train_type": "lora",
           "lora_rank": 8,
           "lora_alpha": 32,
           "use_dora": true
@@ -114,8 +103,7 @@
       {
         "name": "lora+neftune",
         "args": {
-          "sft_type": "lora",
-          "lora_target_modules": "ALL",
+          "train_type": "lora",
           "lora_rank": 8,
           "lora_alpha": 32,
           "neftune_noise_alpha": 15.0
@@ -124,7 +112,7 @@
       {
         "name": "llamapro",
         "args": {
-          "sft_type": "llamapro",
+          "train_type": "llamapro",
           "llamapro_num_new_blocks": "4"
         }
       },
@@ -135,7 +123,7 @@
           "ddp": "1"
         },
         "args": {
-          "sft_type": "full"
+          "train_type": "full"
         }
       },
       {
@@ -145,10 +133,9 @@
           "ddp": "1"
         },
         "args": {
-          "sft_type": "reft",
-          "train_dataset_mix_ratio": 0.0,
+          "train_type": "reft",
           "gradient_checkpointing": "false",
-          "use_loss_scale": false
+          "loss_scale": "default"
         }
       },
       {
@@ -158,7 +145,7 @@
           "ddp": "1"
         },
         "args": {
-          "sft_type": "full",
+          "train_type": "full",
           "use_galore": "true",
           "galore_rank": "128",
           "galore_update_proj_gap": "200",
@@ -174,7 +161,7 @@
           "ddp": "1"
         },
         "args": {
-          "sft_type": "full",
+          "train_type": "full",
           "use_galore": "true",
           "galore_rank": "128",
           "galore_update_proj_gap": "200",
@@ -191,7 +178,7 @@
           "ddp": "1"
         },
         "args": {
-          "sft_type": "full",
+          "train_type": "full",
           "use_galore": "true",
           "galore_rank": "128",
           "galore_update_proj_gap": "200",
@@ -206,7 +193,7 @@
           "ddp": "1"
         },
         "args": {
-          "sft_type": "full",
+          "train_type": "full",
           "use_galore": "true",
           "galore_rank": "64",
           "galore_update_proj_gap": "200",
@@ -221,7 +208,7 @@
           "ddp": "1"
         },
         "args": {
-          "sft_type": "full",
+          "train_type": "full",
           "use_galore": "true",
           "galore_rank": "32",
           "galore_update_proj_gap": "200",
@@ -236,7 +223,7 @@
           "ddp": "1"
         },
         "args": {
-          "sft_type": "full",
+          "train_type": "full",
           "use_galore": "true",
           "galore_rank": "128",
           "galore_update_proj_gap": "200",
@@ -251,7 +238,7 @@
           "ddp": "1"
         },
         "args": {
-          "sft_type": "full",
+          "train_type": "full",
           "use_galore": "true",
           "galore_rank": "128",
           "galore_update_proj_gap": "200",
@@ -262,8 +249,7 @@
       {
         "name": "adalora",
         "args": {
-          "sft_type": "adalora",
-          "lora_target_modules": "ALL",
+          "train_type": "adalora",
           "lora_rank": 8,
           "lora_alpha": 32
         }
@@ -271,33 +257,14 @@
       {
         "name": "adapter",
         "args": {
-          "sft_type": "adapter"
-        }
-      },
-      {
-        "name": "ia3",
-        "args": {
-          "sft_type": "ia3",
-          "ia3_target_modules": "ALL",
-          "ia3_feedforward_modules": "mlp.gate_proj mlp.up_proj mlp.down_proj"
-        }
-      },
-      {
-        "name": "lora+no_mix",
-        "info": "lora无混合数据集",
-        "args": {
-          "sft_type": "lora",
-          "lora_target_modules": "ALL",
-          "lora_rank": 8,
-          "lora_alpha": 32,
-          "train_dataset_mix_ratio": 0.0
+          "train_type": "adapter"
         }
       },
       {
         "name": "full+lisa_2",
         "info": "lisa 2layers + full",
         "args": {
-          "sft_type": "full",
+          "train_type": "full",
           "lisa_activated_layers": 2,
           "lisa_step_interval": 20
         }
@@ -306,40 +273,28 @@
         "name": "full+lisa_4",
         "info": "lisa 4layers + full",
         "args": {
-          "sft_type": "full",
+          "train_type": "full",
           "lisa_activated_layers": 4,
           "lisa_step_interval": 20
-        }
-      },
-      {
-        "name": "full+no_mix",
-        "info": "全参无混合数据集",
-        "requirements":{
-          "gpu": "1",
-          "ddp": "1"
-        },
-        "args": {
-          "sft_type": "full",
-          "train_dataset_mix_ratio": 0.0
         }
       },
       {
         "name": "unsloth+lora+q4",
         "info": "unsloth lora quantization bit 4",
         "args": {
-          "sft_type": "lora",
+          "train_type": "lora",
           "tuner_backend": "unsloth",
           "quantization_bit": 4,
-          "model_type": "llama3-8b-instruct"
+          "model": "LLM-Research/Meta-Llama-3-8B-Instruct"
         }
       },
       {
         "name": "unsloth+full",
         "info": "unsloth full",
         "args": {
-          "sft_type": "full",
+          "train_type": "full",
           "tuner_backend": "unsloth",
-          "model_type": "llama3-8b-instruct"
+          "model_type": "LLM-Research/Meta-Llama-3-8B-Instruct"
         }
       }
     ]

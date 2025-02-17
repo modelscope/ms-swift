@@ -6,7 +6,7 @@ from collections import OrderedDict
 from dataclasses import dataclass, field
 from functools import partial
 from itertools import repeat
-from typing import List, Union
+from typing import Union
 
 import torch
 from torch import nn
@@ -107,7 +107,7 @@ class Side(SwiftAdapter):
                 setattr(tgt_module, f'side_{adapter_name}', side_module)
                 logger.info(f'Side modules(module_key): {module_key}.side_{adapter_name}')
 
-        def state_dict_callback(state_dict, adapter_name):
+        def state_dict_callback(state_dict, adapter_name, **kwargs):
             return {key: value for key, value in state_dict.items() if f'side_{adapter_name}' in key}
 
         def mark_trainable_callback(model):
@@ -135,7 +135,7 @@ class SideModule(nn.Module, ActivationMixin):
     by Zhang et al.(2019)
     See https://arxiv.org/abs/1912.13503
 
-    Attributes:
+    Args:
         side_module_name: The name of the additive side networks.
     """
 

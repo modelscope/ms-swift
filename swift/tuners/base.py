@@ -3,6 +3,8 @@
 import os
 import re
 import shutil
+import tempfile
+from contextlib import contextmanager
 from copy import copy
 from functools import partial
 from inspect import Parameter, Signature, signature
@@ -19,6 +21,7 @@ from transformers import Trainer
 
 from swift.utils.constants import DEFAULT_ADAPTER, SWIFT_TYPE_KEY
 from swift.utils.logger import get_logger
+from ..utils.torch_utils import get_device_count
 from .mapping import SwiftTuners
 from .peft import PeftConfig, PeftModel, get_peft_model
 from .utils import SwiftConfig, SwiftOutput
@@ -226,12 +229,14 @@ class SwiftModel(nn.Module):
             state_dicts = new_state_dict
         return state_dicts
 
-    def __getattr__(self, name: str):
+    def __getattr__(self, key: str):
         """Forward missing attributes to the wrapped module."""
         try:
-            return super().__getattr__(name)  # defer to nn.Module's logic
+            return super().__getattr__(key)
         except AttributeError:
-            return getattr(self.base_model, name)
+            if 'base_model' in dir(self):
+                return getattr(self.base_model, key)
+            raise
 
     @staticmethod
     def load_state_file(path, device: Optional[str] = None):
@@ -293,7 +298,7 @@ class SwiftModel(nn.Module):
                         model: Union[nn.Module, 'SwiftModel'],
                         model_id: str = None,
                         adapter_name: Union[str, List[str], Dict[str, str]] = None,
-                        inference_mode: bool = False,
+                        inference_mode: bool = True,
                         revision: str = None,
                         **kwargs):
         """Load a set of tuners and corresponding weights by a model_id.
@@ -320,7 +325,7 @@ class SwiftModel(nn.Module):
             raise ValueError(f'Please pass in a local dir or a model id, not a local file: {model_dir}')
         extra_state_keys = kwargs.pop('extra_state_keys', None)
         if extra_state_keys is None and os.path.isfile(os.path.join(model_dir, cls.EXTRA_STATE_DIR, CONFIG_NAME)):
-            with open(os.path.join(model_dir, cls.EXTRA_STATE_DIR, CONFIG_NAME), 'r') as file:
+            with open(os.path.join(model_dir, cls.EXTRA_STATE_DIR, CONFIG_NAME), 'r', encoding='utf-8') as file:
                 _json = json.load(file)
                 extra_state_keys = _json.get('extra_state_keys')
         if adapter_name is None:
@@ -338,7 +343,7 @@ class SwiftModel(nn.Module):
                 logger.warning(f'{_name} is not a valid tuner')
                 continue
 
-            with open(config_file, 'r') as file:
+            with open(config_file, 'r', encoding='utf-8') as file:
                 json_object = json.load(file)
 
             if SWIFT_TYPE_KEY not in json_object:
@@ -359,29 +364,6 @@ class SwiftModel(nn.Module):
                 continue
             state_dict = cls.load_state_file(sub_folder)
             if state_dict is not None:
-                model_is_qlora = len([
-                    k for k in self.state_dict().keys()
-                    if k.endswith(f'.lora_A.{_adapter}.weight') or k.endswith(f'.lora_B.{_adapter}.weight')
-                ])
-                if not model_is_qlora:
-                    # model is lora, state_dict: qlora->lora
-                    state_dict = {
-                        k[:-len(f'.{_name}.weight') if k.endswith(f'.lora_A.{_name}.weight') or k.
-                          endswith(f'.lora_B.{_name}.weight') else None]: v
-                        for k, v in state_dict.items()
-                    }
-                if any(['loramodule' in key for key in state_dict]):
-                    # Compatible with old checkpoints before ms-swift:1.5.0
-                    state_dict = {
-                        key.replace(f'loramodule_{_name}.lora_A', 'lora_A') if f'loramodule_{_name}.lora_A.{_name}'
-                        in key else key.replace(f'loramodule_{_name}.lora_A', f'lora_A.{_name}.weight'): value
-                        for key, value in state_dict.items()
-                    }
-                    state_dict = {
-                        key.replace(f'loramodule_{_name}.lora_B', 'lora_B') if f'loramodule_{_name}.lora_B.{_name}'
-                        in key else key.replace(f'loramodule_{_name}.lora_B', f'lora_B.{_name}.weight'): value
-                        for key, value in state_dict.items()
-                    }
                 if isinstance(adapter_name, dict):
                     # TODO this logic is fragile! replace `_name` may cause other parts replaced
                     state_dict = {key.replace(_name, adapter_name[_name]): value for key, value in state_dict.items()}
@@ -401,13 +383,13 @@ class SwiftModel(nn.Module):
         assert (hasattr(config, SWIFT_TYPE_KEY))
         from .mapping import SWIFT_MAPPING
 
-        adatper_cls = SWIFT_MAPPING[config.swift_type][1]
-        if adatper_cls.has_additional_modules() and not getattr(model, 'model_frozen', False):
+        adapter_cls = SWIFT_MAPPING[config.swift_type][1]
+        if adapter_cls.has_additional_modules() and not getattr(model, 'model_frozen', False):
             for _, p in model.named_parameters():
                 p.requires_grad = False
             model.model_frozen = True
-        config.has_additional_modules = adatper_cls.has_additional_modules()
-        return adatper_cls.prepare_model(model, config, adapter_name)
+        config.has_additional_modules = adapter_cls.has_additional_modules()
+        return adapter_cls.prepare_model(model, config, adapter_name)
 
     def create_or_update_model_card(self, output_dir: str):
         """
@@ -416,7 +398,7 @@ class SwiftModel(nn.Module):
         if not os.path.exists(os.path.join(output_dir, 'README.md')):
             lines = []
         else:
-            with open(os.path.join(output_dir, 'README.md'), 'r') as f:
+            with open(os.path.join(output_dir, 'README.md'), 'r', encoding='utf-8') as f:
                 lines = f.readlines()
 
         quantization_config = None
@@ -447,7 +429,7 @@ class SwiftModel(nn.Module):
         lines.append(f'{base_model_heading}\n\n- BaseModel Class {self.base_model.__class__.__name__}\n')
 
         # write the lines back to README.md
-        with open(os.path.join(output_dir, 'README.md'), 'w') as f:
+        with open(os.path.join(output_dir, 'README.md'), 'w', encoding='utf-8') as f:
             f.writelines(lines)
 
     def add_weighted_adapter(
@@ -608,13 +590,14 @@ class SwiftModel(nn.Module):
                 os.makedirs(os.path.join(save_directory, self.EXTRA_STATE_DIR), exist_ok=True)
                 self._save_state_dict(output_state_dict, os.path.join(save_directory, self.EXTRA_STATE_DIR),
                                       safe_serialization)
-                with open(os.path.join(save_directory, self.EXTRA_STATE_DIR, CONFIG_NAME), 'w') as file:
+                with open(
+                        os.path.join(save_directory, self.EXTRA_STATE_DIR, CONFIG_NAME), 'w', encoding='utf-8') as file:
                     json.dump({'extra_state_keys': self.extra_state_keys}, file)
             else:
                 logger.error('Full parameter training, save_extra_states will be ignored')
 
         if not os.path.exists(os.path.join(save_directory, 'configuration.json')):
-            with open(os.path.join(save_directory, 'configuration.json'), 'w') as f:
+            with open(os.path.join(save_directory, 'configuration.json'), 'w', encoding='utf-8') as f:
                 f.write('{}')
 
     @staticmethod
@@ -625,6 +608,14 @@ class SwiftModel(nn.Module):
                 output_state_dict, os.path.join(save_directory, SAFETENSORS_WEIGHTS_NAME), metadata={'format': 'pt'})
         else:
             torch.save(output_state_dict, os.path.join(save_directory, WEIGHTS_NAME))
+
+    @contextmanager
+    def disable_adapter(self):
+        try:
+            self.set_active_adapters(adapter_names=[])
+            yield
+        finally:
+            self.set_active_adapters(adapter_names=self.adapters.keys())
 
     def set_active_adapters(self, adapter_names: Union[List[str], str], offload: str = None):
         """Set activated adapters
@@ -697,7 +688,7 @@ class SwiftModel(nn.Module):
         return f'trainable params: {trainable_params:,d} || all params: {all_param:,d} ' \
                f'|| trainable%: {100 * trainable_params / all_param:.4f}' \
                '|| cuda memory: ' \
-               f'{sum([torch.cuda.memory_allocated(i) for i in range(torch.cuda.device_count())])/1024/1024/1024:.2f}' \
+               f'{sum([torch.cuda.memory_allocated(i) for i in range(get_device_count())])/1024/1024/1024:.2f}' \
                'GiB.'
 
 
@@ -746,6 +737,31 @@ class Swift:
             for adapter, output in model.adapters.items():
                 if isinstance(output.config, LoRAConfig) and (adapter_name is None or adapter in adapter_name):
                     LoRA.unpatch_lora(model, output.config, adapter)
+
+    @staticmethod
+    @contextmanager
+    def grpo_context(model: Union[SwiftModel, torch.nn.Module], processor):
+        # Save the model and temporarily modify model.model_dir.
+        if not isinstance(model, SwiftModel):
+            yield
+            return
+        else:
+            assert len(model.adapters) == 1
+            adapter = list(model.adapters.values())[0]
+            if adapter.config.swift_type == SwiftTuners.LLAMAPRO:
+                from modelscope.hub.utils.utils import get_cache_dir
+                temp_dir = tempfile.mkdtemp(dir=get_cache_dir())
+                model_dir = model.model_dir
+                from transformers.integrations import is_deepspeed_zero3_enabled
+                if is_deepspeed_zero3_enabled():
+                    raise ValueError('DeepSpeed ZeRO3 not supported for LLaMAPro&GRPO currently.')
+                model.base_model.save_pretrained(temp_dir)
+                processor.save_pretrained(temp_dir)
+                model.model_dir = temp_dir
+            yield
+            if adapter.config.swift_type == SwiftTuners.LLAMAPRO:
+                model.model_dir = model_dir
+                shutil.rmtree(temp_dir)
 
     @staticmethod
     def merge(model: Union[PeftModel, SwiftModel], **kwargs):
@@ -797,7 +813,7 @@ class Swift:
             return not LoRAConfig(**_json).can_be_saved_to_peft()
 
         for adapter in adapter_names:
-            with open(os.path.join(ckpt_dir, adapter, CONFIG_NAME)) as f:
+            with open(os.path.join(ckpt_dir, adapter, CONFIG_NAME), encoding='utf-8') as f:
                 _json = json.load(f)
                 if has_custom_content(_json):
                     raise AssertionError('Cannot transfer to peft format, '
@@ -823,7 +839,7 @@ class Swift:
             state_dict = new_state_dict
             SwiftModel._save_state_dict(state_dict, os.path.join(output_dir, adapter), safe_serialization)
             from swift import LoRAConfig
-            with open(os.path.join(output_dir, adapter, CONFIG_NAME)) as f:
+            with open(os.path.join(output_dir, adapter, CONFIG_NAME), encoding='utf-8') as f:
                 _json = json.load(f)
                 peft_config = LoRAConfig(**_json).to_peft_config()
             peft_config.save_pretrained(os.path.join(output_dir, adapter))
@@ -857,7 +873,7 @@ class Swift:
             model_id = snapshot_download(model_id, revision=revision)
         is_peft_model = False
         if os.path.exists(os.path.join(model_id, CONFIG_NAME)):
-            with open(os.path.join(model_id, CONFIG_NAME), 'r') as f:
+            with open(os.path.join(model_id, CONFIG_NAME), 'r', encoding='utf-8') as f:
                 _json = json.load(f)
             is_peft_model = SWIFT_TYPE_KEY not in _json
 
@@ -866,7 +882,7 @@ class Swift:
             if isinstance(adapter_name, list) else list(adapter_name.keys())[0]
         _name = _name or ''
         if os.path.exists(os.path.join(model_id, _name, CONFIG_NAME)):
-            with open(os.path.join(model_id, _name, CONFIG_NAME), 'r') as f:
+            with open(os.path.join(model_id, _name, CONFIG_NAME), 'r', encoding='utf-8') as f:
                 _json = json.load(f)
             is_peft_model = SWIFT_TYPE_KEY not in _json and 'extra_state_keys' not in _json
         if is_peft_model:

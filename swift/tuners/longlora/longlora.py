@@ -51,7 +51,7 @@ class LongLoRA(LoRA):
         """Prepare a model with `LongLoRAConfig`"""
         LoraModel(model, config, adapter_name)
 
-        def state_dict_callback(state_dict, adapter_name):
+        def state_dict_callback(state_dict, adapter_name, **kwargs):
             _state_dict = lora_state_dict(state_dict, adapter_name, config.bias)
             for name, value in state_dict.items():
                 if isinstance(config.embedder_and_normalizer, str):

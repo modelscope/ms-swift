@@ -4,8 +4,8 @@
 import hashlib
 import os
 import shutil
+import tempfile
 import threading
-import uuid
 from dataclasses import asdict, dataclass, field
 from types import FunctionType
 from typing import Dict, Optional, Union
@@ -20,9 +20,10 @@ from peft.utils import CONFIG_NAME
 from peft.utils import ModulesToSaveWrapper as _ModulesToSaveWrapper
 from peft.utils import _get_submodules
 
+from swift.llm import MODEL_ARCH_MAPPING, ModelKeys
+from swift.utils import gc_collect
 from swift.utils.constants import BIN_EXTENSIONS
 from swift.utils.logger import get_logger
-from swift.utils.module_mapping import MODEL_KEYS_MAPPING, ModelKeys
 
 logger = get_logger()
 
@@ -59,7 +60,7 @@ class SwiftConfig:
         output_path = os.path.join(save_directory, CONFIG_NAME)
 
         # save it
-        with open(output_path, 'w') as writer:
+        with open(output_path, 'w', encoding='utf-8') as writer:
             writer.write(json.dumps(output_dict, indent=2, sort_keys=True))
 
     @classmethod
@@ -77,7 +78,7 @@ class SwiftConfig:
             config_file = os.path.join(pretrained_model_name_or_path, CONFIG_NAME)
         else:
             try:
-                model_dir = snapshot_download(pretrained_model_name_or_path, ignore_file_pattern=BIN_EXTENSIONS)
+                model_dir = snapshot_download(pretrained_model_name_or_path, ignore_patterns=BIN_EXTENSIONS)
                 config_file = os.path.join(model_dir, CONFIG_NAME)
             except Exception:
                 raise ValueError(f"Can't find config.json at '{pretrained_model_name_or_path}'")
@@ -103,7 +104,7 @@ class SwiftConfig:
             path_json_file (`str`):
                 The path to the json file.
         """
-        with open(path_json_file, 'r') as file:
+        with open(path_json_file, 'r', encoding='utf-8') as file:
             json_object = json.load(file)
 
         return json_object
@@ -191,14 +192,12 @@ class ActivationMixin:
 class OffloadHelper:
 
     def __init__(self):
-        sub_dir = os.path.join('offload_cache', str(uuid.uuid4().hex))
-        self.cache_dir = os.path.join(get_cache_dir(), sub_dir)
-        shutil.rmtree(self.cache_dir, ignore_errors=True)
-        os.makedirs(self.cache_dir, exist_ok=True)
+        cache_dir = os.path.join(get_cache_dir(), 'offload_cache')
+        os.makedirs(cache_dir, exist_ok=True)
+        tmp_dir = tempfile.TemporaryDirectory(dir=cache_dir)
+        self.cache_dir = tmp_dir.name
+        self._tmp_dir = tmp_dir
         self.index = {}
-
-    def __del__(self):
-        shutil.rmtree(self.cache_dir, ignore_errors=True)
 
     @staticmethod
     def offload_weight(weight, weight_name, offload_folder, index=None):
@@ -316,7 +315,7 @@ class SwiftAdapter:
                 module.to('meta')
         else:
             raise NotImplementedError
-        torch.cuda.empty_cache()
+        gc_collect()
 
     @staticmethod
     def load(module: torch.nn.Module, adapter_name, module_key):
@@ -333,8 +332,9 @@ class SwiftAdapter:
 
     @classmethod
     def get_model_key_mapping(cls, model_type, config) -> ModelKeys:
-        if model_type in MODEL_KEYS_MAPPING.keys():
-            model_key_mapping = MODEL_KEYS_MAPPING[model_type]
+
+        if model_type in MODEL_ARCH_MAPPING.keys():
+            model_key_mapping = MODEL_ARCH_MAPPING[model_type]
         else:
             model_key_mapping = config.model_key_mapping
 
@@ -418,3 +418,14 @@ def set_trainable(model, adapter_name):
                 new_module = ModulesToSaveWrapper(target, module_key=key, adapter_name=adapter_name)
                 new_module.set_adapter(adapter_name)
                 setattr(parent, target_name, new_module)
+
+
+def swift_to_peft_format(ckpt_dir: str, output_dir: str) -> str:
+    if 'default' in os.listdir(ckpt_dir):  # swift_backend
+        from swift import Swift
+        Swift.save_to_peft_format(ckpt_dir, output_dir)
+        ckpt_dir = output_dir
+        logger.info(f'Converting the swift format checkpoint to peft format, and saving it to: `{output_dir}`')
+    else:
+        logger.info('The format of the checkpoint is already in peft format.')
+    return ckpt_dir

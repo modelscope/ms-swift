@@ -1,9 +1,11 @@
-import os.path
+# Copyright (c) Alibaba, Inc. and its affiliates.
+from functools import partial
 from typing import Type
 
 import gradio as gr
 
-from swift.llm import MODEL_MAPPING, ModelType
+from swift.llm import TEMPLATE_MAPPING, ExportArguments, ModelType
+from swift.llm.model.register import get_all_models
 from swift.ui.base import BaseUI
 
 
@@ -20,15 +22,15 @@ class Model(BaseUI):
         },
         'model_type': {
             'label': {
-                'zh': '选择模型',
-                'en': 'Select Model'
+                'zh': '选择模型类型',
+                'en': 'Select Model Type'
             },
             'info': {
-                'zh': 'SWIFT已支持的模型名称',
-                'en': 'Base model supported by SWIFT'
+                'zh': 'SWIFT已支持的模型类型',
+                'en': 'Base model type supported by SWIFT'
             }
         },
-        'model_id_or_path': {
+        'model': {
             'label': {
                 'zh': '模型id或路径',
                 'en': 'Model id or path'
@@ -44,6 +46,16 @@ class Model(BaseUI):
                 'en': 'Reset to default'
             },
         },
+        'template': {
+            'label': {
+                'zh': '模型Prompt模板类型',
+                'en': 'Prompt template type'
+            },
+            'info': {
+                'zh': '选择匹配模型的Prompt模板',
+                'en': 'Choose the template type of the model'
+            }
+        },
     }
 
     ignored_models = ['int1', 'int2', 'int4', 'int8', 'awq', 'gptq', 'bnb', 'eetq', 'aqlm', 'hqq']
@@ -51,44 +63,21 @@ class Model(BaseUI):
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
         with gr.Row():
-            all_models = [base_tab.locale('checkpoint', cls.lang)['value']
-                          ] + ModelType.get_model_name_list() + cls.get_custom_name_list()
-            all_models = [m for m in all_models if not any([ignored in m for ignored in cls.ignored_models])]
-            model_type = gr.Dropdown(
-                elem_id='model_type',
+            all_models = [
+                model for model in get_all_models() if not any([ignored in model for ignored in cls.ignored_models])
+            ]
+            gr.Dropdown(
+                elem_id='model',
+                scale=20,
                 choices=all_models,
-                value=base_tab.locale('checkpoint', cls.lang)['value'],
-                scale=20)
-            model_id_or_path = gr.Textbox(elem_id='model_id_or_path', lines=1, scale=20, interactive=True)
-            reset_btn = gr.Button(elem_id='reset', scale=2)
-            model_state = gr.State({})
+                value='Qwen/Qwen2.5-7B-Instruct',
+                allow_custom_value=True)
+            gr.Dropdown(elem_id='model_type', choices=ModelType.get_model_name_list(), scale=20)
+            gr.Dropdown(elem_id='template', choices=list(TEMPLATE_MAPPING.keys()), scale=20)
 
-        def update_input_model(choice, model_state=None):
-            if choice in (base_tab.locale('checkpoint', cls.lang)['value']):
-                if model_state and choice in model_state:
-                    model_id_or_path = model_state[choice]
-                else:
-                    model_id_or_path = None
-            else:
-                if model_state and choice in model_state:
-                    model_id_or_path = model_state[choice]
-                else:
-                    model_id_or_path = MODEL_MAPPING[choice]['model_id_or_path']
-            return model_id_or_path
-
-        def update_model_id_or_path(model_type, path, model_state):
-            if not path or not os.path.exists(path):
-                return gr.update()
-            model_state[model_type] = path
-            return model_state
-
-        model_type.change(update_input_model, inputs=[model_type, model_state], outputs=[model_id_or_path])
-
-        model_id_or_path.change(
-            update_model_id_or_path, inputs=[model_type, model_id_or_path, model_state], outputs=[model_state])
-
-        def reset(model_type):
-            model_id_or_path = update_input_model(model_type)
-            return model_id_or_path, {}
-
-        reset_btn.click(reset, inputs=[model_type], outputs=[model_id_or_path, model_state])
+    @classmethod
+    def after_build_ui(cls, base_tab: Type['BaseUI']):
+        cls.element('model').change(
+            partial(cls.update_input_model, arg_cls=ExportArguments, has_record=False),
+            inputs=[cls.element('model')],
+            outputs=list(cls.valid_elements().values()))

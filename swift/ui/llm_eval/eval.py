@@ -1,4 +1,4 @@
-import os.path
+# Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Type
 
 import gradio as gr
@@ -14,14 +14,14 @@ class Eval(BaseUI):
     group = 'llm_eval'
 
     locale_dict = {
-        'name': {
+        'eval_backend': {
             'label': {
-                'zh': '评测名称',
-                'en': 'Evaluation name'
+                'zh': '评测后端',
+                'en': 'Eval backend'
             },
             'info': {
-                'zh': '支持英文字母、下划线、横线和数字',
-                'en': 'Support characters, underscores, hyphens and numbers'
+                'zh': '选择评测后端',
+                'en': 'Select eval backend'
             }
         },
         'eval_dataset': {
@@ -30,18 +30,8 @@ class Eval(BaseUI):
                 'en': 'Evaluation dataset'
             },
             'info': {
-                'zh': '选择评测数据集，支持多选',
-                'en': 'Select eval dataset, multiple datasets supported'
-            }
-        },
-        'eval_few_shot': {
-            'label': {
-                'zh': 'prompt的few-shot',
-                'en': 'The few-shot for the prompt'
-            },
-            'info': {
-                'zh': 'Few-shot数量在评测集中有默认设置，可以不填',
-                'en': 'Few-shot numbers have default values in different datasets'
+                'zh': '选择评测数据集，支持多选 (先选择评测后端)',
+                'en': 'Select eval dataset, multiple datasets supported (select eval backend first)'
             }
         },
         'eval_limit': {
@@ -54,14 +44,14 @@ class Eval(BaseUI):
                 'en': 'Number of rows sampled from each dataset'
             }
         },
-        'eval_use_cache': {
+        'eval_output_dir': {
             'label': {
-                'zh': '使用缓存',
-                'en': 'Use eval cache'
+                'zh': '评测输出目录',
+                'en': 'Eval output dir'
             },
             'info': {
-                'zh': '如果name指定的评测已经存在，则可以使用已有缓存',
-                'en': 'If the evaluation results of the name exists, you may use cache.'
+                'zh': '评测结果的输出目录',
+                'en': 'The dir to save the eval results'
             }
         },
         'custom_eval_config': {
@@ -81,26 +71,20 @@ class Eval(BaseUI):
             },
             'info': {
                 'zh':
-                'OpenAI样式的评测链接(如：http://localhost:8080/v1)，用于评测接口（模型类型输入为实际模型类型）',
+                'OpenAI样式的评测链接(如：http://localhost:8080/v1/chat/completions)，用于评测接口（模型类型输入为实际模型类型）',
                 'en':
-                'The OpenAI style link(like: http://localhost:8080/v1) for '
+                'The OpenAI style link(like: http://localhost:8080/v1/chat/completions) for '
                 'evaluation(Input actual model type into model_type)'
             }
         },
-        'eval_token': {
+        'api_key': {
             'label': {
-                'zh': 'Url token',
+                'zh': '接口token',
                 'en': 'The url token'
             },
-        },
-        'eval_is_chat_model': {
-            'label': {
-                'zh': '接口是chat模型',
-                'en': 'Chat model'
-            },
             'info': {
-                'zh': '评测接口是否是Chat模型',
-                'en': 'The eval url is a chat model or not'
+                'zh': 'eval_url的token',
+                'en': 'The token used with eval_url'
             }
         },
         'infer_backend': {
@@ -114,53 +98,33 @@ class Eval(BaseUI):
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
         try:
-            from evalscope.backend.opencompass import OpenCompassBackendManager
-            from evalscope.backend.vlm_eval_kit import VLMEvalKitBackendManager
-            eval_dataset_list = (
-                OpenCompassBackendManager.list_datasets() + VLMEvalKitBackendManager.list_supported_datasets())
+            from swift.llm.argument.eval_args import EvalArguments
+            eval_dataset_dict = EvalArguments.list_eval_dataset()
+            default_backend = EvalArguments.eval_backend
         except Exception as e:
-            logger.error(e)
-            eval_dataset_list = [
-                'AX_b', 'cmb', 'winogrande', 'mmlu', 'afqmc', 'COPA', 'commonsenseqa', 'CMRC', 'lcsts', 'nq',
-                'ocnli_fc', 'math', 'mbpp', 'DRCD', 'TheoremQA', 'CB', 'ReCoRD', 'lambada', 'tnews', 'flores',
-                'humaneval', 'AX_g', 'ceval', 'bbh', 'BoolQ', 'MultiRC', 'piqa', 'csl', 'ARC_c', 'agieval', 'cmnli',
-                'strategyqa', 'gsm8k', 'summedits', 'eprstmt', 'WiC', 'cluewsc', 'Xsum', 'ocnli', 'triviaqa',
-                'hellaswag', 'race', 'bustm', 'RTE', 'C3', 'GaokaoBench', 'storycloze', 'ARC_e', 'siqa', 'obqa', 'WSC',
-                'chid', 'COCO_VAL', 'MME', 'HallusionBench', 'POPE', 'MMBench_DEV_EN', 'MMBench_TEST_EN',
-                'MMBench_DEV_CN', 'MMBench_TEST_CN', 'MMBench', 'MMBench_CN', 'MMBench_DEV_EN_V11',
-                'MMBench_TEST_EN_V11', 'MMBench_DEV_CN_V11', 'MMBench_TEST_CN_V11', 'MMBench_V11', 'MMBench_CN_V11',
-                'SEEDBench_IMG', 'SEEDBench2', 'SEEDBench2_Plus', 'ScienceQA_VAL', 'ScienceQA_TEST', 'MMT-Bench_ALL_MI',
-                'MMT-Bench_ALL', 'MMT-Bench_VAL_MI', 'MMT-Bench_VAL', 'AesBench_VAL', 'AesBench_TEST', 'CCBench',
-                'AI2D_TEST', 'MMStar', 'RealWorldQA', 'MLLMGuard_DS', 'BLINK', 'OCRVQA_TEST', 'OCRVQA_TESTCORE',
-                'TextVQA_VAL', 'DocVQA_VAL', 'DocVQA_TEST', 'InfoVQA_VAL', 'InfoVQA_TEST', 'ChartQA_TEST', 'MathVision',
-                'MathVision_MINI', 'MMMU_DEV_VAL', 'MMMU_TEST', 'OCRBench', 'MathVista_MINI', 'LLaVABench', 'MMVet',
-                'MTVQA_TEST', 'MMLongBench_DOC', 'VCR_EN_EASY_500', 'VCR_EN_EASY_100', 'VCR_EN_EASY_ALL',
-                'VCR_EN_HARD_500', 'VCR_EN_HARD_100', 'VCR_EN_HARD_ALL', 'VCR_ZH_EASY_500', 'VCR_ZH_EASY_100',
-                'VCR_ZH_EASY_ALL', 'VCR_ZH_HARD_500', 'VCR_ZH_HARD_100', 'VCR_ZH_HARD_ALL', 'MMDU', 'MMBench-Video',
-                'Video-MME', 'MMBench_DEV_EN', 'MMBench_TEST_EN', 'MMBench_DEV_CN', 'MMBench_TEST_CN', 'MMBench',
-                'MMBench_CN', 'MMBench_DEV_EN_V11', 'MMBench_TEST_EN_V11', 'MMBench_DEV_CN_V11', 'MMBench_TEST_CN_V11',
-                'MMBench_V11', 'MMBench_CN_V11', 'SEEDBench_IMG', 'SEEDBench2', 'SEEDBench2_Plus', 'ScienceQA_VAL',
-                'ScienceQA_TEST', 'MMT-Bench_ALL_MI', 'MMT-Bench_ALL', 'MMT-Bench_VAL_MI', 'MMT-Bench_VAL',
-                'AesBench_VAL', 'AesBench_TEST', 'CCBench', 'AI2D_TEST', 'MMStar', 'RealWorldQA', 'MLLMGuard_DS',
-                'BLINK'
-            ]
+            logger.warn(e)
+            eval_dataset_dict = {}
+            default_backend = None
 
         with gr.Row():
-            gr.Textbox(elem_id='name', scale=20)
+            gr.Dropdown(elem_id='eval_backend', choices=list(eval_dataset_dict.keys()), value=default_backend, scale=20)
             gr.Dropdown(
                 elem_id='eval_dataset',
                 is_list=True,
-                choices=eval_dataset_list,
+                choices=eval_dataset_dict.get(default_backend, []),
                 multiselect=True,
                 allow_custom_value=True,
                 scale=20)
-            gr.Textbox(elem_id='eval_few_shot', scale=20)
             gr.Textbox(elem_id='eval_limit', scale=20)
-            gr.Checkbox(elem_id='eval_use_cache', scale=20)
             gr.Dropdown(elem_id='infer_backend', scale=20)
         with gr.Row():
             gr.Textbox(elem_id='custom_eval_config', scale=20)
-        with gr.Row():
+            gr.Textbox(elem_id='eval_output_dir', scale=20)
             gr.Textbox(elem_id='eval_url', scale=20)
-            gr.Textbox(elem_id='eval_token', scale=20)
-            gr.Checkbox(elem_id='eval_is_chat_model', scale=20)
+            gr.Textbox(elem_id='api_key', scale=20)
+
+        def update_eval_dataset(backend):
+            return gr.update(choices=eval_dataset_dict[backend])
+
+        cls.element('eval_backend').change(update_eval_dataset, [cls.element('eval_backend')],
+                                           [cls.element('eval_dataset')])

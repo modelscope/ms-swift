@@ -1,9 +1,6 @@
-import tempfile
 import unittest
 
-from datasets import Dataset as HfDataset
-
-from swift.llm import DatasetName, get_dataset
+from swift.llm import load_dataset
 
 
 class TestDataset(unittest.TestCase):
@@ -14,7 +11,7 @@ class TestDataset(unittest.TestCase):
             return
 
         for ds in ['m3it#1000', 'mantis-instruct#1000', 'llava-med-zh-instruct#1000']:
-            ds = get_dataset(ds)
+            ds = load_dataset(ds)
             assert len(ds[0]) > 800
 
 

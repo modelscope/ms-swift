@@ -1,7 +1,6 @@
 # copy dependencies from transformers/optimization.py
 # code borrowed from https://github.com/jiaweizzhao/GaLore
 import math
-import warnings
 from typing import Callable, Iterable, Tuple
 
 import torch

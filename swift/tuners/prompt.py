@@ -126,7 +126,7 @@ class Prompt(SwiftAdapter):
                 logger.info(f'Prompt modules(module_key): {module_key}.prompt_{adapter_name}')
                 match_module_keys.append(module_key)
 
-        def state_dict_callback(state_dict, adapter_name):
+        def state_dict_callback(state_dict, adapter_name, **kwargs):
             return {key: value for key, value in state_dict.items() if f'prompt_{adapter_name}' in key}
 
         def mark_trainable_callback(model):
@@ -153,7 +153,7 @@ class PromptModule(nn.Module, ActivationMixin):
     'Visual Prompt Tuning' by Jia et al.(2022)
     See https://arxiv.org/abs/2203.12119
 
-    Attributes:
+    Args:
         dim: An integer indicating the embedding dimension.
         layer_num: An integer indicating number of layers.
         prompt_length: An integer indicating the length of vision prompt tuning.

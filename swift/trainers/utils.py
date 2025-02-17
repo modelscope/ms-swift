@@ -5,23 +5,11 @@ import inspect
 from types import FunctionType, MethodType
 from typing import List, Union
 
-from datasets import Dataset as HfDataset
-from datasets import IterableDataset as HFIterableDataset
 from torch.nn import Module
-from transformers.trainer_callback import TrainerCallback
-from transformers.trainer_utils import (EvaluationStrategy, FSDPOption, HPSearchBackend, HubStrategy, IntervalStrategy,
-                                        SchedulerType)
 
 from swift.utils import get_logger
 
-try:
-    # https://github.com/huggingface/transformers/pull/25702
-    from transformers.trainer_utils import ShardedDDPOption
-except ImportError:
-    ShardedDDPOption = None
-
 logger = get_logger()
-DATASET_TYPE = Union[HfDataset, HFIterableDataset]
 
 
 def can_return_loss(model: Module) -> bool:

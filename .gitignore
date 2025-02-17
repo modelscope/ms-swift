@@ -128,13 +128,18 @@ result.png
 result.jpg
 result.mp4
 output/
+outputs/
 *.out
 benchmarks/
+eval_output/
 eval_outputs/
 transformers/
 vlmeval/
 my_model/
 /data
+result/
+images
+/custom/
 
 # Pytorch
 *.pth

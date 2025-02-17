@@ -5,20 +5,22 @@ import subprocess
 import sys
 from typing import Dict, List, Optional
 
+from swift.utils import get_logger
+
+logger = get_logger()
+
 ROUTE_MAPPING: Dict[str, str] = {
     'pt': 'swift.cli.pt',
     'sft': 'swift.cli.sft',
     'infer': 'swift.cli.infer',
-    'app-ui': 'swift.cli.app_ui',
     'merge-lora': 'swift.cli.merge_lora',
     'web-ui': 'swift.cli.web_ui',
     'deploy': 'swift.cli.deploy',
-    'dpo': 'swift.cli.rlhf',
-    'orpo': 'swift.cli.rlhf',
-    'simpo': 'swift.cli.rlhf',
     'rlhf': 'swift.cli.rlhf',
+    'sample': 'swift.cli.sample',
     'export': 'swift.cli.export',
-    'eval': 'swift.cli.eval'
+    'eval': 'swift.cli.eval',
+    'app': 'swift.cli.app',
 }
 
 ROUTE_MAPPING.update({k.replace('-', '_'): v for k, v in ROUTE_MAPPING.items()})
@@ -44,17 +46,23 @@ def get_torchrun_args() -> Optional[List[str]]:
     return torchrun_args
 
 
+def _compat_web_ui(argv):
+    # [compat]
+    method_name = argv[0]
+    if method_name in {'web-ui', 'web_ui'} and ('--model' in argv or '--adapters' in argv or '--ckpt_dir' in argv):
+        argv[0] = 'app'
+        logger.warning('Please use `swift app`.')
+
+
 def cli_main() -> None:
     argv = sys.argv[1:]
+    _compat_web_ui(argv)
     method_name = argv[0]
     argv = argv[1:]
-    # rlhf compatibility
-    if method_name in ['dpo', 'simpo', 'orpo']:
-        argv = ['--rlhf_type', method_name] + argv
     file_path = importlib.util.find_spec(ROUTE_MAPPING[method_name]).origin
     torchrun_args = get_torchrun_args()
     python_cmd = sys.executable
-    if torchrun_args is None or method_name not in ('pt', 'sft', 'dpo', 'orpo', 'simpo', 'rlhf'):
+    if torchrun_args is None or method_name not in {'pt', 'sft', 'rlhf', 'infer'}:
         args = [python_cmd, file_path, *argv]
     else:
         args = [python_cmd, '-m', 'torch.distributed.run', *torchrun_args, file_path, *argv]

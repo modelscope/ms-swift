@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 import asyncio
 import sys
 from asyncio.subprocess import PIPE, STDOUT

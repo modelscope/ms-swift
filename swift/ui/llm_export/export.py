@@ -1,8 +1,9 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Type
 
 import gradio as gr
 
-from swift.llm import DATASET_MAPPING
+from swift.llm.dataset.register import get_dataset_list
 from swift.ui.base import BaseUI
 
 
@@ -24,7 +25,7 @@ class Export(BaseUI):
                 'Please refer to the runtime log for more specific information.'
             },
         },
-        'merge_device_map': {
+        'device_map': {
             'label': {
                 'zh': '合并lora使用的device_map',
                 'en': 'The device_map when merge-lora'
@@ -52,23 +53,16 @@ class Export(BaseUI):
                 'en': 'Sampled rows from calibration dataset'
             },
         },
-        'quant_seqlen': {
+        'max_length': {
             'label': {
                 'zh': '量化集的max-length',
                 'en': 'The quantize sequence length'
             },
         },
-        'quant_output_dir': {
+        'output_dir': {
             'label': {
-                'zh': '量化输出路径',
-                'en': 'Output dir for quantization'
-            },
-            'info': {
-                'zh':
-                '如果仅merge-lora不需要修改这里, 留空时量化输出在当前目录的<model-type>-<quant_method>-<quant_bits>下',
-                'en':
-                'If only merging LoRA, no need to modify this. When left blank, '
-                'the output will be in the current directory under <model-type>-<quant_method>-<quant_bits>'
+                'zh': '输出路径',
+                'en': 'Output dir'
             },
         },
         'dataset': {
@@ -83,17 +77,13 @@ class Export(BaseUI):
     def do_build_ui(cls, base_tab: Type['BaseUI']):
         with gr.Row():
             gr.Checkbox(elem_id='merge_lora', scale=10)
-            gr.Textbox(elem_id='merge_device_map', scale=20)
+            gr.Textbox(elem_id='device_map', scale=20)
         with gr.Row():
-            gr.Textbox(elem_id='quant_bits', scale=20)
+            gr.Dropdown(elem_id='quant_bits', scale=20)
             gr.Dropdown(elem_id='quant_method', scale=20)
             gr.Textbox(elem_id='quant_n_samples', scale=20)
-            gr.Textbox(elem_id='quant_seqlen', scale=20)
+            gr.Textbox(elem_id='max_length', scale=20)
         with gr.Row():
-            gr.Textbox(elem_id='quant_output_dir', scale=20)
+            gr.Textbox(elem_id='output_dir', scale=20)
             gr.Dropdown(
-                elem_id='dataset',
-                multiselect=True,
-                allow_custom_value=True,
-                choices=list(DATASET_MAPPING.keys()),
-                scale=20)
+                elem_id='dataset', multiselect=True, allow_custom_value=True, choices=get_dataset_list(), scale=20)

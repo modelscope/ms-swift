@@ -1,5 +1,4 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import inspect
 import re
 import types
 from dataclasses import dataclass, field
@@ -7,7 +6,6 @@ from typing import List, Optional, Union
 
 import torch
 from torch import nn
-from transformers.activations import ACT2CLS
 
 from swift import get_logger
 from swift.tuners.utils import ActivationMixin, SwiftAdapter, SwiftConfig, SwiftOutput
@@ -31,7 +29,7 @@ class SCETuningConfig(SwiftConfig):
         hint_modules(`Union[List[str], str]`): The hint module to be replaced, can a regex string
         tuner_mode(`str`): Location of tuner operation.
         tuner_op(`str`): Tuner operation.
-        down_ratio(`flaot`): The dim down ratio of tuner hidden state.
+        down_ratio(`float`): The dim down ratio of tuner hidden state.
     """
 
     dims: Optional[Union[List[int], int]] = field(
@@ -176,7 +174,7 @@ class SCETuning(SwiftAdapter):
             if len(hint_module_ins_list) > 0:
                 setattr(t_module, 'hint', hint_module_ins_list[tuner_id])
 
-        def state_dict_callback(state_dict, adapter_name):
+        def state_dict_callback(state_dict, adapter_name, **kwargs):
             state_dict_new = {key: value for key, value in state_dict.items() if f'scetuner_{adapter_name}' in key}
             return state_dict_new
 

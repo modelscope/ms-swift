@@ -11,8 +11,7 @@ import json
 import torch
 
 from swift.llm import ExportArguments
-from swift.utils import get_logger
-from swift.utils.torch_utils import _find_free_port
+from swift.utils import find_free_port, get_device_count, get_logger
 
 logger = get_logger()
 
@@ -107,7 +106,7 @@ class ExpManager:
 
     def run(self, exp: Experiment):
         if os.path.exists(os.path.join(exp.input_args.save_dir, exp.name + '.json')):
-            with open(os.path.join(exp.input_args.save_dir, exp.name + '.json'), 'r') as f:
+            with open(os.path.join(exp.input_args.save_dir, exp.name + '.json'), 'r', encoding='utf-8') as f:
                 _json = json.load(f)
                 if exp.eval_dataset and 'eval_result' not in _json['record']:
                     if not exp.do_eval:
@@ -161,17 +160,12 @@ class ExpManager:
         best_model_checkpoint = exp.record.get('best_model_checkpoint')
         eval_dataset = exp.eval_dataset
         if best_model_checkpoint is not None:
-            model_type_kwargs = ''
-            if not os.path.exists(os.path.join(best_model_checkpoint, 'sft_args.json')):
-                model_type = best_model_checkpoint[best_model_checkpoint.rfind(os.path.sep) + 1:]
-                model_type = '-'.join(model_type.split('-')[:-2])
-                model_type_kwargs = f'--model_type {model_type}'
-            cmd = f'swift eval {model_type_kwargs} --ckpt_dir {best_model_checkpoint} ' \
-                  + f'--infer_backend pt --sft_type full --name {exp.name} --eval_dataset {" ".join(eval_dataset)}'
+            if not os.path.exists(os.path.join(best_model_checkpoint, 'args.json')):
+                cmd = f'swift eval --ckpt_dir {best_model_checkpoint} ' \
+                      + f'--infer_backend pt --train_type full --eval_dataset {" ".join(eval_dataset)}'
         else:
-            assert exp.args.get('model_type') is not None
-            cmd = f'swift eval --model_type {exp.args.get("model_type")} --infer_backend pt ' \
-                  f'--name {exp.name} --eval_dataset {" ".join(eval_dataset)}'
+            cmd = f'swift eval --model {exp.args.get("model")} --infer_backend pt ' \
+                  f'--eval_dataset {" ".join(eval_dataset)}'
 
         return {
             'running_cmd': cmd,
@@ -190,30 +184,30 @@ class ExpManager:
             env['CUDA_VISIBLE_DEVICES'] = ','.join(allocated)
         if int(exp.requirements.get('ddp', 1)) > 1:
             env['NPROC_PER_NODE'] = exp.requirements.get('ddp')
-            env['MASTER_PORT'] = str(_find_free_port())
+            env['MASTER_PORT'] = str(find_free_port())
 
         if exp.cmd == 'sft':
-            from swift.llm import SftArguments
+            from swift.llm import TrainArguments
             args = exp.args
-            sft_args = SftArguments(**args)
+            sft_args = TrainArguments(**args)
             args['output_dir'] = sft_args.output_dir
             args['logging_dir'] = sft_args.logging_dir
-            args['add_output_dir_suffix'] = False
+            args['add_version'] = False
             os.makedirs(sft_args.output_dir, exist_ok=True)
             os.makedirs(sft_args.logging_dir, exist_ok=True)
             cmd = 'swift sft '
             for key, value in args.items():
                 cmd += f' --{key} {value}'
-        elif exp.cmd == 'dpo':
+        elif exp.cmd == 'rlhf':
             from swift.llm import RLHFArguments
             args = exp.args
-            dpo_args = RLHFArguments(**args)
-            args['output_dir'] = dpo_args.output_dir
-            args['logging_dir'] = dpo_args.logging_dir
-            args['add_output_dir_suffix'] = False
-            os.makedirs(dpo_args.output_dir, exist_ok=True)
-            os.makedirs(dpo_args.logging_dir, exist_ok=True)
-            cmd = 'swift dpo '
+            rlhf_args = RLHFArguments(**args)
+            args['output_dir'] = rlhf_args.output_dir
+            args['logging_dir'] = rlhf_args.logging_dir
+            args['add_version'] = False
+            os.makedirs(rlhf_args.output_dir, exist_ok=True)
+            os.makedirs(rlhf_args.logging_dir, exist_ok=True)
+            cmd = 'swift rlhf '
             for key, value in args.items():
                 cmd += f' --{key} {value}'
         elif exp.cmd == 'export':
@@ -236,7 +230,7 @@ class ExpManager:
         for exp in self.exps:
             all_gpus.update(exp.runtime.get('gpu', set()))
         all_gpus = {int(g) for g in all_gpus}
-        free_gpu = set(range(torch.cuda.device_count())) - all_gpus
+        free_gpu = set(range(get_device_count())) - all_gpus
         if len(free_gpu) < n:
             return None
         return list(free_gpu)[:n]
@@ -244,7 +238,7 @@ class ExpManager:
     def prepare_experiments(self, args: Any):
         experiments = []
         for config_file in args.config:
-            with open(config_file, 'r') as f:
+            with open(config_file, 'r', encoding='utf-8') as f:
                 group = os.path.basename(config_file)
                 group = group[:-5]
                 content = json.load(f)
@@ -281,7 +275,7 @@ class ExpManager:
     def _get_metric(exp: Experiment):
         if exp.do_eval:
             if os.path.isfile(os.path.join('exp', f'{exp.name}.eval.log')):
-                with open(os.path.join('exp', f'{exp.name}.eval.log'), 'r') as f:
+                with open(os.path.join('exp', f'{exp.name}.eval.log'), 'r', encoding='utf-8') as f:
                     for line in f.readlines():
                         if 'Final report:' in line:
                             return json.loads(line.split('Final report:')[1].replace('\'', '"'))
@@ -307,7 +301,7 @@ class ExpManager:
             logging_dir = exp.runtime.get('logging_dir')
             logging_file = os.path.join(logging_dir, '..', 'logging.jsonl')
             if os.path.isfile(logging_file):
-                with open(logging_file, 'r') as f:
+                with open(logging_file, 'r', encoding='utf-8') as f:
                     for line in f.readlines():
                         if 'model_info' in line:
                             return json.loads(line)

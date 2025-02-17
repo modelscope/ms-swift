@@ -21,8 +21,8 @@ if [ "$MODELSCOPE_SDK_DEBUG" == "True" ]; then
     fi
 
     pip install -r requirements/framework.txt -U -i https://mirrors.aliyun.com/pypi/simple/
-    pip install -r requirements/llm.txt -U -i https://mirrors.aliyun.com/pypi/simple/
     pip install diffusers decord einops -U -i https://mirrors.aliyun.com/pypi/simple/
+    pip install autoawq -U --no-deps
 
     # test with install
     pip install .

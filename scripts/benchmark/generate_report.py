@@ -7,7 +7,7 @@ from typing import Any, Dict, List
 import json
 import numpy as np
 
-from swift.utils.utils import split_str_parts_by
+from swift.llm.template import split_str_parts_by
 
 
 @dataclass
@@ -284,7 +284,7 @@ def generate_export_report(outputs: List[ModelOutput]):
 
 
 def parse_output(file):
-    with open(file, 'r') as f:
+    with open(file, 'r', encoding='utf-8') as f:
         content = json.load(f)
 
     name = content['name']

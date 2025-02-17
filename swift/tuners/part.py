@@ -70,11 +70,14 @@ class Part(SwiftAdapter):
                 setattr(module, f'_part_{adapter_name}', new_module)
                 new_module.requires_grad_(True)
 
-        def state_dict_callback(state_dict, adapter_name):
+        def state_dict_callback(state_dict, adapter_name, **kwargs):
             new_state_dict = {}
             for key, value in state_dict.items():
                 if f'_part_{adapter_name}.' in key:
-                    new_key = key.replace(f'_part_{adapter_name}.', '').replace('base_layer.', '')
+                    if kwargs.get('replace_key', True):
+                        new_key = key.replace(f'_part_{adapter_name}.', '').replace('base_layer.', '')
+                    else:
+                        new_key = key
                     new_state_dict[new_key] = value
 
             return new_state_dict
@@ -90,11 +93,14 @@ class Part(SwiftAdapter):
                     for param_name in state_dict:
                         if param_name.startswith(name):
                             end = param_name[len(name):]
-                            if hasattr(module, 'base_layer'):
-                                new_state_dict[name + f'.base_layer._part_{adapter_name}'
-                                               + end] = state_dict[param_name]
+                            if '_part_' not in param_name:
+                                if hasattr(module, 'base_layer'):
+                                    new_state_dict[name + f'.base_layer._part_{adapter_name}'
+                                                   + end] = state_dict[param_name]
+                                else:
+                                    new_state_dict[name + f'._part_{adapter_name}' + end] = state_dict[param_name]
                             else:
-                                new_state_dict[name + f'._part_{adapter_name}' + end] = state_dict[param_name]
+                                new_state_dict[param_name] = state_dict[param_name]
             return new_state_dict
 
         return SwiftOutput(

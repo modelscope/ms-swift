@@ -134,7 +134,6 @@ if is_bnb_available():
             eightbit_kwargs = kwargs.copy()
             eightbit_kwargs.update({
                 'has_fp16_weights': target.state.has_fp16_weights,
-                'memory_efficient_backward': target.state.memory_efficient_backward,
                 'threshold': target.state.threshold,
                 'index': target.index,
             })
@@ -590,7 +589,11 @@ class LoraModel(_LoraModel):
             else:
                 raise NotImplementedError(f'Requested bias: {bias}, is not implemented.')
 
-    def inject_adapter(self, model: nn.Module, adapter_name: str):
+    def inject_adapter(self,
+                       model: nn.Module,
+                       adapter_name: str,
+                       autocast_adapter_dtype: bool = True,
+                       low_cpu_mem_usage: bool = False):
         r"""
         Override code:
         1. ModulesToSaveWrapper construction method: add module_key=key argument to offload to cpu
@@ -627,7 +630,7 @@ class LoraModel(_LoraModel):
         self._prepare_model(peft_config, model)
 
         for key in key_list:
-            if '_part_' in key:
+            if '_part_' in key or not key:
                 # Avoid lora conflict with part tuner
                 continue
             # Check for modules_to_save in case
@@ -653,7 +656,6 @@ class LoraModel(_LoraModel):
             parent, target, target_name = _get_submodules(model, key)
             self._create_and_replace(peft_config, adapter_name, target, target_name, parent, current_key=key)
 
-        # Handle X-LoRA case.
         if not is_target_modules_in_base_model and hasattr(peft_config, 'target_modules'):
             raise ValueError(f'Target modules {peft_config.target_modules} not found in the base model. '
                              f'Please check the target modules and try again.')
@@ -672,11 +674,11 @@ class LoraModel(_LoraModel):
                 model.modules_to_save.update(set(peft_config.modules_to_save))
 
     def _convert_dtype(self, target: nn.Module, lora_dtype: str):
-        if lora_dtype == 'fp32':
+        if lora_dtype == 'float32':
             torch_dtype = torch.float32
-        elif lora_dtype == 'fp16':
+        elif lora_dtype == 'float16':
             torch_dtype = torch.float16
-        elif lora_dtype == 'bf16':
+        elif lora_dtype == 'bfloat16':
             torch_dtype = torch.bfloat16
         else:
             torch_dtype = None
@@ -790,13 +792,15 @@ class LoraModel(_LoraModel):
                 new_module.state = child.state
             new_module.to(child.weight.device)
 
+        meta = torch.device('meta')
         # dispatch to correct device
         for name, module in new_module.named_modules():
             if (self.prefix in name) or ('ranknum' in name):
                 weight = (
                     child.qweight if hasattr(child, 'qweight') else child.W_q if hasattr(child, 'W_q') else
                     child.weight if hasattr(child, 'weight') else next(child.parameters()))
-                module.to(weight.device)
+                if not any(p.device == meta for p in module.parameters()):
+                    module.to(weight.device)
 
     @staticmethod
     def _create_new_module(lora_config, adapter_name, target, **kwargs):
