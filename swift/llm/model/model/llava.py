@@ -311,7 +311,7 @@ def get_model_tokenizer_llava(model_dir: str,
         automodel_class = LlavaQwenForCausalLM
         model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
 
-    model_config.mm_vision_tower = safe_snapshot_download('AI-ModelScope/clip-vit-large-patch14-336')
+    model_config.mm_vision_tower = safe_snapshot_download('AI-ModelScope/clip-vit-large-patch14-336', check_local=True)
     kwargs['model_config'] = model_config
     kwargs['automodel_class'] = automodel_class
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
