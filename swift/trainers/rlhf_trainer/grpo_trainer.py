@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import torch
 import torch.nn as nn
-from accelerate.utils import broadcast_object_list, gather, gather_object, is_peft_model
+from accelerate.utils import broadcast_object_list, gather, gather_object, is_peft_model, set_seed
 from transformers import PreTrainedModel
 from transformers.utils.versions import require_version
 from trl import GRPOTrainer as HFGRPOTrainer
@@ -77,7 +77,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         self.num_generations = args.num_generations
         model.warnings_issued['estimate_tokens'] = True
-        kwargs['data_collator'] = lambda x: x
+        kwargs['data_collator'] = lambda features: features
         self._metrics = defaultdict(list)
 
         use_vllm = args.use_vllm
@@ -101,6 +101,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     f'The global eval batch size ({num_processes} x {args.per_device_eval_batch_size}) must be evenly '
                     f'divisible by the number of generations per prompt ({self.num_generations}). Given the current '
                     f'eval batch size, the valid values for the number of generations are: {possible_values}.')
+
+        # Ensure each process receives a unique seed to prevent duplicate completions when generating with
+        # transformers if num_generations exceeds per_device_train_batch_size. We could skip it if we use vLLM, but
+        # it's safer to set it in all cases.
+        set_seed(args.seed, device_specific=True)
 
         if use_vllm or use_lmdeploy:
             if self.accelerator.is_main_process:
