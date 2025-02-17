@@ -376,7 +376,7 @@ class HFHub(HubOperation):
 
     @classmethod
     def create_model_repo(cls, repo_id: str, token: Optional[str] = None, private: bool = False) -> str:
-        return api.create_model(repo_id, token=token, private=private)
+        return api.create_repo(repo_id, token=token, private=private)
 
     @classmethod
     def push_to_hub(cls,
