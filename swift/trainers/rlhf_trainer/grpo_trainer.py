@@ -218,11 +218,15 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             template.set_mode(mode)
             template.max_length = max_length
 
-    def _move_model_to_vllm_lmdeploy(self, unwrapped_model):
+    def _move_model_to_vllm_lmdeploy(self):
+        from accelerate.utils.other import is_compiled_module
         with unwrap_model_for_generation(
-                self.model_wrapped, self.accelerator,
+                self.model, self.accelerator,
                 gather_deepspeed3_params=self.args.ds3_gather_for_generation) as unwrapped_model:
+            if is_compiled_module(unwrapped_model):
+                unwrapped_model = unwrapped_model._orig_mod
             if is_peft_model(unwrapped_model):
+                unwrapped_model.merge_adapter()
                 state_dict = unwrapped_model.state_dict()
                 # Remove base_model and base_layer prefixes
                 state_dict = {
@@ -238,45 +242,37 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 }
             else:
                 state_dict = unwrapped_model.state_dict()
-        if self.accelerator.process_index % (self.accelerator.num_processes // self.args.num_infer_engine) == 0:
-            if self.args.use_vllm:
-                llm_model = self.engine.engine.engine.model_executor.driver_worker.model_runner.model
-            else:
-                llm_model = self.engine.engine.engine
-            llm_model.load_weights(state_dict.items())
+            if self.accelerator.process_index % (self.accelerator.num_processes // self.args.num_infer_engine) == 0:
+                if self.args.use_vllm:
+                    llm_model = self.engine.engine.engine.model_executor.driver_worker.model_runner.model
+                else:
+                    llm_model = self.engine.engine.engine
+            # Unmerge the adapter to restore the model to its original state.
+            # This must be done after loading weights to ensure they correspond to the merged state.
+            if is_peft_model(unwrapped_model):
+                unwrapped_model.unmerge_adapter()
 
     def _prepare_inputs(self, inputs) -> Dict[str, Union[torch.Tensor, Any]]:
         device = self.accelerator.device
 
         # Generate completions using either vLLM or regular generation
         if self.args.use_vllm or self.args.use_lmdeploy:
-            # ref: https://github.com/huggingface/trl/issues/2856
-            from accelerate.utils.other import is_compiled_module
-            with unwrap_model_for_generation(
-                    self.model_wrapped, self.accelerator,
-                    gather_deepspeed3_params=self.args.ds3_gather_for_generation) as unwrapped_model:
-                if is_compiled_module(unwrapped_model):
-                    unwrapped_model = unwrapped_model._orig_mod
-                if is_peft_model(unwrapped_model):
-                    unwrapped_model.merge_adapter()
-                # First, have main process load weights if needed
-                if self.state.global_step != self._last_loaded_step:
-                    self._move_model_to_vllm_lmdeploy(unwrapped_model)
-                    self._last_loaded_step = self.state.global_step
-                # Generate completions using vLLM: gather all prompts and use them in a single call in the main process
-                all_inputs = gather_object(inputs)
+            # First, have main process load weights if needed
+            if self.state.global_step != self._last_loaded_step:
+                self._move_model_to_vllm_lmdeploy()
+                self._last_loaded_step = self.state.global_step
+            # Generate completions using vLLM: gather all prompts and use them in a single call in the main process
+            all_inputs = gather_object(inputs)
 
-                processes_count = self.accelerator.num_processes // self.args.num_infer_engine
-                if self.accelerator.process_index % processes_count == 0:
-                    idx = slice((self.accelerator.process_index) * len(inputs),
-                                (self.accelerator.process_index + processes_count) * len(inputs))
-                    infer_inputs = all_inputs[idx]
-                    outputs = self.engine.infer(infer_inputs, self.request_config, use_tqdm=False)
-                else:
-                    outputs = []
-                outputs = gather_object(outputs)
-                if is_peft_model(unwrapped_model):
-                    unwrapped_model.unmerge_adapter()
+            processes_count = self.accelerator.num_processes // self.args.num_infer_engine
+            if self.accelerator.process_index % processes_count == 0:
+                idx = slice((self.accelerator.process_index) * len(inputs),
+                            (self.accelerator.process_index + processes_count) * len(inputs))
+                infer_inputs = all_inputs[idx]
+                outputs = self.engine.infer(infer_inputs, self.request_config, use_tqdm=False)
+            else:
+                outputs = []
+            outputs = gather_object(outputs)
         else:
             # Regular generation path
             is_multimodal = self.model.model_meta.is_multimodal
