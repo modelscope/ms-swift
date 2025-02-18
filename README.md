@@ -78,6 +78,7 @@ You can contact us and communicate with us by adding our group:
 
 
 ## 🎉 News
+- 🎁 2025.02.17: Support SwanLab, just add [a few of arguments](docs/source_en/Instruction/Command-line-parameters.md#swanlab) you can use swanlab to analysis your training results
 - 🎁 2025.02.16: Support LMDeploy in GRPO, use `--use_lmdeploy true`. Please check [this script](examples/train/grpo/full_lmdeploy.sh)
 - 🔥 2025.02.12: Support for GRPO(Group Relative Policy Optimization) algorithm for llm and mllm, document can be found in [here](docs/source_en/Instruction/GRPO.md)
 - 🎁 2025.02.10: SWIFT support the fine-tuning of embedding models，please check the [training script](examples/train/embedding/train.sh)。

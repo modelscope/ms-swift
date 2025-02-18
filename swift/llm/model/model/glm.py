@@ -204,7 +204,7 @@ def get_model_tokenizer_cogvlm(model_dir: str,
                                model_kwargs: Dict[str, Any],
                                load_model: bool = True,
                                **kwargs):
-    tokenizer_dir = safe_snapshot_download('AI-ModelScope/vicuna-7b-v1.5', download_model=False)
+    tokenizer_dir = safe_snapshot_download('AI-ModelScope/vicuna-7b-v1.5', download_model=False, check_local=True)
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_dir, trust_remote_code=True)
     if load_model:
         logger.warning('CogAgent with FusedLayerNorm will cause an training loss of NAN, '
