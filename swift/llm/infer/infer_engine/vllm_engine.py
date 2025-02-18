@@ -135,7 +135,7 @@ class VllmEngine(InferEngine):
 
         model_info = self.model_info
         if self.config.architectures is None:
-            self.config.architectures = self.model_info.architectures
+            engine_kwargs['hf_overrides'] = {"architectures": self.model_info.architectures}
         engine_args = AsyncEngineArgs(
             model=self.model_dir,
             dtype=dtype_mapping[model_info.torch_dtype],
