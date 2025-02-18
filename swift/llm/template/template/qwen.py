@@ -407,7 +407,7 @@ register_template(
     ))
 
 register_template(
-    TemplateMeta(   # similar to Qwen2_5TemplateMeta, but with placeholder_tokens
+    TemplateMeta(  # similar to Qwen2_5TemplateMeta, but with placeholder_tokens
         MLLMTemplateType.ovis2,
         prefix=[],
         prompt=['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],

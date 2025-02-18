@@ -539,6 +539,12 @@ The table below introduces the models integrated with ms-swift:
 |[AIDC-AI/Ovis1.6-Gemma2-9B-GPTQ-Int4](https://modelscope.cn/models/AIDC-AI/Ovis1.6-Gemma2-9B-GPTQ-Int4)|ovis1_6|ovis1_6|transformers>=4.42|vision|[AIDC-AI/Ovis1.6-Gemma2-9B-GPTQ-Int4](https://huggingface.co/AIDC-AI/Ovis1.6-Gemma2-9B-GPTQ-Int4)|
 |[AIDC-AI/Ovis1.6-Gemma2-27B](https://modelscope.cn/models/AIDC-AI/Ovis1.6-Gemma2-27B)|ovis1_6|ovis1_6|transformers>=4.42|vision|[AIDC-AI/Ovis1.6-Gemma2-27B](https://huggingface.co/AIDC-AI/Ovis1.6-Gemma2-27B)|
 |[AIDC-AI/Ovis1.6-Llama3.2-3B](https://modelscope.cn/models/AIDC-AI/Ovis1.6-Llama3.2-3B)|ovis1_6_llama3|ovis1_6_llama3|-|vision|[AIDC-AI/Ovis1.6-Llama3.2-3B](https://huggingface.co/AIDC-AI/Ovis1.6-Llama3.2-3B)|
+|[AIDC-AI/Ovis2-1B](https://modelscope.cn/models/AIDC-AI/Ovis2-1B)|ovis2|ovis2|transformers>=4.46.2|vision|[AIDC-AI/Ovis2-1B](https://huggingface.co/AIDC-AI/Ovis2-1B)|
+|[AIDC-AI/Ovis2-2B](https://modelscope.cn/models/AIDC-AI/Ovis2-2B)|ovis2|ovis2|transformers>=4.46.2|vision|[AIDC-AI/Ovis2-2B](https://huggingface.co/AIDC-AI/Ovis2-2B)|
+|[AIDC-AI/Ovis2-4B](https://modelscope.cn/models/AIDC-AI/Ovis2-4B)|ovis2|ovis2|transformers>=4.46.2|vision|[AIDC-AI/Ovis2-4B](https://huggingface.co/AIDC-AI/Ovis2-4B)|
+|[AIDC-AI/Ovis2-8B](https://modelscope.cn/models/AIDC-AI/Ovis2-8B)|ovis2|ovis2|transformers>=4.46.2|vision|[AIDC-AI/Ovis2-8B](https://huggingface.co/AIDC-AI/Ovis2-8B)|
+|[AIDC-AI/Ovis2-16B](https://modelscope.cn/models/AIDC-AI/Ovis2-16B)|ovis2|ovis2|transformers>=4.46.2|vision|[AIDC-AI/Ovis2-16B](https://huggingface.co/AIDC-AI/Ovis2-16B)|
+|[AIDC-AI/Ovis2-34B](https://modelscope.cn/models/AIDC-AI/Ovis2-34B)|ovis2|ovis2|transformers>=4.46.2|vision|[AIDC-AI/Ovis2-34B](https://huggingface.co/AIDC-AI/Ovis2-34B)|
 |[ZhipuAI/glm-4v-9b](https://modelscope.cn/models/ZhipuAI/glm-4v-9b)|glm4v|glm4v|transformers>=4.42,<4.45|-|[THUDM/glm-4v-9b](https://huggingface.co/THUDM/glm-4v-9b)|
 |[ZhipuAI/cogagent-9b-20241220](https://modelscope.cn/models/ZhipuAI/cogagent-9b-20241220)|glm4v|glm4v|transformers>=4.42|-|[THUDM/cogagent-9b-20241220](https://huggingface.co/THUDM/cogagent-9b-20241220)|
 |[ZhipuAI/glm-edge-v-2b](https://modelscope.cn/models/ZhipuAI/glm-edge-v-2b)|glm_edge_v|glm_edge_v|transformers>=4.46|vision|[THUDM/glm-edge-v-2b](https://huggingface.co/THUDM/glm-edge-v-2b)|
@@ -761,102 +767,3 @@ The table below introduces information about the datasets integrated with ms-swi
 |[AI-ModelScope/wikipedia-cn-20230720-filtered](https://modelscope.cn/datasets/AI-ModelScope/wikipedia-cn-20230720-filtered)|default|huge dataset|-|pretrain, quality|[pleisto/wikipedia-cn-20230720-filtered](https://huggingface.co/datasets/pleisto/wikipedia-cn-20230720-filtered)|
 |[AI-ModelScope/zhihu_rlhf_3k](https://modelscope.cn/datasets/AI-ModelScope/zhihu_rlhf_3k)|default|3460|594.5±365.9, min=31, max=1716|rlhf, dpo, zh|[liyucheng/zhihu_rlhf_3k](https://huggingface.co/datasets/liyucheng/zhihu_rlhf_3k)|
 |[DAMO_NLP/jd](https://modelscope.cn/datasets/DAMO_NLP/jd)|default<br>cls|45012|66.9±87.0, min=41, max=1699|text-generation, classification, 🔥|-|
-|-|default|huge dataset|-|pretrain, quality|[HuggingFaceFW/fineweb](https://huggingface.co/datasets/HuggingFaceFW/fineweb)|
-|-|auto_math_text<br>khanacademy<br>openstax<br>stanford<br>stories<br>web_samples_v1<br>web_samples_v2<br>wikihow|huge dataset|-|multi-domain, en, qa|[HuggingFaceTB/cosmopedia](https://huggingface.co/datasets/HuggingFaceTB/cosmopedia)|
-|[OmniData/Zhihu-KOL](https://modelscope.cn/datasets/OmniData/Zhihu-KOL)|default|huge dataset|-|zhihu, qa|[wangrui6/Zhihu-KOL](https://huggingface.co/datasets/wangrui6/Zhihu-KOL)|
-|[OmniData/Zhihu-KOL-More-Than-100-Upvotes](https://modelscope.cn/datasets/OmniData/Zhihu-KOL-More-Than-100-Upvotes)|default|271261|1003.4±1826.1, min=28, max=52541|zhihu, qa|[bzb2023/Zhihu-KOL-More-Than-100-Upvotes](https://huggingface.co/datasets/bzb2023/Zhihu-KOL-More-Than-100-Upvotes)|
-|[PowerInfer/LONGCOT-Refine-500K](https://modelscope.cn/datasets/PowerInfer/LONGCOT-Refine-500K)|default|521921|296.5±158.4, min=39, max=4634|chat, sft, 🔥, cot|[PowerInfer/LONGCOT-Refine-500K](https://huggingface.co/datasets/PowerInfer/LONGCOT-Refine-500K)|
-|[PowerInfer/QWQ-LONGCOT-500K](https://modelscope.cn/datasets/PowerInfer/QWQ-LONGCOT-500K)|default|498082|310.7±303.1, min=35, max=22941|chat, sft, 🔥, cot|[PowerInfer/QWQ-LONGCOT-500K](https://huggingface.co/datasets/PowerInfer/QWQ-LONGCOT-500K)|
-|[TIGER-Lab/MATH-plus](https://modelscope.cn/datasets/TIGER-Lab/MATH-plus)|train|893929|301.4±196.7, min=50, max=1162|qa, math, en, quality|[TIGER-Lab/MATH-plus](https://huggingface.co/datasets/TIGER-Lab/MATH-plus)|
-|[Tongyi-DataEngine/SA1B-Dense-Caption](https://modelscope.cn/datasets/Tongyi-DataEngine/SA1B-Dense-Caption)|default|huge dataset|-|zh, multi-modal, vqa|-|
-|[Tongyi-DataEngine/SA1B-Paired-Captions-Images](https://modelscope.cn/datasets/Tongyi-DataEngine/SA1B-Paired-Captions-Images)|default|7736284|106.4±18.5, min=48, max=193|zh, multi-modal, vqa|-|
-|[YorickHe/CoT](https://modelscope.cn/datasets/YorickHe/CoT)|default|74771|141.6±45.5, min=58, max=410|chat, general|-|
-|[YorickHe/CoT_zh](https://modelscope.cn/datasets/YorickHe/CoT_zh)|default|74771|129.1±53.2, min=51, max=401|chat, general|-|
-|[ZhipuAI/LongWriter-6k](https://modelscope.cn/datasets/ZhipuAI/LongWriter-6k)|default|6000|5009.0±2932.8, min=117, max=30354|long, chat, sft, 🔥|[THUDM/LongWriter-6k](https://huggingface.co/datasets/THUDM/LongWriter-6k)|
-|-|default|huge dataset|-|pretrain, quality|[allenai/c4](https://huggingface.co/datasets/allenai/c4)|
-|-|default|huge dataset|-|pretrain, quality|[cerebras/SlimPajama-627B](https://huggingface.co/datasets/cerebras/SlimPajama-627B)|
-|[codefuse-ai/CodeExercise-Python-27k](https://modelscope.cn/datasets/codefuse-ai/CodeExercise-Python-27k)|default|27224|337.3±154.2, min=90, max=2826|chat, coding, 🔥|-|
-|[codefuse-ai/Evol-instruction-66k](https://modelscope.cn/datasets/codefuse-ai/Evol-instruction-66k)|default|66862|440.1±208.4, min=46, max=2661|chat, coding, 🔥|-|
-|[damo/MSAgent-Bench](https://modelscope.cn/datasets/damo/MSAgent-Bench)|default<br>mini|638149|859.2±460.1, min=38, max=3479|chat, agent, multi-round|-|
-|[damo/nlp_polylm_multialpaca_sft](https://modelscope.cn/datasets/damo/nlp_polylm_multialpaca_sft)|ar<br>de<br>es<br>fr<br>id<br>ja<br>ko<br>pt<br>ru<br>th<br>vi|131867|101.6±42.5, min=30, max=1029|chat, general, multilingual|-|
-|[damo/zh_cls_fudan-news](https://modelscope.cn/datasets/damo/zh_cls_fudan-news)|default|4959|3234.4±2547.5, min=91, max=19548|chat, classification|-|
-|[damo/zh_ner-JAVE](https://modelscope.cn/datasets/damo/zh_ner-JAVE)|default|1266|118.3±45.5, min=44, max=223|chat, ner|-|
-|[hjh0119/shareAI-Llama3-DPO-zh-en-emoji](https://modelscope.cn/datasets/hjh0119/shareAI-Llama3-DPO-zh-en-emoji)|default|2449|334.0±162.8, min=36, max=1801|rlhf, dpo|[shareAI/DPO-zh-en-emoji](https://huggingface.co/datasets/shareAI/DPO-zh-en-emoji)|
-|[huangjintao/AgentInstruct_copy](https://modelscope.cn/datasets/huangjintao/AgentInstruct_copy)|alfworld<br>db<br>kg<br>mind2web<br>os<br>webshop|1866|1144.3±635.5, min=206, max=6412|chat, agent, multi-round|-|
-|[iic/100PoisonMpts](https://modelscope.cn/datasets/iic/100PoisonMpts)|default|906|150.6±80.8, min=39, max=656|poison-management, zh|-|
-|[iic/MSAgent-MultiRole](https://modelscope.cn/datasets/iic/MSAgent-MultiRole)|default|543|413.0±79.7, min=70, max=936|chat, agent, multi-round, role-play, multi-agent|-|
-|[iic/MSAgent-Pro](https://modelscope.cn/datasets/iic/MSAgent-Pro)|default|21910|1978.1±747.9, min=339, max=8064|chat, agent, multi-round, 🔥|-|
-|[iic/ms_agent](https://modelscope.cn/datasets/iic/ms_agent)|default|30000|645.8±218.0, min=199, max=2070|chat, agent, multi-round, 🔥|-|
-|[iic/ms_bench](https://modelscope.cn/datasets/iic/ms_bench)|default|316820|353.4±424.5, min=29, max=2924|chat, general, multi-round, 🔥|-|
-|-|default|huge dataset|-|multi-modal, en, vqa, quality|[lmms-lab/GQA](https://huggingface.co/datasets/lmms-lab/GQA)|
-|-|0_30_s_academic_v0_1<br>0_30_s_youtube_v0_1<br>1_2_m_academic_v0_1<br>1_2_m_youtube_v0_1<br>2_3_m_academic_v0_1<br>2_3_m_youtube_v0_1<br>30_60_s_academic_v0_1<br>30_60_s_youtube_v0_1|1335486|273.7±78.8, min=107, max=638|chat, multi-modal, video|[lmms-lab/LLaVA-Video-178K](https://huggingface.co/datasets/lmms-lab/LLaVA-Video-178K)|
-|[lvjianjin/AdvertiseGen](https://modelscope.cn/datasets/lvjianjin/AdvertiseGen)|default|97484|130.9±21.9, min=73, max=232|text-generation, 🔥|[shibing624/AdvertiseGen](https://huggingface.co/datasets/shibing624/AdvertiseGen)|
-|[mapjack/openwebtext_dataset](https://modelscope.cn/datasets/mapjack/openwebtext_dataset)|default|huge dataset|-|pretrain, zh, quality|-|
-|[modelscope/DuReader_robust-QG](https://modelscope.cn/datasets/modelscope/DuReader_robust-QG)|default|17899|242.0±143.1, min=75, max=1416|text-generation, 🔥|-|
-|[modelscope/chinese-poetry-collection](https://modelscope.cn/datasets/modelscope/chinese-poetry-collection)|default|1710|58.1±8.1, min=31, max=71|text-generation, poetry|-|
-|[modelscope/clue](https://modelscope.cn/datasets/modelscope/clue)|cmnli|391783|81.6±16.0, min=54, max=157|text-generation, classification|[clue](https://huggingface.co/datasets/clue)|
-|[modelscope/coco_2014_caption](https://modelscope.cn/datasets/modelscope/coco_2014_caption)|train<br>validation|454617|389.6±68.4, min=70, max=587|chat, multi-modal, vision, 🔥|-|
-|[modelscope/gsm8k](https://modelscope.cn/datasets/modelscope/gsm8k)|main|7473|88.6±21.6, min=41, max=241|qa, math|-|
-|[shenweizhou/alpha-umi-toolbench-processed-v2](https://modelscope.cn/datasets/shenweizhou/alpha-umi-toolbench-processed-v2)|backbone<br>caller<br>planner<br>summarizer|huge dataset|-|chat, agent, 🔥|-|
-|[simpleai/HC3](https://modelscope.cn/datasets/simpleai/HC3)|finance<br>finance_cls<br>medicine<br>medicine_cls|11021|296.0±153.3, min=65, max=2267|text-generation, classification, 🔥|[Hello-SimpleAI/HC3](https://huggingface.co/datasets/Hello-SimpleAI/HC3)|
-|[simpleai/HC3-Chinese](https://modelscope.cn/datasets/simpleai/HC3-Chinese)|baike<br>baike_cls<br>open_qa<br>open_qa_cls<br>nlpcc_dbqa<br>nlpcc_dbqa_cls<br>finance<br>finance_cls<br>medicine<br>medicine_cls<br>law<br>law_cls<br>psychology<br>psychology_cls|39781|179.9±70.2, min=90, max=1070|text-generation, classification, 🔥|[Hello-SimpleAI/HC3-Chinese](https://huggingface.co/datasets/Hello-SimpleAI/HC3-Chinese)|
-|[speech_asr/speech_asr_aishell1_trainsets](https://modelscope.cn/datasets/speech_asr/speech_asr_aishell1_trainsets)|train<br>validation<br>test|141600|40.8±3.3, min=33, max=53|chat, multi-modal, audio|-|
-|[swift/A-OKVQA](https://modelscope.cn/datasets/swift/A-OKVQA)|default|18201|43.5±7.9, min=27, max=94|multi-modal, en, vqa, quality|[HuggingFaceM4/A-OKVQA](https://huggingface.co/datasets/HuggingFaceM4/A-OKVQA)|
-|[swift/ChartQA](https://modelscope.cn/datasets/swift/ChartQA)|default|28299|36.8±6.5, min=26, max=74|en, vqa, quality|[HuggingFaceM4/ChartQA](https://huggingface.co/datasets/HuggingFaceM4/ChartQA)|
-|[swift/GRIT](https://modelscope.cn/datasets/swift/GRIT)|caption<br>grounding<br>vqa|huge dataset|-|multi-modal, en, caption-grounding, vqa, quality|[zzliang/GRIT](https://huggingface.co/datasets/zzliang/GRIT)|
-|[swift/GenQA](https://modelscope.cn/datasets/swift/GenQA)|default|huge dataset|-|qa, quality, multi-task|[tomg-group-umd/GenQA](https://huggingface.co/datasets/tomg-group-umd/GenQA)|
-|[swift/Infinity-Instruct](https://modelscope.cn/datasets/swift/Infinity-Instruct)|3M<br>7M<br>0625<br>Gen<br>7M_domains|huge dataset|-|qa, quality, multi-task|[BAAI/Infinity-Instruct](https://huggingface.co/datasets/BAAI/Infinity-Instruct)|
-|[swift/Mantis-Instruct](https://modelscope.cn/datasets/swift/Mantis-Instruct)|birds-to-words<br>chartqa<br>coinstruct<br>contrastive_caption<br>docvqa<br>dreamsim<br>dvqa<br>iconqa<br>imagecode<br>llava_665k_multi<br>lrv_multi<br>multi_vqa<br>nextqa<br>nlvr2<br>spot-the-diff<br>star<br>visual_story_telling|988115|619.9±156.6, min=243, max=1926|chat, multi-modal, vision|-|
-|[swift/MideficsDataset](https://modelscope.cn/datasets/swift/MideficsDataset)|default|3800|201.3±70.2, min=60, max=454|medical, en, vqa|[WinterSchool/MideficsDataset](https://huggingface.co/datasets/WinterSchool/MideficsDataset)|
-|[swift/Multimodal-Mind2Web](https://modelscope.cn/datasets/swift/Multimodal-Mind2Web)|default|1009|293855.4±331149.5, min=11301, max=3577519|agent, multi-modal|[osunlp/Multimodal-Mind2Web](https://huggingface.co/datasets/osunlp/Multimodal-Mind2Web)|
-|[swift/OCR-VQA](https://modelscope.cn/datasets/swift/OCR-VQA)|default|186753|32.3±5.8, min=27, max=80|multi-modal, en, ocr-vqa|[howard-hou/OCR-VQA](https://huggingface.co/datasets/howard-hou/OCR-VQA)|
-|[swift/OK-VQA_train](https://modelscope.cn/datasets/swift/OK-VQA_train)|default|9009|31.7±3.4, min=25, max=56|multi-modal, en, vqa, quality|[Multimodal-Fatima/OK-VQA_train](https://huggingface.co/datasets/Multimodal-Fatima/OK-VQA_train)|
-|[swift/OpenHermes-2.5](https://modelscope.cn/datasets/swift/OpenHermes-2.5)|default|huge dataset|-|cot, en, quality|[teknium/OpenHermes-2.5](https://huggingface.co/datasets/teknium/OpenHermes-2.5)|
-|[swift/RLAIF-V-Dataset](https://modelscope.cn/datasets/swift/RLAIF-V-Dataset)|default|83132|99.6±54.8, min=30, max=362|rlhf, dpo, multi-modal, en|[openbmb/RLAIF-V-Dataset](https://huggingface.co/datasets/openbmb/RLAIF-V-Dataset)|
-|[swift/RedPajama-Data-1T](https://modelscope.cn/datasets/swift/RedPajama-Data-1T)|default|huge dataset|-|pretrain, quality|[togethercomputer/RedPajama-Data-1T](https://huggingface.co/datasets/togethercomputer/RedPajama-Data-1T)|
-|[swift/RedPajama-Data-V2](https://modelscope.cn/datasets/swift/RedPajama-Data-V2)|default|huge dataset|-|pretrain, quality|[togethercomputer/RedPajama-Data-V2](https://huggingface.co/datasets/togethercomputer/RedPajama-Data-V2)|
-|[swift/ScienceQA](https://modelscope.cn/datasets/swift/ScienceQA)|default|16967|101.7±55.8, min=32, max=620|multi-modal, science, vqa, quality|[derek-thomas/ScienceQA](https://huggingface.co/datasets/derek-thomas/ScienceQA)|
-|[swift/SlimOrca](https://modelscope.cn/datasets/swift/SlimOrca)|default|517982|405.5±442.1, min=47, max=8312|quality, en|[Open-Orca/SlimOrca](https://huggingface.co/datasets/Open-Orca/SlimOrca)|
-|[swift/TextCaps](https://modelscope.cn/datasets/swift/TextCaps)|default|huge dataset|-|multi-modal, en, caption, quality|[HuggingFaceM4/TextCaps](https://huggingface.co/datasets/HuggingFaceM4/TextCaps)|
-|[swift/ToolBench](https://modelscope.cn/datasets/swift/ToolBench)|default|124345|2251.7±1039.8, min=641, max=9451|chat, agent, multi-round|-|
-|[swift/VQAv2](https://modelscope.cn/datasets/swift/VQAv2)|default|huge dataset|-|en, vqa, quality|[HuggingFaceM4/VQAv2](https://huggingface.co/datasets/HuggingFaceM4/VQAv2)|
-|[swift/VideoChatGPT](https://modelscope.cn/datasets/swift/VideoChatGPT)|Generic<br>Temporal<br>Consistency|3206|87.4±48.3, min=31, max=398|chat, multi-modal, video, 🔥|[lmms-lab/VideoChatGPT](https://huggingface.co/datasets/lmms-lab/VideoChatGPT)|
-|[swift/WebInstructSub](https://modelscope.cn/datasets/swift/WebInstructSub)|default|huge dataset|-|qa, en, math, quality, multi-domain, science|[TIGER-Lab/WebInstructSub](https://huggingface.co/datasets/TIGER-Lab/WebInstructSub)|
-|[swift/aya_collection](https://modelscope.cn/datasets/swift/aya_collection)|aya_dataset|202364|474.6±1539.1, min=25, max=71312|multi-lingual, qa|[CohereForAI/aya_collection](https://huggingface.co/datasets/CohereForAI/aya_collection)|
-|[swift/chinese-c4](https://modelscope.cn/datasets/swift/chinese-c4)|default|huge dataset|-|pretrain, zh, quality|[shjwudp/chinese-c4](https://huggingface.co/datasets/shjwudp/chinese-c4)|
-|[swift/cinepile](https://modelscope.cn/datasets/swift/cinepile)|default|huge dataset|-|vqa, en, youtube, video|[tomg-group-umd/cinepile](https://huggingface.co/datasets/tomg-group-umd/cinepile)|
-|[swift/classical_chinese_translate](https://modelscope.cn/datasets/swift/classical_chinese_translate)|default|6655|349.3±77.1, min=61, max=815|chat, play-ground|-|
-|[swift/cosmopedia-100k](https://modelscope.cn/datasets/swift/cosmopedia-100k)|default|100000|1037.0±254.8, min=339, max=2818|multi-domain, en, qa|[HuggingFaceTB/cosmopedia-100k](https://huggingface.co/datasets/HuggingFaceTB/cosmopedia-100k)|
-|[swift/dolma](https://modelscope.cn/datasets/swift/dolma)|v1_7|huge dataset|-|pretrain, quality|[allenai/dolma](https://huggingface.co/datasets/allenai/dolma)|
-|[swift/dolphin](https://modelscope.cn/datasets/swift/dolphin)|flan1m-alpaca-uncensored<br>flan5m-alpaca-uncensored|huge dataset|-|en|[cognitivecomputations/dolphin](https://huggingface.co/datasets/cognitivecomputations/dolphin)|
-|[swift/github-code](https://modelscope.cn/datasets/swift/github-code)|default|huge dataset|-|pretrain, quality|[codeparrot/github-code](https://huggingface.co/datasets/codeparrot/github-code)|
-|[swift/gpt4v-dataset](https://modelscope.cn/datasets/swift/gpt4v-dataset)|default|huge dataset|-|en, caption, multi-modal, quality|[laion/gpt4v-dataset](https://huggingface.co/datasets/laion/gpt4v-dataset)|
-|[swift/llava-data](https://modelscope.cn/datasets/swift/llava-data)|llava_instruct|624255|369.7±143.0, min=40, max=905|sft, multi-modal, quality|[TIGER-Lab/llava-data](https://huggingface.co/datasets/TIGER-Lab/llava-data)|
-|[swift/llava-instruct-mix-vsft](https://modelscope.cn/datasets/swift/llava-instruct-mix-vsft)|default|13640|178.8±119.8, min=34, max=951|multi-modal, en, vqa, quality|[HuggingFaceH4/llava-instruct-mix-vsft](https://huggingface.co/datasets/HuggingFaceH4/llava-instruct-mix-vsft)|
-|[swift/llava-med-zh-instruct-60k](https://modelscope.cn/datasets/swift/llava-med-zh-instruct-60k)|default|56649|207.9±67.7, min=42, max=594|zh, medical, vqa, multi-modal|[BUAADreamer/llava-med-zh-instruct-60k](https://huggingface.co/datasets/BUAADreamer/llava-med-zh-instruct-60k)|
-|[swift/lnqa](https://modelscope.cn/datasets/swift/lnqa)|default|huge dataset|-|multi-modal, en, ocr-vqa, quality|[vikhyatk/lnqa](https://huggingface.co/datasets/vikhyatk/lnqa)|
-|[swift/longwriter-6k-filtered](https://modelscope.cn/datasets/swift/longwriter-6k-filtered)|default|666|4108.9±2636.9, min=1190, max=17050|long, chat, sft, 🔥|-|
-|[swift/medical_zh](https://modelscope.cn/datasets/swift/medical_zh)|en<br>zh|2068589|256.4±87.3, min=39, max=1167|chat, medical|-|
-|[swift/moondream2-coyo-5M-captions](https://modelscope.cn/datasets/swift/moondream2-coyo-5M-captions)|default|huge dataset|-|caption, pretrain, quality|[isidentical/moondream2-coyo-5M-captions](https://huggingface.co/datasets/isidentical/moondream2-coyo-5M-captions)|
-|[swift/no_robots](https://modelscope.cn/datasets/swift/no_robots)|default|9485|300.0±246.2, min=40, max=6739|multi-task, quality, human-annotated|[HuggingFaceH4/no_robots](https://huggingface.co/datasets/HuggingFaceH4/no_robots)|
-|[swift/orca_dpo_pairs](https://modelscope.cn/datasets/swift/orca_dpo_pairs)|default|12859|364.9±248.2, min=36, max=2010|rlhf, quality|[Intel/orca_dpo_pairs](https://huggingface.co/datasets/Intel/orca_dpo_pairs)|
-|[swift/path-vqa](https://modelscope.cn/datasets/swift/path-vqa)|default|19654|34.2±6.8, min=28, max=85|multi-modal, vqa, medical|[flaviagiammarino/path-vqa](https://huggingface.co/datasets/flaviagiammarino/path-vqa)|
-|[swift/pile-val-backup](https://modelscope.cn/datasets/swift/pile-val-backup)|default|214661|1831.4±11087.5, min=21, max=516620|text-generation, awq|[mit-han-lab/pile-val-backup](https://huggingface.co/datasets/mit-han-lab/pile-val-backup)|
-|[swift/pixelprose](https://modelscope.cn/datasets/swift/pixelprose)|default|huge dataset|-|caption, multi-modal, vision|[tomg-group-umd/pixelprose](https://huggingface.co/datasets/tomg-group-umd/pixelprose)|
-|[swift/refcoco](https://modelscope.cn/datasets/swift/refcoco)|caption<br>grounding|92430|45.4±3.0, min=37, max=63|multi-modal, en, grounding|[jxu124/refcoco](https://huggingface.co/datasets/jxu124/refcoco)|
-|[swift/refcocog](https://modelscope.cn/datasets/swift/refcocog)|caption<br>grounding|89598|50.3±4.6, min=39, max=91|multi-modal, en, grounding|[jxu124/refcocog](https://huggingface.co/datasets/jxu124/refcocog)|
-|[swift/self-cognition](https://modelscope.cn/datasets/swift/self-cognition)|default|108|58.9±20.3, min=32, max=131|chat, self-cognition, 🔥|[modelscope/self-cognition](https://huggingface.co/datasets/modelscope/self-cognition)|
-|[swift/sharegpt](https://modelscope.cn/datasets/swift/sharegpt)|common-zh<br>unknow-zh<br>common-en|194063|820.5±366.1, min=25, max=2221|chat, general, multi-round|-|
-|[swift/swift-sft-mixture](https://modelscope.cn/datasets/swift/swift-sft-mixture)|sharegpt<br>firefly<br>codefuse<br>metamathqa|huge dataset|-|chat, sft, general, 🔥|-|
-|[swift/tagengo-gpt4](https://modelscope.cn/datasets/swift/tagengo-gpt4)|default|76437|468.1±276.8, min=28, max=1726|chat, multi-lingual, quality|[lightblue/tagengo-gpt4](https://huggingface.co/datasets/lightblue/tagengo-gpt4)|
-|[swift/train_3.5M_CN](https://modelscope.cn/datasets/swift/train_3.5M_CN)|default|huge dataset|-|common, zh, quality|[BelleGroup/train_3.5M_CN](https://huggingface.co/datasets/BelleGroup/train_3.5M_CN)|
-|[swift/ultrachat_200k](https://modelscope.cn/datasets/swift/ultrachat_200k)|default|207843|1188.0±571.1, min=170, max=4068|chat, en, quality|[HuggingFaceH4/ultrachat_200k](https://huggingface.co/datasets/HuggingFaceH4/ultrachat_200k)|
-|[swift/wikipedia](https://modelscope.cn/datasets/swift/wikipedia)|default|huge dataset|-|pretrain, quality|[wikipedia](https://huggingface.co/datasets/wikipedia)|
-|[tany0699/garbage265](https://modelscope.cn/datasets/tany0699/garbage265)|default|132673|39.0±0.0, min=39, max=39|cls, 🔥, multi-modal|-|
-|[tastelikefeet/competition_math](https://modelscope.cn/datasets/tastelikefeet/competition_math)|default|12000|101.9±87.3, min=36, max=1683|qa, math|-|
-|-|default|huge dataset|-|pretrain, quality|[tiiuae/falcon-refinedweb](https://huggingface.co/datasets/tiiuae/falcon-refinedweb)|
-|[wyj123456/GPT4all](https://modelscope.cn/datasets/wyj123456/GPT4all)|default|806199|97.3±20.9, min=62, max=414|chat, general|-|
-|[wyj123456/code_alpaca_en](https://modelscope.cn/datasets/wyj123456/code_alpaca_en)|default|20022|99.3±57.6, min=30, max=857|chat, coding|[sahil2801/CodeAlpaca-20k](https://huggingface.co/datasets/sahil2801/CodeAlpaca-20k)|
-|[wyj123456/finance_en](https://modelscope.cn/datasets/wyj123456/finance_en)|default|68912|264.5±207.1, min=30, max=2268|chat, financial|[ssbuild/alpaca_finance_en](https://huggingface.co/datasets/ssbuild/alpaca_finance_en)|
-|[wyj123456/instinwild](https://modelscope.cn/datasets/wyj123456/instinwild)|default<br>subset|103695|125.1±43.7, min=35, max=801|chat, general|-|
-|[wyj123456/instruct](https://modelscope.cn/datasets/wyj123456/instruct)|default|888970|271.0±333.6, min=34, max=3967|chat, general|-|
