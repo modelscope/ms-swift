@@ -384,9 +384,9 @@ def _get_model_info(model_dir: str, model_type: Optional[str], quantization_conf
     torch_dtype = HfConfigFactory.get_torch_dtype(config_dict, quant_info)
     max_model_len = HfConfigFactory.get_max_model_len(config_dict)
     rope_scaling = HfConfigFactory.get_config_attr(config_dict, 'rope_scaling')
-    architectures = HfConfigFactory.get_config_attr(config_dict, 'architectures')
 
     if model_type is None:
+        architectures = HfConfigFactory.get_config_attr(config_dict, 'architectures')
         model_types = get_matched_model_types(architectures)
         if len(model_types) > 1:
             raise ValueError('Please explicitly pass the model_type. For reference, '
@@ -403,8 +403,7 @@ def _get_model_info(model_dir: str, model_type: Optional[str], quantization_conf
         max_model_len,
         quant_info.get('quant_method'),
         quant_info.get('quant_bits'),
-        rope_scaling=rope_scaling,
-        architectures=architectures)
+        rope_scaling=rope_scaling)
     return res
 
 
