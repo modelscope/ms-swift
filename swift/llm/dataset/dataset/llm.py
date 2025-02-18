@@ -1,8 +1,11 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import ast
+import json
 import re
 from functools import partial
 from typing import Any, Dict, List, Optional, Tuple, Union
+
+import numpy as np
 
 from ...template import split_str_parts_by
 from ..preprocessor import (AlpacaPreprocessor, ClsGenerationPreprocessor, ClsPreprocessor, MessagesPreprocessor,
@@ -570,12 +573,27 @@ register_dataset(
         huge_dataset=True))
 
 
-class HHRLHFCNPreprocessor(MessagesPreprocessor):
+class XlamFunctionCallingPreprocessor(ResponsePreprocessor):
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
-        row['messages'].append(row.pop('chosen'))
-        row['rejected_response'] = row['rejected']['text']
+        query = row['query']
+        answers = row['answers']
+        if isinstance(answers, str):
+            answers = json.loads(answers)
+        answer = np.random.choice(answers)
+        row = {
+            'query': query,
+            'response': answer
+        }
         return super().preprocess(row)
+
+
+register_dataset(
+    DatasetMeta(
+        ms_dataset_id='LLM-Research/xlam-function-calling-60k',
+        preprocess_func=XlamFunctionCallingPreprocessor,
+        split=['train'],
+        tags=['agent']))
 
 
 register_dataset(
