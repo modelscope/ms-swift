@@ -266,10 +266,12 @@ def test_ovis1_6_llama3():
     _infer_model(pt_engine, messages=messages, system='You are a helpful and honest multimodal assistant.')
     assert response == '这是一只小猫。从图中可见的特征如大眼睛、细长的白色鼻毛和毛发的图案，表明它可能属于常见的猫种。猫的表情和毛发的质感显示出它年轻，可能是幼猫。'
 
+
 def test_ovis2():
     pt_engine = PtEngine('AIDC-AI/Ovis2-2B')
     response = _infer_model(pt_engine)
     assert response == '这是一张插画风格的图像，展示了一只可爱的猫咪。这只猫有灰白相间的毛发，大大的蓝色眼睛和竖立的耳朵，显得非常可爱和迷人。背景模糊，突出了猫咪的细节和表情。'
+
 
 def test_paligemma():
     pt_engine = PtEngine('AI-ModelScope/paligemma-3b-mix-224')
