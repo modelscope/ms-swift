@@ -4,6 +4,9 @@ import re
 from functools import partial
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import json
+import numpy as np
+
 from ...template import split_str_parts_by
 from ..preprocessor import (AlpacaPreprocessor, ClsGenerationPreprocessor, ClsPreprocessor, MessagesPreprocessor,
                             ResponsePreprocessor, RowPreprocessor, TextGenerationPreprocessor)
@@ -155,7 +158,6 @@ register_dataset(
 
 
 class FireflyPreprocessor(ResponsePreprocessor):
-
     _firefly_kind_list = {
         'ProseGeneration', 'MRC', 'JinYongGeneration', 'TextCorrection', 'ClassicalChinese', 'BELLE', 'StoryGeneration',
         'Couplet', 'Cot', 'Dictionary', 'Translation', 'Program', 'SentimentAnalyze', 'OpenQA', 'AncientPoem',
@@ -568,6 +570,46 @@ register_dataset(
         split=['train', 'test'],
         tags=['rlhf', 'dpo'],
         huge_dataset=True))
+
+
+class XlamFunctionCallingPreprocessor(ResponsePreprocessor):
+
+    def __init__(self, response=True):
+        self.response = response
+        super().__init__()
+
+    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        query = row['query']
+        answers = row['response']
+        if isinstance(answers, str):
+            answers = json.loads(answers)
+        answer = np.random.choice(answers)
+        name = answer['name']
+        args = json.dumps(answer['arguments'])
+        response = f'Action: {name}\nAction Input: {args}'
+        key = 'response' if self.response else 'solution'
+        row = {'query': query, key: response, 'tools': row['tools']}
+        return super().preprocess(row)
+
+
+register_dataset(
+    DatasetMeta(
+        ms_dataset_id='LLM-Research/xlam-function-calling-60k',
+        subsets=[
+            SubsetDataset(
+                name='default',
+                subset='dataset',
+                split=['train'],
+                preprocess_func=XlamFunctionCallingPreprocessor(response=True),
+            ),
+            SubsetDataset(
+                name='grpo',
+                subset='dataset',
+                split=['train'],
+                preprocess_func=XlamFunctionCallingPreprocessor(response=False),
+            ),
+        ],
+        tags=['agent']))
 
 
 class HHRLHFCNPreprocessor(MessagesPreprocessor):
