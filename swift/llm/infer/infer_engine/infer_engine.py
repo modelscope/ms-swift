@@ -115,7 +115,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         if not isinstance(result, (list, tuple)):
             result = [result]
         for response in result:
-            if response is None:
+            if response is None or isinstance(response, Exception):
                 continue
             for metric in metrics:
                 metric.update(response)
