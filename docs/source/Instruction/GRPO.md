@@ -17,7 +17,7 @@ pip install "trl>=0.15"
 奖励函数接受模型生成的文本 completions 以及其他数据集中的列作为参数，并对模型生成的文本进行打分。以下是一个示例，展示了如何实现一个简单的长度奖励函数。该函数会在模型生成的文本长度超过 1024 时，给予 1.0 的奖励信号；否则，奖励信号为 0.0。
 
 ```python
-from swift.plugin.orm import ORM, orms
+from swift.plugin import ORM, orms
 class DummyLengthRewardFunction(ORM)
     def __call__(completions, **kwargs):
         return [1.0 if len(completion) > 1024 else 0.0 for completion in completions]
@@ -134,7 +134,8 @@ swift rlhf \
     --num_generations 7 \
     --temperature 0.9 \
     --system 'examples/train/grpo/prompt.txt' \
-    --deepspeed zero2
+    --deepspeed zero2 \
+    --log_completions true
 ```
 
 单卡
@@ -167,5 +168,6 @@ swift rlhf \
     --dataset_num_proc 4 \
     --num_generations 4 \
     --temperature 0.9 \
-    --system 'examples/train/grpo/prompt.txt'
+    --system 'examples/train/grpo/prompt.txt' \
+    --log_completions true
 ```

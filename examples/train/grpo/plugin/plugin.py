@@ -1,7 +1,7 @@
 import re
 from typing import List
 
-from swift.plugin.orm import ORM, orms
+from swift.plugin import ORM, orms
 from swift.utils import get_logger
 
 logger = get_logger()

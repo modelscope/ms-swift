@@ -407,6 +407,15 @@ repetition penalty function arguments
 - `repetition_n_grams` (default: 3): Size of the n-gram used to detect repetition.
 - `repetition_max_penalty` (default: -1.0): Maximum penalty value, which controls the intensity of the penalty.
 
+#### SWANLAB
+
+- **swanlab_token**: SwanLab's API key
+- **swanlab_project**: SwanLab's project, which needs to be created in advance on the page: [https://swanlab.cn/space/~](https://swanlab.cn/space/~)
+- **swanlab_workspace**: Defaults to `None`, will use the username associated with the API key
+- **swanlab_exp_name**: Experiment name, can be left empty. If empty, the value of `--output_dir` will be used by default
+- **swanlab_mode**: Optional values are `cloud` and `local`, representing cloud mode or local mode
+
+
 ### Inference Arguments
 
 Inference arguments include the [base arguments](#base-arguments), [merge arguments](#merge-arguments), [vLLM arguments](#vllm-arguments), [LMDeploy arguments](#LMDeploy-arguments), and also contain the following:
