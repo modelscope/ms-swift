@@ -267,9 +267,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             else:
                 outputs = [None] * len(all_inputs)
 
-                # Broadcast the completions from the main process to all processes, ensuring each process receives its
-                # corresponding slice.
-                outputs = broadcast_object_list(outputs, from_process=0)
+            # Broadcast the completions from the main process to all processes, ensuring each process receives its
+            # corresponding slice.
+            outputs = broadcast_object_list(outputs, from_process=0)
         else:
             # Regular generation path
             is_multimodal = self.model.model_meta.is_multimodal
