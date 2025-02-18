@@ -25,9 +25,9 @@ swift rlhf \
     --vllm_gpu_memory_utilization 0.7 \
     --deepspeed zero3 \
     --temperature 1.0 \
+    --stop_words Observation: \
     --tools_prompt react_grpo \
     --top_p 0.85 \
     --top_k 50 \
     --log_completions true \
-    --log_each_step true \
     --report_to wandb

@@ -87,8 +87,6 @@ class GRPOArgumentsMixin:
     repetition_n_grams: int = 3
     repetition_max_penalty: float = -1.0
 
-    log_each_step: bool = False
-
     # LMDeploy in GRPO
     use_lmdeploy: bool = False
     lmdeploy_device: Optional[str] = 'auto'
