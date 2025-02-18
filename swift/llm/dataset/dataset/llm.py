@@ -599,7 +599,7 @@ class XlamFunctionCallingPreprocessor(ResponsePreprocessor):
         key = 'response' if self.response else 'solution'
         row = {'query': query, key: response, 'tools': row['tools']}
         if not self.response:
-            row['system'] = COMMON_GRPO_SYSTEM,
+            row['system'] = COMMON_GRPO_SYSTEM
 
         return super().preprocess(row)
 
