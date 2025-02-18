@@ -710,6 +710,27 @@ register_model(
 
 register_model(
     ModelMeta(
+        MLLMModelType.ovis2,
+        [
+            ModelGroup([
+                Model('AIDC-AI/Ovis2-1B', 'AIDC-AI/Ovis2-1B'),
+                Model('AIDC-AI/Ovis2-2B', 'AIDC-AI/Ovis2-2B'),
+                Model('AIDC-AI/Ovis2-4B', 'AIDC-AI/Ovis2-4B'),
+                Model('AIDC-AI/Ovis2-8B', 'AIDC-AI/Ovis2-8B'),
+                Model('AIDC-AI/Ovis2-16B', 'AIDC-AI/Ovis2-16B'),
+                Model('AIDC-AI/Ovis2-34B', 'AIDC-AI/Ovis2-34B'),
+            ]),
+        ],
+        TemplateType.ovis2,
+        get_model_tokenizer_ovis,
+        model_arch=ModelArch.ovis1_6,
+        architectures=['Ovis'],
+        tags=['vision'],
+        requires=['transformers>=4.46.2'],
+    ))
+
+register_model(
+    ModelMeta(
         RMModelType.qwen2_reward,
         [
             ModelGroup([

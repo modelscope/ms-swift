@@ -406,6 +406,20 @@ register_template(
         template_cls=Ovis1_6Template,
     ))
 
+register_template(
+    TemplateMeta(   # similar to Qwen2_5TemplateMeta, but with placeholder_tokens
+        MLLMTemplateType.ovis2,
+        prefix=[],
+        prompt=['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
+        chat_sep=['<|im_end|>\n'],
+        suffix=['<|im_end|>'],
+        system_prefix=['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n'],
+        default_system='You are Qwen, created by Alibaba Cloud. You are a helpful assistant.',
+        template_cls=Ovis1_6Template,
+        stop_words=['<|endoftext|>'],
+        placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
+    ))
+
 
 @dataclass
 class MarcoO1TemplateMeta(QwenTemplateMeta):
