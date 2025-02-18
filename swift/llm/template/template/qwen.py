@@ -407,7 +407,7 @@ register_template(
     ))
 
 register_template(
-    Qwen2_5TemplateMeta(
+    QwenTemplateMeta(
         MLLMTemplateType.ovis2,
         template_cls=Ovis1_6Template,
         placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
