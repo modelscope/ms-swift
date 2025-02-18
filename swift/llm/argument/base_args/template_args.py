@@ -68,5 +68,5 @@ class TemplateArguments:
             'padding_side': self.padding_side,
             'sequence_parallel_size': self.sequence_parallel_size,
             'template_backend': self.template_backend,
-            'use_chat_template': self.use_chat_template,
+            'use_chat_template': self.use_chat_template
         }

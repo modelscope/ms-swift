@@ -149,7 +149,7 @@ class StdTemplateInputs:
                     'You have tools prompt but you also have a system field, so the system field will be ignored')
             if isinstance(tools, str):
                 tools = json.loads(tools)
-                system = get_tools_prompt(tools, tools_prompt)
+            system = get_tools_prompt(tools, tools_prompt)
             keyword = get_tools_keyword(tools_prompt)
 
         media_kwargs = StdTemplateInputs.remove_messages_media(messages)
