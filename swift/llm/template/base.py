@@ -63,7 +63,6 @@ class Template(ProcessorMixin):
         padding_side: Literal['left', 'right'] = 'right',
         loss_scale: str = 'default',
         sequence_parallel_size: int = 1,
-        add_system_and_tools: bool = False,
         # infer/deploy
         template_backend: Literal['swift', 'jinja'] = 'swift',
     ) -> None:
@@ -82,7 +81,6 @@ class Template(ProcessorMixin):
         self.model_info = processor.model_info
         self.config = self.model_info.config
         self.model_meta = processor.model_meta
-        self.add_system_and_tools = add_system_and_tools
         if max_length is None:
             max_length = self.model_info.max_model_len
         tokenizer = self.tokenizer
@@ -272,8 +270,7 @@ class Template(ProcessorMixin):
             inputs = deepcopy(inputs)
             if not self.is_training:
                 InferRequest.remove_response(inputs['messages'])
-            inputs = StdTemplateInputs.from_dict(
-                inputs, tools_prompt=self.tools_prompt, add_system_and_tools=self.add_system_and_tools)
+            inputs = StdTemplateInputs.from_dict(inputs, tools_prompt=self.tools_prompt)
         elif isinstance(inputs, StdTemplateInputs):
             inputs = deepcopy(inputs)
 

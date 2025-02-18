@@ -126,11 +126,7 @@ class StdTemplateInputs:
         return bool(self.images or self.audios or self.videos or self.objects)
 
     @classmethod
-    def from_dict(cls,
-                  inputs: Dict[str, Any],
-                  *,
-                  tools_prompt: str = 'react_en',
-                  add_system_and_tools=False) -> 'StdTemplateInputs':
+    def from_dict(cls, inputs: Dict[str, Any], *, tools_prompt: str = 'react_en') -> 'StdTemplateInputs':
         from swift.plugin import get_tools_prompt, get_tools_keyword
         kwargs = {}
         for key in ['rejected_response', 'label']:
@@ -148,18 +144,11 @@ class StdTemplateInputs:
 
         keyword = None
         if tools is not None:
-            if system is not None and not add_system_and_tools:
+            if system is not None:
                 logger.warning_once(
                     'You have tools prompt but you also have a system field, so the system field will be ignored')
             if isinstance(tools, str):
                 tools = json.loads(tools)
-            if add_system_and_tools:
-                if system:
-                    system += '\n\n'
-                else:
-                    system = ''
-                system += get_tools_prompt(tools, tools_prompt)
-            else:
                 system = get_tools_prompt(tools, tools_prompt)
             keyword = get_tools_keyword(tools_prompt)
 

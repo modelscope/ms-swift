@@ -44,7 +44,6 @@ class TemplateArguments:
     # infer/deploy
     use_chat_template: bool = True
     template_backend: Literal['swift', 'jinja'] = 'swift'
-    add_system_and_tools: bool = False
 
     def __post_init__(self):
         if self.template is None and hasattr(self, 'model_meta'):
@@ -70,5 +69,4 @@ class TemplateArguments:
             'sequence_parallel_size': self.sequence_parallel_size,
             'template_backend': self.template_backend,
             'use_chat_template': self.use_chat_template,
-            'add_system_and_tools': self.add_system_and_tools,
         }

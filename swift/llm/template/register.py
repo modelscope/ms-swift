@@ -31,7 +31,6 @@ def get_template(
         # train
         padding_side: Literal['left', 'right'] = 'right',
         loss_scale: str = 'default',
-        add_system_and_tools: bool = False,
         sequence_parallel_size: int = 1) -> 'Template':
     template_meta = TEMPLATE_MAPPING[template_type]
     template_cls = template_meta.template_cls
@@ -49,7 +48,6 @@ def get_template(
         padding_side=padding_side,
         loss_scale=loss_scale,
         sequence_parallel_size=sequence_parallel_size,
-        add_system_and_tools=add_system_and_tools,
     )
 
 
