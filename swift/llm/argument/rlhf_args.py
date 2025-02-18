@@ -152,6 +152,8 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
     def _init_metric_for_best_model(self):
         if self.rlhf_type not in {'ppo', 'grpo'}:
             super()._init_metric_for_best_model()
+        elif self.rlhf_type == 'grpo' and self.metric_for_best_model is None:
+            self.metric_for_best_model = 'reward'
 
     def _init_simpo(self):
         if self.rlhf_type != 'simpo':

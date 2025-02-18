@@ -119,7 +119,7 @@ This parameter list inherits from transformers `Seq2SeqTrainingArguments`, with 
 - logging_first_step: Whether to log the first step, defaults to True.
 - logging_steps: Interval for logging, defaults to 5.
 - predict_with_generate: Whether to use generative method during validation, default is False.
-- metric_for_best_model: The default is None, which means it is set to 'loss' when `predict_with_generate` is set to False, otherwise it is set to 'rouge-l' (No default value is set during PPO and GRPO training).
+- metric_for_best_model: Default is None, which means that when predict_with_generate is set to False, it is set to 'loss'; otherwise, it is set to 'rouge-l' (during PPO training, the default value is not set; in GRPO training, it is set to 'reward').
 - greater_is_better: Defaults to None, which sets it to False when `metric_for_best_model` contains 'loss', otherwise sets to True.
 
 Other important parameters:
