@@ -71,6 +71,21 @@ register_model(
         model_arch=ModelArch.internlm2,
     ))
 
+register_model(
+    ModelMeta(
+        LLMModelType.internlm3,
+        [
+            ModelGroup([
+                Model('Shanghai_AI_Laboratory/internlm3-8b-instruct', 'internlm/internlm3-8b-instruct'),
+            ]),
+        ],
+        TemplateType.internlm2,
+        get_model_tokenizer_with_flash_attn,
+        requires=['transformers>=4.48'],
+        architectures=['InternLM3ForCausalLM'],
+        model_arch=ModelArch.llama,
+    ))
+
 
 def get_model_tokenizer_xcomposer2(model_dir: str,
                                    model_info: ModelInfo,
@@ -83,7 +98,8 @@ def get_model_tokenizer_xcomposer2(model_dir: str,
         from transformers import CLIPVisionModel
 
         def load_model(self):
-            self.vision_tower_name = safe_snapshot_download('AI-ModelScope/clip-vit-large-patch14-336')
+            self.vision_tower_name = safe_snapshot_download(
+                'AI-ModelScope/clip-vit-large-patch14-336', check_local=True)
             self.vision_tower = CLIPVisionModel.from_pretrained(self.vision_tower_name)
             self.vision_tower.requires_grad_(False)
             self.is_loaded = True

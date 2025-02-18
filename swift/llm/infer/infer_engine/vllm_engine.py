@@ -3,12 +3,11 @@ import asyncio
 import inspect
 import os
 from copy import deepcopy
-from dataclasses import asdict
 from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
 
 import torch
 from packaging import version
-from transformers import GenerationConfig, PreTrainedTokenizerBase
+from transformers import GenerationConfig
 
 from swift.llm import InferRequest, Template, TemplateMeta, get_model_tokenizer
 from swift.plugin import Metric
@@ -35,28 +34,31 @@ dtype_mapping = {torch.float16: 'float16', torch.bfloat16: 'bfloat16', torch.flo
 class VllmEngine(InferEngine):
 
     def __init__(
-            self,
-            model_id_or_path: str,
-            torch_dtype: Optional[torch.dtype] = None,
-            *,
-            model_type: Optional[str] = None,
-            use_hf: Optional[bool] = None,
-            hub_token: Optional[str] = None,
-            revision: Optional[str] = None,
-            # engine_kwargs
-            gpu_memory_utilization: float = 0.9,
-            tensor_parallel_size: int = 1,
-            pipeline_parallel_size: int = 1,
-            max_model_len: Optional[int] = None,
-            max_num_seqs: int = 256,
-            disable_custom_all_reduce: bool = False,
-            enforce_eager: bool = False,
-            limit_mm_per_prompt: Optional[Dict[str, Any]] = None,
-            # lora
-            enable_lora: bool = False,
-            max_loras: int = 1,
-            max_lora_rank: int = 16,
-            engine_kwargs: Optional[Dict[str, Any]] = None) -> None:
+        self,
+        model_id_or_path: str,
+        torch_dtype: Optional[torch.dtype] = None,
+        *,
+        model_type: Optional[str] = None,
+        use_hf: Optional[bool] = None,
+        hub_token: Optional[str] = None,
+        revision: Optional[str] = None,
+        # engine_kwargs
+        gpu_memory_utilization: float = 0.9,
+        tensor_parallel_size: int = 1,
+        pipeline_parallel_size: int = 1,
+        max_model_len: Optional[int] = None,
+        max_num_seqs: int = 256,
+        disable_custom_all_reduce: bool = False,
+        enforce_eager: bool = False,
+        limit_mm_per_prompt: Optional[Dict[str, Any]] = None,
+        device: str = 'auto',
+        # lora
+        enable_lora: bool = False,
+        max_loras: int = 1,
+        max_lora_rank: int = 16,
+        enable_prefix_caching: bool = False,
+        engine_kwargs: Optional[Dict[str, Any]] = None,
+    ) -> None:
         self.processor = get_model_tokenizer(
             model_id_or_path,
             torch_dtype,
@@ -80,7 +82,10 @@ class VllmEngine(InferEngine):
             enable_lora=enable_lora,
             max_loras=max_loras,
             max_lora_rank=max_lora_rank,
-            engine_kwargs=engine_kwargs)
+            enable_prefix_caching=enable_prefix_caching,
+            device=device,
+            engine_kwargs=engine_kwargs,
+        )
 
         self._prepare_engine()
         self._load_generation_config()
@@ -92,25 +97,29 @@ class VllmEngine(InferEngine):
             engine = AsyncLLMEngine.from_engine_args(self.engine_args)
         self.engine = engine
 
-    def _prepare_engine_kwargs(self,
-                               gpu_memory_utilization: float = 0.9,
-                               tensor_parallel_size: int = 1,
-                               pipeline_parallel_size: int = 1,
-                               max_model_len: Optional[int] = None,
-                               max_num_seqs: int = 256,
-                               disable_custom_all_reduce: bool = False,
-                               enforce_eager: bool = False,
-                               limit_mm_per_prompt: Optional[Dict[str, Any]] = None,
-                               enable_lora: bool = False,
-                               max_loras: int = 1,
-                               max_lora_rank: int = 16,
-                               engine_kwargs: Optional[Dict[str, Any]] = None) -> None:
+    def _prepare_engine_kwargs(
+        self,
+        gpu_memory_utilization: float = 0.9,
+        tensor_parallel_size: int = 1,
+        pipeline_parallel_size: int = 1,
+        max_model_len: Optional[int] = None,
+        max_num_seqs: int = 256,
+        disable_custom_all_reduce: bool = False,
+        enforce_eager: bool = False,
+        limit_mm_per_prompt: Optional[Dict[str, Any]] = None,
+        device: str = 'auto',
+        enable_lora: bool = False,
+        max_loras: int = 1,
+        max_lora_rank: int = 16,
+        enable_prefix_caching: bool = False,
+        engine_kwargs: Optional[Dict[str, Any]] = None,
+    ) -> None:
         if engine_kwargs is None:
             engine_kwargs = {}
         disable_log_stats = engine_kwargs.pop('disable_log_stats', True)
         engine_kwargs['disable_log_requests'] = True
 
-        parameters = inspect.signature(AsyncEngineArgs.__init__).parameters
+        parameters = inspect.signature(AsyncEngineArgs).parameters
         if 'enable_lora' in parameters and enable_lora:
             engine_kwargs['enable_lora'] = enable_lora
             engine_kwargs['max_loras'] = max_loras
@@ -137,7 +146,10 @@ class VllmEngine(InferEngine):
             disable_custom_all_reduce=disable_custom_all_reduce,
             enforce_eager=enforce_eager,
             trust_remote_code=True,
-            **engine_kwargs)
+            enable_prefix_caching=enable_prefix_caching,
+            device=device,
+            **engine_kwargs,
+        )
         self.engine_args = engine_args
         self.enable_lora = enable_lora
         if max_model_len is not None:
@@ -167,7 +179,7 @@ class VllmEngine(InferEngine):
             max_new_tokens = kwargs.get('max_new_tokens')
             if max_new_tokens is not None:
                 kwargs['max_tokens'] = max_new_tokens
-            parameters = inspect.signature(SamplingParams.__init__).parameters
+            parameters = inspect.signature(SamplingParams).parameters
             for k, v in kwargs.copy().items():
                 if k not in parameters or v is None:
                     kwargs.pop(k)
@@ -216,8 +228,7 @@ class VllmEngine(InferEngine):
             result_generator = self.engine.generate(None, generation_config, request_id, input_ids, **kwargs)
         return result_generator
 
-    @staticmethod
-    def _get_logprobs(tokenizer: PreTrainedTokenizerBase,
+    def _get_logprobs(self,
                       logprobs_list: Optional[List[Dict[int, float]]],
                       token_ids: List[int],
                       top_logprobs: Optional[int] = None) -> Optional[Dict[str, Any]]:
@@ -225,25 +236,10 @@ class VllmEngine(InferEngine):
             return None
         if len(token_ids) > 0:
             logprobs_list = logprobs_list[-len(token_ids):]
-        res = []
-        for logprobs, token_id in zip(logprobs_list, token_ids):
-            logprob = logprobs[token_id]
-            chosen_token = tokenizer.decode(token_id)
-            _res = {'token': chosen_token, 'logprob': logprob.logprob, 'bytes': list(chosen_token.encode('utf8'))}
-            if top_logprobs is not None:
-                res_top_logprobs = []
-                for k, logprob in logprobs.items():
-                    token = tokenizer.decode(k)
-                    if logprob.logprob == float('-inf') or chosen_token == token:
-                        continue
-                    res_top_logprobs.append({
-                        'token': token,
-                        'logprob': logprob.logprob,
-                        'bytes': list(token.encode('utf8'))
-                    })
-                _res['top_logprobs'] = res_top_logprobs
-            res.append(_res)
-        return {'content': res}
+        for logprobs in logprobs_list:
+            for token_id, logprob in logprobs.items():
+                logprobs[token_id] = logprob.logprob
+        return super()._get_logprobs(logprobs_list, token_ids, top_logprobs)
 
     def _prepare_generation_config(self, request_config: RequestConfig) -> SamplingParams:
         kwargs = {'max_tokens': request_config.max_tokens}
@@ -263,7 +259,9 @@ class VllmEngine(InferEngine):
         for key in ['n', 'best_of', 'frequency_penalty', 'presence_penalty', 'seed']:
             kwargs[key] = getattr(request_config, key)
 
-        return SamplingParams(**kwargs)
+        res = SamplingParams(**kwargs)
+        res.top_logprobs = request_config.top_logprobs
+        return res
 
     async def _infer_stream_async(self, template: Template, inputs: Dict[str, Any], generation_config: SamplingParams,
                                   **kwargs) -> AsyncIterator[ChatCompletionStreamResponse]:
@@ -289,8 +287,8 @@ class VllmEngine(InferEngine):
             usage_info = self._get_usage_info(len(result.prompt_token_ids), num_generated_tokens)
             choices = []
             for output in result.outputs:
-                logprobs = self._get_logprobs(template.tokenizer, output.logprobs,
-                                              output.token_ids[token_idxs[output.index]:], generation_config.logprobs)
+                logprobs = self._get_logprobs(output.logprobs, output.token_ids[token_idxs[output.index]:],
+                                              generation_config.top_logprobs)
                 token_idxs[output.index] = len(output.token_ids)
                 toolcall = None
                 if output.is_finished:
@@ -303,11 +301,13 @@ class VllmEngine(InferEngine):
                 choices.append(choice)
             yield ChatCompletionStreamResponse(model=self.model_name, choices=choices, usage=usage_info, id=request_id)
 
-    async def _infer_full_async(self,
-                                template: Template,
-                                inputs: Dict[str, Any],
-                                generation_config: SamplingParams,
-                                adapter_request: Optional[AdapterRequest] = None) -> ChatCompletionResponse:
+    async def _infer_full_async(
+        self,
+        template: Template,
+        inputs: Dict[str, Any],
+        generation_config: SamplingParams,
+        adapter_request: Optional[AdapterRequest] = None,
+    ) -> ChatCompletionResponse:
         request_id = random_uuid()
         result_generator = self._add_request(inputs, generation_config, request_id, adapter_request=adapter_request)
         result = None
@@ -320,8 +320,7 @@ class VllmEngine(InferEngine):
         for output in result.outputs:
             output.token_ids = list(output.token_ids)
             response = template.decode(output.token_ids)
-            logprobs = self._get_logprobs(template.tokenizer, output.logprobs, output.token_ids,
-                                          generation_config.logprobs)
+            logprobs = self._get_logprobs(output.logprobs, output.token_ids, generation_config.top_logprobs)
             toolcall = self._get_toolcall(response, template.tools_prompt)
             choice = ChatCompletionResponseChoice(
                 index=output.index,
@@ -331,6 +330,10 @@ class VllmEngine(InferEngine):
             choices.append(choice)
         return ChatCompletionResponse(model=self.model_name, choices=choices, usage=usage_info, id=request_id)
 
+    def _batch_infer_stream(self, *args, **kwargs):
+        self.engine.engine.model_executor.parallel_worker_tasks = None
+        return super()._batch_infer_stream(*args, **kwargs)
+
     def infer(
         self,
         infer_requests: List[InferRequest],
@@ -339,7 +342,7 @@ class VllmEngine(InferEngine):
         *,
         template: Optional[Template] = None,
         use_tqdm: Optional[bool] = None,
-        adapter_request: Optional[AdapterRequest] = None
+        adapter_request: Optional[AdapterRequest] = None,
     ) -> Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
         return super().infer(
             infer_requests,
@@ -347,7 +350,8 @@ class VllmEngine(InferEngine):
             metrics,
             template=template,
             use_tqdm=use_tqdm,
-            adapter_request=adapter_request)
+            adapter_request=adapter_request,
+        )
 
     async def infer_async(
         self,
@@ -373,7 +377,7 @@ class VllmEngine(InferEngine):
             'template': template,
             'inputs': inputs,
             'generation_config': generation_config,
-            'adapter_request': adapter_request
+            'adapter_request': adapter_request,
         }
         if pre_infer_hook:
             kwargs = pre_infer_hook(kwargs)

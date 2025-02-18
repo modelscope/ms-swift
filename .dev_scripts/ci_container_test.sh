@@ -22,11 +22,11 @@ if [ "$MODELSCOPE_SDK_DEBUG" == "True" ]; then
 
     pip install -r requirements/framework.txt -U -i https://mirrors.aliyun.com/pypi/simple/
     pip install diffusers decord einops -U -i https://mirrors.aliyun.com/pypi/simple/
-    pip install autoawq!=0.2.7.post3 -U --no-deps
+    pip install autoawq -U --no-deps
 
     # test with install
     pip install .
-    pip install auto_gptq bitsandbytes deepspeed==0.14.* -U -i https://mirrors.aliyun.com/pypi/simple/
+    pip install auto_gptq bitsandbytes deepspeed -U -i https://mirrors.aliyun.com/pypi/simple/
 else
     echo "Running case in release image, run case directly!"
 fi

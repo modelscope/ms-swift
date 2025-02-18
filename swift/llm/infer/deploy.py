@@ -3,9 +3,8 @@ import asyncio
 import inspect
 import multiprocessing
 import time
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import asdict
-from functools import partial
 from http import HTTPStatus
 from threading import Thread
 from typing import List, Optional, Union
@@ -18,7 +17,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from swift.llm import AdapterRequest, DeployArguments
 from swift.plugin import InferStats
-from swift.utils import get_logger
+from swift.utils import JsonlWriter, get_logger
 from .infer import SwiftInfer
 from .infer_engine import InferClient
 from .protocol import ChatCompletionRequest, CompletionRequest, Model, ModelList
@@ -159,7 +158,7 @@ class SwiftDeploy(SwiftInfer):
             res_or_gen = await self.infer_async(infer_request, request_config, template=self.template, **infer_kwargs)
         except Exception as e:
             import traceback
-            print(traceback.format_exc())
+            logger.info(traceback.format_exc())
             return self.create_error_response(HTTPStatus.BAD_REQUEST, str(e))
         if request_config.stream:
 
@@ -179,6 +178,7 @@ class SwiftDeploy(SwiftInfer):
 
     def run(self):
         args = self.args
+        self.jsonl_writer = JsonlWriter(args.result_path) if args.result_path else None
         logger.info(f'model_list: {self._get_model_list()}')
         uvicorn.run(
             self.app, host=args.host, port=args.port, ssl_keyfile=args.ssl_keyfile, ssl_certfile=args.ssl_certfile)
@@ -203,7 +203,7 @@ def run_deploy(args: DeployArguments, return_url: bool = False):
         deploy_args = args
     else:
         args_dict = asdict(args)
-        parameters = inspect.signature(DeployArguments.__init__).parameters
+        parameters = inspect.signature(DeployArguments).parameters
         for k in list(args_dict.keys()):
             if k not in parameters or args_dict[k] is None:
                 args_dict.pop(k)

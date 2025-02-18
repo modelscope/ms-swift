@@ -36,6 +36,20 @@ def test_qwen2_vl():
     assert response == response2 == '这是一只小猫的图片。它有黑白相间的毛发，眼睛大而圆，显得非常可爱。'
 
 
+def test_qwen2_5_vl():
+    pt_engine = PtEngine('Qwen/Qwen2.5-VL-7B-Instruct')
+    messages = [{'role': 'user', 'content': '<image>What kind of dog is this?'}]
+    images = ['https://qianwen-res.oss-accelerate-overseas.aliyuncs.com/Qwen2-VL/demo_small.jpg']
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=messages, images=images)
+    assert response == response2 == (
+        'The dog in the picture appears to be a Labrador Retriever. Labradors are known for their friendly and '
+        'energetic nature, which is evident in the image where the dog seems to be interacting playfully with '
+        'the person. The breed is characterized by its thick, water-repellent coat, which can come in various '
+        'colors including yellow, black, and chocolate.')
+
+
 def test_qvq():
     pt_engine = PtEngine('Qwen/QVQ-72B-Preview')
     response = _infer_model(pt_engine)
@@ -109,6 +123,28 @@ def test_minicpmv():
     _infer_model(pt_engine)
 
 
+def test_minicpmo():
+    pt_engine = PtEngine('OpenBMB/MiniCPM-o-2_6')
+    messages = [{
+        'role':
+        'user',
+        'content':
+        '<image><image>Compare image 1 and image 2, tell me about the differences between image 1 and image 2.'
+    }]
+    images = [
+        'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png',
+        'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png'
+    ]
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=messages, images=images)
+    assert response == response2 == (
+        'The main difference between image 1 and image 2 is the subject matter. '
+        'Image 1 features a close-up of a kitten, while image 2 depicts a cartoon illustration of four sheep '
+        'standing in a grassy field. The setting, the number of subjects, and the overall style of the images '
+        'are distinct from each other.')
+
+
 def test_got_ocr():
     # https://github.com/modelscope/ms-swift/issues/2122
     pt_engine = PtEngine('stepfun-ai/GOT-OCR2_0')
@@ -180,6 +216,15 @@ def test_deepseek_vl():
     # pt_engine = PtEngine('deepseek-ai/deepseek-vl-1.3b-chat')
     pt_engine = PtEngine('deepseek-ai/Janus-1.3B')
     _infer_model(pt_engine)
+
+
+def test_deepseek_janus():
+    pt_engine = PtEngine('deepseek-ai/Janus-Pro-7B')
+    messages = [{'role': 'user', 'content': '描述图片'}]
+    response = _infer_model(pt_engine, messages=messages)
+    assert response == ('这是一张非常可爱的猫咪图片。猫咪的毛色主要是白色，并带有灰色的条纹。它的眼睛非常大，呈现出明亮的蓝色，'
+                        '显得非常可爱和无辜。猫咪的耳朵竖立着，显得非常警觉和好奇。背景模糊，使得猫咪成为图片的焦点。'
+                        '整体画面给人一种温暖和愉悦的感觉。')
 
 
 def test_deepseek_vl2():
@@ -334,19 +379,76 @@ def test_doc_owl2():
         'more efficient and accurate OCR-free document understanding.')
 
 
+def test_valley():
+    pt_engine = PtEngine('bytedance-research/Valley-Eagle-7B')
+    _infer_model(pt_engine)
+
+
+def test_ui_tars():
+    os.environ['MAX_PIXELS'] = str(1280 * 28 * 28)
+    pt_engine = PtEngine('bytedance-research/UI-TARS-2B-SFT')
+    prompt = ('You are a GUI agent. You are given a task and your action history, with screenshots. '
+              'You need to perform the next action to complete the task.' + r"""
+
+## Output Format
+```\nThought: ...
+Action: ...\n```
+
+## Action Space
+
+click(start_box='<|box_start|>(x1,y1)<|box_end|>')
+left_double(start_box='<|box_start|>(x1,y1)<|box_end|>')
+right_single(start_box='<|box_start|>(x1,y1)<|box_end|>')
+drag(start_box='<|box_start|>(x1,y1)<|box_end|>', end_box='<|box_start|>(x3,y3)<|box_end|>')
+hotkey(key='')
+type(content='') #If you want to submit your input, use \"\
+\" at the end of `content`.
+scroll(start_box='<|box_start|>(x1,y1)<|box_end|>', direction='down or up or right or left')
+wait() #Sleep for 5s and take a screenshot to check for any changes.
+finished()
+call_user() # Submit the task and call the user when the task is unsolvable, or when you need the user's help.
+
+
+## Note
+- Use Chinese in `Thought` part.
+- Summarize your next action (with its target element) in one sentence in `Thought` part.
+
+## User Instruction
+""")
+    instruction = "I'm looking for a software to \"edit my photo with grounding\""
+    messages = [
+        {
+            'role': 'user',
+            'content': [
+                {
+                    'type': 'text',
+                    'text': prompt + instruction
+                },
+            ],
+        },
+    ]
+    images = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/agent.png']
+    response = _infer_model(pt_engine, messages=messages, images=images)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine, messages=messages, images=images)
+    assert response == response2
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig, get_template
     from swift.utils import get_logger, seed_everything
 
     logger = get_logger()
     # test_qwen2_vl()
+    # test_qwen2_5_vl()
     # test_internvl2()
     # test_internvl2_phi3()
     # test_llava()
     # test_ovis1_6()
-    test_ovis1_6_llama3()
+    # test_ovis1_6_llama3()
     # test_yi_vl()
     # test_deepseek_vl()
+    test_deepseek_janus()
     # test_deepseek_vl2()
     # test_qwen_vl()
     # test_glm4v()
@@ -372,3 +474,6 @@ if __name__ == '__main__':
     # test_molmo()
     # test_molmoe()
     # test_doc_owl2()
+    # test_minicpmo()
+    # test_valley()
+    # test_ui_tars()

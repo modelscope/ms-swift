@@ -29,7 +29,7 @@ from swift.ui.llm_train.rlhf import RLHF
 from swift.ui.llm_train.runtime import Runtime
 from swift.ui.llm_train.save import Save
 from swift.ui.llm_train.self_cog import SelfCog
-from swift.utils import get_logger
+from swift.utils import get_device_count, get_logger
 
 logger = get_logger()
 
@@ -206,10 +206,9 @@ class LLMTrain(BaseUI):
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
         with gr.TabItem(elem_id='llm_train', label=''):
-            gpu_count = 0
             default_device = 'cpu'
-            if torch.cuda.is_available():
-                gpu_count = torch.cuda.device_count()
+            device_count = get_device_count()
+            if device_count > 0:
                 default_device = '0'
             with gr.Blocks():
                 Model.build_ui(base_tab)
@@ -232,7 +231,7 @@ class LLMTrain(BaseUI):
                     gr.Dropdown(
                         elem_id='gpu_id',
                         multiselect=True,
-                        choices=[str(i) for i in range(gpu_count)] + ['cpu'],
+                        choices=[str(i) for i in range(device_count)] + ['cpu'],
                         value=default_device,
                         scale=8)
                     gr.Checkbox(elem_id='dry_run', value=False, scale=4)
@@ -264,13 +263,11 @@ class LLMTrain(BaseUI):
 
                 base_tab.element('running_tasks').change(
                     partial(Runtime.task_changed, base_tab=base_tab), [base_tab.element('running_tasks')],
-                    list(base_tab.valid_elements().values()) + [cls.element('log')] + Runtime.all_plots,
-                    cancels=Runtime.log_event)
+                    list(base_tab.valid_elements().values()) + [cls.element('log')] + Runtime.all_plots)
                 Runtime.element('kill_task').click(
                     Runtime.kill_task,
                     [Runtime.element('running_tasks')],
                     [Runtime.element('running_tasks')] + [Runtime.element('log')] + Runtime.all_plots,
-                    cancels=[Runtime.log_event],
                 ).then(Runtime.reset, [], [Runtime.element('logging_dir')] + [Hyper.element('output_dir')])
 
     @classmethod

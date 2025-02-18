@@ -30,7 +30,7 @@ class Runtime(BaseUI):
 
     all_plots = None
 
-    log_event = None
+    log_event = {}
 
     sft_plot = [
         {
@@ -253,13 +253,13 @@ class Runtime(BaseUI):
                 concurrency_limit = {}
                 if version.parse(gr.__version__) >= version.parse('4.0.0'):
                     concurrency_limit = {'concurrency_limit': 5}
-                cls.log_event = base_tab.element('show_log').click(
+                base_tab.element('show_log').click(
                     Runtime.update_log, [base_tab.element('running_tasks')], [cls.element('log')] + cls.all_plots).then(
                         Runtime.wait, [base_tab.element('logging_dir'),
                                        base_tab.element('running_tasks')], [cls.element('log')] + cls.all_plots,
                         **concurrency_limit)
 
-                base_tab.element('stop_show_log').click(lambda: None, cancels=cls.log_event)
+                base_tab.element('stop_show_log').click(cls.break_log_event, [cls.element('running_tasks')], [])
 
                 base_tab.element('start_tb').click(
                     Runtime.start_tb,
@@ -315,6 +315,7 @@ class Runtime(BaseUI):
         if not logging_dir:
             return [None] + Runtime.plot(task)
         log_file = os.path.join(logging_dir, 'run.log')
+        cls.log_event[logging_dir] = False
         offset = 0
         latest_data = ''
         lines = collections.deque(maxlen=int(os.environ.get('MAX_LOG_LINES', 50)))
@@ -332,6 +333,10 @@ class Runtime(BaseUI):
                         fail_cnt += 1
                         if fail_cnt > 50:
                             break
+
+                    if cls.log_event.get(logging_dir, False):
+                        cls.log_event[logging_dir] = False
+                        break
 
                     if '\n' not in latest_data:
                         continue
@@ -354,6 +359,13 @@ class Runtime(BaseUI):
                     yield ['\n'.join(lines)] + Runtime.plot(task)
         except IOError:
             pass
+
+    @classmethod
+    def break_log_event(cls, task):
+        if not task:
+            return
+        pid, all_args = Runtime.parse_info_from_cmdline(task)
+        cls.log_event[all_args['logging_dir']] = True
 
     @classmethod
     def show_log(cls, logging_dir):
@@ -472,6 +484,7 @@ class Runtime(BaseUI):
             else:
                 os.system(f'pkill -9 -f {output_dir}')
             time.sleep(1)
+            Runtime.break_log_event(task)
         return [Runtime.refresh_tasks()] + [gr.update(value=None)] * (len(Runtime.get_plot(task)) + 1)
 
     @staticmethod
@@ -495,6 +508,7 @@ class Runtime(BaseUI):
                 ret.append(gr.update(value=arg))
             else:
                 ret.append(gr.update())
+        Runtime.break_log_event(task)
         return ret + [gr.update(value=None)] * (len(Runtime.get_plot(task)) + 1)
 
     @staticmethod

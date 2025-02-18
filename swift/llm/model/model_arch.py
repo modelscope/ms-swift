@@ -56,10 +56,12 @@ class MLLMModelArch:
     idefics3 = 'idefics3'
 
     got_ocr2 = 'got_ocr2'
+
     ovis1_6 = 'ovis1_6'
     molmo = 'molmo'
     emu3_chat = 'emu3_chat'
     megrez_omni = 'megrez_omni'
+    valley = 'valley'
 
 
 class ModelArch(LLMModelArch, MLLMModelArch):
@@ -510,6 +512,13 @@ register_model_arch(MultiModelKeys(MLLMModelArch.emu3_chat, language_model='mode
 
 register_model_arch(
     MultiModelKeys(MLLMModelArch.glm_edge_v, language_model='model.layers', vision_tower='model.vision'))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.valley,
+        language_model='model',
+        vision_tower=['model.vision_tower', 'model.qwen2vl_vision_tower'],
+    ))
 
 
 def get_model_arch(arch_name: Optional[str]) -> Optional[ModelKeys]:

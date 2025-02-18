@@ -1,12 +1,19 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+from enum import Enum
 from typing import Callable, Optional
 
 import torch
-from torch.nn import CrossEntropyLoss
+import torch.nn.functional as F
+from torch import nn
+from torch.nn import CrossEntropyLoss, MSELoss
 
 
 class LossType:
     loss_scale = 'loss_scale'
+    cosine_similarity = 'cosine_similarity'
+    contrastive = 'contrastive'
+    online_contrastive = 'online_contrastive'
+    cosent = 'cosent'
 
 
 LOSS_MAPPING = {}
@@ -68,6 +75,67 @@ def loss_scale_func(outputs, labels, loss_scale=None, num_items_in_batch=None) -
     else:
         # compat transformers>=4.46
         loss = loss.sum() / num_items_in_batch
+    return loss
+
+
+def _parse_pair_sentence(outputs):
+    last_hidden_state = outputs['last_hidden_state']
+    batch_size = last_hidden_state.shape[0]
+    shape_len = len(last_hidden_state.shape)
+    if shape_len == 3:
+        sentence1 = last_hidden_state[0:batch_size // 2][:, 0].squeeze(dim=1)
+        sentence2 = last_hidden_state[batch_size // 2:][:, 0].squeeze(dim=1)
+    else:
+        sentence1 = last_hidden_state[0:batch_size // 2]
+        sentence2 = last_hidden_state[batch_size // 2:]
+    return sentence1, sentence2
+
+
+# Code borrowed from sentence_transformers
+class SiameseDistanceMetric(Enum):
+    """The metric for the contrastive loss"""
+
+    EUCLIDEAN = lambda x, y: F.pairwise_distance(x, y, p=2)  # noqa
+    MANHATTAN = lambda x, y: F.pairwise_distance(x, y, p=1)  # noqa
+    COSINE_DISTANCE = lambda x, y: 1 - F.cosine_similarity(x, y)  # noqa
+
+
+@register_loss_func(LossType.cosine_similarity)
+def cosine_similarity_func(outputs, labels, loss_scale=None, num_items_in_batch=None) -> torch.Tensor:
+    cos_score_transformation = nn.Identity()
+    loss_fct = MSELoss()
+    sentence1, sentence2 = _parse_pair_sentence(outputs)
+    output = cos_score_transformation(torch.cosine_similarity(sentence1, sentence2))
+    return loss_fct(output, labels.to(output.dtype).view(-1))
+
+
+@register_loss_func(LossType.contrastive)
+def contrastive_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> torch.Tensor:
+    sentence1, sentence2 = _parse_pair_sentence(outputs)
+    distance_metric = SiameseDistanceMetric.COSINE_DISTANCE
+    distances = distance_metric(sentence1, sentence2)
+    margin = 0.5
+    labels = labels.to(sentence1.dtype)
+    losses = 0.5 * (labels * distances.pow(2) + (1 - labels) * F.relu(margin - distances).pow(2))
+    return losses.mean()
+
+
+@register_loss_func(LossType.online_contrastive)
+def online_contrastive_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> torch.Tensor:
+    sentence1, sentence2 = _parse_pair_sentence(outputs)
+    distance_metric = SiameseDistanceMetric.COSINE_DISTANCE
+    distance_matrix = distance_metric(sentence1, sentence2)
+    negs = distance_matrix[labels == 0]
+    poss = distance_matrix[labels == 1]
+
+    # select hard positive and hard negative pairs
+    negative_pairs = negs[negs < (poss.max() if len(poss) > 1 else negs.mean())]
+    positive_pairs = poss[poss > (negs.min() if len(negs) > 1 else poss.mean())]
+
+    positive_loss = positive_pairs.pow(2).sum()
+    margin = 0.5
+    negative_loss = F.relu(margin - negative_pairs).pow(2).sum()
+    loss = positive_loss + negative_loss
     return loss
 
 

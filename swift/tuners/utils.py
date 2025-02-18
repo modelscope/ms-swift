@@ -6,7 +6,6 @@ import os
 import shutil
 import tempfile
 import threading
-import uuid
 from dataclasses import asdict, dataclass, field
 from types import FunctionType
 from typing import Dict, Optional, Union
@@ -22,6 +21,7 @@ from peft.utils import ModulesToSaveWrapper as _ModulesToSaveWrapper
 from peft.utils import _get_submodules
 
 from swift.llm import MODEL_ARCH_MAPPING, ModelKeys
+from swift.utils import gc_collect
 from swift.utils.constants import BIN_EXTENSIONS
 from swift.utils.logger import get_logger
 
@@ -315,7 +315,7 @@ class SwiftAdapter:
                 module.to('meta')
         else:
             raise NotImplementedError
-        torch.cuda.empty_cache()
+        gc_collect()
 
     @staticmethod
     def load(module: torch.nn.Module, adapter_name, module_key):

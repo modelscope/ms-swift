@@ -3,7 +3,6 @@ from types import MethodType
 from typing import Any, Dict
 
 import torch
-from transformers import AutoModel
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.llm import TemplateType
@@ -16,26 +15,6 @@ from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multim
 from ..utils import ModelInfo, use_submodel_func
 
 logger = get_logger()
-
-
-def get_model_tokenizer_got_ocr2(*args, **kwargs):
-    kwargs['automodel_class'] = AutoModel
-    model, tokenizer = get_model_tokenizer_with_flash_attn(*args, **kwargs)
-    return model, tokenizer
-
-
-register_model(
-    ModelMeta(
-        MLLMModelType.got_ocr2, [
-            ModelGroup([
-                Model('stepfun-ai/GOT-OCR2_0', 'stepfun-ai/GOT-OCR2_0'),
-            ]),
-        ],
-        TemplateType.got_ocr2,
-        get_model_tokenizer_got_ocr2,
-        model_arch=ModelArch.got_ocr2,
-        architectures=['GOTQwenForCausalLM'],
-        tags=['vision']))
 
 
 def get_model_tokenizer_idefics(model_dir: str, *args, **kwargs):

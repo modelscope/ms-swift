@@ -17,6 +17,7 @@ ROUTE_MAPPING: Dict[str, str] = {
     'web-ui': 'swift.cli.web_ui',
     'deploy': 'swift.cli.deploy',
     'rlhf': 'swift.cli.rlhf',
+    'sample': 'swift.cli.sample',
     'export': 'swift.cli.export',
     'eval': 'swift.cli.eval',
     'app': 'swift.cli.app',

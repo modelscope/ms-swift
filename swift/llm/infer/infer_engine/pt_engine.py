@@ -104,6 +104,7 @@ class PtEngine(InferEngine):
         if request_config.logprobs:
             generation_config.output_logits = True
         generation_config.top_logprobs = request_config.top_logprobs
+        generation_config.num_return_sequences = request_config.n
         return _GenerationConfig(**generation_config.to_dict())
 
     def _add_stop_words(self, generation_config: _GenerationConfig, request_config: RequestConfig,
@@ -225,7 +226,7 @@ class PtEngine(InferEngine):
                 if not delta_text and not is_finished[i]:
                     res.append(None)
                     continue
-                logprobs = self._get_logprobs(self.tokenizer, logprobs_list, generate_ids[token_idxs[i]:],
+                logprobs = self._get_logprobs(logprobs_list, generate_ids[token_idxs[i]:],
                                               generation_config.top_logprobs)
                 token_idxs[i] = len(generate_ids)
 
@@ -260,14 +261,7 @@ class PtEngine(InferEngine):
             self._add_adapter(adapter_request.path, adapter_name)
         return [adapter_name]
 
-    @staticmethod
-    def _get_seq_cls_logprobs(logprobs):
-        res = []
-        for i, logprob in enumerate(logprobs.tolist()):
-            res.append({'index': i, 'logprob': logprob})
-        return {'content': res}
-
-    def _infer_seq_cls(self,
+    def _infer_forward(self,
                        template: Template,
                        inputs: Dict[str, Any],
                        adapter_request: Optional[AdapterRequest] = None,
@@ -279,13 +273,14 @@ class PtEngine(InferEngine):
         num_prompt_tokens = self._get_num_tokens(inputs)
         inputs.pop('labels', None)
         logits = self.model(**inputs, **call_kwargs).logits
-        if logits.shape[-1] > 1:
-            preds = torch.argmax(logits, dim=-1).tolist()
-            logprobs = torch.log_softmax(logits, -1)
-            logprobs = [self._get_seq_cls_logprobs(logprobs[i]) for i in range(len(preds))]
-        else:
-            preds = logits.squeeze(dim=-1).tolist()
+        if template.mode == 'seq_cls':
+            preds, logprobs = template.decode_seq_cls(logits)
+        elif template.mode == 'prm':
+            preds = template.decode_prm(inputs['input_ids'], logits)
             logprobs = [None] * len(preds)
+        else:
+            raise ValueError(f'Unsupported mode: {template.mode}')
+
         res = []
         for i, pred in enumerate(preds):
             usage_info = self._get_usage_info(num_prompt_tokens, 1)
@@ -322,28 +317,34 @@ class PtEngine(InferEngine):
             output.get('logits'), batched_generate_ids, generation_config.top_logprobs)
 
         res = []
-        for i in range(batched_generate_ids.shape[0]):
-            generate_ids = batched_generate_ids[i]
+        num_return_sequences = generation_config.num_return_sequences
+        for i in range(inputs['attention_mask'].shape[0]):
+            choices = []
+            usage_info = self._get_usage_info(num_prompt_tokens, 0)
+            for j in range(num_return_sequences):
+                batched_index = i * num_return_sequences + j
+                generate_ids = batched_generate_ids[batched_index]
 
-            # ignore pad_token
-            masks = generate_ids != self.tokenizer.pad_token_id
-            generate_ids = generate_ids[masks].tolist()
-            logprobs_list = None
-            if batched_logprobs is not None:
-                logprobs_list = [logprobs for m, logprobs in zip(masks, batched_logprobs[i]) if m.item()]
+                # ignore pad_token
+                masks = generate_ids != self.tokenizer.pad_token_id
+                generate_ids = generate_ids[masks].tolist()
+                logprobs_list = None
+                if batched_logprobs is not None:
+                    logprobs_list = [
+                        logprobs for m, logprobs in zip(masks, batched_logprobs[batched_index]) if m.item()
+                    ]
 
-            logprobs = self._get_logprobs(self.tokenizer, logprobs_list, generate_ids, generation_config.top_logprobs)
-            usage_info = self._get_usage_info(num_prompt_tokens, len(generate_ids))
-            response = template.decode(generate_ids, template_inputs=template_inputs[i])
-            finish_reason = self._get_finish_reason(generation_config.max_new_tokens, num_prompt_tokens, True)
-            toolcall = self._get_toolcall(response, template.tools_prompt)
-            choices = [
-                ChatCompletionResponseChoice(
-                    index=0,
-                    message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
-                    finish_reason=finish_reason,
-                    logprobs=logprobs)
-            ]
+                logprobs = self._get_logprobs(logprobs_list, generate_ids, generation_config.top_logprobs)
+                usage_info = self._update_usage_info(usage_info, len(generate_ids))
+                response = template.decode(generate_ids, template_inputs=template_inputs[i])
+                finish_reason = self._get_finish_reason(generation_config.max_new_tokens, num_prompt_tokens, True)
+                toolcall = self._get_toolcall(response, template.tools_prompt)
+                choices.append(
+                    ChatCompletionResponseChoice(
+                        index=j,
+                        message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
+                        finish_reason=finish_reason,
+                        logprobs=logprobs))
             res.append(ChatCompletionResponse(model=self.model_name, choices=choices, usage=usage_info))
         return res
 
@@ -375,6 +376,7 @@ class PtEngine(InferEngine):
         else:
             return res_or_gen[0]
 
+    # Ensure `template._post_encode` has no gradient.
     @torch.inference_mode()
     def _infer(
         self,
@@ -433,7 +435,7 @@ class PtEngine(InferEngine):
 
             return _gen_wrapper()
         else:
-            infer_func = self._infer_seq_cls if template.mode == 'seq_cls' else self._infer_full
+            infer_func = self._infer_forward if template.mode in ('seq_cls', 'prm') else self._infer_full
             return self._update_metrics(infer_func(**kwargs), metrics)
 
     def infer(
@@ -451,13 +453,14 @@ class PtEngine(InferEngine):
         if use_tqdm is None:
             use_tqdm = not request_config.stream and len(infer_requests) > 1
         prog_bar = tqdm(total=len(infer_requests), dynamic_ncols=True, disable=not use_tqdm)
-
+        # If self.max_batch_size is None or 0, then process all infer_requests at once.
+        max_batch_size = self.max_batch_size or len(infer_requests)
         if request_config.stream:
 
             def _gen_wrapper() -> Iterator[List[Optional[ChatCompletionStreamResponse]]]:
                 i = 0
                 while i < len(infer_requests):
-                    infer_requests_samples = infer_requests[i:i + self.max_batch_size]
+                    infer_requests_samples = infer_requests[i:i + max_batch_size]
                     gen = self._infer(
                         infer_requests_samples,
                         request_config,
@@ -466,9 +469,9 @@ class PtEngine(InferEngine):
                         adapter_request=adapter_request)
                     for response in gen:
                         res = [None] * len(infer_requests)
-                        res[i:i + self.max_batch_size] = response
+                        res[i:i + max_batch_size] = response
                         yield res
-                    i += self.max_batch_size
+                    i += max_batch_size
                     prog_bar.update(len(infer_requests_samples))
 
             return _gen_wrapper()
@@ -476,9 +479,9 @@ class PtEngine(InferEngine):
             res = []
             i = 0
             while i < len(infer_requests):
-                infer_requests_samples = infer_requests[i:i + self.max_batch_size]
+                infer_requests_samples = infer_requests[i:i + max_batch_size]
                 res += self._infer(
                     infer_requests_samples, request_config, metrics, template=template, adapter_request=adapter_request)
-                i += self.max_batch_size
+                i += max_batch_size
                 prog_bar.update(len(infer_requests_samples))
             return res

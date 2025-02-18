@@ -12,6 +12,8 @@ class LLMModelType:
     qwen2_moe = 'qwen2_moe'
     qwq = 'qwq'
 
+    qwen2_gte = 'qwen2_gte'
+
     codefuse_qwen = 'codefuse_qwen'
     modelscope_agent = 'modelscope_agent'
     marco_o1 = 'marco_o1'
@@ -42,11 +44,14 @@ class LLMModelType:
 
     internlm = 'internlm'
     internlm2 = 'internlm2'
+    internlm3 = 'internlm3'
 
     deepseek = 'deepseek'
     deepseek_moe = 'deepseek_moe'
     deepseek_v2 = 'deepseek_v2'
     deepseek_v2_5 = 'deepseek_v2_5'
+    deepseek_r1 = 'deepseek_r1'
+    deepseek_r1_distill = 'deepseek_r1_distill'
 
     openbuddy_llama = 'openbuddy_llama'
     openbuddy_llama3 = 'openbuddy_llama3'
@@ -68,6 +73,7 @@ class LLMModelType:
     zephyr = 'zephyr'
     mixtral = 'mixtral'
     mistral_nemo = 'mistral_nemo'
+    mistral_2501 = 'mistral_2501'
     wizardlm2 = 'wizardlm2'
     wizardlm2_moe = 'wizardlm2_moe'
 
@@ -75,6 +81,9 @@ class LLMModelType:
     phi3_small = 'phi3_small'
     phi3 = 'phi3'
     phi3_moe = 'phi3_moe'
+    phi4 = 'phi4'
+
+    minimax = 'minimax'
 
     gemma = 'gemma'
     gemma2 = 'gemma2'
@@ -98,12 +107,14 @@ class LLMModelType:
 
 class BertModelType:
     modern_bert = 'modern_bert'
+    modern_bert_gte = 'modern_bert_gte'
     bert = 'bert'
 
 
 class RMModelType:
     internlm2_reward = 'internlm2_reward'
     qwen2_reward = 'qwen2_reward'
+    qwen2_5_prm = 'qwen2_5_prm'
     qwen2_5_math_reward = 'qwen2_5_math_reward'
     llama3_2_reward = 'llama3_2_reward'
     gemma_reward = 'gemma_reward'
@@ -113,6 +124,7 @@ class MLLMModelType:
     qwen_vl = 'qwen_vl'
     qwen_audio = 'qwen_audio'
     qwen2_vl = 'qwen2_vl'
+    qwen2_5_vl = 'qwen2_5_vl'
     qwen2_audio = 'qwen2_audio'
     qvq = 'qvq'
     ovis1_6 = 'ovis1_6'
@@ -161,10 +173,14 @@ class MLLMModelType:
     deepseek_vl = 'deepseek_vl'
     deepseek_vl2 = 'deepseek_vl2'
     deepseek_janus = 'deepseek_janus'
+    deepseek_janus_pro = 'deepseek_janus_pro'
 
     minicpmv = 'minicpmv'
-    minicpmv2_6 = 'minicpmv2_6'
     minicpmv2_5 = 'minicpmv2_5'
+    minicpmv2_6 = 'minicpmv2_6'
+    minicpmo2_6 = 'minicpmo2_6'
+
+    minimax_vl = 'minimax_vl'
 
     mplug_owl2 = 'mplug_owl2'
     mplug_owl2_1 = 'mplug_owl2_1'
@@ -175,6 +191,7 @@ class MLLMModelType:
     emu3_gen = 'emu3_gen'
     emu3_chat = 'emu3_chat'
     got_ocr2 = 'got_ocr2'
+    step_audio = 'step_audio'
 
     phi3_vision = 'phi3_vision'
     florence = 'florence'
@@ -184,6 +201,7 @@ class MLLMModelType:
     molmoe = 'molmoe'
     pixtral = 'pixtral'
     megrez_omni = 'megrez_omni'
+    valley = 'valley'
 
 
 class ModelType(LLMModelType, MLLMModelType, BertModelType, RMModelType):

@@ -61,6 +61,7 @@ class VllmArguments:
         enforce_eager (bool): Flag to enforce eager execution. Default is False.
         limit_mm_per_prompt (Optional[str]): Limit multimedia per prompt. Default is None.
         vllm_max_lora_rank (int): Maximum LoRA rank. Default is 16.
+        enable_prefix_caching (bool): Flag to enable automatic prefix caching. Default is False.
     """
     # vllm
     gpu_memory_utilization: float = 0.9
@@ -70,8 +71,9 @@ class VllmArguments:
     max_model_len: Optional[int] = None
     disable_custom_all_reduce: bool = False
     enforce_eager: bool = False
-    limit_mm_per_prompt: Optional[Union[dict, str]] = None  # '{"image": 10, "video": 5}'
+    limit_mm_per_prompt: Optional[Union[dict, str]] = None  # '{"image": 5, "video": 2}'
     vllm_max_lora_rank: int = 16
+    enable_prefix_caching: bool = False
 
     def __post_init__(self):
         self.limit_mm_per_prompt = ModelArguments.parse_to_dict(self.limit_mm_per_prompt)
@@ -92,6 +94,7 @@ class VllmArguments:
             'max_lora_rank': self.vllm_max_lora_rank,
             'enable_lora': len(adapters) > 0,
             'max_loras': max(len(adapters), 1),
+            'enable_prefix_caching': self.enable_prefix_caching,
         }
 
 
@@ -112,6 +115,7 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
     infer_backend: Literal['vllm', 'pt', 'lmdeploy'] = 'pt'
 
     result_path: Optional[str] = None
+    metric: Literal['acc', 'rouge'] = None
     # for pt engine
     max_batch_size: int = 1
     ddp_backend: Optional[str] = None

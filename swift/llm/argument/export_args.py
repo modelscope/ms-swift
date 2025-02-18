@@ -35,7 +35,7 @@ class ExportArguments(MergeArguments, BaseArguments):
 
     # awq/gptq
     quant_method: Literal['awq', 'gptq', 'bnb'] = None
-    quant_n_samples: int = 128
+    quant_n_samples: int = 256
     max_length: int = 2048
     quant_batch_size: int = 1
     group_size: int = 128
@@ -52,6 +52,7 @@ class ExportArguments(MergeArguments, BaseArguments):
     commit_message: str = 'update files'
     # compat
     to_peft_format: bool = False
+    exist_ok: bool = False
 
     def _init_output_dir(self):
         if self.output_dir is None:
@@ -59,12 +60,12 @@ class ExportArguments(MergeArguments, BaseArguments):
             ckpt_dir, ckpt_name = os.path.split(ckpt_dir)
             if self.to_peft_format:
                 suffix = 'peft'
-            elif self.merge_lora:
-                suffix = 'merged'
             elif self.quant_method:
                 suffix = f'{self.quant_method}-int{self.quant_bits}'
             elif self.to_ollama:
                 suffix = 'ollama'
+            elif self.merge_lora:
+                suffix = 'merged'
             else:
                 return
 
@@ -72,9 +73,12 @@ class ExportArguments(MergeArguments, BaseArguments):
             logger.info(f'Setting args.output_dir: {self.output_dir}')
 
         self.output_dir = to_abspath(self.output_dir)
-        assert not os.path.exists(self.output_dir), f'args.output_dir: {self.output_dir} already exists.'
+        if not self.exist_ok and os.path.exists(self.output_dir):
+            raise FileExistsError(f'args.output_dir: {self.output_dir} already exists.')
 
     def __post_init__(self):
+        if self.quant_batch_size == -1:
+            self.quant_batch_size = None
         if self.quant_bits and self.quant_method is None:
             raise ValueError('Please specify the quantization method using `--quant_method awq/gptq/bnb`.')
         if self.quant_method and self.quant_bits is None:

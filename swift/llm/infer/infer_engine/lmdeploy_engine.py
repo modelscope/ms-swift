@@ -34,21 +34,23 @@ logger = get_logger()
 class LmdeployEngine(InferEngine):
 
     def __init__(
-            self,
-            model_id_or_path: str,
-            torch_dtype: Optional[torch.dtype] = None,
-            *,
-            model_type: Optional[str] = None,
-            use_hf: Optional[bool] = None,
-            hub_token: Optional[str] = None,
-            revision: Optional[str] = None,
-            # engine_kwargs
-            tp: int = 1,
-            session_len: Optional[int] = None,
-            cache_max_entry_count: float = 0.8,
-            quant_policy: int = 0,  # e.g. 4, 8
-            vision_batch_size: int = 1,  # max_batch_size in VisionConfig
-            engine_kwargs: Optional[Dict[str, Any]] = None) -> None:
+        self,
+        model_id_or_path: str,
+        torch_dtype: Optional[torch.dtype] = None,
+        *,
+        model_type: Optional[str] = None,
+        use_hf: Optional[bool] = None,
+        hub_token: Optional[str] = None,
+        revision: Optional[str] = None,
+        # engine_kwargs
+        tp: int = 1,
+        session_len: Optional[int] = None,
+        cache_max_entry_count: float = 0.8,
+        quant_policy: int = 0,  # e.g. 4, 8
+        vision_batch_size: int = 1,  # max_batch_size in VisionConfig
+        device: Optional[List[int]] = None,
+        engine_kwargs: Optional[Dict[str, Any]] = None,
+    ) -> None:
 
         self.processor = get_model_tokenizer(
             model_id_or_path,
@@ -69,6 +71,7 @@ class LmdeployEngine(InferEngine):
             cache_max_entry_count=cache_max_entry_count,
             quant_policy=quant_policy,
             vision_batch_size=vision_batch_size,
+            device=device,
             engine_kwargs=engine_kwargs)
 
         self.config.torch_dtype = torch_dtype
@@ -81,6 +84,7 @@ class LmdeployEngine(InferEngine):
                                cache_max_entry_count: float = 0.8,
                                quant_policy: int = 0,
                                vision_batch_size: int = 1,
+                               device: Optional[List[int]] = None,
                                engine_kwargs: Optional[Dict[str, Any]] = None):
         if engine_kwargs is None:
             engine_kwargs = {}
@@ -88,9 +92,12 @@ class LmdeployEngine(InferEngine):
         engine_kwargs['session_len'] = session_len
         engine_kwargs['cache_max_entry_count'] = cache_max_entry_count
         engine_kwargs['quant_policy'] = quant_policy
-
         backend_config = TurbomindEngineConfig(**engine_kwargs)
         backend_config = autoget_backend_config(self.model_dir, backend_config)
+        if hasattr(backend_config, 'devices'):
+            if device is None:
+                device = [0]
+            backend_config.devices = device
         if isinstance(backend_config, PytorchEngineConfig):
             backend_config.thread_safe = True
         self.backend_config = backend_config
@@ -130,7 +137,7 @@ class LmdeployEngine(InferEngine):
             max_new_tokens = kwargs.get('max_new_tokens')
             if max_new_tokens is None:
                 kwargs.pop('max_new_tokens', None)
-            parameters = inspect.signature(LmdeployGenerationConfig.__init__).parameters
+            parameters = inspect.signature(LmdeployGenerationConfig).parameters
             for k, v in kwargs.copy().items():
                 if k not in parameters or v is None:
                     kwargs.pop(k)
@@ -181,7 +188,9 @@ class LmdeployEngine(InferEngine):
             if request_config.top_logprobs is not None:
                 kwargs['logprobs'] = max(1, request_config.top_logprobs)
 
-        return LmdeployGenerationConfig(**kwargs)
+        res = LmdeployGenerationConfig(**kwargs)
+        res.top_logprobs = request_config.top_logprobs
+        return res
 
     async def _infer_stream_async(
             self, template: Template, inputs: Dict[str, Any],
@@ -204,8 +213,8 @@ class LmdeployEngine(InferEngine):
                 if not delta_text and not is_finished:
                     continue
 
-                logprobs = self._get_logprobs(template.tokenizer, output.logprobs, output.token_ids[token_idx:],
-                                              generation_config.logprobs)
+                logprobs = self._get_logprobs(output.logprobs, output.token_ids[token_idx:],
+                                              generation_config.top_logprobs)
                 token_idx = len(output.token_ids)
 
                 usage_info = self._get_usage_info(len(inputs['input_ids']), output.num_token)
@@ -234,7 +243,7 @@ class LmdeployEngine(InferEngine):
                 pass
 
         response = template.decode(output.token_ids)
-        logprobs = self._get_logprobs(template.tokenizer, output.logprobs, output.token_ids, generation_config.logprobs)
+        logprobs = self._get_logprobs(output.logprobs, output.token_ids, generation_config.top_logprobs)
 
         usage_info = self._get_usage_info(len(inputs['input_ids']), output.num_token)
         toolcall = self._get_toolcall(response, template.tools_prompt)

@@ -16,7 +16,7 @@ The command line inference can be referred to via the link provided in the secon
 - The `single-line` command switches to single-line mode.
 - The `clear` command clears the history.
 - The `exit` command exits the application.
-If the query involves multimodal data, add tags like <image>/<video>/<audio>. For example, input `<image>What is in the image?`, and you can then input the image address.
+If the query involves multimodal data, add tags like `<image>/<video>/<audio>`. For example, input `<image>What is in the image?`, and you can then input the image address.
 
 ## Inference Acceleration Backend
 You can perform inference and deployment using `swift infer/deploy`. Currently, SWIFT supports three inference frameworks: pt (native torch), vLLM, and LMDeploy. You can switch between them using `--infer_backend pt/vllm/lmdeploy`. Apart from pt, both vLLM and LMDeploy have their own model support ranges. Please refer to their official documentation to verify availability and prevent runtime errors.

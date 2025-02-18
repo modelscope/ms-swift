@@ -43,8 +43,8 @@ The parameters for pushing the model during export are the same as those for tra
 CUDA_VISIBLE_DEVICES=0 swift export \
     --adapters output/vx-xxx/checkpoint-xxx \
     --push_to_hub true \
-    --hub_model_id '<your-model-id>' \
-    --hub_token '<your-sdk-token>'
+    --hub_model_id '<model-id>' \
+    --hub_token '<sdk-token>'
 ```
 
 This allows you to push the LoRA merged or quantized model directly to ModelScope.

@@ -1,6 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import wraps
 from types import MethodType
@@ -59,7 +58,7 @@ class ModelInfo:
 
     # extra
     config: Optional[PretrainedConfig] = None
-    task_type: Literal['causal_lm', 'seq_cls', None] = None
+    task_type: Literal['causal_lm', 'seq_cls', 'embedding', None] = None
     num_labels: Optional[int] = None
 
     def __post_init__(self):
@@ -119,6 +118,12 @@ class HfConfigFactory:
                 config[attr_name] = value
             else:
                 setattr(config, attr_name, value)
+
+    @staticmethod
+    def set_model_config_attr(model, attr_name: str, value: Any) -> None:
+        for module in model.modules():
+            if getattr(module, 'config', None) and getattr(module.config, attr_name, value) != value:
+                setattr(module.config, attr_name, value)
 
     @staticmethod
     def get_max_model_len(config: Union[PretrainedConfig, Dict[str, Any]]) -> Optional[int]:
@@ -202,6 +207,8 @@ class HfConfigFactory:
         res = {}
         for model_type, model_meta in MODEL_MAPPING.items():
             architectures = model_meta.architectures
+            if not architectures:
+                architectures.append('null')
             for arch in architectures:
                 if arch not in res:
                     res[arch] = []
@@ -211,7 +218,7 @@ class HfConfigFactory:
     @staticmethod
     def get_matched_model_types(config: Union[PretrainedConfig, Dict[str, Any]]) -> List[str]:
         """Get possible model_type."""
-        arch = HfConfigFactory.get_config_attr(config, 'architectures')
+        arch = HfConfigFactory.get_config_attr(config, 'architectures') or ['null']
         if arch:
             arch = arch[0]
         arch_mapping = HfConfigFactory._get_arch_mapping()
@@ -224,6 +231,7 @@ def safe_snapshot_download(model_id_or_path: str,
                            use_hf: Optional[bool] = None,
                            hub_token: Optional[str] = None,
                            ignore_patterns: Optional[List[str]] = None,
+                           check_local: bool = False,
                            **kwargs) -> str:
     """Download model protected by DDP context
 
@@ -236,6 +244,12 @@ def safe_snapshot_download(model_id_or_path: str,
     Returns:
         model_dir
     """
+    if check_local:
+        model_suffix = model_id_or_path.rsplit('/', 1)[-1]
+        if os.path.exists(model_suffix):
+            model_dir = os.path.abspath(os.path.expanduser(model_suffix))
+            logger.info(f'Loading the model using local model_dir: {model_dir}')
+            return model_dir
     if ignore_patterns is None:
         ignore_patterns = []
     ignore_patterns += [
@@ -311,7 +325,7 @@ def use_submodel_func(model, submodel_name: str, func_list: Optional[List[str]] 
     submodel = getattr(model, submodel_name)
 
     def _get_new_func(func_name: str):
-        _old_func = getattr(submodel.__class__, func_name)
+        _old_func = getattr(submodel, func_name).__func__
 
         @wraps(_old_func)
         def _new_func(self, *args, **kwargs):
@@ -332,19 +346,3 @@ def use_submodel_func(model, submodel_name: str, func_list: Optional[List[str]] 
             submodel.__class__.device = model.device
         if key == 'forward' and 'generate' in func_list:
             setattr(submodel, key, MethodType(_get_new_func(key), submodel))  # fix device_map
-
-
-@contextmanager
-def ignore_check_imports():
-    import transformers.dynamic_module_utils as td
-
-    @wraps(td.check_imports)
-    def _check_imports(filename) -> List[str]:
-        return td.get_relative_imports(filename)
-
-    _old_check_imports = td.check_imports
-    td.check_imports = _check_imports
-    try:
-        yield
-    finally:
-        td.check_imports = _old_check_imports
