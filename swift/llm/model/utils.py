@@ -58,7 +58,6 @@ class ModelInfo:
 
     # extra
     rope_scaling: Optional[Dict[str, Any]] = None
-    architectures: Optional[List[str]] = None
     config: Optional[PretrainedConfig] = None
     task_type: Literal['causal_lm', 'seq_cls', 'embedding', None] = None
     num_labels: Optional[int] = None
