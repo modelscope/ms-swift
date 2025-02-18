@@ -133,9 +133,6 @@ outputs/
 benchmarks/
 eval_output/
 eval_outputs/
-transformers/
-vlmeval/
-my_model/
 /data
 result/
 images
