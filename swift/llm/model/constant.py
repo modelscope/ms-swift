@@ -129,6 +129,7 @@ class MLLMModelType:
     qvq = 'qvq'
     ovis1_6 = 'ovis1_6'
     ovis1_6_llama3 = 'ovis1_6_llama3'
+    ovis2 = 'ovis2'
 
     glm4v = 'glm4v'
     glm_edge_v = 'glm_edge_v'
