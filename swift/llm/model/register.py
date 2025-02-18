@@ -371,10 +371,10 @@ def _get_arch_mapping():
 def get_matched_model_types(architectures: Optional[List[str]]) -> List[str]:
     """Get possible model_type."""
     architectures = architectures or ['nulll']
-    if arch:
-        arch = arch[0]
+    if architectures:
+        arch = architectures[0]
     arch_mapping = _get_arch_mapping()
-    return arch_mapping.get(arch) or []
+    return arch_mapping.get(architectures) or []
 
 
 def _get_model_info(model_dir: str, model_type: Optional[str], quantization_config) -> ModelInfo:
