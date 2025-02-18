@@ -373,7 +373,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if 'wandb' in self.args.report_to and wandb.run is not None and self.accelerator.is_main_process:
                 import pandas as pd
                 df = pd.DataFrame(table)
-                wandb.log({'completions': wandb.Table(dataframe=df)})
+                wandb.log({f'completions_{self.state.global_step}': wandb.Table(dataframe=df)})
 
         return outputs
 

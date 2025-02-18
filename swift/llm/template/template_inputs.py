@@ -151,7 +151,10 @@ class StdTemplateInputs:
             if isinstance(tools, str):
                 tools = json.loads(tools)
             if add_system_and_tools:
-                system += '\n\n'
+                if system:
+                    system += '\n\n'
+                else:
+                    system = ''
                 system += get_tools_prompt(tools, tools_prompt)
             else:
                 system = get_tools_prompt(tools, tools_prompt)

@@ -586,13 +586,17 @@ class XlamFunctionCallingPreprocessor(ResponsePreprocessor):
             answers = json.loads(answers)
         answer = np.random.choice(answers)
         name = answer['name']
-        args = answer['arguments']
+        args = json.dumps(answer['arguments'])
         response = f'Action: {name}\nAction Input: {args}'
         key = 'response' if self.response else 'solution'
         row = {
             'query': query,
             key: response,
+            'tools': row['tools']
         }
+        if not self.response:
+            row['system'] = 'A conversation for tool calling between User and Assistant. The user asks a question which may be solved by calling tools, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning process should be enclosed within <think> </think>tags and answer should follow the ReACT format(Action:xxx\nAction Input:xxx), i.e., <think> reasoning process here </think> Action: action here\nAction Input: parameters here\n\nHere show the tools:',
+
         return super().preprocess(row)
 
 
