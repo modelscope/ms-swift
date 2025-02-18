@@ -116,11 +116,8 @@ class ReactORM(ORM):
         else:
             predictions = infer_requests
         for prediction, ground_truth in zip(predictions, solution):
-<<<<<<< HEAD
             if prediction.endswith('Observation:'):
                 prediction = prediction[:prediction.index('Observation:')].strip()
-=======
->>>>>>> 0d3270d5b356a16853a43653cfd54d522445e281
             action_ref = []
             action_input_ref = []
             action_pred = []
