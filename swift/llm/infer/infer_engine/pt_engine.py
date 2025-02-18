@@ -13,7 +13,7 @@ from tqdm import tqdm
 from transformers import GenerationConfig, LogitsProcessorList
 from transformers.utils import is_torch_npu_available
 
-from swift.llm import InferRequest, Template, get_model_tokenizer, safe_snapshot_download, to_device, MaxLengthError
+from swift.llm import InferRequest, Template, get_model_tokenizer, safe_snapshot_download, to_device
 from swift.plugin import Metric
 from swift.tuners import Swift
 from swift.utils import get_logger

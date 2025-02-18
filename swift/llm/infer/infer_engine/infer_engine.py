@@ -79,9 +79,10 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
 
         while n_finished < len(new_tasks):
             i, output = queue.get()
-            if isinstance(output, Exception):
-                raise output
-            elif output is None:  # is_finished
+            if output is None or isinstance(output, Exception):
+                # is_finished
+                if isinstance(output, Exception):
+                    outputs[i] = output
                 n_finished += 1
                 prog_bar.update()
             else:
