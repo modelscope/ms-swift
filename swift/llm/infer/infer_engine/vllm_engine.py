@@ -134,6 +134,8 @@ class VllmEngine(InferEngine):
                 'The current version of VLLM does not support `limit_mm_per_prompt`. Please upgrade VLLM.')
 
         model_info = self.model_info
+        if self.config.architectures is None:
+            self.config.architectures = self.model_info.architectures
         engine_args = AsyncEngineArgs(
             model=self.model_dir,
             dtype=dtype_mapping[model_info.torch_dtype],
