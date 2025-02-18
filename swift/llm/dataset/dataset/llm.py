@@ -575,15 +575,23 @@ register_dataset(
 
 class XlamFunctionCallingPreprocessor(ResponsePreprocessor):
 
+    def __init__(self, response=True):
+        self.response = response
+        super().__init__()
+
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         query = row['query']
-        answers = row['answers']
+        answers = row['response']
         if isinstance(answers, str):
             answers = json.loads(answers)
         answer = np.random.choice(answers)
+        name = answer['name']
+        args = answer['arguments']
+        response = f'Action: {name}\nAction Input: {args}'
+        key = 'response' if self.response else 'solution'
         row = {
             'query': query,
-            'response': answer
+            key: response,
         }
         return super().preprocess(row)
 
@@ -591,9 +599,29 @@ class XlamFunctionCallingPreprocessor(ResponsePreprocessor):
 register_dataset(
     DatasetMeta(
         ms_dataset_id='LLM-Research/xlam-function-calling-60k',
-        preprocess_func=XlamFunctionCallingPreprocessor,
-        split=['train'],
+        subsets=[
+            SubsetDataset(
+                name='default',
+                subset='dataset',
+                split=['train'],
+                preprocess_func=XlamFunctionCallingPreprocessor(response=True),
+            ),
+            SubsetDataset(
+                name='grpo',
+                subset='dataset',
+                split=['train'],
+                preprocess_func=XlamFunctionCallingPreprocessor(response=False),
+            ),
+        ],
         tags=['agent']))
+
+
+class HHRLHFCNPreprocessor(MessagesPreprocessor):
+
+    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        row['messages'].append(row.pop('chosen'))
+        row['rejected_response'] = row['rejected']['text']
+        return super().preprocess(row)
 
 
 register_dataset(
