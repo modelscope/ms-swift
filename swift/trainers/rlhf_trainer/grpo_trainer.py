@@ -219,7 +219,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def _move_model_to_vllm_lmdeploy(self):
         from accelerate.utils.other import is_compiled_module
         with unwrap_model_for_generation(
-                self.model_wrapped, self.accelerator,
+                self.model, self.accelerator,
                 gather_deepspeed3_params=self.args.ds3_gather_for_generation) as unwrapped_model:
             if is_compiled_module(unwrapped_model):
                 unwrapped_model = unwrapped_model._orig_mod
