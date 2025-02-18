@@ -372,6 +372,7 @@ class Ovis1_6Template(Template):
 
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
         padding_side = self.padding_side if self.is_training else 'left'
+        self.model.config.multimodal_max_length = self.max_length
         _, inputs_embeds, labels, attention_mask = self.model.merge_multimodal(
             text_input_ids=inputs['input_ids'],
             text_attention_masks=torch.ones_like(inputs['input_ids']),  # not use, only compat
@@ -407,7 +408,7 @@ register_template(
     ))
 
 register_template(
-    Qwen2_5TemplateMeta(
+    QwenTemplateMeta(
         MLLMTemplateType.ovis2,
         template_cls=Ovis1_6Template,
         placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
