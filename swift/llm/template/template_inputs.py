@@ -126,8 +126,11 @@ class StdTemplateInputs:
         return bool(self.images or self.audios or self.videos or self.objects)
 
     @classmethod
-    def from_dict(cls, inputs: Dict[str, Any], *,
-                  tools_prompt: str = 'react_en', add_system_and_tools=False) -> 'StdTemplateInputs':
+    def from_dict(cls,
+                  inputs: Dict[str, Any],
+                  *,
+                  tools_prompt: str = 'react_en',
+                  add_system_and_tools=False) -> 'StdTemplateInputs':
         from swift.plugin import get_tools_prompt, get_tools_keyword
         kwargs = {}
         for key in ['rejected_response', 'label']:

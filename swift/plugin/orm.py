@@ -109,8 +109,7 @@ class ReactORM(ORM):
         action, action_input = ReactORM.parse_action(text)
         return action, action_input
 
-    def __call__(self, infer_requests: List[Union[InferRequest, Dict]], solution: List[str],
-                 **kwargs) -> List[float]:
+    def __call__(self, infer_requests: List[Union[InferRequest, Dict]], solution: List[str], **kwargs) -> List[float]:
         rewards = []
         if not isinstance(infer_requests[0], str):
             predictions = [request['messages'][-1]['content'] for request in infer_requests]

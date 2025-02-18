@@ -52,7 +52,7 @@ Begin!
     tool_descs = [json.dumps(t, ensure_ascii=False) if not isinstance(t, str) else t for t in tool_descs]
     return REACT_PROMPT.format(tool_list='\n\n'.join(tool_descs), tool_names=','.join(tool_names))
 
-    
+
 def format_react_zh(tool_names, tool_descs):
     REACT_ZH_PROMPT = """尽你所能回答以下问题。你拥有如下工具：
 

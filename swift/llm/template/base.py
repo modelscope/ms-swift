@@ -272,8 +272,8 @@ class Template(ProcessorMixin):
             inputs = deepcopy(inputs)
             if not self.is_training:
                 InferRequest.remove_response(inputs['messages'])
-            inputs = StdTemplateInputs.from_dict(inputs, tools_prompt=self.tools_prompt,
-                                                 add_system_and_tools=self.add_system_and_tools)
+            inputs = StdTemplateInputs.from_dict(
+                inputs, tools_prompt=self.tools_prompt, add_system_and_tools=self.add_system_and_tools)
         elif isinstance(inputs, StdTemplateInputs):
             inputs = deepcopy(inputs)
 
