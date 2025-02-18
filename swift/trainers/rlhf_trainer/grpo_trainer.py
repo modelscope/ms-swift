@@ -425,3 +425,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         logits = logits[:, -(logits_to_keep + 1):-1, :]
         input_ids = input_ids[:, -logits_to_keep:]
         return selective_log_softmax(logits, input_ids)  # compute logprobs for the input tokens
+
+    def evaluation_loop(self, *args, **kwargs):
+        metric_key_prefix = kwargs['metric_key_prefix']
+        output = super().evaluation_loop(*args, **kwargs)
+        metrics = {f'{metric_key_prefix}_{key}': sum(val) / len(val) for key, val in self._metrics.items()}
+        output.metrics.update(metrics)
+        return output
