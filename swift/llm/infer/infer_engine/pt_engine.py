@@ -420,6 +420,8 @@ class PtEngine(InferEngine):
                 except Exception as e:
                     error_list.append((i, e))
                     continue
+        if len(batched_inputs) == 0 and len(error_list) > 0:
+            raise error_list[0][1]
         template_inputs = [inputs.pop('template_inputs') for inputs in batched_inputs]
         inputs = to_device(template.data_collator(batched_inputs), self.model.device)
         template.debug_logger(inputs)  # debug
