@@ -15,7 +15,7 @@ from transformers.utils.versions import require_version
 from trl import GRPOTrainer as HFGRPOTrainer
 from trl.models import unwrap_model_for_generation
 
-from swift.llm import InferRequest, RequestConfig, to_device, RowPreprocessor
+from swift.llm import InferRequest, RequestConfig, RowPreprocessor, to_device
 from swift.plugin import orms
 from swift.utils import (JsonlWriter, get_device, get_device_count, get_dist_setting, get_logger, is_lmdeploy_available,
                          is_vllm_available, is_wandb_available)
