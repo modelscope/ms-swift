@@ -192,6 +192,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             top_p=args.top_p,
             top_k=args.top_k,
             repetition_penalty=args.repetition_penalty,
+            stop=args.stop_words,
         )
 
         self.model_accepts_loss_kwargs = False

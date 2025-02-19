@@ -20,7 +20,7 @@ swift rlhf \
     --max_completion_length 1024 \
     --reward_funcs toolbench react_format \
     --num_generations 49 \
-    --use_lmdeploy true \
+    --use_vllm true \
     --vllm_gpu_memory_utilization 0.7 \
     --deepspeed zero3 \
     --temperature 1.0 \
