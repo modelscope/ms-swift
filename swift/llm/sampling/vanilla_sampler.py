@@ -133,8 +133,10 @@ class VanillaSampler(Sampler):
             resps = row
             resps['choices'] = []
             for j in range(self.args.num_return_sequences * _cur, self.args.num_return_sequences * (_cur + 1)):
-                resps['choices'].append(resp_list[j].choices[0].message.content)
-            resp_all.append(resps)
+                if resp_list[j].choices[0].message.content:
+                    resps['choices'].append(resp_list[j].choices[0].message.content)
+            if resps['choices']:
+                resp_all.append(resps)
             _cur += 1
         return resp_all
 

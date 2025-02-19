@@ -109,11 +109,13 @@ class ReactORM(ORM):
         action, action_input = ReactORM.parse_action(text)
         return action, action_input
 
-    def __call__(self, infer_requests: List[Union[InferRequest, Dict]], ground_truths: List[str],
-                 **kwargs) -> List[float]:
+    def __call__(self, infer_requests: List[Union[InferRequest, Dict]], solution: List[str], **kwargs) -> List[float]:
         rewards = []
-        predictions = [request['messages'][-1]['content'] for request in infer_requests]
-        for prediction, ground_truth in zip(predictions, ground_truths):
+        if not isinstance(infer_requests[0], str):
+            predictions = [request['messages'][-1]['content'] for request in infer_requests]
+        else:
+            predictions = infer_requests
+        for prediction, ground_truth in zip(predictions, solution):
             action_ref = []
             action_input_ref = []
             action_pred = []
@@ -280,6 +282,15 @@ class Format(ORM):
         return [1.0 if match else 0.0 for match in matches]
 
 
+class ReActFormat(ORM):
+
+    def __call__(self, completions, **kwargs) -> List[float]:
+        """Reward function that checks if the completion has a specific format."""
+        pattern = r'^<think>.*?</think>\s*Action:.*?Action Input:.*?$'
+        matches = [re.match(pattern, content, re.DOTALL | re.MULTILINE) for content in completions]
+        return [1.0 if match else 0.0 for match in matches]
+
+
 class CosineReward(ORM):
     # https://arxiv.org/abs/2502.03373
     def __init__(
@@ -397,6 +408,7 @@ orms = {
     'math': MathORM,
     'accuracy': MathAccuracy,
     'format': Format,
+    'react_format': ReActFormat,
     'cosine': CosineReward,
     'repetition': RepetitionPenalty,
 }

@@ -11,7 +11,7 @@ swift rlhf \
     --train_type lora \
     --use_vllm true \
     --vllm_device auto \
-    --vllm_gpu_memory_utilization 0.7 \
+    --vllm_gpu_memory_utilization 0.5 \
     --vllm_max_model_len 8192 \
     --lora_rank 8 \
     --lora_alpha 32 \
