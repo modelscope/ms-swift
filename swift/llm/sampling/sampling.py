@@ -30,6 +30,11 @@ class SwiftSampling(SwiftPipeline):
         elif self.args.sampler_type == 'mcts':
             from swift.llm.sampling.mcts import MctsSampler
             self.sampler = MctsSampler(self.args)
+        elif self.args.sampler_type == 'distill':
+            from swift.llm.sampling.distill_sampler import DistillSampler
+            self.sampler = DistillSampler(self.args)
+        else:
+            raise ValueError(f'Unsupported sampler type: {self.args.sampler_type}')
 
     def _get_dataset(self):
         args = self.args
