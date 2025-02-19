@@ -4,7 +4,6 @@ import shutil
 import sys
 
 from transformers import AutoModel
-from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.llm import TemplateType
 from ..constant import MLLMModelType
