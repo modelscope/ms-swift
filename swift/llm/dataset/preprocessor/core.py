@@ -222,16 +222,17 @@ class RowPreprocessor:
         if safe_columns:
             dataset = dataset.rename_columns(safe_columns)
 
+        return dataset
+
+    def _rename_columns(self, dataset: DATASET_TYPE) -> DATASET_TYPE:
+        dataset = self.safe_rename_columns(dataset, self.origin_columns)
+        dataset = self.safe_rename_columns(dataset, self.columns)
         if isinstance(dataset, HfIterableDataset):
             # fix: https://github.com/huggingface/datasets/issues/6408
             columns = {k: f'__@{k}' for k in RowPreprocessor.standard_keys if k in dataset.features}
             if columns:
                 dataset = dataset.rename_columns(columns)
         return dataset
-
-    def _rename_columns(self, dataset: DATASET_TYPE) -> DATASET_TYPE:
-        dataset = self.safe_rename_columns(dataset, self.origin_columns)
-        return self.safe_rename_columns(dataset, self.columns)
 
     @staticmethod
     def remove_useless_columns(dataset: DATASET_TYPE) -> DATASET_TYPE:
