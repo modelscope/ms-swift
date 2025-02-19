@@ -119,7 +119,7 @@ This parameter list inherits from transformers `Seq2SeqTrainingArguments`, with 
 - logging_first_step: Whether to log the first step, defaults to True.
 - logging_steps: Interval for logging, defaults to 5.
 - predict_with_generate: Whether to use generative method during validation, default is False.
-- metric_for_best_model: The default is None, which means it is set to 'loss' when `predict_with_generate` is set to False, otherwise it is set to 'rouge-l' (No default value is set during PPO and GRPO training).
+- metric_for_best_model: Default is None, which means that when predict_with_generate is set to False, it is set to 'loss'; otherwise, it is set to 'rouge-l' (during PPO training, the default value is not set; in GRPO training, it is set to 'reward').
 - greater_is_better: Defaults to None, which sets it to False when `metric_for_best_model` contains 'loss', otherwise sets to True.
 
 Other important parameters:
@@ -560,8 +560,8 @@ For the meaning of the arguments, please refer to [here](https://modelscope.cn/m
 - INIT_TTS: Default is False
 - INIT_AUDIO: Default is False
 
-### ovis1_6
-- MAX_PARTITION: Refer to [here](https://github.com/AIDC-AI/Ovis/blob/d248e34d755a95d24315c40e2489750a869c5dbc/ovis/model/modeling_ovis.py#L312)
+### ovis1_6, ovis2
+- MAX_PARTITION: Default is 9, refer to [here](https://github.com/AIDC-AI/Ovis/blob/d248e34d755a95d24315c40e2489750a869c5dbc/ovis/model/modeling_ovis.py#L312)
 
 ### mplug_owl3, mplug_owl3_241101
 - MAX_NUM_FRAMES: Default is 16, refer to [here](https://modelscope.cn/models/iic/mPLUG-Owl3-7B-240728)

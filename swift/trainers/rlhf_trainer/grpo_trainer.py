@@ -15,7 +15,7 @@ from transformers.utils.versions import require_version
 from trl import GRPOTrainer as HFGRPOTrainer
 from trl.models import unwrap_model_for_generation
 
-from swift.llm import InferRequest, RequestConfig, to_device
+from swift.llm import InferRequest, RequestConfig, RowPreprocessor, to_device
 from swift.plugin import orms
 from swift.utils import (JsonlWriter, get_device, get_device_count, get_dist_setting, get_logger, is_lmdeploy_available,
                          is_vllm_available, is_wandb_available)
@@ -51,10 +51,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 if reward_func in orms:
                     reward_func_class = orms[reward_func]
                     reward_func_args = list(inspect.signature(reward_func_class.__init__).parameters)
-                    reward_func_args = [
-                        getattr(args, param) for param in reward_func_args if param not in ['self', 'args', 'kwargs']
-                    ]
-                    reward_funcs[i] = reward_func_class(*reward_func_args)
+                    reward_func_kwargs = {
+                        key: getattr(args, key)
+                        for key in reward_func_args if key not in ['self', 'args', 'kwargs'] and hasattr(args, key)
+                    }
+                    reward_funcs[i] = reward_func_class(**reward_func_kwargs)
                 elif not callable(reward_func):
                     raise ValueError(f'reward_function {reward_func} is not implemented in swift.llm.plugin')
 
@@ -154,17 +155,17 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             max_model_len=args.vllm_max_model_len)
                     self.engine.default_template = self.template
                 elif use_lmdeploy:
-                    # https://github.com/tastelikefeet/lmdeploy.git@feat/reload_state_dict
+                    # https://github.com/tastelikefeet/lmdeploy.git@feat/reload_state_dict_064
                     # Compile:https://github.com/tastelikefeet/lmdeploy/blob/main/docs/en/get_started/installation.md
                     if not is_lmdeploy_available():
                         raise ImportError('Please install `pip install lmdeploy==0.6.4`'
                                           ' and replace three files with:\n'
                                           '1. https://github.com/tastelikefeet/lmdeploy/blob/feat/'
-                                          'reload_state_dict/lmdeploy/messages.py\n'
+                                          'reload_state_dict_064/lmdeploy/messages.py\n'
                                           '2. https://github.com/tastelikefeet/lmdeploy/blob/feat/'
-                                          'reload_state_dict/lmdeploy/turbomind/turbomind.py\n'
+                                          'reload_state_dict_064/lmdeploy/turbomind/turbomind.py\n'
                                           '3. https://github.com/tastelikefeet/lmdeploy/blob/feat/'
-                                          'reload_state_dict/lmdeploy/turbomind/deploy/loader.py\n')
+                                          'reload_state_dict_064/lmdeploy/turbomind/deploy/loader.py\n')
                     from swift.llm import LmdeployEngine
                     from swift.tuners import Swift
                     with Swift.grpo_context(model, self.template.processor):
@@ -192,6 +193,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             top_p=args.top_p,
             top_k=args.top_k,
             repetition_penalty=args.repetition_penalty,
+            stop=args.stop_words,
         )
 
         self.model_accepts_loss_kwargs = False
@@ -325,7 +327,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     rewards_per_func[:, i] = reward_func(**reward_inputs).logits[:, 0]
             else:
                 # Repeat all input columns (but "messages" and "completion") to match the number of generations
-                reward_kwargs = {key: [example[key] for example in inputs] for key in inputs[0]}
+                reward_kwargs = RowPreprocessor.rows_to_batched(inputs)
                 output_reward_func = reward_func(completions, **reward_kwargs)
                 rewards_per_func[:, i] = torch.tensor(output_reward_func, dtype=torch.float32, device=device)
 
@@ -425,3 +427,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         logits = logits[:, -(logits_to_keep + 1):-1, :]
         input_ids = input_ids[:, -logits_to_keep:]
         return selective_log_softmax(logits, input_ids)  # compute logprobs for the input tokens
+
+    def evaluation_loop(self, *args, **kwargs):
+        metric_key_prefix = kwargs['metric_key_prefix']
+        output = super().evaluation_loop(*args, **kwargs)
+        metrics = {f'{metric_key_prefix}_{key}': sum(val) / len(val) for key, val in self._metrics.items()}
+        output.metrics.update(metrics)
+        return output

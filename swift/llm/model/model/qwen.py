@@ -651,6 +651,8 @@ register_model(
 
 def get_model_tokenizer_ovis(*args, **kwargs):
     model, tokenizer = get_model_tokenizer_with_flash_attn(*args, **kwargs)
+    model.visual_tokenizer.to(model.dtype)
+    model.vte.to(model.dtype)
     if model is not None:
         model.generation_config.cache_implementation = None
         func_list = ['generate', 'forward', 'get_input_embeddings']

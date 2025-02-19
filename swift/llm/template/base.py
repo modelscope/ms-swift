@@ -559,7 +559,8 @@ class Template(ProcessorMixin):
 
         for context, loss_scale in zip(context_list, loss_scale_list):
             for k in ['image', 'video', 'audio']:
-                if context == f'<{k}>' and inputs.is_multimodal:
+                if context == f'<{k}>' and inputs.is_multimodal and getattr(inputs, f'{k}_idx') < len(
+                        getattr(inputs, f'{k}s')):
                     c_list = self.replace_tag(k, getattr(inputs, f'{k}_idx'), inputs)
                     setattr(inputs, f'{k}_idx', getattr(inputs, f'{k}_idx') + 1)
                     loss_scale = 0.
@@ -597,9 +598,12 @@ class Template(ProcessorMixin):
                 num_media_tags = len(re.findall(media_tag, total_content))
                 num_media = len(medias)
                 num_new_tags = num_media - num_media_tags
-                assert num_new_tags >= 0, (
-                    f'num_media: {num_media}, num_media_tags: {num_media_tags}, total_content: {total_content}')
-                inputs.messages[0]['content'] = media_tag * num_new_tags + inputs.messages[0]['content']
+                if num_new_tags > 0:
+                    inputs.messages[0]['content'] = media_tag * num_new_tags + inputs.messages[0]['content']
+                elif num_new_tags < 0:
+                    logger.warning(
+                        f'num_media: {num_media}, num_media_tags: {num_media_tags}, total_content: {total_content}. '
+                        'We will only replace the frontmost media_tags while keeping the subsequent media_tags.')
 
     def _encode_context_list(
             self,
@@ -669,10 +673,10 @@ class Template(ProcessorMixin):
         res_context_types: List[ContextType] = []
         sep_token = None
         if template_meta.auto_add_bos:
-            all_tokens = self.tokenizer.encode('0')
-            single_zero = self.tokenizer.encode('0', add_special_tokens=False)
-            assert len(single_zero) == 1
-            idx = all_tokens.index(single_zero[0])
+            all_tokens = self.tokenizer.encode('a')
+            single_token = self.tokenizer.encode('a', add_special_tokens=False)
+            assert len(single_token) == 1
+            idx = all_tokens.index(single_token[0])
             bos_token = all_tokens[:idx]
             sep_token = all_tokens[idx + 1:]
             if bos_token:
