@@ -157,6 +157,21 @@ def test_got_ocr():
         images=['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/ocr.png'])
 
 
+def test_got_ocr_hf():
+    pt_engine = PtEngine('stepfun-ai/GOT-OCR-2.0-hf')
+    response = _infer_model(
+        pt_engine,
+        messages=[{
+            'role': 'user',
+            'content': 'OCR: '
+        }],
+        images=['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/ocr.png'])
+    assert response[:200] == ('简介 SWIFT支持250+LLM和35+MLLM（多模态大模型）的训练、推理、 评测和部署。开发者可以直接将'
+                              '我们的框架应用到自己的Research和 生产环境中，实现模型训练评测到应用的完整链路。我们除支持了 PEFT提供的轻量训练方案外'
+                              '，也提供了一个完整的Adapters库以支持 最新的训练技术，如NEFTune、LoRA+、LLaMA-PRO等，这个适配器 库可以脱离训练脚本'
+                              '直接使用在自己的')
+
+
 def test_llama_vision():
     pt_engine = PtEngine('LLM-Research/Llama-3.2-11B-Vision-Instruct')
     response = _infer_model(pt_engine)
@@ -465,6 +480,7 @@ if __name__ == '__main__':
     # test_llava_onevision_hf()
     # test_minicpmv()
     # test_got_ocr()
+    test_got_ocr_hf()
     # test_paligemma()
     # test_paligemma2()
     # test_pixtral()

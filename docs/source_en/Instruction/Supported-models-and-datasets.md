@@ -657,6 +657,7 @@ The table below introduces the models integrated with ms-swift:
 |[BAAI/Emu3-Gen](https://modelscope.cn/models/BAAI/Emu3-Gen)|emu3_gen|emu3_gen|-|t2i|[BAAI/Emu3-Gen](https://huggingface.co/BAAI/Emu3-Gen)|
 |[BAAI/Emu3-Chat](https://modelscope.cn/models/BAAI/Emu3-Chat)|emu3_chat|emu3_chat|transformers>=4.44.0|vision|[BAAI/Emu3-Chat](https://huggingface.co/BAAI/Emu3-Chat)|
 |[stepfun-ai/GOT-OCR2_0](https://modelscope.cn/models/stepfun-ai/GOT-OCR2_0)|got_ocr2|got_ocr2|-|vision|[stepfun-ai/GOT-OCR2_0](https://huggingface.co/stepfun-ai/GOT-OCR2_0)|
+|[stepfun-ai/GOT-OCR-2.0-hf](https://modelscope.cn/models/stepfun-ai/GOT-OCR-2.0-hf)|got_ocr2_hf|got_ocr2_hf|-|vision|[stepfun-ai/GOT-OCR-2.0-hf](https://huggingface.co/stepfun-ai/GOT-OCR-2.0-hf)|
 |[stepfun-ai/Step-Audio-Chat](https://modelscope.cn/models/stepfun-ai/Step-Audio-Chat)|step_audio|step_audio|funasr, sox, conformer, openai-whisper, librosa|audio|[stepfun-ai/Step-Audio-Chat](https://huggingface.co/stepfun-ai/Step-Audio-Chat)|
 |[LLM-Research/Phi-3-vision-128k-instruct](https://modelscope.cn/models/LLM-Research/Phi-3-vision-128k-instruct)|phi3_vision|phi3_vision|transformers>=4.36|vision|[microsoft/Phi-3-vision-128k-instruct](https://huggingface.co/microsoft/Phi-3-vision-128k-instruct)|
 |[LLM-Research/Phi-3.5-vision-instruct](https://modelscope.cn/models/LLM-Research/Phi-3.5-vision-instruct)|phi3_vision|phi3_vision|transformers>=4.36|vision|[microsoft/Phi-3.5-vision-instruct](https://huggingface.co/microsoft/Phi-3.5-vision-instruct)|

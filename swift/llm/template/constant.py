@@ -152,6 +152,7 @@ class MLLMTemplateType:
     emu3_gen = 'emu3_gen'
 
     got_ocr2 = 'got_ocr2'
+    got_ocr2_hf = 'got_ocr2_hf'
     step_audio = 'step_audio'
 
     idefics3 = 'idefics3'
