@@ -1,16 +1,12 @@
 import os
 from copy import deepcopy
-from dataclasses import asdict
-from functools import partial
-from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
+from typing import List, Optional
 
 from openai import OpenAI
 
-from swift.llm.infer.protocol import (ChatCompletionRequest, ChatCompletionResponse, ChatCompletionStreamResponse,
-                                      InferRequest, ModelList, RequestConfig)
-from swift.llm.sampling.base import Sampler
+from swift.llm.infer.protocol import InferRequest, RequestConfig
 from swift.llm.sampling.vanilla_sampler import VanillaSampler
-from .utils import get_messages_md5, get_reward
+from .utils import get_messages_md5
 
 
 class OpenAI_Engine():
@@ -32,26 +28,52 @@ class OpenAI_Engine():
         infer_requests: List[InferRequest],
         request_config: Optional[RequestConfig] = None,
     ):
+        resp_contents = []
         for infer_request in infer_requests:
-            if not self.stream:
-                completion = self.client.chat.completions.create(
-                    model=self.model, **asdict(infer_request), **asdict(request_config))
-                content = completion.choices[0].message.content
+            completion = self.client.chat.completions.create(
+                model=self.model,
+                messages=infer_request['messages'],
+                temperature=request_config.temperature,
+                top_p=request_config.top_p,
+                max_tokens=request_config.max_tokens,
+                stream=self.stream,
+            )
+            if self.stream:
+                reasoning_content = ''
+                content = ''
+                for chunk in completion:
+                    chunk_choices = chunk.choices
+                    if len(chunk_choices) == 0:
+                        continue
+                    reasoning_chunk = chunk_choices[
+                        0].delta.reasoning_content if hasattr(
+                            chunk_choices[0].delta, 'reasoning_content') else ''
+                    answer_chunk = chunk_choices[0].delta.content
+                    if reasoning_chunk:
+                        reasoning_content += reasoning_chunk
+                    elif answer_chunk:
+                        content += answer_chunk
             else:
-                completion = self.client.chat.completions.create(
-                    model=self.model, **asdict(infer_request), **asdict(request_config))
+                if hasattr(completion.choices[0].message, 'reasoning_content'):
+                    reasoning_content = completion.choices[0].message.reasoning_content
                 content = completion.choices[0].message.content
-            return content
+            assert len(content) > 0, "Empty completion"
+            if reasoning_content:
+                resp_content = f'<think>{reasoning_content}</think>\n\n<answer>{content}</answer>'
+            else:
+                resp_content = content
+            resp_contents.append(resp_content)
+
+        return resp_contents
 
 
 class DistillSampler(VanillaSampler):
 
     def __init__(self, *args, **kwargs):
         super(VanillaSampler, self).__init__(*args, **kwargs)
-        assert self.args.sampler_engine == 'openai'
-        from swift.llm import InferClient
-        _Engine = InferClient
-        self.infer_engine = _Engine(model=self.args.model, **self.args.engine_kwargs)
+        assert self.args.sampler_engine == 'client'
+        _Engine = OpenAI_Engine
+        self.infer_engine = _Engine(model=self.args.model, stream=self.args.stream, **self.args.engine_kwargs)
         self.caches = self.read_cache()
 
     def _prepare_model_tokenizer(self):
@@ -100,7 +122,6 @@ class DistillSampler(VanillaSampler):
             temperature=self.args.temperature,
             top_k=self.args.top_k,
             top_p=self.args.top_p,
-            stream=self.args.stream,
         )
 
         resp_list = []
@@ -121,7 +142,7 @@ class DistillSampler(VanillaSampler):
             resps = row
             resps['choices'] = []
             for j in range(self.args.num_return_sequences * _cur, self.args.num_return_sequences * (_cur + 1)):
-                resps['choices'].append(resp_list[j].choices[0].message.content)
+                resps['choices'].append(resp_list[j])
             resp_all.append(resps)
             _cur += 1
         return resp_all
