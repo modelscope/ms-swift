@@ -5,7 +5,7 @@ import os
 import re
 from copy import deepcopy
 from dataclasses import asdict
-from functools import wraps
+from functools import partial, wraps
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
@@ -19,11 +19,11 @@ from transformers import StoppingCriteriaList
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import strtobool
 
-from swift.utils import get_dist_setting, get_logger, use_torchacc
+from swift.utils import get_dist_setting, get_env_args, get_logger, use_torchacc
 from ..utils import Processor, ProcessorMixin
 from .template_inputs import InferRequest, StdTemplateInputs, TemplateInputs
 from .utils import Context, ContextType, StopWordsCriteria, fetch_one, findall, split_str_parts_by
-from .vision_utils import load_image, rescale_image
+from .vision_utils import load_audio, load_batch, load_image, rescale_image
 
 logger = get_logger()
 
@@ -191,6 +191,11 @@ class Template(ProcessorMixin):
                 if isinstance(image, Image.Image):
                     images[i] = self._save_pil_image(image)
         inputs.images = images
+
+        if self.mode == 'vllm':
+            sampling_rate = get_env_args('sampling_rate', int, None)
+            inputs.audios = load_batch(
+                inputs.audios, load_func=partial(load_audio, sampling_rate=sampling_rate, return_sr=True))
 
         self._get_std_messages(inputs.messages)
         n_round = len(inputs.messages) // 2
