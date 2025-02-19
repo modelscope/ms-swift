@@ -45,9 +45,8 @@ class OpenAI_Engine():
                     chunk_choices = chunk.choices
                     if len(chunk_choices) == 0:
                         continue
-                    reasoning_chunk = chunk_choices[
-                        0].delta.reasoning_content if hasattr(
-                            chunk_choices[0].delta, 'reasoning_content') else ''
+                    reasoning_chunk = chunk_choices[0].delta.reasoning_content if hasattr(
+                        chunk_choices[0].delta, 'reasoning_content') else ''
                     answer_chunk = chunk_choices[0].delta.content
                     if reasoning_chunk:
                         reasoning_content += reasoning_chunk
@@ -57,7 +56,7 @@ class OpenAI_Engine():
                 if hasattr(completion.choices[0].message, 'reasoning_content'):
                     reasoning_content = completion.choices[0].message.reasoning_content
                 content = completion.choices[0].message.content
-            assert len(content) > 0, "Empty completion"
+            assert len(content) > 0, 'Empty completion'
             if reasoning_content:
                 resp_content = f'<think>{reasoning_content}</think>\n\n<answer>{content}</answer>'
             else:
