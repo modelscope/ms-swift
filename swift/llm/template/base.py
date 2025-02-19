@@ -673,10 +673,10 @@ class Template(ProcessorMixin):
         res_context_types: List[ContextType] = []
         sep_token = None
         if template_meta.auto_add_bos:
-            all_tokens = self.tokenizer.encode('0')
-            single_zero = self.tokenizer.encode('0', add_special_tokens=False)
-            assert len(single_zero) == 1
-            idx = all_tokens.index(single_zero[0])
+            all_tokens = self.tokenizer.encode('a')
+            single_token = self.tokenizer.encode('a', add_special_tokens=False)
+            assert len(single_token) == 1
+            idx = all_tokens.index(single_token[0])
             bos_token = all_tokens[:idx]
             sep_token = all_tokens[idx + 1:]
             if bos_token:
