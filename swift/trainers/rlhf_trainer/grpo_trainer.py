@@ -15,7 +15,7 @@ from transformers.utils.versions import require_version
 from trl import GRPOTrainer as HFGRPOTrainer
 from trl.models import unwrap_model_for_generation
 
-from swift.llm import InferRequest, RequestConfig, to_device
+from swift.llm import InferRequest, RequestConfig, RowPreprocessor, to_device
 from swift.plugin import orms
 from swift.utils import (JsonlWriter, get_device, get_device_count, get_dist_setting, get_logger, is_lmdeploy_available,
                          is_vllm_available, is_wandb_available)
@@ -51,10 +51,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 if reward_func in orms:
                     reward_func_class = orms[reward_func]
                     reward_func_args = list(inspect.signature(reward_func_class.__init__).parameters)
-                    reward_func_args = [
-                        getattr(args, param) for param in reward_func_args if param not in ['self', 'args', 'kwargs']
-                    ]
-                    reward_funcs[i] = reward_func_class(*reward_func_args)
+                    reward_func_kwargs = {
+                        key: getattr(args, key)
+                        for key in reward_func_args if key not in ['self', 'args', 'kwargs'] and hasattr(args, key)
+                    }
+                    reward_funcs[i] = reward_func_class(**reward_func_kwargs)
                 elif not callable(reward_func):
                     raise ValueError(f'reward_function {reward_func} is not implemented in swift.llm.plugin')
 
@@ -326,7 +327,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     rewards_per_func[:, i] = reward_func(**reward_inputs).logits[:, 0]
             else:
                 # Repeat all input columns (but "messages" and "completion") to match the number of generations
-                reward_kwargs = {key: [example[key] for example in inputs] for key in inputs[0]}
+                reward_kwargs = RowPreprocessor.rows_to_batched(inputs)
                 output_reward_func = reward_func(completions, **reward_kwargs)
                 rewards_per_func[:, i] = torch.tensor(output_reward_func, dtype=torch.float32, device=device)
 
