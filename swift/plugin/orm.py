@@ -295,23 +295,19 @@ class ReActFormat(ORM):
 
 class CosineReward(ORM):
     # https://arxiv.org/abs/2502.03373
-    def __init__(
-        self,
-        cosine_min_len_value_wrong: float = 0.0,
-        cosine_max_len_value_wrong: float = -0.5,
-        cosine_min_len_value_correct: float = 1.0,
-        cosine_max_len_value_correct: float = 0.5,
-        cosine_max_len: int = 1000,
-    ):
-        super().__init__()
-        import importlib.util
-        assert importlib.util.find_spec('math_verify') is not None, (
-            "The math_verify package is required but not installed. Please install it using 'pip install math_verify'.")
+    def __init__(self,
+                 cosine_min_len_value_wrong: float = 0.0,
+                 cosine_max_len_value_wrong: float = -0.5,
+                 cosine_min_len_value_correct: float = 1.0,
+                 cosine_max_len_value_correct: float = 0.5,
+                 cosine_max_len: int = 1000,
+                 accuracy_orm=None):
         self.min_len_value_wrong = cosine_min_len_value_wrong
         self.max_len_value_wrong = cosine_max_len_value_wrong
         self.min_len_value_correct = cosine_min_len_value_correct
         self.max_len_value_correct = cosine_max_len_value_correct
         self.max_len = cosine_max_len
+        self.accuracy_orm = accuracy_orm or MathAccuracy()
 
     @staticmethod
     def cosfn(t, T, min_value, max_value):
@@ -319,39 +315,10 @@ class CosineReward(ORM):
         return max_value - (max_value - min_value) * (1 - math.cos(t * math.pi / T)) / 2
 
     def __call__(self, completions, solution, **kwargs) -> List[float]:
-        from latex2sympy2_extended import NormalizationConfig
-        from math_verify import LatexExtractionConfig, parse, verify
+        acc_rewards = self.accuracy_orm(completions, solution, **kwargs)
         rewards = []
-
-        for content, sol in zip(completions, solution):
-            gold_parsed = parse(sol, extraction_mode='first_match', extraction_config=[LatexExtractionConfig()])
-            if len(gold_parsed) == 0:
-                rewards.append(1.0)  # Skip unparseable examples
-                print('Failed to parse gold solution: ', sol)
-                continue
-
-            answer_parsed = parse(
-                content,
-                extraction_config=[
-                    LatexExtractionConfig(
-                        normalization_config=NormalizationConfig(
-                            nits=False,
-                            malformed_operators=False,
-                            basic_latex=True,
-                            equations=True,
-                            boxed=True,
-                            units=True,
-                        ),
-                        boxed_match_priority=0,
-                        try_extract_without_anchor=False,
-                    )
-                ],
-                extraction_mode='first_match',
-            )
-
-            is_correct = verify(answer_parsed, gold_parsed)
-            gen_len = len(content)
-
+        for content, acc_reward in zip(completions, acc_rewards):
+            is_correct = acc_reward >= 1.
             if is_correct:
                 # Swap min/max for correct answers
                 min_value = self.max_len_value_correct
@@ -359,16 +326,15 @@ class CosineReward(ORM):
             else:
                 min_value = self.min_len_value_wrong
                 max_value = self.max_len_value_wrong
-
+            gen_len = len(content)
             reward = self.cosfn(gen_len, self.max_len, min_value, max_value)
-            rewards.append(float(reward))
+            rewards.append(reward)
         return rewards
 
 
 class RepetitionPenalty(ORM):
     # https://arxiv.org/abs/2502.03373
     def __init__(self, repetition_n_grams: int = 3, repetition_max_penalty: float = -1.0):
-        super().__init__()
         self.ngram_size = repetition_n_grams
         self.max_penalty = repetition_max_penalty
 

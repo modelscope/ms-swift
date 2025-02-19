@@ -51,10 +51,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 if reward_func in orms:
                     reward_func_class = orms[reward_func]
                     reward_func_args = list(inspect.signature(reward_func_class.__init__).parameters)
-                    reward_func_args = [
-                        getattr(args, param) for param in reward_func_args if param not in ['self', 'args', 'kwargs']
-                    ]
-                    reward_funcs[i] = reward_func_class(*reward_func_args)
+                    reward_func_kwargs = {
+                        key: getattr(args, key)
+                        for key in reward_func_args if key not in ['self', 'args', 'kwargs'] and hasattr(args, key)
+                    }
+                    reward_funcs[i] = reward_func_class(**reward_func_kwargs)
                 elif not callable(reward_func):
                     raise ValueError(f'reward_function {reward_func} is not implemented in swift.llm.plugin')
 
