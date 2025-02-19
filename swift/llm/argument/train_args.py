@@ -11,7 +11,8 @@ from transformers.utils.versions import require_version
 from swift.plugin import LOSS_MAPPING
 from swift.trainers import TrainerFactory
 from swift.utils import (add_version_to_work_dir, get_device_count, get_logger, get_pai_tensorboard_dir,
-                         is_liger_available, is_local_master, is_mp, is_pai_training_job, use_torchacc)
+                         is_liger_available, is_local_master, is_mp, is_pai_training_job, is_swanlab_available,
+                         use_torchacc)
 from .base_args import BaseArguments, to_abspath
 from .tuner_args import TunerArguments
 
@@ -76,6 +77,35 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
 
 
 @dataclass
+class SwanlabArguments:
+
+    swanlab_token: Optional[str] = None
+    swanlab_project: Optional[str] = None
+    swanlab_workspace: Optional[str] = None
+    swanlab_exp_name: Optional[str] = None
+    swanlab_mode: Literal['cloud', 'local'] = 'cloud'
+
+    def _init_swanlab(self):
+        if not is_swanlab_available():
+            raise ValueError('You are using swanlab as `report_to`, please install swanlab by ' '`pip install swanlab`')
+        if not self.swanlab_project:
+            raise ValueError('Please specify a project existed in your swanlab page(https://swanlab.cn/space/~)')
+        if not self.swanlab_exp_name:
+            self.swanlab_exp_name = self.output_dir
+        from transformers.integrations import INTEGRATION_TO_CALLBACK
+        import swanlab
+        from swanlab.integration.transformers import SwanLabCallback
+        if self.swanlab_token:
+            swanlab.login(self.swanlab_token)
+        INTEGRATION_TO_CALLBACK['swanlab'] = SwanLabCallback(
+            project=self.swanlab_project,
+            workspace=self.swanlab_workspace,
+            experiment_name=self.swanlab_exp_name,
+            mode=self.swanlab_mode,
+        )
+
+
+@dataclass
 class TorchAccArguments:
     model_layer_cls_name: Optional[str] = field(
         default=None,
@@ -91,7 +121,8 @@ class TorchAccArguments:
 
 
 @dataclass
-class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideArguments, BaseArguments):
+class TrainArguments(SwanlabArguments, TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideArguments,
+                     BaseArguments):
     """
     TrainArguments class is a dataclass that inherits from multiple argument classes:
     TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideArguments, and BaseArguments.
@@ -170,6 +201,9 @@ class TrainArguments(TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideA
 
         self._add_version()
         self.import_plugin()
+
+        if 'swanlab' in self.report_to:
+            self._init_swanlab()
 
     def import_plugin(self):
         if not self.external_plugins:

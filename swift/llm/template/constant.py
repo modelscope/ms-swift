@@ -91,6 +91,7 @@ class MLLMTemplateType:
     qvq = 'qvq'
     ovis1_6 = 'ovis1_6'
     ovis1_6_llama3 = 'ovis1_6_llama3'
+    ovis2 = 'ovis2'
 
     llama3_1_omni = 'llama3_1_omni'
     llama3_2_vision = 'llama3_2_vision'

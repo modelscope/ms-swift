@@ -115,7 +115,7 @@ This parameter list inherits from transformers `Seq2SeqTrainingArguments`, with 
 - lr_scheduler_type: Type of lr_scheduler, defaults to 'cosine'.
 - lr_scheduler_kwargs: Other parameters for the lr_scheduler, defaults to None.
 - 🔥gradient_checkpointing_kwargs: Parameters for `torch.utils.checkpoint`. For example, set as `--gradient_checkpointing_kwargs '{"use_reentrant": false}'`. Defaults to None.
-- report_to: Default value is `tensorboard`. You can also specify `--report_to tensorboard wandb` or `--report_to all`.
+- report_to: Default value is `tensorboard`. You can also specify `--report_to tensorboard wandb swanlab` or `--report_to all`.
 - logging_first_step: Whether to log the first step, defaults to True.
 - logging_steps: Interval for logging, defaults to 5.
 - predict_with_generate: Whether to use generative method during validation, default is False.
@@ -406,6 +406,15 @@ repetition penalty function arguments
 
 - `repetition_n_grams` (default: 3): Size of the n-gram used to detect repetition.
 - `repetition_max_penalty` (default: -1.0): Maximum penalty value, which controls the intensity of the penalty.
+
+#### SWANLAB
+
+- **swanlab_token**: SwanLab's API key
+- **swanlab_project**: SwanLab's project, which needs to be created in advance on the page: [https://swanlab.cn/space/~](https://swanlab.cn/space/~)
+- **swanlab_workspace**: Defaults to `None`, will use the username associated with the API key
+- **swanlab_exp_name**: Experiment name, can be left empty. If empty, the value of `--output_dir` will be used by default
+- **swanlab_mode**: Optional values are `cloud` and `local`, representing cloud mode or local mode
+
 
 ### Inference Arguments
 

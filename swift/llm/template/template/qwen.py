@@ -406,6 +406,13 @@ register_template(
         template_cls=Ovis1_6Template,
     ))
 
+register_template(
+    Qwen2_5TemplateMeta(
+        MLLMTemplateType.ovis2,
+        template_cls=Ovis1_6Template,
+        placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
+    ))
+
 
 @dataclass
 class MarcoO1TemplateMeta(QwenTemplateMeta):
