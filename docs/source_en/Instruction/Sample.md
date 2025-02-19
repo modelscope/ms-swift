@@ -75,3 +75,26 @@ By dividing the process into two stages, only one model is loaded at a time, avo
 Please refer to the [Reinforcement Fine-Tuning Script](https://github.com/modelscope/ms-swift/tree/main/examples/train/rft/rft.py). This script provides a practical example of using sampling for reinforcement fine-tuning.
 
 > **Note:** The actual effectiveness of this script is strongly related to the quality of the model, data, and RM. Therefore, it is presented only as an example. Users should modify this script and train their own RM and generator models accordingly.
+
+## Sampling From Large Model
+
+SWIFT's sample supports using the OpenAI API to distill data with large models. Example:
+
+```shell
+OPENAI_API_KEY="your_api_key" \
+swift sample \
+    --sampler_type distill \
+    --sampler_engine client \
+    --model deepseek-r1 \
+    --stream true \
+    --dataset tastelikefeet/competition_math#5 \
+    --num_return_sequences 1 \
+    --temperature 0.6 \
+    --top_p 0.95 \
+    --engine_kwargs '{"base_url":"https://dashscope.aliyuncs.com/compatible-mode/v1"}'
+```
+In this example:
+
+`base_url` and `model` represent the API endpoint and model name, respectively. `stream` indicates the stream parameter for the request.
+
+Note: For Deepseek-R1 series models, the output will be formatted as:`<thinking>{reasoning_content}</thinking>\n\n<answer>{content}</answer>`.
