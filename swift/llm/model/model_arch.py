@@ -56,6 +56,7 @@ class MLLMModelArch:
     idefics3 = 'idefics3'
 
     got_ocr2 = 'got_ocr2'
+    got_ocr2_hf = 'got_ocr2_hf'
 
     ovis1_6 = 'ovis1_6'
     molmo = 'molmo'
