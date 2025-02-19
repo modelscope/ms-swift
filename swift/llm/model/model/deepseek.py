@@ -208,7 +208,14 @@ def get_model_tokenizer_deepseek_vl2(model_dir: str, *args, **kwargs):
     if not local_repo_path:
         local_repo_path = git_clone_github('https://github.com/deepseek-ai/DeepSeek-VL2')
     sys.path.append(os.path.join(local_repo_path))
-    from deepseek_vl2.models import DeepseekVLV2Processor
+    try:
+        from deepseek_vl2.models import DeepseekVLV2Processor
+    except ImportError:
+        # compat transformers>=4.42
+        import transformers
+        transformers.models.llama.modeling_llama.LlamaAttention = None
+        transformers.models.llama.modeling_llama.LlamaFlashAttention2 = None
+        from deepseek_vl2.models import DeepseekVLV2Processor
     processor: DeepseekVLV2Processor = DeepseekVLV2Processor.from_pretrained(model_dir)
     return _get_deepseek_vl(processor, 'language', model_dir, *args, **kwargs)
 
