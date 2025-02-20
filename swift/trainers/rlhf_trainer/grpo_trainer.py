@@ -109,15 +109,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         set_seed(args.seed, device_specific=True)
 
         if use_vllm or use_lmdeploy:
-            if self.infer_rank > 0:
+            if self.infer_rank >= 0:
                 fast_infer_device = self.args.vllm_device or self.args.lmdeploy_device
-                if fast_infer_device == 'auto':
+                if fast_infer_device[0] == 'auto':
                     if get_device_count() == 1:
                         fast_infer_device = [get_device()]  # particular case when training with only 1 GPU: share it
                     else:
-                        local_world_size = get_dist_setting()[3]
                         fast_infer_device = []
-                        for idx in range(local_world_size - self.args.num_infer_workers, local_world_size):
+                        for idx in range(get_device_count() - self.args.num_infer_workers, get_device_count()):
                             fast_infer_device.append(get_device(idx))
 
                 for _device in fast_infer_device:
@@ -171,12 +170,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     from swift.llm import LmdeployEngine
                     from swift.tuners import Swift
                     with Swift.grpo_context(model, self.template.processor):
-                        fast_infer_device = int(fast_infer_device.split(':')[1])
+                        fast_infer_device = int(fast_infer_device[self.infer_rank].split(':')[1])
                         self.engine = LmdeployEngine(
                             model.model_dir,
                             model.model_info.torch_dtype,
                             model_type=model.model_meta.model_type,
-                            device=[fast_infer_device[self.infer_rank]],
+                            device=[fast_infer_device],
                             session_len=args.lmdeploy_session_len,
                             cache_max_entry_count=args.lmdeploy_cache_max_entry_count)
                     self.engine.default_template = self.template
@@ -210,7 +209,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         rank, local_rank, world_size, local_world_size = get_dist_setting()
         step = local_world_size / self.args.num_infer_workers
         for _vllm_rank in range(self.args.num_infer_workers):
-            _assigned = int(_vllm_rank * step + step / 2)
+            _assigned = int(_vllm_rank * step + 1 / 2)
             if _assigned >= local_world_size:
                 _assigned = local_world_size - 1
 
