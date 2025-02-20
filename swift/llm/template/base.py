@@ -192,7 +192,7 @@ class Template(ProcessorMixin):
                     images[i] = self._save_pil_image(image)
         inputs.images = images
 
-        if self.mode == 'vllm':
+        if self.mode == 'vllm' and inputs.audios:
             sampling_rate = get_env_args('sampling_rate', int, None)
             inputs.audios = load_batch(
                 inputs.audios, load_func=partial(load_audio, sampling_rate=sampling_rate, return_sr=True))
