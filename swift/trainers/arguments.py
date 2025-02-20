@@ -93,6 +93,10 @@ class GRPOArgumentsMixin:
     lmdeploy_session_len: Optional[int] = None
     lmdeploy_cache_max_entry_count: float = 0.8
 
+    # mini-batch
+    local_rollout_forward_batch_size: int = 64
+    num_mini_batches: int = 1
+
 
 @dataclass
 class TrainingArguments(SwiftArgumentsMixin, HfTrainingArguments):

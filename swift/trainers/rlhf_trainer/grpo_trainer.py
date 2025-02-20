@@ -1,12 +1,14 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Part of the implementation is borrowed from huggingface/trl.
 import inspect
+import math
 import os
 from collections import defaultdict
 from contextlib import contextmanager
 from typing import Any, Callable, Dict, List, Optional, Union
 from unittest.mock import patch
 
+import numpy as np
 import torch
 import torch.nn as nn
 from accelerate.utils import broadcast_object_list, gather, gather_object, is_peft_model, set_seed
@@ -17,6 +19,7 @@ from trl.models import unwrap_model_for_generation
 
 from swift.llm import InferRequest, RequestConfig, RowPreprocessor, to_device
 from swift.plugin import orms
+from swift.trainers.rlhf_arguments import GRPOConfig
 from swift.utils import (JsonlWriter, get_device, get_device_count, get_dist_setting, get_logger, is_lmdeploy_available,
                          is_vllm_available, is_wandb_available)
 from ..mixin import SwiftMixin
@@ -41,6 +44,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                  **kwargs):
         require_version('trl>=0.15')
         args = kwargs['args']
+        # Activate gradient checkpointing if needed
+        if args.gradient_checkpointing:
+            model = self._enable_gradient_checkpointing(model, args)
 
         self.processing_class = kwargs.get('template').tokenizer
         if not isinstance(reward_funcs, list):
@@ -84,10 +90,16 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         use_vllm = args.use_vllm
         use_lmdeploy = args.use_lmdeploy
 
-        super().__init__(model, ref_model, *_args, **kwargs)
-
+        self.train_dataset_len = len(self.train_dataset)
+        args.local_batch_size = args.batch_size(args.per_device_train_batch_size * args.gradient_accumulation_steps
+                                                * args.num_mini_batches * args.num_generations)
+        args.mini_batch_size = args.batch_size // args.num_mini_batches  # useless?
+        args.local_mini_batch_size = args.local_batch_size // args.num_mini_batches
+        args.total_episodes = int(args.num_train_epochs * self.train_dataset_len)
+        args.num_total_batches = math.ceil(args.total_episodes / args.batch_size)
+        args.dataloader_drop_last = True  # drop_last to avoid ragged
         num_processes = self.accelerator.num_processes
-        global_batch_size = args.per_device_train_batch_size * num_processes
+        global_batch_size = args.local_batch_size * num_processes
         possible_values = [n_gen for n_gen in range(2, global_batch_size + 1) if (global_batch_size) % n_gen == 0]
         if self.num_generations not in possible_values:
             raise ValueError(
@@ -102,6 +114,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     f'The global eval batch size ({num_processes} x {args.per_device_eval_batch_size}) must be evenly '
                     f'divisible by the number of generations per prompt ({self.num_generations}). Given the current '
                     f'eval batch size, the valid values for the number of generations are: {possible_values}.')
+
+        super().__init__(model, ref_model, *_args, **kwargs)
 
         # Ensure each process receives a unique seed to prevent duplicate completions when generating with
         # transformers if num_generations exceeds per_device_train_batch_size. We could skip it if we use vLLM, but
@@ -434,3 +448,91 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         metrics = {f'{metric_key_prefix}_{key}': sum(val) / len(val) for key, val in self._metrics.items()}
         output.metrics.update(metrics)
         return output
+
+    def train(self, *_args, **kwargs):
+        # mini-batch test
+        args = self.args
+        accelerator = self.accelerator
+        model = self.model
+        ref_model = self.ref_model
+        model.train()
+        dataloader = self.get_train_dataloader()
+
+        def repeat_generator():
+            while True:
+                yield from dataloader
+
+        iter_dataloader = iter(repeat_generator())
+
+        # trainer state initialization
+        self.state.global_step = 0
+        self.state.episode = 0
+        self.state.max_steps = args.num_total_batches * args.num_mini_batches
+        self.state.num_train_epochs = args.total_episodes / self.train_dataset_len
+        # Compute absolute values for logging, eval, and save if given as ratio
+        if args.logging_steps is not None:
+            if args.logging_steps < 1:
+                self.state.logging_steps = math.ceil(self.state.max_steps * args.logging_steps)
+            else:
+                self.state.logging_steps = args.logging_steps
+        if args.eval_steps is not None:
+            if args.eval_steps < 1:
+                self.state.eval_steps = math.ceil(self.state.max_steps * args.eval_steps)
+            else:
+                self.state.eval_steps = args.eval_steps
+        if args.save_steps is not None:
+            if args.save_steps < 1:
+                self.state.save_steps = math.ceil(self.state.max_steps * args.save_steps)
+            else:
+                self.state.save_steps = args.save_steps
+        self.control = self.callback_handler.on_train_begin(args, self.state, self.control)
+
+        # backward compatibility
+        if self.is_deepspeed_enabled:
+            self.deepspeed = self.model
+            self.model_wrapped = self.model
+
+        for update in range(1, args.num_total_batches + 1):
+            self.state.episode += 1 * args.batch_size
+            data = next(iter_dataloader)  # local_batch_size
+            with torch.no_grad():
+                inputs = self._prepare_inputs(data)
+
+            b_inds = np.random.permutation(args.local_batch_size)
+            minibatch_idx = 0
+            for mini_batch_start in range(0, args.local_batch_size, args.local_mini_batch_size):
+                mini_batch_end = mini_batch_start + args.local_mini_batch_size
+                mini_batch_inds = b_inds[mini_batch_start:mini_batch_end]
+                gradient_accumulation_idx = 0
+                for micro_batch_start in range(0, args.local_mini_batch_size, args.per_device_train_batch_size):
+                    with accelerator.accumulate(model):
+                        micro_batch_end = micro_batch_start + args.per_device_train_batch_size
+                        micro_batch_inds = mini_batch_inds[micro_batch_start:micro_batch_end]
+                        mb_inputs = inputs[micro_batch_inds]  # debug here
+
+        # HF trainer specifics
+        self.control = self.callback_handler.on_train_end(args, self.state, self.control)
+        if self.control.should_save:
+            self._save_checkpoint(model, trial=None, metrics=None)
+            self.control = self.callback_handler.on_save(self.args, self.state, self.control)
+
+    def _enable_gradient_checkpointing(self, model: PreTrainedModel, args: GRPOConfig) -> PreTrainedModel:
+        """Enables gradient checkpointing for the model."""
+        # Ensure use_cache is disabled
+        model.config.use_cache = False
+
+        # Enable gradient checkpointing on the base model for PEFT
+        if is_peft_model(model):
+            model.base_model.gradient_checkpointing_enable()
+        # Enable gradient checkpointing for non-PEFT models
+        else:
+            model.gradient_checkpointing_enable()
+
+        gradient_checkpointing_kwargs = args.gradient_checkpointing_kwargs or {}
+        use_reentrant = ('use_reentrant' not in gradient_checkpointing_kwargs
+                         or gradient_checkpointing_kwargs['use_reentrant'])
+
+        if use_reentrant:
+            model.enable_input_require_grads()
+
+        return model
