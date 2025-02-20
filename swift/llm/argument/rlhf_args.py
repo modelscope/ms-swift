@@ -50,8 +50,6 @@ class GRPOArguments(GRPOArgumentsMixin):
     # vLLM in GRPO
     use_vllm: bool = False
     vllm_device: Optional[str] = 'auto'
-    vllm_only_first_node: bool = 'false'
-    vllm_count: int = 1
     vllm_gpu_memory_utilization: float = 0.9
     vllm_max_model_len: Optional[int] = None
 

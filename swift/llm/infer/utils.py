@@ -165,6 +165,44 @@ class InferEngines:
             selected = np.random.choice(self.engines)
             return getattr(selected, key)
 
+    @staticmethod
+    def round_robin(num_reqs, nodes):
+        distribution = [[] for _ in range(nodes)]
+        reversed_distribution = []
+
+        for idx in range(num_reqs):
+            node_id = idx % nodes
+            distribution[node_id].append(idx)
+            reversed_distribution.append(node_id)
+        return distribution, reversed_distribution
+
+    def infer(self,
+              infer_requests,
+              request_config=None,
+              metrics=None,
+              *,
+              use_tqdm=None,
+              **kwargs):
+        infer_len = len(infer_requests)
+        infer_requests = np.array(infer_requests)
+        requests, reversed_requests = self.round_robin(infer_len, len(self.engines))
+
+        def _infer(idx):
+            _requests = infer_requests[requests[idx]]
+            engine = self.engines[idx]
+            return engine.infer(_requests, request_config, None, use_tqdm=None, **kwargs)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(self.engines)) as executor:
+            futures = [
+                executor.submit(_infer, idx=idx)
+                for idx in range(len(self.engines))
+            ]
+            concurrent.futures.wait(futures)
+            outputs = []
+            for i in range(len(infer_requests)):
+                outputs.append(futures[reversed_requests[i]].result.pop(0))
+            return outputs
+
     def load_weights(self, state_dict):
         from swift.llm import VllmEngine
 
@@ -178,7 +216,7 @@ class InferEngines:
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=len(self.engines)) as executor:
             futures = [
-                executor.submit(_load_weights, idx)
+                executor.submit(_load_weights, idx=idx)
                 for idx in range(len(self.engines))
             ]
             concurrent.futures.wait(futures)

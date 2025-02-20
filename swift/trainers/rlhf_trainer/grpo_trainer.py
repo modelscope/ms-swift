@@ -111,25 +111,20 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         set_seed(args.seed, device_specific=True)
 
         if use_vllm or use_lmdeploy:
-            is_infer_worker = self.accelerator.is_local_main_process if not self.args.vllm_only_first_node else self.accelerator.is_main_process
-            if is_infer_worker:
+            rank, local_rank, world_size, local_world_size = get_dist_setting()
+
+            if self.is_infer_worker:
                 fast_infer_device = self.args.vllm_device or self.args.lmdeploy_device
                 if fast_infer_device == 'auto':
                     assert self.args.vllm_count == 1
                     if get_device_count() == 1:
                         fast_infer_device = get_device()  # particular case when training with only 1 GPU: share it
                     else:
-                        local_world_size = get_dist_setting()[3]
                         fast_infer_device = get_device(local_world_size)  # take the next GPU idx
                     mp = 1
-                    vllm_count = 1
                 else:
-                    # e.g. 4, local vllm count
-                    fast_infer_device = int(fast_infer_device)
-                    vllm_count = self.args.vllm_count
-                    assert fast_infer_device % vllm_count == 0
-                    mp = fast_infer_device // vllm_count
-                    fast_infer_device = reversed((get_device_count() - np.array(range(fast_infer_device))))
+                    fast_infer_device = list(reversed((get_device_count() - 1 - np.array(range(fast_infer_device)))))
+                    mp = len(fast_infer_device) // self.args.vllm_count
 
                 # Check that the requested device is available
                 if isinstance(fast_infer_device, str) and fast_infer_device.split(':')[0] in {'cuda', 'npu'
@@ -151,23 +146,19 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         return_value=None)
                     from swift.tuners import Swift
                     with world_size_patch, profiling_patch, Swift.grpo_context(model, self.template.processor):
-                        engines = []
-                        for vllm_idx in range(vllm_count):
-                            engine = VllmEngine(
-                                model.model_dir,
-                                model.model_info.torch_dtype,
-                                model_type=model.model_meta.model_type,
-                                device=fast_infer_device[mp*vllm_idx:mp*(vllm_idx+1)],
-                                gpu_memory_utilization=args.vllm_gpu_memory_utilization,
-                                enable_prefix_caching=args.vllm_enable_prefix_caching,
-                                max_num_seqs=args.vllm_max_num_seqs,
-                                enforce_eager=args.vllm_enforce_eager,
-                                tensor_parallel_size=mp,
-                                limit_mm_per_prompt=args.vllm_limit_mm_per_prompt,
-                                max_model_len=args.vllm_max_model_len)
-                            engine.default_template = self.template
-                            engines.append(engine)
-                        self.engine = InferEngines(engines)
+                        self.engine = VllmEngine(
+                            model.model_dir,
+                            model.model_info.torch_dtype,
+                            model_type=model.model_meta.model_type,
+                            device=f'cuda:{fast_infer_device[mp*local_rank:mp*(local_rank+1)][0]}',
+                            gpu_memory_utilization=args.vllm_gpu_memory_utilization,
+                            enable_prefix_caching=args.vllm_enable_prefix_caching,
+                            max_num_seqs=args.vllm_max_num_seqs,
+                            enforce_eager=args.vllm_enforce_eager,
+                            # tensor_parallel_size=mp,
+                            limit_mm_per_prompt=args.vllm_limit_mm_per_prompt,
+                            max_model_len=args.vllm_max_model_len)
+                        self.engine.default_template = self.template
                 elif use_lmdeploy:
                     # https://github.com/tastelikefeet/lmdeploy.git@feat/reload_state_dict_064
                     # Compile:https://github.com/tastelikefeet/lmdeploy/blob/main/docs/en/get_started/installation.md
@@ -217,6 +208,23 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.log_completions = args.log_completions
         self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'completions.jsonl'))
 
+    @property
+    def is_infer_worker(self):
+        rank, local_rank, world_size, local_world_size = get_dist_setting()
+        return local_rank in list(range(self.args.vllm_count)) and (
+                    not self.args.vllm_only_first_node or rank < local_world_size)
+
+    @staticmethod
+    def round_robin(num_reqs, nodes):
+        distribution = [[] for _ in range(nodes)]
+        reversed_distribution = []
+
+        for idx in range(num_reqs):
+            node_id = idx % nodes
+            distribution[node_id].append(idx)
+            reversed_distribution.append(node_id)
+        return distribution, reversed_distribution
+
     @staticmethod
     @contextmanager
     def _template_context(template):
@@ -263,9 +271,24 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if is_peft_model(unwrapped_model):
                 unwrapped_model.unmerge_adapter()
 
+    @staticmethod
+    def reorder_outputs(outputs, reverse_index):
+        if len(outputs) != len(reverse_index):
+            raise ValueError
+
+        from collections import defaultdict
+        machine_outputs = defaultdict(list)
+        for output, machine_id in zip(outputs, reverse_index):
+            machine_outputs[machine_id].append(output)
+        sorted_machine_ids = sorted(machine_outputs.keys())
+        reordered = []
+        for machine_id in sorted_machine_ids:
+            reordered.extend(machine_outputs[machine_id])
+        return reordered
+
     def _prepare_inputs(self, inputs) -> Dict[str, Union[torch.Tensor, Any]]:
         device = self.accelerator.device
-
+        rank, local_rank, world_size, local_world_size = get_dist_setting()
         # Generate completions using either vLLM or regular generation
         if self.args.use_vllm or self.args.use_lmdeploy:
             # First, have main process load weights if needed
@@ -274,14 +297,18 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self._last_loaded_step = self.state.global_step
             # Generate completions using vLLM: gather all prompts and use them in a single call in the main process
             all_inputs = gather_object(inputs)
-            if self.accelerator.is_main_process:
-                outputs = self.engine.infer(all_inputs, self.request_config, use_tqdm=False)
+            requests, reversed_requests = self.round_robin(len(all_inputs), self.args.vllm_count)
+            if self.is_infer_worker:
+                outputs = self.engine.infer(np.array(all_inputs)[requests[local_rank]], self.request_config, use_tqdm=False)
             else:
-                outputs = [None] * len(all_inputs)
+                outputs = []
 
             # Broadcast the completions from the main process to all processes, ensuring each process receives its
             # corresponding slice.
-            outputs = broadcast_object_list(outputs, from_process=0)
+            outputs = gather_object(outputs)
+            outputs = self.reorder_outputs(outputs, reversed_requests)
+
+            # outputs = broadcast_object_list(outputs, from_process=0)
         else:
             # Regular generation path
             is_multimodal = self.model.model_meta.is_multimodal
