@@ -640,12 +640,16 @@
         "tags": ["rlhf", "dpo"]
     },
     {
-        "ms_dataset_id": "DigitalLearningGmbH/MATH-lighteval",
-        "hf_dataset_id": "AI-ModelScope/MATH-lighteval",
+        "ms_dataset_id": "AI-ModelScope/MATH-lighteval",
+        "hf_dataset_id": "DigitalLearningGmbH/MATH-lighteval",
         "columns": {
             "problem": "query"
         },
         "tags": ["grpo", "math"]
-
+    },
+    {
+        "ms_dataset_id": "liucong/Chinese-DeepSeek-R1-Distill-data-110k-SFT",
+        "hf_dataset_id": "Congliu/Chinese-DeepSeek-R1-Distill-data-110k-SFT",
+        "tags": ["chat", "sft", "cot", "r1"]
     }
 ]

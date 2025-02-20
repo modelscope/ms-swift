@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-
+import gc
 import hashlib
 import os
 import pickle
@@ -17,6 +17,7 @@ import torch.nn as nn
 from datasets.utils.filelock import FileLock
 from modelscope.hub.utils.utils import get_cache_dir
 from transformers.integrations import is_deepspeed_zero3_enabled
+from transformers.utils import is_torch_cuda_available, is_torch_mps_available, is_torch_npu_available
 
 from .env import get_dist_setting
 from .logger import get_logger
@@ -127,7 +128,7 @@ def _get_max_memory(device_ids: List[int]) -> Dict[Union[int, str], int]:
 
     device_ids_set = set(device_ids)
     max_memory = {}
-    for i in range(torch.cuda.device_count()):
+    for i in range(get_device_count()):
         max_memory[i] = 0
         if i in device_ids_set:
             max_memory[i] = torch.cuda.mem_get_info(i)[0]
@@ -237,6 +238,44 @@ def safe_ddp_context(hash_id: str):
     file_path = os.path.join(lock_dir, file_path)
     with FileLock(file_path):
         yield
+
+
+def get_device(rank: Optional[Union[str, int]] = None) -> str:
+    if rank is None:
+        rank = get_dist_setting()[1]
+        if rank < 0 or rank is None:
+            rank = 0
+    if isinstance(rank, int):
+        rank = str(rank)
+    if is_torch_npu_available():
+        device = 'npu:{}'.format(rank)
+    elif is_torch_mps_available():
+        device = 'mps:{}'.format(rank)
+    elif is_torch_cuda_available():
+        device = 'cuda:{}'.format(rank)
+    else:
+        device = 'cpu'
+
+    return device
+
+
+def get_device_count() -> int:
+    if is_torch_npu_available():
+        return torch.npu.device_count()
+    elif is_torch_cuda_available():
+        return torch.cuda.device_count()
+    else:
+        return 0
+
+
+def gc_collect() -> None:
+    gc.collect()
+    if is_torch_npu_available():
+        torch.npu.empty_cache()
+    elif is_torch_mps_available():
+        torch.mps.empty_cache()
+    elif is_torch_cuda_available():
+        torch.cuda.empty_cache()
 
 
 class Serializer:

@@ -1,6 +1,7 @@
-from swift.llm.argument.sampling_args import SamplingArguments
-from swift.plugin.orm import orms
-from swift.plugin.prm import prms
+from typing import Any, Dict, List
+
+from swift.llm import SamplingArguments
+from swift.plugin import orms, prms
 from swift.utils import get_logger
 
 logger = get_logger()
@@ -11,7 +12,7 @@ class Sampler:
     def __init__(self, input_args: SamplingArguments):
         self.args = input_args
         self.template = None
-        self.processer = None
+        self.processor = None
         self.prm_model = None
         self.orm_model = None
         self._prepare_model_tokenizer()
@@ -45,6 +46,10 @@ class Sampler:
         template = self.args.get_template(self.processor)
         self.template = template
         self.template.set_mode('train')
+
+    def truncate_input(self, slices: List[Dict[str, Any]]):
+        """Truncate the input rows to avoid hitting the max length of the policy model"""
+        return slices
 
     def do_sample(self, data):
         raise NotImplementedError

@@ -21,7 +21,7 @@ from transformers.utils.versions import require_version
 
 from swift.utils import get_dist_setting, get_logger, is_mp, is_unsloth_available, patch_getattr, use_torchacc
 from .constant import ModelType
-from .patcher import patch_automodel_for_awq, patch_automodel_for_sequence_classification
+from .patcher import patch_automodel_for_awq, patch_automodel_for_sequence_classification, patch_mp_ddp
 from .utils import AttnImpl, HfConfigFactory, ModelInfo, safe_snapshot_download
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]]
@@ -141,7 +141,7 @@ def load_by_unsloth(args):
     model, processor = UnslothModel.from_pretrained(
         model_name=args.adapters and args.adapters[0] or args.model_dir,
         dtype=args.torch_dtype,
-        max_seq_length=model_info.max_model_len,
+        max_seq_length=args.max_length,
         load_in_4bit=args.quant_bits == 4,
         trust_remote_code=True,
     )
@@ -293,8 +293,14 @@ def get_default_torch_dtype(torch_dtype: Optional[torch.dtype]):
     if torch_dtype is not None:
         return torch_dtype
 
+    try:
+        is_bf16_available = is_torch_bf16_gpu_available() or (is_torch_npu_available()
+                                                              and torch.npu.is_bf16_supported())
+    except:  # noqa
+        is_bf16_available = False
+
     if is_torch_cuda_available() or is_torch_npu_available():
-        if is_torch_bf16_gpu_available():
+        if is_bf16_available:
             return torch.bfloat16
         else:
             return torch.float16
@@ -348,6 +354,28 @@ def get_matched_model_meta(model_id_or_path: str) -> Optional[ModelMeta]:
             return model_meta
 
 
+def _get_arch_mapping():
+    res = {}
+    for model_type, model_meta in MODEL_MAPPING.items():
+        architectures = model_meta.architectures
+        if not architectures:
+            architectures.append('null')
+        for arch in architectures:
+            if arch not in res:
+                res[arch] = []
+            res[arch].append(model_type)
+    return res
+
+
+def get_matched_model_types(architectures: Optional[List[str]]) -> List[str]:
+    """Get possible model_type."""
+    architectures = architectures or ['nulll']
+    if architectures:
+        architectures = architectures[0]
+    arch_mapping = _get_arch_mapping()
+    return arch_mapping.get(architectures) or []
+
+
 def _get_model_info(model_dir: str, model_type: Optional[str], quantization_config) -> ModelInfo:
     config_dict = PretrainedConfig.get_config_dict(model_dir)[0]
     if quantization_config is not None:
@@ -358,7 +386,8 @@ def _get_model_info(model_dir: str, model_type: Optional[str], quantization_conf
     rope_scaling = HfConfigFactory.get_config_attr(config_dict, 'rope_scaling')
 
     if model_type is None:
-        model_types = HfConfigFactory.get_matched_model_types(config_dict)  # config.json
+        architectures = HfConfigFactory.get_config_attr(config_dict, 'architectures')
+        model_types = get_matched_model_types(architectures)
         if len(model_types) > 1:
             raise ValueError('Please explicitly pass the model_type. For reference, '
                              f'the available model_types: {model_types}.')
@@ -367,8 +396,14 @@ def _get_model_info(model_dir: str, model_type: Optional[str], quantization_conf
     elif model_type not in MODEL_MAPPING:
         raise ValueError(f"model_type: '{model_type}' not in {list(MODEL_MAPPING.keys())}")
 
-    res = ModelInfo(model_type, model_dir, torch_dtype, max_model_len, quant_info.get('quant_method'),
-                    quant_info.get('quant_bits'), rope_scaling)
+    res = ModelInfo(
+        model_type,
+        model_dir,
+        torch_dtype,
+        max_model_len,
+        quant_info.get('quant_method'),
+        quant_info.get('quant_bits'),
+        rope_scaling=rope_scaling)
     return res
 
 
@@ -462,7 +497,7 @@ def get_model_tokenizer(
         If set to None : It will be automatically selected between sdpa and eager.
     download_model: Whether to download the model weights. If `None`, it will be selected based on load_model.
     """
-
+    patch_mp_ddp()
     if model_kwargs is None:
         model_kwargs = {}
     if download_model is None:

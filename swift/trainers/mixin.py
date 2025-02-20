@@ -31,6 +31,7 @@ from swift.plugin import MeanMetric, compute_acc, extra_tuners
 from swift.tuners import SwiftModel
 from swift.utils import get_logger, is_mp_ddp, use_torchacc
 from swift.utils.torchacc_utils import ta_trim_graph
+from ..utils.torch_utils import get_device_count
 from .arguments import TrainingArguments
 from .utils import can_return_loss, find_labels, get_function, is_instance_of_ms_model
 
@@ -268,7 +269,7 @@ class SwiftMixin:
 
     def get_max_cuda_memory(self, device: Optional[Union[torch.device, int]] = None) -> float:
         if device is None:
-            mems = [torch.cuda.max_memory_reserved(device=device) for device in range(torch.cuda.device_count())]
+            mems = [torch.cuda.max_memory_reserved(device=device) for device in range(get_device_count())]
         else:
             mems = [torch.cuda.max_memory_reserved(device=device)]
         mem = sum(mems) / 1024**3

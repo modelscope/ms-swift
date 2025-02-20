@@ -1,11 +1,11 @@
 # pip install math_verify # reward function
-# pip install git+https://github.com/huggingface/trl.git # trl>=0.15.0.dev0
+# pip install "trl>=0.15"
 # GPU memory: 80GiB
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 swift rlhf \
     --rlhf_type grpo \
-    --model Qwen/Qwen2.5-3B-Instruct \
+    --model Qwen/Qwen2.5-7B \
     --reward_funcs accuracy format \
     --train_type lora \
     --lora_rank 8 \
@@ -28,8 +28,7 @@ swift rlhf \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 4 \
     --dataset_num_proc 4 \
-    --num_generations 8 \
-    --beta 0.001 \
+    --num_generations 4 \
     --temperature 0.9 \
     --system 'examples/train/grpo/prompt.txt' \
-    --deepspeed zero2
+    --log_completions true

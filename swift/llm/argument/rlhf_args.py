@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional
 
 from swift.llm import MODEL_MAPPING
-from swift.trainers.arguments import GRPOVllmArguments
+from swift.trainers.arguments import GRPOArgumentsMixin
 from swift.utils import get_logger
 from .train_args import TrainArguments
 
@@ -39,13 +39,17 @@ class PPOArguments:
 
 
 @dataclass
-class GRPOArguments(GRPOVllmArguments):
+class GRPOArguments(GRPOArgumentsMixin):
     num_generations: int = 8  # G in the GRPO paper
     max_completion_length: int = 512
+    ds3_gather_for_generation: bool = True
     reward_funcs: List[str] = field(default_factory=list)
+    reward_weights: List[float] = None
+    log_completions: bool = False
+
     # vLLM in GRPO
     use_vllm: bool = False
-    vllm_device: Optional[str] = 'auto'  # 'cuda:1'
+    vllm_device: Optional[str] = 'auto'  # 'cuda:0'
     vllm_gpu_memory_utilization: float = 0.9
     vllm_max_model_len: Optional[int] = None
 
@@ -88,7 +92,7 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
     desirable_weight: float = 1.0
     undesirable_weight: float = 1.0
     # PPO/GRPO
-    temperature: float = 0.7
+    temperature: float = 0.9
 
     def _prepare_training_args(self, training_args: Dict[str, Any]) -> None:
         if self.rlhf_type == 'ppo':
@@ -98,9 +102,9 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
         self._init_grpo()
         self._init_rm()
         self._init_simpo()
+        self._init_ppo()
         self._set_default()
         super().__post_init__()
-        self._init_ppo()
 
         if self.loss_scale is None:
             if self.rlhf_type == 'orpo' and not self.model_meta.is_multimodal:
@@ -131,22 +135,25 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
 
     def _init_grpo(self):
         if self.rlhf_type == 'grpo':
-            if self.use_vllm:
-                os.environ['USE_VLLM'] = '1'
+            if self.use_vllm or self.use_lmdeploy:
+                os.environ['USE_FAST_INFERENCE'] = '1'
                 self._set_default_ddp_config()
             self.remove_unused_columns = False
             logger.info(f'Setting args.remove_unused_columns: {self.remove_unused_columns}')
-            if self.truncation_strategy == 'delete':
-                self.truncation_strategy = 'left'
+            self.truncation_strategy = 'left'  # Used for trimming the excessively long parts of a prompt.
             if self.beta is None:
                 self.beta = 0.04  # https://arxiv.org/abs/2402.03300
 
     def _init_ppo(self):
         if self.rlhf_type == 'ppo':
             self.padding_side = 'left'
-            self.metric_for_best_model = None
-            self.training_args.metric_for_best_model = None
             # TODO: streaming, MLLM
+
+    def _init_metric_for_best_model(self):
+        if self.rlhf_type not in {'ppo', 'grpo'}:
+            super()._init_metric_for_best_model()
+        elif self.rlhf_type == 'grpo' and self.metric_for_best_model is None:
+            self.metric_for_best_model = 'reward'
 
     def _init_simpo(self):
         if self.rlhf_type != 'simpo':

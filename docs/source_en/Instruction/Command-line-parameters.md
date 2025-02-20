@@ -57,6 +57,7 @@ Hints:
 - 🔥template: Type of dialogue template. Default is None, which automatically selects the corresponding model's template type.
 - 🔥system: Custom system field, can take a string or txt file path as input. Default is None, uses the default system of the template.
 - 🔥max_length: The maximum length of tokens for a single sample. Defaults to None, set to the maximum length of tokens supported by the model (max_model_len).
+  - Note: In the cases of PPO, GRPO, and inference, max_length represents max_prompt_length.
 - truncation_strategy: Strategy for handling single sample tokens that exceed `max_length`. Options are `delete`, `left`, and `right`, representing deletion, left-side truncation, and right-side truncation, respectively. The default is 'delete'.
 - 🔥max_pixels: The maximum number of pixels (H*W) for input images to a multimodal model. Images exceeding this limit will be scaled. Default is None, meaning no maximum pixel limit.
 - tools_prompt: Converts the tool list during agent training to the system format. Please refer to [Agent Training](./Agent-support.md). Options are 'react_en', 'react_zh', 'glm4', 'toolbench', 'qwen', with 'react_en' as the default.
@@ -114,11 +115,11 @@ This parameter list inherits from transformers `Seq2SeqTrainingArguments`, with 
 - lr_scheduler_type: Type of lr_scheduler, defaults to 'cosine'.
 - lr_scheduler_kwargs: Other parameters for the lr_scheduler, defaults to None.
 - 🔥gradient_checkpointing_kwargs: Parameters for `torch.utils.checkpoint`. For example, set as `--gradient_checkpointing_kwargs '{"use_reentrant": false}'`. Defaults to None.
-- report_to: Default value is `tensorboard`. You can also specify `--report_to tensorboard wandb` or `--report_to all`.
+- report_to: Default value is `tensorboard`. You can also specify `--report_to tensorboard wandb swanlab` or `--report_to all`.
 - logging_first_step: Whether to log the first step, defaults to True.
 - logging_steps: Interval for logging, defaults to 5.
 - predict_with_generate: Whether to use generative method during validation, default is False.
-- metric_for_best_model: Defaults to None, which sets it to 'loss' when `predict_with_generate` is False, otherwise sets it to 'rouge-l'.
+- metric_for_best_model: Default is None, which means that when predict_with_generate is set to False, it is set to 'loss'; otherwise, it is set to 'rouge-l' (during PPO training, the default value is not set; in GRPO training, it is set to 'reward').
 - greater_is_better: Defaults to None, which sets it to False when `metric_for_best_model` contains 'loss', otherwise sets to True.
 
 Other important parameters:
@@ -134,6 +135,7 @@ Other important parameters:
 - save_on_each_node: Default is False. Should be considered in multi-node training.
 - save_only_model: Whether to save only the model weights without including optimizer state, random seed state, etc. Default is False.
 - 🔥resume_from_checkpoint: Parameter for resuming training from a checkpoint, pass the checkpoint path. Default is None.
+  - Note: `resume_from_checkpoint` will load the model weights, optimizer weights, and random seed, and continue training from the last trained steps. You can specify `--resume_only_model` to load only the model weights.
 - 🔥ddp_backend: Default is None, options include "nccl", "gloo", "mpi", "ccl", "hccl", "cncl", "mccl".
 - 🔥ddp_find_unused_parameters: Default is None.
 - 🔥dataloader_num_workers: Default is 0.
@@ -296,7 +298,7 @@ Parameter meanings can be found in the [vllm documentation](https://docs.vllm.ai
 - 🔥max_model_len: Default is `None`.
 - disable_custom_all_reduce: Default is `False`.
 - enforce_eager: Determines whether vllm uses PyTorch eager mode or constructs a CUDA graph, default is `False`. Setting it to True can save memory but may affect efficiency.
-- 🔥limit_mm_per_prompt: Controls the use of multiple media in vllm, default is `None`. For example, you can pass in `--limit_mm_per_prompt '{"image": 10, "video": 5}'`.
+- 🔥limit_mm_per_prompt: Controls the use of multiple media in vllm, default is `None`. For example, you can pass in `--limit_mm_per_prompt '{"image": 5, "video": 2}'`.
 - vllm_max_lora_rank: Default is `16`. This is the parameter supported by vllm for lora.
 - enable_prefix_caching: Enable the automatic prefix caching of vllm to save processing time for querying repeated prefixes. The default is `False`.
 
@@ -316,6 +318,7 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
 - resume_only_model: Defaults to False. If set to True in conjunction with `resume_from_checkpoint`, only the model weights are resumed.
 - check_model: Check local model files for corruption or modification and give a prompt, default is True. If in an offline environment, please set to False.
 - 🔥create_checkpoint_symlink: Creates additional checkpoint symlinks to facilitate writing automated training scripts. The symlink paths for `best_model` and `last_model` are `f'{output_dir}/best'` and `f'{output_dir}/last'` respectively.
+- external_plugins: A list of external plugin py files which will be registered into the plugin mappings，please check [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/run_external_rm.sh)
 - loss_type: Type of loss. Defaults to None, which uses the model's built-in loss function.
 - packing: Whether to use sequence packing, defaults to False.
 - 🔥lazy_tokenize: Whether to use lazy tokenization. If set to False, all dataset samples are tokenized before training (for multimodal models, this includes reading images from disk). This parameter defaults to False for LLM training, and True for MLLM training, to save memory.
@@ -341,8 +344,7 @@ RLHF arguments inherit from the [training arguments](#training-arguments).
 - desirable_weight: Loss weight $\lambda_D$ for desirable response in the KTO algorithm, default is `1.`.
 - undesirable_weight: Loss weight $\lambda_U$ for undesirable response in the KTO algorithm, default is `1.`.
 - loss_scale: Override template arguments, default is 'last_round'.
-- temperature: Default is 0.7; this parameter will be used in PPO and GRPO.
-
+- temperature: Default is 0.9; this parameter will be used in PPO and GRPO.
 
 #### Reward Model Parameters
 
@@ -375,7 +377,12 @@ The meanings of the following parameters can be referenced [here](https://huggin
 #### GRPO Arguments
 - num_generations: The G value in the GRPO algorithm, default is 8.
 - max_completion_length: The maximum generation length in the GRPO algorithm, default is 512.
-- reward_funcs: Reward functions in the GRPO algorithm; options include `accuracy` and `format`, as seen in `swift/plugin/orm.py`. You can also customize your own reward functions in the plugin. Default is `[]`.
+- ds3_gather_for_generation: This parameter applies to DeepSpeed ZeRO-3. If enabled, the policy model weights are gathered for generation, improving generation speed. However, disabling this option allows training models that exceed the VRAM capacity of a single GPU, albeit at the cost of slower generation. Disabling this option is not compatible with vLLM generation. The default is True.
+- reward_funcs: Reward functions in the GRPO algorithm; options include `accuracy`,`format`,`cosine` and `repetition`, as seen in `swift/plugin/orm.py`. You can also customize your own reward functions in the plugin. Default is `[]`.
+- reward_weights: Weights for each reward function. Must match the number of reward functions. If `None`, all rewards are weighted equally with weight `1.0`.
+  - Note: If `--reward_model` is included in GRPO training, it is added to the end of the reward functions.
+- log_completions: Whether to log the model-generated content during training, to be used in conjunction with `--report_to wandb`, default is False.
+  - Note: If `--report_to wandb` is not set, a `completions.jsonl` will be created in the checkpoint to store the generated content.
 - use_vllm: Whether to use vLLM as the infer_backend for GRPO generation, default is False.
 - vllm_device: Set the device for vLLM deployment. For example, if deployed on card 0, use `cuda:0`; default is `auto`, which means using the last available GPU.
 - vllm_gpu_memory_utilization: vLLM passthrough parameter, default is 0.9.
@@ -387,6 +394,27 @@ The meanings of the following parameters can be referenced [here](https://huggin
 - top_k: Default is None. Read from `generation_config.json`.
 - top_p: Default is None. Read from `generation_config.json`.
 - repetition_penalty: Repetition penalty term. Default is None, read from `generation_config.json`.
+
+cosine reward function arguments
+- `cosine_min_len_value_wrong` (default: 0.0): Reward value corresponding to the minimum length when the answer is incorrect. Default is 0.0
+- `cosine_max_len_value_wrong` (default: -0.5): Reward value corresponding to the maximum length when the answer is incorrect. Default is -0.5
+- `cosine_min_len_value_correct` (default: 1.0): Reward value corresponding to the minimum length when the answer is correct. Default is 1.0
+- `cosine_max_len_value_correct` (default: 0.5): Reward value corresponding to the maximum length when the answer is correct. Default is 0.5
+- `cosine_max_len` (default value equal to the model's maximum generation capacity): Maximum length limit for generated text. Default value equal to max_completion_length
+
+repetition penalty function arguments
+
+- `repetition_n_grams` (default: 3): Size of the n-gram used to detect repetition.
+- `repetition_max_penalty` (default: -1.0): Maximum penalty value, which controls the intensity of the penalty.
+
+#### SWANLAB
+
+- **swanlab_token**: SwanLab's API key
+- **swanlab_project**: SwanLab's project, which needs to be created in advance on the page: [https://swanlab.cn/space/~](https://swanlab.cn/space/~)
+- **swanlab_workspace**: Defaults to `None`, will use the username associated with the API key
+- **swanlab_exp_name**: Experiment name, can be left empty. If empty, the value of `--output_dir` will be used by default
+- **swanlab_mode**: Optional values are `cloud` and `local`, representing cloud mode or local mode
+
 
 ### Inference Arguments
 
@@ -439,7 +467,7 @@ Evaluation Arguments inherit from the [deployment arguments](#deployment-argumen
   - Note: By default, the evaluation will use datasets from `~/.cache/opencompass`. Specifying this parameter will directly use the data folder in the current directory.
 - temperature: Overrides the generation arguments, with a default value of 0.
 - verbose: This parameter is passed into DeployArguments when setting up local deployment and evaluation, and defaults to `False`.
-- eval_num_proc: Maximum concurrency for clients during evaluation. The default for text evaluation is 256, while for multimodal it is 16.
+- eval_num_proc: Maximum number of concurrent clients during evaluation, default is 16.
 - 🔥eval_url: The evaluation URL, for example, `http://localhost:8000/v1`. Examples can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/eval/eval_url). The default value is None, which means using local deployment for evaluation.
 
 
@@ -532,8 +560,8 @@ For the meaning of the arguments, please refer to [here](https://modelscope.cn/m
 - INIT_TTS: Default is False
 - INIT_AUDIO: Default is False
 
-### ovis1_6
-- MAX_PARTITION: Refer to [here](https://github.com/AIDC-AI/Ovis/blob/d248e34d755a95d24315c40e2489750a869c5dbc/ovis/model/modeling_ovis.py#L312)
+### ovis1_6, ovis2
+- MAX_PARTITION: Default is 9, refer to [here](https://github.com/AIDC-AI/Ovis/blob/d248e34d755a95d24315c40e2489750a869c5dbc/ovis/model/modeling_ovis.py#L312)
 
 ### mplug_owl3, mplug_owl3_241101
 - MAX_NUM_FRAMES: Default is 16, refer to [here](https://modelscope.cn/models/iic/mPLUG-Owl3-7B-240728)

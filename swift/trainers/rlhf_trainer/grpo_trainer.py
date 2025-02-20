@@ -1,21 +1,24 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Part of the implementation is borrowed from huggingface/trl.
 import inspect
+import os
 from collections import defaultdict
+from contextlib import contextmanager
 from typing import Any, Callable, Dict, List, Optional, Union
 from unittest.mock import patch
 
 import torch
 import torch.nn as nn
-from accelerate.utils import broadcast_object_list, gather, gather_object
-from accelerate.utils.other import is_compiled_module
+from accelerate.utils import broadcast_object_list, gather, gather_object, is_peft_model, set_seed
 from transformers import PreTrainedModel
+from transformers.utils.versions import require_version
 from trl import GRPOTrainer as HFGRPOTrainer
 from trl.models import unwrap_model_for_generation
 
-from swift.llm import InferRequest, RequestConfig, to_device
-from swift.plugin.orm import orms
-from swift.utils import get_logger, is_vllm_available, is_wandb_available
+from swift.llm import InferRequest, RequestConfig, RowPreprocessor, to_device
+from swift.plugin import orms
+from swift.utils import (JsonlWriter, get_device, get_device_count, get_dist_setting, get_logger, is_lmdeploy_available,
+                         is_vllm_available, is_wandb_available)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 
@@ -36,7 +39,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                  reward_funcs: Optional[List[Union[str, Callable]]] = None,
                  *_args,
                  **kwargs):
-
+        require_version('trl>=0.15')
         args = kwargs['args']
 
         self.processing_class = kwargs.get('template').tokenizer
@@ -46,7 +49,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if reward_funcs:
             for i, reward_func in enumerate(reward_funcs):
                 if reward_func in orms:
-                    reward_funcs[i] = orms[reward_func]()
+                    reward_func_class = orms[reward_func]
+                    reward_func_args = list(inspect.signature(reward_func_class.__init__).parameters)
+                    reward_func_kwargs = {
+                        key: getattr(args, key)
+                        for key in reward_func_args if key not in ['self', 'args', 'kwargs'] and hasattr(args, key)
+                    }
+                    reward_funcs[i] = reward_func_class(**reward_func_kwargs)
                 elif not callable(reward_func):
                     raise ValueError(f'reward_function {reward_func} is not implemented in swift.llm.plugin')
 
@@ -58,12 +67,22 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if not self.reward_funcs:
             raise ValueError('You must specify reward_funcs or reward_model')
 
+        # Reward weights
+        if args.reward_weights is not None:
+            if len(args.reward_weights) != len(reward_funcs):
+                raise ValueError(f'Number of reward weights ({len(args.reward_weights)}) must match number of reward '
+                                 f'functions ({len(reward_funcs)})')
+            self.reward_weights = torch.tensor(args.reward_weights, dtype=torch.float32)
+        else:
+            self.reward_weights = torch.ones(len(reward_funcs), dtype=torch.float32)
+
         self.num_generations = args.num_generations
         model.warnings_issued['estimate_tokens'] = True
-        kwargs['data_collator'] = lambda x: x
+        kwargs['data_collator'] = lambda features: features
         self._metrics = defaultdict(list)
 
         use_vllm = args.use_vllm
+        use_lmdeploy = args.use_lmdeploy
 
         super().__init__(model, ref_model, *_args, **kwargs)
 
@@ -84,44 +103,86 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     f'divisible by the number of generations per prompt ({self.num_generations}). Given the current '
                     f'eval batch size, the valid values for the number of generations are: {possible_values}.')
 
-        if use_vllm:
-            if not is_vllm_available():
-                raise ImportError('vLLM is not available and `use_vllm` is set to True. Please install vLLM with '
-                                  '`pip install vllm` to use it.')
+        # Ensure each process receives a unique seed to prevent duplicate completions when generating with
+        # transformers if num_generations exceeds per_device_train_batch_size. We could skip it if we use vLLM, but
+        # it's safer to set it in all cases.
+        set_seed(args.seed, device_specific=True)
+
+        if use_vllm or use_lmdeploy:
             if self.accelerator.is_main_process:
-                vllm_device = self.args.vllm_device
-                if vllm_device == 'auto':
-                    vllm_device = f'cuda:{self.accelerator.num_processes}'  # take the next GPU idx
+                fast_infer_device = self.args.vllm_device or self.args.lmdeploy_device
+                if fast_infer_device == 'auto':
+                    if get_device_count() == 1:
+                        fast_infer_device = get_device()  # particular case when training with only 1 GPU: share it
+                    else:
+                        local_world_size = get_dist_setting()[3]
+                        fast_infer_device = get_device(local_world_size)  # take the next GPU idx
                 # Check that the requested device is available
-                if vllm_device.split(':')[0] == 'cuda' and int(vllm_device.split(':')[1]) >= torch.cuda.device_count():
+                if fast_infer_device.split(':')[0] in {'cuda', 'npu'
+                                                       } and int(fast_infer_device.split(':')[1]) >= get_device_count():
                     raise ValueError(
-                        f'The requested device for vllm ({vllm_device}) is not available. You are likely using vLLM '
+                        f'The requested device for vllm ({fast_infer_device}) is not available. '
+                        f'You are likely using vLLM '
                         'without restricting the number of GPUs for training. Set the `--num_processes` argument to a '
                         'value lower than the number of GPUs available on your machine—typically, reducing it by one '
-                        f'is sufficient. In your case: `--num_processes {torch.cuda.device_count() - 1}`.')
+                        f'is sufficient. In your case: `--num_processes {get_device_count() - 1}`.')
                 # Check that the requested device is not also used for training
-                if vllm_device in {f'cuda:{idx}' for idx in range(self.accelerator.num_processes)}:
+                if fast_infer_device in {get_device(idx) for idx in range(self.accelerator.num_processes)}:
                     logger.warning(
-                        f'The requested device {vllm_device} is also used for training. This may lead to unexpected '
-                        'behavior. It is recommended to use a dedicated device for vLLM.')
-                from swift.llm import VllmEngine
-                world_size_patch = patch('torch.distributed.get_world_size', return_value=1)
-                profiling_patch = patch(
-                    'vllm.worker.worker.Worker._assert_memory_footprint_increased_during_profiling', return_value=None)
-                with world_size_patch, profiling_patch:
-                    self.engine = VllmEngine(
-                        model.model_dir,
-                        model.model_info.torch_dtype,
-                        model_type=model.model_meta.model_type,
-                        device=vllm_device,
-                        gpu_memory_utilization=args.vllm_gpu_memory_utilization,
-                        enable_prefix_caching=args.vllm_enable_prefix_caching,
-                        max_num_seqs=args.vllm_max_num_seqs,
-                        enforce_eager=args.vllm_enforce_eager,
-                        limit_mm_per_prompt=args.vllm_limit_mm_per_prompt,
-                        max_model_len=args.vllm_max_model_len)
-                self.engine.default_template = self.template
-            self._last_loaded_step = 0
+                        f'The requested device {fast_infer_device} is also used for training. '
+                        f'This may lead to unexpected behavior. It is recommended to use a dedicated device for vLLM.')
+                if use_vllm:
+                    if not is_vllm_available():
+                        raise ImportError('vLLM is not available and `use_vllm` is set to True. '
+                                          'Please install vLLM with `pip install vllm` to use it.')
+                    from swift.llm import VllmEngine
+                    world_size_patch = patch('torch.distributed.get_world_size', return_value=1)
+                    profiling_patch = patch(
+                        'vllm.worker.worker.Worker._assert_memory_footprint_increased_during_profiling',
+                        return_value=None)
+                    from swift.tuners import Swift
+                    with world_size_patch, profiling_patch, Swift.grpo_context(model, self.template.processor):
+                        self.engine = VllmEngine(
+                            model.model_dir,
+                            model.model_info.torch_dtype,
+                            model_type=model.model_meta.model_type,
+                            device=fast_infer_device,
+                            gpu_memory_utilization=args.vllm_gpu_memory_utilization,
+                            enable_prefix_caching=args.vllm_enable_prefix_caching,
+                            max_num_seqs=args.vllm_max_num_seqs,
+                            enforce_eager=args.vllm_enforce_eager,
+                            limit_mm_per_prompt=args.vllm_limit_mm_per_prompt,
+                            max_model_len=args.vllm_max_model_len)
+                    self.engine.default_template = self.template
+                elif use_lmdeploy:
+                    # https://github.com/tastelikefeet/lmdeploy.git@feat/reload_state_dict_064
+                    # Compile:https://github.com/tastelikefeet/lmdeploy/blob/main/docs/en/get_started/installation.md
+                    if not is_lmdeploy_available():
+                        raise ImportError('Please install `pip install lmdeploy==0.6.4`'
+                                          ' and replace three files with:\n'
+                                          '1. https://github.com/tastelikefeet/lmdeploy/blob/feat/'
+                                          'reload_state_dict_064/lmdeploy/messages.py\n'
+                                          '2. https://github.com/tastelikefeet/lmdeploy/blob/feat/'
+                                          'reload_state_dict_064/lmdeploy/turbomind/turbomind.py\n'
+                                          '3. https://github.com/tastelikefeet/lmdeploy/blob/feat/'
+                                          'reload_state_dict_064/lmdeploy/turbomind/deploy/loader.py\n')
+                    from swift.llm import LmdeployEngine
+                    from swift.tuners import Swift
+                    with Swift.grpo_context(model, self.template.processor):
+                        fast_infer_device = int(fast_infer_device.split(':')[1])
+                        self.engine = LmdeployEngine(
+                            model.model_dir,
+                            model.model_info.torch_dtype,
+                            model_type=model.model_meta.model_type,
+                            device=[fast_infer_device],
+                            session_len=args.lmdeploy_session_len,
+                            cache_max_entry_count=args.lmdeploy_cache_max_entry_count)
+                    self.engine.default_template = self.template
+            self._last_loaded_step = 0  # tag to avoid useless loading during grad accumulation
+
+            # When using vLLM, the main process is responsible for loading the model weights. This can cause process
+            # desynchronization and seems to lead to DeepSpeed hanging during initialization. To prevent this, we
+            # synchronize all processes after vLLM has been fully initialized.
             self.accelerator.wait_for_everyone()
         else:
             from swift.llm import PtEngine
@@ -132,6 +193,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             top_p=args.top_p,
             top_k=args.top_k,
             repetition_penalty=args.repetition_penalty,
+            stop=args.stop_words,
         )
 
         self.model_accepts_loss_kwargs = False
@@ -139,27 +201,67 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if isinstance(reward_func, PreTrainedModel):
                 self.reward_funcs[i] = self.accelerator.prepare_model(reward_func, evaluation_mode=True)
         self.log_completions = args.log_completions
+        self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'completions.jsonl'))
+
+    @staticmethod
+    @contextmanager
+    def _template_context(template):
+        # The max_length for prompt and completion has already been restricted, so there is no need for max_length here.
+        max_length = template.max_length
+        mode = template.mode
+        if mode in {'vllm', 'pt', 'lmdeploy'}:
+            template.set_mode('train')
+        template.max_length = None
+        try:
+            yield
+        finally:
+            template.set_mode(mode)
+            template.max_length = max_length
+
+    def _move_model_to_vllm_lmdeploy(self):
+        from accelerate.utils.other import is_compiled_module
+        with unwrap_model_for_generation(
+                self.model, self.accelerator,
+                gather_deepspeed3_params=self.args.ds3_gather_for_generation) as unwrapped_model:
+            if is_compiled_module(unwrapped_model):
+                unwrapped_model = unwrapped_model._orig_mod
+            if is_peft_model(unwrapped_model):
+                unwrapped_model.merge_adapter()
+                state_dict = unwrapped_model.state_dict()
+                # Remove base_model and base_layer prefixes
+                state_dict = {
+                    k.removeprefix('base_model.model.').replace('.base_layer', ''): v
+                    for k, v in state_dict.items()
+                }
+                # Remove values with adapter prefix (example: "_lora")
+                state_dict = {k: v for k, v in state_dict.items() if unwrapped_model.prefix not in k}
+                # When module to save, remove its prefix and discard the original module
+                state_dict = {
+                    k.replace('modules_to_save.default.', ''): v
+                    for k, v in state_dict.items() if 'original_module' not in k
+                }
+            else:
+                state_dict = unwrapped_model.state_dict()
+            if self.accelerator.is_main_process:
+                if self.args.use_vllm:
+                    llm_model = self.engine.engine.engine.model_executor.driver_worker.model_runner.model
+                else:
+                    llm_model = self.engine.engine.engine
+                llm_model.load_weights(state_dict.items())
+            # Unmerge the adapter to restore the model to its original state.
+            # This must be done after loading weights to ensure they correspond to the merged state.
+            if is_peft_model(unwrapped_model):
+                unwrapped_model.unmerge_adapter()
 
     def _prepare_inputs(self, inputs) -> Dict[str, Union[torch.Tensor, Any]]:
         device = self.accelerator.device
 
         # Generate completions using either vLLM or regular generation
-        if self.args.use_vllm:
+        if self.args.use_vllm or self.args.use_lmdeploy:
             # First, have main process load weights if needed
             if self.state.global_step != self._last_loaded_step:
-                with unwrap_model_for_generation(
-                        self.model, self.accelerator,
-                        gather_deepspeed3_params=self.args.ds3_gather_for_generation) as unwrapped_model:
-                    if is_compiled_module(unwrapped_model):
-                        state_dict = unwrapped_model._orig_mod.state_dict()
-                    else:
-                        state_dict = unwrapped_model.state_dict()
-                if self.accelerator.is_main_process:
-                    llm_model = self.engine.engine.engine.model_executor.driver_worker.model_runner.model
-                    # use_vllm only support 'full'
-                    llm_model.load_weights(state_dict.items())
+                self._move_model_to_vllm_lmdeploy()
                 self._last_loaded_step = self.state.global_step
-
             # Generate completions using vLLM: gather all prompts and use them in a single call in the main process
             all_inputs = gather_object(inputs)
             if self.accelerator.is_main_process:
@@ -174,31 +276,34 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # Regular generation path
             is_multimodal = self.model.model_meta.is_multimodal
             if is_multimodal:
-                self.template.remove_post_encode_hook()
-            outputs = self.engine.infer(inputs, self.request_config, use_tqdm=False)
+                models = self.template.remove_post_encode_hook()
+            with unwrap_model_for_generation(self.model_wrapped, self.accelerator):
+                # same reference
+                outputs = self.engine.infer(inputs, self.request_config, use_tqdm=False)
+                self.model.train()
             if is_multimodal:
-                self.template.register_post_encode_hook([self.model])
+                self.template.register_post_encode_hook(models)
 
         # Slice to keep only the local part of the data
         process_slice = slice(
             self.accelerator.process_index * len(inputs),
             (self.accelerator.process_index + 1) * len(inputs),
         )
-        outputs = outputs[process_slice]
+        if self.args.use_vllm or self.args.use_lmdeploy:
+            outputs = outputs[process_slice]
 
         for i, output in enumerate(outputs):
             messages = inputs[i]['messages']
             InferRequest.remove_response(messages)
             messages.append({'role': 'assistant', 'content': output.choices[0].message.content})
 
-        self.template.set_mode('train')
-        batched_inputs = [self.template.encode(infer_request) for infer_request in inputs]
-        outputs = to_device(self.template.data_collator(batched_inputs), self.model.device)
-        self.template.set_mode('pt')  # recover
+        with self._template_context(self.template):
+            batched_inputs = [self.template.encode(infer_request) for infer_request in inputs]
+            outputs = to_device(self.template.data_collator(batched_inputs), self.model.device)
 
         # we only need to compute the logits for the completion tokens
         labels = outputs.pop('labels')
-        logits_to_keep = labels.shape[-1] - (torch.ne(labels, -100).int().argmax(-1)).max().item()
+        logits_to_keep = (labels.shape[-1] - (torch.ne(labels, -100).int().argmax(-1))).max().item()
         outputs['logits_to_keep'] = logits_to_keep
         outputs['completion_mask'] = labels[:, -logits_to_keep:] != -100
 
@@ -214,20 +319,21 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         for i, (reward_func, reward_template) in enumerate(zip(self.reward_funcs, self.reward_templates)):
             if isinstance(reward_func, nn.Module):  # Module instead of PretrainedModel for compat with compiled models
-                batched_inputs = [reward_template.encode(infer_request) for infer_request in inputs]
-                reward_inputs = to_device(reward_template.data_collator(batched_inputs), reward_func.device)
+                with self._template_context(reward_template):
+                    batched_inputs = [reward_template.encode(infer_request) for infer_request in inputs]
+                    reward_inputs = to_device(reward_template.data_collator(batched_inputs), reward_func.device)
 
                 with torch.inference_mode():
                     rewards_per_func[:, i] = reward_func(**reward_inputs).logits[:, 0]
             else:
                 # Repeat all input columns (but "messages" and "completion") to match the number of generations
-                reward_kwargs = {key: [example[key] for example in inputs] for key in inputs[0]}
+                reward_kwargs = RowPreprocessor.rows_to_batched(inputs)
                 output_reward_func = reward_func(completions, **reward_kwargs)
                 rewards_per_func[:, i] = torch.tensor(output_reward_func, dtype=torch.float32, device=device)
 
         rewards_per_func = gather(rewards_per_func)
-        # Sum the rewards from all reward functions
-        rewards = rewards_per_func.sum(dim=1)
+        # Apply weights to each reward function's output and sum
+        rewards = (rewards_per_func * self.reward_weights.to(device).unsqueeze(0)).sum(dim=1)
 
         # Compute grouped-wise rewards
         mean_grouped_rewards = rewards.view(-1, self.num_generations).mean(dim=1)
@@ -257,20 +363,18 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             'ref_per_token_logps': ref_per_token_logps,
             'advantages': advantages,
         })
-        if (self.log_completions and self.state.global_step % self.args.logging_steps == 0
-                and 'wandb' in self.args.report_to):
-            import pandas as pd
-
+        if self.log_completions and self.state.global_step % self.args.logging_steps == 0:
             # For logging
             table = {
                 'step': [str(self.state.global_step)] * len(rewards),
-                'messages': gather_object(inputs['messages'][:-1]),
+                'messages': [inputs['messages'][:-1] for inputs in gather_object(inputs)],
                 'completion': gather_object(completions),
                 'reward': rewards.tolist(),
             }
-            df = pd.DataFrame(table)
-
-            if wandb.run is not None and self.accelerator.is_main_process:
+            self.jsonl_writer.append(table)
+            if 'wandb' in self.args.report_to and wandb.run is not None and self.accelerator.is_main_process:
+                import pandas as pd
+                df = pd.DataFrame(table)
                 wandb.log({'completions': wandb.Table(dataframe=df)})
 
         return outputs
@@ -291,7 +395,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         per_token_loss = torch.exp(per_token_logps - per_token_logps.detach()) * advantages.unsqueeze(1)
         per_token_loss = -(per_token_loss - self.beta * per_token_kl)
 
-        loss = ((per_token_loss * completion_mask).sum(dim=1) / completion_mask.sum(dim=1)).mean()
+        loss = (per_token_loss * completion_mask).sum() / completion_mask.sum()
 
         # Log the metrics
         completion_length = self.accelerator.gather_for_metrics(completion_mask.sum(1)).float().mean().item()
@@ -323,3 +427,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         logits = logits[:, -(logits_to_keep + 1):-1, :]
         input_ids = input_ids[:, -logits_to_keep:]
         return selective_log_softmax(logits, input_ids)  # compute logprobs for the input tokens
+
+    def evaluation_loop(self, *args, **kwargs):
+        metric_key_prefix = kwargs['metric_key_prefix']
+        output = super().evaluation_loop(*args, **kwargs)
+        metrics = {f'{metric_key_prefix}_{key}': sum(val) / len(val) for key, val in self._metrics.items()}
+        output.metrics.update(metrics)
+        return output

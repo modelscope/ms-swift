@@ -11,6 +11,8 @@ if TYPE_CHECKING:
     from .optimizer import optimizers_map
     from .tools import get_tools_prompt, get_tools_keyword
     from .tuner import Tuner, extra_tuners
+    from .prm import prms, PRM
+    from .orm import orms, ORM
 
 else:
     _extra_objects = {k: v for k, v in globals().items() if not k.startswith('_')}
@@ -22,6 +24,8 @@ else:
         'optimizer': ['optimizers_map'],
         'tools': ['get_tools_prompt', 'get_tools_keyword'],
         'tuner': ['Tuner', 'extra_tuners'],
+        'prm': ['prms', 'PRM'],
+        'orm': ['orms', 'ORM']
     }
 
     import sys

@@ -4,11 +4,10 @@ import sys
 from typing import Any, Dict
 
 import json
-import torch.cuda
 from transformers import AutoConfig, AutoProcessor
 
 from swift.llm import TemplateType
-from swift.utils import get_dist_setting, get_logger
+from swift.utils import get_device, get_device_count, get_dist_setting, get_logger
 from ..constant import LLMModelType, MLLMModelType
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
 from ..utils import ModelInfo
@@ -22,7 +21,7 @@ def get_model_tokenizer_minimax_vl(model_dir: str,
                                    load_model: bool = True,
                                    **kwargs):
     logger.warn('NOTE: minimax-vl-01 model does not support training.')
-    n_gpu = torch.cuda.device_count()
+    n_gpu = get_device_count()
     _, local_rank, _, local_world_size = get_dist_setting()
     if local_rank == -1:
         local_rank = 0
@@ -60,17 +59,17 @@ def get_model_tokenizer_minimax_vl(model_dir: str,
                     vision_map[new_key] = value
 
         device_map = {
-            'language_model.model.embed_tokens': f'cuda:{device_ids[0]}',
-            'language_model.model.norm': f'cuda:{device_ids[len(device_ids) - 1]}',
-            'language_model.lm_head': f'cuda:{device_ids[len(device_ids) - 1]}'
+            'language_model.model.embed_tokens': get_device(device_ids[0]),
+            'language_model.model.norm': get_device(device_ids[len(device_ids) - 1]),
+            'language_model.lm_head': get_device(device_ids[len(device_ids) - 1])
         }
         for key, value in vision_map.items():
-            device_map[key] = f'cuda:{device_ids[0]}'
-        device_map['vision_tower.vision_model.post_layernorm'] = f'cuda:{device_ids[0]}'
+            device_map[key] = get_device(device_ids[0])
+        device_map['vision_tower.vision_model.post_layernorm'] = get_device(device_ids[0])
         layers_per_device = config.text_config.num_hidden_layers // len(device_ids)
         for i in range(len(device_ids)):
             for j in range(layers_per_device):
-                device_map[f'language_model.model.layers.{i * layers_per_device + j}'] = f'cuda:{device_ids[i]}'
+                device_map[f'language_model.model.layers.{i * layers_per_device + j}'] = get_device(device_ids[i])
         model_kwargs['device_map'] = device_map
 
     with open(os.path.join(model_dir, '__init__.py'), 'w') as f:
@@ -104,7 +103,7 @@ def get_model_tokenizer_minimax_text(model_dir: str,
                                      load_model: bool = True,
                                      **kwargs):
     logger.warn('NOTE: minimax-text-01 model does not support training.')
-    n_gpu = torch.cuda.device_count()
+    n_gpu = get_device_count()
     _, local_rank, _, local_world_size = get_dist_setting()
     if local_rank == -1:
         local_rank = 0
@@ -130,13 +129,13 @@ def get_model_tokenizer_minimax_text(model_dir: str,
         layers_per_device = config.num_hidden_layers // len(device_ids)
         # set device map
         device_map = {
-            'model.embed_tokens': 'cuda:0',
-            'model.norm': f'cuda:{len(device_ids) - 1}',
-            'lm_head': f'cuda:{len(device_ids) - 1}'
+            'model.embed_tokens': get_device(0),
+            'model.norm': get_device(len(device_ids) - 1),
+            'lm_head': get_device(len(device_ids) - 1)
         }
         for i in range(len(device_ids)):
             for j in range(layers_per_device):
-                device_map[f'model.layers.{i * layers_per_device + j}'] = f'cuda:{i}'
+                device_map[f'model.layers.{i * layers_per_device + j}'] = get_device(i)
         model_kwargs['device_map'] = device_map
 
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)

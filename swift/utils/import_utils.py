@@ -24,6 +24,10 @@ def is_liger_available():
     return importlib.util.find_spec('liger_kernel') is not None
 
 
+def is_swanlab_available():
+    return importlib.util.find_spec('swanlab') is not None
+
+
 def is_xtuner_available():
     return importlib.util.find_spec('xtuner') is not None
 

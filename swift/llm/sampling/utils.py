@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 import json
 import numpy as np
 
-from swift.llm import InferRequest, Messages, RequestConfig
+from swift.llm import InferRequest, RequestConfig
 from swift.utils import get_logger
 
 logger = get_logger()
@@ -38,22 +38,22 @@ def get_reward(model: Any,
         Index 0: The min-max normalized scores matched the infer_requests
         Index 1: The mask filtered by the threshold
     """
-    parameters = inspect.signature(model.infer).parameters
+    from swift.llm import InferEngine
+    infer_func = model.infer if isinstance(model, InferEngine) else model.__call__
+    parameters = inspect.signature(infer_func).parameters
     gt_param = {}
     if 'ground_truths' in parameters:
         gt_param = {'ground_truths': ground_truths}
-    resp_list = model.infer(infer_requests, request_config=request_config, **gt_param)
+    rewards = infer_func(infer_requests, request_config=request_config, **gt_param)
+    from swift.llm.infer.protocol import ChatCompletionResponse
+    if isinstance(rewards[0], ChatCompletionResponse):
+        rewards = [float(r.choices[0].message.content) for r in rewards]
     arr = []
-    for i in range(len(resp_list)):
-        content = resp_list[i].choices[0].message.content
-        if isinstance(content, str) and '[' in content:
-            try:
-                content = json.loads(content)
-            except Exception:
-                content = eval(content)
-            arr.append(min(content))
+    for reward in rewards:
+        if isinstance(reward, (list, tuple)):
+            arr.append(min(reward))
         else:
-            arr.append(float(content))
+            arr.append(float(reward))
 
     _mask = np.array([True] * len(arr))
     if threshold is not None:

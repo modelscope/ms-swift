@@ -98,7 +98,8 @@ def get_model_tokenizer_xcomposer2(model_dir: str,
         from transformers import CLIPVisionModel
 
         def load_model(self):
-            self.vision_tower_name = safe_snapshot_download('AI-ModelScope/clip-vit-large-patch14-336')
+            self.vision_tower_name = safe_snapshot_download(
+                'AI-ModelScope/clip-vit-large-patch14-336', check_local=True)
             self.vision_tower = CLIPVisionModel.from_pretrained(self.vision_tower_name)
             self.vision_tower.requires_grad_(False)
             self.is_loaded = True

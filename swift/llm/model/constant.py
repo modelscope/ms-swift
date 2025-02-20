@@ -129,6 +129,7 @@ class MLLMModelType:
     qvq = 'qvq'
     ovis1_6 = 'ovis1_6'
     ovis1_6_llama3 = 'ovis1_6_llama3'
+    ovis2 = 'ovis2'
 
     glm4v = 'glm4v'
     glm_edge_v = 'glm_edge_v'
@@ -191,6 +192,8 @@ class MLLMModelType:
     emu3_gen = 'emu3_gen'
     emu3_chat = 'emu3_chat'
     got_ocr2 = 'got_ocr2'
+    got_ocr2_hf = 'got_ocr2_hf'
+    step_audio = 'step_audio'
 
     phi3_vision = 'phi3_vision'
     florence = 'florence'
