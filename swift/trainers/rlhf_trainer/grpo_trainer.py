@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from typing import Any, Callable, Dict, List, Optional, Union
 from unittest.mock import patch
 
+import numpy as np
 import torch
 import torch.nn as nn
 from accelerate.utils import broadcast_object_list, gather, gather_object, is_peft_model, set_seed
@@ -21,6 +22,7 @@ from swift.utils import (JsonlWriter, get_device, get_device_count, get_dist_set
                          is_vllm_available, is_wandb_available)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
+from ...llm.infer.utils import InferEngines
 
 del HFGRPOTrainer.__init__
 del HFGRPOTrainer._prepare_inputs
@@ -109,16 +111,28 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         set_seed(args.seed, device_specific=True)
 
         if use_vllm or use_lmdeploy:
-            if self.accelerator.is_main_process:
+            is_infer_worker = self.accelerator.is_local_main_process if not self.args.vllm_only_first_node else self.accelerator.is_main_process
+            if is_infer_worker:
                 fast_infer_device = self.args.vllm_device or self.args.lmdeploy_device
                 if fast_infer_device == 'auto':
+                    assert self.args.vllm_count == 1
                     if get_device_count() == 1:
                         fast_infer_device = get_device()  # particular case when training with only 1 GPU: share it
                     else:
                         local_world_size = get_dist_setting()[3]
                         fast_infer_device = get_device(local_world_size)  # take the next GPU idx
+                    mp = 1
+                    vllm_count = 1
+                else:
+                    # e.g. 4, local vllm count
+                    fast_infer_device = int(fast_infer_device)
+                    vllm_count = self.args.vllm_count
+                    assert fast_infer_device % vllm_count == 0
+                    mp = fast_infer_device // vllm_count
+                    fast_infer_device = reversed((get_device_count() - np.array(range(fast_infer_device))))
+
                 # Check that the requested device is available
-                if fast_infer_device.split(':')[0] in {'cuda', 'npu'
+                if isinstance(fast_infer_device, str) and fast_infer_device.split(':')[0] in {'cuda', 'npu'
                                                        } and int(fast_infer_device.split(':')[1]) >= get_device_count():
                     raise ValueError(
                         f'The requested device for vllm ({fast_infer_device}) is not available. '
@@ -126,11 +140,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         'without restricting the number of GPUs for training. Set the `--num_processes` argument to a '
                         'value lower than the number of GPUs available on your machine—typically, reducing it by one '
                         f'is sufficient. In your case: `--num_processes {get_device_count() - 1}`.')
-                # Check that the requested device is not also used for training
-                if fast_infer_device in {get_device(idx) for idx in range(self.accelerator.num_processes)}:
-                    logger.warning(
-                        f'The requested device {fast_infer_device} is also used for training. '
-                        f'This may lead to unexpected behavior. It is recommended to use a dedicated device for vLLM.')
                 if use_vllm:
                     if not is_vllm_available():
                         raise ImportError('vLLM is not available and `use_vllm` is set to True. '
@@ -142,18 +151,23 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         return_value=None)
                     from swift.tuners import Swift
                     with world_size_patch, profiling_patch, Swift.grpo_context(model, self.template.processor):
-                        self.engine = VllmEngine(
-                            model.model_dir,
-                            model.model_info.torch_dtype,
-                            model_type=model.model_meta.model_type,
-                            device=fast_infer_device,
-                            gpu_memory_utilization=args.vllm_gpu_memory_utilization,
-                            enable_prefix_caching=args.vllm_enable_prefix_caching,
-                            max_num_seqs=args.vllm_max_num_seqs,
-                            enforce_eager=args.vllm_enforce_eager,
-                            limit_mm_per_prompt=args.vllm_limit_mm_per_prompt,
-                            max_model_len=args.vllm_max_model_len)
-                    self.engine.default_template = self.template
+                        engines = []
+                        for vllm_idx in range(vllm_count):
+                            engine = VllmEngine(
+                                model.model_dir,
+                                model.model_info.torch_dtype,
+                                model_type=model.model_meta.model_type,
+                                device=fast_infer_device[mp*vllm_idx:mp*(vllm_idx+1)],
+                                gpu_memory_utilization=args.vllm_gpu_memory_utilization,
+                                enable_prefix_caching=args.vllm_enable_prefix_caching,
+                                max_num_seqs=args.vllm_max_num_seqs,
+                                enforce_eager=args.vllm_enforce_eager,
+                                tensor_parallel_size=mp,
+                                limit_mm_per_prompt=args.vllm_limit_mm_per_prompt,
+                                max_model_len=args.vllm_max_model_len)
+                            engine.default_template = self.template
+                            engines.append(engine)
+                        self.engine = InferEngines(engines)
                 elif use_lmdeploy:
                     # https://github.com/tastelikefeet/lmdeploy.git@feat/reload_state_dict_064
                     # Compile:https://github.com/tastelikefeet/lmdeploy/blob/main/docs/en/get_started/installation.md
@@ -243,11 +257,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             else:
                 state_dict = unwrapped_model.state_dict()
             if self.accelerator.is_main_process:
-                if self.args.use_vllm:
-                    llm_model = self.engine.engine.engine.model_executor.driver_worker.model_runner.model
-                else:
-                    llm_model = self.engine.engine.engine
-                llm_model.load_weights(state_dict.items())
+                self.engine.load_weights(state_dict.items())
             # Unmerge the adapter to restore the model to its original state.
             # This must be done after loading weights to ensure they correspond to the merged state.
             if is_peft_model(unwrapped_model):

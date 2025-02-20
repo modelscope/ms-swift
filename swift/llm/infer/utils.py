@@ -1,8 +1,11 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import concurrent
 import re
 from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional
+import concurrent.futures
+import numpy as np
 
 from swift.plugin import extra_tuners
 from swift.tuners import Swift
@@ -145,3 +148,37 @@ def prepare_model_template(args, **kwargs):
     model = prepare_adapter(args, model)
     template = args.get_template(processor)
     return model, template
+
+
+class InferEngines:
+
+    def __init__(self, engines=None):
+        self.engines = engines or []
+
+    def add_engine(self, engine):
+        self.engines.append(engine)
+
+    def __getattr__(self, key: str):
+        try:
+            return super().__getattr__(key)
+        except AttributeError:
+            selected = np.random.choice(self.engines)
+            return getattr(selected, key)
+
+    def load_weights(self, state_dict):
+        from swift.llm import VllmEngine
+
+        def _load_weights(idx):
+            engine = self.engines[idx]
+            if isinstance(engine, VllmEngine):
+                llm_model = engine.engine.engine.model_executor.driver_worker.model_runner.model
+            else:
+                llm_model = engine.engine.engine
+            llm_model.load_weights(state_dict)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(self.engines)) as executor:
+            futures = [
+                executor.submit(_load_weights, idx)
+                for idx in range(len(self.engines))
+            ]
+            concurrent.futures.wait(futures)
