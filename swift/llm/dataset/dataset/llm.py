@@ -557,10 +557,6 @@ register_dataset(
 
 class XlamFunctionCallingPreprocessor(ResponsePreprocessor):
 
-    def __init__(self, response=True):
-        self.response = response
-        super().__init__()
-
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         query = row['query']
         answers = row['response']
