@@ -1,8 +1,8 @@
 # pip install math_verify # reward function
 # pip install "trl>=0.15"
 # GPU memory: 80GiB
-NPROC_PER_NODE=2 \
-CUDA_VISIBLE_DEVICES=0,1 \
+# You can set `--reward_model` to use a reward model to provide rewards.
+CUDA_VISIBLE_DEVICES=0 \
 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-7B \
