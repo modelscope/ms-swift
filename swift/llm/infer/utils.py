@@ -1,11 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import concurrent
 import re
 from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional
-import concurrent.futures
-import numpy as np
 
 from swift.plugin import extra_tuners
 from swift.tuners import Swift
@@ -148,75 +145,3 @@ def prepare_model_template(args, **kwargs):
     model = prepare_adapter(args, model)
     template = args.get_template(processor)
     return model, template
-
-
-class InferEngines:
-
-    def __init__(self, engines=None):
-        self.engines = engines or []
-
-    def add_engine(self, engine):
-        self.engines.append(engine)
-
-    def __getattr__(self, key: str):
-        try:
-            return super().__getattr__(key)
-        except AttributeError:
-            selected = np.random.choice(self.engines)
-            return getattr(selected, key)
-
-    @staticmethod
-    def round_robin(num_reqs, nodes):
-        distribution = [[] for _ in range(nodes)]
-        reversed_distribution = []
-
-        for idx in range(num_reqs):
-            node_id = idx % nodes
-            distribution[node_id].append(idx)
-            reversed_distribution.append(node_id)
-        return distribution, reversed_distribution
-
-    def infer(self,
-              infer_requests,
-              request_config=None,
-              metrics=None,
-              *,
-              use_tqdm=None,
-              **kwargs):
-        infer_len = len(infer_requests)
-        infer_requests = np.array(infer_requests)
-        requests, reversed_requests = self.round_robin(infer_len, len(self.engines))
-
-        def _infer(idx):
-            _requests = infer_requests[requests[idx]]
-            engine = self.engines[idx]
-            return engine.infer(_requests, request_config, None, use_tqdm=None, **kwargs)
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=len(self.engines)) as executor:
-            futures = [
-                executor.submit(_infer, idx=idx)
-                for idx in range(len(self.engines))
-            ]
-            concurrent.futures.wait(futures)
-            outputs = []
-            for i in range(len(infer_requests)):
-                outputs.append(futures[reversed_requests[i]].result.pop(0))
-            return outputs
-
-    def load_weights(self, state_dict):
-        from swift.llm import VllmEngine
-
-        def _load_weights(idx):
-            engine = self.engines[idx]
-            if isinstance(engine, VllmEngine):
-                llm_model = engine.engine.engine.model_executor.driver_worker.model_runner.model
-            else:
-                llm_model = engine.engine.engine
-            llm_model.load_weights(state_dict)
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=len(self.engines)) as executor:
-            futures = [
-                executor.submit(_load_weights, idx=idx)
-                for idx in range(len(self.engines))
-            ]
-            concurrent.futures.wait(futures)

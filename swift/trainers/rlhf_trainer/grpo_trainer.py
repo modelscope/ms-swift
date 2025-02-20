@@ -5,12 +5,11 @@ import os
 from collections import defaultdict
 from contextlib import contextmanager
 from typing import Any, Callable, Dict, List, Optional, Union
-from unittest.mock import patch
 
 import numpy as np
 import torch
 import torch.nn as nn
-from accelerate.utils import broadcast_object_list, gather, gather_object, is_peft_model, set_seed
+from accelerate.utils import gather, gather_object, is_peft_model, set_seed
 from transformers import PreTrainedModel
 from transformers.utils.versions import require_version
 from trl import GRPOTrainer as HFGRPOTrainer
@@ -22,7 +21,6 @@ from swift.utils import (JsonlWriter, get_device, get_device_count, get_dist_set
                          is_vllm_available, is_wandb_available)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
-from ...llm.infer.utils import InferEngines
 
 del HFGRPOTrainer.__init__
 del HFGRPOTrainer._prepare_inputs
@@ -111,30 +109,33 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         set_seed(args.seed, device_specific=True)
 
         if use_vllm or use_lmdeploy:
-            rank, local_rank, world_size, local_world_size = get_dist_setting()
-
-            if self.is_infer_worker:
+            if self.infer_rank > 0:
                 fast_infer_device = self.args.vllm_device or self.args.lmdeploy_device
                 if fast_infer_device == 'auto':
-                    assert self.args.vllm_count == 1
                     if get_device_count() == 1:
-                        fast_infer_device = get_device()  # particular case when training with only 1 GPU: share it
+                        fast_infer_device = [get_device()]  # particular case when training with only 1 GPU: share it
                     else:
-                        fast_infer_device = get_device(local_world_size)  # take the next GPU idx
-                    mp = 1
-                else:
-                    fast_infer_device = list(reversed((get_device_count() - 1 - np.array(range(fast_infer_device)))))
-                    mp = len(fast_infer_device) // self.args.vllm_count
+                        local_world_size = get_dist_setting()[3]
+                        fast_infer_device = []
+                        for idx in range(local_world_size - self.args.num_infer_workers, local_world_size):
+                            fast_infer_device.append(get_device(idx))
 
-                # Check that the requested device is available
-                if isinstance(fast_infer_device, str) and fast_infer_device.split(':')[0] in {'cuda', 'npu'
-                                                       } and int(fast_infer_device.split(':')[1]) >= get_device_count():
-                    raise ValueError(
-                        f'The requested device for vllm ({fast_infer_device}) is not available. '
-                        f'You are likely using vLLM '
-                        'without restricting the number of GPUs for training. Set the `--num_processes` argument to a '
-                        'value lower than the number of GPUs available on your machine—typically, reducing it by one '
-                        f'is sufficient. In your case: `--num_processes {get_device_count() - 1}`.')
+                for _device in fast_infer_device:
+                    # Check that the requested device is available
+                    if _device.split(':')[0] in {'cuda', 'npu'} and int(_device.split(':')[1]) >= get_device_count():
+                        raise ValueError(f'The requested device for vllm ({_device}) is not available. '
+                                         f'You are likely using vLLM '
+                                         'without restricting the number of GPUs for training. '
+                                         'Set the `--num_processes` argument to a '
+                                         'value lower than the number of GPUs available on your machine—typically, '
+                                         'reducing it by one is sufficient. '
+                                         f'In your case: `--num_processes {get_device_count() - 1}`.')
+                    # Check that the requested device is not also used for training
+                    if _device in {get_device(idx) for idx in range(self.accelerator.num_processes)}:
+                        logger.warning(f'The requested device {_device} is also used for training. '
+                                       f'This may lead to unexpected behavior. '
+                                       f'It is recommended to use a dedicated device for vLLM.')
+
                 if use_vllm:
                     if not is_vllm_available():
                         raise ImportError('vLLM is not available and `use_vllm` is set to True. '
@@ -147,12 +148,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             model.model_dir,
                             model.model_info.torch_dtype,
                             model_type=model.model_meta.model_type,
-                            device=f'cuda:{fast_infer_device[mp*local_rank:mp*(local_rank+1)][0]}',
+                            device=fast_infer_device[self.infer_rank],
                             gpu_memory_utilization=args.vllm_gpu_memory_utilization,
                             enable_prefix_caching=args.vllm_enable_prefix_caching,
                             max_num_seqs=args.vllm_max_num_seqs,
                             enforce_eager=args.vllm_enforce_eager,
-                            # tensor_parallel_size=mp,
                             limit_mm_per_prompt=args.vllm_limit_mm_per_prompt,
                             max_model_len=args.vllm_max_model_len)
                         self.engine.default_template = self.template
@@ -176,7 +176,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             model.model_dir,
                             model.model_info.torch_dtype,
                             model_type=model.model_meta.model_type,
-                            device=[fast_infer_device],
+                            device=[fast_infer_device[self.infer_rank]],
                             session_len=args.lmdeploy_session_len,
                             cache_max_entry_count=args.lmdeploy_cache_max_entry_count)
                     self.engine.default_template = self.template
@@ -206,21 +206,26 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'completions.jsonl'))
 
     @property
-    def is_infer_worker(self):
+    def infer_rank(self):
         rank, local_rank, world_size, local_world_size = get_dist_setting()
-        return local_rank in list(range(self.args.vllm_count)) and (
-                    not self.args.vllm_only_first_node or rank < local_world_size)
+        step = local_world_size / self.args.num_infer_workers
+        for _vllm_rank in range(self.args.num_infer_workers):
+            _assigned = int(_vllm_rank * step + step / 2)
+            if _assigned >= local_world_size:
+                _assigned = local_world_size - 1
+
+            if local_rank == _assigned:
+                return _vllm_rank
+
+        return -1
 
     @staticmethod
     def round_robin(num_reqs, nodes):
         distribution = [[] for _ in range(nodes)]
-        reversed_distribution = []
-
         for idx in range(num_reqs):
             node_id = idx % nodes
             distribution[node_id].append(idx)
-            reversed_distribution.append(node_id)
-        return distribution, reversed_distribution
+        return distribution
 
     @staticmethod
     @contextmanager
@@ -261,27 +266,27 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 }
             else:
                 state_dict = unwrapped_model.state_dict()
-            if self.accelerator.is_main_process:
-                self.engine.load_weights(state_dict.items())
+            if self.infer_rank >= 0:
+                if self.args.use_vllm:
+                    llm_model = self.engine.engine.engine.model_executor.driver_worker.model_runner.model
+                else:
+                    llm_model = self.engine.engine.engine
+                llm_model.load_weights(state_dict.items())
             # Unmerge the adapter to restore the model to its original state.
             # This must be done after loading weights to ensure they correspond to the merged state.
             if is_peft_model(unwrapped_model):
                 unwrapped_model.unmerge_adapter()
 
     @staticmethod
-    def reorder_outputs(outputs, reverse_index):
-        if len(outputs) != len(reverse_index):
-            raise ValueError
+    def reorder_outputs(outputs, distributed_idx):
+        index_to_output = {}
+        current_position = 0
+        for output_idx in distributed_idx:
+            for idx in output_idx:
+                index_to_output[idx] = outputs[current_position]
+                current_position += 1
 
-        from collections import defaultdict
-        machine_outputs = defaultdict(list)
-        for output, machine_id in zip(outputs, reverse_index):
-            machine_outputs[machine_id].append(output)
-        sorted_machine_ids = sorted(machine_outputs.keys())
-        reordered = []
-        for machine_id in sorted_machine_ids:
-            reordered.extend(machine_outputs[machine_id])
-        return reordered
+        return [index_to_output[idx] for idx in sorted(index_to_output.keys())]
 
     def _prepare_inputs(self, inputs) -> Dict[str, Union[torch.Tensor, Any]]:
         device = self.accelerator.device
@@ -294,17 +299,18 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self._last_loaded_step = self.state.global_step
             # Generate completions using vLLM: gather all prompts and use them in a single call in the main process
             all_inputs = gather_object(inputs)
-            requests, reversed_requests = self.round_robin(len(all_inputs), self.args.vllm_count)
-            if self.is_infer_worker:
-                outputs = self.engine.infer(np.array(all_inputs)[requests[local_rank]], self.request_config, use_tqdm=False)
+            distributed_idx = self.round_robin(len(all_inputs), self.args.num_infer_workers)
+            if self.infer_rank >= 0:
+                outputs = self.engine.infer(
+                    np.array(all_inputs)[distributed_idx[self.infer_rank]], self.request_config, use_tqdm=False)
             else:
                 outputs = []
 
+            outputs = gather_object(outputs)
+            outputs = self.reorder_outputs(outputs, distributed_idx)
+
             # Broadcast the completions from the main process to all processes, ensuring each process receives its
             # corresponding slice.
-            outputs = gather_object(outputs)
-            outputs = self.reorder_outputs(outputs, reversed_requests)
-
             # outputs = broadcast_object_list(outputs, from_process=0)
         else:
             # Regular generation path
