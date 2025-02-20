@@ -71,6 +71,7 @@ class SwiftInfer(SwiftPipeline):
             if dist.is_initialized():
                 assert args.tensor_parallel_size == 1, f'not support tensor_parallel_size: {args.tensor_parallel_size}'
                 context = patch_vllm()
+                kwargs.update({'device': dist.get_rank()})
         else:
             from .infer_engine import LmdeployEngine
             infer_engine_cls = LmdeployEngine
