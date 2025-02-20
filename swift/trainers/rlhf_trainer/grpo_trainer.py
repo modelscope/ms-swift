@@ -33,6 +33,87 @@ if is_wandb_available():
     import wandb
 
 
+class RepeatRandomSampler(Sampler):
+    """
+    Sampler that repeats the indices of a dataset in a structured manner.
+
+    Args:
+        data_source (`Sized`):
+            Dataset to sample from.
+        mini_repeat_count (`int`):
+            Number of times to repeat each index per batch.
+        batch_size (`int`, *optional*, defaults to `1`):
+            Number of unique indices per batch.
+        repeat_count (`int`, *optional*, defaults to `1`):
+            Number of times to repeat the full sampling process.
+        seed (`int` or `None`, *optional*, defaults to `None`):
+            Random seed for reproducibility (only affects this sampler).
+
+    Example:
+    ```python
+    >>> sampler = RepeatRandomSampler(["a", "b", "c", "d", "e", "f", "g"], mini_repeat_count=2, batch_size=3, repeat_count=4)
+    >>> list(sampler)
+    [4, 4, 3, 3, 0, 0, 4, 4, 3, 3, 0, 0, 4, 4, 3, 3, 0, 0, 4, 4, 3, 3, 0, 0,
+     1, 1, 2, 2, 6, 6, 1, 1, 2, 2, 6, 6, 1, 1, 2, 2, 6, 6, 1, 1, 2, 2, 6, 6]
+    ```
+
+    ```txt
+    mini_repeat_count = 3
+          -   -   -
+         [0,  0,  0,  1,  1,  1,  2,  2,  2,  3,  3,  3,      |
+          4,  4,  4,  5,  5,  5,  6,  6,  6,  7,  7,  7,      |
+          8,  8,  8,  9,  9,  9, 10, 10, 10, 11, 11, 11,      |
+                                                                repeat_count = 2
+          0,  0,  0,  1,  1,  1,  2,  2,  2,  3,  3,  3,      |
+          4,  4,  4,  5,  5,  5,  6,  6,  6,  7,  7,  7,      |
+          8,  8,  8,  9,  9,  9, 10, 10, 10, 11, 11, 11, ...] |
+          ---------   ---------   ---------   ---------
+           ---------   ---------   ---------   ---------
+            ---------   ---------   ---------   ---------
+                         batch_size = 12
+    ```
+    """
+
+    def __init__(
+        self,
+        data_source: Sized,
+        mini_repeat_count: int,
+        batch_size: int = 1,
+        repeat_count: int = 1,
+        seed: Optional[int] = None,
+    ):
+        self.data_source = data_source
+        self.mini_repeat_count = mini_repeat_count
+        self.batch_size = batch_size
+        self.repeat_count = repeat_count
+        self.num_samples = len(data_source)
+        self.seed = seed
+        self.generator = torch.Generator()  # Create a local random generator
+        if seed is not None:
+            self.generator.manual_seed(seed)
+
+    def __iter__(self):
+        # [2, 4, 3, 1, 0, 6, 5] (num_samples = 7)
+        indexes = torch.randperm(self.num_samples, generator=self.generator).tolist()
+
+        #    [2, 4, 3, 1, 0, 6, 5]
+        # -> [[2, 4, 3], [1, 0, 6], [5]]  (batch_size = 3)
+        indexes = [indexes[i:i + self.batch_size] for i in range(0, len(indexes), self.batch_size)]
+
+        #    [[2, 4, 3], [1, 0, 6], [5]]
+        # -> [[2, 4, 3], [1, 0, 6]]
+        indexes = [chunk for chunk in indexes if len(chunk) == self.batch_size]
+
+        for chunk in indexes:
+            for _ in range(self.repeat_count):
+                for index in chunk:
+                    for _ in range(self.mini_repeat_count):
+                        yield index
+
+    def __len__(self) -> int:
+        return self.num_samples * self.mini_repeat_count * self.repeat_count
+
+
 class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     def __init__(self,
@@ -90,14 +171,16 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         use_vllm = args.use_vllm
         use_lmdeploy = args.use_lmdeploy
 
-        self.train_dataset_len = len(self.train_dataset)
-        args.local_batch_size = args.batch_size(args.per_device_train_batch_size * args.gradient_accumulation_steps
-                                                * args.num_mini_batches * args.num_generations)
-        args.mini_batch_size = args.batch_size // args.num_mini_batches  # useless?
+        self.train_dataset_len = len(kwargs['train_dataset'])
+        args.local_batch_size = args.train_batch_size = (
+            args.per_device_train_batch_size * args.gradient_accumulation_steps * args.num_mini_batches
+            * args.num_generations)
+        args.mini_batch_size = args.local_batch_size // args.num_mini_batches  # useless?
         args.local_mini_batch_size = args.local_batch_size // args.num_mini_batches
         args.total_episodes = int(args.num_train_epochs * self.train_dataset_len)
         args.num_total_batches = math.ceil(args.total_episodes / args.batch_size)
         args.dataloader_drop_last = True  # drop_last to avoid ragged
+        super().__init__(model, ref_model, *_args, **kwargs)
         num_processes = self.accelerator.num_processes
         global_batch_size = args.local_batch_size * num_processes
         possible_values = [n_gen for n_gen in range(2, global_batch_size + 1) if (global_batch_size) % n_gen == 0]
@@ -114,8 +197,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     f'The global eval batch size ({num_processes} x {args.per_device_eval_batch_size}) must be evenly '
                     f'divisible by the number of generations per prompt ({self.num_generations}). Given the current '
                     f'eval batch size, the valid values for the number of generations are: {possible_values}.')
-
-        super().__init__(model, ref_model, *_args, **kwargs)
 
         # Ensure each process receives a unique seed to prevent duplicate completions when generating with
         # transformers if num_generations exceeds per_device_train_batch_size. We could skip it if we use vLLM, but
@@ -536,3 +617,47 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             model.enable_input_require_grads()
 
         return model
+
+    def _get_train_sampler(self) -> Sampler:
+        # Returns a sampler that
+        # 1. ensures each prompt is repeated across multiple processes. This guarantees that identical prompts are
+        #    distributed to different GPUs, allowing rewards to be computed and normalized correctly within each prompt
+        #    group. Using the same seed across processes ensures consistent prompt assignment, preventing discrepancies
+        #    in group formation.
+        # 2. repeats the batch multiple times to allow reusing generaations across multiple updates. Refer to
+        #    _prepare_inputs to see how the generations are stored and reused.
+
+        #                             |     GPU 0     |     GPU 1     |     GPU 2    |
+        #
+        #    global_step   step         <───────>  num_generations=3
+        #                               <───────────> per_device_train_batch_size=4
+        #         0          0          0   0   0   1   1   1   2   2   2   3   3   3  │
+        #         0          1          4   4   4   5   5   5   6   6   6   7   7   7  │ gradient_accumulation=3
+        #         0          2          8   8   8   9   9   9  10  10  10  11  11  11  │
+        #
+        #         1          3          0   0   0   1   1   1   2   2   2   3   3   3  │ num_iterations=2:
+        #         1          4          4   4   4   5   5   5   6   6   6   7   7   7  │ reuse the batch once
+        #         1          5          8   8   8   9   9   9  10  10  10  11  11  11  │
+        #
+        #         2          6         12  12  12  13  13  13  14  14  14  15  15  15
+        #         2          7         16  16  16  17  17  17  18  18  18  19  19  19
+        #         2          8         20  20  20  21  21  21  22  22  22  23  23  23
+        #                                              ...
+        effective_batch_size = (
+            self.args.per_device_train_batch_size * self.accelerator.num_processes
+            * self.args.gradient_accumulation_steps)
+        return RepeatRandomSampler(
+            data_source=self.train_dataset,
+            mini_repeat_count=self.num_generations,
+            batch_size=effective_batch_size // self.num_generations,
+            repeat_count=self.num_iterations,
+            seed=self.args.seed,
+        )
+
+    def _get_eval_sampler(self, eval_dataset) -> Sampler:
+        # See _get_train_sampler for an explanation of the sampler.
+        return RepeatRandomSampler(
+            data_source=eval_dataset,
+            mini_repeat_count=self.num_generations,
+            seed=self.args.seed,
+        )
