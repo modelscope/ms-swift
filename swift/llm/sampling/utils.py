@@ -38,11 +38,13 @@ def get_reward(model: Any,
         Index 0: The min-max normalized scores matched the infer_requests
         Index 1: The mask filtered by the threshold
     """
-    parameters = inspect.signature(model.infer).parameters
+    from swift.llm import InferEngine
+    infer_func = model.infer if isinstance(model, InferEngine) else model.__call__
+    parameters = inspect.signature(infer_func).parameters
     gt_param = {}
     if 'ground_truths' in parameters:
         gt_param = {'ground_truths': ground_truths}
-    rewards = model(infer_requests, request_config=request_config, **gt_param)
+    rewards = infer_func(infer_requests, request_config=request_config, **gt_param)
     from swift.llm.infer.protocol import ChatCompletionResponse
     if isinstance(rewards[0], ChatCompletionResponse):
         rewards = [float(r.choices[0].message.content) for r in rewards]
