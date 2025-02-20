@@ -60,6 +60,7 @@ class LLMTemplateType:
     skywork_o1 = 'skywork_o1'
 
     mistral_nemo = 'mistral_nemo'
+    mistral_2501 = 'mistral_2501'
     zephyr = 'zephyr'
     wizardlm2 = 'wizardlm2'
     wizardlm2_moe = 'wizardlm2_moe'
@@ -90,6 +91,7 @@ class MLLMTemplateType:
     qvq = 'qvq'
     ovis1_6 = 'ovis1_6'
     ovis1_6_llama3 = 'ovis1_6_llama3'
+    ovis2 = 'ovis2'
 
     llama3_1_omni = 'llama3_1_omni'
     llama3_2_vision = 'llama3_2_vision'
@@ -150,6 +152,9 @@ class MLLMTemplateType:
     emu3_gen = 'emu3_gen'
 
     got_ocr2 = 'got_ocr2'
+    got_ocr2_hf = 'got_ocr2_hf'
+    step_audio = 'step_audio'
+
     idefics3 = 'idefics3'
     pixtral = 'pixtral'
     paligemma = 'paligemma'

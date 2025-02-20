@@ -11,12 +11,14 @@ import gradio as gr
 import json
 import torch
 from json import JSONDecodeError
+from transformers.utils import is_torch_cuda_available, is_torch_npu_available
 
 from swift.llm import ExportArguments
 from swift.ui.base import BaseUI
 from swift.ui.llm_export.export import Export
 from swift.ui.llm_export.model import Model
 from swift.ui.llm_export.runtime import ExportRuntime
+from swift.utils import get_device_count
 
 
 class LLMExport(BaseUI):
@@ -66,10 +68,9 @@ class LLMExport(BaseUI):
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
         with gr.TabItem(elem_id='llm_export', label=''):
-            gpu_count = 0
             default_device = 'cpu'
-            if torch.cuda.is_available():
-                gpu_count = torch.cuda.device_count()
+            device_count = get_device_count()
+            if device_count > 0:
                 default_device = '0'
             with gr.Blocks():
                 Model.build_ui(base_tab)
@@ -81,7 +82,7 @@ class LLMExport(BaseUI):
                 gr.Dropdown(
                     elem_id='gpu_id',
                     multiselect=True,
-                    choices=[str(i) for i in range(gpu_count)] + ['cpu'],
+                    choices=[str(i) for i in range(device_count)] + ['cpu'],
                     value=default_device,
                     scale=8)
 
@@ -154,7 +155,12 @@ class LLMExport(BaseUI):
         gpus = ','.join(devices)
         cuda_param = ''
         if gpus != 'cpu':
-            cuda_param = f'CUDA_VISIBLE_DEVICES={gpus}'
+            if is_torch_npu_available():
+                cuda_param = f'ASCEND_RT_VISIBLE_DEVICES={gpus}'
+            elif is_torch_cuda_available():
+                cuda_param = f'CUDA_VISIBLE_DEVICES={gpus}'
+            else:
+                cuda_param = ''
         now = datetime.now()
         time_str = f'{now.year}{now.month}{now.day}{now.hour}{now.minute}{now.second}'
         file_path = f'output/{export_args.model_type}-{time_str}'

@@ -24,7 +24,8 @@ Swift DOCUMENTATION
    Instruction/Sample.md
    Instruction/Evaluation.md
    Instruction/Export.md
-   Instruction/Reinforced_fine_tuning.md
+   Instruction/Reinforced-Fine-tuning.md
+   Instruction/GRPO.md
    Instruction/Supported-models-and-datasets.md
    Instruction/Use-tuners.md
    Instruction/Agent-support.md

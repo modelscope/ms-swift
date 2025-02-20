@@ -34,21 +34,23 @@ logger = get_logger()
 class LmdeployEngine(InferEngine):
 
     def __init__(
-            self,
-            model_id_or_path: str,
-            torch_dtype: Optional[torch.dtype] = None,
-            *,
-            model_type: Optional[str] = None,
-            use_hf: Optional[bool] = None,
-            hub_token: Optional[str] = None,
-            revision: Optional[str] = None,
-            # engine_kwargs
-            tp: int = 1,
-            session_len: Optional[int] = None,
-            cache_max_entry_count: float = 0.8,
-            quant_policy: int = 0,  # e.g. 4, 8
-            vision_batch_size: int = 1,  # max_batch_size in VisionConfig
-            engine_kwargs: Optional[Dict[str, Any]] = None) -> None:
+        self,
+        model_id_or_path: str,
+        torch_dtype: Optional[torch.dtype] = None,
+        *,
+        model_type: Optional[str] = None,
+        use_hf: Optional[bool] = None,
+        hub_token: Optional[str] = None,
+        revision: Optional[str] = None,
+        # engine_kwargs
+        tp: int = 1,
+        session_len: Optional[int] = None,
+        cache_max_entry_count: float = 0.8,
+        quant_policy: int = 0,  # e.g. 4, 8
+        vision_batch_size: int = 1,  # max_batch_size in VisionConfig
+        device: Optional[List[int]] = None,
+        engine_kwargs: Optional[Dict[str, Any]] = None,
+    ) -> None:
 
         self.processor = get_model_tokenizer(
             model_id_or_path,
@@ -69,6 +71,7 @@ class LmdeployEngine(InferEngine):
             cache_max_entry_count=cache_max_entry_count,
             quant_policy=quant_policy,
             vision_batch_size=vision_batch_size,
+            device=device,
             engine_kwargs=engine_kwargs)
 
         self.config.torch_dtype = torch_dtype
@@ -81,6 +84,7 @@ class LmdeployEngine(InferEngine):
                                cache_max_entry_count: float = 0.8,
                                quant_policy: int = 0,
                                vision_batch_size: int = 1,
+                               device: Optional[List[int]] = None,
                                engine_kwargs: Optional[Dict[str, Any]] = None):
         if engine_kwargs is None:
             engine_kwargs = {}
@@ -88,9 +92,12 @@ class LmdeployEngine(InferEngine):
         engine_kwargs['session_len'] = session_len
         engine_kwargs['cache_max_entry_count'] = cache_max_entry_count
         engine_kwargs['quant_policy'] = quant_policy
-
         backend_config = TurbomindEngineConfig(**engine_kwargs)
         backend_config = autoget_backend_config(self.model_dir, backend_config)
+        if hasattr(backend_config, 'devices'):
+            if device is None:
+                device = [0]
+            backend_config.devices = device
         if isinstance(backend_config, PytorchEngineConfig):
             backend_config.thread_safe = True
         self.backend_config = backend_config

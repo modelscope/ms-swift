@@ -314,6 +314,14 @@ def test_qwen2_5_prm():
     assert res == res2 == json.dumps([0.9921875, 0.2490234375, 0.70703125, 0.9375]), f'res: {res}, res2: {res2}'
 
 
+def test_mistral_small():
+    pt_engine = PtEngine('mistralai/Mistral-Small-24B-Instruct-2501')
+    response = _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine)
+    assert response == response2
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig, get_template, get_model_tokenizer
     from swift.utils import get_logger, seed_everything
@@ -342,4 +350,5 @@ if __name__ == '__main__':
     # test_phi4()
     # test_internlm3()
     # test_deepseek_r1_distill()
-    test_qwen2_5_prm()
+    # test_qwen2_5_prm()
+    test_mistral_small()

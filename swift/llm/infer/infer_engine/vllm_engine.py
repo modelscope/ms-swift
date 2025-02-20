@@ -51,6 +51,7 @@ class VllmEngine(InferEngine):
         disable_custom_all_reduce: bool = False,
         enforce_eager: bool = False,
         limit_mm_per_prompt: Optional[Dict[str, Any]] = None,
+        device: str = 'auto',
         # lora
         enable_lora: bool = False,
         max_loras: int = 1,
@@ -82,6 +83,7 @@ class VllmEngine(InferEngine):
             max_loras=max_loras,
             max_lora_rank=max_lora_rank,
             enable_prefix_caching=enable_prefix_caching,
+            device=device,
             engine_kwargs=engine_kwargs,
         )
 
@@ -105,6 +107,7 @@ class VllmEngine(InferEngine):
         disable_custom_all_reduce: bool = False,
         enforce_eager: bool = False,
         limit_mm_per_prompt: Optional[Dict[str, Any]] = None,
+        device: str = 'auto',
         enable_lora: bool = False,
         max_loras: int = 1,
         max_lora_rank: int = 16,
@@ -131,6 +134,9 @@ class VllmEngine(InferEngine):
                 'The current version of VLLM does not support `limit_mm_per_prompt`. Please upgrade VLLM.')
 
         model_info = self.model_info
+        if self.config.architectures is None:
+            architectures = {'deepseek_vl2': ['DeepseekVLV2ForCausalLM']}[self.model_meta.model_type]
+            engine_kwargs['hf_overrides'] = {'architectures': architectures}
         engine_args = AsyncEngineArgs(
             model=self.model_dir,
             dtype=dtype_mapping[model_info.torch_dtype],
@@ -144,6 +150,7 @@ class VllmEngine(InferEngine):
             enforce_eager=enforce_eager,
             trust_remote_code=True,
             enable_prefix_caching=enable_prefix_caching,
+            device=device,
             **engine_kwargs,
         )
         self.engine_args = engine_args
@@ -297,11 +304,13 @@ class VllmEngine(InferEngine):
                 choices.append(choice)
             yield ChatCompletionStreamResponse(model=self.model_name, choices=choices, usage=usage_info, id=request_id)
 
-    async def _infer_full_async(self,
-                                template: Template,
-                                inputs: Dict[str, Any],
-                                generation_config: SamplingParams,
-                                adapter_request: Optional[AdapterRequest] = None) -> ChatCompletionResponse:
+    async def _infer_full_async(
+        self,
+        template: Template,
+        inputs: Dict[str, Any],
+        generation_config: SamplingParams,
+        adapter_request: Optional[AdapterRequest] = None,
+    ) -> ChatCompletionResponse:
         request_id = random_uuid()
         result_generator = self._add_request(inputs, generation_config, request_id, adapter_request=adapter_request)
         result = None
@@ -336,7 +345,7 @@ class VllmEngine(InferEngine):
         *,
         template: Optional[Template] = None,
         use_tqdm: Optional[bool] = None,
-        adapter_request: Optional[AdapterRequest] = None
+        adapter_request: Optional[AdapterRequest] = None,
     ) -> Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
         return super().infer(
             infer_requests,
@@ -344,7 +353,8 @@ class VllmEngine(InferEngine):
             metrics,
             template=template,
             use_tqdm=use_tqdm,
-            adapter_request=adapter_request)
+            adapter_request=adapter_request,
+        )
 
     async def infer_async(
         self,
@@ -370,7 +380,7 @@ class VllmEngine(InferEngine):
             'template': template,
             'inputs': inputs,
             'generation_config': generation_config,
-            'adapter_request': adapter_request
+            'adapter_request': adapter_request,
         }
         if pre_infer_hook:
             kwargs = pre_infer_hook(kwargs)

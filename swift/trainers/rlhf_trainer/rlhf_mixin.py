@@ -36,6 +36,9 @@ class ModelWrapper(nn.Module):
     def load_state_dict(self, *args, **kwargs):
         return self._model.load_state_dict(*args, **kwargs)
 
+    def state_dict(self, *args, **kwargs):
+        return self._model.state_dict(*args, **kwargs)
+
     def parameters(self, *args, **kwargs):
         return self._model.parameters(*args, **kwargs)
 
@@ -54,7 +57,7 @@ class ModelWrapper(nn.Module):
         finally:
             deepspeed_model.__dict__['module'] = _old_model
             deepspeed_model._modules['module'] = _old_model
-            trainer.model = deepspeed_model
+            trainer.model = _old_model
 
 
 class RLHFTrainerMixin:
@@ -72,8 +75,8 @@ class RLHFTrainerMixin:
                     return val
 
     def __init__(self,
-                 model: Optional[Union[PreTrainedModel, nn.Module, str]] = None,
-                 ref_model: Optional[Union[PreTrainedModel, nn.Module, str]] = None,
+                 model: Optional[Union[PreTrainedModel, nn.Module]] = None,
+                 ref_model: Optional[Union[PreTrainedModel, nn.Module]] = None,
                  *_args,
                  **kwargs):
         from trl.trainer import disable_dropout_in_model

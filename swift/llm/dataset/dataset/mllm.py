@@ -586,7 +586,7 @@ def preprocess_mind2web(dataset, **kwargs):
             'Input some text into a web element like <input> or <textbox>',
             'parameter': [{
                 'element': 'string, the element in the web page to input to',
-                'content': 'string, what content to input into the textbox elment'
+                'content': 'string, what content to input into the textbox element'
             }]
         }
     }, {
@@ -1172,5 +1172,5 @@ register_dataset(
     DatasetMeta(
         ms_dataset_id='AI-ModelScope/captcha-images',
         split=['train', 'validation'],
-        preprocess_func=CapchaImagesPreprocessor(),
+        preprocess_func=CapchaImagesPreprocessor(columns={'solution': 'response'}),
         tags=['chat', 'multi-modal', 'vision']))

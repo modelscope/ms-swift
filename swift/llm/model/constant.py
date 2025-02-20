@@ -12,6 +12,8 @@ class LLMModelType:
     qwen2_moe = 'qwen2_moe'
     qwq = 'qwq'
 
+    qwen2_gte = 'qwen2_gte'
+
     codefuse_qwen = 'codefuse_qwen'
     modelscope_agent = 'modelscope_agent'
     marco_o1 = 'marco_o1'
@@ -71,6 +73,7 @@ class LLMModelType:
     zephyr = 'zephyr'
     mixtral = 'mixtral'
     mistral_nemo = 'mistral_nemo'
+    mistral_2501 = 'mistral_2501'
     wizardlm2 = 'wizardlm2'
     wizardlm2_moe = 'wizardlm2_moe'
 
@@ -104,6 +107,7 @@ class LLMModelType:
 
 class BertModelType:
     modern_bert = 'modern_bert'
+    modern_bert_gte = 'modern_bert_gte'
     bert = 'bert'
 
 
@@ -125,6 +129,7 @@ class MLLMModelType:
     qvq = 'qvq'
     ovis1_6 = 'ovis1_6'
     ovis1_6_llama3 = 'ovis1_6_llama3'
+    ovis2 = 'ovis2'
 
     glm4v = 'glm4v'
     glm_edge_v = 'glm_edge_v'
@@ -187,6 +192,8 @@ class MLLMModelType:
     emu3_gen = 'emu3_gen'
     emu3_chat = 'emu3_chat'
     got_ocr2 = 'got_ocr2'
+    got_ocr2_hf = 'got_ocr2_hf'
+    step_audio = 'step_audio'
 
     phi3_vision = 'phi3_vision'
     florence = 'florence'

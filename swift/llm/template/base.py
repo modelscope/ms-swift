@@ -5,7 +5,7 @@ import os
 import re
 from copy import deepcopy
 from dataclasses import asdict
-from functools import wraps
+from functools import partial, wraps
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
@@ -19,11 +19,11 @@ from transformers import StoppingCriteriaList
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import strtobool
 
-from swift.utils import get_dist_setting, get_logger, use_torchacc
+from swift.utils import get_dist_setting, get_env_args, get_logger, use_torchacc
 from ..utils import Processor, ProcessorMixin
 from .template_inputs import InferRequest, StdTemplateInputs, TemplateInputs
 from .utils import Context, ContextType, StopWordsCriteria, fetch_one, findall, split_str_parts_by
-from .vision_utils import load_image, rescale_image
+from .vision_utils import load_audio, load_batch, load_image, rescale_image
 
 logger = get_logger()
 
@@ -112,7 +112,7 @@ class Template(ProcessorMixin):
 
         self.mode: Literal['pt', 'vllm', 'lmdeploy',  # infer
                            'train', 'rlhf', 'kto',  # train
-                           'seq_cls', 'prm'] = 'pt'
+                           'seq_cls', 'embedding', 'prm'] = 'pt'
         if self.model_info.task_type != 'causal_lm':
             self.mode = self.model_info.task_type
         self._handles = []
@@ -192,6 +192,11 @@ class Template(ProcessorMixin):
                     images[i] = self._save_pil_image(image)
         inputs.images = images
 
+        if self.mode == 'vllm':
+            sampling_rate = get_env_args('sampling_rate', int, None)
+            inputs.audios = load_batch(
+                inputs.audios, load_func=partial(load_audio, sampling_rate=sampling_rate, return_sr=True))
+
         self._get_std_messages(inputs.messages)
         n_round = len(inputs.messages) // 2
         if n_round > 1 and not self.template_meta.support_multi_round:
@@ -237,6 +242,16 @@ class Template(ProcessorMixin):
         encoded['label'] = bool(label)
         return encoded
 
+    def _embedding_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded = self._rlhf_encode(inputs)
+        encoded.pop('chosen_labels', None)
+        encoded.pop('rejected_labels', None)
+        if inputs.label is not None:
+            encoded['labels'] = float(inputs.label)
+        else:
+            encoded['labels'] = 0.0
+        return encoded
+
     def _seq_cls_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = self._encode(inputs)
         encoded.pop('labels', None)
@@ -244,6 +259,7 @@ class Template(ProcessorMixin):
             encoded['labels'] = int(inputs.label)
         return encoded
 
+    @torch.inference_mode()
     def encode(self,
                inputs: Union[TemplateInputs, Dict[str, Any], InferRequest],
                return_template_inputs: bool = False) -> Dict[str, Any]:
@@ -256,6 +272,7 @@ class Template(ProcessorMixin):
             inputs = asdict(inputs)
 
         if isinstance(inputs, dict):
+            inputs = deepcopy(inputs)
             if not self.is_training:
                 InferRequest.remove_response(inputs['messages'])
             inputs = StdTemplateInputs.from_dict(inputs, tools_prompt=self.tools_prompt)
@@ -276,6 +293,8 @@ class Template(ProcessorMixin):
             encoded = self._rlhf_encode(inputs)
         elif self.mode == 'kto':
             encoded = self._kto_encode(inputs)
+        elif self.mode == 'embedding':
+            encoded = self._embedding_encode(inputs)
         for key in list(encoded.keys()):
             if encoded[key] is None:
                 encoded.pop(key)
@@ -545,7 +564,8 @@ class Template(ProcessorMixin):
 
         for context, loss_scale in zip(context_list, loss_scale_list):
             for k in ['image', 'video', 'audio']:
-                if context == f'<{k}>' and inputs.is_multimodal:
+                if context == f'<{k}>' and inputs.is_multimodal and getattr(inputs, f'{k}_idx') < len(
+                        getattr(inputs, f'{k}s')):
                     c_list = self.replace_tag(k, getattr(inputs, f'{k}_idx'), inputs)
                     setattr(inputs, f'{k}_idx', getattr(inputs, f'{k}_idx') + 1)
                     loss_scale = 0.
@@ -583,9 +603,12 @@ class Template(ProcessorMixin):
                 num_media_tags = len(re.findall(media_tag, total_content))
                 num_media = len(medias)
                 num_new_tags = num_media - num_media_tags
-                assert num_new_tags >= 0, (
-                    f'num_media: {num_media}, num_media_tags: {num_media_tags}, total_content: {total_content}')
-                inputs.messages[0]['content'] = media_tag * num_new_tags + inputs.messages[0]['content']
+                if num_new_tags > 0:
+                    inputs.messages[0]['content'] = media_tag * num_new_tags + inputs.messages[0]['content']
+                elif num_new_tags < 0:
+                    logger.warning(
+                        f'num_media: {num_media}, num_media_tags: {num_media_tags}, total_content: {total_content}. '
+                        'We will only replace the frontmost media_tags while keeping the subsequent media_tags.')
 
     def _encode_context_list(
             self,
@@ -653,10 +676,17 @@ class Template(ProcessorMixin):
 
         res_context_list: List[Context] = []
         res_context_types: List[ContextType] = []
+        sep_token = None
         if template_meta.auto_add_bos:
-            bos_tokens = self.tokenizer.encode('')
-            res_context_list.append(bos_tokens)
-            res_context_types.append(ContextType.OTHER)
+            all_tokens = self.tokenizer.encode('a')
+            single_token = self.tokenizer.encode('a', add_special_tokens=False)
+            assert len(single_token) == 1
+            idx = all_tokens.index(single_token[0])
+            bos_token = all_tokens[:idx]
+            sep_token = all_tokens[idx + 1:]
+            if bos_token:
+                res_context_list.append(bos_token)
+                res_context_types.append(ContextType.OTHER)
 
         prefix = template_meta.system_prefix if system else template_meta.prefix
         self._concat_context_list(prefix, res_context_list, res_context_types, system=system)
@@ -686,7 +716,7 @@ class Template(ProcessorMixin):
             elif response is not None:
                 # It is the final round, and the response exists (during training).
                 context_list.append('{{RESPONSE}}')
-                if self.is_training:
+                if self.is_training and not sep_token:
                     extra_context_list = template_meta.suffix
                     extra_context_type = ContextType.SUFFIX
 
@@ -700,6 +730,9 @@ class Template(ProcessorMixin):
                 round0=i)
             res_context_list += extra_context_list
             res_context_types += [extra_context_type] * len(extra_context_list)
+        if template_meta.auto_add_bos and sep_token:
+            res_context_list.append(sep_token)
+            res_context_types.append(ContextType.SUFFIX)
         from swift.plugin import loss_scale_map
         res_context_list, loss_scale_list = loss_scale_map[self.loss_scale](res_context_list, res_context_types,
                                                                             inputs.messages)
@@ -843,7 +876,7 @@ class Template(ProcessorMixin):
         for model in models:
             # please use torch>=2.0
             handle = model.register_forward_pre_hook(self.pre_forward_hook, with_kwargs=True)
-            self._handles.append(handle)
+            self._handles.append((model, handle))
 
         if is_deepspeed_zero3_enabled():
             import deepspeed
@@ -852,14 +885,16 @@ class Template(ProcessorMixin):
             @wraps(self._deepspeed_initialize)
             def _initialize(*args, **kwargs):
                 res = self._deepspeed_initialize(*args, **kwargs)
-                for model, handle in zip(models, self._handles):
+                for model, handle in self._handles:
                     model._forward_pre_hooks.move_to_end(handle.id)
                 return res
 
             deepspeed.initialize = _initialize
 
     def remove_post_encode_hook(self):
-        for handle in self._handles:
+        models = []
+        for model, handle in self._handles:
+            models.append(model)
             handle.remove()
         self._handles = []
 
@@ -867,6 +902,7 @@ class Template(ProcessorMixin):
             import deepspeed
             deepspeed.initialize = self._deepspeed_initialize
         self._deepspeed_initialize = None
+        return models
 
     def data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         if self.mode == 'rlhf':
@@ -877,6 +913,8 @@ class Template(ProcessorMixin):
             return self._data_collator(batch, padding_to=padding_to)
         elif self.mode == 'seq_cls':
             return self._seq_cls_data_collator(batch, padding_to=padding_to)
+        elif self.mode == 'embedding':
+            return self._embedding_data_collator(batch, padding_to=padding_to)
 
     @staticmethod
     def _fetch_inputs_startswith(batch: List[Dict[str, Any]], prefix: str) -> List[Dict[str, Any]]:
@@ -931,6 +969,16 @@ class Template(ProcessorMixin):
         label = [b['label'] for b in batch if b.get('label') is not None]
         if label:
             res['label'] = label
+        return res
+
+    def _embedding_data_collator(self,
+                                 batch: List[Dict[str, Any]],
+                                 *,
+                                 padding_to: Optional[int] = None) -> Dict[str, Any]:
+        labels = [b.pop('labels') for b in batch if b.get('labels') is not None]
+        res = self._rlhf_data_collator(batch, padding_to=padding_to)
+        if labels:
+            res['labels'] = torch.tensor(labels, dtype=torch.float32)
         return res
 
     def _seq_cls_data_collator(self,

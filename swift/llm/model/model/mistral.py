@@ -68,6 +68,19 @@ register_model(
 
 register_model(
     ModelMeta(
+        LLMModelType.mistral_2501, [
+            ModelGroup([
+                Model('mistralai/Mistral-Small-24B-Base-2501', 'mistralai/Mistral-Small-24B-Base-2501'),
+                Model('mistralai/Mistral-Small-24B-Instruct-2501', 'mistralai/Mistral-Small-24B-Instruct-2501'),
+            ]),
+        ],
+        TemplateType.mistral_2501,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['MistralForCausalLM'],
+        model_arch=ModelArch.llama))
+
+register_model(
+    ModelMeta(
         LLMModelType.zephyr,
         [
             ModelGroup([

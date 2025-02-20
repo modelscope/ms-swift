@@ -76,7 +76,6 @@ class TestTemplate(unittest.TestCase):
 
         # testing two template type.
         for tool_prompt in ('react_en', 'qwen'):
-            tool_prompt = 'react_en'
             test_messages = deepcopy(messages)
             obs_word = get_tools_keyword(tool_prompt).get('observation')
             test_messages[1]['content'] = f'{obs_word}'
@@ -86,7 +85,7 @@ class TestTemplate(unittest.TestCase):
             StdTemplateInputs.messages_join_observation(test_messages, tools_prompt=tool_prompt)
 
             # multi-round tool calling should be joined that only one assistant message left.
-            assert len(test_messages) == 2, f'Tool prompot {tool_prompt} join failed, {messages}'
+            assert len(test_messages) == 2, f'Tool prompt {tool_prompt} join failed, {messages}'
             assert test_messages[1]['content'] == f"""{obs_word}first_round_result\n{obs_word}second_round_result\n"""
 
 

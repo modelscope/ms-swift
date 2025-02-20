@@ -7,7 +7,7 @@ from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
 
 from swift.llm import TemplateType
-from swift.utils import get_dist_setting, get_env_args, get_logger
+from swift.utils import get_device_count, get_dist_setting, get_env_args, get_logger
 from ..constant import LLMModelType, MLLMModelType, RMModelType
 from ..model_arch import ModelArch
 from ..patcher import patch_fixed_device, patch_output_clone, patch_output_to_input_device
@@ -201,7 +201,7 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
         tokenizer_cls._old_decode = tokenizer_cls._decode
         tokenizer_cls._decode = _qwen_vl_audio_decode
     # fix device_map is 4
-    n_gpu = torch.cuda.device_count()
+    n_gpu = get_device_count()
     local_world_size = get_dist_setting()[3]
     if n_gpu // local_world_size >= 4:
         visual_block_cls = get_class_from_dynamic_module('visual.VisualAttentionBlock', model_dir)
@@ -592,7 +592,12 @@ register_model(
                 Model('Qwen/Qwen2.5-VL-3B-Instruct', 'Qwen/Qwen2.5-VL-3B-Instruct'),
                 Model('Qwen/Qwen2.5-VL-7B-Instruct', 'Qwen/Qwen2.5-VL-7B-Instruct'),
                 Model('Qwen/Qwen2.5-VL-72B-Instruct', 'Qwen/Qwen2.5-VL-72B-Instruct'),
-            ])
+            ]),
+            ModelGroup([
+                Model('Qwen/Qwen2.5-VL-3B-Instruct-AWQ', 'Qwen/Qwen2.5-VL-3B-Instruct-AWQ'),
+                Model('Qwen/Qwen2.5-VL-7B-Instruct-AWQ', 'Qwen/Qwen2.5-VL-7B-Instruct-AWQ'),
+                Model('Qwen/Qwen2.5-VL-72B-Instruct-AWQ', 'Qwen/Qwen2.5-VL-72B-Instruct-AWQ'),
+            ]),
         ],
         TemplateType.qwen2_5_vl,
         get_model_tokenizer_qwen2_5_vl,
@@ -646,6 +651,8 @@ register_model(
 
 def get_model_tokenizer_ovis(*args, **kwargs):
     model, tokenizer = get_model_tokenizer_with_flash_attn(*args, **kwargs)
+    model.visual_tokenizer.to(model.dtype)
+    model.vte.to(model.dtype)
     if model is not None:
         model.generation_config.cache_implementation = None
         func_list = ['generate', 'forward', 'get_input_embeddings']
@@ -701,6 +708,27 @@ register_model(
         model_arch=ModelArch.ovis1_6,
         architectures=['Ovis'],
         tags=['vision'],
+    ))
+
+register_model(
+    ModelMeta(
+        MLLMModelType.ovis2,
+        [
+            ModelGroup([
+                Model('AIDC-AI/Ovis2-1B', 'AIDC-AI/Ovis2-1B'),
+                Model('AIDC-AI/Ovis2-2B', 'AIDC-AI/Ovis2-2B'),
+                Model('AIDC-AI/Ovis2-4B', 'AIDC-AI/Ovis2-4B'),
+                Model('AIDC-AI/Ovis2-8B', 'AIDC-AI/Ovis2-8B'),
+                Model('AIDC-AI/Ovis2-16B', 'AIDC-AI/Ovis2-16B'),
+                Model('AIDC-AI/Ovis2-34B', 'AIDC-AI/Ovis2-34B'),
+            ]),
+        ],
+        TemplateType.ovis2,
+        get_model_tokenizer_ovis,
+        model_arch=ModelArch.ovis1_6,
+        architectures=['Ovis'],
+        tags=['vision'],
+        requires=['transformers>=4.46.2'],
     ))
 
 register_model(

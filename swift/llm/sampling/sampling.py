@@ -4,8 +4,7 @@ import shutil
 import time
 from typing import List, Union
 
-from swift.llm import SwiftPipeline, load_dataset
-from swift.llm.argument.sampling_args import SamplingArguments
+from swift.llm import SamplingArguments, SwiftPipeline, load_dataset
 from swift.utils import get_logger
 
 logger = get_logger()
@@ -28,6 +27,14 @@ class SwiftSampling(SwiftPipeline):
         if self.args.sampler_type == 'sample':
             from swift.llm.sampling.vanilla_sampler import VanillaSampler
             self.sampler = VanillaSampler(self.args)
+        elif self.args.sampler_type == 'mcts':
+            from swift.llm.sampling.mcts import MctsSampler
+            self.sampler = MctsSampler(self.args)
+        elif self.args.sampler_type == 'distill':
+            from swift.llm.sampling.distill_sampler import DistillSampler
+            self.sampler = DistillSampler(self.args)
+        else:
+            raise ValueError(f'Unsupported sampler type: {self.args.sampler_type}')
 
     def _get_dataset(self):
         args = self.args
@@ -56,13 +63,15 @@ class SwiftSampling(SwiftPipeline):
         with open(tmp_file, 'w') as f:
             for _index in range(self.args.num_sampling_per_gpu_batches):
                 logger.info(f' Sampling index:{_index}')
-                generated = self.sampler.do_sample(
-                    dataset[self.args.num_sampling_per_gpu_batch_size * _index:self.args.num_sampling_per_gpu_batch_size
-                            * (_index + 1)])
+                slices = dataset[self.args.num_sampling_per_gpu_batch_size
+                                 * _index:self.args.num_sampling_per_gpu_batch_size * (_index + 1)]
+                slices = self.sampler.truncate_input(slices)
+                generated = self.sampler.do_sample(slices)
                 f.writelines(generated)
         if os.path.exists(iter_file):
             shutil.move(iter_file, iter_file + '.' + str(int(time.time())))
         shutil.move(tmp_file, iter_file)
+        logger.info(f'Sample file {iter_file} generated.')
 
 
 def sampling_main(args: Union[List[str], SamplingArguments, None] = None):
