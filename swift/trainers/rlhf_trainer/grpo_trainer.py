@@ -140,12 +140,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         raise ImportError('vLLM is not available and `use_vllm` is set to True. '
                                           'Please install vLLM with `pip install vllm` to use it.')
                     from swift.llm import VllmEngine
-                    world_size_patch = patch('torch.distributed.get_world_size', return_value=1)
-                    profiling_patch = patch(
-                        'vllm.worker.worker.Worker._assert_memory_footprint_increased_during_profiling',
-                        return_value=None)
                     from swift.tuners import Swift
-                    with world_size_patch, profiling_patch, Swift.grpo_context(model, self.template.processor):
+                    from swift.llm.utils import patch_vllm
+                    with patch_vllm(), Swift.grpo_context(model, self.template.processor):
                         self.engine = VllmEngine(
                             model.model_dir,
                             model.model_info.torch_dtype,
