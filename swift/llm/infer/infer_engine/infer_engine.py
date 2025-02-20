@@ -122,9 +122,6 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
                 metric.update(response)
         return result_origin
 
-    def __call__(self, *args, **kwargs):
-        return self.infer(*args, **kwargs)
-
     def infer(self,
               infer_requests: List[InferRequest],
               request_config: Optional[RequestConfig] = None,
