@@ -129,7 +129,7 @@ if __name__ == '__main__':
     extra_requires['all'] = all_requires
 
     setup(
-        name='ms-swift',
+        name='ms_swift',
         version=get_version(),
         description='Swift: Scalable lightWeight Infrastructure for Fine-Tuning',
         long_description=readme(),
