@@ -227,13 +227,11 @@ class Template(ProcessorMixin):
     def _replace_start_image_tags(inputs: StdTemplateInputs):
         # compat
         generate_mode = False
-        for message in inputs.messages:
-            content = message['content']
-            if not isinstance(content, str):
-                continue
-            if content.strip().endswith('<start-image>'):
-                generate_mode = True
-                message['content'] = re.sub('<start-image>', '', content).strip()  # remove the <start-image>
+        message = inputs.messages[-1]
+        content = message['content']
+        if message['role'] == 'user' and content.endswith('<start-image>'):
+            generate_mode = True
+            message['content'] = message['content'][:-len('<start-image>')]  # remove the <start-image>
         inputs.generate_mode = generate_mode
 
     def _rlhf_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
