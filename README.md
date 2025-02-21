@@ -114,12 +114,12 @@ Running Environment:
 | python       | >=3.9                | 3.10        |                                           |
 | cuda         |                      | cuda12      | No need to install if using CPU, NPU, MPS |
 | torch        | >=2.0                |             |                                           |
-| transformers | >=4.33               | 4.48.3      |                                           |
+| transformers | >=4.33               | 4.49      |                                           |
 | modelscope   | >=1.19               |             |                                           |
-| peft         | >=0.11.0,<0.15.0     |             |                                           |
-| trl          | >=0.13,<0.17         | 0.15      | RLHF                                      |
-| deepspeed    | >=0.14 |  | Training                                  |
-| vllm         | >=0.5.1              | 0.7.2       | Inference/Deployment/Evaluation           |
+| peft | >=0.11,<0.15 | ||
+| trl | >=0.13,<0.17 | 0.15 |RLHF|
+| deepspeed    | >=0.14 | 0.14.5 | Training                                  |
+| vllm         | >=0.5.1              | 0.7.3       | Inference/Deployment/Evaluation           |
 | lmdeploy     | lmdeploy>=0.5,<0.6.5 | 0.6.4       | Inference/Deployment/Evaluation           |
 | evalscope | | >=0.11 | Evaluation |
 
