@@ -8,7 +8,7 @@ environments
 
 ```bash
 pip install math_verify # reward function
-pip install "trl>=0.15"
+pip install git+https://github.com/huggingface/trl.git"
 ```
 
 **Note**: It is normal for the loss to approach zero during training. Refer to this [issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851) for more details.
@@ -97,6 +97,8 @@ Hyperparameters
 - vllm_gpu_memory_utilization: vLLM pass-through parameter.
 - vllm_max_model_len: vLLM pass-through parameter.
 - reward_model: Same as the model, using a reward model as a reward function. At least one of reward_funcs and reward_model needs to be specified.
+- num_iterations: number of iterations per batch. Default is 1.
+- epsilon: epsilon value for clipping. Default is 0.2
 
 The hyperparameters for the reward function can be found in the [Built-in Reward Functions section](#built-in-reward-functions).
 

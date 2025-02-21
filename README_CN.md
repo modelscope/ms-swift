@@ -74,6 +74,7 @@
 - **模型量化**：支持AWQ、GPTQ和BNB的量化导出，导出的模型支持使用vLLM/LmDeploy推理加速，并支持继续训练。
 
 ## 🎉 新闻
+- 🎁 2025.02.21: 支持大模型API蒸馏采样，请查看[示例](examples/sampler/distill/distill.sh)
 - 🎁 2025.02.17: 支持SwanLab, 仅需添加[几个新的参数](docs/source/Instruction/命令行参数.md#swanlab)就可以在swanlab上验证你的训练效果
 - 🎁 2025.02.16: 在GRPO算法中支持LMDeploy, 请查看`--use_lmdeploy true`. 具体参考[这个脚本](examples/train/grpo/full_lmdeploy.sh)
 - 🔥 2025.02.12: 支持GRPO(Group Relative Policy Optimization) 训练算法，训练脚本可以在[这里](docs/source/Instruction/GRPO.md)找到
@@ -108,10 +109,10 @@ pip install -e .
 | python | >=3.9 | 3.10 ||
 | cuda |  | cuda12 |使用cpu、npu、mps则无需安装|
 | torch | >=2.0 |  ||
-| transformers | >=4.33 | 4.49.* ||
+| transformers | >=4.33 | 4.49 ||
 | modelscope | >=1.19 |  ||
 | peft | >=0.11,<0.15 | ||
-| trl | >=0.13,<0.16 | 0.15.* |RLHF|
+| trl | >=0.13,<0.17 | 0.15 |RLHF|
 | deepspeed | >=0.14 |  |训练|
 | vllm | >=0.5.1 | 0.7.3 |推理/部署/评测|
 | lmdeploy | lmdeploy>=0.5,<0.6.5 | 0.6.4 |推理/部署/评测|

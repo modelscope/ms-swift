@@ -78,6 +78,7 @@ You can contact us and communicate with us by adding our group:
 
 
 ## 🎉 News
+- 🎁 2025.02.21: Support distill from LLM API，Please check[this example](examples/sampler/distill/distill.sh)
 - 🎁 2025.02.17: Support SwanLab, just add [a few of arguments](docs/source_en/Instruction/Command-line-parameters.md#swanlab) you can use swanlab to analysis your training results
 - 🎁 2025.02.16: Support LMDeploy in GRPO, use `--use_lmdeploy true`. Please check [this script](examples/train/grpo/full_lmdeploy.sh)
 - 🔥 2025.02.12: Support for GRPO(Group Relative Policy Optimization) algorithm for llm and mllm, document can be found in [here](docs/source_en/Instruction/GRPO.md)
@@ -113,10 +114,10 @@ Running Environment:
 | python       | >=3.9                | 3.10        |                                           |
 | cuda         |                      | cuda12      | No need to install if using CPU, NPU, MPS |
 | torch        | >=2.0                |             |                                           |
-| transformers | >=4.33               | 4.49.*      |                                           |
+| transformers | >=4.33               | 4.49      |                                           |
 | modelscope   | >=1.19               |             |                                           |
-| peft         | >=0.11,<0.15     |             |                                           |
-| trl          | >=0.13,<0.16         | 0.15.*      | RLHF                                      |
+| peft | >=0.11,<0.15 | ||
+| trl | >=0.13,<0.17 | 0.15 |RLHF|
 | deepspeed    | >=0.14 |  | Training                                  |
 | vllm         | >=0.5.1              | 0.7.3       | Inference/Deployment/Evaluation           |
 | lmdeploy     | lmdeploy>=0.5,<0.6.5 | 0.6.4       | Inference/Deployment/Evaluation           |
