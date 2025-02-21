@@ -70,9 +70,6 @@ class SwiftArgumentsMixin:
 
 @dataclass
 class GRPOArgumentsMixin:
-    # multi step
-    num_iterations: int = 1
-    epsilon: float = 0.2
     # vllm_device, vllm_gpu_memory_utilization, and vllm_max_model_len are defined in HfGRPOConfig.
     num_infer_workers: int = 1
     vllm_max_num_seqs: int = 256

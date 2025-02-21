@@ -43,8 +43,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                  *_args,
                  **kwargs):
         args = kwargs['args']
-        if args.gradient_checkpointing:
-            model = self._enable_gradient_checkpointing(model, args)
 
         self.processing_class = kwargs.get('template').tokenizer
         if not isinstance(reward_funcs, list):
