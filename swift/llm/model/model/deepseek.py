@@ -108,6 +108,9 @@ register_model(
                 Model('deepseek-ai/DeepSeek-V3-Base', 'deepseek-ai/DeepSeek-V3-Base'),
                 Model('deepseek-ai/DeepSeek-V3', 'deepseek-ai/DeepSeek-V3'),
             ]),
+            ModelGroup([
+                Model('cognitivecomputations/DeepSeek-V3-awq', 'cognitivecomputations/DeepSeek-V3-AWQ'),
+            ])
         ],
         TemplateType.deepseek_v2_5,
         get_model_tokenizer_deepseek_moe,
@@ -246,6 +249,9 @@ register_model(
                 Model('deepseek-ai/DeepSeek-R1', 'deepseek-ai/DeepSeek-R1'),
                 Model('deepseek-ai/DeepSeek-R1-Zero', 'deepseek-ai/DeepSeek-R1-Zero'),
             ]),
+            ModelGroup([
+                Model('cognitivecomputations/DeepSeek-R1-awq', 'cognitivecomputations/DeepSeek-R1-AWQ'),
+            ])
         ],
         TemplateType.deepseek_r1,
         get_model_tokenizer_deepseek_moe,
