@@ -102,6 +102,7 @@ class ClientPRM(PRM):
         if model is None:
             model = 'qwen-plus'
         self.infer_engine = InferClient(base_url=base_url, api_key=api_key)
+        self.infer_engine.strict = False
         self.infer_kwargs = {
             'model': model,
         }

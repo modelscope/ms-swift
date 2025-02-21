@@ -57,7 +57,7 @@ class ModelWrapper(nn.Module):
         finally:
             deepspeed_model.__dict__['module'] = _old_model
             deepspeed_model._modules['module'] = _old_model
-            trainer.model = deepspeed_model
+            trainer.model = _old_model
 
 
 class RLHFTrainerMixin:

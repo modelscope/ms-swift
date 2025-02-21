@@ -1,5 +1,5 @@
 # pip install math_verify # reward function
-# pip install git+https://github.com/huggingface/trl.git # trl>=0.15.0.dev0
+# pip install "trl>=0.15"
 # GPU memory: 80GiB
 
 CUDA_VISIBLE_DEVICES=0 \
@@ -31,4 +31,5 @@ swift rlhf \
     --dataset_num_proc 4 \
     --num_generations 4 \
     --temperature 0.9 \
-    --system 'examples/train/grpo/prompt.txt'
+    --system 'examples/train/grpo/prompt.txt' \
+    --log_completions true

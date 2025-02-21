@@ -1,6 +1,6 @@
 # One GPU is left for vLLM inference acceleration.
 # pip install math_verify # reward function
-# pip install git+https://github.com/huggingface/trl.git # trl>=0.15.0.dev0
+# pip install "trl>=0.15"
 # GPU memory: 8 * 80GiB
 
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
@@ -34,4 +34,5 @@ swift rlhf \
     --num_generations 7 \
     --temperature 0.9 \
     --system 'examples/train/grpo/prompt.txt' \
-    --deepspeed zero2
+    --deepspeed zero2 \
+    --log_completions true

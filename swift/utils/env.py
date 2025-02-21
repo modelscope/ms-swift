@@ -33,6 +33,12 @@ def get_dist_setting() -> Tuple[int, int, int, int]:
     return rank, local_rank, world_size, local_world_size
 
 
+def get_node_setting():
+    node_rank = int(os.getenv('NODE_RANK', 0))
+    nnodes = int(os.getenv('NNODES', 1))
+    return node_rank, nnodes
+
+
 def is_local_master():
     local_rank = get_dist_setting()[1]
     return local_rank in {-1, 0}
@@ -58,7 +64,7 @@ def is_dist():
 def is_mp() -> bool:
     if use_torchacc():
         return False
-    if strtobool(os.environ.get('USE_VLLM', 'false')):
+    if strtobool(os.environ.get('USE_FAST_INFERENCE', 'false')):
         return False
     from swift.utils import get_device_count
     n_gpu = get_device_count()
@@ -71,10 +77,7 @@ def is_mp() -> bool:
 
 def is_mp_ddp() -> bool:
     # patch_mp_ddp will occur when `import swift`.
-    from swift.utils import get_device_count
-    n_gpu = get_device_count()
-    local_world_size = get_dist_setting()[3]
-    if is_dist() and n_gpu != local_world_size + 1 and is_mp():  # fix grpo
+    if is_dist() and is_mp():
         logger.info('Using MP + DDP(device_map)')
         return True
     return False

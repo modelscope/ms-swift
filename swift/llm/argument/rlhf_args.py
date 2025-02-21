@@ -42,13 +42,14 @@ class PPOArguments:
 class GRPOArguments(GRPOArgumentsMixin):
     num_generations: int = 8  # G in the GRPO paper
     max_completion_length: int = 512
+    ds3_gather_for_generation: bool = True
     reward_funcs: List[str] = field(default_factory=list)
     reward_weights: List[float] = None
     log_completions: bool = False
 
     # vLLM in GRPO
     use_vllm: bool = False
-    vllm_device: Optional[str] = 'auto'  # 'cuda:0'
+    vllm_device: List[str] = field(default_factory=lambda: ['auto'])
     vllm_gpu_memory_utilization: float = 0.9
     vllm_max_model_len: Optional[int] = None
 
@@ -134,8 +135,8 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
 
     def _init_grpo(self):
         if self.rlhf_type == 'grpo':
-            if self.use_vllm:
-                os.environ['USE_VLLM'] = '1'
+            if self.use_vllm or self.use_lmdeploy:
+                os.environ['USE_FAST_INFERENCE'] = '1'
                 self._set_default_ddp_config()
             self.remove_unused_columns = False
             logger.info(f'Setting args.remove_unused_columns: {self.remove_unused_columns}')
@@ -151,6 +152,8 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
     def _init_metric_for_best_model(self):
         if self.rlhf_type not in {'ppo', 'grpo'}:
             super()._init_metric_for_best_model()
+        elif self.rlhf_type == 'grpo' and self.metric_for_best_model is None:
+            self.metric_for_best_model = 'reward'
 
     def _init_simpo(self):
         if self.rlhf_type != 'simpo':

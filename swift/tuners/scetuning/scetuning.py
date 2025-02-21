@@ -29,7 +29,7 @@ class SCETuningConfig(SwiftConfig):
         hint_modules(`Union[List[str], str]`): The hint module to be replaced, can a regex string
         tuner_mode(`str`): Location of tuner operation.
         tuner_op(`str`): Tuner operation.
-        down_ratio(`flaot`): The dim down ratio of tuner hidden state.
+        down_ratio(`float`): The dim down ratio of tuner hidden state.
     """
 
     dims: Optional[Union[List[int], int]] = field(

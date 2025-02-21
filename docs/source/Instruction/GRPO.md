@@ -7,7 +7,7 @@
 环境安装
 ```bash
 pip install math_verify # reward function
-pip install git+https://github.com/huggingface/trl.git # trl>=0.15.0.dev0
+pip install "trl>=0.15"
 ```
 
 **注意**：训练过程中 loss 接近0 是正常情况， 参考[issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851)
@@ -17,10 +17,10 @@ pip install git+https://github.com/huggingface/trl.git # trl>=0.15.0.dev0
 奖励函数接受模型生成的文本 completions 以及其他数据集中的列作为参数，并对模型生成的文本进行打分。以下是一个示例，展示了如何实现一个简单的长度奖励函数。该函数会在模型生成的文本长度超过 1024 时，给予 1.0 的奖励信号；否则，奖励信号为 0.0。
 
 ```python
-from swift.plugin.orm import ORM, orms
+from swift.plugin import ORM, orms
 class DummyLengthRewardFunction(ORM)
     def __call__(completions, **kwargs):
-        return [1.0 if len(completion) > 1024 else 0.0 for comletion in comletions]
+        return [1.0 if len(completion) > 1024 else 0.0 for completion in completions]
 
 orms['dummy']= DummyLengthRewardFunction
 ```
@@ -84,10 +84,12 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 超参数
 - num_generations: 每个prompt采样的数量，论文中的G值，需要被 per_device_eval_batch_size * nproc_per_node 整除
 - max_completion_length: 采样生成的最大长度，默认为512
+- ds3_gather_for_generation: 该参数适用于DeepSpeed ZeRO-3。如果启用，策略模型权重将被收集用于生成，从而提高生成速度。然而，禁用此选项允许训练超出单个GPU VRAM的模型，尽管生成速度会变慢。禁用此选项与vLLM生成不兼容。默认为True
 - reward_funcs: 奖励函数，根据模型生成结果进行打分，内置accuracy、format、cosine和repetition四个rule-based函数，详细见 swift/plugin/orm.py 文件
 - reward_weights: 每个奖励函数的权重。必须与奖励函数的数量匹配。如果为 None，则所有奖励的权重都相等，为`1.0`
   - 提示：如果GRPO训练中包含`--reward_model`，则其加在奖励函数的最后位置
-- log_completions: 是否记录训练中的模型生成内容，搭配 `--report_to wandb` 使用，默认为False
+- log_completions: 是否记录训练中的模型生成内容，搭配 `--report_to wandb` 使用。默认为False
+  - 提示：若没有设置`--report_to wandb`，则会在checkpoint中创建`completions.jsonl`来存储生成内容
 - use_vllm: 是否使用vLLM作为采样的生成后端，默认为False，建议使用加快训练速度
 - vllm_device: 设置vLLM部署的设备，默认为`auto`, 即未被使用的第一张显卡，使用`cuda:x`来设置特定的卡。
 - vllm_gpu_memory_utilization: vLLM透传参数
@@ -132,7 +134,8 @@ swift rlhf \
     --num_generations 7 \
     --temperature 0.9 \
     --system 'examples/train/grpo/prompt.txt' \
-    --deepspeed zero2
+    --deepspeed zero2 \
+    --log_completions true
 ```
 
 单卡
@@ -165,5 +168,6 @@ swift rlhf \
     --dataset_num_proc 4 \
     --num_generations 4 \
     --temperature 0.9 \
-    --system 'examples/train/grpo/prompt.txt'
+    --system 'examples/train/grpo/prompt.txt' \
+    --log_completions true
 ```

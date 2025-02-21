@@ -57,6 +57,7 @@ class ModelInfo:
     quant_bits: int
 
     # extra
+    rope_scaling: Optional[Dict[str, Any]] = None
     config: Optional[PretrainedConfig] = None
     task_type: Literal['causal_lm', 'seq_cls', 'embedding', None] = None
     num_labels: Optional[int] = None
@@ -201,29 +202,6 @@ class HfConfigFactory:
 
         return res or None
 
-    @staticmethod
-    def _get_arch_mapping():
-        from .register import MODEL_MAPPING
-        res = {}
-        for model_type, model_meta in MODEL_MAPPING.items():
-            architectures = model_meta.architectures
-            if not architectures:
-                architectures.append('null')
-            for arch in architectures:
-                if arch not in res:
-                    res[arch] = []
-                res[arch].append(model_type)
-        return res
-
-    @staticmethod
-    def get_matched_model_types(config: Union[PretrainedConfig, Dict[str, Any]]) -> List[str]:
-        """Get possible model_type."""
-        arch = HfConfigFactory.get_config_attr(config, 'architectures') or ['null']
-        if arch:
-            arch = arch[0]
-        arch_mapping = HfConfigFactory._get_arch_mapping()
-        return arch_mapping.get(arch) or []
-
 
 def safe_snapshot_download(model_id_or_path: str,
                            revision: Optional[str] = None,
@@ -231,6 +209,7 @@ def safe_snapshot_download(model_id_or_path: str,
                            use_hf: Optional[bool] = None,
                            hub_token: Optional[str] = None,
                            ignore_patterns: Optional[List[str]] = None,
+                           check_local: bool = False,
                            **kwargs) -> str:
     """Download model protected by DDP context
 
@@ -243,6 +222,12 @@ def safe_snapshot_download(model_id_or_path: str,
     Returns:
         model_dir
     """
+    if check_local:
+        model_suffix = model_id_or_path.rsplit('/', 1)[-1]
+        if os.path.exists(model_suffix):
+            model_dir = os.path.abspath(os.path.expanduser(model_suffix))
+            logger.info(f'Loading the model using local model_dir: {model_dir}')
+            return model_dir
     if ignore_patterns is None:
         ignore_patterns = []
     ignore_patterns += [

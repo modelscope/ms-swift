@@ -141,7 +141,7 @@ def prepare_generation_config(model_generation_config: Optional[GenerationConfig
         else:
             kwargs[key] = new_value
 
-    if not model_generation_config.do_sample:
+    if not model_generation_config.do_sample and request_config.temperature in {0, None}:
         kwargs['temperature'] = 0
     if kwargs['temperature'] == 0:
         kwargs['do_sample'] = False

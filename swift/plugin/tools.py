@@ -33,6 +33,28 @@ Begin!
     return REACT_PROMPT.format(tool_list='\n\n'.join(tool_descs), tool_names=','.join(tool_names))
 
 
+def format_react_grpo(tool_names, tool_descs):
+    REACT_PROMPT = """A conversation for tool calling between User and Assistant. The user asks a question which may be solved by calling tools, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning process should be enclosed within <think> </think>tags and answer should follow the ReACT format(Action:xxx\nAction Input:xxx), i.e., <think> reasoning process here </think> Action: action here\nAction Input: parameters here
+
+Answer the following questions as best as you can. You have access to the following tools:
+
+{tool_list}
+
+Use the following format:
+
+<think>you should always think about what to do</think>
+Action: the action to take, should be one of [{tool_names}]
+Action Input: the input to the action
+Observation: the result of the action, given by the actual calling
+... (this Thought/Action/Action Input/Observation can be repeated zero or more times)
+Final Answer: the final answer of you to the original input question
+
+Begin!
+""" # noqa
+    tool_descs = [json.dumps(t, ensure_ascii=False) if not isinstance(t, str) else t for t in tool_descs]
+    return REACT_PROMPT.format(tool_list='\n\n'.join(tool_descs), tool_names=','.join(tool_names))
+
+
 def format_react_zh(tool_names, tool_descs):
     REACT_ZH_PROMPT = """尽你所能回答以下问题。你拥有如下工具：
 
@@ -70,14 +92,14 @@ def format_toolbench(tool_names, tool_descs):
     TOOLBENCH_PROMPT = """You can use many tools(functions) to do the following task.
 First I will give you the task description, and your task start.
 At each step, you need to give your thought to analyze the status now and what to do next, \
-with a function call to actually excute your step. Your output should follow this format:
+with a function call to actually execute your step. Your output should follow this format:
 Thought:
 Action:
 Action Input:
 
 After the call, you will get the call result, and you are now in a new state.
 Then you will analyze your status now, then decide what to do next...
-After many (Thought-call) pairs, you finally perform the task, then you can give your finial answer.
+After many (Thought-call) pairs, you finally perform the task, then you can give your final answer.
 Remember:
 1.the state change is irreversible, you can't go back to one of the former state, if you want to restart the task, \
 say \"I give up and restart\".
@@ -157,6 +179,7 @@ def format_custom(tool_names, tool_descs):
 # Add your prompt here, use --tools_prompt to train
 tools_prompt = {
     'react_en': (format_react_en, AgentKeyword().__dict__),
+    'react_grpo': (format_react_grpo, AgentKeyword().__dict__),
     'react_zh': (format_react_zh, AgentKeyword().__dict__),
     'glm4': (format_glm4, AgentKeyword().__dict__),
     'toolbench': (format_toolbench, AgentKeyword().__dict__),

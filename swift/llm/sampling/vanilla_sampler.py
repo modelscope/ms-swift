@@ -35,8 +35,9 @@ class VanillaSampler(Sampler):
             raise ValueError(f'Cannot find engine name: {self.args.sampler_engine}')
         self.infer_engine = None
         if _Engine:
-            self.template = self.args.get_model_processor(model=self.args.model, load_model=False)
             self.infer_engine = _Engine(self.args.model, model_type=self.args.model_type, **self.args.engine_kwargs)
+            self.infer_engine.default_template = self.template
+            self.infer_engine.strict = False
         self.caches = self.read_cache()
 
     def read_cache(self):
@@ -133,8 +134,10 @@ class VanillaSampler(Sampler):
             resps = row
             resps['choices'] = []
             for j in range(self.args.num_return_sequences * _cur, self.args.num_return_sequences * (_cur + 1)):
-                resps['choices'].append(resp_list[j].choices[0].message.content)
-            resp_all.append(resps)
+                if not isinstance(resp_list[j], Exception):
+                    resps['choices'].append(resp_list[j].choices[0].message.content)
+            if resps['choices']:
+                resp_all.append(resps)
             _cur += 1
         return resp_all
 

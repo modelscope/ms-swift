@@ -1,5 +1,5 @@
 # isolate cases in env, we can install different dependencies in each env.
-isolated:  # test cases that may require excessive anmount of GPU memory or run long time, which will be executed in dedicagted process.
+isolated:  # test cases that may require excessive amount of GPU memory or run long time, which will be executed in dedicated process.
 
 envs:
   default: # default env, case not in other env will in default, pytorch.

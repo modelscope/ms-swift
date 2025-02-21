@@ -21,7 +21,7 @@ def get_model_tokenizer_emu3_gen(model_dir: str,
     import sys
     sys.path.append(model_dir)
     from processing_emu3 import Emu3Processor
-    vq_hub = safe_snapshot_download('BAAI/Emu3-VisionTokenizer')
+    vq_hub = safe_snapshot_download('BAAI/Emu3-VisionTokenizer', check_local=True)
     from transformers import AutoModel, AutoImageProcessor
     image_processor = AutoImageProcessor.from_pretrained(vq_hub, trust_remote_code=True)
     image_tokenizer = AutoModel.from_pretrained(vq_hub, trust_remote_code=True).eval().to(get_device())
@@ -62,7 +62,7 @@ def get_model_tokenizer_emu3_chat(model_dir: str,
 
     # download and load vision tokenizer
     from transformers import AutoImageProcessor
-    vq_model = safe_snapshot_download('BAAI/Emu3-VisionTokenizer')
+    vq_model = safe_snapshot_download('BAAI/Emu3-VisionTokenizer', check_local=True)
     image_processor = AutoImageProcessor.from_pretrained(vq_model, trust_remote_code=True)
     image_tokenizer = AutoModel.from_pretrained(vq_model, device_map=model_kwargs['device_map'], trust_remote_code=True)
     image_tokenizer.requires_grad_(False)

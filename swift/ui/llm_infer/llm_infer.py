@@ -13,6 +13,7 @@ import gradio as gr
 import json
 import torch
 from json import JSONDecodeError
+from transformers.utils import is_torch_cuda_available, is_torch_npu_available
 
 from swift.llm import DeployArguments, InferArguments, InferClient, InferRequest, RequestConfig
 from swift.ui.base import BaseUI
@@ -249,7 +250,12 @@ class LLMInfer(BaseUI):
         gpus = ','.join(devices)
         cuda_param = ''
         if gpus != 'cpu':
-            cuda_param = f'CUDA_VISIBLE_DEVICES={gpus}'
+            if is_torch_npu_available():
+                cuda_param = f'ASCEND_RT_VISIBLE_DEVICES={gpus}'
+            elif is_torch_cuda_available():
+                cuda_param = f'CUDA_VISIBLE_DEVICES={gpus}'
+            else:
+                cuda_param = ''
         now = datetime.now()
         time_str = f'{now.year}{now.month}{now.day}{now.hour}{now.minute}{now.second}'
         file_path = f'output/{deploy_args.model_type}-{time_str}'

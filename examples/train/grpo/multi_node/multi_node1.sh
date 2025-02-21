@@ -1,5 +1,5 @@
 # pip install math_verify # reward function
-# pip install git+https://github.com/huggingface/trl.git # trl>=0.15.0.dev0
+# pip install "trl>=0.15"
 export CUDA_VISIBLE_DEVICES=0,1,2,3
 export NNODES=2
 export NODE_RANK=0
@@ -36,4 +36,5 @@ swift rlhf \
     --num_generations 7 \
     --temperature 0.9 \
     --system 'examples/train/grpo/prompt.txt' \
-    --deepspeed zero2
+    --deepspeed zero2 \
+    --log_completions true
