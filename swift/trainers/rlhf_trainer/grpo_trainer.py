@@ -13,6 +13,8 @@ import torch
 import torch.nn as nn
 from accelerate.utils import broadcast_object_list, gather, gather_object, is_peft_model, set_seed
 from transformers import PreTrainedModel
+from transformers.utils import (is_torch_mlu_available, is_torch_mps_available, is_torch_musa_available,
+                                is_torch_npu_available, is_torch_xpu_available)
 from transformers.utils.versions import require_version
 from trl import GRPOTrainer as HFGRPOTrainer
 from trl.models import unwrap_model_for_generation
@@ -89,21 +91,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         use_vllm = args.use_vllm
         use_lmdeploy = args.use_lmdeploy
-
-        self.train_dataset_len = len(kwargs['train_dataset'])
-        args.local_batch_size = args.train_batch_size = (
-            args.per_device_train_batch_size * args.gradient_accumulation_steps * args.num_mini_batches
-            * args.num_generations)
-        args.mini_batch_size = args.local_batch_size // args.num_mini_batches  # useless?
-        args.local_mini_batch_size = args.local_batch_size // args.num_mini_batches
-        args.total_episodes = int(args.num_train_epochs * self.train_dataset_len)
-        args.num_total_batches = math.ceil(args.total_episodes / args.batch_size)
-        args.dataloader_drop_last = True
         super().__init__(model, ref_model, *_args, **kwargs)
-        self._train_batch_size = args.local_batch_size
-
         num_processes = self.accelerator.num_processes
-        global_batch_size = args.local_batch_size * num_processes
+        global_batch_size = args.per_device_train_batch_size * num_processes
         possible_values = [n_gen for n_gen in range(2, global_batch_size + 1) if (global_batch_size) % n_gen == 0]
         if self.num_generations not in possible_values:
             raise ValueError(
@@ -451,73 +441,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         output.metrics.update(metrics)
         return output
 
-    def train(self, *_args, **kwargs):
-        # mini-batch test
-        args = self.args
-        accelerator = self.accelerator
-        model = self.model
-        ref_model = self.ref_model
-        model.train()
-        dataloader = self.get_train_dataloader()
-
-        def repeat_generator():
-            while True:
-                yield from dataloader
-
-        iter_dataloader = iter(repeat_generator())
-
-        # trainer state initialization
-        self.state.global_step = 0
-        self.state.episode = 0
-        self.state.max_steps = args.num_total_batches * args.num_mini_batches
-        self.state.num_train_epochs = args.total_episodes / self.train_dataset_len
-        # Compute absolute values for logging, eval, and save if given as ratio
-        if args.logging_steps is not None:
-            if args.logging_steps < 1:
-                self.state.logging_steps = math.ceil(self.state.max_steps * args.logging_steps)
-            else:
-                self.state.logging_steps = args.logging_steps
-        if args.eval_steps is not None:
-            if args.eval_steps < 1:
-                self.state.eval_steps = math.ceil(self.state.max_steps * args.eval_steps)
-            else:
-                self.state.eval_steps = args.eval_steps
-        if args.save_steps is not None:
-            if args.save_steps < 1:
-                self.state.save_steps = math.ceil(self.state.max_steps * args.save_steps)
-            else:
-                self.state.save_steps = args.save_steps
-        self.control = self.callback_handler.on_train_begin(args, self.state, self.control)
-
-        # backward compatibility
-        if self.is_deepspeed_enabled:
-            self.deepspeed = self.model
-            self.model_wrapped = self.model
-
-        for update in range(1, args.num_total_batches + 1):
-            self.state.episode += 1 * args.batch_size
-            data = next(iter_dataloader)  # local_batch_size
-            with torch.no_grad():
-                inputs = self._prepare_inputs(data)
-
-            b_inds = np.random.permutation(args.local_batch_size)
-            minibatch_idx = 0
-            for mini_batch_start in range(0, args.local_batch_size, args.local_mini_batch_size):
-                mini_batch_end = mini_batch_start + args.local_mini_batch_size
-                mini_batch_inds = b_inds[mini_batch_start:mini_batch_end]
-                gradient_accumulation_idx = 0
-                for micro_batch_start in range(0, args.local_mini_batch_size, args.per_device_train_batch_size):
-                    with accelerator.accumulate(model):
-                        micro_batch_end = micro_batch_start + args.per_device_train_batch_size
-                        micro_batch_inds = mini_batch_inds[micro_batch_start:micro_batch_end]
-                        mb_inputs = inputs[micro_batch_inds]  # debug here
-
-        # HF trainer specifics
-        self.control = self.callback_handler.on_train_end(args, self.state, self.control)
-        if self.control.should_save:
-            self._save_checkpoint(model, trial=None, metrics=None)
-            self.control = self.callback_handler.on_save(self.args, self.state, self.control)
-
     def _enable_gradient_checkpointing(self, model: PreTrainedModel, args: GRPOConfig) -> PreTrainedModel:
         """Enables gradient checkpointing for the model."""
         # Ensure use_cache is disabled
@@ -538,3 +461,63 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             model.enable_input_require_grads()
 
         return model
+
+    def training_step(self,
+                      model: nn.Module,
+                      inputs: Dict[str, Union[torch.Tensor, Any]],
+                      num_items_in_batch=None) -> torch.Tensor:
+        model.train()
+        if hasattr(self.optimizer, 'train') and callable(self.optimizer.train):
+            self.optimizer.train()
+
+        inputs = self._prepare_inputs(inputs)
+
+        mini_batch_size = self.args.mini_batch_size or inputs['input_ids'].size(0)
+        total_batch_size = inputs['input_ids'].size(0)
+
+        num_mini_batches = (total_batch_size + mini_batch_size - 1) // mini_batch_size
+
+        total_loss = torch.tensor(0.0, device=inputs['input_ids'].device)
+        for i in range(num_mini_batches):
+            start_idx = i * mini_batch_size
+            end_idx = min((i + 1) * mini_batch_size, total_batch_size)
+            mini_size = end_idx - start_idx
+            mini_batch_inputs = {
+                k: (v[start_idx:end_idx] if isinstance(v, torch.Tensor) else v)
+                for k, v in inputs.items()
+            }
+
+            with self.compute_loss_context_manager():
+                mini_batch_loss = self.compute_loss(
+                    model, mini_batch_inputs, num_items_in_batch=mini_batch_inputs['input_ids'].size(0))
+
+            if self.args.n_gpu > 1:
+                mini_batch_loss = mini_batch_loss.mean()
+
+            if not self.model_accepts_loss_kwargs and self.compute_loss_func is None:
+                mini_batch_loss = mini_batch_loss / self.args.gradient_accumulation_steps
+
+            scale_factor = mini_size / total_batch_size
+            scaled_loss = mini_batch_loss * scale_factor
+            self.accelerator.backward(scaled_loss)
+            total_loss += mini_batch_loss.detach() * mini_size
+
+        total_loss = total_loss / total_batch_size
+
+        del inputs
+        if (self.args.torch_empty_cache_steps is not None
+                and self.state.global_step % self.args.torch_empty_cache_steps == 0):
+            if is_torch_xpu_available():
+                torch.xpu.empty_cache()
+            elif is_torch_mlu_available():
+                torch.mlu.empty_cache()
+            elif is_torch_musa_available():
+                torch.musa.empty_cache()
+            elif is_torch_npu_available():
+                torch.npu.empty_cache()
+            elif is_torch_mps_available(min_version='2.0'):
+                torch.mps.empty_cache()
+            else:
+                torch.cuda.empty_cache()
+
+        return total_loss.detach()
