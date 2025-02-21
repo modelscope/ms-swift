@@ -33,7 +33,6 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         if getattr(self, 'default_template', None) is None:
             self.default_template = get_template(self.model_meta.template, self.processor)
         self._adapters_pool = {}
-        self.strict = True
 
     def _get_stop_words(self, stop_words: List[Union[str, List[int], None]]) -> List[str]:
         stop: List[str] = []
@@ -83,7 +82,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
             if output is None or isinstance(output, Exception):
                 # is_finished
                 if isinstance(output, Exception):
-                    if self.strict:
+                    if getattr(self, 'strict', True):
                         raise
                     outputs[i] = output
                 n_finished += 1
