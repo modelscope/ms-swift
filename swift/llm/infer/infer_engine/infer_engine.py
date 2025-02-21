@@ -33,6 +33,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         if getattr(self, 'default_template', None) is None:
             self.default_template = get_template(self.model_meta.template, self.processor)
         self._adapters_pool = {}
+        self.strict = True
 
     def _get_stop_words(self, stop_words: List[Union[str, List[int], None]]) -> List[str]:
         stop: List[str] = []
@@ -82,6 +83,8 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
             if output is None or isinstance(output, Exception):
                 # is_finished
                 if isinstance(output, Exception):
+                    if self.strict:
+                        raise
                     outputs[i] = output
                 n_finished += 1
                 prog_bar.update()
@@ -185,7 +188,6 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         raise ValueError(f'Unable to retrieve input_ids and inputs_embeds. inputs: {inputs}')
 
     def set_default_max_tokens(self, request_config: RequestConfig, inputs: Dict[str, Any]) -> None:
-        strict = getattr(self, 'strict', False)
         max_model_len = self.max_model_len
         if isinstance(inputs, dict):
             inputs = [inputs]
@@ -202,15 +204,9 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         if max_tokens is None:
             request_config.max_tokens = max_max_tokens
         elif max_max_tokens < request_config.max_tokens:
-            if strict:
-                raise ValueError(
-                    f'Your prompt has {num_tokens} tokens, and you have set the `max_tokens` to {max_tokens}, '
-                    f'but the maximum model length supported is {max_model_len}. '
-                    'Please reduce the number of tokens in the prompt or the `max_tokens`.')
-            else:
-                logger.warning(f'max_model_len({max_model_len}) - num_tokens({num_tokens}) < max_tokens({max_tokens}). '
-                               f'Setting max_tokens: {max_model_len - num_tokens}')
-                request_config.max_tokens = max_max_tokens
+            logger.warning(f'max_model_len({max_model_len}) - num_tokens({num_tokens}) < max_tokens({max_tokens}). '
+                           f'Setting max_tokens: {max_model_len - num_tokens}')
+            request_config.max_tokens = max_max_tokens
 
     def _get_logprobs(self,
                       logprobs_list: Optional[List[Dict[int, float]]],
