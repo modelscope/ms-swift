@@ -34,9 +34,9 @@ def get_dist_setting() -> Tuple[int, int, int, int]:
 
 
 def get_node_setting():
-    nnodes = int(os.getenv('NNODES', 1))
     node_rank = int(os.getenv('NODE_RANK', 0))
-    return nnodes, node_rank
+    nnodes = int(os.getenv('NNODES', 1))
+    return node_rank, nnodes
 
 
 def is_local_master():

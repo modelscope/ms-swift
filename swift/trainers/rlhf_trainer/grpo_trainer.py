@@ -147,7 +147,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             model.model_dir,
                             model.model_info.torch_dtype,
                             model_type=model.model_meta.model_type,
-                            device=fast_infer_device[self.infer_rank],
+                            device=fast_infer_device[self.local_infer_rank],
                             gpu_memory_utilization=args.vllm_gpu_memory_utilization,
                             enable_prefix_caching=args.vllm_enable_prefix_caching,
                             max_num_seqs=args.vllm_max_num_seqs,
@@ -170,7 +170,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     from swift.llm import LmdeployEngine
                     from swift.tuners import Swift
                     with Swift.grpo_context(model, self.template.processor):
-                        fast_infer_device = int(fast_infer_device[self.infer_rank].split(':')[1])
+                        fast_infer_device = int(fast_infer_device[self.local_infer_rank].split(':')[1])
                         self.engine = LmdeployEngine(
                             model.model_dir,
                             model.model_info.torch_dtype,
@@ -212,8 +212,21 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         step = local_world_size // self.args.num_infer_workers
         for _vllm_rank in range(self.args.num_infer_workers):
             _assigned = _vllm_rank * step
-            if rank == _assigned:
-                return get_node_setting()[1] * self.args.num_infer_workers + _vllm_rank
+            if local_rank == _assigned:
+                return get_node_setting()[0] * self.args.num_infer_workers + _vllm_rank
+
+        return -1
+
+    @property
+    def local_infer_rank(self):
+        rank, local_rank, world_size, local_world_size = get_dist_setting()
+        assert local_world_size % self.args.num_infer_workers == 0
+        assert local_world_size + self.args.num_infer_workers == get_device_count()
+        step = local_world_size // self.args.num_infer_workers
+        for _vllm_rank in range(self.args.num_infer_workers):
+            _assigned = _vllm_rank * step
+            if local_rank == _assigned:
+                return _vllm_rank
 
         return -1
 
@@ -301,7 +314,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # for example, 2 workers, 6 inputs, 0/2/4 dispatch to the first worker
             # 1/3/5 dispatch to the second worker
             # trying to shuffle and average the length
-            distributed_idx = self.round_robin(len(all_inputs), get_node_setting()[0] * self.args.num_infer_workers)
+            distributed_idx = self.round_robin(len(all_inputs), get_node_setting()[1] * self.args.num_infer_workers)
             if self.infer_rank >= 0:
                 outputs = self.engine.infer(
                     np.array(all_inputs)[distributed_idx[self.infer_rank]], self.request_config, use_tqdm=False)
