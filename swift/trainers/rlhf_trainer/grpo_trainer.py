@@ -90,20 +90,20 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         use_vllm = args.use_vllm
         use_lmdeploy = args.use_lmdeploy
 
+        super().__init__(model, ref_model, *_args, **kwargs)
+        num_processes = self.accelerator.num_processes
         self.train_dataset_len = len(kwargs['train_dataset'])
-        args.local_batch_size = args.train_batch_size = (
+        args.local_batch_size = (
             args.per_device_train_batch_size * args.gradient_accumulation_steps * args.num_mini_batches
             * args.num_generations)
+        global_batch_size = args.global_batch_size = args.local_batch_size * num_processes
         args.mini_batch_size = args.local_batch_size // args.num_mini_batches  # useless?
         args.local_mini_batch_size = args.local_batch_size // args.num_mini_batches
         args.total_episodes = int(args.num_train_epochs * self.train_dataset_len)
-        args.num_total_batches = math.ceil(args.total_episodes / args.batch_size)
+        args.num_total_batches = math.ceil(args.total_episodes / global_batch_size)
         args.dataloader_drop_last = True
-        super().__init__(model, ref_model, *_args, **kwargs)
         self._train_batch_size = args.local_batch_size
 
-        num_processes = self.accelerator.num_processes
-        global_batch_size = args.local_batch_size * num_processes
         possible_values = [n_gen for n_gen in range(2, global_batch_size + 1) if (global_batch_size) % n_gen == 0]
         if self.num_generations not in possible_values:
             raise ValueError(
@@ -495,7 +495,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self.model_wrapped = self.model
 
         for update in range(1, args.num_total_batches + 1):
-            self.state.episode += 1 * args.batch_size
+            self.state.episode += 1 * args.global_batch_size
             data = next(iter_dataloader)  # local_batch_size
             with torch.no_grad():
                 inputs = self._prepare_inputs(data)
