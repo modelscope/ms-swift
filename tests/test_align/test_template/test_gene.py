@@ -1,8 +1,10 @@
 import os
+
 import torch
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 os.environ['SWIFT_DEBUG'] = '1'
+
 
 def test_deepseek_janus_pro_gene():
     from swift.llm import infer_main, InferArguments

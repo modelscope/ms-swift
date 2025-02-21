@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -6,9 +7,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 from PIL import Image
-import os
-from swift.utils import get_env_args
 
+from swift.utils import get_env_args
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
