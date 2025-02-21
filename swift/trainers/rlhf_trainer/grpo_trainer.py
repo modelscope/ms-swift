@@ -11,7 +11,6 @@ import torch
 import torch.nn as nn
 from accelerate.utils import gather, gather_object, is_peft_model, set_seed
 from transformers import PreTrainedModel
-from transformers.utils.versions import require_version
 from trl import GRPOTrainer as HFGRPOTrainer
 from trl.models import unwrap_model_for_generation
 
