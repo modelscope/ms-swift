@@ -61,7 +61,7 @@ You can view the image [here](https://modelscope.cn/docs/intro/environment-setup
 | transformers | >=4.33               | 4.48.3      |                                           |
 | modelscope   | >=1.19               |             |                                           |
 | peft         | >=0.11.0,<0.15.0     |             |                                           |
-| trl          | >=0.13,<0.16         | 0.15      | RLHF                                      |
+| trl          | >=0.13,<0.17         | 0.15      | RLHF                                      |
 | deepspeed    | >=0.14 |  | Training                                  |
 | vllm         | >=0.5.1              | 0.7.2       | Inference/Deployment/Evaluation           |
 | lmdeploy     | lmdeploy>=0.5,<0.6.5 | 0.6.4       | Inference/Deployment/Evaluation           |

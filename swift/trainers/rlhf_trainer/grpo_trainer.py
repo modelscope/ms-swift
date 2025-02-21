@@ -11,7 +11,6 @@ import torch
 import torch.nn as nn
 from accelerate.utils import gather, gather_object, is_peft_model, set_seed
 from transformers import PreTrainedModel
-from transformers.utils.versions import require_version
 from trl import GRPOTrainer as HFGRPOTrainer
 from trl.models import unwrap_model_for_generation
 
@@ -22,8 +21,12 @@ from swift.utils import (JsonlWriter, get_device, get_device_count, get_dist_set
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 
+try:
+    from trl.extras.profiling import profiling_decorator
+except ImportError:
+    raise ImportError('Please install trl from source using: pip install git+https://github.com/huggingface/trl.git')
+
 del HFGRPOTrainer.__init__
-del HFGRPOTrainer._prepare_inputs
 
 logger = get_logger()
 if is_wandb_available():
@@ -39,7 +42,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                  reward_funcs: Optional[List[Union[str, Callable]]] = None,
                  *_args,
                  **kwargs):
-        require_version('trl>=0.15')
         args = kwargs['args']
 
         self.processing_class = kwargs.get('template').tokenizer
@@ -79,7 +81,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.num_generations = args.num_generations
         model.warnings_issued['estimate_tokens'] = True
         kwargs['data_collator'] = lambda features: features
-        self._metrics = defaultdict(list)
+        self._metrics = {'train': defaultdict(list), 'eval': defaultdict(list)}
 
         use_vllm = args.use_vllm
         use_lmdeploy = args.use_lmdeploy
@@ -204,6 +206,15 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.log_completions = args.log_completions
         self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'completions.jsonl'))
 
+        # Multi-step
+        self.num_iterations = args.num_iterations  # = 𝜇 in the GRPO paper
+        self.epsilon = args.epsilon
+        # Tracks the number of iterations (forward + backward passes), including those within a gradient accumulation cycle. # noqa
+        self._step = 0
+        # Buffer the batch to reuse generated outputs across multiple updates. For more details, see
+        # `_get_train_sampler` and `_prepare_inputs`.
+        self._buffered_inputs = [None] * args.gradient_accumulation_steps
+
     @property
     def infer_rank(self):
         rank, local_rank, world_size, local_world_size = get_dist_setting()
@@ -253,6 +264,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             template.set_mode(mode)
             template.max_length = max_length
 
+    @profiling_decorator
     def _move_model_to_vllm_lmdeploy(self):
         from accelerate.utils.other import is_compiled_module
         with unwrap_model_for_generation(
@@ -299,7 +311,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return [index_to_output[idx] for idx in sorted(index_to_output.keys())]
 
-    def _prepare_inputs(self, inputs) -> Dict[str, Union[torch.Tensor, Any]]:
+    def _generate_and_score_completions(
+            self, inputs: dict[str, Union[torch.Tensor, Any]]) -> dict[str, Union[torch.Tensor, Any]]:
+
         device = self.accelerator.device
         rank, local_rank, world_size, local_world_size = get_dist_setting()
         # Generate completions using either vLLM or regular generation
@@ -363,7 +377,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         outputs['completion_mask'] = labels[:, -logits_to_keep:] != -100
 
         with torch.inference_mode():
-            if self.ref_model is not None:
+            if self.num_iterations > 1:
+                outputs['old_per_token_logps'] = self._get_per_token_logps(self.model, outputs)
+            else:
+                outputs['old_per_token_logps'] = None
+
+            if self.beta == 0.0:
+                ref_per_token_logps = None
+            elif self.ref_model is not None:
                 ref_per_token_logps = self._get_per_token_logps(self.ref_model, outputs)
             else:
                 with self.accelerator.unwrap_model(self.model).disable_adapter():
@@ -401,6 +422,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         advantages = advantages[process_slice]
 
         # Log the metrics
+        mode = 'eval' if self.control.should_evaluate else 'train'
+        completion_length = self.accelerator.gather_for_metrics(outputs['completion_mask'].sum(1)).float().mean().item()
+        self._metrics[mode]['completion_length'].append(completion_length)
         reward_per_func = rewards_per_func.mean(0)
         for i, reward_func in enumerate(self.reward_funcs):
             if isinstance(reward_func, nn.Module):  # Module instead of PretrainedModel for compat with compiled models
@@ -410,10 +434,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     reward_func_name = reward_func.__name__  # function
                 else:
                     reward_func_name = reward_func.__class__.__name__  # method
-            self._metrics[f'rewards/{reward_func_name}'].append(reward_per_func[i].item())
+            self._metrics[mode][f'rewards/{reward_func_name}'].append(reward_per_func[i].item())
 
-        self._metrics['reward'].append(rewards.mean().item())
-        self._metrics['reward_std'].append(std_grouped_rewards.mean().item())
+        self._metrics[mode]['reward'].append(rewards.mean().item())
+        self._metrics[mode]['reward_std'].append(std_grouped_rewards.mean().item())
         outputs.update({
             'ref_per_token_logps': ref_per_token_logps,
             'advantages': advantages,
@@ -434,6 +458,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return outputs
 
+    @profiling_decorator
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         if return_outputs:
             raise ValueError('The GRPOTrainer does not support returning outputs')
@@ -442,28 +467,38 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         per_token_logps = self._get_per_token_logps(model, inputs)
 
         # Compute the KL divergence between the model and the reference model
-        ref_per_token_logps = inputs['ref_per_token_logps']
-        per_token_kl = torch.exp(ref_per_token_logps - per_token_logps) - (ref_per_token_logps - per_token_logps) - 1
+        if self.beta != 0.0:
+            ref_per_token_logps = inputs['ref_per_token_logps']
+            per_token_kl = (
+                torch.exp(ref_per_token_logps - per_token_logps) - (ref_per_token_logps - per_token_logps) - 1)
 
-        # x - x.detach() allows for preserving gradients from x
         advantages = inputs['advantages']
-        per_token_loss = torch.exp(per_token_logps - per_token_logps.detach()) * advantages.unsqueeze(1)
-        per_token_loss = -(per_token_loss - self.beta * per_token_kl)
+        old_per_token_logps = inputs['old_per_token_logps'] if self.num_iterations > 1 else per_token_logps.detach()
+        coef_1 = torch.exp(per_token_logps - old_per_token_logps)
+        coef_2 = torch.clamp(coef_1, 1 - self.epsilon, 1 + self.epsilon)
+        per_token_loss1 = coef_1 * advantages.unsqueeze(1)
+        per_token_loss2 = coef_2 * advantages.unsqueeze(1)
+        per_token_loss = -torch.min(per_token_loss1, per_token_loss2)
+        if self.beta != 0.0:
+            per_token_loss = per_token_loss + self.beta * per_token_kl
 
         loss = (per_token_loss * completion_mask).sum() / completion_mask.sum()
 
         # Log the metrics
-        completion_length = self.accelerator.gather_for_metrics(completion_mask.sum(1)).float().mean().item()
-        self._metrics['completion_length'].append(completion_length)
+        mode = 'eval' if self.control.should_evaluate else 'train'
 
-        mean_kl = ((per_token_kl * completion_mask).sum(dim=1) / completion_mask.sum(dim=1)).mean()
-        self._metrics['kl'].append(self.accelerator.gather_for_metrics(mean_kl).mean().item())
+        if self.beta != 0.0:
+            mean_kl = ((per_token_kl * completion_mask).sum(dim=1) / completion_mask.sum(dim=1)).mean()
+            self._metrics[mode]['kl'].append(self.accelerator.gather_for_metrics(mean_kl).mean().item())
 
+        is_clipped = (per_token_loss1 < per_token_loss2).float()
+        clip_ratio = (is_clipped * completion_mask).sum() / completion_mask.sum()
+        self._metrics[mode]['clip_ratio'].append(self.accelerator.gather_for_metrics(clip_ratio).mean().item())
         return loss
 
     # Get the per-token log probabilities for the completions for the model and the reference model
+    @profiling_decorator
     def _get_per_token_logps(self, model, inputs):
-        # pip install trl>=0.15
         from trl.trainer.utils import selective_log_softmax
         logits_to_keep = inputs['logits_to_keep']
         input_ids = inputs['input_ids']
@@ -486,6 +521,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def evaluation_loop(self, *args, **kwargs):
         metric_key_prefix = kwargs['metric_key_prefix']
         output = super().evaluation_loop(*args, **kwargs)
-        metrics = {f'{metric_key_prefix}_{key}': sum(val) / len(val) for key, val in self._metrics.items()}
+        metrics = {f'{metric_key_prefix}_{key}': sum(val) / len(val) for key, val in self._metrics['eval'].items()}
         output.metrics.update(metrics)
         return output
