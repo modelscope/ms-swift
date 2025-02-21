@@ -176,7 +176,7 @@ class DeepseekVLTemplate(Template):
                 img_embeds = model.prepare_gen_img_embeds(next_token)  # [parallel_size * 2, 2048]
                 inputs_embeds = img_embeds.unsqueeze(dim=1)  # [parallel_size * 2, 1, 2048]
 
-            # no need to reset the original first two dimensions, waiting for the update of the upper layer (_infer_full)
+            # no need to reset the original first two dimensions, waiting for the update of the upper layer
             # inputs_embeds = inputs_embeds.reshape(bsz, parallel_size*2, -1)
             # generated_tokens = generated_tokens.reshape(bsz, parallel_size, self.image_token_num_per_image)
 
