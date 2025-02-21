@@ -17,8 +17,8 @@ from trl.models import unwrap_model_for_generation
 
 from swift.llm import InferRequest, RequestConfig, RowPreprocessor, to_device
 from swift.plugin import orms
-from swift.utils import (JsonlWriter, get_device, get_device_count, get_dist_setting, get_logger, is_lmdeploy_available,
-                         is_vllm_available, is_wandb_available)
+from swift.utils import (JsonlWriter, get_device, get_device_count, get_dist_setting, get_logger, get_node_setting,
+                         is_lmdeploy_available, is_vllm_available, is_wandb_available)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 
@@ -154,7 +154,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             enforce_eager=args.vllm_enforce_eager,
                             limit_mm_per_prompt=args.vllm_limit_mm_per_prompt,
                             max_model_len=args.vllm_max_model_len)
-                        self.engine.default_template = self.template
+                    self.engine.default_template = self.template
                 elif use_lmdeploy:
                     # https://github.com/tastelikefeet/lmdeploy.git@feat/reload_state_dict_064
                     # Compile:https://github.com/tastelikefeet/lmdeploy/blob/main/docs/en/get_started/installation.md
@@ -207,14 +207,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     @property
     def infer_rank(self):
         rank, local_rank, world_size, local_world_size = get_dist_setting()
-        step = local_world_size / self.args.num_infer_workers
+        assert local_world_size % self.args.num_infer_workers == 0
+        assert local_world_size + self.args.num_infer_workers == get_device_count()
+        step = local_world_size // self.args.num_infer_workers
         for _vllm_rank in range(self.args.num_infer_workers):
-            _assigned = int(_vllm_rank * step + 1 / 2)
-            if _assigned >= local_world_size:
-                _assigned = local_world_size - 1
-
-            if local_rank == _assigned:
-                return _vllm_rank
+            _assigned = _vllm_rank * step
+            if rank == _assigned:
+                return get_node_setting()[1] * self.args.num_infer_workers + _vllm_rank
 
         return -1
 
@@ -298,7 +297,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self._last_loaded_step = self.state.global_step
             # Generate completions using vLLM: gather all prompts and use them in a single call in the main process
             all_inputs = gather_object(inputs)
-            distributed_idx = self.round_robin(len(all_inputs), self.args.num_infer_workers)
+            # Distribute inputs to different workers
+            # for example, 2 workers, 6 inputs, 0/2/4 dispatch to the first worker
+            # 1/3/5 dispatch to the second worker
+            # trying to shuffle and average the length
+            distributed_idx = self.round_robin(len(all_inputs), get_node_setting()[0] * self.args.num_infer_workers)
             if self.infer_rank >= 0:
                 outputs = self.engine.infer(
                     np.array(all_inputs)[distributed_idx[self.infer_rank]], self.request_config, use_tqdm=False)

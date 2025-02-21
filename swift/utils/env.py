@@ -33,6 +33,12 @@ def get_dist_setting() -> Tuple[int, int, int, int]:
     return rank, local_rank, world_size, local_world_size
 
 
+def get_node_setting():
+    nnodes = int(os.getenv('NNODES', 1))
+    node_rank = int(os.getenv('NODE_RANK', 0))
+    return nnodes, node_rank
+
+
 def is_local_master():
     local_rank = get_dist_setting()[1]
     return local_rank in {-1, 0}
