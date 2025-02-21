@@ -37,6 +37,7 @@ class VanillaSampler(Sampler):
         if _Engine:
             self.infer_engine = _Engine(self.args.model, model_type=self.args.model_type, **self.args.engine_kwargs)
             self.infer_engine.default_template = self.template
+            self.infer_engine.strict = False
         self.caches = self.read_cache()
 
     def read_cache(self):

@@ -397,19 +397,6 @@ register_dataset(
 
 register_dataset(DatasetMeta(ms_dataset_id='swift/ToolBench', tags=['chat', 'agent', 'multi-round']))
 
-
-class CompetitionMathPreprocessor(ResponsePreprocessor):
-
-    def preprocess(self, row: Dict[str, Any], all_tools=None) -> Optional[Dict[str, Any]]:
-        query = row['problem']
-        response = row['solution']
-        row = {
-            'query': query,
-            'response': response,
-        }
-        return super().preprocess(row)
-
-
 register_dataset(
     DatasetMeta(
         ms_dataset_id='tastelikefeet/competition_math',
@@ -418,7 +405,6 @@ register_dataset(
                 name='default',
                 subset='default',
                 split=['train', 'test'],
-                preprocess_func=CompetitionMathPreprocessor(),
             ),
         ],
         tags=['qa', 'math']))
@@ -571,10 +557,6 @@ register_dataset(
 
 class XlamFunctionCallingPreprocessor(ResponsePreprocessor):
 
-    def __init__(self, response=True):
-        self.response = response
-        super().__init__()
-
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         query = row['query']
         answers = row['response']
@@ -584,28 +566,15 @@ class XlamFunctionCallingPreprocessor(ResponsePreprocessor):
         name = answer['name']
         args = json.dumps(answer['arguments'])
         response = f'Action: {name}\nAction Input: {args}'
-        key = 'response' if self.response else 'solution'
-        row = {'query': query, key: response, 'tools': row['tools']}
+        row = {'query': query, 'response': response, 'solution': response, 'tools': row['tools']}
         return super().preprocess(row)
 
 
 register_dataset(
     DatasetMeta(
         ms_dataset_id='LLM-Research/xlam-function-calling-60k',
-        subsets=[
-            SubsetDataset(
-                name='default',
-                subset='dataset',
-                split=['train'],
-                preprocess_func=XlamFunctionCallingPreprocessor(response=True),
-            ),
-            SubsetDataset(
-                name='grpo',
-                subset='dataset',
-                split=['train'],
-                preprocess_func=XlamFunctionCallingPreprocessor(response=False),
-            ),
-        ],
+        subsets=['dataset'],
+        preprocess_func=XlamFunctionCallingPreprocessor(),
         tags=['agent']))
 
 

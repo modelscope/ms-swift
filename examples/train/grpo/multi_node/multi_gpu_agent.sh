@@ -1,3 +1,6 @@
+# wandb result link: https://wandb.ai/tastelikefeet/tastelikefeet?nw=nwuseryuzezyz
+# model link: https://www.modelscope.cn/models/swift/Qwen2-7B-Agent-GRPO
+# WANDB_API_KEY=xxx \
 NPROC_PER_NODE=7 \
 swift rlhf \
     --rlhf_type grpo \
@@ -9,8 +12,8 @@ swift rlhf \
     --max_length 2048 \
     --per_device_train_batch_size 7 \
     --per_device_eval_batch_size 7 \
-    --eval_steps 300 \
-    --save_steps 300 \
+    --eval_steps 2000 \
+    --save_steps 2000 \
     --learning_rate 1e-6 \
     --save_total_limit 2 \
     --logging_steps 5 \
