@@ -82,7 +82,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.num_generations = args.num_generations
         model.warnings_issued['estimate_tokens'] = True
         kwargs['data_collator'] = lambda features: features
-        self._metrics = defaultdict(list)
+        self._metrics = {"train": defaultdict(list), "eval": defaultdict(list)}
 
         use_vllm = args.use_vllm
         use_lmdeploy = args.use_lmdeploy
@@ -206,6 +206,15 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.log_completions = args.log_completions
         self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'completions.jsonl'))
 
+        # Multi-step
+        self.num_iterations = args.num_iterations  # = 𝜇 in the GRPO paper
+        self.epsilon = args.epsilon
+        # Tracks the number of iterations (forward + backward passes), including those within a gradient accumulation cycle.
+        self._step = 0
+        # Buffer the batch to reuse generated outputs across multiple updates. For more details, see
+        # `_get_train_sampler` and `_prepare_inputs`.
+        self._buffered_inputs = [None] * args.gradient_accumulation_steps
+
     @staticmethod
     @contextmanager
     def _template_context(template):
@@ -259,6 +268,23 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     @profiling_decorator
     def _prepare_inputs(self, inputs) -> Dict[str, Union[torch.Tensor, Any]]:
+        mode = "eval" if self.control.should_evaluate else "train"
+        if mode == "train":
+            if self.state.global_step % self.num_iterations == 0:
+                inputs = self._generate_and_score_completions(inputs)
+                self._buffered_inputs[self._step % self.args.gradient_accumulation_steps] = inputs
+            else:
+                inputs = self._buffered_inputs[self._step % self.args.gradient_accumulation_steps]
+            self._step += 1
+        else:
+            # In evaluation, we don't reuse completions across multiple updates, so we don't need to buffer inputs.
+            inputs = self._generate_and_score_completions(inputs)
+        return inputs
+
+    def _generate_and_score_completions(
+        self, inputs: dict[str, Union[torch.Tensor, Any]]
+    ) -> dict[str, Union[torch.Tensor, Any]]:
+
         device = self.accelerator.device
 
         # Generate completions using either vLLM or regular generation
@@ -313,6 +339,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         outputs['completion_mask'] = labels[:, -logits_to_keep:] != -100
 
         with torch.inference_mode():
+            if self.num_iterations > 1:
+                old_per_token_logps = self._get_per_token_logps(
+                    self.model, prompt_completion_ids, attention_mask, logits_to_keep
+                )
+            else:
+                old_per_token_logps = None
+
             if self.beta == 0.0:
                 ref_per_token_logps = None
             elif self.ref_model is not None:
@@ -353,6 +386,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         advantages = advantages[process_slice]
 
         # Log the metrics
+        mode = "eval" if self.control.should_evaluate else "train"
+
         reward_per_func = rewards_per_func.mean(0)
         for i, reward_func in enumerate(self.reward_funcs):
             if isinstance(reward_func, nn.Module):  # Module instead of PretrainedModel for compat with compiled models
