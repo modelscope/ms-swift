@@ -73,6 +73,7 @@ class DistillSampler(VanillaSampler):
         assert self.args.sampler_engine == 'client'
         _Engine = OpenAI_Engine
         self.infer_engine = _Engine(model=self.args.model, stream=self.args.stream, **self.args.engine_kwargs)
+        self.infer_engine.strict = False
         self.caches = self.read_cache()
 
     def _prepare_model_tokenizer(self):

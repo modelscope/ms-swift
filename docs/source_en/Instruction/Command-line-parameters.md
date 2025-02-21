@@ -391,9 +391,9 @@ The meanings of the following parameters can be referenced [here](https://huggin
 - vllm_enforce_eager: vLLM passthrough parameter, default is False.
 - vllm_limit_mm_per_prompt: vLLM passthrough parameter, default is None.
 - vllm_enable_prefix_caching: vLLM passthrough parameter, default is True.
-- top_k: Default is None. Read from `generation_config.json`.
-- top_p: Default is None. Read from `generation_config.json`.
-- repetition_penalty: Repetition penalty term. Default is None, read from `generation_config.json`.
+- top_k: Default is 50.
+- top_p: Default is 0.9.
+- repetition_penalty: Repetition penalty term. Default is 1.
 
 cosine reward function arguments
 - `cosine_min_len_value_wrong` (default: 0.0): Reward value corresponding to the minimum length when the answer is incorrect. Default is 0.0
