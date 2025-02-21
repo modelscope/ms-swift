@@ -11,6 +11,8 @@ import torch
 import torch.nn as nn
 from accelerate.utils import gather, gather_object, is_peft_model, set_seed
 from transformers import PreTrainedModel
+from transformers.utils import (is_torch_mlu_available, is_torch_mps_available, is_torch_musa_available,
+                                is_torch_npu_available, is_torch_xpu_available)
 from transformers.utils.versions import require_version
 from trl import GRPOTrainer as HFGRPOTrainer
 from trl.models import unwrap_model_for_generation
@@ -489,3 +491,61 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         metrics = {f'{metric_key_prefix}_{key}': sum(val) / len(val) for key, val in self._metrics.items()}
         output.metrics.update(metrics)
         return output
+
+    def training_step(self,
+                      model: nn.Module,
+                      inputs: Dict[str, Union[torch.Tensor, Any]],
+                      num_items_in_batch=None) -> torch.Tensor:
+        model.train()
+        if hasattr(self.optimizer, 'train') and callable(self.optimizer.train):
+            self.optimizer.train()
+
+        inputs = self._prepare_inputs(inputs)
+
+        mini_batch_size = self.args.mini_batch_size or inputs['input_ids'].size(0)
+        total_batch_size = inputs['input_ids'].size(0)
+
+        num_mini_batches = (total_batch_size + mini_batch_size - 1) // mini_batch_size
+
+        total_loss = torch.tensor(0.0, device=inputs['input_ids'].device)
+        for i in range(num_mini_batches):
+            start_idx = i * mini_batch_size
+            end_idx = min((i + 1) * mini_batch_size, total_batch_size)
+            mini_size = end_idx - start_idx
+            mini_batch_inputs = {
+                k: (v[start_idx:end_idx] if isinstance(v, torch.Tensor) else v)
+                for k, v in inputs.items()
+            }
+
+            with self.compute_loss_context_manager():
+                mini_batch_loss = self.compute_loss(
+                    model, mini_batch_inputs, num_items_in_batch=mini_batch_inputs['input_ids'].size(0))
+
+            if self.args.n_gpu > 1:
+                mini_batch_loss = mini_batch_loss.mean()
+
+            if not self.model_accepts_loss_kwargs and self.compute_loss_func is None:
+                mini_batch_loss = mini_batch_loss / self.args.gradient_accumulation_steps
+
+            self.accelerator.backward(mini_batch_loss)
+            total_loss += mini_batch_loss.detach() * mini_size
+
+        total_loss = total_loss / total_batch_size
+
+        del inputs
+        if (self.args.torch_empty_cache_steps is not None
+                and self.state.global_step % self.args.torch_empty_cache_steps == 0):
+            if is_torch_xpu_available():
+                torch.xpu.empty_cache()
+            elif is_torch_mlu_available():
+                torch.mlu.empty_cache()
+            elif is_torch_musa_available():
+                torch.musa.empty_cache()
+            elif is_torch_npu_available():
+                torch.npu.empty_cache()
+            elif is_torch_mps_available(min_version='2.0'):
+                torch.mps.empty_cache()
+            else:
+                torch.cuda.empty_cache()
+
+        return total_loss.detach()
