@@ -33,7 +33,7 @@ class MaxLengthError(ValueError):
 
 
 class Template(ProcessorMixin):
-    special_tokens = ['<image>', '<video>', '<audio>', '<bbox>', '<ref-object>', '<cot-process>']
+    special_tokens = ['<image>', '<video>', '<audio>', '<bbox>', '<ref-object>', '<cot-process>', '<start-image>']
     special_keys = ['images', 'videos', 'audios', 'objects']
 
     image_placeholder = ['<image>']
@@ -221,15 +221,15 @@ class Template(ProcessorMixin):
     @staticmethod
     def _replace_start_image_tags(inputs: StdTemplateInputs):
         # compat
-        gene_img = False
+        generate_mode = False
         for message in inputs.messages:
             content = message['content']
             if not isinstance(content, str):
                 continue
-            if '<start_image>' in content:
-                gene_img = True
-                message['content'] = re.sub('<start_image>', '', content).strip()  # remove the <start_image>
-        inputs.gene_img = gene_img
+            if content.strip().endswith('<start-image>'):
+                generate_mode = True
+                message['content'] = re.sub('<start-image>', '', content).strip()  # remove the <start-image>
+        inputs.generate_mode = generate_mode
 
     def _rlhf_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         chosen_inputs, rejected_inputs = inputs, deepcopy(inputs)

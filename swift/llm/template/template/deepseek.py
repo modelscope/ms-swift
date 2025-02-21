@@ -6,6 +6,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 from PIL import Image
+import os
+from swift.utils import get_env_args
 
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
@@ -44,11 +46,7 @@ class DeepseekVLTemplate(Template):
     skip_prompt = False
     use_model = True
 
-    temperature: float = 1
-    cfg_weight: float = 5
     image_token_num_per_image: int = 576
-    img_size: int = 384
-    patch_size: int = 16
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         is_janus = getattr(self, 'is_janus', False)
@@ -58,7 +56,7 @@ class DeepseekVLTemplate(Template):
         processor = self.processor
         input_ids, labels = encoded['input_ids'], encoded['labels']
 
-        if not inputs.gene_img:  # understanding task
+        if not inputs.generate_mode:  # understanding task
             idx_list = findall(input_ids, processor.image_id)  # '<image_placeholder>'
             new_input_ids, new_labels = [], []
             lo = 0
@@ -92,16 +90,18 @@ class DeepseekVLTemplate(Template):
             return encoded
 
         else:  # image generation task
+            if self.is_training:
+                raise NotImplementedError('Only support the inference of generation of Janus series models.')
             sft_format = self.tokenizer.decode(input_ids)
             prompt = sft_format + processor.image_start_tag
             input_ids = processor.tokenizer.encode(prompt)
             input_ids = torch.LongTensor(input_ids)
 
-            encoded = {'input_ids': input_ids, 'labels': labels, 'gene_img': inputs.gene_img}
+            encoded = {'input_ids': input_ids, 'labels': labels, 'generate_mode': inputs.generate_mode}
             return encoded
 
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        if not inputs.get('gene_img'):
+        if not inputs.get('generate_mode'):
             inputs['pixel_values'] = inputs['pixel_values'].to(dtype=self.config.torch_dtype)
             inputs_embeds = model.prepare_inputs_embeds(**inputs)
             return {'inputs_embeds': inputs_embeds}
@@ -109,31 +109,33 @@ class DeepseekVLTemplate(Template):
             return inputs
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
-        gene_img_list = [b.get('gene_img') for b in batch]
+        gene_img_list = [b.get('generate_mode') for b in batch]
         if all(gene_img_list):
-            gene_img = True
+            generate_mode = True
         elif not any(gene_img_list):
-            gene_img = False
+            generate_mode = False
         else:
             raise NotImplementedError('Do not support understanding and image generation tasks in one batch.')
 
-        if not gene_img:
+        if not generate_mode:
             output = self.fetch_inputs(batch, ['output'])['output']
             batched_output = dict(self.processor.batchify(output))
             res = super()._data_collator(batch, padding_to=padding_to)
             return {**batched_output, **res}
         else:
             res = super()._data_collator(batch, padding_to=padding_to)
-            res['gene_img'] = gene_img
+            res['generate_mode'] = generate_mode
             return res
 
     def generate(self, model, *args, **kwargs):
-        if not kwargs.get('gene_img'):
+        if not kwargs.get('generate_mode'):
             return model.generate(*args, **kwargs)
 
         else:
             # generate how many number of images for each prompt, it is named parallel_size in the author's code
             parallel_size = kwargs['generation_config'].num_return_sequences
+            temperature = kwargs['generation_config'].temperature
+            cfg_weight = get_env_args('cfg_weight', float, 5.0)
 
             input_ids = kwargs['input_ids']  # [bsz, max_input_token_num]
             bsz, max_input_token_num = input_ids.shape
@@ -166,8 +168,8 @@ class DeepseekVLTemplate(Template):
                 logit_cond = logits[0::2, :]
                 logit_uncond = logits[1::2, :]
 
-                logits = logit_uncond + self.cfg_weight * (logit_cond - logit_uncond)
-                probs = torch.softmax(logits / self.temperature, dim=-1)
+                logits = logit_uncond + cfg_weight * (logit_cond - logit_uncond)
+                probs = torch.softmax(logits / temperature, dim=-1)
 
                 next_token = torch.multinomial(probs, num_samples=1)
                 generated_tokens[:, i] = next_token.squeeze(dim=-1)  # [parallel_size, self.image_token_num_per_image]
@@ -183,22 +185,25 @@ class DeepseekVLTemplate(Template):
             return {'sequences': generated_tokens}
 
     def decode(self, generate_ids: List[int], is_finished: bool = True, tokenizer_kwargs=None, **kwargs) -> Any:
-        if not kwargs['template_inputs'].gene_img:
+        if not kwargs['template_inputs'].generate_mode:
             return super().decode(generate_ids, is_finished, tokenizer_kwargs, **kwargs)
 
         else:
+            img_size = get_env_args('img_size', int, 384)
+            patch_size = 16
+
             num_to_decode = 1  # for now, generate_ids is a 1D list
 
             generate_ids = torch.tensor(generate_ids).unsqueeze(0)  # [num_to_decode=1, self.image_token_num_per_image]
 
             dec = self.model.gen_vision_model.decode_code(
                 generate_ids.to(dtype=torch.int),
-                shape=[num_to_decode, 8, self.img_size // self.patch_size, self.img_size // self.patch_size])
+                shape=[num_to_decode, 8, img_size // patch_size, img_size // patch_size])
             dec = dec.to(torch.float32).cpu().numpy().transpose(0, 2, 3, 1)  # [num_to_decode, H, W, ch=3]
 
             dec = np.clip((dec + 1) / 2 * 255, 0, 255)
 
-            visual_img = np.zeros((num_to_decode, self.img_size, self.img_size, 3), dtype=np.uint8)
+            visual_img = np.zeros((num_to_decode, img_size, img_size, 3), dtype=np.uint8)
             visual_img[:, :, :] = dec
 
             img_list = []
@@ -206,7 +211,6 @@ class DeepseekVLTemplate(Template):
                 cur_img = Image.fromarray(visual_img[i])
                 img_list.append({'type': 'image', 'image': cur_img})
 
-                import os
                 os.makedirs('generated_images', exist_ok=True)
                 cur_img.save(os.path.join('generated_images', f'img_{i}.jpg'))
 
