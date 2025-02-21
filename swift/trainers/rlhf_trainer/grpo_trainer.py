@@ -495,10 +495,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if not self.model_accepts_loss_kwargs and self.compute_loss_func is None:
                 mini_batch_loss = mini_batch_loss / self.args.gradient_accumulation_steps
 
-            scale_factor = mini_size / total_batch_size
-            scaled_loss = mini_batch_loss * scale_factor
-            self.accelerator.backward(scaled_loss)
+            self.accelerator.backward(mini_batch_loss)
             total_loss += mini_batch_loss.detach() * mini_size
+
+        total_loss = total_loss / total_batch_size
 
         del inputs
         if (self.args.torch_empty_cache_steps is not None
