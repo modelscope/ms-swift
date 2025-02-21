@@ -57,6 +57,7 @@ class GRPOArguments(GRPOArgumentsMixin):
     num_iterations: int = 1
     epsilon: float = 0.2
 
+
 @dataclass
 class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArguments):
     """
