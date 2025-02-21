@@ -28,7 +28,6 @@ except ImportError:
     raise ImportError('Please install trl from source using: pip install git+https://github.com/huggingface/trl.git')
 
 del HFGRPOTrainer.__init__
-del HFGRPOTrainer._prepare_inputs
 
 logger = get_logger()
 if is_wandb_available():
