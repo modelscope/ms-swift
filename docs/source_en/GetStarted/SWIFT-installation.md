@@ -62,7 +62,7 @@ You can view the image [here](https://modelscope.cn/docs/intro/environment-setup
 | modelscope   | >=1.19               |             |                                           |
 | peft         | >=0.11,<0.15     |             |                                           |
 | trl          | >=0.13,<0.17         | 0.15      | RLHF                                      |
-| deepspeed    | >=0.14 |  | Training                                  |
+| deepspeed    | >=0.14 | 0.14.5 | Training                                  |
 | vllm         | >=0.5.1              | 0.7.3       | Inference/Deployment/Evaluation           |
 | lmdeploy     | lmdeploy>=0.5,<0.6.5 | 0.6.4       | Inference/Deployment/Evaluation           |
 | evalscope | | >=0.11 | Evaluation |

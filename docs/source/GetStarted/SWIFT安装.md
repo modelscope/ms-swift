@@ -61,7 +61,7 @@ pip install ms-swift==2.*
 | modelscope | >=1.19 |  ||
 | peft | >=0.11,<0.15 | ||
 | trl | >=0.13,<0.17 | 0.15 |RLHF|
-| deepspeed | >=0.14 |  |训练|
+| deepspeed | >=0.14 | 0.14.5 |训练|
 | vllm | >=0.5.1 | 0.7.3 |推理/部署/评测|
 | lmdeploy | lmdeploy>=0.5,<0.6.5 | 0.6.4 |推理/部署/评测|
 | evalscope |  | >=0.11 |评测|
