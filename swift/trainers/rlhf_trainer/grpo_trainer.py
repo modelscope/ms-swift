@@ -500,8 +500,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self.accelerator.backward(scaled_loss)
             total_loss += mini_batch_loss.detach() * mini_size
 
-        total_loss = total_loss / total_batch_size
-
         del inputs
         if (self.args.torch_empty_cache_steps is not None
                 and self.state.global_step % self.args.torch_empty_cache_steps == 0):
