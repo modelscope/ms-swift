@@ -229,7 +229,7 @@ class Template(ProcessorMixin):
         generate_mode = False
         message = inputs.messages[-1]
         content = message['content']
-        if content.endswith('<start-image>'):
+        if message['role'] == 'user' and content.endswith('<start-image>'):
             generate_mode = True
             message['content'] = message['content'][:-len('<start-image>')]  # remove the <start-image>
         inputs.generate_mode = generate_mode
