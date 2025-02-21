@@ -8,7 +8,8 @@ from transformers import AutoModel
 from swift.llm import TemplateType
 from ..constant import MLLMModelType
 from ..model_arch import ModelArch
-from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
+from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,
+                        get_model_tokenizer_with_flash_attn, register_model)
 from ..utils import git_clone_github, safe_snapshot_download
 
 
@@ -28,6 +29,27 @@ register_model(
         TemplateType.got_ocr2,
         get_model_tokenizer_got_ocr2,
         model_arch=ModelArch.got_ocr2,
+        architectures=['GOTQwenForCausalLM'],
+        tags=['vision']))
+
+
+def get_model_tokenizer_got_ocr2_hf(model_dir, *args, **kwargs):
+    from transformers.models.got_ocr2 import GotOcr2ForConditionalGeneration
+    GotOcr2ForConditionalGeneration._no_split_modules.append('GotOcr2VisionLayer')
+    model, processor = get_model_tokenizer_multimodal(model_dir, *args, **kwargs)
+    return model, processor
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.got_ocr2_hf, [
+            ModelGroup([
+                Model('stepfun-ai/GOT-OCR-2.0-hf', 'stepfun-ai/GOT-OCR-2.0-hf'),
+            ]),
+        ],
+        TemplateType.got_ocr2_hf,
+        get_model_tokenizer_got_ocr2_hf,
+        model_arch=ModelArch.got_ocr2_hf,
         architectures=['GOTQwenForCausalLM'],
         tags=['vision']))
 

@@ -27,8 +27,8 @@ def get_model_tokenizer_qwen(model_dir: str,
                              **kwargs):
     if model_config is None:
         model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    if model_config.torch_dtype is not None:
-        k_true = dtype_mapping[model_config.torch_dtype]
+    if model_info.torch_dtype is not None:
+        k_true = dtype_mapping[model_info.torch_dtype]
         for k in dtype_mapping.values():
             setattr(model_config, k, k == k_true)
 
@@ -651,6 +651,8 @@ register_model(
 
 def get_model_tokenizer_ovis(*args, **kwargs):
     model, tokenizer = get_model_tokenizer_with_flash_attn(*args, **kwargs)
+    model.visual_tokenizer.to(model.dtype)
+    model.vte.to(model.dtype)
     if model is not None:
         model.generation_config.cache_implementation = None
         func_list = ['generate', 'forward', 'get_input_embeddings']

@@ -119,7 +119,7 @@ This parameter list inherits from transformers `Seq2SeqTrainingArguments`, with 
 - logging_first_step: Whether to log the first step, defaults to True.
 - logging_steps: Interval for logging, defaults to 5.
 - predict_with_generate: Whether to use generative method during validation, default is False.
-- metric_for_best_model: The default is None, which means it is set to 'loss' when `predict_with_generate` is set to False, otherwise it is set to 'rouge-l' (No default value is set during PPO and GRPO training).
+- metric_for_best_model: Default is None, which means that when predict_with_generate is set to False, it is set to 'loss'; otherwise, it is set to 'rouge-l' (during PPO training, the default value is not set; in GRPO training, it is set to 'reward').
 - greater_is_better: Defaults to None, which sets it to False when `metric_for_best_model` contains 'loss', otherwise sets to True.
 
 Other important parameters:
@@ -384,16 +384,19 @@ The meanings of the following parameters can be referenced [here](https://huggin
 - log_completions: Whether to log the model-generated content during training, to be used in conjunction with `--report_to wandb`, default is False.
   - Note: If `--report_to wandb` is not set, a `completions.jsonl` will be created in the checkpoint to store the generated content.
 - use_vllm: Whether to use vLLM as the infer_backend for GRPO generation, default is False.
-- vllm_device: Set the device for vLLM deployment. For example, if deployed on card 0, use `cuda:0`; default is `auto`, which means using the last available GPU.
+- num_infer_workers: The number of inference workers per node. This setting is only effective when using vLLM or lmdeploy.
+- vllm_device: Configures the devices for deploying vLLM. You can set it to auto, which will allocate the last few GPUs based on the value of num_infer_workers. Alternatively, specify a number of devices equal to num_infer_workers. For example: --vllm_device cuda:1 cuda:2.
 - vllm_gpu_memory_utilization: vLLM passthrough parameter, default is 0.9.
 - vllm_max_model_len: vLLM passthrough parameter, default is None.
 - vllm_max_num_seqs: vLLM passthrough parameter, default is 256.
 - vllm_enforce_eager: vLLM passthrough parameter, default is False.
 - vllm_limit_mm_per_prompt: vLLM passthrough parameter, default is None.
 - vllm_enable_prefix_caching: vLLM passthrough parameter, default is True.
-- top_k: Default is None. Read from `generation_config.json`.
-- top_p: Default is None. Read from `generation_config.json`.
-- repetition_penalty: Repetition penalty term. Default is None, read from `generation_config.json`.
+- top_k: Default is 50.
+- top_p: Default is 0.9.
+- repetition_penalty: Repetition penalty term. Default is 1.
+- num_iterations: number of iterations per batch. Default is 1.
+- epsilon: epsilon value for clipping. Default is 0.2
 
 cosine reward function arguments
 - `cosine_min_len_value_wrong` (default: 0.0): Reward value corresponding to the minimum length when the answer is incorrect. Default is 0.0
@@ -560,8 +563,8 @@ For the meaning of the arguments, please refer to [here](https://modelscope.cn/m
 - INIT_TTS: Default is False
 - INIT_AUDIO: Default is False
 
-### ovis1_6
-- MAX_PARTITION: Refer to [here](https://github.com/AIDC-AI/Ovis/blob/d248e34d755a95d24315c40e2489750a869c5dbc/ovis/model/modeling_ovis.py#L312)
+### ovis1_6, ovis2
+- MAX_PARTITION: Default is 9, refer to [here](https://github.com/AIDC-AI/Ovis/blob/d248e34d755a95d24315c40e2489750a869c5dbc/ovis/model/modeling_ovis.py#L312)
 
 ### mplug_owl3, mplug_owl3_241101
 - MAX_NUM_FRAMES: Default is 16, refer to [here](https://modelscope.cn/models/iic/mPLUG-Owl3-7B-240728)

@@ -7,7 +7,7 @@
 环境安装
 ```bash
 pip install math_verify # reward function
-pip install "trl>=0.15"
+pip install git+https://github.com/huggingface/trl.git"
 ```
 
 **注意**：训练过程中 loss 接近0 是正常情况， 参考[issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851)
@@ -95,6 +95,8 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 - vllm_gpu_memory_utilization: vLLM透传参数
 - vllm_max_model_len: vLLM透传参数
 - reward_model: 同model, 使用奖励模型作为奖励函数，与reward_funcs至少需要指定一个
+- num_iterations: 每个批次代更新次数，默认为1.
+- epsilon: clip 系数
 
 奖励函数超参，见[内置奖励函数](#内置奖励函数)
 

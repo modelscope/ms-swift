@@ -49,9 +49,13 @@ class GRPOArguments(GRPOArgumentsMixin):
 
     # vLLM in GRPO
     use_vllm: bool = False
-    vllm_device: Optional[str] = 'auto'  # 'cuda:0'
+    vllm_device: List[str] = field(default_factory=lambda: ['auto'])
     vllm_gpu_memory_utilization: float = 0.9
     vllm_max_model_len: Optional[int] = None
+
+    # multi step
+    num_iterations: int = 1
+    epsilon: float = 0.2
 
 
 @dataclass
@@ -113,7 +117,9 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
                 self.loss_scale = 'default'
             else:
                 self.loss_scale = 'last_round'
-        if self.rlhf_type in ['dpo', 'kto', 'ppo', 'grpo'] and self.train_type == 'full':
+        if self.rlhf_type == 'grpo' and self.beta == 0.0:
+            self.ref_model = None
+        elif self.rlhf_type in ['dpo', 'kto', 'ppo', 'grpo'] and self.train_type == 'full':
             self.ref_model = self.ref_model or self.model
             self.ref_model_type = self.ref_model_type or self.model_type
             self.ref_model_revision = self.ref_model_revision or self.model_revision
@@ -152,6 +158,8 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
     def _init_metric_for_best_model(self):
         if self.rlhf_type not in {'ppo', 'grpo'}:
             super()._init_metric_for_best_model()
+        elif self.rlhf_type == 'grpo' and self.metric_for_best_model is None:
+            self.metric_for_best_model = 'reward'
 
     def _init_simpo(self):
         if self.rlhf_type != 'simpo':
