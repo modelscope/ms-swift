@@ -13,6 +13,7 @@ from accelerate.utils import broadcast_object_list, gather, gather_object, is_pe
 from transformers import PreTrainedModel
 from transformers.utils.versions import require_version
 from trl import GRPOTrainer as HFGRPOTrainer
+from trl.extras.profiling import profiling_decorator
 from trl.models import unwrap_model_for_generation
 
 from swift.llm import InferRequest, RequestConfig, RowPreprocessor, to_device
@@ -218,6 +219,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             template.set_mode(mode)
             template.max_length = max_length
 
+    @profiling_decorator
     def _move_model_to_vllm_lmdeploy(self):
         from accelerate.utils.other import is_compiled_module
         with unwrap_model_for_generation(
@@ -253,6 +255,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if is_peft_model(unwrapped_model):
                 unwrapped_model.unmerge_adapter()
 
+    @profiling_decorator
     def _prepare_inputs(self, inputs) -> Dict[str, Union[torch.Tensor, Any]]:
         device = self.accelerator.device
 
@@ -381,6 +384,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return outputs
 
+    @profiling_decorator
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         if return_outputs:
             raise ValueError('The GRPOTrainer does not support returning outputs')
@@ -413,6 +417,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return loss
 
     # Get the per-token log probabilities for the completions for the model and the reference model
+    @profiling_decorator
     def _get_per_token_logps(self, model, inputs):
         # pip install trl>=0.15
         from trl.trainer.utils import selective_log_softmax
