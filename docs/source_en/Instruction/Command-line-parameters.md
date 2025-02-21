@@ -392,7 +392,7 @@ The meanings of the following parameters can be referenced [here](https://huggin
 - vllm_limit_mm_per_prompt: vLLM passthrough parameter, default is None.
 - vllm_enable_prefix_caching: vLLM passthrough parameter, default is True.
 - top_k: Default is 50.
-- top_p: Default is 1.
+- top_p: Default is 0.9.
 - repetition_penalty: Repetition penalty term. Default is 1.
 
 cosine reward function arguments
