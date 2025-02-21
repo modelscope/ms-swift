@@ -44,9 +44,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                  **kwargs):
         require_version('trl>=0.15')
         args = kwargs['args']
-        # Activate gradient checkpointing if needed
-        if args.gradient_checkpointing:
-            model = self._enable_gradient_checkpointing(model, args)
 
         self.processing_class = kwargs.get('template').tokenizer
         if not isinstance(reward_funcs, list):
@@ -438,27 +435,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         metrics = {f'{metric_key_prefix}_{key}': sum(val) / len(val) for key, val in self._metrics.items()}
         output.metrics.update(metrics)
         return output
-
-    def _enable_gradient_checkpointing(self, model: PreTrainedModel, args: GRPOConfig) -> PreTrainedModel:
-        """Enables gradient checkpointing for the model."""
-        # Ensure use_cache is disabled
-        model.config.use_cache = False
-
-        # Enable gradient checkpointing on the base model for PEFT
-        if is_peft_model(model):
-            model.base_model.gradient_checkpointing_enable()
-        # Enable gradient checkpointing for non-PEFT models
-        else:
-            model.gradient_checkpointing_enable()
-
-        gradient_checkpointing_kwargs = args.gradient_checkpointing_kwargs or {}
-        use_reentrant = ('use_reentrant' not in gradient_checkpointing_kwargs
-                         or gradient_checkpointing_kwargs['use_reentrant'])
-
-        if use_reentrant:
-            model.enable_input_require_grads()
-
-        return model
 
     def training_step(self,
                       model: nn.Module,
