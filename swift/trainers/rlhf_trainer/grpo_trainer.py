@@ -5,25 +5,28 @@ import os
 from collections import defaultdict
 from contextlib import contextmanager
 from typing import Any, Callable, Dict, List, Optional, Union
-from unittest.mock import patch
 
+import numpy as np
 import torch
 import torch.nn as nn
-from accelerate.utils import broadcast_object_list, gather, gather_object, is_peft_model, set_seed
+from accelerate.utils import gather, gather_object, is_peft_model, set_seed
 from transformers import PreTrainedModel
-from transformers.utils.versions import require_version
 from trl import GRPOTrainer as HFGRPOTrainer
 from trl.models import unwrap_model_for_generation
 
 from swift.llm import InferRequest, RequestConfig, RowPreprocessor, to_device
 from swift.plugin import orms
-from swift.utils import (JsonlWriter, get_device, get_device_count, get_dist_setting, get_logger, is_lmdeploy_available,
-                         is_vllm_available, is_wandb_available)
+from swift.utils import (JsonlWriter, get_device, get_device_count, get_dist_setting, get_logger, get_node_setting,
+                         is_lmdeploy_available, is_vllm_available, is_wandb_available)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 
+try:
+    from trl.extras.profiling import profiling_decorator
+except ImportError:
+    raise ImportError('Please install trl from source using: pip install git+https://github.com/huggingface/trl.git')
+
 del HFGRPOTrainer.__init__
-del HFGRPOTrainer._prepare_inputs
 
 logger = get_logger()
 if is_wandb_available():
@@ -39,7 +42,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                  reward_funcs: Optional[List[Union[str, Callable]]] = None,
                  *_args,
                  **kwargs):
-        require_version('trl>=0.15')
         args = kwargs['args']
 
         self.processing_class = kwargs.get('template').tokenizer
@@ -79,7 +81,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.num_generations = args.num_generations
         model.warnings_issued['estimate_tokens'] = True
         kwargs['data_collator'] = lambda features: features
-        self._metrics = defaultdict(list)
+        self._metrics = {'train': defaultdict(list), 'eval': defaultdict(list)}
 
         use_vllm = args.use_vllm
         use_lmdeploy = args.use_lmdeploy
@@ -109,44 +111,45 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         set_seed(args.seed, device_specific=True)
 
         if use_vllm or use_lmdeploy:
-            if self.accelerator.is_main_process:
+            if self.infer_rank >= 0:
                 fast_infer_device = self.args.vllm_device or self.args.lmdeploy_device
-                if fast_infer_device == 'auto':
+                if fast_infer_device[0] == 'auto':
                     if get_device_count() == 1:
-                        fast_infer_device = get_device()  # particular case when training with only 1 GPU: share it
+                        fast_infer_device = [get_device()]  # particular case when training with only 1 GPU: share it
                     else:
-                        local_world_size = get_dist_setting()[3]
-                        fast_infer_device = get_device(local_world_size)  # take the next GPU idx
-                # Check that the requested device is available
-                if fast_infer_device.split(':')[0] in {'cuda', 'npu'
-                                                       } and int(fast_infer_device.split(':')[1]) >= get_device_count():
-                    raise ValueError(
-                        f'The requested device for vllm ({fast_infer_device}) is not available. '
-                        f'You are likely using vLLM '
-                        'without restricting the number of GPUs for training. Set the `--num_processes` argument to a '
-                        'value lower than the number of GPUs available on your machine—typically, reducing it by one '
-                        f'is sufficient. In your case: `--num_processes {get_device_count() - 1}`.')
-                # Check that the requested device is not also used for training
-                if fast_infer_device in {get_device(idx) for idx in range(self.accelerator.num_processes)}:
-                    logger.warning(
-                        f'The requested device {fast_infer_device} is also used for training. '
-                        f'This may lead to unexpected behavior. It is recommended to use a dedicated device for vLLM.')
+                        fast_infer_device = []
+                        for idx in range(get_device_count() - self.args.num_infer_workers, get_device_count()):
+                            fast_infer_device.append(get_device(idx))
+
+                for _device in fast_infer_device:
+                    # Check that the requested device is available
+                    if _device.split(':')[0] in {'cuda', 'npu'} and int(_device.split(':')[1]) >= get_device_count():
+                        raise ValueError(f'The requested device for vllm ({_device}) is not available. '
+                                         f'You are likely using vLLM '
+                                         'without restricting the number of GPUs for training. '
+                                         'Set the `--num_processes` argument to a '
+                                         'value lower than the number of GPUs available on your machine—typically, '
+                                         'reducing it by one is sufficient. '
+                                         f'In your case: `--num_processes {get_device_count() - 1}`.')
+                    # Check that the requested device is not also used for training
+                    if _device in {get_device(idx) for idx in range(self.accelerator.num_processes)}:
+                        logger.warning(f'The requested device {_device} is also used for training. '
+                                       f'This may lead to unexpected behavior. '
+                                       f'It is recommended to use a dedicated device for vLLM.')
+
                 if use_vllm:
                     if not is_vllm_available():
                         raise ImportError('vLLM is not available and `use_vllm` is set to True. '
                                           'Please install vLLM with `pip install vllm` to use it.')
                     from swift.llm import VllmEngine
-                    world_size_patch = patch('torch.distributed.get_world_size', return_value=1)
-                    profiling_patch = patch(
-                        'vllm.worker.worker.Worker._assert_memory_footprint_increased_during_profiling',
-                        return_value=None)
                     from swift.tuners import Swift
-                    with world_size_patch, profiling_patch, Swift.grpo_context(model, self.template.processor):
+                    from swift.llm.utils import patch_vllm
+                    with patch_vllm(), Swift.grpo_context(model, self.template.processor):
                         self.engine = VllmEngine(
                             model.model_dir,
                             model.model_info.torch_dtype,
                             model_type=model.model_meta.model_type,
-                            device=fast_infer_device,
+                            device=fast_infer_device[self.local_infer_rank],
                             gpu_memory_utilization=args.vllm_gpu_memory_utilization,
                             enable_prefix_caching=args.vllm_enable_prefix_caching,
                             max_num_seqs=args.vllm_max_num_seqs,
@@ -169,7 +172,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     from swift.llm import LmdeployEngine
                     from swift.tuners import Swift
                     with Swift.grpo_context(model, self.template.processor):
-                        fast_infer_device = int(fast_infer_device.split(':')[1])
+                        fast_infer_device = int(fast_infer_device[self.local_infer_rank].split(':')[1])
                         self.engine = LmdeployEngine(
                             model.model_dir,
                             model.model_info.torch_dtype,
@@ -203,6 +206,49 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.log_completions = args.log_completions
         self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'completions.jsonl'))
 
+        # Multi-step
+        self.num_iterations = args.num_iterations  # = 𝜇 in the GRPO paper
+        self.epsilon = args.epsilon
+        # Tracks the number of iterations (forward + backward passes), including those within a gradient accumulation cycle. # noqa
+        self._step = 0
+        # Buffer the batch to reuse generated outputs across multiple updates. For more details, see
+        # `_get_train_sampler` and `_prepare_inputs`.
+        self._buffered_inputs = [None] * args.gradient_accumulation_steps
+
+    @property
+    def infer_rank(self):
+        rank, local_rank, world_size, local_world_size = get_dist_setting()
+        assert local_world_size % self.args.num_infer_workers == 0
+        assert local_world_size + self.args.num_infer_workers == get_device_count()
+        step = local_world_size // self.args.num_infer_workers
+        for _vllm_rank in range(self.args.num_infer_workers):
+            _assigned = _vllm_rank * step
+            if local_rank == _assigned:
+                return get_node_setting()[0] * self.args.num_infer_workers + _vllm_rank
+
+        return -1
+
+    @property
+    def local_infer_rank(self):
+        rank, local_rank, world_size, local_world_size = get_dist_setting()
+        assert local_world_size % self.args.num_infer_workers == 0
+        assert local_world_size + self.args.num_infer_workers == get_device_count()
+        step = local_world_size // self.args.num_infer_workers
+        for _vllm_rank in range(self.args.num_infer_workers):
+            _assigned = _vllm_rank * step
+            if local_rank == _assigned:
+                return _vllm_rank
+
+        return -1
+
+    @staticmethod
+    def round_robin(num_reqs, nodes):
+        distribution = [[] for _ in range(nodes)]
+        for idx in range(num_reqs):
+            node_id = idx % nodes
+            distribution[node_id].append(idx)
+        return distribution
+
     @staticmethod
     @contextmanager
     def _template_context(template):
@@ -218,6 +264,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             template.set_mode(mode)
             template.max_length = max_length
 
+    @profiling_decorator
     def _move_model_to_vllm_lmdeploy(self):
         from accelerate.utils.other import is_compiled_module
         with unwrap_model_for_generation(
@@ -242,7 +289,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 }
             else:
                 state_dict = unwrapped_model.state_dict()
-            if self.accelerator.is_main_process:
+            if self.infer_rank >= 0:
                 if self.args.use_vllm:
                     llm_model = self.engine.engine.engine.model_executor.driver_worker.model_runner.model
                 else:
@@ -253,9 +300,22 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if is_peft_model(unwrapped_model):
                 unwrapped_model.unmerge_adapter()
 
-    def _prepare_inputs(self, inputs) -> Dict[str, Union[torch.Tensor, Any]]:
-        device = self.accelerator.device
+    @staticmethod
+    def reorder_outputs(outputs, distributed_idx):
+        index_to_output = {}
+        current_position = 0
+        for output_idx in distributed_idx:
+            for idx in output_idx:
+                index_to_output[idx] = outputs[current_position]
+                current_position += 1
 
+        return [index_to_output[idx] for idx in sorted(index_to_output.keys())]
+
+    def _generate_and_score_completions(
+            self, inputs: dict[str, Union[torch.Tensor, Any]]) -> dict[str, Union[torch.Tensor, Any]]:
+
+        device = self.accelerator.device
+        rank, local_rank, world_size, local_world_size = get_dist_setting()
         # Generate completions using either vLLM or regular generation
         if self.args.use_vllm or self.args.use_lmdeploy:
             # First, have main process load weights if needed
@@ -264,14 +324,23 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self._last_loaded_step = self.state.global_step
             # Generate completions using vLLM: gather all prompts and use them in a single call in the main process
             all_inputs = gather_object(inputs)
-            if self.accelerator.is_main_process:
-                outputs = self.engine.infer(all_inputs, self.request_config, use_tqdm=False)
+            # Distribute inputs to different workers
+            # for example, 2 workers, 6 inputs, 0/2/4 dispatch to the first worker
+            # 1/3/5 dispatch to the second worker
+            # trying to shuffle and average the length
+            distributed_idx = self.round_robin(len(all_inputs), get_node_setting()[1] * self.args.num_infer_workers)
+            if self.infer_rank >= 0:
+                outputs = self.engine.infer(
+                    np.array(all_inputs)[distributed_idx[self.infer_rank]], self.request_config, use_tqdm=False)
             else:
-                outputs = [None] * len(all_inputs)
+                outputs = []
+
+            outputs = gather_object(outputs)
+            outputs = self.reorder_outputs(outputs, distributed_idx)
 
             # Broadcast the completions from the main process to all processes, ensuring each process receives its
             # corresponding slice.
-            outputs = broadcast_object_list(outputs, from_process=0)
+            # outputs = broadcast_object_list(outputs, from_process=0)
         else:
             # Regular generation path
             is_multimodal = self.model.model_meta.is_multimodal
@@ -308,7 +377,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         outputs['completion_mask'] = labels[:, -logits_to_keep:] != -100
 
         with torch.inference_mode():
-            if self.ref_model is not None:
+            if self.num_iterations > 1:
+                outputs['old_per_token_logps'] = self._get_per_token_logps(self.model, outputs)
+            else:
+                outputs['old_per_token_logps'] = None
+
+            if self.beta == 0.0:
+                ref_per_token_logps = None
+            elif self.ref_model is not None:
                 ref_per_token_logps = self._get_per_token_logps(self.ref_model, outputs)
             else:
                 with self.accelerator.unwrap_model(self.model).disable_adapter():
@@ -346,6 +422,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         advantages = advantages[process_slice]
 
         # Log the metrics
+        mode = 'eval' if self.control.should_evaluate else 'train'
+        completion_length = self.accelerator.gather_for_metrics(outputs['completion_mask'].sum(1)).float().mean().item()
+        self._metrics[mode]['completion_length'].append(completion_length)
         reward_per_func = rewards_per_func.mean(0)
         for i, reward_func in enumerate(self.reward_funcs):
             if isinstance(reward_func, nn.Module):  # Module instead of PretrainedModel for compat with compiled models
@@ -355,10 +434,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     reward_func_name = reward_func.__name__  # function
                 else:
                     reward_func_name = reward_func.__class__.__name__  # method
-            self._metrics[f'rewards/{reward_func_name}'].append(reward_per_func[i].item())
+            self._metrics[mode][f'rewards/{reward_func_name}'].append(reward_per_func[i].item())
 
-        self._metrics['reward'].append(rewards.mean().item())
-        self._metrics['reward_std'].append(std_grouped_rewards.mean().item())
+        self._metrics[mode]['reward'].append(rewards.mean().item())
+        self._metrics[mode]['reward_std'].append(std_grouped_rewards.mean().item())
         outputs.update({
             'ref_per_token_logps': ref_per_token_logps,
             'advantages': advantages,
@@ -379,6 +458,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return outputs
 
+    @profiling_decorator
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         if return_outputs:
             raise ValueError('The GRPOTrainer does not support returning outputs')
@@ -387,28 +467,38 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         per_token_logps = self._get_per_token_logps(model, inputs)
 
         # Compute the KL divergence between the model and the reference model
-        ref_per_token_logps = inputs['ref_per_token_logps']
-        per_token_kl = torch.exp(ref_per_token_logps - per_token_logps) - (ref_per_token_logps - per_token_logps) - 1
+        if self.beta != 0.0:
+            ref_per_token_logps = inputs['ref_per_token_logps']
+            per_token_kl = (
+                torch.exp(ref_per_token_logps - per_token_logps) - (ref_per_token_logps - per_token_logps) - 1)
 
-        # x - x.detach() allows for preserving gradients from x
         advantages = inputs['advantages']
-        per_token_loss = torch.exp(per_token_logps - per_token_logps.detach()) * advantages.unsqueeze(1)
-        per_token_loss = -(per_token_loss - self.beta * per_token_kl)
+        old_per_token_logps = inputs['old_per_token_logps'] if self.num_iterations > 1 else per_token_logps.detach()
+        coef_1 = torch.exp(per_token_logps - old_per_token_logps)
+        coef_2 = torch.clamp(coef_1, 1 - self.epsilon, 1 + self.epsilon)
+        per_token_loss1 = coef_1 * advantages.unsqueeze(1)
+        per_token_loss2 = coef_2 * advantages.unsqueeze(1)
+        per_token_loss = -torch.min(per_token_loss1, per_token_loss2)
+        if self.beta != 0.0:
+            per_token_loss = per_token_loss + self.beta * per_token_kl
 
         loss = (per_token_loss * completion_mask).sum() / completion_mask.sum()
 
         # Log the metrics
-        completion_length = self.accelerator.gather_for_metrics(completion_mask.sum(1)).float().mean().item()
-        self._metrics['completion_length'].append(completion_length)
+        mode = 'eval' if self.control.should_evaluate else 'train'
 
-        mean_kl = ((per_token_kl * completion_mask).sum(dim=1) / completion_mask.sum(dim=1)).mean()
-        self._metrics['kl'].append(self.accelerator.gather_for_metrics(mean_kl).mean().item())
+        if self.beta != 0.0:
+            mean_kl = ((per_token_kl * completion_mask).sum(dim=1) / completion_mask.sum(dim=1)).mean()
+            self._metrics[mode]['kl'].append(self.accelerator.gather_for_metrics(mean_kl).mean().item())
 
+        is_clipped = (per_token_loss1 < per_token_loss2).float()
+        clip_ratio = (is_clipped * completion_mask).sum() / completion_mask.sum()
+        self._metrics[mode]['clip_ratio'].append(self.accelerator.gather_for_metrics(clip_ratio).mean().item())
         return loss
 
     # Get the per-token log probabilities for the completions for the model and the reference model
+    @profiling_decorator
     def _get_per_token_logps(self, model, inputs):
-        # pip install trl>=0.15
         from trl.trainer.utils import selective_log_softmax
         logits_to_keep = inputs['logits_to_keep']
         input_ids = inputs['input_ids']
@@ -419,8 +509,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             return super()._get_per_token_logps(model, input_ids, inputs['attention_mask'], logits_to_keep)
         inputs = {
             k: v
-            for k, v in inputs.items()
-            if k not in ['logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages']
+            for k, v in inputs.items() if k not in
+            ['logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps']
         }
         logits = model(**inputs).logits
         # exclude the last logit: it corresponds to the next token pred
@@ -431,6 +521,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def evaluation_loop(self, *args, **kwargs):
         metric_key_prefix = kwargs['metric_key_prefix']
         output = super().evaluation_loop(*args, **kwargs)
-        metrics = {f'{metric_key_prefix}_{key}': sum(val) / len(val) for key, val in self._metrics.items()}
+        metrics = {f'{metric_key_prefix}_{key}': sum(val) / len(val) for key, val in self._metrics['eval'].items()}
         output.metrics.update(metrics)
         return output

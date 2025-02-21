@@ -108,6 +108,9 @@ register_model(
                 Model('deepseek-ai/DeepSeek-V3-Base', 'deepseek-ai/DeepSeek-V3-Base'),
                 Model('deepseek-ai/DeepSeek-V3', 'deepseek-ai/DeepSeek-V3'),
             ]),
+            ModelGroup([
+                Model('cognitivecomputations/DeepSeek-V3-awq', 'cognitivecomputations/DeepSeek-V3-AWQ'),
+            ])
         ],
         TemplateType.deepseek_v2_5,
         get_model_tokenizer_deepseek_moe,
@@ -167,7 +170,7 @@ def get_model_tokenizer_deepseek_janus(model_dir: str, *args, **kwargs):
     if not local_repo_path:
         local_repo_path = git_clone_github('https://github.com/deepseek-ai/Janus')
     sys.path.append(os.path.join(local_repo_path))
-    from janus.models import MultiModalityCausalLM, VLChatProcessor
+    from janus.models import VLChatProcessor
 
     processor: VLChatProcessor = VLChatProcessor.from_pretrained(model_dir)
     return _get_deepseek_vl(processor, 'language_model', model_dir, *args, **kwargs)
@@ -208,7 +211,14 @@ def get_model_tokenizer_deepseek_vl2(model_dir: str, *args, **kwargs):
     if not local_repo_path:
         local_repo_path = git_clone_github('https://github.com/deepseek-ai/DeepSeek-VL2')
     sys.path.append(os.path.join(local_repo_path))
-    from deepseek_vl2.models import DeepseekVLV2Processor, DeepseekVLV2ForCausalLM
+    try:
+        from deepseek_vl2.models import DeepseekVLV2Processor
+    except ImportError:
+        # compat transformers>=4.42
+        import transformers
+        transformers.models.llama.modeling_llama.LlamaAttention = None
+        transformers.models.llama.modeling_llama.LlamaFlashAttention2 = None
+        from deepseek_vl2.models import DeepseekVLV2Processor
     processor: DeepseekVLV2Processor = DeepseekVLV2Processor.from_pretrained(model_dir)
     return _get_deepseek_vl(processor, 'language', model_dir, *args, **kwargs)
 
@@ -239,6 +249,9 @@ register_model(
                 Model('deepseek-ai/DeepSeek-R1', 'deepseek-ai/DeepSeek-R1'),
                 Model('deepseek-ai/DeepSeek-R1-Zero', 'deepseek-ai/DeepSeek-R1-Zero'),
             ]),
+            ModelGroup([
+                Model('cognitivecomputations/DeepSeek-R1-awq', 'cognitivecomputations/DeepSeek-R1-AWQ'),
+            ])
         ],
         TemplateType.deepseek_r1,
         get_model_tokenizer_deepseek_moe,
