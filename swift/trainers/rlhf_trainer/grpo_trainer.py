@@ -13,7 +13,6 @@ from accelerate.utils import broadcast_object_list, gather, gather_object, is_pe
 from transformers import PreTrainedModel
 from transformers.utils.versions import require_version
 from trl import GRPOTrainer as HFGRPOTrainer
-from trl.extras.profiling import profiling_decorator
 from trl.models import unwrap_model_for_generation
 
 from swift.llm import InferRequest, RequestConfig, RowPreprocessor, to_device
@@ -22,6 +21,11 @@ from swift.utils import (JsonlWriter, get_device, get_device_count, get_dist_set
                          is_vllm_available, is_wandb_available)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
+
+try:
+    from trl.extras.profiling import profiling_decorator
+except ImportError:
+    raise ImportError('Please install trl from source using: pip install git+https://github.com/huggingface/trl.git')
 
 del HFGRPOTrainer.__init__
 del HFGRPOTrainer._prepare_inputs
@@ -40,8 +44,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                  reward_funcs: Optional[List[Union[str, Callable]]] = None,
                  *_args,
                  **kwargs):
-        require_version('trl>=0.16.0.dev0',
-                        'please install trl from source use pip install git+https://github.com/huggingface/trl.git')
         args = kwargs['args']
         if args.gradient_checkpointing:
             model = self._enable_gradient_checkpointing(model, args)
