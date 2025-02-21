@@ -308,7 +308,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         outputs['completion_mask'] = labels[:, -logits_to_keep:] != -100
 
         with torch.inference_mode():
-            if self.ref_model is not None:
+            if self.beta == 0.0:
+                ref_per_token_logps = None
+            elif self.ref_model is not None:
                 ref_per_token_logps = self._get_per_token_logps(self.ref_model, outputs)
             else:
                 with self.accelerator.unwrap_model(self.model).disable_adapter():
@@ -387,13 +389,16 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         per_token_logps = self._get_per_token_logps(model, inputs)
 
         # Compute the KL divergence between the model and the reference model
-        ref_per_token_logps = inputs['ref_per_token_logps']
-        per_token_kl = torch.exp(ref_per_token_logps - per_token_logps) - (ref_per_token_logps - per_token_logps) - 1
+        if self.beta != 0.0:
+            ref_per_token_logps = inputs['ref_per_token_logps']
+            per_token_kl = (
+                torch.exp(ref_per_token_logps - per_token_logps) - (ref_per_token_logps - per_token_logps) - 1)
 
         # x - x.detach() allows for preserving gradients from x
         advantages = inputs['advantages']
-        per_token_loss = torch.exp(per_token_logps - per_token_logps.detach()) * advantages.unsqueeze(1)
-        per_token_loss = -(per_token_loss - self.beta * per_token_kl)
+        per_token_loss = -torch.exp(per_token_logps - per_token_logps.detach()) * advantages.unsqueeze(1)
+        if self.beta != 0.0:
+            per_token_loss = per_token_loss + self.beta * per_token_kl
 
         loss = (per_token_loss * completion_mask).sum() / completion_mask.sum()
 
@@ -401,8 +406,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         completion_length = self.accelerator.gather_for_metrics(completion_mask.sum(1)).float().mean().item()
         self._metrics['completion_length'].append(completion_length)
 
-        mean_kl = ((per_token_kl * completion_mask).sum(dim=1) / completion_mask.sum(dim=1)).mean()
-        self._metrics['kl'].append(self.accelerator.gather_for_metrics(mean_kl).mean().item())
+        if self.beta != 0.0:
+            mean_kl = ((per_token_kl * completion_mask).sum(dim=1) / completion_mask.sum(dim=1)).mean()
+            self._metrics['kl'].append(self.accelerator.gather_for_metrics(mean_kl).mean().item())
 
         return loss
 

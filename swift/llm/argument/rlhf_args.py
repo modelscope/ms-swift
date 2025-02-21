@@ -113,7 +113,9 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
                 self.loss_scale = 'default'
             else:
                 self.loss_scale = 'last_round'
-        if self.rlhf_type in ['dpo', 'kto', 'ppo', 'grpo'] and self.train_type == 'full':
+        if self.rlhf_type == 'grpo' and self.beta == 0.0:
+            self.ref_model = None
+        elif self.rlhf_type in ['dpo', 'kto', 'ppo', 'grpo'] and self.train_type == 'full':
             self.ref_model = self.ref_model or self.model
             self.ref_model_type = self.ref_model_type or self.model_type
             self.ref_model_revision = self.ref_model_revision or self.model_revision
