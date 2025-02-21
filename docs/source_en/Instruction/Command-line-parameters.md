@@ -384,7 +384,8 @@ The meanings of the following parameters can be referenced [here](https://huggin
 - log_completions: Whether to log the model-generated content during training, to be used in conjunction with `--report_to wandb`, default is False.
   - Note: If `--report_to wandb` is not set, a `completions.jsonl` will be created in the checkpoint to store the generated content.
 - use_vllm: Whether to use vLLM as the infer_backend for GRPO generation, default is False.
-- vllm_device: Set the device for vLLM deployment. For example, if deployed on card 0, use `cuda:0`; default is `auto`, which means using the last available GPU.
+- num_infer_workers: The number of inference workers per node. This setting is only effective when using vLLM or lmdeploy.
+- vllm_device: Configures the devices for deploying vLLM. You can set it to auto, which will allocate the last few GPUs based on the value of num_infer_workers. Alternatively, specify a number of devices equal to num_infer_workers. For example: --vllm_device cuda:1 cuda:2.
 - vllm_gpu_memory_utilization: vLLM passthrough parameter, default is 0.9.
 - vllm_max_model_len: vLLM passthrough parameter, default is None.
 - vllm_max_num_seqs: vLLM passthrough parameter, default is 256.

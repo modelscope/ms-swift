@@ -72,6 +72,7 @@ class SwiftArgumentsMixin:
 class GRPOArgumentsMixin:
 
     # vllm_device, vllm_gpu_memory_utilization, and vllm_max_model_len are defined in HfGRPOConfig.
+    num_infer_workers: int = 1
     vllm_max_num_seqs: int = 256
     vllm_enforce_eager: bool = False
     vllm_limit_mm_per_prompt: Optional[Union[dict, str]] = None  # '{"image": 5, "video": 2}'

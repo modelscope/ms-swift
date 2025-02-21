@@ -5,11 +5,11 @@ import os
 from collections import defaultdict
 from contextlib import contextmanager
 from typing import Any, Callable, Dict, List, Optional, Union
-from unittest.mock import patch
 
+import numpy as np
 import torch
 import torch.nn as nn
-from accelerate.utils import broadcast_object_list, gather, gather_object, is_peft_model, set_seed
+from accelerate.utils import gather, gather_object, is_peft_model, set_seed
 from transformers import PreTrainedModel
 from transformers.utils.versions import require_version
 from trl import GRPOTrainer as HFGRPOTrainer
@@ -17,8 +17,8 @@ from trl.models import unwrap_model_for_generation
 
 from swift.llm import InferRequest, RequestConfig, RowPreprocessor, to_device
 from swift.plugin import orms
-from swift.utils import (JsonlWriter, get_device, get_device_count, get_dist_setting, get_logger, is_lmdeploy_available,
-                         is_vllm_available, is_wandb_available)
+from swift.utils import (JsonlWriter, get_device, get_device_count, get_dist_setting, get_logger, get_node_setting,
+                         is_lmdeploy_available, is_vllm_available, is_wandb_available)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 
@@ -109,44 +109,45 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         set_seed(args.seed, device_specific=True)
 
         if use_vllm or use_lmdeploy:
-            if self.accelerator.is_main_process:
+            if self.infer_rank >= 0:
                 fast_infer_device = self.args.vllm_device or self.args.lmdeploy_device
-                if fast_infer_device == 'auto':
+                if fast_infer_device[0] == 'auto':
                     if get_device_count() == 1:
-                        fast_infer_device = get_device()  # particular case when training with only 1 GPU: share it
+                        fast_infer_device = [get_device()]  # particular case when training with only 1 GPU: share it
                     else:
-                        local_world_size = get_dist_setting()[3]
-                        fast_infer_device = get_device(local_world_size)  # take the next GPU idx
-                # Check that the requested device is available
-                if fast_infer_device.split(':')[0] in {'cuda', 'npu'
-                                                       } and int(fast_infer_device.split(':')[1]) >= get_device_count():
-                    raise ValueError(
-                        f'The requested device for vllm ({fast_infer_device}) is not available. '
-                        f'You are likely using vLLM '
-                        'without restricting the number of GPUs for training. Set the `--num_processes` argument to a '
-                        'value lower than the number of GPUs available on your machine—typically, reducing it by one '
-                        f'is sufficient. In your case: `--num_processes {get_device_count() - 1}`.')
-                # Check that the requested device is not also used for training
-                if fast_infer_device in {get_device(idx) for idx in range(self.accelerator.num_processes)}:
-                    logger.warning(
-                        f'The requested device {fast_infer_device} is also used for training. '
-                        f'This may lead to unexpected behavior. It is recommended to use a dedicated device for vLLM.')
+                        fast_infer_device = []
+                        for idx in range(get_device_count() - self.args.num_infer_workers, get_device_count()):
+                            fast_infer_device.append(get_device(idx))
+
+                for _device in fast_infer_device:
+                    # Check that the requested device is available
+                    if _device.split(':')[0] in {'cuda', 'npu'} and int(_device.split(':')[1]) >= get_device_count():
+                        raise ValueError(f'The requested device for vllm ({_device}) is not available. '
+                                         f'You are likely using vLLM '
+                                         'without restricting the number of GPUs for training. '
+                                         'Set the `--num_processes` argument to a '
+                                         'value lower than the number of GPUs available on your machine—typically, '
+                                         'reducing it by one is sufficient. '
+                                         f'In your case: `--num_processes {get_device_count() - 1}`.')
+                    # Check that the requested device is not also used for training
+                    if _device in {get_device(idx) for idx in range(self.accelerator.num_processes)}:
+                        logger.warning(f'The requested device {_device} is also used for training. '
+                                       f'This may lead to unexpected behavior. '
+                                       f'It is recommended to use a dedicated device for vLLM.')
+
                 if use_vllm:
                     if not is_vllm_available():
                         raise ImportError('vLLM is not available and `use_vllm` is set to True. '
                                           'Please install vLLM with `pip install vllm` to use it.')
                     from swift.llm import VllmEngine
-                    world_size_patch = patch('torch.distributed.get_world_size', return_value=1)
-                    profiling_patch = patch(
-                        'vllm.worker.worker.Worker._assert_memory_footprint_increased_during_profiling',
-                        return_value=None)
                     from swift.tuners import Swift
-                    with world_size_patch, profiling_patch, Swift.grpo_context(model, self.template.processor):
+                    from swift.llm.utils import patch_vllm
+                    with patch_vllm(), Swift.grpo_context(model, self.template.processor):
                         self.engine = VllmEngine(
                             model.model_dir,
                             model.model_info.torch_dtype,
                             model_type=model.model_meta.model_type,
-                            device=fast_infer_device,
+                            device=fast_infer_device[self.local_infer_rank],
                             gpu_memory_utilization=args.vllm_gpu_memory_utilization,
                             enable_prefix_caching=args.vllm_enable_prefix_caching,
                             max_num_seqs=args.vllm_max_num_seqs,
@@ -169,7 +170,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     from swift.llm import LmdeployEngine
                     from swift.tuners import Swift
                     with Swift.grpo_context(model, self.template.processor):
-                        fast_infer_device = int(fast_infer_device.split(':')[1])
+                        fast_infer_device = int(fast_infer_device[self.local_infer_rank].split(':')[1])
                         self.engine = LmdeployEngine(
                             model.model_dir,
                             model.model_info.torch_dtype,
@@ -202,6 +203,40 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self.reward_funcs[i] = self.accelerator.prepare_model(reward_func, evaluation_mode=True)
         self.log_completions = args.log_completions
         self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'completions.jsonl'))
+
+    @property
+    def infer_rank(self):
+        rank, local_rank, world_size, local_world_size = get_dist_setting()
+        assert local_world_size % self.args.num_infer_workers == 0
+        assert local_world_size + self.args.num_infer_workers == get_device_count()
+        step = local_world_size // self.args.num_infer_workers
+        for _vllm_rank in range(self.args.num_infer_workers):
+            _assigned = _vllm_rank * step
+            if local_rank == _assigned:
+                return get_node_setting()[0] * self.args.num_infer_workers + _vllm_rank
+
+        return -1
+
+    @property
+    def local_infer_rank(self):
+        rank, local_rank, world_size, local_world_size = get_dist_setting()
+        assert local_world_size % self.args.num_infer_workers == 0
+        assert local_world_size + self.args.num_infer_workers == get_device_count()
+        step = local_world_size // self.args.num_infer_workers
+        for _vllm_rank in range(self.args.num_infer_workers):
+            _assigned = _vllm_rank * step
+            if local_rank == _assigned:
+                return _vllm_rank
+
+        return -1
+
+    @staticmethod
+    def round_robin(num_reqs, nodes):
+        distribution = [[] for _ in range(nodes)]
+        for idx in range(num_reqs):
+            node_id = idx % nodes
+            distribution[node_id].append(idx)
+        return distribution
 
     @staticmethod
     @contextmanager
@@ -242,7 +277,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 }
             else:
                 state_dict = unwrapped_model.state_dict()
-            if self.accelerator.is_main_process:
+            if self.infer_rank >= 0:
                 if self.args.use_vllm:
                     llm_model = self.engine.engine.engine.model_executor.driver_worker.model_runner.model
                 else:
@@ -253,9 +288,20 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if is_peft_model(unwrapped_model):
                 unwrapped_model.unmerge_adapter()
 
+    @staticmethod
+    def reorder_outputs(outputs, distributed_idx):
+        index_to_output = {}
+        current_position = 0
+        for output_idx in distributed_idx:
+            for idx in output_idx:
+                index_to_output[idx] = outputs[current_position]
+                current_position += 1
+
+        return [index_to_output[idx] for idx in sorted(index_to_output.keys())]
+
     def _prepare_inputs(self, inputs) -> Dict[str, Union[torch.Tensor, Any]]:
         device = self.accelerator.device
-
+        rank, local_rank, world_size, local_world_size = get_dist_setting()
         # Generate completions using either vLLM or regular generation
         if self.args.use_vllm or self.args.use_lmdeploy:
             # First, have main process load weights if needed
@@ -264,14 +310,23 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self._last_loaded_step = self.state.global_step
             # Generate completions using vLLM: gather all prompts and use them in a single call in the main process
             all_inputs = gather_object(inputs)
-            if self.accelerator.is_main_process:
-                outputs = self.engine.infer(all_inputs, self.request_config, use_tqdm=False)
+            # Distribute inputs to different workers
+            # for example, 2 workers, 6 inputs, 0/2/4 dispatch to the first worker
+            # 1/3/5 dispatch to the second worker
+            # trying to shuffle and average the length
+            distributed_idx = self.round_robin(len(all_inputs), get_node_setting()[1] * self.args.num_infer_workers)
+            if self.infer_rank >= 0:
+                outputs = self.engine.infer(
+                    np.array(all_inputs)[distributed_idx[self.infer_rank]], self.request_config, use_tqdm=False)
             else:
-                outputs = [None] * len(all_inputs)
+                outputs = []
+
+            outputs = gather_object(outputs)
+            outputs = self.reorder_outputs(outputs, distributed_idx)
 
             # Broadcast the completions from the main process to all processes, ensuring each process receives its
             # corresponding slice.
-            outputs = broadcast_object_list(outputs, from_process=0)
+            # outputs = broadcast_object_list(outputs, from_process=0)
         else:
             # Regular generation path
             is_multimodal = self.model.model_meta.is_multimodal
