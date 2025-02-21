@@ -53,6 +53,9 @@ class GRPOArguments(GRPOArgumentsMixin):
     vllm_gpu_memory_utilization: float = 0.9
     vllm_max_model_len: Optional[int] = None
 
+    # multi step
+    num_iterations: int = 1
+    epsilon: float = 0.2
 
 @dataclass
 class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArguments):
