@@ -19,7 +19,6 @@ from trl.models import unwrap_model_for_generation
 
 from swift.llm import InferRequest, RequestConfig, RowPreprocessor, to_device
 from swift.plugin import orms
-from swift.trainers.rlhf_arguments import GRPOConfig
 from swift.utils import (JsonlWriter, get_device, get_device_count, get_dist_setting, get_logger, is_lmdeploy_available,
                          is_vllm_available, is_wandb_available)
 from ..mixin import SwiftMixin
