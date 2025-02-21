@@ -40,7 +40,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                  reward_funcs: Optional[List[Union[str, Callable]]] = None,
                  *_args,
                  **kwargs):
-        require_version('trl>=0.15')
+        require_version('trl>=0.16.0.dev0',
+                        'please install trl from source use pip install git+https://github.com/huggingface/trl.git')
         args = kwargs['args']
         if args.gradient_checkpointing:
             model = self._enable_gradient_checkpointing(model, args)
@@ -446,7 +447,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     # Get the per-token log probabilities for the completions for the model and the reference model
     @profiling_decorator
     def _get_per_token_logps(self, model, inputs):
-        # pip install trl>=0.15
         from trl.trainer.utils import selective_log_softmax
         logits_to_keep = inputs['logits_to_keep']
         input_ids = inputs['input_ids']
