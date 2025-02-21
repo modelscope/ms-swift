@@ -173,6 +173,7 @@ class Template(ProcessorMixin):
     ) -> None:
         if self.model_meta.is_multimodal:
             self._replace_image_tags(inputs)
+            self._replace_start_image_tags(inputs)
         images = inputs.images
         load_images = self.load_images or self.mode in {'vllm', 'lmdeploy'}
         load_images_origin = load_images
@@ -216,6 +217,19 @@ class Template(ProcessorMixin):
         if images:
             assert not inputs.images, f'images: {images}, inputs.images: {inputs.images}'
             inputs.images = images
+
+    @staticmethod
+    def _replace_start_image_tags(inputs: StdTemplateInputs):
+        # compat
+        gene_img = False
+        for message in inputs.messages:
+            content = message['content']
+            if not isinstance(content, str):
+                continue
+            if '<start_image>' in content:
+                gene_img = True
+                message['content'] = re.sub('<start_image>', '', content).strip()  # remove the <start_image>
+        inputs.gene_img = gene_img
 
     def _rlhf_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         chosen_inputs, rejected_inputs = inputs, deepcopy(inputs)
