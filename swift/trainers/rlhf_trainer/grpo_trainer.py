@@ -1,14 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Part of the implementation is borrowed from huggingface/trl.
 import inspect
-import math
 import os
 from collections import defaultdict
 from contextlib import contextmanager
 from typing import Any, Callable, Dict, List, Optional, Union
 from unittest.mock import patch
 
-import numpy as np
 import torch
 import torch.nn as nn
 from accelerate.utils import broadcast_object_list, gather, gather_object, is_peft_model, set_seed
