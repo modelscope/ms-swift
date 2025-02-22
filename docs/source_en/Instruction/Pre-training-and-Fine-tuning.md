@@ -193,7 +193,6 @@ infer_requests = [
 ]
 resp_list = engine.infer(infer_requests, request_config)
 query0 = infer_requests[0].messages[0]['content']
-print(f'query0: {query0}')
 print(f'response0: {resp_list[0].choices[0].message.content}')
 print(f'response1: {resp_list[1].choices[0].message.content}')
 ```
@@ -230,7 +229,6 @@ infer_requests = [
 ]
 resp_list = engine.infer(infer_requests, request_config)
 query0 = infer_requests[0].messages[0]['content']
-print(f'query0: {query0}')
 print(f'response0: {resp_list[0].choices[0].message.content}')
 print(f'response1: {resp_list[1].choices[0].message.content}')
 ```
