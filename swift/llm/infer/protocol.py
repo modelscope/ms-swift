@@ -224,6 +224,7 @@ class ChatCompletionMessageToolCall:
 class ChatMessage:
     role: Literal['system', 'user', 'assistant']
     content: Union[str, List[Dict[str, Any]]]
+    reasoning_content: Optional[str] = None
     tool_calls: Optional[List[ChatCompletionMessageToolCall]] = None
 
 
@@ -278,6 +279,7 @@ class CompletionResponse:
 class DeltaMessage:
     role: Literal['system', 'user', 'assistant', None] = None
     content: Optional[str] = None
+    reasoning_content: Optional[str] = None
     tool_calls: Optional[List[ChatCompletionMessageToolCall]] = None
 
 
