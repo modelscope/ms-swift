@@ -159,6 +159,7 @@ class TrainArguments(SwanlabArguments, TorchAccArguments, TunerArguments, Seq2Se
     acc_strategy: Literal['token', 'seq'] = 'token'
     max_new_tokens: int = 64
     temperature: float = 0.
+    load_args: bool = False
 
     def __post_init__(self) -> None:
         if self.resume_from_checkpoint:
