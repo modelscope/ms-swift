@@ -74,6 +74,7 @@
 - **模型量化**：支持AWQ、GPTQ和BNB的量化导出，导出的模型支持使用vLLM/LmDeploy推理加速，并支持继续训练。
 
 ## 🎉 新闻
+- 🎁 2025.02.21: 我们测试了GRPO算法的性能，并且使用一些tricks使[训练速度提高到300%](examples/train/grpo/full_lmdeploy.sh). WanDB表格请查看[这里](https://wandb.ai/tastelikefeet/grpo_perf_test?nw=nwuseryuzezyz)
 - 🎁 2025.02.21: 支持大模型API蒸馏采样，请查看[示例](examples/sampler/distill/distill.sh)
 - 🎁 2025.02.17: 支持SwanLab, 仅需添加[几个新的参数](docs/source/Instruction/命令行参数.md#swanlab)就可以在swanlab上验证你的训练效果
 - 🎁 2025.02.16: 在GRPO算法中支持LMDeploy, 请查看`--use_lmdeploy true`. 具体参考[这个脚本](examples/train/grpo/full_lmdeploy.sh)
