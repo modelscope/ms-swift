@@ -509,8 +509,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             return super()._get_per_token_logps(model, input_ids, inputs['attention_mask'], logits_to_keep)
         inputs = {
             k: v
-            for k, v in inputs.items()
-            if k not in ['logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages']
+            for k, v in inputs.items() if k not in
+            ['logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps']
         }
         logits = model(**inputs).logits
         # exclude the last logit: it corresponds to the next token pred
