@@ -3,17 +3,19 @@
 import concurrent.futures
 import inspect
 import os
+import time
 from collections import defaultdict
 from concurrent.futures import Future
 from contextlib import contextmanager
+from dataclasses import dataclass, field
 from queue import Queue
-from typing import Any, Callable, List, Optional, Union
+from typing import Any, Callable, List, Optional, Union, Dict
 
 import numpy as np
 import torch
 import torch.nn as nn
 from accelerate.utils import gather, gather_object, is_peft_model, set_seed
-from transformers import PreTrainedModel
+from transformers import PreTrainedModel, TrainerCallback
 from trl import GRPOTrainer as HFGRPOTrainer
 from trl.models import unwrap_model_for_generation
 
@@ -34,6 +36,25 @@ del HFGRPOTrainer.__init__
 logger = get_logger()
 if is_wandb_available():
     import wandb
+
+
+class GRPOCallback(TrainerCallback):
+
+    def __init__(self, trainer):
+        self.trainer = trainer
+
+    # offload original_modules to cpu, to save memory
+    def on_train_begin(self, args,
+                state,
+                control, **kwargs):
+        self.trainer._prefetch(state.train_dataloader)
+
+
+@dataclass
+class DataCache:
+    inputs: List[Dict] = field(default_factory=list)
+    outputs: List[Dict] = field(default_factory=list)
+    distributed_idx: List[List] = field(default_factory=list)
 
 
 class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
@@ -221,8 +242,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # `_get_train_sampler` and `_prepare_inputs`.
         self._buffered_inputs = [None] * args.gradient_accumulation_steps
 
-        if self.args.async_generate:
-            self._prefetch()
+        self.add_callback(GRPOCallback(self))
 
     @property
     def infer_rank(self):
@@ -299,6 +319,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             else:
                 state_dict = unwrapped_model.state_dict()
             if self.infer_rank >= 0:
+                if self.args.async_generate:
+                    self._wait_queue()
                 if self.args.use_vllm:
                     llm_model = self.engine.engine.engine.model_executor.driver_worker.model_runner.model
                 else:
@@ -308,6 +330,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # This must be done after loading weights to ensure they correspond to the merged state.
             if is_peft_model(unwrapped_model):
                 unwrapped_model.unmerge_adapter()
+
+    def _wait_queue(self):
+        while self.queue.empty():
+            time.sleep(0.01)
 
     @staticmethod
     def reorder_outputs(outputs, distributed_idx):
@@ -324,23 +350,24 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         future: Future = self.executor.submit(
             self.engine.infer, infer_requests=inputs_slice, request_config=self.request_config, use_tqdm=False)
 
-        def done():
-            self.queue.put((inputs, future.result(), distributed_idx))
+        def done(_self):
+            self.queue.put(DataCache(inputs, _self.result(), distributed_idx))
 
         future.add_done_callback(done)
 
-    def _prefetch(self):
-        inputs = next(iter(self.get_train_dataloader()))
+    def _prefetch(self, train_dataloader):
+        inputs = next(iter(train_dataloader))
         all_inputs = gather_object(inputs)
         distributed_idx = self.round_robin(len(all_inputs), get_node_setting()[1] * self.args.num_infer_workers)
         if self.infer_rank >= 0:
             _input_slice = np.array(all_inputs)[distributed_idx[self.infer_rank]]
             outputs = self.engine.infer(_input_slice, self.request_config, use_tqdm=False)
-            self.queue.put((inputs, outputs, distributed_idx))
+            self.queue.put(DataCache(inputs, outputs, distributed_idx))
         else:
-            self.queue.put((inputs, [], distributed_idx))
+            self.queue.put(DataCache(inputs, [], distributed_idx))
         if self.accelerator.num_processes > 1:
             self.accelerator.wait_for_everyone()
+
 
     def _fast_infer(self, inputs):
         # First, have main process load weights if needed
@@ -358,13 +385,18 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             _input_slice = np.array(all_inputs)[distributed_idx[self.infer_rank]]
             if self.args.async_generate:
                 self.async_infer(inputs, _input_slice, distributed_idx)
-                inputs, outputs, distributed_idx = self.queue.get()
+                data_cache = self.queue.get()
+                inputs = data_cache.inputs
+                outputs = data_cache.outputs
+                distributed_idx = data_cache.distributed_idx
             else:
                 outputs = self.engine.infer(_input_slice, self.request_config, use_tqdm=False)
         else:
             if self.args.async_generate:
-                self.queue.put(inputs, [], distributed_idx)
-                inputs, _, distributed_idx = self.queue.get()
+                self.queue.put(DataCache(inputs, [], distributed_idx))
+                data_cache = self.queue.get()
+                inputs = data_cache.inputs
+                distributed_idx = data_cache.distributed_idx
             outputs = []
         outputs = gather_object(outputs)
         outputs = self.reorder_outputs(outputs, distributed_idx)
@@ -408,10 +440,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             messages = inputs[i]['messages']
             InferRequest.remove_response(messages)
             messages.append({'role': 'assistant', 'content': output.choices[0].message.content})
-
-        with self._template_context(self.template):
-            batched_inputs = [self.template.encode(infer_request) for infer_request in inputs]
-            outputs = to_device(self.template.data_collator(batched_inputs), self.model.device)
+        from copy import copy
+        template = copy(self.template)
+        with self._template_context(template):
+            batched_inputs = [template.encode(infer_request) for infer_request in inputs]
+            outputs = to_device(template.data_collator(batched_inputs), self.model.device)
 
         # we only need to compute the logits for the completion tokens
         labels = outputs.pop('labels')
