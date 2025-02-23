@@ -323,7 +323,7 @@ def test_mistral_small():
 
 
 def test_moonlight():
-    pt_engine = PtEngine("moonshotai/Moonlight-16B-A3B-Instruct")
+    pt_engine = PtEngine('moonshotai/Moonlight-16B-A3B-Instruct')
     res = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
     res2 = _infer_model(pt_engine)
