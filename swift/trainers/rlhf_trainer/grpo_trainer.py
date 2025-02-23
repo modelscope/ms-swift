@@ -4,12 +4,12 @@ import concurrent.futures
 import inspect
 import os
 import time
-from collections import defaultdict
+from collections import OrderedDict, defaultdict
 from concurrent.futures import Future
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from queue import Queue
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union, re
 
 import numpy as np
 import torch
@@ -110,6 +110,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         use_vllm = args.use_vllm
         use_lmdeploy = args.use_lmdeploy
+
+        if use_lmdeploy:
+            from swift.trainers.utils import _patch_lmdeploy
+            _patch_lmdeploy()
 
         super().__init__(model, ref_model, *_args, **kwargs)
 
