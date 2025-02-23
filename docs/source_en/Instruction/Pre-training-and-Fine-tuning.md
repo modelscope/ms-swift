@@ -112,7 +112,7 @@ If you want to use the interface for training, you can refer to the [Web-UI docu
 - See [here](https://github.com/modelscope/ms-swift/blob/main/examples/export/merge_lora.sh).
 
 
-## Inference (After Fine-Tuning Model)
+## Inference (Fine-Tuned Model)
 
 To perform inference on a LoRA-trained checkpoint using the CLI:
 
@@ -126,9 +126,10 @@ swift infer \
     --max_new_tokens 2048
 ```
 
-- If you are using full parameter training, please replace `--adapters` with `--model` to specify the directory of the trained checkpoint.
-- You can choose to merge LoRA (by additionally specifying `--merge_lora true`) and then specify `--infer_backend vllm/lmdeploy` for inference acceleration.
-- You can use `swift app` instead of `swift infer` for interface-based inference.
+- The adapters folder contains the trained parameter file `args.json`, so there is no need to specify `--model` or `--system` explicitly; Swift will automatically read these parameters. If you want to disable this behavior, you can set `--load_args false`.
+- If you are using full parameter training, please use `--model` instead of `--adapters` to specify the training checkpoint directory. For more information, refer to the [Inference and Deployment documentation](./Inference-and-deployment.md#Inference).
+- You can use `swift app` instead of `swift infer` for interactive inference.
+- You can choose to merge LoRA (by additionally specifying `--merge_lora true`), and then specify `--infer_backend vllm/lmdeploy` for inference acceleration.
 
 For batch inference on the validation set of the dataset:
 
@@ -144,7 +145,7 @@ swift infer \
 ```
 
 - You can set `--max_batch_size 8` to enable batch processing with `--infer_backend pt`. If you use `infer_backend vllm/lmdeploy`, it will automatically handle batching without needing to specify.
-- `--load_data_args true` will read the parameter file `args.json` that was stored during training.
+- `--load_data_args true` will additionally read the data parameters from the training storage parameter file `args.json`.
 
 If you want to perform inference on an additional test set instead of using the training validation set, use `--val_dataset <dataset_path>` for inference:
 
@@ -193,7 +194,6 @@ infer_requests = [
 ]
 resp_list = engine.infer(infer_requests, request_config)
 query0 = infer_requests[0].messages[0]['content']
-print(f'query0: {query0}')
 print(f'response0: {resp_list[0].choices[0].message.content}')
 print(f'response1: {resp_list[1].choices[0].message.content}')
 ```
@@ -230,14 +230,97 @@ infer_requests = [
 ]
 resp_list = engine.infer(infer_requests, request_config)
 query0 = infer_requests[0].messages[0]['content']
-print(f'query0: {query0}')
 print(f'response0: {resp_list[0].choices[0].message.content}')
 print(f'response1: {resp_list[1].choices[0].message.content}')
 ```
 
-- To perform inference on a full parameter-trained checkpoint, you can refer to the [large model inference example](https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo.py) and just change the `model`.
+If you are using a model trained with ms-swift, you can obtain the training configuration as follows:
+
+```python
+from swift.llm import safe_snapshot_download, BaseArguments
+
+lora_adapters = safe_snapshot_download('swift/test_lora')
+args = BaseArguments.from_pretrained(lora_adapters)
+print(f'args.model: {args.model}')
+print(f'args.model_type: {args.model_type}')
+print(f'args.template_type: {args.template}')
+print(f'args.default_system: {args.system}')
+```
+
+- To perform inference on a checkpoint trained with full parameters, set `model` to `checkpoint_dir` and `lora_checkpoint` to `None`. For more information, refer to the [Inference and Deployment documentation](./Inference-and-deployment.md#Inference).
 - For streaming inference and acceleration using `VllmEngine` and `LmdeployEngine`, you can refer to the inference examples for [large models](https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo.py) and [multi-modal large models](https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo_mllm.py).
 - For inference on fine-tuned models using the Hugging Face transformers/PEFT ecosystem, you can see [here](https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo_hf.py).
 - If you have trained multiple LoRAs and need to switch among them, refer to the [inference](https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo_lora.py) and [deployment](https://github.com/modelscope/ms-swift/tree/main/examples/deploy/lora) examples.
 - For grounding tasks in multi-modal models, you can refer to [here](https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo_grounding.py).
 - For inference on a LoRA fine-tuned BERT model, see [here](https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo_bert.py).
+
+
+## Deployment (Fine-Tuned Model)
+
+Use the following command to start the deployment server. If the weights are trained using full parameters, please use `--model` instead of `--adapters` to specify the training checkpoint directory. You can refer to the client calling methods described in the [Inference and Deployment documentation](./Inference-and-deployment.md#Deployment): curl, OpenAI library, and Swift client.
+
+```shell
+CUDA_VISIBLE_DEVICES=0 \
+swift deploy \
+    --adapters output/vx-xxx/checkpoint-xxx \
+    --infer_backend pt \
+    --temperature 0 \
+    --max_new_tokens 2048 \
+    --served_model_name '<model-name>'
+```
+
+Here, a complete example of deploying and calling multiple LoRAs using vLLM will be provided.
+
+### Server Side
+
+First, you need to install vLLM: `pip install vllm -U`, and use `--infer_backend vllm` when deploying, which can significantly speed up inference.
+
+We pre-trained two base models with different self-awareness LoRA incremental weights for `Qwen/Qwen2.5-7B-Instruct` (which can run successfully). You can find relevant information in [args.json](https://modelscope.cn/models/swift/test_lora/file/view/master). You simply need to modify `--adapters` to specify the local path for the trained LoRA weights during deployment.
+
+```shell
+CUDA_VISIBLE_DEVICES=0 \
+swift deploy \
+    --adapters lora1=swift/test_lora lora2=swift/test_lora2 \
+    --infer_backend vllm \
+    --temperature 0 \
+    --max_new_tokens 2048
+```
+
+### Client Side
+
+Here, we will only cover calling using the OpenAI library. Examples for calling with curl and the Swift client can be referenced in the [Inference and Deployment documentation](./Inference-and-deployment.md#Deployment).
+
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    api_key='EMPTY',
+    base_url=f'http://127.0.0.1:8000/v1',
+)
+models = [model.id for model in client.models.list().data]
+print(f'models: {models}')
+
+query = 'who are you?'
+messages = [{'role': 'user', 'content': query}]
+
+resp = client.chat.completions.create(model=models[1], messages=messages, max_tokens=512, temperature=0)
+query = messages[0]['content']
+response = resp.choices[0].message.content
+print(f'query: {query}')
+print(f'response: {response}')
+
+gen = client.chat.completions.create(model=models[2], messages=messages, stream=True, temperature=0)
+print(f'query: {query}\nresponse: ', end='')
+for chunk in gen:
+    if chunk is None:
+        continue
+    print(chunk.choices[0].delta.content, end='', flush=True)
+print()
+"""
+models: ['Qwen2.5-7B-Instruct', 'lora1', 'lora2']
+query: who are you?
+response: I am an artificial intelligence model named swift-robot, developed by swift. I can answer your questions, provide information, and engage in conversation. If you have any inquiries or need assistance, feel free to ask me at any time.
+query: who are you?
+response: I am an artificial intelligence model named Xiao Huang, developed by ModelScope. I can answer your questions, provide information, and engage in conversation. If you have any inquiries or need assistance, feel free to ask me at any time.
+"""
+```

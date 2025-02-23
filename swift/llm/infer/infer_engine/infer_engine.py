@@ -83,7 +83,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
                 # is_finished
                 if isinstance(output, Exception):
                     if getattr(self, 'strict', True):
-                        raise
+                        raise output
                     outputs[i] = output
                 n_finished += 1
                 prog_bar.update()
