@@ -56,12 +56,13 @@ def is_instance_of_ms_model(model: Module) -> bool:
 
 
 def _patch_lmdeploy():
-    assert lmdeploy.__version == '0.6.4'
+    import lmdeploy
+    assert lmdeploy.__version__ == '0.6.4'
     from lmdeploy import messages
     from lmdeploy.messages import TurbomindEngineConfig
     from lmdeploy.turbomind.deploy import loader
     from lmdeploy.turbomind.deploy.loader import create_loader
-    from lmdeploy.turboind.deploy.source_model import llama
+    from lmdeploy.turbomind.deploy.source_model import llama
 
     def _create_loader(model_path: str, pattern: str):
         if not isinstance(model_path, (str, os.PathLike)):
@@ -88,17 +89,13 @@ def _patch_lmdeploy():
                 return generator
 
             return generate()
-
+        else:
             return create_loader(model_path, pattern)
 
     loader.create_loader = _create_loader
     llama.create_loader = _create_loader
 
-    @dataclass
-    class _TurbomindEngineConfig(TurbomindEngineConfig):
-        devices: List[int] = field(default_factory=lambda: [0])
-
-    messages.TurbomindEngineConfig = _TurbomindEngineConfig
+    TurbomindEngineConfig.devices = [0]
 
     from lmdeploy.turbomind.turbomind import TurboMind
     from lmdeploy.tokenizer import Tokenizer
