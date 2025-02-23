@@ -216,7 +216,6 @@ def get_model_tokenizer_deepseek_vl2(model_dir: str, *args, **kwargs):
     except ImportError:
         # compat transformers>=4.42
         import transformers
-        transformers.models.llama.modeling_llama.LlamaAttention = None
         transformers.models.llama.modeling_llama.LlamaFlashAttention2 = None
         from deepseek_vl2.models import DeepseekVLV2Processor
     processor: DeepseekVLV2Processor = DeepseekVLV2Processor.from_pretrained(model_dir)
