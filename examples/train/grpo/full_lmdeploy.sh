@@ -1,6 +1,10 @@
+# A800 * 8
 # pip install lmdeploy==0.6.4
 # exp link: https://wandb.ai/tastelikefeet/grpo_perf_test?nw=nwuseryuzezyz
+# In exp no `--system 'examples/train/grpo/prompt.txt'`, so the format reward is not correct and there are speed diffs with this script
 # important args: --num_infer_workers 2 --num_iterations 2 --use_lmdeploy true --async_generate true
+# if forward/backward error: pip install deepspeed==0.14.5
+# and change deepspeed zero3.json stage3_prefetch_bucket_size=0
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 NPROC_PER_NODE=6 \
 swift rlhf \
@@ -10,7 +14,7 @@ swift rlhf \
     --use_lmdeploy true \
     --train_type full \
     --torch_dtype bfloat16 \
-    --dataset 'AI-MO/NuminaMath-TIR#5000' \
+    --dataset AI-MO/NuminaMath-TIR#5000 \
     --max_completion_length 1536 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 10 \
