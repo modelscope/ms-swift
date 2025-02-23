@@ -397,6 +397,7 @@ The meanings of the following parameters can be referenced [here](https://huggin
 - repetition_penalty: Repetition penalty term. Default is 1.
 - num_iterations: number of iterations per batch. Default is 1.
 - epsilon: epsilon value for clipping. Default is 0.2
+- async_generate: Use async rollout to improve train speed，default `false`
 
 cosine reward function arguments
 - `cosine_min_len_value_wrong` (default: 0.0): Reward value corresponding to the minimum length when the answer is incorrect. Default is 0.0

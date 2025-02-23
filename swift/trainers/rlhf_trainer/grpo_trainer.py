@@ -1,16 +1,21 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Part of the implementation is borrowed from huggingface/trl.
+import concurrent.futures
 import inspect
 import os
-from collections import defaultdict
+import time
+from collections import OrderedDict, defaultdict
+from concurrent.futures import Future
 from contextlib import contextmanager
-from typing import Any, Callable, Dict, List, Optional, Union
+from dataclasses import dataclass, field
+from queue import Queue
+from typing import Any, Callable, Dict, List, Optional, Union, re
 
 import numpy as np
 import torch
 import torch.nn as nn
 from accelerate.utils import gather, gather_object, is_peft_model, set_seed
-from transformers import PreTrainedModel
+from transformers import PreTrainedModel, TrainerCallback
 from trl import GRPOTrainer as HFGRPOTrainer
 from trl.models import unwrap_model_for_generation
 
@@ -33,7 +38,25 @@ if is_wandb_available():
     import wandb
 
 
+class GRPOCallback(TrainerCallback):
+
+    def __init__(self, trainer):
+        self.trainer = trainer
+
+    # offload original_modules to cpu, to save memory
+    def on_train_begin(self, args, state, control, **kwargs):
+        self.trainer._prefetch(state.train_dataloader)
+
+
+@dataclass
+class DataCache:
+    inputs: List[Dict] = field(default_factory=list)
+    outputs: List[Dict] = field(default_factory=list)
+    distributed_idx: List[List] = field(default_factory=list)
+
+
 class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
 
     def __init__(self,
                  model: Optional[Union[PreTrainedModel, nn.Module]] = None,
@@ -42,8 +65,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                  reward_funcs: Optional[List[Union[str, Callable]]] = None,
                  *_args,
                  **kwargs):
-        args = kwargs['args']
-
+        from swift.trainers.rlhf_arguments import GRPOConfig
+        args: GRPOConfig = kwargs['args']
+        self.args = args
+        self.queue = Queue()
         self.processing_class = kwargs.get('template').tokenizer
         if not isinstance(reward_funcs, list):
             reward_funcs = [reward_funcs]
@@ -85,6 +110,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         use_vllm = args.use_vllm
         use_lmdeploy = args.use_lmdeploy
+
+        if use_lmdeploy:
+            from swift.trainers.utils import _patch_lmdeploy
+            _patch_lmdeploy()
 
         super().__init__(model, ref_model, *_args, **kwargs)
 
@@ -215,6 +244,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # `_get_train_sampler` and `_prepare_inputs`.
         self._buffered_inputs = [None] * args.gradient_accumulation_steps
 
+        self.add_callback(GRPOCallback(self))
+
     @property
     def infer_rank(self):
         rank, local_rank, world_size, local_world_size = get_dist_setting()
@@ -290,6 +321,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             else:
                 state_dict = unwrapped_model.state_dict()
             if self.infer_rank >= 0:
+                if self.args.async_generate:
+                    self._wait_queue()
                 if self.args.use_vllm:
                     llm_model = self.engine.engine.engine.model_executor.driver_worker.model_runner.model
                 else:
@@ -299,6 +332,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # This must be done after loading weights to ensure they correspond to the merged state.
             if is_peft_model(unwrapped_model):
                 unwrapped_model.unmerge_adapter()
+
+    def _wait_queue(self):
+        while self.queue.empty():
+            time.sleep(0.01)
 
     @staticmethod
     def reorder_outputs(outputs, distributed_idx):
@@ -311,33 +348,72 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return [index_to_output[idx] for idx in sorted(index_to_output.keys())]
 
+    def async_infer(self, inputs, inputs_slice, distributed_idx):
+        future: Future = self.executor.submit(
+            self.engine.infer, infer_requests=inputs_slice, request_config=self.request_config, use_tqdm=False)
+
+        def done(_self):
+            self.queue.put(DataCache(inputs, _self.result(), distributed_idx))
+
+        future.add_done_callback(done)
+
+    def _prefetch(self, train_dataloader):
+        inputs = next(iter(train_dataloader))
+        all_inputs = gather_object(inputs)
+        distributed_idx = self.round_robin(len(all_inputs), get_node_setting()[1] * self.args.num_infer_workers)
+        if self.infer_rank >= 0:
+            _input_slice = np.array(all_inputs)[distributed_idx[self.infer_rank]]
+            outputs = self.engine.infer(_input_slice, self.request_config, use_tqdm=False)
+            self.queue.put(DataCache(inputs, outputs, distributed_idx))
+        else:
+            self.queue.put(DataCache(inputs, [], distributed_idx))
+        if self.accelerator.num_processes > 1:
+            self.accelerator.wait_for_everyone()
+
+    def _fast_infer(self, inputs):
+        # First, have main process load weights if needed
+        if self.state.global_step != self._last_loaded_step:
+            self._move_model_to_vllm_lmdeploy()
+            self._last_loaded_step = self.state.global_step
+        # Generate completions using vLLM: gather all prompts and use them in a single call in the main process
+        all_inputs = gather_object(inputs)
+        # Distribute inputs to different workers
+        # for example, 2 workers, 6 inputs, 0/2/4 dispatch to the first worker
+        # 1/3/5 dispatch to the second worker
+        # trying to shuffle and average the length
+        distributed_idx = self.round_robin(len(all_inputs), get_node_setting()[1] * self.args.num_infer_workers)
+        if self.infer_rank >= 0:
+            _input_slice = np.array(all_inputs)[distributed_idx[self.infer_rank]]
+            if self.args.async_generate:
+                self.async_infer(inputs, _input_slice, distributed_idx)
+                data_cache = self.queue.get()
+                inputs = data_cache.inputs
+                outputs = data_cache.outputs
+                distributed_idx = data_cache.distributed_idx
+            else:
+                outputs = self.engine.infer(_input_slice, self.request_config, use_tqdm=False)
+        else:
+            if self.args.async_generate:
+                self.queue.put(DataCache(inputs, [], distributed_idx))
+                data_cache = self.queue.get()
+                inputs = data_cache.inputs
+                distributed_idx = data_cache.distributed_idx
+            outputs = []
+        outputs = gather_object(outputs)
+        outputs = self.reorder_outputs(outputs, distributed_idx)
+        return inputs, outputs
+
+    @property
+    def old_policy(self):
+        return self.num_iterations > 1 or self.args.async_generate
+
     def _generate_and_score_completions(
             self, inputs: dict[str, Union[torch.Tensor, Any]]) -> dict[str, Union[torch.Tensor, Any]]:
 
         device = self.accelerator.device
-        rank, local_rank, world_size, local_world_size = get_dist_setting()
         # Generate completions using either vLLM or regular generation
         if self.args.use_vllm or self.args.use_lmdeploy:
-            # First, have main process load weights if needed
-            if self.state.global_step != self._last_loaded_step:
-                self._move_model_to_vllm_lmdeploy()
-                self._last_loaded_step = self.state.global_step
-            # Generate completions using vLLM: gather all prompts and use them in a single call in the main process
-            all_inputs = gather_object(inputs)
-            # Distribute inputs to different workers
-            # for example, 2 workers, 6 inputs, 0/2/4 dispatch to the first worker
-            # 1/3/5 dispatch to the second worker
-            # trying to shuffle and average the length
-            distributed_idx = self.round_robin(len(all_inputs), get_node_setting()[1] * self.args.num_infer_workers)
-            if self.infer_rank >= 0:
-                outputs = self.engine.infer(
-                    np.array(all_inputs)[distributed_idx[self.infer_rank]], self.request_config, use_tqdm=False)
-            else:
-                outputs = []
-
-            outputs = gather_object(outputs)
-            outputs = self.reorder_outputs(outputs, distributed_idx)
-
+            inputs, outputs = self._fast_infer(inputs)
             # Broadcast the completions from the main process to all processes, ensuring each process receives its
             # corresponding slice.
             # outputs = broadcast_object_list(outputs, from_process=0)
@@ -365,10 +441,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             messages = inputs[i]['messages']
             InferRequest.remove_response(messages)
             messages.append({'role': 'assistant', 'content': output.choices[0].message.content})
-
-        with self._template_context(self.template):
-            batched_inputs = [self.template.encode(infer_request) for infer_request in inputs]
-            outputs = to_device(self.template.data_collator(batched_inputs), self.model.device)
+        from copy import copy
+        template = copy(self.template)
+        with self._template_context(template):
+            batched_inputs = [template.encode(infer_request) for infer_request in inputs]
+            outputs = to_device(template.data_collator(batched_inputs), self.model.device)
 
         # we only need to compute the logits for the completion tokens
         labels = outputs.pop('labels')
@@ -377,7 +454,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         outputs['completion_mask'] = labels[:, -logits_to_keep:] != -100
 
         with torch.inference_mode():
-            if self.num_iterations > 1:
+            if self.old_policy:
                 outputs['old_per_token_logps'] = self._get_per_token_logps(self.model, outputs)
             else:
                 outputs['old_per_token_logps'] = None
@@ -473,7 +550,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 torch.exp(ref_per_token_logps - per_token_logps) - (ref_per_token_logps - per_token_logps) - 1)
 
         advantages = inputs['advantages']
-        old_per_token_logps = inputs['old_per_token_logps'] if self.num_iterations > 1 else per_token_logps.detach()
+        old_per_token_logps = inputs['old_per_token_logps'] if self.old_policy else per_token_logps.detach()
         coef_1 = torch.exp(per_token_logps - old_per_token_logps)
         coef_2 = torch.clamp(coef_1, 1 - self.epsilon, 1 + self.epsilon)
         per_token_loss1 = coef_1 * advantages.unsqueeze(1)

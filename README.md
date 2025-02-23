@@ -78,6 +78,7 @@ You can contact us and communicate with us by adding our group:
 
 
 ## 🎉 News
+- 🎁 2025.02.21: We test the speed performance of GRPO，and with some tricks to [speed up to 300%](examples/train/grpo/full_lmdeploy.sh). WanDB charts can be found [here](https://wandb.ai/tastelikefeet/grpo_perf_test?nw=nwuseryuzezyz)
 - 🎁 2025.02.21: Support distill from LLM API，Please check[this example](examples/sampler/distill/distill.sh)
 - 🎁 2025.02.17: Support SwanLab, just add [a few of arguments](docs/source_en/Instruction/Command-line-parameters.md#swanlab) you can use swanlab to analysis your training results
 - 🎁 2025.02.16: Support LMDeploy in GRPO, use `--use_lmdeploy true`. Please check [this script](examples/train/grpo/full_lmdeploy.sh)

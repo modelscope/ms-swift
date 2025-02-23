@@ -93,6 +93,8 @@ class GRPOArgumentsMixin:
     lmdeploy_session_len: Optional[int] = None
     lmdeploy_cache_max_entry_count: float = 0.8
 
+    async_generate: bool = False
+
 
 @dataclass
 class TrainingArguments(SwiftArgumentsMixin, HfTrainingArguments):
