@@ -117,7 +117,7 @@ if __name__ == '__main__':
         os.environ['FPS_MAX_FRAMES'] = '12'
         model = 'Qwen/Qwen2-VL-2B-Instruct'
         # If you encounter insufficient GPU memory, please reduce `max_model_len` and set `max_num_seqs=5`.
-        engine = VllmEngine(model, max_model_len=32768, limit_mm_per_prompt={'image': 5, 'video': 2})
+        engine = VllmEngine(model, max_model_len=8192, limit_mm_per_prompt={'image': 5, 'video': 2})
         mm_type = 'image'  # or 'video'
     elif infer_backend == 'lmdeploy':
         # test env: lmdeploy==0.6.4
