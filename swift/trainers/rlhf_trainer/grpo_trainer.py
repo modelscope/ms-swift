@@ -9,7 +9,7 @@ from concurrent.futures import Future
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from queue import Queue
-from typing import Any, Callable, List, Optional, Union, Dict
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
 import torch
@@ -44,9 +44,7 @@ class GRPOCallback(TrainerCallback):
         self.trainer = trainer
 
     # offload original_modules to cpu, to save memory
-    def on_train_begin(self, args,
-                state,
-                control, **kwargs):
+    def on_train_begin(self, args, state, control, **kwargs):
         self.trainer._prefetch(state.train_dataloader)
 
 
@@ -367,7 +365,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self.queue.put(DataCache(inputs, [], distributed_idx))
         if self.accelerator.num_processes > 1:
             self.accelerator.wait_for_everyone()
-
 
     def _fast_infer(self, inputs):
         # First, have main process load weights if needed
