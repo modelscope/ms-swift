@@ -7,6 +7,7 @@ from swift.llm import MODEL_MAPPING
 from swift.trainers.arguments import GRPOArgumentsMixin
 from swift.utils import get_logger
 from .train_args import TrainArguments
+from .base_args.model_args import ModelArguments
 
 logger = get_logger()
 
@@ -147,6 +148,7 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
             self.remove_unused_columns = False
             logger.info(f'Setting args.remove_unused_columns: {self.remove_unused_columns}')
             self.truncation_strategy = 'left'  # Used for trimming the excessively long parts of a prompt.
+            self.vllm_limit_mm_per_prompt = ModelArguments.parse_to_dict(self.vllm_limit_mm_per_prompt)
             if self.beta is None:
                 self.beta = 0.04  # https://arxiv.org/abs/2402.03300
 
