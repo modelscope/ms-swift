@@ -54,4 +54,4 @@ class GRPOConfig(GRPOArgumentsMixin, SwiftArgumentsMixin, HfGRPOConfig):
         super().__post_init__()
         if self.cosine_max_len is None:
             self.cosine_max_len = self.max_completion_length
-        self.vllm_gpu_memory_utilization = ModelArguments.parse_to_dict(self.vllm_limit_mm_per_prompt)
+        self.vllm_limit_mm_per_prompt = ModelArguments.parse_to_dict(self.vllm_limit_mm_per_prompt)
