@@ -1,5 +1,4 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import inspect
 import math
 import os
 import sys
@@ -91,31 +90,6 @@ def create_muon_optimizers(args, model, dataset):
         adamw_eps=args.adam_epsilon,
         **optim_args,
     ), None
-
-    # muon_params = [
-    #     {
-    #         'params': [
-    #             p for n, p in model.named_parameters() if (n in decay_parameters and p.requires_grad and )
-    #         ]
-    #     }
-    # ]
-    # optimizer_grouped_parameters = [
-    #     {
-    #         "params": [
-    #             p for n, p in model.named_parameters() if (n in decay_parameters and p.requires_grad)
-    #         ],
-    #         "weight_decay": args.weight_decay,
-    #     },
-    #     {
-    #         "params": [
-    #             p for n, p in model.named_parameters() if (n not in decay_parameters and p.requires_grad)
-    #         ],
-    #         "weight_decay": 0.0,
-    #     },
-    # ]
-
-    # optimizer = optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs)
-    # return optimizer, None
 
 
 # Add your own optimizers here, use --optimizer xxx to train
