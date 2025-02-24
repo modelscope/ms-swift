@@ -53,8 +53,31 @@ def create_lorap_optimizers(args, model, dataset):
     return optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs), None
 
 
+def create_muon_optimizers(args, model, dataset):
+    decay_parameters = Trainer.get_decay_parameter_names(None, model)
+    optimizer_grouped_parameters = [
+        {
+            "params": [
+                p for n, p in model.named_parameters() if (n in decay_parameters and p.requires_grad)
+            ],
+            "weight_decay": args.weight_decay,
+        },
+        {
+            "params": [
+                p for n, p in model.named_parameters() if (n not in decay_parameters and p.requires_grad)
+            ],
+            "weight_decay": 0.0,
+        },
+    ]
+
+    optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(args.training_args, model)
+    optimizer = optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs)
+    return optimizer, None
+
+
 # Add your own optimizers here, use --optimizer xxx to train
 optimizers_map = {
     'galore': create_galore_optimizers,
     'lorap': create_lorap_optimizers,
+    'muon': create_muon_optimizers,
 }
