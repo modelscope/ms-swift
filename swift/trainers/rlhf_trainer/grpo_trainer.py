@@ -172,8 +172,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                                           'Please install vLLM with `pip install vllm` to use it.')
                     from swift.llm import VllmEngine
                     from swift.tuners import Swift
-                    from swift.llm.utils import patch_vllm
-                    with patch_vllm(), Swift.grpo_context(model, self.template.processor):
+                    from swift.llm.utils import patch_vllm, patch_npu_vllm
+                    npu_vllm_patch_context = patch_npu_vllm(fast_infer_device[self.local_infer_rank])
+                    with patch_vllm(), npu_vllm_patch_context, Swift.grpo_context(model, self.template.processor):
                         self.engine = VllmEngine(
                             model.model_dir,
                             model.model_info.torch_dtype,

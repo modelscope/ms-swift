@@ -1,4 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import contextlib
+import functools
 import inspect
 import os
 import shutil
@@ -278,3 +280,19 @@ def patch_vllm():
             yield
     finally:
         GroupCoordinator.__init__ = __origin_init__
+
+
+def patch_npu_vllm(vllm_device: str):
+    device_type = vllm_device.split(':')[0]
+
+    @contextlib.contextmanager
+    def new_group_context():
+        original_new_group = torch.distributed.new_group
+        try:
+            torch.distributed.new_group = functools.partial(original_new_group, use_local_synchronization=True)
+            torch.npu.mem_get_info = functools.partial(torch.npu.mem_get_info, device=vllm_device)
+            yield
+        finally:
+            torch.distributed.new_group = original_new_group
+
+    return new_group_context() if device_type == 'npu' else contextlib.nullcontext()
