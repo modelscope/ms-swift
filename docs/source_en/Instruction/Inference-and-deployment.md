@@ -348,3 +348,9 @@ for chunk_list in gen:
 print()
 print(metric.compute())
 ```
+
+We also provide more deployment demos:
+
+- Multiple LoRA deployment and invocation: Refer to [this link](https://github.com/modelscope/ms-swift/tree/main/examples/deploy/lora).
+- Deployment and invocation of the Base model: Refer to [this link](https://github.com/modelscope/ms-swift/tree/main/examples/deploy/client/llm/base).
+- More model types: We provide deployment scripts for [bert](https://github.com/modelscope/ms-swift/tree/main/examples/deploy/bert) and [reward_model](https://github.com/modelscope/ms-swift/tree/main/examples/deploy/reward_model).
