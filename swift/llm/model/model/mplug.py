@@ -27,7 +27,7 @@ def get_model_tokenizer_mplug_owl2(model_dir: str,
     if not local_repo_path:
         local_repo_path = git_clone_github('https://github.com/X-PLUG/mPLUG-Owl')
     local_repo_path = os.path.join(local_repo_path, 'mPLUG-Owl2')
-    sys.path.append(os.path.join(local_repo_path))
+    sys.path.append(local_repo_path)
 
     # register
     # https://github.com/X-PLUG/mPLUG-Owl/blob/main/mPLUG-Owl2/mplug_owl2/model/modeling_mplug_owl2.py#L447
