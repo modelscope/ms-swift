@@ -63,7 +63,7 @@ You can contact us and communicate with us by adding our group:
 
 - 🍎 **Model Types**: Supports 450+ pure text large models, **150+ multi-modal large models**, as well as All-to-All multi-modal models, sequence classification models, and embedding models, **covering the entire process from training to deployment**.
 - **Dataset Types**: Comes with 150+ pre-training, fine-tuning, human alignment, multi-modal datasets, and supports custom datasets.
-- **Hardware Support**: Compatible with CPU, RTX series, T4/V100, A10/A100/H100, Ascend NPU, etc.
+- **Hardware Support**: Compatible with CPU, RTX series, T4/V100, A10/A100/H100, Ascend NPU, MPS, etc.
 - 🍊 **Lightweight Training**: Supports lightweight fine-tuning methods like LoRA, QLoRA, DoRA, LoRA+, ReFT, RS-LoRA, LLaMAPro, Adapter, GaLore, Q-Galore, LISA, UnSloth, Liger-Kernel.
 - **Distributed Training**: Supports distributed data parallel (DDP), device_map simple model parallelism, DeepSpeed ZeRO2/ZeRO3, FSDP, and other distributed training techniques.
 - **Quantization Training**: Supports training quantized models like BNB, AWQ, GPTQ, AQLM, HQQ, EETQ.
@@ -121,7 +121,7 @@ Running Environment:
 | trl | >=0.13,<0.17 | 0.15 |RLHF|
 | deepspeed    | >=0.14 | 0.14.5 | Training                                  |
 | vllm         | >=0.5.1              | 0.7.3       | Inference/Deployment/Evaluation           |
-| lmdeploy     | lmdeploy>=0.5,<0.6.5 | 0.6.4       | Inference/Deployment/Evaluation           |
+| lmdeploy     | lmdeploy>=0.5 | 0.7.0.post3       | Inference/Deployment/Evaluation           |
 | evalscope | | >=0.11 | Evaluation |
 
 For more optional dependencies, you can refer to [here](https://github.com/modelscope/ms-swift/blob/main/requirements/install_all.sh).

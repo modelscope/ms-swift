@@ -4,7 +4,7 @@ ms-swift is a comprehensive training and deployment framework for large language
 
 - 🍎 Model Types: Supports 450+ pure text large models, 150+ multi-modal large models, as well as All-to-All multi-modal models, sequence classification models, and embedding models, covering the entire process from training to deployment.
 - Dataset Types: Comes with more than 150 pre-built datasets for pre-training, fine-tuning, human alignment, multimodal, and supports custom datasets.
-- Hardware Support: Compatible with CPU, RTX series, T4/V100, A10/A100/H100, Ascend NPU, and others.
+- Hardware Support: Compatible with CPU, RTX series, T4/V100, A10/A100/H100, Ascend NPU, MPS and others.
 - 🍊 Lightweight Training: Supports lightweight fine-tuning methods like LoRA, QLoRA, DoRA, LoRA+, ReFT, RS-LoRA, LLaMAPro, Adapter, GaLore, Q-Galore, LISA, UnSloth, Liger-Kernel, and more.
 - Distributed Training: Supports distributed data parallel (DDP), simple model parallelism via device_map, DeepSpeed ZeRO2 ZeRO3, FSDP, and other distributed training technologies.
 - Quantization Training: Provides training for quantized models like BNB, AWQ, GPTQ, AQLM, HQQ, EETQ.
