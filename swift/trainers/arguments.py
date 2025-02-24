@@ -32,6 +32,7 @@ class SwiftArgumentsMixin:
     # Value copied from TrainArguments
     train_type: Optional[str] = None
     optimizer: Optional[str] = None
+    local_repo_path: Optional[str] = None
     galore_config: Optional[GaLoreConfig] = None
 
     def _fix_gradient_checkpointing(self):
