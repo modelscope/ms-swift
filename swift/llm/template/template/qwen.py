@@ -211,6 +211,7 @@ class Qwen2VLTemplate(Template):
         processor = self.processor
         input_ids = encoded['input_ids']
         labels = encoded['labels']
+        loss_scale = encoded.get('loss_scale', None)
         images = inputs.images
         videos = inputs.videos
         for media_type in ['images', 'videos']:
@@ -232,6 +233,7 @@ class Qwen2VLTemplate(Template):
                         ] * len(media_grid_thw)
                 idx_list = findall(input_ids, media_token)
                 added_tokens_len = 0
+
                 for i, idx in enumerate(idx_list):
                     merge_length = processor.image_processor.merge_size**2
                     token_len = (media_grid_thw[i].prod() // merge_length)
@@ -241,11 +243,19 @@ class Qwen2VLTemplate(Template):
                     if labels:
                         labels = labels[:idx + added_tokens_len] + [-100] * token_len + labels[added_tokens_len + idx
                                                                                                + 1:]
+                    if loss_scale:
+                        scale_idx = loss_scale[idx+added_tokens_len]
+                        loss_scale = loss_scale[:idx + added_tokens_len] + \
+                            [scale_idx] * token_len + \
+                            loss_scale[added_tokens_len + idx + 1:]
+
                     added_tokens_len += token_len - 1
                 encoded.update(media_inputs)
 
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
+        if loss_scale:
+            encoded['loss_scale'] = loss_scale
         return encoded
 
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
