@@ -29,7 +29,7 @@ from .rlhf_mixin import RLHFTrainerMixin
 try:
     from trl.extras.profiling import profiling_decorator
 except ImportError:
-    raise ImportError('Please install trl from source using: pip install git+https://github.com/huggingface/trl.git')
+    raise ImportError('Please install trl from source using: `pip install git+https://github.com/huggingface/trl.git`')
 
 del HFGRPOTrainer.__init__
 
@@ -45,7 +45,8 @@ class GRPOCallback(TrainerCallback):
 
     # offload original_modules to cpu, to save memory
     def on_train_begin(self, args, state, control, **kwargs):
-        self.trainer._prefetch(state.train_dataloader)
+        train_dataloader = getattr(state, 'train_dataloader', None) or kwargs.get('train_dataloader')
+        self.trainer._prefetch(train_dataloader)
 
 
 @dataclass
