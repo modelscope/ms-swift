@@ -244,14 +244,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # Buffer the batch to reuse generated outputs across multiple updates. For more details, see
         # `_get_train_sampler` and `_prepare_inputs`.
         self._buffered_inputs = [None] * args.gradient_accumulation_steps
-
-        self.add_callback(GRPOCallback(self))
+        if self.args.async_generate:
+            self.add_callback(GRPOCallback(self))
 
     @property
     def infer_rank(self):
         rank, local_rank, world_size, local_world_size = get_dist_setting()
         assert local_world_size % self.args.num_infer_workers == 0
-        assert local_world_size + self.args.num_infer_workers == get_device_count()
         step = local_world_size // self.args.num_infer_workers
         for _vllm_rank in range(self.args.num_infer_workers):
             _assigned = _vllm_rank * step
@@ -264,7 +263,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def local_infer_rank(self):
         rank, local_rank, world_size, local_world_size = get_dist_setting()
         assert local_world_size % self.args.num_infer_workers == 0
-        assert local_world_size + self.args.num_infer_workers == get_device_count()
         step = local_world_size // self.args.num_infer_workers
         for _vllm_rank in range(self.args.num_infer_workers):
             _assigned = _vllm_rank * step
@@ -503,6 +501,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         mode = 'eval' if self.control.should_evaluate else 'train'
         completion_length = self.accelerator.gather_for_metrics(outputs['completion_mask'].sum(1)).float().mean().item()
         self._metrics[mode]['completion_length'].append(completion_length)
+        # clip ratio
+        response_clip_ratio = torch.gt(
+            self.accelerator.gather_for_metrics(outputs['completion_mask'].sum(1)),
+            self.args.max_completion_length).float().mean().item()
+        self._metrics[mode]['response_clip_ratio'].append(response_clip_ratio)
         reward_per_func = rewards_per_func.mean(0)
         for i, reward_func in enumerate(self.reward_funcs):
             if isinstance(reward_func, nn.Module):  # Module instead of PretrainedModel for compat with compiled models
