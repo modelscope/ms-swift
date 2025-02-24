@@ -72,6 +72,7 @@ class LLMTemplateType:
     xverse = 'xverse'
     bluelm = 'bluelm'
     orion = 'orion'
+    moonlight = 'moonlight'
 
     aya = 'aya'
     c4ai = 'c4ai'
