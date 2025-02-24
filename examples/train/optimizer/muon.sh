@@ -1,7 +1,8 @@
-# 35GB
+# 17GB
+# ref: https://github.com/MoonshotAI/Moonlight/blob/master/examples/toy_train.py
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
-    --model moonshotai/Moonlight-16B-A3B-Instruct \
+    --model Qwen/Qwen2.5-7B-Instruct \
     --train_type lora \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
               'AI-ModelScope/alpaca-gpt4-data-en#500' \
@@ -22,6 +23,7 @@ swift sft \
     --logging_steps 5 \
     --max_length 2048 \
     --output_dir output \
+    --system 'You are a helpful assistant.' \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 4 \
     --model_author swift \
