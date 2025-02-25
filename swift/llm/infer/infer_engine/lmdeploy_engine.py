@@ -199,17 +199,23 @@ class LmdeployEngine(InferEngine):
             self, template: Template, inputs: Dict[str, Any],
             generation_config: LmdeployGenerationConfig) -> AsyncIterator[ChatCompletionStreamResponse]:
         session_id = time.time_ns()
-        generator = await self.engine.get_generator(False, session_id)
+        kwargs = {'stream_output': False, 'gen_config': generation_config, 'sequence_start': True, 'sequence_end': True}
+        if version.parse(lmdeploy.__version__) >= version.parse('0.6.5'):
+            async with self.engine.model_inst(session_id) as inst:
+                context = self.engine.safe_run(inst, session_id, **inputs, **kwargs)
+        else:
+            context = self.engine.safe_run(session_id)
 
         infer_streamer = InferStreamer(template)
         token_idx = 0
-        async with self.engine.safe_run(session_id):
-            async_iter = generator.async_stream_infer(
-                session_id=session_id, **inputs, stream_output=True, gen_config=generation_config).__aiter__()
+        async with context as gen:
+            if version.parse(lmdeploy.__version__) < version.parse('0.6.5'):
+                generator = await self.engine.get_generator(False, session_id)
+                gen = generator.async_stream_infer(session_id=session_id, **inputs, **kwargs)
             is_finished = False
             while not is_finished:
                 try:
-                    output = await async_iter.__anext__()
+                    output = await gen.__anext__()
                 except StopAsyncIteration:
                     is_finished = True
                 delta_text = infer_streamer.get_printable_text(output.token_ids, is_finished)
@@ -245,8 +251,8 @@ class LmdeployEngine(InferEngine):
                     async for output in gen:
                         pass
         else:
-            generator = await self.engine.get_generator(False, session_id)
             async with self.engine.safe_run(session_id):
+                generator = await self.engine.get_generator(False, session_id)
                 async for output in generator.async_stream_infer(session_id=session_id, **inputs, **kwargs):
                     pass
 
