@@ -49,7 +49,7 @@ class MiniCPMVTemplate(Template):
         else:
             return [[-100]]
 
-    async def prepare_lmdeploy_inputs(self, inputs: Dict[str, Any]) -> None:
+    async def prepare_lmdeploy_turbomind_inputs(self, inputs: Dict[str, Any]) -> None:
         images = inputs.pop('images', None) or []
         if len(images) == 0:
             return
@@ -76,7 +76,7 @@ class MiniCPMVTemplate(Template):
         new_input_ids += input_ids[idx_list[-1] + 1:]
         inputs['input_ids'] = new_input_ids
         inputs['images'] = features
-        await super().prepare_lmdeploy_inputs(inputs)
+        await super().prepare_lmdeploy_turbomind_inputs(inputs)
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)

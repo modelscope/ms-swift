@@ -100,8 +100,6 @@ class LmdeployEngine(InferEngine):
             if device is None:
                 device = [0]
             backend_config.devices = device
-        if isinstance(backend_config, PytorchEngineConfig):
-            backend_config.thread_safe = True
         self.backend_config = backend_config
         logger.info(f'backend_config: {backend_config}')
 
@@ -240,17 +238,16 @@ class LmdeployEngine(InferEngine):
     async def _infer_full_async(self, template: Template, inputs: Dict[str, Any],
                                 generation_config: LmdeployGenerationConfig) -> ChatCompletionResponse:
         session_id = time.time_ns()
+        kwargs = {'stream_output': False, 'gen_config': generation_config, 'sequence_start': True, 'sequence_end': True}
         if version.parse(lmdeploy.__version__) >= version.parse('0.6.5'):
             async with self.engine.model_inst(session_id) as inst:
-                async with self.engine.safe_run(
-                        inst, session_id, **inputs, stream_output=False, gen_config=generation_config) as gen:
+                async with self.engine.safe_run(inst, session_id, **inputs, **kwargs) as gen:
                     async for output in gen:
                         pass
         else:
             generator = await self.engine.get_generator(False, session_id)
             async with self.engine.safe_run(session_id):
-                async for output in generator.async_stream_infer(
-                        session_id=session_id, **inputs, stream_output=False, gen_config=generation_config):
+                async for output in generator.async_stream_infer(session_id=session_id, **inputs, **kwargs):
                     pass
 
         response = template.decode(output.token_ids)
@@ -293,11 +290,16 @@ class LmdeployEngine(InferEngine):
                 messages = self.engine._convert_prompts(('', images))
                 messages = await self.engine.async_convert_to_pil_images(messages)
                 results = await self.engine.vl_encoder.preprocess(messages)
-                results = await self.engine.vl_encoder.async_infer(results)
-                inputs['images'] = results[2]['content']
+                if self.engine.backend == 'turbomind':
+                    results = await self.engine.vl_encoder.async_infer(results)
+                    inputs['images'] = results[2]['content']
+                    await template.prepare_lmdeploy_turbomind_inputs(inputs)
+                else:
+                    inputs['images'] = results[1]['content']
+                    await template.prepare_lmdeploy_pytorch_inputs(inputs)
             else:
                 inputs['images'] = await self.engine.vl_encoder.async_infer(images)
-            await template.prepare_lmdeploy_inputs(inputs)
+                await template.prepare_lmdeploy_turbomind_inputs(inputs)
 
         self.set_default_max_tokens(request_config, inputs)
         generation_config = self._prepare_generation_config(request_config)

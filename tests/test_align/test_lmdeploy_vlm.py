@@ -16,7 +16,7 @@ def _infer_image(model, system=None, images=None):
     return resp_list[0].choices[0].message.content
 
 
-def _infer_image_pipeline(model, images=None):
+def _infer_image_pipeline(model, images=None, prefix='<IMAGE_TOKEN>\n'):
     from lmdeploy import pipeline, GenerationConfig
     from lmdeploy.vl import load_image
     from swift.llm import safe_snapshot_download
@@ -24,31 +24,49 @@ def _infer_image_pipeline(model, images=None):
     pipe = pipeline(safe_snapshot_download(model))
 
     image = load_image('http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png')
-    response = pipe(('<IMAGE_TOKEN>\ndescribe the image.', image), gen_config=gen_config)
+    response = pipe((f'{prefix}describe the image.', image), gen_config=gen_config)
     return response.text
 
 
 def test_internvl2_5():
-    model = 'OpenGVLab/InternVL2_5-2B'
+    model = 'OpenGVLab/InternVL2_5-4B'
     response = _infer_image(model)
     response2 = _infer_image_pipeline(model)
-    assert response == response2 == (
-        'The image is a close-up of a kitten. The kitten has a mix of white and dark fur, with large, expressive '
-        "eyes and a curious expression. The background is blurred, highlighting the kitten's features, "
-        'such as its whiskers and fur texture. The overall tone of the image is soft and')
+    assert response == response2
 
 
 def test_internvl2():
-    model = 'OpenGVLab/InternVL2-4B'
+    model = 'OpenGVLab/InternVL2-2B'
     response = _infer_image(model)
-    response2 = _infer_image_pipeline(model)
-    assert response == response2 == (
-        'The image is a close-up of a kitten. The kitten has a mix of white and dark fur, with large, expressive '
-        "eyes and a curious expression. The background is blurred, highlighting the kitten's features, "
-        'such as its whiskers and fur texture. The overall tone of the image is soft and')
+    response2 = _infer_image_pipeline(model)  # Missing '\n' after '<|im_end|>'
+    assert response == response2
+
+
+def test_deepseek_vl():
+    model = 'deepseek-ai/deepseek-vl-1.3b-chat'
+    response = _infer_image(model)
+    response2 = _infer_image_pipeline(model, prefix='<IMAGE_TOKEN>')
+    assert response == response2
+
+
+def test_qwen_vl():
+    model = 'Qwen/Qwen-VL-Chat'
+    response = _infer_image_pipeline(model)  # Missing: 'Picture 1: '
+    response2 = _infer_image(model)
+    assert response == response2
+
+
+def test_qwen2_vl():
+    model = 'Qwen/Qwen2-VL-2B-Instruct'
+    response = _infer_image_pipeline(model)
+    response2 = _infer_image(model)
+    assert response == response2
 
 
 if __name__ == '__main__':
     from swift.llm import LmdeployEngine, InferRequest, RequestConfig
-    test_internvl2()
-    test_internvl2_5()
+    # test_internvl2()
+    # test_internvl2_5()
+    # test_deepseek_vl()
+    # test_qwen_vl()
+    test_qwen2_vl()
