@@ -298,7 +298,7 @@ class LmdeployEngine(InferEngine):
                 results = await self.engine.vl_encoder.preprocess(messages)
                 if self.engine.backend == 'turbomind':
                     results = await self.engine.vl_encoder.async_infer(results)
-                    inputs['images'] = results[2]['content']
+                    inputs['images'] = [result['content'] for result in results if result['role'] == 'forward'][0]
                     await template.prepare_lmdeploy_turbomind_inputs(inputs)
                 else:
                     inputs['images'] = results[1]['content']
