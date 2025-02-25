@@ -110,6 +110,8 @@ class SwiftDeploy(SwiftInfer):
         args = self.args
 
         for i in range(len(response.choices)):
+            if isinstance(response.choices[i].message.content, str):
+                continue
             for j, content in enumerate(response.choices[i].message.content):
                 if content['type'] == 'image':
                     b64_image = MultiModalRequestMixin.to_base64(content['image'])
