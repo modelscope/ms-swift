@@ -48,6 +48,32 @@ register_model(
         requires=['transformers<4.34']))
 
 
+def get_model_tokenizer_baichuan_m1(model_dir: str,
+                                    model_info: ModelInfo,
+                                    model_kwargs: Dict[str, Any],
+                                    load_model: bool = True,
+                                    **kwargs):
+    from transformers.dynamic_module_utils import get_class_from_dynamic_module
+    attn_dict = get_class_from_dynamic_module('modeling_baichuan.Baichuan_ATTENTION_CLASSES', model_dir)
+    attn_dict['flash_attention_2'] = attn_dict['eager']     # 
+
+    model, tokenizer = get_model_tokenizer_baichuan(model_dir, model_info, model_kwargs, load_model, **kwargs)
+    return model, tokenizer
+
+register_model(
+    ModelMeta(
+        LLMModelType.baichuan_m1, [
+            ModelGroup([
+                Model('baichuan-inc/Baichuan-M1-14B-Instruct', 'baichuan-inc/Baichuan-M1-14B-Instruct'),
+            ]),
+        ],
+        TemplateType.baichuan_m1,
+        get_model_tokenizer_baichuan_m1,
+        architectures=['BaichuanM1ForCausalLM', 'BaichuanM1ForCausalLM'],
+        model_arch=ModelArch.baichuan,
+        requires=['transformers>=4.48']))
+
+
 def patch_baichuan2_lm_head_forward(self, hidden_states: Tensor) -> Tensor:
     # patch: baichuan2 lm_head (fp32 bug)
     if self.training:
