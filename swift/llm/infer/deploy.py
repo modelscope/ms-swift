@@ -58,6 +58,7 @@ class SwiftDeploy(SwiftInfer):
         args = self.args
         if args.log_interval > 0:
             thread = Thread(target=lambda: asyncio.run(self._log_stats_hook()))
+            thread.daemon = True
             thread.start()
         try:
             yield

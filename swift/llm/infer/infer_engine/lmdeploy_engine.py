@@ -329,4 +329,6 @@ class LmdeployEngine(InferEngine):
     ) -> Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
         if hasattr(self.engine, 'vl_encoder'):
             self.engine.vl_encoder._loop_task = None
+        if hasattr(self.engine, 'free_insts'):
+            self.engine.free_insts = None
         return super().infer(infer_requests, request_config, metrics, template=template, use_tqdm=use_tqdm)
