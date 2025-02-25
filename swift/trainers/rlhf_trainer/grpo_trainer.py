@@ -114,7 +114,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         if use_lmdeploy:
             from swift.trainers.utils import _patch_lmdeploy
-            _patch_lmdeploy()
+            _patch_lmdeploy(True)
 
         super().__init__(model, ref_model, *_args, **kwargs)
 
