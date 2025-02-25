@@ -110,7 +110,7 @@ class SwiftDeploy(SwiftInfer):
         args = self.args
 
         for i in range(len(response.choices)):
-            if isinstance(response.choices[i].message.content, str):
+            if not hasattr(response.choices[i], 'message') or isinstance(response.choices[i].message.content, str):
                 continue
             for j, content in enumerate(response.choices[i].message.content):
                 if content['type'] == 'image':
