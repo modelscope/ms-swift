@@ -34,7 +34,7 @@ register_template(
 
 register_template(
     TemplateMeta(
-        LLMTemplateType.baichuan_m1, 
+        LLMTemplateType.baichuan_m1,
         prefix=[],
         prompt=['<C_Q>{{QUERY}}<C_A>'],
         chat_sep=[],

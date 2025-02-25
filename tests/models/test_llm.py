@@ -1,6 +1,6 @@
 import os
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
 
 
 def test_llama3():
@@ -11,6 +11,12 @@ def test_llama3():
             max_batch_size=2,
             val_dataset='AI-ModelScope/alpaca-gpt4-data-en#2'))
 
+def test_baichuan_m1():
+    from swift.llm import infer_main, InferArguments
+    infer_main(
+        InferArguments(
+            model='baichuan-inc/Baichuan-M1-14B-Instruct'))
 
 if __name__ == '__main__':
-    test_llama3()
+    # test_llama3()
+    test_baichuan_m1()

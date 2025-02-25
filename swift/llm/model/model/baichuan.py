@@ -53,10 +53,6 @@ def get_model_tokenizer_baichuan_m1(model_dir: str,
                                     model_kwargs: Dict[str, Any],
                                     load_model: bool = True,
                                     **kwargs):
-    # from transformers.dynamic_module_utils import get_class_from_dynamic_module
-    # attn_dict = get_class_from_dynamic_module('modeling_baichuan.Baichuan_ATTENTION_CLASSES', model_dir)
-    # attn_dict['flash_attention_2'] = attn_dict['eager']     # 
-
     from transformers.dynamic_module_utils import get_class_from_dynamic_module
     _old_custom_convolution = get_class_from_dynamic_module('modeling_baichuan.custom_convolution', model_dir)
 
@@ -65,10 +61,11 @@ def get_model_tokenizer_baichuan_m1(model_dir: str,
         res = _old_custom_convolution(U, K)
         return res.to(input_dtype)
 
-    _old_custom_convolution = _new_custom_convolution
+    _old_custom_convolution = _new_custom_convolution  # the code above is waiting for jintao to update
 
     model, tokenizer = get_model_tokenizer_baichuan(model_dir, model_info, model_kwargs, load_model, **kwargs)
     return model, tokenizer
+
 
 register_model(
     ModelMeta(
