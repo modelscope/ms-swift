@@ -1150,7 +1150,7 @@ class Template(ProcessorMixin):
             _range.append(len(new_input_ids))
             ranges.append(_range)
         new_input_ids += input_ids[idx_list[-1] + 1:]
-        inputs['input_embeddings'] = images
+        inputs['input_embeddings'] = [image.to('cpu') for image in images]
         inputs['input_embedding_ranges'] = ranges
         inputs['input_ids'] = new_input_ids
 

@@ -7,10 +7,12 @@ from contextlib import contextmanager
 from copy import deepcopy
 from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
 
+import lmdeploy
 import torch
 from lmdeploy import PytorchEngineConfig, TurbomindEngineConfig, VisionConfig, pipeline
 from lmdeploy.api import autoget_backend_config
 from lmdeploy.serve import async_engine
+from packaging import version
 from transformers import GenerationConfig
 
 from swift.llm import InferRequest, Template, TemplateMeta, get_model_tokenizer
@@ -74,7 +76,7 @@ class LmdeployEngine(InferEngine):
             device=device,
             engine_kwargs=engine_kwargs)
 
-        self.config.torch_dtype = torch_dtype
+        self.config.torch_dtype = torch_dtype or self.model_info.torch_dtype
         self._prepare_engine()
         self._load_generation_config()
 
@@ -182,6 +184,9 @@ class LmdeployEngine(InferEngine):
         if request_config.seed is None:
             request_config.seed = get_seed()
         kwargs['random_seed'] = request_config.seed
+        if request_config.temperature == 0:
+            kwargs['temperature'] = 1  # avoid unnecessary process
+            kwargs['top_k'] = 1
 
         if request_config.logprobs:
             kwargs['logprobs'] = 1
@@ -235,12 +240,18 @@ class LmdeployEngine(InferEngine):
     async def _infer_full_async(self, template: Template, inputs: Dict[str, Any],
                                 generation_config: LmdeployGenerationConfig) -> ChatCompletionResponse:
         session_id = time.time_ns()
-        generator = await self.engine.get_generator(False, session_id)
-
-        async with self.engine.safe_run(session_id):
-            async for output in generator.async_stream_infer(
-                    session_id=session_id, **inputs, stream_output=False, gen_config=generation_config):
-                pass
+        if version.parse(lmdeploy.__version__) >= version.parse('0.6.5'):
+            async with self.engine.model_inst(session_id) as inst:
+                async with self.engine.safe_run(
+                        inst, session_id, **inputs, stream_output=False, gen_config=generation_config) as gen:
+                    async for output in gen:
+                        pass
+        else:
+            generator = await self.engine.get_generator(False, session_id)
+            async with self.engine.safe_run(session_id):
+                async for output in generator.async_stream_infer(
+                        session_id=session_id, **inputs, stream_output=False, gen_config=generation_config):
+                    pass
 
         response = template.decode(output.token_ids)
         logprobs = self._get_logprobs(output.logprobs, output.token_ids, generation_config.top_logprobs)
@@ -278,7 +289,14 @@ class LmdeployEngine(InferEngine):
             inputs = await loop.run_in_executor(None, template.encode, infer_request)
         images = inputs.pop('images', None)
         if images:
-            inputs['images'] = await self.engine.vl_encoder.async_infer(images)
+            if version.parse(lmdeploy.__version__) >= version.parse('0.6.5'):
+                messages = self.engine._convert_prompts(('', images))
+                messages = await self.engine.async_convert_to_pil_images(messages)
+                results = await self.engine.vl_encoder.preprocess(messages)
+                results = await self.engine.vl_encoder.async_infer(results)
+                inputs['images'] = results[2]['content']
+            else:
+                inputs['images'] = await self.engine.vl_encoder.async_infer(images)
             await template.prepare_lmdeploy_inputs(inputs)
 
         self.set_default_max_tokens(request_config, inputs)
