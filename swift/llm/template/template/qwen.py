@@ -194,7 +194,7 @@ class Qwen2VLTemplate(Template):
         from qwen_vl_utils import fetch_image, fetch_video
         assert media_type in {'image', 'video'}
         if media_type == 'image':
-            # inputs.images[index] = fetch_image({'image': inputs.images[index]})
+            inputs.images[index] = fetch_image({'image': inputs.images[index]})
             if self.mode == 'lmdeploy':
                 return ['<|vision_start|>', [-100], '<|vision_end|>']
             else:
