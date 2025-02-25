@@ -209,10 +209,6 @@ class DeepseekVLTemplate(Template):
             for i in range(num_to_decode):
                 cur_img = Image.fromarray(visual_img[i])
                 img_list.append({'type': 'image', 'image': cur_img})
-
-                os.makedirs('generated_images', exist_ok=True)
-                cur_img.save(os.path.join('generated_images', f'img_{i}.jpg'))
-
             return img_list
 
 
