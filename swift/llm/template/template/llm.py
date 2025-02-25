@@ -245,3 +245,14 @@ register_template(
         suffix=['<|END_OF_TURN_TOKEN|>'],
         default_system=AYA_SYSTEM,
         system_prefix=['<|START_OF_TURN_TOKEN|><|SYSTEM_TOKEN|>{{SYSTEM}}<|END_OF_TURN_TOKEN|']))
+
+register_template(
+    TemplateMeta(
+        LLMTemplateType.moonlight,
+        prefix=[],
+        system_prefix=['<|im_system|>system<|im_middle|>{{SYSTEM}}<|im_end|>'],
+        prompt=['<|im_user|>user<|im_middle|>{{QUERY}}<|im_end|><|im_assistant|>assistant<|im_middle|>'],
+        chat_sep=['<|im_end|>'],
+        suffix=['<|im_end|>'],
+        default_system='You are a helpful assistant',
+    ))

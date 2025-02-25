@@ -60,5 +60,58 @@ class MathFormat(ORM):
         return [1.0 if match else 0.0 for match in matches]
 
 
+class CountdownORM(ORM):
+
+    def __call__(self, completions, target, nums, **kwargs) -> List[float]:
+        """
+        Evaluates completions based on Mathematical correctness of the answer
+
+        Args:
+            completions (list[str]): Generated outputs
+            target (list[str]): Expected answers
+            nums (list[str]): Available numbers
+
+        Returns:
+            list[float]: Reward scores
+        """
+        rewards = []
+        for completion, gt, numbers in zip(completions, target, nums):
+            try:
+                # Check if the format is correct
+                match = re.search(r'<answer>(.*?)<\/answer>', completion)
+                if match is None:
+                    rewards.append(0.0)
+                    continue
+                # Extract the "answer" part from the completion
+                equation = match.group(1).strip()
+                if '=' in equation:
+                    equation = equation.split('=')[0]
+                # Extract all numbers from the equation
+                used_numbers = [int(n) for n in re.findall(r'\d+', equation)]
+
+                # Check if all numbers are used exactly once
+                if sorted(used_numbers) != sorted(numbers):
+                    rewards.append(0.0)
+                    continue
+                # Define a regex pattern that only allows numbers, operators, parentheses, and whitespace
+                allowed_pattern = r'^[\d+\-*/().\s]+$'
+                if not re.match(allowed_pattern, equation):
+                    rewards.append(0.0)
+                    continue
+
+                # Evaluate the equation with restricted globals and locals
+                result = eval(equation, {"__builti'ns__": None}, {})
+                # Check if the equation is correct and matches the ground truth
+                if abs(float(result) - float(gt)) < 1e-5:
+                    rewards.append(1.0)
+                else:
+                    rewards.append(0.0)
+            except Exception:
+                # If evaluation fails, reward is 0
+                rewards.append(0.0)
+        return rewards
+
+
 orms['external_math_acc'] = MathAccuracy
 orms['external_math_format'] = MathFormat
+orms['external_countdown'] = CountdownORM

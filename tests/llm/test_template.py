@@ -11,7 +11,7 @@ if __name__ == '__main__':
     import os
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-SKPT_TEST = True
+SKIP_TEST = True
 
 
 def _infer_model(pt_engine, system=None, messages=None):

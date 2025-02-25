@@ -104,10 +104,10 @@ Remember:
 1.the state change is irreversible, you can't go back to one of the former state, if you want to restart the task, \
 say \"I give up and restart\".
 2.All the thought is short, at most in 5 sentence.
-3.You can do more then one trys, so if your plan is to continusly try some conditions, \
+3.You can do more then one try, so if your plan is to continuously try some conditions, \
 you can do one of the conditions per try.
 Let's Begin!
-Task description: You should use functions to help handle the real time user querys. Remember:
+Task description: You should use functions to help handle the real time user queries. Remember:
 1.ALWAYS call \"Finish\" function at the end of the task. And the final answer should contain enough information \
 to show to the user,If you can't handle the task, \
 or you find that function calls always fail(the function is not valid now), \

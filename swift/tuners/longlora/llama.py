@@ -22,7 +22,7 @@ def _preprocess_qkv_fa2(attn_module, query_states, key_states, value_states, att
         group_size = int(q_len * attn_module.config.group_size_ratio)
         if q_len % group_size != 0:
             raise ValueError(f'The sequence length {q_len} should'
-                             f'be able to be splitted by the group_ratio {attn_module.config.group_size_ratio}')
+                             f'be able to be split by the group_ratio {attn_module.config.group_size_ratio}')
 
         num_group = q_len // group_size
 
@@ -46,7 +46,7 @@ def _preprocess_qkv(attn_module, query_states, key_states, value_states, attenti
         group_size = int(q_len * attn_module.config.group_size_ratio)
         if q_len % group_size != 0:
             raise ValueError(f'The sequence length {q_len} should'
-                             f'be able to be splitted by the group_ratio {attn_module.config.group_size_ratio}')
+                             f'be able to be split by the group_ratio {attn_module.config.group_size_ratio}')
 
         num_group = q_len // group_size
 
