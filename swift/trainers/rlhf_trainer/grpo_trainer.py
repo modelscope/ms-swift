@@ -446,8 +446,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             batched_inputs = [template.encode(infer_request) for infer_request in inputs]
             batches = template.data_collator(batched_inputs, mini_batch_size=self.args.mini_batch_size)
 
-        if not isinstance(batches, list):
-            batches = [batches]
+        batches = self._split_into_mini_batches(batches, mini_batch_size=self.args.mini_batch_size)
 
         batches = [to_device(batch, self.model.device) for batch in batches]
 
@@ -685,3 +684,25 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 torch.cuda.empty_cache()
 
         return total_loss.detach()
+
+    def _split_into_mini_batches(self, batch: Dict[str, Any], mini_batch_size: int) -> List[Dict[str, Any]]:
+        """
+        Splits a full batch into multiple mini-batches based on the specified mini_batch_size.
+
+        Args:
+            batch (Dict[str, Any]): The full batch returned by `_data_collator`.
+            mini_batch_size (int): The size of each mini-batch.
+
+        Returns:
+            List[Dict[str, Any]]: A list of mini-batches.
+        """
+        if mini_batch_size is None or mini_batch_size >= len(batch['input_ids']):
+            # If mini_batch_size is not specified or larger than the batch size,
+            # return the full batch as a single mini-batch
+            return [batch]
+
+        mini_batches = []
+        for i in range(0, len(batch['input_ids']), mini_batch_size):
+            mini_batch = {key: value[i:i + mini_batch_size] for key, value in batch.items()}
+            mini_batches.append(mini_batch)
+        return mini_batches
