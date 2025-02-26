@@ -1,6 +1,7 @@
 import colorsys
 import itertools
 import os
+from copy import deepcopy
 from typing import Any, List, Literal
 
 import requests
@@ -60,6 +61,7 @@ def draw_bbox(image: Image.Image,
               ref: List[str],
               bbox: List[List[int]],
               norm_bbox: Literal['norm1000', 'none'] = 'norm1000'):
+    bbox = deepcopy(bbox)
     font_path = 'https://modelscope.cn/models/Qwen/Qwen-VL-Chat/resolve/master/SimSun.ttf'
     # norm bbox
     for i, box in enumerate(bbox):
