@@ -112,10 +112,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         use_vllm = args.use_vllm
         use_lmdeploy = args.use_lmdeploy
 
-        if use_lmdeploy:
-            from swift.trainers.utils import _patch_lmdeploy
-            _patch_lmdeploy()
-
         super().__init__(model, ref_model, *_args, **kwargs)
 
         num_processes = self.accelerator.num_processes
@@ -210,7 +206,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             model_type=model.model_meta.model_type,
                             device=[fast_infer_device],
                             session_len=args.lmdeploy_session_len,
-                            cache_max_entry_count=args.lmdeploy_cache_max_entry_count)
+                            cache_max_entry_count=args.lmdeploy_cache_max_entry_count,
+                            reload_weights=True)
                     self.engine.default_template = self.template
             self._last_loaded_step = 0  # tag to avoid useless loading during grad accumulation
 
