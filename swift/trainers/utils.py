@@ -100,7 +100,7 @@ def _patch_lmdeploy(load_weights=False):
     from lmdeploy.turbomind.utils import ModelSource, get_model_source
 
     @contextlib.contextmanager
-    def patch_threadpool():
+    def patch_threadpool_map():
         ThreadPoolExecutor.map_origin = ThreadPoolExecutor.map
         ThreadPoolExecutor.map = lambda *args, **kwargs: []
         yield
@@ -138,7 +138,7 @@ def _patch_lmdeploy(load_weights=False):
                  model_source: ModelSource = ModelSource.WORKSPACE,
                  **kwargs):
         self.gpu_list = engine_config.devices
-        with patch_threadpool(), tm_model_context(self):
+        with patch_threadpool_map(), tm_model_context(self):
             self.__origin_init__(model_path, tokenizer, model_name, chat_template_name, engine_config, model_source,
                                  **kwargs)
 
