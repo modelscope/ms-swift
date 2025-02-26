@@ -46,7 +46,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
                 stop.append(stop_word)
         return stop
 
-    def async_iter_to_iter(self, async_iter, prog_bar) -> Iterator:
+    def async_iter_to_iter(self, async_iter, prog_bar, metrics) -> Iterator:
         queue = Queue()
 
         async def _run_async_iter():
@@ -62,11 +62,14 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
 
         thread = Thread(target=lambda: asyncio.run(_run_async_iter()))
         thread.start()
+        pre_output = None
         while True:
             output = queue.get()
             if output is None or isinstance(output, Exception):
                 prog_bar.update()
+                self._update_metrics(pre_output, metrics)
                 return
+            pre_output = output
             yield output
 
     @staticmethod
@@ -74,14 +77,16 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         return await asyncio.gather(*tasks)
 
     def _batch_infer_stream(
-            self,
-            tasks,
-            stream: bool = True,
-            use_tqdm: bool = True) -> List[Union[ChatCompletionResponse, Iterator[ChatCompletionStreamResponse]]]:
+        self,
+        tasks,
+        stream: bool = True,
+        use_tqdm: bool = True,
+        metrics: Optional[List[Metric]] = None
+    ) -> List[Union[ChatCompletionResponse, Iterator[ChatCompletionStreamResponse]]]:
 
         prog_bar = tqdm(total=len(tasks), dynamic_ncols=True, disable=not use_tqdm)
         if stream:
-            return [self.async_iter_to_iter(task, prog_bar) for task in tasks]
+            return [self.async_iter_to_iter(task, prog_bar, metrics) for task in tasks]
         else:
 
             async def _new_run(task):
@@ -92,6 +97,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
                         raise
                     res = e
                 prog_bar.update()
+                self._update_metrics(res, metrics)
                 return res
 
             new_tasks = [_new_run(task) for task in tasks]
@@ -140,7 +146,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         if use_tqdm is None:
             use_tqdm = not request_config.stream and len(infer_requests) > 1
         if request_config.stream:
-            return self._batch_infer_stream(tasks, True, use_tqdm)
+            return self._batch_infer_stream(tasks, True, use_tqdm, metrics)
         else:
             i = 0
             result = []
@@ -152,11 +158,11 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
                 total=len(infer_requests), dynamic_ncols=True, disable=not use_tqdm or len(tasks) <= max_batch_size)
             while i < len(tasks):
                 tasks_samples = tasks[i:i + max_batch_size]
-                res = self._batch_infer_stream(tasks_samples, False, use_tqdm)
+                res = self._batch_infer_stream(tasks_samples, False, use_tqdm, metrics)
                 result += res
                 i += max_batch_size
                 prog_bar.update(len(tasks_samples))
-            return self._update_metrics(result, metrics)
+            return result
 
     @staticmethod
     def _get_toolcall(response: Union[str, List[Dict[str, Any]]],
