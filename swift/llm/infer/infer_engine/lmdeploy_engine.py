@@ -91,6 +91,7 @@ class LmdeployEngine(InferEngine):
             yield
             modeling_utils.is_deepspeed_zero3_enabled = modeling_utils.is_deepspeed_zero3_enabled_origin
             del modeling_utils.is_deepspeed_zero3_enabled_origin
+
         with disable_deepspeed():
             self._prepare_engine()
         self._load_generation_config()
