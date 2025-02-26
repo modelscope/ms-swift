@@ -1,5 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import math
+import os
+import sys
 
 from transformers import Trainer
 
@@ -53,8 +55,46 @@ def create_lorap_optimizers(args, model, dataset):
     return optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs), None
 
 
+def create_muon_optimizers(args, model, dataset):
+    from swift.llm import git_clone_github, get_model_arch
+    if not args.local_repo_path:
+        args.local_repo_path = git_clone_github('https://github.com/MoonshotAI/Moonlight.git')
+    sys.path.append(os.path.join(args.local_repo_path, 'examples'))
+    from toy_train import Muon
+
+    # parse args.optim_args
+    optim_args = {}
+    if args.optim_args:
+        for mapping in args.optim_args.replace(' ', '').split(','):
+            key, value = mapping.split('=')
+            optim_args[key] = value
+
+    model_arch = get_model_arch(model.model_meta.model_arch)
+    embed_key = model_arch.embedding or 'embed_tokens'
+    lm_head_key = model_arch.lm_head or 'lm_head'
+    muon_params = [
+        p for n, p in model.named_parameters()
+        if p.requires_grad and p.ndim >= 2 and embed_key not in n and lm_head_key not in n
+    ]
+    adamw_params = [
+        p for n, p in model.named_parameters()
+        if p.requires_grad and not (p.ndim >= 2 and embed_key not in n and lm_head_key not in n)
+    ]
+
+    return Muon(
+        lr=args.learning_rate,
+        wd=args.weight_decay,
+        muon_params=muon_params,
+        adamw_params=adamw_params,
+        adamw_betas=(args.adam_beta1, args.adam_beta2),
+        adamw_eps=args.adam_epsilon,
+        **optim_args,
+    ), None
+
+
 # Add your own optimizers here, use --optimizer xxx to train
 optimizers_map = {
     'galore': create_galore_optimizers,
     'lorap': create_lorap_optimizers,
+    'muon': create_muon_optimizers,
 }

@@ -104,6 +104,7 @@ class LLMModelType:
     mamba = 'mamba'
     polylm = 'polylm'
     aya = 'aya'
+    moonlight = 'moonlight'
 
 
 class BertModelType:

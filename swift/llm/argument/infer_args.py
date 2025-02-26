@@ -148,7 +148,6 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
         if not is_dist():
             return
         assert not self.eval_human and not self.stream
-        assert self.infer_backend != 'lmdeploy', '`--infer_backend lmdeploy` does not support data parallelism.'
         self._init_device()
         if not dist.is_initialized():
             if self.ddp_backend is None:
