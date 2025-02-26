@@ -1,11 +1,11 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import asyncio
 import concurrent.futures
+import hashlib
 import inspect
 import os
 import pickle
 import time
-import hashlib
 from copy import deepcopy
 from queue import Queue
 from threading import Thread
@@ -101,7 +101,8 @@ class PtEngine(InferEngine):
     def _fetch_infer_requests(self):
         while not self._queue.empty():
             infer_request, kwargs, queue = self._queue.get()
-            info = hashlib.sha256(pickle.dumps((kwargs['request_config'], kwargs['template'].template_meta))).hexdigest()
+            info = hashlib.sha256(pickle.dumps(
+                (kwargs['request_config'], kwargs['template'].template_meta))).hexdigest()
             if info not in self._task_pool:
                 self._task_pool[info] = kwargs, []
             self._task_pool[info][1].append((infer_request, queue))
@@ -417,15 +418,21 @@ class PtEngine(InferEngine):
             request_config = RequestConfig()
         self._start_infer_worker(asyncio.get_event_loop())
         queue = asyncio.Queue()
-        self._queue.put((infer_request, {'request_config': request_config, 'template': template, 'adapter_request': adapter_request,
-                        'pre_infer_hook': pre_infer_hook}, queue))
+        self._queue.put((infer_request, {
+            'request_config': request_config,
+            'template': template,
+            'adapter_request': adapter_request,
+            'pre_infer_hook': pre_infer_hook
+        }, queue))
         if request_config.stream:
+
             async def _gen_wrapper():
                 while True:
                     item = await queue.get()
                     if item is None:
                         break
                     yield item
+
             return _gen_wrapper()
         else:
             return await queue.get()

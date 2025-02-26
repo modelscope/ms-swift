@@ -77,13 +77,13 @@ class InferClient(InferEngine):
         return from_dict(ModelList, resp_obj)
 
     def infer(
-        self,
-        infer_requests: List[InferRequest],
-        request_config: Optional[RequestConfig] = None,
-        metrics: Optional[List[Metric]] = None,
-        *,
-        model: Optional[str] = None,
-        use_tqdm: Optional[bool] = None
+            self,
+            infer_requests: List[InferRequest],
+            request_config: Optional[RequestConfig] = None,
+            metrics: Optional[List[Metric]] = None,
+            *,
+            model: Optional[str] = None,
+            use_tqdm: Optional[bool] = None
     ) -> List[Union[ChatCompletionResponse, Iterator[ChatCompletionStreamResponse]]]:
         """
         Perform inference using the specified model.

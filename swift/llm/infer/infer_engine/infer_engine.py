@@ -46,8 +46,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
                 stop.append(stop_word)
         return stop
 
-    @staticmethod
-    def async_iter_to_iter(async_iter) -> Iterator:
+    def async_iter_to_iter(self, async_iter, prog_bar) -> Iterator:
         queue = Queue()
 
         async def _run_async_iter():
@@ -61,36 +60,41 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
             else:
                 queue.put(None)
 
-        thread = Thread(target=lambda: asyncio.run(_run_async_iter(new_tasks)))
+        thread = Thread(target=lambda: asyncio.run(_run_async_iter()))
         thread.start()
         while not queue.empty():
             output = queue.get()
             yield output
+        prog_bar.update()
 
     @staticmethod
     async def batch_run(tasks):
         return await asyncio.gather(*tasks)
 
-    def _batch_infer_stream(self,
-                            tasks,
-                            stream: bool = True,
-                            use_tqdm: bool = True) -> List[Union[ChatCompletionResponse, Iterator[ChatCompletionStreamResponse]]]:
+    def _batch_infer_stream(
+            self,
+            tasks,
+            stream: bool = True,
+            use_tqdm: bool = True) -> List[Union[ChatCompletionResponse, Iterator[ChatCompletionStreamResponse]]]:
 
-
+        prog_bar = tqdm(total=len(tasks), dynamic_ncols=True, disable=not use_tqdm)
         if stream:
-            new_tasks = [self.async_iter_to_iter(task) for task in tasks]
+            new_tasks = [self.async_iter_to_iter(task, prog_bar) for task in tasks]
         else:
+
             async def _new_run(task):
                 try:
-                    return await task
+                    res = await task
                 except Exception as e:
                     if getattr(self, 'strict', True):
                         raise
-                    return e
+                    res = e
+                prog_bar.update()
+                return res
 
             new_tasks = [_new_run(task) for task in tasks]
         return self.safe_asyncio_run(self.batch_run(new_tasks))
-        
+
         # async def _run_infer(i, task, queue, stream: bool = False):
         #     # task with queue
         #     try:
@@ -109,7 +113,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         # thread = Thread(target=lambda: asyncio.run(_batch_run(new_tasks)))
         # thread.start()
 
-        # prog_bar = tqdm(total=len(new_tasks), dynamic_ncols=True, disable=not use_tqdm)
+        #
         # n_finished = 0
         # outputs = [None] * len(new_tasks)
 
@@ -191,8 +195,8 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
                 prog_bar.update(len(tasks_samples))
             return self._update_metrics(result, metrics)
 
-    def _get_toolcall(self,
-                      response: Union[str, List[Dict[str, Any]]],
+    @staticmethod
+    def _get_toolcall(response: Union[str, List[Dict[str, Any]]],
                       tools_prompt='react_en') -> Optional[List[ChatCompletionMessageToolCall]]:
         if not isinstance(response, str):
             response = '\n'.join([resp['text'] for resp in response if resp['type'] == 'text'])
