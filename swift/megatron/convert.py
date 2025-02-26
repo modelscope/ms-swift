@@ -23,7 +23,6 @@ def convert_hf2megatron(args: ExportArguments) -> None:
 
     mg_model = megatron_model_meta.get_model_provider()()
 
-
     megatron_model_meta.convert_hf2megatron(hf_model, mg_model)
 
 

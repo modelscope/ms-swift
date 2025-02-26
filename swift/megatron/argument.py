@@ -1,8 +1,9 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import inspect
 import sys
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Literal, Optional, Tuple
-import inspect
+
 
 @dataclass
 class ExtraMegatronArguments:
@@ -115,7 +116,7 @@ class MegatronArguments(ExtraMegatronArguments, MegatronMixin):
             if k not in parameters:
                 args_dict.pop(k)
         return args_dict
-    
+
     def _args_to_argv(self) -> Tuple[List[Any], Dict[str, Any]]:
         new_args = []
         args_dict = asdict(self)
