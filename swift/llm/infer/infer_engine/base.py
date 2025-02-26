@@ -16,7 +16,7 @@ class BaseInferEngine(ABC):
               metrics: Optional[List[Metric]] = None,
               *,
               use_tqdm: Optional[bool] = None,
-              **kwargs) -> Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
+              **kwargs) -> List[Union[ChatCompletionResponse, Iterator[ChatCompletionStreamResponse]]]:
         """
         This method performs inference on a list of inference requests.
 
@@ -31,7 +31,7 @@ class BaseInferEngine(ABC):
             **kwargs: Additional keyword arguments.
 
         Returns:
-            Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
+            List[Union[ChatCompletionResponse, Iterator[ChatCompletionStreamResponse]]]:
                 The result of the inference.
         """
         pass

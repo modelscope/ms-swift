@@ -5,6 +5,7 @@ import inspect
 import os
 import pickle
 import time
+import hashlib
 from copy import deepcopy
 from queue import Queue
 from threading import Thread
@@ -82,34 +83,63 @@ class PtEngine(InferEngine):
         for adapter in self.adapters:
             self._add_adapter(safe_snapshot_download(adapter, use_hf=use_hf, hub_token=hub_token))
         self._post_init()
-        self._queue = Queue()
-        self._task_pool = {}
-        self._task_thread = None
 
     def _post_init(self):
         super()._post_init()
         self.engine = self.model  # dummy
         self.generation_config = self.model.generation_config
+        self._queue = Queue()
+        self._task_pool = {}
+        self._task_thread = None
 
-    def _start_infer_worker(self):
+    def _start_infer_worker(self, loop):
         if self._task_thread is None:
-            self._task_thread = Thread(target=self._infer_worker)
+            self._task_thread = Thread(target=self._infer_worker, kwargs={'loop': loop})
             self._task_thread.daemon = True
+            self._task_thread.start()
 
     def _fetch_infer_requests(self):
         while not self._queue.empty():
-            infer_requests, kwargs, queue = self._queue.get()
-            info = pickle.dumps(kwargs)
-            if info in self._task_pool:
-                self._task_pool[info] = []
-            self._task_pool[info].append((infer_requests, queue))
+            infer_request, kwargs, queue = self._queue.get()
+            info = hashlib.sha256(pickle.dumps((kwargs['request_config'], kwargs['template'].template_meta))).hexdigest()
+            if info not in self._task_pool:
+                self._task_pool[info] = kwargs, []
+            self._task_pool[info][1].append((infer_request, queue))
+        if len(self._task_pool) == 0:
+            return
+        key, (kwargs, data) = next(iter(self._task_pool.items()))
+        max_batch_size = self.max_batch_size or len(data)
+        data, remain_data = data[:max_batch_size], data[max_batch_size:]
+        if remain_data:
+            self._task_pool[key] = kwargs, remain_data
+        else:
+            self._task_pool.pop(key)
+        kwargs = kwargs.copy()
+        kwargs['infer_requests'] = [d[0] for d in data]
+        queue_list = [d[1] for d in data]
+        return kwargs, queue_list
 
-    def _infer_worker(self):
+    def _infer_worker(self, loop):
         while True:
-            infer_requests, kwargs, queue = self._fetch_infer_requests()
-            self._infer(**kwargs)
+            item = self._fetch_infer_requests()
+            if item is not None:
+                kwargs, queue_list = item
+                request_config = kwargs['request_config']
+                res_or_gen = self._infer(**kwargs)
+                if request_config.stream:
+                    finished = False
+                    while not finished:
+                        try:
+                            res_list = next(res_or_gen)
+                        except StopIteration:
+                            finished = True
+                            res_list = [None] * len(queue_list)
+                        for queue, res in zip(queue_list, res_list):
+                            asyncio.run_coroutine_threadsafe(queue.put(res), loop).result()
+                else:
+                    for queue, res in zip(queue_list, res_or_gen):
+                        asyncio.run_coroutine_threadsafe(queue.put(res), loop).result()
             time.sleep(0.01)
-        self._queue
 
     def _add_adapter(self, adapter_path: str, adapter_name: Optional[str] = None) -> None:
         self.model = Swift.from_pretrained(self.model, adapter_path, adapter_name)
@@ -383,24 +413,22 @@ class PtEngine(InferEngine):
         adapter_request: Optional[AdapterRequest] = None,
         pre_infer_hook=None,
     ) -> Union[ChatCompletionResponse, AsyncIterator[ChatCompletionStreamResponse]]:
-        # TODO:auto batch
         if request_config is None:
             request_config = RequestConfig()
-        res_or_gen = self._infer([infer_request],
-                                 request_config,
-                                 template=template,
-                                 adapter_request=adapter_request,
-                                 pre_infer_hook=pre_infer_hook)
+        self._start_infer_worker(asyncio.get_event_loop())
+        queue = asyncio.Queue()
+        self._queue.put((infer_request, {'request_config': request_config, 'template': template, 'adapter_request': adapter_request,
+                        'pre_infer_hook': pre_infer_hook}, queue))
         if request_config.stream:
-
             async def _gen_wrapper():
-                for response in res_or_gen:
-                    await asyncio.sleep(0)
-                    yield response[0]
-
+                while True:
+                    item = await queue.get()
+                    if item is None:
+                        break
+                    yield item
             return _gen_wrapper()
         else:
-            return res_or_gen[0]
+            return await queue.get()
 
     @staticmethod
     def _add_error_list(outputs, error_list):
@@ -419,7 +447,7 @@ class PtEngine(InferEngine):
         template: Optional[Template] = None,
         adapter_request: Optional[AdapterRequest] = None,
         pre_infer_hook=None,
-    ) -> Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
+    ) -> List[Union[ChatCompletionResponse, Iterator[ChatCompletionStreamResponse]]]:
         self.model.eval()
         request_config = deepcopy(request_config)
         if template is None:
@@ -497,7 +525,7 @@ class PtEngine(InferEngine):
         template: Optional[Template] = None,
         use_tqdm: Optional[bool] = None,
         adapter_request: Optional[AdapterRequest] = None
-    ) -> Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
+    ) -> List[Union[ChatCompletionResponse, Iterator[ChatCompletionStreamResponse]]]:
         if request_config is None:
             request_config = RequestConfig()
         if use_tqdm is None:
@@ -507,7 +535,7 @@ class PtEngine(InferEngine):
         max_batch_size = self.max_batch_size or len(infer_requests)
         if request_config.stream:
 
-            def _gen_wrapper() -> Iterator[List[Optional[ChatCompletionStreamResponse]]]:
+            def _gen_wrapper():
                 i = 0
                 while i < len(infer_requests):
                     infer_requests_samples = infer_requests[i:i + max_batch_size]
