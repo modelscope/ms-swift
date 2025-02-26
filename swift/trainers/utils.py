@@ -102,7 +102,7 @@ def _patch_lmdeploy(load_weights=False):
     @contextlib.contextmanager
     def patch_threadpool():
         ThreadPoolExecutor.map_origin = ThreadPoolExecutor.map
-        ThreadPoolExecutor.map = lambda *args, **kwargs: None
+        ThreadPoolExecutor.map = lambda *args, **kwargs: []
         yield
         ThreadPoolExecutor.map = ThreadPoolExecutor.map_origin
         del ThreadPoolExecutor.map_origin
@@ -137,10 +137,10 @@ def _patch_lmdeploy(load_weights=False):
                  engine_config: TurbomindEngineConfig = None,
                  model_source: ModelSource = ModelSource.WORKSPACE,
                  **kwargs):
+        self.gpu_list = engine_config.devices
         with patch_threadpool(), tm_model_context(self):
             self.__origin_init__(model_path, tokenizer, model_name, chat_template_name, engine_config, model_source,
                                  **kwargs)
-        self.gpu_list = engine_config.devices
 
         with ThreadPoolExecutor(max_workers=self.gpu_count) as e:
             ranks = [self.node_id * self.gpu_count + device_id for device_id in range(self.gpu_count)]
