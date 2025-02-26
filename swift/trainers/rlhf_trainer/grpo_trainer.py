@@ -444,7 +444,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         template = copy(self.template)
         with self._template_context(template):
             batched_inputs = [template.encode(infer_request) for infer_request in inputs]
-            batches = template.data_collator(batched_inputs, mini_batch_size=self.args.mini_batch_size)
+            batches = template.data_collator(batched_inputs)
 
         batches = self._split_into_mini_batches(batches, mini_batch_size=self.args.mini_batch_size)
 
