@@ -444,12 +444,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         template = copy(self.template)
         with self._template_context(template):
             batched_inputs = [template.encode(infer_request) for infer_request in inputs]
-            batches = to_device(
-                template.data_collator(batched_inputs, mini_batch_size=self.args.mini_batch_size), self.model.device)
+            batches = template.data_collator(batched_inputs, mini_batch_size=self.args.mini_batch_size)
 
-        # we only need to compute the logits for the completion tokens
-        if not isinstance(batches):
+        if not isinstance(batches, list):
             batches = [batches]
+
+        batches = [to_device(batch, self.model.device) for batch in batches]
+
         all_outputs = []
         for outputs in batches:
             labels = outputs.pop('labels')
@@ -478,8 +479,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         for key in all_outputs[0].keys():
             if isinstance(all_outputs[0][key], torch.Tensor):
                 final_outputs[key] = torch.cat([out[key] for out in all_outputs], dim=0)
+            elif isinstance(all_outputs[0][key], (int, float)):
+                # Take the maximum value for scalar values (e.g., logits_to_keep)
+                final_outputs[key] = max(out[key] for out in all_outputs)
             else:
-                final_outputs[key] = max(all_outputs[i][key] for i in range(len(all_outputs)))  # logits_to_keep
+                # For other types (e.g., strings, lists), assume all mini-batches have the same value
+                final_outputs[key] = all_outputs[0][key]
 
         rewards_per_func = torch.zeros((len(inputs), len(self.reward_funcs)), device=device)
         completions = [example['messages'][-1]['content'] for example in inputs]
