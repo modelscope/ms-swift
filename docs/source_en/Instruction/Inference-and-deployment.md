@@ -6,7 +6,7 @@ Below are the inference engines supported by Swift along with their correspondin
 | ------------------------------------------------ | ------------------------------------------------------------ | ------------------------------------------------------------ | --------------- | ------------------------------------------------------------ | ----- | ------------------------------------------------------------ | ------------------- |
 | pytorch                                          | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/deploy/client/llm/chat/openai_client.py) | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/app/mllm.sh) | ✅               | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo_lora.py) | ✅     | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/infer/pt/batch_ddp.sh) | DDP/device_map      |
 | [vllm](https://github.com/vllm-project/vllm)     | ✅                                                            | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/infer/vllm/mllm_tp.sh) | ✅               | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/deploy/lora/server.sh) | ❌     | ✅                                                            | TP/PP/DP               |
-| [lmdeploy](https://github.com/InternLM/lmdeploy) | ✅                                                            | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/infer/lmdeploy/mllm_tp.sh) | ✅               | ❌                                                            | ❌     | ✅                                                            | TP                  |
+| [lmdeploy](https://github.com/InternLM/lmdeploy) | ✅                                                            | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/infer/lmdeploy/mllm_tp.sh) | ✅               | ❌                                                            | ❌     | ✅                                                            | TP/DP                  |
 
 ## Inference
 
@@ -197,7 +197,6 @@ This section primarily focuses on the deployment and invocation of multimodal mo
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift deploy \
     --model Qwen/Qwen2.5-7B-Instruct \
-    --stream true \
     --infer_backend vllm \
     --max_new_tokens 2048 \
     --served_model_name Qwen2.5-7B-Instruct
