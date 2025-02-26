@@ -51,7 +51,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
 
         async def _run_async_iter():
             try:
-                async for item in async_iter:
+                async for item in await async_iter:
                     queue.put(item)
             except Exception as e:
                 if getattr(self, 'strict', True):
@@ -62,10 +62,12 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
 
         thread = Thread(target=lambda: asyncio.run(_run_async_iter()))
         thread.start()
-        while not queue.empty():
+        while True:
             output = queue.get()
+            if output is None or isinstance(output, Exception):
+                prog_bar.update()
+                return
             yield output
-        prog_bar.update()
 
     @staticmethod
     async def batch_run(tasks):
@@ -79,7 +81,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
 
         prog_bar = tqdm(total=len(tasks), dynamic_ncols=True, disable=not use_tqdm)
         if stream:
-            new_tasks = [self.async_iter_to_iter(task, prog_bar) for task in tasks]
+            return [self.async_iter_to_iter(task, prog_bar) for task in tasks]
         else:
 
             async def _new_run(task):
@@ -93,46 +95,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
                 return res
 
             new_tasks = [_new_run(task) for task in tasks]
-        return self.safe_asyncio_run(self.batch_run(new_tasks))
-
-        # async def _run_infer(i, task, queue, stream: bool = False):
-        #     # task with queue
-        #     try:
-        #         if stream:
-        #             queue.put((i, self.async_iter_to_iter(await task)))
-        #         else:
-        #             queue.put((i, await task))
-        #     except Exception as e:
-        #         queue.put((i, e))
-        #     else:
-        #         queue.put((i, None))
-
-        # queue = Queue()
-        # new_tasks = [_run_infer(i, task, queue, stream) for i, task in enumerate(tasks)]
-
-        # thread = Thread(target=lambda: asyncio.run(_batch_run(new_tasks)))
-        # thread.start()
-
-        #
-        # n_finished = 0
-        # outputs = [None] * len(new_tasks)
-
-        # while n_finished < len(new_tasks):
-        #     i, output = queue.get()
-        #     if output is None or isinstance(output, Exception):
-        #         # is_finished
-        #         if isinstance(output, Exception):
-        #             if getattr(self, 'strict', True):
-        #                 raise output
-        #             outputs[i] = output
-        #         n_finished += 1
-        #         prog_bar.update()
-        #     else:
-        #         if outputs[i] is not None:  # The logic will only apply to the stream.
-        #             yield outputs
-        #             outputs = [None] * len(new_tasks)
-        #         outputs[i] = output
-        # yield outputs
+            return self.safe_asyncio_run(self.batch_run(new_tasks))
 
     @staticmethod
     def _get_usage_info(num_prompt_tokens: int, num_generated_tokens: int) -> UsageInfo:
