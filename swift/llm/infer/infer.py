@@ -77,6 +77,9 @@ class SwiftInfer(SwiftPipeline):
             from .infer_engine import LmdeployEngine
             infer_engine_cls = LmdeployEngine
             kwargs.update(args.get_lmdeploy_engine_kwargs())
+            if dist.is_initialized():
+                assert args.tp == 1, 'not support tp > 1.'
+                kwargs.update({'device': [dist.get_rank()]})
         with context:
             return infer_engine_cls(**kwargs)
 
