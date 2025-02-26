@@ -65,9 +65,9 @@ if __name__ == '__main__':
     dataset = load_dataset(['AI-ModelScope/alpaca-gpt4-data-zh#1000'], seed=42)[0]
     print(f'dataset: {dataset}')
     infer_requests = [InferRequest(**data) for data in dataset]
+    # if infer_backend in {'vllm', 'lmdeploy'}:
+    #     infer_async_batch(engine, infer_requests)
     infer_batch(engine, infer_requests)
-    if infer_backend in {'vllm', 'lmdeploy'}:
-        infer_async_batch(engine, infer_requests)
 
     messages = [{'role': 'user', 'content': 'who are you?'}]
     infer_stream(engine, InferRequest(messages=messages))

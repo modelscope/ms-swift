@@ -195,7 +195,10 @@ class Qwen2VLTemplate(Template):
         assert media_type in {'image', 'video'}
         if media_type == 'image':
             inputs.images[index] = fetch_image({'image': inputs.images[index]})
-            return ['<|vision_start|><|image_pad|><|vision_end|>']
+            if self.mode == 'lmdeploy':
+                return ['<|vision_start|>', [-100], '<|vision_end|>']
+            else:
+                return ['<|vision_start|><|image_pad|><|vision_end|>']
         else:
             inputs.videos[index] = fetch_video({'video': inputs.videos[index]}).to(torch.uint8)
             return ['<|vision_start|><|video_pad|><|vision_end|>']

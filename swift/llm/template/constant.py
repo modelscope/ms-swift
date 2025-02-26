@@ -49,6 +49,7 @@ class LLMTemplateType:
     openbuddy = 'openbuddy'
     openbuddy2 = 'openbuddy2'
     baichuan = 'baichuan'
+    baichuan_m1 = 'baichuan_m1'
     minicpm = 'minicpm'
     telechat = 'telechat'
     telechat2 = 'telechat2'
