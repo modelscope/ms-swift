@@ -12,11 +12,5 @@ def test_llama3():
             val_dataset='AI-ModelScope/alpaca-gpt4-data-en#2'))
 
 
-def test_baichuan_m1():
-    from swift.llm import infer_main, InferArguments
-    infer_main(InferArguments(model='baichuan-inc/Baichuan-M1-14B-Instruct'))
-
-
 if __name__ == '__main__':
-    # test_llama3()
-    test_baichuan_m1()
+    test_llama3()

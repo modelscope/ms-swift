@@ -15,13 +15,26 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from transformers import PreTrainedModel, trainer
 from transformers.modeling_outputs import SequenceClassifierOutputWithPast
 
-from swift.llm import to_device
+from swift.llm import to_device, to_float_dtype
 from swift.utils import get_dist_setting, get_logger, is_mp_ddp, use_torchacc
 from swift.utils.torch_utils import _get_max_memory, _sync_max_memory, get_device_count
 from .model_arch import get_model_arch
 from .utils import HfConfigFactory
 
 logger = get_logger()
+
+
+def patch_fixed_float_dtype(module: torch.nn.Module, dtype):
+    """Patch the module, to make sure the consisitent dtype."""
+
+    def get_float_dtype_hook(dtype):
+
+        def _float_dtype_hook(module, input, output):
+            return to_float_dtype(output, dtype)
+
+        return _float_dtype_hook
+
+    module.register_forward_hook(get_float_dtype_hook(dtype))
 
 
 def patch_fixed_device(module: torch.nn.Module, device):
