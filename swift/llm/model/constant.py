@@ -60,6 +60,7 @@ class LLMModelType:
 
     baichuan = 'baichuan'
     baichuan2 = 'baichuan2'
+    baichuan_m1 = 'baichuan_m1'
 
     minicpm = 'minicpm'
     minicpm_chatml = 'minicpm_chatml'
