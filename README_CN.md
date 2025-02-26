@@ -60,7 +60,7 @@
 **为什么选择ms-swift？**
 - 🍎 **模型类型**：支持450+纯文本大模型、**150+多模态大模型**以及All-to-All全模态模型、序列分类模型、Embedding模型**训练到部署全流程**。
 - **数据集类型**：内置150+预训练、微调、人类对齐、多模态等各种类型的数据集，并支持自定义数据集。
-- **硬件支持**：CPU、RTX系列、T4/V100、A10/A100/H100、Ascend NPU等。
+- **硬件支持**：CPU、RTX系列、T4/V100、A10/A100/H100、Ascend NPU、MPS等。
 - 🍊 **轻量训练**：支持了LoRA、QLoRA、DoRA、LoRA+、ReFT、RS-LoRA、LLaMAPro、Adapter、GaLore、Q-Galore、LISA、UnSloth、Liger-Kernel等轻量微调方式。
 - **分布式训练**：支持分布式数据并行（DDP）、device_map简易模型并行、DeepSpeed ZeRO2 ZeRO3、FSDP等分布式训练技术。
 - **量化训练**：支持对BNB、AWQ、GPTQ、AQLM、HQQ、EETQ量化模型进行训练。
@@ -74,6 +74,8 @@
 - **模型量化**：支持AWQ、GPTQ和BNB的量化导出，导出的模型支持使用vLLM/LmDeploy推理加速，并支持继续训练。
 
 ## 🎉 新闻
+- 🎁 2025.02.21: 我们测试了GRPO算法的性能，并且使用一些tricks使[训练速度提高到300%](examples/train/grpo/full_lmdeploy.sh). WanDB表格请查看[这里](https://wandb.ai/tastelikefeet/grpo_perf_test?nw=nwuseryuzezyz)
+- 🎁 2025.02.21: 支持大模型API蒸馏采样，请查看[示例](examples/sampler/distill/distill.sh)
 - 🎁 2025.02.17: 支持SwanLab, 仅需添加[几个新的参数](docs/source/Instruction/命令行参数.md#swanlab)就可以在swanlab上验证你的训练效果
 - 🎁 2025.02.16: 在GRPO算法中支持LMDeploy, 请查看`--use_lmdeploy true`. 具体参考[这个脚本](examples/train/grpo/full_lmdeploy.sh)
 - 🔥 2025.02.12: 支持GRPO(Group Relative Policy Optimization) 训练算法，训练脚本可以在[这里](docs/source/Instruction/GRPO.md)找到
@@ -108,13 +110,13 @@ pip install -e .
 | python | >=3.9 | 3.10 ||
 | cuda |  | cuda12 |使用cpu、npu、mps则无需安装|
 | torch | >=2.0 |  ||
-| transformers | >=4.33 | 4.48.3 ||
+| transformers | >=4.33 | 4.49 ||
 | modelscope | >=1.19 |  ||
-| peft | >=0.11.0,<0.15.0 | ||
-| trl | >=0.13,<0.16 | 0.15 |RLHF|
-| deepspeed | >=0.14 |  |训练|
-| vllm | >=0.5.1 | 0.6.5 |推理/部署/评测|
-| lmdeploy | lmdeploy>=0.5,<0.6.5 | 0.6.4 |推理/部署/评测|
+| peft | >=0.11,<0.15 | ||
+| trl | >=0.13,<0.17 | 0.15 |RLHF|
+| deepspeed | >=0.14 | 0.14.5 |训练|
+| vllm | >=0.5.1 | 0.7.3 |推理/部署/评测|
+| lmdeploy | lmdeploy>=0.5 | 0.7.0.post3 |推理/部署/评测|
 | evalscope |  | >=0.11 |评测|
 
 更多可选依赖可以参考[这里](https://github.com/modelscope/ms-swift/blob/main/requirements/install_all.sh)。

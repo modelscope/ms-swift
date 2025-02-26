@@ -48,6 +48,40 @@ register_model(
         requires=['transformers<4.34']))
 
 
+def get_model_tokenizer_baichuan_m1(model_dir: str,
+                                    model_info: ModelInfo,
+                                    model_kwargs: Dict[str, Any],
+                                    load_model: bool = True,
+                                    **kwargs):
+    from transformers.dynamic_module_utils import get_class_from_dynamic_module
+    rotary_embedding = get_class_from_dynamic_module('modeling_baichuan.RotaryEmbedding', model_dir)
+    _old_forward = rotary_embedding.forward
+
+    def _new_forward(self, q, k, seqlen_offset=None, cu_seqlens=None, max_seqlen=None):
+        q = q.to(k.dtype)
+        res = _old_forward(self, q, k, seqlen_offset, cu_seqlens, max_seqlen)
+        return res
+
+    rotary_embedding.forward = _new_forward
+
+    model, tokenizer = get_model_tokenizer_baichuan(model_dir, model_info, model_kwargs, load_model, **kwargs)
+    return model, tokenizer
+
+
+register_model(
+    ModelMeta(
+        LLMModelType.baichuan_m1, [
+            ModelGroup([
+                Model('baichuan-inc/Baichuan-M1-14B-Instruct', 'baichuan-inc/Baichuan-M1-14B-Instruct'),
+            ]),
+        ],
+        TemplateType.baichuan_m1,
+        get_model_tokenizer_baichuan_m1,
+        architectures=['BaichuanM1ForCausalLM'],
+        model_arch=ModelArch.baichuan,
+        requires=['transformers>=4.48']))
+
+
 def patch_baichuan2_lm_head_forward(self, hidden_states: Tensor) -> Tensor:
     # patch: baichuan2 lm_head (fp32 bug)
     if self.training:

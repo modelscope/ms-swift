@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import importlib
 import os
 import sys
 from dataclasses import dataclass, field
@@ -159,6 +160,7 @@ class TrainArguments(SwanlabArguments, TorchAccArguments, TunerArguments, Seq2Se
     acc_strategy: Literal['token', 'seq'] = 'token'
     max_new_tokens: int = 64
     temperature: float = 0.
+    load_args: bool = False
 
     def __post_init__(self) -> None:
         if self.resume_from_checkpoint:
@@ -214,13 +216,7 @@ class TrainArguments(SwanlabArguments, TorchAccArguments, TunerArguments, Seq2Se
             assert os.path.isdir(py_dir)
             py_file = os.path.basename(external_plugin)
             sys.path.insert(0, py_dir)
-            try:
-                import importlib
-                importlib.import_module(py_file.split('.')[0])
-            except Exception:  # noqa
-                import traceback
-                logger.warn(f'⚠️⚠️⚠️Plugin {external_plugin} import failed.')
-                logger.warn(traceback.format_exc())
+            importlib.import_module(py_file.split('.')[0])
 
     def _init_deepspeed(self):
         if self.deepspeed:

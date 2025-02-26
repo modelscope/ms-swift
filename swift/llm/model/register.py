@@ -354,6 +354,28 @@ def get_matched_model_meta(model_id_or_path: str) -> Optional[ModelMeta]:
             return model_meta
 
 
+def _get_arch_mapping():
+    res = {}
+    for model_type, model_meta in MODEL_MAPPING.items():
+        architectures = model_meta.architectures
+        if not architectures:
+            architectures.append('null')
+        for arch in architectures:
+            if arch not in res:
+                res[arch] = []
+            res[arch].append(model_type)
+    return res
+
+
+def get_matched_model_types(architectures: Optional[List[str]]) -> List[str]:
+    """Get possible model_type."""
+    architectures = architectures or ['nulll']
+    if architectures:
+        architectures = architectures[0]
+    arch_mapping = _get_arch_mapping()
+    return arch_mapping.get(architectures) or []
+
+
 def _get_model_info(model_dir: str, model_type: Optional[str], quantization_config) -> ModelInfo:
     config_dict = PretrainedConfig.get_config_dict(model_dir)[0]
     if quantization_config is not None:
@@ -364,7 +386,8 @@ def _get_model_info(model_dir: str, model_type: Optional[str], quantization_conf
     rope_scaling = HfConfigFactory.get_config_attr(config_dict, 'rope_scaling')
 
     if model_type is None:
-        model_types = HfConfigFactory.get_matched_model_types(config_dict)  # config.json
+        architectures = HfConfigFactory.get_config_attr(config_dict, 'architectures')
+        model_types = get_matched_model_types(architectures)
         if len(model_types) > 1:
             raise ValueError('Please explicitly pass the model_type. For reference, '
                              f'the available model_types: {model_types}.')
@@ -373,8 +396,14 @@ def _get_model_info(model_dir: str, model_type: Optional[str], quantization_conf
     elif model_type not in MODEL_MAPPING:
         raise ValueError(f"model_type: '{model_type}' not in {list(MODEL_MAPPING.keys())}")
 
-    res = ModelInfo(model_type, model_dir, torch_dtype, max_model_len, quant_info.get('quant_method'),
-                    quant_info.get('quant_bits'), rope_scaling)
+    res = ModelInfo(
+        model_type,
+        model_dir,
+        torch_dtype,
+        max_model_len,
+        quant_info.get('quant_method'),
+        quant_info.get('quant_bits'),
+        rope_scaling=rope_scaling)
     return res
 
 
@@ -449,6 +478,7 @@ def get_model_tokenizer(
         # model kwargs
         model_type: Optional[str] = None,
         quantization_config=None,
+        max_memory: Optional[List[str]] = None,
         attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None,
         rope_scaling: Optional[Dict[str, Any]] = None,
         automodel_class=None,
@@ -491,6 +521,8 @@ def get_model_tokenizer(
     model_kwargs['device_map'] = device_map
     if quantization_config:
         model_kwargs['quantization_config'] = quantization_config
+    if max_memory:
+        model_kwargs['max_memory'] = max_memory
     model_dir = model_info.model_dir
     get_function = model_meta.get_function
     kwargs['automodel_class'] = automodel_class

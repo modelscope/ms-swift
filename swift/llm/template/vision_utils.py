@@ -241,10 +241,11 @@ def load_video_minicpmv_mplug_owl3(video: Union[str, bytes], max_num_frames):
     return frames
 
 
-def load_audio(audio: Union[str, bytes], sampling_rate: int):
+def load_audio(audio: Union[str, bytes], sampling_rate: int, return_sr: bool = False):
     import librosa
     audio_io = load_file(audio)
-    return librosa.load(audio_io, sr=sampling_rate)[0]
+    res = librosa.load(audio_io, sr=sampling_rate)
+    return res if return_sr else res[0]
 
 
 def load_video_valley(video: Union[str, bytes]):

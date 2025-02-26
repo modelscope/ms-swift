@@ -376,6 +376,12 @@ class PtEngine(InferEngine):
         else:
             return res_or_gen[0]
 
+    @staticmethod
+    def _add_error_list(outputs, error_list):
+        for i, error in error_list:
+            outputs.insert(i, error)
+        return outputs
+
     # Ensure `template._post_encode` has no gradient.
     @torch.inference_mode()
     def _infer(
@@ -400,13 +406,31 @@ class PtEngine(InferEngine):
             template.set_mode('pt')
 
         max_workers = min(32, os.cpu_count(), len(infer_requests))
+        error_list = []
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = [
                 executor.submit(template.encode, infer_request, return_template_inputs=True)
                 for infer_request in infer_requests
             ]
             concurrent.futures.wait(futures)
-            batched_inputs = [future.result() for future in futures]
+            batched_inputs = []
+            for i, future in enumerate(futures):
+                try:
+                    batched_inputs.append(future.result())
+                except Exception as e:
+                    if getattr(self, 'strict', True):
+                        raise
+                    error_list.append((i, e))
+                    continue
+        if len(batched_inputs) == 0:
+            if request_config.stream:
+
+                def _gen_wrapper():
+                    yield self._add_error_list([], error_list)
+
+                return _gen_wrapper()
+            else:
+                return self._add_error_list([], error_list)
         template_inputs = [inputs.pop('template_inputs') for inputs in batched_inputs]
         inputs = to_device(template.data_collator(batched_inputs), self.model.device)
         template.debug_logger(inputs)  # debug
@@ -430,13 +454,13 @@ class PtEngine(InferEngine):
 
             def _gen_wrapper():
                 for res in self._infer_stream(**kwargs):
-                    yield res
+                    yield self._add_error_list(res, error_list)
                 self._update_metrics(res, metrics)
 
             return _gen_wrapper()
         else:
             infer_func = self._infer_forward if template.mode in ('seq_cls', 'prm') else self._infer_full
-            return self._update_metrics(infer_func(**kwargs), metrics)
+            return self._update_metrics(self._add_error_list(infer_func(**kwargs), error_list), metrics)
 
     def infer(
         self,

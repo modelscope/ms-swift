@@ -640,12 +640,37 @@
         "tags": ["rlhf", "dpo"]
     },
     {
-        "ms_dataset_id": "DigitalLearningGmbH/MATH-lighteval",
-        "hf_dataset_id": "AI-ModelScope/MATH-lighteval",
+        "ms_dataset_id": "AI-ModelScope/MATH-lighteval",
+        "hf_dataset_id": "DigitalLearningGmbH/MATH-lighteval",
         "columns": {
             "problem": "query"
         },
         "tags": ["grpo", "math"]
-
+    },
+    {
+        "ms_dataset_id": "liucong/Chinese-DeepSeek-R1-Distill-data-110k-SFT",
+        "hf_dataset_id": "Congliu/Chinese-DeepSeek-R1-Distill-data-110k-SFT",
+        "tags": ["chat", "sft", "cot", "r1", "🔥"]
+    },
+    {
+        "ms_dataset_id": "AI-MO/NuminaMath-CoT",
+        "hf_dataset_id": "AI-MO/NuminaMath-CoT",
+        "tags": ["grpo", "math"]
+    },
+    {
+        "ms_dataset_id": "AI-MO/NuminaMath-TIR",
+        "hf_dataset_id": "AI-MO/NuminaMath-TIR",
+        "tags": ["grpo", "math", "🔥"]
+    },
+    {
+        "ms_dataset_id": "AI-MO/NuminaMath-1.5",
+        "hf_dataset_id": "AI-MO/NuminaMath-1.5",
+        "tags": ["grpo", "math"]
+    },
+    {
+        "ms_dataset_id": "FreedomIntelligence/medical-o1-reasoning-SFT",
+        "hf_dataset_id": "FreedomIntelligence/medical-o1-reasoning-SFT",
+        "subsets": ["en", "zh"],
+        "tags": ["medical", "o1", "🔥"]
     }
 ]

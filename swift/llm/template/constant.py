@@ -49,6 +49,7 @@ class LLMTemplateType:
     openbuddy = 'openbuddy'
     openbuddy2 = 'openbuddy2'
     baichuan = 'baichuan'
+    baichuan_m1 = 'baichuan_m1'
     minicpm = 'minicpm'
     telechat = 'telechat'
     telechat2 = 'telechat2'
@@ -72,6 +73,7 @@ class LLMTemplateType:
     xverse = 'xverse'
     bluelm = 'bluelm'
     orion = 'orion'
+    moonlight = 'moonlight'
 
     aya = 'aya'
     c4ai = 'c4ai'
@@ -91,6 +93,7 @@ class MLLMTemplateType:
     qvq = 'qvq'
     ovis1_6 = 'ovis1_6'
     ovis1_6_llama3 = 'ovis1_6_llama3'
+    ovis2 = 'ovis2'
 
     llama3_1_omni = 'llama3_1_omni'
     llama3_2_vision = 'llama3_2_vision'
@@ -151,6 +154,7 @@ class MLLMTemplateType:
     emu3_gen = 'emu3_gen'
 
     got_ocr2 = 'got_ocr2'
+    got_ocr2_hf = 'got_ocr2_hf'
     step_audio = 'step_audio'
 
     idefics3 = 'idefics3'

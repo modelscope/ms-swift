@@ -216,7 +216,7 @@ def get_model_tokenizer_omnli(model_dir: str,
     local_repo_path = kwargs.get('local_repo_path')
     if not local_repo_path:
         local_repo_path = git_clone_github('https://github.com/ictnlp/LLaMA-Omni')
-    sys.path.append(os.path.join(local_repo_path))
+    sys.path.append(local_repo_path)
     from omni_speech.model import OmniSpeech2SLlamaForCausalLM, OmniSpeechLlamaForCausalLM
     import whisper
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)

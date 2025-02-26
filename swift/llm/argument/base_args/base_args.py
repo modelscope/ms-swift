@@ -181,6 +181,10 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         self.load_data_args = True
         self.ckpt_dir = checkpoint_dir
         self.load_args_from_ckpt()
+        all_keys = list(f.name for f in fields(BaseArguments))
+        for key in all_keys:
+            if not hasattr(self, key):
+                setattr(self, key, None)
         return self
 
     def _init_ckpt_dir(self, adapters=None):

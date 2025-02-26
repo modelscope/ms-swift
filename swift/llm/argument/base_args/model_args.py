@@ -44,6 +44,7 @@ class ModelArguments:
     num_labels: Optional[int] = None
     rope_scaling: Literal['linear', 'dynamic'] = None
     device_map: Optional[Union[dict, str]] = None
+    max_memory: Optional[Union[dict, str]] = None
     # When some model code needs to be downloaded from GitHub,
     # this parameter specifies the path to the locally downloaded repository.
     local_repo_path: Optional[str] = None
@@ -77,6 +78,15 @@ class ModelArguments:
             for k, v in self.device_map.items():
                 if isinstance(v, int):
                     self.device_map[k] += local_rank
+
+    def _init_max_memory(self):
+        self.max_memory = self.parse_to_dict(self.max_memory)
+        # compat mp&ddp
+        _, local_rank, _, local_world_size = get_dist_setting()
+        if local_world_size > 1 and isinstance(self.max_memory, dict) and local_rank > 0:
+            for k in list(self.max_memory.keys()):
+                if isinstance(k, int):
+                    self.max_memory[k + local_rank] = self.max_memory.pop(k)
 
     def _init_torch_dtype(self) -> None:
         """"If torch_dtype is None, find a proper dtype by the train_type/GPU"""
@@ -130,6 +140,7 @@ class ModelArguments:
             raise ValueError(f'Please set --model <model_id_or_path>`, model: {self.model}')
         self.model_suffix = get_model_name(self.model)
         self._init_device_map()
+        self._init_max_memory()
         self._init_torch_dtype()
 
     def get_model_kwargs(self):
@@ -142,6 +153,7 @@ class ModelArguments:
             'hub_token': self.hub_token,
             'local_repo_path': self.local_repo_path,
             'device_map': self.device_map,
+            'max_memory': self.max_memory,
             'quantization_config': self.get_quantization_config(),
             'attn_impl': self.attn_impl,
             'rope_scaling': self.rope_scaling,

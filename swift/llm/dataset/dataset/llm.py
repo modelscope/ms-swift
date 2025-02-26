@@ -4,6 +4,9 @@ import re
 from functools import partial
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import json
+import numpy as np
+
 from ...template import split_str_parts_by
 from ..preprocessor import (AlpacaPreprocessor, ClsGenerationPreprocessor, ClsPreprocessor, MessagesPreprocessor,
                             ResponsePreprocessor, RowPreprocessor, TextGenerationPreprocessor)
@@ -155,7 +158,6 @@ register_dataset(
 
 
 class FireflyPreprocessor(ResponsePreprocessor):
-
     _firefly_kind_list = {
         'ProseGeneration', 'MRC', 'JinYongGeneration', 'TextCorrection', 'ClassicalChinese', 'BELLE', 'StoryGeneration',
         'Couplet', 'Cot', 'Dictionary', 'Translation', 'Program', 'SentimentAnalyze', 'OpenQA', 'AncientPoem',
@@ -395,19 +397,6 @@ register_dataset(
 
 register_dataset(DatasetMeta(ms_dataset_id='swift/ToolBench', tags=['chat', 'agent', 'multi-round']))
 
-
-class CompetitionMathPreprocessor(ResponsePreprocessor):
-
-    def preprocess(self, row: Dict[str, Any], all_tools=None) -> Optional[Dict[str, Any]]:
-        query = row['problem']
-        response = row['solution']
-        row = {
-            'query': query,
-            'response': response,
-        }
-        return super().preprocess(row)
-
-
 register_dataset(
     DatasetMeta(
         ms_dataset_id='tastelikefeet/competition_math',
@@ -416,7 +405,6 @@ register_dataset(
                 name='default',
                 subset='default',
                 split=['train', 'test'],
-                preprocess_func=CompetitionMathPreprocessor(),
             ),
         ],
         tags=['qa', 'math']))
@@ -425,12 +413,30 @@ register_dataset(DatasetMeta(ms_dataset_id='modelscope/gsm8k', subsets=['main'],
 
 register_dataset(
     DatasetMeta(ms_dataset_id='modelscope/MathR', subsets=['default', 'clean'], split=['train'], tags=['qa', 'math']))
+
+register_dataset(
+    DatasetMeta(ms_dataset_id='modelscope/MathR-32B-Distill', subsets=['data'], split=['train'], tags=['qa', 'math']))
+
+
+class CoundownTaskPreprocessor(ResponsePreprocessor):
+
+    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        numbers = row['nums']
+        target = row.pop('response', None)
+        query = f"""Using the numbers {numbers}, create an equation that equals {target}.
+You can use basic arithmetic operations (+, -, *, /) and each number can only be used once.
+Show your work in <think> </think> tags. And return the final equation and answer in <answer> </answer> tags,
+for example <answer> (1 + 2) / 3 * 4 = 4 </answer>."""
+        row.update({'target': target, 'query': query})
+        return super().preprocess(row)
+
+
 register_dataset(
     DatasetMeta(
-        ms_dataset_id='modelscope/MathR-32B-Distill',
-        subsets=['default', 'clean'],
-        split=['train'],
-        tags=['qa', 'math']))
+        ms_dataset_id='zouxuhong/Countdown-Tasks-3to4',
+        subsets=['default'],
+        preprocess_func=CoundownTaskPreprocessor(),
+        tags=['math']))
 
 
 class HC3Preprocessor(ResponsePreprocessor):
@@ -568,6 +574,29 @@ register_dataset(
         split=['train', 'test'],
         tags=['rlhf', 'dpo'],
         huge_dataset=True))
+
+
+class XlamFunctionCallingPreprocessor(ResponsePreprocessor):
+
+    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        query = row['query']
+        answers = row['response']
+        if isinstance(answers, str):
+            answers = json.loads(answers)
+        answer = np.random.choice(answers)
+        name = answer['name']
+        args = json.dumps(answer['arguments'])
+        response = f'Action: {name}\nAction Input: {args}'
+        row = {'query': query, 'response': response, 'solution': response, 'tools': row['tools']}
+        return super().preprocess(row)
+
+
+register_dataset(
+    DatasetMeta(
+        ms_dataset_id='LLM-Research/xlam-function-calling-60k',
+        subsets=['dataset'],
+        preprocess_func=XlamFunctionCallingPreprocessor(),
+        tags=['agent']))
 
 
 class HHRLHFCNPreprocessor(MessagesPreprocessor):

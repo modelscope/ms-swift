@@ -14,7 +14,7 @@ make
 make install
 ```
 
-In case of the priviledge is correct:
+In case of the privilege is correct:
 ```shell
 chown root:root /root/pdsh-2.29
 ```
