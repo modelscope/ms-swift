@@ -54,14 +54,15 @@ def get_model_tokenizer_baichuan_m1(model_dir: str,
                                     load_model: bool = True,
                                     **kwargs):
     from transformers.dynamic_module_utils import get_class_from_dynamic_module
-    _old_custom_convolution = get_class_from_dynamic_module('modeling_baichuan.custom_convolution', model_dir)
+    rotary_embedding = get_class_from_dynamic_module('modeling_baichuan.RotaryEmbedding', model_dir)
+    _old_forward = rotary_embedding.forward
 
-    def _new_custom_convolution(U, K):
-        input_dtype = U.dtype
-        res = _old_custom_convolution(U, K)
-        return res.to(input_dtype)
+    def _new_forward(self, q, k, seqlen_offset=None, cu_seqlens=None, max_seqlen=None):
+        q = q.to(k.dtype)
+        res = _old_forward(self, q, k, seqlen_offset, cu_seqlens, max_seqlen)
+        return res
 
-    _old_custom_convolution = _new_custom_convolution  # the code above is waiting for jintao to update
+    rotary_embedding.forward = _new_forward
 
     model, tokenizer = get_model_tokenizer_baichuan(model_dir, model_info, model_kwargs, load_model, **kwargs)
     return model, tokenizer
