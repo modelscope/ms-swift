@@ -286,7 +286,7 @@ def get_model_tokenizer_llava(model_dir: str,
         else:
             repo_path = 'https://github.com/haotian-liu/LLaVA'
         local_repo_path = git_clone_github(repo_path)
-    sys.path.append(os.path.join(local_repo_path))
+    sys.path.append(local_repo_path)
 
     if llm_model_type == 'mistral':
         from llava.model import LlavaMistralForCausalLM, LlavaMistralConfig

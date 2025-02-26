@@ -69,13 +69,17 @@ class SwiftInfer(SwiftPipeline):
             infer_engine_cls = VllmEngine
             kwargs.update(args.get_vllm_engine_kwargs())
             if dist.is_initialized():
-                assert args.tensor_parallel_size == 1, f'not support tensor_parallel_size: {args.tensor_parallel_size}'
+                assert args.tensor_parallel_size == 1 and args.pipeline_parallel_size == 1, (
+                    'not support tensor_parallel_size > 1 or pipeline_parallel_size > 1.')
                 context = patch_vllm()
                 kwargs.update({'device': dist.get_rank()})
         else:
             from .infer_engine import LmdeployEngine
             infer_engine_cls = LmdeployEngine
             kwargs.update(args.get_lmdeploy_engine_kwargs())
+            if dist.is_initialized():
+                assert args.tp == 1, 'not support tp > 1.'
+                kwargs.update({'device': [dist.get_rank()]})
         with context:
             return infer_engine_cls(**kwargs)
 

@@ -78,7 +78,7 @@ if __name__ == '__main__':
         engine = PtEngine(model, max_batch_size=64)
     elif infer_backend == 'vllm':
         from swift.llm import VllmEngine
-        engine = VllmEngine(model, max_model_len=32768)
+        engine = VllmEngine(model, max_model_len=8192)
     elif infer_backend == 'lmdeploy':
         from swift.llm import LmdeployEngine
         engine = LmdeployEngine(model)

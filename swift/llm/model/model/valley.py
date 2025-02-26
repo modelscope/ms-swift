@@ -21,7 +21,7 @@ def get_model_tokenizer_valley(model_dir: str,
     if not local_repo_path:
         repo_path = 'https://github.com/bytedance/Valley.git'
         local_repo_path = git_clone_github(repo_path)
-    sys.path.append(os.path.join(local_repo_path))
+    sys.path.append(local_repo_path)
 
     if llm_model_type == 'valley':
         from transformers.modeling_outputs import CausalLMOutputWithPast

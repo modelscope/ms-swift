@@ -329,6 +329,14 @@ def test_mistral_small():
     assert response == response2
 
 
+def test_moonlight():
+    pt_engine = PtEngine('moonshotai/Moonlight-16B-A3B-Instruct')
+    res = _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    res2 = _infer_model(pt_engine)
+    assert res == res2, f'res: {res}, res2: {res2}'
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig, get_template, get_model_tokenizer
     from swift.utils import get_logger, seed_everything
@@ -360,3 +368,4 @@ if __name__ == '__main__':
     # test_qwen2_5_prm()
     # test_mistral_small()
     test_baichuan_m1()
+    # test_moonlight()
