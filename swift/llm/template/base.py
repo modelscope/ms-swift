@@ -916,13 +916,17 @@ class Template(ProcessorMixin):
         self._deepspeed_initialize = None
         return models
 
-    def data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+    def data_collator(self,
+                      batch: List[Dict[str, Any]],
+                      *,
+                      padding_to: Optional[int] = None,
+                      mini_batch_size: Optional[int] = None) -> Dict[str, Any]:
         if self.mode == 'rlhf':
             return self._rlhf_data_collator(batch, padding_to=padding_to)
         elif self.mode == 'kto':
             return self._kto_data_collator(batch, padding_to=padding_to)
         elif self.mode in {'pt', 'train', 'prm'}:
-            return self._data_collator(batch, padding_to=padding_to)
+            return self._data_collator(batch, padding_to=padding_to, mini_batch_size=mini_batch_size)
         elif self.mode == 'seq_cls':
             return self._seq_cls_data_collator(batch, padding_to=padding_to)
         elif self.mode == 'embedding':
@@ -1003,12 +1007,18 @@ class Template(ProcessorMixin):
             res['labels'] = torch.tensor(labels, dtype=torch.long)
         return res
 
-    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+    def _data_collator(self,
+                       batch: List[Dict[str, Any]],
+                       *,
+                       padding_to: Optional[int] = None,
+                       mini_batch_size: Optional[int] = None) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
         """
         Args:
             batch(`List[Dict[str, Any]]`): The input data in batch
             padding_to(`int`, optional): Whether padding the batch to a fixed length, if none, the batch
                 will be padded to the `longest`
+            mini_batch_size(`int`, optional): The size of each mini-batch. If provided, the batch will be split into
+                smaller batches of this size.
         """
         from swift.utils import use_torchacc
         assert self.tokenizer.pad_token_id is not None
@@ -1072,6 +1082,14 @@ class Template(ProcessorMixin):
             res['pixel_values_videos'] = torch.concat(pixel_values_videos)
         if use_torchacc() or self.sequence_parallel_size > 1:
             res = self._torchacc_xtuner_data_collator(res, padding_to, self.tokenizer, padding_side)
+        # Split the batch into mini-batches if mini_batch_size is provided
+        if mini_batch_size is not None:
+            mini_batches = []
+            for i in range(0, len(batch), mini_batch_size):
+                mini_batch = {key: value[i:i + mini_batch_size] for key, value in res.items()}
+                mini_batches.append(mini_batch)
+            return mini_batches
+
         return res
 
     def _torchacc_xtuner_data_collator(self, res, padding_to, tokenizer, padding_side):

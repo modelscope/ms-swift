@@ -444,27 +444,42 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         template = copy(self.template)
         with self._template_context(template):
             batched_inputs = [template.encode(infer_request) for infer_request in inputs]
-            outputs = to_device(template.data_collator(batched_inputs), self.model.device)
+            batches = to_device(
+                template.data_collator(batched_inputs, mini_batch_size=self.args.mini_batch_size), self.model.device)
 
         # we only need to compute the logits for the completion tokens
-        labels = outputs.pop('labels')
-        logits_to_keep = (labels.shape[-1] - (torch.ne(labels, -100).int().argmax(-1))).max().item()
-        outputs['logits_to_keep'] = logits_to_keep
-        outputs['completion_mask'] = labels[:, -logits_to_keep:] != -100
+        if not isinstance(batches):
+            batches = [batches]
+        all_outputs = []
+        for outputs in batches:
+            labels = outputs.pop('labels')
+            logits_to_keep = (labels.shape[-1] - (torch.ne(labels, -100).int().argmax(-1))).max().item()
+            outputs['logits_to_keep'] = logits_to_keep
+            outputs['completion_mask'] = labels[:, -logits_to_keep:] != -100
 
-        with torch.inference_mode():
-            if self.old_policy:
-                outputs['old_per_token_logps'] = self._get_per_token_logps(self.model, outputs)
-            else:
-                outputs['old_per_token_logps'] = None
+            with torch.inference_mode():
+                if self.old_policy:
+                    outputs['old_per_token_logps'] = self._get_per_token_logps(self.model, outputs)
+                else:
+                    outputs['old_per_token_logps'] = None
 
-            if self.beta == 0.0:
-                ref_per_token_logps = None
-            elif self.ref_model is not None:
-                ref_per_token_logps = self._get_per_token_logps(self.ref_model, outputs)
+                if self.beta == 0.0:
+                    ref_per_token_logps = None
+                elif self.ref_model is not None:
+                    ref_per_token_logps = self._get_per_token_logps(self.ref_model, outputs)
+                else:
+                    with self.accelerator.unwrap_model(self.model).disable_adapter():
+                        ref_per_token_logps = self._get_per_token_logps(self.model, outputs)
+
+            outputs['ref_per_token_logps'] = ref_per_token_logps
+            all_outputs.append(outputs)
+
+        final_outputs = {}
+        for key in all_outputs[0].keys():
+            if isinstance(all_outputs[0][key], torch.Tensor):
+                final_outputs[key] = torch.cat([out[key] for out in all_outputs], dim=0)
             else:
-                with self.accelerator.unwrap_model(self.model).disable_adapter():
-                    ref_per_token_logps = self._get_per_token_logps(self.model, outputs)
+                final_outputs[key] = max(all_outputs[i][key] for i in range(len(all_outputs)))  # logits_to_keep
 
         rewards_per_func = torch.zeros((len(inputs), len(self.reward_funcs)), device=device)
         completions = [example['messages'][-1]['content'] for example in inputs]
