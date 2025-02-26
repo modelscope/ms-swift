@@ -440,13 +440,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             messages = inputs[i]['messages']
             InferRequest.remove_response(messages)
             messages.append({'role': 'assistant', 'content': output.choices[0].message.content})
+        mini_batch_inputs = self._split_into_mini_batches(inputs, mini_batch_size=self.args.mini_batch_size)
+        batches = []
         from copy import copy
         template = copy(self.template)
         with self._template_context(template):
-            batched_inputs = [template.encode(infer_request) for infer_request in inputs]
-            batches = template.data_collator(batched_inputs)
-
-        batches = self._split_into_mini_batches(batches, mini_batch_size=self.args.mini_batch_size)
+            for inputs in mini_batch_inputs:
+                batched_inputs = [template.encode(infer_request) for infer_request in inputs]
+                batches.append(template.data_collator(batched_inputs))
 
         batches = [to_device(batch, self.model.device) for batch in batches]
 
