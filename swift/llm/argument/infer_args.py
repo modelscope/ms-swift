@@ -144,8 +144,8 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
             self.stream = False
             logger.info('Setting args.stream: False')
 
-    def _init_pt_ddp(self):
-        if self.infer_backend != 'pt' or not is_dist():
+    def _init_ddp(self):
+        if not is_dist():
             return
         assert not self.eval_human and not self.stream
         self._init_device()
@@ -165,7 +165,7 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
         self._init_result_path('infer_result')
         self._init_eval_human()
         self._init_stream()
-        self._init_pt_ddp()
+        self._init_ddp()
 
     def _init_eval_human(self):
         if len(self.dataset) == 0 and len(self.val_dataset) == 0:

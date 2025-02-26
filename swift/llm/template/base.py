@@ -33,7 +33,7 @@ class MaxLengthError(ValueError):
 
 
 class Template(ProcessorMixin):
-    special_tokens = ['<image>', '<video>', '<audio>', '<bbox>', '<ref-object>', '<cot-process>']
+    special_tokens = ['<image>', '<video>', '<audio>', '<bbox>', '<ref-object>', '<cot-process>', '<start-image>']
     special_keys = ['images', 'videos', 'audios', 'objects']
 
     image_placeholder = ['<image>']
@@ -173,6 +173,7 @@ class Template(ProcessorMixin):
     ) -> None:
         if self.model_meta.is_multimodal:
             self._replace_image_tags(inputs)
+            self._replace_start_image_tags(inputs)
         images = inputs.images
         load_images = self.load_images or self.mode in {'vllm', 'lmdeploy'}
         load_images_origin = load_images
@@ -192,7 +193,7 @@ class Template(ProcessorMixin):
                     images[i] = self._save_pil_image(image)
         inputs.images = images
 
-        if self.mode == 'vllm':
+        if self.mode == 'vllm' and inputs.audios:
             sampling_rate = get_env_args('sampling_rate', int, None)
             inputs.audios = load_batch(
                 inputs.audios, load_func=partial(load_audio, sampling_rate=sampling_rate, return_sr=True))
@@ -221,6 +222,17 @@ class Template(ProcessorMixin):
         if images:
             assert not inputs.images, f'images: {images}, inputs.images: {inputs.images}'
             inputs.images = images
+
+    @staticmethod
+    def _replace_start_image_tags(inputs: StdTemplateInputs):
+        # compat
+        generate_mode = False
+        message = inputs.messages[-1]
+        content = message['content']
+        if message['role'] == 'user' and content.endswith('<start-image>'):
+            generate_mode = True
+            message['content'] = message['content'][:-len('<start-image>')]  # remove the <start-image>
+        inputs.generate_mode = generate_mode
 
     def _rlhf_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         chosen_inputs, rejected_inputs = inputs, deepcopy(inputs)
@@ -1119,7 +1131,24 @@ class Template(ProcessorMixin):
             val = inputs['loss_scale']
             logger.info(f'[LOSS_SCALE] {val}')
 
-    async def prepare_lmdeploy_inputs(self, inputs: Dict[str, Any]) -> None:
+    async def prepare_lmdeploy_pytorch_inputs(self, inputs) -> None:
+        images = inputs.pop('images', None) or []
+        if len(images) == 0:
+            return
+        input_ids = inputs['input_ids']
+        idx_list = findall(input_ids, -100)
+        assert len(idx_list) == len(images), f'len(idx_list): {len(idx_list)}, len(images): {len(images)}'
+        idx_list.insert(0, -1)
+        new_input_ids = []
+        for i in range(len(idx_list) - 1):
+            new_input_ids += input_ids[idx_list[i] + 1:idx_list[i + 1]]
+            images[i]['offset'] = len(new_input_ids)
+            new_input_ids += [images[i]['image_token_id']] * images[i]['image_tokens']
+        new_input_ids += input_ids[idx_list[-1] + 1:]
+        inputs['input_ids'] = new_input_ids
+        inputs['multimodal'] = images
+
+    async def prepare_lmdeploy_turbomind_inputs(self, inputs: Dict[str, Any]) -> None:
         images = inputs.pop('images', None) or []
         if len(images) == 0:
             return
@@ -1138,7 +1167,7 @@ class Template(ProcessorMixin):
             _range.append(len(new_input_ids))
             ranges.append(_range)
         new_input_ids += input_ids[idx_list[-1] + 1:]
-        inputs['input_embeddings'] = images
+        inputs['input_embeddings'] = [image.to('cpu') for image in images]
         inputs['input_embedding_ranges'] = ranges
         inputs['input_ids'] = new_input_ids
 

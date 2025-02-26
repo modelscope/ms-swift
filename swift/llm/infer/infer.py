@@ -3,11 +3,13 @@ from contextlib import nullcontext
 from typing import Any, Dict, List, Union
 
 import numpy as np
+import torch.distributed as dist
 from datasets import Dataset as HfDataset
 
 from swift.llm import InferArguments, InferRequest, SwiftPipeline, load_dataset, prepare_model_template, sample_dataset
 from swift.plugin import InferStats, MeanMetric, compute_rouge_bleu
 from swift.utils import JsonlWriter, get_logger, is_master, read_from_jsonl
+from ..utils import patch_vllm
 from .infer_engine import AdapterRequest, PtEngine
 from .protocol import RequestConfig
 from .utils import InferCliState
@@ -55,6 +57,7 @@ class SwiftInfer(SwiftPipeline):
             'torch_dtype': args.torch_dtype,
         })
         infer_backend = kwargs.pop('infer_backend', None) or args.infer_backend
+        context = nullcontext()
         if infer_backend == 'pt':
             from .infer_engine import PtEngine
             infer_engine_cls = PtEngine
@@ -65,12 +68,20 @@ class SwiftInfer(SwiftPipeline):
             from .infer_engine import VllmEngine
             infer_engine_cls = VllmEngine
             kwargs.update(args.get_vllm_engine_kwargs())
+            if dist.is_initialized():
+                assert args.tensor_parallel_size == 1 and args.pipeline_parallel_size == 1, (
+                    'not support tensor_parallel_size > 1 or pipeline_parallel_size > 1.')
+                context = patch_vllm()
+                kwargs.update({'device': dist.get_rank()})
         else:
             from .infer_engine import LmdeployEngine
             infer_engine_cls = LmdeployEngine
             kwargs.update(args.get_lmdeploy_engine_kwargs())
-
-        return infer_engine_cls(**kwargs)
+            if dist.is_initialized():
+                assert args.tp == 1, 'not support tp > 1.'
+                kwargs.update({'device': [dist.get_rank()]})
+        with context:
+            return infer_engine_cls(**kwargs)
 
     def run(self) -> List[Dict[str, Any]]:
         args = self.args

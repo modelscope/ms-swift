@@ -418,6 +418,8 @@ class PtEngine(InferEngine):
                 try:
                     batched_inputs.append(future.result())
                 except Exception as e:
+                    if getattr(self, 'strict', True):
+                        raise
                     error_list.append((i, e))
                     continue
         if len(batched_inputs) == 0:

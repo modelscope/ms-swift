@@ -16,6 +16,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from swift.llm import AdapterRequest, DeployArguments
+from swift.llm.infer.protocol import MultiModalRequestMixin
 from swift.plugin import InferStats
 from swift.utils import JsonlWriter, get_logger
 from .infer import SwiftInfer
@@ -57,6 +58,7 @@ class SwiftDeploy(SwiftInfer):
         args = self.args
         if args.log_interval > 0:
             thread = Thread(target=lambda: asyncio.run(self._log_stats_hook()))
+            thread.daemon = True
             thread.start()
         try:
             yield
@@ -107,6 +109,14 @@ class SwiftDeploy(SwiftInfer):
 
     def _post_process(self, request_info, response, return_cmpl_response: bool = False):
         args = self.args
+
+        for i in range(len(response.choices)):
+            if not hasattr(response.choices[i], 'message') or isinstance(response.choices[i].message.content, str):
+                continue
+            for j, content in enumerate(response.choices[i].message.content):
+                if content['type'] == 'image':
+                    b64_image = MultiModalRequestMixin.to_base64(content['image'])
+                    response.choices[i].message.content[j]['image'] = f'data:image/jpg;base64,{b64_image}'
 
         is_finished = all(response.choices[i].finish_reason for i in range(len(response.choices)))
         if return_cmpl_response:
