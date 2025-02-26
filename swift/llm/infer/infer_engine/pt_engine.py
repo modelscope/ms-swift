@@ -3,7 +3,10 @@ import asyncio
 import concurrent.futures
 import inspect
 import os
+import pickle
+import time
 from copy import deepcopy
+from queue import Queue
 from threading import Thread
 from typing import Any, AsyncIterator, Dict, Iterator, List, Literal, Optional, Union
 
@@ -79,11 +82,34 @@ class PtEngine(InferEngine):
         for adapter in self.adapters:
             self._add_adapter(safe_snapshot_download(adapter, use_hf=use_hf, hub_token=hub_token))
         self._post_init()
+        self._queue = Queue()
+        self._task_pool = {}
+        self._task_thread = None
 
     def _post_init(self):
         super()._post_init()
         self.engine = self.model  # dummy
         self.generation_config = self.model.generation_config
+
+    def _start_infer_worker(self):
+        if self._task_thread is None:
+            self._task_thread = Thread(target=self._infer_worker)
+            self._task_thread.daemon = True
+
+    def _fetch_infer_requests(self):
+        while not self._queue.empty():
+            infer_requests, kwargs, queue = self._queue.get()
+            info = pickle.dumps(kwargs)
+            if info in self._task_pool:
+                self._task_pool[info] = []
+            self._task_pool[info].append((infer_requests, queue))
+
+    def _infer_worker(self):
+        while True:
+            infer_requests, kwargs, queue = self._fetch_infer_requests()
+            self._infer(**kwargs)
+            time.sleep(0.01)
+        self._queue
 
     def _add_adapter(self, adapter_path: str, adapter_name: Optional[str] = None) -> None:
         self.model = Swift.from_pretrained(self.model, adapter_path, adapter_name)
