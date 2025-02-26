@@ -11,6 +11,7 @@ class LLMTemplateType:
     qwen = 'qwen'
     qwen2_5 = 'qwen2_5'
     qwen2_5_math = 'qwen2_5_math'
+    qwen2_5_math_prm = 'qwen2_5_math_prm'
     qwq = 'qwq'
     marco_o1 = 'marco_o1'
     modelscope_agent = 'modelscope_agent'
@@ -22,6 +23,9 @@ class LLMTemplateType:
     megrez = 'megrez'
     yi_coder = 'yi_coder'
     sus = 'sus'
+
+    minimax = 'minimax'
+    minimax_vl = 'minimax_vl'
 
     numina = 'numina'
     ziya = 'ziya'
@@ -35,10 +39,12 @@ class LLMTemplateType:
 
     internlm = 'internlm'
     internlm2 = 'internlm2'
+    internlm3 = 'internlm3'
 
     deepseek = 'deepseek'
     deepseek_coder = 'deepseek_coder'
     deepseek_v2_5 = 'deepseek_v2_5'
+    deepseek_r1 = 'deepseek_r1'
 
     openbuddy = 'openbuddy'
     openbuddy2 = 'openbuddy2'
@@ -54,16 +60,19 @@ class LLMTemplateType:
     skywork_o1 = 'skywork_o1'
 
     mistral_nemo = 'mistral_nemo'
+    mistral_2501 = 'mistral_2501'
     zephyr = 'zephyr'
     wizardlm2 = 'wizardlm2'
     wizardlm2_moe = 'wizardlm2_moe'
     gemma = 'gemma'
     phi3 = 'phi3'
+    phi4 = 'phi4'
 
     yuan = 'yuan'
     xverse = 'xverse'
     bluelm = 'bluelm'
     orion = 'orion'
+    moonlight = 'moonlight'
 
     aya = 'aya'
     c4ai = 'c4ai'
@@ -78,10 +87,12 @@ class MLLMTemplateType:
     qwen_vl = 'qwen_vl'
     qwen_audio = 'qwen_audio'
     qwen2_vl = 'qwen2_vl'
+    qwen2_5_vl = 'qwen2_5_vl'
     qwen2_audio = 'qwen2_audio'
     qvq = 'qvq'
     ovis1_6 = 'ovis1_6'
     ovis1_6_llama3 = 'ovis1_6_llama3'
+    ovis2 = 'ovis2'
 
     llama3_1_omni = 'llama3_1_omni'
     llama3_2_vision = 'llama3_2_vision'
@@ -126,10 +137,12 @@ class MLLMTemplateType:
     minicpmv = 'minicpmv'
     minicpmv2_5 = 'minicpmv2_5'
     minicpmv2_6 = 'minicpmv2_6'
+    minicpmo2_6 = 'minicpmo2_6'
 
     deepseek_vl = 'deepseek_vl'
     deepseek_vl2 = 'deepseek_vl2'
     deepseek_janus = 'deepseek_janus'
+    deepseek_janus_pro = 'deepseek_janus_pro'
 
     mplug_owl2 = 'mplug_owl2'
     mplug_owl3 = 'mplug_owl3'
@@ -140,6 +153,9 @@ class MLLMTemplateType:
     emu3_gen = 'emu3_gen'
 
     got_ocr2 = 'got_ocr2'
+    got_ocr2_hf = 'got_ocr2_hf'
+    step_audio = 'step_audio'
+
     idefics3 = 'idefics3'
     pixtral = 'pixtral'
     paligemma = 'paligemma'
@@ -147,6 +163,7 @@ class MLLMTemplateType:
     florence = 'florence'
     molmo = 'molmo'
     megrez_omni = 'megrez_omni'
+    valley = 'valley'
 
 
 class TemplateType(LLMTemplateType, MLLMTemplateType, RMTemplateType):

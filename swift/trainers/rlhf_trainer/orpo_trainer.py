@@ -9,7 +9,6 @@ from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 
 del HFORPOTrainer.__init__
-del HFORPOTrainer.get_batch_samples
 
 
 class ORPOTrainer(RLHFTrainerMixin, SwiftMixin, HFORPOTrainer):

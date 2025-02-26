@@ -1,14 +1,15 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from contextlib import nullcontext
-from itertools import chain
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Union
 
 import numpy as np
 import torch.distributed as dist
 from datasets import Dataset as HfDataset
 
 from swift.llm import InferArguments, InferRequest, SwiftPipeline, load_dataset, prepare_model_template, sample_dataset
-from swift.utils import get_logger, is_master, open_jsonl_writer
+from swift.plugin import InferStats, MeanMetric, compute_rouge_bleu
+from swift.utils import JsonlWriter, get_logger, is_master, read_from_jsonl
+from ..utils import patch_vllm
 from .infer_engine import AdapterRequest, PtEngine
 from .protocol import RequestConfig
 from .utils import InferCliState
@@ -56,6 +57,7 @@ class SwiftInfer(SwiftPipeline):
             'torch_dtype': args.torch_dtype,
         })
         infer_backend = kwargs.pop('infer_backend', None) or args.infer_backend
+        context = nullcontext()
         if infer_backend == 'pt':
             from .infer_engine import PtEngine
             infer_engine_cls = PtEngine
@@ -66,22 +68,21 @@ class SwiftInfer(SwiftPipeline):
             from .infer_engine import VllmEngine
             infer_engine_cls = VllmEngine
             kwargs.update(args.get_vllm_engine_kwargs())
+            if dist.is_initialized():
+                assert args.tensor_parallel_size == 1 and args.pipeline_parallel_size == 1, (
+                    'not support tensor_parallel_size > 1 or pipeline_parallel_size > 1.')
+                context = patch_vllm()
+                kwargs.update({'device': dist.get_rank()})
         else:
             from .infer_engine import LmdeployEngine
             infer_engine_cls = LmdeployEngine
             kwargs.update(args.get_lmdeploy_engine_kwargs())
-
-        return infer_engine_cls(**kwargs)
-
-    def main(self):
-        args = self.args
-        context = open_jsonl_writer(args.result_path) if args.result_path else nullcontext()
-        with context as json_writer:
-            self.jsonl_writer = json_writer
-            return super().main()
+        with context:
+            return infer_engine_cls(**kwargs)
 
     def run(self) -> List[Dict[str, Any]]:
         args = self.args
+        self.jsonl_writer = JsonlWriter(args.result_path) if args.result_path else None
         if args.eval_human:
             result = self.infer_cli()
         else:
@@ -167,6 +168,24 @@ class SwiftInfer(SwiftPipeline):
         val_dataset = sample_dataset(val_dataset, args.val_dataset_sample, self.random_state)
         return val_dataset
 
+    def _calc_metric(self):
+        args = self.args
+        if not is_master():
+            return
+        data_list = read_from_jsonl(self.jsonl_writer.fpath)
+        preds, labels = [], []
+        for data in data_list:
+            preds.append(data['response'])
+            labels.append(data['labels'])
+        if args.metric == 'acc':
+            mean_metric = MeanMetric()
+            for pred, label in zip(preds, labels):
+                mean_metric.update(pred == label)
+            res = {'acc': mean_metric.compute()['value']}
+        elif args.metric == 'rouge':
+            res = compute_rouge_bleu(preds, labels)
+        logger.info(res)
+
     def infer_dataset(self) -> List[Dict[str, Any]]:
         args = self.args
         request_config = args.get_request_config()
@@ -175,6 +194,7 @@ class SwiftInfer(SwiftPipeline):
         val_dataset = self._prepare_val_dataset()
         logger.info(f'val_dataset: {val_dataset}')
         result_list = []
+        self.infer_kwargs['metrics'] = [InferStats()]
         if request_config and request_config.stream:
             for data in val_dataset:
                 labels = InferRequest.remove_response(data['messages'])
@@ -189,8 +209,7 @@ class SwiftInfer(SwiftPipeline):
                 if self.jsonl_writer:
                     self.jsonl_writer.append(data)
         else:
-            is_dist = args.global_world_size > 1 and dist.is_initialized()
-            if is_dist:
+            if args.rank >= 0 and args.global_world_size > 1:
                 val_dataset = val_dataset.shard(args.global_world_size, args.rank, contiguous=True)
             val_dataset = list(val_dataset)
             labels_list = []
@@ -209,13 +228,12 @@ class SwiftInfer(SwiftPipeline):
                 response = resp.choices[0].message.content
                 data = {'response': response, 'labels': labels, 'logprobs': resp.choices[0].logprobs, **data}
                 result_list.append(data)
-            if is_dist:
-                total_result_list = [None for _ in range(args.global_world_size)] if args.rank == 0 else None
-                dist.gather_object(result_list, total_result_list)
-                result_list = total_result_list and list(chain.from_iterable(total_result_list))
-
-            if is_master() and self.jsonl_writer and result_list:
-                self.jsonl_writer.append(result_list)
+            if self.jsonl_writer:
+                self.jsonl_writer.append(result_list, gather_obj=True)
+        metrics = self.infer_kwargs.pop('metrics')
+        print(f'[rank{args.rank}] {metrics[0].compute()}')
+        if args.metric is not None:
+            self._calc_metric()
         return result_list
 
 

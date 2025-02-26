@@ -3,14 +3,16 @@ from functools import partial
 from types import MethodType
 from typing import Any, Dict
 
-from transformers.dynamic_module_utils import get_class_from_dynamic_module
+from transformers import AutoConfig
+from transformers.utils import strtobool
 
 from swift.llm import TemplateType
+from swift.utils import get_env_args
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
-from ..patcher import patch_fixed_device, patch_output_clone
+from ..patcher import patch_device_map, patch_fixed_device, patch_output_clone
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
-from ..utils import ModelInfo, ignore_check_imports, use_submodel_func
+from ..utils import ModelInfo, use_submodel_func
 from .deepseek import get_model_tokenizer_deepseek_moe
 
 register_model(
@@ -93,13 +95,15 @@ def get_model_tokenizer_minicpmv_2_x(model_dir: str,
                                      **kwargs):
     from transformers import AutoProcessor
     processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
-    version = kwargs.get('version', 'v2.5')
-    if load_model and version == 'v2.6':
-        with ignore_check_imports():
-            model_cls = get_class_from_dynamic_module('modeling_navit_siglip.SiglipVisionTransformer', model_dir)
-            model_cls._no_split_modules = []
-    model, tokenizer = get_model_tokenizer_minicpmv(
-        model_dir, model_info, model_kwargs, load_model, tokenizer=processor.tokenizer, **kwargs)
+    version = kwargs.get('version')
+    if version == 'o2.6':
+        model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+        model_config.init_tts = strtobool(get_env_args('init_tts', str, 'false'))
+        model_config.init_audio = strtobool(get_env_args('init_audio', str, 'false'))
+        kwargs['model_config'] = model_config
+    with patch_device_map():
+        model, tokenizer = get_model_tokenizer_minicpmv(
+            model_dir, model_info, model_kwargs, load_model, tokenizer=processor.tokenizer, **kwargs)
     if load_model:
         embedding = model.get_input_embeddings()
         patch_output_clone(embedding)
@@ -132,11 +136,27 @@ register_model(
             ], ),
         ],
         TemplateType.minicpmv2_6,
-        partial(get_model_tokenizer_minicpmv_2_x, version='v2.6'),
+        get_model_tokenizer_minicpmv_2_x,
         architectures=['MiniCPMV'],
         model_arch=ModelArch.minicpmv,
         requires=['timm', 'transformers>=4.36', 'decord'],
         tags=['vision', 'video'],
+    ))
+
+register_model(
+    ModelMeta(
+        MLLMModelType.minicpmo2_6,
+        [
+            ModelGroup([
+                Model('OpenBMB/MiniCPM-o-2_6', 'openbmb/MiniCPM-o-2_6'),
+            ]),
+        ],
+        TemplateType.minicpmo2_6,
+        partial(get_model_tokenizer_minicpmv_2_x, version='o2.6'),
+        architectures=['MiniCPMO'],
+        model_arch=ModelArch.minicpmv,
+        requires=['timm', 'transformers>=4.36', 'decord', 'soundfile'],
+        tags=['vision', 'video', 'omni', 'audio'],
     ))
 
 register_model(

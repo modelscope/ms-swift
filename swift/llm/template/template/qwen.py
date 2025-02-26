@@ -4,6 +4,7 @@ from functools import partial
 from typing import Any, Dict, List, Literal, Optional
 
 import torch
+import torch.nn.functional as F
 
 from swift.utils import get_env_args, is_deepspeed_enabled
 from ..base import Template
@@ -12,7 +13,7 @@ from ..register import register_template
 from ..template_inputs import StdTemplateInputs
 from ..template_meta import TemplateMeta
 from ..utils import Context, Word, findall
-from ..vision_utils import load_audio_qwen, load_batch
+from ..vision_utils import load_audio, load_batch
 from .llama import Llama3TemplateMeta
 from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
 
@@ -47,6 +48,40 @@ register_template(QwqTemplateMeta(LLMTemplateType.qwq))
 register_template(Qwen2_5MathTemplateMeta(LLMTemplateType.qwen2_5_math))
 
 
+class QwenPRMTemplate(Template):
+    cot_process_placeholder = '<extra_0>'
+
+    def _preprocess_inputs(
+        self,
+        inputs: StdTemplateInputs,
+    ) -> None:
+        super()._preprocess_inputs(inputs)
+        total_content = '\n'.join([message['content'] or '' for message in inputs.messages])
+        if self.cot_process_placeholder not in total_content:
+            inputs.messages[-1]['content'] = inputs.messages[-1]['content'] + self.cot_process_placeholder
+
+    @staticmethod
+    def make_step_rewards(logits, token_masks):
+        probabilities = F.softmax(logits, dim=-1)
+        probabilities = probabilities * token_masks.unsqueeze(-1)  # bs, seq_len, num_labels
+
+        all_scores_res = []
+        for i in range(probabilities.size(0)):
+            sample = probabilities[i]  # seq_len, num_labels
+            positive_probs = sample[sample != 0].view(-1, 2)[:, 1]  # valid_tokens, num_labels
+            non_zero_elements_list = positive_probs.cpu().tolist()
+            all_scores_res.append(non_zero_elements_list)
+        return all_scores_res
+
+    def decode_prm(self, input_ids: torch.Tensor, logits: torch.Tensor) -> Any:
+        step_sep_id = self.tokenizer.encode(self.cot_process_placeholder)[0]
+        token_masks = (input_ids == step_sep_id)
+        return self.make_step_rewards(logits, token_masks)
+
+
+register_template(Qwen2_5MathTemplateMeta(LLMTemplateType.qwen2_5_math_prm, template_cls=QwenPRMTemplate))
+
+
 class QwenVLTemplate(Template):
     load_images = False
 
@@ -69,20 +104,11 @@ class QwenVLTemplate(Template):
                 assert isinstance(image, str)
                 return [f'Picture {index + 1}: <img>{image}</img>\n']
 
-    def replace_object(self, object_: Dict[str, Any], index: int, inputs: StdTemplateInputs) -> List[Context]:
-        return [f'<ref>{object_["caption"]}</ref>']
+    def replace_ref(self, ref: str, index: int, inputs: StdTemplateInputs) -> List[Context]:
+        return [f'<ref>{ref}</ref>']
 
-    def replace_box(self, object_: Dict[str, Any], index: int, inputs: StdTemplateInputs) -> List[Context]:
-        if isinstance(object_['bbox'][0], list):
-            all_objects = ''
-            for sub_object in object_['bbox']:
-                all_objects += f'<box>({sub_object[0]},{sub_object[1]}),({sub_object[2]},{sub_object[3]})</box>'
-            return [all_objects]
-        else:
-            return [
-                f'<box>({object_["bbox"][0]},{object_["bbox"][1]}),'
-                f'({object_["bbox"][2]},{object_["bbox"][3]})</box>'
-            ]
+    def replace_bbox(self, bbox: List[int], index: int, inputs: StdTemplateInputs) -> List[Context]:
+        return [f'<box>{self._get_bbox_str(bbox)}</box>']
 
 
 register_template(QwenTemplateMeta(MLLMTemplateType.qwen_vl, template_cls=QwenVLTemplate))
@@ -134,11 +160,10 @@ class Qwen2AudioTemplate(Template):
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
-        processor = self.processor
-        sampling_rate = processor.feature_extractor.sampling_rate
-        audios = load_batch(inputs.audios, load_func=partial(load_audio_qwen, sampling_rate=sampling_rate))
-        if audios:
-            audio_inputs = processor.feature_extractor(
+        if inputs.audios:
+            sampling_rate = get_env_args('sampling_rate', int, self.processor.feature_extractor.sampling_rate)
+            audios = load_batch(inputs.audios, load_func=partial(load_audio, sampling_rate=sampling_rate))
+            audio_inputs = self.processor.feature_extractor(
                 audios, sampling_rate=sampling_rate, return_attention_mask=True, return_tensors='pt')
             audio_inputs['feature_attention_mask'] = audio_inputs.pop('attention_mask')
             encoded.update(audio_inputs)
@@ -162,6 +187,7 @@ register_template(QwenTemplateMeta(MLLMTemplateType.qwen2_audio, template_cls=Qw
 class Qwen2VLTemplate(Template):
     image_token_id = 151655
     video_token_id = 151656
+    version = 'v2'
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -169,32 +195,19 @@ class Qwen2VLTemplate(Template):
         assert media_type in {'image', 'video'}
         if media_type == 'image':
             inputs.images[index] = fetch_image({'image': inputs.images[index]})
-            return ['<|vision_start|><|image_pad|><|vision_end|>']
+            if self.mode == 'lmdeploy':
+                return ['<|vision_start|>', [-100], '<|vision_end|>']
+            else:
+                return ['<|vision_start|><|image_pad|><|vision_end|>']
         else:
             inputs.videos[index] = fetch_video({'video': inputs.videos[index]}).to(torch.uint8)
             return ['<|vision_start|><|video_pad|><|vision_end|>']
 
-    def replace_object(self, object_: Dict[str, Any], index: int, inputs: StdTemplateInputs) -> List[Context]:
-        if object_:
-            return ['<|object_ref_start|>', object_['caption'], '<|object_ref_end|>']
-        else:
-            return ['<ref-object>']
+    def replace_ref(self, ref: str, index: int, inputs: StdTemplateInputs) -> List[Context]:
+        return [f'<|object_ref_start|>{ref}<|object_ref_end|>']
 
-    def replace_box(self, object_: Dict[str, Any], index: int, inputs: StdTemplateInputs) -> List[Context]:
-        if object_:
-            if isinstance(object_['bbox'][0], list):
-                all_objects = ''
-                for sub_object in object_['bbox']:
-                    all_objects += (f'<|box_start|>({sub_object[0]},{sub_object[1]}),'
-                                    f'({sub_object[2]},{sub_object[3]})<|box_end|>')
-                return [all_objects]
-            else:
-                return [
-                    f'<|box_start|>({object_["bbox"][0]},{object_["bbox"][1]}),'
-                    f'({object_["bbox"][2]},{object_["bbox"][3]})<|box_end|>'
-                ]
-        else:
-            return ['<bbox>']
+    def replace_bbox(self, bbox: List[int], index: int, inputs: StdTemplateInputs) -> List[Context]:
+        return [f'<|box_start|>{self._get_bbox_str(bbox)}<|box_end|>']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
@@ -215,6 +228,11 @@ class Qwen2VLTemplate(Template):
                         images=None, videos=videos, return_tensors='pt', do_resize=False)
                     media_grid_thw = media_inputs['video_grid_thw']
                     media_token = self.video_token_id
+                    if self.version == 'v2_5':
+                        from qwen_vl_utils import vision_process
+                        media_inputs['second_per_grid_ts'] = [
+                            processor.image_processor.temporal_patch_size / vision_process.FPS
+                        ] * len(media_grid_thw)
                 idx_list = findall(input_ids, media_token)
                 added_tokens_len = 0
                 for i, idx in enumerate(idx_list):
@@ -244,8 +262,11 @@ class Qwen2VLTemplate(Template):
         pixel_values_videos = inputs.get('pixel_values_videos')
         image_grid_thw = inputs.get('image_grid_thw')
         video_grid_thw = inputs.get('video_grid_thw')
+        second_per_grid_ts = inputs.get('second_per_grid_ts')
 
         inputs_embeds = _model.embed_tokens(input_ids)
+
+        dtype = model.visual.get_dtype() if self.version == 'v2' else model.visual.dtype
         if pixel_values is None and pixel_values_videos is None:  # plain-text
             if is_deepspeed_enabled():
                 from PIL import Image
@@ -254,30 +275,37 @@ class Qwen2VLTemplate(Template):
                 device = input_ids.device
                 pixel_values = media_inputs['pixel_values'].to(device)
 
-                pixel_values = pixel_values.type(model.visual.get_dtype())
+                pixel_values = pixel_values.type(dtype)
                 image_embeds = model.visual(pixel_values, grid_thw=media_inputs['image_grid_thw'])
                 inputs_embeds += image_embeds.mean() * 0.
         else:
             if pixel_values is not None:
-                pixel_values = pixel_values.type(model.visual.get_dtype())
+                pixel_values = pixel_values.type(dtype)
                 image_embeds = model.visual(pixel_values, grid_thw=image_grid_thw)
                 image_mask = (input_ids == model.config.image_token_id).unsqueeze(-1).expand_as(inputs_embeds)
                 image_embeds = image_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
                 inputs_embeds = inputs_embeds.masked_scatter(image_mask, image_embeds)
 
             if pixel_values_videos is not None:
-                pixel_values_videos = pixel_values_videos.type(model.visual.get_dtype())
+                pixel_values_videos = pixel_values_videos.type(dtype)
                 video_embeds = model.visual(pixel_values_videos, grid_thw=video_grid_thw)
                 video_mask = (input_ids == model.config.video_token_id).unsqueeze(-1).expand_as(inputs_embeds)
                 video_embeds = video_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
                 inputs_embeds = inputs_embeds.masked_scatter(video_mask, video_embeds)
 
         # fix https://github.com/huggingface/transformers/pull/33487
-        position_ids, _ = model.get_rope_index(input_ids, image_grid_thw, video_grid_thw, inputs['attention_mask'])
+        kwargs = {}
+        if self.version == 'v2_5':
+            kwargs = {'second_per_grid_ts': second_per_grid_ts}
+        position_ids, _ = model.get_rope_index(
+            input_ids, image_grid_thw, video_grid_thw, attention_mask=inputs['attention_mask'], **kwargs)
         return {'inputs_embeds': inputs_embeds, 'position_ids': position_ids.contiguous()}
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super()._data_collator(batch, padding_to=padding_to)
+        second_per_grid_ts = self.gather_list(batch, 'second_per_grid_ts')
+        if second_per_grid_ts:
+            res['second_per_grid_ts'] = second_per_grid_ts
         for media_type in ['image', 'video']:
             grid_thw = [b[f'{media_type}_grid_thw'] for b in batch if b.get(f'{media_type}_grid_thw') is not None]
             if grid_thw:
@@ -295,6 +323,18 @@ register_template(
         default_system=('You are a helpful and harmless assistant. You are Qwen developed by Alibaba. '
                         'Answer in the language of the question. You should think step-by-step.'),
         template_cls=Qwen2VLTemplate,
+        placeholder_tokens=['<|image_pad|>', '<|video_pad|>']))
+
+
+class Qwen2_5VLTemplate(Qwen2VLTemplate):
+    version = 'v2_5'
+    norm_bbox = 'none'
+
+
+register_template(
+    QwenTemplateMeta(
+        MLLMTemplateType.qwen2_5_vl,
+        template_cls=Qwen2_5VLTemplate,
         placeholder_tokens=['<|image_pad|>', '<|video_pad|>']))
 
 
@@ -335,6 +375,7 @@ class Ovis1_6Template(Template):
 
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
         padding_side = self.padding_side if self.is_training else 'left'
+        self.model.config.multimodal_max_length = self.max_length
         _, inputs_embeds, labels, attention_mask = self.model.merge_multimodal(
             text_input_ids=inputs['input_ids'],
             text_attention_masks=torch.ones_like(inputs['input_ids']),  # not use, only compat
@@ -367,6 +408,13 @@ register_template(
         MLLMTemplateType.ovis1_6_llama3,
         default_system='You are a helpful and honest multimodal assistant.',
         template_cls=Ovis1_6Template,
+    ))
+
+register_template(
+    QwenTemplateMeta(
+        MLLMTemplateType.ovis2,
+        template_cls=Ovis1_6Template,
+        placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
     ))
 
 

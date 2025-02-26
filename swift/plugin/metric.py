@@ -99,16 +99,13 @@ class MeanMetric(Metric):
         }
 
 
-def compute_nlg_metrics(prediction) -> Dict[str, float]:
+def compute_rouge_bleu(preds: List[str], labels: List[str]):
     import jieba
     from nltk.translate.bleu_score import SmoothingFunction, sentence_bleu
     from rouge.rouge import Rouge
-    preds, labels = prediction[0], prediction[1]
     score_dict = {key: MeanMetric() for key in ['rouge-1', 'rouge-2', 'rouge-l', 'bleu-4']}
 
     for pred, label in zip(preds, labels):
-        pred = Serializer.from_tensor(pred)
-        label = Serializer.from_tensor(label)
         hypothesis = list(jieba.cut(pred))
         reference = list(jieba.cut(label))
         if not hypothesis or not reference:
@@ -121,6 +118,15 @@ def compute_nlg_metrics(prediction) -> Dict[str, float]:
         score_dict['bleu-4'].update(bleu_score)
 
     return {k: round(v.compute()['value'] * 100, 6) for k, v in score_dict.items()}
+
+
+def compute_nlg_metrics(prediction) -> Dict[str, float]:
+    preds, labels = prediction[0], prediction[1]
+    new_preds, new_labels = [], []
+    for i in range(preds.shape[0]):
+        new_preds.append(Serializer.from_tensor(preds[i]))
+        new_labels.append(Serializer.from_tensor(labels[i]))
+    return compute_rouge_bleu(new_preds, new_labels)
 
 
 def compute_acc(preds,

@@ -1,6 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from dataclasses import dataclass
-from typing import Optional
 
 from swift.utils import get_logger
 

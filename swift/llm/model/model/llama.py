@@ -6,6 +6,7 @@ from typing import Any, Dict
 from transformers import AutoConfig
 
 from swift.llm import TemplateType
+from swift.utils import get_device
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
 from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,
@@ -215,7 +216,7 @@ def get_model_tokenizer_omnli(model_dir: str,
     local_repo_path = kwargs.get('local_repo_path')
     if not local_repo_path:
         local_repo_path = git_clone_github('https://github.com/ictnlp/LLaMA-Omni')
-    sys.path.append(os.path.join(local_repo_path))
+    sys.path.append(local_repo_path)
     from omni_speech.model import OmniSpeech2SLlamaForCausalLM, OmniSpeechLlamaForCausalLM
     import whisper
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
@@ -235,7 +236,7 @@ def get_model_tokenizer_omnli(model_dir: str,
     model_kwargs['device_map'] = None
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
     if model:
-        model.to('cuda:0' if device_map == 'auto' else device_map)
+        model.to(get_device() if device_map == 'auto' else device_map)
     return model, tokenizer
 
 

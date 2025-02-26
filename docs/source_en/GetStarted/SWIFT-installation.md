@@ -17,6 +17,8 @@ pip install 'ms-swift[all]' -U
 ## Source Code Installation
 
 ```shell
+# pip install git+https://github.com/modelscope/ms-swift.git
+
 git clone https://github.com/modelscope/ms-swift.git
 cd ms-swift
 pip install -e .
@@ -37,7 +39,35 @@ pip install ms-swift==2.*
 
 You can view the image [here](https://modelscope.cn/docs/intro/environment-setup#%E6%9C%80%E6%96%B0%E9%95%9C%E5%83%8F).
 
-You can also use [install_all.sh](https://github.com/modelscope/ms-swift/blob/main/requirements/install_all.sh) for installation.
+## Supported Hardware
+
+| Hardware Environment | Remarks                                                |
+| -------------------- | ------------------------------------------------------ |
+| A10/A100/H100        |                                                        |
+| RTX 20/30/40 Series  |                                                        |
+| T4/V100              | Some models may encounter NAN                          |
+| Ascend NPU           | Some models may encounter NAN or unsupported operators |
+| MPS                  |                                                        |
+| CPU                  |                                                        |
+
+
+## Running Environment
+
+|              | Range                | Recommended | Notes                                     |
+| ------------ | -------------------- | ----------- | ----------------------------------------- |
+| python       | >=3.9                | 3.10        |                                           |
+| cuda         |                      | cuda12      | No need to install if using CPU, NPU, MPS |
+| torch        | >=2.0                |             |                                           |
+| transformers | >=4.33               | 4.49      |                                           |
+| modelscope   | >=1.19               |             |                                           |
+| peft         | >=0.11,<0.15     |             |                                           |
+| trl          | >=0.13,<0.17         | 0.15      | RLHF                                      |
+| deepspeed    | >=0.14 | 0.14.5 | Training                                  |
+| vllm         | >=0.5.1              | 0.7.3       | Inference/Deployment/Evaluation           |
+| lmdeploy     | lmdeploy>=0.5 | 0.7.0.post3       | Inference/Deployment/Evaluation           |
+| evalscope | | >=0.11 | Evaluation |
+
+For more optional dependencies, you can refer to [here](https://github.com/modelscope/ms-swift/blob/main/requirements/install_all.sh).
 
 ## Notebook Environment
 

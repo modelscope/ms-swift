@@ -6,12 +6,12 @@ import torch
 from swift.llm.utils import *
 from swift.utils import lower_bound, seed_everything
 
-SKPT_TEST = True
+SKIP_TEST = True
 
 
 class TestVllmUtils(unittest.TestCase):
 
-    @unittest.skipIf(SKPT_TEST, 'To avoid citest error: OOM')
+    @unittest.skipIf(SKIP_TEST, 'To avoid citest error: OOM')
     def test_inference_vllm(self):
         model_type = ModelType.qwen_7b_chat
         llm_engine = get_vllm_engine(model_type, torch.float16)

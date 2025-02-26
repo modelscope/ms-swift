@@ -1,6 +1,6 @@
 # 4*50GiB
 # You can refer to `https://github.com/QwenLM/Qwen2-VL` for the meaning of the `MAX_PIXELS` parameter.
-# --rlhf_type cpo/orpo/simpo are also supported
+# --rlhf_type cpo/orpo/simpo/rm are also supported
 nproc_per_node=2
 
 CUDA_VISIBLE_DEVICES=0,1 \

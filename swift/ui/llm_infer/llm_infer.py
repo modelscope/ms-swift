@@ -13,12 +13,13 @@ import gradio as gr
 import json
 import torch
 from json import JSONDecodeError
+from transformers.utils import is_torch_cuda_available, is_torch_npu_available
 
 from swift.llm import DeployArguments, InferArguments, InferClient, InferRequest, RequestConfig
 from swift.ui.base import BaseUI
 from swift.ui.llm_infer.model import Model
 from swift.ui.llm_infer.runtime import Runtime
-from swift.utils import get_logger
+from swift.utils import get_device_count, get_logger
 
 logger = get_logger()
 
@@ -123,10 +124,9 @@ class LLMInfer(BaseUI):
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
         with gr.TabItem(elem_id='llm_infer', label=''):
-            gpu_count = 0
             default_device = 'cpu'
-            if torch.cuda.is_available():
-                gpu_count = torch.cuda.device_count()
+            device_count = get_device_count()
+            if device_count > 0:
                 default_device = '0'
             with gr.Blocks():
                 infer_request = gr.State(None)
@@ -136,7 +136,7 @@ class LLMInfer(BaseUI):
                     gr.Dropdown(
                         elem_id='gpu_id',
                         multiselect=True,
-                        choices=[str(i) for i in range(gpu_count)] + ['cpu'],
+                        choices=[str(i) for i in range(device_count)] + ['cpu'],
                         value=default_device,
                         scale=8)
                     infer_model_type = gr.Textbox(elem_id='infer_model_type', scale=4)
@@ -179,13 +179,11 @@ class LLMInfer(BaseUI):
 
                 base_tab.element('running_tasks').change(
                     partial(Runtime.task_changed, base_tab=base_tab), [base_tab.element('running_tasks')],
-                    list(cls.valid_elements().values()) + [cls.element('log')],
-                    cancels=Runtime.log_event)
+                    list(cls.valid_elements().values()) + [cls.element('log')])
                 Runtime.element('kill_task').click(
                     Runtime.kill_task,
                     [Runtime.element('running_tasks')],
                     [Runtime.element('running_tasks')] + [Runtime.element('log')],
-                    cancels=[Runtime.log_event],
                 )
 
     @classmethod
@@ -252,7 +250,12 @@ class LLMInfer(BaseUI):
         gpus = ','.join(devices)
         cuda_param = ''
         if gpus != 'cpu':
-            cuda_param = f'CUDA_VISIBLE_DEVICES={gpus}'
+            if is_torch_npu_available():
+                cuda_param = f'ASCEND_RT_VISIBLE_DEVICES={gpus}'
+            elif is_torch_cuda_available():
+                cuda_param = f'CUDA_VISIBLE_DEVICES={gpus}'
+            else:
+                cuda_param = ''
         now = datetime.now()
         time_str = f'{now.year}{now.month}{now.day}{now.hour}{now.minute}{now.second}'
         file_path = f'output/{deploy_args.model_type}-{time_str}'

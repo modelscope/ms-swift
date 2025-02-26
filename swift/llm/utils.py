@@ -1,12 +1,16 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import contextlib
+import functools
 import inspect
 import os
 import shutil
 import tempfile
+from contextlib import contextmanager
 from types import MethodType
 from typing import Any, Dict, List, Mapping, Optional, Tuple, Union
 
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 from modelscope.hub.utils.utils import get_cache_dir
 from transformers import FeatureExtractionMixin, GenerationConfig, PreTrainedModel, PreTrainedTokenizerBase
@@ -19,6 +23,9 @@ try:
     Processor = Union[PreTrainedTokenizerBase, BaseImageProcessor, FeatureExtractionMixin, HfProcessorMixin]
 except ImportError:
     Processor = Union[PreTrainedTokenizerBase, FeatureExtractionMixin, HfProcessorMixin]
+
+if 'TOKENIZERS_PARALLELISM' not in os.environ:
+    os.environ['TOKENIZERS_PARALLELISM'] = 'false'
 
 logger = get_logger()
 
@@ -45,7 +52,7 @@ class ProcessorMixin:
             raise AttributeError('Please use `self.processor` for assignment.')
 
 
-def to_device(data: Any, device: torch.device) -> Any:
+def to_device(data: Any, device: Union[str, torch.device, int]) -> Any:
     """Move inputs to a device"""
     if isinstance(data, Mapping):
         return type(data)({k: to_device(v, device) for k, v in data.items()})
@@ -75,7 +82,7 @@ def find_module_list(model) -> Optional[nn.ModuleList]:
     for m in model.modules():
         if hasattr(m, 'gradient_checkpointing'):
             return
-        if isinstance(m, nn.ModuleList) and len(m) >= 10:
+        if isinstance(m, (nn.ModuleList, nn.Sequential)) and len(m) >= 10:
             module_lists.append(m)
     if module_lists:
         return max(module_lists, key=lambda x: len(x))
@@ -129,7 +136,7 @@ def dynamic_gradient_checkpointing(model) -> None:
     from .model import ModelMeta, get_model_arch
     model_meta: ModelMeta = model.model_meta
     model_arch = get_model_arch(model_meta.model_arch)
-    if model_meta.is_multimodal:
+    if model_meta.is_multimodal and model_arch:
         tower_names = model_arch.language_model + model_arch.vision_tower
     else:
         tower_names = [None]
@@ -240,8 +247,52 @@ def get_temporary_cache_files_directory(prefix=None):
     else:
         tmp_dir = os.path.join(get_cache_dir(), 'tmp')
         os.makedirs(tmp_dir, exist_ok=True)
-        TEMP_DIR = tempfile.TemporaryDirectory(prefix=prefix, dir=tmp_dir)
+        kwargs = {}
+        parameters = inspect.signature(tempfile.TemporaryDirectory.__init__).parameters
+        if 'ignore_cleanup_errors' in parameters:
+            kwargs['ignore_cleanup_errors'] = True
+        TEMP_DIR = tempfile.TemporaryDirectory(prefix=prefix, dir=tmp_dir, **kwargs)
         logger.info(f'create tmp_dir: {TEMP_DIR.name}')
         TEMP_DIR_POOL[prefix] = TEMP_DIR
 
     return TEMP_DIR.name
+
+
+@contextmanager
+def patch_vllm():
+    from vllm.distributed.parallel_state import GroupCoordinator
+    from unittest.mock import patch
+    world_size_patch = patch('torch.distributed.get_world_size', return_value=1)
+    profiling_patch = patch(
+        'vllm.worker.worker.Worker._assert_memory_footprint_increased_during_profiling', return_value=None)
+    __origin_init__ = GroupCoordinator.__init__
+
+    def __init__(self, group_ranks, *args, **kwargs):
+        rank = dist.get_rank()
+        if [rank] not in group_ranks:
+            group_ranks.append([rank])
+        return __origin_init__(self, group_ranks, *args, **kwargs)
+
+    GroupCoordinator.__init__ = __init__
+
+    try:
+        with world_size_patch, profiling_patch:
+            yield
+    finally:
+        GroupCoordinator.__init__ = __origin_init__
+
+
+def patch_npu_vllm(vllm_device: str):
+    device_type = vllm_device.split(':')[0]
+
+    @contextlib.contextmanager
+    def new_group_context():
+        original_new_group = torch.distributed.new_group
+        try:
+            torch.distributed.new_group = functools.partial(original_new_group, use_local_synchronization=True)
+            torch.npu.mem_get_info = functools.partial(torch.npu.mem_get_info, device=vllm_device)
+            yield
+        finally:
+            torch.distributed.new_group = original_new_group
+
+    return new_group_context() if device_type == 'npu' else contextlib.nullcontext()

@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from queue import Queue
-from typing import List
+from typing import List, Optional
 
 import torch
 from transformers import GenerationConfig, LogitsProcessor
@@ -60,6 +60,7 @@ class InferStreamer(InferTools):
         if response.endswith('\n') or is_finished:
             printable_text = response[self.print_idx:]
             self.cache_idx += len(self.token_cache)
+            self.first_num_space = -1
             self.print_idx = 0
         # If the last token is a CJK character, we print the characters.
         elif len(response) > 0 and self._is_chinese_char(ord(response[-1])):
@@ -125,8 +126,10 @@ def _set_generation_config_default_value(model_generation_config: GenerationConf
     return generation_config
 
 
-def prepare_generation_config(model_generation_config: GenerationConfig, request_config: RequestConfig,
-                              tokenizer) -> GenerationConfig:
+def prepare_generation_config(model_generation_config: Optional[GenerationConfig], request_config: RequestConfig,
+                              tokenizer) -> Optional[GenerationConfig]:
+    if model_generation_config is None or request_config is None:
+        return model_generation_config
     kwargs = {'max_new_tokens': request_config.max_tokens}
     # not use: 'n', 'best_of', 'frequency_penalty', 'presence_penalty'
     for key in ['length_penalty']:
@@ -138,7 +141,7 @@ def prepare_generation_config(model_generation_config: GenerationConfig, request
         else:
             kwargs[key] = new_value
 
-    if not model_generation_config.do_sample:
+    if not model_generation_config.do_sample and request_config.temperature in {0, None}:
         kwargs['temperature'] = 0
     if kwargs['temperature'] == 0:
         kwargs['do_sample'] = False

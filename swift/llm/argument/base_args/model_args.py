@@ -34,7 +34,7 @@ class ModelArguments:
     model_type: Optional[str] = field(
         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
     model_revision: Optional[str] = None
-    task_type: Literal['causal_lm', 'seq_cls'] = None
+    task_type: Literal['causal_lm', 'seq_cls', 'embedding'] = None
 
     torch_dtype: Literal['bfloat16', 'float16', 'float32', None] = None
     # flash_attn: It will automatically convert names based on the model.

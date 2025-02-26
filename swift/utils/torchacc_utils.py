@@ -53,16 +53,16 @@ def _get_closet_bucket(bucket_sizes, data_length):
     """Select the one from bucket_sizes that is closest in distance to
     data_length. This is required for TorchAcc.
     """
-    cloest_length = sys.maxsize
+    closest_length = sys.maxsize
     for b in bucket_sizes:
-        if b == data_length or ((b < cloest_length) and (b > data_length)):
-            cloest_length = b
+        if b == data_length or ((b < closest_length) and (b > data_length)):
+            closest_length = b
 
-    if cloest_length == sys.maxsize:
+    if closest_length == sys.maxsize:
         bucket_sizes.append(data_length)
-        cloest_length = data_length
+        closest_length = data_length
 
-    return cloest_length
+    return closest_length
 
 
 def pad_and_split_batch(padding_to, input_ids, attention_mask, labels, loss_scale, max_length, tokenizer, rank,
@@ -79,7 +79,7 @@ def pad_and_split_batch(padding_to, input_ids, attention_mask, labels, loss_scal
             loss_scale = F.pad(loss_scale, pad_tuple, 'constant', 0.)
         labels = F.pad(labels, pad_tuple, 'constant', -100)
 
-    # manully split the batch to different DP rank.
+    # manually split the batch to different DP rank.
     batch_size = input_ids.shape[0] // world_size
     if batch_size > 0:
         start = rank * batch_size
@@ -672,7 +672,7 @@ def patch_qwen2_model(model):
             key_states = key_states.to(target_dtype)
             value_states = value_states.to(target_dtype)
 
-        # Reashape to the expected shape for Flash Attention
+        # Reshape to the expected shape for Flash Attention
         query_states = query_states.transpose(1, 2)
         key_states = key_states.transpose(1, 2)
         value_states = value_states.transpose(1, 2)
@@ -862,7 +862,7 @@ def patch_clip_grad_norm(accelerator):
                     while isinstance(opt, AcceleratedOptimizer):
                         opt = opt.optimizer
                     gradients = xm._fetch_gradients(opt)
-                    # Use xm.all_reduce to perform an in-place all-reduce. Recusrsive all-reduce each tensor
+                    # Use xm.all_reduce to perform an in-place all-reduce. Recursive all-reduce each tensor
                     # one by one in self.reduce is non-inplace.
                     xm.all_reduce('sum', gradients, scale=1.0 / self.num_processes)
                     # Set is_xla_gradients_synced to True to avoid all-reduce twice in the AcceleratedOptimizer step.

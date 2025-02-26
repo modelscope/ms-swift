@@ -6,6 +6,7 @@ from typing import Any, Dict
 from transformers import AutoModel
 
 from swift.llm import TemplateType
+from swift.utils import get_device
 from ..constant import MLLMModelType
 from ..model_arch import ModelArch
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
@@ -20,10 +21,10 @@ def get_model_tokenizer_emu3_gen(model_dir: str,
     import sys
     sys.path.append(model_dir)
     from processing_emu3 import Emu3Processor
-    vq_hub = safe_snapshot_download('BAAI/Emu3-VisionTokenizer')
+    vq_hub = safe_snapshot_download('BAAI/Emu3-VisionTokenizer', check_local=True)
     from transformers import AutoModel, AutoImageProcessor
     image_processor = AutoImageProcessor.from_pretrained(vq_hub, trust_remote_code=True)
-    image_tokenizer = AutoModel.from_pretrained(vq_hub, trust_remote_code=True).eval().to('cuda:0')
+    image_tokenizer = AutoModel.from_pretrained(vq_hub, trust_remote_code=True).eval().to(get_device())
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
     processor = Emu3Processor(image_processor, image_tokenizer, tokenizer)
     model_info.max_model_len = model_info.max_model_len + 40960
@@ -61,17 +62,17 @@ def get_model_tokenizer_emu3_chat(model_dir: str,
 
     # download and load vision tokenizer
     from transformers import AutoImageProcessor
-    vq_model = safe_snapshot_download('BAAI/Emu3-VisionTokenizer')
+    vq_model = safe_snapshot_download('BAAI/Emu3-VisionTokenizer', check_local=True)
     image_processor = AutoImageProcessor.from_pretrained(vq_model, trust_remote_code=True)
     image_tokenizer = AutoModel.from_pretrained(vq_model, device_map=model_kwargs['device_map'], trust_remote_code=True)
     image_tokenizer.requires_grad_(False)
-    image_tokenizer.to('cuda:0')  # TODO: check npu
+    image_tokenizer.to(get_device())
 
     # load processor
     local_repo_path = kwargs.get('local_repo_path')
     if not local_repo_path:
         local_repo_path = git_clone_github('https://github.com/baaivision/Emu3.git')
-    sys.path.append(os.path.join(local_repo_path))
+    sys.path.append(local_repo_path)
     from emu3.mllm.processing_emu3 import Emu3Processor
     processor = Emu3Processor(image_processor, image_tokenizer, tokenizer)
 

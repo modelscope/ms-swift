@@ -11,7 +11,7 @@ import json
 import torch
 
 from swift.llm import ExportArguments
-from swift.utils import find_free_port, get_logger
+from swift.utils import find_free_port, get_device_count, get_logger
 
 logger = get_logger()
 
@@ -230,7 +230,7 @@ class ExpManager:
         for exp in self.exps:
             all_gpus.update(exp.runtime.get('gpu', set()))
         all_gpus = {int(g) for g in all_gpus}
-        free_gpu = set(range(torch.cuda.device_count())) - all_gpus
+        free_gpu = set(range(get_device_count())) - all_gpus
         if len(free_gpu) < n:
             return None
         return list(free_gpu)[:n]

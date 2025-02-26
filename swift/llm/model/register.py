@@ -2,11 +2,15 @@
 import os
 import platform
 import re
+from contextlib import nullcontext
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
+from functools import partial
+from types import MethodType
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
+import torch.nn.functional as F
 from peft import PeftModel
 from transformers import (AutoConfig, AutoModel, AutoModelForCausalLM, AutoModelForSequenceClassification,
                           AutoTokenizer, GenerationConfig, PretrainedConfig, PreTrainedModel, PreTrainedTokenizerBase)
@@ -15,8 +19,9 @@ from transformers.utils import (is_torch_bf16_gpu_available, is_torch_cuda_avail
                                 is_torch_npu_available, strtobool)
 from transformers.utils.versions import require_version
 
-from swift.utils import get_dist_setting, get_logger, is_dist, is_mp, is_unsloth_available, patch_getattr, use_torchacc
+from swift.utils import get_dist_setting, get_logger, is_mp, is_unsloth_available, patch_getattr, use_torchacc
 from .constant import ModelType
+from .patcher import patch_automodel_for_awq, patch_automodel_for_sequence_classification, patch_mp_ddp
 from .utils import AttnImpl, HfConfigFactory, ModelInfo, safe_snapshot_download
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]]
@@ -64,6 +69,7 @@ class ModelMeta:
 
     is_multimodal: bool = False
     is_reward: bool = False
+    task_type: Optional[str] = None
 
     # File patterns to ignore when downloading the model.
     ignore_patterns: List[str] = field(default_factory=list)
@@ -135,7 +141,7 @@ def load_by_unsloth(args):
     model, processor = UnslothModel.from_pretrained(
         model_name=args.adapters and args.adapters[0] or args.model_dir,
         dtype=args.torch_dtype,
-        max_seq_length=model_info.max_model_len,
+        max_seq_length=args.max_length,
         load_in_4bit=args.quant_bits == 4,
         trust_remote_code=True,
     )
@@ -161,9 +167,6 @@ def get_model_tokenizer_from_local(model_dir: str,
                                    automodel_class=None,
                                    **kwargs):
     """Load the model and tokenizer from the local model_dir."""
-    automodel_class_mapping = {'seq_cls': AutoModelForSequenceClassification, 'causal_lm': AutoModelForCausalLM}
-    if automodel_class is None:
-        automodel_class = automodel_class_mapping[model_info.task_type]
     if model_config is None:
         model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     # fix prediction_step (internvl2, ovis, ...)
@@ -184,21 +187,47 @@ def get_model_tokenizer_from_local(model_dir: str,
         tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
 
     num_labels = model_info.num_labels or getattr(model_config, 'num_labels', None)
-    if num_labels:
+    if num_labels and model_info.task_type != 'causal_lm':
         model_info.num_labels = num_labels
         model_config.num_labels = num_labels
 
     model = None
     if load_model:
         logger.info(f'model_kwargs: {model_kwargs}')
-        model = automodel_class.from_pretrained(
-            model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
+        # fix seq_cls
+        if model_info.task_type == 'seq_cls' and automodel_class is None:
+            try:
+                model = AutoModelForSequenceClassification.from_pretrained(
+                    model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
+            except ValueError:
+                model = None
 
-    # fix not save modeling_xxx.py (transformers 4.45)
-    # https://github.com/huggingface/transformers/issues/24737
-    has_remote_code = hasattr(model_config, 'auto_map') and automodel_class.__name__ in model_config.auto_map
-    if model is not None and has_remote_code and model._auto_class is None:
-        model._auto_class = automodel_class.__name__
+        if model_info.task_type == 'embedding' and automodel_class is None:
+            try:
+                model = AutoModel.from_pretrained(
+                    model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
+                from swift.llm.model.patcher import patch_output_normalizer
+                patch_output_normalizer(model)
+            except ValueError:
+                model = None
+
+        automodel_class = automodel_class or AutoModelForCausalLM
+        if model is None:
+            if model_info.task_type == 'seq_cls':
+                context = partial(patch_automodel_for_sequence_classification, model_meta=kwargs['model_meta'])
+            elif 'AutoAWQFor' in automodel_class.__name__:
+                context = patch_automodel_for_awq
+            else:
+                context = nullcontext
+            with context():
+                model = automodel_class.from_pretrained(
+                    model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
+
+        # fix not save modeling_xxx.py (transformers 4.45)
+        # https://github.com/huggingface/transformers/issues/24737
+        has_remote_code = hasattr(model_config, 'auto_map') and automodel_class.__name__ in model_config.auto_map
+        if has_remote_code and model._auto_class is None:
+            model._auto_class = automodel_class.__name__
     return model, tokenizer
 
 
@@ -264,8 +293,14 @@ def get_default_torch_dtype(torch_dtype: Optional[torch.dtype]):
     if torch_dtype is not None:
         return torch_dtype
 
+    try:
+        is_bf16_available = is_torch_bf16_gpu_available() or (is_torch_npu_available()
+                                                              and torch.npu.is_bf16_supported())
+    except:  # noqa
+        is_bf16_available = False
+
     if is_torch_cuda_available() or is_torch_npu_available():
-        if is_torch_bf16_gpu_available():
+        if is_bf16_available:
             return torch.bfloat16
         else:
             return torch.float16
@@ -323,6 +358,28 @@ def get_matched_model_meta(model_id_or_path: str) -> Optional[ModelMeta]:
     return _get_matched_model_meta(model_id_or_path, MODEL_MAPPING)
 
 
+def _get_arch_mapping():
+    res = {}
+    for model_type, model_meta in MODEL_MAPPING.items():
+        architectures = model_meta.architectures
+        if not architectures:
+            architectures.append('null')
+        for arch in architectures:
+            if arch not in res:
+                res[arch] = []
+            res[arch].append(model_type)
+    return res
+
+
+def get_matched_model_types(architectures: Optional[List[str]]) -> List[str]:
+    """Get possible model_type."""
+    architectures = architectures or ['nulll']
+    if architectures:
+        architectures = architectures[0]
+    arch_mapping = _get_arch_mapping()
+    return arch_mapping.get(architectures) or []
+
+
 def _get_model_info(model_dir: str, model_type: Optional[str], quantization_config) -> ModelInfo:
     config_dict = PretrainedConfig.get_config_dict(model_dir)[0]
     if quantization_config is not None:
@@ -333,7 +390,8 @@ def _get_model_info(model_dir: str, model_type: Optional[str], quantization_conf
     rope_scaling = HfConfigFactory.get_config_attr(config_dict, 'rope_scaling')
 
     if model_type is None:
-        model_types = HfConfigFactory.get_matched_model_types(config_dict)  # config.json
+        architectures = HfConfigFactory.get_config_attr(config_dict, 'architectures')
+        model_types = get_matched_model_types(architectures)
         if len(model_types) > 1:
             raise ValueError('Please explicitly pass the model_type. For reference, '
                              f'the available model_types: {model_types}.')
@@ -342,8 +400,14 @@ def _get_model_info(model_dir: str, model_type: Optional[str], quantization_conf
     elif model_type not in MODEL_MAPPING:
         raise ValueError(f"model_type: '{model_type}' not in {list(MODEL_MAPPING.keys())}")
 
-    res = ModelInfo(model_type, model_dir, torch_dtype, max_model_len, quant_info.get('quant_method'),
-                    quant_info.get('quant_bits'), rope_scaling)
+    res = ModelInfo(
+        model_type,
+        model_dir,
+        torch_dtype,
+        max_model_len,
+        quant_info.get('quant_method'),
+        quant_info.get('quant_bits'),
+        rope_scaling=rope_scaling)
     return res
 
 
@@ -395,6 +459,8 @@ def get_model_info_meta(
             task_type = 'seq_cls'
         if task_type == 'seq_cls':
             assert num_labels is not None, 'Please pass the parameter `num_labels`.'
+        if model_meta.task_type is not None:
+            task_type = model_meta.task_type
     model_info.task_type = task_type
     model_info.num_labels = num_labels
 
@@ -435,7 +501,7 @@ def get_model_tokenizer(
         If set to None : It will be automatically selected between sdpa and eager.
     download_model: Whether to download the model weights. If `None`, it will be selected based on load_model.
     """
-
+    patch_mp_ddp()
     if model_kwargs is None:
         model_kwargs = {}
     if download_model is None:
@@ -463,6 +529,7 @@ def get_model_tokenizer(
     kwargs['automodel_class'] = automodel_class
     kwargs['attn_impl'] = attn_impl
     kwargs['rope_scaling'] = rope_scaling
+    kwargs['model_meta'] = model_meta
     model, processor = get_function(model_dir, model_info, model_kwargs, load_model, **kwargs)
 
     if not isinstance(processor, PreTrainedTokenizerBase) and hasattr(processor, 'tokenizer'):
@@ -485,8 +552,8 @@ def get_model_tokenizer(
 
     if model is not None:
         # fix seq classification task
-        if model.config.pad_token_id is None:
-            model.config.pad_token_id = tokenizer.pad_token_id
+        pad_token_id = model.config.pad_token_id or tokenizer.pad_token_id
+        HfConfigFactory.set_model_config_attr(model, 'pad_token_id', pad_token_id)
         model.model_info = model_info
         model.model_meta = model_meta
         model.model_dir = model_dir

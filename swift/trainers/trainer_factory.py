@@ -13,23 +13,27 @@ class TrainerFactory:
     TRAINER_MAPPING = {
         'causal_lm': 'swift.trainers.Seq2SeqTrainer',
         'seq_cls': 'swift.trainers.Trainer',
+        'embedding': 'swift.trainers.EmbeddingTrainer',
         'dpo': 'swift.trainers.DPOTrainer',
         'orpo': 'swift.trainers.ORPOTrainer',
         'kto': 'swift.trainers.KTOTrainer',
         'cpo': 'swift.trainers.CPOTrainer',
         'rm': 'swift.trainers.RewardTrainer',
         'ppo': 'swift.trainers.PPOTrainer',
+        'grpo': 'swift.trainers.GRPOTrainer'
     }
 
     TRAINING_ARGS_MAPPING = {
         'causal_lm': 'swift.trainers.Seq2SeqTrainingArguments',
         'seq_cls': 'swift.trainers.TrainingArguments',
+        'embedding': 'swift.trainers.TrainingArguments',
         'dpo': 'swift.trainers.DPOConfig',
         'orpo': 'swift.trainers.ORPOConfig',
         'kto': 'swift.trainers.KTOConfig',
         'cpo': 'swift.trainers.CPOConfig',
         'rm': 'swift.trainers.RewardConfig',
         'ppo': 'swift.trainers.PPOConfig',
+        'grpo': 'swift.trainers.GRPOConfig',
     }
 
     @staticmethod
@@ -50,13 +54,11 @@ class TrainerFactory:
     def get_training_args(cls, args):
         training_args_cls = cls.get_cls(args, cls.TRAINING_ARGS_MAPPING)
         args_dict = asdict(args)
-        parameters = inspect.signature(training_args_cls.__init__).parameters
+        parameters = inspect.signature(training_args_cls).parameters
 
         for k in list(args_dict.keys()):
             if k not in parameters:
                 args_dict.pop(k)
 
-        if 'ppo' in training_args_cls.__name__.lower():
-            args_dict['world_size'] = args.global_world_size
-
+        args._prepare_training_args(args_dict)
         return training_args_cls(**args_dict)

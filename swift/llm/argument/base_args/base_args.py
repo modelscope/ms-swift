@@ -101,6 +101,9 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
     ignore_args_error: bool = False  # True: notebook compatibility
     use_swift_lora: bool = False  # True for using tuner_backend == swift, don't specify this unless you know what you are doing # noqa
 
+    def _prepare_training_args(self, training_args: Dict[str, Any]) -> None:
+        pass
+
     def _init_custom_register(self) -> None:
         """Register custom .py file to datasets"""
         if isinstance(self.custom_register_path, str):
@@ -113,12 +116,23 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         if self.custom_register_path:
             logger.info(f'Successfully registered `{self.custom_register_path}`')
 
+    @staticmethod
+    def _check_is_adapter(adapter_dir: str) -> bool:
+        if (os.path.exists(os.path.join(adapter_dir, 'adapter_config.json'))
+                or os.path.exists(os.path.join(adapter_dir, 'default', 'adapter_config.json'))
+                or os.path.exists(os.path.join(adapter_dir, 'reft'))):
+            return True
+        return False
+
     def _init_adapters(self):
         if isinstance(self.adapters, str):
             self.adapters = [self.adapters]
         self.adapters = [
             safe_snapshot_download(adapter, use_hf=self.use_hf, hub_token=self.hub_token) for adapter in self.adapters
         ]
+        for adapter in self.adapters:
+            assert self._check_is_adapter(adapter), (
+                f'`{adapter}` is not an adapter, please try using `--model` to pass it.')
 
     def __post_init__(self):
         if self.use_hf or use_hf_hub():
@@ -133,7 +147,6 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         self.rank, self.local_rank, self.global_world_size, self.local_world_size = get_dist_setting()
         logger.info(f'rank: {self.rank}, local_rank: {self.local_rank}, '
                     f'world_size: {self.global_world_size}, local_world_size: {self.local_world_size}')
-        assert len(self.adapters) <= 1, f'args.adapters: {self.adapters}'
         ModelArguments.__post_init__(self)
         QuantizeArguments.__post_init__(self)
         TemplateArguments.__post_init__(self)
@@ -165,8 +178,13 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
     @classmethod
     def from_pretrained(cls, checkpoint_dir: str):
         self = super().__new__(cls)
+        self.load_data_args = True
         self.ckpt_dir = checkpoint_dir
         self.load_args_from_ckpt()
+        all_keys = list(f.name for f in fields(BaseArguments))
+        for key in all_keys:
+            if not hasattr(self, key):
+                setattr(self, key, None)
         return self
 
     def _init_ckpt_dir(self, adapters=None):
@@ -204,7 +222,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             'split_dataset_ratio',
             # template_args
             'tools_prompt',
-            'use_chat_template'
+            'use_chat_template',
         ]
         skip_keys = list(f.name for f in fields(GenerationArguments) + fields(CompatArguments)) + ['adapters']
         if not isinstance(self, TrainArguments):
@@ -241,7 +259,14 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         logger.info(f'default_system: {template.template_meta.default_system}')
         return template
 
-    def get_model_processor(self, *, model=None, model_type=None, model_revision=None, task_type=None, **kwargs):
+    def get_model_processor(self,
+                            *,
+                            model=None,
+                            model_type=None,
+                            model_revision=None,
+                            task_type=None,
+                            num_labels=None,
+                            **kwargs):
         if self.tuner_backend == 'unsloth':
             return load_by_unsloth(self)
         kwargs.update(self.get_model_kwargs())
@@ -250,5 +275,6 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         kwargs['model_type'] = model_type or self.model_type
         kwargs['model_revision'] = model_revision or self.model_revision
         kwargs['task_type'] = task_type or self.task_type
+        kwargs['num_labels'] = num_labels or self.num_labels
 
         return get_model_tokenizer(**kwargs)

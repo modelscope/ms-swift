@@ -15,35 +15,27 @@ from swift.utils import get_logger
 
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
-standard_keys = ['messages', 'rejected_response', 'label', 'images', 'videos', 'audios', 'tools', 'objects']
-
 logger = get_logger()
 
 
-def get_features_dataset(dataset: DATASET_TYPE) -> DATASET_TYPE:
-    if dataset.features is None:
-        assert isinstance(dataset, HfIterableDataset)
-        dataset = dataset._resolve_features()
-    return dataset
-
-
 class RowPreprocessor:
+    standard_keys = ['messages', 'rejected_response', 'label', 'images', 'videos', 'audios', 'tools', 'objects']
 
     def __init__(self,
                  *,
-                 columns_mapping: Optional[Dict[str, str]] = None,
+                 columns: Optional[Dict[str, str]] = None,
                  dataset_sample: Optional[int] = None,
                  random_state: Union[np.random.RandomState, int, None] = None,
                  traceback_limit: int = 10) -> None:
-        self.columns_mapping = columns_mapping or {}
-        self.origin_columns_mapping = self.columns_mapping.copy()  # Higher priority and raise Error
+        self.columns = columns or {}
+        self.origin_columns = self.columns.copy()  # Higher priority and raise Error
         images_keys = ['images', 'image']
         audios_keys = ['audios', 'audio']
         videos_keys = ['videos', 'video']
         for mm_type in ['images', 'audios', 'videos']:
             keys = locals()[f'{mm_type}_keys']
             for key in keys:
-                self.columns_mapping[key] = mm_type
+                self.columns[key] = mm_type
 
         self.traceback_limit = traceback_limit
         self._traceback_counter = 0
@@ -137,16 +129,40 @@ class RowPreprocessor:
         return batched
 
     @staticmethod
-    def _fix_streaming_keys(row):
+    def _remove_prefix_keys(row, prefix: str):
         for k in list(row.keys()):
-            if k.startswith('__@'):
-                new_k = k[len('__@'):]
-                row[new_k] = row.pop(k)
+            if k.startswith(prefix):
+                new_k = k[len(prefix):]
+                new_v = row.pop(k)
+                if new_k not in row:
+                    row[new_k] = new_v
 
-    def batched_preprocess(self, batched_row: Dict[str, Any], *, strict: bool) -> Dict[str, Any]:
+    @staticmethod
+    def _check_objects(row):
+        objects = row.get('objects')
+        if objects is None:
+            return
+        for k in list(objects.keys()):
+            if k not in {'bbox', 'ref', 'bbox_type', 'image_id'}:
+                objects.pop(k)
+        bbox = objects['bbox']
+
+        # check bbox
+        for box in bbox:
+            assert len(box) in {2, 4}, f'len(box): {len(box)}'
+            if len(box) == 2:
+                continue
+            if box[0] > box[2]:
+                box[0], box[2] = box[2], box[0]
+            if box[1] > box[3]:
+                box[1], box[3] = box[3], box[1]
+
+    def batched_preprocess(self, batched_row: Dict[str, Any], *, strict: bool,
+                           ignore_max_length_error: bool) -> Dict[str, Any]:
+        from ...template import MaxLengthError
         batched_row = dict(batched_row)
         assert len(batched_row) > 0
-        self._fix_streaming_keys(batched_row)
+        self._remove_prefix_keys(batched_row, '__@')  # compat streaming
         rows = self.batched_to_rows(batched_row)
 
         new_rows = []
@@ -159,55 +175,74 @@ class RowPreprocessor:
                 if isinstance(row, dict):
                     row = [row]
                 for r in row:
+                    self._check_objects(r)
                     self._check_messages(r)
                     self._check_rejected_response(r)
                     self._cast_images(r)
-            except Exception:
+            except Exception as e:
                 if strict:
                     logger.warning('To avoid errors, you can pass `strict=False`.')
                     raise
-                if self.traceback_limit is not None and self._traceback_counter < self.traceback_limit:
+                if isinstance(e, MaxLengthError) and ignore_max_length_error:
+                    pass
+                elif self.traceback_limit is not None and self._traceback_counter < self.traceback_limit:
                     import traceback
-                    print(traceback.format_exc())
-                    logger.error('👆👆👆There are errors in the dataset, the data will be deleted')
+                    logger.info(traceback.format_exc())
+                    logger.warning('👆👆👆There are errors in the dataset, the data will be deleted')
                     self._traceback_counter += 1
                 row = []
             new_rows += row
         res = self.rows_to_batched(new_rows)
-
+        self._remove_prefix_keys(res, '__#')  # compat GRPO
         if len(res) == 0:
             res['messages'] = []
 
         return res
 
-    def _rename_columns(self, dataset: DATASET_TYPE) -> DATASET_TYPE:
-        dataset = get_features_dataset(dataset)
-        dataset = dataset.rename_columns(self.origin_columns_mapping)
+    @staticmethod
+    def get_features_dataset(dataset: DATASET_TYPE) -> DATASET_TYPE:
+        if dataset.features is None:
+            assert isinstance(dataset, HfIterableDataset)
+            dataset = dataset._resolve_features()
+        return dataset
 
+    @staticmethod
+    def safe_rename_columns(dataset, columns):
+        dataset = RowPreprocessor.get_features_dataset(dataset)
         columns_keys = {k.lower(): k for k in dataset.features.keys()}  # lower -> lower/upper
-        safe_columns_mapping = {
-            columns_keys[k.lower()]: v
-            for k, v in self.columns_mapping.items() if k.lower() in columns_keys
-        }
+        safe_columns = {columns_keys[k.lower()]: v for k, v in columns.items() if k.lower() in columns_keys}
 
-        counter = Counter(safe_columns_mapping.values())
-        for k, new_k in list(safe_columns_mapping.items()):
+        counter = Counter(safe_columns.values())
+        for k, new_k in list(safe_columns.items()):
             if counter[new_k] > 1:
                 # For example, if "response" and "answer" match, then no processing is done.
-                safe_columns_mapping.pop(k)
+                safe_columns.pop(k)
                 continue
 
         # e.g. Keep {'query': 'query'} to ensure that the query has the highest priority.
-        safe_columns_mapping = {k: v for k, v in safe_columns_mapping.items() if k != v}
-        if safe_columns_mapping:
-            dataset = dataset.rename_columns(safe_columns_mapping)
+        safe_columns = {k: v for k, v in safe_columns.items() if k != v}
+        if safe_columns:
+            dataset = dataset.rename_columns(safe_columns)
 
+        return dataset
+
+    def _rename_columns(self, dataset: DATASET_TYPE) -> DATASET_TYPE:
+        dataset = self.safe_rename_columns(dataset, self.origin_columns)
+        dataset = self.safe_rename_columns(dataset, self.columns)
         if isinstance(dataset, HfIterableDataset):
             # fix: https://github.com/huggingface/datasets/issues/6408
-            columns_mapping = {k: f'__@{k}' for k in standard_keys if k in dataset.features}
-            if columns_mapping:
-                dataset = dataset.rename_columns(columns_mapping)
+            columns = {k: f'__@{k}' for k in RowPreprocessor.standard_keys if k in dataset.features}
+            if columns:
+                dataset = dataset.rename_columns(columns)
+        return dataset
 
+    @staticmethod
+    def remove_useless_columns(dataset: DATASET_TYPE) -> DATASET_TYPE:
+        dataset = RowPreprocessor.get_features_dataset(dataset)
+        features = dataset.features
+        k_list = [k for k in RowPreprocessor.standard_keys if k in features]
+        if len(k_list) != len(features):
+            dataset = dataset.select_columns(k_list)
         return dataset
 
     @staticmethod
@@ -252,19 +287,26 @@ class RowPreprocessor:
         if self.dataset_sample is not None:
             dataset = sample_dataset(dataset, self.dataset_sample, self.random_state)
 
+        map_kwargs = {'batched': True, 'batch_size': batch_size}
+        if isinstance(dataset, HfDataset):
+            map_kwargs['num_proc'] = num_proc
+        # compat GRPO: The solution field will be retained.
+        dataset = RowPreprocessor.get_features_dataset(dataset)
+        if 'solution' in dataset.features:
+            dataset = dataset.map(lambda x: {'__#solution': x['solution']}, **map_kwargs)
         dataset = self._rename_columns(dataset)
         dataset = self.prepare_dataset(dataset)
         dataset = self._cast_pil_image(dataset)
-        map_kwargs = {}
-        if isinstance(dataset, HfDataset):
-            map_kwargs['num_proc'] = num_proc
+
+        ignore_max_length_error = True if isinstance(dataset, HfDataset) and num_proc > 1 else False
         with self._patch_arrow_writer():
             try:
                 dataset_mapped = dataset.map(
                     self.batched_preprocess,
-                    batched=True,
-                    batch_size=batch_size,
-                    fn_kwargs={'strict': strict},
+                    fn_kwargs={
+                        'strict': strict,
+                        'ignore_max_length_error': ignore_max_length_error
+                    },
                     remove_columns=list(dataset.features.keys()),
                     **map_kwargs)
             except NotImplementedError:
@@ -279,18 +321,18 @@ class RowPreprocessor:
 class ResponsePreprocessor(RowPreprocessor):
     """Dataset compatible with older versions of ms-swift"""
 
-    def __init__(self, *, columns_mapping: Optional[Dict[str, str]] = None, **kwargs) -> None:
-        super().__init__(columns_mapping=columns_mapping, **kwargs)
+    def __init__(self, *, columns: Optional[Dict[str, str]] = None, **kwargs) -> None:
+        super().__init__(columns=columns, **kwargs)
         system_keys = ['system', 'system_prompt']
-        query_keys = ['query', 'prompt', 'input', 'instruction', 'question']
-        response_keys = ['response', 'answer', 'output', 'targets', 'target', 'answer_key', 'solution', 'answers'
+        query_keys = ['query', 'prompt', 'input', 'instruction', 'question', 'problem']
+        response_keys = ['response', 'answer', 'output', 'targets', 'target', 'answer_key', 'answers', 'solution'
                          ] + ['text', 'completion', 'content']
         for key in system_keys:
-            self.columns_mapping[key] = 'system'
+            self.columns[key] = 'system'
         for key in query_keys:
-            self.columns_mapping[key] = 'query'
+            self.columns[key] = 'query'
         for key in response_keys:
-            self.columns_mapping[key] = 'response'
+            self.columns[key] = 'response'
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         response = row.pop('response', None)
@@ -349,12 +391,12 @@ class MessagesPreprocessor(RowPreprocessor):
             system_role: str = 'system',
             tool_role: str = 'tool',
             # 'conversation', 'conversations' -> 'messages'
-            columns_mapping: Optional[Dict[str, str]] = None,
+            columns: Optional[Dict[str, str]] = None,
             repair_messages: Callable[[Union[str, List[Dict[str, str]]]],
                                       Optional[List[Dict[str, str]]]] = default_repair_messages,
             inner_key: Optional[str] = None,
             **kwargs):
-        super().__init__(columns_mapping=columns_mapping, **kwargs)
+        super().__init__(columns=columns, **kwargs)
         self.role_keys = ['role', 'from'] if role_key is None else [role_key]
         self.content_keys = ['content', 'value'] if content_key is None else [content_key]
         self.user_roles = ['user', 'human'] if user_role is None else [user_role]
@@ -367,13 +409,13 @@ class MessagesPreprocessor(RowPreprocessor):
 
         message_keys = ['messages', 'conversation', 'conversations']
         for key in message_keys:
-            self.columns_mapping[key] = 'messages'
+            self.columns[key] = 'messages'
         # sharegptq
         system_keys = ['system', 'system_prompt']
         if system_role not in system_keys:
             system_keys.append(system_role)
         for key in system_keys:
-            self.columns_mapping[key] = 'system'
+            self.columns[key] = 'system'
 
     @staticmethod
     def _is_sharegpt_format(message: Dict[str, str]) -> bool:
@@ -397,10 +439,13 @@ class MessagesPreprocessor(RowPreprocessor):
             new_messages.append(assistant_message)
         return new_messages
 
-    def to_std_messages(self, messages: List[Dict[str, str]]) -> None:
+    def to_std_messages(self, messages: List[Dict[str, str]], system: Optional[str]) -> None:
         start_idx = 0
         if messages[0]['role'] == self.system_role:
             messages[0]['role'] = 'system'
+            start_idx = 1
+        elif system is not None:
+            messages.insert(0, {'role': 'system', 'content': system})
             start_idx = 1
         for user_message, assistant_message in zip(messages[start_idx::2], messages[start_idx + 1::2]):
             user_role = user_message['role']
@@ -431,11 +476,11 @@ class MessagesPreprocessor(RowPreprocessor):
             return
         self._to_std_key(messages, 'role', self.role_keys)
         self._to_std_key(messages, 'content', self.content_keys)
+        system = row.pop('system', None)
         if self._is_sharegpt_format(messages[0]):
-            system = row.pop('system', None)
             messages = self.sharegpt_to_messages(messages, system)
         else:
-            self.to_std_messages(messages)  # inplace
+            self.to_std_messages(messages, system)  # inplace
         row['messages'] = messages
         return row
 
@@ -450,8 +495,8 @@ class ClsPreprocessor(ResponsePreprocessor):
 
 class AutoPreprocessor:
 
-    def __init__(self, *, columns_mapping: Optional[Dict[str, str]] = None, **kwargs) -> None:
-        self.columns_mapping = columns_mapping or {}
+    def __init__(self, *, columns: Optional[Dict[str, str]] = None, **kwargs) -> None:
+        self.columns = columns or {}
         self.kwargs = kwargs
 
     def _get_preprocessor(self, dataset: DATASET_TYPE) -> RowPreprocessor:
@@ -470,7 +515,6 @@ class AutoPreprocessor:
         num_proc: int = 1,
         strict: bool = False,
     ) -> DATASET_TYPE:
-        dataset = get_features_dataset(dataset)
-        dataset = dataset.rename_columns(self.columns_mapping)
+        dataset = RowPreprocessor.safe_rename_columns(dataset, self.columns)
         preprocessor = self._get_preprocessor(dataset)
         return preprocessor(dataset, num_proc=num_proc, strict=strict)
