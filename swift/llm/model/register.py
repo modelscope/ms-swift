@@ -478,6 +478,7 @@ def get_model_tokenizer(
         # model kwargs
         model_type: Optional[str] = None,
         quantization_config=None,
+        max_memory: Optional[List[str]] = None,
         attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None,
         rope_scaling: Optional[Dict[str, Any]] = None,
         automodel_class=None,
@@ -520,6 +521,8 @@ def get_model_tokenizer(
     model_kwargs['device_map'] = device_map
     if quantization_config:
         model_kwargs['quantization_config'] = quantization_config
+    if max_memory:
+        model_kwargs['max_memory'] = max_memory
     model_dir = model_info.model_dir
     get_function = model_meta.get_function
     kwargs['automodel_class'] = automodel_class

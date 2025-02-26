@@ -22,7 +22,7 @@ from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, Ch
                         ChatCompletionStreamResponse, ChatMessage, DeltaMessage, RequestConfig)
 from .infer_engine import InferEngine
 from .patch import patch_auto_config, patch_auto_tokenizer
-from .utils import InferStreamer
+from .utils import InferStreamer, patch_lmdeploy
 
 try:
     from lmdeploy import EngineGenerationConfig as LmdeployGenerationConfig
@@ -51,9 +51,14 @@ class LmdeployEngine(InferEngine):
         quant_policy: int = 0,  # e.g. 4, 8
         vision_batch_size: int = 1,  # max_batch_size in VisionConfig
         device: Optional[List[int]] = None,
+        reload_weights: bool = False,
         engine_kwargs: Optional[Dict[str, Any]] = None,
     ) -> None:
-
+        version_7 = version.parse(lmdeploy.__version__) >= version.parse('0.7.0')
+        if reload_weights:
+            assert version_7, 'grpo or reload_weights need lmdeploy>=0.7.0'
+        if version_7:
+            patch_lmdeploy(reload_weights)
         self.processor = get_model_tokenizer(
             model_id_or_path,
             torch_dtype,
