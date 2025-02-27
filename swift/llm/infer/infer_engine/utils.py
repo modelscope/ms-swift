@@ -19,6 +19,7 @@ from transformers import GenerationConfig, LogitsProcessor
 from transformers.generation.streamers import BaseStreamer
 
 from swift.llm.model.register import fix_do_sample_warning
+from swift.utils import get_device
 from ..protocol import RequestConfig
 
 
@@ -372,6 +373,8 @@ def patch_vllm():
 
 
 def patch_npu_vllm(vllm_device: str):
+    if isinstance(vllm_device, int):
+        vllm_device = get_device(vllm_device)
     device_type = vllm_device.split(':')[0]
 
     @contextlib.contextmanager
