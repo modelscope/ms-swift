@@ -29,7 +29,6 @@ Swift DOCUMENTATION
    Instruction/Supported-models-and-datasets.md
    Instruction/Use-tuners.md
    Instruction/Agent-support.md
-   Instruction/NPU-support.md
    Instruction/Push-model.md
    Instruction/ReleaseNote3.0
    Instruction/Frequently-asked-questions.md
@@ -42,6 +41,14 @@ Swift DOCUMENTATION
    Customization/Custom-model.md
    Customization/Custom-dataset.md
    Customization/Plugin.md
+
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Best Practices
+
+   BestPractices/Best-Practices.md
+   BestPractices/NPU-support.md
 
 
 Indices and tables
