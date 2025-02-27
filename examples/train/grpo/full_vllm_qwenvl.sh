@@ -1,3 +1,8 @@
+# Two GPUs are left for vLLM inference acceleration.
+# pip install math_verify # reward function
+# pip install git+https://github.com/huggingface/trl.git
+# GPU memory: 8 * 60GiB
+
 MAX_PIXELS=602112 \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 NPROC_PER_NODE=6 \
@@ -13,7 +18,7 @@ swift rlhf \
     --max_completion_length 1536 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 4 \
-    --per_device_eval_batch_size 2 \
+    --per_device_eval_batch_size 4 \
     --learning_rate 1e-7 \
     --eval_steps 1000 \
     --save_steps 1000 \
