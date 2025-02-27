@@ -37,13 +37,16 @@ class LmdeployArguments:
     vision_batch_size: int = 1  # max_batch_size in VisionConfig
 
     def get_lmdeploy_engine_kwargs(self):
-        return {
+        kwargs = {
             'tp': self.tp,
             'session_len': self.session_len,
             'cache_max_entry_count': self.cache_max_entry_count,
             'quant_policy': self.quant_policy,
             'vision_batch_size': self.vision_batch_size
         }
+        if dist.is_initialized():
+            kwargs.update({'devices': [dist.get_rank()]})
+        return kwargs
 
 
 @dataclass
@@ -82,7 +85,7 @@ class VllmArguments:
         adapters = self.adapters
         if hasattr(self, 'adapter_mapping'):
             adapters = adapters + list(self.adapter_mapping.values())
-        return {
+        kwargs = {
             'gpu_memory_utilization': self.gpu_memory_utilization,
             'tensor_parallel_size': self.tensor_parallel_size,
             'pipeline_parallel_size': self.pipeline_parallel_size,
@@ -96,6 +99,9 @@ class VllmArguments:
             'max_loras': max(len(adapters), 1),
             'enable_prefix_caching': self.enable_prefix_caching,
         }
+        if dist.is_initialized():
+            kwargs.update({'device': dist.get_rank()})
+        return kwargs
 
 
 @dataclass

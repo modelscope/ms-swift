@@ -2,6 +2,7 @@
 import asyncio
 import inspect
 import os
+from contextlib import nullcontext
 from copy import deepcopy
 from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
 
@@ -16,7 +17,7 @@ from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, Ch
                         ChatCompletionStreamResponse, ChatMessage, DeltaMessage, RequestConfig, random_uuid)
 from .infer_engine import InferEngine
 from .patch import patch_auto_config, patch_auto_tokenizer
-from .utils import AdapterRequest, InferStreamer
+from .utils import AdapterRequest, InferStreamer, patch_npu_vllm, patch_vllm
 
 try:
     # After setting the environment variables, import vllm. This way of writing allows lint to pass.
@@ -86,8 +87,11 @@ class VllmEngine(InferEngine):
             device=device,
             engine_kwargs=engine_kwargs,
         )
-
-        self._prepare_engine()
+        context, npu_context = nullcontext(), nullcontext()
+        if tensor_parallel_size == 1 and pipeline_parallel_size == 1:
+            context, npu_context = patch_vllm(), patch_npu_vllm(self.engine_args.device)
+        with context, npu_context:
+            self._prepare_engine()
         self._load_generation_config()
         self._fix_vllm_bug()
         self.patch_remove_log()
