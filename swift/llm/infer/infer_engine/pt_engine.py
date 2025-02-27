@@ -1,11 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import asyncio
 import concurrent.futures
 import hashlib
 import inspect
 import os
 import pickle
+import time
 from copy import deepcopy
+from queue import Queue
 from threading import Thread
 from typing import Any, AsyncIterator, Dict, Iterator, List, Literal, Optional, Union
 
@@ -85,17 +86,19 @@ class PtEngine(InferEngine):
         super()._post_init()
         self.engine = self.model  # dummy
         self.generation_config = self.model.generation_config
-        self._queue = asyncio.Queue()
+        self._queue = Queue()
         self._task_pool = {}
-        self._worker = None
+        self._task_thread = None
 
-    def _start_infer_worker(self, loop):
-        if self._worker is None or self._worker.get_loop().is_closed():
-            self._worker = loop.create_task(self._infer_worker())
+    def _start_infer_worker(self):
+        if self._task_thread is None:
+            self._task_thread = Thread(target=self._infer_worker)
+            self._task_thread.daemon = True
+            self._task_thread.start()
 
-    async def _fetch_infer_requests(self):
+    def _fetch_infer_requests(self):
         while not self._queue.empty():
-            infer_request, kwargs, queue = await self._queue.get()
+            infer_request, kwargs, queue = self._queue.get()
             template = kwargs['template']
             info = hashlib.sha256(pickle.dumps((kwargs['request_config'], template
                                                 and template.template_meta))).hexdigest()
@@ -116,10 +119,10 @@ class PtEngine(InferEngine):
         queue_list = [d[1] for d in data]
         return kwargs, queue_list
 
-    async def _infer_worker(self):
+    def _infer_worker(self):
         while True:
-            await asyncio.sleep(0.01)
-            item = await self._fetch_infer_requests()
+            time.sleep(0.01)
+            item = self._fetch_infer_requests()
             if item is not None:
                 kwargs, queue_list = item
                 request_config = kwargs['request_config']
@@ -133,10 +136,10 @@ class PtEngine(InferEngine):
                             finished = True
                             res_list = [None] * len(queue_list)
                         for queue, res in zip(queue_list, res_list):
-                            await queue.put(res)
+                            queue.put(res)
                 else:
-                    for queue, res in zip(queue_list, res_or_gen_list):
-                        await queue.put(res)
+                    for queue, res in zip(queue_list, res_or_gen):
+                        queue.put(res)
 
     def _add_adapter(self, adapter_path: str, adapter_name: Optional[str] = None) -> None:
         self.model = Swift.from_pretrained(self.model, adapter_path, adapter_name)
@@ -412,26 +415,26 @@ class PtEngine(InferEngine):
     ) -> Union[ChatCompletionResponse, AsyncIterator[ChatCompletionStreamResponse]]:
         if request_config is None:
             request_config = RequestConfig()
-        queue = asyncio.Queue()
-        await self._queue.put((infer_request, {
+        queue = Queue()
+        self._queue.put((infer_request, {
             'request_config': request_config,
             'template': template,
             'adapter_request': adapter_request,
             'pre_infer_hook': pre_infer_hook
         }, queue))
-        self._start_infer_worker(asyncio.get_event_loop())
+        self._start_infer_worker()
         if request_config.stream:
 
             async def _gen_wrapper():
                 while True:
-                    item = await queue.get()
+                    item = queue.get()
                     if item is None:
                         break
                     yield item
 
             return _gen_wrapper()
         else:
-            return await queue.get()
+            return queue.get()
 
     @staticmethod
     def _add_error_list(outputs, error_list):
