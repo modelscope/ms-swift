@@ -123,19 +123,19 @@ class PtEngine(InferEngine):
             if item is not None:
                 kwargs, queue_list = item
                 request_config = kwargs['request_config']
-                res_or_gen = self._infer(**kwargs)
+                res_or_gen_list = self._infer(**kwargs)
                 if request_config.stream:
                     finished = False
                     while not finished:
                         try:
-                            res_list = next(res_or_gen)
+                            res_list = next(res_or_gen_list)
                         except StopIteration:
                             finished = True
                             res_list = [None] * len(queue_list)
                         for queue, res in zip(queue_list, res_list):
                             await queue.put(res)
                 else:
-                    for queue, res in zip(queue_list, res_or_gen):
+                    for queue, res in zip(queue_list, res_or_gen_list):
                         await queue.put(res)
 
     def _add_adapter(self, adapter_path: str, adapter_name: Optional[str] = None) -> None:
