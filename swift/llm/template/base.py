@@ -916,7 +916,12 @@ class Template(ProcessorMixin):
         self._deepspeed_initialize = None
         return models
 
-    def data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+    def data_collator(
+        self,
+        batch: List[Dict[str, Any]],
+        *,
+        padding_to: Optional[int] = None,
+    ) -> Dict[str, Any]:
         if self.mode == 'rlhf':
             return self._rlhf_data_collator(batch, padding_to=padding_to)
         elif self.mode == 'kto':
@@ -1003,7 +1008,12 @@ class Template(ProcessorMixin):
             res['labels'] = torch.tensor(labels, dtype=torch.long)
         return res
 
-    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+    def _data_collator(
+        self,
+        batch: List[Dict[str, Any]],
+        *,
+        padding_to: Optional[int] = None,
+    ) -> Dict[str, Any]:
         """
         Args:
             batch(`List[Dict[str, Any]]`): The input data in batch
@@ -1072,6 +1082,7 @@ class Template(ProcessorMixin):
             res['pixel_values_videos'] = torch.concat(pixel_values_videos)
         if use_torchacc() or self.sequence_parallel_size > 1:
             res = self._torchacc_xtuner_data_collator(res, padding_to, self.tokenizer, padding_side)
+
         return res
 
     def _torchacc_xtuner_data_collator(self, res, padding_to, tokenizer, padding_side):

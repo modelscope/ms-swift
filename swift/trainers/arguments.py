@@ -99,6 +99,9 @@ class GRPOArgumentsMixin:
 
     async_generate: bool = False
 
+    # mini-batch
+    mini_batch_size: Optional[int] = None
+
 
 @dataclass
 class TrainingArguments(SwiftArgumentsMixin, HfTrainingArguments):
