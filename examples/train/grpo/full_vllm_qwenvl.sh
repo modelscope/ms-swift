@@ -10,7 +10,7 @@ swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-VL-3B-Instruct \
     --external_plugins examples/train/grpo/plugin/plugin.py \
-    --reward_funcs external_mcq_accuracy format \
+    --reward_funcs external_r1v_acc format \
     --use_vllm true \
     --train_type full \
     --torch_dtype bfloat16 \

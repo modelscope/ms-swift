@@ -112,16 +112,20 @@ class CountdownORM(ORM):
         return rewards
 
 
-class MCQAccuracy(ORM):
-    # code borrowed from https://github.com/EvolvingLMMs-Lab/open-r1-multimodal/blob/main/src/open_r1/grpo.py
-    def __init__(self):
-        import importlib.util
-        assert importlib.util.find_spec('math_verify') is not None, (
-            "The math_verify package is required but not installed. Please install it using 'pip install math_verify'.")
+class MultiModalAccuracyORM(ORM):
 
     def __call__(self, completions, solution, **kwargs) -> List[float]:
-        from math_verify import parse, verify
+        """
+        Reward function that checks if the completion is correct.
+        Args:
+            completions (list[str]): Generated outputs
+            solution (list[str]): Ground Truths.
+
+        Returns:
+            list[float]: Reward scores
+        """
         rewards = []
+        from math_verify import parse, verify
         for content, sol in zip(completions, solution):
             reward = 0.0
             # Try symbolic verification first
@@ -148,7 +152,6 @@ class MCQAccuracy(ORM):
                         reward = 1.0
                 except Exception:
                     pass  # Keep reward as 0.0 if both methods fail
-
             rewards.append(reward)
         return rewards
 
@@ -156,4 +159,4 @@ class MCQAccuracy(ORM):
 orms['external_math_acc'] = MathAccuracy
 orms['external_math_format'] = MathFormat
 orms['external_countdown'] = CountdownORM
-orms['external_mcq_accuracy'] = MCQAccuracy
+orms['external_r1v_acc'] = MultiModalAccuracyORM
