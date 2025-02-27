@@ -82,7 +82,18 @@ class LmdeployEngine(InferEngine):
             engine_kwargs=engine_kwargs)
 
         self.config.torch_dtype = torch_dtype or self.model_info.torch_dtype
-        self._prepare_engine()
+
+        @contextmanager
+        def disable_deepspeed():
+            from transformers import modeling_utils
+            modeling_utils.is_deepspeed_zero3_enabled_origin = modeling_utils.is_deepspeed_zero3_enabled
+            modeling_utils.is_deepspeed_zero3_enabled = lambda: False
+            yield
+            modeling_utils.is_deepspeed_zero3_enabled = modeling_utils.is_deepspeed_zero3_enabled_origin
+            del modeling_utils.is_deepspeed_zero3_enabled_origin
+
+        with disable_deepspeed():
+            self._prepare_engine()
         self._load_generation_config()
 
     def _prepare_engine_kwargs(self,
