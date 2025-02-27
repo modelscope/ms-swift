@@ -52,8 +52,7 @@ def model_chat(history: History, system: Optional[str], *, client, model: str,
         resp_or_gen = client.infer([InferRequest(messages=messages)], request_config=request_config, model=model)[0]
         if request_config and request_config.stream:
             response = ''
-            for resp_list in resp_or_gen:
-                resp = resp_list[0]
+            for resp in resp_or_gen:
                 if resp is None:
                     continue
                 response += resp.choices[0].delta.content
