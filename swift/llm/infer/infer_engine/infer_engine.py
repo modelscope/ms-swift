@@ -97,6 +97,8 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
                         raise
                     res = e
                 prog_bar.update()
+                if self.__class__.__name__ == 'PtEngine':
+                    prog_bar.refresh()
                 self._update_metrics(res, metrics)
                 return res
 

@@ -50,7 +50,7 @@ if __name__ == '__main__':
     from swift.llm import InferEngine, InferRequest, PtEngine, RequestConfig, load_dataset
     from swift.plugin import InferStats
     model = 'Qwen/Qwen2.5-1.5B-Instruct'
-    infer_backend = 'vllm'
+    infer_backend = 'pt'
 
     if infer_backend == 'pt':
         engine = PtEngine(model, max_batch_size=64)

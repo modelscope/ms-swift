@@ -5,9 +5,7 @@ import hashlib
 import inspect
 import os
 import pickle
-import time
 from copy import deepcopy
-from queue import Queue
 from threading import Thread
 from typing import Any, AsyncIterator, Dict, Iterator, List, Literal, Optional, Union
 
@@ -88,21 +86,20 @@ class PtEngine(InferEngine):
         super()._post_init()
         self.engine = self.model  # dummy
         self.generation_config = self.model.generation_config
-        self._queue = Queue()
+        self._queue = asyncio.Queue()
         self._task_pool = {}
-        self._task_thread = None
+        self._worker = None
 
     def _start_infer_worker(self, loop):
-        if self._task_thread is None:
-            self._task_thread = Thread(target=self._infer_worker, kwargs={'loop': loop})
-            self._task_thread.daemon = True
-            self._task_thread.start()
+        if self._worker is None or self._worker._loop.is_closed():
+            self._worker = loop.create_task(self._infer_worker())
 
-    def _fetch_infer_requests(self):
+    async def _fetch_infer_requests(self):
         while not self._queue.empty():
-            infer_request, kwargs, queue = self._queue.get()
-            info = hashlib.sha256(pickle.dumps(
-                (kwargs['request_config'], kwargs['template'].template_meta))).hexdigest()
+            infer_request, kwargs, queue = await self._queue.get()
+            template = kwargs['template']
+            info = hashlib.sha256(pickle.dumps((kwargs['request_config'], template
+                                                and template.template_meta))).hexdigest()
             if info not in self._task_pool:
                 self._task_pool[info] = kwargs, []
             self._task_pool[info][1].append((infer_request, queue))
@@ -120,9 +117,10 @@ class PtEngine(InferEngine):
         queue_list = [d[1] for d in data]
         return kwargs, queue_list
 
-    def _infer_worker(self, loop):
+    async def _infer_worker(self):
         while True:
-            item = self._fetch_infer_requests()
+            await asyncio.sleep(0.01)
+            item = await self._fetch_infer_requests()
             if item is not None:
                 kwargs, queue_list = item
                 request_config = kwargs['request_config']
@@ -136,11 +134,10 @@ class PtEngine(InferEngine):
                             finished = True
                             res_list = [None] * len(queue_list)
                         for queue, res in zip(queue_list, res_list):
-                            asyncio.run_coroutine_threadsafe(queue.put(res), loop).result()
+                            await queue.put(res)
                 else:
                     for queue, res in zip(queue_list, res_or_gen):
-                        asyncio.run_coroutine_threadsafe(queue.put(res), loop).result()
-            time.sleep(0.01)
+                        await queue.put(res)
 
     def _add_adapter(self, adapter_path: str, adapter_name: Optional[str] = None) -> None:
         self.model = Swift.from_pretrained(self.model, adapter_path, adapter_name)
@@ -416,14 +413,14 @@ class PtEngine(InferEngine):
     ) -> Union[ChatCompletionResponse, AsyncIterator[ChatCompletionStreamResponse]]:
         if request_config is None:
             request_config = RequestConfig()
-        self._start_infer_worker(asyncio.get_event_loop())
         queue = asyncio.Queue()
-        self._queue.put((infer_request, {
+        await self._queue.put((infer_request, {
             'request_config': request_config,
             'template': template,
             'adapter_request': adapter_request,
             'pre_infer_hook': pre_infer_hook
         }, queue))
+        self._start_infer_worker(asyncio.get_event_loop())
         if request_config.stream:
 
             async def _gen_wrapper():
@@ -533,40 +530,10 @@ class PtEngine(InferEngine):
         use_tqdm: Optional[bool] = None,
         adapter_request: Optional[AdapterRequest] = None
     ) -> List[Union[ChatCompletionResponse, Iterator[ChatCompletionStreamResponse]]]:
-        if request_config is None:
-            request_config = RequestConfig()
-        if use_tqdm is None:
-            use_tqdm = not request_config.stream and len(infer_requests) > 1
-        prog_bar = tqdm(total=len(infer_requests), dynamic_ncols=True, disable=not use_tqdm)
-        # If self.max_batch_size is None or 0, then process all infer_requests at once.
-        max_batch_size = self.max_batch_size or len(infer_requests)
-        if request_config.stream:
-
-            def _gen_wrapper():
-                i = 0
-                while i < len(infer_requests):
-                    infer_requests_samples = infer_requests[i:i + max_batch_size]
-                    gen = self._infer(
-                        infer_requests_samples,
-                        request_config,
-                        metrics,
-                        template=template,
-                        adapter_request=adapter_request)
-                    for response in gen:
-                        res = [None] * len(infer_requests)
-                        res[i:i + max_batch_size] = response
-                        yield res
-                    i += max_batch_size
-                    prog_bar.update(len(infer_requests_samples))
-
-            return _gen_wrapper()
-        else:
-            res = []
-            i = 0
-            while i < len(infer_requests):
-                infer_requests_samples = infer_requests[i:i + max_batch_size]
-                res += self._infer(
-                    infer_requests_samples, request_config, metrics, template=template, adapter_request=adapter_request)
-                i += max_batch_size
-                prog_bar.update(len(infer_requests_samples))
-            return res
+        return super().infer(
+            infer_requests,
+            request_config,
+            metrics,
+            template=template,
+            use_tqdm=use_tqdm,
+            adapter_request=adapter_request)
