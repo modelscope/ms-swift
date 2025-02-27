@@ -50,14 +50,14 @@ class LmdeployEngine(InferEngine):
         cache_max_entry_count: float = 0.8,
         quant_policy: int = 0,  # e.g. 4, 8
         vision_batch_size: int = 1,  # max_batch_size in VisionConfig
-        device: Optional[List[int]] = None,
+        devices: Optional[List[int]] = None,
         reload_weights: bool = False,
         engine_kwargs: Optional[Dict[str, Any]] = None,
     ) -> None:
         version_7 = version.parse(lmdeploy.__version__) >= version.parse('0.7.0')
         if reload_weights:
             assert version_7, 'grpo or reload_weights need lmdeploy>=0.7.0'
-        if version_7:
+        if version_7 and tp == 1:
             patch_lmdeploy(reload_weights)
         self.processor = get_model_tokenizer(
             model_id_or_path,
@@ -78,7 +78,7 @@ class LmdeployEngine(InferEngine):
             cache_max_entry_count=cache_max_entry_count,
             quant_policy=quant_policy,
             vision_batch_size=vision_batch_size,
-            device=device,
+            devices=devices,
             engine_kwargs=engine_kwargs)
 
         self.config.torch_dtype = torch_dtype or self.model_info.torch_dtype
@@ -102,7 +102,7 @@ class LmdeployEngine(InferEngine):
                                cache_max_entry_count: float = 0.8,
                                quant_policy: int = 0,
                                vision_batch_size: int = 1,
-                               device: Optional[List[int]] = None,
+                               devices: Optional[List[int]] = None,
                                engine_kwargs: Optional[Dict[str, Any]] = None):
         if engine_kwargs is None:
             engine_kwargs = {}
@@ -113,9 +113,9 @@ class LmdeployEngine(InferEngine):
         backend_config = TurbomindEngineConfig(**engine_kwargs)
         backend_config = autoget_backend_config(self.model_dir, backend_config)
         if hasattr(backend_config, 'devices'):
-            if device is None:
-                device = [0]
-            backend_config.devices = device
+            if devices is None:
+                devices = [0]
+            backend_config.devices = devices
         self.backend_config = backend_config
         logger.info(f'backend_config: {backend_config}')
 
