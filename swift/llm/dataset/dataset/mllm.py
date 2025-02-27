@@ -1180,7 +1180,7 @@ class ClevrPreprocessor(ResponsePreprocessor):
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         query = row.get('query', '')
-        query = (f'{query} Output the thinking process in <think> </tool_call> and '
+        query = (f'{query} Output the thinking process in <think> </think> and '
                  'final answer (number) in <answer> </answer> tags.')
         row.update({'query': query})
         return super().preprocess(row)
