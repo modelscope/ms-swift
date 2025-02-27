@@ -84,20 +84,20 @@ class SwiftInfer(SwiftPipeline):
         return result
 
     def infer_single(self, infer_request: Union[InferRequest, Dict[str, Any]], request_config: RequestConfig) -> str:
-        res_or_gen_list = self.infer([infer_request],
-                                     request_config,
-                                     template=self.template,
-                                     use_tqdm=False,
-                                     **self.infer_kwargs)
+        res_or_gen = self.infer([infer_request],
+                                request_config,
+                                template=self.template,
+                                use_tqdm=False,
+                                **self.infer_kwargs)[0]
         if request_config and request_config.stream:
             response = ''
-            for res in res_or_gen_list[0]:
+            for res in res_or_gen:
                 delta = res.choices[0].delta.content
                 print(delta, end='', flush=True)
                 response += delta
             print()
         else:
-            response = res_or_gen_list[0].choices[0].message.content
+            response = res_or_gen.choices[0].message.content
             print(response)
         print('-' * 50)
         return response

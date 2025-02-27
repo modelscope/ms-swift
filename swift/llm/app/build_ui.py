@@ -49,10 +49,10 @@ def model_chat(history: History, system: Optional[str], *, client, model: str,
         from swift.llm import InferRequest
 
         messages = _history_to_messages(history, system)
-        gen_or_res = client.infer([InferRequest(messages=messages)], request_config=request_config, model=model)
+        resp_or_gen = client.infer([InferRequest(messages=messages)], request_config=request_config, model=model)[0]
         if request_config and request_config.stream:
             response = ''
-            for resp_list in gen_or_res:
+            for resp_list in resp_or_gen:
                 resp = resp_list[0]
                 if resp is None:
                     continue
@@ -61,7 +61,7 @@ def model_chat(history: History, system: Optional[str], *, client, model: str,
                 yield history
 
         else:
-            response = gen_or_res[0].choices[0].message.content
+            response = resp_or_gen.choices[0].message.content
             history[-1][1] = response
             yield history
 
