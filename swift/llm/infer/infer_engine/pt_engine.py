@@ -11,7 +11,6 @@ from typing import Any, AsyncIterator, Dict, Iterator, List, Literal, Optional, 
 
 import json
 import torch
-from tqdm import tqdm
 from transformers import GenerationConfig, LogitsProcessorList
 from transformers.utils import is_torch_npu_available
 
@@ -91,7 +90,7 @@ class PtEngine(InferEngine):
         self._worker = None
 
     def _start_infer_worker(self, loop):
-        if self._worker is None or self._worker._loop.is_closed():
+        if self._worker is None or self._worker.get_loop().is_closed():
             self._worker = loop.create_task(self._infer_worker())
 
     async def _fetch_infer_requests(self):
@@ -354,7 +353,7 @@ class PtEngine(InferEngine):
                     *,
                     generation_config: GenerationConfig,
                     adapter_request: Optional[AdapterRequest] = None,
-                    template_inputs=None) -> Union[List[ChatCompletionResponse]]:
+                    template_inputs=None) -> List[ChatCompletionResponse]:
         # bos_token TODO: encoder-decoder
         generate_kwargs = {'generation_config': generation_config, **inputs}
         adapter_names = self._get_adapter_names(adapter_request)
@@ -450,7 +449,7 @@ class PtEngine(InferEngine):
         template: Optional[Template] = None,
         adapter_request: Optional[AdapterRequest] = None,
         pre_infer_hook=None,
-    ) -> List[Union[ChatCompletionResponse, Iterator[ChatCompletionStreamResponse]]]:
+    ) -> Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
         self.model.eval()
         request_config = deepcopy(request_config)
         if template is None:
