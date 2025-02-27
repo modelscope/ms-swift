@@ -45,7 +45,7 @@ class LmdeployArguments:
             'vision_batch_size': self.vision_batch_size
         }
         if dist.is_initialized():
-            kwargs.update({'device': dist.get_rank()})
+            kwargs.update({'devices': [dist.get_rank()]})
         return kwargs
 
 

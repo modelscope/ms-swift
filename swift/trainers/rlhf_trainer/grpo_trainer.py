@@ -202,7 +202,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             model.model_dir,
                             model.model_info.torch_dtype,
                             model_type=model.model_meta.model_type,
-                            device=[fast_infer_device],
+                            devices=[fast_infer_device],
                             session_len=args.lmdeploy_session_len,
                             cache_max_entry_count=args.lmdeploy_cache_max_entry_count,
                             reload_weights=True)
