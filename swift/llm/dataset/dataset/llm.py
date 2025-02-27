@@ -439,30 +439,6 @@ register_dataset(
         tags=['math']))
 
 
-class ClevrPreprocessor(ResponsePreprocessor):
-
-    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
-        query = row.get('query', '')
-        query = f"""{query} Output the thinking process in <think> </think> and
- final answer (number) in <answer> </answer> tags."""
-        row.update({'query': query})
-        return super().preprocess(row)
-
-
-register_dataset(
-    DatasetMeta(
-        ms_dataset_id='okwinds/clevr_cogen_a_train',
-        subsets=[
-            SubsetDataset(
-                name='default',
-                subset='default',
-                split=['train'],
-            ),
-        ],
-        preprocess_func=ClevrPreprocessor(),
-        tags=['qa', 'math']))
-
-
 class HC3Preprocessor(ResponsePreprocessor):
     prompt = """Classification Task: Are the following responses from a human or from ChatGPT?
 Question: {question}
