@@ -57,7 +57,7 @@ class LmdeployEngine(InferEngine):
         version_7 = version.parse(lmdeploy.__version__) >= version.parse('0.7.0')
         if reload_weights:
             assert version_7, 'grpo or reload_weights need lmdeploy>=0.7.0'
-        if version_7:
+        if version_7 and tp == 1:
             patch_lmdeploy(reload_weights)
         self.processor = get_model_tokenizer(
             model_id_or_path,
