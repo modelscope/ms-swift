@@ -101,7 +101,7 @@ if __name__ == '__main__':
     # https://github.com/modelscope/ms-swift/tree/main/examples/notebook
     from swift.llm import InferEngine, InferRequest, PtEngine, RequestConfig, load_dataset
     from swift.plugin import InferStats
-    infer_backend = 'lmdeploy'
+    infer_backend = 'pt'
 
     if infer_backend == 'pt':
         model = 'Qwen/Qwen2-Audio-7B-Instruct'
@@ -122,7 +122,7 @@ if __name__ == '__main__':
     elif infer_backend == 'lmdeploy':
         # test env: lmdeploy==0.6.4
         from swift.llm import LmdeployEngine
-        model = 'OpenGVLab/InternVL2_5-2B'
+        model = 'OpenGVLab/InternVL2_5-1B'
         engine = LmdeployEngine(model, vision_batch_size=8)
         mm_type = 'image'  # or 'video'
 
