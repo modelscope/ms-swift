@@ -138,7 +138,7 @@ class PtEngine(InferEngine):
                         for queue, res in zip(queue_list, res_list):
                             queue.put(res)
                 else:
-                    for queue, res in zip(queue_list, res_or_gen):
+                    for queue, res in zip(queue_list, res_or_gen_list):
                         queue.put(res)
 
     def _add_adapter(self, adapter_path: str, adapter_name: Optional[str] = None) -> None:
