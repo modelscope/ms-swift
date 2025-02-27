@@ -446,7 +446,6 @@ class PtEngine(InferEngine):
         self,
         infer_requests: List[InferRequest],
         request_config: RequestConfig,
-        metrics: Optional[List[Metric]] = None,
         *,
         template: Optional[Template] = None,
         adapter_request: Optional[AdapterRequest] = None,
@@ -513,12 +512,11 @@ class PtEngine(InferEngine):
             def _gen_wrapper():
                 for res in self._infer_stream(**kwargs):
                     yield self._add_error_list(res, error_list)
-                self._update_metrics(res, metrics)
 
             return _gen_wrapper()
         else:
             infer_func = self._infer_forward if template.mode in ('seq_cls', 'prm') else self._infer_full
-            return self._update_metrics(self._add_error_list(infer_func(**kwargs), error_list), metrics)
+            return self._add_error_list(infer_func(**kwargs), error_list)
 
     def infer(
         self,
