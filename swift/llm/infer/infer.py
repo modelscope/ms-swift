@@ -56,7 +56,6 @@ class SwiftInfer(SwiftPipeline):
             'torch_dtype': args.torch_dtype,
         })
         infer_backend = kwargs.pop('infer_backend', None) or args.infer_backend
-        context = nullcontext()
         if infer_backend == 'pt':
             from .infer_engine import PtEngine
             infer_engine_cls = PtEngine
