@@ -162,6 +162,9 @@ class TrainArguments(SwanlabArguments, TorchAccArguments, TunerArguments, Seq2Se
     temperature: float = 0.
     load_args: bool = False
 
+    # zero++
+    zero_hpz_partition_size: Optional[int] = None
+
     def __post_init__(self) -> None:
         if self.resume_from_checkpoint:
             self.resume_from_checkpoint = to_abspath(self.resume_from_checkpoint, True)
@@ -237,6 +240,11 @@ class TrainArguments(SwanlabArguments, TorchAccArguments, TunerArguments, Seq2Se
                     break
 
             self.deepspeed = self.parse_to_dict(self.deepspeed)
+            if self.zero_hpz_partition_size is not None:
+                assert 'zero_optimization' in self.deepspeed
+                self.deepspeed['zero_optimization']['zero_hpz_partition_size'] = self.zero_hpz_partition_size
+                logger.warn('If `zero_hpz_partition_size`(ZeRO++) causes grad_norm NaN, please'
+                            ' try `--torch_dtype float16`')
             logger.info(f'Using deepspeed: {self.deepspeed}')
 
     def _init_liger(self):
