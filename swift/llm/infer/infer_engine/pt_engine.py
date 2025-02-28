@@ -13,6 +13,7 @@ from typing import Any, AsyncIterator, Dict, Iterator, List, Literal, Optional, 
 
 import json
 import torch
+from tqdm import tqdm
 from transformers import GenerationConfig, LogitsProcessorList
 from transformers.utils import is_torch_npu_available
 
@@ -533,10 +534,28 @@ class PtEngine(InferEngine):
         use_tqdm: Optional[bool] = None,
         adapter_request: Optional[AdapterRequest] = None
     ) -> List[Union[ChatCompletionResponse, Iterator[ChatCompletionStreamResponse]]]:
-        return super().infer(
-            infer_requests,
-            request_config,
-            metrics,
-            template=template,
-            use_tqdm=use_tqdm,
-            adapter_request=adapter_request)
+        if request_config is None:
+            request_config = RequestConfig()
+        if request_config.stream:
+            return super().infer(
+                infer_requests,
+                request_config,
+                metrics,
+                template=template,
+                use_tqdm=use_tqdm,
+                adapter_request=adapter_request)
+        if use_tqdm is None:
+            use_tqdm = not request_config.stream and len(infer_requests) > 1
+        prog_bar = tqdm(total=len(infer_requests), dynamic_ncols=True, disable=not use_tqdm)
+        # If self.max_batch_size is None or 0, then process all infer_requests at once.
+        max_batch_size = self.max_batch_size or len(infer_requests)
+        res = []
+        i = 0
+        while i < len(infer_requests):
+            infer_requests_samples = infer_requests[i:i + max_batch_size]
+            res += self._infer(
+                infer_requests_samples, request_config, template=template, adapter_request=adapter_request)
+            i += max_batch_size
+            prog_bar.update(len(infer_requests_samples))
+        self._update_metrics(res, metrics)
+        return res
