@@ -47,9 +47,8 @@ Swift DOCUMENTATION
    :maxdepth: 2
    :caption: Best Practices
 
-   BestPractices/Best-Practices.md
    BestPractices/NPU-support.md
-
+   BestPractices/More-Best-Practices.md
 
 Indices and tables
 ==================

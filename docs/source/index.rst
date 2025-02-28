@@ -45,11 +45,10 @@ Swift DOCUMENTATION
    :maxdepth: 2
    :caption: Best Practices
 
-   BestPractices/最佳实践.md
    BestPractices/GRPO完整流程.md
    BestPractices/GRPO多模态训练.md
    BestPractices/NPU支持.md
-
+   BestPractices/更多最佳实践.md
 
 Indices and tables
 ==================

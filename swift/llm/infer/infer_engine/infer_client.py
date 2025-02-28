@@ -103,7 +103,9 @@ class InferClient(InferEngine):
 
     @staticmethod
     def _prepare_request_data(model: str, infer_request: InferRequest, request_config: RequestConfig) -> Dict[str, Any]:
-        res = asdict(ChatCompletionRequest(model, **asdict(infer_request), **asdict(request_config)))
+        if not isinstance(infer_request, dict):
+            infer_request = asdict(infer_request)
+        res = asdict(ChatCompletionRequest(model, **infer_request, **asdict(request_config)))
         # ignore empty
         empty_request = ChatCompletionRequest('', [])
         for k in list(res.keys()):
