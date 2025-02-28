@@ -554,7 +554,8 @@ class PtEngine(InferEngine):
         while i < len(infer_requests):
             infer_requests_samples = infer_requests[i:i + max_batch_size]
             res += self._infer(
-                infer_requests_samples, request_config, metrics, template=template, adapter_request=adapter_request)
+                infer_requests_samples, request_config, template=template, adapter_request=adapter_request)
             i += max_batch_size
             prog_bar.update(len(infer_requests_samples))
+        self._update_metrics(res, metrics)
         return res
