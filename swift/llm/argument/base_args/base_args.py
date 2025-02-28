@@ -10,6 +10,7 @@ from transformers.utils import is_torch_npu_available
 
 from swift.hub import get_hub
 from swift.llm import Processor, Template, get_model_tokenizer, get_template, load_by_unsloth, safe_snapshot_download
+from swift.llm.utils import get_ckpt_dir
 from swift.plugin import extra_tuners
 from swift.utils import check_json_format, get_dist_setting, get_logger, is_dist, is_master, use_hf_hub
 from .data_args import DataArguments
@@ -25,19 +26,6 @@ logger = get_logger()
 def get_supported_tuners():
     return {'lora', 'full', 'longlora', 'adalora', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft', 'reft', 'bone'
             } | set(extra_tuners.keys())
-
-
-def get_ckpt_dir(model_dir: str, adapters_dir: Optional[List[str]]) -> str:
-    model_dirs = (adapters_dir or []).copy()
-    if model_dir:
-        model_dirs.append(model_dir)
-    # The adapter takes higher priority.
-    ckpt_dir = None
-    for model_dir in model_dirs:
-        if os.path.exists(os.path.join(model_dir, 'args.json')):
-            ckpt_dir = model_dir
-            break
-    return ckpt_dir
 
 
 @dataclass
