@@ -376,6 +376,15 @@ def get_matched_model_types(architectures: Optional[List[str]]) -> List[str]:
     return arch_mapping.get(architectures) or []
 
 
+def _read_args_json_model_type(model_dir):
+    args_json_path = os.path.join(model_dir, 'args.json')
+    if not os.path.exists(args_json_path):
+        return
+    from swift.llm import BaseArguments
+    args = BaseArguments.from_pretrained(model_dir)
+    return args.model_type
+
+
 def _get_model_info(model_dir: str, model_type: Optional[str], quantization_config) -> ModelInfo:
     config_dict = PretrainedConfig.get_config_dict(model_dir)[0]
     if quantization_config is not None:
@@ -385,6 +394,8 @@ def _get_model_info(model_dir: str, model_type: Optional[str], quantization_conf
     max_model_len = HfConfigFactory.get_max_model_len(config_dict)
     rope_scaling = HfConfigFactory.get_config_attr(config_dict, 'rope_scaling')
 
+    if model_type is None:
+        model_type = _read_args_json_model_type(model_dir)
     if model_type is None:
         architectures = HfConfigFactory.get_config_attr(config_dict, 'architectures')
         model_types = get_matched_model_types(architectures)

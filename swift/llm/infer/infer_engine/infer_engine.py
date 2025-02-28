@@ -31,7 +31,14 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         self.max_model_len = self.model_info.max_model_len
         self.config = self.model_info.config
         if getattr(self, 'default_template', None) is None:
-            self.default_template = get_template(self.model_meta.template, self.processor)
+            from swift.llm.argument.base_args import get_ckpt_dir, BaseArguments
+            ckpt_dir = get_ckpt_dir(self.model_dir, getattr(self, 'adapters', None))
+            if ckpt_dir and os.path.exists(os.path.join(ckpt_dir, 'args.json')):
+                args = BaseArguments.from_pretrained(ckpt_dir)
+                self.default_template = get_template(args.template, self.processor, default_system=args.system)
+            else:
+                self.default_template = get_template(self.model_meta.template, self.processor)
+
         self._adapters_pool = {}
 
     def _get_stop_words(self, stop_words: List[Union[str, List[int], None]]) -> List[str]:

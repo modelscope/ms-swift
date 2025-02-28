@@ -27,6 +27,18 @@ def get_supported_tuners():
             } | set(extra_tuners.keys())
 
 
+def get_ckpt_dir(model_dir: str, adapters_dir: Optional[List[str]]) -> str:
+    model_dirs = (adapters_dir or []).copy()
+    if model_dir:
+        model_dirs.append(model_dir)
+    ckpt_dir = None
+    for model_dir in model_dirs:
+        if os.path.exists(os.path.join(model_dir, 'args.json')):
+            ckpt_dir = model_dir
+            break
+    return ckpt_dir
+
+
 @dataclass
 class CompatArguments:
     #
@@ -45,21 +57,16 @@ class CompatArguments:
         else:
             self.model = self.ckpt_dir
         self.ckpt_dir = None
-        logger.warning('The `--ckpt_dir` parameter will be removed in `ms-swift>=3.2`. '
+        logger.warning('The `--ckpt_dir` parameter will be removed in `ms-swift>=3.4`. '
                        'Please use `--model`, `--adapters`.')
 
     def __post_init__(self: 'BaseArguments'):
         if self.ckpt_dir is not None:
             self._handle_ckpt_dir()
 
-        if self.load_dataset_config is not None:
-            self.load_data_args = self.load_dataset_config
-            logger.warning('The `--load_dataset_config` parameter will be removed in `ms-swift>=3.1`. '
-                           'Please use `--load_data_args`.')
-
         if len(self.lora_modules) > 0:
             self.adapters += self.lora_modules
-            logger.warning('The `--lora_modules` parameter will be removed in `ms-swift>=3.1`. '
+            logger.warning('The `--lora_modules` parameter will be removed in `ms-swift>=3.4`. '
                            'Please use `--adapters`.')
 
 
@@ -188,15 +195,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         return self
 
     def _init_ckpt_dir(self, adapters=None):
-        model_dirs = (adapters or self.adapters).copy()
-        if self.model:
-            model_dirs.append(self.model)
-        self.ckpt_dir = None
-        for model_dir in model_dirs:
-            if os.path.exists(os.path.join(model_dir, 'args.json')):
-                self.ckpt_dir = model_dir
-                break
-
+        self.ckpt_dir = get_ckpt_dir(self.model, adapters or self.adapters)
         if self.ckpt_dir and self.load_args:
             self.load_args_from_ckpt()
 
