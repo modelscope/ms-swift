@@ -296,7 +296,7 @@ FP16 does not support full-parameter training.
 Swift supports inference via Python scripts, command line, and UI interface. See the [Inference and Deployment](https://swift.readthedocs.io/en/latest/Instruction/Inference-and-deployment.html).
 
 ### Q2: How to use the trained model for inference with a dataset?
-Use the parameters `--load_dataset_config true` or `--val_dataset <your-val-dataset>`. Refer to the [Command Line Parameters](https://swift.readthedocs.io/en/latest/Instruction/Command-line-parameters.html).
+Use the parameters `--load_data_args true` or `--val_dataset <your-val-dataset>`. Refer to the [Command Line Parameters](https://swift.readthedocs.io/en/latest/Instruction/Command-line-parameters.html).
 
 ### Q3: Can I specify a locally saved model during Swift inference?
 Set `--model` to the local path. See [Command Line Parameters](https://swift.readthedocs.io/en/latest/Instruction/Command-line-parameters.html).
@@ -317,7 +317,7 @@ Set the command line parameter `--max_pixels xxx`, environment variable `MAX_PIX
 ### Q7: On a V100 GPU, in a Python virtual environment, following the environment setup instructions from https://swift2x.readthedocs.io/zh-cn/latest/Multi-Modal/qwen2-vl%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5.html, when testing the inference command: `CUDA_VISIBLE_DEVICES=0,1,2,3 swift infer --model_type qwen2-vl-7b-instruct`, an error occurs: `RuntimeError: probability tensor contains either 'inf', 'nan' or element < 0`.
 Try inference on A10 or 3090 machines.
 
-### Q8: After running the prediction command, where are the results saved? CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir output/glm4v-9b-chat/vx-xxx/checkpoint-xxx-merged --load_dataset_config true
+### Q8: After running the prediction command, where are the results saved? CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir output/glm4v-9b-chat/vx-xxx/checkpoint-xxx-merged --load_data_args true
 Results will be printed in the log.
 
 ### Q9: For the latest version of swift, can the infer command output probability values through the logprobs parameter?
@@ -443,7 +443,7 @@ Refer to the [issue](https://github.com/QwenLM/Qwen2-VL/issues/209).
 
 ### Q11: When using Swift deploy for inference, I want to output token probabilities. I added logprobs True, but it outputs null. What's the reason?
 ```shell
-RAY_memory_monitor_refresh_ms=0 CUDA_VISIBLE_DEVICES=1 nohup swift deploy --ckpt_dir /mnt/workspace/checkpoint_600 --infer_backend vllm --logprobs True --load_dataset_config false --host 0.0.0.0 --port 8000 &
+RAY_memory_monitor_refresh_ms=0 CUDA_VISIBLE_DEVICES=1 nohup swift deploy --ckpt_dir /mnt/workspace/checkpoint_600 --infer_backend vllm --logprobs True --load_data_args false --host 0.0.0.0 --port 8000 &
 ```
 Parameters need to be passed from the client side, `request_config = RequestConfig(..., logprobs=True, top_logprobs=2)`.
 

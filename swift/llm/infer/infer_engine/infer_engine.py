@@ -9,6 +9,7 @@ from tqdm import tqdm
 
 from swift.llm import InferRequest, ProcessorMixin, get_template
 from swift.llm.template import split_action_action_input
+from swift.llm.utils import get_ckpt_dir
 from swift.plugin import Metric
 from swift.utils import get_logger
 from ..protocol import (ChatCompletionMessageToolCall, ChatCompletionResponse, ChatCompletionStreamResponse, Function,
@@ -31,7 +32,14 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         self.max_model_len = self.model_info.max_model_len
         self.config = self.model_info.config
         if getattr(self, 'default_template', None) is None:
-            self.default_template = get_template(self.model_meta.template, self.processor)
+            ckpt_dir = get_ckpt_dir(self.model_dir, getattr(self, 'adapters', None))
+            if ckpt_dir:
+                from swift.llm import BaseArguments
+                args = BaseArguments.from_pretrained(ckpt_dir)
+                self.default_template = get_template(args.template, self.processor, default_system=args.system)
+            else:
+                self.default_template = get_template(self.model_meta.template, self.processor)
+
         self._adapters_pool = {}
 
     def _get_stop_words(self, stop_words: List[Union[str, List[int], None]]) -> List[str]:

@@ -544,6 +544,7 @@ class PtEngine(InferEngine):
                 template=template,
                 use_tqdm=use_tqdm,
                 adapter_request=adapter_request)
+        # Has higher stability than calling super().infer
         if use_tqdm is None:
             use_tqdm = not request_config.stream and len(infer_requests) > 1
         prog_bar = tqdm(total=len(infer_requests), dynamic_ncols=True, disable=not use_tqdm)

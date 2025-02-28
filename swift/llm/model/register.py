@@ -6,11 +6,9 @@ from contextlib import nullcontext
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from functools import partial
-from types import MethodType
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
-import torch.nn.functional as F
 from peft import PeftModel
 from transformers import (AutoConfig, AutoModel, AutoModelForCausalLM, AutoModelForSequenceClassification,
                           AutoTokenizer, GenerationConfig, PretrainedConfig, PreTrainedModel, PreTrainedTokenizerBase)
@@ -376,6 +374,14 @@ def get_matched_model_types(architectures: Optional[List[str]]) -> List[str]:
     return arch_mapping.get(architectures) or []
 
 
+def _read_args_json_model_type(model_dir):
+    if not os.path.exists(os.path.join(model_dir, 'args.json')):
+        return
+    from swift.llm import BaseArguments
+    args = BaseArguments.from_pretrained(model_dir)
+    return args.model_type
+
+
 def _get_model_info(model_dir: str, model_type: Optional[str], quantization_config) -> ModelInfo:
     config_dict = PretrainedConfig.get_config_dict(model_dir)[0]
     if quantization_config is not None:
@@ -385,6 +391,8 @@ def _get_model_info(model_dir: str, model_type: Optional[str], quantization_conf
     max_model_len = HfConfigFactory.get_max_model_len(config_dict)
     rope_scaling = HfConfigFactory.get_config_attr(config_dict, 'rope_scaling')
 
+    if model_type is None:
+        model_type = _read_args_json_model_type(model_dir)
     if model_type is None:
         architectures = HfConfigFactory.get_config_attr(config_dict, 'architectures')
         model_types = get_matched_model_types(architectures)
