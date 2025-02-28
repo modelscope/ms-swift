@@ -49,7 +49,8 @@ async def model_chat(history: History, system: Optional[str], *, client, model: 
         from swift.llm import InferRequest
 
         messages = _history_to_messages(history, system)
-        resp_or_gen = await client.infer_async(InferRequest(messages=messages), request_config=request_config, model=model)
+        resp_or_gen = await client.infer_async(
+            InferRequest(messages=messages), request_config=request_config, model=model)
         if request_config and request_config.stream:
             response = ''
             async for resp in resp_or_gen:

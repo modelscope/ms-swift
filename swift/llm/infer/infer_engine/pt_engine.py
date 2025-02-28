@@ -136,11 +136,11 @@ class PtEngine(InferEngine):
                         except StopIteration:
                             finished = True
                             res_list = [None] * len(queue_list)
-                        for queue, res in zip(queue_list, res_list):
-                            queue.put(res)
+                        for (queue, loop), res in zip(queue_list, res_list):
+                            asyncio.run_coroutine_threadsafe(queue.put(res), loop)
                 else:
-                    for queue, res in zip(queue_list, res_list_or_gen):
-                        queue.put(res)
+                    for (queue, loop), res in zip(queue_list, res_list_or_gen):
+                        asyncio.run_coroutine_threadsafe(queue.put(res), loop)
 
     def _add_adapter(self, adapter_path: str, adapter_name: Optional[str] = None) -> None:
         self.model = Swift.from_pretrained(self.model, adapter_path, adapter_name)
@@ -416,27 +416,28 @@ class PtEngine(InferEngine):
     ) -> Union[ChatCompletionResponse, AsyncIterator[ChatCompletionStreamResponse]]:
         if request_config is None:
             request_config = RequestConfig()
-        queue = Queue()
+        queue = asyncio.Queue()
         self._queue.put((infer_request, {
             'request_config': request_config,
             'template': template,
             'adapter_request': adapter_request,
             'pre_infer_hook': pre_infer_hook
-        }, queue))
+        }, (queue, asyncio.get_event_loop())))
+        await asyncio.sleep(0)
         self._start_infer_worker()
         if request_config.stream:
 
             async def _gen_wrapper():
                 while True:
+                    item = await queue.get()
                     await asyncio.sleep(0)
-                    item = queue.get()
                     if item is None:
                         break
                     yield item
 
             return _gen_wrapper()
         else:
-            return queue.get()
+            return await queue.get()
 
     @staticmethod
     def _add_error_list(outputs, error_list):
