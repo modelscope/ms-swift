@@ -1,7 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
 import asyncio
-import os
 from queue import Queue
 from threading import Thread
 from typing import Any, Dict, Iterator, List, Optional, Union
@@ -34,7 +33,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         self.config = self.model_info.config
         if getattr(self, 'default_template', None) is None:
             ckpt_dir = get_ckpt_dir(self.model_dir, getattr(self, 'adapters', None))
-            if ckpt_dir and os.path.exists(os.path.join(ckpt_dir, 'args.json')):
+            if ckpt_dir:
                 from swift.llm import BaseArguments
                 args = BaseArguments.from_pretrained(ckpt_dir)
                 self.default_template = get_template(args.template, self.processor, default_system=args.system)
