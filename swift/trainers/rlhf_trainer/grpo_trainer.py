@@ -450,7 +450,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         outputs['logits_to_keep'] = logits_to_keep
         outputs['completion_mask'] = labels[:, -logits_to_keep:] != -100
 
-        with torch.inference_mode():
+        with torch.no_grad():
             if self.old_policy:
                 outputs['old_per_token_logps'] = self._get_per_token_logps(self.model, outputs)
             else:
