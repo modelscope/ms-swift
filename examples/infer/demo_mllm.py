@@ -108,19 +108,19 @@ if __name__ == '__main__':
         mm_type = 'audio'
         engine = PtEngine(model, max_batch_size=64)
     elif infer_backend == 'vllm':
-        # test env: vllm==0.7.2, transformers==4.48.*
+        # test env: vllm==0.7.3, transformers==4.49.*
         # The meaning of environment variables can be found at:
         # https://swift.readthedocs.io/zh-cn/latest/Instruction/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.html#id17
         from swift.llm import VllmEngine
         os.environ['MAX_PIXELS'] = '1003520'
         os.environ['VIDEO_MAX_PIXELS'] = '50176'
         os.environ['FPS_MAX_FRAMES'] = '12'
-        model = 'Qwen/Qwen2-VL-2B-Instruct'
+        model = 'Qwen/Qwen2.5-VL-3B-Instruct'
         # If you encounter insufficient GPU memory, please reduce `max_model_len` and set `max_num_seqs=5`.
         engine = VllmEngine(model, max_model_len=8192, limit_mm_per_prompt={'image': 5, 'video': 2})
         mm_type = 'image'  # or 'video'
     elif infer_backend == 'lmdeploy':
-        # test env: lmdeploy==0.6.4
+        # test env: lmdeploy==0.7.1
         from swift.llm import LmdeployEngine
         model = 'OpenGVLab/InternVL2_5-1B'
         engine = LmdeployEngine(model, vision_batch_size=8)
