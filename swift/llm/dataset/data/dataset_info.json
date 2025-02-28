@@ -672,5 +672,10 @@
         "hf_dataset_id": "FreedomIntelligence/medical-o1-reasoning-SFT",
         "subsets": ["en", "zh"],
         "tags": ["medical", "o1", "🔥"]
+    },
+    {
+        "ms_dataset_id": "lmms-lab/multimodal-open-r1-8k-verified",
+        "hf_dataset_id": "lmms-lab/multimodal-open-r1-8k-verified",
+        "tags": ["grpo", "vision", "🔥"]
     }
 ]
