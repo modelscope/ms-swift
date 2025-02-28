@@ -110,7 +110,7 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
         self._set_default()
         super().__post_init__()
         self._init_grpo_ds3()
-        
+
         if self.loss_scale is None:
             if self.rlhf_type == 'orpo' and not self.model_meta.is_multimodal:
                 # Avoid padding labels during the model's forward pass in multimodal models.
@@ -188,5 +188,5 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
 
     def _init_grpo_ds3(self):
         if self.rlhf_type == 'grpo' and self.deepspeed:
-            if self.deepspeed.zero_optimization['stage'] == 3:
-                self.deepspeed.zero_optimization['stage3_prefetch_bucket_size'] = 0
+            if self.deepspeed['zero_optimization']['stage'] == 3:
+                self.deepspeed['zero_optimization']['stage3_prefetch_bucket_size'] = 0
