@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import asyncio
 import concurrent.futures
 import hashlib
 import inspect
@@ -427,6 +428,7 @@ class PtEngine(InferEngine):
 
             async def _gen_wrapper():
                 while True:
+                    await asyncio.sleep(0)
                     item = queue.get()
                     if item is None:
                         break
