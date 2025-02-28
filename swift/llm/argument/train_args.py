@@ -243,6 +243,8 @@ class TrainArguments(SwanlabArguments, TorchAccArguments, TunerArguments, Seq2Se
             if self.zero_hpz_partition_size is not None:
                 assert 'zero_optimization' in self.deepspeed
                 self.deepspeed['zero_optimization']['zero_hpz_partition_size'] = self.zero_hpz_partition_size
+                logger.warn('If `zero_hpz_partition_size`(ZeRO++) causes grad_norm NaN, please'
+                            ' try `--torch_dtype float16`')
             logger.info(f'Using deepspeed: {self.deepspeed}')
 
     def _init_liger(self):
