@@ -31,6 +31,7 @@ def get_ckpt_dir(model_dir: str, adapters_dir: Optional[List[str]]) -> str:
     model_dirs = (adapters_dir or []).copy()
     if model_dir:
         model_dirs.append(model_dir)
+    # The adapter takes higher priority.
     ckpt_dir = None
     for model_dir in model_dirs:
         if os.path.exists(os.path.join(model_dir, 'args.json')):
