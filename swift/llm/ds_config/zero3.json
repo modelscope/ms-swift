@@ -22,7 +22,6 @@
             "device": "none",
             "pin_memory": true
         },
-        "zero_hpz_partition_size": 8,
         "overlap_comm": true,
         "contiguous_gradients": true,
         "sub_group_size": 1e9,
