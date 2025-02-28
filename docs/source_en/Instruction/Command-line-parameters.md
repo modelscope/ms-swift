@@ -57,6 +57,7 @@ Hints:
 ### Template Arguments
 - 🔥template: Type of dialogue template. Default is None, which automatically selects the corresponding model's template type.
 - 🔥system: Custom system field, can take a string or txt file path as input. Default is None, uses the default system of the template.
+  - Note: The system priority in the dataset is the highest, followed by `--system`, and finally the `default_system` defined in the template.
 - 🔥max_length: The maximum length of tokens for a single sample. Defaults to None, set to the maximum length of tokens supported by the model (max_model_len).
   - Note: In the cases of PPO, GRPO, and inference, max_length represents max_prompt_length.
 - truncation_strategy: Strategy for handling single sample tokens that exceed `max_length`. Options are `delete`, `left`, and `right`, representing deletion, left-side truncation, and right-side truncation, respectively. The default is 'delete'.
@@ -442,6 +443,7 @@ Deployment Arguments inherit from the [inference arguments](#inference-arguments
 - owned_by: Default is `swift`.
 - 🔥served_model_name: Model name for serving, defaults to the model's suffix.
 - verbose: Print detailed logs, with a default value of True.
+  - Note: In `swift app` or `swift eval`, the default is False.
 - log_interval: Interval for printing tokens/s statistics, default is 20 seconds. If set to -1, it will not be printed.
 - max_logprobs: Maximum number of logprobs returned to the client, with a default value of 20.
 
@@ -471,7 +473,6 @@ Evaluation Arguments inherit from the [deployment arguments](#deployment-argumen
 - 🔥local_dataset: Some evaluation sets, such as `CMB`, cannot be directly used and require downloading additional data packages. Setting this parameter to `true` will automatically download the full data package, create a `data` folder in the current directory, and start the evaluation. The data package will only be downloaded once and will be cached for future use. This parameter defaults to `false`.
   - Note: By default, the evaluation will use datasets from `~/.cache/opencompass`. Specifying this parameter will directly use the data folder in the current directory.
 - temperature: Overrides the generation arguments, with a default value of 0.
-- verbose: This parameter is passed into DeployArguments when setting up local deployment and evaluation, and defaults to `False`.
 - eval_num_proc: Maximum number of concurrent clients during evaluation, default is 16.
 - 🔥eval_url: The evaluation URL, for example, `http://localhost:8000/v1`. Examples can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/eval/eval_url). The default value is None, which means using local deployment for evaluation.
 

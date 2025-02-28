@@ -1,15 +1,18 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import asyncio
 import concurrent.futures
+import hashlib
 import inspect
 import os
+import pickle
+import time
 from copy import deepcopy
+from queue import Queue
 from threading import Thread
 from typing import Any, AsyncIterator, Dict, Iterator, List, Literal, Optional, Union
 
 import json
 import torch
-from tqdm import tqdm
 from transformers import GenerationConfig, LogitsProcessorList
 from transformers.utils import is_torch_npu_available
 
@@ -84,6 +87,60 @@ class PtEngine(InferEngine):
         super()._post_init()
         self.engine = self.model  # dummy
         self.generation_config = self.model.generation_config
+        self._queue = Queue()
+        self._task_pool = {}
+        self._task_thread = None
+
+    def _start_infer_worker(self):
+        if self._task_thread is None:
+            self._task_thread = Thread(target=self._infer_worker)
+            self._task_thread.daemon = True
+            self._task_thread.start()
+
+    def _fetch_infer_requests(self):
+        while not self._queue.empty():
+            infer_request, kwargs, queue = self._queue.get()
+            template = kwargs['template']
+            info = hashlib.sha256(pickle.dumps((kwargs['request_config'], template
+                                                and template.template_meta))).hexdigest()
+            if info not in self._task_pool:
+                self._task_pool[info] = kwargs, []
+            self._task_pool[info][1].append((infer_request, queue))
+        if len(self._task_pool) == 0:
+            return
+        key, (kwargs, data) = next(iter(self._task_pool.items()))
+        max_batch_size = self.max_batch_size or len(data)
+        data, remain_data = data[:max_batch_size], data[max_batch_size:]
+        if remain_data:
+            self._task_pool[key] = kwargs, remain_data
+        else:
+            self._task_pool.pop(key)
+        kwargs = kwargs.copy()
+        kwargs['infer_requests'] = [d[0] for d in data]
+        queue_list = [d[1] for d in data]
+        return kwargs, queue_list
+
+    def _infer_worker(self):
+        while True:
+            time.sleep(0.01)
+            item = self._fetch_infer_requests()
+            if item is not None:
+                kwargs, queue_list = item
+                request_config = kwargs['request_config']
+                res_list_or_gen = self._infer(**kwargs)
+                if request_config.stream:
+                    finished = False
+                    while not finished:
+                        try:
+                            res_list = next(res_list_or_gen)
+                        except StopIteration:
+                            finished = True
+                            res_list = [None] * len(queue_list)
+                        for (queue, loop), res in zip(queue_list, res_list):
+                            asyncio.run_coroutine_threadsafe(queue.put(res), loop)
+                else:
+                    for (queue, loop), res in zip(queue_list, res_list_or_gen):
+                        asyncio.run_coroutine_threadsafe(queue.put(res), loop)
 
     def _add_adapter(self, adapter_path: str, adapter_name: Optional[str] = None) -> None:
         self.model = Swift.from_pretrained(self.model, adapter_path, adapter_name)
@@ -300,7 +357,7 @@ class PtEngine(InferEngine):
                     *,
                     generation_config: GenerationConfig,
                     adapter_request: Optional[AdapterRequest] = None,
-                    template_inputs=None) -> Union[List[ChatCompletionResponse]]:
+                    template_inputs=None) -> List[ChatCompletionResponse]:
         # bos_token TODO: encoder-decoder
         generate_kwargs = {'generation_config': generation_config, **inputs}
         adapter_names = self._get_adapter_names(adapter_request)
@@ -357,24 +414,30 @@ class PtEngine(InferEngine):
         adapter_request: Optional[AdapterRequest] = None,
         pre_infer_hook=None,
     ) -> Union[ChatCompletionResponse, AsyncIterator[ChatCompletionStreamResponse]]:
-        # TODO:auto batch
         if request_config is None:
             request_config = RequestConfig()
-        res_or_gen = self._infer([infer_request],
-                                 request_config,
-                                 template=template,
-                                 adapter_request=adapter_request,
-                                 pre_infer_hook=pre_infer_hook)
+        queue = asyncio.Queue()
+        self._queue.put((infer_request, {
+            'request_config': request_config,
+            'template': template,
+            'adapter_request': adapter_request,
+            'pre_infer_hook': pre_infer_hook
+        }, (queue, asyncio.get_event_loop())))
+        await asyncio.sleep(0)
+        self._start_infer_worker()
         if request_config.stream:
 
             async def _gen_wrapper():
-                for response in res_or_gen:
+                while True:
+                    item = await queue.get()
                     await asyncio.sleep(0)
-                    yield response[0]
+                    if item is None:
+                        break
+                    yield item
 
             return _gen_wrapper()
         else:
-            return res_or_gen[0]
+            return await queue.get()
 
     @staticmethod
     def _add_error_list(outputs, error_list):
@@ -388,7 +451,6 @@ class PtEngine(InferEngine):
         self,
         infer_requests: List[InferRequest],
         request_config: RequestConfig,
-        metrics: Optional[List[Metric]] = None,
         *,
         template: Optional[Template] = None,
         adapter_request: Optional[AdapterRequest] = None,
@@ -455,12 +517,11 @@ class PtEngine(InferEngine):
             def _gen_wrapper():
                 for res in self._infer_stream(**kwargs):
                     yield self._add_error_list(res, error_list)
-                self._update_metrics(res, metrics)
 
             return _gen_wrapper()
         else:
             infer_func = self._infer_forward if template.mode in ('seq_cls', 'prm') else self._infer_full
-            return self._update_metrics(self._add_error_list(infer_func(**kwargs), error_list), metrics)
+            return self._add_error_list(infer_func(**kwargs), error_list)
 
     def infer(
         self,
@@ -471,41 +532,11 @@ class PtEngine(InferEngine):
         template: Optional[Template] = None,
         use_tqdm: Optional[bool] = None,
         adapter_request: Optional[AdapterRequest] = None
-    ) -> Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
-        if request_config is None:
-            request_config = RequestConfig()
-        if use_tqdm is None:
-            use_tqdm = not request_config.stream and len(infer_requests) > 1
-        prog_bar = tqdm(total=len(infer_requests), dynamic_ncols=True, disable=not use_tqdm)
-        # If self.max_batch_size is None or 0, then process all infer_requests at once.
-        max_batch_size = self.max_batch_size or len(infer_requests)
-        if request_config.stream:
-
-            def _gen_wrapper() -> Iterator[List[Optional[ChatCompletionStreamResponse]]]:
-                i = 0
-                while i < len(infer_requests):
-                    infer_requests_samples = infer_requests[i:i + max_batch_size]
-                    gen = self._infer(
-                        infer_requests_samples,
-                        request_config,
-                        metrics,
-                        template=template,
-                        adapter_request=adapter_request)
-                    for response in gen:
-                        res = [None] * len(infer_requests)
-                        res[i:i + max_batch_size] = response
-                        yield res
-                    i += max_batch_size
-                    prog_bar.update(len(infer_requests_samples))
-
-            return _gen_wrapper()
-        else:
-            res = []
-            i = 0
-            while i < len(infer_requests):
-                infer_requests_samples = infer_requests[i:i + max_batch_size]
-                res += self._infer(
-                    infer_requests_samples, request_config, metrics, template=template, adapter_request=adapter_request)
-                i += max_batch_size
-                prog_bar.update(len(infer_requests_samples))
-            return res
+    ) -> List[Union[ChatCompletionResponse, Iterator[ChatCompletionStreamResponse]]]:
+        return super().infer(
+            infer_requests,
+            request_config,
+            metrics,
+            template=template,
+            use_tqdm=use_tqdm,
+            adapter_request=adapter_request)

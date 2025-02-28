@@ -46,53 +46,62 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
                 stop.append(stop_word)
         return stop
 
-    def _batch_infer_stream(self,
-                            tasks,
-                            stream: bool = True,
-                            use_tqdm: bool = True) -> Iterator[List[Optional[ChatCompletionStreamResponse]]]:
-
-        async def _run_infer(i, task, queue, stream: bool = False):
-            # task with queue
-            try:
-                if stream:
-                    async for stream_response in await task:
-                        queue.put((i, stream_response))
-                else:
-                    queue.put((i, await task))
-            except Exception as e:
-                queue.put((i, e))
-            else:
-                queue.put((i, None))
-
-        async def _batch_run(tasks):
-            return await asyncio.gather(*tasks)
-
+    def async_iter_to_iter(self, async_iter, prog_bar, metrics) -> Iterator:
         queue = Queue()
-        new_tasks = [_run_infer(i, task, queue, stream) for i, task in enumerate(tasks)]
 
-        thread = Thread(target=lambda: asyncio.run(_batch_run(new_tasks)))
-        thread.start()
-
-        prog_bar = tqdm(total=len(new_tasks), dynamic_ncols=True, disable=not use_tqdm)
-        n_finished = 0
-        outputs = [None] * len(new_tasks)
-
-        while n_finished < len(new_tasks):
-            i, output = queue.get()
-            if output is None or isinstance(output, Exception):
-                # is_finished
-                if isinstance(output, Exception):
-                    if getattr(self, 'strict', True):
-                        raise output
-                    outputs[i] = output
-                n_finished += 1
-                prog_bar.update()
+        async def _run_async_iter():
+            try:
+                async for item in await async_iter:
+                    queue.put(item)
+            except Exception as e:
+                if getattr(self, 'strict', True):
+                    raise
+                queue.put(e)
             else:
-                if outputs[i] is not None:  # The logic will only apply to the stream.
-                    yield outputs
-                    outputs = [None] * len(new_tasks)
-                outputs[i] = output
-        yield outputs
+                queue.put(None)
+
+        thread = Thread(target=lambda: asyncio.run(_run_async_iter()))
+        thread.start()
+        pre_output = None
+        while True:
+            output = queue.get()
+            if output is None or isinstance(output, Exception):
+                prog_bar.update()
+                self._update_metrics(pre_output, metrics)
+                return
+            pre_output = output
+            yield output
+
+    @staticmethod
+    async def batch_run(tasks):
+        return await asyncio.gather(*tasks)
+
+    def _batch_infer_stream(
+        self,
+        tasks,
+        stream: bool = True,
+        use_tqdm: bool = True,
+        metrics: Optional[List[Metric]] = None
+    ) -> List[Union[ChatCompletionResponse, Iterator[ChatCompletionStreamResponse]]]:
+
+        prog_bar = tqdm(total=len(tasks), dynamic_ncols=True, disable=not use_tqdm)
+        if stream:
+            return [self.async_iter_to_iter(task, prog_bar, metrics) for task in tasks]
+        else:
+
+            async def _new_run(task):
+                try:
+                    res = await task
+                except Exception as e:
+                    if getattr(self, 'strict', True):
+                        raise
+                    res = e
+                prog_bar.update()
+                self._update_metrics(res, metrics)
+                return res
+
+            new_tasks = [_new_run(task) for task in tasks]
+            return self.safe_asyncio_run(self.batch_run(new_tasks))
 
     @staticmethod
     def _get_usage_info(num_prompt_tokens: int, num_generated_tokens: int) -> UsageInfo:
@@ -130,20 +139,14 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
               metrics: Optional[List[Metric]] = None,
               *,
               use_tqdm: Optional[bool] = None,
-              **kwargs) -> Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
+              **kwargs) -> List[Union[ChatCompletionResponse, Iterator[ChatCompletionStreamResponse]]]:
         if request_config is None:
             request_config = RequestConfig()
         tasks = [self.infer_async(infer_request, request_config, **kwargs) for infer_request in infer_requests]
         if use_tqdm is None:
             use_tqdm = not request_config.stream and len(infer_requests) > 1
         if request_config.stream:
-
-            def _gen_wrapper():
-                for res in self._batch_infer_stream(tasks, True, use_tqdm):
-                    yield res
-                self._update_metrics(res, metrics)
-
-            return _gen_wrapper()
+            return self._batch_infer_stream(tasks, True, use_tqdm, metrics)
         else:
             i = 0
             result = []
@@ -155,15 +158,14 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
                 total=len(infer_requests), dynamic_ncols=True, disable=not use_tqdm or len(tasks) <= max_batch_size)
             while i < len(tasks):
                 tasks_samples = tasks[i:i + max_batch_size]
-                for res in self._batch_infer_stream(tasks_samples, False, use_tqdm):
-                    pass
+                res = self._batch_infer_stream(tasks_samples, False, use_tqdm, metrics)
                 result += res
                 i += max_batch_size
                 prog_bar.update(len(tasks_samples))
-            return self._update_metrics(result, metrics)
+            return result
 
-    def _get_toolcall(self,
-                      response: Union[str, List[Dict[str, Any]]],
+    @staticmethod
+    def _get_toolcall(response: Union[str, List[Dict[str, Any]]],
                       tools_prompt='react_en') -> Optional[List[ChatCompletionMessageToolCall]]:
         if not isinstance(response, str):
             response = '\n'.join([resp['text'] for resp in response if resp['type'] == 'text'])

@@ -19,6 +19,7 @@ Messages format (standard format):
 ```jsonl
 {"messages": [{"role": "system", "content": "<system>"}, {"role": "user", "content": "<query1>"}, {"role": "assistant", "content": "<response1>"}, {"role": "user", "content": "<query2>"}, {"role": "assistant", "content": "<response2>"}]}
 ```
+- Note: The system part is optional. The system in the dataset has a higher priority than the `--system` passed through the command line, followed by the `default_system` defined in the template.
 
 ShareGPT format:
 ```jsonl

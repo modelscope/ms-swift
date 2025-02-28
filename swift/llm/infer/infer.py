@@ -88,16 +88,16 @@ class SwiftInfer(SwiftPipeline):
                                 request_config,
                                 template=self.template,
                                 use_tqdm=False,
-                                **self.infer_kwargs)
+                                **self.infer_kwargs)[0]
         if request_config and request_config.stream:
             response = ''
             for res in res_or_gen:
-                delta = res[0].choices[0].delta.content
+                delta = res.choices[0].delta.content
                 print(delta, end='', flush=True)
                 response += delta
             print()
         else:
-            response = res_or_gen[0].choices[0].message.content
+            response = res_or_gen.choices[0].message.content
             print(response)
         print('-' * 50)
         return response

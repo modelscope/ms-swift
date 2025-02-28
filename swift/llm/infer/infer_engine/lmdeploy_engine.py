@@ -215,7 +215,7 @@ class LmdeployEngine(InferEngine):
             self, template: Template, inputs: Dict[str, Any],
             generation_config: LmdeployGenerationConfig) -> AsyncIterator[ChatCompletionStreamResponse]:
         session_id = time.time_ns()
-        kwargs = {'stream_output': False, 'gen_config': generation_config, 'sequence_start': True, 'sequence_end': True}
+        kwargs = {'stream_output': True, 'gen_config': generation_config, 'sequence_start': True, 'sequence_end': True}
         if version.parse(lmdeploy.__version__) >= version.parse('0.6.5'):
             async with self.engine.model_inst(session_id) as inst:
                 context = self.engine.safe_run(inst, session_id, **inputs, **kwargs)
@@ -342,7 +342,7 @@ class LmdeployEngine(InferEngine):
         *,
         template: Optional[Template] = None,
         use_tqdm: Optional[bool] = None,
-    ) -> Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
+    ) -> List[Union[ChatCompletionResponse, Iterator[ChatCompletionStreamResponse]]]:
         if hasattr(self.engine, 'vl_encoder'):
             self.engine.vl_encoder._loop_task = None
         if hasattr(self.engine, 'free_insts'):

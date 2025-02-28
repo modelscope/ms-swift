@@ -77,14 +77,14 @@ class InferClient(InferEngine):
         return from_dict(ModelList, resp_obj)
 
     def infer(
-        self,
-        infer_requests: List[InferRequest],
-        request_config: Optional[RequestConfig] = None,
-        metrics: Optional[List[Metric]] = None,
-        *,
-        model: Optional[str] = None,
-        use_tqdm: Optional[bool] = None
-    ) -> Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
+            self,
+            infer_requests: List[InferRequest],
+            request_config: Optional[RequestConfig] = None,
+            metrics: Optional[List[Metric]] = None,
+            *,
+            model: Optional[str] = None,
+            use_tqdm: Optional[bool] = None
+    ) -> List[Union[ChatCompletionResponse, Iterator[ChatCompletionStreamResponse]]]:
         """
         Perform inference using the specified model.
 
@@ -96,7 +96,7 @@ class InferClient(InferEngine):
             use_tqdm (Optional[bool]): Whether to use tqdm for progress tracking. Defaults to None.
 
         Returns:
-            Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
+            List[Union[ChatCompletionResponse, Iterator[ChatCompletionStreamResponse]]]:
             The inference responses or an iterator of streaming responses.
         """
         return super().infer(infer_requests, request_config, metrics, model=model, use_tqdm=use_tqdm)
