@@ -60,11 +60,13 @@ class SwiftMixin:
                  preprocess_logits_for_metrics: Optional[Callable[[torch.Tensor, torch.Tensor], torch.Tensor]] = None,
                  **kwargs) -> None:
         if args.check_model and hasattr(model, 'model_dir'):
-            check_local_model_is_latest(
-                model.model_dir, user_agent={
-                    'invoked_by': 'local_trainer',
-                    'third_party': 'swift',
-                })
+            from swift.utils.logger import ms_logger_ignore_error
+            with ms_logger_ignore_error():
+                check_local_model_is_latest(
+                    model.model_dir, user_agent={
+                        'invoked_by': 'local_trainer',
+                        'third_party': 'swift',
+                    })
         self._custom_metrics = {}
         self.template = template
         self.max_memory = 0
