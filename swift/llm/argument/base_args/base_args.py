@@ -18,7 +18,6 @@ from .generation_args import GenerationArguments
 from .model_args import ModelArguments
 from .quant_args import QuantizeArguments
 from .template_args import TemplateArguments
-from .utils import to_abspath
 
 logger = get_logger()
 
@@ -107,7 +106,6 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             self.custom_register_path = [self.custom_register_path]
         if not self.custom_register_path:
             return
-        self.custom_register_path = to_abspath(self.custom_register_path, True)
         for path in self.custom_register_path:
             import_external_file(path)
         logger.info(f'Successfully registered {self.custom_register_path}.')
