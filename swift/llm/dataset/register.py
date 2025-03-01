@@ -169,5 +169,5 @@ def register_dataset_info(dataset_info: Union[str, List[str], None] = None) -> L
 
     if log_msg is None:
         log_msg = dataset_info if len(dataset_info) < 5 else list(dataset_info.keys())
-    logger.info(f'Successfully registered `{log_msg}`')
+    logger.info(f'Successfully registered `{log_msg}`.')
     return res
