@@ -1,11 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
-import contextlib
 import os
 import re
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from functools import partial
 from itertools import repeat
@@ -216,7 +215,7 @@ def patch_lmdeploy(load_weights=False):
     from lmdeploy.turbomind.turbomind import TurboMind
     from lmdeploy.turbomind.utils import ModelSource
 
-    @contextlib.contextmanager
+    @contextmanager
     def patch_threadpool_map():
         ThreadPoolExecutor.map_origin = ThreadPoolExecutor.map
         ThreadPoolExecutor.map = lambda *args, **kwargs: []
@@ -224,7 +223,7 @@ def patch_lmdeploy(load_weights=False):
         ThreadPoolExecutor.map = ThreadPoolExecutor.map_origin
         del ThreadPoolExecutor.map_origin
 
-    @contextlib.contextmanager
+    @contextmanager
     def tm_model_context(self):
 
         def _get_tm_model(model_path,
@@ -348,28 +347,33 @@ def patch_lmdeploy(load_weights=False):
     TurboMindInstance._create_model_instance = _create_model_instance
 
 
-@contextmanager
 def patch_vllm():
-    from vllm.distributed.parallel_state import GroupCoordinator
-    from unittest.mock import patch
-    world_size_patch = patch('torch.distributed.get_world_size', return_value=1)
-    profiling_patch = patch(
-        'vllm.worker.worker.Worker._assert_memory_footprint_increased_during_profiling', return_value=None)
-    __origin_init__ = GroupCoordinator.__init__
 
-    def __init__(self, group_ranks, *args, **kwargs):
-        rank = dist.get_rank()
-        if [rank] not in group_ranks:
-            group_ranks.append([rank])
-        return __origin_init__(self, group_ranks, *args, **kwargs)
+    @contextmanager
+    def _get_context():
+        from vllm.distributed.parallel_state import GroupCoordinator
+        from unittest.mock import patch
+        world_size_patch = patch('torch.distributed.get_world_size', return_value=1)
+        profiling_patch = patch(
+            'vllm.worker.worker.Worker._assert_memory_footprint_increased_during_profiling', return_value=None)
 
-    GroupCoordinator.__init__ = __init__
+        __origin_init__ = GroupCoordinator.__init__
 
-    try:
-        with world_size_patch, profiling_patch:
-            yield
-    finally:
-        GroupCoordinator.__init__ = __origin_init__
+        def __init__(self, group_ranks, *args, **kwargs):
+            rank = dist.get_rank()
+            if [rank] not in group_ranks:
+                group_ranks.append([rank])
+            return __origin_init__(self, group_ranks, *args, **kwargs)
+
+        GroupCoordinator.__init__ = __init__
+
+        try:
+            with world_size_patch, profiling_patch:
+                yield
+        finally:
+            GroupCoordinator.__init__ = __origin_init__
+
+    return _get_context() if dist.is_initialized() else nullcontext()
 
 
 def patch_npu_vllm(vllm_device: str):
@@ -377,7 +381,7 @@ def patch_npu_vllm(vllm_device: str):
         vllm_device = get_device(vllm_device)
     device_type = vllm_device.split(':')[0]
 
-    @contextlib.contextmanager
+    @contextmanager
     def new_group_context():
         original_new_group = torch.distributed.new_group
         try:
@@ -387,4 +391,4 @@ def patch_npu_vllm(vllm_device: str):
         finally:
             torch.distributed.new_group = original_new_group
 
-    return new_group_context() if device_type == 'npu' else contextlib.nullcontext()
+    return new_group_context() if device_type == 'npu' else nullcontext()

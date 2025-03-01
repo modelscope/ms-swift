@@ -186,6 +186,9 @@ class VllmEngine(InferEngine):
             max_new_tokens = kwargs.get('max_new_tokens')
             if max_new_tokens is not None:
                 kwargs['max_tokens'] = max_new_tokens
+            top_k = kwargs.get('top_k')
+            if top_k == 0:
+                kwargs['top_k'] = -1
             parameters = inspect.signature(SamplingParams).parameters
             for k, v in kwargs.copy().items():
                 if k not in parameters or v is None:
@@ -337,6 +340,10 @@ class VllmEngine(InferEngine):
             choices.append(choice)
         return ChatCompletionResponse(model=self.model_name, choices=choices, usage=usage_info, id=request_id)
 
+    def _batch_infer_stream(self, *args, **kwargs):
+        self.engine.engine.model_executor.parallel_worker_tasks = None
+        return super()._batch_infer_stream(*args, **kwargs)
+
     def infer(
         self,
         infer_requests: List[InferRequest],
@@ -347,7 +354,6 @@ class VllmEngine(InferEngine):
         use_tqdm: Optional[bool] = None,
         adapter_request: Optional[AdapterRequest] = None,
     ) -> List[Union[ChatCompletionResponse, Iterator[ChatCompletionStreamResponse]]]:
-        self.engine.engine.model_executor.parallel_worker_tasks = None
         return super().infer(
             infer_requests,
             request_config,
