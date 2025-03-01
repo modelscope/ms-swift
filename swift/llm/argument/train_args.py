@@ -151,7 +151,6 @@ class TrainArguments(SwanlabArguments, TorchAccArguments, TunerArguments, Seq2Se
     lazy_tokenize: Optional[bool] = None
 
     # plugin
-    external_plugins: List[str] = field(default_factory=list)
     loss_type: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
     optimizer: Optional[str] = None
     metric: Optional[str] = None
@@ -205,21 +204,9 @@ class TrainArguments(SwanlabArguments, TorchAccArguments, TunerArguments, Seq2Se
         self.training_args.remove_unused_columns = False
 
         self._add_version()
-        self.import_plugin()
 
         if 'swanlab' in self.report_to:
             self._init_swanlab()
-
-    def import_plugin(self):
-        if not self.external_plugins:
-            return
-
-        for external_plugin in self.external_plugins:
-            py_dir = os.path.dirname(external_plugin)
-            assert os.path.isdir(py_dir)
-            py_file = os.path.basename(external_plugin)
-            sys.path.insert(0, py_dir)
-            importlib.import_module(py_file.split('.')[0])
 
     def _init_deepspeed(self):
         if self.deepspeed:
