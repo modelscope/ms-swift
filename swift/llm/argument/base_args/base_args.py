@@ -110,7 +110,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         self.custom_register_path = to_abspath(self.custom_register_path, True)
         for path in self.custom_register_path:
             import_external_file(path)
-        logger.info(f'Successfully registered `{self.custom_register_path}`.')
+        logger.info(f'Successfully registered {self.custom_register_path}.')
 
     def _import_external_plugins(self):
         if isinstance(self.external_plugins, str):
@@ -119,7 +119,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             return
         for external_plugin in self.external_plugins:
             import_external_file(external_plugin)
-        logger.info(f'Successfully imported external_plugins: `{self.external_plugins}`.')
+        logger.info(f'Successfully imported external_plugins: {self.external_plugins}.')
 
     @staticmethod
     def _check_is_adapter(adapter_dir: str) -> bool:
