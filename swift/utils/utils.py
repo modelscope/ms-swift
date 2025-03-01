@@ -275,4 +275,4 @@ def import_external_file(file_path: str):
     sys.path.append(py_dir)
     assert os.path.isdir(py_dir), f'py_dir: {py_dir}'
     sys.path.insert(0, py_dir)
-    return importlib.import_module(py_dir.split('.', 1)[0])
+    return importlib.import_module(py_file.split('.', 1)[0])
