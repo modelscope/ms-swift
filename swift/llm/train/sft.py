@@ -53,6 +53,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
     def _prepare_generation_config(self):
         args = self.args
+        self.model.origin_generation_config = self.model.generation_config
         self.model.generation_config = prepare_generation_config(self.model.generation_config,
                                                                  args.get_request_config(), self.tokenizer)
         logger.info(f'model.generation_config: {self.model.generation_config}')
