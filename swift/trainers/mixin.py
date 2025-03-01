@@ -221,6 +221,8 @@ class SwiftMixin:
             from swift.llm import save_checkpoint
             additional_saved_files = self.model_meta.additional_saved_files
             save_checkpoint(None, self.template.processor, output_dir, additional_saved_files=additional_saved_files)
+            if hasattr(self.model, 'origin_generation_config'):
+                self.model.origin_generation_config.save_pretrained(output_dir)
 
     def _fix_zero3_gather_all_parameters(self) -> None:
         if is_deepspeed_zero3_enabled() and not hasattr(self.deepspeed, '_zero3_consolidated_16bit_state_dict_origin'):
