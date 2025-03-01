@@ -334,6 +334,13 @@ class LmdeployEngine(InferEngine):
         else:
             return await self._infer_full_async(**kwargs)
 
+    def _batch_infer_stream(self, *args, **kwargs):
+        if hasattr(self.engine, 'vl_encoder'):
+            self.engine.vl_encoder._loop_task = None
+        if hasattr(self.engine, 'free_insts'):
+            self.engine.free_insts = None
+        return super()._batch_infer_stream(*args, **kwargs)
+
     def infer(
         self,
         infer_requests: List[InferRequest],
@@ -343,8 +350,4 @@ class LmdeployEngine(InferEngine):
         template: Optional[Template] = None,
         use_tqdm: Optional[bool] = None,
     ) -> List[Union[ChatCompletionResponse, Iterator[ChatCompletionStreamResponse]]]:
-        if hasattr(self.engine, 'vl_encoder'):
-            self.engine.vl_encoder._loop_task = None
-        if hasattr(self.engine, 'free_insts'):
-            self.engine.free_insts = None
         return super().infer(infer_requests, request_config, metrics, template=template, use_tqdm=use_tqdm)
