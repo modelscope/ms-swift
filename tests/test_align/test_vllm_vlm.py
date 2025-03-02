@@ -100,13 +100,12 @@ def test_minicpmv_2_6():
         "The overall composition emphasizes the kitten's features")
 
 
-def test_minicpmv_2_6_video():
-    response = _infer_video('OpenBMB/MiniCPM-V-2_6')
-    assert response == (
-        'The video captures a young child engrossed in reading a book while sitting on a bed. The child, '
-        'wearing a light blue sleeveless top and pink pants, is seen flipping through the pages of the '
-        'book with a focused expression. The setting appears to be a cozy, '
-        'lived-in room with a wooden crib and various')
+def test_minicpmo_2_6_video():
+    response = _infer_video('OpenBMB/MiniCPM-o-2_6')
+    assert response == ('The video features a young child sitting on a bed, deeply engaged in reading a book. '
+                        'The child, dressed in a light blue sleeveless top and pink pants, is surrounded by a '
+                        'cozy and homely environment. The bed is adorned with a patterned blanket, and a white cloth '
+                        'is casually draped over the side.')
 
 
 def test_qwen2_5_vl_video():
@@ -124,7 +123,7 @@ if __name__ == '__main__':
     # test_deepseek_vl_v2()
     # test_internvl2()
     # test_qwen2_audio()
-    test_minicpmv_2_5()
+    # test_minicpmv_2_5()
     # test_minicpmv_2_6()
-    # test_minicpmv_2_6_video()
+    test_minicpmo_2_6_video()
     # test_qwen2_5_vl_video()
