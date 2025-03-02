@@ -1,4 +1,3 @@
-
 from swift.llm import get_model_tokenizer
 
 if __name__ == '__main__':
