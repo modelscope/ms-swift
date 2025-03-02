@@ -83,7 +83,7 @@ def test_internvl2():
 
 
 def test_minicpmv_2_5():
-    response = _infer_image('openbmb/MiniCPM-Llama3-V-2_5', max_model_len=4096)
+    response = _infer_image('OpenBMB/MiniCPM-Llama3-V-2_5', max_model_len=4096)
     assert response == (
         "The image is a digital painting of a kitten that captures the essence of a young feline's innocence "
         "and curiosity. The kitten's fur is rendered with a mix of gray, white, and black stripes, "
