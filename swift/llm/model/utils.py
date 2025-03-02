@@ -6,10 +6,8 @@ from types import MethodType
 from typing import Any, Dict, List, Literal, Optional, Tuple, TypeVar, Union
 
 import torch
-import transformers
 from accelerate.utils import find_device
 from modelscope.hub.utils.utils import get_cache_dir
-from packaging import version
 from transformers import PretrainedConfig
 
 from swift.hub import get_hub
