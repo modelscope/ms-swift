@@ -179,6 +179,7 @@ register_model(
         [
             ModelGroup([
                 Model('LLM-Research/phi-4', 'microsoft/phi-4'),
+                Model('LLM-Research/Phi-4-mini-instruct', 'microsoft/Phi-4-mini-instruct')
             ]),
         ],
         TemplateType.phi4,
