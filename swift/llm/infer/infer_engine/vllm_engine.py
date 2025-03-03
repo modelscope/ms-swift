@@ -149,7 +149,6 @@ class VllmEngine(InferEngine):
             pipeline_parallel_size=pipeline_parallel_size,
             max_model_len=max_model_len,
             max_num_seqs=max_num_seqs,
-            distributed_executor_backend="external_launcher",
             disable_log_stats=disable_log_stats,
             disable_custom_all_reduce=disable_custom_all_reduce,
             enforce_eager=enforce_eager,
@@ -158,6 +157,8 @@ class VllmEngine(InferEngine):
             device=device,
             **engine_kwargs,
         )
+        if tensor_parallel_size > 1:
+            engine_args.distributed_executor_backend = "external_launcher"
         self.engine_args = engine_args
         self.enable_lora = enable_lora
         if max_model_len is not None:
