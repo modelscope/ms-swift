@@ -486,7 +486,7 @@ def get_model_tokenizer(
         # model kwargs
         model_type: Optional[str] = None,
         quantization_config=None,
-        max_memory: Optional[List[str]] = None,
+        max_memory: Union[str, Dict[str, Any]] = None,
         attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None,
         rope_scaling: Optional[Dict[str, Any]] = None,
         automodel_class=None,
