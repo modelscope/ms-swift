@@ -46,9 +46,18 @@ def test_qwen2_5():
 
 def test_phi4():
     pt_engine = PtEngine('LLM-Research/phi-4')
-    _infer_model(pt_engine)
+    response = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
-    _infer_model(pt_engine)
+    response2 = _infer_model(pt_engine)
+    assert response == response2
+
+
+def test_phi4_mini():
+    pt_engine = PtEngine('LLM-Research/Phi-4-mini-instruct')
+    response = _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine)
+    assert response == response2
 
 
 def test_qwen1half():
@@ -362,10 +371,11 @@ if __name__ == '__main__':
     # test_qwen2_reward()
     # test_qwen2_5_math()
     # test_skywork_reward()
-    # test_phi4()
+    test_phi4()
+    test_phi4_mini()
     # test_internlm3()
     # test_deepseek_r1_distill()
     # test_qwen2_5_prm()
     # test_mistral_small()
-    test_baichuan_m1()
+    # test_baichuan_m1()
     # test_moonlight()

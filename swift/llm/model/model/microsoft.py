@@ -165,6 +165,7 @@ register_model(
                 Model('LLM-Research/Phi-3-medium-128k-instruct', 'microsoft/Phi-3-medium-128k-instruct'),
                 Model('LLM-Research/Phi-3.5-mini-instruct', 'microsoft/Phi-3.5-mini-instruct'),
             ]),
+            ModelGroup(Model('LLM-Research/Phi-4-mini-instruct', 'microsoft/Phi-4-mini-instruct'))
         ],
         TemplateType.phi3,
         get_model_tokenizer_with_flash_attn,
@@ -179,7 +180,6 @@ register_model(
         [
             ModelGroup([
                 Model('LLM-Research/phi-4', 'microsoft/phi-4'),
-                Model('LLM-Research/Phi-4-mini-instruct', 'microsoft/Phi-4-mini-instruct')
             ]),
         ],
         TemplateType.phi4,
