@@ -10,8 +10,8 @@ swift sft \
     --per_device_eval_batch_size 1 \
     --learning_rate 1e-4 \
     --gradient_accumulation_steps 16 \
-    --eval_steps 50 \
-    --save_steps 50 \
+    --eval_steps 200 \
+    --save_steps 200 \
     --save_total_limit 5 \
     --logging_steps 5 \
     --max_length 2048 \
