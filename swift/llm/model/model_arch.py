@@ -416,8 +416,7 @@ register_model_arch(
             'model.embed_tokens_extend.audio_embed.audio_projection'
         ],
         vision_tower=[
-            'model.embed_tokens_extend.image_embed.img_processor',
-            'model.embed_tokens_extend.audio_embed.encoder'
+            'model.embed_tokens_extend.image_embed.img_processor', 'model.embed_tokens_extend.audio_embed.encoder'
         ],
     ))
 

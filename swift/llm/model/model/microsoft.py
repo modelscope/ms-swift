@@ -51,6 +51,20 @@ register_model(
         tags=['vision'],
     ))
 
+
+def get_model_tokenizer_phi4_multimodal(*args, **kwargs):
+    model, processor = get_model_tokenizer_multimodal(*args, **kwargs)
+    processor.audio_processor.audio_compression_rate = processor.audio_processor.compression_rate
+    processor.audio_processor.audio_downsample_rate = processor.audio_processor.qformer_compression_rate
+    processor.audio_processor.audio_feat_stride = processor.audio_processor.feat_stride
+    del processor.audio_processor.feature_size
+    del processor.audio_processor.sampling_rate
+    del processor.audio_processor.padding_value
+    del processor.__class__.chat_template
+    processor.chat_template = None
+    return model, processor
+
+
 register_model(
     ModelMeta(
         MLLMModelType.phi4_multimodal,
@@ -58,7 +72,7 @@ register_model(
             Model('LLM-Research/Phi-4-multimodal-instruct', 'microsoft/Phi-4-multimodal-instruct'),
         ])],
         TemplateType.phi4_multimodal,
-        get_model_tokenizer_multimodal,
+        get_model_tokenizer_phi4_multimodal,
         architectures=['Phi4MMForCausalLM'],
         model_arch=ModelArch.phi4_multimodal,
         requires=['transformers>=4.36,<4.49', 'backoff', 'soundfile'],

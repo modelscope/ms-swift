@@ -67,7 +67,6 @@ class PeftTuner(Tuner):
         return PeftModel.from_pretrained(model, model_id, **kwargs)
 
 
-
 # Here gives a simple example of IA3
 class IA3(PeftTuner):
 
@@ -78,7 +77,9 @@ class IA3(PeftTuner):
             target_modules=find_all_linears(model), feedforward_modules='.*' + model_arch.mlp.split('{}.')[1] + '.*')
         return get_peft_model(model, ia3_config)
 
+
 class DummyTuner(PeftTuner):
+
     @staticmethod
     def prepare_model(args: 'TrainArguments', model: torch.nn.Module):
         return model
