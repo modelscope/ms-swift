@@ -301,17 +301,19 @@ def hot_patch_peft_module():
     def __new_init__(self, model: torch.nn.Module, config: Dict[str, LoraConfig], adapter_name: str):
 
         self.__init_origin__(model, config, adapter_name)
-        if isinstance(self.active_adapter, list):
-            self.active_adapter = self.active_adapter[0]
-        active_config = config[self.active_adapter] if isinstance(config, dict) else config
-        if hasattr(active_config, 'lora_dtype'):
-            for name, module in model.named_modules():
-                if isinstance(module, LoraLayer):
-                    _convert_dtype(module, self.active_adapter, active_config.lora_dtype)
-                    for lora in list(module.lora_A.values()) + list(module.lora_B.values()):
-                        if not hasattr(lora, 'forward_origin'):
-                            lora.forward_origin = lora.forward
-                            lora.forward = MethodType(keep_device_forward, lora)
+        active_adapters = self.active_adapter
+        if isinstance(active_adapters, str):
+            active_adapters = [active_adapters]
+        for active_adapter in active_adapters:
+            active_config = config[active_adapter] if isinstance(config, dict) else config
+            if hasattr(active_config, 'lora_dtype'):
+                for name, module in model.named_modules():
+                    if isinstance(module, LoraLayer):
+                        _convert_dtype(module, active_adapter, active_config.lora_dtype)
+                        for lora in list(module.lora_A.values()) + list(module.lora_B.values()):
+                            if not hasattr(lora, 'forward_origin'):
+                                lora.forward_origin = lora.forward
+                                lora.forward = MethodType(keep_device_forward, lora)
 
     LoraModel.__init_origin__ = LoraModel.__init__
     LoraModel.__init__ = __new_init__

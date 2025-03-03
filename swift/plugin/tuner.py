@@ -50,15 +50,7 @@ class Tuner:
         raise NotImplementedError
 
 
-# Here gives a simple example of IA3
-class IA3(Tuner):
-
-    @staticmethod
-    def prepare_model(args: 'TrainArguments', model: torch.nn.Module):
-        model_arch: ModelKeys = MODEL_ARCH_MAPPING[model.model_meta.model_arch]
-        ia3_config = IA3Config(
-            target_modules=find_all_linears(model), feedforward_modules='.*' + model_arch.mlp.split('{}.')[1] + '.*')
-        return get_peft_model(model, ia3_config)
+class PeftTuner(Tuner):
 
     @staticmethod
     def save_pretrained(
@@ -75,5 +67,23 @@ class IA3(Tuner):
         return PeftModel.from_pretrained(model, model_id, **kwargs)
 
 
+# Here gives a simple example of IA3
+class IA3(PeftTuner):
+
+    @staticmethod
+    def prepare_model(args: 'TrainArguments', model: torch.nn.Module):
+        model_arch: ModelKeys = MODEL_ARCH_MAPPING[model.model_meta.model_arch]
+        ia3_config = IA3Config(
+            target_modules=find_all_linears(model), feedforward_modules='.*' + model_arch.mlp.split('{}.')[1] + '.*')
+        return get_peft_model(model, ia3_config)
+
+
+class DummyTuner(PeftTuner):
+
+    @staticmethod
+    def prepare_model(args: 'TrainArguments', model: torch.nn.Module):
+        return model
+
+
 # Add your own tuner here, use --train_type xxx to begin
-extra_tuners = {'ia3': IA3}
+extra_tuners = {'ia3': IA3, 'dummy': DummyTuner}

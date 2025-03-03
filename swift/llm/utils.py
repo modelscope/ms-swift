@@ -88,7 +88,7 @@ def set_generation_config(model: nn.Module, generation_config: GenerationConfig)
 def find_module_list(model) -> Optional[nn.ModuleList]:
     module_lists = []
     for m in model.modules():
-        if hasattr(m, 'gradient_checkpointing'):
+        if hasattr(m, 'gradient_checkpointing') or m.__class__.__name__ == 'CheckpointWrapper':
             return
         if isinstance(m, (nn.ModuleList, nn.Sequential)) and len(m) >= 10:
             module_lists.append(m)
