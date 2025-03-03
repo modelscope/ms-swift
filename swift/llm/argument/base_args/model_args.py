@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import ast
 import math
 import os
 from dataclasses import dataclass, field
@@ -80,6 +81,11 @@ class ModelArguments:
                     self.device_map[k] += local_rank
 
     def _init_max_memory(self):
+        if isinstance(self.max_memory, str):
+            try:
+                self.max_memory = ast.literal_eval(self.max_memory)
+            except Exception:
+                pass
         self.max_memory = self.parse_to_dict(self.max_memory)
         # compat mp&ddp
         _, local_rank, _, local_world_size = get_dist_setting()
