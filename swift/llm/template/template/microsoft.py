@@ -164,7 +164,7 @@ class Phi4MMTemplate(Template):
             return [[-200]]
 
     @staticmethod
-    def _split_list(inputs: List[str], x: int):
+    def _split_list(inputs: List[int], x: int) -> List[List[int]]:
         idxs = findall(inputs, x)  # '\n'
         idxs.append(len(inputs))
         res = []
@@ -188,8 +188,8 @@ class Phi4MMTemplate(Template):
         for i, idx in enumerate(images_idx + audios_idx):
             input_ids = input_ids[:idx + added_tokens_len] + placeholders[i] + input_ids[idx + added_tokens_len + 1:]
             if labels is not None:
-                labels = labels[:idx + added_tokens_len] + [-100] * placeholders[i] + labels[idx + added_tokens_len
-                                                                                             + 1:]
+                labels = labels[:idx + added_tokens_len] + [-100] * len(placeholders[i]) + labels[idx + added_tokens_len
+                                                                                                  + 1:]
             added_tokens_len += len(placeholders[i]) - 1
         new_encoded.pop('attention_mask')
         encoded.update(new_encoded)
