@@ -43,17 +43,17 @@ def _history_to_messages(history: History, system: Optional[str]):
     return messages
 
 
-def model_chat(history: History, system: Optional[str], *, client, model: str,
-               request_config: Optional['RequestConfig']):
+async def model_chat(history: History, system: Optional[str], *, client, model: str,
+                     request_config: Optional['RequestConfig']):
     if history:
         from swift.llm import InferRequest
 
         messages = _history_to_messages(history, system)
-        gen_or_res = client.infer([InferRequest(messages=messages)], request_config=request_config, model=model)
+        resp_or_gen = await client.infer_async(
+            InferRequest(messages=messages), request_config=request_config, model=model)
         if request_config and request_config.stream:
             response = ''
-            for resp_list in gen_or_res:
-                resp = resp_list[0]
+            async for resp in resp_or_gen:
                 if resp is None:
                     continue
                 response += resp.choices[0].delta.content
@@ -61,7 +61,7 @@ def model_chat(history: History, system: Optional[str], *, client, model: str,
                 yield history
 
         else:
-            response = gen_or_res[0].choices[0].message.content
+            response = resp_or_gen.choices[0].message.content
             history[-1][1] = response
             yield history
 

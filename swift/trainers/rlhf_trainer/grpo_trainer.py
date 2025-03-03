@@ -112,10 +112,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         use_vllm = args.use_vllm
         use_lmdeploy = args.use_lmdeploy
 
-        if use_lmdeploy:
-            from swift.trainers.utils import _patch_lmdeploy
-            _patch_lmdeploy()
-
         super().__init__(model, ref_model, *_args, **kwargs)
 
         num_processes = self.accelerator.num_processes
@@ -173,9 +169,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                                           'Please install vLLM with `pip install vllm` to use it.')
                     from swift.llm import VllmEngine
                     from swift.tuners import Swift
-                    from swift.llm.utils import patch_vllm, patch_npu_vllm
-                    npu_vllm_patch_context = patch_npu_vllm(fast_infer_device[self.local_infer_rank])
-                    with patch_vllm(), npu_vllm_patch_context, Swift.grpo_context(model, self.template.processor):
+                    with Swift.grpo_context(model, self.template.processor):
                         self.engine = VllmEngine(
                             model.model_dir,
                             model.model_info.torch_dtype,
@@ -208,9 +202,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             model.model_dir,
                             model.model_info.torch_dtype,
                             model_type=model.model_meta.model_type,
-                            device=[fast_infer_device],
+                            devices=[fast_infer_device],
                             session_len=args.lmdeploy_session_len,
-                            cache_max_entry_count=args.lmdeploy_cache_max_entry_count)
+                            cache_max_entry_count=args.lmdeploy_cache_max_entry_count,
+                            reload_weights=True)
                     self.engine.default_template = self.template
             self._last_loaded_step = 0  # tag to avoid useless loading during grad accumulation
 
@@ -453,7 +448,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         outputs['logits_to_keep'] = logits_to_keep
         outputs['completion_mask'] = labels[:, -logits_to_keep:] != -100
 
-        with torch.inference_mode():
+        with torch.no_grad():
             if self.old_policy:
                 outputs['old_per_token_logps'] = self._get_per_token_logps(self.model, outputs)
             else:

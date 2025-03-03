@@ -124,9 +124,11 @@ class SwiftDeploy(SwiftInfer):
         if is_finished:
             if args.log_interval > 0:
                 self.infer_stats.update(response)
+            data = {'response': asdict(response), **request_info}
             if self.jsonl_writer:
-                data = {'response': asdict(response), **request_info}
                 self.jsonl_writer.append(data)
+            if self.args.verbose:
+                logger.info(data)
         return response
 
     def _set_request_config(self, request_config) -> None:
@@ -159,8 +161,6 @@ class SwiftDeploy(SwiftInfer):
 
         def pre_infer_hook(kwargs):
             request_info['generation_config'] = kwargs['generation_config']
-            if args.verbose:
-                logger.info(request_info)
             return kwargs
 
         infer_kwargs['pre_infer_hook'] = pre_infer_hook

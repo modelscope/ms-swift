@@ -34,6 +34,17 @@ register_template(
 
 register_template(
     TemplateMeta(
+        LLMTemplateType.baichuan_m1,
+        prefix=[],
+        prompt=['<C_Q>{{QUERY}}<C_A>'],
+        chat_sep=[],
+        suffix=['<C_A>'],
+        system_prefix=['<B_SYS>{{SYSTEM}}'],
+        default_system=DEFAULT_SYSTEM,
+    ))
+
+register_template(
+    TemplateMeta(
         LLMTemplateType.numina,
         prefix=[['bos_token_id']],
         prompt=['### Problem: {{QUERY}}\n### Solution: '],

@@ -6,11 +6,9 @@ from contextlib import nullcontext
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from functools import partial
-from types import MethodType
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
-import torch.nn.functional as F
 from peft import PeftModel
 from transformers import (AutoConfig, AutoModel, AutoModelForCausalLM, AutoModelForSequenceClassification,
                           AutoTokenizer, GenerationConfig, PretrainedConfig, PreTrainedModel, PreTrainedTokenizerBase)
@@ -239,7 +237,7 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     model_config = kwargs.get('model_config')
     if model_config is None:
         model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    AttnImpl.update_attn_impl(model_config, kwargs.get('attn_impl'))
+    AttnImpl.update_attn_impl(model_config, kwargs.get('attn_impl'), kwargs.get('attn_impl_keys'))
     kwargs['model_config'] = model_config
     return get_model_tokenizer_from_local(model_dir, model_info, model_kwargs, load_model, **kwargs)
 
@@ -380,6 +378,14 @@ def get_matched_model_types(architectures: Optional[List[str]]) -> List[str]:
     return arch_mapping.get(architectures) or []
 
 
+def _read_args_json_model_type(model_dir):
+    if not os.path.exists(os.path.join(model_dir, 'args.json')):
+        return
+    from swift.llm import BaseArguments
+    args = BaseArguments.from_pretrained(model_dir)
+    return args.model_type
+
+
 def _get_model_info(model_dir: str, model_type: Optional[str], quantization_config) -> ModelInfo:
     config_dict = PretrainedConfig.get_config_dict(model_dir)[0]
     if quantization_config is not None:
@@ -389,6 +395,8 @@ def _get_model_info(model_dir: str, model_type: Optional[str], quantization_conf
     max_model_len = HfConfigFactory.get_max_model_len(config_dict)
     rope_scaling = HfConfigFactory.get_config_attr(config_dict, 'rope_scaling')
 
+    if model_type is None:
+        model_type = _read_args_json_model_type(model_dir)
     if model_type is None:
         architectures = HfConfigFactory.get_config_attr(config_dict, 'architectures')
         model_types = get_matched_model_types(architectures)
@@ -482,6 +490,7 @@ def get_model_tokenizer(
         # model kwargs
         model_type: Optional[str] = None,
         quantization_config=None,
+        max_memory: Optional[List[str]] = None,
         attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None,
         rope_scaling: Optional[Dict[str, Any]] = None,
         automodel_class=None,
@@ -524,6 +533,8 @@ def get_model_tokenizer(
     model_kwargs['device_map'] = device_map
     if quantization_config:
         model_kwargs['quantization_config'] = quantization_config
+    if max_memory:
+        model_kwargs['max_memory'] = max_memory
     model_dir = model_info.model_dir
     get_function = model_meta.get_function
     kwargs['automodel_class'] = automodel_class

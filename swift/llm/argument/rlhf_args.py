@@ -109,6 +109,7 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
         self._init_ppo()
         self._set_default()
         super().__post_init__()
+        self._init_grpo_ds3()
 
         if self.loss_scale is None:
             if self.rlhf_type == 'orpo' and not self.model_meta.is_multimodal:
@@ -184,3 +185,8 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
                 self.loss_type = 'sigmoid'  # else None
             elif self.rlhf_type in ['kto']:
                 self.loss_type = 'kto'
+
+    def _init_grpo_ds3(self):
+        if self.rlhf_type == 'grpo' and self.deepspeed:
+            if 'zero_optimization' in self.deepspeed and self.deepspeed['zero_optimization']['stage'] == 3:
+                self.deepspeed['zero_optimization']['stage3_prefetch_bucket_size'] = 0

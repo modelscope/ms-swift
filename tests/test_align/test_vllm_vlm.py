@@ -31,6 +31,20 @@ def _infer_image(model, use_chat_template: bool = True, max_model_len=8192, syst
     return resp_list[0].choices[0].message.content
 
 
+def _infer_video(model, use_chat_template: bool = True, max_model_len=8192, system=None):
+    engine = VllmEngine(model, max_model_len=max_model_len, limit_mm_per_prompt={'image': 16, 'video': 2})
+    if not use_chat_template:
+        engine.default_template.use_chat_template = False
+    videos = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4']
+    messages = []
+    if system is not None:
+        messages += [{'role': 'system', 'content': system}]
+    messages.append({'role': 'user', 'content': 'describe the video.'})
+    resp_list = engine.infer([InferRequest(messages=messages, videos=videos)],
+                             RequestConfig(temperature=0, max_tokens=64, repetition_penalty=1.))
+    return resp_list[0].choices[0].message.content
+
+
 def test_qwen2_audio():
     response = _infer_audio('Qwen/Qwen2-Audio-7B-Instruct')
     assert response == "The audio is a man speaking in Mandarin saying '今天天气真好呀'."
@@ -68,10 +82,48 @@ def test_internvl2():
                         'and it appears to be looking directly at the camera. The fur is soft and fluffy, with a mix')
 
 
+def test_minicpmv_2_5():
+    response = _infer_image('OpenBMB/MiniCPM-Llama3-V-2_5', max_model_len=4096)
+    assert response == (
+        "The image is a digital painting of a kitten that captures the essence of a young feline's innocence "
+        "and curiosity. The kitten's fur is rendered with a mix of gray, white, and black stripes, "
+        'giving it a realistic and adorable appearance. Its large, expressive eyes are a striking blue, '
+        "which draws the viewer's")
+
+
+def test_minicpmv_2_6():
+    response = _infer_image('OpenBMB/MiniCPM-V-2_6', max_model_len=4096)
+    assert response == (
+        'The image features a close-up of a kitten with striking blue eyes and a mix of '
+        "white and dark fur, possibly gray or black. The kitten's gaze is directed forward, giving it an "
+        "expressive and captivating look. The background is blurred, drawing focus to the kitten's face. "
+        "The overall composition emphasizes the kitten's features")
+
+
+def test_minicpmo_2_6_video():
+    response = _infer_video('OpenBMB/MiniCPM-o-2_6')
+    assert response == ('The video features a young child sitting on a bed, deeply engaged in reading a book. '
+                        'The child, dressed in a light blue sleeveless top and pink pants, is surrounded by a '
+                        'cozy and homely environment. The bed is adorned with a patterned blanket, and a white cloth '
+                        'is casually draped over the side.')
+
+
+def test_qwen2_5_vl_video():
+    response = _infer_video('Qwen/Qwen2.5-VL-3B-Instruct')
+    assert response == ('A baby wearing sunglasses is sitting on a bed and reading a book. '
+                        'The baby is holding the book with both hands and is looking at the pages. '
+                        'The baby is wearing a light blue shirt and pink pants. The baby is sitting '
+                        'on a white blanket. The baby is looking at the book and is smiling. The baby')
+
+
 if __name__ == '__main__':
     from swift.llm import VllmEngine, InferRequest, RequestConfig
     # test_qwen2_vl()
     # test_qwen2_5_vl()
     # test_deepseek_vl_v2()
     # test_internvl2()
-    test_qwen2_audio()
+    # test_qwen2_audio()
+    # test_minicpmv_2_5()
+    # test_minicpmv_2_6()
+    test_minicpmo_2_6_video()
+    # test_qwen2_5_vl_video()

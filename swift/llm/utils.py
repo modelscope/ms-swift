@@ -1,16 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import contextlib
-import functools
 import inspect
 import os
 import shutil
 import tempfile
-from contextlib import contextmanager
 from types import MethodType
 from typing import Any, Dict, List, Mapping, Optional, Tuple, Union
 
 import torch
-import torch.distributed as dist
 import torch.nn as nn
 from modelscope.hub.utils.utils import get_cache_dir
 from transformers import FeatureExtractionMixin, GenerationConfig, PreTrainedModel, PreTrainedTokenizerBase
@@ -50,6 +46,18 @@ class ProcessorMixin:
             self.processor = value
         elif self.tokenizer is not value:
             raise AttributeError('Please use `self.processor` for assignment.')
+
+
+def to_float_dtype(data: Any, dtype: torch.dtype) -> Any:
+    """Change the float inputs to a dtype"""
+    if isinstance(data, Mapping):
+        return type(data)({k: to_float_dtype(v, dtype) for k, v in data.items()})
+    elif isinstance(data, (tuple, list)):
+        return type(data)(to_float_dtype(v, dtype) for v in data)
+    elif isinstance(data, torch.Tensor) and torch.is_floating_point(data):
+        return data.to(dtype=dtype)
+    else:
+        return data
 
 
 def to_device(data: Any, device: Union[str, torch.device, int]) -> Any:
@@ -258,41 +266,14 @@ def get_temporary_cache_files_directory(prefix=None):
     return TEMP_DIR.name
 
 
-@contextmanager
-def patch_vllm():
-    from vllm.distributed.parallel_state import GroupCoordinator
-    from unittest.mock import patch
-    world_size_patch = patch('torch.distributed.get_world_size', return_value=1)
-    profiling_patch = patch(
-        'vllm.worker.worker.Worker._assert_memory_footprint_increased_during_profiling', return_value=None)
-    __origin_init__ = GroupCoordinator.__init__
-
-    def __init__(self, group_ranks, *args, **kwargs):
-        rank = dist.get_rank()
-        if [rank] not in group_ranks:
-            group_ranks.append([rank])
-        return __origin_init__(self, group_ranks, *args, **kwargs)
-
-    GroupCoordinator.__init__ = __init__
-
-    try:
-        with world_size_patch, profiling_patch:
-            yield
-    finally:
-        GroupCoordinator.__init__ = __origin_init__
-
-
-def patch_npu_vllm(vllm_device: str):
-    device_type = vllm_device.split(':')[0]
-
-    @contextlib.contextmanager
-    def new_group_context():
-        original_new_group = torch.distributed.new_group
-        try:
-            torch.distributed.new_group = functools.partial(original_new_group, use_local_synchronization=True)
-            torch.npu.mem_get_info = functools.partial(torch.npu.mem_get_info, device=vllm_device)
-            yield
-        finally:
-            torch.distributed.new_group = original_new_group
-
-    return new_group_context() if device_type == 'npu' else contextlib.nullcontext()
+def get_ckpt_dir(model_dir: str, adapters_dir: Optional[List[str]]) -> str:
+    model_dirs = (adapters_dir or []).copy()
+    if model_dir:
+        model_dirs.append(model_dir)
+    # The adapter takes higher priority.
+    ckpt_dir = None
+    for model_dir in model_dirs:
+        if os.path.exists(os.path.join(model_dir, 'args.json')):
+            ckpt_dir = model_dir
+            break
+    return ckpt_dir

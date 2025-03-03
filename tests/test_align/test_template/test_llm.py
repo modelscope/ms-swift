@@ -29,6 +29,13 @@ def _infer_model(pt_engine, system=None, messages=None):
     return response
 
 
+def test_baichuan_m1():
+    pt_engine = PtEngine('baichuan-inc/Baichuan-M1-14B-Instruct')
+    messages = [{'role': 'user', 'content': '你是谁'}]
+    response = _infer_model(pt_engine, messages=messages)
+    assert response == '我是一个人工智能助手，可以回答你的问题并提供帮助。'
+
+
 def test_qwen2_5():
     pt_engine = PtEngine('Qwen/Qwen2.5-7B-Instruct-1M')
     response = _infer_model(pt_engine)
@@ -360,4 +367,5 @@ if __name__ == '__main__':
     # test_deepseek_r1_distill()
     # test_qwen2_5_prm()
     # test_mistral_small()
-    test_moonlight()
+    test_baichuan_m1()
+    # test_moonlight()
