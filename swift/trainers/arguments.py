@@ -99,6 +99,8 @@ class GRPOArgumentsMixin:
 
     async_generate: bool = False
 
+    tensor_parallel_size: int = 1
+
 
 @dataclass
 class TrainingArguments(SwiftArgumentsMixin, HfTrainingArguments):

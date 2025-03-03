@@ -137,76 +137,76 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         set_seed(args.seed, device_specific=True)
 
         if use_vllm or use_lmdeploy:
-            if self.infer_rank >= 0:
-                fast_infer_device = self.args.vllm_device or self.args.lmdeploy_device
-                if fast_infer_device[0] == 'auto':
-                    if get_device_count() == 1:
-                        fast_infer_device = [get_device()]  # particular case when training with only 1 GPU: share it
-                    else:
-                        fast_infer_device = []
-                        for idx in range(get_device_count() - self.args.num_infer_workers, get_device_count()):
-                            fast_infer_device.append(get_device(idx))
+            fast_infer_device = self.args.vllm_device or self.args.lmdeploy_device
+            if fast_infer_device[0] == 'auto':
+                if get_device_count() == 1:
+                    fast_infer_device = [get_device()]  # particular case when training with only 1 GPU: share it
+                else:
+                    fast_infer_device = []
+                    for idx in range(get_device_count() - self.args.num_infer_workers, get_device_count()):
+                        fast_infer_device.append(get_device(idx))
 
-                for _device in fast_infer_device:
-                    # Check that the requested device is available
-                    if _device.split(':')[0] in {'cuda', 'npu'} and int(_device.split(':')[1]) >= get_device_count():
-                        raise ValueError(f'The requested device for vllm ({_device}) is not available. '
-                                         f'You are likely using vLLM '
-                                         'without restricting the number of GPUs for training. '
-                                         'Set the `--num_processes` argument to a '
-                                         'value lower than the number of GPUs available on your machine—typically, '
-                                         'reducing it by one is sufficient. '
-                                         f'In your case: `--num_processes {get_device_count() - 1}`.')
-                    # Check that the requested device is not also used for training
-                    if _device in {get_device(idx) for idx in range(self.accelerator.num_processes)}:
-                        logger.warning(f'The requested device {_device} is also used for training. '
-                                       f'This may lead to unexpected behavior. '
-                                       f'It is recommended to use a dedicated device for vLLM.')
+            for _device in fast_infer_device:
+                # Check that the requested device is available
+                if _device.split(':')[0] in {'cuda', 'npu'} and int(_device.split(':')[1]) >= get_device_count():
+                    raise ValueError(f'The requested device for vllm ({_device}) is not available. '
+                                     f'You are likely using vLLM '
+                                     'without restricting the number of GPUs for training. '
+                                     'Set the `--num_processes` argument to a '
+                                     'value lower than the number of GPUs available on your machine—typically, '
+                                     'reducing it by one is sufficient. '
+                                     f'In your case: `--num_processes {get_device_count() - 1}`.')
+                # Check that the requested device is not also used for training
+                if _device in {get_device(idx) for idx in range(self.accelerator.num_processes)}:
+                    logger.warning(f'The requested device {_device} is also used for training. '
+                                   f'This may lead to unexpected behavior. '
+                                   f'It is recommended to use a dedicated device for vLLM.')
 
-                if use_vllm:
-                    if not is_vllm_available():
-                        raise ImportError('vLLM is not available and `use_vllm` is set to True. '
-                                          'Please install vLLM with `pip install vllm` to use it.')
-                    from swift.llm import VllmEngine
-                    from swift.tuners import Swift
-                    with Swift.grpo_context(model, self.template.processor):
-                        self.engine = VllmEngine(
-                            model.model_dir,
-                            model.model_info.torch_dtype,
-                            model_type=model.model_meta.model_type,
-                            device=fast_infer_device[self.local_infer_rank],
-                            gpu_memory_utilization=args.vllm_gpu_memory_utilization,
-                            enable_prefix_caching=args.vllm_enable_prefix_caching,
-                            max_num_seqs=args.vllm_max_num_seqs,
-                            enforce_eager=args.vllm_enforce_eager,
-                            limit_mm_per_prompt=args.vllm_limit_mm_per_prompt,
-                            max_model_len=args.vllm_max_model_len)
-                    self.engine.default_template = self.template
-                elif use_lmdeploy:
-                    # https://github.com/tastelikefeet/lmdeploy.git@feat/reload_state_dict_064
-                    # Compile:https://github.com/tastelikefeet/lmdeploy/blob/main/docs/en/get_started/installation.md
-                    if not is_lmdeploy_available():
-                        raise ImportError('Please install `pip install lmdeploy==0.6.4`'
-                                          ' and replace three files with:\n'
-                                          '1. https://github.com/tastelikefeet/lmdeploy/blob/feat/'
-                                          'reload_state_dict_064/lmdeploy/messages.py\n'
-                                          '2. https://github.com/tastelikefeet/lmdeploy/blob/feat/'
-                                          'reload_state_dict_064/lmdeploy/turbomind/turbomind.py\n'
-                                          '3. https://github.com/tastelikefeet/lmdeploy/blob/feat/'
-                                          'reload_state_dict_064/lmdeploy/turbomind/deploy/loader.py\n')
-                    from swift.llm import LmdeployEngine
-                    from swift.tuners import Swift
-                    with Swift.grpo_context(model, self.template.processor):
-                        fast_infer_device = int(fast_infer_device[self.local_infer_rank].split(':')[1])
-                        self.engine = LmdeployEngine(
-                            model.model_dir,
-                            model.model_info.torch_dtype,
-                            model_type=model.model_meta.model_type,
-                            devices=[fast_infer_device],
-                            session_len=args.lmdeploy_session_len,
-                            cache_max_entry_count=args.lmdeploy_cache_max_entry_count,
-                            reload_weights=True)
-                    self.engine.default_template = self.template
+            if use_vllm:
+                if not is_vllm_available():
+                    raise ImportError('vLLM is not available and `use_vllm` is set to True. '
+                                      'Please install vLLM with `pip install vllm` to use it.')
+                from swift.llm import VllmEngine
+                from swift.tuners import Swift
+                with Swift.grpo_context(model, self.template.processor):
+                    self.engine = VllmEngine(
+                        model.model_dir,
+                        model.model_info.torch_dtype,
+                        model_type=model.model_meta.model_type,
+                        # device=fast_infer_device[self.local_infer_rank],
+                        tensor_parallel_size=self.args.tensor_parallel_size,
+                        gpu_memory_utilization=args.vllm_gpu_memory_utilization,
+                        enable_prefix_caching=args.vllm_enable_prefix_caching,
+                        max_num_seqs=args.vllm_max_num_seqs,
+                        enforce_eager=args.vllm_enforce_eager,
+                        limit_mm_per_prompt=args.vllm_limit_mm_per_prompt,
+                        max_model_len=args.vllm_max_model_len)
+                self.engine.default_template = self.template
+            elif use_lmdeploy:
+                # https://github.com/tastelikefeet/lmdeploy.git@feat/reload_state_dict_064
+                # Compile:https://github.com/tastelikefeet/lmdeploy/blob/main/docs/en/get_started/installation.md
+                if not is_lmdeploy_available():
+                    raise ImportError('Please install `pip install lmdeploy==0.6.4`'
+                                      ' and replace three files with:\n'
+                                      '1. https://github.com/tastelikefeet/lmdeploy/blob/feat/'
+                                      'reload_state_dict_064/lmdeploy/messages.py\n'
+                                      '2. https://github.com/tastelikefeet/lmdeploy/blob/feat/'
+                                      'reload_state_dict_064/lmdeploy/turbomind/turbomind.py\n'
+                                      '3. https://github.com/tastelikefeet/lmdeploy/blob/feat/'
+                                      'reload_state_dict_064/lmdeploy/turbomind/deploy/loader.py\n')
+                from swift.llm import LmdeployEngine
+                from swift.tuners import Swift
+                with Swift.grpo_context(model, self.template.processor):
+                    fast_infer_device = int(fast_infer_device[self.local_infer_rank].split(':')[1])
+                    self.engine = LmdeployEngine(
+                        model.model_dir,
+                        model.model_info.torch_dtype,
+                        model_type=model.model_meta.model_type,
+                        devices=[fast_infer_device],
+                        session_len=args.lmdeploy_session_len,
+                        cache_max_entry_count=args.lmdeploy_cache_max_entry_count,
+                        reload_weights=True)
+                self.engine.default_template = self.template
             self._last_loaded_step = 0  # tag to avoid useless loading during grad accumulation
 
             # When using vLLM, the main process is responsible for loading the model weights. This can cause process
