@@ -12,7 +12,6 @@ Please refer to our [Code of Conduct documentation](./CODE_OF_CONDUCT.md).
 
 ## 🔁 Contribution Process
 ### What We Need
-- ROADMAP: We provide a [ROADMAP](./ROADMAP.md) for each iteration of SWIFT, contributors can check our ROADMAP to understand our development progress and plans. Features in **To be Assigned** is available for all developers.
 - New Technologies and New Models: SWIFT needs to support more open-source models and datasets, or new technologies that we have not paid attention to. If you are interested please submit a PR to us.
 - Technical Propagation: If you are interested in technical propagation, you are welcome to help us write tutorials, documents or videos on any website, and send us the link.
 - Community Contribution: You can write technical articles related to SWIFT, and submit them to us. After review and approval, we will publish them on the official ModelScope accounts (Zhihu, WeChat, etc.), with your name assigned.
