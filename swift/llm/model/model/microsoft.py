@@ -46,9 +46,23 @@ register_model(
         TemplateType.phi3_vision,
         partial(get_model_tokenizer_phi3_vision, num_crops=4),
         architectures=['Phi3VForCausalLM'],
-        model_arch=ModelArch.phi3v,
+        model_arch=ModelArch.phi3_vision,
         requires=['transformers>=4.36'],
         tags=['vision'],
+    ))
+
+register_model(
+    ModelMeta(
+        MLLMModelType.phi4_multimodal,
+        [ModelGroup([
+            Model('LLM-Research/Phi-4-multimodal-instruct', 'microsoft/Phi-4-multimodal-instruct'),
+        ])],
+        TemplateType.phi4_multimodal,
+        get_model_tokenizer_multimodal,
+        architectures=['Phi4MMForCausalLM'],
+        model_arch=ModelArch.phi4_multimodal,
+        requires=['transformers>=4.36,<4.49', 'backoff', 'soundfile'],
+        tags=['vision', 'audio'],
     ))
 
 
