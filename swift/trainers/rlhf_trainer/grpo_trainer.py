@@ -186,7 +186,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     # https://github.com/tastelikefeet/lmdeploy.git@feat/reload_state_dict_064
                     # Compile:https://github.com/tastelikefeet/lmdeploy/blob/main/docs/en/get_started/installation.md
                     if not is_lmdeploy_available():
-                        raise ImportError('Please install `pip install lmdeploy==0.6.4`'
+                        raise ImportError('Please install `pip install lmdeploy==0.7.1`'
                                           ' and replace three files with:\n'
                                           '1. https://github.com/tastelikefeet/lmdeploy/blob/feat/'
                                           'reload_state_dict_064/lmdeploy/messages.py\n'
