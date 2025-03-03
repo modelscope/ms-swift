@@ -48,8 +48,6 @@ class ExportArguments(MergeArguments, BaseArguments):
     # megatron
     to_megatron: bool = False
     to_hf: bool = False
-    target_tensor_model_parallel_size: int = 1
-    target_pipeline_model_parallel_size: int = 1
 
     # push to ms hub
     push_to_hub: bool = False
@@ -74,7 +72,7 @@ class ExportArguments(MergeArguments, BaseArguments):
             elif self.merge_lora:
                 suffix = 'merged'
             elif self.to_megatron:
-                suffix = f'tp{self.target_tensor_model_parallel_size}-pp{self.target_pipeline_model_parallel_size}'
+                suffix = f'megatron'
             elif self.to_hf:
                 suffix = 'hf'
             else:
