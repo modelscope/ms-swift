@@ -410,14 +410,14 @@ register_model_arch(
 register_model_arch(
     MultiModelKeys(
         MLLMModelArch.phi4_multimodal,
-        language_model='model.model.layers',
+        language_model='model.layers',
         aligner=[
-            'model.model.embed_tokens_extend.image_embed.img_projection',
-            'model.model.embed_tokens_extend.audio_embed.audio_projection'
+            'model.embed_tokens_extend.image_embed.img_projection',
+            'model.embed_tokens_extend.audio_embed.audio_projection'
         ],
         vision_tower=[
-            'model.model.embed_tokens_extend.image_embed.img_processor',
-            'model.model.embed_tokens_extend.audio_embed.encoder'
+            'model.embed_tokens_extend.image_embed.img_processor',
+            'model.embed_tokens_extend.audio_embed.encoder'
         ],
     ))
 
