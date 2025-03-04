@@ -71,6 +71,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.args = args
         self.queue = Queue()
         self.processing_class = kwargs.get('template').tokenizer
+        self.tokenizer = kwargs.get('template').tokenizer if hasattr(kwargs.get('template'), 'tokenizer') else None
         if not isinstance(reward_funcs, list):
             reward_funcs = [reward_funcs]
 
@@ -83,6 +84,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         key: getattr(args, key)
                         for key in reward_func_args if key not in ['self', 'args', 'kwargs'] and hasattr(args, key)
                     }
+                    if reward_func_class.__name__ == 'CosineReward' and 'tokenizer' in reward_func_args:
+                        reward_func_kwargs['tokenizer'] = self.tokenizer
                     reward_funcs[i] = reward_func_class(**reward_func_kwargs)
                 elif not callable(reward_func):
                     raise ValueError(f'reward_function {reward_func} is not implemented in swift.llm.plugin')
@@ -186,7 +189,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     # https://github.com/tastelikefeet/lmdeploy.git@feat/reload_state_dict_064
                     # Compile:https://github.com/tastelikefeet/lmdeploy/blob/main/docs/en/get_started/installation.md
                     if not is_lmdeploy_available():
-                        raise ImportError('Please install `pip install lmdeploy==0.6.4`'
+                        raise ImportError('Please install `pip install lmdeploy==0.7.1`'
                                           ' and replace three files with:\n'
                                           '1. https://github.com/tastelikefeet/lmdeploy/blob/feat/'
                                           'reload_state_dict_064/lmdeploy/messages.py\n'

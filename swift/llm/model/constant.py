@@ -198,6 +198,7 @@ class MLLMModelType:
     step_audio = 'step_audio'
 
     phi3_vision = 'phi3_vision'
+    phi4_multimodal = 'phi4_multimodal'
     florence = 'florence'
     idefics3 = 'idefics3'
     paligemma = 'paligemma'
