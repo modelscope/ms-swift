@@ -81,7 +81,7 @@ async def model_chat(history: History, real_history: History, system: Optional[s
 def add_text(history: History, real_history: History, query: str):
     history = history or []
     real_history = real_history or []
-    history.append([query, None])
+    history.append([_parse_text(query), None])
     real_history.append([query, None])
     return history, real_history, ''
 
