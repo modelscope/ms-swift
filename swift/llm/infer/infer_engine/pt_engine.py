@@ -470,7 +470,7 @@ class PtEngine(InferEngine):
 
         batched_inputs, error_list = self._batch_encode(
             infer_requests, template=template, strict=getattr(self, 'strict', True))
-        if batched_inputs > 0:
+        if len(batched_inputs) > 0:
             template_inputs = [inputs.pop('template_inputs') for inputs in batched_inputs]
             inputs = to_device(template.data_collator(batched_inputs), self.model.device)
             template.debug_logger(inputs)  # debug
@@ -495,7 +495,7 @@ class PtEngine(InferEngine):
         if request_config.stream:
 
             def _gen_wrapper():
-                if kwargs > 0:
+                if len(kwargs) > 0:
                     for res in self._infer_stream(**kwargs):
                         yield self._add_error_list(res, error_list)
                 else:

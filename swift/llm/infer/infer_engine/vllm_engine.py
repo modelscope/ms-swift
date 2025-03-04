@@ -323,7 +323,7 @@ class VllmEngine(InferEngine):
                 choices.append(choice)
             yield ChatCompletionStreamResponse(model=self.model_name, choices=choices, usage=usage_info, id=request_id)
 
-    def _create_chat_completion_response(self, result, template, generation_config):
+    def _create_chat_completion_response(self, result, template, generation_config, request_id):
         assert result is not None
         num_generated_tokens = sum(len(output.token_ids) for output in result.outputs)
         usage_info = self._get_usage_info(len(result.prompt_token_ids), num_generated_tokens)
@@ -348,11 +348,12 @@ class VllmEngine(InferEngine):
         generation_config: SamplingParams,
         adapter_request: Optional[AdapterRequest] = None,
     ) -> ChatCompletionResponse:
-        result_generator = self._add_request(inputs, generation_config, random_uuid(), adapter_request=adapter_request)
+        request_id = random_uuid()
+        result_generator = self._add_request(inputs, generation_config, request_id, adapter_request=adapter_request)
         result = None
         async for result in result_generator:
             pass
-        return self._create_chat_completion_response(result, template, generation_config)
+        return self._create_chat_completion_response(result, template, generation_config, request_id)
 
     def _batch_infer_stream(self, *args, **kwargs):
         self.engine.engine.model_executor.parallel_worker_tasks = None
@@ -387,8 +388,10 @@ class VllmEngine(InferEngine):
             self.set_default_max_tokens(request_config, batched_inputs)
             generation_config = self._prepare_generation_config(request_config)
             self._add_stop_words(generation_config, request_config, template.template_meta)
+            request_id_list = []
             for inputs in batched_inputs:
                 request_id = random_uuid()
+                request_id_list.append(request_id)
                 self._add_request(inputs, generation_config, request_id, adapter_request=adapter_request)
             prog_bar = tqdm(total=len(batched_inputs), dynamic_ncols=True, disable=not use_tqdm)
             outputs = []
@@ -399,11 +402,10 @@ class VllmEngine(InferEngine):
                         outputs.append(output)
                         prog_bar.update()
             prog_bar.close()
-            resp_list = [
-                self._create_chat_completion_response(result, template, generation_config) for result in outputs
+            return [
+                self._create_chat_completion_response(result, template, generation_config)
+                for request_id, result in zip(request_id_list, outputs)
             ]
-
-            return resp_list
 
     async def infer_async(
         self,
