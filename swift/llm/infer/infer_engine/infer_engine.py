@@ -1,6 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
 import asyncio
+import concurrent.futures
+import os
 from queue import Queue
 from threading import Thread
 from typing import Any, Dict, Iterator, List, Optional, Union
@@ -8,7 +10,7 @@ from typing import Any, Dict, Iterator, List, Optional, Union
 from tqdm import tqdm
 
 from swift.llm import InferRequest, ProcessorMixin, get_template
-from swift.llm.template import split_action_action_input
+from swift.llm.template import Template, split_action_action_input
 from swift.llm.utils import get_ckpt_dir
 from swift.plugin import Metric
 from swift.utils import get_logger
@@ -274,3 +276,24 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
     @staticmethod
     def safe_asyncio_run(coro):
         return InferEngine.thread_run(asyncio.run, args=(coro, ))
+
+    @staticmethod
+    def _batch_encode(infer_requests: List[InferRequest], template: Template, strict: bool):
+        max_workers = min(32, os.cpu_count(), len(infer_requests))
+        error_list = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [
+                executor.submit(template.encode, infer_request, return_template_inputs=True)
+                for infer_request in infer_requests
+            ]
+            concurrent.futures.wait(futures)
+            batched_inputs = []
+            for i, future in enumerate(futures):
+                try:
+                    batched_inputs.append(future.result())
+                except Exception as e:
+                    if strict:
+                        raise
+                    error_list.append((i, e))
+                    continue
+        return batched_inputs, error_list
