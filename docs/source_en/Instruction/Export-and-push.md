@@ -1,4 +1,4 @@
-# Export
+# Export and Push
 
 | Quantization Technique | Multimodal | Inference Acceleration | Continued Training |
 | ---------------------- | ---------- | ---------------------- | ------------------ |
