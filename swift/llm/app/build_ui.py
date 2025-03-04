@@ -44,10 +44,9 @@ def _history_to_messages(history: History, system: Optional[str]):
 
 
 def _parse_text(text: str) -> str:
-    text = text.replace('<', '&lt;')
-    text = text.replace('>', '&gt;')
-    text = text.replace('*', '&ast;')
-    text = text.replace('_', '&lowbar;')
+    mapping = {'<': '&lt;', '>': '&gt;', '*': '&ast;'}
+    for k, v in mapping.items():
+        text = text.replace(k, v)
     return text
 
 
