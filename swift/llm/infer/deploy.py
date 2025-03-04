@@ -122,8 +122,6 @@ class SwiftDeploy(SwiftInfer):
         if return_cmpl_response:
             response = response.to_cmpl_response()
         if 'stream' in response.__class__.__name__.lower():
-            if 'response' not in request_info:
-                request_info['response'] = ''
             request_info['response'] += response.choices[0].delta.content
         else:
             request_info['response'] = response.choices[0].message.content
@@ -162,7 +160,7 @@ class SwiftDeploy(SwiftInfer):
 
         infer_request, request_config = request.parse()
         self._set_request_config(request_config)
-        request_info = {'infer_request': infer_request.to_printable()}
+        request_info = {'response': '', 'infer_request': infer_request.to_printable()}
 
         def pre_infer_hook(kwargs):
             request_info['generation_config'] = kwargs['generation_config']
