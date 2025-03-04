@@ -13,7 +13,7 @@ from ..register import register_template
 from ..template_inputs import StdTemplateInputs
 from ..template_meta import TemplateMeta
 from ..utils import Context, Word, findall
-from ..vision_utils import load_audio, load_batch
+from ..vision_utils import load_audio, load_batch, load_video_ovis2
 from .llama import Llama3TemplateMeta
 from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
 
@@ -410,10 +410,24 @@ register_template(
         template_cls=Ovis1_6Template,
     ))
 
+
+class Ovis2Template(Ovis1_6Template):
+    nframes = 12
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    inputs: StdTemplateInputs) -> List[Context]:
+        if media_type == 'image':
+            return [[-200], '\n']
+        elif media_type == 'video':
+            nframes = get_env_args('nframes', int, self.nframes)
+            inputs.images = load_video_ovis2(inputs.videos[index], nframes)
+            return [[-200] * nframes, '\n']
+
+
 register_template(
     QwenTemplateMeta(
         MLLMTemplateType.ovis2,
-        template_cls=Ovis1_6Template,
+        template_cls=Ovis2Template,
         placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
     ))
 
