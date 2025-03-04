@@ -398,14 +398,15 @@ class VllmEngine(InferEngine):
                 request_id_list.append(request_id)
                 self._add_request(inputs, generation_config, request_id, adapter_request=adapter_request)
             prog_bar = tqdm(total=len(batched_inputs), dynamic_ncols=True, disable=not use_tqdm)
-            outputs = []
+            outputs = {}
             while self.engine.has_unfinished_requests():
                 step_outputs = self.engine.step()
                 for output in step_outputs:
                     if output.finished:
-                        outputs.append(output)
+                        outputs[output.request_id] = output
                         prog_bar.update()
             prog_bar.close()
+            outputs = [outputs[request_id] for request_id in request_id_list]
             return [
                 self._create_chat_completion_response(result, template, generation_config, request_id)
                 for request_id, result in zip(request_id_list, outputs)
