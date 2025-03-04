@@ -393,7 +393,7 @@ CUDA_VISIBLE_DEVICES=0 swift export \
 
 ### Push Model
 ```shell
-CUDA_VISIBLE_DEVICES=0 swift export \
+swift export \
     --model <model-path> \
     --push_to_hub true \
     --hub_model_id '<model-id>' \
