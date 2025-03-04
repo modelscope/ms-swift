@@ -380,6 +380,10 @@ class VllmEngine(InferEngine):
             )
         else:
             request_config = deepcopy(request_config)
+            if request_config.stream:
+                raise ValueError('If you want to use stream inference, you need to pass `use_async_engine` as True.')
+            if use_tqdm is None:
+                use_tqdm = len(infer_requests) > 1
             if template is None:
                 template = self.default_template
             template.set_mode('vllm')
@@ -403,7 +407,7 @@ class VllmEngine(InferEngine):
                         prog_bar.update()
             prog_bar.close()
             return [
-                self._create_chat_completion_response(result, template, generation_config)
+                self._create_chat_completion_response(result, template, generation_config, request_id)
                 for request_id, result in zip(request_id_list, outputs)
             ]
 
