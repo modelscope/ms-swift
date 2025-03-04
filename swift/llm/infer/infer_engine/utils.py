@@ -18,7 +18,7 @@ from transformers import GenerationConfig, LogitsProcessor
 from transformers.generation.streamers import BaseStreamer
 
 from swift.llm.model.register import fix_do_sample_warning
-from swift.utils import get_device
+from swift.utils import get_device, get_device_count, get_node_setting
 from ..protocol import RequestConfig
 
 
@@ -353,42 +353,49 @@ def patch_vllm(world_size=1):
     def _get_context():
         from vllm.distributed.parallel_state import GroupCoordinator
         from unittest.mock import patch
-        # world_size_patch = patch('torch.distributed.get_world_size', return_value=world_size)
         profiling_patch = patch(
             'vllm.worker.worker.Worker._assert_memory_footprint_increased_during_profiling', return_value=None)
 
         __origin_init__ = GroupCoordinator.__init__
 
-        def __init__(self, group_ranks, local_rank, *args, **kwargs):
-            # device_count = torch.cuda.device_count()
-            # fast_infer_devices = os.environ.get('GRPO_DEVICES')
-            # if fast_infer_devices:
-            #     fast_infer_devices = fast_infer_devices.split(',')
-            #     fast_infer_devices = [int(dev.split(':')[1]) for dev in fast_infer_devices]
-            #     groups = []
-            #     for i in range(0, len(fast_infer_devices), world_size):
-            #         if len(group_ranks) > 1:
-            #             group = []
-            #             for i in fast_infer_devices[i: i+world_size]:
-            #                 group.append([i])
-            #             groups.append(group)
-            #         else:
-            #             groups.append(fast_infer_devices[i: i+world_size])
-            #     for group in groups:
-            #         if len(group_ranks) > 1:
-            #             if [local_rank] in group:
-            #                 group_ranks = group
-            #         else:
-            #             if local_rank in group:
-            #                 group_ranks = [group] 
+        def get_world_size(group=None) -> int:
+            if not group:
+                # Given size
+                return world_size
+            else:
+                return torch.distributed.get_world_size_origin(group)
 
+        def __init__(self, group_ranks, local_rank, *args, **kwargs):
+
+            def map_rank_to_real(obj):
+                # Use the last devices
+                # world_size=4 gpus=8 [0,1,2,3] will map to [4,5,6,7]
+                device_count = get_device_count()
+                _, nnodes = get_node_setting()
+                num_infer_workers = world_size // nnodes
+                diff = device_count - num_infer_workers
+                if diff < 0:
+                    diff = 0
+                if isinstance(obj, list):
+                    return [map_rank_to_real(o) for o in obj]
+                elif isinstance(obj, int):
+                    return obj + diff
+                else:
+                    raise ValueError(f'Unsupported type: {obj}')
+
+            group_ranks = map_rank_to_real(group_ranks)
+            local_rank = map_rank_to_real(local_rank)
             return __origin_init__(self, group_ranks, local_rank, *args, **kwargs)
 
         GroupCoordinator.__init__ = __init__
 
         try:
             with profiling_patch:
+                torch.distributed.get_world_size_origin = torch.distributed.get_world_size
+                torch.distributed.get_world_size = get_world_size
                 yield
+                torch.distributed.get_world_size = torch.distributed.get_world_size_origin
+                del torch.distributed.get_world_size_origin
         finally:
             GroupCoordinator.__init__ = __origin_init__
 

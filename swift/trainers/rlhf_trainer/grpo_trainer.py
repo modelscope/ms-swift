@@ -4,12 +4,12 @@ import concurrent.futures
 import inspect
 import os
 import time
-from collections import OrderedDict, defaultdict
+from collections import defaultdict
 from concurrent.futures import Future
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from queue import Queue
-from typing import Any, Callable, Dict, List, Optional, Union, re
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
 import torch
@@ -137,86 +137,80 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         set_seed(args.seed, device_specific=True)
 
         if use_vllm or use_lmdeploy:
-            fast_infer_device = self.args.vllm_device or self.args.lmdeploy_device
-            if fast_infer_device[0] == 'auto':
-                if get_device_count() == 1:
-                    fast_infer_device = [get_device()]  # particular case when training with only 1 GPU: share it
-                else:
-                    fast_infer_device = []
-                    for idx in range(get_device_count() - self.args.num_infer_workers * self.args.tensor_parallel_size,
-                                     get_device_count()):
-                        fast_infer_device.append(get_device(idx))
-            os.environ['GRPO_DEVICES'] = ','.join(fast_infer_device)
+            if self.infer_rank >= 0:
+                fast_infer_device = self.args.vllm_device or self.args.lmdeploy_device
+                if fast_infer_device[0] == 'auto':
+                    if get_device_count() == 1:
+                        fast_infer_device = [get_device()]  # particular case when training with only 1 GPU: share it
+                    else:
+                        fast_infer_device = []
+                        for idx in range(get_device_count() - self.args.num_infer_workers, get_device_count()):
+                            fast_infer_device.append(get_device(idx))
 
-            for _device in fast_infer_device:
-                # Check that the requested device is available
-                if _device.split(':')[0] in {'cuda', 'npu'} and int(_device.split(':')[1]) >= get_device_count():
-                    raise ValueError(f'The requested device for vllm ({_device}) is not available. '
-                                     f'You are likely using vLLM '
-                                     'without restricting the number of GPUs for training. '
-                                     'Set the `--num_processes` argument to a '
-                                     'value lower than the number of GPUs available on your machine—typically, '
-                                     'reducing it by one is sufficient. '
-                                     f'In your case: `--num_processes {get_device_count() - 1}`.')
-                # Check that the requested device is not also used for training
-                if _device in {get_device(idx) for idx in range(self.accelerator.num_processes)}:
-                    logger.warning(f'The requested device {_device} is also used for training. '
-                                   f'This may lead to unexpected behavior. '
-                                   f'It is recommended to use a dedicated device for vLLM.')
+                for _device in fast_infer_device:
+                    # Check that the requested device is available
+                    if _device.split(':')[0] in {'cuda', 'npu'} and int(_device.split(':')[1]) >= get_device_count():
+                        raise ValueError(f'The requested device for vllm ({_device}) is not available. '
+                                         f'You are likely using vLLM '
+                                         'without restricting the number of GPUs for training. '
+                                         'Set the `--num_processes` argument to a '
+                                         'value lower than the number of GPUs available on your machine—typically, '
+                                         'reducing it by one is sufficient. '
+                                         f'In your case: `--num_processes {get_device_count() - 1}`.')
+                    # Check that the requested device is not also used for training
+                    if _device in {get_device(idx) for idx in range(self.accelerator.num_processes)}:
+                        logger.warning(f'The requested device {_device} is also used for training. '
+                                       f'This may lead to unexpected behavior. '
+                                       f'It is recommended to use a dedicated device for vLLM.')
 
-            if use_vllm:
-                if not is_vllm_available():
-                    raise ImportError('vLLM is not available and `use_vllm` is set to True. '
-                                      'Please install vLLM with `pip install vllm` to use it.')
-                from swift.llm import VllmEngine
-                from swift.tuners import Swift
-                with Swift.grpo_context(model, self.template.processor):
-                    # self.engine = VllmEngine(
-                    #     model.model_dir,
-                    #     model.model_info.torch_dtype,
-                    #     model_type=model.model_meta.model_type,
-                    #     device=fast_infer_device[self.infer_device],
-                    #     tensor_parallel_size=self.args.tensor_parallel_size,
-                    #     gpu_memory_utilization=args.vllm_gpu_memory_utilization,
-                    #     enable_prefix_caching=args.vllm_enable_prefix_caching,
-                    #     max_num_seqs=args.vllm_max_num_seqs,
-                    #     enforce_eager=args.vllm_enforce_eager,
-                    #     limit_mm_per_prompt=args.vllm_limit_mm_per_prompt,
-                    #     max_model_len=args.vllm_max_model_len)
-                    from vllm import LLM, SamplingParams
-                    self.engine = LLM(
-                        model=model.model_dir,
-                        tensor_parallel_size=self.args.tensor_parallel_size,
-                        distributed_executor_backend="external_launcher",
-                        gpu_memory_utilization=0.5,
-                        disable_custom_all_reduce=True,
-                    )
-                self.engine.default_template = self.template
-            elif use_lmdeploy:
-                # https://github.com/tastelikefeet/lmdeploy.git@feat/reload_state_dict_064
-                # Compile:https://github.com/tastelikefeet/lmdeploy/blob/main/docs/en/get_started/installation.md
-                if not is_lmdeploy_available():
-                    raise ImportError('Please install `pip install lmdeploy==0.6.4`'
-                                      ' and replace three files with:\n'
-                                      '1. https://github.com/tastelikefeet/lmdeploy/blob/feat/'
-                                      'reload_state_dict_064/lmdeploy/messages.py\n'
-                                      '2. https://github.com/tastelikefeet/lmdeploy/blob/feat/'
-                                      'reload_state_dict_064/lmdeploy/turbomind/turbomind.py\n'
-                                      '3. https://github.com/tastelikefeet/lmdeploy/blob/feat/'
-                                      'reload_state_dict_064/lmdeploy/turbomind/deploy/loader.py\n')
-                from swift.llm import LmdeployEngine
-                from swift.tuners import Swift
-                with Swift.grpo_context(model, self.template.processor):
-                    fast_infer_device = int(fast_infer_device[self.local_infer_rank].split(':')[1])
-                    self.engine = LmdeployEngine(
-                        model.model_dir,
-                        model.model_info.torch_dtype,
-                        model_type=model.model_meta.model_type,
-                        devices=[fast_infer_device],
-                        session_len=args.lmdeploy_session_len,
-                        cache_max_entry_count=args.lmdeploy_cache_max_entry_count,
-                        reload_weights=True)
-                self.engine.default_template = self.template
+                if use_vllm:
+                    if not is_vllm_available():
+                        raise ImportError('vLLM is not available and `use_vllm` is set to True. '
+                                          'Please install vLLM with `pip install vllm` to use it.')
+                    from swift.tuners import Swift
+                    from swift.llm import VllmEngine
+                    with Swift.grpo_context(model, self.template.processor):
+                        self.engine = VllmEngine(
+                            model.model_dir,
+                            model.model_info.torch_dtype,
+                            model_type=model.model_meta.model_type,
+                            device=fast_infer_device[self.local_infer_rank],
+                            tensor_parallel_size=self.args.tensor_parallel_size,
+                            gpu_memory_utilization=args.vllm_gpu_memory_utilization,
+                            enable_prefix_caching=args.vllm_enable_prefix_caching,
+                            max_num_seqs=args.vllm_max_num_seqs,
+                            enforce_eager=args.vllm_enforce_eager,
+                            limit_mm_per_prompt=args.vllm_limit_mm_per_prompt,
+                            use_async_engine=False,
+                            enable_sleep_mode=self.args.sleep_level > 0,
+                            distributed_executor_backend='external_launcher',
+                            max_model_len=args.vllm_max_model_len)
+                    self.engine.default_template = self.template
+                elif use_lmdeploy:
+                    # https://github.com/tastelikefeet/lmdeploy.git@feat/reload_state_dict_064
+                    # Compile:https://github.com/tastelikefeet/lmdeploy/blob/main/docs/en/get_started/installation.md
+                    if not is_lmdeploy_available():
+                        raise ImportError('Please install `pip install lmdeploy==0.6.4`'
+                                          ' and replace three files with:\n'
+                                          '1. https://github.com/tastelikefeet/lmdeploy/blob/feat/'
+                                          'reload_state_dict_064/lmdeploy/messages.py\n'
+                                          '2. https://github.com/tastelikefeet/lmdeploy/blob/feat/'
+                                          'reload_state_dict_064/lmdeploy/turbomind/turbomind.py\n'
+                                          '3. https://github.com/tastelikefeet/lmdeploy/blob/feat/'
+                                          'reload_state_dict_064/lmdeploy/turbomind/deploy/loader.py\n')
+                    from swift.llm import LmdeployEngine
+                    from swift.tuners import Swift
+                    with Swift.grpo_context(model, self.template.processor):
+                        fast_infer_device = int(fast_infer_device[self.local_infer_rank].split(':')[1])
+                        self.engine = LmdeployEngine(
+                            model.model_dir,
+                            model.model_info.torch_dtype,
+                            model_type=model.model_meta.model_type,
+                            devices=[fast_infer_device],
+                            session_len=args.lmdeploy_session_len,
+                            cache_max_entry_count=args.lmdeploy_cache_max_entry_count,
+                            reload_weights=True)
+                    self.engine.default_template = self.template
             self._last_loaded_step = 0  # tag to avoid useless loading during grad accumulation
 
             # When using vLLM, the main process is responsible for loading the model weights. This can cause process
@@ -225,13 +219,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self.accelerator.wait_for_everyone()
         else:
             from swift.llm import PtEngine
-            self.engine = LLM(
-                    model=self.model,
-                    tensor_parallel_size=4,
-                    distributed_executor_backend="external_launcher",
-                    disable_custom_all_reduce=True,
-)
-            # self.engine = PtEngine.from_model_template(self.model, self.template, max_batch_size=0)  # 0: no limit
+            self.engine = PtEngine.from_model_template(self.model, self.template, max_batch_size=0)  # 0: no limit
         self.request_config = RequestConfig(
             max_tokens=args.max_completion_length,
             temperature=args.temperature,
@@ -260,22 +248,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self.add_callback(GRPOCallback(self))
 
     @property
-    def infer_device(self):
-        rank, local_rank, world_size, local_world_size = get_dist_setting()
-        assert local_world_size % self.args.num_infer_workers == 0
-        step = local_world_size // self.args.num_infer_workers
-        for _vllm_rank in range(self.args.num_infer_workers):
-            _assigned = _vllm_rank * step
-            rg = list(range(_assigned, _assigned+self.args.tensor_parallel_size))
-            if local_rank in rg:
-                return _vllm_rank * self.args.tensor_parallel_size + rg.index(local_rank)
-
-        return -1
-
-    @property
     def infer_rank(self):
         rank, local_rank, world_size, local_world_size = get_dist_setting()
-        assert local_world_size % self.args.num_infer_workers == 0
         step = local_world_size // self.args.num_infer_workers
         for _vllm_rank in range(self.args.num_infer_workers):
             _assigned = _vllm_rank * step
@@ -287,7 +261,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     @property
     def local_infer_rank(self):
         rank, local_rank, world_size, local_world_size = get_dist_setting()
-        assert local_world_size % self.args.num_infer_workers == 0
         step = local_world_size // self.args.num_infer_workers
         for _vllm_rank in range(self.args.num_infer_workers):
             _assigned = _vllm_rank * step
@@ -384,19 +357,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def _prefetch(self, train_dataloader):
         inputs = next(iter(train_dataloader))
         all_inputs = gather_object(inputs)
-        distributed_idx = self.round_robin(len(all_inputs), get_node_setting()[1] * self.args.num_infer_workers*self.args.tensor_parallel_size)
+        distributed_idx = self.round_robin(len(all_inputs), get_node_setting()[1] * self.args.num_infer_workers)
         if self.infer_rank >= 0:
             _input_slice = np.array(all_inputs)[distributed_idx[self.infer_rank]]
-            prompts = [
-                "Hello, my name is",
-                "The president of the United States is",
-                "The capital of France is",
-                "The future of AI is",
-            ]
-
-            # Create sampling parameters, the same across all ranks
-            sampling_params = SamplingParams(temperature=0.8, top_p=0.95)
-            outputs = self.engine.generate(prompts, sampling_params)
+            outputs = self.engine.infer(_input_slice, self.request_config, use_tqdm=False)
             self.queue.put(DataCache(inputs, outputs, distributed_idx))
         else:
             self.queue.put(DataCache(inputs, [], distributed_idx))
@@ -404,6 +368,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self.accelerator.wait_for_everyone()
 
     def _fast_infer(self, inputs):
+        if self.args.sleep_level > 0:
+            self.engine.engine.wake_up()
         # First, have main process load weights if needed
         if self.state.global_step != self._last_loaded_step:
             self._move_model_to_vllm_lmdeploy()
@@ -414,9 +380,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # for example, 2 workers, 6 inputs, 0/2/4 dispatch to the first worker
         # 1/3/5 dispatch to the second worker
         # trying to shuffle and average the length
-        distributed_idx = self.round_robin(len(all_inputs), get_node_setting()[1] * self.args.num_infer_workers*self.args.tensor_parallel_size)
-        if self.infer_device >= 0:
-            _input_slice = np.array(all_inputs)[distributed_idx[self.infer_device]]
+        distributed_idx = self.round_robin(len(all_inputs), get_node_setting()[1] * self.args.num_infer_workers)
+        if self.infer_rank >= 0:
+            _input_slice = np.array(all_inputs)[distributed_idx[self.infer_rank]]
             if self.args.async_generate:
                 self.async_infer(inputs, _input_slice, distributed_idx)
                 data_cache = self.queue.get()
@@ -424,18 +390,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 outputs = data_cache.outputs
                 distributed_idx = data_cache.distributed_idx
             else:
-                prompts = [
-                    "Hello, my name is",
-                    "The president of the United States is",
-                    "The capital of France is",
-                    "The future of AI is",
-                ]
-                from vllm import LLM, SamplingParams
-                # Create sampling parameters, the same across all ranks
-                sampling_params = SamplingParams(temperature=0.8, top_p=0.95)
-                outputs = self.engine.generate(prompts, sampling_params)
-                print()
-                # outputs = self.engine.infer(all_inputs, self.request_config, use_tqdm=False)
+                outputs = self.engine.infer(_input_slice, self.request_config, use_tqdm=False)
         else:
             if self.args.async_generate:
                 self.queue.put(DataCache(inputs, [], distributed_idx))
@@ -443,9 +398,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 inputs = data_cache.inputs
                 distributed_idx = data_cache.distributed_idx
             outputs = []
-        print('>>>>>>>>>>>>>>>', self.infer_rank, outputs)
         outputs = gather_object(outputs)
         outputs = self.reorder_outputs(outputs, distributed_idx)
+        if self.args.sleep_level > 0:
+            self.engine.engine.sleep(level=self.args.sleep_level)
         return inputs, outputs
 
     @property
