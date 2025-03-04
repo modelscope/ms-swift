@@ -121,14 +121,19 @@ class SwiftDeploy(SwiftInfer):
         is_finished = all(response.choices[i].finish_reason for i in range(len(response.choices)))
         if return_cmpl_response:
             response = response.to_cmpl_response()
+        if 'stream' in response.__class__.__name__.lower():
+            if 'response' not in request_info:
+                request_info['response'] = ''
+            request_info['response'] += response.choices[0].delta.content
+        else:
+            request_info['response'] = response.choices[0].message.content
         if is_finished:
             if args.log_interval > 0:
                 self.infer_stats.update(response)
-            data = {'response': asdict(response), **request_info}
             if self.jsonl_writer:
-                self.jsonl_writer.append(data)
+                self.jsonl_writer.append(request_info)
             if self.args.verbose:
-                logger.info(data)
+                logger.info(request_info)
         return response
 
     def _set_request_config(self, request_config) -> None:
