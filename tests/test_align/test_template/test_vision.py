@@ -6,7 +6,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
 os.environ['SWIFT_DEBUG'] = '1'
 
 
-def _infer_model(pt_engine, system=None, messages=None, images=None):
+def _infer_model(pt_engine, system=None, messages=None, images=None, **kwargs):
     seed_everything(42)
     request_config = RequestConfig(max_tokens=128, temperature=0, repetition_penalty=1)
     if messages is None:
@@ -21,7 +21,7 @@ def _infer_model(pt_engine, system=None, messages=None, images=None):
         messages = messages.copy()
     if images is None:
         images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png']
-    resp = pt_engine.infer([{'messages': messages, 'images': images}], request_config=request_config)
+    resp = pt_engine.infer([{'messages': messages, 'images': images, **kwargs}], request_config=request_config)
     response = resp[0].choices[0].message.content
     messages += [{'role': 'assistant', 'content': response}]
     logger.info(f'model: {pt_engine.model_info.model_name}, messages: {messages}')
@@ -457,6 +457,25 @@ call_user() # Submit the task and call the user when the task is unsolvable, or 
     assert response == response2
 
 
+def test_phi4_vision():
+    pt_engine = PtEngine('LLM-Research/Phi-4-multimodal-instruct')
+    response = _infer_model(pt_engine, messages=[{'role': 'user', 'content': 'describe the image.'}])
+    assert response == (
+        "The image features a close-up of a kitten's face. The kitten has large, "
+        'round eyes with a bright gaze, and its fur is predominantly white with black stripes. '
+        "The kitten's ears are pointed and alert, and its whiskers are visible. The background is blurred, "
+        "drawing focus to the kitten's face.")
+    response = _infer_model(
+        pt_engine,
+        messages=[{
+            'role': 'user',
+            'content': 'describe the audio.'
+        }],
+        images=[],
+        audios=['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/weather.wav'])
+    assert response == '今天天气真好呀'
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig, get_template
     from swift.utils import get_logger, seed_everything
@@ -480,7 +499,7 @@ if __name__ == '__main__':
     # test_llava_onevision_hf()
     # test_minicpmv()
     # test_got_ocr()
-    test_got_ocr_hf()
+    # test_got_ocr_hf()
     # test_paligemma()
     # test_paligemma2()
     # test_pixtral()
@@ -489,6 +508,7 @@ if __name__ == '__main__':
     # test_florence()
     # test_glm_edge_v()
     # test_phi3_vision()
+    # test_phi4_vision()
     # test_internvl2_5()
     # test_internvl2_5_mpo()
     # test_mplug_owl3()

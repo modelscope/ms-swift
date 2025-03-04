@@ -1,9 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import asyncio
-import concurrent.futures
 import hashlib
 import inspect
-import os
 import pickle
 import time
 from copy import deepcopy
@@ -468,61 +466,47 @@ class PtEngine(InferEngine):
         if self.model_info.task_type == 'causal_lm':
             template.set_mode('pt')
 
-        max_workers = min(32, os.cpu_count(), len(infer_requests))
-        error_list = []
-        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = [
-                executor.submit(template.encode, infer_request, return_template_inputs=True)
-                for infer_request in infer_requests
-            ]
-            concurrent.futures.wait(futures)
-            batched_inputs = []
-            for i, future in enumerate(futures):
-                try:
-                    batched_inputs.append(future.result())
-                except Exception as e:
-                    if getattr(self, 'strict', True):
-                        raise
-                    error_list.append((i, e))
-                    continue
-        if len(batched_inputs) == 0:
-            if request_config.stream:
+        batched_inputs, error_list = self._batch_encode(
+            infer_requests, template=template, strict=getattr(self, 'strict', True))
+        if len(batched_inputs) > 0:
+            template_inputs = [inputs.pop('template_inputs') for inputs in batched_inputs]
+            inputs = to_device(template.data_collator(batched_inputs), self.model.device)
+            template.debug_logger(inputs)  # debug
+            if self.model.model_meta.is_multimodal:
+                _, inputs = template.pre_forward_hook(self.model, None, inputs)
+            if self.model_info.task_type == 'causal_lm':
+                self.set_default_max_tokens(request_config, inputs)
+                generation_config = self._prepare_generation_config(request_config)
+                self._add_stop_words(generation_config, request_config, template)
 
-                def _gen_wrapper():
-                    yield self._add_error_list([], error_list)
-
-                return _gen_wrapper()
-            else:
-                return self._add_error_list([], error_list)
-        template_inputs = [inputs.pop('template_inputs') for inputs in batched_inputs]
-        inputs = to_device(template.data_collator(batched_inputs), self.model.device)
-        template.debug_logger(inputs)  # debug
-        if self.model.model_meta.is_multimodal:
-            _, inputs = template.pre_forward_hook(self.model, None, inputs)
-        if self.model_info.task_type == 'causal_lm':
-            self.set_default_max_tokens(request_config, inputs)
-            generation_config = self._prepare_generation_config(request_config)
-            self._add_stop_words(generation_config, request_config, template)
-
-        kwargs = {
-            'template': template,
-            'inputs': inputs,
-            'generation_config': generation_config,
-            'adapter_request': adapter_request,
-            'template_inputs': template_inputs
-        }
-        if pre_infer_hook:
-            kwargs = pre_infer_hook(kwargs)
+            kwargs = {
+                'template': template,
+                'inputs': inputs,
+                'generation_config': generation_config,
+                'adapter_request': adapter_request,
+                'template_inputs': template_inputs
+            }
+            if pre_infer_hook:
+                kwargs = pre_infer_hook(kwargs)
+        else:
+            kwargs = {}
         if request_config.stream:
 
             def _gen_wrapper():
-                for res in self._infer_stream(**kwargs):
-                    yield self._add_error_list(res, error_list)
+                if len(kwargs) > 0:
+                    for res in self._infer_stream(**kwargs):
+                        yield self._add_error_list(res, error_list)
+                else:
+                    yield self._add_error_list([], error_list)
 
             return _gen_wrapper()
         else:
-            infer_func = self._infer_forward if template.mode in ('seq_cls', 'prm') else self._infer_full
-            return self._add_error_list(infer_func(**kwargs), error_list)
+            if len(kwargs) > 0:
+                infer_func = self._infer_forward if template.mode in ('seq_cls', 'prm') else self._infer_full
+                res = infer_func(**kwargs)
+            else:
+                res = []
+            return self._add_error_list(res, error_list)
 
     def infer(
         self,

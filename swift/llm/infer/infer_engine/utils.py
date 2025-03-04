@@ -353,8 +353,13 @@ def patch_vllm(world_size=1):
     def _get_context():
         from vllm.distributed.parallel_state import GroupCoordinator
         from unittest.mock import patch
-        profiling_patch = patch(
-            'vllm.worker.worker.Worker._assert_memory_footprint_increased_during_profiling', return_value=None)
+        try:
+            from vllm.worker.worker import Worker
+            getattr(Worker, '_assert_memory_footprint_increased_during_profiling')
+            profiling_patch = patch(
+                'vllm.worker.worker.Worker._assert_memory_footprint_increased_during_profiling', return_value=None)
+        except (ImportError, AttributeError):
+            profiling_patch = nullcontext()
 
         __origin_init__ = GroupCoordinator.__init__
 
