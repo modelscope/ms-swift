@@ -1,4 +1,4 @@
-# GRPO完整实验流程
+# 多模态GRPO完整实验流程
 本文介绍如何使用SWIFT GRPO进行多模态模型和任务的训练。目标是对多个多模态任务进行训练，提升任务精度，任务定义和训练参数等参考了 [R1-V](https://github.com/Deep-Agent/R1-V.git) 和 [open-r1-multimodal](https://github.com/EvolvingLMMs-Lab/open-r1-multimodal.git)
 
 

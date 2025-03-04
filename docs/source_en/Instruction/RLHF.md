@@ -9,6 +9,9 @@ For RM and DPO-type algorithms such as ORPO, CPO, and SimPO, $(x,y_w,y_l)$ forma
 
 In contrast, the KTO algorithm has a special data format that only requires $(x,y,\text{label})$, where $x$ is the model input, $y$ is the model output, and the label indicates whether the answer aligns with human preferences, as shown in ![kto_data](../../resources/kto_data.png).
 
+For RLHF training of text models or multimodal large models using a custom dataset, you can refer to the [custom dataset documentation](../Customization/Custom-dataset.md#rlhf).
+
+
 ## GRPO
 [Paper on arXiv](https://arxiv.org/abs/2402.03300)
 

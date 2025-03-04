@@ -1,5 +1,5 @@
 # A800 * 8
-# pip install lmdeploy==0.6.4
+# pip install lmdeploy==0.7.1
 # exp link: https://wandb.ai/tastelikefeet/grpo_perf_test?nw=nwuseryuzezyz
 # In exp no `--system 'examples/train/grpo/prompt.txt'`, so the format reward is not correct and there are speed diffs with this script
 # important args: --num_infer_workers 2 --num_iterations 2 --use_lmdeploy true --async_generate true
