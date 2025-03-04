@@ -729,7 +729,7 @@ register_model(
         model_arch=ModelArch.ovis1_6,
         architectures=['Ovis'],
         tags=['vision'],
-        requires=['transformers>=4.46.2'],
+        requires=['transformers>=4.46.2', 'moviepy<2'],
     ))
 
 register_model(

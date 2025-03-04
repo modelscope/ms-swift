@@ -430,6 +430,7 @@ The table below introduces the models integrated with ms-swift:
 |[LLM-Research/Phi-3-medium-4k-instruct](https://modelscope.cn/models/LLM-Research/Phi-3-medium-4k-instruct)|phi3|phi3|transformers>=4.36|-|[microsoft/Phi-3-medium-4k-instruct](https://huggingface.co/microsoft/Phi-3-medium-4k-instruct)|
 |[LLM-Research/Phi-3-medium-128k-instruct](https://modelscope.cn/models/LLM-Research/Phi-3-medium-128k-instruct)|phi3|phi3|transformers>=4.36|-|[microsoft/Phi-3-medium-128k-instruct](https://huggingface.co/microsoft/Phi-3-medium-128k-instruct)|
 |[LLM-Research/Phi-3.5-mini-instruct](https://modelscope.cn/models/LLM-Research/Phi-3.5-mini-instruct)|phi3|phi3|transformers>=4.36|-|[microsoft/Phi-3.5-mini-instruct](https://huggingface.co/microsoft/Phi-3.5-mini-instruct)|
+|[LLM-Research/Phi-4-mini-instruct](https://modelscope.cn/models/LLM-Research/Phi-4-mini-instruct)|phi3|phi3|transformers>=4.36|-|[microsoft/Phi-4-mini-instruct](https://huggingface.co/microsoft/Phi-4-mini-instruct)|
 |[LLM-Research/Phi-3.5-MoE-instruct](https://modelscope.cn/models/LLM-Research/Phi-3.5-MoE-instruct)|phi3_moe|phi3|transformers>=4.36|-|[microsoft/Phi-3.5-MoE-instruct](https://huggingface.co/microsoft/Phi-3.5-MoE-instruct)|
 |[LLM-Research/phi-4](https://modelscope.cn/models/LLM-Research/phi-4)|phi4|phi4|transformers>=4.36|-|[microsoft/phi-4](https://huggingface.co/microsoft/phi-4)|
 |[MiniMaxAI/MiniMax-Text-01](https://modelscope.cn/models/MiniMaxAI/MiniMax-Text-01)|minimax|minimax|-|-|[MiniMaxAI/MiniMax-Text-01](https://huggingface.co/MiniMaxAI/MiniMax-Text-01)|
@@ -544,12 +545,12 @@ The table below introduces the models integrated with ms-swift:
 |[AIDC-AI/Ovis1.6-Gemma2-9B-GPTQ-Int4](https://modelscope.cn/models/AIDC-AI/Ovis1.6-Gemma2-9B-GPTQ-Int4)|ovis1_6|ovis1_6|transformers>=4.42|vision|[AIDC-AI/Ovis1.6-Gemma2-9B-GPTQ-Int4](https://huggingface.co/AIDC-AI/Ovis1.6-Gemma2-9B-GPTQ-Int4)|
 |[AIDC-AI/Ovis1.6-Gemma2-27B](https://modelscope.cn/models/AIDC-AI/Ovis1.6-Gemma2-27B)|ovis1_6|ovis1_6|transformers>=4.42|vision|[AIDC-AI/Ovis1.6-Gemma2-27B](https://huggingface.co/AIDC-AI/Ovis1.6-Gemma2-27B)|
 |[AIDC-AI/Ovis1.6-Llama3.2-3B](https://modelscope.cn/models/AIDC-AI/Ovis1.6-Llama3.2-3B)|ovis1_6_llama3|ovis1_6_llama3|-|vision|[AIDC-AI/Ovis1.6-Llama3.2-3B](https://huggingface.co/AIDC-AI/Ovis1.6-Llama3.2-3B)|
-|[AIDC-AI/Ovis2-1B](https://modelscope.cn/models/AIDC-AI/Ovis2-1B)|ovis2|ovis2|transformers>=4.46.2|vision|[AIDC-AI/Ovis2-1B](https://huggingface.co/AIDC-AI/Ovis2-1B)|
-|[AIDC-AI/Ovis2-2B](https://modelscope.cn/models/AIDC-AI/Ovis2-2B)|ovis2|ovis2|transformers>=4.46.2|vision|[AIDC-AI/Ovis2-2B](https://huggingface.co/AIDC-AI/Ovis2-2B)|
-|[AIDC-AI/Ovis2-4B](https://modelscope.cn/models/AIDC-AI/Ovis2-4B)|ovis2|ovis2|transformers>=4.46.2|vision|[AIDC-AI/Ovis2-4B](https://huggingface.co/AIDC-AI/Ovis2-4B)|
-|[AIDC-AI/Ovis2-8B](https://modelscope.cn/models/AIDC-AI/Ovis2-8B)|ovis2|ovis2|transformers>=4.46.2|vision|[AIDC-AI/Ovis2-8B](https://huggingface.co/AIDC-AI/Ovis2-8B)|
-|[AIDC-AI/Ovis2-16B](https://modelscope.cn/models/AIDC-AI/Ovis2-16B)|ovis2|ovis2|transformers>=4.46.2|vision|[AIDC-AI/Ovis2-16B](https://huggingface.co/AIDC-AI/Ovis2-16B)|
-|[AIDC-AI/Ovis2-34B](https://modelscope.cn/models/AIDC-AI/Ovis2-34B)|ovis2|ovis2|transformers>=4.46.2|vision|[AIDC-AI/Ovis2-34B](https://huggingface.co/AIDC-AI/Ovis2-34B)|
+|[AIDC-AI/Ovis2-1B](https://modelscope.cn/models/AIDC-AI/Ovis2-1B)|ovis2|ovis2|transformers>=4.46.2, moviepy<2|vision|[AIDC-AI/Ovis2-1B](https://huggingface.co/AIDC-AI/Ovis2-1B)|
+|[AIDC-AI/Ovis2-2B](https://modelscope.cn/models/AIDC-AI/Ovis2-2B)|ovis2|ovis2|transformers>=4.46.2, moviepy<2|vision|[AIDC-AI/Ovis2-2B](https://huggingface.co/AIDC-AI/Ovis2-2B)|
+|[AIDC-AI/Ovis2-4B](https://modelscope.cn/models/AIDC-AI/Ovis2-4B)|ovis2|ovis2|transformers>=4.46.2, moviepy<2|vision|[AIDC-AI/Ovis2-4B](https://huggingface.co/AIDC-AI/Ovis2-4B)|
+|[AIDC-AI/Ovis2-8B](https://modelscope.cn/models/AIDC-AI/Ovis2-8B)|ovis2|ovis2|transformers>=4.46.2, moviepy<2|vision|[AIDC-AI/Ovis2-8B](https://huggingface.co/AIDC-AI/Ovis2-8B)|
+|[AIDC-AI/Ovis2-16B](https://modelscope.cn/models/AIDC-AI/Ovis2-16B)|ovis2|ovis2|transformers>=4.46.2, moviepy<2|vision|[AIDC-AI/Ovis2-16B](https://huggingface.co/AIDC-AI/Ovis2-16B)|
+|[AIDC-AI/Ovis2-34B](https://modelscope.cn/models/AIDC-AI/Ovis2-34B)|ovis2|ovis2|transformers>=4.46.2, moviepy<2|vision|[AIDC-AI/Ovis2-34B](https://huggingface.co/AIDC-AI/Ovis2-34B)|
 |[ZhipuAI/glm-4v-9b](https://modelscope.cn/models/ZhipuAI/glm-4v-9b)|glm4v|glm4v|transformers>=4.42,<4.45|-|[THUDM/glm-4v-9b](https://huggingface.co/THUDM/glm-4v-9b)|
 |[ZhipuAI/cogagent-9b-20241220](https://modelscope.cn/models/ZhipuAI/cogagent-9b-20241220)|glm4v|glm4v|transformers>=4.42|-|[THUDM/cogagent-9b-20241220](https://huggingface.co/THUDM/cogagent-9b-20241220)|
 |[ZhipuAI/glm-edge-v-2b](https://modelscope.cn/models/ZhipuAI/glm-edge-v-2b)|glm_edge_v|glm_edge_v|transformers>=4.46|vision|[THUDM/glm-edge-v-2b](https://huggingface.co/THUDM/glm-edge-v-2b)|
@@ -666,6 +667,7 @@ The table below introduces the models integrated with ms-swift:
 |[stepfun-ai/Step-Audio-Chat](https://modelscope.cn/models/stepfun-ai/Step-Audio-Chat)|step_audio|step_audio|funasr, sox, conformer, openai-whisper, librosa|audio|[stepfun-ai/Step-Audio-Chat](https://huggingface.co/stepfun-ai/Step-Audio-Chat)|
 |[LLM-Research/Phi-3-vision-128k-instruct](https://modelscope.cn/models/LLM-Research/Phi-3-vision-128k-instruct)|phi3_vision|phi3_vision|transformers>=4.36|vision|[microsoft/Phi-3-vision-128k-instruct](https://huggingface.co/microsoft/Phi-3-vision-128k-instruct)|
 |[LLM-Research/Phi-3.5-vision-instruct](https://modelscope.cn/models/LLM-Research/Phi-3.5-vision-instruct)|phi3_vision|phi3_vision|transformers>=4.36|vision|[microsoft/Phi-3.5-vision-instruct](https://huggingface.co/microsoft/Phi-3.5-vision-instruct)|
+|[LLM-Research/Phi-4-multimodal-instruct](https://modelscope.cn/models/LLM-Research/Phi-4-multimodal-instruct)|phi4_multimodal|phi4_multimodal|transformers>=4.36,<4.49, backoff, soundfile|vision, audio|[microsoft/Phi-4-multimodal-instruct](https://huggingface.co/microsoft/Phi-4-multimodal-instruct)|
 |[AI-ModelScope/Florence-2-base-ft](https://modelscope.cn/models/AI-ModelScope/Florence-2-base-ft)|florence|florence|-|vision|[microsoft/Florence-2-base-ft](https://huggingface.co/microsoft/Florence-2-base-ft)|
 |[AI-ModelScope/Florence-2-base](https://modelscope.cn/models/AI-ModelScope/Florence-2-base)|florence|florence|-|vision|[microsoft/Florence-2-base](https://huggingface.co/microsoft/Florence-2-base)|
 |[AI-ModelScope/Florence-2-large](https://modelscope.cn/models/AI-ModelScope/Florence-2-large)|florence|florence|-|vision|[microsoft/Florence-2-large](https://huggingface.co/microsoft/Florence-2-large)|
