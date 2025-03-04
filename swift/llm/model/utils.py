@@ -6,10 +6,8 @@ from types import MethodType
 from typing import Any, Dict, List, Literal, Optional, Tuple, TypeVar, Union
 
 import torch
-import transformers
 from accelerate.utils import find_device
 from modelscope.hub.utils.utils import get_cache_dir
-from packaging import version
 from transformers import PretrainedConfig
 
 from swift.hub import get_hub
@@ -26,6 +24,9 @@ class AttnImpl:
     sdpa = 'sdpa'
     eager = 'eager'
 
+    attn_impl_keys = ['_attn_implementation', 'attn_implementation', 'llm_attn_implementation']
+    use_flash_attn_keys = ['_flash_attn_2_enabled', 'use_flash_attn', '_use_flash_attention_2']
+
     @staticmethod
     def to_use_flash_attn(attn_impl: Optional[str], auto_value: _T = None) -> Union[bool, _T]:
         if attn_impl is None:
@@ -33,18 +34,21 @@ class AttnImpl:
         return attn_impl == AttnImpl.flash_attn
 
     @staticmethod
-    def update_attn_impl(config: PretrainedConfig, attn_impl: Optional[str], auto_value: _T = None) -> None:
-
-        use_flash_attn = AttnImpl.to_use_flash_attn(attn_impl, auto_value)
-        if use_flash_attn is None:
+    def update_attn_impl(config: PretrainedConfig,
+                         attn_impl: Optional[str],
+                         attn_impl_keys: Optional[List[str]] = None) -> None:
+        if attn_impl is None:
             return
-        from swift.llm import HfConfigFactory
-        if version.parse(transformers.__version__) >= version.parse('4.36'):
-            if use_flash_attn:
-                attn_impl = 'flash_attention_2'
-            HfConfigFactory.set_config_attr(config, '_attn_implementation', attn_impl)
-        else:
-            HfConfigFactory.set_config_attr(config, '_flash_attn_2_enabled', use_flash_attn)
+        use_flash_attn = AttnImpl.to_use_flash_attn(attn_impl)
+        if use_flash_attn:
+            attn_impl = 'flash_attention_2'
+        if isinstance(attn_impl_keys, str):
+            attn_impl_keys = [attn_impl_keys]
+        attn_impl_keys = attn_impl_keys or AttnImpl.attn_impl_keys
+        for key in attn_impl_keys:
+            HfConfigFactory.set_config_attr(config, key, attn_impl, ensure_set=False)
+        for key in AttnImpl.use_flash_attn_keys:
+            HfConfigFactory.set_config_attr(config, key, use_flash_attn, ensure_set=False)
 
 
 @dataclass
@@ -109,16 +113,20 @@ class HfConfigFactory:
             return attrs[0][1]
 
     @staticmethod
-    def set_config_attr(config: Union[PretrainedConfig, Dict[str, Any]], attr_name: str, value: Any) -> None:
+    def set_config_attr(config: Union[PretrainedConfig, Dict[str, Any]],
+                        attr_name: str,
+                        value: Any,
+                        ensure_set: bool = True) -> int:
         """Set all the attr_name attributes to value."""
         attrs = HfConfigFactory._get_config_attrs(config, attr_name)
-        if len(attrs) == 0:
+        if ensure_set and len(attrs) == 0:
             attrs.append((config, None))
         for config, _ in attrs:
             if isinstance(config, dict):
                 config[attr_name] = value
             else:
                 setattr(config, attr_name, value)
+        return len(attrs)
 
     @staticmethod
     def set_model_config_attr(model, attr_name: str, value: Any) -> None:

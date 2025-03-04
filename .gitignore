@@ -129,6 +129,7 @@ result.jpg
 result.mp4
 output/
 outputs/
+wandb/
 *.out
 benchmarks/
 eval_output/

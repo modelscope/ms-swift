@@ -60,11 +60,13 @@ class SwiftMixin:
                  preprocess_logits_for_metrics: Optional[Callable[[torch.Tensor, torch.Tensor], torch.Tensor]] = None,
                  **kwargs) -> None:
         if args.check_model and hasattr(model, 'model_dir'):
-            check_local_model_is_latest(
-                model.model_dir, user_agent={
-                    'invoked_by': 'local_trainer',
-                    'third_party': 'swift',
-                })
+            from swift.utils.logger import ms_logger_ignore_error
+            with ms_logger_ignore_error():
+                check_local_model_is_latest(
+                    model.model_dir, user_agent={
+                        'invoked_by': 'local_trainer',
+                        'third_party': 'swift',
+                    })
         self._custom_metrics = {}
         self.template = template
         self.max_memory = 0
@@ -221,6 +223,8 @@ class SwiftMixin:
             from swift.llm import save_checkpoint
             additional_saved_files = self.model_meta.additional_saved_files
             save_checkpoint(None, self.template.processor, output_dir, additional_saved_files=additional_saved_files)
+            if hasattr(self.model, 'origin_generation_config'):
+                self.model.origin_generation_config.save_pretrained(output_dir)
 
     def _fix_zero3_gather_all_parameters(self) -> None:
         if is_deepspeed_zero3_enabled() and not hasattr(self.deepspeed, '_zero3_consolidated_16bit_state_dict_origin'):
@@ -256,7 +260,7 @@ class SwiftMixin:
                     if isinstance(v, nn.Module) and k in {'model', 'ref_model', 'reward_model', 'value_model'}
                 ]))
             self.template.register_post_encode_hook(models)
-            logger.info(f'Successfully registered post_encode hook: {[model.__class__.__name__ for model in models]}')
+            logger.info(f'Successfully registered post_encode hook: {[model.__class__.__name__ for model in models]}.')
         self._save_initial_model(self.args.output_dir)
         with self.hub.patch_hub():
             res = super().train(*args, **kwargs)

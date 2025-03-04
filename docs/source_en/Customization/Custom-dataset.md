@@ -19,6 +19,7 @@ Messages format (standard format):
 ```jsonl
 {"messages": [{"role": "system", "content": "<system>"}, {"role": "user", "content": "<query1>"}, {"role": "assistant", "content": "<response1>"}, {"role": "user", "content": "<query2>"}, {"role": "assistant", "content": "<response2>"}]}
 ```
+- Note: The system part is optional. The system in the dataset has a higher priority than the `--system` passed through the command line, followed by the `default_system` defined in the template.
 
 ShareGPT format:
 ```jsonl
@@ -122,8 +123,7 @@ Supervised Fine-tuning:
 {"messages": [{"role": "system", "content": "You are a helpful and harmless assistant."}, {"role": "user", "content": "<image>What is in the image, <video>What is in the video?"}, {"role": "assistant", "content": "The image shows an elephant, and the video shows a puppy running on the grass."}], "images": ["/xxx/x.jpg"], "videos": ["/xxx/x.mp4"]}
 ```
 
-The data formats for RLHF and sequence classification in multimodal models can refer to the formats used in pure text large models.
-
+The data format for RLHF and sequence classification of multimodal models can reference the format of pure text large models, with additional fields such as `images` added on top of that.
 
 #### Grounding
 

@@ -46,9 +46,38 @@ register_model(
         TemplateType.phi3_vision,
         partial(get_model_tokenizer_phi3_vision, num_crops=4),
         architectures=['Phi3VForCausalLM'],
-        model_arch=ModelArch.phi3v,
+        model_arch=ModelArch.phi3_vision,
         requires=['transformers>=4.36'],
         tags=['vision'],
+    ))
+
+
+def get_model_tokenizer_phi4_multimodal(*args, **kwargs):
+    model, processor = get_model_tokenizer_multimodal(*args, **kwargs)
+    processor.audio_processor.audio_compression_rate = processor.audio_processor.compression_rate
+    processor.audio_processor.audio_downsample_rate = processor.audio_processor.qformer_compression_rate
+    processor.audio_processor.audio_feat_stride = processor.audio_processor.feat_stride
+    del processor.audio_processor.feature_size
+    del processor.audio_processor.sampling_rate
+    del processor.audio_processor.padding_value
+    del processor.__class__.chat_template
+    processor.chat_template = None
+    model.set_lora_adapter(['vision', 'speech'])
+    return model, processor
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.phi4_multimodal,
+        [ModelGroup([
+            Model('LLM-Research/Phi-4-multimodal-instruct', 'microsoft/Phi-4-multimodal-instruct'),
+        ])],
+        TemplateType.phi4_multimodal,
+        get_model_tokenizer_phi4_multimodal,
+        architectures=['Phi4MMForCausalLM'],
+        model_arch=ModelArch.phi4_multimodal,
+        requires=['transformers>=4.36,<4.49', 'backoff', 'soundfile'],
+        tags=['vision', 'audio'],
     ))
 
 
@@ -165,6 +194,7 @@ register_model(
                 Model('LLM-Research/Phi-3-medium-128k-instruct', 'microsoft/Phi-3-medium-128k-instruct'),
                 Model('LLM-Research/Phi-3.5-mini-instruct', 'microsoft/Phi-3.5-mini-instruct'),
             ]),
+            ModelGroup(Model('LLM-Research/Phi-4-mini-instruct', 'microsoft/Phi-4-mini-instruct'))
         ],
         TemplateType.phi3,
         get_model_tokenizer_with_flash_attn,

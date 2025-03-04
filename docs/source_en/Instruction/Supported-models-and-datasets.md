@@ -430,6 +430,7 @@ The table below introduces the models integrated with ms-swift:
 |[LLM-Research/Phi-3-medium-4k-instruct](https://modelscope.cn/models/LLM-Research/Phi-3-medium-4k-instruct)|phi3|phi3|transformers>=4.36|-|[microsoft/Phi-3-medium-4k-instruct](https://huggingface.co/microsoft/Phi-3-medium-4k-instruct)|
 |[LLM-Research/Phi-3-medium-128k-instruct](https://modelscope.cn/models/LLM-Research/Phi-3-medium-128k-instruct)|phi3|phi3|transformers>=4.36|-|[microsoft/Phi-3-medium-128k-instruct](https://huggingface.co/microsoft/Phi-3-medium-128k-instruct)|
 |[LLM-Research/Phi-3.5-mini-instruct](https://modelscope.cn/models/LLM-Research/Phi-3.5-mini-instruct)|phi3|phi3|transformers>=4.36|-|[microsoft/Phi-3.5-mini-instruct](https://huggingface.co/microsoft/Phi-3.5-mini-instruct)|
+|[LLM-Research/Phi-4-mini-instruct](https://modelscope.cn/models/LLM-Research/Phi-4-mini-instruct)|phi3|phi3|transformers>=4.36|-|[microsoft/Phi-4-mini-instruct](https://huggingface.co/microsoft/Phi-4-mini-instruct)|
 |[LLM-Research/Phi-3.5-MoE-instruct](https://modelscope.cn/models/LLM-Research/Phi-3.5-MoE-instruct)|phi3_moe|phi3|transformers>=4.36|-|[microsoft/Phi-3.5-MoE-instruct](https://huggingface.co/microsoft/Phi-3.5-MoE-instruct)|
 |[LLM-Research/phi-4](https://modelscope.cn/models/LLM-Research/phi-4)|phi4|phi4|transformers>=4.36|-|[microsoft/phi-4](https://huggingface.co/microsoft/phi-4)|
 |[MiniMaxAI/MiniMax-Text-01](https://modelscope.cn/models/MiniMaxAI/MiniMax-Text-01)|minimax|minimax|-|-|[MiniMaxAI/MiniMax-Text-01](https://huggingface.co/MiniMaxAI/MiniMax-Text-01)|
@@ -666,6 +667,7 @@ The table below introduces the models integrated with ms-swift:
 |[stepfun-ai/Step-Audio-Chat](https://modelscope.cn/models/stepfun-ai/Step-Audio-Chat)|step_audio|step_audio|funasr, sox, conformer, openai-whisper, librosa|audio|[stepfun-ai/Step-Audio-Chat](https://huggingface.co/stepfun-ai/Step-Audio-Chat)|
 |[LLM-Research/Phi-3-vision-128k-instruct](https://modelscope.cn/models/LLM-Research/Phi-3-vision-128k-instruct)|phi3_vision|phi3_vision|transformers>=4.36|vision|[microsoft/Phi-3-vision-128k-instruct](https://huggingface.co/microsoft/Phi-3-vision-128k-instruct)|
 |[LLM-Research/Phi-3.5-vision-instruct](https://modelscope.cn/models/LLM-Research/Phi-3.5-vision-instruct)|phi3_vision|phi3_vision|transformers>=4.36|vision|[microsoft/Phi-3.5-vision-instruct](https://huggingface.co/microsoft/Phi-3.5-vision-instruct)|
+|[LLM-Research/Phi-4-multimodal-instruct](https://modelscope.cn/models/LLM-Research/Phi-4-multimodal-instruct)|phi4_multimodal|phi4_multimodal|transformers>=4.36,<4.49, backoff, soundfile|vision, audio|[microsoft/Phi-4-multimodal-instruct](https://huggingface.co/microsoft/Phi-4-multimodal-instruct)|
 |[AI-ModelScope/Florence-2-base-ft](https://modelscope.cn/models/AI-ModelScope/Florence-2-base-ft)|florence|florence|-|vision|[microsoft/Florence-2-base-ft](https://huggingface.co/microsoft/Florence-2-base-ft)|
 |[AI-ModelScope/Florence-2-base](https://modelscope.cn/models/AI-ModelScope/Florence-2-base)|florence|florence|-|vision|[microsoft/Florence-2-base](https://huggingface.co/microsoft/Florence-2-base)|
 |[AI-ModelScope/Florence-2-large](https://modelscope.cn/models/AI-ModelScope/Florence-2-large)|florence|florence|-|vision|[microsoft/Florence-2-large](https://huggingface.co/microsoft/Florence-2-large)|
@@ -812,6 +814,7 @@ The table below introduces information about the datasets integrated with ms-swi
 |[liucong/Chinese-DeepSeek-R1-Distill-data-110k-SFT](https://modelscope.cn/datasets/liucong/Chinese-DeepSeek-R1-Distill-data-110k-SFT)|default|110000|72.1±60.9, min=29, max=2315|chat, sft, cot, r1, 🔥|[Congliu/Chinese-DeepSeek-R1-Distill-data-110k-SFT](https://huggingface.co/datasets/Congliu/Chinese-DeepSeek-R1-Distill-data-110k-SFT)|
 |-|default|huge dataset|-|multi-modal, en, vqa, quality|[lmms-lab/GQA](https://huggingface.co/datasets/lmms-lab/GQA)|
 |-|0_30_s_academic_v0_1<br>0_30_s_youtube_v0_1<br>1_2_m_academic_v0_1<br>1_2_m_youtube_v0_1<br>2_3_m_academic_v0_1<br>2_3_m_youtube_v0_1<br>30_60_s_academic_v0_1<br>30_60_s_youtube_v0_1|1335486|273.7±78.8, min=107, max=638|chat, multi-modal, video|[lmms-lab/LLaVA-Video-178K](https://huggingface.co/datasets/lmms-lab/LLaVA-Video-178K)|
+|[lmms-lab/multimodal-open-r1-8k-verified](https://modelscope.cn/datasets/lmms-lab/multimodal-open-r1-8k-verified)|default|7689|74.0±24.8, min=41, max=214|grpo, vision, 🔥|[lmms-lab/multimodal-open-r1-8k-verified](https://huggingface.co/datasets/lmms-lab/multimodal-open-r1-8k-verified)|
 |[lvjianjin/AdvertiseGen](https://modelscope.cn/datasets/lvjianjin/AdvertiseGen)|default|97484|130.9±21.9, min=73, max=232|text-generation, 🔥|[shibing624/AdvertiseGen](https://huggingface.co/datasets/shibing624/AdvertiseGen)|
 |[mapjack/openwebtext_dataset](https://modelscope.cn/datasets/mapjack/openwebtext_dataset)|default|huge dataset|-|pretrain, zh, quality|-|
 |[modelscope/DuReader_robust-QG](https://modelscope.cn/datasets/modelscope/DuReader_robust-QG)|default|17899|242.0±143.1, min=75, max=1416|text-generation, 🔥|-|
@@ -821,6 +824,7 @@ The table below introduces information about the datasets integrated with ms-swi
 |[modelscope/clue](https://modelscope.cn/datasets/modelscope/clue)|cmnli|391783|81.6±16.0, min=54, max=157|text-generation, classification|[clue](https://huggingface.co/datasets/clue)|
 |[modelscope/coco_2014_caption](https://modelscope.cn/datasets/modelscope/coco_2014_caption)|train<br>validation|454617|389.6±68.4, min=70, max=587|chat, multi-modal, vision, 🔥|-|
 |[modelscope/gsm8k](https://modelscope.cn/datasets/modelscope/gsm8k)|main|7473|88.6±21.6, min=41, max=241|qa, math|-|
+|[okwinds/clevr_cogen_a_train](https://modelscope.cn/datasets/okwinds/clevr_cogen_a_train)|default|70000|67.0±0.0, min=67, max=67|qa, math, vision, grpo|[leonardPKU/clevr_cogen_a_train](https://huggingface.co/datasets/leonardPKU/clevr_cogen_a_train)|
 |[open-thoughts/OpenThoughts-114k](https://modelscope.cn/datasets/open-thoughts/OpenThoughts-114k)|default|113957|413.2±186.9, min=265, max=13868|chat, sft, cot, r1|[open-thoughts/OpenThoughts-114k](https://huggingface.co/datasets/open-thoughts/OpenThoughts-114k)|
 |[sentence-transformers/stsb](https://modelscope.cn/datasets/sentence-transformers/stsb)|default|5748|21.0±0.0, min=21, max=21|similarity, 🔥|-|
 |[shenweizhou/alpha-umi-toolbench-processed-v2](https://modelscope.cn/datasets/shenweizhou/alpha-umi-toolbench-processed-v2)|backbone<br>caller<br>planner<br>summarizer|huge dataset|-|chat, agent, 🔥|-|
@@ -886,3 +890,4 @@ The table below introduces information about the datasets integrated with ms-swi
 |[wyj123456/finance_en](https://modelscope.cn/datasets/wyj123456/finance_en)|default|68912|264.5±207.1, min=30, max=2268|chat, financial|[ssbuild/alpaca_finance_en](https://huggingface.co/datasets/ssbuild/alpaca_finance_en)|
 |[wyj123456/instinwild](https://modelscope.cn/datasets/wyj123456/instinwild)|default<br>subset|103695|125.1±43.7, min=35, max=801|chat, general|-|
 |[wyj123456/instruct](https://modelscope.cn/datasets/wyj123456/instruct)|default|888970|271.0±333.6, min=34, max=3967|chat, general|-|
+|[zouxuhong/Countdown-Tasks-3to4](https://modelscope.cn/datasets/zouxuhong/Countdown-Tasks-3to4)|default|490364|126.6±2.0, min=122, max=130|math|-|

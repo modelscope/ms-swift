@@ -60,10 +60,10 @@ else:
             'load_by_unsloth', 'git_clone_github', 'get_matched_model_meta'
         ],
         'dataset': [
-            'AlpacaPreprocessor', 'MessagesPreprocessor', 'DATASET_MAPPING', 'MediaResource', 'register_dataset',
-            'register_dataset_info', 'EncodePreprocessor', 'LazyLLMDataset', 'ConstantLengthDataset', 'load_dataset',
-            'DATASET_TYPE', 'sample_dataset', 'RowPreprocessor', 'ResponsePreprocessor', 'DatasetMeta', 'HfDataset',
-            'SubsetDataset'
+            'AlpacaPreprocessor', 'MessagesPreprocessor', 'AutoPreprocessor', 'DATASET_MAPPING', 'MediaResource',
+            'register_dataset', 'register_dataset_info', 'EncodePreprocessor', 'LazyLLMDataset',
+            'ConstantLengthDataset', 'load_dataset', 'DATASET_TYPE', 'sample_dataset', 'RowPreprocessor',
+            'ResponsePreprocessor', 'DatasetMeta', 'HfDataset', 'SubsetDataset'
         ],
         'utils': [
             'deep_getattr', 'to_device', 'to_float_dtype', 'History', 'Messages', 'history_to_messages',

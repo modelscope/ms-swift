@@ -77,14 +77,14 @@ class InferClient(InferEngine):
         return from_dict(ModelList, resp_obj)
 
     def infer(
-        self,
-        infer_requests: List[InferRequest],
-        request_config: Optional[RequestConfig] = None,
-        metrics: Optional[List[Metric]] = None,
-        *,
-        model: Optional[str] = None,
-        use_tqdm: Optional[bool] = None
-    ) -> Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
+            self,
+            infer_requests: List[InferRequest],
+            request_config: Optional[RequestConfig] = None,
+            metrics: Optional[List[Metric]] = None,
+            *,
+            model: Optional[str] = None,
+            use_tqdm: Optional[bool] = None
+    ) -> List[Union[ChatCompletionResponse, Iterator[ChatCompletionStreamResponse]]]:
         """
         Perform inference using the specified model.
 
@@ -96,14 +96,16 @@ class InferClient(InferEngine):
             use_tqdm (Optional[bool]): Whether to use tqdm for progress tracking. Defaults to None.
 
         Returns:
-            Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
+            List[Union[ChatCompletionResponse, Iterator[ChatCompletionStreamResponse]]]:
             The inference responses or an iterator of streaming responses.
         """
         return super().infer(infer_requests, request_config, metrics, model=model, use_tqdm=use_tqdm)
 
     @staticmethod
     def _prepare_request_data(model: str, infer_request: InferRequest, request_config: RequestConfig) -> Dict[str, Any]:
-        res = asdict(ChatCompletionRequest(model, **asdict(infer_request), **asdict(request_config)))
+        if not isinstance(infer_request, dict):
+            infer_request = asdict(infer_request)
+        res = asdict(ChatCompletionRequest(model, **infer_request, **asdict(request_config)))
         # ignore empty
         empty_request = ChatCompletionRequest('', [])
         for k in list(res.keys()):

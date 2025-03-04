@@ -71,6 +71,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.args = args
         self.queue = Queue()
         self.processing_class = kwargs.get('template').tokenizer
+        self.tokenizer = kwargs.get('template').tokenizer if hasattr(kwargs.get('template'), 'tokenizer') else None
         if not isinstance(reward_funcs, list):
             reward_funcs = [reward_funcs]
 
@@ -83,6 +84,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         key: getattr(args, key)
                         for key in reward_func_args if key not in ['self', 'args', 'kwargs'] and hasattr(args, key)
                     }
+                    if reward_func_class.__name__ == 'CosineReward' and 'tokenizer' in reward_func_args:
+                        reward_func_kwargs['tokenizer'] = self.tokenizer
                     reward_funcs[i] = reward_func_class(**reward_func_kwargs)
                 elif not callable(reward_func):
                     raise ValueError(f'reward_function {reward_func} is not implemented in swift.llm.plugin')
@@ -169,9 +172,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                                           'Please install vLLM with `pip install vllm` to use it.')
                     from swift.llm import VllmEngine
                     from swift.tuners import Swift
-                    from swift.llm.utils import patch_vllm, patch_npu_vllm
-                    npu_vllm_patch_context = patch_npu_vllm(fast_infer_device[self.local_infer_rank])
-                    with patch_vllm(), npu_vllm_patch_context, Swift.grpo_context(model, self.template.processor):
+                    with Swift.grpo_context(model, self.template.processor):
                         self.engine = VllmEngine(
                             model.model_dir,
                             model.model_info.torch_dtype,
@@ -188,7 +189,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     # https://github.com/tastelikefeet/lmdeploy.git@feat/reload_state_dict_064
                     # Compile:https://github.com/tastelikefeet/lmdeploy/blob/main/docs/en/get_started/installation.md
                     if not is_lmdeploy_available():
-                        raise ImportError('Please install `pip install lmdeploy==0.6.4`'
+                        raise ImportError('Please install `pip install lmdeploy==0.7.1`'
                                           ' and replace three files with:\n'
                                           '1. https://github.com/tastelikefeet/lmdeploy/blob/feat/'
                                           'reload_state_dict_064/lmdeploy/messages.py\n'
@@ -204,7 +205,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             model.model_dir,
                             model.model_info.torch_dtype,
                             model_type=model.model_meta.model_type,
-                            device=[fast_infer_device],
+                            devices=[fast_infer_device],
                             session_len=args.lmdeploy_session_len,
                             cache_max_entry_count=args.lmdeploy_cache_max_entry_count,
                             reload_weights=True)
@@ -450,7 +451,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         outputs['logits_to_keep'] = logits_to_keep
         outputs['completion_mask'] = labels[:, -logits_to_keep:] != -100
 
-        with torch.inference_mode():
+        with torch.no_grad():
             if self.old_policy:
                 outputs['old_per_token_logps'] = self._get_per_token_logps(self.model, outputs)
             else:
