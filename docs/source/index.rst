@@ -29,7 +29,6 @@ Swift DOCUMENTATION
    Instruction/支持的模型和数据集.md
    Instruction/使用tuners.md
    Instruction/智能体的支持.md
-   Instruction/ReleaseNote3.0.md
    Instruction/常见问题整理.md
 
 .. toctree::

@@ -29,7 +29,6 @@ Swift DOCUMENTATION
    Instruction/Supported-models-and-datasets.md
    Instruction/Use-tuners.md
    Instruction/Agent-support.md
-   Instruction/ReleaseNote3.0
    Instruction/Frequently-asked-questions.md
 
 
