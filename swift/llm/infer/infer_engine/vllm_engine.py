@@ -379,7 +379,7 @@ class VllmEngine(InferEngine):
                 adapter_request=adapter_request,
             )
         else:
-            request_config = deepcopy(request_config)
+            request_config = deepcopy(request_config or RequestConfig())
             if request_config.stream:
                 raise ValueError('If you want to use stream inference, you need to pass `use_async_engine` as True.')
             if use_tqdm is None:
