@@ -43,7 +43,7 @@ def _history_to_messages(history: History, system: Optional[str]):
     return messages
 
 
-def _parse_text(text):
+def _parse_text(text: str) -> str:
     lines = text.split('\n')
     lines = [line for line in lines if line != '']
     count = 0
@@ -90,13 +90,13 @@ async def model_chat(history: History, real_history: History, system: Optional[s
                     continue
                 response += resp.choices[0].delta.content
                 history[-1][1] = _parse_text(response)
-                real_history[-1][-1], response
+                real_history[-1][-1] = response
                 yield history, real_history
 
         else:
             response = resp_or_gen.choices[0].message.content
             history[-1][1] = _parse_text(response)
-            real_history[-1][-1], response
+            real_history[-1][-1] = response
             yield history, real_history
 
     else:
