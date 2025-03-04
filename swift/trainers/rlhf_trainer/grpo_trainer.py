@@ -146,6 +146,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     for idx in range(get_device_count() - self.args.num_infer_workers * self.args.tensor_parallel_size,
                                      get_device_count()):
                         fast_infer_device.append(get_device(idx))
+            os.environ['GRPO_DEVICES'] = ','.join(fast_infer_device)
 
             for _device in fast_infer_device:
                 # Check that the requested device is available
@@ -170,18 +171,26 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 from swift.llm import VllmEngine
                 from swift.tuners import Swift
                 with Swift.grpo_context(model, self.template.processor):
-                    self.engine = VllmEngine(
-                        model.model_dir,
-                        model.model_info.torch_dtype,
-                        model_type=model.model_meta.model_type,
-                        device=fast_infer_device[self.infer_device],
+                    # self.engine = VllmEngine(
+                    #     model.model_dir,
+                    #     model.model_info.torch_dtype,
+                    #     model_type=model.model_meta.model_type,
+                    #     device=fast_infer_device[self.infer_device],
+                    #     tensor_parallel_size=self.args.tensor_parallel_size,
+                    #     gpu_memory_utilization=args.vllm_gpu_memory_utilization,
+                    #     enable_prefix_caching=args.vllm_enable_prefix_caching,
+                    #     max_num_seqs=args.vllm_max_num_seqs,
+                    #     enforce_eager=args.vllm_enforce_eager,
+                    #     limit_mm_per_prompt=args.vllm_limit_mm_per_prompt,
+                    #     max_model_len=args.vllm_max_model_len)
+                    from vllm import LLM, SamplingParams
+                    self.engine = LLM(
+                        model=model.model_dir,
                         tensor_parallel_size=self.args.tensor_parallel_size,
-                        gpu_memory_utilization=args.vllm_gpu_memory_utilization,
-                        enable_prefix_caching=args.vllm_enable_prefix_caching,
-                        max_num_seqs=args.vllm_max_num_seqs,
-                        enforce_eager=args.vllm_enforce_eager,
-                        limit_mm_per_prompt=args.vllm_limit_mm_per_prompt,
-                        max_model_len=args.vllm_max_model_len)
+                        distributed_executor_backend="external_launcher",
+                        gpu_memory_utilization=0.5,
+                        disable_custom_all_reduce=True,
+                    )
                 self.engine.default_template = self.template
             elif use_lmdeploy:
                 # https://github.com/tastelikefeet/lmdeploy.git@feat/reload_state_dict_064
@@ -216,7 +225,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self.accelerator.wait_for_everyone()
         else:
             from swift.llm import PtEngine
-            self.engine = PtEngine.from_model_template(self.model, self.template, max_batch_size=0)  # 0: no limit
+            self.engine = LLM(
+                    model=self.model,
+                    tensor_parallel_size=4,
+                    distributed_executor_backend="external_launcher",
+                    disable_custom_all_reduce=True,
+)
+            # self.engine = PtEngine.from_model_template(self.model, self.template, max_batch_size=0)  # 0: no limit
         self.request_config = RequestConfig(
             max_tokens=args.max_completion_length,
             temperature=args.temperature,
@@ -253,7 +268,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             _assigned = _vllm_rank * step
             rg = list(range(_assigned, _assigned+self.args.tensor_parallel_size))
             if local_rank in rg:
-                return (_vllm_rank-1) * self.args.tensor_parallel_size + rg.index(local_rank)
+                return _vllm_rank * self.args.tensor_parallel_size + rg.index(local_rank)
 
         return -1
 
@@ -369,10 +384,19 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def _prefetch(self, train_dataloader):
         inputs = next(iter(train_dataloader))
         all_inputs = gather_object(inputs)
-        distributed_idx = self.round_robin(len(all_inputs), get_node_setting()[1] * self.args.num_infer_workers)
+        distributed_idx = self.round_robin(len(all_inputs), get_node_setting()[1] * self.args.num_infer_workers*self.args.tensor_parallel_size)
         if self.infer_rank >= 0:
             _input_slice = np.array(all_inputs)[distributed_idx[self.infer_rank]]
-            outputs = self.engine.infer(_input_slice, self.request_config, use_tqdm=False)
+            prompts = [
+                "Hello, my name is",
+                "The president of the United States is",
+                "The capital of France is",
+                "The future of AI is",
+            ]
+
+            # Create sampling parameters, the same across all ranks
+            sampling_params = SamplingParams(temperature=0.8, top_p=0.95)
+            outputs = self.engine.generate(prompts, sampling_params)
             self.queue.put(DataCache(inputs, outputs, distributed_idx))
         else:
             self.queue.put(DataCache(inputs, [], distributed_idx))
@@ -390,9 +414,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # for example, 2 workers, 6 inputs, 0/2/4 dispatch to the first worker
         # 1/3/5 dispatch to the second worker
         # trying to shuffle and average the length
-        distributed_idx = self.round_robin(len(all_inputs), get_node_setting()[1] * self.args.num_infer_workers)
-        if self.infer_rank >= 0:
-            _input_slice = np.array(all_inputs)[distributed_idx[self.infer_rank]]
+        distributed_idx = self.round_robin(len(all_inputs), get_node_setting()[1] * self.args.num_infer_workers*self.args.tensor_parallel_size)
+        if self.infer_device >= 0:
+            _input_slice = np.array(all_inputs)[distributed_idx[self.infer_device]]
             if self.args.async_generate:
                 self.async_infer(inputs, _input_slice, distributed_idx)
                 data_cache = self.queue.get()
@@ -400,7 +424,18 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 outputs = data_cache.outputs
                 distributed_idx = data_cache.distributed_idx
             else:
-                outputs = self.engine.infer(_input_slice, self.request_config, use_tqdm=False)
+                prompts = [
+                    "Hello, my name is",
+                    "The president of the United States is",
+                    "The capital of France is",
+                    "The future of AI is",
+                ]
+                from vllm import LLM, SamplingParams
+                # Create sampling parameters, the same across all ranks
+                sampling_params = SamplingParams(temperature=0.8, top_p=0.95)
+                outputs = self.engine.generate(prompts, sampling_params)
+                print()
+                # outputs = self.engine.infer(all_inputs, self.request_config, use_tqdm=False)
         else:
             if self.args.async_generate:
                 self.queue.put(DataCache(inputs, [], distributed_idx))
@@ -408,6 +443,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 inputs = data_cache.inputs
                 distributed_idx = data_cache.distributed_idx
             outputs = []
+        print('>>>>>>>>>>>>>>>', self.infer_rank, outputs)
         outputs = gather_object(outputs)
         outputs = self.reorder_outputs(outputs, distributed_idx)
         return inputs, outputs

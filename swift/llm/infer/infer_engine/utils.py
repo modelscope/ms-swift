@@ -347,28 +347,47 @@ def patch_lmdeploy(load_weights=False):
     TurboMindInstance._create_model_instance = _create_model_instance
 
 
-def patch_vllm():
+def patch_vllm(world_size=1):
 
     @contextmanager
     def _get_context():
         from vllm.distributed.parallel_state import GroupCoordinator
         from unittest.mock import patch
-        world_size_patch = patch('torch.distributed.get_world_size', return_value=1)
+        # world_size_patch = patch('torch.distributed.get_world_size', return_value=world_size)
         profiling_patch = patch(
             'vllm.worker.worker.Worker._assert_memory_footprint_increased_during_profiling', return_value=None)
 
         __origin_init__ = GroupCoordinator.__init__
 
-        def __init__(self, group_ranks, *args, **kwargs):
-            rank = dist.get_rank()
-            if [rank] not in group_ranks:
-                group_ranks.append([rank])
-            return __origin_init__(self, group_ranks, *args, **kwargs)
+        def __init__(self, group_ranks, local_rank, *args, **kwargs):
+            # device_count = torch.cuda.device_count()
+            # fast_infer_devices = os.environ.get('GRPO_DEVICES')
+            # if fast_infer_devices:
+            #     fast_infer_devices = fast_infer_devices.split(',')
+            #     fast_infer_devices = [int(dev.split(':')[1]) for dev in fast_infer_devices]
+            #     groups = []
+            #     for i in range(0, len(fast_infer_devices), world_size):
+            #         if len(group_ranks) > 1:
+            #             group = []
+            #             for i in fast_infer_devices[i: i+world_size]:
+            #                 group.append([i])
+            #             groups.append(group)
+            #         else:
+            #             groups.append(fast_infer_devices[i: i+world_size])
+            #     for group in groups:
+            #         if len(group_ranks) > 1:
+            #             if [local_rank] in group:
+            #                 group_ranks = group
+            #         else:
+            #             if local_rank in group:
+            #                 group_ranks = [group] 
+
+            return __origin_init__(self, group_ranks, local_rank, *args, **kwargs)
 
         GroupCoordinator.__init__ = __init__
 
         try:
-            with world_size_patch, profiling_patch:
+            with profiling_patch:
                 yield
         finally:
             GroupCoordinator.__init__ = __origin_init__

@@ -24,7 +24,7 @@ try:
     os.environ['VLLM_WORKER_MULTIPROC_METHOD'] = 'spawn'
     os.environ['VLLM_ENGINE_ITERATION_TIMEOUT_S'] = '3600'
     import vllm
-    from vllm import AsyncEngineArgs, AsyncLLMEngine, SamplingParams
+    from vllm import AsyncEngineArgs, AsyncLLMEngine, SamplingParams, LLM
 except Exception:
     raise
 
@@ -87,9 +87,8 @@ class VllmEngine(InferEngine):
             device=device,
             engine_kwargs=engine_kwargs,
         )
-        context, npu_context = nullcontext(), nullcontext()
-        if tensor_parallel_size == 1 and pipeline_parallel_size == 1:
-            context, npu_context = patch_vllm(), patch_npu_vllm(self.engine_args.device)
+        # context, npu_context = nullcontext(), nullcontext()
+        context, npu_context = patch_vllm(4), patch_npu_vllm(self.engine_args.device)
         with context, npu_context:
             self._prepare_engine()
         self._load_generation_config()
@@ -159,6 +158,7 @@ class VllmEngine(InferEngine):
         )
         if tensor_parallel_size > 1:
             engine_args.distributed_executor_backend = "external_launcher"
+            engine_args.disable_custom_all_reduce=True
         self.engine_args = engine_args
         self.enable_lora = enable_lora
         if max_model_len is not None:
