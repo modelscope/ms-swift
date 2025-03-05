@@ -645,9 +645,7 @@ register_model(
 
 register_model(
     ModelMeta(
-        LLMModelType.qwq_preview, [
-            ModelGroup([Model('Qwen/QwQ-32B-Preview', 'Qwen/QwQ-32B-Preview')])
-        ],
+        LLMModelType.qwq_preview, [ModelGroup([Model('Qwen/QwQ-32B-Preview', 'Qwen/QwQ-32B-Preview')])],
         LLMModelType.qwq_preview,
         get_model_tokenizer_with_flash_attn,
         model_arch=ModelArch.llama,
