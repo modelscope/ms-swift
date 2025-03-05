@@ -15,9 +15,9 @@
         "hf_dataset_id": "Clinton/texttosqlv2_25000_v2"
     },
     {
-        "ms_dataset_id": " AI-ModelScope/chartqa_digit_r1v_format",
+        "ms_dataset_id": "AI-ModelScope/chartqa_digit_r1v_format",
         "tags": ["grpo"],
-        "hf_dataset_id": " AI-ModelScope/chartqa_digit_r1v_format"
+        "hf_dataset_id": "zyang39/chartqa_digit_r1v_format"
     },
     {
         "ms_dataset_id": "AI-ModelScope/school_math_0.25M",
