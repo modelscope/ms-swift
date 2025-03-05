@@ -28,9 +28,12 @@ def _infer_model(pt_engine, system=None, messages=None):
     return response
 
 
+model_id = 'Qwen/Qwen2-7B-Instruct'
+
+
 def hf2megatron():
     from swift.llm import export_main, ExportArguments
-    export_main(ExportArguments(model='Qwen/Qwen2-7B-Instruct', to_megatron=True, torch_dtype='bfloat16'))
+    export_main(ExportArguments(model=model_id, to_megatron=True, torch_dtype='bfloat16'))
 
 
 def megatron2hf():
@@ -40,7 +43,7 @@ def megatron2hf():
 
 def infer_hf_align():
     from swift.llm import PtEngine
-    pt_engine = PtEngine('Qwen/Qwen2-7B-Instruct')
+    pt_engine = PtEngine(model_id)
     response = _infer_model(pt_engine)
     pt_engine = PtEngine('Qwen2-7B-Instruct-megatron-hf')
     response2 = _infer_model(pt_engine)
