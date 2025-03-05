@@ -559,7 +559,10 @@ register_model(
                 Model('bytedance-research/UI-TARS-7B-DPO', 'bytedance-research/UI-TARS-7B-DPO'),
                 Model('bytedance-research/UI-TARS-72B-SFT', 'bytedance-research/UI-TARS-72B-SFT'),
                 Model('bytedance-research/UI-TARS-72B-DPO', 'bytedance-research/UI-TARS-72B-DPO'),
-            ])
+            ]),
+            ModelGroup([
+                Model('allenai/olmOCR-7B-0225-preview', 'allenai/olmOCR-7B-0225-preview'),
+            ]),
         ],
         TemplateType.qwen2_vl,
         get_model_tokenizer_qwen2_vl,
