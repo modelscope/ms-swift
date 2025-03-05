@@ -433,7 +433,9 @@ register_model(
                     Model('Qwen/Qwen2.5-Coder-32B-Instruct-GPTQ-Int4', 'Qwen/Qwen2.5-Coder-32B-Instruct-GPTQ-Int4'),
                     Model('Qwen/Qwen2.5-Coder-32B-Instruct-GPTQ-Int8', 'Qwen/Qwen2.5-Coder-32B-Instruct-GPTQ-Int8'),
                 ],
-                tags=['coding'])
+                tags=['coding']),
+            # qwq
+            ModelGroup([Model('Qwen/QwQ-32B', 'Qwen/QwQ-32B')])
         ],
         TemplateType.qwen2_5,
         get_model_tokenizer_with_flash_attn,
@@ -641,8 +643,10 @@ register_model(
 
 register_model(
     ModelMeta(
-        LLMModelType.qwq, [ModelGroup([Model('Qwen/QwQ-32B-Preview', 'Qwen/QwQ-32B-Preview')])],
-        LLMModelType.qwq,
+        LLMModelType.qwq_preview, [
+            ModelGroup([Model('Qwen/QwQ-32B-Preview', 'Qwen/QwQ-32B-Preview')])
+        ],
+        LLMModelType.qwq_preview,
         get_model_tokenizer_with_flash_attn,
         model_arch=ModelArch.llama,
         architectures=['Qwen2ForCausalLM'],

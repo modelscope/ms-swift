@@ -10,7 +10,7 @@ class LLMModelType:
     qwen2_5 = 'qwen2_5'
     qwen2_5_math = 'qwen2_5_math'
     qwen2_moe = 'qwen2_moe'
-    qwq = 'qwq'
+    qwq_preview = 'qwq_preview'
 
     qwen2_gte = 'qwen2_gte'
 

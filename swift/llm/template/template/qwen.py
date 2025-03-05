@@ -43,7 +43,7 @@ class QwqTemplateMeta(QwenTemplateMeta):
 
 register_template(QwenTemplateMeta(LLMTemplateType.qwen))
 register_template(Qwen2_5TemplateMeta(LLMTemplateType.qwen2_5))
-register_template(QwqTemplateMeta(LLMTemplateType.qwq))
+register_template(QwqTemplateMeta(LLMTemplateType.qwq_preview))
 
 register_template(Qwen2_5MathTemplateMeta(LLMTemplateType.qwen2_5_math))
 
