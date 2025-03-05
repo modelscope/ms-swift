@@ -391,7 +391,7 @@ def patch_vllm(world_size=1):
             if kwargs.get('group_name') == 'world':
                 local_rank = local_rank + node_rank * num_infer_workers
             else:
-                local_rank = map_rank_to_real_device(local_rank-node_rank * num_infer_workers)
+                local_rank = map_rank_to_real_device(local_rank - node_rank * num_infer_workers)
             return __origin_init__(self, group_ranks, local_rank, *args, **kwargs)
 
         GroupCoordinator.__init__ = __init__
