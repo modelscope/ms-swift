@@ -13,7 +13,6 @@ from .utils import patch_megatron
 
 
 def convert_hf2megatron(args: ExportArguments) -> None:
-    args.save_args()
     hf_model, processor = get_model_tokenizer(**args.get_model_kwargs())
     megatron_model_meta = get_megatron_model_meta(args.model)
     kwargs = megatron_model_meta.load_config(hf_model.model_info)
@@ -25,11 +24,12 @@ def convert_hf2megatron(args: ExportArguments) -> None:
 
     mg_model = megatron_model_meta.get_model_provider()()
     megatron_model_meta.convert_hf2megatron(hf_model, mg_model)
+    args.save_args()
+    logger.info(f'Successfully converted HF format to Megatron format and saved in {args.output_dir}.')
 
 
 def convert_megatron2hf(args: ExportArguments) -> None:
     from swift.llm import save_checkpoint
-    args.save_args()
     hf_model, processor = get_model_tokenizer(**args.get_model_kwargs())
     megatron_model_meta = get_megatron_model_meta(args.model)
     kwargs = megatron_model_meta.load_config(hf_model.model_info)
@@ -57,3 +57,5 @@ def convert_megatron2hf(args: ExportArguments) -> None:
         model_dirs=[args.megatron_model, args.model_dir],
         max_shard_size=args.max_shard_size,
         additional_saved_files=hf_model.model_meta.additional_saved_files)
+    args.save_args()
+    logger.info(f'Successfully converted Megatron format to HF format and saved in {args.output_dir}.')
