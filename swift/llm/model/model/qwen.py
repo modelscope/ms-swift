@@ -341,8 +341,6 @@ register_model(
                 Model('Qwen/Qwen2.5-7B-Instruct-1M', 'Qwen/Qwen2.5-7B-Instruct-1M'),
                 Model('Qwen/Qwen2.5-14B-Instruct-1M', 'Qwen/Qwen2.5-14B-Instruct-1M'),
             ]),
-            # qwq
-            ModelGroup([Model('Qwen/QwQ-32B', 'Qwen/QwQ-32B')]),
             # other
             ModelGroup([Model('PowerInfer/SmallThinker-3B-Preview', 'PowerInfer/SmallThinker-3B-Preview')]),
         ],
@@ -640,7 +638,7 @@ register_model(
 register_model(
     ModelMeta(
         LLMModelType.marco_o1, [ModelGroup([Model('AIDC-AI/Marco-o1', 'AIDC-AI/Marco-o1')])],
-        LLMModelType.marco_o1,
+        TemplateType.marco_o1,
         get_model_tokenizer_with_flash_attn,
         model_arch=ModelArch.llama,
         architectures=['Qwen2ForCausalLM'],
@@ -649,7 +647,16 @@ register_model(
 register_model(
     ModelMeta(
         LLMModelType.qwq_preview, [ModelGroup([Model('Qwen/QwQ-32B-Preview', 'Qwen/QwQ-32B-Preview')])],
-        LLMModelType.qwq_preview,
+        TemplateType.qwq_preview,
+        get_model_tokenizer_with_flash_attn,
+        model_arch=ModelArch.llama,
+        architectures=['Qwen2ForCausalLM'],
+        requires=['transformers>=4.37']))
+
+register_model(
+    ModelMeta(
+        LLMModelType.qwq, [ModelGroup([Model('Qwen/QwQ-32B', 'Qwen/QwQ-32B')])],
+        TemplateType.qwq,
         get_model_tokenizer_with_flash_attn,
         model_arch=ModelArch.llama,
         architectures=['Qwen2ForCausalLM'],
