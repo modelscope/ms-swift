@@ -64,7 +64,7 @@ class InferStreamer(InferTools):
             response = response[cur_num_space - self.first_num_space:]
         return response
 
-    def _get_response(self, response: str, is_finished: bool, token_len) -> str:
+    def _get_response(self, response: str, is_finished: bool, token_len: int) -> str:
         # After the symbol for a new line, we flush the cache.
         if response.endswith('\n') or is_finished:
             printable_text = response[self.print_idx:]
