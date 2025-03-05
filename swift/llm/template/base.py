@@ -356,10 +356,17 @@ class Template(ProcessorMixin):
             logprobs = [None] * len(preds)
         return preds, logprobs
 
-    def decode(self, generate_ids: List[int], is_finished: bool = True, tokenizer_kwargs=None, **kwargs) -> Any:
+    def decode(self,
+               generate_ids: List[int],
+               is_finished: bool = True,
+               *,
+               tokenizer_kwargs=None,
+               start=0,
+               **kwargs) -> Any:
+        generate_ids = generate_ids[start:]
         tokenizer_kwargs = tokenizer_kwargs or {}
         response = self._skip_stop_decode(generate_ids, is_finished, **tokenizer_kwargs)
-        if self.template_meta.response_prefix:
+        if start == 0 and self.template_meta.response_prefix:
             response = self.template_meta.response_prefix + response
         return response
 

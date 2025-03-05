@@ -184,9 +184,9 @@ class DeepseekVLTemplate(Template):
 
             return {'sequences': generated_tokens}
 
-    def decode(self, generate_ids: List[int], is_finished: bool = True, tokenizer_kwargs=None, **kwargs) -> Any:
+    def decode(self, generate_ids: List[int], **kwargs) -> Any:
         if 'template_inputs' not in kwargs or not kwargs['template_inputs'].generate_mode:
-            return super().decode(generate_ids, is_finished, tokenizer_kwargs, **kwargs)
+            return super().decode(generate_ids, **kwargs)
         else:
             img_size = get_env_args('img_size', int, 384)
             patch_size = 16
