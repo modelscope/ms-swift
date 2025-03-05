@@ -45,6 +45,7 @@ class GRPOCallback(TrainerCallback):
 
     # offload original_modules to cpu, to save memory
     def on_train_begin(self, args, state, control, **kwargs):
+        self.trainer.queue = self.trainer.train_queue
         train_dataloader = getattr(state, 'train_dataloader', None) or kwargs.get('train_dataloader')
         self.trainer._prefetch(train_dataloader)
 
@@ -69,7 +70,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         from swift.trainers.rlhf_arguments import GRPOConfig
         args: GRPOConfig = kwargs['args']
         self.args = args
-        self.queue = Queue()
+        self.queue = None
+        self.train_queue = Queue()
+        self.eval_queue = Queue()
         self.processing_class = kwargs.get('template').tokenizer
         if not isinstance(reward_funcs, list):
             reward_funcs = [reward_funcs]
@@ -353,8 +356,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         future.add_done_callback(done)
 
-    def _prefetch(self, train_dataloader):
-        inputs = next(iter(train_dataloader))
+    def _prefetch(self, dataloader):
+        inputs = next(iter(dataloader))
         all_inputs = gather_object(inputs)
         distributed_idx = self.round_robin(len(all_inputs), get_node_setting()[1] * self.args.num_infer_workers)
         if self.infer_rank >= 0:
@@ -601,9 +604,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         input_ids = input_ids[:, -logits_to_keep:]
         return selective_log_softmax(logits, input_ids)  # compute logprobs for the input tokens
 
-    def evaluation_loop(self, *args, **kwargs):
+    def evaluation_loop(self, dataloader, *args, **kwargs):
+        self.queue = self.eval_queue
+        if self.queue.empty() and self.args.async_generate:
+            self._prefetch(dataloader)
         metric_key_prefix = kwargs['metric_key_prefix']
-        output = super().evaluation_loop(*args, **kwargs)
+        output = super().evaluation_loop(dataloader, *args, **kwargs)
         metrics = {f'{metric_key_prefix}_{key}': sum(val) / len(val) for key, val in self._metrics['eval'].items()}
         output.metrics.update(metrics)
+        self.queue = self.train_queue
         return output
