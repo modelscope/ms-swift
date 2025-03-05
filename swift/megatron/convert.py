@@ -7,10 +7,12 @@ from megatron.training import get_args
 from megatron.training.initialize import initialize_megatron
 
 from swift.llm import ExportArguments, get_model_tokenizer
+from swift.utils import get_logger
 from .argument import MegatronArguments
 from .model import get_megatron_model_meta
 from .utils import patch_megatron
 
+logger = get_logger()
 
 def convert_hf2megatron(args: ExportArguments) -> None:
     hf_model, processor = get_model_tokenizer(**args.get_model_kwargs())
@@ -25,7 +27,7 @@ def convert_hf2megatron(args: ExportArguments) -> None:
     mg_model = megatron_model_meta.get_model_provider()()
     megatron_model_meta.convert_hf2megatron(hf_model, mg_model)
     args.save_args()
-    logger.info(f'Successfully converted HF format to Megatron format and saved in {args.output_dir}.')
+    logger.info(f'Successfully converted HF format to Megatron format and saved in `{args.output_dir}`.')
 
 
 def convert_megatron2hf(args: ExportArguments) -> None:
@@ -58,4 +60,4 @@ def convert_megatron2hf(args: ExportArguments) -> None:
         max_shard_size=args.max_shard_size,
         additional_saved_files=hf_model.model_meta.additional_saved_files)
     args.save_args()
-    logger.info(f'Successfully converted Megatron format to HF format and saved in {args.output_dir}.')
+    logger.info(f'Successfully converted Megatron format to HF format and saved in `{args.output_dir}`.')
