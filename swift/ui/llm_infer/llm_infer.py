@@ -382,15 +382,15 @@ class LLMInfer(BaseUI):
         model_kwargs = {}
         if infer_model_type:
             model_kwargs = {'model': infer_model_type}
-        stream_resp = InferClient(
+        gen_list = InferClient(
             port=args['port'], ).infer(
                 infer_requests=[_infer_request], request_config=request_config, **model_kwargs)
         if infer_request.messages[-1]['role'] != 'assistant':
             infer_request.messages.append({'role': 'assistant', 'content': ''})
-        for chunk in stream_resp:
-            if chunk[0] is None:
+        for chunk in gen_list[0]:
+            if chunk is None:
                 continue
-            stream_resp_with_history += chunk[0].choices[0].delta.content if chat else chunk.choices[0].text
+            stream_resp_with_history += chunk.choices[0].delta.content if chat else chunk.choices[0].text
             infer_request.messages[-1]['content'] = stream_resp_with_history
             yield '', cls._replace_tag_with_media(infer_request), gr.update(value=None), gr.update(
                 value=None), gr.update(value=None), infer_request
