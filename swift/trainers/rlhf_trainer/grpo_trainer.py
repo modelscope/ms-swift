@@ -22,7 +22,7 @@ from trl.models import unwrap_model_for_generation
 from swift.llm import InferRequest, RequestConfig, RowPreprocessor, to_device
 from swift.plugin import orms
 from swift.utils import (JsonlWriter, get_device, get_device_count, get_dist_setting, get_logger, get_node_setting,
-                         is_lmdeploy_available, is_vllm_available, is_wandb_available)
+                         is_lmdeploy_available, is_vllm_available, is_wandb_available, gc_collect)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 
@@ -184,6 +184,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             enforce_eager=args.vllm_enforce_eager,
                             limit_mm_per_prompt=args.vllm_limit_mm_per_prompt,
                             use_async_engine=False,
+                            num_infer_workers=self.args.num_infer_workers,
                             enable_sleep_mode=self.args.sleep_level > 0,
                             distributed_executor_backend='external_launcher',
                             max_model_len=args.vllm_max_model_len)
@@ -252,10 +253,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     @property
     def infer_rank(self):
         rank, local_rank, world_size, local_world_size = get_dist_setting()
-        step = local_world_size // self.args.num_infer_workers
         for _vllm_rank in range(self.args.num_infer_workers):
-            _assigned = _vllm_rank * step
-            if local_rank == _assigned:
+            if local_rank == _vllm_rank:
                 return get_node_setting()[0] * self.args.num_infer_workers + _vllm_rank
 
         return -1
@@ -265,8 +264,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         rank, local_rank, world_size, local_world_size = get_dist_setting()
         step = local_world_size // self.args.num_infer_workers
         for _vllm_rank in range(self.args.num_infer_workers):
-            _assigned = _vllm_rank * step
-            if local_rank == _assigned:
+            if local_rank == _vllm_rank:
                 return _vllm_rank
 
         return -1
@@ -323,7 +321,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 if self.args.async_generate:
                     self._wait_queue()
                 if self.args.use_vllm:
-                    llm_model = self.engine.engine.engine.model_executor.driver_worker.model_runner.model
+                    llm_model = self.engine.engine.model_executor.driver_worker.model_runner.model
                 else:
                     llm_model = self.engine.engine.engine
                 llm_model.load_weights(state_dict.items())
@@ -371,6 +369,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     def _fast_infer(self, inputs):
         if self.args.sleep_level > 0:
+            gc_collect()
             self.engine.engine.wake_up()
         # First, have main process load weights if needed
         if self.state.global_step != self._last_loaded_step:

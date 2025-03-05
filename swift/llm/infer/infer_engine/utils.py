@@ -371,13 +371,13 @@ def patch_vllm(world_size=1):
                 return torch.distributed.get_world_size_origin(group)
 
         def __init__(self, group_ranks, local_rank, *args, **kwargs):
+            node_rank, nnodes = get_node_setting()
+            device_count = get_device_count()
+            num_infer_workers = world_size // nnodes
 
-            def map_rank_to_real(obj):
+            def map_rank_to_real_device(obj):
                 # Use the last devices
                 # world_size=4 gpus=8 [0,1,2,3] will map to [4,5,6,7]
-                device_count = get_device_count()
-                _, nnodes = get_node_setting()
-                num_infer_workers = world_size // nnodes
                 diff = device_count - num_infer_workers
                 if diff < 0:
                     diff = 0
@@ -388,8 +388,12 @@ def patch_vllm(world_size=1):
                 else:
                     raise ValueError(f'Unsupported type: {obj}')
 
-            group_ranks = map_rank_to_real(group_ranks)
-            local_rank = map_rank_to_real(local_rank)
+            if kwargs.get('group_name') == 'world':
+                local_rank = local_rank + node_rank * num_infer_workers
+                # pass
+            else:
+                local_rank = map_rank_to_real_device(local_rank-node_rank * num_infer_workers)
+                # pass
             return __origin_init__(self, group_ranks, local_rank, *args, **kwargs)
 
         GroupCoordinator.__init__ = __init__
