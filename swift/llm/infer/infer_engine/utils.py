@@ -18,7 +18,7 @@ from transformers import GenerationConfig, LogitsProcessor
 from transformers.generation.streamers import BaseStreamer
 
 from swift.llm.model.register import fix_do_sample_warning
-from swift.utils import get_device
+from swift.utils import get_device, get_device_count, get_node_setting
 from ..protocol import RequestConfig
 
 
@@ -347,13 +347,12 @@ def patch_lmdeploy(load_weights=False):
     TurboMindInstance._create_model_instance = _create_model_instance
 
 
-def patch_vllm():
+def patch_vllm(world_size=1):
 
     @contextmanager
     def _get_context():
         from vllm.distributed.parallel_state import GroupCoordinator
         from unittest.mock import patch
-        world_size_patch = patch('torch.distributed.get_world_size', return_value=1)
         try:
             from vllm.worker.worker import Worker
             getattr(Worker, '_assert_memory_footprint_increased_during_profiling')
@@ -364,17 +363,50 @@ def patch_vllm():
 
         __origin_init__ = GroupCoordinator.__init__
 
-        def __init__(self, group_ranks, *args, **kwargs):
+        def get_world_size(group=None) -> int:
+            if not group:
+                # Given size
+                return world_size
+            else:
+                return torch.distributed.get_world_size_origin(group)
+
+        def __init__(self, group_ranks, local_rank, *args, **kwargs):
+            node_rank, nnodes = get_node_setting()
+            device_count = get_device_count()
+            num_infer_workers = world_size // nnodes
+
+            def map_rank_to_real_device(obj):
+                # Use the last devices
+                # world_size=4 gpus=8 [0,1,2,3] will map to [4,5,6,7]
+                diff = device_count - num_infer_workers
+                if diff < 0:
+                    diff = 0
+                if isinstance(obj, list):
+                    return [map_rank_to_real(o) for o in obj]
+                elif isinstance(obj, int):
+                    return obj + diff
+                else:
+                    raise ValueError(f'Unsupported type: {obj}')
+
+            if kwargs.get('group_name') == 'world':
+                local_rank = local_rank + node_rank * num_infer_workers
+            else:
+                local_rank = map_rank_to_real_device(local_rank - node_rank * num_infer_workers)
             rank = dist.get_rank()
-            if [rank] not in group_ranks:
+            if world_size == 1 and [rank] not in group_ranks:
+                # for ddp inference
                 group_ranks.append([rank])
-            return __origin_init__(self, group_ranks, *args, **kwargs)
+            return __origin_init__(self, group_ranks, local_rank, *args, **kwargs)
 
         GroupCoordinator.__init__ = __init__
 
         try:
-            with world_size_patch, profiling_patch:
+            with profiling_patch:
+                torch.distributed.get_world_size_origin = torch.distributed.get_world_size
+                torch.distributed.get_world_size = get_world_size
                 yield
+                torch.distributed.get_world_size = torch.distributed.get_world_size_origin
+                del torch.distributed.get_world_size_origin
         finally:
             GroupCoordinator.__init__ = __origin_init__
 

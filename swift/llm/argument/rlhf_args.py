@@ -145,6 +145,10 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
             if self.use_vllm or self.use_lmdeploy:
                 os.environ['USE_FAST_INFERENCE'] = '1'
                 self._set_default_ddp_config()
+            if self.async_generate or not self.use_vllm:
+                self.sleep_level = 0
+            if self.sleep_level > 0:
+                self.gradient_accumulation_steps = 1
             self.remove_unused_columns = False
             logger.info(f'Setting args.remove_unused_columns: {self.remove_unused_columns}')
             self.truncation_strategy = 'left'  # Used for trimming the excessively long parts of a prompt.
