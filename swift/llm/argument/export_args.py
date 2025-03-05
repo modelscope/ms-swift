@@ -70,11 +70,11 @@ class ExportArguments(MergeArguments, BaseArguments):
                 return
 
             self.output_dir = os.path.join(ckpt_dir, f'{ckpt_name}-{suffix}')
-            logger.info(f'Setting args.output_dir: {self.output_dir}')
+            logger.info(f'Setting args.output_dir: `{self.output_dir}`')
 
         self.output_dir = to_abspath(self.output_dir)
         if not self.exist_ok and os.path.exists(self.output_dir):
-            raise FileExistsError(f'args.output_dir: {self.output_dir} already exists.')
+            raise FileExistsError(f'args.output_dir: `{self.output_dir}` already exists.')
 
     def __post_init__(self):
         if self.quant_batch_size == -1:
