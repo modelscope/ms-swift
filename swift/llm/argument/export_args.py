@@ -113,9 +113,3 @@ class ExportArguments(MergeArguments, BaseArguments):
         if self.to_hf:
             adapters = [self.megatron_model]
         super()._init_ckpt_dir(adapters=adapters)
-
-    def get_model_kwargs(self):
-        kwargs = super().get_model_kwargs()
-        if self.to_hf or self.to_megatron:
-            kwargs['torch_dtype'] = torch.float32
-        return kwargs
