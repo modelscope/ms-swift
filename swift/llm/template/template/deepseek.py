@@ -255,7 +255,8 @@ class DeepseekR1Template(Template):
         return super()._encode(inputs)
 
 
-register_template(DeepseekV2_5TemplateMeta(LLMTemplateType.deepseek_r1, template_cls=DeepseekR1Template))
+register_template(
+    DeepseekV2_5TemplateMeta(LLMTemplateType.deepseek_r1, template_cls=DeepseekR1Template, response_prefix='<think>\n'))
 
 
 class DeepseekVL2Template(DeepseekVLTemplate):
