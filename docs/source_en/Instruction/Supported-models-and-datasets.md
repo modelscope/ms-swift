@@ -99,9 +99,10 @@ The table below introduces the models integrated with ms-swift:
 |[Qwen/Qwen2-Math-1.5B](https://modelscope.cn/models/Qwen/Qwen2-Math-1.5B)|qwen2|qwen|transformers>=4.37|math|[Qwen/Qwen2-Math-1.5B](https://huggingface.co/Qwen/Qwen2-Math-1.5B)|
 |[Qwen/Qwen2-Math-7B](https://modelscope.cn/models/Qwen/Qwen2-Math-7B)|qwen2|qwen|transformers>=4.37|math|[Qwen/Qwen2-Math-7B](https://huggingface.co/Qwen/Qwen2-Math-7B)|
 |[Qwen/Qwen2-Math-72B](https://modelscope.cn/models/Qwen/Qwen2-Math-72B)|qwen2|qwen|transformers>=4.37|math|[Qwen/Qwen2-Math-72B](https://huggingface.co/Qwen/Qwen2-Math-72B)|
-|[PowerInfer/SmallThinker-3B-Preview](https://modelscope.cn/models/PowerInfer/SmallThinker-3B-Preview)|qwen2|qwen|transformers>=4.37|-|[PowerInfer/SmallThinker-3B-Preview](https://huggingface.co/PowerInfer/SmallThinker-3B-Preview)|
 |[Qwen/Qwen2.5-7B-Instruct-1M](https://modelscope.cn/models/Qwen/Qwen2.5-7B-Instruct-1M)|qwen2|qwen|transformers>=4.37|-|[Qwen/Qwen2.5-7B-Instruct-1M](https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-1M)|
 |[Qwen/Qwen2.5-14B-Instruct-1M](https://modelscope.cn/models/Qwen/Qwen2.5-14B-Instruct-1M)|qwen2|qwen|transformers>=4.37|-|[Qwen/Qwen2.5-14B-Instruct-1M](https://huggingface.co/Qwen/Qwen2.5-14B-Instruct-1M)|
+|[Qwen/QwQ-32B](https://modelscope.cn/models/Qwen/QwQ-32B)|qwen2|qwen|transformers>=4.37|-|[Qwen/QwQ-32B](https://huggingface.co/Qwen/QwQ-32B)|
+|[PowerInfer/SmallThinker-3B-Preview](https://modelscope.cn/models/PowerInfer/SmallThinker-3B-Preview)|qwen2|qwen|transformers>=4.37|-|[PowerInfer/SmallThinker-3B-Preview](https://huggingface.co/PowerInfer/SmallThinker-3B-Preview)|
 |[Qwen/Qwen2.5-0.5B-Instruct](https://modelscope.cn/models/Qwen/Qwen2.5-0.5B-Instruct)|qwen2_5|qwen2_5|transformers>=4.37|-|[Qwen/Qwen2.5-0.5B-Instruct](https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct)|
 |[Qwen/Qwen2.5-1.5B-Instruct](https://modelscope.cn/models/Qwen/Qwen2.5-1.5B-Instruct)|qwen2_5|qwen2_5|transformers>=4.37|-|[Qwen/Qwen2.5-1.5B-Instruct](https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct)|
 |[Qwen/Qwen2.5-3B-Instruct](https://modelscope.cn/models/Qwen/Qwen2.5-3B-Instruct)|qwen2_5|qwen2_5|transformers>=4.37|-|[Qwen/Qwen2.5-3B-Instruct](https://huggingface.co/Qwen/Qwen2.5-3B-Instruct)|
@@ -167,7 +168,6 @@ The table below introduces the models integrated with ms-swift:
 |[Qwen/Qwen2.5-Coder-14B-Instruct-GPTQ-Int8](https://modelscope.cn/models/Qwen/Qwen2.5-Coder-14B-Instruct-GPTQ-Int8)|qwen2_5|qwen2_5|transformers>=4.37|coding|[Qwen/Qwen2.5-Coder-14B-Instruct-GPTQ-Int8](https://huggingface.co/Qwen/Qwen2.5-Coder-14B-Instruct-GPTQ-Int8)|
 |[Qwen/Qwen2.5-Coder-32B-Instruct-GPTQ-Int4](https://modelscope.cn/models/Qwen/Qwen2.5-Coder-32B-Instruct-GPTQ-Int4)|qwen2_5|qwen2_5|transformers>=4.37|coding|[Qwen/Qwen2.5-Coder-32B-Instruct-GPTQ-Int4](https://huggingface.co/Qwen/Qwen2.5-Coder-32B-Instruct-GPTQ-Int4)|
 |[Qwen/Qwen2.5-Coder-32B-Instruct-GPTQ-Int8](https://modelscope.cn/models/Qwen/Qwen2.5-Coder-32B-Instruct-GPTQ-Int8)|qwen2_5|qwen2_5|transformers>=4.37|coding|[Qwen/Qwen2.5-Coder-32B-Instruct-GPTQ-Int8](https://huggingface.co/Qwen/Qwen2.5-Coder-32B-Instruct-GPTQ-Int8)|
-|[Qwen/QwQ-32B](https://modelscope.cn/models/Qwen/QwQ-32B)|qwen2_5|qwen2_5|transformers>=4.37|-|[Qwen/QwQ-32B](https://huggingface.co/Qwen/QwQ-32B)|
 |[Qwen/Qwen2.5-Math-1.5B-Instruct](https://modelscope.cn/models/Qwen/Qwen2.5-Math-1.5B-Instruct)|qwen2_5_math|qwen2_5_math|transformers>=4.37|math|[Qwen/Qwen2.5-Math-1.5B-Instruct](https://huggingface.co/Qwen/Qwen2.5-Math-1.5B-Instruct)|
 |[Qwen/Qwen2.5-Math-7B-Instruct](https://modelscope.cn/models/Qwen/Qwen2.5-Math-7B-Instruct)|qwen2_5_math|qwen2_5_math|transformers>=4.37|math|[Qwen/Qwen2.5-Math-7B-Instruct](https://huggingface.co/Qwen/Qwen2.5-Math-7B-Instruct)|
 |[Qwen/Qwen2.5-Math-72B-Instruct](https://modelscope.cn/models/Qwen/Qwen2.5-Math-72B-Instruct)|qwen2_5_math|qwen2_5_math|transformers>=4.37|math|[Qwen/Qwen2.5-Math-72B-Instruct](https://huggingface.co/Qwen/Qwen2.5-Math-72B-Instruct)|
