@@ -13,7 +13,7 @@ from transformers import GenerationConfig
 
 from swift.llm import InferRequest, Template, TemplateMeta, get_model_tokenizer
 from swift.plugin import Metric
-from swift.utils import get_logger
+from swift.utils import get_logger, get_node_setting
 from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                         ChatCompletionStreamResponse, ChatMessage, DeltaMessage, RequestConfig, random_uuid)
 from .infer_engine import InferEngine
@@ -60,6 +60,9 @@ class VllmEngine(InferEngine):
         max_loras: int = 1,
         max_lora_rank: int = 16,
         enable_prefix_caching: bool = False,
+        num_infer_workers: int = 1,
+        enable_sleep_mode: bool = False,
+        distributed_executor_backend: Optional[str] = None,
         engine_kwargs: Optional[Dict[str, Any]] = None,
     ) -> None:
         self.use_async_engine = use_async_engine
@@ -88,11 +91,13 @@ class VllmEngine(InferEngine):
             max_lora_rank=max_lora_rank,
             enable_prefix_caching=enable_prefix_caching,
             device=device,
+            distributed_executor_backend=distributed_executor_backend,
+            enable_sleep_mode=enable_sleep_mode,
             engine_kwargs=engine_kwargs,
         )
-        context, npu_context = nullcontext(), nullcontext()
-        if tensor_parallel_size == 1 and pipeline_parallel_size == 1:
-            context, npu_context = patch_vllm(), patch_npu_vllm(self.engine_args.device)
+        context, npu_context = patch_vllm(num_infer_workers * get_node_setting()[1]), nullcontext()
+        if tensor_parallel_size == 1 or pipeline_parallel_size == 1:
+            npu_context = patch_npu_vllm(self.engine_args.device)
         with context, npu_context:
             self._prepare_engine()
         self._load_generation_config()
@@ -120,6 +125,8 @@ class VllmEngine(InferEngine):
         max_loras: int = 1,
         max_lora_rank: int = 16,
         enable_prefix_caching: bool = False,
+        distributed_executor_backend: Optional[str] = None,
+        enable_sleep_mode: bool = False,
         engine_kwargs: Optional[Dict[str, Any]] = None,
     ) -> None:
         if engine_kwargs is None:
@@ -161,9 +168,13 @@ class VllmEngine(InferEngine):
             enforce_eager=enforce_eager,
             trust_remote_code=True,
             enable_prefix_caching=enable_prefix_caching,
+            distributed_executor_backend=distributed_executor_backend,
+            enable_sleep_mode=enable_sleep_mode,
             device=device,
             **engine_kwargs,
         )
+        if distributed_executor_backend == 'external_launcher':
+            engine_args.disable_custom_all_reduce = True
         self.engine_args = engine_args
         self.enable_lora = enable_lora
         if max_model_len is not None:

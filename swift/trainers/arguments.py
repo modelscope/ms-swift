@@ -98,6 +98,8 @@ class GRPOArgumentsMixin:
     lmdeploy_cache_max_entry_count: float = 0.8
 
     async_generate: bool = False
+    tensor_parallel_size: int = 1
+    sleep_level: int = 0
 
 
 @dataclass
