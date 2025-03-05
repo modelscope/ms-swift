@@ -367,7 +367,7 @@ def _get_arch_mapping():
 
 def get_matched_model_types(architectures: Optional[List[str]]) -> List[str]:
     """Get possible model_type."""
-    architectures = architectures or ['nulll']
+    architectures = architectures or ['null']
     if architectures:
         architectures = architectures[0]
     arch_mapping = _get_arch_mapping()
