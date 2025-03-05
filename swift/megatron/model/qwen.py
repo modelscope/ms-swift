@@ -18,12 +18,16 @@ def load_qwen_config(model_info: ModelInfo) -> Dict[str, Any]:
     return args_config
 
 
-def convert_megatron2hf(hf_model, mg_model):
+def convert_megatron2hf(hf_model, model_provider):
+    import toolkits.model_checkpoints_convertor.qwen.hf2mcore_qwen2_dense_and_moe_gqa as module
     from toolkits.model_checkpoints_convertor.qwen.hf2mcore_qwen2_dense_and_moe_gqa import (
-        convert_checkpoint_from_megatron_to_transformers)
+        convert_checkpoint_from_megatron_to_transformers, load_megatron_model, check_hf_mg_forward)
     args = get_args()
+    module.model_provider = model_provider
+    mg_model = load_megatron_model(args)
     convert_checkpoint_from_megatron_to_transformers(mg_model, hf_model, args)
-
+    # check_hf_mg_forward(hf_model, mg_model, args)
+    return mg_model
 
 def convert_hf2megatron(hf_model, mg_model):
     from toolkits.model_checkpoints_convertor.qwen.hf2mcore_qwen2_dense_and_moe_gqa import (
