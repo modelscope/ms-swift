@@ -13,7 +13,9 @@ from .utils import patch_megatron
 
 
 def convert_hf2megatron(args: ExportArguments) -> None:
-    hf_model, processor = get_model_tokenizer(**args.get_model_kwargs())
+    kwargs = args.get_model_kwargs()
+    kwargs['torch_dtype'] = torch.float32
+    hf_model, processor = get_model_tokenizer(**kwargs)
     megatron_model_meta = get_megatron_model_meta(args.model)
     kwargs = megatron_model_meta.load_config(hf_model.model_info)
     kwargs.update({'seq_length': 1, 'use_cpu_initialization': True, 'load': args.model_dir, 'save': args.output_dir})
@@ -30,7 +32,9 @@ def convert_hf2megatron(args: ExportArguments) -> None:
 
 def convert_megatron2hf(args: ExportArguments) -> None:
     from swift.llm import save_checkpoint
-    hf_model, processor = get_model_tokenizer(**args.get_model_kwargs())
+    kwargs = args.get_model_kwargs()
+    kwargs['torch_dtype'] = torch.float32
+    hf_model, processor = get_model_tokenizer(**kwargs)
     megatron_model_meta = get_megatron_model_meta(args.model)
     kwargs = megatron_model_meta.load_config(hf_model.model_info)
     kwargs.update({
