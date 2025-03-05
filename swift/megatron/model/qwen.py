@@ -19,13 +19,21 @@ def load_qwen_config(model_info: ModelInfo) -> Dict[str, Any]:
 
 
 def convert_megatron2hf(hf_model, mg_model):
-    pass
+    from toolkits.model_checkpoints_convertor.qwen.hf2mcore_qwen2_dense_and_moe_gqa import (
+        convert_checkpoint_from_megatron_to_transformers)
+    args = get_args()
+    convert_checkpoint_from_megatron_to_transformers(mg_model, hf_model, args)
 
 
 def convert_hf2megatron(hf_model, mg_model):
+    from toolkits.model_checkpoints_convertor.qwen.hf2mcore_qwen2_dense_and_moe_gqa import (
+        convert_checkpoint_from_transformers_to_megatron, save_mgmodel, check_hf_mg_forward)
     args = get_args()
-    mg_model.to(args.torch_dtype)
-    convert_module.save_mgmodel(mg_model, args)
+    convert_checkpoint_from_transformers_to_megatron(hf_model, mg_model, args)
+    # check_hf_mg_forward(hf_model, mg_model, args)
+    if args.torch_dtype is not None:
+        mg_model.to(args.torch_dtype)
+    save_mgmodel(mg_model, args)
 
 
 def get_qwen_model_provider():

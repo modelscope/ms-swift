@@ -138,7 +138,7 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
             os.environ['WORLD_SIZE'] = '1'
             os.environ['LOCAL_WORLD_SIZE'] = '1'
             os.environ['MASTER_ADDR'] = '127.0.0.1'
-            os.environ['MASTER_PORT'] = '29500'
+            os.environ['MASTER_PORT'] = os.environ.get('MASTER_PORT', '29500')
 
     def _init_grpo(self):
         if self.rlhf_type == 'grpo':

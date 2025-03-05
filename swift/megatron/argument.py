@@ -1,13 +1,18 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import inspect
+import os
 import sys
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Literal, Optional, Tuple
+
+import torch
 
 
 @dataclass
 class ExtraMegatronArguments:
     padded_vocab_size: Optional[int] = None
+    torch_dtype: Optional[torch.dtype] = None
+    hf_ckpt_path: Optional[str] = None
 
     target_tensor_model_parallel_size: int = 1
     target_pipeline_model_parallel_size: int = 1
@@ -79,7 +84,6 @@ class MegatronMixin:
     num_workers: int = 8
 
     log_timers_to_tensorboard: bool = True  #
-    log_batch_size_to_tensorboard: bool = True  #
     log_validation_ppl_to_tensorboard: bool = True  #
     log_memory_to_tensorboard: bool = True  #
     tensorboard_log_interval: int = 1  #
@@ -91,7 +95,6 @@ class MegatronMixin:
     no_save_rng: bool = False  #
     no_load_optim: bool = False  #
     no_load_rng: bool = False  #
-    loss_scale: Optional[float] = None
     use_distributed_optimizer: bool = True
     normalization: Literal['LayerNorm', 'RMSNorm'] = 'RMSNorm'  #
     calculate_per_token_loss: bool = True
@@ -101,6 +104,7 @@ class MegatronMixin:
 class MegatronArguments(ExtraMegatronArguments, MegatronMixin):
 
     def __post_init__(self):
+        os.environ['CUDA_DEVICE_MAX_CONNECTIONS'] = '1'
         if self.group_query_attention is None:
             self.group_query_attention = True if self.num_query_groups > 1 else False
         if self.eval_interval is None:
