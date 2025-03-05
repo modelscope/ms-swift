@@ -392,6 +392,10 @@ def patch_vllm(world_size=1):
                 local_rank = local_rank + node_rank * num_infer_workers
             else:
                 local_rank = map_rank_to_real_device(local_rank - node_rank * num_infer_workers)
+            rank = dist.get_rank()
+            if world_size == 1 and [rank] not in group_ranks:
+                # for ddp inference
+                group_ranks.append([rank])
             return __origin_init__(self, group_ranks, local_rank, *args, **kwargs)
 
         GroupCoordinator.__init__ = __init__
