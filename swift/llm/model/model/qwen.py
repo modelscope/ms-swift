@@ -655,7 +655,11 @@ register_model(
 
 register_model(
     ModelMeta(
-        LLMModelType.qwq, [ModelGroup([Model('Qwen/QwQ-32B', 'Qwen/QwQ-32B')])],
+        LLMModelType.qwq,
+        [ModelGroup([
+            Model('Qwen/QwQ-32B', 'Qwen/QwQ-32B'),
+            Model('Qwen/QwQ-32B-AWQ', 'Qwen/QwQ-32B-AWQ'),
+        ])],
         TemplateType.qwq,
         get_model_tokenizer_with_flash_attn,
         model_arch=ModelArch.llama,

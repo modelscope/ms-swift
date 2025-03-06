@@ -181,6 +181,7 @@ The table below introduces the models integrated with ms-swift:
 |[Qwen/Qwen2-57B-A14B-Instruct-GPTQ-Int4](https://modelscope.cn/models/Qwen/Qwen2-57B-A14B-Instruct-GPTQ-Int4)|qwen2_moe|qwen|transformers>=4.40|-|[Qwen/Qwen2-57B-A14B-Instruct-GPTQ-Int4](https://huggingface.co/Qwen/Qwen2-57B-A14B-Instruct-GPTQ-Int4)|
 |[Qwen/QwQ-32B-Preview](https://modelscope.cn/models/Qwen/QwQ-32B-Preview)|qwq_preview|qwq_preview|transformers>=4.37|-|[Qwen/QwQ-32B-Preview](https://huggingface.co/Qwen/QwQ-32B-Preview)|
 |[Qwen/QwQ-32B](https://modelscope.cn/models/Qwen/QwQ-32B)|qwq|qwq|transformers>=4.37|-|[Qwen/QwQ-32B](https://huggingface.co/Qwen/QwQ-32B)|
+|[Qwen/QwQ-32B-AWQ](https://modelscope.cn/models/Qwen/QwQ-32B-AWQ)|qwq|qwq|transformers>=4.37|-|[Qwen/QwQ-32B-AWQ](https://huggingface.co/Qwen/QwQ-32B-AWQ)|
 |[iic/gte_Qwen2-1.5B-instruct](https://modelscope.cn/models/iic/gte_Qwen2-1.5B-instruct)|qwen2_gte|dummy|-|-|-|
 |[iic/gte_Qwen2-7B-instruct](https://modelscope.cn/models/iic/gte_Qwen2-7B-instruct)|qwen2_gte|dummy|-|-|-|
 |[codefuse-ai/CodeFuse-QWen-14B](https://modelscope.cn/models/codefuse-ai/CodeFuse-QWen-14B)|codefuse_qwen|codefuse|-|coding|[codefuse-ai/CodeFuse-QWen-14B](https://huggingface.co/codefuse-ai/CodeFuse-QWen-14B)|
