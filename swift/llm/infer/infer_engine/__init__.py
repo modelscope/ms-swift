@@ -5,6 +5,7 @@ from swift.utils.import_utils import _LazyModule
 
 if TYPE_CHECKING:
     from .vllm_engine import VllmEngine
+    from .grpo_vllm_engine import GRPOVllmEngine
     from .lmdeploy_engine import LmdeployEngine
     from .pt_engine import PtEngine
     from .infer_client import InferClient
@@ -15,6 +16,7 @@ else:
     _extra_objects = {k: v for k, v in globals().items() if not k.startswith('_')}
     _import_structure = {
         'vllm_engine': ['VllmEngine'],
+        'grpo_vllm_engine': ['GRPOVllmEngine'],
         'lmdeploy_engine': ['LmdeployEngine'],
         'pt_engine': ['PtEngine'],
         'infer_client': ['InferClient'],

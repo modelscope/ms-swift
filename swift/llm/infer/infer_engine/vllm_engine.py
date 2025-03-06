@@ -296,6 +296,10 @@ class VllmEngine(InferEngine):
         res.top_logprobs = request_config.top_logprobs
         return res
 
+    @property
+    def inner_model(self):
+        return self.engine.llm_engine.model_executor.driver_worker.worker.model_runner.model
+
     async def _infer_stream_async(self, template: Template, inputs: Dict[str, Any], generation_config: SamplingParams,
                                   **kwargs) -> AsyncIterator[ChatCompletionStreamResponse]:
         request_id = random_uuid()
