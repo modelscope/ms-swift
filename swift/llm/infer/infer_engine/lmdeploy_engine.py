@@ -266,6 +266,10 @@ class LmdeployEngine(InferEngine):
                 async with self.engine.safe_run(inst, session_id, **inputs, **kwargs) as gen:
                     async for output in gen:
                         pass
+                if self.engine.backend == 'pytorch':
+                    # manually end pytorch session
+                    await inst.async_end(session_id)
+
         else:
             async with self.engine.safe_run(session_id):
                 generator = await self.engine.get_generator(False, session_id)
