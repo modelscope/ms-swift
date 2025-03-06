@@ -6,7 +6,7 @@ import os
 import time
 from collections import defaultdict
 from concurrent.futures import Future
-from contextlib import contextmanager, nullcontext
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from queue import Queue
 from typing import Any, Callable, Dict, List, Optional, Union
@@ -16,17 +16,16 @@ import torch
 import torch.nn as nn
 from accelerate.utils import gather, gather_object, is_peft_model, set_seed
 from transformers import PreTrainedModel, TrainerCallback
-from transformers.utils import strtobool
 from trl import GRPOTrainer as HFGRPOTrainer
 from trl.models import unwrap_model_for_generation
 
 from swift.llm import InferRequest, RequestConfig, RowPreprocessor, to_device
+from swift.llm.infer.infer_engine import GRPOVllmEngine
 from swift.plugin import orms
-from swift.utils import (JsonlWriter, gc_collect, get_device, get_device_count, get_dist_setting, get_logger,
-                         get_node_setting, is_lmdeploy_available, is_vllm_available, is_wandb_available)
+from swift.utils import (JsonlWriter, get_device, get_device_count, get_dist_setting, get_logger, get_node_setting,
+                         is_lmdeploy_available, is_vllm_available, is_wandb_available)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
-from ...llm.infer.infer_engine import GRPOVllmEngine
 
 try:
     from trl.extras.profiling import profiling_decorator

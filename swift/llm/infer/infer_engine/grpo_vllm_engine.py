@@ -6,11 +6,11 @@ from typing import Any, Dict, Iterator, List, Optional, Union
 import torch
 from packaging import version
 
-from swift.llm import InferRequest, Template, get_model_tokenizer, VllmEngine
+from swift.llm import InferRequest, Template, VllmEngine, get_model_tokenizer
 from swift.plugin import Metric
+from ..protocol import ChatCompletionResponse, ChatCompletionStreamResponse, RequestConfig
 from .patch import patch_auto_config, patch_auto_tokenizer
 from .utils import AdapterRequest
-from ..protocol import (ChatCompletionResponse, ChatCompletionStreamResponse, RequestConfig)
 
 try:
     # After setting the environment variables, import vllm. This way of writing allows lint to pass.
@@ -132,7 +132,4 @@ class GRPOVllmEngine(VllmEngine):
             prompts.append(llm_inputs)
 
         outputs = self.engine.generate(prompts, generation_config)
-        return [
-            self._create_chat_completion_response(result, template, generation_config, '')
-            for result in outputs
-        ]
+        return [self._create_chat_completion_response(result, template, generation_config, '') for result in outputs]
