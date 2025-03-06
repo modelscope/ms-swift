@@ -239,7 +239,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         from swift.tuners import Swift
         from swift.llm import VllmEngine
         _, _, _, local_world_size = get_dist_setting()
-        if local_world_size == self.args.num_infer_workers and local_world_size > 1:
+        if local_world_size == self.args.num_infer_workers == get_device_count() and local_world_size > 1:
             cls = GRPOVllmEngine
         else:
             cls = VllmEngine
@@ -255,9 +255,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 max_num_seqs=self.args.vllm_max_num_seqs,
                 enforce_eager=self.args.vllm_enforce_eager,
                 limit_mm_per_prompt=self.args.vllm_limit_mm_per_prompt,
-                use_async_engine=False,
                 num_infer_workers=self.args.num_infer_workers,
                 enable_sleep_mode=self.args.sleep_level > 0,
+                use_async_engine=False,
                 distributed_executor_backend='external_launcher',
                 max_model_len=self.args.vllm_max_model_len)
             self.engine.default_template = self.template
@@ -380,7 +380,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     def _fast_infer(self, inputs):
         if self.args.sleep_level > 0 and self.infer_rank >= 0:
-            self.engine.wake_up()
+            self.engine.engine.wake_up()
         # First, have main process load weights if needed
         if self.state.global_step != self._last_loaded_step:
             self._move_model_to_vllm_lmdeploy()
@@ -412,7 +412,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         outputs = gather_object(outputs)
         outputs = self.reorder_outputs(outputs, distributed_idx)
         if self.args.sleep_level > 0 and self.infer_rank >= 0:
-            self.engine.sleep(level=self.args.sleep_level)
+            self.engine.engine.sleep(level=self.args.sleep_level)
         return inputs, outputs
 
     @property

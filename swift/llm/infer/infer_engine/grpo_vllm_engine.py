@@ -29,6 +29,7 @@ class GRPOVllmEngine(VllmEngine):
         model_id_or_path: str,
         torch_dtype: Optional[torch.dtype] = None,
         *,
+        use_async_engine: bool = True,
         model_type: Optional[str] = None,
         use_hf: Optional[bool] = None,
         hub_token: Optional[str] = None,
@@ -53,6 +54,7 @@ class GRPOVllmEngine(VllmEngine):
         distributed_executor_backend: Optional[str] = None,
         engine_kwargs: Optional[Dict[str, Any]] = None,
     ) -> None:
+        self.use_async_engine = use_async_engine
         self.processor = get_model_tokenizer(
             model_id_or_path,
             torch_dtype,
@@ -92,7 +94,7 @@ class GRPOVllmEngine(VllmEngine):
 
     @property
     def inner_model(self):
-        return self.engine.model_executor.driver_worker.model_runner.model
+        return self.engine.llm_engine.model_executor.driver_worker.model_runner.model
 
     def infer(
         self,

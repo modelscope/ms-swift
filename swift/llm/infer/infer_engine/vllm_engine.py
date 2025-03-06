@@ -301,7 +301,7 @@ class VllmEngine(InferEngine):
 
     @property
     def inner_model(self):
-        return self.engine.llm_engine.model_executor.driver_worker.worker.model_runner.model
+        return self.engine.model_executor.driver_worker.worker.model_runner.model
 
     async def _infer_stream_async(self, template: Template, inputs: Dict[str, Any], generation_config: SamplingParams,
                                   **kwargs) -> AsyncIterator[ChatCompletionStreamResponse]:
