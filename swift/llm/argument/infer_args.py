@@ -139,6 +139,7 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
 
     def _init_result_path(self, folder_name: str) -> None:
         if self.result_path is not None:
+            self.result_path = to_abspath(self.result_path)
             return
         self.result_path = self._get_result_path(folder_name)
         logger.info(f'args.result_path: {self.result_path}')
