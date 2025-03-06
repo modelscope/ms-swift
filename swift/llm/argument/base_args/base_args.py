@@ -93,6 +93,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         default=None, metadata={'help': 'SDK token can be found in https://modelscope.cn/my/myaccesstoken'})
     custom_register_path: List[str] = field(default_factory=list)  # .py
 
+    megatron_model: Optional[str] = None
     # extra
     ignore_args_error: bool = False  # True: notebook compatibility
     use_swift_lora: bool = False  # True for using tuner_backend == swift, don't specify this unless you know what you are doing # noqa
@@ -192,7 +193,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         return self
 
     def _init_ckpt_dir(self, adapters=None):
-        self.ckpt_dir = get_ckpt_dir(self.model, adapters or self.adapters)
+        self.ckpt_dir = get_ckpt_dir(self.model or self.megatron_model, adapters or self.adapters)
         if self.ckpt_dir and self.load_args:
             self.load_args_from_ckpt()
 

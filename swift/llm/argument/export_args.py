@@ -47,7 +47,6 @@ class ExportArguments(MergeArguments, BaseArguments):
 
     # megatron
     to_megatron: bool = False
-    megatron_model: Optional[str] = None
     to_hf: bool = False
 
     # push to ms hub
@@ -108,8 +107,3 @@ class ExportArguments(MergeArguments, BaseArguments):
         self._init_output_dir()
         if self.quant_method in {'gptq', 'awq'} and len(self.dataset) == 0:
             raise ValueError(f'self.dataset: {self.dataset}, Please input the quant dataset.')
-
-    def _init_ckpt_dir(self, adapters=None):
-        if self.to_hf:
-            adapters = [self.megatron_model]
-        super()._init_ckpt_dir(adapters=adapters)
