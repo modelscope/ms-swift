@@ -13,6 +13,7 @@ from .utils import patch_megatron
 
 logger = get_logger()
 
+
 def convert_hf2megatron(args: ExportArguments) -> None:
     kwargs = args.get_model_kwargs()
     kwargs['torch_dtype'] = torch.float32

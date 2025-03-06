@@ -29,6 +29,7 @@ def convert_megatron2hf(hf_model, model_provider):
     # check_hf_mg_forward(hf_model, mg_model, args)
     return mg_model
 
+
 def convert_hf2megatron(hf_model, mg_model):
     from toolkits.model_checkpoints_convertor.qwen.hf2mcore_qwen2_dense_and_moe_gqa import (
         convert_checkpoint_from_transformers_to_megatron, save_mgmodel, check_hf_mg_forward)
