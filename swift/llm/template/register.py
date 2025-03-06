@@ -28,6 +28,7 @@ def get_template(
         max_pixels: Optional[int] = None,  # h * w
         tools_prompt: str = 'react_en',
         norm_bbox: Literal['norm1000', 'none', None] = None,
+        response_prefix: Optional[str] = None,
         # train
         padding_side: Literal['left', 'right'] = 'right',
         loss_scale: str = 'default',

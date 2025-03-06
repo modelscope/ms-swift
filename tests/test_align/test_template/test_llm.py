@@ -77,9 +77,10 @@ def test_glm4():
 
 def test_qwq():
     pt_engine = PtEngine('Qwen/QwQ-32B-Preview')
-    _infer_model(pt_engine)
+    response = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
-    _infer_model(pt_engine)
+    response2 = _infer_model(pt_engine)
+    assert response == response2
 
 
 def test_internlm():

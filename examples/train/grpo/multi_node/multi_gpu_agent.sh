@@ -6,7 +6,7 @@ swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-7B \
     --train_type full \
-    --dataset LLM-Research/xlam-function-calling-60k:grpo \
+    --dataset LLM-Research/xlam-function-calling-60k \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
     --max_length 2048 \

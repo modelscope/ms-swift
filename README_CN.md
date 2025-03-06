@@ -74,7 +74,7 @@
 - **模型量化**：支持AWQ、GPTQ和BNB的量化导出，导出的模型支持使用vLLM/LmDeploy推理加速，并支持继续训练。
 
 ## 🎉 新闻
-- 🎁 2025.03.05: 支持GRPO的hybrid模式(rollout和actor在同一GPU上, rollout可以进行offload), 同时支持了vllm的tensor parallel, 查看[训练脚本](examples/train/grpo/multi_node/multi_gpu_hybrid.sh)
+- 🎁 2025.03.05: 支持GRPO的hybrid模式(rollout和actor在同一GPU上, rollout可以进行offload), 同时支持了vllm的tensor parallel, 查看[训练脚本](examples/train/grpo/multi_node/multi_gpu_mp_colocate.sh)
 - 🎁 2025.02.21: 我们测试了GRPO算法的性能，并且使用一些tricks使[训练速度提高到300%](examples/train/grpo/full_lmdeploy.sh). WanDB表格请查看[这里](https://wandb.ai/tastelikefeet/grpo_perf_test?nw=nwuseryuzezyz)
 - 🎁 2025.02.21: 支持大模型API蒸馏采样，请查看[示例](examples/sampler/distill/distill.sh)
 - 🎁 2025.02.17: 支持SwanLab, 仅需添加[几个新的参数](docs/source/Instruction/命令行参数.md#swanlab)就可以在swanlab上验证你的训练效果
@@ -117,7 +117,7 @@ pip install -e .
 | trl | >=0.13,<0.17 | 0.15 |RLHF|
 | deepspeed | >=0.14 | 0.14.5 |训练|
 | vllm | >=0.5.1 | 0.7.3 |推理/部署/评测|
-| lmdeploy | lmdeploy>=0.5 | 0.7.1 |推理/部署/评测|
+| lmdeploy | >=0.5 | 0.7.1 |推理/部署/评测|
 | evalscope | >=0.11 | |评测|
 
 更多可选依赖可以参考[这里](https://github.com/modelscope/ms-swift/blob/main/requirements/install_all.sh)。

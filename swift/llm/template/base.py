@@ -59,6 +59,7 @@ class Template(ProcessorMixin):
         max_pixels: Optional[int] = None,
         tools_prompt: Optional[str] = None,
         norm_bbox: Literal['norm1000', 'none', None] = None,
+        response_prefix: Optional[str] = None,
         # only for train
         padding_side: Literal['left', 'right'] = 'right',
         loss_scale: str = 'default',
@@ -93,6 +94,8 @@ class Template(ProcessorMixin):
         template_meta.check_system(default_system)
         if default_system is not None:
             template_meta.default_system = default_system
+        if response_prefix is not None:
+            template_meta.response_prefix = response_prefix
 
         template_meta.init(tokenizer)
 
@@ -353,9 +356,19 @@ class Template(ProcessorMixin):
             logprobs = [None] * len(preds)
         return preds, logprobs
 
-    def decode(self, generate_ids: List[int], is_finished: bool = True, tokenizer_kwargs=None, **kwargs) -> Any:
+    def decode(self,
+               generate_ids: List[int],
+               is_finished: bool = True,
+               *,
+               tokenizer_kwargs=None,
+               start=0,
+               **kwargs) -> Any:
+        generate_ids = generate_ids[start:]
         tokenizer_kwargs = tokenizer_kwargs or {}
-        return self._skip_stop_decode(generate_ids, is_finished, **tokenizer_kwargs)
+        response = self._skip_stop_decode(generate_ids, is_finished, **tokenizer_kwargs)
+        if start == 0 and self.template_meta.response_prefix:
+            response = self.template_meta.response_prefix + response
+        return response
 
     def decode_prm(self, input_ids: torch.Tensor, logits: torch.Tensor) -> Any:
         raise NotImplementedError
@@ -731,6 +744,9 @@ class Template(ProcessorMixin):
                 if self.is_training and not sep_token:
                     extra_context_list = template_meta.suffix
                     extra_context_type = ContextType.SUFFIX
+            elif template_meta.response_prefix:
+                # final round and during inference.
+                context_list.append(template_meta.response_prefix)
 
             self._concat_context_list(
                 context_list,
