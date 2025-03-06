@@ -381,7 +381,7 @@ def patch_vllm(world_size=1):
                 if diff < 0:
                     diff = 0
                 if isinstance(obj, list):
-                    return [map_rank_to_real(o) for o in obj]
+                    return [map_rank_to_real_device(o) for o in obj]
                 elif isinstance(obj, int):
                     return obj + diff
                 else:
@@ -394,7 +394,7 @@ def patch_vllm(world_size=1):
             rank = dist.get_rank()
             if world_size == 1 and [rank] not in group_ranks:
                 # for ddp inference
-                group_ranks.append([rank])
+                group_ranks = [[rank]]
             return __origin_init__(self, group_ranks, local_rank, *args, **kwargs)
 
         GroupCoordinator.__init__ = __init__

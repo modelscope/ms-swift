@@ -95,10 +95,7 @@ class VllmEngine(InferEngine):
             enable_sleep_mode=enable_sleep_mode,
             engine_kwargs=engine_kwargs,
         )
-        world_size = num_infer_workers * get_node_setting()[1]
-        if tensor_parallel_size == 1:
-            world_size = 1
-        context, npu_context = patch_vllm(world_size), nullcontext()
+        context, npu_context = patch_vllm(num_infer_workers * get_node_setting()[1]), nullcontext()
         if tensor_parallel_size == 1 or pipeline_parallel_size == 1:
             npu_context = patch_npu_vllm(self.engine_args.device)
         with context, npu_context:
@@ -298,6 +295,10 @@ class VllmEngine(InferEngine):
         res = SamplingParams(**kwargs)
         res.top_logprobs = request_config.top_logprobs
         return res
+
+    @property
+    def inner_model(self):
+        return self.engine.model_executor.driver_worker.worker.model_runner.model
 
     async def _infer_stream_async(self, template: Template, inputs: Dict[str, Any], generation_config: SamplingParams,
                                   **kwargs) -> AsyncIterator[ChatCompletionStreamResponse]:

@@ -20,9 +20,10 @@ from trl import GRPOTrainer as HFGRPOTrainer
 from trl.models import unwrap_model_for_generation
 
 from swift.llm import InferRequest, RequestConfig, RowPreprocessor, to_device
+from swift.llm.infer.infer_engine import GRPOVllmEngine
 from swift.plugin import orms
-from swift.utils import (JsonlWriter, gc_collect, get_device, get_device_count, get_dist_setting, get_logger,
-                         get_node_setting, is_lmdeploy_available, is_vllm_available, is_wandb_available)
+from swift.utils import (JsonlWriter, get_device, get_device_count, get_dist_setting, get_logger, get_node_setting,
+                         is_lmdeploy_available, is_vllm_available, is_wandb_available)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 
@@ -172,26 +173,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     if not is_vllm_available():
                         raise ImportError('vLLM is not available and `use_vllm` is set to True. '
                                           'Please install vLLM with `pip install vllm` to use it.')
-                    from swift.tuners import Swift
-                    from swift.llm import VllmEngine
-                    with Swift.grpo_context(model, self.template.processor):
-                        self.engine = VllmEngine(
-                            model.model_dir,
-                            model.model_info.torch_dtype,
-                            model_type=model.model_meta.model_type,
-                            device=fast_infer_device[self.local_infer_rank],
-                            tensor_parallel_size=self.args.tensor_parallel_size,
-                            gpu_memory_utilization=args.vllm_gpu_memory_utilization,
-                            enable_prefix_caching=args.vllm_enable_prefix_caching,
-                            max_num_seqs=args.vllm_max_num_seqs,
-                            enforce_eager=args.vllm_enforce_eager,
-                            limit_mm_per_prompt=args.vllm_limit_mm_per_prompt,
-                            use_async_engine=False,
-                            num_infer_workers=self.args.num_infer_workers,
-                            enable_sleep_mode=self.args.sleep_level > 0,
-                            distributed_executor_backend='external_launcher',
-                            max_model_len=args.vllm_max_model_len)
-                    self.engine.default_template = self.template
+                    self.prepare_vllm(model, fast_infer_device)
                 elif use_lmdeploy:
                     # https://github.com/tastelikefeet/lmdeploy.git@feat/reload_state_dict_064
                     # Compile:https://github.com/tastelikefeet/lmdeploy/blob/main/docs/en/get_started/installation.md
@@ -252,6 +234,33 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self._buffered_inputs = [None] * args.gradient_accumulation_steps
         if self.args.async_generate:
             self.add_callback(GRPOCallback(self))
+
+    def prepare_vllm(self, model, fast_infer_device):
+        from swift.tuners import Swift
+        from swift.llm import VllmEngine
+        _, _, _, local_world_size = get_dist_setting()
+        if local_world_size == self.args.num_infer_workers == get_device_count() and local_world_size > 1:
+            cls = GRPOVllmEngine
+        else:
+            cls = VllmEngine
+        with Swift.grpo_context(model, self.template.processor):
+            self.engine = cls(
+                model.model_dir,
+                model.model_info.torch_dtype,
+                model_type=model.model_meta.model_type,
+                device=fast_infer_device[self.local_infer_rank],
+                tensor_parallel_size=self.args.tensor_parallel_size,
+                gpu_memory_utilization=self.args.vllm_gpu_memory_utilization,
+                enable_prefix_caching=self.args.vllm_enable_prefix_caching,
+                max_num_seqs=self.args.vllm_max_num_seqs,
+                enforce_eager=self.args.vllm_enforce_eager,
+                limit_mm_per_prompt=self.args.vllm_limit_mm_per_prompt,
+                num_infer_workers=self.args.num_infer_workers,
+                enable_sleep_mode=self.args.sleep_level > 0,
+                use_async_engine=False,
+                distributed_executor_backend='external_launcher',
+                max_model_len=self.args.vllm_max_model_len)
+            self.engine.default_template = self.template
 
     @property
     def infer_rank(self):
@@ -323,7 +332,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 if self.args.async_generate:
                     self._wait_queue()
                 if self.args.use_vllm:
-                    llm_model = self.engine.engine.model_executor.driver_worker.model_runner.model
+                    llm_model = self.engine.inner_model
                 else:
                     llm_model = self.engine.engine.engine
                 llm_model.load_weights(state_dict.items())
@@ -370,8 +379,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self.accelerator.wait_for_everyone()
 
     def _fast_infer(self, inputs):
-        if self.args.sleep_level > 0:
-            gc_collect()
+        if self.args.sleep_level > 0 and self.infer_rank >= 0:
             self.engine.engine.wake_up()
         # First, have main process load weights if needed
         if self.state.global_step != self._last_loaded_step:
@@ -403,7 +411,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             outputs = []
         outputs = gather_object(outputs)
         outputs = self.reorder_outputs(outputs, distributed_idx)
-        if self.args.sleep_level > 0:
+        if self.args.sleep_level > 0 and self.infer_rank >= 0:
             self.engine.engine.sleep(level=self.args.sleep_level)
         return inputs, outputs
 
