@@ -655,7 +655,8 @@ register_model(
 
 register_model(
     ModelMeta(
-        LLMModelType.qwq, [ModelGroup([
+        LLMModelType.qwq,
+        [ModelGroup([
             Model('Qwen/QwQ-32B', 'Qwen/QwQ-32B'),
             Model('Qwen/QwQ-32B-AWQ', 'Qwen/QwQ-32B-AWQ'),
         ])],
