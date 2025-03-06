@@ -142,6 +142,7 @@ class SwiftInfer(SwiftPipeline):
                 data = infer_state.to_dict()
                 response = self.infer_single(data, request_config)
                 infer_state.add_response(response)
+                data['messages'].append({'role': 'assistant', 'content': response})
                 data = {'response': response, **data}
             result_list.append(data)
             if self.jsonl_writer:
@@ -196,6 +197,7 @@ class SwiftInfer(SwiftPipeline):
                     print(f'[LABELS] {labels}')
                 print('[RESPONSE] ', end='')
                 response = self.infer_single(data, request_config)
+                data['messages'].append({'role': 'assistant', 'content': response})
                 data = {'response': response, 'labels': labels, **data}
                 result_list.append(data)
                 if self.jsonl_writer:
@@ -218,6 +220,7 @@ class SwiftInfer(SwiftPipeline):
                 val_dataset, request_config, template=self.template, use_tqdm=True, **self.infer_kwargs)
             for data, resp, labels in zip(val_dataset, resp_list, labels_list):
                 response = resp.choices[0].message.content
+                data['messages'].append({'role': 'assistant', 'content': response})
                 data = {'response': response, 'labels': labels, 'logprobs': resp.choices[0].logprobs, **data}
                 result_list.append(data)
             if self.jsonl_writer:
