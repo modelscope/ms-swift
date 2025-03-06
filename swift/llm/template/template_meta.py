@@ -40,6 +40,7 @@ class TemplateMeta:
     template_cls: Type[Template] = Template
     system_prefix: Optional[Prompt] = None
     default_system: Optional[str] = None
+    response_prefix: str = ''
 
     auto_add_bos: bool = False
     stop_words: List[Word] = field(default_factory=list)

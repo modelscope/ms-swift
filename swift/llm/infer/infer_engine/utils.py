@@ -48,8 +48,7 @@ class InferStreamer(InferTools):
         self.template = template
         self.tokenizer = template.tokenizer
 
-        self.token_cache = []  # Reduce the time of tokenizer.decode
-        self.cache_idx = 0
+        self.cache_idx = 0  # token idx
         self.print_idx = 0
         self.decode_kwargs = decode_kwargs
         self.first_num_space = -1  # The number of whitespace characters before the first token.
@@ -65,11 +64,11 @@ class InferStreamer(InferTools):
             response = response[cur_num_space - self.first_num_space:]
         return response
 
-    def _get_response(self, response: str, is_finished: bool) -> str:
+    def _get_response(self, response: str, is_finished: bool, token_len: int) -> str:
         # After the symbol for a new line, we flush the cache.
         if response.endswith('\n') or is_finished:
             printable_text = response[self.print_idx:]
-            self.cache_idx += len(self.token_cache)
+            self.cache_idx += token_len
             self.first_num_space = -1
             self.print_idx = 0
         # If the last token is a CJK character, we print the characters.
@@ -84,10 +83,10 @@ class InferStreamer(InferTools):
         return printable_text
 
     def get_printable_text(self, raw_tokens: List[int], is_finished: bool) -> str:
-        self.token_cache = raw_tokens[self.cache_idx:]
-        response = self.template.decode(self.token_cache, is_finished, tokenizer_kwargs=self.decode_kwargs)
+        response = self.template.decode(
+            raw_tokens, is_finished, tokenizer_kwargs=self.decode_kwargs, start=self.cache_idx)
         response = self._align_blank_suffix(response)
-        return self._get_response(response, is_finished)
+        return self._get_response(response, is_finished, len(raw_tokens) - self.cache_idx)
 
 
 class StreamerMixin:
