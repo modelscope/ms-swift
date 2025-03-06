@@ -28,9 +28,8 @@ def replace_and_concat(template: 'Template', template_list: List, placeholder: s
 
 
 def export_to_ollama(args: ExportArguments):
+    args.device_map = 'meta'  # Accelerate load speed.
     logger.info('Exporting to ollama:')
-    logger.info('If you have a gguf file, try to pass the file by :--gguf_file /xxx/xxx.gguf, '
-                'else SWIFT will use the original(merged) model dir')
     os.makedirs(args.output_dir, exist_ok=True)
     model, template = prepare_model_template(args)
     pt_engine = PtEngine.from_model_template(model, template)
