@@ -453,7 +453,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         for i, output in enumerate(outputs):
             messages = inputs[i]['messages']
             InferRequest.remove_response(messages)
-            messages.append({'role': 'assistant', 'content': output.outputs[0].text})
+            messages.append({'role': 'assistant', 'content': output.choices[0].message.content})
         from copy import copy
         template = copy(self.template)
         with self._template_context(template):
