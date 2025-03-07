@@ -7,6 +7,7 @@ import torch
 import torch.distributed as dist
 
 from swift.utils import get_logger
+from ..utils import set_default_ddp_config
 from .base_args import BaseArguments, to_abspath
 from .merge_args import MergeArguments
 
@@ -93,12 +94,7 @@ class ExportArguments(MergeArguments, BaseArguments):
         if self.quant_method in {'gptq', 'awq'} and self.torch_dtype is None:
             self.torch_dtype = torch.float16
         if self.to_megatron or self.to_hf:
-            os.environ['RANK'] = '0'
-            os.environ['LOCAL_RANK'] = '0'
-            os.environ['WORLD_SIZE'] = '1'
-            os.environ['LOCAL_WORLD_SIZE'] = '1'
-            os.environ['MASTER_ADDR'] = '127.0.0.1'
-            os.environ['MASTER_PORT'] = os.environ.get('MASTER_PORT', '29500')
+            set_default_ddp_config()
             dist.init_process_group(backend='nccl')
 
         BaseArguments.__post_init__(self)

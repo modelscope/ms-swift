@@ -19,7 +19,7 @@ def convert_hf2megatron(args: ExportArguments) -> None:
     kwargs['torch_dtype'] = torch.float32
     hf_model, processor = get_model_tokenizer(**kwargs)
     megatron_model_meta = get_megatron_model_meta(args.model)
-    kwargs = megatron_model_meta.load_config(hf_model.model_info)
+    kwargs = megatron_model_meta.load_config(processor.model_info.config)
     kwargs.update({'seq_length': 1, 'use_cpu_initialization': True, 'load': args.model_dir, 'save': args.output_dir})
     megatron_args = MegatronArguments(**kwargs, **MegatronArguments.get_matched_kwargs(args))
     patch_megatron(processor)
@@ -38,7 +38,7 @@ def convert_megatron2hf(args: ExportArguments) -> None:
     kwargs['torch_dtype'] = torch.float32
     hf_model, processor = get_model_tokenizer(**kwargs)
     megatron_model_meta = get_megatron_model_meta(args.model)
-    kwargs = megatron_model_meta.load_config(hf_model.model_info)
+    kwargs = megatron_model_meta.load_config(processor.model_info.config)
     kwargs.update({
         'seq_length': 1,
         'use_cpu_initialization': True,

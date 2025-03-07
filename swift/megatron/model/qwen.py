@@ -12,8 +12,8 @@ from .register import MegatronModelMeta, register_megatron_model
 from .utils import get_model_provider
 
 
-def load_qwen_config(model_info: ModelInfo) -> Dict[str, Any]:
-    args_config = load_config(model_info)
+def load_qwen_config(config) -> Dict[str, Any]:
+    args_config = load_config(config)
     args_config['swiglu'] = True
     return args_config
 

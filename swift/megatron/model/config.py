@@ -16,14 +16,13 @@ config_mapping = {
 }
 
 
-def load_config(model_info: ModelInfo) -> Dict[str, Any]:
-    model_config = model_info.config
+def load_config(config) -> Dict[str, Any]:
     megatron_config = {}
     for k, value in config_mapping.items():
         for v in value:
-            assert hasattr(model_config, v)
+            assert hasattr(config, v)
             if k == 'rotary_base':
-                megatron_config[k] = int(getattr(model_config, v))
+                megatron_config[k] = int(getattr(config, v))
             else:
-                megatron_config[k] = getattr(model_config, v)
+                megatron_config[k] = getattr(config, v)
     return megatron_config

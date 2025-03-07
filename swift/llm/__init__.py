@@ -28,7 +28,7 @@ if TYPE_CHECKING:
                           RowPreprocessor, DatasetMeta, HfDataset, SubsetDataset)
     from .utils import (deep_getattr, to_float_dtype, to_device, History, Messages, history_to_messages,
                         messages_to_history, Processor, save_checkpoint, ProcessorMixin,
-                        get_temporary_cache_files_directory, get_cache_dir)
+                        get_temporary_cache_files_directory, get_cache_dir, set_default_ddp_config)
     from .base import SwiftPipeline
 else:
     _extra_objects = {k: v for k, v in globals().items() if not k.startswith('_')}
@@ -68,7 +68,7 @@ else:
         'utils': [
             'deep_getattr', 'to_device', 'to_float_dtype', 'History', 'Messages', 'history_to_messages',
             'messages_to_history', 'Processor', 'save_checkpoint', 'ProcessorMixin',
-            'get_temporary_cache_files_directory', 'get_cache_dir'
+            'get_temporary_cache_files_directory', 'get_cache_dir', 'set_default_ddp_config'
         ],
         'base': ['SwiftPipeline'],
     }
