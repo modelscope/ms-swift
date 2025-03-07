@@ -15,7 +15,7 @@ from tqdm import tqdm
 from transformers import GenerationConfig, LogitsProcessorList
 from transformers.utils import is_torch_npu_available
 
-from swift.llm import InferRequest, Template, get_model_tokenizer, safe_snapshot_download, to_device
+from swift.llm import InferRequest, Template, TemplateMeta, get_model_tokenizer, safe_snapshot_download, to_device
 from swift.plugin import Metric
 from swift.tuners import Swift
 from swift.utils import get_logger
@@ -164,8 +164,7 @@ class PtEngine(InferEngine):
         return _GenerationConfig(**generation_config.to_dict())
 
     def _add_stop_words(self, generation_config: _GenerationConfig, request_config: RequestConfig,
-                        template: Template) -> None:
-        template_meta = template.template_meta
+                        template_meta: TemplateMeta) -> None:
         stop_words = (request_config.stop or []) + template_meta.stop_words
         generation_config.stop_words = self._get_stop_words(stop_words)
 
@@ -477,7 +476,7 @@ class PtEngine(InferEngine):
             if self.model_info.task_type == 'causal_lm':
                 self.set_default_max_tokens(request_config, inputs)
                 generation_config = self._prepare_generation_config(request_config)
-                self._add_stop_words(generation_config, request_config, template)
+                self._add_stop_words(generation_config, request_config, template.template_meta)
 
             kwargs = {
                 'template': template,
