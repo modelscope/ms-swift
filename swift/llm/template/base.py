@@ -931,12 +931,7 @@ class Template(ProcessorMixin):
         self._deepspeed_initialize = None
         return models
 
-    def data_collator(
-        self,
-        batch: List[Dict[str, Any]],
-        *,
-        padding_to: Optional[int] = None,
-    ) -> Dict[str, Any]:
+    def data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         if self.mode == 'rlhf':
             return self._rlhf_data_collator(batch, padding_to=padding_to)
         elif self.mode == 'kto':
@@ -1023,12 +1018,7 @@ class Template(ProcessorMixin):
             res['labels'] = torch.tensor(labels, dtype=torch.long)
         return res
 
-    def _data_collator(
-        self,
-        batch: List[Dict[str, Any]],
-        *,
-        padding_to: Optional[int] = None,
-    ) -> Dict[str, Any]:
+    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         """
         Args:
             batch(`List[Dict[str, Any]]`): The input data in batch

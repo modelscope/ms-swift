@@ -649,25 +649,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                       model: nn.Module,
                       inputs: Dict[str, Union[torch.Tensor, Any]],
                       num_items_in_batch=None) -> torch.Tensor:
-                      
-        original_step = self.optimizer.step
-        def patched_step(*args, **kwargs):
-            if hasattr(patched_step, "skip_step") and patched_step.skip_step:
-                print("Gradient norm is too large. Skipping optimizer step.")
-                patched_step.skip_step = False  # Reset for next step
-            else:
-                original_step(*args, **kwargs)
-        if not hasattr(self.optimizer, "_old_step"):
-            self.optimizer.step = patched_step
-            self.optimizer._old_step = original_step
 
         if self.args.mini_batch_size is None:
-            loss = super().training_step(model, inputs, num_items_in_batch)
-            grad_norm = model.get_global_grad_norm()
-            if torch.isnan(grad_norm) or grad_norm.item() > 10:
-                self.optimizer.zero_grad() 
-                self.optimizer.skip_step = True
-            return loss
+            return super().training_step(model, inputs, num_items_in_batch)
         model.train()
         if hasattr(self.optimizer, 'train') and callable(self.optimizer.train):
             self.optimizer.train()
@@ -727,7 +711,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         Splits a full batch into multiple mini-batches based on the specified mini_batch_size.
 
         Args:
-            batch (List[Dict[str, Any]]): The full batch. 
+            batch (List[Dict[str, Any]]): The full batch.
             mini_batch_size (int): The size of each mini-batch.
 
         Returns:
