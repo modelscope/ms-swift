@@ -460,8 +460,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         from copy import copy
         template = copy(self.template)
         with self._template_context(template):
-            for inputs in mini_batch_inputs:
-                batched_inputs = [template.encode(infer_request) for infer_request in inputs]
+            for mini_batch in mini_batch_inputs:
+                batched_inputs = [template.encode(infer_request) for infer_request in mini_batch]
                 batches.append(template.data_collator(batched_inputs))
 
         batches = [to_device(batch, self.model.device) for batch in batches]
@@ -649,8 +649,25 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                       model: nn.Module,
                       inputs: Dict[str, Union[torch.Tensor, Any]],
                       num_items_in_batch=None) -> torch.Tensor:
+                      
+        original_step = self.optimizer.step
+        def patched_step(*args, **kwargs):
+            if hasattr(patched_step, "skip_step") and patched_step.skip_step:
+                print("Gradient norm is too large. Skipping optimizer step.")
+                patched_step.skip_step = False  # Reset for next step
+            else:
+                original_step(*args, **kwargs)
+        if not hasattr(self.optimizer, "_old_step"):
+            self.optimizer.step = patched_step
+            self.optimizer._old_step = original_step
+
         if self.args.mini_batch_size is None:
-            return super().training_step(model, inputs, num_items_in_batch)
+            loss = super().training_step(model, inputs, num_items_in_batch)
+            grad_norm = model.get_global_grad_norm()
+            if torch.isnan(grad_norm) or grad_norm.item() > 10:
+                self.optimizer.zero_grad() 
+                self.optimizer.skip_step = True
+            return loss
         model.train()
         if hasattr(self.optimizer, 'train') and callable(self.optimizer.train):
             self.optimizer.train()
@@ -705,24 +722,24 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return total_loss.detach()
 
-    def _split_into_mini_batches(self, batch: Dict[str, Any], mini_batch_size: int) -> List[Dict[str, Any]]:
+    def _split_into_mini_batches(self, batch: List[Dict[str, Any]], mini_batch_size: int) -> List[List[Dict[str, Any]]]:
         """
         Splits a full batch into multiple mini-batches based on the specified mini_batch_size.
 
         Args:
-            batch (Dict[str, Any]): The full batch returned by `_data_collator`.
+            batch (List[Dict[str, Any]]): The full batch. 
             mini_batch_size (int): The size of each mini-batch.
 
         Returns:
-            List[Dict[str, Any]]: A list of mini-batches.
+            List[List[Dict[str, Any]]]: A list of mini-batches.
         """
-        if mini_batch_size is None or mini_batch_size >= len(batch['input_ids']):
+        if mini_batch_size is None or mini_batch_size >= len(batch):
             # If mini_batch_size is not specified or larger than the batch size,
             # return the full batch as a single mini-batch
             return [batch]
 
         mini_batches = []
-        for i in range(0, len(batch['input_ids']), mini_batch_size):
-            mini_batch = {key: value[i:i + mini_batch_size] for key, value in batch.items()}
+        for i in range(0, len(batch), mini_batch_size):
+            mini_batch = batch[i:i + mini_batch_size]
             mini_batches.append(mini_batch)
         return mini_batches
