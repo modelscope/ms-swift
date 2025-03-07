@@ -361,12 +361,11 @@ class Template(ProcessorMixin):
                is_finished: bool = True,
                *,
                tokenizer_kwargs=None,
-               start=0,
+               first_token=True,
                **kwargs) -> Any:
-        generate_ids = generate_ids[start:]
         tokenizer_kwargs = tokenizer_kwargs or {}
         response = self._skip_stop_decode(generate_ids, is_finished, **tokenizer_kwargs)
-        if start == 0 and self.template_meta.response_prefix:
+        if first_token and self.template_meta.response_prefix:
             response = self.template_meta.response_prefix + response
         return response
 
