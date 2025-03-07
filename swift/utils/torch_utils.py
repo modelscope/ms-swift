@@ -236,7 +236,7 @@ def safe_ddp_context(hash_id: str, timeout: float = -1):
     os.makedirs(lock_dir, exist_ok=True)
     file_path = hashlib.sha256(hash_id.encode('utf-8')).hexdigest() + '.lock'
     file_path = os.path.join(lock_dir, file_path)
-    with FileLock(file_path):
+    with FileLock(file_path, timeout=timeout):
         yield
 
 
