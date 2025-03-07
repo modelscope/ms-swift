@@ -538,7 +538,7 @@ def get_model_tokenizer(
     kwargs['attn_impl'] = attn_impl
     kwargs['rope_scaling'] = rope_scaling
     kwargs['model_meta'] = model_meta
-    with safe_ddp_context(hash_id=f'{model_dir}-load'):
+    with safe_ddp_context(hash_id=f'{model_dir}-load', timeout=5):
         model, processor = get_function(model_dir, model_info, model_kwargs, load_model, **kwargs)
 
     if not isinstance(processor, PreTrainedTokenizerBase) and hasattr(processor, 'tokenizer'):

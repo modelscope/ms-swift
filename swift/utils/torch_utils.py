@@ -231,7 +231,7 @@ def find_all_linears(model: nn.Module) -> List[str]:
 
 
 @contextmanager
-def safe_ddp_context(hash_id: str):
+def safe_ddp_context(hash_id: str, timeout: float = -1):
     lock_dir = os.path.join(get_cache_dir(), 'lockers')
     os.makedirs(lock_dir, exist_ok=True)
     file_path = hashlib.sha256(hash_id.encode('utf-8')).hexdigest() + '.lock'
