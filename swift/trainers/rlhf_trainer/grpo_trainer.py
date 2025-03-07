@@ -75,6 +75,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.train_queue = Queue()
         self.eval_queue = Queue()
         self.processing_class = kwargs.get('template').tokenizer
+        if self.args.tensor_parallel_size > 1:
+            _, _, _, local_world_size = get_dist_setting()
+            assert get_device_count() == local_world_size == self.args.num_infer_workers, ('tensor_parallel_size>1 '
+                                                                                           'only supports num_infer_'
+                                                                                           'workers==your available '
+                                                                                           'device count')
         if not isinstance(reward_funcs, list):
             reward_funcs = [reward_funcs]
 
@@ -172,20 +178,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 if use_vllm:
                     if not is_vllm_available():
                         raise ImportError('vLLM is not available and `use_vllm` is set to True. '
-                                          'Please install vLLM with `pip install vllm` to use it.')
+                                          'Please install vLLM with `pip install vllm -U` to use it.')
                     self.prepare_vllm(model, fast_infer_device)
                 elif use_lmdeploy:
-                    # https://github.com/tastelikefeet/lmdeploy.git@feat/reload_state_dict_064
-                    # Compile:https://github.com/tastelikefeet/lmdeploy/blob/main/docs/en/get_started/installation.md
                     if not is_lmdeploy_available():
-                        raise ImportError('Please install `pip install lmdeploy==0.7.1`'
-                                          ' and replace three files with:\n'
-                                          '1. https://github.com/tastelikefeet/lmdeploy/blob/feat/'
-                                          'reload_state_dict_064/lmdeploy/messages.py\n'
-                                          '2. https://github.com/tastelikefeet/lmdeploy/blob/feat/'
-                                          'reload_state_dict_064/lmdeploy/turbomind/turbomind.py\n'
-                                          '3. https://github.com/tastelikefeet/lmdeploy/blob/feat/'
-                                          'reload_state_dict_064/lmdeploy/turbomind/deploy/loader.py\n')
+                        raise ImportError('LMDeploy is not available and `use_lmdeploy` is set to True.'
+                                          'Please install LMDeploy with `pip install lmdeploy -U` to use it.')
                     from swift.llm import LmdeployEngine
                     from swift.tuners import Swift
                     with Swift.grpo_context(model, self.template.processor):
