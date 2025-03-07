@@ -51,7 +51,7 @@ def convert_megatron2hf(args: ExportArguments) -> None:
     extra_args = megatron_args.parse_to_megatron()
     initialize_megatron(args_defaults=extra_args)
 
-    mg_model = megatron_model_meta.convert_megatron2hf(hf_model, megatron_model_meta.get_model_provider())
+    megatron_model_meta.convert_megatron2hf(hf_model, megatron_model_meta.get_model_provider())
     if args.torch_dtype is not None:
         hf_model.to(args.torch_dtype)
     save_checkpoint(

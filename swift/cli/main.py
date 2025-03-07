@@ -22,7 +22,7 @@ ROUTE_MAPPING: Dict[str, str] = {
     'eval': 'swift.cli.eval',
     'app': 'swift.cli.app',
     # megatron
-    'mg-sft': 'swift.cli.mg_sft'
+    'megatron-sft': 'swift.cli.megatron_sft'
 }
 
 
