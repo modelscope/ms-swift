@@ -15,6 +15,7 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 from datasets.utils.filelock import FileLock
+from filelock import Timeout
 from modelscope.hub.utils.utils import get_cache_dir
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import is_torch_cuda_available, is_torch_mps_available, is_torch_npu_available
@@ -236,8 +237,15 @@ def safe_ddp_context(hash_id: str, timeout: float = -1):
     os.makedirs(lock_dir, exist_ok=True)
     file_path = hashlib.sha256(hash_id.encode('utf-8')).hexdigest() + '.lock'
     file_path = os.path.join(lock_dir, file_path)
-    with FileLock(file_path, timeout=timeout):
+    lock = FileLock(file_path)
+    try:
+        lock.acquire(timeout=timeout)
+    except Timeout:
+        pass
+    try:
         yield
+    finally:
+        lock.release()
 
 
 def get_device(rank: Optional[Union[str, int]] = None) -> str:
