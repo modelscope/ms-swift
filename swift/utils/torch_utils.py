@@ -240,10 +240,9 @@ def safe_ddp_context(hash_id: str, timeout: float = -1):
     lock = FileLock(file_path)
     try:
         lock.acquire(timeout=timeout)
+        yield
     except Timeout:
         pass
-    try:
-        yield
     finally:
         lock.release()
 
