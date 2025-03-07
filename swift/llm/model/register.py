@@ -17,7 +17,8 @@ from transformers.utils import (is_torch_bf16_gpu_available, is_torch_cuda_avail
                                 is_torch_npu_available, strtobool)
 from transformers.utils.versions import require_version
 
-from swift.utils import get_dist_setting, get_logger, is_mp, is_unsloth_available, patch_getattr, use_torchacc
+from swift.utils import (get_dist_setting, get_logger, is_mp, is_unsloth_available, patch_getattr, safe_ddp_context,
+                         use_torchacc)
 from .constant import ModelType
 from .patcher import patch_automodel_for_awq, patch_automodel_for_sequence_classification, patch_mp_ddp
 from .utils import AttnImpl, HfConfigFactory, ModelInfo, safe_snapshot_download
@@ -537,7 +538,8 @@ def get_model_tokenizer(
     kwargs['attn_impl'] = attn_impl
     kwargs['rope_scaling'] = rope_scaling
     kwargs['model_meta'] = model_meta
-    model, processor = get_function(model_dir, model_info, model_kwargs, load_model, **kwargs)
+    with safe_ddp_context(hash_id=model_dir):
+        model, processor = get_function(model_dir, model_info, model_kwargs, load_model, **kwargs)
 
     if not isinstance(processor, PreTrainedTokenizerBase) and hasattr(processor, 'tokenizer'):
         tokenizer = processor.tokenizer

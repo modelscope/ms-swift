@@ -26,8 +26,7 @@ class QuantEngine(ProcessorMixin):
 
         HfConfigFactory.set_model_config_attr(self.model, 'use_cache', False)
         self.processor = self.template.processor
-        if args.output_dir:
-            args.save_args()
+        args.save_args()
 
     def quantize(self):
         args = self.args
