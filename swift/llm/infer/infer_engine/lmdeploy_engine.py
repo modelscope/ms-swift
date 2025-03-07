@@ -50,14 +50,14 @@ class LmdeployEngine(InferEngine):
         cache_max_entry_count: float = 0.8,
         quant_policy: int = 0,  # e.g. 4, 8
         vision_batch_size: int = 1,  # max_batch_size in VisionConfig
-        device: Optional[List[int]] = None,
+        devices: Optional[List[int]] = None,
         reload_weights: bool = False,
         engine_kwargs: Optional[Dict[str, Any]] = None,
     ) -> None:
         version_7 = version.parse(lmdeploy.__version__) >= version.parse('0.7.0')
         if reload_weights:
             assert version_7, 'grpo or reload_weights need lmdeploy>=0.7.0'
-        if version_7:
+        if version_7 and tp == 1:
             patch_lmdeploy(reload_weights)
         self.processor = get_model_tokenizer(
             model_id_or_path,
@@ -78,11 +78,22 @@ class LmdeployEngine(InferEngine):
             cache_max_entry_count=cache_max_entry_count,
             quant_policy=quant_policy,
             vision_batch_size=vision_batch_size,
-            device=device,
+            devices=devices,
             engine_kwargs=engine_kwargs)
 
         self.config.torch_dtype = torch_dtype or self.model_info.torch_dtype
-        self._prepare_engine()
+
+        @contextmanager
+        def disable_deepspeed():
+            from transformers import modeling_utils
+            modeling_utils.is_deepspeed_zero3_enabled_origin = modeling_utils.is_deepspeed_zero3_enabled
+            modeling_utils.is_deepspeed_zero3_enabled = lambda: False
+            yield
+            modeling_utils.is_deepspeed_zero3_enabled = modeling_utils.is_deepspeed_zero3_enabled_origin
+            del modeling_utils.is_deepspeed_zero3_enabled_origin
+
+        with disable_deepspeed():
+            self._prepare_engine()
         self._load_generation_config()
 
     def _prepare_engine_kwargs(self,
@@ -91,7 +102,7 @@ class LmdeployEngine(InferEngine):
                                cache_max_entry_count: float = 0.8,
                                quant_policy: int = 0,
                                vision_batch_size: int = 1,
-                               device: Optional[List[int]] = None,
+                               devices: Optional[List[int]] = None,
                                engine_kwargs: Optional[Dict[str, Any]] = None):
         if engine_kwargs is None:
             engine_kwargs = {}
@@ -102,9 +113,9 @@ class LmdeployEngine(InferEngine):
         backend_config = TurbomindEngineConfig(**engine_kwargs)
         backend_config = autoget_backend_config(self.model_dir, backend_config)
         if hasattr(backend_config, 'devices'):
-            if device is None:
-                device = [0]
-            backend_config.devices = device
+            if devices is None:
+                devices = [0]
+            backend_config.devices = devices
         self.backend_config = backend_config
         logger.info(f'backend_config: {backend_config}')
 
@@ -204,7 +215,7 @@ class LmdeployEngine(InferEngine):
             self, template: Template, inputs: Dict[str, Any],
             generation_config: LmdeployGenerationConfig) -> AsyncIterator[ChatCompletionStreamResponse]:
         session_id = time.time_ns()
-        kwargs = {'stream_output': False, 'gen_config': generation_config, 'sequence_start': True, 'sequence_end': True}
+        kwargs = {'stream_output': True, 'gen_config': generation_config, 'sequence_start': True, 'sequence_end': True}
         if version.parse(lmdeploy.__version__) >= version.parse('0.6.5'):
             async with self.engine.model_inst(session_id) as inst:
                 context = self.engine.safe_run(inst, session_id, **inputs, **kwargs)
@@ -255,6 +266,10 @@ class LmdeployEngine(InferEngine):
                 async with self.engine.safe_run(inst, session_id, **inputs, **kwargs) as gen:
                     async for output in gen:
                         pass
+                if self.engine.backend == 'pytorch':
+                    # manually end pytorch session
+                    await inst.async_end(session_id)
+
         else:
             async with self.engine.safe_run(session_id):
                 generator = await self.engine.get_generator(False, session_id)
@@ -323,6 +338,13 @@ class LmdeployEngine(InferEngine):
         else:
             return await self._infer_full_async(**kwargs)
 
+    def _batch_infer_stream(self, *args, **kwargs):
+        if hasattr(self.engine, 'vl_encoder'):
+            self.engine.vl_encoder._loop_task = None
+        if hasattr(self.engine, 'free_insts'):
+            self.engine.free_insts = None
+        return super()._batch_infer_stream(*args, **kwargs)
+
     def infer(
         self,
         infer_requests: List[InferRequest],
@@ -331,9 +353,5 @@ class LmdeployEngine(InferEngine):
         *,
         template: Optional[Template] = None,
         use_tqdm: Optional[bool] = None,
-    ) -> Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
-        if hasattr(self.engine, 'vl_encoder'):
-            self.engine.vl_encoder._loop_task = None
-        if hasattr(self.engine, 'free_insts'):
-            self.engine.free_insts = None
+    ) -> List[Union[ChatCompletionResponse, Iterator[ChatCompletionStreamResponse]]]:
         return super().infer(infer_requests, request_config, metrics, template=template, use_tqdm=use_tqdm)

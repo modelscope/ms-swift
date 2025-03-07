@@ -336,11 +336,13 @@ register_model(
                     Model('Qwen/Qwen2-Math-72B', 'Qwen/Qwen2-Math-72B'),
                 ],
                 tags=['math']),
-            ModelGroup([Model('PowerInfer/SmallThinker-3B-Preview', 'PowerInfer/SmallThinker-3B-Preview')]),
+            # qwen2.5-1m
             ModelGroup([
                 Model('Qwen/Qwen2.5-7B-Instruct-1M', 'Qwen/Qwen2.5-7B-Instruct-1M'),
                 Model('Qwen/Qwen2.5-14B-Instruct-1M', 'Qwen/Qwen2.5-14B-Instruct-1M'),
-            ])
+            ]),
+            # other
+            ModelGroup([Model('PowerInfer/SmallThinker-3B-Preview', 'PowerInfer/SmallThinker-3B-Preview')]),
         ],
         TemplateType.qwen,
         get_model_tokenizer_with_flash_attn,
@@ -555,7 +557,10 @@ register_model(
                 Model('bytedance-research/UI-TARS-7B-DPO', 'bytedance-research/UI-TARS-7B-DPO'),
                 Model('bytedance-research/UI-TARS-72B-SFT', 'bytedance-research/UI-TARS-72B-SFT'),
                 Model('bytedance-research/UI-TARS-72B-DPO', 'bytedance-research/UI-TARS-72B-DPO'),
-            ])
+            ]),
+            ModelGroup([
+                Model('allenai/olmOCR-7B-0225-preview', 'allenai/olmOCR-7B-0225-preview'),
+            ]),
         ],
         TemplateType.qwen2_vl,
         get_model_tokenizer_qwen2_vl,
@@ -633,7 +638,7 @@ register_model(
 register_model(
     ModelMeta(
         LLMModelType.marco_o1, [ModelGroup([Model('AIDC-AI/Marco-o1', 'AIDC-AI/Marco-o1')])],
-        LLMModelType.marco_o1,
+        TemplateType.marco_o1,
         get_model_tokenizer_with_flash_attn,
         model_arch=ModelArch.llama,
         architectures=['Qwen2ForCausalLM'],
@@ -641,8 +646,21 @@ register_model(
 
 register_model(
     ModelMeta(
-        LLMModelType.qwq, [ModelGroup([Model('Qwen/QwQ-32B-Preview', 'Qwen/QwQ-32B-Preview')])],
+        LLMModelType.qwq_preview, [ModelGroup([Model('Qwen/QwQ-32B-Preview', 'Qwen/QwQ-32B-Preview')])],
+        TemplateType.qwq_preview,
+        get_model_tokenizer_with_flash_attn,
+        model_arch=ModelArch.llama,
+        architectures=['Qwen2ForCausalLM'],
+        requires=['transformers>=4.37']))
+
+register_model(
+    ModelMeta(
         LLMModelType.qwq,
+        [ModelGroup([
+            Model('Qwen/QwQ-32B', 'Qwen/QwQ-32B'),
+            Model('Qwen/QwQ-32B-AWQ', 'Qwen/QwQ-32B-AWQ'),
+        ])],
+        TemplateType.qwq,
         get_model_tokenizer_with_flash_attn,
         model_arch=ModelArch.llama,
         architectures=['Qwen2ForCausalLM'],
@@ -650,6 +668,7 @@ register_model(
 
 
 def get_model_tokenizer_ovis(*args, **kwargs):
+    kwargs['attn_impl_keys'] = ['llm_attn_implementation']
     model, tokenizer = get_model_tokenizer_with_flash_attn(*args, **kwargs)
     model.visual_tokenizer.to(model.dtype)
     model.vte.to(model.dtype)
@@ -728,7 +747,7 @@ register_model(
         model_arch=ModelArch.ovis1_6,
         architectures=['Ovis'],
         tags=['vision'],
-        requires=['transformers>=4.46.2'],
+        requires=['transformers>=4.46.2', 'moviepy<2'],
     ))
 
 register_model(

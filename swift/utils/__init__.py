@@ -12,6 +12,6 @@ from .tb_utils import TB_COLOR, TB_COLOR_SMOOTH, plot_images, read_tensorboard_f
 from .torch_utils import (Serializer, activate_parameters, find_all_linears, find_embedding, find_norm,
                           freeze_parameters, gc_collect, get_device, get_device_count, get_model_parameter_info,
                           safe_ddp_context, show_layers, time_synchronize)
-from .utils import (add_version_to_work_dir, check_json_format, deep_getattr, find_free_port, get_env_args, lower_bound,
-                    parse_args, patch_getattr, read_multi_line, seed_everything, split_list, subprocess_run, test_time,
-                    upper_bound)
+from .utils import (add_version_to_work_dir, check_json_format, deep_getattr, find_free_port, get_env_args,
+                    import_external_file, lower_bound, parse_args, patch_getattr, read_multi_line, seed_everything,
+                    split_list, subprocess_run, test_time, upper_bound)

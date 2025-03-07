@@ -58,8 +58,15 @@ def test_qwen_vl():
 
 def test_qwen2_vl():
     model = 'Qwen/Qwen2-VL-2B-Instruct'
-    response = _infer_image_pipeline(model)
+    response = _infer_image_pipeline(model, prefix='<IMAGE_TOKEN>')
     response2 = _infer_image(model)
+    assert response == response2
+
+
+def test_qwen2_5_vl():
+    model = 'Qwen/Qwen2.5-VL-3B-Instruct'
+    response = _infer_image(model)
+    response2 = _infer_image_pipeline(model, prefix='<IMAGE_TOKEN>')
     assert response == response2
 
 
@@ -69,4 +76,5 @@ if __name__ == '__main__':
     # test_internvl2_5()
     # test_deepseek_vl()
     # test_qwen_vl()
-    test_qwen2_vl()
+    # test_qwen2_vl()
+    test_qwen2_5_vl()

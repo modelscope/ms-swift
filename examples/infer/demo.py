@@ -35,13 +35,13 @@ def infer_async_batch(engine: 'InferEngine', infer_requests: List['InferRequest'
 def infer_stream(engine: 'InferEngine', infer_request: 'InferRequest'):
     request_config = RequestConfig(max_tokens=512, temperature=0, stream=True)
     metric = InferStats()
-    gen = engine.infer([infer_request], request_config, metrics=[metric])
+    gen_list = engine.infer([infer_request], request_config, metrics=[metric])
     query = infer_request.messages[0]['content']
     print(f'query: {query}\nresponse: ', end='')
-    for resp_list in gen:
-        if resp_list[0] is None:
+    for resp in gen_list[0]:
+        if resp is None:
             continue
-        print(resp_list[0].choices[0].delta.content, end='', flush=True)
+        print(resp.choices[0].delta.content, end='', flush=True)
     print()
     print(f'metric: {metric.compute()}')
 

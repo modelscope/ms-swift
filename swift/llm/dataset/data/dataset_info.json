@@ -15,6 +15,11 @@
         "hf_dataset_id": "Clinton/texttosqlv2_25000_v2"
     },
     {
+        "ms_dataset_id": "AI-ModelScope/chartqa_digit_r1v_format",
+        "tags": ["grpo"],
+        "hf_dataset_id": "zyang39/chartqa_digit_r1v_format"
+    },
+    {
         "ms_dataset_id": "AI-ModelScope/school_math_0.25M",
         "tags": ["chat", "math", "quality"],
         "hf_dataset_id": "BelleGroup/school_math_0.25M"
@@ -672,5 +677,10 @@
         "hf_dataset_id": "FreedomIntelligence/medical-o1-reasoning-SFT",
         "subsets": ["en", "zh"],
         "tags": ["medical", "o1", "🔥"]
+    },
+    {
+        "ms_dataset_id": "lmms-lab/multimodal-open-r1-8k-verified",
+        "hf_dataset_id": "lmms-lab/multimodal-open-r1-8k-verified",
+        "tags": ["grpo", "vision", "🔥"]
     }
 ]

@@ -1174,3 +1174,21 @@ register_dataset(
         split=['train', 'validation'],
         preprocess_func=CapchaImagesPreprocessor(columns={'solution': 'response'}),
         tags=['chat', 'multi-modal', 'vision']))
+
+
+class ClevrPreprocessor(ResponsePreprocessor):
+
+    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        query = row.get('query', '')
+        query = (f'{query} Output the thinking process in <think> </think> and '
+                 'final answer (number) in <answer> </answer> tags.')
+        row.update({'query': query})
+        return super().preprocess(row)
+
+
+register_dataset(
+    DatasetMeta(
+        ms_dataset_id='okwinds/clevr_cogen_a_train',
+        hf_dataset_id='leonardPKU/clevr_cogen_a_train',
+        preprocess_func=ClevrPreprocessor(),
+        tags=['qa', 'math', 'vision', 'grpo']))

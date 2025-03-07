@@ -1,21 +1,24 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
-import contextlib
 import os
 import re
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
+from functools import partial
 from itertools import repeat
 from queue import Queue
 from typing import List, Optional
 
 import torch
+import torch.distributed as dist
 from packaging import version
 from transformers import GenerationConfig, LogitsProcessor
 from transformers.generation.streamers import BaseStreamer
 
 from swift.llm.model.register import fix_do_sample_warning
+from swift.utils import get_device, get_device_count, get_node_setting
 from ..protocol import RequestConfig
 
 
@@ -45,11 +48,11 @@ class InferStreamer(InferTools):
         self.template = template
         self.tokenizer = template.tokenizer
 
-        self.token_cache = []  # Reduce the time of tokenizer.decode
-        self.cache_idx = 0
+        self.cache_idx = 0  # token idx
         self.print_idx = 0
         self.decode_kwargs = decode_kwargs
         self.first_num_space = -1  # The number of whitespace characters before the first token.
+        self.first_token = True
 
     def _align_blank_suffix(self, response: str) -> str:
         # Avoid the occurrence of repeated words in sentence.
@@ -62,11 +65,11 @@ class InferStreamer(InferTools):
             response = response[cur_num_space - self.first_num_space:]
         return response
 
-    def _get_response(self, response: str, is_finished: bool) -> str:
+    def _get_response(self, response: str, is_finished: bool, token_len: int) -> str:
         # After the symbol for a new line, we flush the cache.
         if response.endswith('\n') or is_finished:
             printable_text = response[self.print_idx:]
-            self.cache_idx += len(self.token_cache)
+            self.cache_idx += token_len
             self.first_num_space = -1
             self.print_idx = 0
         # If the last token is a CJK character, we print the characters.
@@ -81,10 +84,12 @@ class InferStreamer(InferTools):
         return printable_text
 
     def get_printable_text(self, raw_tokens: List[int], is_finished: bool) -> str:
-        self.token_cache = raw_tokens[self.cache_idx:]
-        response = self.template.decode(self.token_cache, is_finished, tokenizer_kwargs=self.decode_kwargs)
+        raw_tokens = raw_tokens[self.cache_idx:]
+        response = self.template.decode(
+            raw_tokens, is_finished, tokenizer_kwargs=self.decode_kwargs, first_token=self.first_token)
+        self.first_token = False
         response = self._align_blank_suffix(response)
-        return self._get_response(response, is_finished)
+        return self._get_response(response, is_finished, len(raw_tokens))
 
 
 class StreamerMixin:
@@ -212,7 +217,7 @@ def patch_lmdeploy(load_weights=False):
     from lmdeploy.turbomind.turbomind import TurboMind
     from lmdeploy.turbomind.utils import ModelSource
 
-    @contextlib.contextmanager
+    @contextmanager
     def patch_threadpool_map():
         ThreadPoolExecutor.map_origin = ThreadPoolExecutor.map
         ThreadPoolExecutor.map = lambda *args, **kwargs: []
@@ -220,7 +225,7 @@ def patch_lmdeploy(load_weights=False):
         ThreadPoolExecutor.map = ThreadPoolExecutor.map_origin
         del ThreadPoolExecutor.map_origin
 
-    @contextlib.contextmanager
+    @contextmanager
     def tm_model_context(self):
 
         def _get_tm_model(model_path,
@@ -342,3 +347,87 @@ def patch_lmdeploy(load_weights=False):
     TurboMindInstance.__origin_init__ = TurboMindInstance.__init__
     TurboMindInstance.__init__ = __init_ins__
     TurboMindInstance._create_model_instance = _create_model_instance
+
+
+def patch_vllm(world_size=1):
+
+    @contextmanager
+    def _get_context():
+        from vllm.distributed.parallel_state import GroupCoordinator
+        from unittest.mock import patch
+        try:
+            from vllm.worker.worker import Worker
+            getattr(Worker, '_assert_memory_footprint_increased_during_profiling')
+            profiling_patch = patch(
+                'vllm.worker.worker.Worker._assert_memory_footprint_increased_during_profiling', return_value=None)
+        except (ImportError, AttributeError):
+            profiling_patch = nullcontext()
+
+        __origin_init__ = GroupCoordinator.__init__
+
+        def get_world_size(group=None) -> int:
+            if not group:
+                # Given size
+                return world_size
+            else:
+                return torch.distributed.get_world_size_origin(group)
+
+        def __init__(self, group_ranks, local_rank, *args, **kwargs):
+            node_rank, nnodes = get_node_setting()
+            device_count = get_device_count()
+            num_infer_workers = world_size // nnodes
+
+            def map_rank_to_real_device(obj):
+                # Use the last devices
+                # world_size=4 gpus=8 [0,1,2,3] will map to [4,5,6,7]
+                diff = device_count - num_infer_workers
+                if diff < 0:
+                    diff = 0
+                if isinstance(obj, list):
+                    return [map_rank_to_real_device(o) for o in obj]
+                elif isinstance(obj, int):
+                    return obj + diff
+                else:
+                    raise ValueError(f'Unsupported type: {obj}')
+
+            if kwargs.get('group_name') == 'world':
+                local_rank = local_rank + node_rank * num_infer_workers
+            else:
+                local_rank = map_rank_to_real_device(local_rank - node_rank * num_infer_workers)
+            rank = dist.get_rank()
+            if world_size == 1 and [rank] not in group_ranks:
+                # for ddp inference
+                group_ranks = [[rank]]
+            return __origin_init__(self, group_ranks, local_rank, *args, **kwargs)
+
+        GroupCoordinator.__init__ = __init__
+
+        try:
+            with profiling_patch:
+                torch.distributed.get_world_size_origin = torch.distributed.get_world_size
+                torch.distributed.get_world_size = get_world_size
+                yield
+                torch.distributed.get_world_size = torch.distributed.get_world_size_origin
+                del torch.distributed.get_world_size_origin
+        finally:
+            GroupCoordinator.__init__ = __origin_init__
+
+    return _get_context() if dist.is_initialized() else nullcontext()
+
+
+def patch_npu_vllm(vllm_device: str):
+    if isinstance(vllm_device, int):
+        vllm_device = get_device(vllm_device)
+    device_type = vllm_device.split(':')[0]
+
+    @contextmanager
+    def new_group_context():
+        original_new_group = torch.distributed.new_group
+        try:
+            torch.distributed.new_group = partial(original_new_group, use_local_synchronization=True)
+            torch.npu.mem_get_info = partial(torch.npu.mem_get_info, device=vllm_device)
+            yield
+        finally:
+            torch.distributed.new_group = original_new_group
+
+    return new_group_context() if device_type == 'npu' else nullcontext()

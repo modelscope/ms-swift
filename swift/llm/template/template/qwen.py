@@ -13,7 +13,7 @@ from ..register import register_template
 from ..template_inputs import StdTemplateInputs
 from ..template_meta import TemplateMeta
 from ..utils import Context, Word, findall
-from ..vision_utils import load_audio, load_batch
+from ..vision_utils import load_audio, load_batch, load_video_ovis2
 from .llama import Llama3TemplateMeta
 from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
 
@@ -35,15 +35,26 @@ class Qwen2_5MathTemplateMeta(QwenTemplateMeta):
     default_system: Optional[str] = 'Please reason step by step, and put your final answer within \\boxed{}.'
 
 
-@dataclass
-class QwqTemplateMeta(QwenTemplateMeta):
-    default_system: Optional[str] = ('You are a helpful and harmless assistant. You are Qwen developed by Alibaba. '
-                                     'You should think step-by-step.')
-
+qwq_preview_system = ('You are a helpful and harmless assistant. You are Qwen developed by Alibaba. '
+                      'You should think step-by-step.')
 
 register_template(QwenTemplateMeta(LLMTemplateType.qwen))
 register_template(Qwen2_5TemplateMeta(LLMTemplateType.qwen2_5))
-register_template(QwqTemplateMeta(LLMTemplateType.qwq))
+register_template(QwenTemplateMeta(LLMTemplateType.qwq_preview, default_system=qwq_preview_system))
+
+
+class QwQTemplate(Template):
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        if not self.is_training:
+            for message in inputs.messages:
+                if message['role'] == 'assistant' and isinstance(message['content'], str):
+                    message['content'] = message['content'].split('</think>')[-1].lstrip('\n')
+        return super()._encode(inputs)
+
+
+register_template(
+    QwenTemplateMeta(LLMTemplateType.qwq, default_system=None, response_prefix='<think>\n', template_cls=QwQTemplate))
 
 register_template(Qwen2_5MathTemplateMeta(LLMTemplateType.qwen2_5_math))
 
@@ -410,10 +421,24 @@ register_template(
         template_cls=Ovis1_6Template,
     ))
 
+
+class Ovis2Template(Ovis1_6Template):
+    nframes = 12
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    inputs: StdTemplateInputs) -> List[Context]:
+        if media_type == 'image':
+            return [[-200], '\n']
+        elif media_type == 'video':
+            nframes = get_env_args('nframes', int, self.nframes)
+            inputs.images = load_video_ovis2(inputs.videos[index], nframes)
+            return [[-200] * nframes, '\n']
+
+
 register_template(
     QwenTemplateMeta(
         MLLMTemplateType.ovis2,
-        template_cls=Ovis1_6Template,
+        template_cls=Ovis2Template,
         placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
     ))
 

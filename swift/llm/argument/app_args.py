@@ -18,6 +18,7 @@ class AppArguments(WebUIArguments, DeployArguments):
     is_multimodal: Optional[bool] = None
 
     lang: Literal['en', 'zh'] = 'en'
+    verbose: bool = False
 
     def _init_torch_dtype(self) -> None:
         if self.base_url:
