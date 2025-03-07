@@ -77,10 +77,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.processing_class = kwargs.get('template').tokenizer
         if self.args.tensor_parallel_size > 1:
             _, _, _, local_world_size = get_dist_setting()
-            assert get_device_count() == local_world_size == self.args.num_infer_workers, ('tensor_parallel_size>1 '
-                                                                                           'only supports num_infer_'
-                                                                                           'workers==your available '
-                                                                                           'device count')
+            assert (get_device_count() == local_world_size == self.args.num_infer_workers
+                    and local_world_size > 1), ('tensor_parallel_size>1 only supports num_infer_workers==your '
+                                                'available device count')
         if not isinstance(reward_funcs, list):
             reward_funcs = [reward_funcs]
 
