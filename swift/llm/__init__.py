@@ -31,7 +31,6 @@ if TYPE_CHECKING:
                         get_temporary_cache_files_directory, get_cache_dir, set_default_ddp_config)
     from .base import SwiftPipeline
 else:
-    _extra_objects = {k: v for k, v in globals().items() if not k.startswith('_')}
     _import_structure = {
         'rlhf': ['rlhf_main'],
         'infer': [
@@ -80,5 +79,5 @@ else:
         globals()['__file__'],
         _import_structure,
         module_spec=__spec__,
-        extra_objects=_extra_objects,
+        extra_objects={},
     )
