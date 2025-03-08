@@ -297,14 +297,14 @@ def patch_mp_ddp():
 
 @contextmanager
 def patch_get_dynamic_module():
-    origin_get_class_from_dynamic_module = dynamic_module_utils.get_class_from_dynamic_module
+    origin_get_cached_module_file = dynamic_module_utils.get_cached_module_file
 
-    def new_get_class_from_dynamic_module(class_reference: str, *args, **kwargs):
+    def new_get_cached_module_file(class_reference: str, *args, **kwargs):
         with safe_ddp_context(hash_id=class_reference):
-            return origin_get_class_from_dynamic_module(class_reference, *args, **kwargs)
+            return origin_get_cached_module_file(class_reference, *args, **kwargs)
 
-    dynamic_module_utils.get_class_from_dynamic_module = new_get_class_from_dynamic_module
+    dynamic_module_utils.get_cached_module_file = new_get_cached_module_file
     try:
         yield
     finally:
-        dynamic_module_utils.get_class_from_dynamic_module = origin_get_class_from_dynamic_module
+        dynamic_module_utils.get_cached_module_file = origin_get_cached_module_file
