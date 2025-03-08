@@ -101,6 +101,9 @@ class GRPOArgumentsMixin:
     tensor_parallel_size: int = 1
     sleep_level: int = 0
 
+    # mini-batch
+    mini_batch_size: Optional[int] = None
+
 
 @dataclass
 class TrainingArguments(SwiftArgumentsMixin, HfTrainingArguments):
