@@ -23,7 +23,7 @@ from swift.llm import InferRequest, RequestConfig, RowPreprocessor, to_device
 from swift.llm.infer.infer_engine import GRPOVllmEngine
 from swift.plugin import orms
 from swift.utils import (JsonlWriter, get_device, get_device_count, get_dist_setting, get_logger, get_node_setting,
-                         is_lmdeploy_available, is_vllm_available, is_wandb_available)
+                         is_lmdeploy_available, is_vllm_available, is_wandb_available, gc_collect)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 
@@ -75,6 +75,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.train_queue = Queue()
         self.eval_queue = Queue()
         self.processing_class = kwargs.get('template').tokenizer
+        self.offload_modules = {}
+        self.offload_states = {}
         _, _, _, local_world_size = get_dist_setting()
         if self.args.tensor_parallel_size > 1:
             assert (get_device_count() == local_world_size == self.args.num_infer_workers
@@ -310,6 +312,53 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             template.set_mode(mode)
             template.max_length = max_length
 
+    @torch.no_grad()
+    def offload_model(self):
+        if len(self.offload_modules) > 0:
+            return
+        unwrapped_model = self.accelerator.unwrap_model(self.model)
+        for name, module in unwrapped_model.named_modules():
+            if module.device.type == torch.device('cuda'):
+                self.offload_modules[name] = module.device
+                module.to('cpu')
+
+    @torch.no_grad()
+    def load_model(self):
+        if len(self.offload_modules) == 0:
+            return
+        unwrapped_model = self.accelerator.unwrap_model(self.model)
+        for name, device in self.offload_modules.items():
+            unwrapped_model.get_submodule(name).to(device)
+        self.offload_modules.clear()
+
+    @torch.no_grad()
+    def offload_optimizer(self):
+        if len(self.offload_states) > 0:
+            return
+        if not self.optimizer.state:
+            return
+        for param_group in self.optimizer.param_groups:
+            for param in param_group['params']:
+                state = self.optimizer.state[param]
+                for key, value in state.items():
+                    if isinstance(value, torch.Tensor):
+                        self.offload_states[key] = value.device
+                        state[key] = value.to("cpu", non_blocking=True)
+
+    @torch.no_grad()
+    def load_optimizer(self):
+        if len(self.offload_states) == 0:
+            return
+        if not self.optimizer.state:
+            return
+        for param_group in self.optimizer.param_groups:
+            for param in param_group['params']:
+                state = self.optimizer.state[param]
+                for key, value in state.items():
+                    if isinstance(value, torch.Tensor):
+                        state[key] = value.to(self.offload_states[key], non_blocking=True)
+        self.offload_states.clear()
+
     @profiling_decorator
     def _move_model_to_vllm_lmdeploy(self):
         from accelerate.utils.other import is_compiled_module
@@ -387,6 +436,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     def _fast_infer(self, inputs):
         if self.args.sleep_level > 0 and self.infer_rank >= 0:
+            self.offload_model()
+            self.offload_optimizer()
             self.engine.engine.wake_up()
         # First, have main process load weights if needed
         if self.state.global_step != self._last_loaded_step:
@@ -420,6 +471,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         outputs = self.reorder_outputs(outputs, distributed_idx)
         if self.args.sleep_level > 0 and self.infer_rank >= 0:
             self.engine.engine.sleep(level=self.args.sleep_level)
+            self.load_model()
+            self.load_optimizer()
         return inputs, outputs
 
     @property
