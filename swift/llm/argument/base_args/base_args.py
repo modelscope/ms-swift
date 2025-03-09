@@ -235,7 +235,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
                 setattr(self, key, old_value)
         logger.info(f'Successfully loaded {args_path}.')
 
-    def save_args(self, output_dir = None) -> None:
+    def save_args(self, output_dir=None) -> None:
         if is_master():
             output_dir = output_dir or self.output_dir
             os.makedirs(output_dir, exist_ok=True)

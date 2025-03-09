@@ -1,10 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 import sys
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import torch
+
+from swift.llm.argument.base_args import to_abspath
 
 add_prefix_no_list = [
     'bias_swiglu_fusion', 'ropo_fusion', 'gradient_accumulation_fusion', 'save_optim', 'save_rng', 'load_optim',
@@ -117,8 +119,8 @@ class MegatronArguments(ExtraMegatronArguments):
     # mixed precision
     fp16: bool = False
     bf16: bool = False
-    apply_query_key_layer_scaling: bool = False
-    attention_softmax_in_fp32: bool = False
+    apply_query_key_layer_scaling: Optional[bool] = None
+    attention_softmax_in_fp32: bool = True
     hysteresis: int = 2
 
     # logging
@@ -140,13 +142,19 @@ class MegatronArguments(ExtraMegatronArguments):
     seed: int = 42
     init_method_std: float = 0.02
 
-    # data
+    # data & tokenizer
     seq_length: Optional[str] = None
     num_workers: int = 4
     eod_mask_loss: bool = False
     create_attention_mask_in_dataloader: bool = False
 
-    # tokenizer
+    def _init_mixed_precision(self):
+        if self.torch_dtype == torch.bfloat16:
+            self.bf16 = True
+        elif self.torch_dtype == torch.float16:
+            self.fp16 = True
+            if self.apply_query_key_layer_scaling is None:
+                self.apply_query_key_layer_scaling = True
 
     def __post_init__(self):
         os.environ['CUDA_DEVICE_MAX_CONNECTIONS'] = '1'
@@ -157,6 +165,9 @@ class MegatronArguments(ExtraMegatronArguments):
             self.seq_length = self.max_position_embeddings
         if self.tp_comm_overlap is None and self.sequence_parallel:
             self.tp_comm_overlap = True
+        if self.tensorboard_dir is None and self.save is not None:
+            self.tensorboard_dir = f'{self.save}/runs'
+        self.tensorboard_dir = to_abspath(self.tensorboard_dir)
 
     def _args_to_argv(self) -> Tuple[List[Any], Dict[str, Any]]:
         new_args = []
