@@ -1,12 +1,14 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
+import sys
 from dataclasses import dataclass, field
-from typing import List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
-_add_prefix_no: List[str] = [
+add_prefix_no_list = [
     'bias_swiglu_fusion', 'ropo_fusion', 'gradient_accumulation_fusion', 'save_optim', 'save_rng', 'load_optim',
     'load_rng', 'log_learning_rate_to_tensorboard', 'create_attention_mask_in_dataloader'
 ]
+add_prefix_no_list = set(add_prefix_no_list)
 
 
 @dataclass
@@ -149,8 +151,37 @@ class MegatronArguments(ExtraMegatronArguments):
     # tokenizer
 
     def __post_init__(self):
-        self.add_prefix_no = set(_add_prefix_no)
         os.environ['CUDA_DEVICE_MAX_CONNECTIONS'] = '1'
         self.group_query_attention = self.num_query_groups > 1
         if self.eval_interval is None:
             self.eval_interval = self.save_interval
+        if self.seq_length is None:
+            self.seq_length = self.max_position_embeddings
+
+    def _args_to_argv(self) -> Tuple[List[Any], Dict[str, Any]]:
+        new_args = []
+        args_dict = asdict(self)
+        extra_args = {}
+        for k, value in args_dict.items():
+            if k in add_prefix_no_list:
+                k = f'no_{k}'
+                value = not value
+            if k not in MegatronArguments.__annotations__:
+                extra_args[k] = value
+                continue
+            if value is None or value is False:
+                continue
+            new_args.append(f"--{k.replace('_', '-')}")
+            if isinstance(value, list):
+                new_args += [str(v) for v in value]
+            elif value is not True:
+                new_args.append(str(value))
+
+        return new_args, extra_args
+
+    def parse_to_megatron(self):
+        new_args, extra_args = self._args_to_argv()
+        sys._old_argv = sys.argv
+        sys.argv = sys.argv[:1] + new_args
+
+        return extra_args
