@@ -60,6 +60,7 @@ class Template(ProcessorMixin):
         tools_prompt: Optional[str] = None,
         norm_bbox: Literal['norm1000', 'none', None] = None,
         response_prefix: Optional[str] = None,
+        megatron_mode: bool = False,
         # only for train
         padding_side: Literal['left', 'right'] = 'right',
         loss_scale: str = 'default',
@@ -112,7 +113,7 @@ class Template(ProcessorMixin):
         self.norm_bbox = norm_bbox or self.norm_bbox
         if self.is_encoder_decoder:
             self.skip_prompt = False
-
+        self.megatron_mode = megatron_mode
         self.mode: Literal['pt', 'vllm', 'lmdeploy',  # infer
                            'train', 'rlhf', 'kto',  # train
                            'seq_cls', 'embedding', 'prm'] = 'pt'
@@ -315,6 +316,9 @@ class Template(ProcessorMixin):
                 encoded.pop(key)
         if return_template_inputs:
             encoded['template_inputs'] = inputs
+
+        if self.megatron_mode and encoded.get('labels'):
+            encoded['labels'] = encoded['labels'][1:] + [-100]
         return encoded
 
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
@@ -933,34 +937,22 @@ class Template(ProcessorMixin):
 
     def data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         if self.mode == 'rlhf':
-            return self._rlhf_data_collator(batch, padding_to=padding_to)
+            res = self._rlhf_data_collator(batch, padding_to=padding_to)
         elif self.mode == 'kto':
-            return self._kto_data_collator(batch, padding_to=padding_to)
+            res = self._kto_data_collator(batch, padding_to=padding_to)
         elif self.mode in {'pt', 'train', 'prm'}:
-            return self._data_collator(batch, padding_to=padding_to)
+            res = self._data_collator(batch, padding_to=padding_to)
         elif self.mode == 'seq_cls':
-            return self._seq_cls_data_collator(batch, padding_to=padding_to)
+            res = self._seq_cls_data_collator(batch, padding_to=padding_to)
         elif self.mode == 'embedding':
-            return self._embedding_data_collator(batch, padding_to=padding_to)
+            res = self._embedding_data_collator(batch, padding_to=padding_to)
 
-    def megatron_data_collator(self,
-                               batch: List[Dict[str, Any]],
-                               *,
-                               padding_to: Optional[int] = None) -> Dict[str, Any]:
-        from megatron.training.utils import get_ltor_masks_and_position_ids
-        res = self.data_collator(batch, padding_to=padding_to)
-        labels = res['labels']
-        new_labels = torch.zeros_like(labels)
-        new_labels[:, :-1] = labels[:, 1:]
-        new_labels[:, -1] = -100
-        attention_mask, loss_mask, position_ids = get_ltor_masks_and_position_ids(new_labels, -100, False, False, True)
-        return {
-            'tokens': res['input_ids'],
-            'labels': new_labels,
-            'attention_mask': attention_mask,
-            'loss_mask': loss_mask,
-            'position_ids': position_ids
-        }
+        if self.megatron_mode:
+            from megatron.training.utils import get_ltor_masks_and_position_ids
+            attention_mask, loss_mask, position_ids = get_ltor_masks_and_position_ids(
+                res['labels'], -100, False, False, True)
+            res.update({'attention_mask': attention_mask, 'loss_mask': loss_mask, 'position_ids': position_ids})
+        return res
 
     @staticmethod
     def _fetch_inputs_startswith(batch: List[Dict[str, Any]], prefix: str) -> List[Dict[str, Any]]:

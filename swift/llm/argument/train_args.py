@@ -164,6 +164,15 @@ class TrainArguments(SwanlabArguments, TorchAccArguments, TunerArguments, Seq2Se
     # zero++
     zero_hpz_partition_size: Optional[int] = None
 
+    def _init_lazy_tokenize(self):
+        if self.streaming and self.lazy_tokenize:
+            self.lazy_tokenize = False
+            logger.warning('Streaming and lazy_tokenize are incompatible. '
+                           f'Setting args.lazy_tokenize: {self.lazy_tokenize}.')
+        if self.lazy_tokenize is None:
+            self.lazy_tokenize = self.model_meta.is_multimodal and not self.streaming
+            logger.info(f'Setting args.lazy_tokenize: {self.lazy_tokenize}')
+
     def __post_init__(self) -> None:
         if self.resume_from_checkpoint:
             self.resume_from_checkpoint = to_abspath(self.resume_from_checkpoint, True)
@@ -190,14 +199,8 @@ class TrainArguments(SwanlabArguments, TorchAccArguments, TunerArguments, Seq2Se
 
         self._init_deepspeed()
         self._init_device()
+        self._init_lazy_tokenize()
 
-        if self.streaming and self.lazy_tokenize:
-            self.lazy_tokenize = False
-            logger.warning('Streaming and lazy_tokenize are incompatible. '
-                           f'Setting args.lazy_tokenize: {self.lazy_tokenize}.')
-        if self.lazy_tokenize is None:
-            self.lazy_tokenize = self.model_meta.is_multimodal and not self.streaming
-            logger.info(f'Setting args.lazy_tokenize: {self.lazy_tokenize}')
         if getattr(self, 'accelerator_config', None) is None:
             self.accelerator_config = {'dispatch_batches': False}
         self.training_args = TrainerFactory.get_training_args(self)
