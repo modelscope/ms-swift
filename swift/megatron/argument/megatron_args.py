@@ -1,8 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 import sys
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Literal, Optional, Tuple
+
+import torch
 
 add_prefix_no_list = [
     'bias_swiglu_fusion', 'ropo_fusion', 'gradient_accumulation_fusion', 'save_optim', 'save_rng', 'load_optim',
@@ -16,6 +18,7 @@ class ExtraMegatronArguments:
     padded_vocab_size: Optional[int] = None
     hf_ckpt_path: Optional[str] = None
 
+    torch_dtype: Optional[torch.dtype] = None
     target_tensor_model_parallel_size: int = 1
     target_pipeline_model_parallel_size: int = 1
 
@@ -83,7 +86,7 @@ class MegatronArguments(ExtraMegatronArguments):
     tensor_model_parallel_size: int = 1
     pipeline_model_parallel_size: int = 1
     context_parallel_size: int = 1
-    tp_comm_overlap: bool = True
+    tp_comm_overlap: Optional[bool] = None
     overlap_grad_reduce: bool = True
     overlap_param_gather: bool = True
     distributed_timeout_minutes: int = 60
@@ -138,11 +141,11 @@ class MegatronArguments(ExtraMegatronArguments):
     init_method_std: float = 0.02
 
     # data
-    data_path: List[str] = field(default=list)
+    data_path: List[str] = field(default_factory=list)
     split: str = '99,1,0'
-    train_data_path: Optional[str] = field(default=list)
-    valid_data_path: Optional[str] = field(default=list)
-    test_data_path: Optional[str] = field(default=list)
+    train_data_path: Optional[str] = field(default_factory=list)
+    valid_data_path: Optional[str] = field(default_factory=list)
+    test_data_path: Optional[str] = field(default_factory=list)
     seq_length: Optional[str] = None
     num_workers: int = 4
     eod_mask_loss: bool = False
@@ -157,18 +160,20 @@ class MegatronArguments(ExtraMegatronArguments):
             self.eval_interval = self.save_interval
         if self.seq_length is None:
             self.seq_length = self.max_position_embeddings
+        if self.tp_comm_overlap is None and self.sequence_parallel:
+            self.tp_comm_overlap = True
 
     def _args_to_argv(self) -> Tuple[List[Any], Dict[str, Any]]:
         new_args = []
         args_dict = asdict(self)
         extra_args = {}
         for k, value in args_dict.items():
-            if k in add_prefix_no_list:
-                k = f'no_{k}'
-                value = not value
             if k not in MegatronArguments.__annotations__:
                 extra_args[k] = value
                 continue
+            if k in add_prefix_no_list:
+                k = f'no_{k}'
+                value = not value
             if value is None or value is False:
                 continue
             new_args.append(f"--{k.replace('_', '-')}")

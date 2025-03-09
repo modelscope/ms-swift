@@ -5,8 +5,8 @@ from megatron.training.initialize import initialize_megatron
 
 from swift.llm import ExportArguments, get_model_tokenizer
 from swift.utils import get_logger
-from .model import get_megatron_model_meta
 from .argument import MegatronArguments
+from .model import get_megatron_model_meta
 from .utils import patch_megatron
 
 logger = get_logger()
@@ -18,9 +18,12 @@ def convert_hf2megatron(args: ExportArguments) -> None:
     hf_model, processor = get_model_tokenizer(**kwargs)
     megatron_model_meta = get_megatron_model_meta(args.model)
     kwargs = megatron_model_meta.load_config(processor.model_info.config)
-    kwargs.update({'seq_length': 1, 'use_cpu_initialization': True, 
-    'load': args.model_dir, 'save': args.output_dir,
-    'torch_dtype': args.torch_dtype})
+    kwargs.update({
+        'use_cpu_initialization': True,
+        'torch_dtype': args.torch_dtype,
+        'load': args.model_dir,
+        'save': args.output_dir
+    })
     megatron_args = MegatronArguments(**kwargs)
     patch_megatron(processor)
     extra_args = megatron_args.parse_to_megatron()

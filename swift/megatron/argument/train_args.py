@@ -13,3 +13,5 @@ class MegatronTrainArguments(MegatronArguments, BaseArguments):
     def __post_init__(self):
         BaseArguments.__post_init__(self)
         MegatronArguments.__post_init__(self)
+        if self.hf_ckpt_path is None:
+            self.hf_ckpt_path = self.model_dir
