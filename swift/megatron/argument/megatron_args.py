@@ -1,14 +1,13 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import os
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional
-import os
 
 _add_prefix_no: List[str] = [
-    'bias_swiglu_fusion', 'ropo_fusion', 'gradient_accumulation_fusion',
-    'save_optim', 'save_rng', 'load_optim', 'load_rng',
-    'log_learning_rate_to_tensorboard',
-    'create_attention_mask_in_dataloader'
+    'bias_swiglu_fusion', 'ropo_fusion', 'gradient_accumulation_fusion', 'save_optim', 'save_rng', 'load_optim',
+    'load_rng', 'log_learning_rate_to_tensorboard', 'create_attention_mask_in_dataloader'
 ]
+
 
 @dataclass
 class ExtraMegatronArguments:
@@ -17,6 +16,7 @@ class ExtraMegatronArguments:
 
     target_tensor_model_parallel_size: int = 1
     target_pipeline_model_parallel_size: int = 1
+
 
 @dataclass
 class MegatronArguments(ExtraMegatronArguments):
@@ -108,7 +108,6 @@ class MegatronArguments(ExtraMegatronArguments):
     hidden_dropout: float = 0.
     make_vocab_size_divisible_by: int = 128
     transformer_impl: Literal['local', 'transformer_engine'] = 'transformer_engine'
-
 
     # mixed precision
     fp16: bool = False
