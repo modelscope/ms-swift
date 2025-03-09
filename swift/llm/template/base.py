@@ -943,6 +943,25 @@ class Template(ProcessorMixin):
         elif self.mode == 'embedding':
             return self._embedding_data_collator(batch, padding_to=padding_to)
 
+    def megatron_data_collator(self,
+                               batch: List[Dict[str, Any]],
+                               *,
+                               padding_to: Optional[int] = None) -> Dict[str, Any]:
+        from megatron.training.utils import get_ltor_masks_and_position_ids
+        res = self.data_collator(batch, padding_to=padding_to)
+        labels = res['labels']
+        new_labels = torch.zeros_like(labels)
+        new_labels[:, :-1] = labels[:, 1:]
+        new_labels[:, -1] = -100
+        attention_mask, loss_mask, position_ids = get_ltor_masks_and_position_ids(new_labels, -100, False, False, True)
+        return {
+            'tokens': res['input_ids'],
+            'labels': new_labels,
+            'attention_mask': attention_mask,
+            'loss_mask': loss_mask,
+            'position_ids': position_ids
+        }
+
     @staticmethod
     def _fetch_inputs_startswith(batch: List[Dict[str, Any]], prefix: str) -> List[Dict[str, Any]]:
         new_batch = []

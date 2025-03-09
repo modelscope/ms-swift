@@ -141,11 +141,6 @@ class MegatronArguments(ExtraMegatronArguments):
     init_method_std: float = 0.02
 
     # data
-    data_path: List[str] = field(default_factory=list)
-    split: str = '99,1,0'
-    train_data_path: Optional[str] = field(default_factory=list)
-    valid_data_path: Optional[str] = field(default_factory=list)
-    test_data_path: Optional[str] = field(default_factory=list)
     seq_length: Optional[str] = None
     num_workers: int = 4
     eod_mask_loss: bool = False

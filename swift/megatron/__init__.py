@@ -13,12 +13,12 @@ from swift.utils.import_utils import _LazyModule
 
 if TYPE_CHECKING:
     from .train import megatron_sft_main
-    from .convert import convert_hf2megatron, convert_megatron2hf
+    from .utils import convert_hf2megatron, convert_megatron2hf
     from .argument import MegatronTrainArguments
 else:
     _import_structure = {
         'train': ['megatron_sft_main'],
-        'convert': ['convert_hf2megatron', 'convert_megatron2hf'],
+        'utils': ['convert_hf2megatron', 'convert_megatron2hf'],
         'argument': ['MegatronTrainArguments'],
     }
 

@@ -5,7 +5,7 @@ from typing import Any, Dict
 
 from megatron.training import get_args
 
-from swift.llm import Model, ModelGroup, ModelInfo
+from swift.llm import Model, ModelGroup
 from .config import load_config
 from .constant import MegatronModelType
 from .register import MegatronModelMeta, register_megatron_model
