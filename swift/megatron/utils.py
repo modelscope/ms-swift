@@ -1,7 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-import shutil
-import sys
 from functools import partial, wraps
 from typing import Any, Dict, List, Mapping, Optional
 
@@ -17,65 +15,6 @@ from swift.utils import (append_to_jsonl, get_dist_setting, get_logger, is_maste
                          safe_ddp_context, subprocess_run)
 
 logger = get_logger()
-
-
-def patch_megatron(tokenizer):
-
-    def build_tokenizer(args):
-        args.extra_vocab_size = args.padded_vocab_size - tokenizer.vocab_size
-        return tokenizer
-
-    global_vars.build_tokenizer = build_tokenizer
-
-    _old_initialize_distributed = initialize._initialize_distributed
-
-    @wraps(_old_initialize_distributed)
-    def _initialize_distributed(*_args, **kwargs):
-        args = get_args()
-        if dist.is_initialized():
-            args.rank, args.local_rank, args.world_size, args.local_world_size = get_dist_setting()
-            torch.cuda.set_device(args.local_rank)
-        return _old_initialize_distributed(*_args, **kwargs)
-
-    initialize._initialize_distributed = _initialize_distributed
-
-    _old_load_state_dict = torch.nn.Module.load_state_dict
-
-    @wraps(_old_load_state_dict)
-    def _load_state_dict(self, state_dict: Mapping[str, Any], strict: bool = True, *args, **kwargs):
-        if strict:
-            keys = self.state_dict().keys() ^ state_dict.keys()
-            new_keys = [k for k in keys if not k.endswith('_extra_state')]
-            if keys and not new_keys:
-                strict = False
-        return _old_load_state_dict(self, state_dict, strict, *args, **kwargs)
-
-    torch.nn.Module.load_state_dict = _load_state_dict
-
-    _old_training_log = training.training_log
-
-    @wraps(_old_training_log)
-    def training_log(loss_dict, total_loss_dict, learning_rate, decoupled_learning_rate, iteration, loss_scale,
-                     report_memory_flag, skipped_iter, grad_norm, params_norm, num_zeros_in_grad, *_args, **kwargs):
-        args = get_args()
-        if is_master() and iteration % args.log_interval == 0:
-            logging_path = os.path.join(args.save, 'logging.jsonl')
-            logs = {}
-            for k, v in loss_dict.items():
-                if isinstance(v, torch.Tensor):
-                    v = v.item()
-                logs[k] = round(v, 8)
-            logs['grad_norm'] = round(grad_norm, 8)
-            logs['learning_rate'] = round(learning_rate, 8)
-            logs['consumed_samples'] = args.consumed_train_samples
-            logs['global_step/max_steps'] = f'{iteration}/{args.train_iters}'
-
-            append_to_jsonl(logging_path, logs)
-        return _old_training_log(loss_dict, total_loss_dict, learning_rate, decoupled_learning_rate, iteration,
-                                 loss_scale, report_memory_flag, skipped_iter, grad_norm, params_norm,
-                                 num_zeros_in_grad, *_args, **kwargs)
-
-    training.training_log = training_log
 
 
 def loss_func(loss_mask: torch.Tensor, output_tensor: torch.Tensor):

@@ -49,16 +49,7 @@ def infer_hf_align():
     response2 = _infer_model(pt_engine)
     assert response == response2
 
-
-def test_train():
-    from swift.llm import sft_main, TrainArguments
-    sft_main(
-        TrainArguments(
-            megatron_model='Qwen2-7B-Instruct-megatron', dataset='AI-ModelScope/alpaca-gpt4-data-zh', load_args=True))
-
-
 if __name__ == '__main__':
     # hf2megatron()
     # megatron2hf()
-    # infer_hf_align()
-    test_train()
+    infer_hf_align()
