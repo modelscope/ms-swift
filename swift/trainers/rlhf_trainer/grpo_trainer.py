@@ -3,12 +3,14 @@
 import concurrent.futures
 import inspect
 import os
+import re
 import time
 from collections import defaultdict
 from concurrent.futures import Future
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from queue import Queue
+from types import MethodType
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
@@ -17,9 +19,8 @@ import torch.nn as nn
 from accelerate.utils import gather, gather_object, is_peft_model, set_seed
 from transformers import PreTrainedModel, TrainerCallback
 from trl import GRPOTrainer as HFGRPOTrainer
-from trl.models import unwrap_model_for_generation
 
-from swift.llm import InferRequest, RequestConfig, RowPreprocessor, to_device
+from swift.llm import InferRequest, RequestConfig, RowPreprocessor, to_device, get_model_arch, MultiModelKeys
 from swift.llm.infer.infer_engine import GRPOVllmEngine
 from swift.plugin import orms
 from swift.utils import (JsonlWriter, get_device, get_device_count, get_dist_setting, get_logger, get_node_setting,
@@ -37,6 +38,32 @@ del HFGRPOTrainer.__init__
 logger = get_logger()
 if is_wandb_available():
     import wandb
+
+
+@contextmanager
+def unwrap_model_for_generation(
+        model,
+        accelerator,
+        gather_deepspeed3_params=True,
+        gather_parameters: List = None,
+):
+    unwrapped_model = accelerator.unwrap_model(model)
+    if accelerator.state.deepspeed_plugin is not None and accelerator.state.deepspeed_plugin.zero_stage == 3:
+        if not gather_deepspeed3_params:
+            yield accelerator.unwrap_model(model)
+        else:
+            import deepspeed
+
+            parameters = [parameter for name, parameter in model.named_parameters() if
+                          not gather_parameters or name in gather_parameters]
+            with deepspeed.zero.GatheredParameters(parameters):
+                from trl.models.utils import remove_hooks
+                remove_hooks(model)
+                yield accelerator.unwrap_model(model)
+                from trl.models.utils import add_hooks
+                add_hooks(model)
+    else:
+        yield unwrapped_model
 
 
 class GRPOCallback(TrainerCallback):
@@ -243,6 +270,53 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self._buffered_inputs = [None] * args.gradient_accumulation_steps
         if self.args.async_generate:
             self.add_callback(GRPOCallback(self))
+        self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
+
+    def split_batches(self):
+        model = self.accelerator.unwrap_model(self.model)
+        model_arch = get_model_arch(model.model_meta.model_arch)
+        n_layers = int(os.environ.get('GRPO_ZERO3_GATHER_LAYERS', '12'))
+        non_llm_parameters = []
+        llm_embeds = []
+        parameters = []
+        pattern = r'\.(\d+)\.'
+
+        def replace_lora(name):
+            if 'lora_A' in name or 'lora_B' in name:
+                return ''
+            else:
+                return name.replace('base_layer.', '')
+
+        def remove_lora(names):
+            names = set([replace_lora(n) for n in names])
+            return [n for n in names if n]
+
+        def split_llm(name):
+            match = re.search(pattern, name)
+            if match:
+                number = match.group(1)
+                group = int(number) // n_layers
+                if len(parameters) < group + 1:
+                    parameters.extend([[]] * (group + 1 - len(parameters)))
+                parameters[group].append(name)
+            else:
+                llm_embeds.append(name)
+
+        for name, parameter in model.named_parameters():
+            if isinstance(model_arch, MultiModelKeys):
+                llm = model_arch.language_model
+                if name.startswith(llm):
+                    split_llm(name)
+                else:
+                    non_llm_parameters.append(name)
+            else:
+                split_llm(name)
+
+        if llm_embeds:
+            parameters.append(llm_embeds)
+        if non_llm_parameters:
+            parameters.append(non_llm_parameters)
+        return parameters, [remove_lora(p_list) for p_list in parameters]
 
     def prepare_vllm(self, model, fast_infer_device):
         from swift.tuners import Swift
@@ -318,7 +392,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             return
         unwrapped_model = self.accelerator.unwrap_model(self.model)
         for name, module in unwrapped_model.named_modules():
-            if module.device.type == torch.device('cuda'):
+            if isinstance(module, torch.nn.Embedding):
+                self.offload_modules[name] = module.weight.device
+                module.to('cpu')
+            elif not hasattr(module, 'device'):
+                pass
+            elif module.device.type != 'cpu':
                 self.offload_modules[name] = module.device
                 module.to('cpu')
 
@@ -328,7 +407,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             return
         unwrapped_model = self.accelerator.unwrap_model(self.model)
         for name, device in self.offload_modules.items():
-            unwrapped_model.get_submodule(name).to(device)
+            module = unwrapped_model.get_submodule(name)
+            if isinstance(module, torch.nn.Embedding):
+                module.weight.to(device)
+            else:
+                module.to(device)
         self.offload_modules.clear()
 
     @torch.no_grad()
@@ -361,41 +444,79 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     @profiling_decorator
     def _move_model_to_vllm_lmdeploy(self):
+        # TODO deepspeed parallel == vllm tensor parallel, may be do not need to gather
         from accelerate.utils.other import is_compiled_module
-        with unwrap_model_for_generation(
-                self.model, self.accelerator,
-                gather_deepspeed3_params=self.args.ds3_gather_for_generation) as unwrapped_model:
-            if is_compiled_module(unwrapped_model):
-                unwrapped_model = unwrapped_model._orig_mod
-            if is_peft_model(unwrapped_model):
-                unwrapped_model.merge_adapter()
-                state_dict = unwrapped_model.state_dict()
-                # Remove base_model and base_layer prefixes
-                state_dict = {
-                    k.removeprefix('base_model.model.').replace('.base_layer', ''): v
-                    for k, v in state_dict.items()
-                }
-                # Remove values with adapter prefix (example: "_lora")
-                state_dict = {k: v for k, v in state_dict.items() if unwrapped_model.prefix not in k}
-                # When module to save, remove its prefix and discard the original module
-                state_dict = {
-                    k.replace('modules_to_save.default.', ''): v
-                    for k, v in state_dict.items() if 'original_module' not in k
-                }
-            else:
-                state_dict = unwrapped_model.state_dict()
-            if self.infer_rank >= 0:
-                if self.args.async_generate:
-                    self._wait_queue()
-                if self.args.use_vllm:
-                    llm_model = self.engine.inner_model
+
+        for i, parameter_group in enumerate(self.parameter_groups):
+            parameter_group_no_lora = self.parameter_groups_no_lora[i]
+            unwrapped_model = self.accelerator.unwrap_model(self.model)
+
+            def merge(self, safe_merge: bool = False, adapter_names: Optional[list[str]] = None) -> None:
+                if all([self.name not in pg for pg in parameter_group]):
+                    return
                 else:
-                    llm_model = self.engine.engine.engine
-                llm_model.load_weights(state_dict.items())
-            # Unmerge the adapter to restore the model to its original state.
-            # This must be done after loading weights to ensure they correspond to the merged state.
-            if is_peft_model(unwrapped_model):
-                unwrapped_model.unmerge_adapter()
+                    ret = self.merge_origin(safe_merge, adapter_names)
+                    return ret
+
+            # def get_delta_weight(self, adapter) -> torch.Tensor:
+            #     tensor = self.get_delta_weight_origin(adapter)
+            #     return tensor.to(self.base_layer.weight.device)
+
+            @contextmanager
+            def patch_merge(model):
+                from peft.tuners.lora import LoraLayer
+                for name, module in model.named_modules():
+                    if isinstance(module, LoraLayer):
+                        module.name = name
+                        if not hasattr(module, 'merge_origin') and hasattr(module, 'base_layer'):
+                            module.merge_origin = module.merge
+                            module.merge = MethodType(merge, module)
+                yield
+                for name, module in model.named_modules():
+                    if isinstance(module, LoraLayer):
+                        if hasattr(module, 'merge_origin'):
+                            module.merge = module.merge_origin
+                            del module.merge_origin
+
+            with unwrap_model_for_generation(
+                    self.model, self.accelerator,
+                    gather_deepspeed3_params=self.args.ds3_gather_for_generation,
+                    gather_parameters=parameter_group) as unwrapped_model:
+                if is_compiled_module(unwrapped_model):
+                    unwrapped_model = unwrapped_model._orig_mod
+                if is_peft_model(unwrapped_model):
+                    with patch_merge(unwrapped_model):
+                        unwrapped_model.merge_adapter()
+                    state_dict = unwrapped_model.state_dict()
+                    # Remove base_model and base_layer prefixes
+                    state_dict = {
+                        k.removeprefix('base_model.model.').replace('.base_layer', ''): v
+                        for k, v in state_dict.items()
+                    }
+                    # Remove values with adapter prefix (example: "_lora")
+                    state_dict = {k: v for k, v in state_dict.items() if unwrapped_model.prefix not in k}
+                    # When module to save, remove its prefix and discard the original module
+                    state_dict = {
+                        k.replace('modules_to_save.default.', ''): v
+                        for k, v in state_dict.items() if 'original_module' not in k
+                    }
+                else:
+                    state_dict = unwrapped_model.state_dict()
+                parameter_group_no_lora = [n.replace('base_model.model.', '') for n in parameter_group_no_lora]
+                state_dict = {k: v for k, v in state_dict.items() if k in parameter_group_no_lora}
+                assert all([state.shape != torch.Size([0]) for state in state_dict.values()])
+                if self.infer_rank >= 0:
+                    if self.args.async_generate:
+                        self._wait_queue()
+                    if self.args.use_vllm:
+                        llm_model = self.engine.inner_model
+                    else:
+                        llm_model = self.engine.engine.engine
+                    llm_model.load_weights(state_dict.items())
+                # Unmerge the adapter to restore the model to its original state.
+                # This must be done after loading weights to ensure they correspond to the merged state.
+                if is_peft_model(unwrapped_model):
+                    unwrapped_model.unmerge_adapter()
 
     def _wait_queue(self):
         while self.queue.empty():
@@ -438,6 +559,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.args.sleep_level > 0 and self.infer_rank >= 0:
             self.offload_model()
             self.offload_optimizer()
+            gc_collect()
             self.engine.engine.wake_up()
         # First, have main process load weights if needed
         if self.state.global_step != self._last_loaded_step:
@@ -471,6 +593,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         outputs = self.reorder_outputs(outputs, distributed_idx)
         if self.args.sleep_level > 0 and self.infer_rank >= 0:
             self.engine.engine.sleep(level=self.args.sleep_level)
+            gc_collect()
             self.load_model()
             self.load_optimizer()
         return inputs, outputs
@@ -624,7 +747,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.beta != 0.0:
             ref_per_token_logps = inputs['ref_per_token_logps']
             per_token_kl = (
-                torch.exp(ref_per_token_logps - per_token_logps) - (ref_per_token_logps - per_token_logps) - 1)
+                    torch.exp(ref_per_token_logps - per_token_logps) - (ref_per_token_logps - per_token_logps) - 1)
 
         advantages = inputs['advantages']
         old_per_token_logps = inputs['old_per_token_logps'] if self.old_policy else per_token_logps.detach()
@@ -664,7 +787,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         inputs = {
             k: v
             for k, v in inputs.items() if k not in
-            ['logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps']
+                                          ['logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages',
+                                           'old_per_token_logps']
         }
         logits = model(**inputs).logits
         # exclude the last logit: it corresponds to the next token pred
