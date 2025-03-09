@@ -1,50 +1,10 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
-import os
-from functools import partial, wraps
-from typing import Any, Dict, List, Mapping, Optional
+from functools import partial
 
 import torch
 import torch.distributed as dist
 from megatron.core import mpu
-from megatron.training import get_args, global_vars, initialize, training
-from megatron.training.utils import (average_losses_across_data_parallel_group, get_batch_on_this_cp_rank,
-                                     get_ltor_masks_and_position_ids)
-
-from swift.llm import LazyLLMDataset, Template, git_clone_github
-from swift.utils import (append_to_jsonl, get_dist_setting, get_logger, is_master, is_megatron_available,
-                         safe_ddp_context, subprocess_run)
-
-logger = get_logger()
-
-
-def loss_func(loss_mask: torch.Tensor, output_tensor: torch.Tensor):
-    """Loss function. copy from Pai-Megatron-Patch
-
-    Args:
-        loss_mask (torch.Tensor): Used to mask out some portions of the loss
-        output_tensor (torch.Tensor): The tensor with the losses
-    """
-    args = get_args()
-
-    losses = output_tensor.float()
-    loss_mask = loss_mask.view(-1).float()
-    if args.context_parallel_size > 1:
-        loss = torch.cat([torch.sum(losses.view(-1) * loss_mask).view(1), loss_mask.sum().view(1)])
-        dist.all_reduce(loss, group=mpu.get_context_parallel_group())
-        loss = loss[0] / loss[1]
-    else:
-        loss = torch.sum(losses.view(-1) * loss_mask) / loss_mask.sum()
-
-    # Check individual rank losses are not NaN prior to DP all-reduce.
-    if args.check_for_nan_in_loss_and_grad:
-        global_rank = dist.get_rank()
-        assert not loss.isnan(), (f'Rank {global_rank}: found NaN in local forward loss calculation. '
-                                  f'Device: {torch.cuda.current_device()}, node: {os.uname()[1]}')
-
-    # Reduce loss for logging.
-    averaged_loss = average_losses_across_data_parallel_group([loss])
-
-    return loss * args.context_parallel_size, {'loss': averaged_loss[0]}
+from megatron.training import get_args
+from megatron.training.utils import average_losses_across_data_parallel_group, get_batch_on_this_cp_rank
 
 
 def get_batch_on_this_tp_rank(data_iterator):
@@ -145,42 +105,40 @@ def get_batch_on_this_tp_rank(data_iterator):
     return batch
 
 
+def loss_func(loss_mask: torch.Tensor, output_tensor: torch.Tensor):
+    """Loss function. copy from Pai-Megatron-Patch
+
+    Args:
+        loss_mask (torch.Tensor): Used to mask out some portions of the loss
+        output_tensor (torch.Tensor): The tensor with the losses
+    """
+
+    args = get_args()
+
+    losses = output_tensor.float()
+    loss_mask = loss_mask.view(-1).float()
+    if args.context_parallel_size > 1:
+        loss = torch.cat([torch.sum(losses.view(-1) * loss_mask).view(1), loss_mask.sum().view(1)])
+        dist.all_reduce(loss, group=mpu.get_context_parallel_group())
+        loss = loss[0] / loss[1]
+    else:
+        loss = torch.sum(losses.view(-1) * loss_mask) / loss_mask.sum()
+
+    # Check individual rank losses are not NaN prior to DP all-reduce.
+    if args.check_for_nan_in_loss_and_grad:
+        global_rank = dist.get_rank()
+        assert not loss.isnan(), (f'Rank {global_rank}: found NaN in local forward loss calculation. '
+                                  f'Device: {torch.cuda.current_device()}, node: {os.uname()[1]}')
+
+    # Reduce loss for logging.
+    averaged_loss = average_losses_across_data_parallel_group([loss])
+
+    return loss * args.context_parallel_size, {'loss': averaged_loss[0]}
+
+
 def forward_step(data_iterator, model):
     batch = get_batch_on_this_tp_rank(data_iterator)
     batch = get_batch_on_this_cp_rank(batch)
     tokens, labels, loss_mask, attention_mask, position_ids = batch.values()
     output_tensor = model(tokens, position_ids, attention_mask, labels=labels)
     return output_tensor, partial(loss_func, loss_mask)
-
-
-def train_valid_test_datasets_provider(train_val_test_num_samples, train_dataset: LazyLLMDataset,
-                                       val_dataset: LazyLLMDataset, template: Template):
-    # train_val_test_num_samples: ignored
-    assert not hasattr(training, '_old_build_pretraining_data_loader')
-    _old_build_pretraining_data_loader = training.build_pretraining_data_loader
-
-    def data_collator(batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
-        res = template.data_collator(batch, padding_to)
-        labels = res['labels']
-        new_labels = torch.zeros_like(labels)
-        new_labels[:, :-1] = labels[:, 1:]
-        new_labels[:, -1] = -100
-        attention_mask, loss_mask, position_ids = get_ltor_masks_and_position_ids(new_labels, -100, False, False, True)
-        return {
-            'tokens': res['input_ids'],
-            'labels': new_labels,
-            'attention_mask': attention_mask,
-            'loss_mask': loss_mask,
-            'position_ids': position_ids
-        }
-
-    @wraps(_old_build_pretraining_data_loader)
-    def build_pretraining_data_loader(*args, **kwargs):
-        res = _old_build_pretraining_data_loader(*args, **kwargs)
-        if res is not None:
-            res.collate_fn = data_collator
-        return res
-
-    training.build_pretraining_data_loader = build_pretraining_data_loader
-    training._old_build_pretraining_data_loader = _old_build_pretraining_data_loader
-    return train_dataset, val_dataset, None

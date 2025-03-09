@@ -3,7 +3,7 @@
 import torch
 from megatron.training.initialize import initialize_megatron
 
-from swift.llm import ExportArguments, get_model_tokenizer
+from swift.llm import ExportArguments, get_model_tokenizer, save_checkpoint
 from swift.utils import get_logger
 from .argument import MegatronArguments
 from .model import get_megatron_model_meta
@@ -36,7 +36,6 @@ def convert_hf2megatron(args: ExportArguments) -> None:
 
 
 def convert_megatron2hf(args: ExportArguments) -> None:
-    from swift.llm import save_checkpoint
     kwargs = args.get_model_kwargs()
     kwargs['torch_dtype'] = torch.float32
     hf_model, processor = get_model_tokenizer(**kwargs)
