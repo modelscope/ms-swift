@@ -9,6 +9,7 @@ from collections import defaultdict
 from concurrent.futures import Future
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from math import ceil
 from queue import Queue
 from types import MethodType
 from typing import Any, Callable, Dict, List, Optional, Union
@@ -17,14 +18,15 @@ import numpy as np
 import torch
 import torch.nn as nn
 from accelerate.utils import gather, gather_object, is_peft_model, set_seed
+from torch.nn import ModuleList
 from transformers import PreTrainedModel, TrainerCallback
 from trl import GRPOTrainer as HFGRPOTrainer
 
-from swift.llm import InferRequest, RequestConfig, RowPreprocessor, to_device, get_model_arch, MultiModelKeys
+from swift.llm import InferRequest, MultiModelKeys, RequestConfig, RowPreprocessor, get_model_arch, to_device
 from swift.llm.infer.infer_engine import GRPOVllmEngine
 from swift.plugin import orms
-from swift.utils import (JsonlWriter, get_device, get_device_count, get_dist_setting, get_logger, get_node_setting,
-                         is_lmdeploy_available, is_vllm_available, is_wandb_available, gc_collect)
+from swift.utils import (JsonlWriter, gc_collect, get_device, get_device_count, get_dist_setting, get_logger,
+                         get_node_setting, is_lmdeploy_available, is_vllm_available, is_wandb_available)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 
@@ -42,10 +44,10 @@ if is_wandb_available():
 
 @contextmanager
 def unwrap_model_for_generation(
-        model,
-        accelerator,
-        gather_deepspeed3_params=True,
-        gather_parameters: List = None,
+    model,
+    accelerator,
+    gather_deepspeed3_params=True,
+    gather_parameters: List = None,
 ):
     unwrapped_model = accelerator.unwrap_model(model)
     if accelerator.state.deepspeed_plugin is not None and accelerator.state.deepspeed_plugin.zero_stage == 3:
@@ -53,9 +55,10 @@ def unwrap_model_for_generation(
             yield accelerator.unwrap_model(model)
         else:
             import deepspeed
-
-            parameters = [parameter for name, parameter in model.named_parameters() if
-                          not gather_parameters or name in gather_parameters]
+            parameters = [
+                parameter for name, parameter in model.named_parameters()
+                if not gather_parameters or name in gather_parameters
+            ]
             with deepspeed.zero.GatheredParameters(parameters):
                 from trl.models.utils import remove_hooks
                 remove_hooks(model)
@@ -273,13 +276,36 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
 
     def split_batches(self):
+        """Sync weights in batches
+        Only split LLM layers for now:
+        1. N batches for layers
+        2. other, embeds, lm_heads in one batch
+        3. multi-modal components in one batch
+        """
+        if self.args.move_model_batches is None:
+            # All in one
+            return [None], [None]
+
         model = self.accelerator.unwrap_model(self.model)
         model_arch = get_model_arch(model.model_meta.model_arch)
-        n_layers = int(os.environ.get('GRPO_ZERO3_GATHER_LAYERS', '12'))
         non_llm_parameters = []
         llm_embeds = []
         parameters = []
         pattern = r'\.(\d+)\.'
+
+        layer_count = None
+        for name, module in model.named_modules():
+            if isinstance(module, ModuleList):
+                if model_arch is not None and isinstance(model_arch, MultiModelKeys):
+                    llm = model_arch.language_model
+                    if name.startswith(llm):
+                        layer_count = len(module)
+                else:
+                    layer_count = len(module)
+        assert layer_count is not None, 'Cannot find ModuleList to split modules.'
+
+        n_layers = ceil(layer_count / self.args.move_model_batches)
+        parameters.extend([[]] * self.args.move_model_batches)
 
         def replace_lora(name):
             if 'lora_A' in name or 'lora_B' in name:
@@ -296,14 +322,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if match:
                 number = match.group(1)
                 group = int(number) // n_layers
-                if len(parameters) < group + 1:
-                    parameters.extend([[]] * (group + 1 - len(parameters)))
                 parameters[group].append(name)
             else:
                 llm_embeds.append(name)
 
         for name, parameter in model.named_parameters():
-            if isinstance(model_arch, MultiModelKeys):
+            if model_arch is not None and isinstance(model_arch, MultiModelKeys):
                 llm = model_arch.language_model
                 if name.startswith(llm):
                     split_llm(name)
@@ -426,7 +450,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 for key, value in state.items():
                     if isinstance(value, torch.Tensor):
                         self.offload_states[key] = value.device
-                        state[key] = value.to("cpu", non_blocking=True)
+                        state[key] = value.to('cpu', non_blocking=True)
 
     @torch.no_grad()
     def load_optimizer(self):
@@ -449,23 +473,26 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         for i, parameter_group in enumerate(self.parameter_groups):
             parameter_group_no_lora = self.parameter_groups_no_lora[i]
-            unwrapped_model = self.accelerator.unwrap_model(self.model)
-
             with unwrap_model_for_generation(
-                    self.model, self.accelerator,
+                    self.model,
+                    self.accelerator,
                     gather_deepspeed3_params=self.args.ds3_gather_for_generation,
                     gather_parameters=parameter_group) as unwrapped_model:
 
                 def merge(self, safe_merge: bool = False, adapter_names: Optional[list[str]] = None) -> None:
                     if all([self.name not in pg for pg in parameter_group]):
+                        # Not this group, skip
                         return
                     else:
                         ret = self.merge_origin(safe_merge, adapter_names)
                         return ret
 
                 def get_delta_weight(self, adapter) -> torch.Tensor:
-                    self.lora_A[adapter].weight.data = self.lora_A[adapter].weight.data.to(self.base_layer.weight.device)
-                    self.lora_B[adapter].weight.data = self.lora_B[adapter].weight.data.to(self.base_layer.weight.device)
+                    # may be offload
+                    self.lora_A[adapter].weight.data = self.lora_A[adapter].weight.data.to(
+                        self.base_layer.weight.device)
+                    self.lora_B[adapter].weight.data = self.lora_B[adapter].weight.data.to(
+                        self.base_layer.weight.device)
                     tensor = self.get_delta_weight_origin(adapter)
                     return tensor.to(self.base_layer.weight.device)
 
@@ -509,8 +536,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     }
                 else:
                     state_dict = unwrapped_model.state_dict()
-                parameter_group_no_lora = [n.replace('base_model.model.', '') for n in parameter_group_no_lora]
-                state_dict = {k: v for k, v in state_dict.items() if k in parameter_group_no_lora}
+                if parameter_group_no_lora:
+                    parameter_group_no_lora = [n.replace('base_model.model.', '') for n in parameter_group_no_lora]
+                    state_dict = {k: v for k, v in state_dict.items() if k in parameter_group_no_lora}
                 assert all([state.shape != torch.Size([0]) for state in state_dict.values()])
                 if self.infer_rank >= 0:
                     if self.args.async_generate:
@@ -564,9 +592,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     def _fast_infer(self, inputs):
         if self.args.sleep_level > 0 and self.infer_rank >= 0:
-            self.offload_model()
-            self.offload_optimizer()
-            gc_collect()
+            if self.args.offload_model:
+                self.offload_model()
+            if self.args.offload_optimizer:
+                self.offload_optimizer()
+            if self.args.gc_collect_after_offload:
+                gc_collect()
             self.engine.engine.wake_up()
         # First, have main process load weights if needed
         if self.state.global_step != self._last_loaded_step:
@@ -600,9 +631,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         outputs = self.reorder_outputs(outputs, distributed_idx)
         if self.args.sleep_level > 0 and self.infer_rank >= 0:
             self.engine.engine.sleep(level=self.args.sleep_level)
-            gc_collect()
-            self.load_model()
-            self.load_optimizer()
+            if self.args.gc_collect_after_offload:
+                gc_collect()
+            if self.args.offload_model:
+                self.load_model()
+            if self.args.offload_optimizer:
+                self.load_optimizer()
         return inputs, outputs
 
     @property
@@ -754,7 +788,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.beta != 0.0:
             ref_per_token_logps = inputs['ref_per_token_logps']
             per_token_kl = (
-                    torch.exp(ref_per_token_logps - per_token_logps) - (ref_per_token_logps - per_token_logps) - 1)
+                torch.exp(ref_per_token_logps - per_token_logps) - (ref_per_token_logps - per_token_logps) - 1)
 
         advantages = inputs['advantages']
         old_per_token_logps = inputs['old_per_token_logps'] if self.old_policy else per_token_logps.detach()
@@ -794,8 +828,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         inputs = {
             k: v
             for k, v in inputs.items() if k not in
-                                          ['logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages',
-                                           'old_per_token_logps']
+            ['logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps']
         }
         logits = model(**inputs).logits
         # exclude the last logit: it corresponds to the next token pred
