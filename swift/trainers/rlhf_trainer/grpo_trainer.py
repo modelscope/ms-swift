@@ -188,7 +188,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # transformers if num_generations exceeds per_device_train_batch_size. We could skip it if we use vLLM, but
         # it's safer to set it in all cases.
         set_seed(args.seed, device_specific=True)
-
+        self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
         if use_vllm or use_lmdeploy:
             if self.infer_rank >= 0:
                 fast_infer_device = self.args.vllm_device or self.args.lmdeploy_device
@@ -273,8 +273,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self._buffered_inputs = [None] * args.gradient_accumulation_steps
         if self.args.async_generate:
             self.add_callback(GRPOCallback(self))
-        self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
-
+        
     def split_batches(self):
         """Sync weights in batches
         Only split LLM layers for now:
@@ -305,7 +304,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         assert layer_count is not None, 'Cannot find ModuleList to split modules.'
 
         n_layers = ceil(layer_count / self.args.move_model_batches)
-        parameters.extend([[]] * self.args.move_model_batches)
+        for _ in range(self.args.move_model_batches):
+            parameters.append([])
 
         def replace_lora(name):
             if 'lora_A' in name or 'lora_B' in name:
@@ -468,7 +468,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     @profiling_decorator
     def _move_model_to_vllm_lmdeploy(self):
-        # TODO deepspeed parallel == vllm tensor parallel, may be do not need to gather
+        # TODO This may be low efficiency
+        # 1. deepspeed parallel == vllm tensor parallel, may be do not need to gather
+        # 2. may be each process in tp group only need gather a part of the parameters
+        # 3. the split of parameter_groups may be imbalanced
         from accelerate.utils.other import is_compiled_module
 
         for i, parameter_group in enumerate(self.parameter_groups):
@@ -480,7 +483,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     gather_parameters=parameter_group) as unwrapped_model:
 
                 def merge(self, safe_merge: bool = False, adapter_names: Optional[list[str]] = None) -> None:
-                    if all([self.name not in pg for pg in parameter_group]):
+                    if parameter_group and all([self.name not in pg for pg in parameter_group]):
                         # Not this group, skip
                         return
                     else:
