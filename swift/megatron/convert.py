@@ -43,13 +43,13 @@ def convert_megatron2hf(args: ExportArguments) -> None:
     megatron_model_meta = get_megatron_model_meta(args.model)
     kwargs = megatron_model_meta.load_config(processor.model_info.config)
     kwargs.update({
-        'seq_length': 1,
         'use_cpu_initialization': True,
+        'torch_dtype': args.torch_dtype,
         'load': args.megatron_model,
         'save': args.output_dir,
         'hf_ckpt_path': args.model_dir
     })
-    megatron_args = MegatronArguments(**kwargs, **MegatronArguments.get_matched_kwargs(args))
+    megatron_args = MegatronArguments(**kwargs)
     patch_megatron(processor)
     extra_args = megatron_args.parse_to_megatron()
     initialize_megatron(args_defaults=extra_args)
