@@ -15,7 +15,6 @@ if TYPE_CHECKING:
     from .orm import orms, ORM
 
 else:
-    _extra_objects = {k: v for k, v in globals().items() if not k.startswith('_')}
     _import_structure = {
         'callback': ['extra_callbacks'],
         'loss': ['LOSS_MAPPING', 'get_loss_func'],

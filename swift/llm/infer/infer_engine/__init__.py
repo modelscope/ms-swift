@@ -13,7 +13,6 @@ if TYPE_CHECKING:
     from .base import BaseInferEngine
     from .utils import prepare_generation_config, AdapterRequest
 else:
-    _extra_objects = {k: v for k, v in globals().items() if not k.startswith('_')}
     _import_structure = {
         'vllm_engine': ['VllmEngine'],
         'grpo_vllm_engine': ['GRPOVllmEngine'],
@@ -32,5 +31,5 @@ else:
         globals()['__file__'],
         _import_structure,
         module_spec=__spec__,
-        extra_objects=_extra_objects,
+        extra_objects={},
     )

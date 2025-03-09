@@ -46,6 +46,7 @@ def get_template(
         max_pixels=max_pixels,
         tools_prompt=tools_prompt,
         norm_bbox=norm_bbox,
+        response_prefix=response_prefix,
         padding_side=padding_side,
         loss_scale=loss_scale,
         sequence_parallel_size=sequence_parallel_size,

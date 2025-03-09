@@ -261,10 +261,10 @@ class DatasetLoader:
                                      f'split={split} with error: {e}')
                     else:
                         break
-                if hasattr(dataset, '_hf_ds'):
-                    dataset = dataset._hf_ds
-                    if streaming and isinstance(dataset, HfDataset):
-                        dataset = dataset.to_iterable_dataset()
+            if hasattr(dataset, '_hf_ds'):
+                dataset = dataset._hf_ds
+                if streaming and isinstance(dataset, HfDataset):
+                    dataset = dataset.to_iterable_dataset()
             if columns:
                 dataset = RowPreprocessor.safe_rename_columns(dataset, columns)
             dataset = subset.preprocess_func(dataset, num_proc=num_proc, strict=strict)

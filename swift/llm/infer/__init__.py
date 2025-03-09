@@ -11,7 +11,6 @@ if TYPE_CHECKING:
     from .infer_engine import (InferEngine, VllmEngine, LmdeployEngine, PtEngine, InferClient,
                                prepare_generation_config, AdapterRequest, BaseInferEngine)
 else:
-    _extra_objects = {k: v for k, v in globals().items() if not k.startswith('_')}
     _import_structure = {
         'infer': ['infer_main', 'SwiftInfer'],
         'deploy': ['deploy_main', 'SwiftDeploy', 'run_deploy'],
@@ -30,5 +29,5 @@ else:
         globals()['__file__'],
         _import_structure,
         module_spec=__spec__,
-        extra_objects=_extra_objects,
+        extra_objects={},
     )

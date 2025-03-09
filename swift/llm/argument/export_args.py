@@ -4,8 +4,10 @@ from dataclasses import dataclass
 from typing import Literal, Optional
 
 import torch
+import torch.distributed as dist
 
 from swift.utils import get_logger
+from ..utils import set_default_ddp_config
 from .base_args import BaseArguments, to_abspath
 from .merge_args import MergeArguments
 
@@ -42,6 +44,10 @@ class ExportArguments(MergeArguments, BaseArguments):
     # ollama
     to_ollama: bool = False
 
+    # megatron
+    to_megatron: bool = False
+    to_hf: bool = False
+
     # push to ms hub
     push_to_hub: bool = False
     # 'user_name/repo_name' or 'repo_name'
@@ -64,6 +70,10 @@ class ExportArguments(MergeArguments, BaseArguments):
                 suffix = 'ollama'
             elif self.merge_lora:
                 suffix = 'merged'
+            elif self.to_megatron:
+                suffix = 'megatron'
+            elif self.to_hf:
+                suffix = 'hf'
             else:
                 return
 
@@ -83,6 +93,9 @@ class ExportArguments(MergeArguments, BaseArguments):
             raise ValueError('Please specify `--quant_bits`.')
         if self.quant_method in {'gptq', 'awq'} and self.torch_dtype is None:
             self.torch_dtype = torch.float16
+        if self.to_megatron or self.to_hf:
+            set_default_ddp_config()
+            dist.init_process_group(backend='nccl')
 
         BaseArguments.__post_init__(self)
         self._init_output_dir()
