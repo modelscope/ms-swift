@@ -13,6 +13,15 @@ pip install git+https://github.com/huggingface/trl.git"
 
 **Note**: It is normal for the loss to approach zero during training. Refer to this [issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851) for more details.
 
+## Cluster Support
+
+![](../../resources/grpo.png)
+
+In SWIFT's GRPO training, the training model preferentially uses the front portion of the available GPUs, while the rollout process utilizes the rear portion of the available GPUs. This means:
+
+- **If both `NPROC_PER_NODE` and `num_infer_workers` in the command are equal to the number of available GPUs**, training and inference are assigned to the same GPUs. In this case, you need to configure `sleep_level`.
+- **If the sum of `NPROC_PER_NODE` and `num_infer_workers` equals the total number of available GPUs**, training will use the front GPUs and rollout will use the rear GPUs. In this scenario, you can configure `async_generate`.
+
 
 ## Reward Functions
 ### Custom Reward Functions
