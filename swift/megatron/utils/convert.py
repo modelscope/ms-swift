@@ -5,9 +5,9 @@ from megatron.training.initialize import initialize_megatron
 
 from swift.llm import ExportArguments, get_model_tokenizer, save_checkpoint
 from swift.utils import get_logger
-from .argument import MegatronArguments
-from .model import get_megatron_model_meta
-from .utils import patch_megatron
+from ..argument import MegatronArguments
+from ..model import get_megatron_model_meta
+from ..utils import patch_megatron
 
 logger = get_logger()
 
