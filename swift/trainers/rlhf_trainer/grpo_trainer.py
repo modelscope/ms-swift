@@ -451,37 +451,44 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             parameter_group_no_lora = self.parameter_groups_no_lora[i]
             unwrapped_model = self.accelerator.unwrap_model(self.model)
 
-            def merge(self, safe_merge: bool = False, adapter_names: Optional[list[str]] = None) -> None:
-                if all([self.name not in pg for pg in parameter_group]):
-                    return
-                else:
-                    ret = self.merge_origin(safe_merge, adapter_names)
-                    return ret
-
-            # def get_delta_weight(self, adapter) -> torch.Tensor:
-            #     tensor = self.get_delta_weight_origin(adapter)
-            #     return tensor.to(self.base_layer.weight.device)
-
-            @contextmanager
-            def patch_merge(model):
-                from peft.tuners.lora import LoraLayer
-                for name, module in model.named_modules():
-                    if isinstance(module, LoraLayer):
-                        module.name = name
-                        if not hasattr(module, 'merge_origin') and hasattr(module, 'base_layer'):
-                            module.merge_origin = module.merge
-                            module.merge = MethodType(merge, module)
-                yield
-                for name, module in model.named_modules():
-                    if isinstance(module, LoraLayer):
-                        if hasattr(module, 'merge_origin'):
-                            module.merge = module.merge_origin
-                            del module.merge_origin
-
             with unwrap_model_for_generation(
                     self.model, self.accelerator,
                     gather_deepspeed3_params=self.args.ds3_gather_for_generation,
                     gather_parameters=parameter_group) as unwrapped_model:
+
+                def merge(self, safe_merge: bool = False, adapter_names: Optional[list[str]] = None) -> None:
+                    if all([self.name not in pg for pg in parameter_group]):
+                        return
+                    else:
+                        ret = self.merge_origin(safe_merge, adapter_names)
+                        return ret
+
+                def get_delta_weight(self, adapter) -> torch.Tensor:
+                    self.lora_A[adapter].weight.data = self.lora_A[adapter].weight.data.to(self.base_layer.weight.device)
+                    self.lora_B[adapter].weight.data = self.lora_B[adapter].weight.data.to(self.base_layer.weight.device)
+                    tensor = self.get_delta_weight_origin(adapter)
+                    return tensor.to(self.base_layer.weight.device)
+
+                @contextmanager
+                def patch_merge(model):
+                    from peft.tuners.lora import LoraLayer
+                    for name, module in model.named_modules():
+                        if isinstance(module, LoraLayer):
+                            module.name = name
+                            if not hasattr(module, 'merge_origin') and hasattr(module, 'base_layer'):
+                                module.merge_origin = module.merge
+                                module.merge = MethodType(merge, module)
+                                module.get_delta_weight_origin = module.get_delta_weight
+                                module.get_delta_weight = MethodType(get_delta_weight, module)
+                    yield
+                    for name, module in model.named_modules():
+                        if isinstance(module, LoraLayer):
+                            if hasattr(module, 'merge_origin'):
+                                module.merge = module.merge_origin
+                                del module.merge_origin
+                                module.get_delta_weight = module.get_delta_weight_origin
+                                del module.get_delta_weight_origin
+
                 if is_compiled_module(unwrapped_model):
                     unwrapped_model = unwrapped_model._orig_mod
                 if is_peft_model(unwrapped_model):
