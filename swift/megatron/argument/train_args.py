@@ -10,17 +10,17 @@ from .megatron_args import MegatronArguments
 @dataclass
 class MegatronTrainArguments(MegatronArguments, BaseArguments):
 
-    def _init_model_args(self):
+    def init_model_args(self, config):
         self.megatron_model_meta = get_megatron_model_meta(self.model)
-        kwargs = self.megatron_model_meta.load_config(self.model_info.config)
+        kwargs = self.megatron_model_meta.load_config(config)
         for k, v in kwargs.items():
             if getattr(self, k) is None:
                 setattr(self, k, v)
+        self.extra_args = self.parse_to_megatron()
 
     def __post_init__(self):
         BaseArguments.__post_init__(self)
         MegatronArguments.__post_init__(self)
         if self.hf_ckpt_path is None:
             self.hf_ckpt_path = self.model_dir
-        self._init_model_args()
-        self.extra_args = self.parse_to_megatron()
+        
