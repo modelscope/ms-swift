@@ -1,6 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from dataclasses import dataclass
-from typing import Callable, List, Optional
+from typing import Any, Callable, Dict, List, Optional
+
+import torch.nn as nn
 
 from swift.llm import ModelGroup
 from swift.llm.model.register import _get_matched_model_meta
@@ -13,10 +15,10 @@ class MegatronModelMeta:
     megatron_model_type: Optional[str]
     model_groups: List[ModelGroup]
 
-    convert_megatron2hf: Callable
-    convert_hf2megatron: Callable
-    get_model_provider: Callable
-    load_config: Callable
+    convert_megatron2hf: Callable[[...], nn.Module]
+    convert_hf2megatron: Callable[[...], None]
+    get_model_provider: Callable[[], Callable[[], nn.Module]]
+    load_config: Callable[[...], Dict[str, Any]]
 
 
 def register_megatron_model(model_meta: MegatronModelMeta, *, exist_ok: bool = False):

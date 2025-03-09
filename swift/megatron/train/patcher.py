@@ -4,7 +4,10 @@ from functools import wraps
 
 import torch
 from megatron.training import get_args, global_vars, initialize, training
-from swift.utils import is_master, append_to_jsonl
+
+from swift.utils import append_to_jsonl, is_master
+
+
 def patch_training_log():
     _old_training_log = training.training_log
 
@@ -30,4 +33,3 @@ def patch_training_log():
                                  num_zeros_in_grad, *_args, **kwargs)
 
     training.training_log = training_log
-

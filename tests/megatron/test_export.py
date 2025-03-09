@@ -49,6 +49,7 @@ def infer_hf_align():
     response2 = _infer_model(pt_engine)
     assert response == response2
 
+
 if __name__ == '__main__':
     # hf2megatron()
     # megatron2hf()

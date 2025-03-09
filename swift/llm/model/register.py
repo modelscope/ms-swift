@@ -341,7 +341,7 @@ def get_all_models() -> List[str]:
     return models
 
 
-def _get_matched_model_meta(model_id_or_path, model_mapping) -> Optional[ModelMeta]:
+def _get_matched_model_meta(model_id_or_path: str, model_mapping: Dict[str, Any]) -> Optional[ModelMeta]:
     model_name = get_model_name(model_id_or_path).lower()
     for model_type, model_meta in model_mapping.items():
         model_group = ModelMeta.get_matched_model_group(model_meta, model_name)
