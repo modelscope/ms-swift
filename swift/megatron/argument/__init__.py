@@ -1,1 +1,2 @@
 from .train_args import MegatronTrainArguments
+from .megatron_args import MegatronArguments
