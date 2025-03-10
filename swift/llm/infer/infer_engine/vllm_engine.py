@@ -294,7 +294,6 @@ class VllmEngine(InferEngine):
 
         if kwargs.get('seed') is None:
             kwargs['seed'] = get_seed()
-
         res = SamplingParams(**kwargs)
         res.top_logprobs = request_config.top_logprobs
         return res
@@ -408,8 +407,6 @@ class VllmEngine(InferEngine):
             batched_inputs, error_list = self._batch_encode(
                 infer_requests, template=template, strict=getattr(self, 'strict', True))
             self.set_default_max_tokens(request_config, batched_inputs)
-            generation_config = self._prepare_generation_config(request_config)
-            self._add_stop_words(generation_config, request_config, template.template_meta)
             request_id_list = []
             for inputs in batched_inputs:
                 request_id = random_uuid()
