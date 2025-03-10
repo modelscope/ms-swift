@@ -113,6 +113,8 @@ class GRPOVllmEngine(VllmEngine):
         batched_inputs, error_list = self._batch_encode(
             infer_requests, template=template, strict=getattr(self, 'strict', True))
         self.set_default_max_tokens(request_config, batched_inputs)
+        generation_config = self._prepare_generation_config(request_config)
+        self._add_stop_words(generation_config, request_config, template.template_meta)
 
         prompts = []
         for inputs in batched_inputs:
@@ -131,10 +133,5 @@ class GRPOVllmEngine(VllmEngine):
                 llm_inputs['multi_modal_data'] = mm_data
             prompts.append(llm_inputs)
 
-        generation_configs = []
-        for _ in prompts:
-            generation_config = self._prepare_generation_config(request_config)
-            self._add_stop_words(generation_config, request_config, template.template_meta)
-            generation_configs.append(generation_config)
-        outputs = self.engine.generate(prompts, generation_configs)
+        outputs = self.engine.generate(prompts, generation_config)
         return [self._create_chat_completion_response(result, template, generation_config, '') for result in outputs]
