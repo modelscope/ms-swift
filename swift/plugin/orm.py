@@ -1,3 +1,4 @@
+import asyncio
 import os
 import re
 from typing import Dict, List, Union
@@ -269,7 +270,7 @@ class MathAccuracy(ORM):
                 # edge case
                 try:
                     reward = float(verify(answer_parsed, gold_parsed))
-                except Exception as e:
+                except Exception:
                     reward = 0.0
             else:
                 # If the gold solution is not parseable, we reward 1 to skip this example
@@ -375,22 +376,25 @@ class RepetitionPenalty(ORM):
             rewards.append(reward)
         return rewards
 
+
 class CodeReward(ORM):
 
     def __init__(self):
         import importlib.util
         assert importlib.util.find_spec('e2b') is not None, (
-            "The e2b package is required but not installed. Please install it using 'pip install e2b-code-interpreter'.")
+            "The e2b package is required but not installed. Please install it using 'pip install e2b-code-interpreter'."
+        )
         from dotenv import load_dotenv
         load_dotenv()
 
     @staticmethod
     def extract_code(completion: str) -> str:
-        pattern = re.compile(r"```python\n(.*?)```", re.DOTALL)
+        pattern = re.compile(r'```python\n(.*?)```', re.DOTALL)
         matches = pattern.findall(completion)
-        extracted_answer = matches[-1] if len(matches) >= 1 else ""
+        extracted_answer = matches[-1] if len(matches) >= 1 else ''
         return extracted_answer
-    def run_async_from_sync(scripts: list[str], language: str) -> list[float]:
+
+    def run_async_from_sync(self, scripts: list[str], language: str) -> list[float]:
         """Function wrapping the `run_async` function."""
         # Create a new event loop and set it
         loop = asyncio.new_event_loop()
@@ -404,8 +408,9 @@ class CodeReward(ORM):
 
         return rewards
 
+    async def run_async(self, scripts: list[str], language: str) -> list[float]:
+        from e2b_code_interpreter import AsyncSandbox
 
-    async def run_async(scripts: list[str], language: str) -> list[float]:
         # Create the sandbox by hand, currently there's no context manager for this version
         sbx = await AsyncSandbox.create(timeout=30, request_timeout=3)
 
@@ -420,6 +425,7 @@ class CodeReward(ORM):
         await sbx.kill()
 
         return rewards
+
     def __call__(self, completions, **kwargs) -> List[float]:
         """Reward function that evaluates code snippets using the E2B code interpreter.
 
@@ -458,31 +464,34 @@ class CodeReward(ORM):
 
         evaluate_code(code_snippet, test_cases)
         """
-        code_snippets = [extract_code(completion) for completion in completions]
-        verification_info = kwargs["verification_info"]
+        code_snippets = [self.extract_code(completion) for completion in completions]
+        verification_info = kwargs['verification_info']
         scripts = [
-            evaluation_script_template.format(code=json.dumps(code), test_cases=json.dumps(json.dumps(info["test_cases"])))
+            evaluation_script_template.format(
+                code=json.dumps(code), test_cases=json.dumps(json.dumps(info['test_cases'])))
             for code, info in zip(code_snippets, verification_info)
         ]
         try:
-            rewards = run_async_from_sync(scripts, verification_info["language"])
+            rewards = self.run_async_from_sync(scripts, verification_info['language'])
 
-        except Exception as e:
+        except Exception:
             rewards = [0.0] * len(completions)
 
         return rewards
 
 
 class CodeFormat(ORM):
+
     def __call__(self, completions, **kwargs) -> List[float]:
-        verification_info = kwargs["verification_info"]
+        verification_info = kwargs['verification_info']
         rewards = []
         for content, info in zip(completions, verification_info):
-            pattern = "^<think>.*?</think>\s*<answer>.*?```{}.*?```.*?</answer>(?![\s\S])".format(info["language"])
+            pattern = r'^<think>.*?</think>\s*<answer>.*?```{}.*?```.*?</answer>(?![\s\S])'.format(info['language'])
             match = re.match(pattern, content, re.DOTALL | re.MULTILINE)
             reward = 1.0 if match else 0.0
             rewards.append(reward)
         return rewards
+
 
 orms = {
     'toolbench': ReactORM,
