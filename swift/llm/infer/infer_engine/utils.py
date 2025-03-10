@@ -402,20 +402,8 @@ def patch_vllm(world_size=1, vllm_device: Optional[str] = None):
 
         GroupCoordinator.__init__ = __init__
 
-        @contextmanager
-        def _device_context():
-            if vllm_device is not None:
-                original_device = torch.cuda.current_device()
-                torch.cuda.set_device(vllm_device)
-                try:
-                    yield
-                finally:
-                    torch.cuda.set_device(original_device)
-            else:
-                yield
-
         try:
-            with profiling_patch, _device_context():
+            with profiling_patch, device_context(vllm_device):
                 torch.distributed.get_world_size_origin = torch.distributed.get_world_size
                 torch.distributed.get_world_size = get_world_size
                 yield
@@ -443,3 +431,13 @@ def patch_npu_vllm(vllm_device: str):
             torch.distributed.new_group = original_new_group
 
     return new_group_context() if device_type == 'npu' else nullcontext()
+
+
+@contextmanager
+def device_context(device: str):
+    original_device = torch.cuda.current_device()
+    torch.cuda.set_device(device)
+    try:
+        yield
+    finally:
+        torch.cuda.set_device(original_device)
