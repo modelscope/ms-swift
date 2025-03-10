@@ -273,6 +273,74 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self._buffered_inputs = [None] * args.gradient_accumulation_steps
         if self.args.async_generate:
             self.add_callback(GRPOCallback(self))
+        
+    def split_batches(self):
+        """Sync weights in batches
+        Only split LLM layers for now:
+        1. N batches for layers
+        2. other, embeds, lm_heads in one batch
+        3. multi-modal components in one batch
+        """
+        if self.args.move_model_batches is None:
+            # All in one
+            return [None], [None]
+
+        model = self.accelerator.unwrap_model(self.model)
+        model_arch = get_model_arch(model.model_meta.model_arch)
+        non_llm_parameters = []
+        llm_embeds = []
+        parameters = []
+        pattern = r'\.(\d+)\.'
+
+        layer_count = None
+        for name, module in model.named_modules():
+            if isinstance(module, ModuleList):
+                if model_arch is not None and isinstance(model_arch, MultiModelKeys):
+                    llm = model_arch.language_model
+                    if name.startswith(llm):
+                        layer_count = len(module)
+                else:
+                    layer_count = len(module)
+        assert layer_count is not None, 'Cannot find ModuleList to split modules.'
+
+        n_layers = ceil(layer_count / self.args.move_model_batches)
+        for _ in range(self.args.move_model_batches):
+            parameters.append([])
+
+        def replace_lora(name):
+            if 'lora_A' in name or 'lora_B' in name:
+                return ''
+            else:
+                return name.replace('base_layer.', '')
+
+        def remove_lora(names):
+            names = set([replace_lora(n) for n in names])
+            return [n for n in names if n]
+
+        def split_llm(name):
+            match = re.search(pattern, name)
+            if match:
+                number = match.group(1)
+                group = int(number) // n_layers
+                parameters[group].append(name)
+            else:
+                llm_embeds.append(name)
+
+        for name, parameter in model.named_parameters():
+            if model_arch is not None and isinstance(model_arch, MultiModelKeys):
+                llm = model_arch.language_model
+                if name.startswith(llm):
+                    split_llm(name)
+                else:
+                    non_llm_parameters.append(name)
+            else:
+                split_llm(name)
+
+        if llm_embeds:
+            parameters.append(llm_embeds)
+        if non_llm_parameters:
+            parameters.append(non_llm_parameters)
+        return parameters, [remove_lora(p_list) for p_list in parameters]
 
     def split_batches(self):
         """Sync weights in batches
