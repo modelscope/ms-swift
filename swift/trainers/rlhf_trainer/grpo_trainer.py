@@ -273,7 +273,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self._buffered_inputs = [None] * args.gradient_accumulation_steps
         if self.args.async_generate:
             self.add_callback(GRPOCallback(self))
-        
+
     def split_batches(self):
         """Sync weights in batches
         Only split LLM layers for now:
