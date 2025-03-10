@@ -682,5 +682,14 @@
         "ms_dataset_id": "lmms-lab/multimodal-open-r1-8k-verified",
         "hf_dataset_id": "lmms-lab/multimodal-open-r1-8k-verified",
         "tags": ["grpo", "vision", "🔥"]
+    },
+    {
+        "ms_dataset_id": "open-r1/verifiable-coding-problems-python-10k",
+        "hf_dataset_id": "open-r1/verifiable-coding-problems-python-10k",
+        "columns": {
+            "problem": "query",
+            "gold_standard_solution": "answer"
+        },
+        "tags": ["grpo", "code"]
     }
 ]
