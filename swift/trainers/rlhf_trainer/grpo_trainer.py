@@ -576,8 +576,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return [index_to_output[idx] for idx in sorted(index_to_output.keys())]
 
     def async_infer(self, inputs, inputs_slice, distributed_idx):
-        future: Future = self.executor.submit(
-            self.engine.infer, infer_requests=inputs_slice, request_config=self.request_config, use_tqdm=False)
+
+        def infer_task():
+            with set_device_context(self.infer_device):
+                result = self.engine.infer(
+                    infer_requests=inputs_slice, request_config=self.request_config, use_tqdm=False)
+                return result
+
+        future: Future = self.executor.submit(infer_task)
 
         def done(_self):
             self.queue.put(DataCache(inputs, _self.result(), distributed_idx))
