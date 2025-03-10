@@ -13,7 +13,7 @@ from transformers import GenerationConfig
 
 from swift.llm import InferRequest, Template, TemplateMeta, get_model_tokenizer
 from swift.plugin import Metric
-from swift.utils import get_logger, get_node_setting
+from swift.utils import get_logger, get_node_setting, get_seed
 from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                         ChatCompletionStreamResponse, ChatMessage, DeltaMessage, RequestConfig, random_uuid)
 from .infer_engine import InferEngine
@@ -292,6 +292,9 @@ class VllmEngine(InferEngine):
         for key in ['n', 'best_of', 'frequency_penalty', 'presence_penalty', 'seed']:
             kwargs[key] = getattr(request_config, key)
 
+        if kwargs.get('seed') is None:
+            kwargs['seed'] = get_seed()
+
         res = SamplingParams(**kwargs)
         res.top_logprobs = request_config.top_logprobs
         return res
@@ -411,6 +414,8 @@ class VllmEngine(InferEngine):
             for inputs in batched_inputs:
                 request_id = random_uuid()
                 request_id_list.append(request_id)
+                generation_config = self._prepare_generation_config(request_config)
+                self._add_stop_words(generation_config, request_config, template.template_meta)
                 self._add_request(inputs, generation_config, request_id, adapter_request=adapter_request)
             prog_bar = tqdm(total=len(batched_inputs), dynamic_ncols=True, disable=not use_tqdm)
             outputs = {}
