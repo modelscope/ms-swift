@@ -22,7 +22,7 @@ else:
         'infer_client': ['InferClient'],
         'infer_engine': ['InferEngine'],
         'base': ['BaseInferEngine'],
-        'utils': ['prepare_generation_config', 'AdapterRequest'],
+        'utils': ['prepare_generation_config', 'AdapterRequest', 'device_context'],
     }
 
     import sys
