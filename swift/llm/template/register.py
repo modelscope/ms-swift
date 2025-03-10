@@ -29,6 +29,7 @@ def get_template(
         tools_prompt: str = 'react_en',
         norm_bbox: Literal['norm1000', 'none', None] = None,
         response_prefix: Optional[str] = None,
+        megatron_mode: bool = False,
         # train
         padding_side: Literal['left', 'right'] = 'right',
         loss_scale: str = 'default',
@@ -46,6 +47,7 @@ def get_template(
         max_pixels=max_pixels,
         tools_prompt=tools_prompt,
         norm_bbox=norm_bbox,
+        response_prefix=response_prefix,
         padding_side=padding_side,
         loss_scale=loss_scale,
         sequence_parallel_size=sequence_parallel_size,
