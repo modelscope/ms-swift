@@ -105,6 +105,9 @@ class GRPOArgumentsMixin:
     offload_model: bool = False
     gc_collect_after_offload: bool = False
 
+    # mini-batch
+    mini_batch_size: Optional[int] = None
+
 
 @dataclass
 class TrainingArguments(SwiftArgumentsMixin, HfTrainingArguments):

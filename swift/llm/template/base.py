@@ -1087,6 +1087,7 @@ class Template(ProcessorMixin):
             res['pixel_values_videos'] = torch.concat(pixel_values_videos)
         if use_torchacc() or self.sequence_parallel_size > 1:
             res = self._torchacc_xtuner_data_collator(res, padding_to, self.tokenizer, padding_side)
+
         return res
 
     def _torchacc_xtuner_data_collator(self, res, padding_to, tokenizer, padding_side):
