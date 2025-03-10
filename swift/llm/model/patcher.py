@@ -299,9 +299,9 @@ def patch_mp_ddp():
 def patch_get_dynamic_module():
     origin_get_cached_module_file = dynamic_module_utils.get_cached_module_file
 
-    def new_get_cached_module_file(pretrained_model_name_or_path, module_file: str, *args, **kwargs):
-        with safe_ddp_context(hash_id=module_file):
-            return origin_get_cached_module_file(pretrained_model_name_or_path, module_file, *args, **kwargs)
+    def new_get_cached_module_file(pretrained_model_name_or_path, *args, **kwargs):
+        with safe_ddp_context(hash_id=str(pretrained_model_name_or_path)):
+            return origin_get_cached_module_file(pretrained_model_name_or_path, *args, **kwargs)
 
     dynamic_module_utils.get_cached_module_file = new_get_cached_module_file
     try:
