@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from functools import partial
 from itertools import repeat
 from queue import Queue
-from typing import List, Optional
+from typing import List, Optional, Union
 
 import torch
 import torch.distributed as dist
@@ -349,7 +349,7 @@ def patch_lmdeploy(load_weights=False):
     TurboMindInstance._create_model_instance = _create_model_instance
 
 
-def patch_vllm(world_size=1):
+def patch_vllm(world_size=1, vllm_device: Optional[str] = None):
 
     @contextmanager
     def _get_context():
@@ -403,7 +403,7 @@ def patch_vllm(world_size=1):
         GroupCoordinator.__init__ = __init__
 
         try:
-            with profiling_patch:
+            with profiling_patch, set_local_rank_context(vllm_device):
                 torch.distributed.get_world_size_origin = torch.distributed.get_world_size
                 torch.distributed.get_world_size = get_world_size
                 yield
@@ -431,3 +431,28 @@ def patch_npu_vllm(vllm_device: str):
             torch.distributed.new_group = original_new_group
 
     return new_group_context() if device_type == 'npu' else nullcontext()
+
+
+@contextmanager
+def set_device_context(device: Union[str, int]):
+    original_device = torch.cuda.current_device()
+    torch.cuda.set_device(device)
+    try:
+        yield
+    finally:
+        torch.cuda.set_device(original_device)
+
+
+@contextmanager
+def set_local_rank_context(device: Union[str, int]):
+    if isinstance(device, str):
+        device = int(device.split(':')[-1])
+    origin_local_rank = os.environ.get('LOCAL_RANK', None)
+    os.environ['LOCAL_RANK'] = str(device)
+    try:
+        yield
+    finally:
+        if origin_local_rank is not None:
+            os.environ['LOCAL_RANK'] = origin_local_rank
+        else:
+            del os.environ['LOCAL_RANK']
