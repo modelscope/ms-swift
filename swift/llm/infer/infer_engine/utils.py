@@ -349,7 +349,7 @@ def patch_lmdeploy(load_weights=False):
     TurboMindInstance._create_model_instance = _create_model_instance
 
 
-def patch_vllm(world_size=1):
+def patch_vllm(world_size=1, vllm_device: Optional[str] = None):
 
     @contextmanager
     def _get_context():
@@ -402,8 +402,20 @@ def patch_vllm(world_size=1):
 
         GroupCoordinator.__init__ = __init__
 
+        @contextmanager
+        def _device_context():
+            if vllm_device is not None:
+                original_device = torch.cuda.current_device()
+                torch.cuda.set_device(vllm_device)
+                try:
+                    yield
+                finally:
+                    torch.cuda.set_device(original_device)
+            else:
+                yield
+
         try:
-            with profiling_patch:
+            with profiling_patch, _device_context():
                 torch.distributed.get_world_size_origin = torch.distributed.get_world_size
                 torch.distributed.get_world_size = get_world_size
                 yield
