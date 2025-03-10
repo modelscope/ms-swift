@@ -444,7 +444,7 @@ def set_device_context(device: Union[str, int]):
 
 
 @contextmanager
-def set_local_rank_context(device: Union[str, int], local_device: Union[str, int]):
+def set_local_rank_context(device: Union[str, int]):
     if isinstance(device, str):
         device = int(device.split(':')[-1])
     origin_local_rank = os.environ.get('LOCAL_RANK', None)
