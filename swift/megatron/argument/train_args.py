@@ -22,6 +22,7 @@ class MegatronTrainArguments(MegatronArguments, BaseArguments):
         for k, v in kwargs.items():
             if getattr(self, k) is None:
                 setattr(self, k, v)
+        MegatronArguments.__post_init__(self)
         self.extra_args = self.parse_to_megatron()
 
     def _init_save(self):
@@ -42,4 +43,3 @@ class MegatronTrainArguments(MegatronArguments, BaseArguments):
             self.hf_ckpt_path = self.model_dir
         if self.load is None:
             self.load = self.megatron_model
-        MegatronArguments.__post_init__(self)

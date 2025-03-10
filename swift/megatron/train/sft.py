@@ -35,12 +35,12 @@ class MegatronSft(SwiftSft):
         args = self.args
         if args.lazy_tokenize:
             train_dataset = LazyLLMDataset(
-                train_dataset, template.megatron_encode, strict=args.strict, random_state=args.data_seed)
+                train_dataset, template.encode, strict=args.strict, random_state=args.data_seed)
             if val_dataset is not None:
                 val_dataset = LazyLLMDataset(
-                    val_dataset, template.megatron_encode, strict=args.strict, random_state=args.data_seed)
+                    val_dataset, template.encode, strict=args.strict, random_state=args.data_seed)
         else:
-            preprocessor = EncodePreprocessor(template.encode)
+            preprocessor = EncodePreprocessor(template=template)
             train_dataset = preprocessor(train_dataset, num_proc=args.dataset_num_proc, strict=args.strict)
             if val_dataset is not None:
                 val_dataset = preprocessor(val_dataset, num_proc=args.dataset_num_proc, strict=args.strict)

@@ -49,7 +49,7 @@ def patch_megatron_dataset(template, train_dataset, val_dataset):
     def build_pretraining_data_loader(*args, **kwargs):
         res = origin_build_pretraining_data_loader(*args, **kwargs)
         if res is not None:
-            res.collate_fn = template.megatron_data_collator
+            res.collate_fn = template.data_collator
         return res
 
     def build_train_valid_test_datasets(build_train_valid_test_datasets_provider):

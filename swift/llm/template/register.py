@@ -29,6 +29,7 @@ def get_template(
         tools_prompt: str = 'react_en',
         norm_bbox: Literal['norm1000', 'none', None] = None,
         response_prefix: Optional[str] = None,
+        megatron_mode: bool = False,
         # train
         padding_side: Literal['left', 'right'] = 'right',
         loss_scale: str = 'default',
