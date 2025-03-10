@@ -624,15 +624,15 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # trying to shuffle and average the length
         distributed_idx = self.round_robin(len(all_inputs), get_node_setting()[1] * self.args.num_infer_workers)
         if self.infer_rank >= 0:
-            with set_device_context(self.infer_device):
-                _input_slice = np.array(all_inputs)[distributed_idx[self.infer_rank]]
-                if self.args.async_generate:
-                    self.async_infer(inputs, _input_slice, distributed_idx)
-                    data_cache = self.queue.get()
-                    inputs = data_cache.inputs
-                    outputs = data_cache.outputs
-                    distributed_idx = data_cache.distributed_idx
-                else:
+            _input_slice = np.array(all_inputs)[distributed_idx[self.infer_rank]]
+            if self.args.async_generate:
+                self.async_infer(inputs, _input_slice, distributed_idx)
+                data_cache = self.queue.get()
+                inputs = data_cache.inputs
+                outputs = data_cache.outputs
+                distributed_idx = data_cache.distributed_idx
+            else:
+                with set_device_context(self.infer_device):
                     outputs = self.engine.infer(_input_slice, self.request_config, use_tqdm=False)
         else:
             if self.args.async_generate:
