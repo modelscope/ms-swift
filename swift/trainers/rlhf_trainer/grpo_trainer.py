@@ -23,7 +23,7 @@ from transformers import PreTrainedModel, TrainerCallback
 from trl import GRPOTrainer as HFGRPOTrainer
 
 from swift.llm import InferRequest, MultiModelKeys, RequestConfig, RowPreprocessor, get_model_arch, to_device
-from swift.llm.infer.infer_engine import GRPOVllmEngine, device_context
+from swift.llm.infer.infer_engine import GRPOVllmEngine, set_device_context
 from swift.plugin import orms
 from swift.utils import (JsonlWriter, gc_collect, get_device, get_device_count, get_dist_setting, get_logger,
                          get_node_setting, is_lmdeploy_available, is_vllm_available, is_wandb_available)
@@ -618,7 +618,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # trying to shuffle and average the length
         distributed_idx = self.round_robin(len(all_inputs), get_node_setting()[1] * self.args.num_infer_workers)
         if self.infer_rank >= 0:
-            with device_context(self.infer_device):
+            with set_device_context(self.infer_device):
                 _input_slice = np.array(all_inputs)[distributed_idx[self.infer_rank]]
                 if self.args.async_generate:
                     self.async_infer(inputs, _input_slice, distributed_idx)
