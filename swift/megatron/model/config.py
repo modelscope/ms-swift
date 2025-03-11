@@ -1,7 +1,5 @@
 from typing import Any, Dict
 
-from swift.llm import ModelInfo
-
 config_mapping = {
     'num_layers': ['num_hidden_layers'],
     'hidden_size': ['hidden_size'],
