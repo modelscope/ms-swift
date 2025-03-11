@@ -23,7 +23,6 @@ class ExportArguments(MergeArguments, BaseArguments):
         max_length (int): Sequence length for quantization.
         quant_batch_size (int): Batch size for quantization.
         to_ollama (bool): Flag to indicate export model to ollama format.
-        gguf_file (Optional[str]): Path to the GGUF file when exporting to ollama format.
         push_to_hub (bool): Flag to indicate if the output should be pushed to the model hub.
         hub_model_id (Optional[str]): Model ID for the hub.
         hub_private_repo (bool): Flag to indicate if the hub repository is private.
@@ -42,7 +41,6 @@ class ExportArguments(MergeArguments, BaseArguments):
 
     # ollama
     to_ollama: bool = False
-    gguf_file: Optional[str] = None
 
     # push to ms hub
     push_to_hub: bool = False
