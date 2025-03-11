@@ -3,14 +3,37 @@
 import torch
 from megatron.training.checkpointing import save_checkpoint as mg_save_checkpoint
 from megatron.training.initialize import initialize_megatron
+from megatron.training.utils import get_ltor_masks_and_position_ids
 
-from swift.llm import ExportArguments, get_model_tokenizer, save_checkpoint
+from swift.llm import ExportArguments, get_model_tokenizer, get_template, save_checkpoint
 from swift.utils import get_logger
 from ..argument import MegatronArguments
 from ..model import get_megatron_model_meta
 from .patcher import patch_megatron
 
 logger = get_logger()
+
+
+def test_convert_precision(hf_model, mg_model, processor):
+    template = get_template(hf_model.model_meta.template, processor)
+    input_ids = template.encode({'messages': [{'role': 'user', 'content': 'who are you?'}]})['input_ids']
+    input_ids = torch.tensor(input_ids)[None].to('cuda')
+    hf_model.to('cuda')
+    with torch.inference_mode():
+        hf_logits = hf_model(input_ids).logits
+    hf_model.to('cpu')
+
+    attention_mask, _, position_ids = get_ltor_masks_and_position_ids(input_ids, -100, True, True, True)
+    mg_model.to('cuda')
+    with torch.inference_mode():
+        mg_logits = mg_model(input_ids=input_ids, attention_mask=attention_mask, position_ids=position_ids)
+    mg_model.to('cpu')
+
+    mean_diff = (mg_logits - hf_logits).abs().mean().item()
+    max_diff = (mg_logits - hf_logits).abs().max().item()
+    print(f'mean_diff: {mean_diff}, max_diff: {max_diff}')
+    assert mean_diff < 0.1
+    assert max_diff < 1
 
 
 def convert_hf2mcore(args: ExportArguments) -> None:
@@ -33,6 +56,8 @@ def convert_hf2mcore(args: ExportArguments) -> None:
     mg_model = megatron_model_meta.model_provider()
     logger.info('Megatron model created successfully.')
     megatron_model_meta.convert_hf2mcore(hf_model, mg_model)
+    if args.test_convert_precision:
+        test_convert_precision(hf_model, mg_model, processor)
     if args.torch_dtype is not None:
         mg_model.to(args.torch_dtype)
     logger.info('Successfully transferred HF model weights to MG model.')
@@ -59,14 +84,15 @@ def convert_mcore2hf(args: ExportArguments) -> None:
         'torch_dtype': args.torch_dtype,
         'load': args.megatron_model,
         'save': args.output_dir,
-        'hf_ckpt_path': args.model_dir
     })
     megatron_args = MegatronArguments(**kwargs)
     patch_megatron(processor)
     extra_args = megatron_args.parse_to_megatron()
     initialize_megatron(args_defaults=extra_args)
-
-    megatron_model_meta.convert_mcore2hf(hf_model, megatron_model_meta.get_model_provider())
+    mg_model = megatron_model_meta.model_provider()
+    megatron_model_meta.convert_mcore2hf(hf_model, mg_model)
+    if args.test_convert_precision:
+        test_convert_precision(hf_model, mg_model, processor)
     if args.torch_dtype is not None:
         hf_model.to(args.torch_dtype)
     save_checkpoint(

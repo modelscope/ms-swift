@@ -4,19 +4,12 @@ import sys
 from dataclasses import asdict, dataclass
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
-import torch
-
 from swift.llm.argument.base_args import to_abspath
 
 
 @dataclass
 class ExtraMegatronArguments:
     padded_vocab_size: Optional[int] = None
-    hf_ckpt_path: Optional[str] = None
-
-    torch_dtype: Optional[torch.dtype] = None
-    target_tensor_model_parallel_size: int = 1
-    target_pipeline_model_parallel_size: int = 1
 
 
 @dataclass
@@ -142,14 +135,6 @@ class MegatronArguments(ExtraMegatronArguments):
     num_workers: int = 4
     eod_mask_loss: bool = False
     no_create_attention_mask_in_dataloader: bool = True
-
-    def _init_mixed_precision(self):
-        if self.torch_dtype == torch.bfloat16:
-            self.bf16 = True
-        elif self.torch_dtype == torch.float16:
-            self.fp16 = True
-            if self.apply_query_key_layer_scaling is None:
-                self.apply_query_key_layer_scaling = True
 
     def __post_init__(self):
         os.environ['CUDA_DEVICE_MAX_CONNECTIONS'] = '1'

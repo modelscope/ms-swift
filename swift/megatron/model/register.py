@@ -16,7 +16,7 @@ class MegatronModelMeta:
     megatron_model_type: Optional[str]
     model_types: List[str]
 
-    model_provider: Callable[[bool, bool], nn.Module]
+    model_provider: Callable[[], nn.Module]
     load_config: Callable[[PretrainedConfig], Dict[str, Any]]
     convert_mcore2hf: Callable[[nn.Module, nn.Module], None]
     convert_hf2mcore: Callable[[nn.Module, nn.Module], None]

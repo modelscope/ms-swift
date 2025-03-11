@@ -2,6 +2,8 @@
 import os
 from dataclasses import dataclass
 
+import torch
+
 from swift.llm import BaseArguments
 from swift.llm.argument.base_args import to_abspath
 from swift.utils import add_version_to_work_dir, get_logger, is_local_master
@@ -36,10 +38,17 @@ class MegatronTrainArguments(MegatronArguments, BaseArguments):
         if is_local_master():
             os.makedirs(self.save, exist_ok=True)
 
+    def _init_mixed_precision(self):
+        if self.torch_dtype == torch.bfloat16:
+            self.bf16 = True
+        elif self.torch_dtype == torch.float16:
+            self.fp16 = True
+            if self.apply_query_key_layer_scaling is None:
+                self.apply_query_key_layer_scaling = True
+
     def __post_init__(self):
         BaseArguments.__post_init__(self)
+        self._init_mixed_precision()
         self._init_save()
-        if self.hf_ckpt_path is None:
-            self.hf_ckpt_path = self.model_dir
         if self.load is None:
             self.load = self.megatron_model
