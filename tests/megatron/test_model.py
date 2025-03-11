@@ -5,6 +5,7 @@ os.environ['MASTER_PORT'] = '29560'
 
 
 def get_mg_model_tokenizer(model_id):
+    from megatron.training.initialize import initialize_megatron
     set_default_ddp_config()
     hf_model, processor = get_model_tokenizer(model_id, torch_dtype=torch.float32)
     megatron_model_meta = get_megatron_model_meta(model_id)
@@ -15,8 +16,6 @@ def get_mg_model_tokenizer(model_id):
     extra_args = megatron_args.parse_to_megatron()
     initialize_megatron(args_defaults=extra_args)
     mg_model = megatron_model_meta.model_provider()
-    # from toolkits.model_checkpoints_convertor.qwen.hf2mcore_qwen2_dense_and_moe_gqa import (
-    #     convert_checkpoint_from_transformers_to_megatron, save_mgmodel, check_hf_mg_forward)
     megatron_model_meta.convert_hf2megatron(hf_model, mg_model)
     return hf_model, mg_model, processor
 
@@ -36,7 +35,9 @@ def test_bf16_fp32():
     print(f'mean_diff: {mean_diff}, max_diff: {max_diff}')
 
 
-def test_align(hf_model, mg_model, template):
+def test_align(hf_model, mg_model, processor):
+    from megatron.training.utils import get_ltor_masks_and_position_ids
+    template = get_template(hf_model.model_meta.template, processor)
     input_ids = template.encode(InferRequest(messages=[{'role': 'user', 'content': '你是谁？'}]))['input_ids']
     input_ids = torch.tensor(input_ids)[None].to('cuda')
     attention_mask, _, position_ids = get_ltor_masks_and_position_ids(input_ids, -100, True, True, True)
@@ -60,9 +61,6 @@ if __name__ == '__main__':
     from swift.megatron.argument import MegatronArguments
     from swift.megatron.model import get_megatron_model_meta
     from swift.megatron.utils import patch_megatron
-    from megatron.training.initialize import initialize_megatron
-    from megatron.training.utils import get_ltor_masks_and_position_ids
-    test_bf16_fp32()
+    # test_bf16_fp32()
     hf_model, mg_model, processor = get_mg_model_tokenizer(model_id)
-    template = get_template(hf_model.model_meta.template, processor)
-    test_align(hf_model, mg_model, template)
+    test_align(hf_model, mg_model, processor)

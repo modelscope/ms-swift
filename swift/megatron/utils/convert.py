@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
 import torch
+from megatron.training.checkpointing import save_checkpoint as mg_save_checkpoint
 from megatron.training.initialize import initialize_megatron
 
 from swift.llm import ExportArguments, get_model_tokenizer, save_checkpoint
@@ -29,8 +30,15 @@ def convert_hf2megatron(args: ExportArguments) -> None:
     extra_args = megatron_args.parse_to_megatron()
     initialize_megatron(args_defaults=extra_args)
 
-    mg_model = megatron_model_meta.get_model_provider()()
+    mg_model = megatron_model_meta.model_provider()
     megatron_model_meta.convert_hf2megatron(hf_model, mg_model)
+    mg_save_checkpoint(1, [mg_model], None, None, 0)
+    save_checkpoint(
+        None,
+        processor,
+        args.output_dir,
+        model_dirs=[hf_model.model_dir],
+        additional_saved_files=hf_model.model_meta.additional_saved_files)
     args.save_args()
     logger.info(f'Successfully converted HF format to Megatron format and saved in `{args.output_dir}`.')
 

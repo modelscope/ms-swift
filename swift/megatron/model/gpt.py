@@ -56,10 +56,10 @@ def set_attn_state(args, mg_layer, hf_layer):
                   dim=1).reshape(-1))
 
 
-def set_mlp_state(args, layer, hf_layer):
-    layer.mlp.linear_fc1.weight.data.copy_(
+def set_mlp_state(args, mg_layer, hf_layer):
+    mg_layer.mlp.linear_fc1.weight.data.copy_(
         torch.cat([hf_layer.mlp.gate_proj.weight, hf_layer.mlp.up_proj.weight], dim=0))
-    layer.mlp.linear_fc2.weight.data.copy_(hf_layer.mlp.down_proj.weight)
+    mg_layer.mlp.linear_fc2.weight.data.copy_(hf_layer.mlp.down_proj.weight)
 
 
 def set_layer_state(args, mg_model, hf_model, layer_idx):
@@ -80,9 +80,6 @@ def convert_hf2megatron(hf_model, mg_model):
     mg_model.decoder.final_layernorm.weight.data.copy_(hf_model.model.norm.weight)
     for layer_idx in range(args.num_layers):
         set_layer_state(args, mg_model, hf_model, layer_idx)
-    # if args.torch_dtype is not None:
-    #     mg_model.to(args.torch_dtype)
-    # save_mgmodel(mg_model, args)
 
 
 def model_provider(pre_process=True, post_process=True):
