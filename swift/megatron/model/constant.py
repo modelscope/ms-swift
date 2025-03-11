@@ -1,2 +1,2 @@
 class MegatronModelType:
-    qwen = 'qwen'
+    gpt = 'gpt'

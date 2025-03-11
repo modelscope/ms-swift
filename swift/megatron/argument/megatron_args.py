@@ -8,12 +8,6 @@ import torch
 
 from swift.llm.argument.base_args import to_abspath
 
-add_prefix_no_list = [
-    'bias_swiglu_fusion', 'ropo_fusion', 'gradient_accumulation_fusion', 'save_optim', 'save_rng', 'load_optim',
-    'load_rng', 'log_learning_rate_to_tensorboard', 'create_attention_mask_in_dataloader'
-]
-add_prefix_no_list = set(add_prefix_no_list)
-
 
 @dataclass
 class ExtraMegatronArguments:
@@ -40,9 +34,9 @@ class MegatronArguments(ExtraMegatronArguments):
     train_samples: Optional[int] = None
     log_interval: int = 5
     tensorboard_dir: Optional[str] = None
-    bias_swiglu_fusion: bool = True
-    ropo_fusion: bool = True
-    gradient_accumulation_fusion: bool = True
+    no_bias_swiglu_fusion: bool = False
+    no_ropo_fusion: bool = False
+    no_gradient_accumulation_fusion: bool = False
     cross_entropy_loss_fusion: bool = False
     use_flash_attn: bool = False
     optimizer: Literal['adam', 'sgd'] = 'adam'
@@ -72,13 +66,14 @@ class MegatronArguments(ExtraMegatronArguments):
     # checkpoint
     save: Optional[str] = None
     save_interval: int = 500
-    save_optim: bool = True
-    save_rng: bool = True
+    no_save_optim: bool = False
+    no_save_rng: bool = False
     load: Optional[str] = None
-    load_optim: bool = True
-    load_rng: bool = True
+    no_load_optim: bool = False
+    no_load_rng: bool = False
     finetune: bool = False
     ckpt_format: Literal['torch', 'torch_dist', 'zarr'] = 'torch_dist'
+    no_initialization: bool = False
     auto_detect_ckpt_format: bool = True
     exit_on_missing_checkpoint: bool = True
 
@@ -129,7 +124,7 @@ class MegatronArguments(ExtraMegatronArguments):
     tensorboard_log_interval: int = 1
     tensorboard_queue_size: int = 50
     log_timers_to_tensorboard: bool = True
-    log_learning_rate_to_tensorboard: bool = True
+    no_log_learning_rate_to_tensorboard: bool = False
     log_validation_ppl_to_tensorboard: bool = True
     log_memory_to_tensorboard: bool = True
     logging_leval: Optional[str] = None
@@ -146,7 +141,7 @@ class MegatronArguments(ExtraMegatronArguments):
     seq_length: Optional[str] = None
     num_workers: int = 4
     eod_mask_loss: bool = False
-    create_attention_mask_in_dataloader: bool = False
+    no_create_attention_mask_in_dataloader: bool = True
 
     def _init_mixed_precision(self):
         if self.torch_dtype == torch.bfloat16:
@@ -177,9 +172,6 @@ class MegatronArguments(ExtraMegatronArguments):
             if k not in MegatronArguments.__annotations__:
                 extra_args[k] = value
                 continue
-            if k in add_prefix_no_list:
-                k = f'no_{k}'
-                value = not value
             if value is None or value is False:
                 continue
             new_args.append(f"--{k.replace('_', '-')}")
@@ -194,6 +186,6 @@ class MegatronArguments(ExtraMegatronArguments):
         new_args, extra_args = self._args_to_argv()
         sys._old_argv = sys.argv
         sys.argv = sys.argv[:1] + new_args
-        
+
         extra_args.pop('loss_scale', None)
         return extra_args
