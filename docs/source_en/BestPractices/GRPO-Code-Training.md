@@ -1,4 +1,4 @@
-# GRPO代码训练
+# Code Training with GRPO
 This document explains how to use GRPO to train models for code tasks.
 
 
@@ -85,4 +85,3 @@ swift rlhf \
 
 Training Reward Curve
 ![Training Reward Curve](../../resources/grpo_code.png)
-
