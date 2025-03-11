@@ -151,6 +151,8 @@ class VllmEngine(InferEngine):
         else:
             assert not limit_mm_per_prompt, (
                 'The current version of VLLM does not support `limit_mm_per_prompt`. Please upgrade VLLM.')
+        if 'enable_sleep_mode' in parameters:
+            engine_kwargs['enable_sleep_mode'] = enable_sleep_mode
 
         model_info = self.model_info
         if self.config.architectures is None:
@@ -170,7 +172,6 @@ class VllmEngine(InferEngine):
             trust_remote_code=True,
             enable_prefix_caching=enable_prefix_caching,
             distributed_executor_backend=distributed_executor_backend,
-            enable_sleep_mode=enable_sleep_mode,
             device=device,
             **engine_kwargs,
         )
