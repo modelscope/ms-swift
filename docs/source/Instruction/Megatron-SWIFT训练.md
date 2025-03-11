@@ -23,7 +23,3 @@ pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation -
 
 
 - 更多案例可以查看[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/megatron)
-
-
-
-

@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional
 
 import torch.nn as nn
+from transformers import PretrainedConfig
 
 from swift.llm import MODEL_MAPPING, ModelGroup
 from swift.llm.model.register import _get_matched_model_meta
@@ -15,10 +16,10 @@ class MegatronModelMeta:
     megatron_model_type: Optional[str]
     model_types: List[str]
 
-    model_provider: Callable[[...], nn.Module]
-    load_config: Callable[[...], Dict[str, Any]]
-    convert_megatron2hf: Callable[[...], nn.Module]
-    convert_hf2megatron: Callable[[...], None]
+    model_provider: Callable[[bool, bool], nn.Module]
+    load_config: Callable[[PretrainedConfig], Dict[str, Any]]
+    convert_mcore2hf: Callable[[nn.Module, nn.Module], None]
+    convert_hf2mcore: Callable[[nn.Module, nn.Module], None]
 
     model_groups: List[ModelGroup] = field(default_factory=list)
 
