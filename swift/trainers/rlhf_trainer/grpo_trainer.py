@@ -23,7 +23,7 @@ from transformers import PreTrainedModel, TrainerCallback
 from trl import GRPOTrainer as HFGRPOTrainer
 
 from swift.llm import InferRequest, MultiModelKeys, RequestConfig, RowPreprocessor, get_model_arch, to_device
-from swift.llm.infer.infer_engine import GRPOVllmEngine
+from swift.llm.infer.infer_engine import GRPOVllmEngine, set_device_context
 from swift.plugin import orms
 from swift.utils import (JsonlWriter, gc_collect, get_device, get_device_count, get_dist_setting, get_logger,
                          get_node_setting, is_lmdeploy_available, is_vllm_available, is_wandb_available)
@@ -189,6 +189,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # it's safer to set it in all cases.
         set_seed(args.seed, device_specific=True)
         self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
+        self.infer_device = None
+
         if use_vllm or use_lmdeploy:
             if self.infer_rank >= 0:
                 fast_infer_device = self.args.vllm_device or self.args.lmdeploy_device
@@ -221,6 +223,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         raise ImportError('vLLM is not available and `use_vllm` is set to True. '
                                           'Please install vLLM with `pip install vllm -U` to use it.')
                     self.prepare_vllm(model, fast_infer_device)
+                    self.infer_device = fast_infer_device[self.local_infer_rank]
                 elif use_lmdeploy:
                     if not is_lmdeploy_available():
                         raise ImportError('LMDeploy is not available and `use_lmdeploy` is set to True.'
@@ -237,6 +240,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             session_len=args.lmdeploy_session_len,
                             cache_max_entry_count=args.lmdeploy_cache_max_entry_count,
                             reload_weights=True)
+                        self.infer_device = fast_infer_device
                     self.engine.default_template = self.template
             self._last_loaded_step = 0  # tag to avoid useless loading during grad accumulation
 
@@ -572,8 +576,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return [index_to_output[idx] for idx in sorted(index_to_output.keys())]
 
     def async_infer(self, inputs, inputs_slice, distributed_idx):
-        future: Future = self.executor.submit(
-            self.engine.infer, infer_requests=inputs_slice, request_config=self.request_config, use_tqdm=False)
+
+        def infer_task():
+            with set_device_context(self.infer_device):
+                result = self.engine.infer(
+                    infer_requests=inputs_slice, request_config=self.request_config, use_tqdm=False)
+                return result
+
+        future: Future = self.executor.submit(infer_task)
 
         def done(_self):
             self.queue.put(DataCache(inputs, _self.result(), distributed_idx))
@@ -622,7 +632,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 outputs = data_cache.outputs
                 distributed_idx = data_cache.distributed_idx
             else:
-                outputs = self.engine.infer(_input_slice, self.request_config, use_tqdm=False)
+                with set_device_context(self.infer_device):
+                    outputs = self.engine.infer(_input_slice, self.request_config, use_tqdm=False)
         else:
             if self.args.async_generate:
                 self.queue.put(DataCache(inputs, [], distributed_idx))
