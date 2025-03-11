@@ -108,6 +108,12 @@ Hyperparameters
 - reward_model: Same as the model, using a reward model as a reward function. At least one of reward_funcs and reward_model needs to be specified.
 - num_iterations: number of iterations per batch. Default is 1.
 - epsilon: epsilon value for clipping. Default is 0.2
+- async_generate: Use async rollout to improve train speed，default `false`.
+- sleep_level: vllm specific，when both actor and rollout in the same GPU，you can make vllm sleep when model is training.
+- move_model_batches: When moving model parameters to fast inference frameworks such as vLLM/LMDeploy, determines how many batches to divide the layers into. The default is `None`, which means the entire model is not split. Otherwise, the model is split into `move_model_batches + 1` (non-layer parameters) + `1` (multi-modal component parameters) batches.
+- offload_optimizer: Whether to offload optimizer parameters during inference with vLLM/LMDeploy. The default is `False`.
+- offload_model: Whether to offload the model itself during inference with vLLM/LMDeploy. The default is `False`.
+- gc_collect_after_offload: Whether to perform garbage collection (both Python GC and GPU GC) after offloading. The default is `False`.
 
 The hyperparameters for the reward function can be found in the [Built-in Reward Functions section](#built-in-reward-functions).
 

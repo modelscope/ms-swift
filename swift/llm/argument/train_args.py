@@ -215,7 +215,7 @@ class TrainArguments(SwanlabArguments, TorchAccArguments, TunerArguments, Seq2Se
         if self.deepspeed:
             require_version('deepspeed')
             if is_mp():
-                raise ValueError('DeepSpeed is not compatible with MP. '
+                raise ValueError('DeepSpeed is not compatible with `device_map`. '
                                  f'n_gpu: {get_device_count()}, '
                                  f'local_world_size: {self.local_world_size}.')
 

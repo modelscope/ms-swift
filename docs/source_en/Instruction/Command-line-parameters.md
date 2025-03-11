@@ -404,6 +404,10 @@ The meanings of the following parameters can be referenced [here](https://huggin
 - epsilon: epsilon value for clipping. Default is 0.2.
 - async_generate: Use async rollout to improve train speed，default `false`.
 - sleep_level: vllm specific，when both actor and rollout in the same GPU，you can make vllm sleep when model is training.
+- move_model_batches: When moving model parameters to fast inference frameworks such as vLLM/LMDeploy, determines how many batches to divide the layers into. The default is `None`, which means the entire model is not split. Otherwise, the model is split into `move_model_batches + 1` (non-layer parameters) + `1` (multi-modal component parameters) batches.
+- offload_optimizer: Whether to offload optimizer parameters during inference with vLLM/LMDeploy. The default is `False`.
+- offload_model: Whether to offload the model itself during inference with vLLM/LMDeploy. The default is `False`.
+- gc_collect_after_offload: Whether to perform garbage collection (both Python GC and GPU GC) after offloading. The default is `False`.
 
 cosine reward function arguments
 - `cosine_min_len_value_wrong` (default: 0.0): Reward value corresponding to the minimum length when the answer is incorrect. Default is 0.0

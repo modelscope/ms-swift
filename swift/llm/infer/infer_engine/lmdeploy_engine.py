@@ -304,8 +304,6 @@ class LmdeployEngine(InferEngine):
             template = self.default_template
 
         template.set_mode('lmdeploy')
-        if request_config.seed is None:
-            request_config.seed = get_seed()
 
         loop = asyncio.get_running_loop()
         with torch.inference_mode():
