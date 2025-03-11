@@ -33,6 +33,8 @@ def convert_hf2mcore(args: ExportArguments) -> None:
     mg_model = megatron_model_meta.model_provider()
     logger.info('Megatron model created successfully.')
     megatron_model_meta.convert_hf2mcore(hf_model, mg_model)
+    if args.torch_dtype is not None:
+        mg_model.to(args.torch_dtype)
     logger.info('Successfully transferred HF model weights to MG model.')
     mg_save_checkpoint(1, [mg_model], None, None, 0)
     logger.info('Successfully saved Megatron model weights.')

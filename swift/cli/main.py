@@ -62,7 +62,7 @@ def cli_main() -> None:
     file_path = importlib.util.find_spec(ROUTE_MAPPING[method_name]).origin
     torchrun_args = get_torchrun_args()
     python_cmd = sys.executable
-    if torchrun_args is None or method_name not in {'pt', 'sft', 'rlhf', 'infer', 'mg-sft'}:
+    if torchrun_args is None or method_name not in {'pt', 'sft', 'rlhf', 'infer', 'megatron-sft'}:
         args = [python_cmd, file_path, *argv]
     else:
         args = [python_cmd, '-m', 'torch.distributed.run', *torchrun_args, file_path, *argv]
