@@ -40,14 +40,26 @@ def test_convert_precision(hf_model, mg_model, processor):
     assert (hf_tokens == mg_tokens).all()
 
 
+convert_kwargs = {
+    'use_cpu_initialization': True,
+    'no_save_optim': True,
+    'no_save_rng': True,
+    'no_load_optim': True,
+    'no_load_rng': True,
+    'no_masked_softmax_fusion': True,
+    'no_bias_dropout_fusion': True,
+    'no_bias_swiglu_fusion': True,
+    'no_rope_fusion': True
+}
+
+
 def convert_hf2mcore(args: ExportArguments) -> None:
     kwargs = args.get_model_kwargs()
     kwargs['torch_dtype'] = torch.float32
     hf_model, processor = get_model_tokenizer(**kwargs)
     megatron_model_meta = get_megatron_model_meta(args.model)
     kwargs = megatron_model_meta.load_config(processor.model_info.config)
-    kwargs.update({'use_cpu_initialization': True, 'load': args.model_dir, 'save': args.output_dir})
-    megatron_args = MegatronArguments(**kwargs)
+    megatron_args = MegatronArguments(**kwargs, **convert_kwargs, save=args.output_dir)
     patch_megatron(processor)
     extra_args = megatron_args.parse_to_megatron()
     initialize_megatron(args_defaults=extra_args)
@@ -77,12 +89,7 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     hf_model, processor = get_model_tokenizer(**kwargs)
     megatron_model_meta = get_megatron_model_meta(args.model)
     kwargs = megatron_model_meta.load_config(processor.model_info.config)
-    kwargs.update({
-        'use_cpu_initialization': True,
-        'load': args.megatron_model,
-        'save': args.output_dir,
-    })
-    megatron_args = MegatronArguments(**kwargs)
+    megatron_args = MegatronArguments(**kwargs, **convert_kwargs, load=args.megatron_model)
     patch_megatron(processor)
     extra_args = megatron_args.parse_to_megatron()
     initialize_megatron(args_defaults=extra_args)

@@ -27,8 +27,10 @@ class MegatronArguments(ExtraMegatronArguments):
     train_samples: Optional[int] = None
     log_interval: int = 5
     tensorboard_dir: Optional[str] = None
+    no_masked_softmax_fusion: bool = False
+    no_bias_dropout_fusion: bool = False
     no_bias_swiglu_fusion: bool = False
-    no_ropo_fusion: bool = False
+    no_rope_fusion: bool = False
     no_gradient_accumulation_fusion: bool = False
     cross_entropy_loss_fusion: bool = False
     use_flash_attn: bool = False

@@ -1,5 +1,7 @@
 import os
+
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
 
 def get_mg_model_tokenizer():
     model_id = 'Qwen/Qwen2.5-7B-Instruct'
@@ -11,9 +13,15 @@ def get_mg_model_tokenizer():
     megatron_model_meta = get_megatron_model_meta(model_id)
     model_info = processor.model_info
     kwargs = megatron_model_meta.load_config(model_info.config)
-    megatron_args = MegatronArguments(**kwargs, seq_length=1, use_cpu_initialization=True, no_initialization=True,
-                                      load='Qwen2-7B-Instruct-mcore', 
-                                      save='mcore-hf-test', no_load_optim=True, no_load_rng=True)
+    megatron_args = MegatronArguments(
+        **kwargs,
+        seq_length=1,
+        use_cpu_initialization=True,
+        no_initialization=True,
+        load='Qwen2-7B-Instruct-mcore',
+        save='mcore-hf-test',
+        no_load_optim=True,
+        no_load_rng=True)
     patch_megatron(processor)
     extra_args = megatron_args.parse_to_megatron()
     initialize_megatron(args_defaults=extra_args)
@@ -42,6 +50,7 @@ def test_save():
     hf_model, mg_model, processor = get_mg_model_tokenizer()
     test_align(hf_model, mg_model, processor)
 
+
 if __name__ == '__main__':
     import torch
     from swift.llm import InferRequest, get_model_tokenizer, get_template, set_default_ddp_config
@@ -49,4 +58,3 @@ if __name__ == '__main__':
     from swift.megatron.model import get_megatron_model_meta
     from swift.megatron.utils import patch_megatron
     test_save()
-

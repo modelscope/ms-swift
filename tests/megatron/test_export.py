@@ -59,6 +59,6 @@ def infer_hf_align():
 
 
 if __name__ == '__main__':
-    hf2mcore()
+    # hf2mcore()
     mcore2hf()
     infer_hf_align()
