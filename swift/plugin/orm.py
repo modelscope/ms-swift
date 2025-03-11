@@ -388,13 +388,13 @@ class CodeReward(ORM):
         load_dotenv()
 
     @staticmethod
-    def extract_code(completion: str) -> str:
-        pattern = re.compile(r'```python\n(.*?)```', re.DOTALL)
+    def extract_code(completion: str, language: str) -> str:
+        pattern = re.compile(rf'```{language}\n(.*?)```', re.DOTALL)
         matches = pattern.findall(completion)
         extracted_answer = matches[-1] if len(matches) >= 1 else ''
         return extracted_answer
 
-    def run_async_from_sync(self, scripts: list[str], language: str) -> list[float]:
+    def run_async_from_sync(self, scripts: List[str], languages: List[str]) -> List[float]:
         """Function wrapping the `run_async` function."""
         # Create a new event loop and set it
         loop = asyncio.new_event_loop()
@@ -402,20 +402,22 @@ class CodeReward(ORM):
 
         try:
             # Run the async function and get the result
-            rewards = loop.run_until_complete(self.run_async(scripts, language))
+            rewards = loop.run_until_complete(self.run_async(scripts, languages))
         finally:
             loop.close()
 
         return rewards
 
-    async def run_async(self, scripts: list[str], language: str) -> list[float]:
+    async def run_async(self, scripts: List[str], language: List[str]) -> List[float]:
         from e2b_code_interpreter import AsyncSandbox
 
         # Create the sandbox by hand, currently there's no context manager for this version
-        sbx = await AsyncSandbox.create(timeout=30, request_timeout=3)
-
+        try:
+            sbx = await AsyncSandbox.create(timeout=30, request_timeout=3)
+        except Exception:
+            return [0.0] * len(scripts)
         # Create a list of tasks for running scripts concurrently
-        tasks = [run_script(sbx, script) for script in scripts]
+        tasks = [self.run_script(sbx, script, language) for script, language in zip(scripts, languages)]
 
         # Wait for all tasks to complete and gather their results as they finish
         results = await asyncio.gather(*tasks)
@@ -425,6 +427,15 @@ class CodeReward(ORM):
         await sbx.kill()
 
         return rewards
+    async def run_script(self, sbx, script: str, language: str) -> float:
+        try:
+            execution = await sbx.run_code(script, language=language, timeout=30)
+        except Exception:
+            return 0.0
+        try:
+            return float(execution.text)
+        except (TypeError, ValueError):
+            return 0.0
 
     def __call__(self, completions, **kwargs) -> List[float]:
         """Reward function that evaluates code snippets using the E2B code interpreter.
@@ -464,15 +475,16 @@ class CodeReward(ORM):
 
         evaluate_code(code_snippet, test_cases)
         """
-        code_snippets = [self.extract_code(completion) for completion in completions]
         verification_info = kwargs['verification_info']
+        languages = [info["language"] for info in verification_info]
+        code_snippets = [self.extract_code(completion, language) for completion, language in zip(completions, languages)]
         scripts = [
             evaluation_script_template.format(
                 code=json.dumps(code), test_cases=json.dumps(json.dumps(info['test_cases'])))
             for code, info in zip(code_snippets, verification_info)
         ]
         try:
-            rewards = self.run_async_from_sync(scripts, verification_info['language'])
+            rewards = self.run_async_from_sync(scripts, languages)
 
         except Exception:
             rewards = [0.0] * len(completions)
