@@ -408,13 +408,14 @@ class CodeReward(ORM):
 
         return rewards
 
-    async def run_async(self, scripts: List[str], language: List[str]) -> List[float]:
+    async def run_async(self, scripts: List[str], languages: List[str]) -> List[float]:
         from e2b_code_interpreter import AsyncSandbox
 
         # Create the sandbox by hand, currently there's no context manager for this version
         try:
             sbx = await AsyncSandbox.create(timeout=30, request_timeout=3)
-        except Exception:
+        except Exception as e:
+            print(f'Error from E2B executor: {e}')
             return [0.0] * len(scripts)
         # Create a list of tasks for running scripts concurrently
         tasks = [self.run_script(sbx, script, language) for script, language in zip(scripts, languages)]
@@ -427,10 +428,12 @@ class CodeReward(ORM):
         await sbx.kill()
 
         return rewards
+
     async def run_script(self, sbx, script: str, language: str) -> float:
         try:
             execution = await sbx.run_code(script, language=language, timeout=30)
-        except Exception:
+        except Exception as e:
+            print(f'Error from E2B executor: {e}')
             return 0.0
         try:
             return float(execution.text)
@@ -476,8 +479,10 @@ class CodeReward(ORM):
         evaluate_code(code_snippet, test_cases)
         """
         verification_info = kwargs['verification_info']
-        languages = [info["language"] for info in verification_info]
-        code_snippets = [self.extract_code(completion, language) for completion, language in zip(completions, languages)]
+        languages = [info['language'] for info in verification_info]
+        code_snippets = [
+            self.extract_code(completion, language) for completion, language in zip(completions, languages)
+        ]
         scripts = [
             evaluation_script_template.format(
                 code=json.dumps(code), test_cases=json.dumps(json.dumps(info['test_cases'])))
@@ -486,7 +491,8 @@ class CodeReward(ORM):
         try:
             rewards = self.run_async_from_sync(scripts, languages)
 
-        except Exception:
+        except Exception as e:
+            print(f'Error from E2B executor: {e}')
             rewards = [0.0] * len(completions)
 
         return rewards
