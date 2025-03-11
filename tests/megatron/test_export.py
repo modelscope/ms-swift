@@ -33,13 +33,20 @@ model_id = 'Qwen/Qwen2-7B-Instruct'
 
 def hf2mcore():
     from swift.llm import export_main, ExportArguments
-    export_main(ExportArguments(model=model_id, to_mcore=True, torch_dtype='bfloat16', exist_ok=True))
+    export_main(
+        ExportArguments(
+            model=model_id, to_mcore=True, torch_dtype='bfloat16', exist_ok=True, test_convert_precision=True))
 
 
 def mcore2hf():
     from swift.llm import export_main, ExportArguments
     export_main(
-        ExportArguments(megatron_model='Qwen2-7B-Instruct-mcore', to_hf=True, torch_dtype='bfloat16', exist_ok=True))
+        ExportArguments(
+            megatron_model='Qwen2-7B-Instruct-mcore',
+            to_hf=True,
+            torch_dtype='bfloat16',
+            exist_ok=True,
+            test_convert_precision=True))
 
 
 def infer_hf_align():

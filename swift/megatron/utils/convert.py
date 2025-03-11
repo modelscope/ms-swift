@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
 import torch
+from megatron.training.checkpointing import load_checkpoint
 from megatron.training.checkpointing import save_checkpoint as mg_save_checkpoint
 from megatron.training.initialize import initialize_megatron
 from megatron.training.utils import get_ltor_masks_and_position_ids
@@ -32,8 +33,11 @@ def test_convert_precision(hf_model, mg_model, processor):
     mean_diff = (mg_logits - hf_logits).abs().mean().item()
     max_diff = (mg_logits - hf_logits).abs().max().item()
     print(f'mean_diff: {mean_diff}, max_diff: {max_diff}')
+    hf_tokens = hf_logits.argmax(-1)
+    mg_tokens = mg_logits.argmax(-1)
+    print(f'hf_tokens: {hf_tokens[0].tolist()}\nmg_tokens: {mg_tokens[0].tolist()}')
     assert mean_diff < 0.1
-    assert max_diff < 1
+    assert (hf_tokens == mg_tokens).all()
 
 
 def convert_hf2mcore(args: ExportArguments) -> None:
@@ -42,12 +46,7 @@ def convert_hf2mcore(args: ExportArguments) -> None:
     hf_model, processor = get_model_tokenizer(**kwargs)
     megatron_model_meta = get_megatron_model_meta(args.model)
     kwargs = megatron_model_meta.load_config(processor.model_info.config)
-    kwargs.update({
-        'use_cpu_initialization': True,
-        'torch_dtype': args.torch_dtype,
-        'load': args.model_dir,
-        'save': args.output_dir
-    })
+    kwargs.update({'use_cpu_initialization': True, 'load': args.model_dir, 'save': args.output_dir})
     megatron_args = MegatronArguments(**kwargs)
     patch_megatron(processor)
     extra_args = megatron_args.parse_to_megatron()
@@ -62,7 +61,6 @@ def convert_hf2mcore(args: ExportArguments) -> None:
         mg_model.to(args.torch_dtype)
     logger.info('Successfully transferred HF model weights to MG model.')
     mg_save_checkpoint(1, [mg_model], None, None, 0)
-    logger.info('Successfully saved Megatron model weights.')
     save_checkpoint(
         None,
         processor,
@@ -70,7 +68,7 @@ def convert_hf2mcore(args: ExportArguments) -> None:
         model_dirs=[hf_model.model_dir],
         additional_saved_files=hf_model.model_meta.additional_saved_files)
     args.save_args()
-    logger.info(f'Successfully converted HF format to Megatron format and saved in `{args.output_dir}`.')
+    logger.info(f'Successfully saved Megatron model weights in `{args.output_dir}`.')
 
 
 def convert_mcore2hf(args: ExportArguments) -> None:
@@ -81,7 +79,6 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     kwargs = megatron_model_meta.load_config(processor.model_info.config)
     kwargs.update({
         'use_cpu_initialization': True,
-        'torch_dtype': args.torch_dtype,
         'load': args.megatron_model,
         'save': args.output_dir,
     })
@@ -90,11 +87,14 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     extra_args = megatron_args.parse_to_megatron()
     initialize_megatron(args_defaults=extra_args)
     mg_model = megatron_model_meta.model_provider()
+    load_checkpoint([mg_model], None, None, strict=True)
+    logger.info('Megatron model created successfully.')
     megatron_model_meta.convert_mcore2hf(hf_model, mg_model)
     if args.test_convert_precision:
         test_convert_precision(hf_model, mg_model, processor)
     if args.torch_dtype is not None:
         hf_model.to(args.torch_dtype)
+    logger.info('Successfully transferred MG model weights to HF model.')
     save_checkpoint(
         hf_model,
         processor,
@@ -104,4 +104,4 @@ def convert_mcore2hf(args: ExportArguments) -> None:
         max_shard_size=args.max_shard_size,
         additional_saved_files=hf_model.model_meta.additional_saved_files)
     args.save_args()
-    logger.info(f'Successfully converted Megatron format to HF format and saved in `{args.output_dir}`.')
+    logger.info(f'Successfully saved HF model weights in `{args.output_dir}`.')
