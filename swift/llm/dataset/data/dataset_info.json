@@ -686,9 +686,26 @@
     {
         "ms_dataset_id": "open-r1/verifiable-coding-problems-python-10k",
         "hf_dataset_id": "open-r1/verifiable-coding-problems-python-10k",
+        "tags": ["grpo", "code"]
+    },
+    {
+        "ms_dataset_id": "open-r1/verifiable-coding-problems-python",
+        "hf_dataset_id": "open-r1/verifiable-coding-problems-python",
         "columns": {
-            "problem": "query",
-            "gold_standard_solution": "answer"
+            "problem_statement": "query"
+        },
+        "tags": ["grpo", "code"]
+    },
+    {
+        "ms_dataset_id": "open-r1/verifiable-coding-problems-python-10k_decontaminated",
+        "hf_dataset_id": "open-r1/verifiable-coding-problems-python-10k_decontaminated",
+        "tags": ["grpo", "code"]
+    },
+    {
+        "ms_dataset_id": "open-r1/verifiable-coding-problems-python_decontaminated",
+        "hf_dataset_id": "open-r1/verifiable-coding-problems-python_decontaminated",
+        "columns": {
+            "problem_statement": "query"
         },
         "tags": ["grpo", "code"]
     }
