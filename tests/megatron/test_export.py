@@ -31,26 +31,27 @@ def _infer_model(pt_engine, system=None, messages=None):
 model_id = 'Qwen/Qwen2-7B-Instruct'
 
 
-def hf2megatron():
+def hf2mcore():
     from swift.llm import export_main, ExportArguments
-    export_main(ExportArguments(model=model_id, to_megatron=True, torch_dtype='bfloat16'))
+    export_main(ExportArguments(model=model_id, to_mcore=True, torch_dtype='bfloat16', exist_ok=True))
 
 
-def megatron2hf():
+def mcore2hf():
     from swift.llm import export_main, ExportArguments
-    export_main(ExportArguments(megatron_model='Qwen2-7B-Instruct-megatron', to_hf=True, torch_dtype='bfloat16'))
+    export_main(
+        ExportArguments(megatron_model='Qwen2-7B-Instruct-mcore', to_hf=True, torch_dtype='bfloat16', exist_ok=True))
 
 
 def infer_hf_align():
     from swift.llm import PtEngine
     pt_engine = PtEngine(model_id)
     response = _infer_model(pt_engine)
-    pt_engine = PtEngine('Qwen2-7B-Instruct-megatron-hf')
+    pt_engine = PtEngine('Qwen2-7B-Instruct-mcore-hf')
     response2 = _infer_model(pt_engine)
     assert response == response2
 
 
 if __name__ == '__main__':
-    # hf2megatron()
-    # megatron2hf()
+    hf2mcore()
+    mcore2hf()
     infer_hf_align()

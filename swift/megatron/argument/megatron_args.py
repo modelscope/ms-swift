@@ -73,7 +73,7 @@ class MegatronArguments(ExtraMegatronArguments):
     no_load_rng: bool = False
     finetune: bool = False
     ckpt_format: Literal['torch', 'torch_dist', 'zarr'] = 'torch_dist'
-    no_initialization: bool = False
+    no_initialization: bool = True
     auto_detect_ckpt_format: bool = True
     exit_on_missing_checkpoint: bool = True
 

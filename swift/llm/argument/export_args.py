@@ -45,7 +45,7 @@ class ExportArguments(MergeArguments, BaseArguments):
     to_ollama: bool = False
 
     # megatron
-    to_megatron: bool = False
+    to_mcore: bool = False
     to_hf: bool = False
 
     # push to ms hub
@@ -70,8 +70,8 @@ class ExportArguments(MergeArguments, BaseArguments):
                 suffix = 'ollama'
             elif self.merge_lora:
                 suffix = 'merged'
-            elif self.to_megatron:
-                suffix = 'megatron'
+            elif self.to_mcore:
+                suffix = 'mcore'
             elif self.to_hf:
                 suffix = 'hf'
             else:
@@ -93,7 +93,7 @@ class ExportArguments(MergeArguments, BaseArguments):
             raise ValueError('Please specify `--quant_bits`.')
         if self.quant_method in {'gptq', 'awq'} and self.torch_dtype is None:
             self.torch_dtype = torch.float16
-        if self.to_megatron or self.to_hf:
+        if (self.to_mcore or self.to_hf) and dist.is_initialized():
             set_default_ddp_config()
             dist.init_process_group(backend='nccl')
 
