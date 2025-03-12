@@ -9,6 +9,7 @@ from transformers import AutoConfig, AutoProcessor
 from swift.llm import TemplateType
 from swift.utils import get_device, get_device_count, get_dist_setting, get_logger
 from ..constant import LLMModelType, MLLMModelType
+from ..patcher import patch_ignore_check_imports
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
 from ..utils import ModelInfo
 
@@ -94,7 +95,8 @@ register_model(
         ],
         TemplateType.minimax_vl,
         get_model_tokenizer_minimax_vl,
-        architectures=['MiniMaxVL01ForConditionalGeneration']))
+        architectures=['MiniMaxVL01ForConditionalGeneration'],
+        tags=['vision']))
 
 
 def get_model_tokenizer_minimax_text(model_dir: str,
@@ -105,17 +107,15 @@ def get_model_tokenizer_minimax_text(model_dir: str,
     logger.warn('NOTE: minimax-text-01 model does not support training.')
     n_gpu = get_device_count()
     _, local_rank, _, local_world_size = get_dist_setting()
-    if local_rank == -1:
-        local_rank = 0
-    device_ids = list(range(local_rank, n_gpu, local_world_size))
+    device_ids = list(range(max(local_rank, 0), n_gpu, local_world_size))
     config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     kwargs['model_config'] = config
     if kwargs.get('attn_impl') == 'flash_attn':
         config.attention_type = 1
     else:
         config.attention_type = 0
-    if 'quantization_config' in kwargs:
-        quantization_config = kwargs['quantization_config']
+    if 'quantization_config' in model_kwargs:
+        quantization_config = model_kwargs['quantization_config']
         from transformers import QuantoConfig
         if isinstance(quantization_config, QuantoConfig):
             quantization_config.modules_to_not_convert = (
@@ -137,8 +137,9 @@ def get_model_tokenizer_minimax_text(model_dir: str,
             for j in range(layers_per_device):
                 device_map[f'model.layers.{i * layers_per_device + j}'] = get_device(i)
         model_kwargs['device_map'] = device_map
-
-    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
+    with patch_ignore_check_imports():
+        model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model,
+                                                               **kwargs)
     return model, tokenizer
 
 

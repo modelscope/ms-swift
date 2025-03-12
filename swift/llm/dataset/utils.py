@@ -110,6 +110,10 @@ class EncodePreprocessor(RowPreprocessor):
 
 class PackingPreprocessor(EncodePreprocessor):
 
+    def __init__(self, template: 'Template'):
+        super().__init__(template=template)
+        self.template.packing_mode = True
+
     def batched_preprocess(self, batched_row: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         rows = self.batched_to_rows(batched_row)
         inputs_list = []
@@ -131,7 +135,16 @@ class PackingPreprocessor(EncodePreprocessor):
         for row in sequences:
             packed = {}
             for key in keys:
-                packed[key] = sum((x[0][key] for x in row), start=[])
+                if key == 'labels':
+                    labels_list = []
+                    for x in row:
+                        labels = x[0][key]
+                        # https://github.com/huggingface/transformers/pull/31629
+                        labels[0] = -100
+                        labels_list.append(labels)
+                    packed[key] = sum(labels_list, start=[])
+                else:
+                    packed[key] = sum((x[0][key] for x in row), start=[])
             packed['position_ids'] = sum((list(range(x[1])) for x in row), start=[])
             res.append(packed)
         return res
