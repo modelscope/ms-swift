@@ -605,10 +605,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         future: Future = self.executor.submit(infer_task)
 
         def done(_self):
-            outputs = _self.result()
-            if self.infer_rank_tp_0 < 0:
-                outputs = []
-            self.queue.put(DataCache(inputs, outputs, distributed_idx))
+            self.queue.put(DataCache(inputs, _self.result(), distributed_idx))
 
         future.add_done_callback(done)
 
