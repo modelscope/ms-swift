@@ -682,5 +682,31 @@
         "ms_dataset_id": "lmms-lab/multimodal-open-r1-8k-verified",
         "hf_dataset_id": "lmms-lab/multimodal-open-r1-8k-verified",
         "tags": ["grpo", "vision", "🔥"]
+    },
+    {
+        "ms_dataset_id": "open-r1/verifiable-coding-problems-python-10k",
+        "hf_dataset_id": "open-r1/verifiable-coding-problems-python-10k",
+        "tags": ["grpo", "code"]
+    },
+    {
+        "ms_dataset_id": "open-r1/verifiable-coding-problems-python",
+        "hf_dataset_id": "open-r1/verifiable-coding-problems-python",
+        "columns": {
+            "problem_statement": "query"
+        },
+        "tags": ["grpo", "code"]
+    },
+    {
+        "ms_dataset_id": "open-r1/verifiable-coding-problems-python-10k_decontaminated",
+        "hf_dataset_id": "open-r1/verifiable-coding-problems-python-10k_decontaminated",
+        "tags": ["grpo", "code"]
+    },
+    {
+        "ms_dataset_id": "open-r1/verifiable-coding-problems-python_decontaminated",
+        "hf_dataset_id": "open-r1/verifiable-coding-problems-python_decontaminated",
+        "columns": {
+            "problem_statement": "query"
+        },
+        "tags": ["grpo", "code"]
     }
 ]
