@@ -259,6 +259,7 @@ class SwiftMixin:
         origin_clip_grad_norm_ = Accelerator.clip_grad_norm_
 
         def clip_grad_norm_(self, parameters, *args, **kwargs):
+            parameters = list(parameters)
             grad_norm = origin_clip_grad_norm_(self, parameters, *args, **kwargs)
             if grad_norm.isnan().item():
                 for p in parameters:
