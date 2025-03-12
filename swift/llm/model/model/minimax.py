@@ -5,10 +5,10 @@ from typing import Any, Dict
 
 import json
 from transformers import AutoConfig, AutoProcessor
+from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.llm import TemplateType
 from swift.utils import get_device, get_device_count, get_dist_setting, get_logger
-from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from ..constant import LLMModelType, MLLMModelType
 from ..patcher import patch_ignore_check_imports
 from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
@@ -72,7 +72,8 @@ def get_model_tokenizer_minimax_vl(model_dir: str,
                 device_map[f'language_model.model.layers.{i * layers_per_device + j}'] = get_device(device_ids[i])
         model_kwargs['device_map'] = device_map
 
-    MiniMaxVL01ProcessorKwargs = get_class_from_dynamic_module('processing_minimax_vl_01.MiniMaxVL01ProcessorKwargs', model_dir)
+    MiniMaxVL01ProcessorKwargs = get_class_from_dynamic_module('processing_minimax_vl_01.MiniMaxVL01ProcessorKwargs',
+                                                               model_dir)
     get_hw_multiple_of = get_class_from_dynamic_module('processing_minimax_vl_01.get_hw_multiple_of', model_dir)
     get_num_token = get_class_from_dynamic_module('processing_minimax_vl_01.get_num_token', model_dir)
 
@@ -81,7 +82,8 @@ def get_model_tokenizer_minimax_vl(model_dir: str,
     processor.get_hw_multiple_of = get_hw_multiple_of
     processor.get_num_token = get_num_token
     with patch_ignore_check_imports():
-        model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model, **kwargs)
+        model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, model_info, model_kwargs, load_model,
+                                                               **kwargs)
     processor.tokenizer = tokenizer
     return model, processor
 

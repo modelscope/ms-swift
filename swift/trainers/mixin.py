@@ -4,6 +4,7 @@ import inspect
 import os
 import shutil
 import time
+from contextlib import contextmanager
 from copy import copy
 from types import MethodType
 from typing import Callable, Dict, List, Optional, Tuple, Union
@@ -252,6 +253,25 @@ class SwiftMixin:
         logger.info(f'Saving model checkpoint to {self.state.last_model_checkpoint}')
         return result
 
+    @contextmanager
+    def _fix_grad_norm_nan(self):
+        from accelerate import Accelerator
+        origin_clip_grad_norm_ = Accelerator.clip_grad_norm_
+
+        def clip_grad_norm_(self, parameters, *args, **kwargs):
+            grad_norm = origin_clip_grad_norm_(self, parameters, *args, **kwargs)
+            if grad_norm.isnan().item():
+                for p in parameters:
+                    if p.grad is not None:
+                        p.grad.data.zero_()
+            return grad_norm
+
+        Accelerator.clip_grad_norm_ = clip_grad_norm_
+        try:
+            yield
+        finally:
+            Accelerator.clip_grad_norm_ = origin_clip_grad_norm_
+
     def train(self, *args, **kwargs):
         if self.model_meta.is_multimodal:
             models = list(
@@ -262,7 +282,7 @@ class SwiftMixin:
             self.template.register_post_encode_hook(models)
             logger.info(f'Successfully registered post_encode hook: {[model.__class__.__name__ for model in models]}.')
         self._save_initial_model(self.args.output_dir)
-        with self.hub.patch_hub():
+        with self.hub.patch_hub(), self._fix_grad_norm_nan():
             res = super().train(*args, **kwargs)
         self.template.remove_post_encode_hook()
         return res
