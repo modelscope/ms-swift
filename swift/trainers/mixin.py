@@ -260,12 +260,12 @@ class SwiftMixin:
         origin_clip_grad_norm_ = Accelerator.clip_grad_norm_
 
         def clip_grad_norm_(self, parameters, *args, **kwargs):
+            # If NaN occurs, ignore weight updates.
             parameters = list(parameters)
             grad_norm = origin_clip_grad_norm_(self, parameters, *args, **kwargs)
             if grad_norm.isnan().item():
                 for p in parameters:
-                    if p.grad is not None:
-                        p.grad.data.zero_()
+                    p.grad = None
             return grad_norm
 
         Accelerator.clip_grad_norm_ = clip_grad_norm_
