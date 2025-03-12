@@ -131,10 +131,7 @@ class GRPOVllmEngine(VllmEngine):
                 llm_inputs['multi_modal_data'] = mm_data
             prompts.append(llm_inputs)
 
-        generation_configs = []
-        for _ in prompts:
-            generation_config = self._prepare_generation_config(request_config)
-            self._add_stop_words(generation_config, request_config, template.template_meta)
-            generation_configs.append(generation_config)
-        outputs = self.engine.generate(prompts, generation_configs)
+        generation_config = self._prepare_generation_config(request_config)
+        self._add_stop_words(generation_config, request_config, template.template_meta)
+        outputs = self.engine.generate(prompts, generation_config)
         return [self._create_chat_completion_response(result, template, generation_config, '') for result in outputs]
