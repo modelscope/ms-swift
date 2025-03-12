@@ -77,9 +77,10 @@ def test_glm4():
 
 def test_qwq():
     pt_engine = PtEngine('Qwen/QwQ-32B-Preview')
-    _infer_model(pt_engine)
+    response = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
-    _infer_model(pt_engine)
+    response2 = _infer_model(pt_engine)
+    assert response == response2
 
 
 def test_internlm():
@@ -346,6 +347,14 @@ def test_moonlight():
     assert res == res2, f'res: {res}, res2: {res2}'
 
 
+def test_ling():
+    pt_engine = PtEngine('inclusionAI/Ling-lite')
+    res = _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    res2 = _infer_model(pt_engine)
+    assert res == res2, f'res: {res}, res2: {res2}'
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig, get_template, get_model_tokenizer
     from swift.utils import get_logger, seed_everything
@@ -371,11 +380,12 @@ if __name__ == '__main__':
     # test_qwen2_reward()
     # test_qwen2_5_math()
     # test_skywork_reward()
-    test_phi4()
-    test_phi4_mini()
+    # test_phi4()
+    # test_phi4_mini()
     # test_internlm3()
     # test_deepseek_r1_distill()
     # test_qwen2_5_prm()
     # test_mistral_small()
     # test_baichuan_m1()
     # test_moonlight()
+    test_ling()

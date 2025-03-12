@@ -65,9 +65,11 @@ Hints:
 - 🔥max_pixels: The maximum number of pixels (H*W) for input images to a multimodal model. Images exceeding this limit will be scaled. Default is None, meaning no maximum pixel limit.
 - tools_prompt: Converts the tool list during agent training to the system format. Please refer to [Agent Training](./Agent-support.md). Options are 'react_en', 'react_zh', 'glm4', 'toolbench', 'qwen', with 'react_en' as the default.
 - norm_bbox: Controls how to scale bounding boxes (bbox). Options are 'norm1000' and 'none'. 'norm1000' represents scaling bbox coordinates to one-thousandths, and 'none' means no scaling. Default is None, automatically selected based on the model.
+- response_prefix: The prefix character for the response, for example, setting the response_prefix to `'<think>\n'` for QwQ-32B. The default is None, and it is automatically set according to the model.
 - padding_side: Padding side when `batch_size>=2` during training. Options are 'left' and 'right', with 'right' as the default. (For inference with batch_size>=2, only left padding is applied.)
 - loss_scale: Setting for the loss weight of training tokens. Default is `'default'`, meaning all responses (including history) are calculated with a cross-entropy loss of 1. Options are 'default', 'last_round', 'all', and agent-specific loss scales: 'react', 'agentflan', 'alpha_umi', and 'qwen'. 'last_round' means calculating only the loss of the last round's response, and 'all' calculates the loss for all tokens. For agent parts, see [Pluginization](../Customization/Pluginization.md) and [Agent Training](./Agent-support.md).
 - sequence_parallel_size: Number of sequence parallels, default is 1. Refer to [example](https://github.com/modelscope/ms-swift/tree/main/examples/train/sequence_parallel/train.sh).
+  - Note: This feature is implemented with the capabilities of [xtuner](https://github.com/InternLM/xtuner), and not all models support this parameter.
 - use_chat_template: Use chat template or generation template, default is `True`. `swift pt` is automatically set to the generation template.
 - template_backend: Selection of the template backend. Options are 'swift' and 'jinja', with 'swift' as the default. If using jinja, it applies transformer's `apply_chat_template`.
   - Note: The jinja template backend supports only inference, not training.
@@ -399,8 +401,13 @@ The meanings of the following parameters can be referenced [here](https://huggin
 - top_p: Default is 0.9.
 - repetition_penalty: Repetition penalty term. Default is 1.
 - num_iterations: number of iterations per batch. Default is 1.
-- epsilon: epsilon value for clipping. Default is 0.2
-- async_generate: Use async rollout to improve train speed，default `false`
+- epsilon: epsilon value for clipping. Default is 0.2.
+- async_generate: Use async rollout to improve train speed，default `false`.
+- sleep_level: vllm specific，when both actor and rollout in the same GPU，you can make vllm sleep when model is training.
+- move_model_batches: When moving model parameters to fast inference frameworks such as vLLM/LMDeploy, determines how many batches to divide the layers into. The default is `None`, which means the entire model is not split. Otherwise, the model is split into `move_model_batches + 1` (non-layer parameters) + `1` (multi-modal component parameters) batches.
+- offload_optimizer: Whether to offload optimizer parameters during inference with vLLM/LMDeploy. The default is `False`.
+- offload_model: Whether to offload the model itself during inference with vLLM/LMDeploy. The default is `False`.
+- gc_collect_after_offload: Whether to perform garbage collection (both Python GC and GPU GC) after offloading. The default is `False`.
 
 cosine reward function arguments
 - `cosine_min_len_value_wrong` (default: 0.0): Reward value corresponding to the minimum length when the answer is incorrect. Default is 0.0

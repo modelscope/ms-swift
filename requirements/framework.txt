@@ -28,7 +28,7 @@ sentencepiece
 tensorboard
 tiktoken
 tqdm
-transformers>=4.33,<4.50
+transformers>=4.33,<4.51
 transformers_stream_generator
 trl>=0.13,<0.17
 uvicorn

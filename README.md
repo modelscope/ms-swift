@@ -78,6 +78,7 @@ You can contact us and communicate with us by adding our group:
 
 
 ## 🎉 News
+- 🎁 2025.03.05: We support the hybrid mode of GRPO(rollout and actor on the same GPU, rollout sleep when actor training), meanwhile tensor parallel for GRPO, check[training script here](examples/train/grpo/multi_node/multi_gpu_mp_colocate.sh)
 - 🎁 2025.02.21: We test the speed performance of GRPO，and with some tricks to [speed up to 300%](examples/train/grpo/full_lmdeploy.sh). WanDB charts can be found [here](https://wandb.ai/tastelikefeet/grpo_perf_test?nw=nwuseryuzezyz)
 - 🎁 2025.02.21: Support distill from LLM API，Please check[this example](examples/sampler/distill/distill.sh)
 - 🎁 2025.02.17: Support SwanLab, just add [a few of arguments](docs/source_en/Instruction/Command-line-parameters.md#swanlab) you can use swanlab to analysis your training results
@@ -121,7 +122,7 @@ Running Environment:
 | trl | >=0.13,<0.17 | 0.15 |RLHF|
 | deepspeed    | >=0.14 | 0.14.5 | Training                                  |
 | vllm         | >=0.5.1              | 0.7.3       | Inference/Deployment/Evaluation           |
-| lmdeploy     | lmdeploy>=0.5 | 0.7.1       | Inference/Deployment/Evaluation           |
+| lmdeploy     | >=0.5 | 0.7.1       | Inference/Deployment/Evaluation           |
 | evalscope | >=0.11 |  | Evaluation |
 
 For more optional dependencies, you can refer to [here](https://github.com/modelscope/ms-swift/blob/main/requirements/install_all.sh).

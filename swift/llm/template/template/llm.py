@@ -267,3 +267,13 @@ register_template(
         suffix=['<|im_end|>'],
         default_system='You are a helpful assistant',
     ))
+
+register_template(
+    TemplateMeta(
+        LLMTemplateType.ling,
+        prefix=[],
+        system_prefix=['<role>SYSTEM</role>{{SYSTEM}}'],
+        prompt=['<role>HUMAN</role>{{QUERY}}<role>ASSISTANT</role>'],
+        chat_sep=[],
+        suffix=['<|endoftext|>'],
+    ))

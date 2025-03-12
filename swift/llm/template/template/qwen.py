@@ -35,15 +35,26 @@ class Qwen2_5MathTemplateMeta(QwenTemplateMeta):
     default_system: Optional[str] = 'Please reason step by step, and put your final answer within \\boxed{}.'
 
 
-@dataclass
-class QwqTemplateMeta(QwenTemplateMeta):
-    default_system: Optional[str] = ('You are a helpful and harmless assistant. You are Qwen developed by Alibaba. '
-                                     'You should think step-by-step.')
-
+qwq_preview_system = ('You are a helpful and harmless assistant. You are Qwen developed by Alibaba. '
+                      'You should think step-by-step.')
 
 register_template(QwenTemplateMeta(LLMTemplateType.qwen))
 register_template(Qwen2_5TemplateMeta(LLMTemplateType.qwen2_5))
-register_template(QwqTemplateMeta(LLMTemplateType.qwq))
+register_template(QwenTemplateMeta(LLMTemplateType.qwq_preview, default_system=qwq_preview_system))
+
+
+class QwQTemplate(Template):
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        if not self.is_training:
+            for message in inputs.messages:
+                if message['role'] == 'assistant' and isinstance(message['content'], str):
+                    message['content'] = message['content'].split('</think>')[-1].lstrip('\n')
+        return super()._encode(inputs)
+
+
+register_template(
+    QwenTemplateMeta(LLMTemplateType.qwq, default_system=None, response_prefix='<think>\n', template_cls=QwQTemplate))
 
 register_template(Qwen2_5MathTemplateMeta(LLMTemplateType.qwen2_5_math))
 
