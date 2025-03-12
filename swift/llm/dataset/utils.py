@@ -1,14 +1,13 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-# Part of the implementation is borrowed from huggingface/transformers.
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, Optional, Union
 
 import numpy as np
 from datasets import Dataset as HfDataset
-from torch.utils.data import Dataset, IterableDataset
+from torch.utils.data import Dataset
 
 from swift.utils import get_logger
 from ..template import MaxLengthError
-from .preprocessor import DATASET_TYPE, RowPreprocessor
+from .preprocessor import RowPreprocessor
 
 logger = get_logger()
 
