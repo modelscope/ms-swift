@@ -163,7 +163,10 @@ class SwiftSft(SwiftPipeline, TunerMixin):
     def _save_trainer_state(self, trainer):
         training_args = trainer.args
         state = trainer.state
-
+        if not hasattr(state, 'last_model_checkpoint'):
+            # No training was carried out, which may be due to the dataset being too small
+            # or incorrect usage of resume_from_checkpoint.
+            return
         if self.args.create_checkpoint_symlink:
             last_checkpoint = os.path.join(self.args.output_dir, 'last')
             best_checkpoint = os.path.join(self.args.output_dir, 'best')
