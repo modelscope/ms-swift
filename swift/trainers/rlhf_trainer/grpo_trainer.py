@@ -455,51 +455,37 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             messages = inputs[i]['messages']
             InferRequest.remove_response(messages)
             messages.append({'role': 'assistant', 'content': output.choices[0].message.content})
+
+        # split mini batch to reduce memory peak
         mini_batch_inputs = self._split_into_mini_batches(inputs, mini_batch_size=self.args.mini_batch_size)
-        batches = []
+        batch_inputs = []
         from copy import copy
         template = copy(self.template)
         with self._template_context(template):
             for mini_batch in mini_batch_inputs:
-                batched_inputs = [template.encode(infer_request) for infer_request in mini_batch]
-                batches.append(template.data_collator(batched_inputs))
+                mini_batch_inputs = [template.encode(infer_request) for infer_request in mini_batch]
+                mini_batch_inputs = to_device(template.data_collator(mini_batch_inputs), self.model.device)
+                labels = mini_batch_inputs.pop('labels')
+                logits_to_keep = (labels.shape[-1] - (torch.ne(labels, -100).int().argmax(-1))).max().item()
+                mini_batch_inputs['logits_to_keep'] = logits_to_keep
+                mini_batch_inputs['completion_mask'] = labels[:, -logits_to_keep:] != -100
 
-        batches = [to_device(batch, self.model.device) for batch in batches]
+            with torch.no_grad():
+                if self.old_policy:
+                    batched_inputs['old_per_token_logps'] = self._get_per_token_logps(self.model, mini_batch_inputs)
+                else:
+                    batched_inputs['old_per_token_logps'] = None
 
-        all_outputs = []
-        for outputs in batches:
-            labels = outputs.pop('labels')
-            logits_to_keep = (labels.shape[-1] - (torch.ne(labels, -100).int().argmax(-1))).max().item()
-            outputs['logits_to_keep'] = logits_to_keep
-            outputs['completion_mask'] = labels[:, -logits_to_keep:] != -100
+                if self.beta == 0.0:
+                    ref_per_token_logps = None
+                elif self.ref_model is not None:
+                    ref_per_token_logps = self._get_per_token_logps(self.ref_model, mini_batch_inputs)
+                else:
+                    with self.accelerator.unwrap_model(self.model).disable_adapter():
+                        ref_per_token_logps = self._get_per_token_logps(self.model, mini_batch_inputs)
 
-        with torch.no_grad():
-            if self.old_policy:
-                outputs['old_per_token_logps'] = self._get_per_token_logps(self.model, outputs)
-            else:
-                outputs['old_per_token_logps'] = None
-
-            if self.beta == 0.0:
-                ref_per_token_logps = None
-            elif self.ref_model is not None:
-                ref_per_token_logps = self._get_per_token_logps(self.ref_model, outputs)
-            else:
-                with self.accelerator.unwrap_model(self.model).disable_adapter():
-                    ref_per_token_logps = self._get_per_token_logps(self.model, outputs)
-
-            outputs['ref_per_token_logps'] = ref_per_token_logps
-            all_outputs.append(outputs)
-
-        final_outputs = {}
-        for key in all_outputs[0].keys():
-            if isinstance(all_outputs[0][key], torch.Tensor):
-                final_outputs[key] = torch.cat([out[key] for out in all_outputs], dim=0)
-            elif isinstance(all_outputs[0][key], (int, float)):
-                # Take the maximum value for scalar values (e.g., logits_to_keep)
-                final_outputs[key] = max(out[key] for out in all_outputs)
-            else:
-                # For other types (e.g., strings, lists), assume all mini-batches have the same value
-                final_outputs[key] = all_outputs[0][key]
+                mini_batch_inputs['ref_per_token_logps'] = ref_per_token_logps
+                batch_inputs.append(mini_batch_inputs)
 
         rewards_per_func = torch.zeros((len(inputs), len(self.reward_funcs)), device=device)
         completions = [example['messages'][-1]['content'] for example in inputs]
