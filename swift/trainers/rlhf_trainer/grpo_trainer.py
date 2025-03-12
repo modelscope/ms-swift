@@ -14,7 +14,7 @@ from math import ceil
 from queue import Queue
 from types import MethodType
 from typing import Any, Callable, Dict, List, Optional, Union
-
+from copy import deepcopy
 import numpy as np
 import torch
 import torch.nn as nn
@@ -656,8 +656,17 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     if self.args.tensor_parallel_size > 1:
                         request_config.seed += self.state.global_step
                     outputs = self.engine.infer(_input_slice, self.request_config, use_tqdm=False)
-                if self.infer_rank_tp_0 < 0:
-                    outputs = []
+                if self.args.tensor_parallel_size > 1:
+                    if self.infer_rank_tp_0 < 0:
+                        outputs = []
+                    else:
+                        _outputs = []
+                        for tp_idx in range(self.args.tensor_parallel_size):
+                            for prompt_idx in range(len(outputs)):
+                                output = deepcopy(outputs[prompt_idx])
+                                output.choices = [output.choices[tp_idx]]
+                                _outputs.append(output)
+                        outputs = _outputs
         else:
             if self.args.async_generate:
                 self.queue.put(DataCache(inputs, [], distributed_idx))
