@@ -73,12 +73,6 @@ def convert_hf2mcore(args: ExportArguments) -> None:
         mg_model.to(args.torch_dtype)
     logger.info('Successfully transferred HF model weights to MG model.')
     mg_save_checkpoint(1, [mg_model], None, None, 0)
-    save_checkpoint(
-        None,
-        processor,
-        args.output_dir,
-        model_dirs=[hf_model.model_dir],
-        additional_saved_files=hf_model.model_meta.additional_saved_files)
     args.save_args()
     logger.info(f'Successfully saved Megatron model weights in `{args.output_dir}`.')
 
