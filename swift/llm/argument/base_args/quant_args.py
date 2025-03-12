@@ -75,7 +75,7 @@ class QuantizeArguments:
                 weights = 'int2'
             else:
                 raise ValueError('quanto quantization only support quant bits 2/4/8/float8')
-            quantization_config = QuantoConfig(weights=weights, )
+            quantization_config = QuantoConfig(weights=weights)
         else:  # 'eetq'
             from transformers import EetqConfig
             quantization_config = EetqConfig(f'int{self.quant_bits}')
