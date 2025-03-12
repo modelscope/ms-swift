@@ -8,13 +8,13 @@ import time
 from collections import defaultdict
 from concurrent.futures import Future
 from contextlib import contextmanager
-from copy import copy
+from copy import copy, deepcopy
 from dataclasses import dataclass, field
 from math import ceil
 from queue import Queue
 from types import MethodType
 from typing import Any, Callable, Dict, List, Optional, Union
-from copy import deepcopy
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -396,8 +396,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         rank, local_rank, world_size, local_world_size = get_dist_setting()
         for _vllm_rank in range(self.args.num_infer_workers):
             if local_rank == _vllm_rank and _vllm_rank % self.args.tensor_parallel_size == 0:
-                return (get_node_setting()[0] * self.args.num_infer_workers +
-                        _vllm_rank // self.args.tensor_parallel_size)
+                return (get_node_setting()[0] * self.args.num_infer_workers
+                        + _vllm_rank // self.args.tensor_parallel_size)
 
         return -1
 
