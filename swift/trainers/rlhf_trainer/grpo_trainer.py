@@ -8,6 +8,7 @@ import time
 from collections import defaultdict
 from concurrent.futures import Future
 from contextlib import contextmanager
+from copy import copy
 from dataclasses import dataclass, field
 from math import ceil
 from queue import Queue
@@ -262,6 +263,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         if self.args.tensor_parallel_size > 1:
             self.request_config.n = self.args.tensor_parallel_size
+            if self.infer_rank >= 0:
+                self.request_config.seed = self.infer_rank // self.args.tensor_parallel_size
 
         self.model_accepts_loss_kwargs = False
         for i, reward_func in enumerate(self.reward_funcs):
@@ -392,8 +395,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # vllm needs all tp ranks inputs and sampling params are the same
         rank, local_rank, world_size, local_world_size = get_dist_setting()
         for _vllm_rank in range(self.args.num_infer_workers):
-            if local_rank == _vllm_rank and local_rank % self.args.tensor_parallel_size == 0:
-                return get_node_setting()[0] * self.args.num_infer_workers + _vllm_rank
+            if local_rank == _vllm_rank and _vllm_rank % self.args.tensor_parallel_size == 0:
+                return (get_node_setting()[0] * self.args.num_infer_workers +
+                        _vllm_rank // self.args.tensor_parallel_size)
 
         return -1
 
@@ -651,6 +655,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 distributed_idx = data_cache.distributed_idx
             else:
                 with set_device_context(self.infer_device):
+                    request_config = copy(self.request_config)
+                    if self.args.tensor_parallel_size > 1:
+                        request_config.seed += self.state.global_step
                     outputs = self.engine.infer(_input_slice, self.request_config, use_tqdm=False)
                 if self.infer_rank_tp_0 < 0:
                     outputs = []
