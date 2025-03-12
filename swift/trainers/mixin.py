@@ -253,8 +253,9 @@ class SwiftMixin:
         logger.info(f'Saving model checkpoint to {self.state.last_model_checkpoint}')
         return result
 
+    @staticmethod
     @contextmanager
-    def _fix_grad_norm_nan(self):
+    def _fix_grad_norm_nan():
         from accelerate import Accelerator
         origin_clip_grad_norm_ = Accelerator.clip_grad_norm_
 
