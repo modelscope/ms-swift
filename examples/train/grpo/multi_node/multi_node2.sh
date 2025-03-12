@@ -3,7 +3,7 @@ export NNODES=2
 export NODE_RANK=1
 export MASTER_ADDR=xxx.xxx.xxx.xxx
 export MASTER_PORT=29500
-export NPROC_PER_NODE=4
+export NPROC_PER_NODE=3
 
 swift rlhf \
     --rlhf_type grpo \
