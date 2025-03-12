@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-from copy import deepcopy
+from copy import copy, deepcopy
 from typing import Any, Dict, Iterator, List, Optional, Union
 
 import torch
@@ -132,9 +132,15 @@ class GRPOVllmEngine(VllmEngine):
             prompts.append(llm_inputs)
 
         generation_configs = []
-        for _ in prompts:
+        seed = request_config.seed
+        assert seed >= 0, 'Seed is needed for GRPOVllmEngine.'
+        for i, _ in enumerate(prompts):
+            request_config = copy(request_config)
+            request_config.seed = seed + i
             generation_config = self._prepare_generation_config(request_config)
             self._add_stop_words(generation_config, request_config, template.template_meta)
             generation_configs.append(generation_config)
         outputs = self.engine.generate(prompts, generation_configs)
-        return [self._create_chat_completion_response(result, template, generation_config, '') for result in outputs]
+        return [
+            self._create_chat_completion_response(result, template, generation_configs[0], '') for result in outputs
+        ]

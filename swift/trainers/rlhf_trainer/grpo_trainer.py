@@ -8,6 +8,7 @@ import time
 from collections import defaultdict
 from concurrent.futures import Future
 from contextlib import contextmanager
+from copy import copy, deepcopy
 from dataclasses import dataclass, field
 from math import ceil
 from queue import Queue
@@ -260,6 +261,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             stop=args.stop_words,
         )
 
+        if self.args.tensor_parallel_size > 1:
+            self.request_config.n = self.args.tensor_parallel_size
+            if self.infer_rank >= 0:
+                self.request_config.seed = self.infer_rank // self.args.tensor_parallel_size
+
         self.model_accepts_loss_kwargs = False
         for i, reward_func in enumerate(self.reward_funcs):
             if isinstance(reward_func, PreTrainedModel):
@@ -344,6 +350,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             parameters.append(llm_embeds)
         if non_llm_parameters:
             parameters.append(non_llm_parameters)
+        parameters = [p for p in parameters if p]
         return parameters, [remove_lora(p_list) for p_list in parameters]
 
     def prepare_vllm(self, model, fast_infer_device):
@@ -379,6 +386,18 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         for _vllm_rank in range(self.args.num_infer_workers):
             if local_rank == _vllm_rank:
                 return get_node_setting()[0] * self.args.num_infer_workers + _vllm_rank
+
+        return -1
+
+    @property
+    def infer_rank_tp_0(self):
+        # whether is tp rank0, get data from this rank
+        # vllm needs all tp ranks inputs and sampling params are the same
+        rank, local_rank, world_size, local_world_size = get_dist_setting()
+        for _vllm_rank in range(self.args.num_infer_workers):
+            if local_rank == _vllm_rank and _vllm_rank % self.args.tensor_parallel_size == 0:
+                return (get_node_setting()[0] * self.args.num_infer_workers
+                        + _vllm_rank // self.args.tensor_parallel_size)
 
         return -1
 
@@ -633,7 +652,21 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 distributed_idx = data_cache.distributed_idx
             else:
                 with set_device_context(self.infer_device):
+                    request_config = copy(self.request_config)
+                    if self.args.tensor_parallel_size > 1:
+                        request_config.seed += self.state.global_step
                     outputs = self.engine.infer(_input_slice, self.request_config, use_tqdm=False)
+                if self.args.tensor_parallel_size > 1:
+                    if self.infer_rank_tp_0 < 0:
+                        outputs = []
+                    else:
+                        _outputs = []
+                        for tp_idx in range(self.args.tensor_parallel_size):
+                            for prompt_idx in range(len(outputs)):
+                                output = deepcopy(outputs[prompt_idx])
+                                output.choices = [output.choices[tp_idx]]
+                                _outputs.append(output)
+                        outputs = _outputs
         else:
             if self.args.async_generate:
                 self.queue.put(DataCache(inputs, [], distributed_idx))
