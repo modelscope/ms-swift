@@ -123,7 +123,7 @@ class PackingPreprocessor(EncodePreprocessor):
         packed = self.calculate_matched_group(inputs_list)
         return self.rows_to_batched(packed)
 
-    def calculate_matched_group(self, sequences: Dict[str, List[int]]):
+    def calculate_matched_group(self, sequences):
         # https://arxiv.org/pdf/2404.10830
         import binpacking
         keys = list(sequences[0][0].keys())
