@@ -116,6 +116,7 @@ class Template(ProcessorMixin):
         self.mode: Literal['pt', 'vllm', 'lmdeploy',  # infer
                            'train', 'rlhf', 'kto',  # train
                            'seq_cls', 'embedding', 'prm'] = 'pt'
+        self._packing = False
         if self.model_info.task_type != 'causal_lm':
             self.mode = self.model_info.task_type
         self._handles = []
@@ -1058,7 +1059,8 @@ class Template(ProcessorMixin):
                 res[key][i] = val
             if not seq_lens:
                 seq_lens = [seq.shape[0] for seq in res[key]]
-        if seq_lens and ('input_ids' in res or 'inputs_embeds' in res):
+        packing_mode = self._packing and 'position_ids' in res
+        if not packing_mode and seq_lens and ('input_ids' in res or 'inputs_embeds' in res):
             res['attention_mask'] = [torch.ones(seq_len, dtype=torch.int64) for seq_len in seq_lens]
             if self.is_training and self.padding_side == 'left':
                 res['position_ids'] = [torch.arange(seq_len, dtype=torch.int64) for seq_len in seq_lens]
