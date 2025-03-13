@@ -433,7 +433,7 @@ def patch_vllm(world_size=1, vllm_device: Optional[str] = None):
         GroupCoordinator.__init__ = __init__
 
         try:
-            with profiling_patch, set_local_rank_context(vllm_device):
+            with profiling_patch, restore_torch_device_after_vllm_init(), set_local_rank_context(vllm_device):
                 torch.distributed.get_world_size_origin = torch.distributed.get_world_size
                 torch.distributed.get_world_size = get_world_size
                 yield
@@ -486,3 +486,23 @@ def set_local_rank_context(device: Union[str, int]):
             os.environ['LOCAL_RANK'] = origin_local_rank
         else:
             del os.environ['LOCAL_RANK']
+
+
+@contextmanager
+def restore_torch_device_after_vllm_init():
+    """
+    A context manager to restore the original CUDA device after potential modifications.
+
+    This is specifically designed to address an issue in Distributed Data Parallel (DDP)
+    scenarios where the initialization of the vLLM engine may inadvertently modify the
+    default CUDA device. The context manager saves the current device at the start and
+    ensures it is restored upon exit, even if the device is modified within the context.
+
+    """
+    origin_device = torch.cuda.current_device()
+    try:
+        yield
+    finally:
+        current_device = torch.cuda.current_device()
+        if origin_device != current_device:
+            torch.cuda.set_device(origin_device)
