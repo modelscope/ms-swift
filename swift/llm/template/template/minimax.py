@@ -25,7 +25,7 @@ class MinimaxTemplateMeta(TemplateMeta):
         default_factory=lambda: ['<beginning_of_sentence>system ai_setting=assistant\n{{SYSTEM}}<end_of_sentence>\n'])
 
 
-register_template(MinimaxTemplateMeta(LLMTemplateType.minimax, ))
+register_template(MinimaxTemplateMeta(LLMTemplateType.minimax))
 
 
 class MinimaxVLTemplate(Template):
