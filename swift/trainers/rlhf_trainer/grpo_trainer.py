@@ -159,6 +159,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self.reward_weights = torch.ones(len(reward_funcs), dtype=torch.float32)
 
         self.num_generations = args.num_generations
+        self.temperature = args.num_generations
         model.warnings_issued['estimate_tokens'] = True
         kwargs['data_collator'] = lambda features: features
         self._metrics = {'train': defaultdict(list), 'eval': defaultdict(list)}
@@ -880,6 +881,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         logits = model(**inputs).logits
         # exclude the last logit: it corresponds to the next token pred
         logits = logits[:, -(logits_to_keep + 1):-1, :]
+        logits = logits / self.temperature
         input_ids = input_ids[:, -logits_to_keep:]
         return selective_log_softmax(logits, input_ids)  # compute logprobs for the input tokens
 
