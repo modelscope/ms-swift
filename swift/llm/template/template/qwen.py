@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Literal, Optional
 import torch
 import torch.nn.functional as F
 
+from swift.llm import to_device
 from swift.utils import get_env_args, is_deepspeed_enabled
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
@@ -284,9 +285,8 @@ class Qwen2VLTemplate(Template):
                 images = [Image.new('RGB', (32, 32), (0, 0, 0))]
                 media_inputs = self.processor.image_processor(images=images, videos=None, return_tensors='pt')
                 device = input_ids.device
-                pixel_values = media_inputs['pixel_values'].to(device)
-
-                pixel_values = pixel_values.type(dtype)
+                media_inputs = to_device(media_inputs, device)
+                pixel_values = media_inputs['pixel_values'].type(dtype)
                 image_embeds = model.visual(pixel_values, grid_thw=media_inputs['image_grid_thw'])
                 inputs_embeds += image_embeds.mean() * 0.
         else:
