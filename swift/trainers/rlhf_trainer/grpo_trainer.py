@@ -159,7 +159,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self.reward_weights = torch.ones(len(reward_funcs), dtype=torch.float32)
 
         self.num_generations = args.num_generations
-        self.temperature = args.num_generations
+        self.temperature = args.temperature
         model.warnings_issued['estimate_tokens'] = True
         kwargs['data_collator'] = lambda features: features
         self._metrics = {'train': defaultdict(list), 'eval': defaultdict(list)}
