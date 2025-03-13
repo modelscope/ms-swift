@@ -90,10 +90,9 @@ class MinimaxVLTemplate(Template):
         if inputs.images:
             image_inputs = self.processor.image_processor(
                 inputs.images, **output_kwargs['images_kwargs'], return_tensors='pt')
+            inputs.all_image_tokens = self.calc_num_image_tokens(image_inputs)
         else:
             image_inputs = {}
-        inputs.image_inputs = image_inputs
-        inputs.all_image_tokens = self.calc_num_image_tokens(image_inputs)
         encoded = super()._encode(inputs)
         for key in image_inputs:
             encoded[key] = image_inputs[key]
