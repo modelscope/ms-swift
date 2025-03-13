@@ -263,7 +263,7 @@ class SwiftMixin:
             # If NaN occurs, ignore weight updates.
             parameters = list(parameters)
             grad_norm = origin_clip_grad_norm_(self, parameters, *args, **kwargs)
-            if grad_norm.isnan().item():
+            if isinstance(grad_norm, torch.Tensor) and grad_norm.isnan().item():
                 for p in parameters:
                     p.grad = None
             return grad_norm
