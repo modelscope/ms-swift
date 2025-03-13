@@ -1,3 +1,4 @@
+# 4*80G GPU
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 swift rlhf \
