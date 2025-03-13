@@ -21,6 +21,8 @@ import torch.nn as nn
 from accelerate.utils import gather, gather_object, is_peft_model, set_seed
 from torch.nn import ModuleList
 from transformers import PreTrainedModel, TrainerCallback
+from transformers.utils import (is_torch_mlu_available, is_torch_mps_available, is_torch_musa_available,
+                                is_torch_npu_available, is_torch_xpu_available)
 from trl import GRPOTrainer as HFGRPOTrainer
 
 from swift.llm import InferRequest, MultiModelKeys, RequestConfig, RowPreprocessor, get_model_arch, to_device
@@ -726,31 +728,37 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             messages = inputs[i]['messages']
             InferRequest.remove_response(messages)
             messages.append({'role': 'assistant', 'content': output.choices[0].message.content})
+
+        # split mini batch to reduce memory peak
+        mini_batch_inputs = self._split_into_mini_batches(inputs, mini_batch_size=self.args.mini_batch_size)
+        batch_inputs = []
         from copy import copy
         template = copy(self.template)
         with self._template_context(template):
-            batched_inputs = [template.encode(infer_request) for infer_request in inputs]
-            outputs = to_device(template.data_collator(batched_inputs), self.model.device)
+            for mini_batch in mini_batch_inputs:
+                mini_batch_inputs = [template.encode(infer_request) for infer_request in mini_batch]
+                mini_batch_inputs = to_device(template.data_collator(mini_batch_inputs), self.model.device)
+                labels = mini_batch_inputs.pop('labels')
+                logits_to_keep = (labels.shape[-1] - (torch.ne(labels, -100).int().argmax(-1))).max().item()
+                mini_batch_inputs['logits_to_keep'] = logits_to_keep
+                mini_batch_inputs['completion_mask'] = labels[:, -logits_to_keep:] != -100
 
-        # we only need to compute the logits for the completion tokens
-        labels = outputs.pop('labels')
-        logits_to_keep = (labels.shape[-1] - (torch.ne(labels, -100).int().argmax(-1))).max().item()
-        outputs['logits_to_keep'] = logits_to_keep
-        outputs['completion_mask'] = labels[:, -logits_to_keep:] != -100
+            with torch.no_grad():
+                if self.old_policy:
+                    batched_inputs['old_per_token_logps'] = self._get_per_token_logps(self.model, mini_batch_inputs)
+                else:
+                    batched_inputs['old_per_token_logps'] = None
 
-        with torch.no_grad():
-            if self.old_policy:
-                outputs['old_per_token_logps'] = self._get_per_token_logps(self.model, outputs)
-            else:
-                outputs['old_per_token_logps'] = None
+                if self.beta == 0.0:
+                    ref_per_token_logps = None
+                elif self.ref_model is not None:
+                    ref_per_token_logps = self._get_per_token_logps(self.ref_model, mini_batch_inputs)
+                else:
+                    with self.accelerator.unwrap_model(self.model).disable_adapter():
+                        ref_per_token_logps = self._get_per_token_logps(self.model, mini_batch_inputs)
 
-            if self.beta == 0.0:
-                ref_per_token_logps = None
-            elif self.ref_model is not None:
-                ref_per_token_logps = self._get_per_token_logps(self.ref_model, outputs)
-            else:
-                with self.accelerator.unwrap_model(self.model).disable_adapter():
-                    ref_per_token_logps = self._get_per_token_logps(self.model, outputs)
+                mini_batch_inputs['ref_per_token_logps'] = ref_per_token_logps
+                batch_inputs.append(mini_batch_inputs)
 
         rewards_per_func = torch.zeros((len(inputs), len(self.reward_funcs)), device=device)
         completions = [example['messages'][-1]['content'] for example in inputs]
@@ -896,3 +904,86 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         output.metrics.update(metrics)
         self.queue = self.train_queue
         return output
+
+    def training_step(self,
+                      model: nn.Module,
+                      inputs: Dict[str, Union[torch.Tensor, Any]],
+                      num_items_in_batch=None) -> torch.Tensor:
+
+        if self.args.mini_batch_size is None:
+            return super().training_step(model, inputs, num_items_in_batch)
+        model.train()
+        if hasattr(self.optimizer, 'train') and callable(self.optimizer.train):
+            self.optimizer.train()
+
+        inputs = self._prepare_inputs(inputs)
+
+        mini_batch_size = self.args.mini_batch_size or inputs['input_ids'].size(0)
+        total_batch_size = inputs['input_ids'].size(0)
+
+        num_mini_batches = (total_batch_size + mini_batch_size - 1) // mini_batch_size
+
+        total_loss = torch.tensor(0.0, device=inputs['input_ids'].device)
+        for i in range(num_mini_batches):
+            start_idx = i * mini_batch_size
+            end_idx = min((i + 1) * mini_batch_size, total_batch_size)
+            mini_size = end_idx - start_idx
+            mini_batch_inputs = {
+                k: (v[start_idx:end_idx] if isinstance(v, torch.Tensor) else v)
+                for k, v in inputs.items()
+            }
+
+            with self.compute_loss_context_manager():
+                mini_batch_loss = self.compute_loss(
+                    model, mini_batch_inputs, num_items_in_batch=mini_batch_inputs['input_ids'].size(0))
+
+            if self.args.n_gpu > 1:
+                mini_batch_loss = mini_batch_loss.mean()
+
+            if not self.model_accepts_loss_kwargs and self.compute_loss_func is None:
+                mini_batch_loss = mini_batch_loss / self.args.gradient_accumulation_steps
+
+            self.accelerator.backward(mini_batch_loss)
+            total_loss += mini_batch_loss.detach() * mini_size
+
+        total_loss = total_loss / total_batch_size
+
+        del inputs
+        if (self.args.torch_empty_cache_steps is not None
+                and self.state.global_step % self.args.torch_empty_cache_steps == 0):
+            if is_torch_xpu_available():
+                torch.xpu.empty_cache()
+            elif is_torch_mlu_available():
+                torch.mlu.empty_cache()
+            elif is_torch_musa_available():
+                torch.musa.empty_cache()
+            elif is_torch_npu_available():
+                torch.npu.empty_cache()
+            elif is_torch_mps_available(min_version='2.0'):
+                torch.mps.empty_cache()
+            else:
+                torch.cuda.empty_cache()
+
+        return total_loss.detach()
+
+    def _split_into_mini_batches(self, batch: List[Dict[str, Any]], mini_batch_size: int) -> List[List[Dict[str, Any]]]:
+        """
+        Splits a full batch into multiple mini-batches based on the specified mini_batch_size.
+
+        Args:
+            batch (List[Dict[str, Any]]): The full batch.
+            mini_batch_size (int): The size of each mini-batch.
+
+        Returns:
+            List[List[Dict[str, Any]]]: A list of mini-batches.
+        """
+        if mini_batch_size is None or mini_batch_size >= len(batch):
+            # If mini_batch_size is not specified or larger than the batch size,
+            # return the full batch as a single mini-batch
+            return [batch]
+
+        mini_batches = []
+        for i in range(0, len(batch), mini_batch_size):
+            mini_batch = batch[i:i + mini_batch_size]
+            mini_batches.append(mini_batch)
+        return mini_batches
