@@ -140,7 +140,7 @@ class GRPOVllmEngine(VllmEngine):
             generation_config = self._prepare_generation_config(request_config)
             self._add_stop_words(generation_config, request_config, template.template_meta)
             generation_configs.append(generation_config)
-        outputs = self.engine.generate(prompts, generation_configs)
+        outputs = self.engine.generate(prompts, generation_configs, use_tqdm=False)
         return [
             self._create_chat_completion_response(result, template, generation_configs[0], '') for result in outputs
         ]
