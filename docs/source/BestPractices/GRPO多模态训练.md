@@ -99,7 +99,7 @@ orms['external_r1v_acc'] = MultiModalAccuracyORM
 
 由于任务简单，我们设置max_completion_length为1024，奖励函数选择external_r1v_acc和format，学习率和beta分别设置为1e-6和0.001。其他设置如下所示，batch_size和num_generations的设置原则可以参考[GRPO完整流程](./GRPO完整流程.md)。
 
-```bash
+```shell
 WANDB_API_KEY=your_wandb_api_key \
 NPROC_PER_NODE=6 \
 swift rlhf \
@@ -131,7 +131,7 @@ swift rlhf \
     --dataloader_num_workers 4 \
     --num_generations 24 \
     --temperature 1.0 \
-    --system 'examples/train/grpo/prompt_1.txt' \
+    --system 'examples/train/grpo/prompt.txt' \
     --deepspeed zero3 \
     --log_completions true \
     --vllm_max_model_len 1024 \

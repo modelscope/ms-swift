@@ -23,7 +23,7 @@ class QuantEngine(ProcessorMixin):
             kwargs['automodel_class'] = AutoAWQForCausalLM
         self.model, self.template = prepare_model_template(args, **kwargs)
         self.template.set_mode('train')
-
+        self.model.config.use_cache = False
         HfConfigFactory.set_model_config_attr(self.model, 'use_cache', False)
         self.processor = self.template.processor
         args.save_args()
