@@ -112,7 +112,7 @@ class PackingPreprocessor(EncodePreprocessor):
 
     def __init__(self, template: 'Template'):
         super().__init__(template=template)
-        self.template.packing_mode = True
+        self.template._packing = True
 
     def batched_preprocess(self, batched_row: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         rows = self.batched_to_rows(batched_row)
