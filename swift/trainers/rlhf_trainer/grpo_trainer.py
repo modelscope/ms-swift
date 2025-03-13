@@ -706,10 +706,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if is_multimodal:
                 models = self.template.remove_post_encode_hook()
             with unwrap_model_for_generation(
-                    self.model_wrapped, 
-                    self.accelerator,
-                    gather_deepspeed3_params=self.args.ds3_gather_for_generation
-            ):
+                    self.model_wrapped, self.accelerator, gather_deepspeed3_params=self.args.ds3_gather_for_generation):
                 # same reference
                 outputs = self.engine.infer(inputs, self.request_config, use_tqdm=False)
                 self.model.train()
