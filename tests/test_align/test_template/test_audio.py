@@ -31,10 +31,14 @@ def test_qwen_audio():
 
 
 def test_qwen2_audio():
+    # transformers==4.48.3
     pt_engine = PtEngine('Qwen/Qwen2-Audio-7B-Instruct')
-    _infer_model(pt_engine)
+    messages = [{'role': 'user', 'content': '<audio>'}]
+    audios = ['https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen2-Audio/audio/guess_age_gender.wav']
+    response = _infer_model(pt_engine, messages=messages, audios=audios)
     pt_engine.default_template.template_backend = 'jinja'
-    _infer_model(pt_engine)
+    response2 = _infer_model(pt_engine, messages=messages, audios=audios)
+    assert response == response2 == 'Yes, the speaker is female and in her twenties.'
 
 
 def test_xcomposer2d5_ol():
@@ -55,6 +59,6 @@ if __name__ == '__main__':
     from swift.utils import get_logger, seed_everything
     logger = get_logger()
     # test_qwen_audio()
-    # test_qwen2_audio()
+    test_qwen2_audio()
     # test_xcomposer2d5_ol()
-    test_step_audio_chat()
+    # test_step_audio_chat()
