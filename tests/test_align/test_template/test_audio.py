@@ -31,6 +31,7 @@ def test_qwen_audio():
 
 
 def test_qwen2_audio():
+    # transformers==4.48.3
     pt_engine = PtEngine('Qwen/Qwen2-Audio-7B-Instruct')
     messages = [{'role': 'user', 'content': '<audio>'}]
     audios = ['https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen2-Audio/audio/guess_age_gender.wav']
