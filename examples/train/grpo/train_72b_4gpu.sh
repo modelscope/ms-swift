@@ -1,4 +1,5 @@
-NPROC_PER_NODE=8 \
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+NPROC_PER_NODE=4 \
 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-72B-Instruct \
@@ -20,20 +21,21 @@ swift rlhf \
     --dataloader_num_workers 4 \
     --max_completion_length 1024 \
     --reward_funcs accuracy format \
-    --num_generations 8 \
+    --num_generations 4 \
     --system examples/train/grpo/prompt.txt \
     --use_vllm true \
     --vllm_gpu_memory_utilization 0.5 \
+    --vllm_max_model_len 2048 \
     --deepspeed zero3_offload \
     --temperature 1.0 \
     --top_p 1.0 \
     --top_k 80 \
     --log_completions true \
-    --num_infer_workers 8 \
-    --tensor_parallel_size 8 \
+    --num_infer_workers 4 \
+    --tensor_parallel_size 4 \
     --log_completions true \
     --async_generate false \
-    --move_model_batches 12 \
+    --move_model_batches 16 \
     --offload_optimizer true \
     --offload_model true \
     --gc_collect_after_offload true \
