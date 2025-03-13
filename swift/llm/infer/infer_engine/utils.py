@@ -398,6 +398,36 @@ def patch_vllm(world_size=1, vllm_device: Optional[str] = None):
             if world_size == 1 and [rank] not in group_ranks:
                 # for ddp inference
                 group_ranks = [[rank]]
+            if nnodes > 1 and num_infer_workers < device_count:
+                """
+                Map group_ranks to global ranks
+
+                Example:
+                  - Number of nodes (nnodes): 2
+                  - Devices per node (device_count): 4
+                  - Inference workers per node (num_infer_workers): 1
+
+                  Initial group_ranks:
+                      [[0, 1]]
+
+                  After mapping to global ranks:
+                      [[0, 3]]  # Global ranks corresponding to the local ranks
+                """
+                train_device_count = device_count - num_infer_workers
+                # vllm.worker.init_distributed_environment
+                if len(group_ranks) == 1:
+                    group_ranks = group_ranks[0]
+                    for i in range(nnodes):
+                        group_ranks[i * num_infer_workers:(i + 1) * num_infer_workers] = [
+                            train_device_count * i + j for j in range(num_infer_workers)
+                        ]
+                    group_ranks = [group_ranks]
+                # vllm.worker.ensure_model_parallel_initialized
+                else:
+                    for i in range(nnodes):
+                        for j in range(num_infer_workers):
+                            group_ranks[i * num_infer_workers + j] = [train_device_count * i + j]
+
             return __origin_init__(self, group_ranks, local_rank, *args, **kwargs)
 
         GroupCoordinator.__init__ = __init__
