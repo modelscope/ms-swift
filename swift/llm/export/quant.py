@@ -180,7 +180,8 @@ class QuantEngine(ProcessorMixin):
 
         module_lists = []
         for n, m in model.named_modules():
-            if isinstance(m, nn.ModuleList) and len(m) >= 10:
+            if (isinstance(m, (nn.ModuleList, nn.Sequential)) and len(m) >= 10
+                    and 'mlp' not in m[0].__class__.__name__.lower()):  # fix moe
                 module_lists.append((n, m))
         if module_lists:
             module_list = max(module_lists, key=lambda x: len(x[1]))
