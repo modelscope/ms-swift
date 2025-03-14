@@ -566,25 +566,14 @@ class Template(ProcessorMixin):
         """
         return [f'[{self._get_bbox_str(bbox)}]']
 
-    def _pre_tokenize(self, context_list: List[Context], loss_scale_list: List[float],
-                      inputs: StdTemplateInputs) -> Tuple[List[Context], List[float]]:
-        """This method happens before tokenization, replace standard tags to the contents or input_ids needed by
-        the model.
+    def _pre_tokenize_mm_data(self, context_list: List[Context], loss_scale_list: List[float],
+                              inputs: StdTemplateInputs) -> Tuple[List[Context], List[float]]:
+        # https://github.com/modelscope/ms-swift/issues/3407
+        # Fix the bounding box position offset issue in the Qwen2.5-VL grounding task.
+        res: List[Context] = []
+        res_loss_scale: List[float] = []
 
-        Args:
-            context_list: The content list
-            loss_scale_list: The loss scale list
-        Returns:
-            The context_list and loss_scale_list after replacement.
-        """
-        if inputs.images and inputs.objects:
-            self.normalize_bbox(inputs)
-        # replace tag/object/box
-        res: List[Context] = []  # result of context_list
-        res_loss_scale: List[float] = []  # result of loss_scale_list
-
-        # reset
-        for k in ['image', 'video', 'audio', 'object', 'box']:
+        for k in ['image', 'video', 'audio']:
             setattr(inputs, f'{k}_idx', 0)
 
         for context, loss_scale in zip(context_list, loss_scale_list):
@@ -596,20 +585,48 @@ class Template(ProcessorMixin):
                     loss_scale = 0.
                     break
             else:
-                ref = inputs.objects.get('ref') or []
-                bbox = inputs.objects.get('bbox') or []
-                if context == '<ref-object>' and inputs.ref_idx < len(ref):
-                    idx = inputs.ref_idx
-                    c_list = self.replace_ref(ref[idx], idx, inputs)
-                    inputs.ref_idx += 1
-                elif context == '<bbox>' and inputs.bbox_idx < len(bbox):
-                    idx = inputs.bbox_idx
-                    c_list = self.replace_bbox(bbox[idx], idx, inputs)
-                    inputs.bbox_idx += 1
-                elif context == '<cot-process>' and self.mode == 'prm':
-                    c_list = self.replace_cot_process(inputs)
-                else:
-                    c_list = [context]
+                c_list = [context]
+            res += c_list
+            res_loss_scale += [loss_scale] * len(c_list)
+        return res, res_loss_scale
+
+    def _pre_tokenize(self, context_list: List[Context], loss_scale_list: List[float],
+                      inputs: StdTemplateInputs) -> Tuple[List[Context], List[float]]:
+        """This method happens before tokenization, replace standard tags to the contents or input_ids needed by
+        the model.
+
+        Args:
+            context_list: The content list
+            loss_scale_list: The loss scale list
+        Returns:
+            The context_list and loss_scale_list after replacement.
+        """
+        context_list, loss_scale_list = self._pre_tokenize_mm_data(context_list, loss_scale_list)
+        if inputs.images and inputs.objects:
+            self.normalize_bbox(inputs)
+        # replace tag/object/box
+        res: List[Context] = []  # result of context_list
+        res_loss_scale: List[float] = []  # result of loss_scale_list
+
+        # reset
+        for k in ['object', 'box']:
+            setattr(inputs, f'{k}_idx', 0)
+
+        for context, loss_scale in zip(context_list, loss_scale_list):
+            ref = inputs.objects.get('ref') or []
+            bbox = inputs.objects.get('bbox') or []
+            if context == '<ref-object>' and inputs.ref_idx < len(ref):
+                idx = inputs.ref_idx
+                c_list = self.replace_ref(ref[idx], idx, inputs)
+                inputs.ref_idx += 1
+            elif context == '<bbox>' and inputs.bbox_idx < len(bbox):
+                idx = inputs.bbox_idx
+                c_list = self.replace_bbox(bbox[idx], idx, inputs)
+                inputs.bbox_idx += 1
+            elif context == '<cot-process>' and self.mode == 'prm':
+                c_list = self.replace_cot_process(inputs)
+            else:
+                c_list = [context]
             res += c_list
             res_loss_scale += [loss_scale] * len(c_list)
         return res, res_loss_scale
