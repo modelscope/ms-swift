@@ -45,6 +45,7 @@ Swift DOCUMENTATION
 
    BestPractices/GRPO完整流程.md
    BestPractices/GRPO多模态训练.md
+   BestPractices/GRPO代码训练.md
    BestPractices/NPU支持.md
    BestPractices/更多最佳实践.md
 
