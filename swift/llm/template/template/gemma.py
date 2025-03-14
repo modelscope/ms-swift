@@ -64,6 +64,18 @@ register_template(
     ))
 
 
+@dataclass
+class Gemma3TextTemplateMeta(TemplateMeta):
+    prefix: Prompt = field(default_factory=lambda: ['<bos><start_of_turn>'])
+    prompt: Prompt = field(default_factory=lambda: ['user\n{{QUERY}}<end_of_turn>\n<start_of_turn>model\n'])
+    chat_sep: Optional[Prompt] = field(default_factory=lambda: ['<end_of_turn>\n'])
+    suffix: Prompt = field(default_factory=lambda: ['<end_of_turn>'])
+    system_prefix: Optional[Prompt] = field(default_factory=lambda: ['<bos><start_of_turn>{{SYSTEM}}\n\n'])
+
+
+register_template(GemmaTemplateMeta(LLMTemplateType.gemma3_text))
+
+
 class Gemma3VisionTemplate(Template):
     # def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
     #                 inputs: StdTemplateInputs) -> List[Context]:

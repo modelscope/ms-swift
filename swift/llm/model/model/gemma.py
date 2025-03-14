@@ -104,7 +104,7 @@ register_model(
                 Model('LLM-Research/gemma-3-1b-it', 'google/gemma-3-1b-it'),
             ], ),
         ],
-        TemplateType.gemma,
+        TemplateType.gemma3_text,
         get_model_tokenizer_with_flash_attn,
         architectures=['Gemma3ForCausalLM'],
         model_arch=ModelArch.llama,

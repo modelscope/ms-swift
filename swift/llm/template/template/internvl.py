@@ -78,7 +78,6 @@ register_template(
         template_cls=InternvlTemplate,
         placeholder_tokens=['<IMG_CONTEXT>'],
         auto_add_bos=True))
-
 register_template(
     Phi3TemplateMeta(
         MLLMTemplateType.internvl_phi3,
