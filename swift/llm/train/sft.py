@@ -34,11 +34,10 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
     def _prepare_gradient_checkpointing(self):
         args = self.args
-
+        self.model.config.use_cache = False
         if args.gradient_checkpointing:
             self.model.supports_gradient_checkpointing = True
             dynamic_gradient_checkpointing(self.model)
-            self.model.config.use_cache = False  # fix transformers==4.36
             self.model.enable_input_require_grads()
         model_meta = self.model.model_meta
         model_arch = get_model_arch(model_meta.model_arch)
@@ -168,7 +167,10 @@ class SwiftSft(SwiftPipeline, TunerMixin):
     def _save_trainer_state(self, trainer):
         training_args = trainer.args
         state = trainer.state
-
+        if not hasattr(state, 'last_model_checkpoint'):
+            # No training was carried out, which may be due to the dataset being too small
+            # or incorrect usage of resume_from_checkpoint.
+            return
         if self.args.create_checkpoint_symlink:
             last_checkpoint = os.path.join(self.args.output_dir, 'last')
             best_checkpoint = os.path.join(self.args.output_dir, 'best')

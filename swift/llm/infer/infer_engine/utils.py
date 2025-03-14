@@ -86,7 +86,7 @@ class InferStreamer(InferTools):
     def get_printable_text(self, raw_tokens: List[int], is_finished: bool) -> str:
         raw_tokens = raw_tokens[self.cache_idx:]
         response = self.template.decode(
-            raw_tokens, is_finished, tokenizer_kwargs=self.decode_kwargs, first_token=self.first_token)
+            raw_tokens, is_finished=is_finished, tokenizer_kwargs=self.decode_kwargs, first_token=self.first_token)
         self.first_token = False
         response = self._align_blank_suffix(response)
         return self._get_response(response, is_finished, len(raw_tokens))
@@ -398,12 +398,42 @@ def patch_vllm(world_size=1, vllm_device: Optional[str] = None):
             if world_size == 1 and [rank] not in group_ranks:
                 # for ddp inference
                 group_ranks = [[rank]]
+            if nnodes > 1 and num_infer_workers < device_count:
+                """
+                Map group_ranks to global ranks
+
+                Example:
+                  - Number of nodes (nnodes): 2
+                  - Devices per node (device_count): 4
+                  - Inference workers per node (num_infer_workers): 1
+
+                  Initial group_ranks:
+                      [[0, 1]]
+
+                  After mapping to global ranks:
+                      [[0, 3]]  # Global ranks corresponding to the local ranks
+                """
+                train_device_count = device_count - num_infer_workers
+                # vllm.worker.init_distributed_environment
+                if len(group_ranks) == 1:
+                    group_ranks = group_ranks[0]
+                    for i in range(nnodes):
+                        group_ranks[i * num_infer_workers:(i + 1) * num_infer_workers] = [
+                            train_device_count * i + j for j in range(num_infer_workers)
+                        ]
+                    group_ranks = [group_ranks]
+                # vllm.worker.ensure_model_parallel_initialized
+                else:
+                    for i in range(nnodes):
+                        for j in range(num_infer_workers):
+                            group_ranks[i * num_infer_workers + j] = [train_device_count * i + j]
+
             return __origin_init__(self, group_ranks, local_rank, *args, **kwargs)
 
         GroupCoordinator.__init__ = __init__
 
         try:
-            with profiling_patch, set_local_rank_context(vllm_device):
+            with profiling_patch, restore_torch_device_after_vllm_init(), set_local_rank_context(vllm_device):
                 torch.distributed.get_world_size_origin = torch.distributed.get_world_size
                 torch.distributed.get_world_size = get_world_size
                 yield
@@ -456,3 +486,23 @@ def set_local_rank_context(device: Union[str, int]):
             os.environ['LOCAL_RANK'] = origin_local_rank
         else:
             del os.environ['LOCAL_RANK']
+
+
+@contextmanager
+def restore_torch_device_after_vllm_init():
+    """
+    A context manager to restore the original CUDA device after potential modifications.
+
+    This is specifically designed to address an issue in Distributed Data Parallel (DDP)
+    scenarios where the initialization of the vLLM engine may inadvertently modify the
+    default CUDA device. The context manager saves the current device at the start and
+    ensures it is restored upon exit, even if the device is modified within the context.
+
+    """
+    origin_device = torch.cuda.current_device()
+    try:
+        yield
+    finally:
+        current_device = torch.cuda.current_device()
+        if origin_device != current_device:
+            torch.cuda.set_device(origin_device)

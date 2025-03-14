@@ -117,6 +117,7 @@ class Template(ProcessorMixin):
         self.mode: Literal['pt', 'vllm', 'lmdeploy',  # infer
                            'train', 'rlhf', 'kto',  # train
                            'seq_cls', 'embedding', 'prm'] = 'pt'
+        self._packing = False
         if self.model_info.task_type != 'causal_lm':
             self.mode = self.model_info.task_type
         self._handles = []
@@ -362,8 +363,8 @@ class Template(ProcessorMixin):
 
     def decode(self,
                generate_ids: List[int],
-               is_finished: bool = True,
                *,
+               is_finished: bool = True,
                tokenizer_kwargs=None,
                first_token=True,
                **kwargs) -> Any:
@@ -569,6 +570,25 @@ class Template(ProcessorMixin):
         """
         return [f'[{self._get_bbox_str(bbox)}]']
 
+    def _pre_tokenize_images(self, context_list: List[Context], loss_scale_list: List[float],
+                             inputs: StdTemplateInputs) -> Tuple[List[Context], List[float]]:
+        # https://github.com/modelscope/ms-swift/issues/3407
+        # Fix the bounding box position offset issue in the Qwen2.5-VL grounding task.
+        res: List[Context] = []
+        res_loss_scale: List[float] = []
+        inputs.image_idx = 0
+
+        for context, loss_scale in zip(context_list, loss_scale_list):
+            if context == '<image>' and inputs.is_multimodal and inputs.image_idx < len(inputs.images):
+                c_list = self.replace_tag('image', inputs.image_idx, inputs)
+                inputs.image_idx += 1
+                loss_scale = 0.
+            else:
+                c_list = [context]
+            res += c_list
+            res_loss_scale += [loss_scale] * len(c_list)
+        return res, res_loss_scale
+
     def _pre_tokenize(self, context_list: List[Context], loss_scale_list: List[float],
                       inputs: StdTemplateInputs) -> Tuple[List[Context], List[float]]:
         """This method happens before tokenization, replace standard tags to the contents or input_ids needed by
@@ -580,6 +600,7 @@ class Template(ProcessorMixin):
         Returns:
             The context_list and loss_scale_list after replacement.
         """
+        context_list, loss_scale_list = self._pre_tokenize_images(context_list, loss_scale_list, inputs)
         if inputs.images and inputs.objects:
             self.normalize_bbox(inputs)
         # replace tag/object/box
@@ -587,11 +608,11 @@ class Template(ProcessorMixin):
         res_loss_scale: List[float] = []  # result of loss_scale_list
 
         # reset
-        for k in ['image', 'video', 'audio', 'object', 'box']:
+        for k in ['video', 'audio', 'object', 'box']:
             setattr(inputs, f'{k}_idx', 0)
 
         for context, loss_scale in zip(context_list, loss_scale_list):
-            for k in ['image', 'video', 'audio']:
+            for k in ['video', 'audio']:
                 if context == f'<{k}>' and inputs.is_multimodal and getattr(inputs, f'{k}_idx') < len(
                         getattr(inputs, f'{k}s')):
                     c_list = self.replace_tag(k, getattr(inputs, f'{k}_idx'), inputs)
@@ -1069,7 +1090,8 @@ class Template(ProcessorMixin):
                 res[key][i] = val
             if not seq_lens:
                 seq_lens = [seq.shape[0] for seq in res[key]]
-        if seq_lens and ('input_ids' in res or 'inputs_embeds' in res):
+        packing_mode = self._packing and 'position_ids' in res
+        if not packing_mode and seq_lens and ('input_ids' in res or 'inputs_embeds' in res):
             res['attention_mask'] = [torch.ones(seq_len, dtype=torch.int64) for seq_len in seq_lens]
             if self.is_training and self.padding_side == 'left':
                 res['position_ids'] = [torch.arange(seq_len, dtype=torch.int64) for seq_len in seq_lens]

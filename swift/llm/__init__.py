@@ -24,8 +24,8 @@ if TYPE_CHECKING:
                         git_clone_github, get_matched_model_meta)
     from .dataset import (AlpacaPreprocessor, ResponsePreprocessor, MessagesPreprocessor, AutoPreprocessor,
                           DATASET_MAPPING, MediaResource, register_dataset, register_dataset_info, EncodePreprocessor,
-                          LazyLLMDataset, ConstantLengthDataset, load_dataset, DATASET_TYPE, sample_dataset,
-                          RowPreprocessor, DatasetMeta, HfDataset, SubsetDataset)
+                          LazyLLMDataset, load_dataset, DATASET_TYPE, sample_dataset, RowPreprocessor, DatasetMeta,
+                          HfDataset, SubsetDataset)
     from .utils import (deep_getattr, to_float_dtype, to_device, History, Messages, history_to_messages,
                         messages_to_history, Processor, save_checkpoint, ProcessorMixin,
                         get_temporary_cache_files_directory, get_cache_dir, set_default_ddp_config)
@@ -60,9 +60,9 @@ else:
         ],
         'dataset': [
             'AlpacaPreprocessor', 'MessagesPreprocessor', 'AutoPreprocessor', 'DATASET_MAPPING', 'MediaResource',
-            'register_dataset', 'register_dataset_info', 'EncodePreprocessor', 'LazyLLMDataset',
-            'ConstantLengthDataset', 'load_dataset', 'DATASET_TYPE', 'sample_dataset', 'RowPreprocessor',
-            'ResponsePreprocessor', 'DatasetMeta', 'HfDataset', 'SubsetDataset'
+            'register_dataset', 'register_dataset_info', 'EncodePreprocessor', 'LazyLLMDataset', 'load_dataset',
+            'DATASET_TYPE', 'sample_dataset', 'RowPreprocessor', 'ResponsePreprocessor', 'DatasetMeta', 'HfDataset',
+            'SubsetDataset'
         ],
         'utils': [
             'deep_getattr', 'to_device', 'to_float_dtype', 'History', 'Messages', 'history_to_messages',

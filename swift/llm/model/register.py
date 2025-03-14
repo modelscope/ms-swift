@@ -19,7 +19,7 @@ from transformers.utils.versions import require_version
 
 from swift.utils import get_dist_setting, get_logger, is_mp, is_unsloth_available, patch_getattr, use_torchacc
 from .constant import ModelType
-from .patcher import (patch_automodel_for_awq, patch_automodel_for_sequence_classification, patch_get_dynamic_module,
+from .patcher import (patch_automodel, patch_automodel_for_sequence_classification, patch_get_dynamic_module,
                       patch_mp_ddp)
 from .utils import AttnImpl, HfConfigFactory, ModelInfo, safe_snapshot_download
 
@@ -214,10 +214,8 @@ def get_model_tokenizer_from_local(model_dir: str,
         if model is None:
             if model_info.task_type == 'seq_cls':
                 context = partial(patch_automodel_for_sequence_classification, model_meta=kwargs['model_meta'])
-            elif 'AutoAWQFor' in automodel_class.__name__:
-                context = patch_automodel_for_awq
             else:
-                context = nullcontext
+                context = partial(patch_automodel, automodel_class=automodel_class, model_info=model_info)
             with context():
                 model = automodel_class.from_pretrained(
                     model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
