@@ -208,6 +208,7 @@ class Seq2SeqTrainer(TorchAccMixin, SwiftMixin, HfSeq2SeqTrainer):
 
         if labels is None:
             labels = inputs['labels']
+            outputs.loss = outputs.loss.to(labels.device)
             # fix https://github.com/huggingface/transformers/issues/34263
             if num_items_in_batch is not None:
                 outputs.loss = outputs.loss * (labels[:, 1:] != -100).sum() / num_items_in_batch
