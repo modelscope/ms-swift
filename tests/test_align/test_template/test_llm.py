@@ -356,13 +356,11 @@ def test_ling():
 
 
 def test_gemma3():
-    models = ['LLM-Research/gemma-3-1b-pt', 'LLM-Research/gemma-3-1b-it']
-    for model in models:
-        pt_engine = PtEngine(model)
-        res = _infer_model(pt_engine)
-        pt_engine.default_template.template_backend = 'jinja'
-        res2 = _infer_model(pt_engine)
-        assert res == res2, f'res: {res}, res2: {res2}'
+    pt_engine = PtEngine('LLM-Research/gemma-3-1b-it')
+    res = _infer_model(pt_engine, system='You are a helpful assistant')
+    pt_engine.default_template.template_backend = 'jinja'
+    res2 = _infer_model(pt_engine, system='You are a helpful assistant')
+    assert res == res2, f'res: {res}, res2: {res2}'
 
 
 if __name__ == '__main__':

@@ -66,14 +66,28 @@ register_template(
 
 @dataclass
 class Gemma3TextTemplateMeta(TemplateMeta):
-    prefix: Prompt = field(default_factory=lambda: ['<bos><start_of_turn>'])
-    prompt: Prompt = field(default_factory=lambda: ['user\n{{QUERY}}<end_of_turn>\n<start_of_turn>model\n'])
+    prefix: Prompt = field(default_factory=lambda: ['<bos>'])
+    prompt: Prompt = field(
+        default_factory=lambda: ['<start_of_turn>user\n{{QUERY}}<end_of_turn>\n<start_of_turn>model\n'])
     chat_sep: Optional[Prompt] = field(default_factory=lambda: ['<end_of_turn>\n'])
     suffix: Prompt = field(default_factory=lambda: ['<end_of_turn>'])
-    system_prefix: Optional[Prompt] = field(default_factory=lambda: ['<bos><start_of_turn>{{SYSTEM}}\n\n'])
 
 
-register_template(GemmaTemplateMeta(LLMTemplateType.gemma3_text))
+class Gemma3Template(Template):
+
+    def _swift_encode(self, inputs: StdTemplateInputs):
+        if inputs.system is not None:
+            system = inputs.system
+            inputs.system = None
+        inputs.messages[0]['content'] = system + '\n\n' + inputs.messages[0]['content']
+        if not self.is_training:
+            for message in inputs.messages:
+                if message['role'] == 'assistant' and isinstance(message['content'], str):
+                    message['content'] = message['content'].split('</think>')[-1].strip('\n')
+        return super()._swift_encode(inputs)
+
+
+register_template(Gemma3TextTemplateMeta(LLMTemplateType.gemma3_text, template_cls=Gemma3Template))
 
 
 class Gemma3VisionTemplate(Template):
