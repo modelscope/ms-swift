@@ -45,9 +45,9 @@ Swift DOCUMENTATION
    :maxdepth: 2
    :caption: Best Practices
 
+   BestPractices/GRPO-Code-Training.md
    BestPractices/NPU-support.md
    BestPractices/More-Best-Practices.md
-   BestPractices/GRPO-Code-Training.md
 
 Indices and tables
 ==================
