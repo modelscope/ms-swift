@@ -359,8 +359,8 @@ class Template(ProcessorMixin):
 
     def decode(self,
                generate_ids: List[int],
-               is_finished: bool = True,
                *,
+               is_finished: bool = True,
                tokenizer_kwargs=None,
                first_token=True,
                **kwargs) -> Any:
