@@ -34,11 +34,10 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
     def _prepare_gradient_checkpointing(self):
         args = self.args
-
+        self.model.config.use_cache = False
         if args.gradient_checkpointing:
             self.model.supports_gradient_checkpointing = True
             dynamic_gradient_checkpointing(self.model)
-            self.model.config.use_cache = False  # fix transformers==4.36
             self.model.enable_input_require_grads()
         model_meta = self.model.model_meta
         model_arch = get_model_arch(model_meta.model_arch)

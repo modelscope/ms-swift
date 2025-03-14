@@ -91,9 +91,3 @@ The parameters marked as compatible in version 2.0 have been entirely removed.
 5. Use `swift app --model xxx` to launch the app-ui interface, which supports multimodal interface inference.
 
 6. Removed dependencies for AIGC along with corresponding examples and training code.
-
-## Pending Tasks
-
-1. Custom dataset evaluation is not supported in version 3.0. Please use version 2.6.1.
-2. Megatron pre-training capabilities are not supported in version 3.0. Please use version 2.6.1.
-3. Documentation and README are temporarily incomplete and will be updated.

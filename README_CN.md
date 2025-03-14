@@ -27,7 +27,7 @@
 </p>
 
 <p align="center">
-        <a href="https://arxiv.org/abs/2408.05517">论文</a> &nbsp ｜ <a href="https://swift.readthedocs.io/en/latest/">English Documentation</a> &nbsp ｜ &nbsp <a href="https://swift.readthedocs.io/zh-cn/latest/">中文文档</a> &nbsp
+        <a href="https://arxiv.org/abs/2408.05517">论文</a> &nbsp ｜ <a href="https://swift.readthedocs.io/en/latest/">Swift3.x En Doc</a> &nbsp ｜ &nbsp <a href="https://swift.readthedocs.io/zh-cn/latest/">Swift3.x中文文档</a> &nbsp
 </p>
 <p align="center">
         <a href="https://swift2x-en.readthedocs.io/en/latest/">Swift2.x En Doc</a> &nbsp ｜ &nbsp <a href="https://swift2x.readthedocs.io/zh-cn/latest/">Swift2.x中文文档</a> &nbsp
@@ -74,6 +74,7 @@
 - **模型量化**：支持AWQ、GPTQ和BNB的量化导出，导出的模型支持使用vLLM/LmDeploy推理加速，并支持继续训练。
 
 ## 🎉 新闻
+- 🎁 2025.03.13: 我们提供了一个仅使用4GPU(4*80G)来训练72B模型的脚本, 请查看[这里](examples/train/grpo/train_72b_4gpu.sh)
 - 🎁 2025.03.05: 支持GRPO的hybrid模式(rollout和actor在同一GPU上, rollout可以进行offload), 同时支持了vllm的tensor parallel, 查看[训练脚本](examples/train/grpo/multi_gpu_mp_colocate.sh)
 - 🎁 2025.02.21: 我们测试了GRPO算法的性能，并且使用一些tricks使[训练速度提高到300%](examples/train/grpo/full_lmdeploy.sh). WanDB表格请查看[这里](https://wandb.ai/tastelikefeet/grpo_perf_test?nw=nwuseryuzezyz)
 - 🎁 2025.02.21: 支持大模型API蒸馏采样，请查看[示例](examples/sampler/distill/distill.sh)

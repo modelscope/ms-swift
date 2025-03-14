@@ -237,12 +237,15 @@ def patch_automodel_for_sequence_classification(model_meta):
 
 
 @contextmanager
-def patch_automodel_for_awq():
+def patch_automodel(automodel_class, model_info):
     from_pretrained = PreTrainedModel.from_pretrained.__func__
 
     @classmethod
     def _new_from_pretrained(cls, *args, **kwargs):
-        kwargs.pop('use_cache', None)
+        if 'AutoAWQFor' in automodel_class.__name__:
+            kwargs.pop('use_cache', None)
+        if model_info.quant_method == 'gptq':
+            cls.main_input_name = 'input_ids'
         return from_pretrained(cls, *args, **kwargs)
 
     PreTrainedModel.from_pretrained = _new_from_pretrained

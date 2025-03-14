@@ -262,7 +262,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             stop=args.stop_words,
         )
 
-        if self.args.tensor_parallel_size > 1:
+        if local_world_size == self.args.num_infer_workers == get_device_count() and local_world_size > 1:
             self.request_config.n = self.args.tensor_parallel_size
             if self.infer_rank >= 0:
                 self.request_config.seed = self.infer_rank // self.args.tensor_parallel_size
