@@ -89,8 +89,6 @@ class SwanlabArguments:
     def _init_swanlab(self):
         if not is_swanlab_available():
             raise ValueError('You are using swanlab as `report_to`, please install swanlab by ' '`pip install swanlab`')
-        if not self.swanlab_project:
-            raise ValueError('Please specify a project existed in your swanlab page(https://swanlab.cn/space/~)')
         if not self.swanlab_exp_name:
             self.swanlab_exp_name = self.output_dir
         from transformers.integrations import INTEGRATION_TO_CALLBACK
