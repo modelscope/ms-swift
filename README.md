@@ -79,9 +79,9 @@ You can contact us and communicate with us by adding our group:
 
 ## 🎉 News
 - 🎁 2025.03.13: We provide a script of GRPO to train a 72B model with only 4 GPUs(4*80G), please check [here](examples/train/grpo/train_72b_4gpu.sh)
-- 🎁 2025.03.05: We support the hybrid mode of GRPO(rollout and actor on the same GPU, rollout sleep when actor training), meanwhile tensor parallel for GRPO, check[training script here](examples/train/grpo/multi_gpu_mp_colocate.sh)
+- 🎁 2025.03.05: We support the hybrid mode of GRPO(rollout and actor on the same GPU, rollout sleep when actor training), meanwhile tensor parallel for GRPO, check [training script here](examples/train/grpo/multi_gpu_mp_colocate.sh)
 - 🎁 2025.02.21: We test the speed performance of GRPO，and with some tricks to [speed up to 300%](examples/train/grpo/full_lmdeploy.sh). WanDB charts can be found [here](https://wandb.ai/tastelikefeet/grpo_perf_test?nw=nwuseryuzezyz)
-- 🎁 2025.02.21: Support distill from LLM API，Please check[this example](examples/sampler/distill/distill.sh)
+- 🎁 2025.02.21: Support distill from LLM API，Please check [this example](examples/sampler/distill/distill.sh)
 - 🎁 2025.02.17: Support SwanLab, just add [a few of arguments](docs/source_en/Instruction/Command-line-parameters.md#swanlab) you can use swanlab to analysis your training results
 - 🎁 2025.02.16: Support LMDeploy in GRPO, use `--use_lmdeploy true`. Please check [this script](examples/train/grpo/full_lmdeploy.sh)
 - 🔥 2025.02.12: Support for GRPO(Group Relative Policy Optimization) algorithm for llm and mllm, document can be found in [here](docs/source_en/Instruction/GRPO.md)
