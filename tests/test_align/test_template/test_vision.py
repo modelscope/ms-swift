@@ -476,6 +476,14 @@ def test_phi4_vision():
     assert response == '今天天气真好呀'
 
 
+def test_gemma3_vision():
+    pt_engine = PtEngine('LLM-Research/Phi-4-multimodal-instruct')
+    response = _infer_model(pt_engine, messages=[{'role': 'user', 'content': 'describe the image.'}])
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine)
+    assert response == response2
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig, get_template
     from swift.utils import get_logger, seed_everything
@@ -488,7 +496,7 @@ if __name__ == '__main__':
     # test_llava()
     # test_ovis1_6()
     # test_ovis1_6_llama3()
-    test_ovis2()
+    # test_ovis2()
     # test_yi_vl()
     # test_deepseek_vl()
     # test_deepseek_janus()
@@ -522,3 +530,4 @@ if __name__ == '__main__':
     # test_minicpmo()
     # test_valley()
     # test_ui_tars()
+    test_gemma3_vision()

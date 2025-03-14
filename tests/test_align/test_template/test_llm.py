@@ -355,6 +355,16 @@ def test_ling():
     assert res == res2, f'res: {res}, res2: {res2}'
 
 
+def test_gemma3():
+    models = ['LLM-Research/gemma-3-1b-pt', 'LLM-Research/gemma-3-1b-it']
+    for model in models:
+        pt_engine = PtEngine(model)
+        res = _infer_model(pt_engine)
+        pt_engine.default_template.template_backend = 'jinja'
+        res2 = _infer_model(pt_engine)
+        assert res == res2, f'res: {res}, res2: {res2}'
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig, get_template, get_model_tokenizer
     from swift.utils import get_logger, seed_everything
@@ -388,4 +398,5 @@ if __name__ == '__main__':
     # test_mistral_small()
     # test_baichuan_m1()
     # test_moonlight()
-    test_ling()
+    # test_ling()
+    test_gemma3()
