@@ -102,6 +102,7 @@ class SwanlabArguments:
             project=self.swanlab_project,
             workspace=self.swanlab_workspace,
             experiment_name=self.swanlab_exp_name,
+            config={"UPPERFRAME":"🐦‍⬛ms-swift"},
             mode=self.swanlab_mode,
         )
 
