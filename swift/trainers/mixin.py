@@ -4,6 +4,7 @@ import inspect
 import os
 import shutil
 import time
+from contextlib import contextmanager
 from copy import copy
 from types import MethodType
 from typing import Callable, Dict, List, Optional, Tuple, Union
@@ -60,11 +61,13 @@ class SwiftMixin:
                  preprocess_logits_for_metrics: Optional[Callable[[torch.Tensor, torch.Tensor], torch.Tensor]] = None,
                  **kwargs) -> None:
         if args.check_model and hasattr(model, 'model_dir'):
-            check_local_model_is_latest(
-                model.model_dir, user_agent={
-                    'invoked_by': 'local_trainer',
-                    'third_party': 'swift',
-                })
+            from swift.utils.logger import ms_logger_ignore_error
+            with ms_logger_ignore_error():
+                check_local_model_is_latest(
+                    model.model_dir, user_agent={
+                        'invoked_by': 'local_trainer',
+                        'third_party': 'swift',
+                    })
         self._custom_metrics = {}
         self.template = template
         self.max_memory = 0
@@ -221,6 +224,8 @@ class SwiftMixin:
             from swift.llm import save_checkpoint
             additional_saved_files = self.model_meta.additional_saved_files
             save_checkpoint(None, self.template.processor, output_dir, additional_saved_files=additional_saved_files)
+            if getattr(self.model, 'origin_generation_config', None):
+                self.model.origin_generation_config.save_pretrained(output_dir)
 
     def _fix_zero3_gather_all_parameters(self) -> None:
         if is_deepspeed_zero3_enabled() and not hasattr(self.deepspeed, '_zero3_consolidated_16bit_state_dict_origin'):
@@ -248,6 +253,27 @@ class SwiftMixin:
         logger.info(f'Saving model checkpoint to {self.state.last_model_checkpoint}')
         return result
 
+    @staticmethod
+    @contextmanager
+    def _fix_grad_norm_nan():
+        from accelerate import Accelerator
+        origin_clip_grad_norm_ = Accelerator.clip_grad_norm_
+
+        def clip_grad_norm_(self, parameters, *args, **kwargs):
+            # If NaN occurs, ignore weight updates.
+            parameters = list(parameters)
+            grad_norm = origin_clip_grad_norm_(self, parameters, *args, **kwargs)
+            if isinstance(grad_norm, torch.Tensor) and grad_norm.isnan().item():
+                for p in parameters:
+                    p.grad = None
+            return grad_norm
+
+        Accelerator.clip_grad_norm_ = clip_grad_norm_
+        try:
+            yield
+        finally:
+            Accelerator.clip_grad_norm_ = origin_clip_grad_norm_
+
     def train(self, *args, **kwargs):
         if self.model_meta.is_multimodal:
             models = list(
@@ -256,9 +282,9 @@ class SwiftMixin:
                     if isinstance(v, nn.Module) and k in {'model', 'ref_model', 'reward_model', 'value_model'}
                 ]))
             self.template.register_post_encode_hook(models)
-            logger.info(f'Successfully registered post_encode hook: {[model.__class__.__name__ for model in models]}')
+            logger.info(f'Successfully registered post_encode hook: {[model.__class__.__name__ for model in models]}.')
         self._save_initial_model(self.args.output_dir)
-        with self.hub.patch_hub():
+        with self.hub.patch_hub(), self._fix_grad_norm_nan():
             res = super().train(*args, **kwargs)
         self.template.remove_post_encode_hook()
         return res

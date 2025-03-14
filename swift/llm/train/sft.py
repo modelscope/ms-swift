@@ -34,11 +34,10 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
     def _prepare_gradient_checkpointing(self):
         args = self.args
-
+        self.model.config.use_cache = False
         if args.gradient_checkpointing:
             self.model.supports_gradient_checkpointing = True
             dynamic_gradient_checkpointing(self.model)
-            self.model.config.use_cache = False  # fix transformers==4.36
             self.model.enable_input_require_grads()
         model_meta = self.model.model_meta
         model_arch = get_model_arch(model_meta.model_arch)
@@ -53,6 +52,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
     def _prepare_generation_config(self):
         args = self.args
+        self.model.origin_generation_config = self.model.generation_config
         self.model.generation_config = prepare_generation_config(self.model.generation_config,
                                                                  args.get_request_config(), self.tokenizer)
         logger.info(f'model.generation_config: {self.model.generation_config}')
@@ -109,6 +109,11 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         args = self.args
 
         train_dataset, val_dataset = self._get_dataset()
+        if isinstance(val_dataset, HfDataset):
+            os.makedirs(args.output_dir, exist_ok=True)
+            val_dataset_path = os.path.join(args.output_dir, 'val_dataset.jsonl')
+            append_to_jsonl(val_dataset_path, val_dataset.to_list())
+            logger.info(f'The split dataset from the training set will be saved at: {val_dataset_path}.')
         if args.task_type == 'seq_cls' and isinstance(train_dataset, HfDataset) and 'label' in train_dataset.features:
             min_num_labels = int(max(train_dataset['label']) + 1)
             assert args.num_labels >= min_num_labels, (
@@ -157,7 +162,10 @@ class SwiftSft(SwiftPipeline, TunerMixin):
     def _save_trainer_state(self, trainer):
         training_args = trainer.args
         state = trainer.state
-
+        if not hasattr(state, 'last_model_checkpoint'):
+            # No training was carried out, which may be due to the dataset being too small
+            # or incorrect usage of resume_from_checkpoint.
+            return
         if self.args.create_checkpoint_symlink:
             last_checkpoint = os.path.join(self.args.output_dir, 'last')
             best_checkpoint = os.path.join(self.args.output_dir, 'best')

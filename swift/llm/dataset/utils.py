@@ -1,14 +1,13 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-# Part of the implementation is borrowed from huggingface/transformers.
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, Optional, Union
 
 import numpy as np
 from datasets import Dataset as HfDataset
-from torch.utils.data import Dataset, IterableDataset
+from torch.utils.data import Dataset
 
 from swift.utils import get_logger
 from ..template import MaxLengthError
-from .preprocessor import DATASET_TYPE, RowPreprocessor
+from .preprocessor import RowPreprocessor
 
 logger = get_logger()
 
@@ -40,102 +39,6 @@ def sample_dataset(dataset: HfDataset,
         idx = np.concatenate([idx, idx_random])
     dataset = dataset.select(idx)
     return dataset
-
-
-# Code borrowed from trl
-class ConstantLengthDataset(IterableDataset):
-    """This class wraps to do dataset packing
-    Args:
-        template: The template
-        dataset: The dataset instance
-        seq_length: The permitted sequence length
-        num_of_sequences: Used to calculate the max_buffer_size fetched one time
-        chars_per_token: Gives the chars per token, 3.6 if the default one, comes from `trl`
-        append_concat_token: Reserved argument
-        add_special_tokens: Reserved argument
-    """
-
-    def __init__(
-        self,
-        template: 'Template',
-        dataset: DATASET_TYPE,
-        seq_length=1024,
-        num_of_sequences=1024,
-        chars_per_token=3.6,
-        append_concat_token=True,
-        add_special_tokens=True,
-    ):
-        self.template = template
-        self.concat_token_id = self.template.tokenizer.eos_token_id
-        self.dataset = dataset
-        self.seq_length = seq_length
-        self.max_buffer_size = seq_length * chars_per_token * num_of_sequences
-        self.append_concat_token = append_concat_token
-        self.add_special_tokens = add_special_tokens
-
-    @staticmethod
-    def get_packed_dataset(template: 'Template',
-                           dataset: DATASET_TYPE,
-                           seq_length=1024,
-                           num_of_sequences=2048,
-                           chars_per_token=3.6,
-                           append_concat_token=True,
-                           add_special_tokens=True):
-        constant_length_iterator = ConstantLengthDataset(template, dataset, seq_length, num_of_sequences,
-                                                         chars_per_token, append_concat_token, add_special_tokens)
-
-        dataset_list = []
-        for item in constant_length_iterator:
-            dataset_list.append(item)
-        return dataset_list
-
-    def __len__(self):
-        return len(self.dataset)
-
-    def calculate_matched_group(self, sequences: Dict[str, List[int]]):
-        # https://arxiv.org/pdf/2404.10830
-        import binpacking
-        binpacked = binpacking.to_constant_volume(sequences, self.seq_length, weight_pos=1)
-        packed_sequence = []
-        for sequence in binpacked:
-            packed = {}
-            position_id_lengths = [len(s[0]['input_ids']) for s in sequence]
-            for key in sequence[0][0].keys():
-                packed[key] = np.concatenate([s[0][key] for s in sequence])
-            packed_sequence.append(packed)
-            packed['position_ids'] = np.concatenate([list(range(pil)) for pil in position_id_lengths])
-        return packed_sequence
-
-    def __iter__(self):
-        iterator = iter(self.dataset)
-        more_examples = True
-        while more_examples:
-            buffer, buffer_len = [], 0
-            while True:
-                if buffer_len >= self.max_buffer_size:
-                    break
-                try:
-                    example = next(iterator)
-                    lens = sum([len(value) if value else 0 for value in example.values()])
-                    buffer.append(example)
-                    buffer_len += lens
-                except StopIteration:
-                    more_examples = False
-                    break
-
-            sequences = []
-            for example in buffer:
-                try:
-                    inputs = self.template.encode(example)
-                except MaxLengthError:
-                    continue
-                sequences.append((inputs, len(inputs['input_ids'])))
-
-            if not sequences:
-                return
-            packed_sequences = self.calculate_matched_group(sequences)
-            for sequence in packed_sequences:
-                yield sequence
 
 
 class LazyLLMDataset(Dataset):
@@ -207,18 +110,47 @@ class EncodePreprocessor(RowPreprocessor):
 
 class PackingPreprocessor(EncodePreprocessor):
 
+    def __init__(self, template: 'Template'):
+        super().__init__(template=template)
+        self.template._packing = True
+
     def batched_preprocess(self, batched_row: Dict[str, Any], **kwargs) -> Dict[str, Any]:
-        subset = self.batched_to_rows(batched_row)
-        packed_dataset = ConstantLengthDataset.get_packed_dataset(
-            self.template, dataset=subset, seq_length=self.template.max_length, num_of_sequences=4096)
-        batched_row = self.rows_to_batched(packed_dataset)
-        return batched_row
+        rows = self.batched_to_rows(batched_row)
+        inputs_list = []
+        for row in rows:
+            try:
+                inputs = self.template.encode(row)
+            except MaxLengthError:
+                continue
+            inputs_list.append((inputs, len(inputs['input_ids'])))
+        packed = self.calculate_matched_group(inputs_list)
+        return self.rows_to_batched(packed)
+
+    def calculate_matched_group(self, sequences):
+        # https://arxiv.org/pdf/2404.10830
+        import binpacking
+        keys = list(sequences[0][0].keys())
+        sequences = binpacking.to_constant_volume(sequences, self.template.max_length, weight_pos=1)
+        res = []
+        for row in sequences:
+            packed = {}
+            for key in keys:
+                if key == 'labels':
+                    labels_list = []
+                    for x in row:
+                        labels = x[0][key]
+                        # https://github.com/huggingface/transformers/pull/31629
+                        labels[0] = -100
+                        labels_list.append(labels)
+                    packed[key] = sum(labels_list, start=[])
+                else:
+                    packed[key] = sum((x[0][key] for x in row), start=[])
+            packed['position_ids'] = sum((list(range(x[1])) for x in row), start=[])
+            res.append(packed)
+        return res
 
 
 class GetLengthPreprocessor(RowPreprocessor):
-
-    def __init__(self):
-        super().__init__()
 
     def preprocess(self, row):
         length = max([len(row[k]) for k in row.keys() if k.endswith('input_ids')])

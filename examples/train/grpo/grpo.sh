@@ -1,5 +1,5 @@
 # pip install math_verify # reward function
-# pip install "trl>=0.15"
+# pip install git+https://github.com/huggingface/trl.git
 # GPU memory: 80GiB
 # You can set `--reward_model` to use a reward model to provide rewards.
 CUDA_VISIBLE_DEVICES=0 \

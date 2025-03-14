@@ -16,6 +16,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from swift.llm import AdapterRequest, DeployArguments
+from swift.llm.infer.protocol import MultiModalRequestMixin
 from swift.plugin import InferStats
 from swift.utils import JsonlWriter, get_logger
 from .infer import SwiftInfer
@@ -57,6 +58,7 @@ class SwiftDeploy(SwiftInfer):
         args = self.args
         if args.log_interval > 0:
             thread = Thread(target=lambda: asyncio.run(self._log_stats_hook()))
+            thread.daemon = True
             thread.start()
         try:
             yield
@@ -108,15 +110,28 @@ class SwiftDeploy(SwiftInfer):
     def _post_process(self, request_info, response, return_cmpl_response: bool = False):
         args = self.args
 
+        for i in range(len(response.choices)):
+            if not hasattr(response.choices[i], 'message') or isinstance(response.choices[i].message.content, str):
+                continue
+            for j, content in enumerate(response.choices[i].message.content):
+                if content['type'] == 'image':
+                    b64_image = MultiModalRequestMixin.to_base64(content['image'])
+                    response.choices[i].message.content[j]['image'] = f'data:image/jpg;base64,{b64_image}'
+
         is_finished = all(response.choices[i].finish_reason for i in range(len(response.choices)))
+        if 'stream' in response.__class__.__name__.lower():
+            request_info['response'] += response.choices[0].delta.content
+        else:
+            request_info['response'] = response.choices[0].message.content
         if return_cmpl_response:
             response = response.to_cmpl_response()
         if is_finished:
             if args.log_interval > 0:
                 self.infer_stats.update(response)
             if self.jsonl_writer:
-                data = {'response': asdict(response), **request_info}
-                self.jsonl_writer.append(data)
+                self.jsonl_writer.append(request_info)
+            if self.args.verbose:
+                logger.info(request_info)
         return response
 
     def _set_request_config(self, request_config) -> None:
@@ -145,12 +160,10 @@ class SwiftDeploy(SwiftInfer):
 
         infer_request, request_config = request.parse()
         self._set_request_config(request_config)
-        request_info = {'infer_request': infer_request.to_printable()}
+        request_info = {'response': '', 'infer_request': infer_request.to_printable()}
 
         def pre_infer_hook(kwargs):
             request_info['generation_config'] = kwargs['generation_config']
-            if args.verbose:
-                logger.info(request_info)
             return kwargs
 
         infer_kwargs['pre_infer_hook'] = pre_infer_hook

@@ -23,15 +23,12 @@ Swift DOCUMENTATION
    Instruction/Inference-and-deployment.md
    Instruction/Sample.md
    Instruction/Evaluation.md
-   Instruction/Export.md
+   Instruction/Export-and-push.md
    Instruction/Reinforced-Fine-tuning.md
    Instruction/GRPO.md
    Instruction/Supported-models-and-datasets.md
    Instruction/Use-tuners.md
    Instruction/Agent-support.md
-   Instruction/NPU-support.md
-   Instruction/Push-model.md
-   Instruction/ReleaseNote3.0
    Instruction/Frequently-asked-questions.md
 
 
@@ -43,6 +40,14 @@ Swift DOCUMENTATION
    Customization/Custom-dataset.md
    Customization/Plugin.md
 
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Best Practices
+
+   BestPractices/GRPO-Code-Training.md
+   BestPractices/NPU-support.md
+   BestPractices/More-Best-Practices.md
 
 Indices and tables
 ==================

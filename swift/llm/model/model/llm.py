@@ -226,6 +226,22 @@ register_model(
         architectures=['CohereForCausalLM'],
         requires=['transformers>=4.44.0']))
 
+register_model(
+    ModelMeta(
+        LLMModelType.ling,
+        [
+            ModelGroup([
+                Model('inclusionAI/Ling-lite', 'inclusionAI/Ling-lite'),
+                Model('inclusionAI/Ling-plus', 'inclusionAI/Ling-plus'),
+                Model('inclusionAI/Ling-lite-base', 'inclusionAI/Ling-lite-base'),
+                Model('inclusionAI/Ling-plus-base', 'inclusionAI/Ling-plus-base'),
+            ]),
+        ],
+        TemplateType.ling,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['BailingMoeForCausalLM'],
+    ))
+
 
 def get_model_tokenizer_qwen2_gte(model_dir: str,
                                   model_info: ModelInfo,

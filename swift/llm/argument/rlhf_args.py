@@ -49,9 +49,13 @@ class GRPOArguments(GRPOArgumentsMixin):
 
     # vLLM in GRPO
     use_vllm: bool = False
-    vllm_device: Optional[str] = 'auto'  # 'cuda:0'
+    vllm_device: List[str] = field(default_factory=lambda: ['auto'])
     vllm_gpu_memory_utilization: float = 0.9
     vllm_max_model_len: Optional[int] = None
+
+    # multi step
+    num_iterations: int = 1
+    epsilon: float = 0.2
 
 
 @dataclass
@@ -105,6 +109,7 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
         self._init_ppo()
         self._set_default()
         super().__post_init__()
+        self._init_grpo_ds3()
 
         if self.loss_scale is None:
             if self.rlhf_type == 'orpo' and not self.model_meta.is_multimodal:
@@ -113,7 +118,9 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
                 self.loss_scale = 'default'
             else:
                 self.loss_scale = 'last_round'
-        if self.rlhf_type in ['dpo', 'kto', 'ppo', 'grpo'] and self.train_type == 'full':
+        if self.rlhf_type == 'grpo' and self.beta == 0.0:
+            self.ref_model = None
+        elif self.rlhf_type in ['dpo', 'kto', 'ppo', 'grpo'] and self.train_type == 'full':
             self.ref_model = self.ref_model or self.model
             self.ref_model_type = self.ref_model_type or self.model_type
             self.ref_model_revision = self.ref_model_revision or self.model_revision
@@ -131,13 +138,17 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
             os.environ['WORLD_SIZE'] = '1'
             os.environ['LOCAL_WORLD_SIZE'] = '1'
             os.environ['MASTER_ADDR'] = '127.0.0.1'
-            os.environ['MASTER_PORT'] = '29500'
+            os.environ['MASTER_PORT'] = os.environ.get('MASTER_PORT', '29500')
 
     def _init_grpo(self):
         if self.rlhf_type == 'grpo':
             if self.use_vllm or self.use_lmdeploy:
                 os.environ['USE_FAST_INFERENCE'] = '1'
                 self._set_default_ddp_config()
+            if self.async_generate or not self.use_vllm:
+                self.sleep_level = 0
+            if self.sleep_level > 0:
+                self.gradient_accumulation_steps = 1
             self.remove_unused_columns = False
             logger.info(f'Setting args.remove_unused_columns: {self.remove_unused_columns}')
             self.truncation_strategy = 'left'  # Used for trimming the excessively long parts of a prompt.
@@ -152,6 +163,8 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
     def _init_metric_for_best_model(self):
         if self.rlhf_type not in {'ppo', 'grpo'}:
             super()._init_metric_for_best_model()
+        elif self.rlhf_type == 'grpo' and self.metric_for_best_model is None:
+            self.metric_for_best_model = 'reward'
 
     def _init_simpo(self):
         if self.rlhf_type != 'simpo':
@@ -176,3 +189,8 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
                 self.loss_type = 'sigmoid'  # else None
             elif self.rlhf_type in ['kto']:
                 self.loss_type = 'kto'
+
+    def _init_grpo_ds3(self):
+        if self.rlhf_type == 'grpo' and self.deepspeed:
+            if 'zero_optimization' in self.deepspeed and self.deepspeed['zero_optimization']['stage'] == 3:
+                self.deepspeed['zero_optimization']['stage3_prefetch_bucket_size'] = 0

@@ -10,6 +10,7 @@ class LLMModelType:
     qwen2_5 = 'qwen2_5'
     qwen2_5_math = 'qwen2_5_math'
     qwen2_moe = 'qwen2_moe'
+    qwq_preview = 'qwq_preview'
     qwq = 'qwq'
 
     qwen2_gte = 'qwen2_gte'
@@ -60,6 +61,7 @@ class LLMModelType:
 
     baichuan = 'baichuan'
     baichuan2 = 'baichuan2'
+    baichuan_m1 = 'baichuan_m1'
 
     minicpm = 'minicpm'
     minicpm_chatml = 'minicpm_chatml'
@@ -91,6 +93,7 @@ class LLMModelType:
     skywork = 'skywork'
     skywork_o1 = 'skywork_o1'
 
+    ling = 'ling'
     yuan2 = 'yuan2'
     orion = 'orion'
     xverse = 'xverse'
@@ -103,6 +106,7 @@ class LLMModelType:
     mamba = 'mamba'
     polylm = 'polylm'
     aya = 'aya'
+    moonlight = 'moonlight'
 
 
 class BertModelType:
@@ -129,6 +133,7 @@ class MLLMModelType:
     qvq = 'qvq'
     ovis1_6 = 'ovis1_6'
     ovis1_6_llama3 = 'ovis1_6_llama3'
+    ovis2 = 'ovis2'
 
     glm4v = 'glm4v'
     glm_edge_v = 'glm_edge_v'
@@ -191,9 +196,11 @@ class MLLMModelType:
     emu3_gen = 'emu3_gen'
     emu3_chat = 'emu3_chat'
     got_ocr2 = 'got_ocr2'
+    got_ocr2_hf = 'got_ocr2_hf'
     step_audio = 'step_audio'
 
     phi3_vision = 'phi3_vision'
+    phi4_multimodal = 'phi4_multimodal'
     florence = 'florence'
     idefics3 = 'idefics3'
     paligemma = 'paligemma'

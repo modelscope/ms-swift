@@ -32,6 +32,7 @@ class SwiftArgumentsMixin:
     # Value copied from TrainArguments
     train_type: Optional[str] = None
     optimizer: Optional[str] = None
+    local_repo_path: Optional[str] = None
     galore_config: Optional[GaLoreConfig] = None
 
     def _fix_gradient_checkpointing(self):
@@ -70,8 +71,11 @@ class SwiftArgumentsMixin:
 
 @dataclass
 class GRPOArgumentsMixin:
-
+    top_k: int = 50
+    top_p: float = 0.9
+    repetition_penalty: float = 1.
     # vllm_device, vllm_gpu_memory_utilization, and vllm_max_model_len are defined in HfGRPOConfig.
+    num_infer_workers: int = 1
     vllm_max_num_seqs: int = 256
     vllm_enforce_eager: bool = False
     vllm_limit_mm_per_prompt: Optional[Union[dict, str]] = None  # '{"image": 5, "video": 2}'
@@ -92,6 +96,14 @@ class GRPOArgumentsMixin:
     lmdeploy_device: Optional[str] = 'auto'
     lmdeploy_session_len: Optional[int] = None
     lmdeploy_cache_max_entry_count: float = 0.8
+
+    async_generate: bool = False
+    tensor_parallel_size: int = 1
+    sleep_level: int = 0
+    move_model_batches: Optional[int] = None
+    offload_optimizer: bool = False
+    offload_model: bool = False
+    gc_collect_after_offload: bool = False
 
 
 @dataclass

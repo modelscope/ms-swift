@@ -3,6 +3,7 @@ from contextlib import nullcontext
 from typing import Any, Dict, List, Union
 
 import numpy as np
+import torch.distributed as dist
 from datasets import Dataset as HfDataset
 
 from swift.llm import InferArguments, InferRequest, SwiftPipeline, load_dataset, prepare_model_template, sample_dataset
@@ -69,7 +70,6 @@ class SwiftInfer(SwiftPipeline):
             from .infer_engine import LmdeployEngine
             infer_engine_cls = LmdeployEngine
             kwargs.update(args.get_lmdeploy_engine_kwargs())
-
         return infer_engine_cls(**kwargs)
 
     def run(self) -> List[Dict[str, Any]]:
@@ -88,16 +88,16 @@ class SwiftInfer(SwiftPipeline):
                                 request_config,
                                 template=self.template,
                                 use_tqdm=False,
-                                **self.infer_kwargs)
+                                **self.infer_kwargs)[0]
         if request_config and request_config.stream:
             response = ''
             for res in res_or_gen:
-                delta = res[0].choices[0].delta.content
+                delta = res.choices[0].delta.content
                 print(delta, end='', flush=True)
                 response += delta
             print()
         else:
-            response = res_or_gen[0].choices[0].message.content
+            response = res_or_gen.choices[0].message.content
             print(response)
         print('-' * 50)
         return response
@@ -142,6 +142,7 @@ class SwiftInfer(SwiftPipeline):
                 data = infer_state.to_dict()
                 response = self.infer_single(data, request_config)
                 infer_state.add_response(response)
+                data['messages'].append({'role': 'assistant', 'content': response})
                 data = {'response': response, **data}
             result_list.append(data)
             if self.jsonl_writer:
@@ -196,6 +197,7 @@ class SwiftInfer(SwiftPipeline):
                     print(f'[LABELS] {labels}')
                 print('[RESPONSE] ', end='')
                 response = self.infer_single(data, request_config)
+                data['messages'].append({'role': 'assistant', 'content': response})
                 data = {'response': response, 'labels': labels, **data}
                 result_list.append(data)
                 if self.jsonl_writer:
@@ -218,6 +220,7 @@ class SwiftInfer(SwiftPipeline):
                 val_dataset, request_config, template=self.template, use_tqdm=True, **self.infer_kwargs)
             for data, resp, labels in zip(val_dataset, resp_list, labels_list):
                 response = resp.choices[0].message.content
+                data['messages'].append({'role': 'assistant', 'content': response})
                 data = {'response': response, 'labels': labels, 'logprobs': resp.choices[0].logprobs, **data}
                 result_list.append(data)
             if self.jsonl_writer:

@@ -29,6 +29,13 @@ def _infer_model(pt_engine, system=None, messages=None):
     return response
 
 
+def test_baichuan_m1():
+    pt_engine = PtEngine('baichuan-inc/Baichuan-M1-14B-Instruct')
+    messages = [{'role': 'user', 'content': '你是谁'}]
+    response = _infer_model(pt_engine, messages=messages)
+    assert response == '我是一个人工智能助手，可以回答你的问题并提供帮助。'
+
+
 def test_qwen2_5():
     pt_engine = PtEngine('Qwen/Qwen2.5-7B-Instruct-1M')
     response = _infer_model(pt_engine)
@@ -39,9 +46,18 @@ def test_qwen2_5():
 
 def test_phi4():
     pt_engine = PtEngine('LLM-Research/phi-4')
-    _infer_model(pt_engine)
+    response = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
-    _infer_model(pt_engine)
+    response2 = _infer_model(pt_engine)
+    assert response == response2
+
+
+def test_phi4_mini():
+    pt_engine = PtEngine('LLM-Research/Phi-4-mini-instruct')
+    response = _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine)
+    assert response == response2
 
 
 def test_qwen1half():
@@ -61,9 +77,10 @@ def test_glm4():
 
 def test_qwq():
     pt_engine = PtEngine('Qwen/QwQ-32B-Preview')
-    _infer_model(pt_engine)
+    response = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
-    _infer_model(pt_engine)
+    response2 = _infer_model(pt_engine)
+    assert response == response2
 
 
 def test_internlm():
@@ -322,6 +339,22 @@ def test_mistral_small():
     assert response == response2
 
 
+def test_moonlight():
+    pt_engine = PtEngine('moonshotai/Moonlight-16B-A3B-Instruct')
+    res = _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    res2 = _infer_model(pt_engine)
+    assert res == res2, f'res: {res}, res2: {res2}'
+
+
+def test_ling():
+    pt_engine = PtEngine('inclusionAI/Ling-lite')
+    res = _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    res2 = _infer_model(pt_engine)
+    assert res == res2, f'res: {res}, res2: {res2}'
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig, get_template, get_model_tokenizer
     from swift.utils import get_logger, seed_everything
@@ -348,7 +381,11 @@ if __name__ == '__main__':
     # test_qwen2_5_math()
     # test_skywork_reward()
     # test_phi4()
+    # test_phi4_mini()
     # test_internlm3()
     # test_deepseek_r1_distill()
     # test_qwen2_5_prm()
-    test_mistral_small()
+    # test_mistral_small()
+    # test_baichuan_m1()
+    # test_moonlight()
+    test_ling()

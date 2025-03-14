@@ -37,13 +37,16 @@ class LmdeployArguments:
     vision_batch_size: int = 1  # max_batch_size in VisionConfig
 
     def get_lmdeploy_engine_kwargs(self):
-        return {
+        kwargs = {
             'tp': self.tp,
             'session_len': self.session_len,
             'cache_max_entry_count': self.cache_max_entry_count,
             'quant_policy': self.quant_policy,
             'vision_batch_size': self.vision_batch_size
         }
+        if dist.is_initialized():
+            kwargs.update({'devices': [dist.get_rank()]})
+        return kwargs
 
 
 @dataclass
@@ -82,7 +85,7 @@ class VllmArguments:
         adapters = self.adapters
         if hasattr(self, 'adapter_mapping'):
             adapters = adapters + list(self.adapter_mapping.values())
-        return {
+        kwargs = {
             'gpu_memory_utilization': self.gpu_memory_utilization,
             'tensor_parallel_size': self.tensor_parallel_size,
             'pipeline_parallel_size': self.pipeline_parallel_size,
@@ -96,6 +99,9 @@ class VllmArguments:
             'max_loras': max(len(adapters), 1),
             'enable_prefix_caching': self.enable_prefix_caching,
         }
+        if dist.is_initialized():
+            kwargs.update({'device': dist.get_rank()})
+        return kwargs
 
 
 @dataclass
@@ -133,6 +139,7 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
 
     def _init_result_path(self, folder_name: str) -> None:
         if self.result_path is not None:
+            self.result_path = to_abspath(self.result_path)
             return
         self.result_path = self._get_result_path(folder_name)
         logger.info(f'args.result_path: {self.result_path}')
@@ -144,8 +151,8 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
             self.stream = False
             logger.info('Setting args.stream: False')
 
-    def _init_pt_ddp(self):
-        if self.infer_backend != 'pt' or not is_dist():
+    def _init_ddp(self):
+        if not is_dist():
             return
         assert not self.eval_human and not self.stream
         self._init_device()
@@ -165,7 +172,7 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
         self._init_result_path('infer_result')
         self._init_eval_human()
         self._init_stream()
-        self._init_pt_ddp()
+        self._init_ddp()
 
     def _init_eval_human(self):
         if len(self.dataset) == 0 and len(self.val_dataset) == 0:

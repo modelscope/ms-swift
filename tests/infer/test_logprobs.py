@@ -55,10 +55,9 @@ def test_stream(engine, template, infer_requests):
     infer_stats = InferStats()
     request_config = RequestConfig(temperature=0, stream=True, logprobs=True, top_logprobs=2)
 
-    gen = engine.infer(infer_requests, template=template, request_config=request_config, metrics=[infer_stats])
+    gen_list = engine.infer(infer_requests, template=template, request_config=request_config, metrics=[infer_stats])
 
-    for response_list in gen:
-        response = response_list[0]
+    for response in gen_list[0]:
         if response is None:
             continue
         print(response.choices[0].delta.content, end='', flush=True)

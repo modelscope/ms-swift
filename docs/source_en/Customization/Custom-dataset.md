@@ -3,7 +3,7 @@
 There are three methods for accessing custom datasets, each offering progressively greater control over preprocessing functions but also increasing in complexity. For example, Solution 1 is the most convenient but offers the least control over preprocessing functions, requiring prior conversion of the dataset into a specific format:
 
 1. **Recommended**: Directly use the command line parameter to access the dataset with `--dataset <dataset_path1> <dataset_path2>`. This will use `AutoPreprocessor` to convert your dataset into a standard format (supporting four dataset formats; see the introduction to AutoPreprocessor below). You can use `--columns` to transform column names. The supported input formats include csv, json, jsonl, txt, and folders (e.g. git clone open-source datasets). This solution does not require modifying `dataset_info.json` and is suitable for users new to ms-swift. The following two solutions are suitable for developers looking to extend ms-swift.
-2. Add the dataset to `dataset_info.json`, which you can refer to in the built-in [dataset_info.json](https://github.com/modelscope/ms-swift/blob/main/swift/llm/dataset/data/dataset_info.json) of ms-swift. This solution also uses AutoPreprocessor to convert the dataset to a standard format. `dataset_info.json` is a list of metadata for datasets, and one of the fields ms_dataset_id/hf_dataset_id/dataset_path must be filled. Column name transformation can be done through the `columns` field. Datasets added to `dataset_info.json` or registered ones will automatically generate [supported dataset documentation](https://swift.readthedocs.io/en/latest/Instruction/Supported-models-and-datasets.html) when running [run_dataset_info.py](https://github.com/modelscope/ms-swift/blob/main/scripts/utils/run_dataset_info.py). In addition, you can use an external `dataset_info.json` by using `--custom_dataset_info xxx.json` to parse the JSON file (convenient for users who use pip install instead of git clone).
+2. Add the dataset to `dataset_info.json`, which you can refer to in the built-in [dataset_info.json](https://github.com/modelscope/ms-swift/blob/main/swift/llm/dataset/data/dataset_info.json) of ms-swift. This solution also uses AutoPreprocessor to convert the dataset to a standard format. `dataset_info.json` is a list of metadata for datasets, and one of the fields ms_dataset_id/hf_dataset_id/dataset_path must be filled. Column name transformation can be done through the `columns` field. Datasets added to `dataset_info.json` or registered ones will automatically generate [supported dataset documentation](https://swift.readthedocs.io/en/latest/Instruction/Supported-models-and-datasets.html) when running [run_dataset_info.py](https://github.com/modelscope/ms-swift/blob/main/scripts/utils/run_dataset_info.py). In addition, you can use the external `dataset_info.json` approach by parsing the JSON file with `--custom_dataset_info xxx.json` (to facilitate users who prefer `pip install` over `git clone`), and then specify `--dataset <dataset_id/dataset_dir/dataset_path>`.
 3. Manually register the dataset to have the most flexible customization capability for preprocessing functions, allowing the use of functions to preprocess datasets, but it is more difficult. You can refer to the [built-in datasets](https://github.com/modelscope/ms-swift/blob/main/swift/llm/dataset/dataset/llm.py) or [examples](https://github.com/modelscope/swift/blob/main/examples/custom). You can specify `--custom_register_path xxx.py` to parse external registration content (convenient for users who use pip install instead of git clone).
    - Solutions one and two leverage solution three under the hood, where the registration process occurs automatically.
 
@@ -19,6 +19,7 @@ Messages format (standard format):
 ```jsonl
 {"messages": [{"role": "system", "content": "<system>"}, {"role": "user", "content": "<query1>"}, {"role": "assistant", "content": "<response1>"}, {"role": "user", "content": "<query2>"}, {"role": "assistant", "content": "<response2>"}]}
 ```
+- Note: The system part is optional. The system in the dataset has a higher priority than the `--system` passed through the command line, followed by the `default_system` defined in the template.
 
 ShareGPT format:
 ```jsonl
@@ -122,8 +123,7 @@ Supervised Fine-tuning:
 {"messages": [{"role": "system", "content": "You are a helpful and harmless assistant."}, {"role": "user", "content": "<image>What is in the image, <video>What is in the video?"}, {"role": "assistant", "content": "The image shows an elephant, and the video shows a puppy running on the grass."}], "images": ["/xxx/x.jpg"], "videos": ["/xxx/x.mp4"]}
 ```
 
-The data formats for RLHF and sequence classification in multimodal models can refer to the formats used in pure text large models.
-
+The data format for RLHF and sequence classification of multimodal models can reference the format of pure text large models, with additional fields such as `images` added on top of that.
 
 #### Grounding
 

@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import importlib
 import os
 import sys
 from dataclasses import dataclass, field
@@ -150,7 +151,6 @@ class TrainArguments(SwanlabArguments, TorchAccArguments, TunerArguments, Seq2Se
     lazy_tokenize: Optional[bool] = None
 
     # plugin
-    external_plugins: List[str] = field(default_factory=list)
     loss_type: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
     optimizer: Optional[str] = None
     metric: Optional[str] = None
@@ -159,6 +159,10 @@ class TrainArguments(SwanlabArguments, TorchAccArguments, TunerArguments, Seq2Se
     acc_strategy: Literal['token', 'seq'] = 'token'
     max_new_tokens: int = 64
     temperature: float = 0.
+    load_args: bool = False
+
+    # zero++
+    zero_hpz_partition_size: Optional[int] = None
 
     def __post_init__(self) -> None:
         if self.resume_from_checkpoint:
@@ -200,33 +204,15 @@ class TrainArguments(SwanlabArguments, TorchAccArguments, TunerArguments, Seq2Se
         self.training_args.remove_unused_columns = False
 
         self._add_version()
-        self.import_plugin()
 
         if 'swanlab' in self.report_to:
             self._init_swanlab()
-
-    def import_plugin(self):
-        if not self.external_plugins:
-            return
-
-        for external_plugin in self.external_plugins:
-            py_dir = os.path.dirname(external_plugin)
-            assert os.path.isdir(py_dir)
-            py_file = os.path.basename(external_plugin)
-            sys.path.insert(0, py_dir)
-            try:
-                import importlib
-                importlib.import_module(py_file.split('.')[0])
-            except Exception:  # noqa
-                import traceback
-                logger.warn(f'⚠️⚠️⚠️Plugin {external_plugin} import failed.')
-                logger.warn(traceback.format_exc())
 
     def _init_deepspeed(self):
         if self.deepspeed:
             require_version('deepspeed')
             if is_mp():
-                raise ValueError('DeepSpeed is not compatible with MP. '
+                raise ValueError('DeepSpeed is not compatible with `device_map`. '
                                  f'n_gpu: {get_device_count()}, '
                                  f'local_world_size: {self.local_world_size}.')
 
@@ -241,6 +227,11 @@ class TrainArguments(SwanlabArguments, TorchAccArguments, TunerArguments, Seq2Se
                     break
 
             self.deepspeed = self.parse_to_dict(self.deepspeed)
+            if self.zero_hpz_partition_size is not None:
+                assert 'zero_optimization' in self.deepspeed
+                self.deepspeed['zero_optimization']['zero_hpz_partition_size'] = self.zero_hpz_partition_size
+                logger.warn('If `zero_hpz_partition_size`(ZeRO++) causes grad_norm NaN, please'
+                            ' try `--torch_dtype float16`')
             logger.info(f'Using deepspeed: {self.deepspeed}')
 
     def _init_liger(self):

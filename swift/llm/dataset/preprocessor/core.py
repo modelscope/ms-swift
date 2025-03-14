@@ -129,11 +129,13 @@ class RowPreprocessor:
         return batched
 
     @staticmethod
-    def _fix_streaming_keys(row):
+    def _remove_prefix_keys(row, prefix: str):
         for k in list(row.keys()):
-            if k.startswith('__@'):
-                new_k = k[len('__@'):]
-                row[new_k] = row.pop(k)
+            if k.startswith(prefix):
+                new_k = k[len(prefix):]
+                new_v = row.pop(k)
+                if new_k not in row:
+                    row[new_k] = new_v
 
     @staticmethod
     def _check_objects(row):
@@ -160,7 +162,7 @@ class RowPreprocessor:
         from ...template import MaxLengthError
         batched_row = dict(batched_row)
         assert len(batched_row) > 0
-        self._fix_streaming_keys(batched_row)
+        self._remove_prefix_keys(batched_row, '__@')  # compat streaming
         rows = self.batched_to_rows(batched_row)
 
         new_rows = []
@@ -191,7 +193,7 @@ class RowPreprocessor:
                 row = []
             new_rows += row
         res = self.rows_to_batched(new_rows)
-
+        self._remove_prefix_keys(res, '__#')  # compat GRPO
         if len(res) == 0:
             res['messages'] = []
 
@@ -222,16 +224,17 @@ class RowPreprocessor:
         if safe_columns:
             dataset = dataset.rename_columns(safe_columns)
 
+        return dataset
+
+    def _rename_columns(self, dataset: DATASET_TYPE) -> DATASET_TYPE:
+        dataset = self.safe_rename_columns(dataset, self.origin_columns)
+        dataset = self.safe_rename_columns(dataset, self.columns)
         if isinstance(dataset, HfIterableDataset):
             # fix: https://github.com/huggingface/datasets/issues/6408
             columns = {k: f'__@{k}' for k in RowPreprocessor.standard_keys if k in dataset.features}
             if columns:
                 dataset = dataset.rename_columns(columns)
         return dataset
-
-    def _rename_columns(self, dataset: DATASET_TYPE) -> DATASET_TYPE:
-        dataset = self.safe_rename_columns(dataset, self.origin_columns)
-        return self.safe_rename_columns(dataset, self.columns)
 
     @staticmethod
     def remove_useless_columns(dataset: DATASET_TYPE) -> DATASET_TYPE:
@@ -284,21 +287,22 @@ class RowPreprocessor:
         if self.dataset_sample is not None:
             dataset = sample_dataset(dataset, self.dataset_sample, self.random_state)
 
+        map_kwargs = {'batched': True, 'batch_size': batch_size}
+        if isinstance(dataset, HfDataset):
+            map_kwargs['num_proc'] = num_proc
+        # compat GRPO: The solution field will be retained.
+        dataset = RowPreprocessor.get_features_dataset(dataset)
+        if 'solution' in dataset.features:
+            dataset = dataset.map(lambda x: {'__#solution': x['solution']}, **map_kwargs)
         dataset = self._rename_columns(dataset)
         dataset = self.prepare_dataset(dataset)
         dataset = self._cast_pil_image(dataset)
-        map_kwargs = {}
-        ignore_max_length_error = False
-        if isinstance(dataset, HfDataset):
-            map_kwargs['num_proc'] = num_proc
-            if num_proc > 1:
-                ignore_max_length_error = True
+
+        ignore_max_length_error = True if isinstance(dataset, HfDataset) and num_proc > 1 else False
         with self._patch_arrow_writer():
             try:
                 dataset_mapped = dataset.map(
                     self.batched_preprocess,
-                    batched=True,
-                    batch_size=batch_size,
                     fn_kwargs={
                         'strict': strict,
                         'ignore_max_length_error': ignore_max_length_error
@@ -320,8 +324,8 @@ class ResponsePreprocessor(RowPreprocessor):
     def __init__(self, *, columns: Optional[Dict[str, str]] = None, **kwargs) -> None:
         super().__init__(columns=columns, **kwargs)
         system_keys = ['system', 'system_prompt']
-        query_keys = ['query', 'prompt', 'input', 'instruction', 'question']
-        response_keys = ['response', 'answer', 'output', 'targets', 'target', 'answer_key', 'answers'
+        query_keys = ['query', 'prompt', 'input', 'instruction', 'question', 'problem']
+        response_keys = ['response', 'answer', 'output', 'targets', 'target', 'answer_key', 'answers', 'solution'
                          ] + ['text', 'completion', 'content']
         for key in system_keys:
             self.columns[key] = 'system'

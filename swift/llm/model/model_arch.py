@@ -51,11 +51,13 @@ class MLLMModelArch:
     mplug_owl3 = 'mplug_owl3'
     doc_owl2 = 'doc_owl2'
 
-    phi3v = 'phi3v'
+    phi3_vision = 'phi3_vision'
+    phi4_multimodal = 'phi4_multimodal'
     florence = 'florence'
     idefics3 = 'idefics3'
 
     got_ocr2 = 'got_ocr2'
+    got_ocr2_hf = 'got_ocr2_hf'
 
     ovis1_6 = 'ovis1_6'
     molmo = 'molmo'
@@ -399,10 +401,23 @@ register_model_arch(
 
 register_model_arch(
     MultiModelKeys(
-        MLLMModelArch.phi3v,
+        MLLMModelArch.phi3_vision,
         language_model='model.layers',
         aligner='model.vision_embed_tokens.img_projection',
         vision_tower='model.vision_embed_tokens.img_processor',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.phi4_multimodal,
+        language_model='model.layers',
+        aligner=[
+            'model.embed_tokens_extend.image_embed.img_projection',
+            'model.embed_tokens_extend.audio_embed.audio_projection'
+        ],
+        vision_tower=[
+            'model.embed_tokens_extend.image_embed.img_processor', 'model.embed_tokens_extend.audio_embed.encoder'
+        ],
     ))
 
 register_model_arch(MultiModelKeys(

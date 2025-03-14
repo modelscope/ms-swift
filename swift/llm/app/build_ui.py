@@ -10,12 +10,12 @@ from .locale import locale_mapping
 
 
 def clear_session():
-    return '', []
+    return '', [], []
 
 
 def modify_system_session(system: str):
     system = system or ''
-    return system, '', []
+    return system, '', [], []
 
 
 def _history_to_messages(history: History, system: Optional[str]):
@@ -43,42 +43,55 @@ def _history_to_messages(history: History, system: Optional[str]):
     return messages
 
 
-def model_chat(history: History, system: Optional[str], *, client, model: str,
-               request_config: Optional['RequestConfig']):
+def _parse_text(text: str) -> str:
+    mapping = {'<': '&lt;', '>': '&gt;', '*': '&ast;'}
+    for k, v in mapping.items():
+        text = text.replace(k, v)
+    return text
+
+
+async def model_chat(history: History, real_history: History, system: Optional[str], *, client, model: str,
+                     request_config: Optional['RequestConfig']):
     if history:
         from swift.llm import InferRequest
 
-        messages = _history_to_messages(history, system)
-        gen_or_res = client.infer([InferRequest(messages=messages)], request_config=request_config, model=model)
+        messages = _history_to_messages(real_history, system)
+        resp_or_gen = await client.infer_async(
+            InferRequest(messages=messages), request_config=request_config, model=model)
         if request_config and request_config.stream:
             response = ''
-            for resp_list in gen_or_res:
-                resp = resp_list[0]
+            async for resp in resp_or_gen:
                 if resp is None:
                     continue
                 response += resp.choices[0].delta.content
-                history[-1][1] = response
-                yield history
+                history[-1][1] = _parse_text(response)
+                real_history[-1][-1] = response
+                yield history, real_history
 
         else:
-            response = gen_or_res[0].choices[0].message.content
-            history[-1][1] = response
-            yield history
+            response = resp_or_gen.choices[0].message.content
+            history[-1][1] = _parse_text(response)
+            real_history[-1][-1] = response
+            yield history, real_history
 
     else:
-        yield []
+        yield [], []
 
 
-def add_text(history: History, query: str):
+def add_text(history: History, real_history: History, query: str):
     history = history or []
-    history.append([query, None])
-    return history, ''
+    real_history = real_history or []
+    history.append([_parse_text(query), None])
+    real_history.append([query, None])
+    return history, real_history, ''
 
 
-def add_file(history: History, file):
+def add_file(history: History, real_history: History, file):
     history = history or []
+    real_history = real_history or []
     history.append([(file.name, ), None])
-    return history
+    real_history.append([(file.name, ), None])
+    return history, real_history
 
 
 def build_ui(base_url: str,
@@ -110,14 +123,17 @@ def build_ui(base_url: str,
             clear_history = gr.Button(locale_mapping['clear_history'][lang])
 
         system_state = gr.State(value=default_system)
+        history_state = gr.State(value=[])
         model_chat_ = partial(model_chat, client=client, model=model, request_config=request_config)
 
-        upload.upload(add_file, [chatbot, upload], [chatbot])
-        textbox.submit(add_text, [chatbot, textbox], [chatbot, textbox]).then(model_chat_, [chatbot, system_state],
-                                                                              [chatbot])
-        submit.click(add_text, [chatbot, textbox], [chatbot, textbox]).then(model_chat_, [chatbot, system_state],
-                                                                            [chatbot])
-        regenerate.click(model_chat_, [chatbot, system_state], [chatbot])
-        clear_history.click(clear_session, [], [textbox, chatbot])
-        modify_system.click(modify_system_session, [system_input], [system_state, textbox, chatbot])
+        upload.upload(add_file, [chatbot, history_state, upload], [chatbot, history_state])
+        textbox.submit(add_text, [chatbot, history_state, textbox],
+                       [chatbot, history_state, textbox]).then(model_chat_, [chatbot, history_state, system_state],
+                                                               [chatbot, history_state])
+        submit.click(add_text, [chatbot, history_state, textbox],
+                     [chatbot, history_state, textbox]).then(model_chat_, [chatbot, history_state, system_state],
+                                                             [chatbot, history_state])
+        regenerate.click(model_chat_, [chatbot, history_state, system_state], [chatbot, history_state])
+        clear_history.click(clear_session, [], [textbox, chatbot, history_state])
+        modify_system.click(modify_system_session, [system_input], [system_state, textbox, chatbot, history_state])
     return demo

@@ -48,6 +48,18 @@ class ProcessorMixin:
             raise AttributeError('Please use `self.processor` for assignment.')
 
 
+def to_float_dtype(data: Any, dtype: torch.dtype) -> Any:
+    """Change the float inputs to a dtype"""
+    if isinstance(data, Mapping):
+        return type(data)({k: to_float_dtype(v, dtype) for k, v in data.items()})
+    elif isinstance(data, (tuple, list)):
+        return type(data)(to_float_dtype(v, dtype) for v in data)
+    elif isinstance(data, torch.Tensor) and torch.is_floating_point(data):
+        return data.to(dtype=dtype)
+    else:
+        return data
+
+
 def to_device(data: Any, device: Union[str, torch.device, int]) -> Any:
     """Move inputs to a device"""
     if isinstance(data, Mapping):
@@ -76,9 +88,10 @@ def set_generation_config(model: nn.Module, generation_config: GenerationConfig)
 def find_module_list(model) -> Optional[nn.ModuleList]:
     module_lists = []
     for m in model.modules():
-        if hasattr(m, 'gradient_checkpointing'):
+        if hasattr(m, 'gradient_checkpointing') or m.__class__.__name__ == 'CheckpointWrapper':
             return
-        if isinstance(m, (nn.ModuleList, nn.Sequential)) and len(m) >= 10:
+        if (isinstance(m, (nn.ModuleList, nn.Sequential)) and len(m) >= 10
+                and 'mlp' not in m[0].__class__.__name__.lower()):  # fix moe
             module_lists.append(m)
     if module_lists:
         return max(module_lists, key=lambda x: len(x))
@@ -252,3 +265,16 @@ def get_temporary_cache_files_directory(prefix=None):
         TEMP_DIR_POOL[prefix] = TEMP_DIR
 
     return TEMP_DIR.name
+
+
+def get_ckpt_dir(model_dir: str, adapters_dir: Optional[List[str]]) -> str:
+    model_dirs = (adapters_dir or []).copy()
+    if model_dir:
+        model_dirs.append(model_dir)
+    # The adapter takes higher priority.
+    ckpt_dir = None
+    for model_dir in model_dirs:
+        if os.path.exists(os.path.join(model_dir, 'args.json')):
+            ckpt_dir = model_dir
+            break
+    return ckpt_dir

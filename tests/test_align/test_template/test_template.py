@@ -60,6 +60,43 @@ def test_qwen2_5_math_reward():
     assert len(res['input_ids']) == 364
 
 
+def test_minimax():
+    tokenizer = get_model_tokenizer('MiniMax/MiniMax-Text-01', load_model=False)[1]
+    template = get_template(tokenizer.model_meta.template, tokenizer)
+    inputs = TemplateInputs(
+        messages=[{
+            'role': 'system',
+            'content': 'You are a helpful assistant created by MiniMax based on MiniMax-Text-01 model.'
+        }, {
+            'role': 'user',
+            'content': 'Hello!'
+        }])
+    res = template.encode(inputs)
+    template.print_inputs(res)
+    assert tokenizer.decode(res['input_ids']) == (
+        '<beginning_of_sentence>system ai_setting=assistant\nYou are a helpful assistant created by MiniMax based '
+        'on MiniMax-Text-01 model.<end_of_sentence>\n<beginning_of_sentence>user name=user\nHello!<end_of_sentence>\n'
+        '<beginning_of_sentence>ai name=assistant\n')
+
+
+def test_minimax_vl():
+    tokenizer = get_model_tokenizer('MiniMax/MiniMax-VL-01', load_model=False)[1]
+    template = get_template(tokenizer.model_meta.template, tokenizer)
+    inputs = TemplateInputs(
+        messages=[{
+            'role': 'system',
+            'content': 'You are a helpful assistant created by MiniMax based on MiniMax-VL-01 model.'
+        }, {
+            'role': 'user',
+            'content': '<image>Describe this image.'
+        }],
+        images=['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png'])
+    res = template.encode(inputs)
+    assert len(res['input_ids']) == 5877
+
+
 if __name__ == '__main__':
     # test_deepseek_v2_5()
-    test_qwen2_5_math_reward()
+    # test_qwen2_5_math_reward()
+    # test_minimax()
+    test_minimax_vl()

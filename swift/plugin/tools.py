@@ -33,6 +33,28 @@ Begin!
     return REACT_PROMPT.format(tool_list='\n\n'.join(tool_descs), tool_names=','.join(tool_names))
 
 
+def format_react_grpo(tool_names, tool_descs):
+    REACT_PROMPT = """A conversation for tool calling between User and Assistant. The user asks a question which may be solved by calling tools, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning process should be enclosed within <think> </think>tags and answer should follow the ReACT format(Action:xxx\nAction Input:xxx), i.e., <think> reasoning process here </think> Action: action here\nAction Input: parameters here
+
+Answer the following questions as best as you can. You have access to the following tools:
+
+{tool_list}
+
+Use the following format:
+
+<think>you should always think about what to do</think>
+Action: the action to take, should be one of [{tool_names}]
+Action Input: the input to the action
+Observation: the result of the action, given by the actual calling
+... (this Thought/Action/Action Input/Observation can be repeated zero or more times)
+Final Answer: the final answer of you to the original input question
+
+Begin!
+""" # noqa
+    tool_descs = [json.dumps(t, ensure_ascii=False) if not isinstance(t, str) else t for t in tool_descs]
+    return REACT_PROMPT.format(tool_list='\n\n'.join(tool_descs), tool_names=','.join(tool_names))
+
+
 def format_react_zh(tool_names, tool_descs):
     REACT_ZH_PROMPT = """尽你所能回答以下问题。你拥有如下工具：
 
@@ -82,10 +104,10 @@ Remember:
 1.the state change is irreversible, you can't go back to one of the former state, if you want to restart the task, \
 say \"I give up and restart\".
 2.All the thought is short, at most in 5 sentence.
-3.You can do more then one trys, so if your plan is to continusly try some conditions, \
+3.You can do more then one try, so if your plan is to continuously try some conditions, \
 you can do one of the conditions per try.
 Let's Begin!
-Task description: You should use functions to help handle the real time user querys. Remember:
+Task description: You should use functions to help handle the real time user queries. Remember:
 1.ALWAYS call \"Finish\" function at the end of the task. And the final answer should contain enough information \
 to show to the user,If you can't handle the task, \
 or you find that function calls always fail(the function is not valid now), \
@@ -157,6 +179,7 @@ def format_custom(tool_names, tool_descs):
 # Add your prompt here, use --tools_prompt to train
 tools_prompt = {
     'react_en': (format_react_en, AgentKeyword().__dict__),
+    'react_grpo': (format_react_grpo, AgentKeyword().__dict__),
     'react_zh': (format_react_zh, AgentKeyword().__dict__),
     'glm4': (format_glm4, AgentKeyword().__dict__),
     'toolbench': (format_toolbench, AgentKeyword().__dict__),

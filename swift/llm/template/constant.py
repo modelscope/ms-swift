@@ -12,6 +12,7 @@ class LLMTemplateType:
     qwen2_5 = 'qwen2_5'
     qwen2_5_math = 'qwen2_5_math'
     qwen2_5_math_prm = 'qwen2_5_math_prm'
+    qwq_preview = 'qwq_preview'
     qwq = 'qwq'
     marco_o1 = 'marco_o1'
     modelscope_agent = 'modelscope_agent'
@@ -49,6 +50,7 @@ class LLMTemplateType:
     openbuddy = 'openbuddy'
     openbuddy2 = 'openbuddy2'
     baichuan = 'baichuan'
+    baichuan_m1 = 'baichuan_m1'
     minicpm = 'minicpm'
     telechat = 'telechat'
     telechat2 = 'telechat2'
@@ -68,10 +70,12 @@ class LLMTemplateType:
     phi3 = 'phi3'
     phi4 = 'phi4'
 
+    ling = 'ling'
     yuan = 'yuan'
     xverse = 'xverse'
     bluelm = 'bluelm'
     orion = 'orion'
+    moonlight = 'moonlight'
 
     aya = 'aya'
     c4ai = 'c4ai'
@@ -91,6 +95,7 @@ class MLLMTemplateType:
     qvq = 'qvq'
     ovis1_6 = 'ovis1_6'
     ovis1_6_llama3 = 'ovis1_6_llama3'
+    ovis2 = 'ovis2'
 
     llama3_1_omni = 'llama3_1_omni'
     llama3_2_vision = 'llama3_2_vision'
@@ -151,12 +156,14 @@ class MLLMTemplateType:
     emu3_gen = 'emu3_gen'
 
     got_ocr2 = 'got_ocr2'
+    got_ocr2_hf = 'got_ocr2_hf'
     step_audio = 'step_audio'
 
     idefics3 = 'idefics3'
     pixtral = 'pixtral'
     paligemma = 'paligemma'
     phi3_vision = 'phi3_vision'
+    phi4_multimodal = 'phi4_multimodal'
     florence = 'florence'
     molmo = 'molmo'
     megrez_omni = 'megrez_omni'
