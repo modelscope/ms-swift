@@ -14,6 +14,7 @@ class LossType:
     contrastive = 'contrastive'
     online_contrastive = 'online_contrastive'
     cosent = 'cosent'
+    infonce = 'infonce'
 
 
 LOSS_MAPPING = {}
@@ -118,6 +119,15 @@ def contrastive_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) 
     labels = labels.to(sentence1.dtype)
     losses = 0.5 * (labels * distances.pow(2) + (1 - labels) * F.relu(margin - distances).pow(2))
     return losses.mean()
+
+
+@register_loss_func(LossType.infonce)
+def infonce_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> torch.Tensor:
+    temperature = 0.1
+    sentence1, sentence2 = _parse_pair_sentence(outputs)
+    similarity_matrix = torch.matmul(sentence1, sentence2.T) / temperature
+    labels = torch.arange(sentence1.size(0)).to(sentence1.device)
+    return nn.CrossEntropyLoss(similarity_matrix, labels)
 
 
 @register_loss_func(LossType.online_contrastive)
