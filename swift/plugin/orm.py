@@ -286,6 +286,65 @@ class Format(ORM):
         matches = [re.match(pattern, content, re.DOTALL | re.MULTILINE) for content in completions]
         return [1.0 if match else 0.0 for match in matches]
 
+import re
+from typing import List
+
+class SimpleReward(ORM):
+
+    def __call__(self, completions, **kwargs) -> List[float]:
+        """
+        Reward function that checks if the completion has a specific format
+        and compares the extracted answer with the expected answer.
+        
+        Args:
+            completions: List of completion strings to evaluate
+            kwargs: Additional arguments, should include 'answer' key with expected float answer
+            
+        Returns:
+            List of scores: 0.0 for incorrect format, 0.2 for correct format but wrong answer,
+            1.2 for correct format and correct answer
+        """
+        # Format pattern to match <think>...</think><answer>...</answer>
+        format_pattern = r'^<think>(.*?)</think>\n<answer>(.*?)</answer>$'
+        scores = []
+        expected_answer = kwargs.get("response", [0])[0]  # Default to 0.0 if not provided
+        
+        for content in completions:
+            # Check if the format matches
+            match = re.match(format_pattern, content, re.DOTALL | re.MULTILINE)
+            
+            if not match:
+                # Incorrect format
+                scores.append(0.0)
+            else:
+                # Extract the answer
+                extracted_answer_str = match.group(1).strip()
+                
+                # Try to convert the extracted answer to float
+                try:
+                    # Extract numeric part from the answer
+                    # This regex finds all numbers (including decimals) in the string
+                    number_matches = re.findall(r'-?\d+\.?\d*', extracted_answer_str)
+                    
+                    if number_matches:
+                        # Take the first number found in the answer
+                        extracted_answer = float(number_matches[0])
+                        
+                        # Compare with expected answer with some tolerance for floating point
+                        if abs(extracted_answer - expected_answer) < 1e-6:
+                            # Correct format and correct answer
+                            scores.append(1.2)
+                        else:
+                            # Correct format but wrong answer
+                            scores.append(0.2)
+                    else:
+                        # No numeric value found in the answer
+                        scores.append(0.2)
+                except (ValueError, TypeError):
+                    # Failed to convert to float
+                    scores.append(0.2)
+        
+        return scores
 
 class ReActFormat(ORM):
 
@@ -384,4 +443,5 @@ orms = {
     'react_format': ReActFormat,
     'cosine': CosineReward,
     'repetition': RepetitionPenalty,
+    'simplereward':SimpleReward
 }
