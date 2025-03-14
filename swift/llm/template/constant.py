@@ -168,6 +168,7 @@ class MLLMTemplateType:
     molmo = 'molmo'
     megrez_omni = 'megrez_omni'
     valley = 'valley'
+    gemma3_vision = 'gemma3_vision'
 
 
 class TemplateType(LLMTemplateType, MLLMTemplateType, RMTemplateType):

@@ -94,3 +94,39 @@ register_model(
         model_arch=ModelArch.llama,
         requires=['transformers>=4.42'],
     ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.gemma3_text,
+        [
+            ModelGroup([
+                Model('LLM-Research/gemma-3-1b-pt', 'google/gemma-3-1b-pt'),
+                Model('LLM-Research/gemma-3-1b-it', 'google/gemma-3-1b-it'),
+            ], ),
+        ],
+        TemplateType.gemma,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['Gemma3ForCausalLM'],
+        model_arch=ModelArch.llama,
+        requires=['transformers>=4.49'],
+    ))
+
+register_model(
+    ModelMeta(
+        MLLMModelType.gemma3_vision,
+        [
+            ModelGroup([
+                Model('LLM-Research/gemma-3-4b-pt', 'google/gemma-3-4b-pt'),
+                Model('LLM-Research/gemma-3-4b-it', 'google/gemma-3-4b-it'),
+                Model('LLM-Research/gemma-3-12b-pt', 'google/gemma-3-12b-pt'),
+                Model('LLM-Research/gemma-3-12b-it', 'google/gemma-3-12b-it'),
+                Model('LLM-Research/gemma-3-27b-pt', 'google/gemma-3-27b-pt'),
+                Model('LLM-Research/gemma-3-27b-it', 'google/gemma-3-27b-it'),
+            ], ),
+        ],
+        TemplateType.gemma3_vision,
+        get_model_tokenizer_with_flash_attn,
+        architectures=['Gemma3ForConditionalGeneration'],
+        model_arch=ModelArch.gemma3_vision,
+        requires=['transformers>=4.49'],
+    ))

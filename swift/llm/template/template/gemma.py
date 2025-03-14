@@ -62,3 +62,19 @@ register_template(
         template_cls=PaliGemmaTemplate,
         placeholder_tokens=['<image>'],
     ))
+
+
+class Gemma3VisionTemplate(Template):
+    # def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+    #                 inputs: StdTemplateInputs) -> List[Context]:
+    #     assert media_type == 'image'
+    #     return ['<start_of_image>']
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded = super()._encode(inputs)
+        return encoded
+
+
+register_template(
+    GemmaTemplateMeta(
+        MLLMTemplateType.gemma3_vision, template_cls=Gemma3VisionTemplate, placeholder_tokens=['<start_of_image>']))
