@@ -1,11 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
 import os
-import shutil
 import sys
 
 from swift.llm import git_clone_github
-from swift.utils import is_megatron_available, safe_ddp_context, subprocess_run
+from swift.utils import is_megatron_available, subprocess_run
 
 
 def init_megatron_env() -> None:
