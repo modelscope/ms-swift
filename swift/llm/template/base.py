@@ -566,6 +566,25 @@ class Template(ProcessorMixin):
         """
         return [f'[{self._get_bbox_str(bbox)}]']
 
+    def _pre_tokenize_images(self, context_list: List[Context], loss_scale_list: List[float],
+                             inputs: StdTemplateInputs) -> Tuple[List[Context], List[float]]:
+        # https://github.com/modelscope/ms-swift/issues/3407
+        # Fix the bounding box position offset issue in the Qwen2.5-VL grounding task.
+        res: List[Context] = []
+        res_loss_scale: List[float] = []
+        inputs.image_idx = 0
+
+        for context, loss_scale in zip(context_list, loss_scale_list):
+            if context == '<image>' and inputs.is_multimodal and inputs.image_idx < len(inputs.images):
+                c_list = self.replace_tag('image', inputs.image_idx, inputs)
+                inputs.image_idx += 1
+                loss_scale = 0.
+            else:
+                c_list = [context]
+            res += c_list
+            res_loss_scale += [loss_scale] * len(c_list)
+        return res, res_loss_scale
+
     def _pre_tokenize(self, context_list: List[Context], loss_scale_list: List[float],
                       inputs: StdTemplateInputs) -> Tuple[List[Context], List[float]]:
         """This method happens before tokenization, replace standard tags to the contents or input_ids needed by
@@ -577,6 +596,7 @@ class Template(ProcessorMixin):
         Returns:
             The context_list and loss_scale_list after replacement.
         """
+        context_list, loss_scale_list = self._pre_tokenize_images(context_list, loss_scale_list, inputs)
         if inputs.images and inputs.objects:
             self.normalize_bbox(inputs)
         # replace tag/object/box
@@ -584,11 +604,11 @@ class Template(ProcessorMixin):
         res_loss_scale: List[float] = []  # result of loss_scale_list
 
         # reset
-        for k in ['image', 'video', 'audio', 'object', 'box']:
+        for k in ['video', 'audio', 'object', 'box']:
             setattr(inputs, f'{k}_idx', 0)
 
         for context, loss_scale in zip(context_list, loss_scale_list):
-            for k in ['image', 'video', 'audio']:
+            for k in ['video', 'audio']:
                 if context == f'<{k}>' and inputs.is_multimodal and getattr(inputs, f'{k}_idx') < len(
                         getattr(inputs, f'{k}s')):
                     c_list = self.replace_tag(k, getattr(inputs, f'{k}_idx'), inputs)
