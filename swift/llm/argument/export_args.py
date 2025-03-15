@@ -6,8 +6,7 @@ from typing import Literal, Optional
 import torch
 import torch.distributed as dist
 
-from swift.utils import get_logger
-from ..utils import set_default_ddp_config
+from swift.utils import get_logger, init_process_group, set_default_ddp_config
 from .base_args import BaseArguments, to_abspath
 from .merge_args import MergeArguments
 
@@ -96,7 +95,7 @@ class ExportArguments(MergeArguments, BaseArguments):
             self.torch_dtype = torch.float16
         if (self.to_mcore or self.to_hf) and not dist.is_initialized():
             set_default_ddp_config()
-            dist.init_process_group(backend='nccl')
+            init_process_group()
 
         BaseArguments.__post_init__(self)
         self._init_output_dir()

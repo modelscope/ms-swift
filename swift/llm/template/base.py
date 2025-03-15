@@ -117,7 +117,7 @@ class Template(ProcessorMixin):
                            'train', 'rlhf', 'kto',  # train
                            'seq_cls', 'embedding', 'prm'] = 'pt'
         self._packing = False
-        self._megatron_mode = False
+        self.use_megatron = False
         if self.model_info.task_type != 'causal_lm':
             self.mode = self.model_info.task_type
         self._handles = []

@@ -6,7 +6,7 @@ import torch
 
 from swift.llm import BaseArguments
 from swift.llm.argument.base_args import to_abspath
-from swift.utils import add_version_to_work_dir, get_logger, is_local_master
+from swift.utils import add_version_to_work_dir, get_logger, init_process_group, is_local_master
 from ..model import get_megatron_model_meta
 from .megatron_args import MegatronArguments
 
@@ -27,6 +27,7 @@ class MegatronTrainArguments(MegatronArguments, BaseArguments):
         self.extra_args = self.parse_to_megatron()
 
     def _init_save(self):
+        init_process_group()
         if self.save is not None:
             return
         self.save = f'megatron_output/{self.model_suffix}'

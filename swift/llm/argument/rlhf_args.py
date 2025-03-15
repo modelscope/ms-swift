@@ -5,8 +5,7 @@ from typing import Any, Dict, List, Literal, Optional
 
 from swift.llm import MODEL_MAPPING
 from swift.trainers.arguments import GRPOArgumentsMixin
-from swift.utils import get_logger
-from ..utils import set_default_ddp_config
+from swift.utils import get_logger, set_default_ddp_config
 from .train_args import TrainArguments
 
 logger = get_logger()

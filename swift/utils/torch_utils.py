@@ -240,23 +240,41 @@ def safe_ddp_context(hash_id: str):
         yield
 
 
-def get_device(rank: Optional[Union[str, int]] = None) -> str:
-    if rank is None:
-        rank = get_dist_setting()[1]
-        if rank < 0 or rank is None:
-            rank = 0
-    if isinstance(rank, int):
-        rank = str(rank)
+def get_device(local_rank: Optional[Union[str, int]] = None) -> str:
+    if local_rank is None:
+        local_rank = max(0, get_dist_setting()[1])
+    local_rank = str(local_rank)
     if is_torch_npu_available():
-        device = 'npu:{}'.format(rank)
+        device = 'npu:{}'.format(local_rank)
     elif is_torch_mps_available():
-        device = 'mps:{}'.format(rank)
+        device = 'mps:{}'.format(local_rank)
     elif is_torch_cuda_available():
-        device = 'cuda:{}'.format(rank)
+        device = 'cuda:{}'.format(local_rank)
     else:
         device = 'cpu'
 
     return device
+
+
+def get_current_device():
+    if is_torch_npu_available():
+        current_device = torch.npu.current_device()
+    elif is_torch_cuda_available():
+        current_device = torch.cuda.current_device()
+    elif is_torch_mps_available():
+        current_device = 'mps'
+    else:
+        current_device = 'cpu'
+    return current_device
+
+
+def set_device(local_rank: Optional[Union[str, int]] = None):
+    if local_rank is None:
+        local_rank = max(0, get_dist_setting()[1])
+    if is_torch_npu_available():
+        torch.npu.set_device(local_rank)
+    elif is_torch_cuda_available():
+        torch.cuda.set_device(local_rank)
 
 
 def get_device_count() -> int:
@@ -296,3 +314,30 @@ class Serializer:
         buffer_size = np.frombuffer(res[:8], dtype=np.int64)[0]
         res = res[8:]
         return pickle.loads(res[:buffer_size])
+
+
+def set_default_ddp_config():
+    # It runs normally with Python as well.
+    rank = int(os.getenv('RANK', -1))
+    if rank == -1:
+        os.environ['NPROC_PER_NODE'] = '1'
+        os.environ['RANK'] = '0'
+        os.environ['LOCAL_RANK'] = '0'
+        os.environ['WORLD_SIZE'] = '1'
+        os.environ['LOCAL_WORLD_SIZE'] = '1'
+        os.environ['MASTER_ADDR'] = '127.0.0.1'
+        os.environ['MASTER_PORT'] = os.environ.get('MASTER_PORT', '29500')
+
+
+def init_process_group(ddp_backend: Optional[str] = None):
+    if dist.is_initialized():
+        return
+    set_device()
+    if ddp_backend is None:
+        if is_torch_npu_available():
+            ddp_backend = 'hccl'
+        elif torch.cuda.is_available():
+            ddp_backend = 'nccl'
+        else:
+            ddp_backend = 'gloo'
+    dist.init_process_group(backend=ddp_backend)

@@ -12,7 +12,7 @@ from swift.llm import Processor, Template, get_model_tokenizer, get_template, lo
 from swift.llm.utils import get_ckpt_dir
 from swift.plugin import extra_tuners
 from swift.utils import (check_json_format, get_dist_setting, get_logger, import_external_file, is_dist, is_master,
-                         use_hf_hub)
+                         set_device, use_hf_hub)
 from .data_args import DataArguments
 from .generation_args import GenerationArguments
 from .model_args import ModelArguments
@@ -246,10 +246,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
 
     def _init_device(self):
         if is_dist():
-            if is_torch_npu_available():
-                torch.npu.set_device(self.local_rank)
-            else:
-                torch.cuda.set_device(self.local_rank)
+            set_device()
 
     def get_template(self, processor: 'Processor') -> 'Template':
         template_kwargs = self.get_template_kwargs()

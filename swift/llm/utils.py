@@ -12,7 +12,7 @@ from modelscope.hub.utils.utils import get_cache_dir
 from transformers import FeatureExtractionMixin, GenerationConfig, PreTrainedModel, PreTrainedTokenizerBase
 from transformers import ProcessorMixin as HfProcessorMixin
 
-from swift.utils import deep_getattr, get_logger
+from swift.utils import deep_getattr, get_logger, set_device
 
 try:
     from transformers import BaseImageProcessor
@@ -278,16 +278,3 @@ def get_ckpt_dir(model_dir: str, adapters_dir: Optional[List[str]]) -> str:
             ckpt_dir = model_dir
             break
     return ckpt_dir
-
-
-def set_default_ddp_config():
-    # It runs normally with Python as well.
-    rank = int(os.getenv('RANK', -1))
-    if rank == -1:
-        os.environ['NPROC_PER_NODE'] = '1'
-        os.environ['RANK'] = '0'
-        os.environ['LOCAL_RANK'] = '0'
-        os.environ['WORLD_SIZE'] = '1'
-        os.environ['LOCAL_WORLD_SIZE'] = '1'
-        os.environ['MASTER_ADDR'] = '127.0.0.1'
-        os.environ['MASTER_PORT'] = os.environ.get('MASTER_PORT', '29500')
