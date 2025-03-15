@@ -43,9 +43,9 @@ class SwiftPipeline(ABC, ProcessorMixin):
             os.environ['GRADIO_ROOT_PATH'] = f"/{os.environ['JUPYTER_NAME']}/proxy/{args.server_port}"
 
     def main(self):
-        logger.info(f'Start time of running main: {dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")}')
+        logger.info(f'Start time of running main: {dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')}')
         result = self.run()
-        logger.info(f'End time of running main: {dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")}')
+        logger.info(f'End time of running main: {dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')}')
         return result
 
     @abstractmethod

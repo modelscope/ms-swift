@@ -2,7 +2,7 @@
 import os
 from dataclasses import dataclass
 from functools import wraps
-from typing import Any, Dict, Literal, Optional, Union
+from typing import Any, Dict, Literal, Optional, Union, Callable
 
 import torch
 import torch.utils.checkpoint
@@ -104,6 +104,9 @@ class GRPOArgumentsMixin:
     offload_optimizer: bool = False
     offload_model: bool = False
     gc_collect_after_offload: bool = False
+    is_reward_tool_call: bool = True  #是否额外单独计算每个tool call的format得分
+    tool_call_weight: float = 1.0
+    tool_call: str = None
 
 
 @dataclass
