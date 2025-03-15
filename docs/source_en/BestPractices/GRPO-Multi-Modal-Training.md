@@ -160,9 +160,9 @@ swift rlhf \
   1. The custom `ClevrORM` reward steadily increased, proving the model learned how to complete the task. The task success rate climbed from an initial 0.4 to nearly 1.
   2. The `Format Reward` remained stable at 1, likely due to the consistent query format across all dataset samples.
   3. The `reward_std` stabilized below 0.1.
-  4. The `completion length` eventually stabilized between 60-80 tokens, with the model learning a fixed output pattern for item-by-item counting.  
+  4. The `completion length` eventually stabilized between 60-80 tokens, with the model learning a fixed output pattern for item-by-item counting.
 
----  
+---
 For additional tasks like Geometric QA and Open R1 Multimodal datasets, refer to their respective sections in the full experiment documentation.
 
 ## **Geometric QA Task**

@@ -109,7 +109,7 @@ $$
 \text{total batch size} = \text{num\_processes} \times \text{per\_device\_train\_batch\_size} \times \text{gradient\_accumulation\_steps} = 2 \times 8 \times 8 = 128
 $$
 
-There is a constraint: 
+There is a constraint:
 
 $$
 \text{num\_processes} \times \text{per\_device\_train\_batch\_size} \text{ must divide evenly into } \text{num\_generations},
@@ -186,21 +186,21 @@ After training for 2000 steps, the following observations were made:
 
 ```plaintext
 <think>
-We need to create an equation using the given numbers [70, 5, 42, 30] exactly once and make it equal to 77. 
+We need to create an equation using the given numbers [70, 5, 42, 30] exactly once and make it equal to 77.
 
 First, let's consider the possibility of multiplication or division to get closer to 77. Notice that 77 is close to 70 and 42. If we can use these numbers together, it might work.
 
-Multiplying 70 by 1.1 would give us approximately 77, which is very close. So, let's try to make 1.1 using the remaining numbers 5 and 30. 
+Multiplying 70 by 1.1 would give us approximately 77, which is very close. So, let's try to make 1.1 using the remaining numbers 5 and 30.
 If we take 30/5 = 6, and then 5/6 = 0.8333..., this isn't useful here, so let's look at other possibilities.
 
-Next, let's consider if there's another way to achieve 77 using addition, subtraction, or another combination of our numbers. Given the numbers provided, it seems that multiplication or division will be key. 
+Next, let's consider if there's another way to achieve 77 using addition, subtraction, or another combination of our numbers. Given the numbers provided, it seems that multiplication or division will be key.
 
 We can try subtracting 5 from 30 to get 25. Then, if we divide 42 by 25, we don't get a whole number, but we can round it to the nearest whole number, 1. Now, we need to make the equation fit 77. Let's multiply 25 by 3 and add 7 (since 77 = 25*3 + 7). However, we only have one 7 available and we need to find a way to use the remaining numbers to get 7.
 
-Let's try:  
-70 - 42 = 28  
-Then, 28 + 5 = 33  
-Next, 33 + 30 = 63  
+Let's try:
+70 - 42 = 28
+Then, 28 + 5 = 33
+Next, 33 + 30 = 63
 Finally, 77 - 63 = 14, which doesn't help.
 
 Considering different combinations, one viable way is:
@@ -238,7 +238,7 @@ Let's begin by exploring various possible combinations of the given numbers usin
 - If I subtract one number from another I will still exceed our target value as well since the maximum difference is: |(difference between max-min):| | (73 - 51) or | (73 - 56), etc.|
 - Let's multiply the numbers individually and see if the division operation can bring us closer to the goal:
     - (73 * 51) - 56 = 3723 - 56 = 3667 which isn't the goal either.
-    - The only operator left is addition and subtraction; I'll try the combination: 
+    - The only operator left is addition and subtraction; I'll try the combination:
     ((73 - 56) + 51) gives me (17 + 51) = 68.
 
 Thus, our solution fits the provided problem constraints and meets the required outcome.
