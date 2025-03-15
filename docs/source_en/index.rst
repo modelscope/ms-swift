@@ -46,8 +46,8 @@ Swift DOCUMENTATION
    :caption: Best Practices
 
    BestPractices/GRPO.md
-   BestPractices/GRPO-Code-Training.md
    BestPractices/GRPO-Multi-Modal-Training.md
+   BestPractices/GRPO-Code-Training.md
    BestPractices/Embedding.md
    BestPractices/NPU-support.md
    BestPractices/More-Best-Practices.md
