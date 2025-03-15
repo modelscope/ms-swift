@@ -1,7 +1,6 @@
 # You need to use flash-attn (manual installation) instead of xformers.
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
-MAX_PIXELS=1003520 \
 swift infer \
     --model Qwen/Qwen2-Audio-7B-Instruct \
     --infer_backend vllm \

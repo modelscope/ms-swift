@@ -93,6 +93,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         default=None, metadata={'help': 'SDK token can be found in https://modelscope.cn/my/myaccesstoken'})
     custom_register_path: List[str] = field(default_factory=list)  # .py
 
+    megatron_model: Optional[str] = None
     # extra
     ignore_args_error: bool = False  # True: notebook compatibility
     use_swift_lora: bool = False  # True for using tuner_backend == swift, don't specify this unless you know what you are doing # noqa
@@ -192,7 +193,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         return self
 
     def _init_ckpt_dir(self, adapters=None):
-        self.ckpt_dir = get_ckpt_dir(self.model, adapters or self.adapters)
+        self.ckpt_dir = get_ckpt_dir(self.model or self.megatron_model, adapters or self.adapters)
         if self.ckpt_dir and self.load_args:
             self.load_args_from_ckpt()
 
@@ -234,10 +235,11 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
                 setattr(self, key, old_value)
         logger.info(f'Successfully loaded {args_path}.')
 
-    def save_args(self) -> None:
+    def save_args(self, output_dir=None) -> None:
         if is_master():
-            os.makedirs(self.output_dir, exist_ok=True)
-            fpath = os.path.join(self.output_dir, 'args.json')
+            output_dir = output_dir or self.output_dir
+            os.makedirs(output_dir, exist_ok=True)
+            fpath = os.path.join(output_dir, 'args.json')
             logger.info(f'The {self.__class__.__name__} will be saved in: {fpath}')
             with open(fpath, 'w', encoding='utf-8') as f:
                 json.dump(check_json_format(self.__dict__), f, ensure_ascii=False, indent=2)

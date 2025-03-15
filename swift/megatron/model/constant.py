@@ -1,0 +1,2 @@
+class MegatronModelType:
+    gpt = 'gpt'
