@@ -104,9 +104,9 @@ class GRPOArgumentsMixin:
     offload_optimizer: bool = False
     offload_model: bool = False
     gc_collect_after_offload: bool = False
-    is_reward_tool_call:bool = True #是否额外单独计算每个tool call的format得分
-    tool_call_weight:float = 1.0
-    tool_call:str = None
+    is_reward_tool_call: bool = True  #是否额外单独计算每个tool call的format得分
+    tool_call_weight: float = 1.0
+    tool_call: str = None
 
 
 @dataclass
