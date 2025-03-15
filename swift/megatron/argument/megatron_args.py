@@ -24,7 +24,6 @@ class MegatronArguments(ExtraMegatronArguments):
     deterministic_mode: bool = False
     calculate_per_token_loss: bool = True
     train_iters: Optional[int] = None
-    train_samples: Optional[int] = None
     log_interval: int = 5
     tensorboard_dir: Optional[str] = None
     no_masked_softmax_fusion: bool = False
@@ -45,13 +44,11 @@ class MegatronArguments(ExtraMegatronArguments):
     lr_decay_style: Literal['cosine', 'linear', 'constant'] = 'cosine'
     # The default is None, which will be set to `train_iters`.
     lr_decay_iters: Optional[int] = None
-    lr_decay_samples: Optional[int] = None
     lr_warmup_iters: int = 0
-    lr_warmup_samples: int = 0
     min_lr: int = 0
 
     # regularization
-    weight_decay: float = 0.01
+    weight_decay: float = 0.1
     clip_grad: float = 1.
     adam_beta1: float = 0.9
     adam_beta2: float = 0.95
@@ -78,9 +75,9 @@ class MegatronArguments(ExtraMegatronArguments):
     tensor_model_parallel_size: int = 1
     pipeline_model_parallel_size: int = 1
     context_parallel_size: int = 1
-    tp_comm_overlap: Optional[bool] = None
-    overlap_grad_reduce: bool = True
-    overlap_param_gather: bool = True
+    tp_comm_overlap: bool = False
+    overlap_grad_reduce: bool = False
+    overlap_param_gather: bool = False
     distributed_timeout_minutes: int = 60
 
     # model
@@ -103,7 +100,6 @@ class MegatronArguments(ExtraMegatronArguments):
     add_qkv_bias: bool = True
     attention_dropout: float = 0.
     hidden_dropout: float = 0.
-    make_vocab_size_divisible_by: int = 128
     transformer_impl: Literal['local', 'transformer_engine'] = 'transformer_engine'
 
     # mixed precision
@@ -111,7 +107,6 @@ class MegatronArguments(ExtraMegatronArguments):
     bf16: bool = False
     apply_query_key_layer_scaling: Optional[bool] = None
     attention_softmax_in_fp32: bool = True
-    hysteresis: int = 2
 
     # logging
     log_params_norm: bool = True
@@ -128,15 +123,11 @@ class MegatronArguments(ExtraMegatronArguments):
     eval_iters: int = 100
     eval_interval: Optional[int] = None
 
-    # initialization
+    # other
     seed: int = 42
-    init_method_std: float = 0.02
-
-    # data & tokenizer
     seq_length: Optional[str] = None
     num_workers: int = 4
-    eod_mask_loss: bool = False
-    no_create_attention_mask_in_dataloader: bool = True
+    no_create_attention_mask_in_dataloader: bool = False
 
     def __post_init__(self):
         os.environ['CUDA_DEVICE_MAX_CONNECTIONS'] = '1'
@@ -145,8 +136,6 @@ class MegatronArguments(ExtraMegatronArguments):
             self.eval_interval = self.save_interval
         if self.seq_length is None:
             self.seq_length = self.max_position_embeddings
-        if self.tp_comm_overlap is None and self.sequence_parallel:
-            self.tp_comm_overlap = True
         if self.tensorboard_dir is None and self.save is not None:
             self.tensorboard_dir = f'{self.save}/runs'
         self.tensorboard_dir = to_abspath(self.tensorboard_dir)
