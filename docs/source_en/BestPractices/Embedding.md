@@ -72,5 +72,5 @@ When using a dataset in `infonce` format, please set the values of `per_device_t
 
 SWIFT provides two scaffold training scripts:
 
-- [GTE Model](../../../examples/train/embedding/train_gte.sh)
-- [GME Model](../../../examples/train/embedding/train_gme.sh)
+- [GTE Model](https://github.com/tastelikefeet/swift/blob/main/examples/train/embedding/train_gte.sh)
+- [GME Model](https://github.com/tastelikefeet/swift/blob/main/examples/train/embedding/train_gme.sh)

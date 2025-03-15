@@ -73,5 +73,5 @@ loss的源代码可以在[这里](https://github.com/modelscope/ms-swift/blob/ma
 
 SWIFT提供了两个脚手架训练脚本：
 
-- [gte模型](../../../examples/train/embedding/train_gte.sh)
-- [gme模型](../../../examples/train/embedding/train_gme.sh)
+- [gte模型](https://github.com/tastelikefeet/swift/blob/main/examples/train/embedding/train_gte.sh)
+- [gme模型](https://github.com/tastelikefeet/swift/blob/main/examples/train/embedding/train_gme.sh)
