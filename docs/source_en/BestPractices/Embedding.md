@@ -21,6 +21,8 @@ The return value should be a JSON with the key `last_hidden_state`, and the valu
 
 **Note:** Currently, SWIFT supports embedding models that conform to pure text or multimodal LLMs. It does not support the training of CLIP-type models at this time.
 
+Besides, All Embedding models supported by SWIFT have a normalize layer at last, consider add one when you are adding new models.
+
 ## Loss
 
 The Embedding models supported by SWIFT currently can use the following loss functions:

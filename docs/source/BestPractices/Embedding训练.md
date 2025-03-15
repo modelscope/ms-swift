@@ -21,6 +21,8 @@ SWIFT已经支持Embedding模型的训练，包括纯文本和多模态两个类
 
 需要注意的是，SWIFT目前支持的embedding模型均为符合纯文本或多模态LLM，目前并不支持CLIP类型的模型训练。
 
+此外，SWIFT支持的所有embedding模型在模型forward最后都增加了normalize，如自行增加新模型请注意增加normalize层。
+
 ## loss
 
 目前SWIFT支持的Embedding模型可以使用的loss有：
