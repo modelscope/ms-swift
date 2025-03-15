@@ -22,7 +22,7 @@ else:
         'infer_client': ['InferClient'],
         'infer_engine': ['InferEngine'],
         'base': ['BaseInferEngine'],
-        'utils': ['prepare_generation_config', 'AdapterRequest', 'device_context', 'patch_vllm_memory_leak'],
+        'utils': ['prepare_generation_config', 'AdapterRequest', 'set_device_context', 'patch_vllm_memory_leak'],
     }
 
     import sys
