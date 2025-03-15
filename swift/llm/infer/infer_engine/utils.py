@@ -509,6 +509,9 @@ def restore_torch_device_after_vllm_init():
 
 
 def patch_vllm_memory_leak():
+    import vllm
+    if version.parse(vllm.__version__) != version.parse('0.7.3'):
+        return
 
     def patch_vllm_abort_seq_group():
         from vllm.core.scheduler import Scheduler
@@ -560,9 +563,6 @@ def patch_vllm_memory_leak():
         Scheduler.abort_seq_group = new_abort_seq_group
 
     def patch_vllm_engine():
-        import vllm
-        if version.parse(vllm.__version__) != version.parse('0.7.3'):
-            return
         from vllm.engine.llm_engine import LLMEngine, SchedulerOutputState
         from vllm.outputs import PoolingRequestOutput, RequestOutput
         from vllm.sequence import ExecuteModelRequest
