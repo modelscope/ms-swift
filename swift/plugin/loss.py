@@ -127,7 +127,7 @@ def infonce_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> t
     sentence1, sentence2 = _parse_pair_sentence(outputs)
     similarity_matrix = torch.matmul(sentence1, sentence2.T) / temperature
     labels = torch.arange(sentence1.size(0)).to(sentence1.device)
-    return nn.CrossEntropyLoss(similarity_matrix, labels)
+    return nn.CrossEntropyLoss()(similarity_matrix, labels)
 
 
 @register_loss_func(LossType.online_contrastive)

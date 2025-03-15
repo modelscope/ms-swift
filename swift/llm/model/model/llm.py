@@ -362,16 +362,18 @@ def get_model_tokenizer_qwen2_gme(model_dir: str,
         hidden_states = outputs.logits
         left_padding = (attention_mask[:, -1].sum() == attention_mask.shape[0])
         if left_padding:
-            embeddings = outputs.hidden_states[:, -1]
+            embeddings = hidden_states[:, -1]
         else:
             sequence_lengths = attention_mask.sum(dim=1) - 1
             batch_size = hidden_states.shape[0]
             embeddings = hidden_states[torch.arange(batch_size, device=hidden_states.device), sequence_lengths]
         embeddings = torch.nn.functional.normalize(embeddings, p=2, dim=1)
-        return embeddings.contiguous()
+        return {
+            'last_hidden_state': embeddings.contiguous(),
+        }
 
     model.forward_origin = model.forward
-    model.forward = MethodType(forward, model.lm_head)
+    model.forward = MethodType(forward, model)
     return model, tokenizer
 
 
@@ -383,6 +385,6 @@ register_model(
                 Model('iic/gme-Qwen2-VL-7B-Instruct', 'Alibaba-NLP/gme-Qwen2-VL-7B-Instruct'),
             ]),
         ],
-        None,
+        TemplateType.qwen2_gme,
         get_model_tokenizer_qwen2_gme,
         architectures=['Qwen2VLForConditionalGeneration']))

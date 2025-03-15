@@ -259,7 +259,23 @@ class Template(ProcessorMixin):
         return encoded
 
     def _embedding_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        encoded = self._rlhf_encode(inputs)
+        sent1_inputs, sent2_inputs = inputs, deepcopy(inputs)
+        # move response to query
+        sent2_inputs.messages[-2]['content'] = sent2_inputs.messages[-1]['content']
+        sent1_inputs.messages[-1]['content'] = ''
+        sent2_inputs.messages[-1]['content'] = ''
+        if '<image>' not in sent1_inputs.messages[0]['content']:
+            sent1_inputs.images = []
+        if '<image>' not in sent2_inputs.messages[0]['content']:
+            sent2_inputs.images = []
+        chosen_encoded = self._encode(sent1_inputs)
+        rejected_encoded = self._encode(sent2_inputs)
+
+        encoded = {}
+        for prefix in ['chosen', 'rejected']:
+            data = locals()[f'{prefix}_encoded']
+            for k, v in data.items():
+                encoded[f'{prefix}_{k}'] = v
         encoded.pop('chosen_labels', None)
         encoded.pop('rejected_labels', None)
         if inputs.label is not None:
