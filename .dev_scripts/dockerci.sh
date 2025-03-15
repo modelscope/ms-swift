@@ -9,7 +9,8 @@ cpu_sets_arr=($cpu_sets)
 is_get_file_lock=false
 CI_COMMAND=${CI_COMMAND:-bash .dev_scripts/ci_container_test.sh python tests/run.py --parallel 2 --run_config tests/run_config.yaml}
 echo "ci command: $CI_COMMAND"
-PR_CHANGED_FILES="${PR_CHANGED_FILES:-}"
+PR_CHANGED_FILES=${PR_CHANGED_FILES:-}
+MODELSCOPE_DOMAIN=${MODELSCOPE_DOMAIN:'www.modelscope.cn'}
 echo "PR modified files: $PR_CHANGED_FILES"
 PR_CHANGED_FILES=${PR_CHANGED_FILES//[ ]/#}
 echo "PR_CHANGED_FILES: $PR_CHANGED_FILES"
