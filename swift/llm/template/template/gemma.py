@@ -62,3 +62,46 @@ register_template(
         template_cls=PaliGemmaTemplate,
         placeholder_tokens=['<image>'],
     ))
+
+
+@dataclass
+class Gemma3TextTemplateMeta(TemplateMeta):
+    prefix: Prompt = field(default_factory=lambda: ['<bos>'])
+    prompt: Prompt = field(
+        default_factory=lambda: ['<start_of_turn>user\n{{QUERY}}<end_of_turn>\n<start_of_turn>model\n'])
+    chat_sep: Optional[Prompt] = field(default_factory=lambda: ['<end_of_turn>\n'])
+    suffix: Prompt = field(default_factory=lambda: ['<end_of_turn>'])
+
+
+class Gemma3Template(Template):
+
+    def _swift_encode(self, inputs: StdTemplateInputs):
+        if inputs.system is not None:
+            system = inputs.system
+            inputs.system = None
+        inputs.messages[0]['content'] = system + '\n\n' + inputs.messages[0]['content']
+        if not self.is_training:
+            for message in inputs.messages:
+                if message['role'] == 'assistant' and isinstance(message['content'], str):
+                    message['content'] = message['content'].strip('\n')
+        return super()._swift_encode(inputs)
+
+
+register_template(Gemma3TextTemplateMeta(LLMTemplateType.gemma3_text, template_cls=Gemma3Template))
+
+
+class Gemma3VisionTemplate(Gemma3Template):
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    inputs: StdTemplateInputs) -> List[Context]:
+        assert media_type == 'image'
+        return ['<start_of_image>']
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded = super()._encode(inputs)
+        return encoded
+
+
+register_template(
+    GemmaTemplateMeta(
+        MLLMTemplateType.gemma3_vision, template_cls=Gemma3VisionTemplate, placeholder_tokens=['<start_of_image>']))
