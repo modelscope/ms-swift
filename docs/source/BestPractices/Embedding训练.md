@@ -73,4 +73,3 @@ SWIFT提供了两个脚手架训练脚本：
 
 - [gte模型](../../../examples/train/embedding/train_gte.sh)
 - [gme模型](../../../examples/train/embedding/train_gme.sh)
-

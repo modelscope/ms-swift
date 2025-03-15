@@ -6,7 +6,7 @@ from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..utils import Prompt
 from .llama import Llama3_2TemplateMeta
-from .qwen import QwenTemplateMeta, Qwen2VLTemplate
+from .qwen import Qwen2VLTemplate, QwenTemplateMeta
 from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
 
 register_template(
@@ -32,10 +32,10 @@ register_template(
 
 register_template(
     QwenTemplateMeta(
-        MLLMTemplateType.qwen2_gme, template_cls=Qwen2VLTemplate,
+        MLLMTemplateType.qwen2_gme,
+        template_cls=Qwen2VLTemplate,
         placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
         suffix=['<|endoftext|>']))
-
 
 register_template(
     TemplateMeta(LLMTemplateType.baichuan, prefix=['{{SYSTEM}}'], prompt=[[195], '{{QUERY}}', [196]], chat_sep=[]))
