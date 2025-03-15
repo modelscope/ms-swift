@@ -4,7 +4,7 @@ nproc_per_node=8
 # data format: docs/source_en/Customization/Custom-dataset.md
 # --use_chat_template must be false to use generation template
 # --dataloader_drop_last must be true or eval gather will throw error
-# --iic/gte-modernbert-base modernbert also supported
+# --model iic/gte-modernbert-base modernbert also supported
 NPROC_PER_NODE=$nproc_per_node \
 swift sft \
     --model iic/gte_Qwen2-7B-instruct \
