@@ -1,5 +1,5 @@
 nproc_per_node=8
-
+# 4*12G
 # losses: plugin/loss.py
 # data format: docs/source_en/Customization/Custom-dataset.md
 # --use_chat_template must be false to use generation template
