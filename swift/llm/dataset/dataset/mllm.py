@@ -740,6 +740,8 @@ class TextCapsPreprocessor(ResponsePreprocessor):
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         row['query'] = 'What is the caption of this image?'
+        if not os.path.exists(row['images']['path']):
+            return None
         return super().preprocess(row)
 
 
@@ -747,6 +749,8 @@ class TextCapsEmbPreprocessor(ResponsePreprocessor):
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         row['query'] = ''
+        if not os.path.exists(row['images']['path']):
+            return None
         return super().preprocess(row)
 
 

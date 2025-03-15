@@ -327,8 +327,8 @@ class StsbPreprocessor(ResponsePreprocessor):
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         row = {
-            'response': row['sentence1'],
-            'rejected_response': row['sentence2'],
+            'query': row['sentence1'],
+            'response': row['sentence2'],
             'label': row['score'],
         }
         return super().preprocess(row)
