@@ -83,18 +83,19 @@ class Gemma3Template(Template):
         if not self.is_training:
             for message in inputs.messages:
                 if message['role'] == 'assistant' and isinstance(message['content'], str):
-                    message['content'] = message['content'].split('</think>')[-1].strip('\n')
+                    message['content'] = message['content'].strip('\n')
         return super()._swift_encode(inputs)
 
 
 register_template(Gemma3TextTemplateMeta(LLMTemplateType.gemma3_text, template_cls=Gemma3Template))
 
 
-class Gemma3VisionTemplate(Template):
-    # def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
-    #                 inputs: StdTemplateInputs) -> List[Context]:
-    #     assert media_type == 'image'
-    #     return ['<start_of_image>']
+class Gemma3VisionTemplate(Gemma3Template):
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    inputs: StdTemplateInputs) -> List[Context]:
+        assert media_type == 'image'
+        return ['<start_of_image>']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
