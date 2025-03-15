@@ -31,7 +31,7 @@ from swift.utils import (JsonlWriter, gc_collect, get_device, get_device_count, 
                          get_node_setting, is_lmdeploy_available, is_vllm_available, is_wandb_available)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
-
+from swift.plugin.tool_call import tools
 try:
     from trl.extras.profiling import profiling_decorator
 except ImportError:
@@ -99,16 +99,16 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                  ref_model: Optional[Union[PreTrainedModel, nn.Module]] = None,
                  reward_model: Optional[Union[PreTrainedModel, nn.Module]] = None,
                  reward_funcs: Optional[List[Union[str, Callable]]] = None,
-                 tool_call:Optional[Callable] = None,
                  *_args,
                  **kwargs):
         from swift.trainers.rlhf_arguments import GRPOConfig
         args: GRPOConfig = kwargs['args']
         #add tool call
-        self.tool_call = MathOperation_Tool()
-        args.tool_call_weight = None
-        self.reward_weights = torch.ones(1, dtype=torch.float32)
-        self.is_reward_tool_call = True   #add GRPO config
+        print(args)
+        self.tool_call = tools[args.tool_call]
+        args.tool_call_weight = args.tool_call_weight
+        self.reward_weights = torch.ones(1, dtype=torch.float32) #通过配置
+        self.is_reward_tool_call = args.is_reward_tool_call   #add GRPO config
         # In the __init__ method, after initializing reward_weights:
         if self.is_reward_tool_call and self.tool_call is not None:
             # Add a weight for tool call rewards
@@ -873,7 +873,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # Add tool call reward metric if enabled
         if self.is_reward_tool_call and self.tool_call is not None:
-            self._metrics[mode]['rewards/tool_call'].append(reward_per_func[-1].item())
+            self._metrics[mode]['rewards/tool_call'].append(reward_per_func[-1].item()) #todo 应该用反射记录每个tool call的reward
 
         self._metrics[mode]['reward'].append(rewards.mean().item())
         self._metrics[mode]['reward_std'].append(std_grouped_rewards.mean().item())
