@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
+from functools import partial
 from typing import List, Union
 
 from datasets import Dataset as HfDataset
@@ -11,8 +12,8 @@ from swift.llm.train import SwiftSft
 from swift.utils import get_logger, is_master, plot_images
 from ..argument import MegatronTrainArguments
 from ..utils import patch_megatron
-from .patcher import dummy_func, patch_megatron_dataset, patch_training_log
-from .utils import forward_step
+from .patcher import patch_megatron_data_collator, patch_training_log
+from .utils import get_batch_on_this_tp_rank, get_swift_datasets_provider
 
 logger = get_logger()
 
@@ -28,6 +29,7 @@ class MegatronSft(SwiftSft):
         patch_megatron(self.processor)
         self.args.init_model_args(self.processor.model_info.config)
         self._prepare_template()
+        self.template.use_megatron = True
         self.args.save_args(self.args.save)
 
     def _encode_dataset(self, train_dataset, val_dataset):
@@ -55,23 +57,23 @@ class MegatronSft(SwiftSft):
         return train_dataset, val_dataset
 
     def run(self):
+        import pretrain_gpt
+        from pretrain_gpt import forward_step
+        # patch get_batch_on_this_tp_rank
+        pretrain_gpt.get_batch_on_this_tp_rank = get_batch_on_this_tp_rank
         args = self.args
 
         train_dataset, val_dataset = self._get_dataset()
-        self._save_val_dataset(args.save, val_dataset)
         train_dataset, val_dataset = self._encode_dataset(train_dataset, val_dataset)
-
-        megatron_model_meta = args.megatron_model_meta
-        model_provider = megatron_model_meta.get_model_provider()
-        train_valid_test_datasets_provider = dummy_func
-        dummy_func.is_distributed = True
+        datasets_provider = get_swift_datasets_provider(train_dataset, val_dataset)
+        datasets_provider.is_distributed = True
 
         logging_path = os.path.join(args.save, 'logging.jsonl')
         logger.info(f'The logging file will be saved in: {logging_path}')
-        with patch_training_log(), patch_megatron_dataset(self.template, train_dataset, val_dataset):
+        with patch_training_log(), patch_megatron_data_collator(self.template.data_collator):
             pretrain(
-                train_valid_test_datasets_provider,
-                model_provider,
+                datasets_provider,
+                args.megatron_model_meta.model_provider,
                 ModelType.encoder_or_decoder,
                 forward_step,
                 args_defaults=args.extra_args)

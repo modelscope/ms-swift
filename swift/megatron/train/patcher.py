@@ -42,27 +42,17 @@ def patch_training_log():
 
 
 @contextmanager
-def patch_megatron_dataset(template, train_dataset, val_dataset):
+def patch_megatron_data_collator(data_collator):
     origin_build_pretraining_data_loader = training.build_pretraining_data_loader
-    origin_build_train_valid_test_datasets = training.build_train_valid_test_datasets
 
     def build_pretraining_data_loader(*args, **kwargs):
         res = origin_build_pretraining_data_loader(*args, **kwargs)
         if res is not None:
-            res.collate_fn = template.data_collator
+            res.collate_fn = data_collator
         return res
 
-    def build_train_valid_test_datasets(build_train_valid_test_datasets_provider):
-        return train_dataset, val_dataset, None
-
     training.build_pretraining_data_loader = build_pretraining_data_loader
-    training.build_train_valid_test_datasets = build_train_valid_test_datasets
     try:
         yield
     finally:
         training.build_pretraining_data_loader = origin_build_pretraining_data_loader
-        training.build_train_valid_test_datasets = origin_build_train_valid_test_datasets
-
-
-def dummy_func():
-    pass

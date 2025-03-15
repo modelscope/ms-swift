@@ -38,7 +38,6 @@ class TemplateArguments:
     tools_prompt: str = 'react_en'  # Override the default_tools_prompt in the template.
     norm_bbox: Literal['norm1000', 'none', None] = None
     response_prefix: Optional[str] = None
-    megatron_mode: bool = False
     # train
     padding_side: Literal['left', 'right'] = 'right'
     loss_scale: str = 'default'
@@ -67,7 +66,6 @@ class TemplateArguments:
             'tools_prompt': self.tools_prompt,
             'norm_bbox': self.norm_bbox,
             'response_prefix': self.response_prefix,
-            'megatron_mode': self.megatron_mode,
             'loss_scale': self.loss_scale,
             'padding_side': self.padding_side,
             'sequence_parallel_size': self.sequence_parallel_size,

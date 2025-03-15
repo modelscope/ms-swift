@@ -22,8 +22,7 @@ class MegatronTrainArguments(MegatronArguments, BaseArguments):
         self.megatron_model_meta = get_megatron_model_meta(self.model)
         kwargs = self.megatron_model_meta.load_config(config)
         for k, v in kwargs.items():
-            if getattr(self, k) is None:
-                setattr(self, k, v)
+            setattr(self, k, v)
         MegatronArguments.__post_init__(self)
         self.extra_args = self.parse_to_megatron()
 
