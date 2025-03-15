@@ -1,6 +1,8 @@
 nproc_per_node=8
 
 # losses: plugin/loss.py
+# 8*40G
+MAX_PIXELS=1003520 \
 NPROC_PER_NODE=$nproc_per_node \
 swift sft \
     --model iic/gme-Qwen2-VL-2B-Instruct \
@@ -9,7 +11,7 @@ swift sft \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 2 \
-    --per_device_eval_batch_size 1 \
+    --per_device_eval_batch_size 2 \
     --gradient_accumulation_steps $(expr 64 / $nproc_per_node) \
     --eval_steps 100 \
     --save_steps 100 \
