@@ -560,6 +560,9 @@ def patch_vllm_memory_leak():
         Scheduler.abort_seq_group = new_abort_seq_group
 
     def patch_vllm_engine():
+        import vllm
+        if version.parse(vllm.__version__) != version.parse('0.7.3'):
+            return
         from vllm.engine.llm_engine import LLMEngine, SchedulerOutputState
         from vllm.outputs import PoolingRequestOutput, RequestOutput
         from vllm.sequence import ExecuteModelRequest
@@ -571,23 +574,6 @@ def patch_vllm_memory_leak():
         origin_method = LLMEngine.abort_request
         LLMEngine._old_abort_request = origin_method
         LLMEngine.abort_request = new_abort_request
-
-        class InputProcessingError(Exception):
-            """This exception is raised when an error occurs preparing the inputs for
-            a single sequence group.
-            This allows the engine to gracefully handle errors with a single sequence
-            group without having to fail the entire batch.
-            """
-
-            def __init__(self, request_id, message):
-                """request_id is the id of the offending sequence group"""
-                self.request_id = request_id
-                self.message = message
-                super().__init__(self.message)
-
-            def __str__(self):
-                return 'Failed to prepare inputs for sequence group with request id: ' \
-                        f'{self.request_id}, Error: {self.message}'
 
         def new_step(self) -> List[Union[RequestOutput, PoolingRequestOutput]]:
             if self.parallel_config.pipeline_parallel_size > 1:
@@ -615,7 +601,7 @@ def patch_vllm_memory_leak():
             # batch has completed.
             # The scheduler is also skipped if a single request caused the last
             # engine step to fail, and the previous schedule needs to be rerun.
-            if not self._has_remaining_steps(seq_group_metadata_list) and not self._skip_scheduling_next_step:
+            if not self._has_remaining_steps(seq_group_metadata_list):
                 # Schedule iteration
                 (seq_group_metadata_list, scheduler_outputs,
                  allow_async_output_proc) = self.scheduler[virtual_engine].schedule()
@@ -669,22 +655,7 @@ def patch_vllm_memory_leak():
                 if allow_async_output_proc:
                     execute_model_req.async_callback = self.async_callbacks[virtual_engine]
 
-                try:
-                    outputs = self.model_executor.execute_model(execute_model_req=execute_model_req)
-                    self._skip_scheduling_next_step = False
-                except InputProcessingError as e:
-                    # The input for this request cannot be processed, so we must
-                    # abort it. If there are remaining requests in the batch that
-                    # have been scheduled, they will be retried on the next step.
-                    invalid_request_id = e.request_id
-                    self._abort_and_cache_schedule(
-                        request_id=invalid_request_id,
-                        virtual_engine=virtual_engine,
-                        seq_group_metadata_list=seq_group_metadata_list,
-                        scheduler_outputs=scheduler_outputs,
-                        allow_async_output_proc=allow_async_output_proc)
-                    # Raise so the caller is notified that this request failed
-                    raise
+                outputs = self.model_executor.execute_model(execute_model_req=execute_model_req)
 
                 # We need to do this here so that last step's sampled_token_ids can
                 # be passed to the next iteration for PP.
