@@ -13,7 +13,6 @@ class LossType:
     cosine_similarity = 'cosine_similarity'
     contrastive = 'contrastive'
     online_contrastive = 'online_contrastive'
-    cosent = 'cosent'
     infonce = 'infonce'
 
 
