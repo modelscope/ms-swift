@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import hashlib
 import inspect
+import math
 import os
 import re
 from copy import deepcopy
@@ -966,13 +967,6 @@ class Template(ProcessorMixin):
             res = self._seq_cls_data_collator(batch, padding_to=padding_to)
         elif self.mode == 'embedding':
             res = self._embedding_data_collator(batch, padding_to=padding_to)
-
-        if self.use_megatron:
-            from megatron.training.utils import get_ltor_masks_and_position_ids
-            attention_mask, loss_mask, position_ids = get_ltor_masks_and_position_ids(
-                res['labels'], -100, False, False, True)
-            res['tokens'] = res.pop('input_ids')
-            res.update({'attention_mask': attention_mask, 'loss_mask': loss_mask, 'position_ids': position_ids})
         return res
 
     @staticmethod
@@ -1091,10 +1085,13 @@ class Template(ProcessorMixin):
             if not seq_lens:
                 seq_lens = [seq.shape[0] for seq in res[key]]
         packing_mode = self._packing and 'position_ids' in res
-        if not packing_mode and seq_lens and ('input_ids' in res or 'inputs_embeds' in res):
+        if not self.use_megatron and not packing_mode and seq_lens and ('input_ids' in res or 'inputs_embeds' in res):
             res['attention_mask'] = [torch.ones(seq_len, dtype=torch.int64) for seq_len in seq_lens]
             if self.is_training and self.padding_side == 'left':
                 res['position_ids'] = [torch.arange(seq_len, dtype=torch.int64) for seq_len in seq_lens]
+
+        if self.use_megatron:
+            padding_to = math.ceil(max(seq_lens) / 128) * 128
 
         for key, pad_value in zip(keys, pad_value):
             if key not in res:
@@ -1120,6 +1117,13 @@ class Template(ProcessorMixin):
             res['pixel_values_videos'] = torch.concat(pixel_values_videos)
         if use_torchacc() or self.sequence_parallel_size > 1:
             res = self._torchacc_xtuner_data_collator(res, padding_to, self.tokenizer, padding_side)
+        if self.use_megatron:
+            from megatron.training.utils import get_ltor_masks_and_position_ids
+            attention_mask, loss_mask, position_ids = get_ltor_masks_and_position_ids(
+                res['labels'], -100, False, False, True)
+            res['tokens'] = res.pop('input_ids')
+            res.update({'attention_mask': attention_mask, 'loss_mask': loss_mask, 'position_ids': position_ids})
+
         return res
 
     def _torchacc_xtuner_data_collator(self, res, padding_to, tokenizer, padding_side):

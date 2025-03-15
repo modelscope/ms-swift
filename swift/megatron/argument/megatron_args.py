@@ -22,7 +22,6 @@ class MegatronArguments(ExtraMegatronArguments):
     recompute_num_layers: Optional[int] = None
     use_cpu_initialization: bool = False
     deterministic_mode: bool = False
-    calculate_per_token_loss: bool = True
     train_iters: Optional[int] = None
     log_interval: int = 5
     tensorboard_dir: Optional[str] = None
