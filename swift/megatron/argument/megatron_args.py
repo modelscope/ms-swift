@@ -124,7 +124,7 @@ class MegatronArguments(ExtraMegatronArguments):
 
     # other
     seed: int = 42
-    seq_length: Optional[str] = None
+    seq_length: Optional[int] = None
     num_workers: int = 4
     no_create_attention_mask_in_dataloader: bool = False
 
