@@ -88,18 +88,8 @@ The following outlines the standard dataset format for ms-swift, where the "syst
 ```
 
 ### Embedding
-label means the similarity between sentences, use together with loss `cosine_similarity`
-```jsonl
-{"messages": [{"role": "assistant", "content": "今天天气真好呀"}], "rejected_response": "今天天气不错", "label": 0.8}
-{"messages": [{"role": "assistant", "content": "这本书不错"}], "rejected_response": "这个汽车开着有异响", "label": 0.2}
-{"messages": [{"role": "assistant", "content": "天空是蓝色的"}], "rejected_response": "教练我想打篮球", "label": 0.0}
-```
-Also, can be the format below（label only support two values: 0.0 and 1.0）, use loss `contrastive` or `online_contrastive`（contrastive learning）:
-```jsonl
-{"messages": [{"role": "assistant", "content": "今天天气真好呀"}], "rejected_response": "今天天气不错", "label": 1.0}
-{"messages": [{"role": "assistant", "content": "这本书不错"}], "rejected_response": "这个汽车开着有异响", "label": 0.0}
-{"messages": [{"role": "assistant", "content": "天空是蓝色的"}], "rejected_response": "教练我想打篮球", "label": 0.0}
-```
+
+Please refer to [embedding训练文档](../BestPractices/Embedding.md#dataset-format).
 
 ### Multimodal
 

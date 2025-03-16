@@ -14,6 +14,7 @@ class LLMModelType:
     qwq = 'qwq'
 
     qwen2_gte = 'qwen2_gte'
+    qwen2_gme = 'qwen2_gme'
 
     codefuse_qwen = 'codefuse_qwen'
     modelscope_agent = 'modelscope_agent'
