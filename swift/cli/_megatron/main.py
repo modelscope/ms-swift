@@ -1,9 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import importlib.util
-import os
-import subprocess
-import sys
-from typing import Dict, List, Optional
+from typing import Dict
 
 from swift.utils import get_logger
 from ..main import cli_main as swift_cli_main
