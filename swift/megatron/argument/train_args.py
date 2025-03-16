@@ -45,7 +45,7 @@ class MegatronTrainArguments(MegatronArguments, BaseArguments):
         self.apply_query_key_layer_scaling = self.fp16 and self.apply_query_key_layer_scaling is None
 
     def __post_init__(self):
-        self.load = to_abspath(self.load)
+        self.load = to_abspath(self.load, check_path_exist=True)
         BaseArguments.__post_init__(self)
         self._init_mixed_precision()
         self._init_save()

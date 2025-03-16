@@ -88,23 +88,6 @@ swift infer \
 ```
 <<< who are you?
 I am a language model developed by swift, you can call me swift-robot. How can I assist you?
---------------------------------------------------
-<<< What to do if you can't sleep at night
-If you're having trouble sleeping at night, there are several things you can try:
-
-1. Create a relaxing bedtime routine: Take a warm bath or shower, read a book, listen to calming music, or practice relaxation techniques such as deep breathing or meditation.
-
-2. Avoid stimulating activities before bed: Avoid using electronic devices, watching TV, or engaging in vigorous exercise close to bedtime.
-
-3. Make your bedroom comfortable: Keep your bedroom cool, dark, and quiet. Use comfortable bedding and pillows, and make sure your mattress is comfortable.
-
-4. Limit caffeine and alcohol intake: Avoid consuming caffeine and alcohol, especially in the hours leading up to bedtime.
-
-5. Stick to a regular sleep schedule: Try to go to bed and wake up at the same time every day, even on weekends.
-
-6. Seek professional help: If you continue to have difficulty sleeping despite trying these strategies, it may be helpful to seek assistance from a healthcare provider or a sleep specialist.
-
-Remember that everyone's body is different, so what works for one person may not work for another. It's important to experiment with different strategies until you find what works best for you.
 ```
 
 - 更多案例可以查看[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/megatron)。
