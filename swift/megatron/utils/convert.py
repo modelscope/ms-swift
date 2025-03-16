@@ -83,7 +83,7 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     hf_model, processor = get_model_tokenizer(**kwargs)
     megatron_model_meta = get_megatron_model_meta(args.model)
     kwargs = megatron_model_meta.load_config(processor.model_info.config)
-    megatron_args = MegatronArguments(**kwargs, **convert_kwargs, load=args.megatron_model)
+    megatron_args = MegatronArguments(**kwargs, **convert_kwargs, load=args.mcore_model)
     patch_megatron(processor)
     extra_args = megatron_args.parse_to_megatron()
     initialize_megatron(args_defaults=extra_args)
@@ -101,7 +101,7 @@ def convert_mcore2hf(args: ExportArguments) -> None:
         processor,
         args.output_dir,
         safe_serialization=args.safe_serialization,
-        model_dirs=[args.megatron_model, args.model_dir],
+        model_dirs=[args.mcore_model, args.model_dir],
         max_shard_size=args.max_shard_size,
         additional_saved_files=hf_model.model_meta.additional_saved_files)
     args.save_args()

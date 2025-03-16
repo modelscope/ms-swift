@@ -46,6 +46,7 @@ class ExportArguments(MergeArguments, BaseArguments):
     # megatron
     to_mcore: bool = False
     to_hf: bool = False
+    mcore_model: Optional[str] = None
     test_convert_precision: bool = False
 
     # push to ms hub

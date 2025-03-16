@@ -43,12 +43,9 @@ class MegatronTrainArguments(MegatronArguments, BaseArguments):
             self.bf16 = True
         elif self.torch_dtype == torch.float16:
             self.fp16 = True
-            if self.apply_query_key_layer_scaling is None:
-                self.apply_query_key_layer_scaling = True
+        self.apply_query_key_layer_scaling = self.fp16 and self.apply_query_key_layer_scaling is None
 
     def __post_init__(self):
         BaseArguments.__post_init__(self)
         self._init_mixed_precision()
         self._init_save()
-        if self.load is None:
-            self.load = self.megatron_model

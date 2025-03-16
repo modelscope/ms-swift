@@ -13,4 +13,4 @@ def init_megatron_env() -> None:
             'https://github.com/NVIDIA/Megatron-LM', branch='core_r0.11.0')
     if not is_megatron_available():
         subprocess_run([sys.executable, '-m', 'pip', 'install', '-e', os.environ['MEGATRON_LM_PATH']])
-    sys.path.append(os.environ['MEGATRON_LM_PATH'])
+    sys.path.insert(0, os.environ['MEGATRON_LM_PATH'])

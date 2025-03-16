@@ -34,7 +34,6 @@ class MegatronArguments(ExtraMegatronArguments):
     use_flash_attn: bool = False
     optimizer: Literal['adam', 'sgd'] = 'adam'
     dataloader_type: Literal['single', 'cyclic', 'external'] = 'cyclic'
-    sequence_parallel: bool = False
     manual_gc: bool = False
     manual_gc_interval: int = 0
 
@@ -73,6 +72,7 @@ class MegatronArguments(ExtraMegatronArguments):
     use_distributed_optimizer: bool = True
     tensor_model_parallel_size: int = 1
     pipeline_model_parallel_size: int = 1
+    sequence_parallel: bool = False
     context_parallel_size: int = 1
     tp_comm_overlap: bool = False
     overlap_grad_reduce: bool = False

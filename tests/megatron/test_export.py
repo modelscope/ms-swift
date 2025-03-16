@@ -42,7 +42,7 @@ def mcore2hf():
     from swift.llm import export_main, ExportArguments
     export_main(
         ExportArguments(
-            megatron_model='Qwen2-7B-Instruct-mcore',
+            mcore_model='Qwen2-7B-Instruct-mcore',
             to_hf=True,
             torch_dtype='bfloat16',
             exist_ok=True,

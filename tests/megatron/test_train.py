@@ -7,7 +7,7 @@ def test_train():
     from swift.megatron import megatron_sft_main, MegatronTrainArguments
     megatron_sft_main(
         MegatronTrainArguments(
-            megatron_model='Qwen2-7B-Instruct-mcore',
+            load='Qwen2-7B-Instruct-mcore',
             dataset=[
                 'AI-ModelScope/alpaca-gpt4-data-zh#500', 'swift/self-cognition#500',
                 'AI-ModelScope/alpaca-gpt4-data-en#500'
