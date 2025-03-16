@@ -55,7 +55,8 @@ model_id = 'Qwen/Qwen2-7B-Instruct'
 
 if __name__ == '__main__':
     import torch
-    from swift.llm import InferRequest, get_model_tokenizer, get_template, set_default_ddp_config
+    from swift.llm import InferRequest, get_model_tokenizer, get_template
+    from swift.utils import set_default_ddp_config
     from swift.megatron.argument import MegatronArguments
     from swift.megatron.model import get_megatron_model_meta
     from swift.megatron.utils import patch_megatron
