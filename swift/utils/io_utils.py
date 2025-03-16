@@ -1,7 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-import time
-from queue import Empty, Queue
+from queue import Queue
 from threading import Thread
 from typing import Any, Dict, List, Literal, Union
 

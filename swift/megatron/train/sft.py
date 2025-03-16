@@ -82,7 +82,7 @@ class MegatronSft(SwiftSft):
         if is_master():
             images_dir = os.path.join(args.save, 'images')
             logger.info(f'images_dir: {images_dir}')
-            plot_images(images_dir, args.tensorboard_dir, ['train/loss'], 0.9)
+            plot_images(images_dir, args.tensorboard_dir)
 
 
 def megatron_sft_main(args: Union[List[str], MegatronTrainArguments, None] = None):
