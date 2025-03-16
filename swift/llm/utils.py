@@ -12,7 +12,7 @@ from modelscope.hub.utils.utils import get_cache_dir
 from transformers import FeatureExtractionMixin, GenerationConfig, PreTrainedModel, PreTrainedTokenizerBase
 from transformers import ProcessorMixin as HfProcessorMixin
 
-from swift.utils import deep_getattr, get_logger, set_device
+from swift.utils import deep_getattr, get_logger
 
 try:
     from transformers import BaseImageProcessor
