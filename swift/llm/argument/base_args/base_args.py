@@ -4,8 +4,6 @@ from dataclasses import dataclass, field, fields
 from typing import Any, Dict, List, Literal, Optional, Union
 
 import json
-import torch
-from transformers.utils import is_torch_npu_available
 
 from swift.hub import get_hub
 from swift.llm import Processor, Template, get_model_tokenizer, get_template, load_by_unsloth, safe_snapshot_download

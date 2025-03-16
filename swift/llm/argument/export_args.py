@@ -94,10 +94,11 @@ class ExportArguments(MergeArguments, BaseArguments):
             raise ValueError('Please specify `--quant_bits`.')
         if self.quant_method in {'gptq', 'awq'} and self.torch_dtype is None:
             self.torch_dtype = torch.float16
-        if (self.to_mcore or self.to_hf) and not dist.is_initialized():
+        if self.to_mcore or self.to_hf:
             self.mcore_model = to_abspath(self.mcore_model)
-            set_default_ddp_config()
-            init_process_group()
+            if not dist.is_initialized():
+                set_default_ddp_config()
+                init_process_group()
 
         BaseArguments.__post_init__(self)
         self._init_output_dir()
