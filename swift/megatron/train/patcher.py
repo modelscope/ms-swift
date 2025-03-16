@@ -6,7 +6,7 @@ from functools import wraps
 import torch
 from megatron.training import get_args, global_vars, initialize, training
 
-from swift.utils import JsonlWriter, append_to_jsonl, is_master
+from swift.utils import JsonlWriter, is_master
 
 
 @contextmanager

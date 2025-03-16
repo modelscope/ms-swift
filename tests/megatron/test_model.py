@@ -12,7 +12,7 @@ def get_mg_model_tokenizer(model_id):
     model_info = processor.model_info
     kwargs = megatron_model_meta.load_config(model_info.config)
     megatron_args = MegatronArguments(**kwargs, seq_length=1, use_cpu_initialization=True, no_initialization=True)
-    patch_megatron(processor)
+    patch_megatron_tokenizer(processor)
     extra_args = megatron_args.parse_to_megatron()
     initialize_megatron(args_defaults=extra_args)
     mg_model = megatron_model_meta.model_provider()
@@ -59,7 +59,7 @@ if __name__ == '__main__':
     from swift.utils import set_default_ddp_config
     from swift.megatron.argument import MegatronArguments
     from swift.megatron.model import get_megatron_model_meta
-    from swift.megatron.utils import patch_megatron
+    from swift.megatron.utils import patch_megatron_tokenizer
     # test_bf16_fp32()
     hf_model, mg_model, processor = get_mg_model_tokenizer(model_id)
     test_align(hf_model, mg_model, processor)

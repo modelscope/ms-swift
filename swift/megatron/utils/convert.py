@@ -10,7 +10,7 @@ from swift.llm import ExportArguments, get_model_tokenizer, get_template, save_c
 from swift.utils import get_logger
 from ..argument import MegatronArguments
 from ..model import get_megatron_model_meta
-from .patcher import patch_megatron
+from .patcher import patch_megatron_tokenizer
 
 logger = get_logger()
 
@@ -60,7 +60,7 @@ def convert_hf2mcore(args: ExportArguments) -> None:
     megatron_model_meta = get_megatron_model_meta(args.model)
     kwargs = megatron_model_meta.load_config(processor.model_info.config)
     megatron_args = MegatronArguments(**kwargs, **convert_kwargs, save=args.output_dir)
-    patch_megatron(processor)
+    patch_megatron_tokenizer(processor)
     extra_args = megatron_args.parse_to_megatron()
     initialize_megatron(args_defaults=extra_args)
 
@@ -84,7 +84,7 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     megatron_model_meta = get_megatron_model_meta(args.model)
     kwargs = megatron_model_meta.load_config(processor.model_info.config)
     megatron_args = MegatronArguments(**kwargs, **convert_kwargs, load=args.mcore_model)
-    patch_megatron(processor)
+    patch_megatron_tokenizer(processor)
     extra_args = megatron_args.parse_to_megatron()
     initialize_megatron(args_defaults=extra_args)
 

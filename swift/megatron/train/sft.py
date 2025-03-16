@@ -1,6 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-from functools import partial
 from typing import List, Union
 
 from datasets import Dataset as HfDataset
@@ -11,7 +10,7 @@ from swift.llm import EncodePreprocessor, LazyLLMDataset
 from swift.llm.train import SwiftSft
 from swift.utils import get_logger, is_master, plot_images
 from ..argument import MegatronTrainArguments
-from ..utils import patch_megatron
+from ..utils import patch_megatron_tokenizer
 from .patcher import patch_megatron_data_collator, patch_training_log
 from .utils import get_batch_on_this_tp_rank, get_swift_datasets_provider
 
@@ -25,12 +24,13 @@ class MegatronSft(SwiftSft):
     def __init__(self, args: Union[List[str], MegatronTrainArguments, None] = None) -> None:
         self.train_msg = {}
         super(SwiftSft, self).__init__(args)
-        _, self.processor = self.args.get_model_processor(load_model=False)
-        patch_megatron(self.processor)
-        self.args.init_model_args(self.processor.model_info.config)
+        args = self.args
+        _, self.processor = args.get_model_processor(load_model=False)
+        patch_megatron_tokenizer(self.processor)
+        args.init_model_args(self.processor.model_info.config)
         self._prepare_template()
         self.template.use_megatron = True
-        self.args.save_args(self.args.save)
+        args.save_args(args.save)
 
     def _encode_dataset(self, train_dataset, val_dataset):
         template = self.template

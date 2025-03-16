@@ -161,6 +161,6 @@ class MegatronArguments(ExtraMegatronArguments):
         new_args, extra_args = self._args_to_argv()
         sys._old_argv = sys.argv
         sys.argv = sys.argv[:1] + new_args
-
+        # parameter conflict
         extra_args.pop('loss_scale', None)
         return extra_args
