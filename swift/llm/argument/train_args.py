@@ -1,11 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import importlib
 import os
-import sys
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional, Union
 
-import torch
 from transformers import Seq2SeqTrainingArguments
 from transformers.utils.versions import require_version
 

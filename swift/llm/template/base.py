@@ -974,16 +974,15 @@ class Template(ProcessorMixin):
 
     def data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         if self.mode == 'rlhf':
-            res = self._rlhf_data_collator(batch, padding_to=padding_to)
+            return self._rlhf_data_collator(batch, padding_to=padding_to)
         elif self.mode == 'kto':
-            res = self._kto_data_collator(batch, padding_to=padding_to)
+            return self._kto_data_collator(batch, padding_to=padding_to)
         elif self.mode in {'pt', 'train', 'prm'}:
-            res = self._data_collator(batch, padding_to=padding_to)
+            return self._data_collator(batch, padding_to=padding_to)
         elif self.mode == 'seq_cls':
-            res = self._seq_cls_data_collator(batch, padding_to=padding_to)
+            return self._seq_cls_data_collator(batch, padding_to=padding_to)
         elif self.mode == 'embedding':
-            res = self._embedding_data_collator(batch, padding_to=padding_to)
-        return res
+            return self._embedding_data_collator(batch, padding_to=padding_to)
 
     @staticmethod
     def _fetch_inputs_startswith(batch: List[Dict[str, Any]], prefix: str) -> List[Dict[str, Any]]:
