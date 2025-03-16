@@ -325,7 +325,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 return name.replace('base_layer.', '')
 
         def remove_lora_and_prefix(names):
-            names = set([replace_lora(n).replace('_model.', '') for n in names])
+            names = set([re.sub(r'^_model\.', '', replace_lora(n)) for n in names])
             return [n for n in names if n]
 
         def split_llm(name):
