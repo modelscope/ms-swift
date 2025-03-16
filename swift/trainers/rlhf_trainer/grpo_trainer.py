@@ -292,11 +292,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         2. other, embeds, lm_heads in one batch
         3. multi-modal components in one batch
         """
+        model = self.accelerator.unwrap_model(self.model)
         if self.args.move_model_batches is None:
             # All in one
-            return [None], [None]
+            return [[n for n, p in model.named_parameters() if 'ref_model' not in n]], [None]
 
-        model = self.accelerator.unwrap_model(self.model)
         model_arch = get_model_arch(model.model_meta.model_arch)
         non_llm_parameters = []
         llm_embeds = []
@@ -319,13 +319,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             parameters.append([])
 
         def replace_lora(name):
-            if 'lora_A' in name or 'lora_B' in name:
+            if 'lora_' in name:
                 return ''
             else:
                 return name.replace('base_layer.', '')
 
-        def remove_lora(names):
-            names = set([replace_lora(n) for n in names])
+        def remove_lora_and_prefix(names):
+            names = set([re.sub(r'^_model\.', '', replace_lora(n)) for n in names])
             return [n for n in names if n]
 
         def split_llm(name):
@@ -338,6 +338,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 llm_embeds.append(name)
 
         for name, parameter in model.named_parameters():
+            if 'ref_model' in name:
+                continue
             if model_arch is not None and isinstance(model_arch, MultiModelKeys):
                 llm = model_arch.language_model
                 if name.startswith(llm):
@@ -352,7 +354,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if non_llm_parameters:
             parameters.append(non_llm_parameters)
         parameters = [p for p in parameters if p]
-        return parameters, [remove_lora(p_list) for p_list in parameters]
+        parameters_no_lora = [remove_lora_and_prefix(p_list) for p_list in parameters]
+        return parameters, parameters_no_lora
 
     def prepare_vllm(self, model, fast_infer_device):
         from swift.tuners import Swift
@@ -566,7 +569,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 if parameter_group_no_lora:
                     parameter_group_no_lora = [n.replace('base_model.model.', '') for n in parameter_group_no_lora]
                     state_dict = {k: v for k, v in state_dict.items() if k in parameter_group_no_lora}
-                assert all([state.shape != torch.Size([0]) for state in state_dict.values()])
+                assert len(state_dict) > 0 and all([state.shape != torch.Size([0]) for state in state_dict.values()])
                 if self.infer_rank >= 0:
                     if self.args.async_generate:
                         self._wait_queue()
@@ -670,6 +673,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         outputs = _outputs
         else:
             if self.args.async_generate:
+                # using old model to generate, which will ignore the `clip` of advantages.
                 self.queue.put(DataCache(inputs, [], distributed_idx))
                 data_cache = self.queue.get()
                 inputs = data_cache.inputs
@@ -689,7 +693,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     @property
     def old_policy(self):
-        return self.num_iterations > 1 or self.args.async_generate
+        return self.num_iterations > 1
 
     def _generate_and_score_completions(
             self, inputs: dict[str, Union[torch.Tensor, Any]]) -> dict[str, Union[torch.Tensor, Any]]:
