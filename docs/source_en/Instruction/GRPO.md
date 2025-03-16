@@ -22,6 +22,9 @@ In SWIFT's GRPO training, the training model preferentially uses the front porti
 - **If both `NPROC_PER_NODE` and `num_infer_workers` in the command are equal to the number of available GPUs**, training and inference are assigned to the same GPUs. In this case, you need to configure `sleep_level`.
 - **If the sum of `NPROC_PER_NODE` and `num_infer_workers` equals the total number of available GPUs**, training will use the front GPUs and rollout will use the rear GPUs. In this scenario, you can configure `async_generate`.
 
+> Note: async_generate uses the policy model and responses of current_step-1, so in fact the `clip` method will be ignored
+> If you encountered unstable in training, turn off this argument.
+> In our experiments, unstable cases is not frequently occurring when async_generate is true.
 
 ## Reward Functions
 ### Custom Reward Functions
