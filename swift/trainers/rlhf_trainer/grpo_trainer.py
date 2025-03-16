@@ -670,6 +670,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         outputs = _outputs
         else:
             if self.args.async_generate:
+                # using old model to generate, which will ignore the `clip` of advantages.
                 self.queue.put(DataCache(inputs, [], distributed_idx))
                 data_cache = self.queue.get()
                 inputs = data_cache.inputs
@@ -689,7 +690,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     @property
     def old_policy(self):
-        return self.num_iterations > 1 or self.args.async_generate
+        return self.num_iterations > 1
 
     def _generate_and_score_completions(
             self, inputs: dict[str, Union[torch.Tensor, Any]]) -> dict[str, Union[torch.Tensor, Any]]:

@@ -154,6 +154,11 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
             self.truncation_strategy = 'left'  # Used for trimming the excessively long parts of a prompt.
             if self.beta is None:
                 self.beta = 0.04  # https://arxiv.org/abs/2402.03300
+            if self.async_generate:
+                logger.info('Using async mode. This is a approximate version which '
+                            'will use the old weights to generate responses to accelerate. '
+                            'This will ignore the `CLIP` of advantages, if you found the training '
+                            'is unstable, you may consider using --async_generate false.')
 
     def _init_ppo(self):
         if self.rlhf_type == 'ppo':
