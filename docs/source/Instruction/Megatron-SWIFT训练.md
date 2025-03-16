@@ -45,6 +45,7 @@ megatron sft \
     --global_batch_size 16 \
     --recompute_granularity selective \
     --train_iters 100 \
+    --eval_iters 5 \
     --finetune true \
     --cross_entropy_loss_fusion true \
     --lr 1e-5 \
@@ -177,7 +178,7 @@ swift infer \
 - logging_leval: 日志级别。默认为None。
 
 **评估参数**
-- 🔥eval_iters: 评估的迭代次数，默认为20。
+- 🔥eval_iters: 评估的迭代次数，默认为100。
 - 🔥eval_interval: 评估的间隔（steps），默认为None，即设置为save_interval。
 
 **混合精度参数**

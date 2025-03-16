@@ -12,6 +12,7 @@ logger = get_logger()
 
 ROUTE_MAPPING: Dict[str, str] = {
     'sft': 'swift.cli._megatron.sft',
+    'pt': 'swift.cli._megatron.pt',
 }
 
 

@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 import torch
 from megatron.core import mpu
 from megatron.training import get_args
