@@ -232,4 +232,4 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 Megatron training parameters inherit from Megatron parameters and basic parameters. For information on basic parameters, see [here](./Command-line-parameters.md#base-arguments). Additionally, the following parameters are included:
 
 - add_version: Adds a directory `<version>-<timestamp>` to `save` to prevent overwriting weights, default is True.
-- 🔥lazy_tokenize: Default is False. If this parameter is set to False, all dataset samples are tokenized before training (this avoids errors during training); if set to True, tokenization occurs during training (this saves memory). Another way to save memory is by using streaming datasets `--streaming true`.
+- 🔥lazy_tokenize: Default is False. If this parameter is set to False, all dataset samples are tokenized before training (this avoids errors during training); if set to True, tokenization occurs during training (this saves memory).

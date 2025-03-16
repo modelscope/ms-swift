@@ -19,7 +19,7 @@ from modelscope.hub.utils.utils import get_cache_dir
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import is_torch_cuda_available, is_torch_mps_available, is_torch_npu_available
 
-from .env import get_dist_setting, is_dist_ta, is_dist, is_local_master
+from .env import get_dist_setting, is_dist, is_dist_ta, is_local_master
 from .logger import get_logger
 
 logger = get_logger()

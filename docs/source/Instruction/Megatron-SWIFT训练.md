@@ -219,4 +219,4 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 Megatron训练参数继承自Megatron参数和基本参数。基本参数的内容可以参考[这里](./命令行参数.md#基本参数)。此外还包括以下参数：
 
 - add_version: 在`save`上额外增加目录`'<版本号>-<时间戳>'`防止权重覆盖，默认为True。
-- 🔥lazy_tokenize: 默认为False。若该参数设置为False，则在训练之前对所有的数据集样本进行tokenize（这可以避免在训练中出现报错）；设置为True，则在训练中对数据集进行tokenize（这可以节约内存）。另一种节约内存的方式是使用流式数据集`--streaming true`。
+- 🔥lazy_tokenize: 默认为False。若该参数设置为False，则在训练之前对所有的数据集样本进行tokenize（这可以避免在训练中出现报错）；设置为True，则在训练中对数据集进行tokenize（这可以节约内存）。
