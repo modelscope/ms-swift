@@ -15,10 +15,12 @@ cd apex
 pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" ./
 ```
 
+依赖库Megatron-LM将会由swift进行git clone并安装，不需要用户手动安装。你也可以通过环境变量`MEGATRON_LM_PATH`指向已经下载好的repo路径（断网环境）。
+
 
 ## 快速入门案例
 
-这里介绍使用2卡80GiB A100对Qwen2.5-7B-Instruct模型进行自我认知微调的快速入门案例，以下最佳时间可以在10分钟内完成。
+这里介绍使用2卡80GiB A100对Qwen2.5-7B-Instruct模型进行自我认知微调的快速入门案例，以下最佳实践可以在10分钟内完成。
 
 首先，我们需要将HF格式的权重转为Megatron格式：
 ```shell

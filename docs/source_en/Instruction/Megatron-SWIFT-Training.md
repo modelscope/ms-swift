@@ -16,10 +16,12 @@ cd apex
 pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" ./
 ```
 
+The dependency library Megatron-LM will be git cloned and installed by swift, no manual installation by the user is required. You can also use the environment variable `MEGATRON_LM_PATH` to point to the already downloaded repo path (for offline environments).
+
 
 ## Quick Start Example
 
-This section introduces a quick start example for fine-tuning the self-awareness of the Qwen2.5-7B-Instruct model using two 80GiB A100 GPUs. The entire process can be completed in about 10 minutes.
+This section introduces a quick start example for fine-tuning the self-awareness of the Qwen2.5-7B-Instruct model using two 80GiB A100 GPUs. The following best practices can be completed within 10 minutes.
 
 First, we need to convert the weights from HF (Hugging Face) format to Megatron format:
 
