@@ -95,6 +95,7 @@ class ExportArguments(MergeArguments, BaseArguments):
         if self.quant_method in {'gptq', 'awq'} and self.torch_dtype is None:
             self.torch_dtype = torch.float16
         if (self.to_mcore or self.to_hf) and not dist.is_initialized():
+            self.mcore_model = to_abspath(self.mcore_model)
             set_default_ddp_config()
             init_process_group()
 

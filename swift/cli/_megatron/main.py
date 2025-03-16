@@ -11,7 +11,7 @@ from ..main import cli_main as swift_cli_main
 logger = get_logger()
 
 ROUTE_MAPPING: Dict[str, str] = {
-    'sft': 'swift.cli.megatron.sft',
+    'sft': 'swift.cli._megatron.sft',
 }
 
 

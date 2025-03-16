@@ -43,7 +43,7 @@ class MegatronArguments(ExtraMegatronArguments):
     # The default is None, which will be set to `train_iters`.
     lr_decay_iters: Optional[int] = None
     lr_warmup_iters: int = 0
-    min_lr: int = 0
+    min_lr: float = 0
 
     # regularization
     weight_decay: float = 0.1
