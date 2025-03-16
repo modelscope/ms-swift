@@ -40,9 +40,9 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
     logging_first_step: bool = True
 
     def _init_output_dir(self):
-        if self.output_dir is not None:
-            return
-        self.output_dir = f'output/{self.model_suffix}'
+        if self.output_dir is None:
+            self.output_dir = f'output/{self.model_suffix}'
+        self.output_dir = to_abspath(self.output_dir)
 
     def _init_eval_strategy(self):
         if self.eval_strategy is None:
@@ -264,7 +264,6 @@ class TrainArguments(SwanlabArguments, TorchAccArguments, TunerArguments, Seq2Se
         if self.logging_dir is None:
             self.logging_dir = f'{self.output_dir}/runs'
 
-        self.output_dir = to_abspath(self.output_dir)
         self.logging_dir = to_abspath(self.logging_dir)
         if is_local_master():
             os.makedirs(self.output_dir, exist_ok=True)

@@ -31,11 +31,12 @@ swift export \
     --output_dir Qwen2.5-7B-Instruct-mcore
 ```
 
-然后，使用以下脚本进行训练，训练所需显存资源为2*75GiB：
+然后，使用以下脚本进行训练，训练所需显存资源为2*70GiB：
 ```bash
+NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
-    --load Qwen/Qwen2.5-7B-Instruct-mcore \
+    --load Qwen2.5-7B-Instruct-mcore \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
               'AI-ModelScope/alpaca-gpt4-data-en#500' \
               'swift/self-cognition#500' \
@@ -54,6 +55,9 @@ megatron sft \
     --max_length 2048 \
     --system 'You are a helpful assistant.' \
     --num_workers 4 \
+    --no_save_optim true \
+    --no_save_rng true \
+    --dataset_num_proc 4 \
     --model_author swift \
     --model_name swift-robot
 ```
@@ -101,8 +105,8 @@ swift infer \
 - 🔥train_iters: 训练的总迭代次数，默认为None。
 - 🔥log_interval: log的时间间隔（单位：iters），默认为5。
 - tensorboard_dir: tensorboard日志写入的目录。默认None，即存储在`f'{save}/runs'`目录下。
-- no_masked_softmax_fusion: 
-- no_bias_dropout_fusion: 
+- no_masked_softmax_fusion: 默认为False。用于禁用query_key_value的scaling, masking, and softmax融合。
+- no_bias_dropout_fusion: 默认为False。用于禁用bias和dropout的融合。
 - no_bias_swiglu_fusion: 默认为False。指定`--no_bias_dropout_fusion true`，用于禁止bias和swiglu融合。
 - no_rope_fusion: 默认为False。指定`--no_rope_fusion true`用于禁止rope融合。
 - no_gradient_accumulation_fusion: 默认为False。指定`--no_gradient_accumulation_fusion true`用于禁用梯度累加融合。
@@ -173,7 +177,7 @@ swift infer \
 - logging_leval: 日志级别。默认为None。
 
 **评估参数**
-- 🔥eval_iters: 评估的迭代次数，默认为100。
+- 🔥eval_iters: 评估的迭代次数，默认为20。
 - 🔥eval_interval: 评估的间隔（steps），默认为None，即设置为save_interval。
 
 **混合精度参数**

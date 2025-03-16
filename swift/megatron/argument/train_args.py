@@ -28,13 +28,12 @@ class MegatronTrainArguments(MegatronArguments, BaseArguments):
 
     def _init_save(self):
         init_process_group()
-        if self.save is not None:
-            return
-        self.save = f'megatron_output/{self.model_suffix}'
+        if self.save is None:
+            self.save = f'megatron_output/{self.model_suffix}'
+        self.save = to_abspath(self.save)
         if self.add_version:
             self.save = add_version_to_work_dir(self.save)
             logger.info(f'args.save: {self.save}')
-        self.save = to_abspath(self.save)
         if is_local_master():
             os.makedirs(self.save, exist_ok=True)
 

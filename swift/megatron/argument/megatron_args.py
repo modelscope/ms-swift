@@ -119,7 +119,7 @@ class MegatronArguments(ExtraMegatronArguments):
     logging_leval: Optional[str] = None
 
     # evaluate
-    eval_iters: int = 100
+    eval_iters: int = 20
     eval_interval: Optional[int] = None
 
     # other

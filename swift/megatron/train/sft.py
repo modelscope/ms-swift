@@ -25,7 +25,7 @@ class MegatronSft(SwiftSft):
     def __init__(self, args: Union[List[str], MegatronTrainArguments, None] = None) -> None:
         self.train_msg = {}
         super(SwiftSft, self).__init__(args)
-        _, self.processor = args.get_model_processor(load_model=False)
+        _, self.processor = self.args.get_model_processor(load_model=False)
         patch_megatron(self.processor)
         self.args.init_model_args(self.processor.model_info.config)
         self._prepare_template()
