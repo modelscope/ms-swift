@@ -19,6 +19,9 @@ pip install 'ms-swift[all]' -U
 ```shell
 # pip install git+https://github.com/modelscope/ms-swift.git
 
+# 全能力
+# pip install "git+https://github.com/modelscope/ms-swift.git#egg=ms-swift[all]"
+
 git clone https://github.com/modelscope/ms-swift.git
 cd ms-swift
 pip install -e .
