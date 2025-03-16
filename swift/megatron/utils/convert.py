@@ -87,6 +87,7 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     patch_megatron(processor)
     extra_args = megatron_args.parse_to_megatron()
     initialize_megatron(args_defaults=extra_args)
+
     mg_model = megatron_model_meta.model_provider()
     load_checkpoint([mg_model], None, None, strict=True)
     logger.info('Megatron model created successfully.')

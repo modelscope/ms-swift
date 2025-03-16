@@ -21,7 +21,7 @@ pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation -
 这里介绍使用2卡80GiB A100对Qwen2.5-7B-Instruct模型进行自我认知微调的快速入门案例，以下最佳时间可以在10分钟内完成。
 
 首先，我们需要将HF格式的权重转为Megatron格式：
-```bash
+```shell
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
     --model Qwen/Qwen2.5-7B-Instruct \
@@ -32,7 +32,7 @@ swift export \
 ```
 
 然后，使用以下脚本进行训练，训练所需显存资源为2*70GiB：
-```bash
+```shell
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
@@ -64,7 +64,7 @@ megatron sft \
 ```
 
 最后，将Megatron格式权重转为HF格式：
-```bash
+```shell
 CUDA_VISIBLE_DEVICES=0 \
 swift export \
     --mcore_model megatron_output/Qwen2.5-7B-Instruct/vx-xxx \
@@ -75,7 +75,7 @@ swift export \
 ```
 
 我们对生成的HF格式权重进行推理：
-```bash
+```shell
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
     --model megatron_output/Qwen2.5-7B-Instruct/vx-xxx-hf \
@@ -113,7 +113,6 @@ Remember that everyone's body is different, so what works for one person may not
 
 ## 命令行参数
 
-
 ### Megatron参数
 
 
@@ -139,8 +138,8 @@ Remember that everyone's body is different, so what works for one person may not
 - manual_gc: 禁用默认垃圾回收器，手动触发垃圾回收。默认为False。
 - manual_gc_interval: 触发垃圾回收的间隔。默认为0。
 - seed: python、numpy、pytorch和cuda的随机种子，默认为42。
-- seq_length: 要处理的最大序列长度。默认为None，即设置为`max_position_embeddings`。Megatron-SWIFT采用训练中批次动态padding，因此通常无需修改该参数。对数据集长度进行限制请使用基本参数中的`--max_length`控制。
 - 🔥num_workers: dataloder的workers数量，默认为4。
+- seq_length: 要处理的最大序列长度。默认为None，即设置为`max_position_embeddings`。Megatron-SWIFT采用训练中批次动态padding，因此通常无需修改该参数。对数据集长度进行限制请使用基本参数中的`--max_length`控制。
 - use_cpu_initialization: 在cpu上初始化权重，默认为False。在进行HF和MCore权重转换时会被使用。
 - no_create_attention_mask_in_dataloader: 在dataloader中不创建attention mask，默认为False。
 
@@ -182,9 +181,9 @@ Remember that everyone's body is different, so what works for one person may not
 - 🔥pipeline_model_parallel_size: pp数，默认为1。
 - 🔥sequence_parallel: 启动序列并行的优化器。默认为False。
 - 🔥context_parallel_size: cp数，默认为1。
-- 🔥tp_comm_overlap: 启用张量并行通信与GEMM（通用矩阵乘法）内核的重叠（降低通信耗时）。默认为False。
-- 🔥overlap_grad_reduce: 启用DDP中grad reduce操作的重叠（降低DP通信耗时）。默认为False。
-- 🔥overlap_param_gather: 启用分布式优化器中参数all-gather的重叠（降低DP通信耗时）。默认为False。
+- tp_comm_overlap: 启用张量并行通信与GEMM（通用矩阵乘法）内核的重叠（降低通信耗时）。默认为False。
+- overlap_grad_reduce: 启用DDP中grad reduce操作的重叠（降低DP通信耗时）。默认为False。
+- overlap_param_gather: 启用分布式优化器中参数all-gather的重叠（降低DP通信耗时）。默认为False。
 - distributed_timeout_minutes: torch.distributed的timeout时间（单位为分钟），默认为60分钟。
 
 **日志参数**
