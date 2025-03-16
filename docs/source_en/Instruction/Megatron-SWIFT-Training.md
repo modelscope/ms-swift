@@ -35,7 +35,7 @@ swift export \
     --output_dir Qwen2.5-7B-Instruct-mcore
 ```
 
-Next, use the following script to start training. The required GPU memory resources are 2*70GiB:
+Next, use the following script to start training. The required GPU memory resources are 2*80GiB:
 
 ```shell
 NPROC_PER_NODE=2 \
@@ -46,7 +46,7 @@ megatron sft \
               'AI-ModelScope/alpaca-gpt4-data-en#500' \
               'swift/self-cognition#500' \
     --tensor_model_parallel_size 2 \
-    --micro_batch_size 1 \
+    --micro_batch_size 4 \
     --global_batch_size 16 \
     --recompute_granularity selective \
     --train_iters 100 \
@@ -131,7 +131,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - 🔥num_workers: Number of workers for the dataloader, default is 4.
 - seq_length: Maximum sequence length to process. Default is None, meaning it will be set to `max_position_embeddings`. Megatron-SWIFT uses dynamic padding during training, so usually there is no need to modify this parameter. To limit dataset length, use the `--max_length` control in basic parameters.
 - use_cpu_initialization: Initializes weights on the CPU, default is False. Used during HF and MCore weight conversion.
-- no_create_attention_mask_in_dataloader: Does not create an attention mask in the dataloader, default is False.
+- no_create_attention_mask_in_dataloader: Does not create an attention mask in the dataloader, default is True.
 
 **Learning Rate Parameters**:
 

@@ -33,7 +33,7 @@ swift export \
     --output_dir Qwen2.5-7B-Instruct-mcore
 ```
 
-然后，使用以下脚本进行训练，训练所需显存资源为2*70GiB：
+然后，使用以下脚本进行训练，训练所需显存资源为2*80GiB：
 ```shell
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
@@ -43,7 +43,7 @@ megatron sft \
               'AI-ModelScope/alpaca-gpt4-data-en#500' \
               'swift/self-cognition#500' \
     --tensor_model_parallel_size 2 \
-    --micro_batch_size 1 \
+    --micro_batch_size 4 \
     --global_batch_size 16 \
     --recompute_granularity selective \
     --train_iters 100 \
@@ -125,7 +125,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - 🔥num_workers: dataloder的workers数量，默认为4。
 - seq_length: 要处理的最大序列长度。默认为None，即设置为`max_position_embeddings`。Megatron-SWIFT采用训练中批次动态padding，因此通常无需修改该参数。对数据集长度进行限制请使用基本参数中的`--max_length`控制。
 - use_cpu_initialization: 在cpu上初始化权重，默认为False。在进行HF和MCore权重转换时会被使用。
-- no_create_attention_mask_in_dataloader: 在dataloader中不创建attention mask，默认为False。
+- no_create_attention_mask_in_dataloader: 在dataloader中不创建attention mask，默认为True。
 
 
 **学习率参数**:

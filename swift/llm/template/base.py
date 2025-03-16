@@ -1133,11 +1133,12 @@ class Template(ProcessorMixin):
         if use_torchacc() or self.sequence_parallel_size > 1:
             res = self._torchacc_xtuner_data_collator(res, padding_to, self.tokenizer, padding_side)
         if self.use_megatron:
-            from megatron.training.utils import get_ltor_masks_and_position_ids
-            attention_mask, loss_mask, position_ids = get_ltor_masks_and_position_ids(
-                res['labels'], -100, False, False, True)
+            labels = res['labels']
+            loss_mask = (labels != -100).float()
+            position_ids = torch.arange(
+                labels.shape[1], dtype=torch.long, device=labels.device).unsqueeze(0).expand_as(labels).contiguous()
             res['tokens'] = res.pop('input_ids')
-            res.update({'attention_mask': attention_mask, 'loss_mask': loss_mask, 'position_ids': position_ids})
+            res.update({'loss_mask': loss_mask, 'position_ids': position_ids})
 
         return res
 

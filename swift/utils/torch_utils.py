@@ -19,7 +19,7 @@ from modelscope.hub.utils.utils import get_cache_dir
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import is_torch_cuda_available, is_torch_mps_available, is_torch_npu_available
 
-from .env import get_dist_setting
+from .env import get_dist_setting, is_dist_ta, is_dist, is_local_master
 from .logger import get_logger
 
 logger = get_logger()
@@ -231,13 +231,20 @@ def find_all_linears(model: nn.Module) -> List[str]:
 
 
 @contextmanager
-def safe_ddp_context(hash_id: str):
-    lock_dir = os.path.join(get_cache_dir(), 'lockers')
-    os.makedirs(lock_dir, exist_ok=True)
-    file_path = hashlib.sha256(hash_id.encode('utf-8')).hexdigest() + '.lock'
-    file_path = os.path.join(lock_dir, file_path)
-    with FileLock(file_path):
+def safe_ddp_context(hash_id: str, use_barrier: bool = False):
+    if use_barrier and dist.is_initialized():
+        if (is_dist() or is_dist_ta()) and not is_local_master():
+            dist.barrier()
         yield
+        if (is_dist() or is_dist_ta()) and is_local_master():
+            dist.barrier()
+    else:
+        lock_dir = os.path.join(get_cache_dir(), 'lockers')
+        os.makedirs(lock_dir, exist_ok=True)
+        file_path = hashlib.sha256(hash_id.encode('utf-8')).hexdigest() + '.lock'
+        file_path = os.path.join(lock_dir, file_path)
+        with FileLock(file_path):
+            yield
 
 
 def get_device(local_rank: Optional[Union[str, int]] = None) -> str:

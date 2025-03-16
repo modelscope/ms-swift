@@ -126,7 +126,7 @@ class MegatronArguments(ExtraMegatronArguments):
     seed: int = 42
     seq_length: Optional[int] = None
     num_workers: int = 4
-    no_create_attention_mask_in_dataloader: bool = False
+    no_create_attention_mask_in_dataloader: bool = True
 
     def __post_init__(self):
         os.environ['CUDA_DEVICE_MAX_CONNECTIONS'] = '1'

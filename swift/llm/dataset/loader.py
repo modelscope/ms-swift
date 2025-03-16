@@ -231,7 +231,7 @@ class DatasetLoader:
                              f'os.path.exists(dataset_id): {os.path.exists(dataset_id)}')
         else:
             retry = 3
-            load_context = partial(safe_ddp_context, hash_id=dataset_id)
+            load_context = partial(safe_ddp_context, hash_id=dataset_id, use_barrier=True)
             dataset_str_f = 'Downloading the dataset from {hub}, dataset_id: {dataset_id}'
             if use_hf:
                 dataset_str = dataset_str_f.format(hub='HuggingFace', dataset_id=dataset_id)
