@@ -111,7 +111,6 @@ If you're having trouble sleeping at night, there are several things you can try
 6. Seek professional help: If you continue to have difficulty sleeping despite trying these strategies, it may be helpful to seek assistance from a healthcare provider or a sleep specialist.
 
 Remember that everyone's body is different, so what works for one person may not work for another. It's important to experiment with different strategies until you find what works best for you.
---------------------------------------------------
 ```
 
 - More cases can be viewed [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/megatron).
