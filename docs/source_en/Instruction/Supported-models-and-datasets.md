@@ -446,6 +446,8 @@ The table below introduces the models integrated with ms-swift:
 |[LLM-Research/gemma-2-9b-it](https://modelscope.cn/models/LLM-Research/gemma-2-9b-it)|gemma2|gemma|transformers>=4.42|-|[google/gemma-2-9b-it](https://huggingface.co/google/gemma-2-9b-it)|
 |[LLM-Research/gemma-2-27b](https://modelscope.cn/models/LLM-Research/gemma-2-27b)|gemma2|gemma|transformers>=4.42|-|[google/gemma-2-27b](https://huggingface.co/google/gemma-2-27b)|
 |[LLM-Research/gemma-2-27b-it](https://modelscope.cn/models/LLM-Research/gemma-2-27b-it)|gemma2|gemma|transformers>=4.42|-|[google/gemma-2-27b-it](https://huggingface.co/google/gemma-2-27b-it)|
+|[LLM-Research/gemma-3-1b-pt](https://modelscope.cn/models/LLM-Research/gemma-3-1b-pt)|gemma3_text|gemma3_text|transformers>=4.49|-|[google/gemma-3-1b-pt](https://huggingface.co/google/gemma-3-1b-pt)|
+|[LLM-Research/gemma-3-1b-it](https://modelscope.cn/models/LLM-Research/gemma-3-1b-it)|gemma3_text|gemma3_text|transformers>=4.49|-|[google/gemma-3-1b-it](https://huggingface.co/google/gemma-3-1b-it)|
 |[skywork/Skywork-13B-base](https://modelscope.cn/models/skywork/Skywork-13B-base)|skywork|skywork|-|-|[skywork/Skywork-13B-base](https://huggingface.co/skywork/Skywork-13B-base)|
 |[skywork/Skywork-13B-chat](https://modelscope.cn/models/skywork/Skywork-13B-chat)|skywork|skywork|-|-|-|
 |[AI-ModelScope/Skywork-o1-Open-Llama-3.1-8B](https://modelscope.cn/models/AI-ModelScope/Skywork-o1-Open-Llama-3.1-8B)|skywork_o1|skywork_o1|transformers>=4.43|-|[Skywork/Skywork-o1-Open-Llama-3.1-8B](https://huggingface.co/Skywork/Skywork-o1-Open-Llama-3.1-8B)|
@@ -703,6 +705,12 @@ The table below introduces the models integrated with ms-swift:
 |[AI-ModelScope/pixtral-12b](https://modelscope.cn/models/AI-ModelScope/pixtral-12b)|pixtral|pixtral|transformers>=4.45|vision|[mistral-community/pixtral-12b](https://huggingface.co/mistral-community/pixtral-12b)|
 |[InfiniAI/Megrez-3B-Omni](https://modelscope.cn/models/InfiniAI/Megrez-3B-Omni)|megrez_omni|megrez_omni|-|vision, audio|[Infinigence/Megrez-3B-Omni](https://huggingface.co/Infinigence/Megrez-3B-Omni)|
 |[bytedance-research/Valley-Eagle-7B](https://modelscope.cn/models/bytedance-research/Valley-Eagle-7B)|valley|valley|transformers>=4.42, av|vision|-|
+|[LLM-Research/gemma-3-4b-pt](https://modelscope.cn/models/LLM-Research/gemma-3-4b-pt)|gemma3_vision|gemma3_vision|transformers>=4.49|-|[google/gemma-3-4b-pt](https://huggingface.co/google/gemma-3-4b-pt)|
+|[LLM-Research/gemma-3-4b-it](https://modelscope.cn/models/LLM-Research/gemma-3-4b-it)|gemma3_vision|gemma3_vision|transformers>=4.49|-|[google/gemma-3-4b-it](https://huggingface.co/google/gemma-3-4b-it)|
+|[LLM-Research/gemma-3-12b-pt](https://modelscope.cn/models/LLM-Research/gemma-3-12b-pt)|gemma3_vision|gemma3_vision|transformers>=4.49|-|[google/gemma-3-12b-pt](https://huggingface.co/google/gemma-3-12b-pt)|
+|[LLM-Research/gemma-3-12b-it](https://modelscope.cn/models/LLM-Research/gemma-3-12b-it)|gemma3_vision|gemma3_vision|transformers>=4.49|-|[google/gemma-3-12b-it](https://huggingface.co/google/gemma-3-12b-it)|
+|[LLM-Research/gemma-3-27b-pt](https://modelscope.cn/models/LLM-Research/gemma-3-27b-pt)|gemma3_vision|gemma3_vision|transformers>=4.49|-|[google/gemma-3-27b-pt](https://huggingface.co/google/gemma-3-27b-pt)|
+|[LLM-Research/gemma-3-27b-it](https://modelscope.cn/models/LLM-Research/gemma-3-27b-it)|gemma3_vision|gemma3_vision|transformers>=4.49|-|[google/gemma-3-27b-it](https://huggingface.co/google/gemma-3-27b-it)|
 
 
 ## Datasets
