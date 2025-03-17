@@ -123,10 +123,21 @@ def contrastive_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) 
 @register_loss_func(LossType.infonce)
 def infonce_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> torch.Tensor:
     temperature = 0.1
+    from swift.utils import get_dist_setting
+    rank, _, world_size, _ = get_dist_setting()[2]
     sentence1, sentence2 = _parse_pair_sentence(outputs)
-    similarity_matrix = torch.matmul(sentence1, sentence2.T) / temperature
-    labels = torch.arange(sentence1.size(0)).to(sentence1.device)
-    return nn.CrossEntropyLoss()(similarity_matrix, labels)
+    if world_size > 1:
+        from accelerate.utils import gather
+        sentence1 = gather(sentence1)
+        sentence2 = gather(sentence2)
+    if rank <= 0:
+        similarity_matrix = torch.matmul(sentence1, sentence2.T) / temperature
+        labels = torch.arange(sentence1.size(0)).to(sentence1.device)
+        loss = nn.CrossEntropyLoss()(similarity_matrix, labels)
+        if world_size > 1:
+            from accelerate.utils import broadcast
+            loss = broadcast(loss)
+    return loss # noqa
 
 
 @register_loss_func(LossType.online_contrastive)
