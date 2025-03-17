@@ -19,7 +19,7 @@ from modelscope.hub.utils.utils import get_cache_dir
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import is_torch_cuda_available, is_torch_mps_available, is_torch_npu_available
 
-from .env import get_dist_setting, is_dist, is_dist_ta, is_local_master
+from .env import get_dist_setting, is_dist, is_dist_ta, is_master
 from .logger import get_logger
 
 logger = get_logger()
@@ -233,10 +233,10 @@ def find_all_linears(model: nn.Module) -> List[str]:
 @contextmanager
 def safe_ddp_context(hash_id: str, use_barrier: bool = False):
     if use_barrier and dist.is_initialized():
-        if (is_dist() or is_dist_ta()) and not is_local_master():
+        if (is_dist() or is_dist_ta()) and not is_master():
             dist.barrier()
         yield
-        if (is_dist() or is_dist_ta()) and is_local_master():
+        if (is_dist() or is_dist_ta()) and is_master():
             dist.barrier()
     else:
         lock_dir = os.path.join(get_cache_dir(), 'lockers')

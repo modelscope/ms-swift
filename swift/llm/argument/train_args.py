@@ -9,8 +9,7 @@ from transformers.utils.versions import require_version
 from swift.plugin import LOSS_MAPPING
 from swift.trainers import TrainerFactory
 from swift.utils import (add_version_to_work_dir, get_device_count, get_logger, get_pai_tensorboard_dir,
-                         is_liger_available, is_local_master, is_mp, is_pai_training_job, is_swanlab_available,
-                         use_torchacc)
+                         is_liger_available, is_master, is_mp, is_pai_training_job, is_swanlab_available, use_torchacc)
 from .base_args import BaseArguments, to_abspath
 from .tuner_args import TunerArguments
 
@@ -262,7 +261,7 @@ class TrainArguments(SwanlabArguments, TorchAccArguments, TunerArguments, Seq2Se
             self.logging_dir = f'{self.output_dir}/runs'
 
         self.logging_dir = to_abspath(self.logging_dir)
-        if is_local_master():
+        if is_master():
             os.makedirs(self.output_dir, exist_ok=True)
 
         self.training_args.output_dir = self.output_dir
