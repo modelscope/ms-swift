@@ -16,7 +16,7 @@ def get_cache_mapping(fpath):
     idx = text.find('| Model ID |')
     text = text[idx:]
     text_list = text.split('\n')[2:]
-    cache_mapping = {}  # dataset_id -> (dataset_size, stat)
+    cache_mapping = {}
     for text in text_list:
         if not text:
             continue
