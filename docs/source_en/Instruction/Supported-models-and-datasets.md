@@ -11,8 +11,8 @@ The table below introduces the models integrated with ms-swift:
 
 
 ## Large Language Models
-| Model ID | Model Type | Default Template | Requires | Support Megatron |Tags | HF Model ID |
-| -------- | -----------| ---------------- | -------- | ---- | ----------- |
+| Model ID | Model Type | Default Template | Requires | Support Megatron | Tags | HF Model ID |
+| -------- | -----------| ---------------- | -------- | ---------------- | ---- | ----------- |
 |[Qwen/Qwen-1_8B-Chat](https://modelscope.cn/models/Qwen/Qwen-1_8B-Chat)|qwen|qwen|-|&#x2714;|-|[Qwen/Qwen-1_8B-Chat](https://huggingface.co/Qwen/Qwen-1_8B-Chat)|
 |[Qwen/Qwen-7B-Chat](https://modelscope.cn/models/Qwen/Qwen-7B-Chat)|qwen|qwen|-|&#x2714;|-|[Qwen/Qwen-7B-Chat](https://huggingface.co/Qwen/Qwen-7B-Chat)|
 |[Qwen/Qwen-14B-Chat](https://modelscope.cn/models/Qwen/Qwen-14B-Chat)|qwen|qwen|-|&#x2714;|-|[Qwen/Qwen-14B-Chat](https://huggingface.co/Qwen/Qwen-14B-Chat)|
@@ -515,8 +515,8 @@ The table below introduces the models integrated with ms-swift:
 
 
 ### Multimodal large models
-| Model ID | Model Type | Default Template | Requires | Support Megatron |Tags | HF Model ID |
-| -------- | -----------| ---------------- | -------- | ---- | ----------- |
+| Model ID | Model Type | Default Template | Requires | Support Megatron | Tags | HF Model ID |
+| -------- | -----------| ---------------- | -------- | ---------------- | ---- | ----------- |
 |[Qwen/Qwen-VL-Chat](https://modelscope.cn/models/Qwen/Qwen-VL-Chat)|qwen_vl|qwen_vl|-|&#x2718;|vision|[Qwen/Qwen-VL-Chat](https://huggingface.co/Qwen/Qwen-VL-Chat)|
 |[Qwen/Qwen-VL](https://modelscope.cn/models/Qwen/Qwen-VL)|qwen_vl|qwen_vl|-|&#x2718;|vision|[Qwen/Qwen-VL](https://huggingface.co/Qwen/Qwen-VL)|
 |[Qwen/Qwen-VL-Chat-Int4](https://modelscope.cn/models/Qwen/Qwen-VL-Chat-Int4)|qwen_vl|qwen_vl|-|&#x2718;|vision|[Qwen/Qwen-VL-Chat-Int4](https://huggingface.co/Qwen/Qwen-VL-Chat-Int4)|

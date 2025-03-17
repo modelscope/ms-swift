@@ -27,7 +27,7 @@ def set_attn_state(args, mg_layer, hf_layer):
                 hf_attn.k_proj.bias.reshape((num_query_groups, -1)),
                 hf_attn.v_proj.bias.reshape((num_query_groups, -1)),
             ],
-                    dim=1).reshape(-1))
+                      dim=1).reshape(-1))
 
 
 def set_mlp_state(args, mg_layer, hf_layer):
