@@ -24,14 +24,16 @@ class MegatronModelMeta:
     model_groups: List[ModelGroup] = field(default_factory=list)
 
 
-def register_megatron_model(model_meta: MegatronModelMeta, *, exist_ok: bool = False):
-    megatron_model_type = model_meta.megatron_model_type
-    for model_type in model_meta.model_types:
-        model_meta.model_groups += MODEL_MAPPING[model_type].model_groups
+def register_megatron_model(megatron_model_meta: MegatronModelMeta, *, exist_ok: bool = False):
+    megatron_model_type = megatron_model_meta.megatron_model_type
+    for model_type in megatron_model_meta.model_types:
+        model_meta = MODEL_MAPPING[model_type]
+        model_meta.support_megatron = True
+        megatron_model_meta.model_groups += model_meta.model_groups
     if not exist_ok and megatron_model_type in MEGATRON_MODEL_MAPPING:
         raise ValueError(f'The `{megatron_model_type}` has already been registered in the MODEL_MAPPING.')
 
-    MEGATRON_MODEL_MAPPING[megatron_model_type] = model_meta
+    MEGATRON_MODEL_MAPPING[megatron_model_type] = megatron_model_meta
 
 
 def get_megatron_model_meta(model_id_or_path: str) -> Optional[MegatronModelMeta]:

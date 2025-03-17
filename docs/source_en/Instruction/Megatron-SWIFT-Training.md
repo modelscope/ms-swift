@@ -1,6 +1,8 @@
 
 # Megatron-SWIFT Training
 
+SWIFT incorporates Megatron's parallelization techniques to accelerate the training of large models, including data parallelism, tensor parallelism, pipeline parallelism, sequence parallelism, and context parallelism. For models that support Megatron training, please refer to the [Supported Models and Datasets documentation](./Supported-models-and-datasets.md).
+
 ## Environment Setup
 
 To use Megatron-SWIFT, in addition to installing the `swift` dependencies, you also need to install the following:
@@ -16,7 +18,7 @@ cd apex
 pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" ./
 ```
 
-The dependency library Megatron-LM will be git cloned and installed by swift, no manual installation by the user is required. You can also use the environment variable `MEGATRON_LM_PATH` to point to the already downloaded repo path (for offline environments).
+The dependency library Megatron-LM will be git cloned and installed by swift, no manual installation by the user is required. You can also use the environment variable `MEGATRON_LM_PATH` to point to the already downloaded repo path (for offline environments, use the [core_r0.11.0 branch](https://github.com/NVIDIA/Megatron-LM/tree/core_r0.11.0)).
 
 
 ## Quick Start Example
@@ -99,7 +101,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 ```
 
 - More cases can be viewed [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/megatron).
-
+- For pretraining, you can use `megatron pt` instead of `megatron sft`, which will use a generative template for training.
 
 ## Command Line Arguments
 
@@ -215,7 +217,6 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - position_embedding_type: Type of positional embedding, options are 'learned_absolute', 'rope', 'relative', and 'none'. Default is 'rope'.
 - rotary_base: Default is 10000.
 - rotary_percent: Default is 1.
-- rotary_seq_len_interpolation_factor: Sequence length interpolation factor, default is None.
 - normalization: Options are 'LayerNorm', 'RMSNorm'. Default is RMSNorm.
 - norm_epsilon: Default is 1e-5.
 - swiglu: Uses swiglu instead of the default gelu. Default is True.

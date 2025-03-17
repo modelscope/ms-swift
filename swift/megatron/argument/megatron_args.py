@@ -90,7 +90,6 @@ class MegatronArguments(ExtraMegatronArguments):
     position_embedding_type: Literal['learned_absolute', 'rope', 'relative', 'none'] = 'rope'
     rotary_base: int = 10000
     rotary_percent: float = 1.
-    rotary_seq_len_interpolation_factor: Optional[int] = None
     normalization: Literal['LayerNorm', 'RMSNorm'] = 'RMSNorm'
     norm_epsilon: float = 1e-5
     swiglu: bool = True

@@ -17,10 +17,11 @@ def set_attn_state(args, mg_layer, hf_layer):
     hf_attn.o_proj.weight.data.copy_(mg_attn.linear_proj.weight)
 
     # Copy bias
-    mg_attn_bias = mg_attn.linear_qkv.bias.reshape((num_query_groups, -1))
-    hf_attn.q_proj.bias.data.copy_(mg_attn_bias[:, :q_dim].reshape(-1))
-    hf_attn.k_proj.bias.data.copy_(mg_attn_bias[:, q_dim:-kv_dim].reshape(-1))
-    hf_attn.v_proj.bias.data.copy_(mg_attn_bias[:, -kv_dim:].reshape(-1))
+    if args.add_qkv_bias:
+        mg_attn_bias = mg_attn.linear_qkv.bias.reshape((num_query_groups, -1))
+        hf_attn.q_proj.bias.data.copy_(mg_attn_bias[:, :q_dim].reshape(-1))
+        hf_attn.k_proj.bias.data.copy_(mg_attn_bias[:, q_dim:-kv_dim].reshape(-1))
+        hf_attn.v_proj.bias.data.copy_(mg_attn_bias[:, -kv_dim:].reshape(-1))
 
 
 def set_mlp_state(args, mg_layer, hf_layer):

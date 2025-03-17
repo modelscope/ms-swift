@@ -16,7 +16,9 @@ config_mapping = {
     'padded_vocab_size': ['vocab_size'],
     'attention_dropout': ['attention_dropout'],
     'untie_embeddings_and_output_weights': ['tie_word_embeddings'],
-    'swiglu': ['hidden_act']
+    'swiglu': ['hidden_act'],
+    'add_qkv_bias': ['attention_bias'],
+    'disable_bias_linear': ['mlp_bias']
 }
 
 
@@ -28,7 +30,7 @@ def convert_hf_config(config) -> Dict[str, Any]:
                 hf_v = getattr(config, hf_k)
                 if k == 'rotary_base':
                     megatron_config[k] = int(hf_v)
-                elif k == 'untie_embeddings_and_output_weights':
+                elif k in {'untie_embeddings_and_output_weights', 'disable_bias_linear'}:
                     megatron_config[k] = not hf_v
                 elif k == 'swiglu':
                     if hf_v == 'silu':

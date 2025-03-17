@@ -1,6 +1,8 @@
 
 # Megatron-SWIFT训练
 
+SWIFT引入了Megatron的并行技术来加速大模型的训练，包括数据并行、张量并行、流水线并行、序列并行，上下文并行。支持Megatron训练的模型可以参考[支持的模型与数据集文档](./支持的模型和数据集.md)。
+
 ## 环境准备
 使用Megatron-SWIFT，除了安装swift依赖外，还需要安装以下内容：
 
@@ -15,7 +17,7 @@ cd apex
 pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" ./
 ```
 
-依赖库Megatron-LM将会由swift进行git clone并安装，不需要用户手动安装。你也可以通过环境变量`MEGATRON_LM_PATH`指向已经下载好的repo路径（断网环境）。
+依赖库Megatron-LM将会由swift进行git clone并安装，不需要用户手动安装。你也可以通过环境变量`MEGATRON_LM_PATH`指向已经下载好的repo路径（断网环境，[core_r0.11.0分支](https://github.com/NVIDIA/Megatron-LM/tree/core_r0.11.0)）。
 
 
 ## 快速入门案例
@@ -93,7 +95,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 ```
 
 - 更多案例可以查看[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/megatron)。
-
+- 若要进行预训练，你可以使用`megatron pt`替代`megatron sft`，这将会使用生成式的template进行训练。
 
 ## 命令行参数
 
@@ -202,7 +204,6 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - position_embedding_type: 位置编码的类型，可选为'learned_absolute'、'rope'、'relative'和'none'，默认为'rope'。
 - rotary_base: 默认为10000。
 - rotary_percent: 默认为1.。
-- rotary_seq_len_interpolation_factor: 序列长度差值系数，默认为None。
 - normalization: 可选为'LayerNorm', 'RMSNorm'，默认为RMSNorm。
 - norm_epsilon: 默认为1e-5。
 - swiglu: 使用swiglu替代默认的gelu。默认为True。
