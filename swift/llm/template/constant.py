@@ -67,6 +67,7 @@ class LLMTemplateType:
     wizardlm2 = 'wizardlm2'
     wizardlm2_moe = 'wizardlm2_moe'
     gemma = 'gemma'
+    gemma3_text = 'gemma3_text'
     phi3 = 'phi3'
     phi4 = 'phi4'
 
@@ -169,6 +170,7 @@ class MLLMTemplateType:
     molmo = 'molmo'
     megrez_omni = 'megrez_omni'
     valley = 'valley'
+    gemma3_vision = 'gemma3_vision'
 
 
 class TemplateType(LLMTemplateType, MLLMTemplateType, RMTemplateType):
