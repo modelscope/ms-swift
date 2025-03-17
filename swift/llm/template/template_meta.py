@@ -98,8 +98,6 @@ class TemplateMeta:
         self.support_multi_round = self.chat_sep is not None
         if self.tool_prompt is None:
             self.tool_prompt = self.prompt  # default as user
-        if self.template_type == 'gemma3_text':
-            print()
 
     @staticmethod
     def _token_attr_to_id(tokenizer: PreTrainedTokenizerBase, value: Optional[Prompt]) -> Optional[Prompt]:
