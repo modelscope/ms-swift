@@ -83,10 +83,9 @@ class Gemma3Template(Template):
             system = inputs.system
             inputs.system = None
             inputs.messages[0]['content'] = system + '\n\n' + inputs.messages[0]['content']
-        if not self.is_training:
-            for message in inputs.messages:
-                if message['role'] == 'assistant' and isinstance(message['content'], str):
-                    message['content'] = message['content'].strip('\n')
+        for message in inputs.messages:
+            if message['role'] == 'assistant' and isinstance(message['content'], str):
+                message['content'] = message['content'].strip('\n')
         return super()._swift_encode(inputs)
 
 
