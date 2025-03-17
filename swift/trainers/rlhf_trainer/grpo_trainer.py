@@ -107,7 +107,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         from swift.trainers.rlhf_arguments import GRPOConfig
         args: GRPOConfig = kwargs['args']
         #add tool call
-        print(args)
         self.tool_call = tools[args.tool_call]
         args.tool_call_weight = args.tool_call_weight
         self.reward_weights = torch.ones(1, dtype=torch.float32)  #通过配置
