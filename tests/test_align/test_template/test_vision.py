@@ -478,9 +478,9 @@ def test_phi4_vision():
 
 def test_gemma3_vision():
     pt_engine = PtEngine('LLM-Research/gemma-3-4b-it')
-    response = _infer_model(pt_engine, messages=[{'role': 'user', 'content': 'describe the image.'}])
+    response = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
-    response2 = _infer_model(pt_engine, messages=[{'role': 'user', 'content': 'describe the image.'}])
+    response2 = _infer_model(pt_engine)
     assert response == response2
 
 

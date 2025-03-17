@@ -1,6 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Any, Dict
 
+from transformers import AutoConfig
+
 from swift.llm import TemplateType
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
@@ -111,6 +113,19 @@ register_model(
         requires=['transformers>=4.49'],
     ))
 
+
+def get_model_tokenizer_gemma3(model_dir: str,
+                               model_info: ModelInfo,
+                               model_kwargs: Dict[str, Any],
+                               load_model: bool = True,
+                               **kwargs):
+    from transformers import Gemma3ForConditionalGeneration
+    kwargs['automodel_class'] = kwargs['automodel_class'] or Gemma3ForConditionalGeneration
+    model, processor = get_model_tokenizer_multimodal(model_dir, model_info, model_kwargs, load_model, **kwargs)
+
+    return model, processor
+
+
 register_model(
     ModelMeta(
         MLLMModelType.gemma3_vision,
@@ -125,7 +140,7 @@ register_model(
             ], ),
         ],
         TemplateType.gemma3_vision,
-        get_model_tokenizer_with_flash_attn,
+        get_model_tokenizer_gemma3,
         architectures=['Gemma3ForConditionalGeneration'],
         model_arch=ModelArch.gemma3_vision,
         requires=['transformers>=4.49'],

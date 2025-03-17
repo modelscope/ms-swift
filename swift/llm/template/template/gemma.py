@@ -2,12 +2,15 @@
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional
 
+import numpy as np
+import torch
+
 from swift.utils import upper_bound
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
-from ..utils import Context, Prompt
+from ..utils import Context, Prompt, findall
 
 
 @dataclass
@@ -79,7 +82,7 @@ class Gemma3Template(Template):
         if inputs.system is not None:
             system = inputs.system
             inputs.system = None
-        inputs.messages[0]['content'] = system + '\n\n' + inputs.messages[0]['content']
+            inputs.messages[0]['content'] = system + '\n\n' + inputs.messages[0]['content']
         if not self.is_training:
             for message in inputs.messages:
                 if message['role'] == 'assistant' and isinstance(message['content'], str):
@@ -91,6 +94,8 @@ register_template(Gemma3TextTemplateMeta(LLMTemplateType.gemma3_text, template_c
 
 
 class Gemma3VisionTemplate(Gemma3Template):
+    boi_token_id = 255999
+    img_token_id = 262144
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -98,7 +103,35 @@ class Gemma3VisionTemplate(Gemma3Template):
         return ['<start_of_image>']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        from transformers.models.gemma3.processing_gemma3 import Gemma3ProcessorKwargs
+
         encoded = super()._encode(inputs)
+        if inputs.images:
+            input_ids = encoded['input_ids']
+            labels = encoded['labels']
+            idx_list = findall(input_ids, self.boi_token_id)
+            img_tokens = self.tokenizer.encode(self.processor.full_image_sequence)
+            added_tokens_len = 0
+
+            for i, idx in enumerate(idx_list):
+                token_len = len(img_tokens)
+                input_ids = input_ids[:idx + added_tokens_len] + img_tokens + input_ids[added_tokens_len + idx + 1:]
+                if labels:
+                    labels = labels[:idx + added_tokens_len] + [-100] * token_len + labels[added_tokens_len + idx + 1:]
+                added_tokens_len += token_len - 1
+
+            # TODO: customize
+            processor_kwargs = Gemma3ProcessorKwargs._defaults['images_kwargs']
+            image_inputs = self.processor.image_processor(inputs.images, **processor_kwargs)
+            image_inputs['pixel_values'] = torch.as_tensor(image_inputs['pixel_values'])
+            image_inputs.pop('num_crops')
+
+            array_ids = np.array(input_ids)
+            mm_token_type_ids = np.zeros_like(input_ids)
+            mm_token_type_ids[array_ids == self.processor.image_token_id] = 1
+            encoded['token_type_ids'] = mm_token_type_ids.tolist()
+            encoded['input_ids'] = input_ids
+            encoded['pixel_values'] = image_inputs['pixel_values']
         return encoded
 
 
