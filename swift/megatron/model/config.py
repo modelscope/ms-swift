@@ -20,7 +20,7 @@ config_mapping = {
 }
 
 
-def load_config(config) -> Dict[str, Any]:
+def convert_hf_config(config) -> Dict[str, Any]:
     megatron_config = {}
     for k, hf_keys in config_mapping.items():
         for hf_k in hf_keys:

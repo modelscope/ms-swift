@@ -58,7 +58,7 @@ def convert_hf2mcore(args: ExportArguments) -> None:
     kwargs['torch_dtype'] = torch.float32
     hf_model, processor = get_model_tokenizer(**kwargs)
     megatron_model_meta = get_megatron_model_meta(args.model)
-    kwargs = megatron_model_meta.load_config(processor.model_info.config)
+    kwargs = megatron_model_meta.convert_hf_config(processor.model_info.config)
     megatron_args = MegatronArguments(**kwargs, **convert_kwargs, save=args.output_dir)
     patch_megatron_tokenizer(processor)
     extra_args = megatron_args.parse_to_megatron()
@@ -82,7 +82,7 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     kwargs['torch_dtype'] = torch.float32
     hf_model, processor = get_model_tokenizer(**kwargs)
     megatron_model_meta = get_megatron_model_meta(args.model)
-    kwargs = megatron_model_meta.load_config(processor.model_info.config)
+    kwargs = megatron_model_meta.convert_hf_config(processor.model_info.config)
     megatron_args = MegatronArguments(**kwargs, **convert_kwargs, load=args.mcore_model)
     patch_megatron_tokenizer(processor)
     extra_args = megatron_args.parse_to_megatron()
