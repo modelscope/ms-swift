@@ -19,6 +19,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from accelerate.utils import gather, gather_object, is_peft_model, set_seed
+from peft.tuners import lora
 from torch.nn import ModuleList
 from transformers import PreTrainedModel, TrainerCallback
 from trl import GRPOTrainer as HFGRPOTrainer
@@ -504,7 +505,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         for i, parameter_group in enumerate(self.parameter_groups):
             parameter_group_no_lora = self.parameter_groups_no_lora[i]
             with unwrap_model_for_generation(
-                    self.model,
+                    self.model_wrapped,
                     self.accelerator,
                     gather_deepspeed3_params=self.args.ds3_gather_for_generation,
                     gather_parameters=parameter_group) as unwrapped_model:
@@ -519,10 +520,16 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
                 def get_delta_weight(self, adapter) -> torch.Tensor:
                     # may be offload
-                    self.lora_A[adapter].weight.data = self.lora_A[adapter].weight.data.to(
-                        self.base_layer.weight.device)
-                    self.lora_B[adapter].weight.data = self.lora_B[adapter].weight.data.to(
-                        self.base_layer.weight.device)
+                    if isinstance(self, lora.Embedding):
+                        self.lora_embedding_A[adapter].data = self.lora_embedding_A[adapter].data.to(
+                            self.base_layer.weight.device)
+                        self.lora_embedding_B[adapter].data = self.lora_embedding_B[adapter].data.to(
+                            self.base_layer.weight.device)
+                    else:
+                        self.lora_A[adapter].weight.data = self.lora_A[adapter].weight.data.to(
+                            self.base_layer.weight.device)
+                        self.lora_B[adapter].weight.data = self.lora_B[adapter].weight.data.to(
+                            self.base_layer.weight.device)
                     tensor = self.get_delta_weight_origin(adapter)
                     return tensor.to(self.base_layer.weight.device)
 
@@ -744,7 +751,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         with torch.no_grad():
             if self.old_policy:
-                outputs['old_per_token_logps'] = self._get_per_token_logps(self.model, outputs)
+                outputs['old_per_token_logps'] = self._get_per_token_logps(self.model_wrapped, outputs)
             else:
                 outputs['old_per_token_logps'] = None
 
