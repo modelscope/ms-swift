@@ -16,7 +16,8 @@ config_mapping = {
     'padded_vocab_size': ['vocab_size'],
     'attention_dropout': ['attention_dropout'],
     'untie_embeddings_and_output_weights': ['tie_word_embeddings'],
-    'swiglu': ['hidden_act']
+    'swiglu': ['hidden_act'],
+    'add_qkv_bias': ['attention_bias'],
 }
 
 

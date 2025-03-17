@@ -9,5 +9,6 @@ from .model import model_provider
 
 register_megatron_model(
     MegatronModelMeta(MegatronModelType.gpt, [
-        ModelType.qwen, ModelType.qwen2, ModelType.qwen2_5, ModelType.qwq, ModelType.qwq_preview, ModelType.qwen2_5_math
+        ModelType.qwen, ModelType.qwen2, ModelType.qwen2_5, ModelType.qwq, ModelType.qwq_preview, ModelType.qwen2_5_math,
+        ModelType.llama3, ModelType.llama
     ], model_provider, convert_hf_config, convert_mcore2hf, convert_hf2mcore))
