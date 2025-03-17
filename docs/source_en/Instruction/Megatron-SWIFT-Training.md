@@ -217,7 +217,6 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - position_embedding_type: Type of positional embedding, options are 'learned_absolute', 'rope', 'relative', and 'none'. Default is 'rope'.
 - rotary_base: Default is 10000.
 - rotary_percent: Default is 1.
-- rotary_seq_len_interpolation_factor: Sequence length interpolation factor, default is None.
 - normalization: Options are 'LayerNorm', 'RMSNorm'. Default is RMSNorm.
 - norm_epsilon: Default is 1e-5.
 - swiglu: Uses swiglu instead of the default gelu. Default is True.

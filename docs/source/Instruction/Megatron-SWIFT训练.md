@@ -204,7 +204,6 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - position_embedding_type: 位置编码的类型，可选为'learned_absolute'、'rope'、'relative'和'none'，默认为'rope'。
 - rotary_base: 默认为10000。
 - rotary_percent: 默认为1.。
-- rotary_seq_len_interpolation_factor: 序列长度差值系数，默认为None。
 - normalization: 可选为'LayerNorm', 'RMSNorm'，默认为RMSNorm。
 - norm_epsilon: 默认为1e-5。
 - swiglu: 使用swiglu替代默认的gelu。默认为True。
