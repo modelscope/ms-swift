@@ -28,9 +28,9 @@ def get_model_tokenizer_minimax_vl(model_dir: str,
     config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     kwargs['model_config'] = config
     if kwargs.get('attn_impl') == 'flash_attn':
-        config.attention_type = 1
+        config.attn_type_list = [1] * len(config.attn_type_list)
     else:
-        config.attention_type = 0
+        config.attn_type_list = [0] * len(config.attn_type_list)
     if 'quantization_config' in model_kwargs:
         quantization_config = model_kwargs['quantization_config']
         from transformers import QuantoConfig
@@ -112,9 +112,9 @@ def get_model_tokenizer_minimax_text(model_dir: str,
     config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     kwargs['model_config'] = config
     if kwargs.get('attn_impl') == 'flash_attn':
-        config.attention_type = 1
+        config.attn_type_list = [1] * len(config.attn_type_list)
     else:
-        config.attention_type = 0
+        config.attn_type_list = [0] * len(config.attn_type_list)
     if 'quantization_config' in model_kwargs:
         quantization_config = model_kwargs['quantization_config']
         from transformers import QuantoConfig
