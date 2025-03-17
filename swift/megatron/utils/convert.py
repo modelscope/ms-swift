@@ -16,18 +16,23 @@ logger = get_logger()
 
 
 def test_convert_precision(hf_model, mg_model, processor):
+    torch_dtype = hf_model.dtype
     template = get_template(hf_model.model_meta.template, processor)
     input_ids = template.encode({'messages': [{'role': 'user', 'content': 'who are you?'}]})['input_ids']
     input_ids = torch.tensor(input_ids)[None].to('cuda')
     hf_model.to('cuda')
+    hf_model.to(torch.float32)
     with torch.inference_mode():
         hf_logits = hf_model(input_ids).logits
+    hf_model.to(torch_dtype)
     hf_model.to('cpu')
 
     attention_mask, _, position_ids = get_ltor_masks_and_position_ids(input_ids, -100, True, True, True)
     mg_model.to('cuda')
+    mg_model.to(torch.float32)
     with torch.inference_mode():
         mg_logits = mg_model(input_ids=input_ids, attention_mask=attention_mask, position_ids=position_ids)
+    mg_model.to(torch_dtype)
     mg_model.to('cpu')
 
     mean_diff = (mg_logits - hf_logits).abs().mean().item()
@@ -55,10 +60,9 @@ convert_kwargs = {
 
 def convert_hf2mcore(args: ExportArguments) -> None:
     kwargs = args.get_model_kwargs()
-    kwargs['torch_dtype'] = torch.float32
     hf_model, processor = get_model_tokenizer(**kwargs)
     megatron_model_meta = get_megatron_model_meta(args.model)
-    kwargs = megatron_model_meta.load_config(processor.model_info.config)
+    kwargs = megatron_model_meta.convert_hf_config(processor.model_info.config)
     megatron_args = MegatronArguments(**kwargs, **convert_kwargs, save=args.output_dir)
     patch_megatron_tokenizer(processor)
     extra_args = megatron_args.parse_to_megatron()
@@ -69,8 +73,6 @@ def convert_hf2mcore(args: ExportArguments) -> None:
     megatron_model_meta.convert_hf2mcore(hf_model, mg_model)
     if args.test_convert_precision:
         test_convert_precision(hf_model, mg_model, processor)
-    if args.torch_dtype is not None:
-        mg_model.to(args.torch_dtype)
     logger.info('Successfully transferred HF model weights to MG model.')
     mg_save_checkpoint(1, [mg_model], None, None, 0)
     args.save_args()
@@ -79,10 +81,9 @@ def convert_hf2mcore(args: ExportArguments) -> None:
 
 def convert_mcore2hf(args: ExportArguments) -> None:
     kwargs = args.get_model_kwargs()
-    kwargs['torch_dtype'] = torch.float32
     hf_model, processor = get_model_tokenizer(**kwargs)
     megatron_model_meta = get_megatron_model_meta(args.model)
-    kwargs = megatron_model_meta.load_config(processor.model_info.config)
+    kwargs = megatron_model_meta.convert_hf_config(processor.model_info.config)
     megatron_args = MegatronArguments(**kwargs, **convert_kwargs, load=args.mcore_model)
     patch_megatron_tokenizer(processor)
     extra_args = megatron_args.parse_to_megatron()
@@ -94,8 +95,6 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     megatron_model_meta.convert_mcore2hf(hf_model, mg_model)
     if args.test_convert_precision:
         test_convert_precision(hf_model, mg_model, processor)
-    if args.torch_dtype is not None:
-        hf_model.to(args.torch_dtype)
     logger.info('Successfully transferred MG model weights to HF model.')
     save_checkpoint(
         hf_model,
