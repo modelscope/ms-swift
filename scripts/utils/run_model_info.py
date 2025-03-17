@@ -67,7 +67,7 @@ def get_model_info_table():
                         support_megatron = False
                     support_megatron = '&#x2714;' if support_megatron else '&#x2718;'
                 else:
-                    support_megatron = cache_mapping[ms_model_id]
+                    support_megatron = cache_mapping.get(ms_model_id, '&#x2718;')
                 if support_megatron == '&#x2714;':
                     mg_count += 1
                 r = (f'|{ms_model_id}|{model_type}|{template}|{requires}|{support_megatron}|{tags}|{hf_model_id}|\n')
