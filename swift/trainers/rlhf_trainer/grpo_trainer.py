@@ -89,8 +89,11 @@ class DataCache:
     outputs: List[Dict] = field(default_factory=list)
     distributed_idx: List[List] = field(default_factory=list)
 
+
 def tool_call():
     pass
+
+
 class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
 
@@ -107,21 +110,17 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         print(args)
         self.tool_call = tools[args.tool_call]
         args.tool_call_weight = args.tool_call_weight
-        self.reward_weights = torch.ones(1, dtype=torch.float32) #通过配置
-        self.is_reward_tool_call = args.is_reward_tool_call   #add GRPO config
+        self.reward_weights = torch.ones(1, dtype=torch.float32)  #通过配置
+        self.is_reward_tool_call = args.is_reward_tool_call  #add GRPO config
         # In the __init__ method, after initializing reward_weights:
         if self.is_reward_tool_call and self.tool_call is not None:
             # Add a weight for tool call rewards
             if args.tool_call_weight is not None:
-                self.reward_weights = torch.cat([
-                    self.reward_weights, 
-                    torch.tensor([args.tool_call_weight], dtype=torch.float32)
-                ])
+                self.reward_weights = torch.cat(
+                    [self.reward_weights,
+                     torch.tensor([args.tool_call_weight], dtype=torch.float32)])
             else:
-                self.reward_weights = torch.cat([
-                    self.reward_weights, 
-                    torch.ones(1, dtype=torch.float32)
-                ])
+                self.reward_weights = torch.cat([self.reward_weights, torch.ones(1, dtype=torch.float32)])
         self.args = args
         self.queue = None
         self.train_queue = Queue()
@@ -712,10 +711,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def old_policy(self):
         return self.num_iterations > 1 or self.args.async_generate
 
-    def _generate_and_score_completions(self, inputs: dict[str, Union[torch.Tensor, Any]]) -> dict[str, Union[torch.Tensor, Any]]:
+    def _generate_and_score_completions(
+            self, inputs: dict[str, Union[torch.Tensor, Any]]) -> dict[str, Union[torch.Tensor, Any]]:
         device = self.accelerator.device
         total_tool_calls = 0
-         # 确定当前进程的数据切片
+        # 确定当前进程的数据切片
         process_slice = slice(
             self.accelerator.process_index * len(inputs),
             (self.accelerator.process_index + 1) * len(inputs),
@@ -725,10 +725,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # Deep copy inputs to preserve the original prompt for tool calling
             tool_inputs = deepcopy(inputs)
             tool_inputs, total_tool_calls = self._process_tool_calls(tool_inputs)
-            
+
             # Replace original inputs with tool-processed inputs
             inputs = tool_inputs
-            
+
         else:
             if self.args.use_vllm or self.args.use_lmdeploy:
                 inputs, outputs = self._fast_infer(inputs)
@@ -738,7 +738,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 if is_multimodal:
                     models = self.template.remove_post_encode_hook()
                 with unwrap_model_for_generation(
-                        self.model_wrapped, self.accelerator, gather_deepspeed3_params=self.args.ds3_gather_for_generation):
+                        self.model_wrapped, self.accelerator,
+                        gather_deepspeed3_params=self.args.ds3_gather_for_generation):
                     outputs = self.engine.infer(inputs, self.request_config, use_tqdm=False)
                     self.model.train()
                 if is_multimodal:
@@ -757,19 +758,19 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 messages = inputs[i]['messages']
                 InferRequest.remove_response(messages)
                 messages.append({'role': 'assistant', 'content': output.choices[0].message.content})
-        
+
         # Now process all inputs with all messages for training
         from copy import copy
         template = copy(self.template)
         with self._template_context(template):
             batched_inputs = [template.encode(infer_request) for infer_request in inputs]
             encoded_outputs = to_device(template.data_collator(batched_inputs), self.model.device)
-        
+
         # Extract labels and create mask for all assistant outputs
         labels = encoded_outputs.pop('labels')
         # Identify all positions where labels != -100, which captures all assistant outputs
         completion_mask = (labels != -100)
-        
+
         # Ensure we're not exceeding max completion length
         if completion_mask.sum(1).max() > self.args.max_completion_length:
             # Truncate to max length if needed
@@ -782,13 +783,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 # Set those indices to True in the truncated mask
                 truncated_mask[i, indices] = True
             completion_mask = truncated_mask
-        
+
         # Add to outputs
         encoded_outputs['completion_mask'] = completion_mask
         encoded_outputs['logits_to_keep'] = completion_mask.shape[1]  # Use full length
         encoded_outputs['labels'] = labels  # Put labels back for proper processing
-            
-            # Continue with the existing logic for computing logps and rewards
+
+        # Continue with the existing logic for computing logps and rewards
         with torch.no_grad():
             if self.old_policy:
                 encoded_outputs['old_per_token_logps'] = self._get_per_token_logps(self.model, encoded_outputs)
@@ -822,11 +823,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # Add tool call rewards if enabled
         if self.is_reward_tool_call and self.tool_call is not None:
-            tool_rewards = torch.tensor(
-                [inputs[i].get('_tool_call_reward', 0.0) for i in range(len(inputs))],
-                dtype=torch.float32,
-                device=device
-            ).unsqueeze(1)
+            tool_rewards = torch.tensor([inputs[i].get('_tool_call_reward', 0.0) for i in range(len(inputs))],
+                                        dtype=torch.float32,
+                                        device=device).unsqueeze(1)
             rewards_per_func = torch.cat([rewards_per_func, tool_rewards], dim=1)
 
         rewards_per_func = gather(rewards_per_func)
@@ -845,21 +844,22 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # Log metrics
         mode = 'eval' if self.control.should_evaluate else 'train'
-        completion_length = self.accelerator.gather_for_metrics(encoded_outputs['completion_mask'].sum(1)).float().mean().item()
+        completion_length = self.accelerator.gather_for_metrics(
+            encoded_outputs['completion_mask'].sum(1)).float().mean().item()
         self._metrics[mode]['completion_length'].append(completion_length)
-        
+
         # Add tool call metrics
         if self.tool_call is not None:
             avg_tool_calls = self.accelerator.gather_for_metrics(
                 torch.tensor([total_tool_calls / len(inputs)], device=device)).mean().item()
             self._metrics[mode]['tool_call_nums'].append(avg_tool_calls)
-        
+
         # Other existing metrics
         response_clip_ratio = torch.gt(
             self.accelerator.gather_for_metrics(encoded_outputs['completion_mask'].sum(1)),
             self.args.max_completion_length).float().mean().item()
         self._metrics[mode]['response_clip_ratio'].append(response_clip_ratio)
-        
+
         reward_per_func = rewards_per_func.mean(0)
         for i, reward_func in enumerate(self.reward_funcs):
             if isinstance(reward_func, nn.Module):
@@ -873,7 +873,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # Add tool call reward metric if enabled
         if self.is_reward_tool_call and self.tool_call is not None:
-            self._metrics[mode]['rewards/tool_call'].append(reward_per_func[-1].item()) #todo 应该用反射记录每个tool call的reward
+            self._metrics[mode]['rewards/tool_call'].append(reward_per_func[-1].item())  #todo 应该用反射记录每个tool call的reward
 
         self._metrics[mode]['reward'].append(rewards.mean().item())
         self._metrics[mode]['reward_std'].append(std_grouped_rewards.mean().item())
@@ -881,7 +881,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             'ref_per_token_logps': ref_per_token_logps,
             'advantages': advantages,
         })
-            # Log completions
+        # Log completions
         if self.log_completions and self.state.global_step % self.args.logging_steps == 0:
             table = {
                 'step': [str(self.state.global_step)] * len(rewards),
@@ -889,12 +889,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 'completion': gather_object(completions),
                 'reward': rewards.tolist(),
             }
-            
+
             if self.tool_call is not None:
                 # Log tool call counts for each prompt
                 tool_call_counts = [inputs[i].get('_tool_call_count', 0) for i in range(len(inputs))]
                 table['tool_call_nums'] = tool_call_counts * (len(rewards) // len(inputs))
-            
+
             self.jsonl_writer.append(table)
             if 'wandb' in self.args.report_to and wandb.run is not None and self.accelerator.is_main_process:
                 import pandas as pd
@@ -945,49 +945,49 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     @profiling_decorator
     def _get_per_token_logps(self, model, inputs):
         from trl.trainer.utils import selective_log_softmax
-        
+
         # Extract input_ids and completion_mask
         input_ids = inputs['input_ids']
         completion_mask = inputs.get('completion_mask')
-        
+
         # Get unwrapped model
         unwrapped_model = self.accelerator.unwrap_model(model)
         parameters = inspect.signature(unwrapped_model.forward).parameters
-        
+
         if not unwrapped_model.model_meta.is_multimodal and 'completion_mask' in parameters:
             # If model supports direct masking, use that
             return super()._get_per_token_logps(model, input_ids, inputs['attention_mask'], completion_mask)
-        
+
         # Otherwise, compute full logits and mask afterwards
         forward_inputs = {
-            k: v for k, v in inputs.items() 
-            if k not in ['completion_mask', 'logits_to_keep', 'ref_per_token_logps', 
-                        'advantages', 'old_per_token_logps']
+            k: v
+            for k, v in inputs.items() if k not in
+            ['completion_mask', 'logits_to_keep', 'ref_per_token_logps', 'advantages', 'old_per_token_logps']
         }
-        
+
         # Get logits from model
         logits = model(**forward_inputs).logits
         logits = logits / self.temperature
-        
+
         # Find positions corresponding to completion tokens (where completion_mask is True)
         # Create a mask that selects these positions
         all_positions = torch.where(completion_mask)
         batch_indices = all_positions[0]
         seq_indices = all_positions[1]
-        
+
         # Get the corresponding logits and input IDs
         selected_logits = logits[batch_indices, seq_indices - 1]  # -1 because logits predict next token
         selected_tokens = input_ids[batch_indices, seq_indices]
-        
+
         # Calculate log probabilities for selected tokens
         log_probs = selective_log_softmax(selected_logits.unsqueeze(1), selected_tokens.unsqueeze(1)).squeeze(1)
-        
+
         # Create output tensor with same shape as completion_mask, filled with zeros
         result = torch.zeros_like(completion_mask, dtype=torch.float)
-        
+
         # Place log probs at appropriate positions
         result[batch_indices, seq_indices] = log_probs
-        
+
         return result
 
     def evaluation_loop(self, dataloader, *args, **kwargs):
@@ -1000,11 +1000,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         output.metrics.update(metrics)
         self.queue = self.train_queue
         return output
+
     def _process_tool_calls(self, inputs: List[Dict]) -> Tuple[List[Dict], int]:
         """
         Args:
             inputs: List of input dictionaries with message history
-            
+
         Returns:
             Updated inputs after tool calling process and total number of tool calls
         """
@@ -1013,25 +1014,25 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         tool_call_rewards = [0.0] * len(inputs)
         assistant_tokens_used = [0] * len(inputs)
         total_tool_calls = 0
-        
+
         # Process inputs until all are finished
         active_indices = list(range(len(inputs)))
-        
+
         while active_indices:
             # Generate responses for active inputs with adjusted max_tokens
             active_inputs = [inputs[i] for i in active_indices]
-            
+
             # Create a copy of the request config with adjusted max_tokens for each input
             adjusted_request_configs = []
             for idx in active_indices:
                 tokens_used = assistant_tokens_used[idx]
                 available_tokens = max(1, self.args.max_completion_length - tokens_used)
-                    
+
                 # Create custom request config with adjusted max_tokens
                 config = copy(self.request_config)
                 config.max_tokens = available_tokens
                 adjusted_request_configs.append(config)
-                
+
             # Generate responses with adjusted token limits
             if self.args.use_vllm or self.args.use_lmdeploy:
                 active_inputs = [inputs[i] for i in active_indices]
@@ -1041,7 +1042,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 if is_multimodal:
                     models = self.template.remove_post_encode_hook()
                 with unwrap_model_for_generation(
-                        self.model_wrapped, self.accelerator, gather_deepspeed3_params=self.args.ds3_gather_for_generation):
+                        self.model_wrapped, self.accelerator,
+                        gather_deepspeed3_params=self.args.ds3_gather_for_generation):
                     active_outputs = []
                     for i, input_data in enumerate(active_inputs):
                         # Use custom config for each input
@@ -1050,64 +1052,65 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     self.model.train()
                 if is_multimodal:
                     self.template.register_post_encode_hook(models)
-            
+
             # Process tool calls asynchronously
             futures = []
             executor = concurrent.futures.ThreadPoolExecutor(max_workers=len(active_indices))
-            
+
             # Start all tool calls in parallel
             for i, idx in enumerate(active_indices):
                 completion = active_outputs[i].choices[0].message.content
                 tokens_used = len(self.tokenizer(completion).input_ids)
-                
+
                 # Add assistant response to message history
                 messages = active_inputs[i]['messages']
                 InferRequest.remove_response(messages)
                 messages.append({'role': 'assistant', 'content': completion})
-                
+
                 # Update token count
                 assistant_tokens_used[idx] += tokens_used
-                
+
                 futures.append((executor.submit(self.tool_call, completion), idx))
-            
+
             # Process results and update inputs
             new_active_indices = []
             for future, idx in futures:
                 tool_result, finish, tool_reward = future.result()
-                
+
                 if not finish:
                     # Add user message with tool result
                     inputs[idx]['messages'].append({'role': 'user', 'content': tool_result})
                     new_active_indices.append(idx)
-                
+
                 # Update tracking variables
                 tool_call_counts[idx] += 1
                 total_tool_calls += 1
-                if self.is_reward_tool_call and not finish: #remove last reponse 
+                if self.is_reward_tool_call and not finish:  #remove last reponse
                     tool_call_rewards[idx] += tool_reward
-            
+
             executor.shutdown()
             active_indices = new_active_indices
-            
+
             # Break if no active indices remain
             if not active_indices:
                 break
-        
+
         # Store tool call metrics in inputs for later use
         for i in range(len(inputs)):
             inputs[i]['_tool_call_count'] = tool_call_counts[i]
             inputs[i]['_tool_call_reward'] = tool_call_rewards[i]
             inputs[i]['_assistant_tokens_used'] = assistant_tokens_used[i]
-        
+
         return inputs, total_tool_calls
+
     def _fast_infer_with_custom_configs(self, inputs, request_configs):
         """
         Similar to _fast_infer but uses a different request_config for each input.
-        
+
         Args:
             inputs: List of input dicts
             request_configs: List of request configs (same length as inputs)
-            
+
         Returns:
             inputs, outputs tuple
         """
@@ -1119,23 +1122,23 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if self.args.gc_collect_after_offload:
                 gc_collect()
             self.engine.engine.wake_up()
-            
+
         # First, have main process load weights if needed
         if self.state.global_step != self._last_loaded_step:
             self._move_model_to_vllm_lmdeploy()
             self._last_loaded_step = self.state.global_step
-            
+
         # Gather all prompts
         all_inputs = gather_object(inputs)
         all_configs = gather_object(request_configs)
-        
+
         # Distribute inputs to different workers
         distributed_idx = self.round_robin(len(all_inputs), get_node_setting()[1] * self.args.num_infer_workers)
-        
+
         if self.infer_rank >= 0:
             _input_slice = np.array(all_inputs)[distributed_idx[self.infer_rank]]
             _config_slice = np.array(all_configs)[distributed_idx[self.infer_rank]]
-            
+
             if self.args.async_generate:
                 # Modified async_infer to use custom configs
                 self.async_infer_with_configs(inputs, _input_slice, _config_slice, distributed_idx)
@@ -1153,7 +1156,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             request_config.seed += self.state.global_step
                         output = self.engine.infer([_input_slice[i]], request_config, use_tqdm=False)
                         outputs.extend(output)
-                        
+
                 if self.args.tensor_parallel_size > 1:
                     if self.infer_rank_tp_0 < 0:
                         outputs = []
@@ -1172,10 +1175,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 inputs = data_cache.inputs
                 distributed_idx = data_cache.distributed_idx
             outputs = []
-            
+
         outputs = gather_object(outputs)
         outputs = self.reorder_outputs(outputs, distributed_idx)
-        
+
         if self.args.sleep_level > 0 and self.infer_rank >= 0:
             self.engine.engine.sleep(level=self.args.sleep_level)
             if self.args.gc_collect_after_offload:
@@ -1184,27 +1187,27 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self.load_model()
             if self.args.offload_optimizer:
                 self.load_optimizer()
-                
+
         return inputs, outputs
+
     def async_infer_with_configs(self, inputs, inputs_slice, configs_slice, distributed_idx):
         """
         Asynchronous inference with custom configs for each input.
-        
+
         Args:
             inputs: Original inputs
             inputs_slice: Slice of inputs for this worker
             configs_slice: Slice of configs corresponding to inputs_slice
             distributed_idx: Distribution of indices among workers
         """
+
         def infer_task():
             with set_device_context(self.infer_device):
                 results = []
                 # Process each input with its own config
                 for i in range(len(inputs_slice)):
                     result = self.engine.infer(
-                        infer_requests=[inputs_slice[i]], 
-                        request_config=configs_slice[i], 
-                        use_tqdm=False)
+                        infer_requests=[inputs_slice[i]], request_config=configs_slice[i], use_tqdm=False)
                     results.extend(result)
                 return results
 
@@ -1214,6 +1217,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self.queue.put(DataCache(inputs, _self.result(), distributed_idx))
 
         future.add_done_callback(done)
+
     @property
     def tokenizer(self):
         """Get the tokenizer from the template."""
