@@ -1,8 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Any, Dict
 
-from transformers import AutoConfig
-
 from swift.llm import TemplateType
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
@@ -114,11 +112,11 @@ register_model(
     ))
 
 
-def get_model_tokenizer_gemma3(model_dir: str,
-                               model_info: ModelInfo,
-                               model_kwargs: Dict[str, Any],
-                               load_model: bool = True,
-                               **kwargs):
+def get_model_tokenizer_gemma3_vision(model_dir: str,
+                                      model_info: ModelInfo,
+                                      model_kwargs: Dict[str, Any],
+                                      load_model: bool = True,
+                                      **kwargs):
     from transformers import Gemma3ForConditionalGeneration
     kwargs['automodel_class'] = kwargs['automodel_class'] or Gemma3ForConditionalGeneration
     # It is strongly recommended to train Gemma3 models with the `eager` attention implementation instead of `sdpa`.
@@ -142,7 +140,7 @@ register_model(
             ], ),
         ],
         TemplateType.gemma3_vision,
-        get_model_tokenizer_gemma3,
+        get_model_tokenizer_gemma3_vision,
         architectures=['Gemma3ForConditionalGeneration'],
         model_arch=ModelArch.gemma3_vision,
         requires=['transformers>=4.49'],

@@ -95,7 +95,6 @@ register_template(Gemma3TextTemplateMeta(LLMTemplateType.gemma3_text, template_c
 
 class Gemma3VisionTemplate(Gemma3Template):
     boi_token_id = 255999
-    img_token_id = 262144
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
