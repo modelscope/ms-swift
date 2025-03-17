@@ -1,6 +1,8 @@
 
 # Megatron-SWIFT训练
 
+SWIFT引入了Megatron的并行技术来加速大模型的训练，包括数据并行、张量并行、流水线并行、序列并行，上下文并行。支持Megatron训练的模型可以参考[支持的模型与数据集文档](./支持的模型和数据集.md)。
+
 ## 环境准备
 使用Megatron-SWIFT，除了安装swift依赖外，还需要安装以下内容：
 
@@ -93,7 +95,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 ```
 
 - 更多案例可以查看[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/megatron)。
-
+- 若要进行预训练，你可以使用`megatron pt`替代`megatron sft`，这将会使用生成式的template进行训练。
 
 ## 命令行参数
 

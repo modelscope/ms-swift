@@ -1,6 +1,8 @@
 
 # Megatron-SWIFT Training
 
+SWIFT incorporates Megatron's parallelization techniques to accelerate the training of large models, including data parallelism, tensor parallelism, pipeline parallelism, sequence parallelism, and context parallelism. For models that support Megatron training, please refer to the [Supported Models and Datasets documentation](./Supported-models-and-datasets.md).
+
 ## Environment Setup
 
 To use Megatron-SWIFT, in addition to installing the `swift` dependencies, you also need to install the following:
@@ -99,7 +101,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 ```
 
 - More cases can be viewed [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/megatron).
-
+- For pretraining, you can use `megatron pt` instead of `megatron sft`, which will use a generative template for training.
 
 ## Command Line Arguments
 
