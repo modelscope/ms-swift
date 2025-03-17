@@ -2,7 +2,6 @@
 import os
 import platform
 import re
-from contextlib import nullcontext
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from functools import partial
@@ -339,16 +338,20 @@ def get_all_models() -> List[str]:
     return models
 
 
-def get_matched_model_meta(model_id_or_path: str) -> Optional[ModelMeta]:
+def _get_matched_model_meta(model_id_or_path: str, model_mapping: Dict[str, Any]) -> Optional[ModelMeta]:
     model_name = get_model_name(model_id_or_path).lower()
-    for model_type, model_meta in MODEL_MAPPING.items():
-        model_group = model_meta.get_matched_model_group(model_name)
+    for model_type, model_meta in model_mapping.items():
+        model_group = ModelMeta.get_matched_model_group(model_meta, model_name)
         if model_group is not None:
             model_meta = deepcopy(model_meta)
             for k, v in asdict(model_group).items():
                 if v is not None and k in model_meta.__dict__:
                     setattr(model_meta, k, v)
             return model_meta
+
+
+def get_matched_model_meta(model_id_or_path: str) -> Optional[ModelMeta]:
+    return _get_matched_model_meta(model_id_or_path, MODEL_MAPPING)
 
 
 def _get_arch_mapping():

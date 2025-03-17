@@ -78,6 +78,7 @@ You can contact us and communicate with us by adding our group:
 
 
 ## 🎉 News
+- 🎁 2025.03.16: SWIFT supports training with Megatron's parallel technology. Please refer to the [Megatron-SWIFT Training Documentation](https://swift.readthedocs.io/en/latest/Instruction/Megatron-SWIFT-Training.html).
 - 🎁 2025.03.15: SWIFT support the fine-tuning of gme(multi-modal) embedding models，please check the [training script](examples/train/embedding/train_gme.sh)。
 - 🎁 2025.03.13: We provide a script of GRPO to train a 72B model with only 4 GPUs(4*80G), please check [here](examples/train/grpo/train_72b_4gpu.sh)
 - 🎁 2025.03.05: We support the hybrid mode of GRPO(rollout and actor on the same GPU, rollout sleep when actor training), meanwhile tensor parallel for GRPO, check [training script here](examples/train/grpo/multi_gpu_mp_colocate.sh)

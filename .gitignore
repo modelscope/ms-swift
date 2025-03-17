@@ -141,6 +141,7 @@ my_model/
 result/
 images
 /custom/
+megatron_output/
 
 # Pytorch
 *.pth

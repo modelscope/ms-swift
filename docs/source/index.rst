@@ -21,6 +21,7 @@ Swift DOCUMENTATION
    Instruction/预训练与微调.md
    Instruction/人类对齐.md
    Instruction/推理和部署.md
+   Instruction/Megatron-SWIFT训练.md
    Instruction/采样.md
    Instruction/评测.md
    Instruction/导出与推送.md

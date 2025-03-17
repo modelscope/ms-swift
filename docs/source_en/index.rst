@@ -21,6 +21,7 @@ Swift DOCUMENTATION
    Instruction/Pre-training-and-Fine-tuning.md
    Instruction/RLHF.md
    Instruction/Inference-and-deployment.md
+   Instruction/Megatron-SWIFT-Training.md
    Instruction/Sample.md
    Instruction/Evaluation.md
    Instruction/Export-and-push.md

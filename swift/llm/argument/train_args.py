@@ -1,19 +1,15 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import importlib
 import os
-import sys
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional, Union
 
-import torch
 from transformers import Seq2SeqTrainingArguments
 from transformers.utils.versions import require_version
 
 from swift.plugin import LOSS_MAPPING
 from swift.trainers import TrainerFactory
 from swift.utils import (add_version_to_work_dir, get_device_count, get_logger, get_pai_tensorboard_dir,
-                         is_liger_available, is_local_master, is_mp, is_pai_training_job, is_swanlab_available,
-                         use_torchacc)
+                         is_liger_available, is_master, is_mp, is_pai_training_job, is_swanlab_available, use_torchacc)
 from .base_args import BaseArguments, to_abspath
 from .tuner_args import TunerArguments
 
@@ -40,9 +36,9 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
     logging_first_step: bool = True
 
     def _init_output_dir(self):
-        if self.output_dir is not None:
-            return
-        self.output_dir = f'output/{self.model_suffix}'
+        if self.output_dir is None:
+            self.output_dir = f'output/{self.model_suffix}'
+        self.output_dir = to_abspath(self.output_dir)
 
     def _init_eval_strategy(self):
         if self.eval_strategy is None:
@@ -163,6 +159,15 @@ class TrainArguments(SwanlabArguments, TorchAccArguments, TunerArguments, Seq2Se
     # zero++
     zero_hpz_partition_size: Optional[int] = None
 
+    def _init_lazy_tokenize(self):
+        if self.streaming and self.lazy_tokenize:
+            self.lazy_tokenize = False
+            logger.warning('Streaming and lazy_tokenize are incompatible. '
+                           f'Setting args.lazy_tokenize: {self.lazy_tokenize}.')
+        if self.lazy_tokenize is None:
+            self.lazy_tokenize = self.model_meta.is_multimodal and not self.streaming
+            logger.info(f'Setting args.lazy_tokenize: {self.lazy_tokenize}')
+
     def __post_init__(self) -> None:
         if self.resume_from_checkpoint:
             self.resume_from_checkpoint = to_abspath(self.resume_from_checkpoint, True)
@@ -189,14 +194,8 @@ class TrainArguments(SwanlabArguments, TorchAccArguments, TunerArguments, Seq2Se
 
         self._init_deepspeed()
         self._init_device()
+        self._init_lazy_tokenize()
 
-        if self.streaming and self.lazy_tokenize:
-            self.lazy_tokenize = False
-            logger.warning('Streaming and lazy_tokenize are incompatible. '
-                           f'Setting args.lazy_tokenize: {self.lazy_tokenize}.')
-        if self.lazy_tokenize is None:
-            self.lazy_tokenize = self.model_meta.is_multimodal and not self.streaming
-            logger.info(f'Setting args.lazy_tokenize: {self.lazy_tokenize}')
         if getattr(self, 'accelerator_config', None) is None:
             self.accelerator_config = {'dispatch_batches': False}
         self.training_args = TrainerFactory.get_training_args(self)
@@ -261,9 +260,8 @@ class TrainArguments(SwanlabArguments, TorchAccArguments, TunerArguments, Seq2Se
         if self.logging_dir is None:
             self.logging_dir = f'{self.output_dir}/runs'
 
-        self.output_dir = to_abspath(self.output_dir)
         self.logging_dir = to_abspath(self.logging_dir)
-        if is_local_master():
+        if is_master():
             os.makedirs(self.output_dir, exist_ok=True)
 
         self.training_args.output_dir = self.output_dir
