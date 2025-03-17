@@ -37,8 +37,6 @@ repos:
         exclude: thirdparty/|tests/run.py
       - id: end-of-file-fixer
         exclude: thirdparty/
-      - id: requirements-txt-fixer
-        exclude: thirdparty/|tests/run.py
       - id: double-quote-string-fixer
         exclude: thirdparty/|tests/run.py
       - id: check-merge-conflict
