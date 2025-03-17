@@ -23,6 +23,4 @@ megatron sft \
     --no_save_optim true \
     --no_save_rng true \
     --sequence_parallel true \
-    --use_flash_attn true \
-    --manual_gc true \
-    --manual_gc_interval 100
+    --use_flash_attn true
