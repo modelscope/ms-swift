@@ -57,7 +57,7 @@ class PtEngine(InferEngine):
             # model kwargs
             attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None,
             device_map: Optional[Union[str, Dict[str, Any]]] = None,
-            quantization_config: Optional[Dict[str, Any]] = None,
+            quantization_config=None,
             model_kwargs: Optional[Dict[str, Any]] = None,
             **kwargs):
         self.model, self.processor = get_model_tokenizer(

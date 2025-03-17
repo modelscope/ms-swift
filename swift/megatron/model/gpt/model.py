@@ -8,6 +8,7 @@ from megatron.training.arguments import core_transformer_config_from_args
 def model_provider(pre_process=True, post_process=True):
     args = get_args()
     config = core_transformer_config_from_args(args)
+    config.variable_seq_lengths = True
     transformer_layer_spec = get_gpt_layer_with_transformer_engine_spec(args.num_experts, args.moe_grouped_gemm,
                                                                         args.qk_layernorm, args.multi_latent_attention)
     model = GPTModel(
