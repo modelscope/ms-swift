@@ -117,7 +117,12 @@ def get_model_tokenizer_gemma3_vision(model_dir: str,
                                       model_kwargs: Dict[str, Any],
                                       load_model: bool = True,
                                       **kwargs):
-    from transformers import Gemma3ForConditionalGeneration
+    try:
+        from transformers import Gemma3ForConditionalGeneration
+    except ImportError:
+        raise ImportError('Please install Gemma3ForConditionalGeneration by running '
+                          '`pip install git+https://github.com/huggingface/transformers@v4.49.0-Gemma-3`')
+
     kwargs['automodel_class'] = kwargs['automodel_class'] or Gemma3ForConditionalGeneration
     # It is strongly recommended to train Gemma3 models with the `eager` attention implementation instead of `sdpa`.
     kwargs['attn_impl'] = kwargs['attn_impl'] or 'eager'
