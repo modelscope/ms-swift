@@ -132,6 +132,7 @@ class Gemma3VisionTemplate(Gemma3Template):
             encoded['token_type_ids'] = mm_token_type_ids.tolist()
             encoded['input_ids'] = input_ids
             encoded['pixel_values'] = image_inputs['pixel_values']
+            encoded['labels'] = labels
         return encoded
 
 

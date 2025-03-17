@@ -121,6 +121,8 @@ def get_model_tokenizer_gemma3(model_dir: str,
                                **kwargs):
     from transformers import Gemma3ForConditionalGeneration
     kwargs['automodel_class'] = kwargs['automodel_class'] or Gemma3ForConditionalGeneration
+    # It is strongly recommended to train Gemma3 models with the `eager` attention implementation instead of `sdpa`.
+    kwargs['attn_impl'] = kwargs['attn_impl'] or 'eager'
     model, processor = get_model_tokenizer_multimodal(model_dir, model_info, model_kwargs, load_model, **kwargs)
 
     return model, processor

@@ -2,7 +2,7 @@
 CUDA_VISIBLE_DEVICES=0 \
 MAX_PIXELS=1003520 \
 swift sft \
-    --model Qwen/Qwen2.5-VL-7B-Instruct \
+    --model LLM-Research/gemma-3-4b-it \
     --dataset 'AI-ModelScope/LaTeX_OCR:human_handwrite#20000' \
     --train_type lora \
     --torch_dtype bfloat16 \
