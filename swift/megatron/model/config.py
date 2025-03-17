@@ -1,6 +1,9 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Any, Dict
 
+from swift.utils import get_logger
+
+logger = get_logger()
 config_mapping = {
     'num_layers': ['num_hidden_layers'],
     'hidden_size': ['hidden_size'],
@@ -11,17 +14,27 @@ config_mapping = {
     'norm_epsilon': ['rms_norm_eps'],
     'rotary_base': ['rope_theta'],
     'padded_vocab_size': ['vocab_size'],
-    'attention_dropout': ['attention_dropout']
+    'attention_dropout': ['attention_dropout'],
+    'untie_embeddings_and_output_weights': ['tie_word_embeddings'],
+    'swiglu': ['hidden_act']
 }
 
 
 def load_config(config) -> Dict[str, Any]:
     megatron_config = {}
-    for k, value in config_mapping.items():
-        for v in value:
-            assert hasattr(config, v)
-            if k == 'rotary_base':
-                megatron_config[k] = int(getattr(config, v))
-            else:
-                megatron_config[k] = getattr(config, v)
+    for k, hf_keys in config_mapping.items():
+        for hf_k in hf_keys:
+            if hasattr(config, hf_k):
+                hf_v = getattr(config, hf_k)
+                if k == 'rotary_base':
+                    megatron_config[k] = int(hf_v)
+                elif k == 'untie_embeddings_and_output_weights':
+                    megatron_config[k] = not hf_v
+                elif k == 'swiglu':
+                    if hf_v == 'silu':
+                        megatron_config[k] = True
+                else:
+                    megatron_config[k] = hf_v
+                break
+    logger.info(f'megatron_config: {megatron_config}')
     return megatron_config
