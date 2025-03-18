@@ -19,6 +19,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from accelerate.utils import gather, gather_object, is_peft_model, set_seed
+from peft import PeftModel
 from torch.nn import ModuleList
 from transformers import PreTrainedModel, TrainerCallback
 from trl import GRPOTrainer as HFGRPOTrainer
@@ -304,10 +305,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         pattern = r'\.(\d+)\.'
 
         layer_count = None
+        if isinstance(model, PeftModel):
+            model = model.base_model
         for name, module in model.named_modules():
             if isinstance(module, ModuleList):
                 if model_arch is not None and isinstance(model_arch, MultiModelKeys):
                     llm = model_arch.language_model
+                    if isinstance(llm, list):
+                        llm = llm[0]
                     if name.startswith(llm):
                         layer_count = len(module)
                 else:
