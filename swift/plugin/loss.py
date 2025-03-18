@@ -86,12 +86,14 @@ def _parse_pair_sentence(outputs):
     last_hidden_state = outputs['last_hidden_state']
     batch_size = last_hidden_state.shape[0]
     shape_len = len(last_hidden_state.shape)
+    first_sentence = list(range(0, batch_size, 2))
+    second_sentence = list(range(1, batch_size, 2))
     if shape_len == 3:
-        sentence1 = last_hidden_state[0:batch_size // 2][:, 0].squeeze(dim=1)
-        sentence2 = last_hidden_state[batch_size // 2:][:, 0].squeeze(dim=1)
+        sentence1 = last_hidden_state[first_sentence][:, 0].squeeze(dim=1)
+        sentence2 = last_hidden_state[second_sentence][:, 0].squeeze(dim=1)
     else:
-        sentence1 = last_hidden_state[0:batch_size // 2]
-        sentence2 = last_hidden_state[batch_size // 2:]
+        sentence1 = last_hidden_state[first_sentence]
+        sentence2 = last_hidden_state[second_sentence]
     return sentence1, sentence2
 
 
