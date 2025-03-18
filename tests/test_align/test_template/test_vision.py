@@ -221,6 +221,7 @@ def test_llava_onevision_hf():
     response2 = _infer_model(pt_engine)
     assert response == response2
 
+
 def test_xcomposer2_5():
     pt_engine = PtEngine('Shanghai_AI_Laboratory/internlm-xcomposer2d5-ol-7b:base', torch.float16)
     # pt_engine = PtEngine('Shanghai_AI_Laboratory/internlm-xcomposer2d5-7b')
