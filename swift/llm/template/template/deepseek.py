@@ -45,6 +45,7 @@ class DeepseekVLTemplate(Template):
     image_placeholder = ['<image_placeholder>']
     skip_prompt = False
     use_model = True
+    placeholder_tokens = ['<image_placeholder>']
 
     image_token_num_per_image: int = 576
 
@@ -217,7 +218,6 @@ class DeepseekVLTemplateMeta(DeepseekTemplateMeta):
     default_system: Optional[str] = ('You are a helpful language and vision assistant. '
                                      'You are able to understand the visual content that the user provides, '
                                      'and assist the user with a variety of tasks using natural language.')
-    placeholder_tokens: List[str] = field(default_factory=lambda: ['<image_placeholder>'])
 
 
 register_template(DeepseekVLTemplateMeta(
@@ -261,6 +261,7 @@ register_template(
 
 class DeepseekVL2Template(DeepseekVLTemplate):
     image_placeholder = ['<image>\n']
+    placeholder_tokens = ['<image>']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         from deepseek_vl2.models.processing_deepseek_vl_v2 import VLChatProcessorOutput
@@ -305,7 +306,7 @@ register_template(
         MLLMTemplateType.deepseek_vl2,
         prompt=['<|User|>: {{QUERY}}\n\n<|Assistant|>:'],
         template_cls=DeepseekVL2Template,
-        placeholder_tokens=['<image>']))
+    ))
 
 register_template(
     DeepseekVLTemplateMeta(

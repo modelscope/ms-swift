@@ -30,12 +30,7 @@ register_template(
         default_system=DEFAULT_SYSTEM,
     ))
 
-register_template(
-    QwenTemplateMeta(
-        MLLMTemplateType.qwen2_gme,
-        template_cls=Qwen2VLTemplate,
-        placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
-        suffix=['<|endoftext|>']))
+register_template(QwenTemplateMeta(MLLMTemplateType.qwen2_gme, template_cls=Qwen2VLTemplate, suffix=['<|endoftext|>']))
 
 register_template(
     TemplateMeta(LLMTemplateType.baichuan, prefix=['{{SYSTEM}}'], prompt=[[195], '{{QUERY}}', [196]], chat_sep=[]))
