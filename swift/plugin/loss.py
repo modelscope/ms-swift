@@ -3,13 +3,13 @@ import os
 from enum import Enum
 from typing import Callable, Optional
 
-import torch
 import numpy as np
+import torch
 import torch.nn.functional as F
+from accelerate.utils import gather_object
 from torch import nn
-from transformers.utils import strtobool
-from accelerate.utils import gather, gather_object
 from torch.nn import CrossEntropyLoss, MSELoss
+from transformers.utils import strtobool
 
 
 class LossType:
@@ -140,10 +140,10 @@ def _parse_multi_negative_sentences(sentences, labels, hard_negatives=None):
             negatives = len(split_part) - 2
             assert negatives > 0
             if negatives > hard_negatives:
-                split_part = split_part[:hard_negatives+2]
+                split_part = split_part[:hard_negatives + 2]
             elif negatives < hard_negatives:
-                selected = np.random.choice(list(range(negatives)), size=hard_negatives-negatives, replace=True)
-                selected += 1 # skip positive
+                selected = np.random.choice(list(range(negatives)), size=hard_negatives - negatives, replace=True)
+                selected += 1  # skip positive
                 split_part = torch.cat((split_part, split_part[selected]), dim=0)
         split_tensors.append(split_part)
     return split_tensors
@@ -151,10 +151,10 @@ def _parse_multi_negative_sentences(sentences, labels, hard_negatives=None):
 
 @register_loss_func(LossType.infonce)
 def infonce_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> torch.Tensor:
-    temperature = float(os.environ.get('INFONCE_TEMPERATURE', '1.0')) # temperature
+    temperature = float(os.environ.get('INFONCE_TEMPERATURE', '1.0'))  # temperature
     # calculate CE across the batch, meaning all samples will be negative except the matching positive
     use_batch = strtobool(os.environ.get('INFONCE_USE_BATCH', 'True'))
-    hard_negatives = os.environ.get('INFONCE_HARD_NEGATIVES', None) # how many negative prompts kept in one sample
+    hard_negatives = os.environ.get('INFONCE_HARD_NEGATIVES', None)  # how many negative prompts kept in one sample
     if hard_negatives is not None:
         hard_negatives = int(hard_negatives)
     from swift.utils import get_dist_setting
@@ -191,9 +191,9 @@ def infonce_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> t
         if can_bached:
             # negative numbers are equal
             # [B, neg+2, D]
-            sentences = torch.stack(split_tensors, dim=0) 
+            sentences = torch.stack(split_tensors, dim=0)
             # [B, 1, D] * [B, neg+1, D]
-            similarity_matrix = torch.matmul(sentences[:, 0:1], sentences[:, 1:].transpose(1,2)) / temperature
+            similarity_matrix = torch.matmul(sentences[:, 0:1], sentences[:, 1:].transpose(1, 2)) / temperature
             # The positive one is the first element
             labels = torch.zeros(len(split_tensors), dtype=torch.int64).to(sentences.device)
             loss = nn.CrossEntropyLoss()(similarity_matrix.squeeze(1), labels)
@@ -212,10 +212,13 @@ def infonce_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> t
             # [B, neg+2, D]
             sentences = torch.stack(split_tensors, dim=0)
             # [B, D] * [B*(neg+1), D]
-            similarity_matrix = torch.matmul(sentences[:, 0].squeeze(1), sentences[:, 1:].reshape(-1, sentences.size(2)).T) / temperature
+            similarity_matrix = torch.matmul(sentences[:, 0].squeeze(1), sentences[:, 1:].reshape(
+                -1, sentences.size(2)).T) / temperature
             # every neg+1 is positive from 0
-            labels = torch.tensor(range(0, sentences.size(0)*(sentences.size(1)-1), sentences.size(1)-1)).view(-1).to(sentences.device)
-            loss = nn.CrossEntropyLoss()(similarity_matrix, labels) / world_size # avoid duplicate
+            labels = torch.tensor(range(0,
+                                        sentences.size(0) * (sentences.size(1) - 1),
+                                        sentences.size(1) - 1)).view(-1).to(sentences.device)
+            loss = nn.CrossEntropyLoss()(similarity_matrix, labels) / world_size  # avoid duplicate
         else:
             all_tensors = []
             for tensor in split_tensors:
@@ -229,10 +232,10 @@ def infonce_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> t
                 labels = torch.tensor(length).to(tensor.device)
                 loss += nn.CrossEntropyLoss()(similarity_matrix, labels)
                 # next positive is neg+1
-                length += tensor.size(0)-1
+                length += tensor.size(0) - 1
             loss /= len(split_tensors)
-            loss /= world_size # avoid duplicate
-    return loss # noqa
+            loss /= world_size  # avoid duplicate
+    return loss  # noqa
 
 
 @register_loss_func(LossType.online_contrastive)

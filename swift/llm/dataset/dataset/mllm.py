@@ -751,8 +751,7 @@ class TextCapsEmbPreprocessor(ResponsePreprocessor):
         row['query'] = ''
         if not os.path.exists(row['images']['path']):
             return None
-        row = super().preprocess(row)
-        return row
+        return super().preprocess(row)
 
 
 register_dataset(
