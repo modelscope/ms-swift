@@ -141,7 +141,6 @@ def load_by_unsloth(args):
         dtype=args.torch_dtype,
         max_seq_length=args.max_length,
         load_in_4bit=args.quant_bits == 4,
-        trust_remote_code=True,
     )
     if isinstance(model, PeftModel):
         base_model = model.model
