@@ -44,10 +44,10 @@ def test_qwen2_5_vl():
     pt_engine.default_template.template_backend = 'jinja'
     response2 = _infer_model(pt_engine, messages=messages, images=images)
     assert response == response2 == (
-        'The dog in the picture appears to be a Labrador Retriever. Labradors are known for their friendly and '
-        'energetic nature, which is evident in the image where the dog seems to be interacting playfully with '
-        'the person. The breed is characterized by its thick, water-repellent coat, which can come in various '
-        'colors including yellow, black, and chocolate.')
+        'The dog in the picture appears to be a Labrador Retriever. Labradors are known for their '
+        'friendly and energetic nature, which is evident in the image where the dog seems to be '
+        "interacting playfully with the person. The dog's size, coat color, and build are "
+        'characteristic of the Labrador Retriever breed.')
 
 
 def test_qvq():
