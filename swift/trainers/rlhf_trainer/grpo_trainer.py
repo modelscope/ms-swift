@@ -741,7 +741,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         with self._template_context(template):
             for mini_batch in mini_batch_inputs:
                 mini_batch_encoded_inputs = [template.encode(infer_request) for infer_request in mini_batch]
-                mini_batch_encoded_inputs = to_device(template.data_collator(mini_batch_encoded_inputs), self.model.device)
+                mini_batch_encoded_inputs = to_device(
+                    template.data_collator(mini_batch_encoded_inputs), self.model.device)
                 labels = mini_batch_encoded_inputs.pop('labels')
                 logits_to_keep = (labels.shape[-1] - (torch.ne(labels, -100).int().argmax(-1))).max().item()
                 mini_batch_encoded_inputs['logits_to_keep'] = logits_to_keep
@@ -749,7 +750,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
                 with torch.no_grad():
                     if self.old_policy:
-                        mini_batch_encoded_inputs['old_per_token_logps'] = self._get_per_token_logps(self.model, mini_batch_inputs)
+                        mini_batch_encoded_inputs['old_per_token_logps'] = self._get_per_token_logps(
+                            self.model, mini_batch_inputs)
                     else:
                         mini_batch_encoded_inputs['old_per_token_logps'] = None
 
@@ -801,13 +803,15 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # Log the metrics
         mode = 'eval' if self.control.should_evaluate else 'train'
         completion_length = self.accelerator.gather_for_metrics(
-            torch.cat([mb['completion_mask'].sum(1).float() for mb in batch_encoded_inputs])
-        ).mean().item()
+            torch.cat([mb['completion_mask'].sum(1).float() for mb in batch_encoded_inputs])).mean().item()
         self._metrics[mode]['completion_length'].append(completion_length)
         # clip ratio
-        response_clip_ratio = torch.gt(
-            self.accelerator.gather_for_metrics(outputs['completion_mask'].sum(1)),
-            self.args.max_completion_length).float().mean().item()
+        response_clip_ratio = (
+            torch.gt(
+                self.accelerator.gather_for_metrics(
+                    torch.cat([mb['completion_mask'].sum(1) for mb in batch_encoded_inputs])),
+                self.args.max_completion_length).float().mean().item())
+
         self._metrics[mode]['response_clip_ratio'].append(response_clip_ratio)
         reward_per_func = rewards_per_func.mean(0)
         for i, reward_func in enumerate(self.reward_funcs):
@@ -843,10 +847,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return outputs
 
     @profiling_decorator
-    def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
-        if return_outputs:
-            raise ValueError('The GRPOTrainer does not support returning outputs')
+    def compute_loss(self, model, inputs, return_outputs=False):
         # Compute the per-token log probabilities for the model
+        if isinstance(inputs, list):
+            assert len(inputs) == 1
+            inputs = inputs[0]
         completion_mask = inputs['completion_mask']
         per_token_logps = self._get_per_token_logps(model, inputs)
 
@@ -869,16 +874,24 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         loss = (per_token_loss * completion_mask).sum() / completion_mask.sum()
 
         # Log the metrics
+        metrics = {}
         mode = 'eval' if self.control.should_evaluate else 'train'
 
         if self.beta != 0.0:
             mean_kl = ((per_token_kl * completion_mask).sum(dim=1) / completion_mask.sum(dim=1)).mean()
-            self._metrics[mode]['kl'].append(self.accelerator.gather_for_metrics(mean_kl).mean().item())
+            metrics['kl'] = self.accelerator.gather_for_metrics(mean_kl).mean().item()
 
         is_clipped = (per_token_loss1 < per_token_loss2).float()
         clip_ratio = (is_clipped * completion_mask).sum() / completion_mask.sum()
-        self._metrics[mode]['clip_ratio'].append(self.accelerator.gather_for_metrics(clip_ratio).mean().item())
-        return loss
+        metrics['clip_ratio'] = self.accelerator.gather_for_metrics(clip_ratio).mean().item()
+
+        # Log metrics or return them
+        if return_outputs:
+            return loss, metrics
+        else:
+            for key, value in metrics.items():
+                self._metrics[mode][key].append(value)
+            return loss
 
     # Get the per-token log probabilities for the completions for the model and the reference model
     @profiling_decorator
@@ -925,26 +938,17 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if hasattr(self.optimizer, 'train') and callable(self.optimizer.train):
             self.optimizer.train()
 
-        inputs = self._prepare_inputs(inputs)
+        batch_inputs = self._prepare_inputs(inputs)
 
-        mini_batch_size = self.args.mini_batch_size or inputs['input_ids'].size(0)
-        total_batch_size = inputs['input_ids'].size(0)
-
-        num_mini_batches = (total_batch_size + mini_batch_size - 1) // mini_batch_size
-
-        total_loss = torch.tensor(0.0, device=inputs['input_ids'].device)
-        for i in range(num_mini_batches):
-            start_idx = i * mini_batch_size
-            end_idx = min((i + 1) * mini_batch_size, total_batch_size)
-            mini_size = end_idx - start_idx
-            mini_batch_inputs = {
-                k: (v[start_idx:end_idx] if isinstance(v, torch.Tensor) else v)
-                for k, v in inputs.items()
-            }
+        total_loss = torch.tensor(0.0, device=batch_inputs[0]['input_ids'].device)
+        # Initialize metrics accumulators
+        total_kl = torch.tensor(0.0, device=batch_inputs[0]['input_ids'].device)
+        total_clip_ratio = torch.tensor(0.0, device=batch_inputs[0]['input_ids'].device)
+        num_mini_batches = len(batch_inputs)
+        for mini_batch in batch_inputs:
 
             with self.compute_loss_context_manager():
-                mini_batch_loss = self.compute_loss(
-                    model, mini_batch_inputs, num_items_in_batch=mini_batch_inputs['input_ids'].size(0))
+                mini_batch_loss, mini_batch_metrics = self.compute_loss(model, mini_batch, return_outputs=True)
 
             if self.args.n_gpu > 1:
                 mini_batch_loss = mini_batch_loss.mean()
@@ -953,11 +957,17 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 mini_batch_loss = mini_batch_loss / self.args.gradient_accumulation_steps
 
             self.accelerator.backward(mini_batch_loss)
-            total_loss += mini_batch_loss.detach() * mini_size
+            total_kl += mini_batch_metrics['kl'].detach()
+            total_clip_ratio += mini_batch_metrics['clip_ratio'].detach()
+            total_loss += mini_batch_loss.detach()
 
-        total_loss = total_loss / total_batch_size
+        mode = 'eval' if self.control.should_evaluate else 'train'
+        self._metrics[mode]['kl'].append(total_kl / num_mini_batches)
+        self._metrics[mode]['clip_ratio'].append(total_clip_ratio / num_mini_batches)
 
-        del inputs
+        total_loss = total_loss / num_mini_batches
+
+        del inputs, batch_inputs
         if (self.args.torch_empty_cache_steps is not None
                 and self.state.global_step % self.args.torch_empty_cache_steps == 0):
             if is_torch_xpu_available():
