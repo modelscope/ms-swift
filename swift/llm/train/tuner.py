@@ -201,7 +201,7 @@ def prepare_adapter(args: TrainArguments, model, *, template=None, train_dataset
                 lora_kwargs.pop('lorap_lr_ratio')
                 model = UnslothModel.get_peft_model(
                     model,
-                    use_gradient_checkpointing=True,
+                    use_gradient_checkpointing='unsloth',
                     max_seq_length=args.max_length or 2048,  # 2048 is the default value of unsloth
                     **lora_kwargs,
                 )
