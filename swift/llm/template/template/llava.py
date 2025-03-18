@@ -3,8 +3,8 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional
 
 import torch
-from packaging import version
 import transformers
+from packaging import version
 
 from ..base import Template
 from ..constant import MLLMTemplateType
@@ -48,12 +48,12 @@ class LlavaHfTemplate(Template):
                 for i, idx in enumerate(idx_list):
                     if 'image_sizes' in image_inputs:
                         orig_height, orig_width = image_inputs['image_sizes'][i].tolist()
-                        num_image_tokens = self.processor._get_number_of_features(orig_height, orig_width, height, width)
+                        num_image_tokens = self.processor._get_number_of_features(orig_height, orig_width, height,
+                                                                                  width)
                     else:
                         num_image_tokens = (height // self.processor.patch_size) * (
-                            width // self.processor.patch_size
-                        ) + self.processor.num_additional_image_tokens
-                    if self.processor.vision_feature_select_strategy == "default":
+                            width // self.processor.patch_size) + self.processor.num_additional_image_tokens
+                    if self.processor.vision_feature_select_strategy == 'default':
                         num_image_tokens -= 1
                     input_ids = input_ids[:added_tokens_len + idx] + [self.image_token_index] * num_image_tokens \
                         + input_ids[added_tokens_len + idx + 1:]
