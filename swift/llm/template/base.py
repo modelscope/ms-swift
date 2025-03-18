@@ -41,6 +41,7 @@ class Template(ProcessorMixin):
     video_placeholder = ['<video>']
     audio_placeholder = ['<audio>']
     cot_process_placeholder = ['ки']
+    placeholder_tokens = []
     load_images = True
     skip_prompt = True
     use_model = False
