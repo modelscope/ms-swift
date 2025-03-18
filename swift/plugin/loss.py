@@ -151,7 +151,7 @@ def _parse_multi_negative_sentences(sentences, labels, hard_negatives=None):
 
 @register_loss_func(LossType.infonce)
 def infonce_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> torch.Tensor:
-    temperature = float(os.environ.get('INFONCE_TEMPERATURE', '1.0'))  # temperature
+    temperature = float(os.environ.get('INFONCE_TEMPERATURE', '0.01'))  # temperature
     # calculate CE across the batch, meaning all samples will be negative except the matching positive
     use_batch = strtobool(os.environ.get('INFONCE_USE_BATCH', 'True'))
     hard_negatives = os.environ.get('INFONCE_HARD_NEGATIVES', None)  # how many negative prompts kept in one sample
@@ -214,7 +214,7 @@ def infonce_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> t
             # [B, D] * [B*(neg+1), D]
             similarity_matrix = torch.matmul(sentences[:, 0].squeeze(1), sentences[:, 1:].reshape(
                 -1, sentences.size(2)).T) / temperature
-            # every neg+1 is positive from 0
+            # every neg+1 is positive start from 0
             labels = torch.tensor(range(0,
                                         sentences.size(0) * (sentences.size(1) - 1),
                                         sentences.size(1) - 1)).view(-1).to(sentences.device)
