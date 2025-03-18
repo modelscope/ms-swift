@@ -19,7 +19,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 from accelerate.utils import gather, gather_object, is_peft_model, set_seed
-from peft.tuners import lora
 from torch.nn import ModuleList
 from transformers import PreTrainedModel, TrainerCallback
 from trl import GRPOTrainer as HFGRPOTrainer
@@ -191,7 +190,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # transformers if num_generations exceeds per_device_train_batch_size. We could skip it if we use vLLM, but
         # it's safer to set it in all cases.
         set_seed(args.seed, device_specific=True)
-        self.parameter_groups, self.parameter_groups_no_lora = None, None
+        self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
         self.infer_device = None
 
         if use_vllm or use_lmdeploy:
@@ -293,8 +292,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         2. other, embeds, lm_heads in one batch
         3. multi-modal components in one batch
         """
-        # model = self.accelerator.unwrap_model(self.model)
-        model = self.model_wrapped
+        model = self.accelerator.unwrap_model(self.model)
         if self.args.move_model_batches is None:
             # All in one
             return [[n for n, p in model.named_parameters() if 'ref_model' not in n]], [None]
@@ -501,17 +499,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # 1. deepspeed parallel == vllm tensor parallel, may be do not need to gather
         # 2. may be each process in tp group only need gather a part of the parameters
         # 3. the split of parameter_groups may be imbalanced
-
-        # split parameter_groups after deepspeed init
-        if self.parameter_groups is None:
-            self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
-
         from accelerate.utils.other import is_compiled_module
 
         for i, parameter_group in enumerate(self.parameter_groups):
             parameter_group_no_lora = self.parameter_groups_no_lora[i]
             with unwrap_model_for_generation(
-                    self.model_wrapped,
+                    self.model,
                     self.accelerator,
                     gather_deepspeed3_params=self.args.ds3_gather_for_generation,
                     gather_parameters=parameter_group) as unwrapped_model:
@@ -526,6 +519,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
                 def get_delta_weight(self, adapter) -> torch.Tensor:
                     # may be offload
+                    from peft.tuners import lora
                     if isinstance(self, lora.Embedding):
                         self.lora_embedding_A[adapter].data = self.lora_embedding_A[adapter].data.to(
                             self.base_layer.weight.device)
