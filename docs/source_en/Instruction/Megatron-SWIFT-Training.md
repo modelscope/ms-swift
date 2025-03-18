@@ -227,6 +227,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - hidden_dropout: Default is 0.
 - transformer_impl: Which transformer implementation to use, options are 'local' and 'transformer_engine'. Default is transformer_engine.
 - padded_vocab_size: Full vocabulary size, default is None.
+- rope_scaling: Related parameters for rope_scaling, default is None. Refer to the format in [llama3.1 config.json](https://modelscope.cn/models/LLM-Research/Meta-Llama-3.1-8B-Instruct/file/view/master?fileName=config.json&status=1).
 
 ### Megatron Training Parameters
 
