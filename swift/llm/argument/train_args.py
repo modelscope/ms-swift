@@ -38,7 +38,14 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
     eval_strategy: Optional[str] = None  # steps, epoch
 
     logging_first_step: bool = True
-
+    
+    # train-eval loop args
+    eval_use_evalscope: bool = False
+    eval_datasets: List[str] = field(default_factory=list)
+    eval_limit: Optional[int] = None
+    eval_datasets_args: Optional[dict] = None
+    eval_generation_config: Optional[Union[str, dict]] = None
+    
     def _init_output_dir(self):
         if self.output_dir is not None:
             return
@@ -54,6 +61,14 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
         elif self.eval_strategy == 'steps' and self.eval_steps is None:
             self.eval_steps = self.save_steps
         self.evaluation_strategy = self.eval_strategy
+        if self.eval_use_evalscope:
+            try:
+                import evalscope
+            except ImportError:
+                raise ImportError('evalscope is not installed, please install it by `pip install evalscope`')
+            logger.info('Using EvalScope for evaluation.')
+            self.eval_datasets_args = self.parse_to_dict(self.eval_datasets_args)
+            self.eval_generation_config = self.parse_to_dict(self.eval_generation_config)
 
     def _init_metric_for_best_model(self):
         if self.metric_for_best_model is None:
