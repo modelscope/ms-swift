@@ -15,6 +15,7 @@ swift rlhf \
     --vllm_device auto \
     --vllm_gpu_memory_utilization 0.5 \
     --vllm_max_model_len 4096 \
+    --num_infer_workers 1 \
     --train_type full \
     --torch_dtype bfloat16 \
     --dataset 'AI-MO/NuminaMath-TIR#5000' \

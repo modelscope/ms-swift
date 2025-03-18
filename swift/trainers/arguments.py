@@ -100,6 +100,10 @@ class GRPOArgumentsMixin:
     async_generate: bool = False
     tensor_parallel_size: int = 1
     sleep_level: int = 0
+    move_model_batches: Optional[int] = None
+    offload_optimizer: bool = False
+    offload_model: bool = False
+    gc_collect_after_offload: bool = False
 
     # mini-batch
     mini_batch_size: Optional[int] = None

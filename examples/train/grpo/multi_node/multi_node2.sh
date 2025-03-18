@@ -3,7 +3,7 @@ export NNODES=2
 export NODE_RANK=1
 export MASTER_ADDR=xxx.xxx.xxx.xxx
 export MASTER_PORT=29500
-export NPROC_PER_NODE=4
+export NPROC_PER_NODE=3
 
 swift rlhf \
     --rlhf_type grpo \
@@ -13,6 +13,7 @@ swift rlhf \
     --vllm_device auto \
     --vllm_gpu_memory_utilization 0.5 \
     --vllm_max_model_len 4096 \
+    --num_infer_workers 1 \
     --train_type full \
     --torch_dtype bfloat16 \
     --dataset 'AI-MO/NuminaMath-TIR#5000' \

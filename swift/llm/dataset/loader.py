@@ -231,7 +231,7 @@ class DatasetLoader:
                              f'os.path.exists(dataset_id): {os.path.exists(dataset_id)}')
         else:
             retry = 3
-            load_context = partial(safe_ddp_context, hash_id=dataset_id)
+            load_context = partial(safe_ddp_context, hash_id=dataset_id, use_barrier=True)
             dataset_str_f = 'Downloading the dataset from {hub}, dataset_id: {dataset_id}'
             if use_hf:
                 dataset_str = dataset_str_f.format(hub='HuggingFace', dataset_id=dataset_id)
@@ -261,10 +261,10 @@ class DatasetLoader:
                                      f'split={split} with error: {e}')
                     else:
                         break
-                if hasattr(dataset, '_hf_ds'):
-                    dataset = dataset._hf_ds
-                    if streaming and isinstance(dataset, HfDataset):
-                        dataset = dataset.to_iterable_dataset()
+            if hasattr(dataset, '_hf_ds'):
+                dataset = dataset._hf_ds
+                if streaming and isinstance(dataset, HfDataset):
+                    dataset = dataset.to_iterable_dataset()
             if columns:
                 dataset = RowPreprocessor.safe_rename_columns(dataset, columns)
             dataset = subset.preprocess_func(dataset, num_proc=num_proc, strict=strict)

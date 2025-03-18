@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Literal, Optional
 
 from swift.llm import MODEL_MAPPING
 from swift.trainers.arguments import GRPOArgumentsMixin
-from swift.utils import get_logger
+from swift.utils import get_logger, set_default_ddp_config
 from .train_args import TrainArguments
 
 logger = get_logger()
@@ -127,24 +127,11 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
         elif self.ref_model is not None:
             raise ValueError('CPO/ORPO or LoRA training does not require a ref_model to be passed in.')
 
-    @staticmethod
-    def _set_default_ddp_config():
-        # It runs normally with Python as well.
-        rank = int(os.getenv('RANK', -1))
-        if rank == -1:
-            os.environ['NPROC_PER_NODE'] = '1'
-            os.environ['RANK'] = '0'
-            os.environ['LOCAL_RANK'] = '0'
-            os.environ['WORLD_SIZE'] = '1'
-            os.environ['LOCAL_WORLD_SIZE'] = '1'
-            os.environ['MASTER_ADDR'] = '127.0.0.1'
-            os.environ['MASTER_PORT'] = os.environ.get('MASTER_PORT', '29500')
-
     def _init_grpo(self):
         if self.rlhf_type == 'grpo':
             if self.use_vllm or self.use_lmdeploy:
                 os.environ['USE_FAST_INFERENCE'] = '1'
-                self._set_default_ddp_config()
+                set_default_ddp_config()
             if self.async_generate or not self.use_vllm:
                 self.sleep_level = 0
             if self.sleep_level > 0:
@@ -154,6 +141,11 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
             self.truncation_strategy = 'left'  # Used for trimming the excessively long parts of a prompt.
             if self.beta is None:
                 self.beta = 0.04  # https://arxiv.org/abs/2402.03300
+            if self.async_generate:
+                logger.info('Using async mode. This is a approximate version which '
+                            'will use the old weights to generate responses to accelerate. '
+                            'This will ignore the `CLIP` of advantages, if you found the training '
+                            'is unstable, you may consider using --async_generate false.')
 
     def _init_ppo(self):
         if self.rlhf_type == 'ppo':

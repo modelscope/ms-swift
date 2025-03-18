@@ -4,6 +4,7 @@ import inspect
 import os
 import shutil
 import time
+from contextlib import contextmanager
 from copy import copy
 from types import MethodType
 from typing import Callable, Dict, List, Optional, Tuple, Union
@@ -223,7 +224,7 @@ class SwiftMixin:
             from swift.llm import save_checkpoint
             additional_saved_files = self.model_meta.additional_saved_files
             save_checkpoint(None, self.template.processor, output_dir, additional_saved_files=additional_saved_files)
-            if hasattr(self.model, 'origin_generation_config'):
+            if getattr(self.model, 'origin_generation_config', None):
                 self.model.origin_generation_config.save_pretrained(output_dir)
 
     def _fix_zero3_gather_all_parameters(self) -> None:
@@ -252,6 +253,27 @@ class SwiftMixin:
         logger.info(f'Saving model checkpoint to {self.state.last_model_checkpoint}')
         return result
 
+    @staticmethod
+    @contextmanager
+    def _fix_grad_norm_nan():
+        from accelerate import Accelerator
+        origin_clip_grad_norm_ = Accelerator.clip_grad_norm_
+
+        def clip_grad_norm_(self, parameters, *args, **kwargs):
+            # If NaN occurs, ignore weight updates.
+            parameters = list(parameters)
+            grad_norm = origin_clip_grad_norm_(self, parameters, *args, **kwargs)
+            if isinstance(grad_norm, torch.Tensor) and grad_norm.isnan().item():
+                for p in parameters:
+                    p.grad = None
+            return grad_norm
+
+        Accelerator.clip_grad_norm_ = clip_grad_norm_
+        try:
+            yield
+        finally:
+            Accelerator.clip_grad_norm_ = origin_clip_grad_norm_
+
     def train(self, *args, **kwargs):
         if self.model_meta.is_multimodal:
             models = list(
@@ -262,7 +284,7 @@ class SwiftMixin:
             self.template.register_post_encode_hook(models)
             logger.info(f'Successfully registered post_encode hook: {[model.__class__.__name__ for model in models]}.')
         self._save_initial_model(self.args.output_dir)
-        with self.hub.patch_hub():
+        with self.hub.patch_hub(), self._fix_grad_norm_nan():
             res = super().train(*args, **kwargs)
         self.template.remove_post_encode_hook()
         return res

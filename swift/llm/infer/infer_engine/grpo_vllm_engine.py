@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-from copy import deepcopy
+from copy import copy, deepcopy
 from typing import Any, Dict, Iterator, List, Optional, Union
 
 import torch
@@ -10,7 +10,7 @@ from swift.llm import InferRequest, Template, VllmEngine, get_model_tokenizer
 from swift.plugin import Metric
 from ..protocol import ChatCompletionResponse, ChatCompletionStreamResponse, RequestConfig
 from .patch import patch_auto_config, patch_auto_tokenizer
-from .utils import AdapterRequest
+from .utils import AdapterRequest, patch_vllm_memory_leak
 
 try:
     # After setting the environment variables, import vllm. This way of writing allows lint to pass.
@@ -54,6 +54,7 @@ class GRPOVllmEngine(VllmEngine):
         distributed_executor_backend: Optional[str] = None,
         engine_kwargs: Optional[Dict[str, Any]] = None,
     ) -> None:
+        patch_vllm_memory_leak()
         self.use_async_engine = use_async_engine
         self.processor = get_model_tokenizer(
             model_id_or_path,
@@ -113,8 +114,6 @@ class GRPOVllmEngine(VllmEngine):
         batched_inputs, error_list = self._batch_encode(
             infer_requests, template=template, strict=getattr(self, 'strict', True))
         self.set_default_max_tokens(request_config, batched_inputs)
-        generation_config = self._prepare_generation_config(request_config)
-        self._add_stop_words(generation_config, request_config, template.template_meta)
 
         prompts = []
         for inputs in batched_inputs:
@@ -133,5 +132,16 @@ class GRPOVllmEngine(VllmEngine):
                 llm_inputs['multi_modal_data'] = mm_data
             prompts.append(llm_inputs)
 
-        outputs = self.engine.generate(prompts, generation_config)
-        return [self._create_chat_completion_response(result, template, generation_config, '') for result in outputs]
+        generation_configs = []
+        seed = request_config.seed
+        assert seed >= 0, 'Seed is needed for GRPOVllmEngine.'
+        for i, _ in enumerate(prompts):
+            request_config = copy(request_config)
+            request_config.seed = seed + i
+            generation_config = self._prepare_generation_config(request_config)
+            self._add_stop_words(generation_config, request_config, template.template_meta)
+            generation_configs.append(generation_config)
+        outputs = self.engine.generate(prompts, generation_configs, use_tqdm=False)
+        return [
+            self._create_chat_completion_response(result, template, generation_configs[0], '') for result in outputs
+        ]

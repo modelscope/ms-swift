@@ -29,6 +29,12 @@ class SwiftExport(SwiftPipeline):
             quantize_model(args)
         elif args.to_ollama:
             export_to_ollama(args)
+        elif args.to_mcore:
+            from swift.megatron import convert_hf2mcore
+            convert_hf2mcore(args)
+        elif args.to_hf:
+            from swift.megatron import convert_mcore2hf
+            convert_mcore2hf(args)
         elif args.push_to_hub:
             model_dir = args.adapters and args.adapters[0] or args.model_dir
             assert model_dir, f'model_dir: {model_dir}'

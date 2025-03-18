@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import hashlib
 import inspect
+import math
 import os
 import re
 from copy import deepcopy
@@ -112,10 +113,11 @@ class Template(ProcessorMixin):
         self.norm_bbox = norm_bbox or self.norm_bbox
         if self.is_encoder_decoder:
             self.skip_prompt = False
-
         self.mode: Literal['pt', 'vllm', 'lmdeploy',  # infer
                            'train', 'rlhf', 'kto',  # train
                            'seq_cls', 'embedding', 'prm'] = 'pt'
+        self._packing = False
+        self.use_megatron = False
         if self.model_info.task_type != 'causal_lm':
             self.mode = self.model_info.task_type
         self._handles = []
@@ -258,7 +260,23 @@ class Template(ProcessorMixin):
         return encoded
 
     def _embedding_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        encoded = self._rlhf_encode(inputs)
+        sent1_inputs, sent2_inputs = inputs, deepcopy(inputs)
+        # move response to query
+        sent2_inputs.messages[-2]['content'] = sent2_inputs.messages[-1]['content']
+        sent1_inputs.messages[-1]['content'] = ''
+        sent2_inputs.messages[-1]['content'] = ''
+        if '<image>' not in sent1_inputs.messages[0]['content']:
+            sent1_inputs.images = []
+        if '<image>' not in sent2_inputs.messages[0]['content']:
+            sent2_inputs.images = []
+        chosen_encoded = self._encode(sent1_inputs)
+        rejected_encoded = self._encode(sent2_inputs)
+
+        encoded = {}
+        for prefix in ['chosen', 'rejected']:
+            data = locals()[f'{prefix}_encoded']
+            for k, v in data.items():
+                encoded[f'{prefix}_{k}'] = v
         encoded.pop('chosen_labels', None)
         encoded.pop('rejected_labels', None)
         if inputs.label is not None:
@@ -315,6 +333,9 @@ class Template(ProcessorMixin):
                 encoded.pop(key)
         if return_template_inputs:
             encoded['template_inputs'] = inputs
+
+        if self.use_megatron and encoded.get('labels'):
+            encoded['labels'] = encoded['labels'][1:] + [-100]
         return encoded
 
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
@@ -358,8 +379,8 @@ class Template(ProcessorMixin):
 
     def decode(self,
                generate_ids: List[int],
-               is_finished: bool = True,
                *,
+               is_finished: bool = True,
                tokenizer_kwargs=None,
                first_token=True,
                **kwargs) -> Any:
@@ -565,6 +586,25 @@ class Template(ProcessorMixin):
         """
         return [f'[{self._get_bbox_str(bbox)}]']
 
+    def _pre_tokenize_images(self, context_list: List[Context], loss_scale_list: List[float],
+                             inputs: StdTemplateInputs) -> Tuple[List[Context], List[float]]:
+        # https://github.com/modelscope/ms-swift/issues/3407
+        # Fix the bounding box position offset issue in the Qwen2.5-VL grounding task.
+        res: List[Context] = []
+        res_loss_scale: List[float] = []
+        inputs.image_idx = 0
+
+        for context, loss_scale in zip(context_list, loss_scale_list):
+            if context == '<image>' and inputs.is_multimodal and inputs.image_idx < len(inputs.images):
+                c_list = self.replace_tag('image', inputs.image_idx, inputs)
+                inputs.image_idx += 1
+                loss_scale = 0.
+            else:
+                c_list = [context]
+            res += c_list
+            res_loss_scale += [loss_scale] * len(c_list)
+        return res, res_loss_scale
+
     def _pre_tokenize(self, context_list: List[Context], loss_scale_list: List[float],
                       inputs: StdTemplateInputs) -> Tuple[List[Context], List[float]]:
         """This method happens before tokenization, replace standard tags to the contents or input_ids needed by
@@ -576,6 +616,7 @@ class Template(ProcessorMixin):
         Returns:
             The context_list and loss_scale_list after replacement.
         """
+        context_list, loss_scale_list = self._pre_tokenize_images(context_list, loss_scale_list, inputs)
         if inputs.images and inputs.objects:
             self.normalize_bbox(inputs)
         # replace tag/object/box
@@ -583,11 +624,11 @@ class Template(ProcessorMixin):
         res_loss_scale: List[float] = []  # result of loss_scale_list
 
         # reset
-        for k in ['image', 'video', 'audio', 'object', 'box']:
+        for k in ['video', 'audio', 'object', 'box']:
             setattr(inputs, f'{k}_idx', 0)
 
         for context, loss_scale in zip(context_list, loss_scale_list):
-            for k in ['image', 'video', 'audio']:
+            for k in ['video', 'audio']:
                 if context == f'<{k}>' and inputs.is_multimodal and getattr(inputs, f'{k}_idx') < len(
                         getattr(inputs, f'{k}s')):
                     c_list = self.replace_tag(k, getattr(inputs, f'{k}_idx'), inputs)
@@ -1058,10 +1099,14 @@ class Template(ProcessorMixin):
                 res[key][i] = val
             if not seq_lens:
                 seq_lens = [seq.shape[0] for seq in res[key]]
-        if seq_lens and ('input_ids' in res or 'inputs_embeds' in res):
+        packing_mode = self._packing and 'position_ids' in res
+        if not self.use_megatron and not packing_mode and seq_lens and ('input_ids' in res or 'inputs_embeds' in res):
             res['attention_mask'] = [torch.ones(seq_len, dtype=torch.int64) for seq_len in seq_lens]
             if self.is_training and self.padding_side == 'left':
                 res['position_ids'] = [torch.arange(seq_len, dtype=torch.int64) for seq_len in seq_lens]
+
+        if self.use_megatron:
+            padding_to = math.ceil(max(seq_lens) / 128) * 128
 
         for key, pad_value in zip(keys, pad_value):
             if key not in res:
@@ -1087,6 +1132,13 @@ class Template(ProcessorMixin):
             res['pixel_values_videos'] = torch.concat(pixel_values_videos)
         if use_torchacc() or self.sequence_parallel_size > 1:
             res = self._torchacc_xtuner_data_collator(res, padding_to, self.tokenizer, padding_side)
+        if self.use_megatron:
+            labels = res['labels']
+            loss_mask = (labels != -100).float()
+            position_ids = torch.arange(
+                labels.shape[1], dtype=torch.long, device=labels.device).unsqueeze(0).expand_as(labels).contiguous()
+            res['tokens'] = res.pop('input_ids')
+            res.update({'loss_mask': loss_mask, 'position_ids': position_ids})
 
         return res
 

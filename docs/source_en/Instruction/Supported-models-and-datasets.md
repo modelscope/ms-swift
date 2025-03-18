@@ -182,8 +182,10 @@ The table below introduces the models integrated with ms-swift:
 |[Qwen/QwQ-32B-Preview](https://modelscope.cn/models/Qwen/QwQ-32B-Preview)|qwq_preview|qwq_preview|transformers>=4.37|-|[Qwen/QwQ-32B-Preview](https://huggingface.co/Qwen/QwQ-32B-Preview)|
 |[Qwen/QwQ-32B](https://modelscope.cn/models/Qwen/QwQ-32B)|qwq|qwq|transformers>=4.37|-|[Qwen/QwQ-32B](https://huggingface.co/Qwen/QwQ-32B)|
 |[Qwen/QwQ-32B-AWQ](https://modelscope.cn/models/Qwen/QwQ-32B-AWQ)|qwq|qwq|transformers>=4.37|-|[Qwen/QwQ-32B-AWQ](https://huggingface.co/Qwen/QwQ-32B-AWQ)|
-|[iic/gte_Qwen2-1.5B-instruct](https://modelscope.cn/models/iic/gte_Qwen2-1.5B-instruct)|qwen2_gte|dummy|-|-|-|
-|[iic/gte_Qwen2-7B-instruct](https://modelscope.cn/models/iic/gte_Qwen2-7B-instruct)|qwen2_gte|dummy|-|-|-|
+|[iic/gte_Qwen2-1.5B-instruct](https://modelscope.cn/models/iic/gte_Qwen2-1.5B-instruct)|qwen2_gte|dummy|-|-|[Alibaba-NLP/gte-Qwen2-1.5B-instruct](https://huggingface.co/Alibaba-NLP/gte-Qwen2-1.5B-instruct)|
+|[iic/gte_Qwen2-7B-instruct](https://modelscope.cn/models/iic/gte_Qwen2-7B-instruct)|qwen2_gte|dummy|-|-|[Alibaba-NLP/gte-Qwen2-7B-instruct](https://huggingface.co/Alibaba-NLP/gte-Qwen2-7B-instruct)|
+|[iic/gme-Qwen2-VL-2B-Instruct](https://modelscope.cn/models/iic/gme-Qwen2-VL-2B-Instruct)|qwen2_gme|qwen2_gme|-|-|[Alibaba-NLP/gme-Qwen2-VL-2B-Instruct](https://huggingface.co/Alibaba-NLP/gme-Qwen2-VL-2B-Instruct)|
+|[iic/gme-Qwen2-VL-7B-Instruct](https://modelscope.cn/models/iic/gme-Qwen2-VL-7B-Instruct)|qwen2_gme|qwen2_gme|-|-|[Alibaba-NLP/gme-Qwen2-VL-7B-Instruct](https://huggingface.co/Alibaba-NLP/gme-Qwen2-VL-7B-Instruct)|
 |[codefuse-ai/CodeFuse-QWen-14B](https://modelscope.cn/models/codefuse-ai/CodeFuse-QWen-14B)|codefuse_qwen|codefuse|-|coding|[codefuse-ai/CodeFuse-QWen-14B](https://huggingface.co/codefuse-ai/CodeFuse-QWen-14B)|
 |[iic/ModelScope-Agent-7B](https://modelscope.cn/models/iic/ModelScope-Agent-7B)|modelscope_agent|modelscope_agent|-|-|-|
 |[iic/ModelScope-Agent-14B](https://modelscope.cn/models/iic/ModelScope-Agent-14B)|modelscope_agent|modelscope_agent|-|-|-|
@@ -446,6 +448,8 @@ The table below introduces the models integrated with ms-swift:
 |[LLM-Research/gemma-2-9b-it](https://modelscope.cn/models/LLM-Research/gemma-2-9b-it)|gemma2|gemma|transformers>=4.42|-|[google/gemma-2-9b-it](https://huggingface.co/google/gemma-2-9b-it)|
 |[LLM-Research/gemma-2-27b](https://modelscope.cn/models/LLM-Research/gemma-2-27b)|gemma2|gemma|transformers>=4.42|-|[google/gemma-2-27b](https://huggingface.co/google/gemma-2-27b)|
 |[LLM-Research/gemma-2-27b-it](https://modelscope.cn/models/LLM-Research/gemma-2-27b-it)|gemma2|gemma|transformers>=4.42|-|[google/gemma-2-27b-it](https://huggingface.co/google/gemma-2-27b-it)|
+|[LLM-Research/gemma-3-1b-pt](https://modelscope.cn/models/LLM-Research/gemma-3-1b-pt)|gemma3_text|gemma3_text|transformers>=4.49|-|[google/gemma-3-1b-pt](https://huggingface.co/google/gemma-3-1b-pt)|
+|[LLM-Research/gemma-3-1b-it](https://modelscope.cn/models/LLM-Research/gemma-3-1b-it)|gemma3_text|gemma3_text|transformers>=4.49|-|[google/gemma-3-1b-it](https://huggingface.co/google/gemma-3-1b-it)|
 |[skywork/Skywork-13B-base](https://modelscope.cn/models/skywork/Skywork-13B-base)|skywork|skywork|-|-|[skywork/Skywork-13B-base](https://huggingface.co/skywork/Skywork-13B-base)|
 |[skywork/Skywork-13B-chat](https://modelscope.cn/models/skywork/Skywork-13B-chat)|skywork|skywork|-|-|-|
 |[AI-ModelScope/Skywork-o1-Open-Llama-3.1-8B](https://modelscope.cn/models/AI-ModelScope/Skywork-o1-Open-Llama-3.1-8B)|skywork_o1|skywork_o1|transformers>=4.43|-|[Skywork/Skywork-o1-Open-Llama-3.1-8B](https://huggingface.co/Skywork/Skywork-o1-Open-Llama-3.1-8B)|
@@ -659,7 +663,7 @@ The table below introduces the models integrated with ms-swift:
 |[OpenBMB/MiniCPM-Llama3-V-2_5](https://modelscope.cn/models/OpenBMB/MiniCPM-Llama3-V-2_5)|minicpmv2_5|minicpmv2_5|timm, transformers>=4.36|vision|[openbmb/MiniCPM-Llama3-V-2_5](https://huggingface.co/openbmb/MiniCPM-Llama3-V-2_5)|
 |[OpenBMB/MiniCPM-V-2_6](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2_6)|minicpmv2_6|minicpmv2_6|timm, transformers>=4.36, decord|vision, video|[openbmb/MiniCPM-V-2_6](https://huggingface.co/openbmb/MiniCPM-V-2_6)|
 |[OpenBMB/MiniCPM-o-2_6](https://modelscope.cn/models/OpenBMB/MiniCPM-o-2_6)|minicpmo2_6|minicpmo2_6|timm, transformers>=4.36, decord, soundfile|vision, video, omni, audio|[openbmb/MiniCPM-o-2_6](https://huggingface.co/openbmb/MiniCPM-o-2_6)|
-|[MiniMaxAI/MiniMax-VL-01](https://modelscope.cn/models/MiniMaxAI/MiniMax-VL-01)|minimax_vl|minimax_vl|-|-|[MiniMaxAI/MiniMax-VL-01](https://huggingface.co/MiniMaxAI/MiniMax-VL-01)|
+|[MiniMaxAI/MiniMax-VL-01](https://modelscope.cn/models/MiniMaxAI/MiniMax-VL-01)|minimax_vl|minimax_vl|-|vision|[MiniMaxAI/MiniMax-VL-01](https://huggingface.co/MiniMaxAI/MiniMax-VL-01)|
 |[iic/mPLUG-Owl2](https://modelscope.cn/models/iic/mPLUG-Owl2)|mplug_owl2|mplug_owl2|transformers<4.35, icecream|vision|[MAGAer13/mplug-owl2-llama2-7b](https://huggingface.co/MAGAer13/mplug-owl2-llama2-7b)|
 |[iic/mPLUG-Owl2.1](https://modelscope.cn/models/iic/mPLUG-Owl2.1)|mplug_owl2_1|mplug_owl2|transformers<4.35, icecream|vision|[Mizukiluke/mplug_owl_2_1](https://huggingface.co/Mizukiluke/mplug_owl_2_1)|
 |[iic/mPLUG-Owl3-1B-241014](https://modelscope.cn/models/iic/mPLUG-Owl3-1B-241014)|mplug_owl3|mplug_owl3|transformers>=4.36, icecream, decord|vision, video|[mPLUG/mPLUG-Owl3-1B-241014](https://huggingface.co/mPLUG/mPLUG-Owl3-1B-241014)|
@@ -703,6 +707,12 @@ The table below introduces the models integrated with ms-swift:
 |[AI-ModelScope/pixtral-12b](https://modelscope.cn/models/AI-ModelScope/pixtral-12b)|pixtral|pixtral|transformers>=4.45|vision|[mistral-community/pixtral-12b](https://huggingface.co/mistral-community/pixtral-12b)|
 |[InfiniAI/Megrez-3B-Omni](https://modelscope.cn/models/InfiniAI/Megrez-3B-Omni)|megrez_omni|megrez_omni|-|vision, audio|[Infinigence/Megrez-3B-Omni](https://huggingface.co/Infinigence/Megrez-3B-Omni)|
 |[bytedance-research/Valley-Eagle-7B](https://modelscope.cn/models/bytedance-research/Valley-Eagle-7B)|valley|valley|transformers>=4.42, av|vision|-|
+|[LLM-Research/gemma-3-4b-pt](https://modelscope.cn/models/LLM-Research/gemma-3-4b-pt)|gemma3_vision|gemma3_vision|transformers>=4.49|-|[google/gemma-3-4b-pt](https://huggingface.co/google/gemma-3-4b-pt)|
+|[LLM-Research/gemma-3-4b-it](https://modelscope.cn/models/LLM-Research/gemma-3-4b-it)|gemma3_vision|gemma3_vision|transformers>=4.49|-|[google/gemma-3-4b-it](https://huggingface.co/google/gemma-3-4b-it)|
+|[LLM-Research/gemma-3-12b-pt](https://modelscope.cn/models/LLM-Research/gemma-3-12b-pt)|gemma3_vision|gemma3_vision|transformers>=4.49|-|[google/gemma-3-12b-pt](https://huggingface.co/google/gemma-3-12b-pt)|
+|[LLM-Research/gemma-3-12b-it](https://modelscope.cn/models/LLM-Research/gemma-3-12b-it)|gemma3_vision|gemma3_vision|transformers>=4.49|-|[google/gemma-3-12b-it](https://huggingface.co/google/gemma-3-12b-it)|
+|[LLM-Research/gemma-3-27b-pt](https://modelscope.cn/models/LLM-Research/gemma-3-27b-pt)|gemma3_vision|gemma3_vision|transformers>=4.49|-|[google/gemma-3-27b-pt](https://huggingface.co/google/gemma-3-27b-pt)|
+|[LLM-Research/gemma-3-27b-it](https://modelscope.cn/models/LLM-Research/gemma-3-27b-it)|gemma3_vision|gemma3_vision|transformers>=4.49|-|[google/gemma-3-27b-it](https://huggingface.co/google/gemma-3-27b-it)|
 
 
 ## Datasets
@@ -833,6 +843,10 @@ The table below introduces information about the datasets integrated with ms-swi
 |[modelscope/coco_2014_caption](https://modelscope.cn/datasets/modelscope/coco_2014_caption)|train<br>validation|454617|389.6±68.4, min=70, max=587|chat, multi-modal, vision, 🔥|-|
 |[modelscope/gsm8k](https://modelscope.cn/datasets/modelscope/gsm8k)|main|7473|88.6±21.6, min=41, max=241|qa, math|-|
 |[okwinds/clevr_cogen_a_train](https://modelscope.cn/datasets/okwinds/clevr_cogen_a_train)|default|70000|67.0±0.0, min=67, max=67|qa, math, vision, grpo|[leonardPKU/clevr_cogen_a_train](https://huggingface.co/datasets/leonardPKU/clevr_cogen_a_train)|
+|[open-r1/verifiable-coding-problems-python](https://modelscope.cn/datasets/open-r1/verifiable-coding-problems-python)|default|35735|559.0±255.2, min=74, max=6191|grpo, code|[open-r1/verifiable-coding-problems-python](https://huggingface.co/datasets/open-r1/verifiable-coding-problems-python)|
+|[open-r1/verifiable-coding-problems-python-10k](https://modelscope.cn/datasets/open-r1/verifiable-coding-problems-python-10k)|default|1800|581.6±233.4, min=136, max=2022|grpo, code|[open-r1/verifiable-coding-problems-python-10k](https://huggingface.co/datasets/open-r1/verifiable-coding-problems-python-10k)|
+|[open-r1/verifiable-coding-problems-python-10k_decontaminated](https://modelscope.cn/datasets/open-r1/verifiable-coding-problems-python-10k_decontaminated)|default|1574|575.7±234.3, min=136, max=2022|grpo, code|[open-r1/verifiable-coding-problems-python-10k_decontaminated](https://huggingface.co/datasets/open-r1/verifiable-coding-problems-python-10k_decontaminated)|
+|[open-r1/verifiable-coding-problems-python_decontaminated](https://modelscope.cn/datasets/open-r1/verifiable-coding-problems-python_decontaminated)|default|27839|561.9±252.2, min=74, max=6191|grpo, code|[open-r1/verifiable-coding-problems-python_decontaminated](https://huggingface.co/datasets/open-r1/verifiable-coding-problems-python_decontaminated)|
 |[open-thoughts/OpenThoughts-114k](https://modelscope.cn/datasets/open-thoughts/OpenThoughts-114k)|default|113957|413.2±186.9, min=265, max=13868|chat, sft, cot, r1|[open-thoughts/OpenThoughts-114k](https://huggingface.co/datasets/open-thoughts/OpenThoughts-114k)|
 |[sentence-transformers/stsb](https://modelscope.cn/datasets/sentence-transformers/stsb)|default|5748|21.0±0.0, min=21, max=21|similarity, 🔥|-|
 |[shenweizhou/alpha-umi-toolbench-processed-v2](https://modelscope.cn/datasets/shenweizhou/alpha-umi-toolbench-processed-v2)|backbone<br>caller<br>planner<br>summarizer|huge dataset|-|chat, agent, 🔥|-|
@@ -855,7 +869,7 @@ The table below introduces information about the datasets integrated with ms-swi
 |[swift/RedPajama-Data-V2](https://modelscope.cn/datasets/swift/RedPajama-Data-V2)|default|huge dataset|-|pretrain, quality|[togethercomputer/RedPajama-Data-V2](https://huggingface.co/datasets/togethercomputer/RedPajama-Data-V2)|
 |[swift/ScienceQA](https://modelscope.cn/datasets/swift/ScienceQA)|default|16967|101.7±55.8, min=32, max=620|multi-modal, science, vqa, quality|[derek-thomas/ScienceQA](https://huggingface.co/datasets/derek-thomas/ScienceQA)|
 |[swift/SlimOrca](https://modelscope.cn/datasets/swift/SlimOrca)|default|517982|405.5±442.1, min=47, max=8312|quality, en|[Open-Orca/SlimOrca](https://huggingface.co/datasets/Open-Orca/SlimOrca)|
-|[swift/TextCaps](https://modelscope.cn/datasets/swift/TextCaps)|default|huge dataset|-|multi-modal, en, caption, quality|[HuggingFaceM4/TextCaps](https://huggingface.co/datasets/HuggingFaceM4/TextCaps)|
+|[swift/TextCaps](https://modelscope.cn/datasets/swift/TextCaps)|default<br>emb|huge dataset|-|multi-modal, en, caption, quality|[HuggingFaceM4/TextCaps](https://huggingface.co/datasets/HuggingFaceM4/TextCaps)|
 |[swift/ToolBench](https://modelscope.cn/datasets/swift/ToolBench)|default|124345|2251.7±1039.8, min=641, max=9451|chat, agent, multi-round|-|
 |[swift/VQAv2](https://modelscope.cn/datasets/swift/VQAv2)|default|huge dataset|-|en, vqa, quality|[HuggingFaceM4/VQAv2](https://huggingface.co/datasets/HuggingFaceM4/VQAv2)|
 |[swift/VideoChatGPT](https://modelscope.cn/datasets/swift/VideoChatGPT)|Generic<br>Temporal<br>Consistency|3206|87.4±48.3, min=31, max=398|chat, multi-modal, video, 🔥|[lmms-lab/VideoChatGPT](https://huggingface.co/datasets/lmms-lab/VideoChatGPT)|

@@ -4,8 +4,9 @@ from dataclasses import dataclass
 from typing import Literal, Optional
 
 import torch
+import torch.distributed as dist
 
-from swift.utils import get_logger
+from swift.utils import get_logger, init_process_group, set_default_ddp_config
 from .base_args import BaseArguments, to_abspath
 from .merge_args import MergeArguments
 
@@ -42,6 +43,12 @@ class ExportArguments(MergeArguments, BaseArguments):
     # ollama
     to_ollama: bool = False
 
+    # megatron
+    to_mcore: bool = False
+    to_hf: bool = False
+    mcore_model: Optional[str] = None
+    test_convert_precision: bool = False
+
     # push to ms hub
     push_to_hub: bool = False
     # 'user_name/repo_name' or 'repo_name'
@@ -64,15 +71,19 @@ class ExportArguments(MergeArguments, BaseArguments):
                 suffix = 'ollama'
             elif self.merge_lora:
                 suffix = 'merged'
+            elif self.to_mcore:
+                suffix = 'mcore'
+            elif self.to_hf:
+                suffix = 'hf'
             else:
                 return
 
             self.output_dir = os.path.join(ckpt_dir, f'{ckpt_name}-{suffix}')
-            logger.info(f'Setting args.output_dir: `{self.output_dir}`')
 
         self.output_dir = to_abspath(self.output_dir)
         if not self.exist_ok and os.path.exists(self.output_dir):
             raise FileExistsError(f'args.output_dir: `{self.output_dir}` already exists.')
+        logger.info(f'args.output_dir: `{self.output_dir}`')
 
     def __post_init__(self):
         if self.quant_batch_size == -1:
@@ -83,6 +94,11 @@ class ExportArguments(MergeArguments, BaseArguments):
             raise ValueError('Please specify `--quant_bits`.')
         if self.quant_method in {'gptq', 'awq'} and self.torch_dtype is None:
             self.torch_dtype = torch.float16
+        if self.to_mcore or self.to_hf:
+            self.mcore_model = to_abspath(self.mcore_model, check_path_exist=True)
+            if not dist.is_initialized():
+                set_default_ddp_config()
+                init_process_group()
 
         BaseArguments.__post_init__(self)
         self._init_output_dir()

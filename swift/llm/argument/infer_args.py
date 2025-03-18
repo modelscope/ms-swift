@@ -4,11 +4,9 @@ import os
 from dataclasses import dataclass
 from typing import Literal, Optional, Union
 
-import torch
 import torch.distributed as dist
-from transformers.utils import is_torch_npu_available
 
-from swift.utils import get_logger, is_dist
+from swift.utils import get_logger, init_process_group, is_dist
 from .base_args import BaseArguments, to_abspath
 from .base_args.model_args import ModelArguments
 from .merge_args import MergeArguments
@@ -156,15 +154,7 @@ class InferArguments(MergeArguments, VllmArguments, LmdeployArguments, BaseArgum
             return
         assert not self.eval_human and not self.stream
         self._init_device()
-        if not dist.is_initialized():
-            if self.ddp_backend is None:
-                if is_torch_npu_available():
-                    self.ddp_backend = 'hccl'
-                elif torch.cuda.is_available():
-                    self.ddp_backend = 'nccl'
-                else:
-                    self.ddp_backend = 'gloo'
-            dist.init_process_group(backend=self.ddp_backend)
+        init_process_group(self.ddp_backend)
 
     def __post_init__(self) -> None:
         BaseArguments.__post_init__(self)
