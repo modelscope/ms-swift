@@ -191,7 +191,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # transformers if num_generations exceeds per_device_train_batch_size. We could skip it if we use vLLM, but
         # it's safer to set it in all cases.
         set_seed(args.seed, device_specific=True)
-        self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
+        self.parameter_groups, self.parameter_groups_no_lora = None, None
         self.infer_device = None
 
         if use_vllm or use_lmdeploy:
@@ -501,6 +501,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # 1. deepspeed parallel == vllm tensor parallel, may be do not need to gather
         # 2. may be each process in tp group only need gather a part of the parameters
         # 3. the split of parameter_groups may be imbalanced
+
+        # split parameter_groups after deepspeed init
+        if self.parameter_groups is None:
+            self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
+
         from accelerate.utils.other import is_compiled_module
 
         for i, parameter_group in enumerate(self.parameter_groups):
