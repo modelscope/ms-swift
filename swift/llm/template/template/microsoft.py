@@ -153,6 +153,7 @@ class Phi3VisionTemplate(Template):
 
 
 class Phi4MMTemplate(Template):
+    placeholder_tokens = ['<|endoftext10|>', '<|endoftext11|>']
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -212,8 +213,7 @@ class Phi4MMTemplate(Template):
 
 register_template(Phi3TemplateMeta(MLLMTemplateType.phi3_vision, template_cls=Phi3VisionTemplate))
 
-register_template(
-    Phi3TemplateMeta(
-        MLLMTemplateType.phi4_multimodal,
-        template_cls=Phi4MMTemplate,
-        placeholder_tokens=['<|endoftext10|>', '<|endoftext11|>']))
+register_template(Phi3TemplateMeta(
+    MLLMTemplateType.phi4_multimodal,
+    template_cls=Phi4MMTemplate,
+))

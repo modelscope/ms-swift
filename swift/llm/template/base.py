@@ -98,6 +98,9 @@ class Template(ProcessorMixin):
         if response_prefix is not None:
             template_meta.response_prefix = response_prefix
 
+        for i, token in enumerate(self.placeholder_tokens):
+            if isinstance(token, str):
+                self.placeholder_tokens[i] = tokenizer.convert_tokens_to_ids(token)
         template_meta.init(tokenizer)
 
         self.template_meta: TemplateMeta = template_meta
@@ -1268,7 +1271,7 @@ class Template(ProcessorMixin):
     def safe_decode(self, input_ids: List[int], **tokenizer_kwargs) -> str:
         if isinstance(self, Template):
             tokenizer = self.tokenizer
-            placeholder_tokens = self.template_meta.placeholder_tokens
+            placeholder_tokens = self.placeholder_tokens
         else:
             tokenizer = self
             placeholder_tokens = []

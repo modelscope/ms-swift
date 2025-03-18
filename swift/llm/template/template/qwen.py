@@ -199,6 +199,7 @@ register_template(QwenTemplateMeta(MLLMTemplateType.qwen2_audio, template_cls=Qw
 class Qwen2VLTemplate(Template):
     image_token_id = 151655
     video_token_id = 151656
+    placeholder_tokens = ['<|image_pad|>', '<|video_pad|>']
     version = 'v2'
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
@@ -324,9 +325,7 @@ class Qwen2VLTemplate(Template):
         return res
 
 
-register_template(
-    QwenTemplateMeta(
-        MLLMTemplateType.qwen2_vl, template_cls=Qwen2VLTemplate, placeholder_tokens=['<|image_pad|>', '<|video_pad|>']))
+register_template(QwenTemplateMeta(MLLMTemplateType.qwen2_vl, template_cls=Qwen2VLTemplate))
 
 register_template(
     QwenTemplateMeta(
@@ -334,7 +333,7 @@ register_template(
         default_system=('You are a helpful and harmless assistant. You are Qwen developed by Alibaba. '
                         'Answer in the language of the question. You should think step-by-step.'),
         template_cls=Qwen2VLTemplate,
-        placeholder_tokens=['<|image_pad|>', '<|video_pad|>']))
+    ))
 
 
 class Qwen2_5VLTemplate(Qwen2VLTemplate):
@@ -342,11 +341,7 @@ class Qwen2_5VLTemplate(Qwen2VLTemplate):
     norm_bbox = 'none'
 
 
-register_template(
-    QwenTemplateMeta(
-        MLLMTemplateType.qwen2_5_vl,
-        template_cls=Qwen2_5VLTemplate,
-        placeholder_tokens=['<|image_pad|>', '<|video_pad|>']))
+register_template(QwenTemplateMeta(MLLMTemplateType.qwen2_5_vl, template_cls=Qwen2_5VLTemplate))
 
 
 class Ovis1_6Template(Template):
@@ -423,6 +418,7 @@ register_template(
 
 
 class Ovis2Template(Ovis1_6Template):
+    placeholder_tokens = ['<|image_pad|>', '<|video_pad|>']
     nframes = 12
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
@@ -435,12 +431,10 @@ class Ovis2Template(Ovis1_6Template):
             return [[-200] * nframes, '\n']
 
 
-register_template(
-    QwenTemplateMeta(
-        MLLMTemplateType.ovis2,
-        template_cls=Ovis2Template,
-        placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
-    ))
+register_template(QwenTemplateMeta(
+    MLLMTemplateType.ovis2,
+    template_cls=Ovis2Template,
+))
 
 
 @dataclass

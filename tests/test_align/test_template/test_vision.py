@@ -181,10 +181,11 @@ def test_llama_vision():
 
 
 def test_llava_hf():
-    pt_engine = PtEngine('swift/llava-v1.6-mistral-7b-hf')
-    _infer_model(pt_engine)
+    pt_engine = PtEngine('llava-hf/llava-v1.6-mistral-7b-hf')
+    response = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
-    _infer_model(pt_engine)
+    response2 = _infer_model(pt_engine)
+    assert response == response2
 
 
 def test_florence():
@@ -214,9 +215,11 @@ def test_qwen_vl():
 
 
 def test_llava_onevision_hf():
-    pt_engine = PtEngine('AI-ModelScope/llava-onevision-qwen2-0.5b-ov-hf')
-    _infer_model(pt_engine)
-
+    pt_engine = PtEngine('llava-hf/llava-onevision-qwen2-0.5b-ov-hf')
+    response = _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine)
+    assert response == response2
 
 def test_xcomposer2_5():
     pt_engine = PtEngine('Shanghai_AI_Laboratory/internlm-xcomposer2d5-ol-7b:base', torch.float16)
@@ -504,7 +507,7 @@ if __name__ == '__main__':
     # test_qwen_vl()
     # test_glm4v()
     # test_cogagent()
-    # test_llava_onevision_hf()
+    test_llava_onevision_hf()
     # test_minicpmv()
     # test_got_ocr()
     # test_got_ocr_hf()
@@ -530,4 +533,4 @@ if __name__ == '__main__':
     # test_minicpmo()
     # test_valley()
     # test_ui_tars()
-    test_gemma3_vision()
+    # test_gemma3_vision()

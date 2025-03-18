@@ -18,6 +18,7 @@ from .utils import ChatmlTemplateMeta
 
 
 class LlavaHfTemplate(Template):
+    placeholder_tokens = ['<image>']
 
     @property
     def image_token_index(self):
@@ -214,7 +215,6 @@ register_template(
         MLLMTemplateType.llava_onevision_hf,
         default_system=None,
         template_cls=LlavaOneVisionHfTemplate,
-        placeholder_tokens=['<image>'],
     ))
 
 

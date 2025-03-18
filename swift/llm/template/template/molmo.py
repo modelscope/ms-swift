@@ -11,6 +11,7 @@ from ..utils import Context, findall
 
 
 class MolmoTemplate(Template):
+    placeholder_tokens = ['<im_patch>']
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -64,5 +65,4 @@ register_template(
         chat_sep=None,
         suffix=['<|endoftext|>'],
         template_cls=MolmoTemplate,
-        placeholder_tokens=['<im_patch>'],
     ))
