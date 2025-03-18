@@ -8,7 +8,7 @@ def get_mg_model_tokenizer(model_id):
     from megatron.training.initialize import initialize_megatron
     set_default_ddp_config()
     hf_model, processor = get_model_tokenizer(model_id, torch_dtype=torch.float32)
-    megatron_model_meta = get_megatron_model_meta(model_id)
+    megatron_model_meta = get_megatron_model_meta(processor.model_meta.model_type)
     model_info = processor.model_info
     kwargs = megatron_model_meta.convert_hf_config(model_info.config)
     megatron_args = MegatronArguments(**kwargs, seq_length=1, use_cpu_initialization=True, no_initialization=True)
