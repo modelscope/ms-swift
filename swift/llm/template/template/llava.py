@@ -194,6 +194,8 @@ class LlavaOneVisionHfTemplate(Llava1_6HfTemplate):
             height, width = image_inputs['pixel_values'][0].shape[-2:]
             added_tokens_len = 0
             for idx, pixel_v, image_size in zip(idx_list, image_inputs['pixel_values'], image_inputs['image_sizes']):
+                if isinstance(image_size, torch.Tensor):
+                    image_size = image_size.tolist()
                 orig_height, orig_width = image_size
                 num_image_tokens = processor._get_number_of_features(orig_height, orig_width, height, width)
                 input_ids = input_ids[:added_tokens_len
