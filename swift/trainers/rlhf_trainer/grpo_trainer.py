@@ -735,34 +735,34 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # split mini batch to reduce memory peak
         mini_batch_inputs = self._split_into_mini_batches(inputs, mini_batch_size=self.args.mini_batch_size)
-        batch_inputs = []
+        batch_encoded_inputs = []
         from copy import copy
         template = copy(self.template)
         with self._template_context(template):
             for mini_batch in mini_batch_inputs:
-                mini_batch_inputs = [template.encode(infer_request) for infer_request in mini_batch]
-                mini_batch_inputs = to_device(template.data_collator(mini_batch_inputs), self.model.device)
-                labels = mini_batch_inputs.pop('labels')
+                mini_batch_encoded_inputs = [template.encode(infer_request) for infer_request in mini_batch]
+                mini_batch_encoded_inputs = to_device(template.data_collator(mini_batch_encoded_inputs), self.model.device)
+                labels = mini_batch_encoded_inputs.pop('labels')
                 logits_to_keep = (labels.shape[-1] - (torch.ne(labels, -100).int().argmax(-1))).max().item()
-                mini_batch_inputs['logits_to_keep'] = logits_to_keep
-                mini_batch_inputs['completion_mask'] = labels[:, -logits_to_keep:] != -100
+                mini_batch_encoded_inputs['logits_to_keep'] = logits_to_keep
+                mini_batch_encoded_inputs['completion_mask'] = labels[:, -logits_to_keep:] != -100
 
-            with torch.no_grad():
-                if self.old_policy:
-                    batched_inputs['old_per_token_logps'] = self._get_per_token_logps(self.model, mini_batch_inputs)
-                else:
-                    batched_inputs['old_per_token_logps'] = None
+                with torch.no_grad():
+                    if self.old_policy:
+                        mini_batch_encoded_inputs['old_per_token_logps'] = self._get_per_token_logps(self.model, mini_batch_inputs)
+                    else:
+                        mini_batch_encoded_inputs['old_per_token_logps'] = None
 
-                if self.beta == 0.0:
-                    ref_per_token_logps = None
-                elif self.ref_model is not None:
-                    ref_per_token_logps = self._get_per_token_logps(self.ref_model, mini_batch_inputs)
-                else:
-                    with self.accelerator.unwrap_model(self.model).disable_adapter():
-                        ref_per_token_logps = self._get_per_token_logps(self.model, mini_batch_inputs)
+                    if self.beta == 0.0:
+                        ref_per_token_logps = None
+                    elif self.ref_model is not None:
+                        ref_per_token_logps = self._get_per_token_logps(self.ref_model, mini_batch_encoded_inputs)
+                    else:
+                        with self.accelerator.unwrap_model(self.model).disable_adapter():
+                            ref_per_token_logps = self._get_per_token_logps(self.model, mini_batch_encoded_inputs)
 
-                mini_batch_inputs['ref_per_token_logps'] = ref_per_token_logps
-                batch_inputs.append(mini_batch_inputs)
+                    mini_batch_encoded_inputs['ref_per_token_logps'] = ref_per_token_logps
+                    batch_encoded_inputs.append(mini_batch_encoded_inputs)
 
         rewards_per_func = torch.zeros((len(inputs), len(self.reward_funcs)), device=device)
         completions = [example['messages'][-1]['content'] for example in inputs]
@@ -794,10 +794,15 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         std_grouped_rewards = std_grouped_rewards.repeat_interleave(self.num_generations, dim=0)
         advantages = (rewards - mean_grouped_rewards) / (std_grouped_rewards + 1e-4)
         advantages = advantages[process_slice]
-
+        mini_batch_advantages = self._split_into_mini_batches(advantages, mini_batch_size=self.args.mini_batch_size)
+        # merge advantages to mini_batch_inputs
+        for i, mini_batch_advantage in enumerate(mini_batch_advantages):
+            batch_encoded_inputs[i].update({'advantages': mini_batch_advantage})
         # Log the metrics
         mode = 'eval' if self.control.should_evaluate else 'train'
-        completion_length = self.accelerator.gather_for_metrics(outputs['completion_mask'].sum(1)).float().mean().item()
+        completion_length = self.accelerator.gather_for_metrics(
+            torch.cat([mb['completion_mask'].sum(1).float() for mb in batch_encoded_inputs])
+        ).mean().item()
         self._metrics[mode]['completion_length'].append(completion_length)
         # clip ratio
         response_clip_ratio = torch.gt(
@@ -970,16 +975,16 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return total_loss.detach()
 
-    def _split_into_mini_batches(self, batch: List[Dict[str, Any]], mini_batch_size: int) -> List[List[Dict[str, Any]]]:
+    def _split_into_mini_batches(self, batch: List, mini_batch_size: int) -> List[List]:
         """
         Splits a full batch into multiple mini-batches based on the specified mini_batch_size.
 
         Args:
-            batch (List[Dict[str, Any]]): The full batch.
+            batch (List): The full batch.
             mini_batch_size (int): The size of each mini-batch.
 
         Returns:
-            List[List[Dict[str, Any]]]: A list of mini-batches.
+            List[List]: A list of mini-batches.
         """
         if mini_batch_size is None or mini_batch_size >= len(batch):
             # If mini_batch_size is not specified or larger than the batch size,
