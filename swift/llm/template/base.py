@@ -260,7 +260,7 @@ class Template(ProcessorMixin):
         return encoded
 
     def _embedding_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        _encoded = []
+        _encoded = {}
         labels = []
 
         def split_multi_medias(_inputs):
@@ -1078,10 +1078,11 @@ class Template(ProcessorMixin):
         new_batch = []
         for b in batch:
             keys = [key for key in b.keys() if 'negative' in key]
-            max_neg = max([int(re.findall(r'negative(-?\d+)', key)[0]) for key in keys])
-            indexes = ['anchor', 'positive']
-            for i in range(0, max_neg + 1):
-                indexes.append(f'negative{i}')
+            max_neg = max([int(re.findall(r'negative(-?\d+)', key)[0]) for key in keys]) if keys else None
+            indexes = ['anchor_', 'positive_']
+            if max_neg is not None:
+                for i in range(0, max_neg + 1):
+                    indexes.append(f'negative{i}_')
             for prefix in indexes:
                 new_batch += self._fetch_inputs_startswith([b], prefix)
             labels.extend(b.get('labels', None))
