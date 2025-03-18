@@ -9,7 +9,6 @@ from .model import model_provider
 
 register_megatron_model(
     MegatronModelMeta(MegatronModelType.gpt, [
-        ModelType.qwen,
         ModelType.qwen2,
         ModelType.qwen2_5,
         ModelType.qwq,
