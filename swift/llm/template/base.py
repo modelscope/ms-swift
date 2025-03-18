@@ -260,7 +260,7 @@ class Template(ProcessorMixin):
         return encoded
 
     def _embedding_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        all_embeddings = []
+        _encoded = []
         labels = []
 
         def split_multi_medias(_inputs):
@@ -282,14 +282,18 @@ class Template(ProcessorMixin):
         anchor.messages[-1]['content'] = ''
         anchor.rejected_response = []
         split_multi_medias(anchor)
-        all_embeddings.append(anchor)
+        anchor_encoded = self._encode(anchor)
+        for key in anchor_encoded:
+            _encoded[f'anchor_{key}'] = anchor_encoded[key]
 
         positive = deepcopy(inputs)
         positive.messages[-2]['content'] = positive.messages[-1]['content']
         positive.messages[-1]['content'] = ''
         positive.rejected_response = []
         split_multi_medias(positive)
-        all_embeddings.append(positive)
+        positive_encoded = self._encode(positive)
+        for key in positive_encoded:
+            _encoded[f'positive_{key}'] = positive_encoded[key]
         labels.append(float(inputs.label) if inputs.label is not None else 1.0)
 
         rejected_len = len(inputs.rejected_response) if inputs.rejected_response else 0
@@ -299,18 +303,13 @@ class Template(ProcessorMixin):
             negative.messages[-1]['content'] = ''
             negative.rejected_response = []
             split_multi_medias(negative)
-            all_embeddings.append(negative)
+            negative_encoded = self._encode(negative)
+            for key in negative_encoded:
+                _encoded[f'negative{i}_{key}'] = negative_encoded[key]
             labels.append(0.0)
 
-        _all_encoded = []
-        for _input in all_embeddings:
-            _all_encoded.append(self._encode(_input))
-
-        encoded = {
-            'encoded': _all_encoded,
-        }
-        encoded['labels'] = labels
-        return encoded
+        _encoded['labels'] = labels
+        return _encoded
 
     def _seq_cls_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = self._encode(inputs)
@@ -1076,11 +1075,17 @@ class Template(ProcessorMixin):
                                  *,
                                  padding_to: Optional[int] = None) -> Dict[str, Any]:
         labels = []
-        _encoded = []
+        new_batch = []
         for b in batch:
-            _encoded.extend(b['encoded'])
+            keys = [key for key in b.keys() if 'negative' in key]
+            max_neg = max([int(re.findall(r'negative(-?\d+)', key)[0]) for key in keys])
+            indexes = ['anchor', 'positive']
+            for i in range(0, max_neg + 1):
+                indexes.append(f'negative{i}')
+            for prefix in indexes:
+                new_batch += self._fetch_inputs_startswith([b], prefix)
             labels.extend(b.get('labels', None))
-        res = self._data_collator(_encoded, padding_to=padding_to)
+        res = self._data_collator(new_batch, padding_to=padding_to)
         if labels:
             res['labels'] = torch.tensor(labels, dtype=torch.float32)
         return res
