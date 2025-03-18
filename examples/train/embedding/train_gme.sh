@@ -26,3 +26,4 @@ swift sft \
     --dataloader_num_workers 4 \
     --task_type embedding \
     --loss_type infonce \
+    --dataloader_drop_last true
