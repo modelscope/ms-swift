@@ -182,13 +182,13 @@ def infonce_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> t
     # labels will be [1,0,0,0,1,0,0], meaning 1 positive, 3 negatives, 1 positive, 2 negatives
     split_tensors = _parse_multi_negative_sentences(sentences, labels, hard_negatives)
     loss = 0
-    can_bached = hard_negatives is not None
+    can_batched = hard_negatives is not None
     if hard_negatives is None and len(set([s.shape[0] for s in split_tensors])) == 1:
-        # all tensors has the same batch size
-        can_bached = True
+        # all tensors have the same batch size
+        can_batched = True
     if not use_batch:
         # only calculate loss inside one sample
-        if can_bached:
+        if can_batched:
             # negative numbers are equal
             # [B, neg+2, D]
             sentences = torch.stack(split_tensors, dim=0)
@@ -208,7 +208,7 @@ def infonce_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> t
             # avg between all batches in one gpu
             loss /= len(split_tensors)
     else:
-        if can_bached:
+        if can_batched:
             # [B, neg+2, D]
             sentences = torch.stack(split_tensors, dim=0)
             # [B, D] * [B*(neg+1), D]
@@ -235,7 +235,7 @@ def infonce_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> t
                 length += tensor.size(0) - 1
             loss /= len(split_tensors)
             loss /= world_size  # avoid duplicate
-    return loss  # noqa
+    return loss
 
 
 @register_loss_func(LossType.online_contrastive)
