@@ -2,7 +2,7 @@
 import os
 import sys
 from dataclasses import asdict, dataclass
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 from swift.llm.argument.base_args import to_abspath
 
@@ -10,6 +10,7 @@ from swift.llm.argument.base_args import to_abspath
 @dataclass
 class ExtraMegatronArguments:
     padded_vocab_size: Optional[int] = None
+    rope_scaling: Optional[Union[dict, str]] = None
 
 
 @dataclass
@@ -128,8 +129,10 @@ class MegatronArguments(ExtraMegatronArguments):
     no_create_attention_mask_in_dataloader: bool = True
 
     def __post_init__(self):
+        from swift.llm.argument.base_args.model_args import ModelArguments
         os.environ['CUDA_DEVICE_MAX_CONNECTIONS'] = '1'
         self.group_query_attention = self.num_query_groups > 1
+        self.rope_scaling = ModelArguments.parse_to_dict(self.rope_scaling)
         if self.eval_interval is None:
             self.eval_interval = self.save_interval
         if self.seq_length is None:

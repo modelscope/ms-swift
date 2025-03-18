@@ -63,14 +63,16 @@ def get_model_info_table():
                 if is_megatron_available():
                     from swift.megatron import model
                     support_megatron = getattr(model_meta, 'support_megatron', False)
-                    if 'gptq' in ms_model_id.lower() or 'awq' in ms_model_id.lower() or 'int' in ms_model_id.lower():
-                        support_megatron = False
+                    for word in ['gptq', 'awq', 'bnb', 'aqlm', 'int', 'nf4', 'fp8']:
+                        if word in ms_model_id.lower():
+                            support_megatron = False
+                            break
                     support_megatron = '&#x2714;' if support_megatron else '&#x2718;'
                 else:
                     support_megatron = cache_mapping.get(ms_model_id, '&#x2718;')
                 if support_megatron == '&#x2714;':
                     mg_count += 1
-                r = (f'|{ms_model_id}|{model_type}|{template}|{requires}|{support_megatron}|{tags}|{hf_model_id}|\n')
+                r = f'|{ms_model_id}|{model_type}|{template}|{requires}|{support_megatron}|{tags}|{hf_model_id}|\n'
                 if model_meta.is_multimodal:
                     res_mllm.append(r)
                 else:

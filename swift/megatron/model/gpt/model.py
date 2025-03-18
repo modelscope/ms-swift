@@ -4,6 +4,8 @@ from megatron.core.models.gpt.gpt_layer_specs import get_gpt_layer_with_transfor
 from megatron.training import get_args
 from megatron.training.arguments import core_transformer_config_from_args
 
+from ..rope import update_rope_inv_freq
+
 
 def model_provider(pre_process=True, post_process=True):
     args = get_args()
@@ -27,4 +29,6 @@ def model_provider(pre_process=True, post_process=True):
         rope_scaling=args.use_rope_scaling,
         rope_scaling_factor=args.rope_scaling_factor,
         seq_len_interpolation_factor=args.rotary_seq_len_interpolation_factor)
+    if args.rope_scaling:
+        update_rope_inv_freq(model.rotary_pos_emb.inv_freq, args.rope_scaling)
     return model

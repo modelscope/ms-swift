@@ -73,7 +73,6 @@ register_model(
         TemplateType.deepseek,
         get_model_tokenizer_deepseek_moe,
         architectures=['DeepseekForCausalLM'],
-        model_arch=ModelArch.llama,
     ))
 
 register_model(

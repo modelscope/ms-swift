@@ -38,5 +38,11 @@ def convert_hf_config(config) -> Dict[str, Any]:
                 else:
                     megatron_config[k] = hf_v
                 break
+    # compat llama3
+    if getattr(config, 'rope_scaling', None) is not None:
+        if isinstance(config.rope_scaling, int):
+            megatron_config['rope_scaling'] = {'factor': config.rope_scaling, 'type': 'linear'},
+        elif isinstance(config.rope_scaling, dict):
+            megatron_config['rope_scaling'] = config.rope_scaling
     logger.info(f'megatron_config: {megatron_config}')
     return megatron_config

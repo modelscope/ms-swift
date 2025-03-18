@@ -37,6 +37,14 @@ def test_megrez():
     _test_model('InfiniAI/Megrez-3b-Instruct')
 
 
+def test_llama3_1():
+    _test_model('LLM-Research/Meta-Llama-3.1-8B-Instruct')
+
+
+def test_llama3_2():
+    _test_model('LLM-Research/Llama-3.2-1B-Instruct')
+
+
 if __name__ == '__main__':
     # test_llama2()
     # test_llama3()
@@ -44,4 +52,6 @@ if __name__ == '__main__':
     # test_deepseek_r1_llama()
     # test_deepseek_r1_qwen()
     # test_yi()
-    test_megrez()
+    # test_megrez()
+    # test_llama3_1()
+    test_llama3_2()
