@@ -80,7 +80,6 @@ register_model(
         ],
         TemplateType.openbuddy,
         get_model_tokenizer_with_flash_attn,
-        model_arch=ModelArch.llama,
         architectures=['MixtralForCausalLM'],
         requires=['transformers>=4.36'],
     ))

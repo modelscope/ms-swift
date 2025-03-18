@@ -2,7 +2,7 @@
 import os
 import sys
 from dataclasses import asdict, dataclass
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 from swift.llm.argument.base_args import to_abspath
 
