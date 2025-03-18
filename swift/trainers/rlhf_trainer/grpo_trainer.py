@@ -293,7 +293,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         2. other, embeds, lm_heads in one batch
         3. multi-modal components in one batch
         """
-        model = self.accelerator.unwrap_model(self.model)
+        # model = self.accelerator.unwrap_model(self.model)
+        model = self.model_wrapped
         if self.args.move_model_batches is None:
             # All in one
             return [[n for n, p in model.named_parameters() if 'ref_model' not in n]], [None]
@@ -751,7 +752,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         with torch.no_grad():
             if self.old_policy:
-                outputs['old_per_token_logps'] = self._get_per_token_logps(self.model_wrapped, outputs)
+                outputs['old_per_token_logps'] = self._get_per_token_logps(self.model, outputs)
             else:
                 outputs['old_per_token_logps'] = None
 
