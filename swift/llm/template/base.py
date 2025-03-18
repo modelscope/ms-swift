@@ -49,24 +49,24 @@ class Template(ProcessorMixin):
     is_encoder_decoder = False
 
     def __init__(
-        self,
-        processor: Processor,
-        template_meta: 'TemplateMeta',
-        default_system: Optional[str] = None,
-        max_length: Optional[int] = None,
-        *,
-        use_chat_template: bool = True,
-        truncation_strategy: Literal['raise', 'left', 'right'] = 'raise',
-        max_pixels: Optional[int] = None,
-        tools_prompt: Optional[str] = None,
-        norm_bbox: Literal['norm1000', 'none', None] = None,
-        response_prefix: Optional[str] = None,
-        # only for train
-        padding_side: Literal['left', 'right'] = 'right',
-        loss_scale: str = 'default',
-        sequence_parallel_size: int = 1,
-        # infer/deploy
-        template_backend: Literal['swift', 'jinja'] = 'swift',
+            self,
+            processor: Processor,
+            template_meta: 'TemplateMeta',
+            default_system: Optional[str] = None,
+            max_length: Optional[int] = None,
+            *,
+            use_chat_template: bool = True,
+            truncation_strategy: Literal['raise', 'left', 'right'] = 'raise',
+            max_pixels: Optional[int] = None,
+            tools_prompt: Optional[str] = None,
+            norm_bbox: Literal['norm1000', 'none', None] = None,
+            response_prefix: Optional[str] = None,
+            # only for train
+            padding_side: Literal['left', 'right'] = 'right',
+            loss_scale: str = 'default',
+            sequence_parallel_size: int = 1,
+            # infer/deploy
+            template_backend: Literal['swift', 'jinja'] = 'swift',
     ) -> None:
         """
         default_system: Override the default_system in the template.
@@ -114,8 +114,8 @@ class Template(ProcessorMixin):
         if self.is_encoder_decoder:
             self.skip_prompt = False
         self.mode: Literal['pt', 'vllm', 'lmdeploy',  # infer
-                           'train', 'rlhf', 'kto',  # train
-                           'seq_cls', 'embedding', 'prm'] = 'pt'
+        'train', 'rlhf', 'kto',  # train
+        'seq_cls', 'embedding', 'prm'] = 'pt'
         self._packing = False
         self.use_megatron = False
         if self.model_info.task_type != 'causal_lm':
@@ -173,8 +173,8 @@ class Template(ProcessorMixin):
                 bbox[2 * i + 1] = int(round(y / height * norm_height))
 
     def _preprocess_inputs(
-        self,
-        inputs: StdTemplateInputs,
+            self,
+            inputs: StdTemplateInputs,
     ) -> None:
         if self.model_meta.is_multimodal:
             self._replace_image_tags(inputs)
@@ -260,29 +260,57 @@ class Template(ProcessorMixin):
         return encoded
 
     def _embedding_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        sent1_inputs, sent2_inputs = inputs, deepcopy(inputs)
-        # move response to query
-        sent2_inputs.messages[-2]['content'] = sent2_inputs.messages[-1]['content']
-        sent1_inputs.messages[-1]['content'] = ''
-        sent2_inputs.messages[-1]['content'] = ''
-        if '<image>' not in sent1_inputs.messages[0]['content']:
-            sent1_inputs.images = []
-        if '<image>' not in sent2_inputs.messages[0]['content']:
-            sent2_inputs.images = []
-        chosen_encoded = self._encode(sent1_inputs)
-        rejected_encoded = self._encode(sent2_inputs)
+        from copy import deepcopy
+        all_embeddings = []
+        labels = []
 
-        encoded = {}
-        for prefix in ['chosen', 'rejected']:
-            data = locals()[f'{prefix}_encoded']
-            for k, v in data.items():
-                encoded[f'{prefix}_{k}'] = v
-        encoded.pop('chosen_labels', None)
-        encoded.pop('rejected_labels', None)
-        if inputs.label is not None:
-            encoded['labels'] = float(inputs.label)
-        else:
-            encoded['labels'] = 0.0
+        def split_multi_medias(_inputs):
+            _content = _inputs.messages[-2]['content']
+            image_size = len(re.findall('<image>', _content))
+            video_size = len(re.findall('<video>', _content))
+            audio_size = len(re.findall('<audio>', _content))
+            _inputs.images = inputs.images[:image_size]
+            assert len(_inputs.images) == image_size
+            inputs.images = inputs.images[image_size:]
+            _inputs.videos = inputs.videos[:video_size]
+            assert len(_inputs.videos) == video_size
+            inputs.videos = inputs.videos[video_size:]
+            _inputs.audios = inputs.audios[:audio_size]
+            assert len(_inputs.audios) == audio_size
+            inputs.audios = inputs.audios[audio_size:]
+
+        anchor = deepcopy(inputs)
+        anchor.messages[-1]['content'] = ''
+        anchor.rejected_response = []
+        split_multi_medias(anchor)
+        all_embeddings.append(anchor)
+ 
+        positive = deepcopy(inputs)
+        positive.messages[-2]['content'] = positive.messages[-1]['content']
+        positive.messages[-1]['content'] = ''
+        positive.rejected_response = []
+        split_multi_medias(positive)
+        all_embeddings.append(positive)
+        labels.append(float(inputs.label) if inputs.label is not None else 1.0)
+
+        rejected_len = len(inputs.rejected_response) if inputs.rejected_response else 0
+        for i in range(rejected_len):
+            negative = deepcopy(inputs)
+            negative.messages[-2]['content'] = negative.rejected_response[i]
+            negative.messages[-1]['content'] = ''
+            negative.rejected_response = []
+            split_multi_medias(negative)
+            all_embeddings.append(negative)
+            labels.append(0.0)
+
+        _all_encoded = []
+        for _input in all_embeddings:
+            _all_encoded.append(self._encode(_input))
+
+        encoded = {
+            'encoded': _all_encoded,
+        }
+        encoded['labels'] = labels
         return encoded
 
     def _seq_cls_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
@@ -657,6 +685,11 @@ class Template(ProcessorMixin):
     @staticmethod
     def _add_default_tags(inputs: StdTemplateInputs):
         total_content = '\n'.join([message['content'] or '' for message in inputs.messages])
+        if inputs.rejected_response:
+            if isinstance(inputs.rejected_response, str):
+                total_content += inputs.rejected_response
+            else:
+                total_content += '\n'.join(inputs.rejected_response)
         if inputs.system:
             total_content = f'{inputs.system}\n{total_content}'
         for media_type in ['image', 'audio', 'video']:
@@ -1043,8 +1076,12 @@ class Template(ProcessorMixin):
                                  batch: List[Dict[str, Any]],
                                  *,
                                  padding_to: Optional[int] = None) -> Dict[str, Any]:
-        labels = [b.pop('labels') for b in batch if b.get('labels') is not None]
-        res = self._rlhf_data_collator(batch, padding_to=padding_to)
+        labels = []
+        _encoded = []
+        for b in batch:
+            _encoded.extend(b['encoded'])
+            labels.extend(b.get('labels', None))
+        res = self._data_collator(_encoded, padding_to=padding_to)
         if labels:
             res['labels'] = torch.tensor(labels, dtype=torch.float32)
         return res
@@ -1184,7 +1221,7 @@ class Template(ProcessorMixin):
         if tokenizer_kwargs is None:
             tokenizer_kwargs = {}
         for key in [
-                'input', 'labels', 'generate', 'chosen_input', 'chosen_labels', 'rejected_input', 'rejected_labels'
+            'input', 'labels', 'generate', 'chosen_input', 'chosen_labels', 'rejected_input', 'rejected_labels'
         ]:
             val = inputs.get(key)  # fix val is a tensor
             if val is None:
