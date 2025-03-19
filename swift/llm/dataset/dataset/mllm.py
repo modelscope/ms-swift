@@ -751,6 +751,7 @@ class TextCapsEmbPreprocessor(ResponsePreprocessor):
         row['query'] = ''
         if not os.path.exists(row['images']['path']):
             return None
+        row['rejected_response'] = ['a', 'b', 'c']
         return super().preprocess(row)
 
 

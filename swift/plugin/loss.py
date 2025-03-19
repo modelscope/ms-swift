@@ -10,7 +10,7 @@ from accelerate.utils import gather_object
 from torch import nn
 from torch.nn import CrossEntropyLoss, MSELoss
 from transformers.utils import strtobool
-
+# torch.autograd.set_detect_anomaly(True)
 
 class LossType:
     loss_scale = 'loss_scale'
@@ -157,7 +157,7 @@ def infonce_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> t
     # calculate CE across the batch, meaning all samples will be negative except the matching positive
     use_batch = strtobool(os.environ.get('INFONCE_USE_BATCH', 'True'))
     hard_negatives = os.environ.get('INFONCE_HARD_NEGATIVES', None)  # how many negative prompts kept in one sample
-    infonce_mask_fake_negative = os.environ.get('INFONCE_MASK_FAKE_NEGATIVE', None)  #
+    infonce_mask_fake_negative = strtobool(os.environ.get('INFONCE_MASK_FAKE_NEGATIVE', 'True'))  #
     if hard_negatives is not None:
         hard_negatives = int(hard_negatives)
     from swift.utils import get_dist_setting
@@ -212,7 +212,7 @@ def infonce_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> t
             loss /= len(split_tensors)
     else:
         def mask_fake_negative(sim_matrix, sim_labels):
-            thresholds = sim_matrix.index_select(sim_labels).view(-1, 1) + 0.1
+            thresholds = sim_matrix[torch.arange(sim_matrix.size(0)), sim_labels].view(-1, 1) + 0.1
             thresholds = thresholds.detach()
             mask = sim_matrix > thresholds
             sim_matrix[mask] = float('-inf')
@@ -223,13 +223,13 @@ def infonce_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> t
             # [B, D] * [B*(neg+1), D]
             similarity_matrix = torch.matmul(sentences[:, 0].squeeze(1), sentences[:, 1:].
                                              reshape(-1, sentences.size(2)).T)
+            labels = torch.tensor(range(0,
+                                        sentences.size(0) * (sentences.size(1) - 1),
+                                        sentences.size(1) - 1)).view(-1).to(sentences.device)
             if infonce_mask_fake_negative:
                 mask_fake_negative(similarity_matrix, labels)
             similarity_matrix = similarity_matrix / temperature
             # every neg+1 is positive start from 0
-            labels = torch.tensor(range(0,
-                                        sentences.size(0) * (sentences.size(1) - 1),
-                                        sentences.size(1) - 1)).view(-1).to(sentences.device)
             loss = nn.CrossEntropyLoss()(similarity_matrix, labels) / world_size  # avoid duplicate
         else:
             all_tensors = []

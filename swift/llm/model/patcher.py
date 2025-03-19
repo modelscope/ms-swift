@@ -59,13 +59,13 @@ def patch_output_clone(module: torch.nn.Module):
     module.register_forward_hook(_clone_hook)
 
 
-def patch_output_normalizer(module: torch.nn.Module):
+def patch_output_normalizer(module: torch.nn.Module, model_meta):
 
     def lm_head_forward(self, hidden_states):
         return hidden_states
 
     lm_heads = ['lm_head', 'output', 'embed_out', 'output_layer']
-    llm_prefix = getattr(get_model_arch(module.model_meta.model_arch), 'language_model', None)
+    llm_prefix = getattr(get_model_arch(model_meta.model_arch), 'language_model', None)
     if llm_prefix:
         llm_model = getattr(module, llm_prefix[0])
     else:
@@ -101,8 +101,8 @@ def patch_output_normalizer(module: torch.nn.Module):
             'last_hidden_state': embeddings.contiguous(),
         }
 
-    module.forward_origin = module.forward
-    module.forward = MethodType(forward, module)
+    llm_model.forward_origin = llm_model.forward
+    llm_model.forward = MethodType(forward, llm_model)
 
 
 def patch_output_to_input_device(module: torch.nn.Module):

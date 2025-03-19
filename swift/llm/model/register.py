@@ -217,7 +217,7 @@ def get_model_tokenizer_from_local(model_dir: str,
 
         if model_info.task_type == 'embedding':
             from swift.llm.model.patcher import patch_output_normalizer
-            patch_output_normalizer(model)
+            patch_output_normalizer(model, model_meta=kwargs['model_meta'])
 
     return model, tokenizer
 

@@ -320,8 +320,12 @@ def use_submodel_func(model, submodel_name: str, func_list: Optional[List[str]] 
                 device = find_device(args)
                 if device is None:
                     device = find_device(kwargs)
-                res.logits = to_device(res.logits, device)
-                res.loss = to_device(res.loss, device)
+                if hasattr(res, 'logits'):
+                    res.logits = to_device(res.logits, device)
+                if hasattr(res, 'loss'):
+                    res.loss = to_device(res.loss, device)
+                if isinstance(res, dict) and 'last_hidden_state' in res:
+                    res['last_hidden_state'] = to_device(res['last_hidden_state'], device)
             return res
 
         return _new_func

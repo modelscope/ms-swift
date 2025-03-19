@@ -185,7 +185,6 @@ def get_model_tokenizer_qwen2_gme(model_dir: str,
         automodel_class=automodel_class,
         **kwargs)
 
-    patch_output_normalizer(model)
     return model, tokenizer
 
 
