@@ -647,7 +647,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self.offload_optimizer()
             if self.args.gc_collect_after_offload:
                 gc_collect()
-            self.engine.engine.wake_up()
+            # Skip the first wake_up to avoid the warning "Executor is not sleeping"
+            if self.engine.inner_model_executor.is_sleeping:
+                self.engine.engine.wake_up()
         # First, have main process load weights if needed
         if self.state.global_step != self._last_loaded_step:
             self._move_model_to_vllm_lmdeploy()

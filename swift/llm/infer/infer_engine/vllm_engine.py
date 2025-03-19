@@ -304,6 +304,10 @@ class VllmEngine(InferEngine):
     def inner_model(self):
         return self.engine.model_executor.driver_worker.worker.model_runner.model
 
+    @property
+    def inner_model_executor(self):
+        return self.engine.model_executor
+
     async def _infer_stream_async(self, template: Template, inputs: Dict[str, Any], generation_config: SamplingParams,
                                   **kwargs) -> AsyncIterator[ChatCompletionStreamResponse]:
         request_id = random_uuid()
