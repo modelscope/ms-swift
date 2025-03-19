@@ -11,8 +11,6 @@ from torch import nn
 from torch.nn import CrossEntropyLoss, MSELoss
 from transformers.utils import strtobool
 
-# torch.autograd.set_detect_anomaly(True)
-
 
 class LossType:
     loss_scale = 'loss_scale'
@@ -159,7 +157,8 @@ def infonce_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> t
     # calculate CE across the batch, meaning all samples will be negative except the matching positive
     use_batch = strtobool(os.environ.get('INFONCE_USE_BATCH', 'True'))
     hard_negatives = os.environ.get('INFONCE_HARD_NEGATIVES', None)  # how many negative prompts kept in one sample
-    infonce_mask_fake_negative = strtobool(os.environ.get('INFONCE_MASK_FAKE_NEGATIVE', 'True'))  #
+    # mask out fake negatives
+    infonce_mask_fake_negative = strtobool(os.environ.get('INFONCE_MASK_FAKE_NEGATIVE', 'False'))
     if hard_negatives is not None:
         hard_negatives = int(hard_negatives)
     from swift.utils import get_dist_setting

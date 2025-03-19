@@ -6,6 +6,7 @@ import torch
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.llm import TemplateType
+from swift.llm.model.model.qwen import get_model_tokenizer_qwen2_vl
 from swift.utils import get_logger
 from ..constant import MLLMModelType
 from ..model_arch import ModelArch
@@ -164,30 +165,6 @@ register_model(
         tags=['vision', 'audio'],
     ))
 
-
-def get_model_tokenizer_qwen2_gme(model_dir: str,
-                                  model_info: ModelInfo,
-                                  model_kwargs: Dict[str, Any],
-                                  load_model: bool = True,
-                                  *,
-                                  tokenizer=None,
-                                  model_config=None,
-                                  automodel_class=None,
-                                  **kwargs):
-    from swift.llm.model.model.qwen import get_model_tokenizer_qwen2_vl
-    model, tokenizer = get_model_tokenizer_qwen2_vl(
-        model_dir,
-        model_info,
-        model_kwargs,
-        load_model,
-        tokenizer=tokenizer,
-        model_config=model_config,
-        automodel_class=automodel_class,
-        **kwargs)
-
-    return model, tokenizer
-
-
 register_model(
     ModelMeta(
         MLLMModelType.qwen2_gme, [
@@ -197,7 +174,7 @@ register_model(
             ]),
         ],
         TemplateType.qwen2_gme,
-        get_model_tokenizer_qwen2_gme,
+        get_model_tokenizer_qwen2_vl,
         model_arch=ModelArch.qwen2_vl,
         architectures=['Qwen2VLForConditionalGeneration'],
         tags=['vision']))
