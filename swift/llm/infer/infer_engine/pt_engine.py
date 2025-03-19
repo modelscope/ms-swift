@@ -92,8 +92,7 @@ class PtEngine(InferEngine):
 
     def _start_infer_worker(self):
         if self._task_thread is None:
-            self._task_thread = Thread(target=self._infer_worker)
-            self._task_thread.daemon = True
+            self._task_thread = Thread(target=self._infer_worker, daemon = True)
             self._task_thread.start()
 
     def _fetch_infer_requests(self):

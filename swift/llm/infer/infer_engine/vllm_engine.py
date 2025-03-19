@@ -379,7 +379,13 @@ class VllmEngine(InferEngine):
         return self._create_chat_completion_response(result, template, generation_config, request_id)
 
     def _batch_infer_stream(self, *args, **kwargs):
-        self.engine.engine.model_executor.parallel_worker_tasks = None
+        if hasattr(self.engine, 'engine'):
+            self.engine.engine.model_executor.parallel_worker_tasks = None
+        elif hasattr(self.engine, 'engine_core'):
+            # vllm>=0.8
+            self.engine.engine_core.outputs_queue = None
+            self.engine.engine_core.queue_task = None
+            self.engine.output_handler = None
         return super()._batch_infer_stream(*args, **kwargs)
 
     def infer(
