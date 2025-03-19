@@ -37,4 +37,4 @@ ROPE_MAPPING = {'llama3': _to_llama3_rope, 'linear': _to_linear_rope}
 
 def update_rope_inv_freq(inv_freq: torch.Tensor, rope_scaling: Dict[str, Any]) -> None:
     new_inv_freq = ROPE_MAPPING[rope_scaling['rope_type']](inv_freq, rope_scaling)
-    inv_freq.copy_(new_inv_freq)
+    inv_freq.data.copy_(new_inv_freq)

@@ -1,8 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import wraps
-from typing import Any, Dict, Literal, Optional, Union
+from typing import Literal, Optional, Union, List
 
 import torch
 import torch.utils.checkpoint
@@ -14,20 +14,47 @@ from .optimizers.galore import GaLoreConfig
 
 
 @dataclass
-class SwiftArgumentsMixin:
-    logging_first_step: bool = True
-    acc_strategy: Literal['token', 'seq'] = 'token'
-    sequence_parallel_size: int = 1
-    check_model: bool = True
-    train_sampler_random: bool = True
-    is_encoder_decoder: bool = False
-    gradient_checkpointing_kwargs: Optional[Dict[str, Any]] = None
+class TrainArgumentsMixin:
+    """
+    check_model (bool): Flag to check the model is latest. Default is True.
+    acc_strategy (Literal['token', 'seq']): Strategy for accumulation. Default is 'token'.
+    """
+    per_device_train_batch_size: int = 1
+    per_device_eval_batch_size: int = 1
 
+    gradient_checkpointing: bool = True
+    gradient_checkpointing_kwargs: Optional[Union[dict, str]] = None
+    logging_first_step: bool = True
+    logging_steps: int = 5
+
+    weight_decay: float = 0.1
+    adam_beta2: float = 0.95
+    lr_scheduler_type: str = 'cosine'
+    lr_scheduler_kwargs: Optional[Union[dict, str]] = None
+    report_to: List[str] = field(default_factory=lambda: ['tensorboard'])
+
+    # extra
+    check_model: bool = True
+    acc_strategy: Literal['token', 'seq'] = 'token'
     # torchacc
     metric_warmup_step: Optional[float] = 0
-    train_dataset_sample: Optional[int] = -1
     fsdp_num: int = 1
     acc_steps: int = 1
+
+    def __post_init__(self):
+        from swift.llm.argument.base_args.model_args import ModelArguments
+        if use_torchacc():
+            self.dataloader_drop_last = True
+        if self.lr_scheduler_kwargs:
+            self.lr_scheduler_kwargs = ModelArguments.parse_to_dict(self.lr_scheduler_kwargs)
+        if getattr(self, 'gradient_checkpointing_kwargs', None):
+            self.gradient_checkpointing_kwargs = ModelArguments.parse_to_dict(self.gradient_checkpointing_kwargs)
+
+@dataclass
+class SwiftArgumentsMixin(TrainArgumentsMixin):
+    sequence_parallel_size: int = 1
+    train_sampler_random: bool = True
+    is_encoder_decoder: bool = False
 
     # Value copied from TrainArguments
     train_type: Optional[str] = None
