@@ -23,11 +23,10 @@ class QuantEngine(ProcessorMixin):
             kwargs['automodel_class'] = AutoAWQForCausalLM
         self.model, self.template = prepare_model_template(args, **kwargs)
         self.template.set_mode('train')
-
+        self.model.config.use_cache = False
         HfConfigFactory.set_model_config_attr(self.model, 'use_cache', False)
         self.processor = self.template.processor
-        if args.output_dir:
-            args.save_args()
+        args.save_args()
 
     def quantize(self):
         args = self.args
@@ -181,7 +180,8 @@ class QuantEngine(ProcessorMixin):
 
         module_lists = []
         for n, m in model.named_modules():
-            if isinstance(m, nn.ModuleList) and len(m) >= 10:
+            if (isinstance(m, (nn.ModuleList, nn.Sequential)) and len(m) >= 10
+                    and 'mlp' not in m[0].__class__.__name__.lower()):  # fix moe
                 module_lists.append((n, m))
         if module_lists:
             module_list = max(module_lists, key=lambda x: len(x[1]))

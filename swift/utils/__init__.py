@@ -10,8 +10,9 @@ from .logger import get_logger
 from .np_utils import get_seed, stat_array, transform_jsonl_to_df
 from .tb_utils import TB_COLOR, TB_COLOR_SMOOTH, plot_images, read_tensorboard_file, tensorboard_smoothing
 from .torch_utils import (Serializer, activate_parameters, find_all_linears, find_embedding, find_norm,
-                          freeze_parameters, gc_collect, get_device, get_device_count, get_model_parameter_info,
-                          safe_ddp_context, show_layers, time_synchronize)
+                          freeze_parameters, gc_collect, get_current_device, get_device, get_device_count,
+                          get_model_parameter_info, init_process_group, safe_ddp_context, set_default_ddp_config,
+                          set_device, show_layers, time_synchronize)
 from .utils import (add_version_to_work_dir, check_json_format, deep_getattr, find_free_port, get_env_args,
                     import_external_file, lower_bound, parse_args, patch_getattr, read_multi_line, seed_everything,
                     split_list, subprocess_run, test_time, upper_bound)

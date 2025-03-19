@@ -27,6 +27,7 @@ register_template(MegrezTemplateMeta(LLMTemplateType.megrez))
 
 class MegrezOmniTemplate(Template):
     skip_prompt = False
+    placeholder_tokens = ['<|unk|>']
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -92,5 +93,4 @@ class MegrezOmniTemplate(Template):
         return res
 
 
-register_template(
-    MegrezTemplateMeta(MLLMTemplateType.megrez_omni, placeholder_tokens=['<|unk|>'], template_cls=MegrezOmniTemplate))
+register_template(MegrezTemplateMeta(MLLMTemplateType.megrez_omni, template_cls=MegrezOmniTemplate))

@@ -10,9 +10,11 @@ class LLMModelType:
     qwen2_5 = 'qwen2_5'
     qwen2_5_math = 'qwen2_5_math'
     qwen2_moe = 'qwen2_moe'
+    qwq_preview = 'qwq_preview'
     qwq = 'qwq'
 
     qwen2_gte = 'qwen2_gte'
+    qwen2_gme = 'qwen2_gme'
 
     codefuse_qwen = 'codefuse_qwen'
     modelscope_agent = 'modelscope_agent'
@@ -88,6 +90,7 @@ class LLMModelType:
 
     gemma = 'gemma'
     gemma2 = 'gemma2'
+    gemma3_text = 'gemma3_text'
 
     skywork = 'skywork'
     skywork_o1 = 'skywork_o1'
@@ -208,6 +211,7 @@ class MLLMModelType:
     pixtral = 'pixtral'
     megrez_omni = 'megrez_omni'
     valley = 'valley'
+    gemma3_vision = 'gemma3_vision'
 
 
 class ModelType(LLMModelType, MLLMModelType, BertModelType, RMModelType):

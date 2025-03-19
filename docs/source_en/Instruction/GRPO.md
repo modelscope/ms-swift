@@ -13,6 +13,18 @@ pip install git+https://github.com/huggingface/trl.git"
 
 **Note**: It is normal for the loss to approach zero during training. Refer to this [issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851) for more details.
 
+## Cluster Support
+
+![](../../resources/grpo.png)
+
+In SWIFT's GRPO training, the training model preferentially uses the front portion of the available GPUs, while the rollout process utilizes the rear portion of the available GPUs. This means:
+
+- **If both `NPROC_PER_NODE` and `num_infer_workers` in the command are equal to the number of available GPUs**, training and inference are assigned to the same GPUs. In this case, you need to configure `sleep_level`.
+- **If the sum of `NPROC_PER_NODE` and `num_infer_workers` equals the total number of available GPUs**, training will use the front GPUs and rollout will use the rear GPUs. In this scenario, you can configure `async_generate`.
+
+> Note: async_generate uses the policy model and responses of current_step-1, so in fact the `clip` method will be ignored
+> If you encountered unstable in training, turn off this argument.
+> In our experiments, unstable cases is not frequently occurring when async_generate is true.
 
 ## Reward Functions
 ### Custom Reward Functions
@@ -99,6 +111,12 @@ Hyperparameters
 - reward_model: Same as the model, using a reward model as a reward function. At least one of reward_funcs and reward_model needs to be specified.
 - num_iterations: number of iterations per batch. Default is 1.
 - epsilon: epsilon value for clipping. Default is 0.2
+- async_generate: Use async rollout to improve train speed，default `false`.
+- sleep_level: vllm specific，when both actor and rollout in the same GPU，you can make vllm sleep when model is training.
+- move_model_batches: When moving model parameters to fast inference frameworks such as vLLM/LMDeploy, determines how many batches to divide the layers into. The default is `None`, which means the entire model is not split. Otherwise, the model is split into `move_model_batches + 1` (non-layer parameters) + `1` (multi-modal component parameters) batches.
+- offload_optimizer: Whether to offload optimizer parameters during inference with vLLM/LMDeploy. The default is `False`.
+- offload_model: Whether to offload the model itself during inference with vLLM/LMDeploy. The default is `False`.
+- gc_collect_after_offload: Whether to perform garbage collection (both Python GC and GPU GC) after offloading. The default is `False`.
 
 The hyperparameters for the reward function can be found in the [Built-in Reward Functions section](#built-in-reward-functions).
 

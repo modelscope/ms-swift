@@ -102,7 +102,6 @@ register_model(
         ])],
         TemplateType.wizardlm2_moe,
         get_model_tokenizer_with_flash_attn,
-        model_arch=ModelArch.llama,
         architectures=['MixtralForCausalLM'],
         requires=['transformers>=4.36'],
     ))
@@ -115,7 +114,6 @@ register_model(
         ])],
         TemplateType.wizardlm2,
         get_model_tokenizer_with_flash_attn,
-        model_arch=ModelArch.llama,
         architectures=['MistralForCausalLM'],
         requires=['transformers>=4.34'],
     ))

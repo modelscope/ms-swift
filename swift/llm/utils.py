@@ -90,7 +90,8 @@ def find_module_list(model) -> Optional[nn.ModuleList]:
     for m in model.modules():
         if hasattr(m, 'gradient_checkpointing') or m.__class__.__name__ == 'CheckpointWrapper':
             return
-        if isinstance(m, (nn.ModuleList, nn.Sequential)) and len(m) >= 10:
+        if (isinstance(m, (nn.ModuleList, nn.Sequential)) and len(m) >= 10
+                and 'mlp' not in m[0].__class__.__name__.lower()):  # fix moe
             module_lists.append(m)
     if module_lists:
         return max(module_lists, key=lambda x: len(x))

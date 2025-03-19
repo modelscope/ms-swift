@@ -16,7 +16,8 @@ repos:
         exclude: |
             (?x)^(
                 examples/|
-                tests/run.py
+                tests/run.py|
+                swift/cli/sft.py
             )$
   - repo: https://github.com/pre-commit/mirrors-yapf.git
     rev: v0.30.0

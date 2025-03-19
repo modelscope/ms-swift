@@ -10,6 +10,7 @@ from ..utils import findall
 
 class PixtralTemplate(Template):
     image_placeholder = ['[IMG]']
+    placeholder_tokens = ['[IMG]']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
@@ -59,5 +60,4 @@ register_template(
         chat_sep=['</s>'],
         suffix=['</s>'],
         template_cls=PixtralTemplate,
-        placeholder_tokens=['[IMG]'],
     ))

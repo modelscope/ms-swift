@@ -45,6 +45,7 @@ class DeepseekVLTemplate(Template):
     image_placeholder = ['<image_placeholder>']
     skip_prompt = False
     use_model = True
+    placeholder_tokens = ['<image_placeholder>']
 
     image_token_num_per_image: int = 576
 
@@ -184,9 +185,9 @@ class DeepseekVLTemplate(Template):
 
             return {'sequences': generated_tokens}
 
-    def decode(self, generate_ids: List[int], is_finished: bool = True, tokenizer_kwargs=None, **kwargs) -> Any:
+    def decode(self, generate_ids: List[int], **kwargs) -> Any:
         if 'template_inputs' not in kwargs or not kwargs['template_inputs'].generate_mode:
-            return super().decode(generate_ids, is_finished, tokenizer_kwargs, **kwargs)
+            return super().decode(generate_ids, **kwargs)
         else:
             img_size = get_env_args('img_size', int, 384)
             patch_size = 16
@@ -217,7 +218,6 @@ class DeepseekVLTemplateMeta(DeepseekTemplateMeta):
     default_system: Optional[str] = ('You are a helpful language and vision assistant. '
                                      'You are able to understand the visual content that the user provides, '
                                      'and assist the user with a variety of tasks using natural language.')
-    placeholder_tokens: List[str] = field(default_factory=lambda: ['<image_placeholder>'])
 
 
 register_template(DeepseekVLTemplateMeta(
@@ -255,11 +255,13 @@ class DeepseekR1Template(Template):
         return super()._encode(inputs)
 
 
-register_template(DeepseekV2_5TemplateMeta(LLMTemplateType.deepseek_r1, template_cls=DeepseekR1Template))
+register_template(
+    DeepseekV2_5TemplateMeta(LLMTemplateType.deepseek_r1, template_cls=DeepseekR1Template, response_prefix='<think>\n'))
 
 
 class DeepseekVL2Template(DeepseekVLTemplate):
     image_placeholder = ['<image>\n']
+    placeholder_tokens = ['<image>']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         from deepseek_vl2.models.processing_deepseek_vl_v2 import VLChatProcessorOutput
@@ -304,7 +306,7 @@ register_template(
         MLLMTemplateType.deepseek_vl2,
         prompt=['<|User|>: {{QUERY}}\n\n<|Assistant|>:'],
         template_cls=DeepseekVL2Template,
-        placeholder_tokens=['<image>']))
+    ))
 
 register_template(
     DeepseekVLTemplateMeta(

@@ -13,7 +13,7 @@ from transformers import GenerationConfig
 
 from swift.llm import InferRequest, Template, TemplateMeta, get_model_tokenizer
 from swift.plugin import Metric
-from swift.utils import get_logger, get_node_setting
+from swift.utils import get_logger, get_node_setting, get_seed
 from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                         ChatCompletionStreamResponse, ChatMessage, DeltaMessage, RequestConfig, random_uuid)
 from .infer_engine import InferEngine
@@ -95,7 +95,8 @@ class VllmEngine(InferEngine):
             enable_sleep_mode=enable_sleep_mode,
             engine_kwargs=engine_kwargs,
         )
-        context, npu_context = patch_vllm(num_infer_workers * get_node_setting()[1]), nullcontext()
+        context, npu_context = patch_vllm(num_infer_workers * get_node_setting()[1],
+                                          self.engine_args.device), nullcontext()
         if tensor_parallel_size == 1 or pipeline_parallel_size == 1:
             npu_context = patch_npu_vllm(self.engine_args.device)
         with context, npu_context:
@@ -150,6 +151,8 @@ class VllmEngine(InferEngine):
         else:
             assert not limit_mm_per_prompt, (
                 'The current version of VLLM does not support `limit_mm_per_prompt`. Please upgrade VLLM.')
+        if 'enable_sleep_mode' in parameters:
+            engine_kwargs['enable_sleep_mode'] = enable_sleep_mode
 
         model_info = self.model_info
         if self.config.architectures is None:
@@ -169,7 +172,6 @@ class VllmEngine(InferEngine):
             trust_remote_code=True,
             enable_prefix_caching=enable_prefix_caching,
             distributed_executor_backend=distributed_executor_backend,
-            enable_sleep_mode=enable_sleep_mode,
             device=device,
             **engine_kwargs,
         )
@@ -292,9 +294,15 @@ class VllmEngine(InferEngine):
         for key in ['n', 'best_of', 'frequency_penalty', 'presence_penalty', 'seed']:
             kwargs[key] = getattr(request_config, key)
 
+        if kwargs.get('seed') is None:
+            kwargs['seed'] = get_seed()
         res = SamplingParams(**kwargs)
         res.top_logprobs = request_config.top_logprobs
         return res
+
+    @property
+    def inner_model(self):
+        return self.engine.model_executor.driver_worker.worker.model_runner.model
 
     async def _infer_stream_async(self, template: Template, inputs: Dict[str, Any], generation_config: SamplingParams,
                                   **kwargs) -> AsyncIterator[ChatCompletionStreamResponse]:
@@ -401,12 +409,12 @@ class VllmEngine(InferEngine):
             batched_inputs, error_list = self._batch_encode(
                 infer_requests, template=template, strict=getattr(self, 'strict', True))
             self.set_default_max_tokens(request_config, batched_inputs)
-            generation_config = self._prepare_generation_config(request_config)
-            self._add_stop_words(generation_config, request_config, template.template_meta)
             request_id_list = []
             for inputs in batched_inputs:
                 request_id = random_uuid()
                 request_id_list.append(request_id)
+                generation_config = self._prepare_generation_config(request_config)
+                self._add_stop_words(generation_config, request_config, template.template_meta)
                 self._add_request(inputs, generation_config, request_id, adapter_request=adapter_request)
             prog_bar = tqdm(total=len(batched_inputs), dynamic_ncols=True, disable=not use_tqdm)
             outputs = {}

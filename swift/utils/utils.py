@@ -272,7 +272,6 @@ def patch_getattr(obj_cls, item_name: str):
 def import_external_file(file_path: str):
     file_path = os.path.abspath(os.path.expanduser(file_path))
     py_dir, py_file = os.path.split(file_path)
-    sys.path.append(py_dir)
     assert os.path.isdir(py_dir), f'py_dir: {py_dir}'
     sys.path.insert(0, py_dir)
     return importlib.import_module(py_file.split('.', 1)[0])

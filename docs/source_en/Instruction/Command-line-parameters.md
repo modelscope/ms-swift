@@ -1,6 +1,6 @@
 # Command Line Parameters
 
-The introduction to command line parameters will cover base arguments, atomic arguments, and integrated arguments, and specific model arguments. The final list of arguments used in the command line is the integration arguments. Integrated arguments inherit from basic arguments and some atomic arguments. Specific model arguments are designed for specific models and can be set using `--model_kwargs'` or the environment variable.
+The introduction to command line parameters will cover base arguments, atomic arguments, and integrated arguments, and specific model arguments. The final list of arguments used in the command line is the integration arguments. Integrated arguments inherit from basic arguments and some atomic arguments. Specific model arguments are designed for specific models and can be set using `--model_kwargs'` or the environment variable. The introduction to the Megatron-SWIFT command-line arguments can be found in the [Megatron-SWIFT Training Documentation](./Megatron-SWIFT-Training.md).
 
 Hints:
 
@@ -65,9 +65,11 @@ Hints:
 - 🔥max_pixels: The maximum number of pixels (H*W) for input images to a multimodal model. Images exceeding this limit will be scaled. Default is None, meaning no maximum pixel limit.
 - tools_prompt: Converts the tool list during agent training to the system format. Please refer to [Agent Training](./Agent-support.md). Options are 'react_en', 'react_zh', 'glm4', 'toolbench', 'qwen', with 'react_en' as the default.
 - norm_bbox: Controls how to scale bounding boxes (bbox). Options are 'norm1000' and 'none'. 'norm1000' represents scaling bbox coordinates to one-thousandths, and 'none' means no scaling. Default is None, automatically selected based on the model.
+- response_prefix: The prefix character for the response, for example, setting the response_prefix to `'<think>\n'` for QwQ-32B. The default is None, and it is automatically set according to the model.
 - padding_side: Padding side when `batch_size>=2` during training. Options are 'left' and 'right', with 'right' as the default. (For inference with batch_size>=2, only left padding is applied.)
 - loss_scale: Setting for the loss weight of training tokens. Default is `'default'`, meaning all responses (including history) are calculated with a cross-entropy loss of 1. Options are 'default', 'last_round', 'all', and agent-specific loss scales: 'react', 'agentflan', 'alpha_umi', and 'qwen'. 'last_round' means calculating only the loss of the last round's response, and 'all' calculates the loss for all tokens. For agent parts, see [Pluginization](../Customization/Pluginization.md) and [Agent Training](./Agent-support.md).
 - sequence_parallel_size: Number of sequence parallels, default is 1. Refer to [example](https://github.com/modelscope/ms-swift/tree/main/examples/train/sequence_parallel/train.sh).
+  - Note: This feature is implemented with the capabilities of [xtuner](https://github.com/InternLM/xtuner), and not all models support this parameter.
 - use_chat_template: Use chat template or generation template, default is `True`. `swift pt` is automatically set to the generation template.
 - template_backend: Selection of the template backend. Options are 'swift' and 'jinja', with 'swift' as the default. If using jinja, it applies transformer's `apply_chat_template`.
   - Note: The jinja template backend supports only inference, not training.
@@ -115,6 +117,7 @@ This parameter list inherits from transformers `Seq2SeqTrainingArguments`, with 
 - 🔥per_device_train_batch_size: Default is 1.
 - 🔥per_device_eval_batch_size: Default is 1.
 - weight_decay: Weight decay coefficient, default value is 0.1.
+- adam_beta2: Default is 0.95.
 - 🔥learning_rate: Learning rate, defaults to 1e-5 for full parameters, and 1e-4 for LoRA and other tuners.
 - lr_scheduler_type: Type of lr_scheduler, defaults to 'cosine'.
 - lr_scheduler_kwargs: Other parameters for the lr_scheduler, defaults to None.
@@ -143,6 +146,9 @@ Other important parameters:
 - 🔥ddp_backend: Default is None, options include "nccl", "gloo", "mpi", "ccl", "hccl", "cncl", "mccl".
 - 🔥ddp_find_unused_parameters: Default is None.
 - 🔥dataloader_num_workers: Default is 0.
+- dataloader_pin_memory: Default is True.
+- dataloader_persistent_workers: Default is False.
+- dataloader_prefetch_factor: Default is 2.
 - 🔥neftune_noise_alpha: Coefficient of noise added by neftune, default is 0. Usually can be set to 5, 10, 15.
 - average_tokens_across_devices: Whether to average the number of tokens across devices. If set to True, `num_tokens_in_batch` will be synchronized using all_reduce for accurate loss calculation. Default is False.
 - max_grad_norm: Gradient clipping. Default is 1.
@@ -324,6 +330,7 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
 - 🔥create_checkpoint_symlink: Creates additional checkpoint symlinks to facilitate writing automated training scripts. The symlink paths for `best_model` and `last_model` are `f'{output_dir}/best'` and `f'{output_dir}/last'` respectively.
 - loss_type: Type of loss. Defaults to None, which uses the model's built-in loss function.
 - packing: Whether to use sequence packing, defaults to False.
+  - Note: When using packing, please combine it with --attn_impl flash_attn. For details, see [this PR](https://github.com/huggingface/transformers/pull/31629). Packing does not currently support multimodal models.
 - 🔥lazy_tokenize: Whether to use lazy tokenization. If set to False, all dataset samples are tokenized before training (for multimodal models, this includes reading images from disk). This parameter defaults to False for LLM training, and True for MLLM training, to save memory.
 - acc_strategy: Strategy for calculating accuracy during training and validation. Options are `seq`-level and `token`-level accuracy, with `token` as the default.
 - max_new_tokens: Generation parameter override. The maximum number of tokens to generate when `predict_with_generate=True`, defaulting to 64.
@@ -402,6 +409,10 @@ The meanings of the following parameters can be referenced [here](https://huggin
 - epsilon: epsilon value for clipping. Default is 0.2.
 - async_generate: Use async rollout to improve train speed，default `false`.
 - sleep_level: vllm specific，when both actor and rollout in the same GPU，you can make vllm sleep when model is training.
+- move_model_batches: When moving model parameters to fast inference frameworks such as vLLM/LMDeploy, determines how many batches to divide the layers into. The default is `None`, which means the entire model is not split. Otherwise, the model is split into `move_model_batches + 1` (non-layer parameters) + `1` (multi-modal component parameters) batches.
+- offload_optimizer: Whether to offload optimizer parameters during inference with vLLM/LMDeploy. The default is `False`.
+- offload_model: Whether to offload the model itself during inference with vLLM/LMDeploy. The default is `False`.
+- gc_collect_after_offload: Whether to perform garbage collection (both Python GC and GPU GC) after offloading. The default is `False`.
 
 cosine reward function arguments
 - `cosine_min_len_value_wrong` (default: 0.0): Reward value corresponding to the minimum length when the answer is incorrect. Default is 0.0
@@ -490,6 +501,11 @@ Export Arguments include the [basic arguments](#base-arguments) and [merge argum
 - max_length: Max length for the calibration set, default value is 2048.
 - quant_batch_size: Quantization batch size, default is 1.
 - group_size: Group size for quantization, default is 128.
+- to_ollama: Generate the Modelfile required by Ollama. Default is False.
+- 🔥to_mcore: Convert weights from HF format to Megatron format. Default is False.
+- to_hf: Convert weights from Megatron format to HF format. Default is False.
+- mcore_model: Path to the mcore format model. Default is None.
+- test_convert_precision: Test the precision error when converting weights between HF and Megatron formats. Default is False.
 - 🔥push_to_hub: Whether to push to the hub, with the default being False. Examples can be found [here](https://github.com/modelscope/ms-swift/blob/main/examples/export/push_to_hub.sh).
 - hub_model_id: Model ID for pushing, default is None.
 - hub_private_repo: Whether it is a private repo, default is False.

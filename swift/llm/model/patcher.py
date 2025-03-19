@@ -12,11 +12,11 @@ import transformers
 from accelerate.utils import find_device
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 from torch.nn.parallel import DistributedDataParallel as DDP
-from transformers import PreTrainedModel, trainer
+from transformers import PreTrainedModel, dynamic_module_utils, trainer
 from transformers.modeling_outputs import SequenceClassifierOutputWithPast
 
 from swift.llm import to_device, to_float_dtype
-from swift.utils import get_dist_setting, get_logger, is_mp_ddp, use_torchacc
+from swift.utils import get_dist_setting, get_logger, is_mp_ddp, safe_ddp_context, use_torchacc
 from swift.utils.torch_utils import _get_max_memory, _sync_max_memory, get_device_count
 from .model_arch import get_model_arch
 from .utils import HfConfigFactory
@@ -124,7 +124,7 @@ def _patch_sequence_classification(model, model_meta):
         llm_model = getattr(model, llm_prefix[0])
     else:
         llm_model = model
-    if 'CausalLM' not in llm_model.__class__.__name__:
+    if 'CausalLM' not in llm_model.__class__.__name__:  # fix qwen2_vl
         llm_model = model
     llm_model.num_labels = model.config.num_labels
     llm_model.score = nn.Linear(hidden_size, llm_model.num_labels, bias=False, dtype=llm_model.dtype)
@@ -237,12 +237,15 @@ def patch_automodel_for_sequence_classification(model_meta):
 
 
 @contextmanager
-def patch_automodel_for_awq():
+def patch_automodel(automodel_class, model_info):
     from_pretrained = PreTrainedModel.from_pretrained.__func__
 
     @classmethod
     def _new_from_pretrained(cls, *args, **kwargs):
-        kwargs.pop('use_cache', None)
+        if 'AutoAWQFor' in automodel_class.__name__:
+            kwargs.pop('use_cache', None)
+        if model_info.quant_method == 'gptq':
+            cls.main_input_name = 'input_ids'
         return from_pretrained(cls, *args, **kwargs)
 
     PreTrainedModel.from_pretrained = _new_from_pretrained
@@ -293,3 +296,18 @@ def patch_mp_ddp():
         trainer.Accelerator.__init__ = (lambda self, device_placement=False, *args, **kwargs: _old_accelerator_init(
             self, device_placement=device_placement, *args, **kwargs))
         trainer.Accelerator.verify_device_map = lambda *args, **kwargs: False
+
+
+@contextmanager
+def patch_get_dynamic_module():
+    origin_get_cached_module_file = dynamic_module_utils.get_cached_module_file
+
+    def new_get_cached_module_file(pretrained_model_name_or_path, *args, **kwargs):
+        with safe_ddp_context(hash_id=str(pretrained_model_name_or_path)):
+            return origin_get_cached_module_file(pretrained_model_name_or_path, *args, **kwargs)
+
+    dynamic_module_utils.get_cached_module_file = new_get_cached_module_file
+    try:
+        yield
+    finally:
+        dynamic_module_utils.get_cached_module_file = origin_get_cached_module_file

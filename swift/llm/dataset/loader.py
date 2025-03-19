@@ -231,7 +231,7 @@ class DatasetLoader:
                              f'os.path.exists(dataset_id): {os.path.exists(dataset_id)}')
         else:
             retry = 3
-            load_context = partial(safe_ddp_context, hash_id=dataset_id)
+            load_context = partial(safe_ddp_context, hash_id=dataset_id, use_barrier=True)
             dataset_str_f = 'Downloading the dataset from {hub}, dataset_id: {dataset_id}'
             if use_hf:
                 dataset_str = dataset_str_f.format(hub='HuggingFace', dataset_id=dataset_id)
@@ -261,10 +261,10 @@ class DatasetLoader:
                                      f'split={split} with error: {e}')
                     else:
                         break
-                if hasattr(dataset, '_hf_ds'):
-                    dataset = dataset._hf_ds
-                    if streaming and isinstance(dataset, HfDataset):
-                        dataset = dataset.to_iterable_dataset()
+            if hasattr(dataset, '_hf_ds'):
+                dataset = dataset._hf_ds
+                if streaming and isinstance(dataset, HfDataset):
+                    dataset = dataset.to_iterable_dataset()
             if columns:
                 dataset = RowPreprocessor.safe_rename_columns(dataset, columns)
             dataset = subset.preprocess_func(dataset, num_proc=num_proc, strict=strict)
@@ -425,18 +425,20 @@ def load_dataset(
     """The interface to load any registered dataset
 
     Args:
-        download_mode: Download mode, default is `reuse_dataset_if_exists`.
-        columns: Used for manual column mapping of datasets.
-        strict: Raise if any row is not correct.
-        hub_token: The token of the hub.
-        use_hf: Use hf dataset or ms dataset.
-        num_proc: Proc number to use when preprocess the dataset.
         datasets: The dataset name list
+
         split_dataset_ratio: The dataset split ratio
         seed: The dataset random seed
+        num_proc: Proc number to use when preprocess the dataset.
+        streaming: Streaming mode or not
+        use_hf: Use hf dataset or ms dataset.
+        hub_token: The token of the hub.
+        strict: Raise if any row is not correct.
+        download_mode: Download mode, default is `reuse_dataset_if_exists`.
+        columns: Used for manual column mapping of datasets.
+
         model_name: Model name in self-cognition task.
         model_author: Model author in self-cognition task
-        streaming: Streaming mode or not
     Returns:
         The train dataset and val dataset
     """

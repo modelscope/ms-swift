@@ -177,7 +177,7 @@ register_model(
         TemplateType.llama3_2,
         get_model_tokenizer_with_flash_attn,
         architectures=['LlamaForCausalLM'],
-        requires=['transformers>=4.45'],
+        requires=['transformers>=4.43'],
         model_arch=ModelArch.llama,
     ))
 

@@ -21,6 +21,7 @@ Swift DOCUMENTATION
    Instruction/Pre-training-and-Fine-tuning.md
    Instruction/RLHF.md
    Instruction/Inference-and-deployment.md
+   Instruction/Megatron-SWIFT-Training.md
    Instruction/Sample.md
    Instruction/Evaluation.md
    Instruction/Export-and-push.md
@@ -45,6 +46,10 @@ Swift DOCUMENTATION
    :maxdepth: 2
    :caption: Best Practices
 
+   BestPractices/GRPO.md
+   BestPractices/GRPO-Multi-Modal-Training.md
+   BestPractices/GRPO-Code-Training.md
+   BestPractices/Embedding.md
    BestPractices/NPU-support.md
    BestPractices/More-Best-Practices.md
 
