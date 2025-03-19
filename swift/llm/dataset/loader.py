@@ -466,7 +466,8 @@ def load_dataset(
         # compat dataset_name
         if dataset in DATASET_MAPPING:
             dataset_meta = DATASET_MAPPING[dataset]
-            dataset = dataset_meta.dataset_path or (dataset_meta.hf_dataset_id if use_hf else dataset_meta.ms_dataset_id)
+            dataset = dataset_meta.dataset_path or (dataset_meta.hf_dataset_id
+                                                    if use_hf else dataset_meta.ms_dataset_id)
         dataset_syntax = DatasetSyntax.parse(dataset)
         dataset_meta = dataset_syntax.get_dataset_meta(use_hf)
         load_function = dataset_meta.load_function
