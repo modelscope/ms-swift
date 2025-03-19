@@ -525,10 +525,17 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
                 def get_delta_weight(self, adapter) -> torch.Tensor:
                     # may be offload
-                    self.lora_A[adapter].weight.data = self.lora_A[adapter].weight.data.to(
-                        self.base_layer.weight.device)
-                    self.lora_B[adapter].weight.data = self.lora_B[adapter].weight.data.to(
-                        self.base_layer.weight.device)
+                    from peft.tuners import lora
+                    if isinstance(self, lora.Embedding):
+                        self.lora_embedding_A[adapter].data = self.lora_embedding_A[adapter].data.to(
+                            self.base_layer.weight.device)
+                        self.lora_embedding_B[adapter].data = self.lora_embedding_B[adapter].data.to(
+                            self.base_layer.weight.device)
+                    else:
+                        self.lora_A[adapter].weight.data = self.lora_A[adapter].weight.data.to(
+                            self.base_layer.weight.device)
+                        self.lora_B[adapter].weight.data = self.lora_B[adapter].weight.data.to(
+                            self.base_layer.weight.device)
                     tensor = self.get_delta_weight_origin(adapter)
                     return tensor.to(self.base_layer.weight.device)
 
