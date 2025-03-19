@@ -24,7 +24,7 @@ from transformers import PreTrainedModel, TrainerCallback
 from trl import GRPOTrainer as HFGRPOTrainer
 
 from swift.llm import InferRequest, MultiModelKeys, RequestConfig, RowPreprocessor, get_model_arch, to_device
-from swift.llm.infer.infer_engine import GRPOVllmEngine, set_device_context
+from swift.llm.infer.infer_engine import set_device_context
 from swift.plugin import orms
 from swift.utils import (JsonlWriter, gc_collect, get_device, get_device_count, get_dist_setting, get_logger,
                          get_node_setting, is_lmdeploy_available, is_vllm_available, is_wandb_available)
@@ -366,6 +366,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def prepare_vllm(self, model, fast_infer_device):
         from swift.tuners import Swift
         from swift.llm import VllmEngine
+        from swift.llm.infer.infer_engine import GRPOVllmEngine
         _, _, _, local_world_size = get_dist_setting()
         if local_world_size == self.args.num_infer_workers == get_device_count() and local_world_size > 1:
             cls = GRPOVllmEngine
