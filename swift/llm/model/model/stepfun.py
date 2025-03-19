@@ -62,12 +62,13 @@ def get_model_tokenizer_step_audio(*args, **kwargs):
     from tokenizer import StepAudioTokenizer
     encoder_path = safe_snapshot_download('stepfun-ai/Step-Audio-Tokenizer', check_local=True)
     model, tokenizer = get_model_tokenizer_with_flash_attn(*args, **kwargs)
-    model.encoder = StepAudioTokenizer(encoder_path)
-    # from tts import StepAudioTTS
-    # if not os.path.exists('speakers'):
-    #     shutil.copytree(os.path.join(local_repo_path, 'speakers'), 'speakers')
-    # decoder_path = safe_snapshot_download('stepfun-ai/Step-Audio-TTS-3B', check_local=True)
-    # model.decoder = StepAudioTTS(decoder_path, model.encoder)
+    if model is not None:
+        model.encoder = StepAudioTokenizer(encoder_path)
+        # from tts import StepAudioTTS
+        # if not os.path.exists('speakers'):
+        #     shutil.copytree(os.path.join(local_repo_path, 'speakers'), 'speakers')
+        # decoder_path = safe_snapshot_download('stepfun-ai/Step-Audio-TTS-3B', check_local=True)
+        # model.decoder = StepAudioTTS(decoder_path, model.encoder)
     return model, tokenizer
 
 
