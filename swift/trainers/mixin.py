@@ -340,6 +340,9 @@ class SwiftMixin:
             self._globalstep_last_logged = self.state.global_step
             self.store_flos()
             self.log(logs)
+
+        if self.args.eval_use_evalscope and self.control.should_evaluate:
+            self._evalscope_eval()
         super()._maybe_log_save_evaluate(tr_loss, *args, **kwargs)
 
     def create_optimizer_and_scheduler(self, num_training_steps: int):
@@ -382,3 +385,32 @@ class SwiftMixin:
                 if k not in self._custom_metrics:
                     self._custom_metrics[k] = MeanMetric(nan_value=None)
                 self._custom_metrics[k].update(v)
+
+    @torch.no_grad()
+    def _evalscope_eval(self):
+        from ..llm.eval.utils import EvalModel
+        from evalscope import TaskConfig, run_task
+        from evalscope.constants import EvalType
+
+        self.model.eval()
+        max_batch_size = self.args.per_device_eval_batch_size
+        custom_model = EvalModel(
+            self.model, self.template, max_batch_size=max_batch_size, model_name=f'model-step{self.state.global_step}')
+        task_config = TaskConfig(
+            model=custom_model,
+            eval_type=EvalType.CUSTOM,
+            datasets=self.args.eval_datasets,
+            dataset_args=self.args.eval_datasets_args,
+            limit=self.args.eval_limit,
+            work_dir=os.path.join(self.args.output_dir, 'eval'),
+            eval_batch_size=max_batch_size,
+            generation_config=self.args.eval_generation_config or {'max_tokens': 512},
+        )
+        # start evaluation
+        eval_report = run_task(task_config)
+        # convert to dict
+        eval_dict = {f'test_{k}': v.score for k, v in eval_report.items()}
+        self.log(eval_dict)
+
+        self.model.train()
+        return eval_dict
