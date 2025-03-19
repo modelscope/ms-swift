@@ -62,7 +62,8 @@ def get_model_tokenizer_phi4_multimodal(*args, **kwargs):
     del processor.audio_processor.padding_value
     del processor.__class__.chat_template
     processor.chat_template = None
-    model.set_lora_adapter(['vision', 'speech'])
+    if model is not None:
+        model.set_lora_adapter(['vision', 'speech'])
     return model, processor
 
 

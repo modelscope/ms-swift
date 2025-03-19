@@ -8,8 +8,9 @@ from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_fl
 
 def get_model_tokenizer_telechat(*args, **kwargs):
     model, tokenizer = get_model_tokenizer_with_flash_attn(*args, **kwargs)
-    for k in ['bos_token_id', 'eos_token_id', 'pad_token_id', 'user_token_id', 'bot_token_id']:
-        setattr(tokenizer, k, getattr(model.generation_config, k))
+    if model is not None:
+        for k in ['bos_token_id', 'eos_token_id', 'pad_token_id', 'user_token_id', 'bot_token_id']:
+            setattr(tokenizer, k, getattr(model.generation_config, k))
     return model, tokenizer
 
 

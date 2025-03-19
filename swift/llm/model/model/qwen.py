@@ -670,9 +670,10 @@ register_model(
 def get_model_tokenizer_ovis(*args, **kwargs):
     kwargs['attn_impl_keys'] = ['llm_attn_implementation']
     model, tokenizer = get_model_tokenizer_with_flash_attn(*args, **kwargs)
-    model.visual_tokenizer.to(model.dtype)
-    model.vte.to(model.dtype)
     if model is not None:
+        model.visual_tokenizer.to(model.dtype)
+        model.vte.to(model.dtype)
+
         model.generation_config.cache_implementation = None
         func_list = ['generate', 'forward', 'get_input_embeddings']
         use_submodel_func(model, 'llm', func_list)
