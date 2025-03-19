@@ -43,25 +43,6 @@ class TrainArgumentsMixin:
     fsdp_num: int = 1
     acc_steps: int = 1
 
-    def __post_init__(self):
-        from swift.llm.argument.base_args.model_args import ModelArguments
-        if use_torchacc():
-            self.dataloader_drop_last = True
-        if self.lr_scheduler_kwargs:
-            self.lr_scheduler_kwargs = ModelArguments.parse_to_dict(self.lr_scheduler_kwargs)
-        if getattr(self, 'gradient_checkpointing_kwargs', None):
-            self.gradient_checkpointing_kwargs = ModelArguments.parse_to_dict(self.gradient_checkpointing_kwargs)
-        super().__post_init__()
-
-
-@dataclass
-class SwiftArgumentsMixin(TrainArgumentsMixin):
-    # Value copied from TrainArguments
-    train_type: Optional[str] = None
-    optimizer: Optional[str] = None
-    local_repo_path: Optional[str] = None
-    galore_config: Optional[GaLoreConfig] = None
-
     def _fix_gradient_checkpointing(self):
         # fix use_reentrant
         if hasattr(torch.utils.checkpoint, '_old_checkpoint'):  # avoid double patching
@@ -86,9 +67,28 @@ class SwiftArgumentsMixin(TrainArgumentsMixin):
             pass
 
     def __post_init__(self):
+        from swift.llm.argument.base_args.model_args import ModelArguments
+        if use_torchacc():
+            self.dataloader_drop_last = True
+        if self.lr_scheduler_kwargs:
+            self.lr_scheduler_kwargs = ModelArguments.parse_to_dict(self.lr_scheduler_kwargs)
+        if getattr(self, 'gradient_checkpointing_kwargs', None):
+            self.gradient_checkpointing_kwargs = ModelArguments.parse_to_dict(self.gradient_checkpointing_kwargs)
+        self._fix_gradient_checkpointing()
+        super().__post_init__()
+
+
+@dataclass
+class SwiftArgumentsMixin(TrainArgumentsMixin):
+    # Value copied from TrainArguments
+    train_type: Optional[str] = None
+    optimizer: Optional[str] = None
+    local_repo_path: Optional[str] = None
+    galore_config: Optional[GaLoreConfig] = None
+
+    def __post_init__(self):
         if hasattr(self, 'output_dir'):
             self.output_dir = os.path.abspath(os.path.expanduser(self.output_dir))
-        self._fix_gradient_checkpointing()
         super().__post_init__()
 
     @property
