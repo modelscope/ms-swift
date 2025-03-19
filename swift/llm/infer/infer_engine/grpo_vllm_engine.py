@@ -97,6 +97,10 @@ class GRPOVllmEngine(VllmEngine):
     def inner_model(self):
         return self.engine.llm_engine.model_executor.driver_worker.model_runner.model
 
+    @property
+    def inner_model_executor(self):
+        return self.engine.llm_engine.model_executor
+
     def infer(
         self,
         infer_requests: List[InferRequest],
