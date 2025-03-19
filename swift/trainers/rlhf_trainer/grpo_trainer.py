@@ -596,8 +596,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     unwrapped_model.unmerge_adapter()
 
     def _wait_queue(self):
-        cur_queue = self.eval_queue if self.control.should_evaluate else self.train_queue
-        while cur_queue.empty():
+        while self._queue.empty():
             time.sleep(0.01)
 
     @staticmethod
@@ -622,8 +621,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         future: Future = self.executor.submit(infer_task)
 
         def done(_self):
-            cur_queue = self.eval_queue if self.control.should_evaluate else self.train_queue
-            cur_queue.put(DataCache(inputs, _self.result(), distributed_idx))
+            self._queue.put(DataCache(inputs, _self.result(), distributed_idx))
 
         future.add_done_callback(done)
 
@@ -631,13 +629,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         inputs = next(iter(dataloader))
         all_inputs = gather_object(inputs)
         distributed_idx = self.round_robin(len(all_inputs), get_node_setting()[1] * self.args.num_infer_workers)
-        cur_queue = self.eval_queue if self.control.should_evaluate else self.train_queue
         if self.infer_rank >= 0:
             _input_slice = np.array(all_inputs)[distributed_idx[self.infer_rank]]
             outputs = self.engine.infer(_input_slice, self.request_config, use_tqdm=False)
-            cur_queue.put(DataCache(inputs, outputs, distributed_idx))
+            self._queue.put(DataCache(inputs, outputs, distributed_idx))
         else:
-            cur_queue.put(DataCache(inputs, [], distributed_idx))
+            self._queue.put(DataCache(inputs, [], distributed_idx))
         if self.accelerator.num_processes > 1:
             self.accelerator.wait_for_everyone()
 
@@ -665,8 +662,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             _input_slice = np.array(all_inputs)[distributed_idx[self.infer_rank]]
             if self.args.async_generate:
                 self.async_infer(inputs, _input_slice, distributed_idx)
-                cur_queue = self.eval_queue if self.control.should_evaluate else self.train_queue
-                data_cache = cur_queue.get()
+                data_cache = self._queue.get()
                 inputs = data_cache.inputs
                 outputs = data_cache.outputs
                 distributed_idx = data_cache.distributed_idx
@@ -690,9 +686,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         else:
             if self.args.async_generate:
                 # using old model to generate, which will ignore the `clip` of advantages.
-                cur_queue = self.eval_queue if self.control.should_evaluate else self.train_queue
-                cur_queue.put(DataCache(inputs, [], distributed_idx))
-                data_cache = cur_queue.get()
+                self._queue.put(DataCache(inputs, [], distributed_idx))
+                data_cache = self._queue.get()
                 inputs = data_cache.inputs
                 distributed_idx = data_cache.distributed_idx
             outputs = []
@@ -908,11 +903,17 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return selective_log_softmax(logits, input_ids)  # compute logprobs for the input tokens
 
     def evaluation_loop(self, dataloader, *args, **kwargs):
-        cur_queue = self.eval_queue
-        if cur_queue.empty() and self.args.async_generate:
+        if self._queue.empty() and self.args.async_generate:
             self._prefetch(dataloader)
         metric_key_prefix = kwargs['metric_key_prefix']
         output = super().evaluation_loop(dataloader, *args, **kwargs)
         metrics = {f'{metric_key_prefix}_{key}': sum(val) / len(val) for key, val in self._metrics['eval'].items()}
         output.metrics.update(metrics)
         return output
+
+    @property
+    def _queue(self):
+        if self.control.should_evaluate:
+            return self.eval_queue
+        else:
+            return self.train_queue
