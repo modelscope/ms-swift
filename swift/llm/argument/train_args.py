@@ -4,11 +4,11 @@ from dataclasses import dataclass, field
 from typing import Literal, Optional
 
 from transformers import Seq2SeqTrainingArguments
-from swift.trainers.arguments import TrainArgumentsMixin
 from transformers.utils.versions import require_version
 
 from swift.plugin import LOSS_MAPPING
 from swift.trainers import TrainerFactory
+from swift.trainers.arguments import TrainArgumentsMixin
 from swift.utils import (add_version_to_work_dir, get_device_count, get_logger, get_pai_tensorboard_dir,
                          is_liger_available, is_master, is_mp, is_pai_training_job, is_swanlab_available, use_torchacc)
 from .base_args import BaseArguments, to_abspath
@@ -45,7 +45,6 @@ class Seq2SeqTrainingOverrideArguments(TrainArgumentsMixin, Seq2SeqTrainingArgum
             self.metric_for_best_model = 'rouge-l' if self.predict_with_generate else 'loss'
 
     def __post_init__(self):
-        TrainArgumentsMixin.__post_init__(self)
         self._init_output_dir()
         self._init_metric_for_best_model()
         if self.greater_is_better is None and self.metric_for_best_model is not None:
@@ -88,8 +87,7 @@ class SwanlabArguments:
 
 
 @dataclass
-class TrainArguments(SwanlabArguments, TunerArguments, Seq2SeqTrainingOverrideArguments,
-                     BaseArguments):
+class TrainArguments(SwanlabArguments, TunerArguments, Seq2SeqTrainingOverrideArguments, BaseArguments):
     """
     TrainArguments class is a dataclass that inherits from multiple argument classes:
     TunerArguments, Seq2SeqTrainingOverrideArguments, and BaseArguments.

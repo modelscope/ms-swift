@@ -425,18 +425,20 @@ def load_dataset(
     """The interface to load any registered dataset
 
     Args:
-        download_mode: Download mode, default is `reuse_dataset_if_exists`.
-        columns: Used for manual column mapping of datasets.
-        strict: Raise if any row is not correct.
-        hub_token: The token of the hub.
-        use_hf: Use hf dataset or ms dataset.
-        num_proc: Proc number to use when preprocess the dataset.
         datasets: The dataset name list
+
         split_dataset_ratio: The dataset split ratio
         seed: The dataset random seed
+        num_proc: Proc number to use when preprocess the dataset.
+        streaming: Streaming mode or not
+        use_hf: Use hf dataset or ms dataset.
+        hub_token: The token of the hub.
+        strict: Raise if any row is not correct.
+        download_mode: Download mode, default is `reuse_dataset_if_exists`.
+        columns: Used for manual column mapping of datasets.
+
         model_name: Model name in self-cognition task.
         model_author: Model author in self-cognition task
-        streaming: Streaming mode or not
     Returns:
         The train dataset and val dataset
     """

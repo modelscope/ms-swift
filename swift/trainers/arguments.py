@@ -2,7 +2,7 @@
 import os
 from dataclasses import dataclass, field
 from functools import wraps
-from typing import Literal, Optional, Union, List
+from typing import List, Literal, Optional, Union
 
 import torch
 import torch.utils.checkpoint
@@ -49,6 +49,7 @@ class TrainArgumentsMixin:
             self.lr_scheduler_kwargs = ModelArguments.parse_to_dict(self.lr_scheduler_kwargs)
         if getattr(self, 'gradient_checkpointing_kwargs', None):
             self.gradient_checkpointing_kwargs = ModelArguments.parse_to_dict(self.gradient_checkpointing_kwargs)
+
 
 @dataclass
 class SwiftArgumentsMixin(TrainArgumentsMixin):
