@@ -342,8 +342,8 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
 
 RLHF arguments inherit from the [training arguments](#training-arguments).
 
-- 🔥rlhf_type: Type of human alignment algorithm, supporting `dpo`, `orpo`, `simpo`, `kto`, `cpo`, `rm`, and `ppo`. Default is 'dpo'.
-- ref_model: Required for full parameter training when using the dpo, kto, or ppo algorithms. Default is None.
+- 🔥rlhf_type: Type of human alignment algorithm, supporting `dpo`, `orpo`, `simpo`, `kto`, `cpo`, `rm`, `ppo` and `grpo`. Default is 'dpo'.
+- ref_model: Required for full parameter training when using the dpo, kto, ppo or grpo algorithms. Default is None.
 - ref_model_type: Same as model_type. Default is None.
 - ref_model_revision: Same as model_revision. Default is None.
 - 🔥beta: Coefficient for the KL regularization term. Default is `None`, meaning `simpo` algorithm defaults to `2.`, `grpo` algorithm defaults to `0.04`, and other algorithms default to `0.1`. For more details, refer to the [documentation](./RLHF.md).
