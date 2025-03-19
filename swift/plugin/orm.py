@@ -383,5 +383,5 @@ orms = {
     'format': Format,
     'react_format': ReActFormat,
     'cosine': CosineReward,
-    'repetition': RepetitionPenalty,
+    'repetition': RepetitionPenalty
 }

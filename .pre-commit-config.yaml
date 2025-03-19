@@ -40,8 +40,6 @@ repos:
         exclude: thirdparty/|tests/run.py
       - id: requirements-txt-fixer
         exclude: thirdparty/|tests/run.py
-      - id: double-quote-string-fixer
-        exclude: thirdparty/|tests/run.py
       - id: check-merge-conflict
         exclude: thirdparty/|tests/run.py
       - id: fix-encoding-pragma
