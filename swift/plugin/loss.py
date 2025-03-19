@@ -157,6 +157,8 @@ def infonce_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> t
     # calculate CE across the batch, meaning all samples will be negative except the matching positive
     use_batch = strtobool(os.environ.get('INFONCE_USE_BATCH', 'True'))
     hard_negatives = os.environ.get('INFONCE_HARD_NEGATIVES', None)  # how many negative prompts kept in one sample
+    # mask out fake negatives
+    infonce_mask_fake_negative = strtobool(os.environ.get('INFONCE_MASK_FAKE_NEGATIVE', 'False'))
     if hard_negatives is not None:
         hard_negatives = int(hard_negatives)
     from swift.utils import get_dist_setting
@@ -210,16 +212,26 @@ def infonce_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> t
             # avg between all batches in one gpu
             loss /= len(split_tensors)
     else:
+
+        def mask_fake_negative(sim_matrix, sim_labels):
+            thresholds = sim_matrix[torch.arange(sim_matrix.size(0)), sim_labels].view(-1, 1) + 0.1
+            thresholds = thresholds.detach()
+            mask = sim_matrix > thresholds
+            sim_matrix[mask] = float('-inf')
+
         if can_batched:
             # [B, neg+2, D]
             sentences = torch.stack(split_tensors, dim=0)
             # [B, D] * [B*(neg+1), D]
-            similarity_matrix = torch.matmul(sentences[:, 0].squeeze(1), sentences[:, 1:].reshape(
-                -1, sentences.size(2)).T) / temperature
-            # every neg+1 is positive start from 0
+            similarity_matrix = torch.matmul(sentences[:, 0].squeeze(1), sentences[:,
+                                                                                   1:].reshape(-1, sentences.size(2)).T)
             labels = torch.tensor(range(0,
                                         sentences.size(0) * (sentences.size(1) - 1),
                                         sentences.size(1) - 1)).view(-1).to(sentences.device)
+            if infonce_mask_fake_negative:
+                mask_fake_negative(similarity_matrix, labels)
+            similarity_matrix = similarity_matrix / temperature
+            # every neg+1 is positive start from 0
             loss = nn.CrossEntropyLoss()(similarity_matrix, labels) / world_size  # avoid duplicate
         else:
             all_tensors = []

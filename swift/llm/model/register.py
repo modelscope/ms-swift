@@ -199,15 +199,6 @@ def get_model_tokenizer_from_local(model_dir: str,
             except ValueError:
                 model = None
 
-        if model_info.task_type == 'embedding' and automodel_class is None:
-            try:
-                model = AutoModel.from_pretrained(
-                    model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
-                from swift.llm.model.patcher import patch_output_normalizer
-                patch_output_normalizer(model)
-            except ValueError:
-                model = None
-
         automodel_class = automodel_class or AutoModelForCausalLM
         if model is None:
             if model_info.task_type == 'seq_cls':
@@ -223,6 +214,11 @@ def get_model_tokenizer_from_local(model_dir: str,
         has_remote_code = hasattr(model_config, 'auto_map') and automodel_class.__name__ in model_config.auto_map
         if has_remote_code and model._auto_class is None:
             model._auto_class = automodel_class.__name__
+
+        if model_info.task_type == 'embedding' and automodel_class.__name__ != 'AutoModel':
+            from swift.llm.model.patcher import patch_output_normalizer
+            patch_output_normalizer(model, model_meta=kwargs['model_meta'])
+
     return model, tokenizer
 
 
