@@ -141,7 +141,7 @@ def test_telechat():
 
 
 def test_telechat2():
-    pt_engine = PtEngine('TeleAI/TeleChat2-7B-32K', torch_dtype=torch.bfloat16)
+    pt_engine = PtEngine('TeleAI/TeleChat2-7B-32K', torch_dtype=torch.float16)
     messages = [{'role': 'system', 'content': '你是一个乐于助人的智能助手，请使用用户提问的语言进行有帮助的问答'}, {'role': 'user', 'content': '你好'}]
     response = _infer_model(pt_engine, messages=messages)
     pt_engine.default_template.template_backend = 'jinja'
