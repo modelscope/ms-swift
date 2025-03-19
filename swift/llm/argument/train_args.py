@@ -10,7 +10,7 @@ from swift.plugin import LOSS_MAPPING
 from swift.trainers import TrainerFactory
 from swift.trainers.arguments import TrainArgumentsMixin
 from swift.utils import (add_version_to_work_dir, get_device_count, get_logger, get_pai_tensorboard_dir,
-                         is_liger_available, is_master, is_mp, is_pai_training_job, is_swanlab_available, use_torchacc)
+                         is_liger_available, is_master, is_mp, is_pai_training_job, is_swanlab_available)
 from .base_args import BaseArguments, to_abspath
 from .tuner_args import TunerArguments
 
@@ -123,11 +123,6 @@ class TrainArguments(SwanlabArguments, TunerArguments, Seq2SeqTrainingOverrideAr
 
     # zero++
     zero_hpz_partition_size: Optional[int] = None
-
-    # torchacc
-    model_layer_cls_name: Optional[str] = field(
-        default=None,
-        metadata={'help': "Decoder Class name of model, e.g. 'QWenBlock' for QWen, 'LlamaDecoderLayer' for LLama"})
 
     def _init_lazy_tokenize(self):
         if self.streaming and self.lazy_tokenize:
