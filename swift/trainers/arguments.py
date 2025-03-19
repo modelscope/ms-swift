@@ -43,6 +43,13 @@ class TrainArgumentsMixin:
     fsdp_num: int = 1
     acc_steps: int = 1
 
+    # train-eval loop args
+    eval_use_evalscope: bool = False
+    eval_datasets: List[str] = field(default_factory=list)
+    eval_limit: Optional[int] = None
+    eval_datasets_args: Optional[dict] = None
+    eval_generation_config: Optional[Union[str, dict]] = None
+
     def _fix_gradient_checkpointing(self):
         # fix use_reentrant
         if hasattr(torch.utils.checkpoint, '_old_checkpoint'):  # avoid double patching
@@ -75,6 +82,15 @@ class TrainArgumentsMixin:
         if getattr(self, 'gradient_checkpointing_kwargs', None):
             self.gradient_checkpointing_kwargs = ModelArguments.parse_to_dict(self.gradient_checkpointing_kwargs)
         self._fix_gradient_checkpointing()
+
+        if self.eval_use_evalscope:
+            try:
+                import evalscope
+            except ImportError:
+                raise ImportError('evalscope is not installed, please install it by `pip install evalscope`')
+            self.eval_datasets_args = ModelArguments.parse_to_dict(self.eval_datasets_args)
+            self.eval_generation_config = ModelArguments.parse_to_dict(self.eval_generation_config)
+
         super().__post_init__()
 
 
