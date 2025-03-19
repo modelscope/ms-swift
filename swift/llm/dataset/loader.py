@@ -93,7 +93,7 @@ class DatasetSyntax:
         if dataset_type == 'path':
             dataset_meta = dataset_meta_mapping.get((dataset_type, self.dataset.lower()))
         else:
-            dataset_type = {True: 'hf', False: 'ms'}[use_hf]
+            dataset_type = 'repo' if os.path.isdir(self.dataset) else {True: 'hf', False: 'ms'}[use_hf]
             dataset_meta = dataset_meta_mapping.get((dataset_type, self.dataset.lower()))
         return dataset_meta or self._get_matched_dataset_meta(dataset_meta_mapping) or DatasetMeta()
 
@@ -105,7 +105,8 @@ class DatasetSyntax:
         _dataset_meta_mapping = {}
         for dataset_meta in DATASET_MAPPING.values():
             if dataset_meta.dataset_path is not None:
-                _dataset_meta_mapping[('path', dataset_meta.dataset_path.lower())] = dataset_meta
+                dataset_type = 'repo' if os.path.isdir(dataset_meta.dataset_path) else 'path'
+                _dataset_meta_mapping[(dataset_type, dataset_meta.dataset_path.lower())] = dataset_meta
             if dataset_meta.ms_dataset_id is not None:
                 _dataset_meta_mapping[('ms', dataset_meta.ms_dataset_id.lower())] = dataset_meta
             if dataset_meta.hf_dataset_id is not None:
