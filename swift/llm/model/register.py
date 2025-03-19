@@ -215,7 +215,7 @@ def get_model_tokenizer_from_local(model_dir: str,
         if has_remote_code and model._auto_class is None:
             model._auto_class = automodel_class.__name__
 
-        if model_info.task_type == 'embedding':
+        if model_info.task_type == 'embedding' and automodel_class.__name__ != 'AutoModel':
             from swift.llm.model.patcher import patch_output_normalizer
             patch_output_normalizer(model, model_meta=kwargs['model_meta'])
 
