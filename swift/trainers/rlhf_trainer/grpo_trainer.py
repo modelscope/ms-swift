@@ -308,6 +308,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if isinstance(module, ModuleList):
                 if model_arch is not None and isinstance(model_arch, MultiModelKeys):
                     llm = model_arch.language_model
+                    if isinstance(llm, list):
+                        llm = llm[0]
+                    if name.startswith('base_model'):
+                        name = name.replace('base_model.', '')
                     if name.startswith(llm):
                         layer_count = len(module)
                 else:
@@ -342,6 +346,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 continue
             if model_arch is not None and isinstance(model_arch, MultiModelKeys):
                 llm = model_arch.language_model
+                if isinstance(llm, list):
+                    llm = llm[0]
                 if name.startswith(llm):
                     split_llm(name)
                 else:
