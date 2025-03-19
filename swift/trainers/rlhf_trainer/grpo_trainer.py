@@ -619,9 +619,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 return result
 
         future: Future = self.executor.submit(infer_task)
+        # pre-fetch the queue to avoid switching back to eval_queue at the end of training sample sampling
+        current_queue = self._queue
 
         def done(_self):
-            self._queue.put(DataCache(inputs, _self.result(), distributed_idx))
+            current_queue.put(DataCache(inputs, _self.result(), distributed_idx))
 
         future.add_done_callback(done)
 
