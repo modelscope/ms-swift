@@ -124,7 +124,7 @@ def _patch_sequence_classification(model, model_meta):
         llm_model = getattr(model, llm_prefix[0])
     else:
         llm_model = model
-    if 'CausalLM' not in llm_model.__class__.__name__:
+    if 'CausalLM' not in llm_model.__class__.__name__:  # fix qwen2_vl
         llm_model = model
     llm_model.num_labels = model.config.num_labels
     llm_model.score = nn.Linear(hidden_size, llm_model.num_labels, bias=False, dtype=llm_model.dtype)
