@@ -10,7 +10,9 @@ from accelerate.utils import gather_object
 from torch import nn
 from torch.nn import CrossEntropyLoss, MSELoss
 from transformers.utils import strtobool
+
 # torch.autograd.set_detect_anomaly(True)
+
 
 class LossType:
     loss_scale = 'loss_scale'
@@ -211,6 +213,7 @@ def infonce_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> t
             # avg between all batches in one gpu
             loss /= len(split_tensors)
     else:
+
         def mask_fake_negative(sim_matrix, sim_labels):
             thresholds = sim_matrix[torch.arange(sim_matrix.size(0)), sim_labels].view(-1, 1) + 0.1
             thresholds = thresholds.detach()
@@ -221,8 +224,8 @@ def infonce_loss(outputs, labels, loss_scale=None, num_items_in_batch=None) -> t
             # [B, neg+2, D]
             sentences = torch.stack(split_tensors, dim=0)
             # [B, D] * [B*(neg+1), D]
-            similarity_matrix = torch.matmul(sentences[:, 0].squeeze(1), sentences[:, 1:].
-                                             reshape(-1, sentences.size(2)).T)
+            similarity_matrix = torch.matmul(sentences[:, 0].squeeze(1), sentences[:,
+                                                                                   1:].reshape(-1, sentences.size(2)).T)
             labels = torch.tensor(range(0,
                                         sentences.size(0) * (sentences.size(1) - 1),
                                         sentences.size(1) - 1)).view(-1).to(sentences.device)
