@@ -83,7 +83,6 @@ def patch_output_normalizer(module: torch.nn.Module, model_meta):
 
     assert found, 'Cannot find the proper lm_head name'
 
-    @wraps(module.forward.__func__)
     def forward(self, input_ids: torch.LongTensor = None, attention_mask=None, *args, **kwargs):
 
         outputs = self.forward_origin(input_ids=input_ids, attention_mask=attention_mask, *args, **kwargs)
