@@ -47,7 +47,7 @@ class TrainArgumentsMixin:
     eval_use_evalscope: bool = False
     eval_datasets: List[str] = field(default_factory=list)
     eval_limit: Optional[int] = None
-    eval_datasets_args: Optional[dict] = None
+    eval_datasets_args: Optional[Union[str, dict]] = None
     eval_generation_config: Optional[Union[str, dict]] = None
 
     def _fix_gradient_checkpointing(self):

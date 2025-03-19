@@ -386,6 +386,7 @@ class SwiftMixin:
                     self._custom_metrics[k] = MeanMetric(nan_value=None)
                 self._custom_metrics[k].update(v)
 
+    @torch.no_grad()
     def _evalscope_eval(self):
         from ..llm.eval.utils import EvalModel
         from evalscope import TaskConfig, run_task
@@ -408,7 +409,8 @@ class SwiftMixin:
         # start evaluation
         eval_report = run_task(task_config)
         # convert to dict
-        eval_dict = {k: v.score for k, v in eval_report.items()}
+        eval_dict = {f'test_{k}': v.score for k, v in eval_report.items()}
         self.log(eval_dict)
 
         self.model.train()
+        return eval_dict
