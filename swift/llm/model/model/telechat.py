@@ -43,7 +43,7 @@ register_model(
         [
             ModelGroup([
                 Model('TeleAI/TeleChat2-3B', 'Tele-AI/TeleChat2-3B'),
-                Model('TeleAI/TeleChat2-7B', 'Tele-AI/TeleChat2-7B'),
+                Model('TeleAI/TeleChat2-7B-32K', 'Tele-AI/TeleChat2-7B-32K'),
                 Model('TeleAI/TeleChat2-35B-32K', 'Tele-AI/TeleChat2-35B-32K'),
                 Model('TeleAI/TeleChat2-35B-Nov', 'Tele-AI/TeleChat2-35B-Nov'),
             ]),

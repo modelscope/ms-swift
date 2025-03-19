@@ -1,15 +1,16 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 from dataclasses import dataclass, field
-from typing import List, Literal, Optional, Union
+from typing import Literal, Optional
 
 from transformers import Seq2SeqTrainingArguments
 from transformers.utils.versions import require_version
 
 from swift.plugin import LOSS_MAPPING
 from swift.trainers import TrainerFactory
+from swift.trainers.arguments import TrainArgumentsMixin
 from swift.utils import (add_version_to_work_dir, get_device_count, get_logger, get_pai_tensorboard_dir,
-                         is_liger_available, is_master, is_mp, is_pai_training_job, is_swanlab_available, use_torchacc)
+                         is_liger_available, is_master, is_mp, is_pai_training_job, is_swanlab_available)
 from .base_args import BaseArguments, to_abspath
 from .tuner_args import TunerArguments
 
@@ -17,23 +18,11 @@ logger = get_logger()
 
 
 @dataclass
-class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
+class Seq2SeqTrainingOverrideArguments(TrainArgumentsMixin, Seq2SeqTrainingArguments):
     """Override the default value in `Seq2SeqTrainingArguments`"""
     output_dir: Optional[str] = None
-    gradient_checkpointing: bool = True
-
-    per_device_train_batch_size: int = 1
-    per_device_eval_batch_size: int = 1
-    logging_steps: int = 5
     learning_rate: Optional[float] = None
-    weight_decay: float = 0.1
-    lr_scheduler_type: str = 'cosine'
-    lr_scheduler_kwargs: Optional[Union[dict, str]] = None
-    gradient_checkpointing_kwargs: Optional[Union[dict, str]] = None
-    report_to: List[str] = field(default_factory=lambda: ['tensorboard'])
     eval_strategy: Optional[str] = None  # steps, epoch
-
-    logging_first_step: bool = True
 
     def _init_output_dir(self):
         if self.output_dir is None:
@@ -66,10 +55,6 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
                 self.learning_rate = 1e-5
             else:
                 self.learning_rate = 1e-4
-        if self.lr_scheduler_kwargs:
-            self.lr_scheduler_kwargs = self.parse_to_dict(self.lr_scheduler_kwargs)
-        if getattr(self, 'gradient_checkpointing_kwargs', None):
-            self.gradient_checkpointing_kwargs = self.parse_to_dict(self.gradient_checkpointing_kwargs)
         self._init_eval_strategy()
 
 
@@ -102,35 +87,17 @@ class SwanlabArguments:
 
 
 @dataclass
-class TorchAccArguments:
-    model_layer_cls_name: Optional[str] = field(
-        default=None,
-        metadata={'help': "Decoder Class name of model, e.g. 'QWenBlock' for QWen, 'LlamaDecoderLayer' for LLama"})
-    metric_warmup_step: Optional[float] = 0
-    fsdp_num: int = 1
-    acc_steps: int = 1
-
-    def __post_init__(self):
-        """Prepare torchacc"""
-        if use_torchacc():
-            self.dataloader_drop_last = True
-
-
-@dataclass
-class TrainArguments(SwanlabArguments, TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideArguments,
-                     BaseArguments):
+class TrainArguments(SwanlabArguments, TunerArguments, Seq2SeqTrainingOverrideArguments, BaseArguments):
     """
     TrainArguments class is a dataclass that inherits from multiple argument classes:
-    TorchAccArguments, TunerArguments, Seq2SeqTrainingOverrideArguments, and BaseArguments.
+    TunerArguments, Seq2SeqTrainingOverrideArguments, and BaseArguments.
 
     Args:
         add_version (bool): Flag to add version information to output_dir. Default is True.
         resume_only_model (bool): Flag to resume training only the model. Default is False.
-        check_model (bool): Flag to check the model is latest. Default is True.
         loss_type (Optional[str]): Type of loss function to use. Default is None.
         packing (bool): Flag to enable packing of datasets. Default is False.
         lazy_tokenize (Optional[bool]): Flag to enable lazy tokenization. Default is None.
-        acc_strategy (Literal['token', 'seq']): Strategy for accumulation. Default is 'token'.
         max_new_tokens (int): Maximum number of new tokens to generate. Default is 64.
         temperature (float): Temperature for sampling. Default is 0.
         optimizer (Optional[str]): Optimizer type to use, define it in the plugin package. Default is None.
@@ -138,7 +105,6 @@ class TrainArguments(SwanlabArguments, TorchAccArguments, TunerArguments, Seq2Se
     """
     add_version: bool = True
     resume_only_model: bool = False
-    check_model: bool = True
     create_checkpoint_symlink: bool = False
 
     # dataset
@@ -151,7 +117,6 @@ class TrainArguments(SwanlabArguments, TorchAccArguments, TunerArguments, Seq2Se
     metric: Optional[str] = None
 
     # extra
-    acc_strategy: Literal['token', 'seq'] = 'token'
     max_new_tokens: int = 64
     temperature: float = 0.
     load_args: bool = False
@@ -178,7 +143,6 @@ class TrainArguments(SwanlabArguments, TorchAccArguments, TunerArguments, Seq2Se
         BaseArguments.__post_init__(self)
         Seq2SeqTrainingOverrideArguments.__post_init__(self)
         TunerArguments.__post_init__(self)
-        TorchAccArguments.__post_init__(self)
 
         if self.optimizer is None:
             if self.lorap_lr_ratio:

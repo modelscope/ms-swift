@@ -72,9 +72,9 @@ class SwiftMixin:
         self.template = template
         self.max_memory = 0
         self.hub = get_hub()
-        if args.sequence_parallel_size > 1:
+        if template.sequence_parallel_size > 1:
             from swift.trainers.xtuner import init_sequence_parallel_xtuner
-            init_sequence_parallel_xtuner(args.sequence_parallel_size)
+            init_sequence_parallel_xtuner(template.sequence_parallel_size)
 
         self.model_meta = model.model_meta
         with self.hub.patch_hub():
@@ -361,7 +361,7 @@ class SwiftMixin:
             return self._get_eval_sampler(self.train_dataset)
 
     def get_train_dataloader(self):
-        if self.args.sequence_parallel_size == 1:
+        if self.template.sequence_parallel_size == 1:
             return super().get_train_dataloader()
         else:
             from swift.trainers.xtuner import get_xtuner_train_dataloader
@@ -377,7 +377,7 @@ class SwiftMixin:
                 preds = preds.to('cpu')
                 labels = labels.to('cpu')
             metrics = compute_acc(
-                preds, labels, acc_strategy=args.acc_strategy, is_encoder_decoder=args.is_encoder_decoder)
+                preds, labels, acc_strategy=args.acc_strategy, is_encoder_decoder=self.template.is_encoder_decoder)
             for k, v in metrics.items():
                 if k not in self._custom_metrics:
                     self._custom_metrics[k] = MeanMetric(nan_value=None)

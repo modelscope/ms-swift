@@ -155,9 +155,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         else:
             compute_metrics, preprocess_logits_for_metrics = get_metric('acc')
             compute_metrics = partial(
-                compute_metrics,
-                acc_strategy=args.acc_strategy,
-                is_encoder_decoder=self.model.config.is_encoder_decoder)
+                compute_metrics, acc_strategy=args.acc_strategy, is_encoder_decoder=self.template.is_encoder_decoder)
         return {
             'compute_metrics': compute_metrics,
             'preprocess_logits_for_metrics': preprocess_logits_for_metrics,
