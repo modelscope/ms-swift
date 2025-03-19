@@ -36,6 +36,8 @@ class TrainArgumentsMixin:
     # extra
     check_model: bool = True
     acc_strategy: Literal['token', 'seq'] = 'token'
+    train_sampler_random: bool = True
+
     # torchacc
     metric_warmup_step: Optional[float] = 0
     fsdp_num: int = 1
@@ -49,14 +51,11 @@ class TrainArgumentsMixin:
             self.lr_scheduler_kwargs = ModelArguments.parse_to_dict(self.lr_scheduler_kwargs)
         if getattr(self, 'gradient_checkpointing_kwargs', None):
             self.gradient_checkpointing_kwargs = ModelArguments.parse_to_dict(self.gradient_checkpointing_kwargs)
+        super().__post_init__()
 
 
 @dataclass
 class SwiftArgumentsMixin(TrainArgumentsMixin):
-    sequence_parallel_size: int = 1
-    train_sampler_random: bool = True
-    is_encoder_decoder: bool = False
-
     # Value copied from TrainArguments
     train_type: Optional[str] = None
     optimizer: Optional[str] = None

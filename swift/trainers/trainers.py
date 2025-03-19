@@ -233,7 +233,7 @@ class Seq2SeqTrainer(TorchAccMixin, SwiftMixin, HfSeq2SeqTrainer):
             else:
                 loss = self.label_smoother(outputs, labels)
 
-        if self.args.sequence_parallel_size > 1:
+        if self.template.sequence_parallel_size > 1:
             from swift.trainers.xtuner import reduce_xtuner_sequence_parallel_loss
             loss = reduce_xtuner_sequence_parallel_loss(loss, labels)
 
