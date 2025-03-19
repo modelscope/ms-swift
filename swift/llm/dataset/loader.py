@@ -87,9 +87,7 @@ class DatasetSyntax:
             dataset_sample = int(dataset_sample)
         return cls(dataset.strip(), subsets or [], dataset_sample)
 
-    def get_dataset_meta(self, use_hf: Optional[bool] = None):
-        if use_hf is None:
-            use_hf = True if use_hf_hub() else False
+    def get_dataset_meta(self, use_hf: bool):
         dataset_meta_mapping = self._get_dataset_meta_mapping()
         dataset_type = self.dataset_type
         if dataset_type == 'path':
@@ -365,6 +363,7 @@ class DatasetLoader:
                 num_proc=num_proc,
                 strict=strict,
                 streaming=streaming,
+                columns=columns,
                 remove_unused_columns=remove_unused_columns,
             )
         else:
@@ -451,6 +450,8 @@ def load_dataset(
         num_proc = None
     train_datasets = []
     val_datasets = []
+    if use_hf is None:
+        use_hf = True if use_hf_hub() else False
     load_kwargs = {
         'num_proc': num_proc,
         'use_hf': use_hf,
@@ -461,8 +462,11 @@ def load_dataset(
         'hub_token': hub_token,
         'remove_unused_columns': remove_unused_columns,
     }
-
     for dataset in datasets:
+        # compat dataset_name
+        if dataset in DATASET_MAPPING:
+            dataset_meta = DATASET_MAPPING[dataset]
+            dataset = dataset_meta.dataset_path or (dataset_meta.hf_dataset_id if use_hf else dataset_meta.ms_dataset_id)
         dataset_syntax = DatasetSyntax.parse(dataset)
         dataset_meta = dataset_syntax.get_dataset_meta(use_hf)
         load_function = dataset_meta.load_function
