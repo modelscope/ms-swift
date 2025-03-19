@@ -169,7 +169,7 @@ You can refer to the ms-swift built-in [dataset_info.json](https://github.com/mo
     "ms_dataset_id": "xxx/xxx"
   },
   {
-    "dataset_path": "<dataset_path>"
+    "dataset_path": "<dataset_dir/dataset_path>"
   },
   {
     "ms_dataset_id": "<dataset_id>",

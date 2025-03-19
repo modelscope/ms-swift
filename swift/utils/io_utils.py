@@ -76,8 +76,7 @@ class JsonlWriter:
     def append(self, obj: Union[Dict, List[Dict]], gather_obj: bool = False):
         if self.enable_async:
             if self._thread is None:
-                self._thread = Thread(target=self._append_worker)
-                self._thread.daemon = True
+                self._thread = Thread(target=self._append_worker, daemon=True)
                 self._thread.start()
             self._queue.put({'obj': obj, 'gather_obj': gather_obj})
         else:
