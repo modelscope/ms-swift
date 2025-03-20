@@ -15,7 +15,7 @@ from swift.tuners import LoraConfig, Swift
 class CustomTuner(Tuner):
 
     @staticmethod
-    def from_pretrained(model: nn.Module, model_id: str, **kwargs) -> nn.Model:
+    def from_pretrained(model: nn.Module, model_id: str, **kwargs) -> nn.Module:
         model = Swift.from_pretrained(model, model_id, **kwargs)
         state_dict = safetensors.torch.load_file(os.path.join(model_id, 'vit.safetensors'))
         model.load_state_dict(state_dict, strict=False)
@@ -53,42 +53,28 @@ class CustomTuner(Tuner):
 
 def create_custom_optimizer(args, model, dataset):
     decay_parameters = set(Trainer.get_decay_parameter_names(None, model))
+    vit_parameters = {n: p for n, p in model.named_parameters() if '.visual.' in n and p.requires_grad}
+    llm_parameters = {n: p for n, p in model.named_parameters() if '.visual.' not in n and p.requires_grad}
     optimizer_grouped_parameters = [
         # vit & merger
         {
-            'params':
-            [p for n, p in model.named_parameters() if ('.visual.' in n and n in decay_parameters and p.requires_grad)],
-            'weight_decay':
-            args.weight_decay,
-            'lr':
-            2e-6,
+            'params': [p for n, p in vit_parameters if n in decay_parameters],
+            'weight_decay': args.weight_decay,
+            'lr': 2e-6,
         },
         {
-            'params': [
-                p for n, p in model.named_parameters()
-                if ('.visual.' in n and n not in decay_parameters and p.requires_grad)
-            ],
-            'weight_decay':
-            0.0,
-            'lr':
-            2e-6,
+            'params': [p for n, p in vit_parameters if n not in decay_parameters],
+            'weight_decay': 0.0,
+            'lr': 2e-6,
         },
         # llm
         {
-            'params': [
-                p for n, p in model.named_parameters()
-                if ('.visual.' not in n and n in decay_parameters and p.requires_grad)
-            ],
-            'weight_decay':
-            args.weight_decay,
+            'params': [p for n, p in llm_parameters if n in decay_parameters],
+            'weight_decay': args.weight_decay,
         },
         {
-            'params': [
-                p for n, p in model.named_parameters()
-                if ('.visual.' not in n and n not in decay_parameters and p.requires_grad)
-            ],
-            'weight_decay':
-            0.0,
+            'params': [p for n, p in llm_parameters if n not in decay_parameters],
+            'weight_decay': 0.0,
         },
     ]
     optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(args, model)
