@@ -53,8 +53,8 @@ class CustomTuner(Tuner):
 
 def create_custom_optimizer(args, model, dataset):
     decay_parameters = set(Trainer.get_decay_parameter_names(None, model))
-    vit_parameters = {n: p for n, p in model.named_parameters() if '.visual.' in n and p.requires_grad}
-    llm_parameters = {n: p for n, p in model.named_parameters() if '.visual.' not in n and p.requires_grad}
+    vit_parameters = [(n, p) for n, p in model.named_parameters() if '.visual.' in n and p.requires_grad]
+    llm_parameters = [(n, p) for n, p in model.named_parameters() if '.visual.' not in n and p.requires_grad]
     optimizer_grouped_parameters = [
         # vit & merger
         {
