@@ -64,7 +64,7 @@ def convert_hf2mcore(args: ExportArguments) -> None:
     megatron_model_meta = get_megatron_model_meta(args.model_type)
     assert megatron_model_meta is not None, f'Model: {args.model} is not supported.'
     kwargs = megatron_model_meta.convert_hf_config(processor.model_info.config)
-    megatron_args = MegatronArguments(**kwargs, **convert_kwargs, save=args.output_dir)
+    megatron_args = MegatronArguments(**kwargs, **convert_kwargs, save=args.output_dir, torch_dtype=args.torch_dtype)
     patch_megatron_tokenizer(processor)
     extra_args = megatron_args.parse_to_megatron()
     initialize_megatron(args_defaults=extra_args)
@@ -86,7 +86,7 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     megatron_model_meta = get_megatron_model_meta(args.model_type)
     assert megatron_model_meta is not None, f'Model: {args.model} is not supported.'
     kwargs = megatron_model_meta.convert_hf_config(processor.model_info.config)
-    megatron_args = MegatronArguments(**kwargs, **convert_kwargs, load=args.mcore_model)
+    megatron_args = MegatronArguments(**kwargs, **convert_kwargs, load=args.mcore_model, torch_dtype=args.torch_dtype)
     patch_megatron_tokenizer(processor)
     extra_args = megatron_args.parse_to_megatron()
     initialize_megatron(args_defaults=extra_args)
