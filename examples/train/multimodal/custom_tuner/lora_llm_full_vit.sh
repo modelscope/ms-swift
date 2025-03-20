@@ -1,6 +1,7 @@
-# 25GiB
-# vit/merger lr 2e-6; llm lora lr 1e-4
-CUDA_VISIBLE_DEVICES=0 \
+# 4 * 22GiB
+# vit/merger lr 1e-5; llm lora lr 1e-4
+NPROC_PER_NODE=4 \
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
 MAX_PIXELS=1003520 \
 swift sft \
     --model Qwen/Qwen2.5-VL-7B-Instruct \
@@ -15,7 +16,7 @@ swift sft \
     --learning_rate 1e-4 \
     --lora_rank 16 \
     --lora_alpha 32 \
-    --gradient_accumulation_steps 16 \
+    --gradient_accumulation_steps 4 \
     --eval_steps 100 \
     --save_steps 100 \
     --save_total_limit 5 \
@@ -24,4 +25,6 @@ swift sft \
     --output_dir output \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 4 \
-    --dataset_num_proc 4
+    --dataset_num_proc 4 \
+    --deepspeed zero2 \
+    --save_only_model true
