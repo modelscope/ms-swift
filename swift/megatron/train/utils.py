@@ -137,7 +137,6 @@ def forward_step(data_iterator, model):
     # patch get_batch_on_this_tp_rank
     pretrain_gpt.get_batch_on_this_tp_rank = get_batch_on_this_tp_rank
 
-    args = get_args()
     timers = get_timers()
 
     # Get the batch.
