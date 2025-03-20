@@ -10,7 +10,18 @@ pip install math_verify # reward function
 pip install git+https://github.com/huggingface/trl.git"
 ```
 
-**注意**：训练过程中 loss 接近0 是正常情况， 参考[issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851)
+**FAQ**：
+1. 训练loss问题
+loss=0/很小，正常情况，参考[issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851)
+
+2. loss为负正常吗
+正常，参考
+
+3. 将模型部署在多张卡上
+使用 `tensor_parallel_size`参数，你可以参考[脚本](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/train_72b_4gpu.sh)。
+该参数暂时只支持colocate mode
+
+
 
 ## 集群支持
 
