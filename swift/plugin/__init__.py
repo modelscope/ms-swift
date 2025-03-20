@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from .metric import InferStats, MeanMetric, Metric, compute_acc, get_metric, compute_rouge_bleu
     from .optimizer import optimizers_map
     from .tools import get_tools_prompt, get_tools_keyword
-    from .tuner import Tuner, extra_tuners
+    from .tuner import Tuner, extra_tuners, PeftTuner
     from .prm import prms, PRM
     from .orm import orms, ORM
 
@@ -22,7 +22,7 @@ else:
         'metric': ['InferStats', 'MeanMetric', 'Metric', 'compute_acc', 'get_metric', 'compute_rouge_bleu'],
         'optimizer': ['optimizers_map'],
         'tools': ['get_tools_prompt', 'get_tools_keyword'],
-        'tuner': ['Tuner', 'extra_tuners'],
+        'tuner': ['Tuner', 'extra_tuners', 'PeftTuner'],
         'prm': ['prms', 'PRM'],
         'orm': ['orms', 'ORM']
     }

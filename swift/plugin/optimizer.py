@@ -22,7 +22,7 @@ def calculate_max_steps(args: 'TrainArguments', dataset) -> int:
     return max_steps
 
 
-def create_galore_optimizers(args, model, dataset):
+def create_galore_optimizer(args, model, dataset):
     training_steps = calculate_max_steps(args, dataset)
     optimizer, lr_scheduler = create_optimizer_and_scheduler(
         model, args, args.galore_config, training_steps, lr=args.learning_rate, weight_decay=args.weight_decay)
@@ -31,7 +31,7 @@ def create_galore_optimizers(args, model, dataset):
     return optimizer, lr_scheduler
 
 
-def create_lorap_optimizers(args, model, dataset):
+def create_lorap_optimizer(args, model, dataset):
     optimizer_grouped_parameters = None
     if hasattr(model, 'create_optimizer_param_groups'):
         # Lora+ parameter groups
@@ -55,7 +55,7 @@ def create_lorap_optimizers(args, model, dataset):
     return optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs), None
 
 
-def create_muon_optimizers(args, model, dataset):
+def create_muon_optimizer(args, model, dataset):
     from swift.llm import git_clone_github, get_model_arch
     if not args.local_repo_path:
         args.local_repo_path = git_clone_github('https://github.com/MoonshotAI/Moonlight.git')
@@ -94,7 +94,7 @@ def create_muon_optimizers(args, model, dataset):
 
 # Add your own optimizers here, use --optimizer xxx to train
 optimizers_map = {
-    'galore': create_galore_optimizers,
-    'lorap': create_lorap_optimizers,
-    'muon': create_muon_optimizers,
+    'galore': create_galore_optimizer,
+    'lorap': create_lorap_optimizer,
+    'muon': create_muon_optimizer,
 }
