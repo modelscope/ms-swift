@@ -1118,6 +1118,7 @@ class Template(ProcessorMixin):
         packing_mode = self.use_megatron or self._packing and 'position_ids' in batch[0]
         res = {}
         if packing_mode:
+            # only support llm
             for k in ['input_ids', 'labels', 'position_ids']:
                 res[k] = [self.gather_list(batch, k)]
         else:
@@ -1185,10 +1186,6 @@ class Template(ProcessorMixin):
             labels = res['labels']
             res['tokens'] = res.pop('input_ids')
             res['loss_mask'] = (labels != -100).float()
-            if not packing_mode:
-                res['position_ids'] = torch.arange(
-                    labels.shape[1], dtype=torch.long,
-                    device=labels.device).unsqueeze(0).expand_as(labels).contiguous()
 
         return res
 
