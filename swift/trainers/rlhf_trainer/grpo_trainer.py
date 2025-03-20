@@ -277,7 +277,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.num_iterations = args.num_iterations  # = 𝜇 in the GRPO paper
         self.epsilon_low = args.epsilon
         self.epsilon_high = args.epsilon_high if args.epsilon_high is not None else args.epsilon
-        
+
         # Tracks the number of iterations (forward + backward passes), including those within a gradient accumulation cycle. # noqa
         self._step = 0
         # Buffer the batch to reuse generated outputs across multiple updates. For more details, see
