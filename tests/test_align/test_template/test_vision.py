@@ -488,6 +488,14 @@ def test_gemma3_vision():
     assert response == response2
 
 
+def test_mistral_2503():
+    pt_engine = PtEngine('mistralai/Mistral-Small-3.1-24B-Instruct-2503')
+    response = _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine)
+    assert response == response2
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig, get_template
     from swift.utils import get_logger, seed_everything
@@ -508,7 +516,7 @@ if __name__ == '__main__':
     # test_qwen_vl()
     # test_glm4v()
     # test_cogagent()
-    test_llava_onevision_hf()
+    # test_llava_onevision_hf()
     # test_minicpmv()
     # test_got_ocr()
     # test_got_ocr_hf()
@@ -535,3 +543,4 @@ if __name__ == '__main__':
     # test_valley()
     # test_ui_tars()
     # test_gemma3_vision()
+    test_mistral_2503()

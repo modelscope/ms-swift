@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Optional
 
 from ..constant import LLMTemplateType, MLLMTemplateType
@@ -62,10 +63,12 @@ register_template(
         chat_sep=['</s>[INST] '],
         suffix=['</s>']))
 
+today = datetime.now().strftime('%Y-%m-%d')
+
 mistral_2501_system = (
     'You are Mistral Small 3, a Large Language Model (LLM) created by Mistral AI, a French startup '
     'headquartered in Paris.\n'
-    'Your knowledge base was last updated on 2023-10-01. The current date is 2025-02-07.\n\n'
+    f'Your knowledge base was last updated on 2023-10-01. The current date is {today}.\n\n'
     "When you're not sure about some information, you say that you don't have the information and don't "
     'make up anything.\n'
     "If the user's question is not clear, ambiguous, or does not provide enough context for you to accurately answer "
