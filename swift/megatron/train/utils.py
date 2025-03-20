@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from functools import partial
+from typing import Optional
 
 import torch
 from megatron.core import mpu
@@ -64,18 +65,19 @@ def get_batch_on_this_tp_rank(data_iterator):
         seq_length = torch.empty((), dtype=torch.int64, device=torch.cuda.current_device())
         _broadcast(seq_length)
 
-        tokens = torch.empty((args.micro_batch_size, seq_length), dtype=torch.int64, device=torch.cuda.current_device())
-        labels = torch.empty((args.micro_batch_size, seq_length), dtype=torch.int64, device=torch.cuda.current_device())
-        loss_mask = torch.empty((args.micro_batch_size, seq_length),
+        micro_batch_size = 1  # use 'thd'
+        tokens = torch.empty((micro_batch_size, seq_length), dtype=torch.int64, device=torch.cuda.current_device())
+        labels = torch.empty((micro_batch_size, seq_length), dtype=torch.int64, device=torch.cuda.current_device())
+        loss_mask = torch.empty((micro_batch_size, seq_length),
                                 dtype=torch.float32,
                                 device=torch.cuda.current_device())
         if args.create_attention_mask_in_dataloader:
-            attention_mask = torch.empty((args.micro_batch_size, 1, seq_length, seq_length),
+            attention_mask = torch.empty((micro_batch_size, 1, seq_length, seq_length),
                                          dtype=torch.bool,
                                          device=torch.cuda.current_device())
         else:
             attention_mask = None
-        position_ids = torch.empty((args.micro_batch_size, seq_length),
+        position_ids = torch.empty((micro_batch_size, seq_length),
                                    dtype=torch.int64,
                                    device=torch.cuda.current_device())
 
@@ -113,8 +115,30 @@ def get_batch_on_this_tp_rank(data_iterator):
     return batch
 
 
+def get_packed_seq_params(position_ids: torch.Tensor) -> Optional[PackedSeqParams]:
+    position_ids_f = position_ids.flatten()
+    indices_q = torch.arange(position_ids_f.shape[0], device=position_ids_f.device, dtype=torch.int32)
+
+    cu_seqlens = torch.cat([
+        indices_q[position_ids_f == 0],
+        torch.tensor(position_ids_f.shape, device=position_ids_f.device, dtype=torch.int32),
+    ])
+
+    max_length = position_ids_f.max() + 1
+    return PackedSeqParams(
+        cu_seqlens_q=cu_seqlens,
+        cu_seqlens_kv=cu_seqlens,
+        max_seqlen_q=max_length,
+        max_seqlen_kv=max_length,
+        qkv_format='thd')
+
+
 def forward_step(data_iterator, model):
+    import pretrain_gpt
     from pretrain_gpt import loss_func, get_batch
+    # patch get_batch_on_this_tp_rank
+    pretrain_gpt.get_batch_on_this_tp_rank = get_batch_on_this_tp_rank
+
     args = get_args()
     timers = get_timers()
 
@@ -123,24 +147,7 @@ def forward_step(data_iterator, model):
     global stimer
     with stimer(bdata=True):
         tokens, labels, loss_mask, attention_mask, position_ids = get_batch(data_iterator)
-        if args.packing:
-            position_ids = position_ids.flatten()
-            indices_q = torch.arange(position_ids.shape[0], device=position_ids.device, dtype=torch.int32)
-
-            cu_seqlens = torch.cat([
-                indices_q[position_ids == 0],
-                torch.tensor(position_ids.shape, device=position_ids.device, dtype=torch.int32),
-            ])
-
-            max_length = position_ids.max() + 1
-            packed_seq_params = PackedSeqParams(
-                cu_seqlens_q=cu_seqlens,
-                cu_seqlens_kv=cu_seqlens,
-                max_seqlen_q=max_length,
-                max_seqlen_kv=max_length,
-                qkv_format='thd')
-        else:
-            packed_seq_params = None
+        packed_seq_params = get_packed_seq_params(position_ids)
 
     timers('batch-generator').stop()
 

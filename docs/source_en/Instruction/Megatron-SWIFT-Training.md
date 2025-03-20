@@ -131,7 +131,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - manual_gc_interval: Interval at which garbage collection is triggered. Default is 0.
 - seed: Random seed for python, numpy, pytorch, and cuda, default is 42.
 - 🔥num_workers: Number of workers for the dataloader, default is 4.
-- seq_length: Maximum sequence length to process. Default is None, meaning it will be set to `max_position_embeddings`. Megatron-SWIFT uses dynamic padding during training, so usually there is no need to modify this parameter. To limit dataset length, use the `--max_length` control in basic parameters.
+seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the dataset length, please use the `--max_length` parameter in the basic arguments; there is no need to set this parameter.
 - use_cpu_initialization: Initializes weights on the CPU, default is False. Used during HF and MCore weight conversion.
 - no_create_attention_mask_in_dataloader: Does not create an attention mask in the dataloader, default is True.
 
@@ -185,6 +185,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 
 - log_params_norm: Logs the norm of parameters. Default is True.
 - log_throughput: Logs throughput per GPU. Default is True.
+  - Note: In non-packing scenarios, log_throughput does not reflect the actual situation because the real sequence length is not equal to `seq_length`.
 - tensorboard_log_interval: Interval (steps) for logging to TensorBoard, default is 1.
 - tensorboard_queue_size: Queue length (related to disk I/O), similar to write intervals. Default is 50.
 - log_timers_to_tensorboard: Logs timers to TensorBoard. Default is True.
@@ -234,4 +235,5 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 Megatron training parameters inherit from Megatron parameters and basic parameters. For information on basic parameters, see [here](./Command-line-parameters.md#base-arguments). Additionally, the following parameters are included:
 
 - add_version: Adds a directory `<version>-<timestamp>` to `save` to prevent overwriting weights, default is True.
+- 🔥packing: Whether to use sequence packing, defaults to False.
 - 🔥lazy_tokenize: Default is False. If this parameter is set to False, all dataset samples are tokenized before training (this avoids errors during training); if set to True, tokenization occurs during training (this saves memory).

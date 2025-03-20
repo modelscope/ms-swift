@@ -79,7 +79,7 @@ class TrainArgumentsMixin:
             self.dataloader_drop_last = True
         if self.lr_scheduler_kwargs:
             self.lr_scheduler_kwargs = ModelArguments.parse_to_dict(self.lr_scheduler_kwargs)
-        if getattr(self, 'gradient_checkpointing_kwargs', None):
+        if self.gradient_checkpointing_kwargs:
             self.gradient_checkpointing_kwargs = ModelArguments.parse_to_dict(self.gradient_checkpointing_kwargs)
         self._fix_gradient_checkpointing()
 

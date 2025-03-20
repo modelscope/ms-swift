@@ -125,7 +125,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - manual_gc_interval: 触发垃圾回收的间隔。默认为0。
 - seed: python、numpy、pytorch和cuda的随机种子，默认为42。
 - 🔥num_workers: dataloder的workers数量，默认为4。
-- seq_length: 要处理的最大序列长度。默认为None，即设置为`max_position_embeddings`。Megatron-SWIFT采用训练中批次动态padding，因此通常无需修改该参数。对数据集长度进行限制请使用基本参数中的`--max_length`控制。
+- seq_length: 默认为None，即设置为`max_length`。对数据集长度进行限制请使用基本参数中的`--max_length`控制，无需设置此参数。
 - use_cpu_initialization: 在cpu上初始化权重，默认为False。在进行HF和MCore权重转换时会被使用。
 - no_create_attention_mask_in_dataloader: 在dataloader中不创建attention mask，默认为True。
 
@@ -175,6 +175,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 **日志参数**
 - log_params_norm: 记录参数的norm。默认为True。
 - log_throughput: 记录每个GPU的吞吐量。默认为True。
+  - 注意：在非packing情况下，log_throughput并不反映真实情况，因为真实序列长度并不等于`seq_length`。
 - tensorboard_log_interval: 记录到tensorboard的间隔（steps），默认为1。
 - tensorboard_queue_size: 队列长度（与磁盘IO相关），类似于写入的间隔。默认为50。
 - log_timers_to_tensorboard: 记录timers到tensorboard。默认为True。
@@ -221,4 +222,5 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 Megatron训练参数继承自Megatron参数和基本参数。基本参数的内容可以参考[这里](./命令行参数.md#基本参数)。此外还包括以下参数：
 
 - add_version: 在`save`上额外增加目录`'<版本号>-<时间戳>'`防止权重覆盖，默认为True。
+- 🔥packing: 是否使用序列packing，默认为False。
 - 🔥lazy_tokenize: 默认为False。若该参数设置为False，则在训练之前对所有的数据集样本进行tokenize（这可以避免在训练中出现报错）；设置为True，则在训练中对数据集进行tokenize（这可以节约内存）。

@@ -17,6 +17,7 @@ logger = get_logger()
 class MegatronTrainArguments(MegatronArguments, BaseArguments):
     add_version: bool = True
     lazy_tokenize: bool = False
+    packing: bool = False
 
     def init_model_args(self, config):
         self.megatron_model_meta = get_megatron_model_meta(self.model_type)
@@ -49,3 +50,4 @@ class MegatronTrainArguments(MegatronArguments, BaseArguments):
         BaseArguments.__post_init__(self)
         self._init_mixed_precision()
         self._init_save()
+        self.seq_length = self.seq_length or self.max_length

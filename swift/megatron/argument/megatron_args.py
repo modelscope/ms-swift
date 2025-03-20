@@ -11,8 +11,6 @@ from swift.llm.argument.base_args import to_abspath
 class ExtraMegatronArguments:
     padded_vocab_size: Optional[int] = None
     rope_scaling: Optional[Union[dict, str]] = None
-    packing: bool = False
-
 
 @dataclass
 class MegatronArguments(ExtraMegatronArguments):
@@ -133,7 +131,8 @@ class MegatronArguments(ExtraMegatronArguments):
         from swift.llm.argument.base_args.model_args import ModelArguments
         os.environ['CUDA_DEVICE_MAX_CONNECTIONS'] = '1'
         self.group_query_attention = self.num_query_groups > 1
-        self.rope_scaling = ModelArguments.parse_to_dict(self.rope_scaling)
+        if self.rope_scaling is not None:
+            self.rope_scaling = ModelArguments.parse_to_dict(self.rope_scaling)
         if self.eval_interval is None:
             self.eval_interval = self.save_interval
         if self.seq_length is None:
