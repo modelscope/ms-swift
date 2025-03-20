@@ -4,7 +4,10 @@ from functools import partial
 import torch
 from megatron.core import mpu
 from megatron.core.packed_seq_params import PackedSeqParams
+from megatron.core.utils import StragglerDetector
 from megatron.training import get_args, get_timers
+
+stimer = StragglerDetector()
 
 
 def get_swift_datasets_provider(train_dataset, val_dataset):
