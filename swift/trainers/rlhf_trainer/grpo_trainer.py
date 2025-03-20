@@ -30,6 +30,7 @@ from swift.utils import (JsonlWriter, gc_collect, get_device, get_device_count, 
                          get_node_setting, is_lmdeploy_available, is_vllm_available, is_wandb_available)
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
+from ...plugin.multi_turn import multi_turns
 
 try:
     from trl.extras.profiling import profiling_decorator
@@ -97,6 +98,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                  ref_model: Optional[Union[PreTrainedModel, nn.Module]] = None,
                  reward_model: Optional[Union[PreTrainedModel, nn.Module]] = None,
                  reward_funcs: Optional[List[Union[str, Callable]]] = None,
+                 multi_turn_func: Optional[Union[str, Callable]] = None,
                  *_args,
                  **kwargs):
         from swift.trainers.rlhf_arguments import GRPOConfig
@@ -141,6 +143,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     raise ValueError(f'reward_function {reward_func} is not implemented in swift.llm.plugin')
 
         self.reward_funcs = reward_funcs
+
+        if multi_turn_func:
+            if isinstance(multi_turn_func, str):
+                assert multi_turn_func in multi_turns
+                multi_turn_func = multi_turns[multi_turn_func]
+
+        self.multi_turn_func = multi_turn_func
+
         self.reward_templates = [None] * len(self.reward_funcs)
         if reward_model is not None:
             self.reward_templates.append(kwargs.pop('reward_template', None))
@@ -265,6 +275,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self.request_config.n = self.args.tensor_parallel_size
             if self.infer_rank >= 0:
                 self.request_config.seed = self.infer_rank // self.args.tensor_parallel_size
+
+        if self.args.tensor_parallel_size > 1:
+            import torch.distributed as dist
+            self.tp_group = dist.new_group(self.cur_tp_group_ranks)
 
         self.model_accepts_loss_kwargs = False
         for i, reward_func in enumerate(self.reward_funcs):
@@ -412,6 +426,15 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return -1
 
     @property
+    def cur_tp_group_ranks(self):
+        rank, local_rank, world_size, local_world_size = get_dist_setting()
+        if self.args.tensor_parallel_size > 1:
+            tp_groups = rank // self.args.tensor_parallel_size
+            return list(range(tp_groups*self.args.tensor_parallel_size, (tp_groups+1)*self.args.tensor_parallel_size))
+        else:
+            return [rank]
+
+    @property
     def local_infer_rank(self):
         rank, local_rank, world_size, local_world_size = get_dist_setting()
         for _vllm_rank in range(self.args.num_infer_workers):
@@ -501,10 +524,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     @profiling_decorator
     def _move_model_to_vllm_lmdeploy(self):
-        # TODO This may be low efficiency
-        # 1. deepspeed parallel == vllm tensor parallel, may be do not need to gather
-        # 2. may be each process in tp group only need gather a part of the parameters
-        # 3. the split of parameter_groups may be imbalanced
         from accelerate.utils.other import is_compiled_module
 
         for i, parameter_group in enumerate(self.parameter_groups):
@@ -611,13 +630,32 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return [index_to_output[idx] for idx in sorted(index_to_output.keys())]
 
+    def _infer_multi_turn(self, inputs_slice, request_config):
+        from swift.llm.infer.protocol import ChatCompletionResponse
+        results: List[ChatCompletionResponse] = self.engine.infer(
+            infer_requests=inputs_slice, request_config=request_config, use_tqdm=False)
+        if self.multi_turn_func:
+            while len(inputs_slice) > 0:
+                if self.infer_rank_tp_0 >= 0:
+                    for i, output in enumerate(results):
+                        messages = inputs_slice[i]['messages']
+                        InferRequest.remove_response(messages)
+                        messages.append({'role': 'assistant', 'content': output.choices[0].message.content})
+                    results = self.multi_turn_func(inputs_slice)
+                else:
+                    results = [None]*len(results)
+                if self.args.tensor_parallel_size > 1:
+                    import torch.distributed as dist
+                    dist.broadcast_object_list(results, src=self.cur_tp_group_ranks[0], group=self.tp_group)
+                inputs_slice = [r for r in results if not r.is_finished]
+        else:
+            return results
+
     def async_infer(self, inputs, inputs_slice, distributed_idx):
 
         def infer_task():
             with set_device_context(self.infer_device):
-                result = self.engine.infer(
-                    infer_requests=inputs_slice, request_config=self.request_config, use_tqdm=False)
-                return result
+                return self._infer_multi_turn(inputs_slice, self.request_config)
 
         future: Future = self.executor.submit(infer_task)
         # pre-fetch the queue to avoid switching back to eval_queue at the end of training sample sampling
@@ -634,7 +672,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         distributed_idx = self.round_robin(len(all_inputs), get_node_setting()[1] * self.args.num_infer_workers)
         if self.infer_rank >= 0:
             _input_slice = np.array(all_inputs)[distributed_idx[self.infer_rank]]
-            outputs = self.engine.infer(_input_slice, self.request_config, use_tqdm=False)
+            outputs = self._infer_multi_turn(_input_slice, self.request_config)
             self._queue.put(DataCache(inputs, outputs, distributed_idx))
         else:
             self._queue.put(DataCache(inputs, [], distributed_idx))
@@ -676,7 +714,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     request_config = copy(self.request_config)
                     if self.args.tensor_parallel_size > 1:
                         request_config.seed += self.state.global_step
-                    outputs = self.engine.infer(_input_slice, self.request_config, use_tqdm=False)
+                    outputs = self._infer_multi_turn(_input_slice, self.request_config)
                 if self.args.tensor_parallel_size > 1:
                     if self.infer_rank_tp_0 < 0:
                         outputs = []
@@ -730,7 +768,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             with unwrap_model_for_generation(
                     self.model_wrapped, self.accelerator, gather_deepspeed3_params=self.args.ds3_gather_for_generation):
                 # same reference
-                outputs = self.engine.infer(inputs, self.request_config, use_tqdm=False)
+                outputs = self._infer_multi_turn(inputs, self.request_config)
                 self.model.train()
             if is_multimodal:
                 self.template.register_post_encode_hook(models)
