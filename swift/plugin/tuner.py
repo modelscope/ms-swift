@@ -64,14 +64,7 @@ class PeftTuner(Tuner):
         safe_serialization: bool = True,
         **kwargs,
     ) -> None:
-        model: PeftModel
-        if state_dict is None:
-            state_dict = {}
-            for n, p in model.named_parameters():
-                if p.requires_grad:
-                    state_dict[n] = p.detach().cpu()  # 894
-        PreTrainedModel.save_pretrained(
-            model, save_directory, state_dict=state_dict, safe_serialization=safe_serialization, **kwargs)
+        model.save_pretrained(save_directory, safe_serialization=safe_serialization, **kwargs)
 
     @staticmethod
     def from_pretrained(model: torch.nn.Module, model_id: str, **kwargs) -> torch.nn.Module:
