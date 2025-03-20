@@ -1,45 +1,48 @@
+import os
+from typing import Literal, Optional
+
 import deepspeed
+import safetensors.torch
 import torch
+import torch.nn as nn
 from transformers import PreTrainedModel, Trainer
+from transformers.pytorch_utils import id_tensor_storage
 
 from swift.plugin import Tuner, extra_tuners, optimizers_map
 from swift.tuners import LoraConfig, Swift
-from transformers.pytorch_utils import id_tensor_storage
+
 
 class CustomTuner(Tuner):
 
     @staticmethod
+    def from_pretrained(model: nn.Module, model_id: str, **kwargs) -> nn.Model:
+        model = Swift.from_pretrained(model, model_id, **kwargs)
+        state_dict = safetensors.torch.load_file(os.path.join(model_id, 'vit.safetensors'))
+        model.load_state_dict(state_dict, strict=False)
+        return model
+
+    @staticmethod
     def save_pretrained(
-        model: torch.nn.Module,
+        model: nn.Module,
         save_directory: str,
         state_dict: Optional[dict] = None,
         safe_serialization: bool = True,
         **kwargs,
-    ):
-        with deepspeed.zero.GatheredParameters(model.parameters()):
-            model.merge_adapter()
-            state_dict = model.state_dict()
-            # Remove base_model and base_layer prefixes
-            state_dict = {
-                k.removeprefix('base_model.model.').replace('.base_layer', ''): v
-                for k, v in state_dict.items()
-            }
-            # Remove values with adapter prefix (example: "_lora")
-            state_dict = {k: v for k, v in state_dict.items() if model.prefix not in k}
-            # When module to save, remove its prefix and discard the original module
-            state_dict = {
-                k.replace('modules_to_save.default.', ''): v
-                for k, v in state_dict.items() if 'original_module' not in k
-            }
-            if id_tensor_storage(state_dict['lm_head.weight']) == id_tensor_storage(state_dict['model.embed_tokens.weight']):
-                # tie weight
-                state_dict.pop('lm_head.weight')
-            PreTrainedModel.save_pretrained(
-                model, save_directory, state_dict=state_dict, safe_serialization=safe_serialization)
-            model.unmerge_adapter()
+    ) -> None:
+        model: PeftModel
+        if state_dict is None:
+            state_dict = {}
+            for n, p in model.named_parameters():
+                if p.requires_grad:
+                    state_dict[n] = p.detach().cpu()
+        model.save_pretrained(save_directory, state_dict=state_dict, safe_serialization=safe_serialization, **kwargs)
+        # vit
+        state_dict = {k: v for k, v in state_dict.items() if '.visual.' in k}
+        safetensors.torch.save_file(
+            state_dict, os.path.join(save_directory, 'vit.safetensors'), metadata={'format': 'pt'})
 
     @staticmethod
-    def prepare_model(args: 'TrainArguments', model: torch.nn.Module):
+    def prepare_model(args: 'TrainArguments', model: nn.Module) -> nn.Module:
         target_regex = r'^model.layers.*'
         lora_config = LoraConfig(
             task_type='CAUSAL_LM', r=args.lora_rank, lora_alpha=args.lora_alpha, target_modules=target_regex)
