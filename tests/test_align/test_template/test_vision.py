@@ -490,10 +490,12 @@ def test_gemma3_vision():
 
 def test_mistral_2503():
     pt_engine = PtEngine('mistralai/Mistral-Small-3.1-24B-Instruct-2503')
-    response = _infer_model(pt_engine)
-    pt_engine.default_template.template_backend = 'jinja'
-    response2 = _infer_model(pt_engine)
-    assert response == response2
+    response = _infer_model(pt_engine, messages=[{'role': 'user', 'content': 'What is shown in this image?'}])
+    assert response == (
+        'The image shows a close-up of a Siamese kitten. The kitten has distinctive blue almond-shaped eyes, '
+        'a pink nose, and a light-colored coat with darker points on the ears, paws, tail, and face, '
+        'which are characteristic features of the Siamese breed. '
+        'The kitten appears to be looking directly at the viewer with a curious and endearing expression.')
 
 
 if __name__ == '__main__':
