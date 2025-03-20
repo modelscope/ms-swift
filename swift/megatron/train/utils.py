@@ -65,7 +65,7 @@ def get_batch_on_this_tp_rank(data_iterator):
         seq_length = torch.empty((), dtype=torch.int64, device=torch.cuda.current_device())
         _broadcast(seq_length)
 
-        micro_batch_size = 1  # use 'thd'
+        micro_batch_size = 1  # use qkv_format 'thd'
         tokens = torch.empty((micro_batch_size, seq_length), dtype=torch.int64, device=torch.cuda.current_device())
         labels = torch.empty((micro_batch_size, seq_length), dtype=torch.int64, device=torch.cuda.current_device())
         loss_mask = torch.empty((micro_batch_size, seq_length), dtype=torch.float32, device=torch.cuda.current_device())

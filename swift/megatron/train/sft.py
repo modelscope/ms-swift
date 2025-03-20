@@ -12,7 +12,7 @@ from swift.utils import get_logger, is_master, plot_images
 from ..argument import MegatronTrainArguments
 from ..utils import patch_megatron_tokenizer
 from .patcher import patch_megatron_data_collator, patch_training_log
-from .utils import forward_step, get_batch_on_this_tp_rank, get_swift_datasets_provider
+from .utils import forward_step, get_swift_datasets_provider
 
 logger = get_logger()
 
@@ -58,7 +58,6 @@ class MegatronSft(SwiftSft):
         return train_dataset, val_dataset
 
     def run(self):
-        import pretrain_gpt
         args = self.args
 
         train_dataset, val_dataset = self._get_dataset()
