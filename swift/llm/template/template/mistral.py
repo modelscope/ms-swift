@@ -7,13 +7,15 @@ from ..base import Template
 from ..constant import MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
-from .llm import mistral_2501_system
 from ..utils import findall
+from .llm import mistral_2501_system
+
 
 class Mistral2503Template(Template):
     placeholder_tokens = ['<IMG>']
     image_token = 10
     boi_token_id = [1060, 125250, 1062]
+
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
         processor = self.processor
@@ -31,11 +33,12 @@ class Mistral2503Template(Template):
                 height, width = image_size
                 num_height_tokens = height // (processor.patch_size * processor.spatial_merge_size)
                 num_width_tokens = width // (processor.patch_size * processor.spatial_merge_size)
-                replace_tokens = [processor.image_token * num_width_tokens + processor.image_break_token] * num_height_tokens
+                replace_tokens = [processor.image_token * num_width_tokens + processor.image_break_token
+                                  ] * num_height_tokens
                 # Flatten list
                 replace_tokens = [item for sublist in replace_tokens for item in sublist]
                 replace_tokens[-1] = processor.image_end_token
-                replace_str = "".join(replace_tokens)
+                replace_str = ''.join(replace_tokens)
                 img_tokens: List[int] = processor.tokenizer(replace_str, add_special_tokens=False)
                 input_ids = input_ids[:idx + added_tokens_len] + img_tokens + input_ids[idx + added_tokens_len + 1:]
                 if labels is not None:
@@ -46,6 +49,7 @@ class Mistral2503Template(Template):
             encoded['labels'] = labels
 
         return encoded
+
 
 register_template(
     TemplateMeta(

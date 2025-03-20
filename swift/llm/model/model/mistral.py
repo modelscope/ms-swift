@@ -3,7 +3,7 @@
 from typing import Any, Dict
 
 from swift.llm import TemplateType
-from ..constant import LLMModelType
+from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
 from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,
                         get_model_tokenizer_with_flash_attn, register_model)
@@ -142,7 +142,7 @@ def get_model_tokenizer_mistral_2503(model_dir: str,
 
 register_model(
     ModelMeta(
-        LLMModelType.mistral_2503,
+        MLLMModelType.mistral_2503,
         [
             ModelGroup([
                 Model('mistralai/Mistral-Small-3.1-24B-Base-2503', 'mistralai/Mistral-Small-3.1-24B-Base-2503'),

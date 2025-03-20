@@ -76,7 +76,6 @@ class LLMModelType:
     mixtral = 'mixtral'
     mistral_nemo = 'mistral_nemo'
     mistral_2501 = 'mistral_2501'
-    mistral_2503 = 'mistral_2503'
     wizardlm2 = 'wizardlm2'
     wizardlm2_moe = 'wizardlm2_moe'
 
@@ -213,6 +212,7 @@ class MLLMModelType:
     megrez_omni = 'megrez_omni'
     valley = 'valley'
     gemma3_vision = 'gemma3_vision'
+    mistral_2503 = 'mistral_2503'
 
 
 class ModelType(LLMModelType, MLLMModelType, BertModelType, RMModelType):
