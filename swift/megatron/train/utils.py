@@ -68,9 +68,7 @@ def get_batch_on_this_tp_rank(data_iterator):
         micro_batch_size = 1  # use 'thd'
         tokens = torch.empty((micro_batch_size, seq_length), dtype=torch.int64, device=torch.cuda.current_device())
         labels = torch.empty((micro_batch_size, seq_length), dtype=torch.int64, device=torch.cuda.current_device())
-        loss_mask = torch.empty((micro_batch_size, seq_length),
-                                dtype=torch.float32,
-                                device=torch.cuda.current_device())
+        loss_mask = torch.empty((micro_batch_size, seq_length), dtype=torch.float32, device=torch.cuda.current_device())
         if args.create_attention_mask_in_dataloader:
             attention_mask = torch.empty((micro_batch_size, 1, seq_length, seq_length),
                                          dtype=torch.bool,

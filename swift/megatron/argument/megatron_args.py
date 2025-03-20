@@ -12,6 +12,7 @@ class ExtraMegatronArguments:
     padded_vocab_size: Optional[int] = None
     rope_scaling: Optional[Union[dict, str]] = None
 
+
 @dataclass
 class MegatronArguments(ExtraMegatronArguments):
     # training
