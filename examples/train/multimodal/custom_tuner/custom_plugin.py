@@ -1,12 +1,9 @@
 import os
-from typing import Literal, Optional
+from typing import Optional
 
-import deepspeed
 import safetensors.torch
 import torch
-import torch.nn as nn
-from transformers import PreTrainedModel, Trainer
-from transformers.pytorch_utils import id_tensor_storage
+from transformers import Trainer
 
 from swift.plugin import Tuner, extra_tuners, optimizers_map
 from swift.tuners import LoraConfig, Swift
@@ -15,7 +12,7 @@ from swift.tuners import LoraConfig, Swift
 class CustomTuner(Tuner):
 
     @staticmethod
-    def from_pretrained(model: nn.Module, model_id: str, **kwargs) -> nn.Module:
+    def from_pretrained(model: torch.nn.Module, model_id: str, **kwargs) -> torch.nn.Module:
         model = Swift.from_pretrained(model, model_id, **kwargs)
         state_dict = safetensors.torch.load_file(os.path.join(model_id, 'vit.safetensors'))
         model.load_state_dict(state_dict, strict=False)
@@ -23,13 +20,12 @@ class CustomTuner(Tuner):
 
     @staticmethod
     def save_pretrained(
-        model: nn.Module,
+        model: torch.nn.Module,
         save_directory: str,
         state_dict: Optional[dict] = None,
         safe_serialization: bool = True,
         **kwargs,
     ) -> None:
-        model: PeftModel
         if state_dict is None:
             state_dict = {}
             for n, p in model.named_parameters():
@@ -42,7 +38,7 @@ class CustomTuner(Tuner):
             state_dict, os.path.join(save_directory, 'vit.safetensors'), metadata={'format': 'pt'})
 
     @staticmethod
-    def prepare_model(args: 'TrainArguments', model: nn.Module) -> nn.Module:
+    def prepare_model(args: 'TrainArguments', model: torch.nn.Module) -> torch.nn.Module:
         target_regex = r'^model.layers.*'
         lora_config = LoraConfig(
             task_type='CAUSAL_LM', r=args.lora_rank, lora_alpha=args.lora_alpha, target_modules=target_regex)
