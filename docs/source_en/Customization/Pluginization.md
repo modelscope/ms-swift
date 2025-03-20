@@ -163,7 +163,7 @@ Tuner customization is another unique feature of SWIFT. Developers can bypass th
 class IA3(Tuner):
 
     @staticmethod
-    def prepare_model(args: 'TrainArguments', model: torch.nn.Module):
+    def prepare_model(args: 'TrainArguments', model: torch.nn.Module) -> torch.nn.Module:
         model_arch: ModelKeys = MODEL_ARCH_MAPPING[model.model_meta.model_arch]
         ia3_config = IA3Config(
             target_modules=find_all_linears(model), feedforward_modules='.*' + model_arch.mlp.split('{}.')[1] + '.*')
@@ -173,14 +173,15 @@ class IA3(Tuner):
     def save_pretrained(
         model: torch.nn.Module,
         save_directory: str,
+        state_dict: Optional[dict] = None,
         safe_serialization: bool = True,
         **kwargs,
-    ):
+    ) -> None:
         model: PeftModel
-        model.save_pretrained(save_directory, safe_serialization=safe_serialization, **kwargs)
+        model.save_pretrained(save_directory, state_dict=state_dict, safe_serialization=safe_serialization, **kwargs)
 
     @staticmethod
-    def from_pretrained(model: torch.nn.Module, model_id: str, **kwargs):
+    def from_pretrained(model: torch.nn.Module, model_id: str, **kwargs) -> torch.nn.Module:
         return PeftModel.from_pretrained(model, model_id, **kwargs)
 ```
 

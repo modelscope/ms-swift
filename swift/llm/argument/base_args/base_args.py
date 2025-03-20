@@ -131,9 +131,6 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         self.adapters = [
             safe_snapshot_download(adapter, use_hf=self.use_hf, hub_token=self.hub_token) for adapter in self.adapters
         ]
-        for adapter in self.adapters:
-            assert self._check_is_adapter(adapter), (
-                f'`{adapter}` is not an adapter, please try using `--model` to pass it.')
 
     def __post_init__(self):
         if self.use_hf or use_hf_hub():
@@ -149,6 +146,10 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         self.rank, self.local_rank, self.global_world_size, self.local_world_size = get_dist_setting()
         logger.info(f'rank: {self.rank}, local_rank: {self.local_rank}, '
                     f'world_size: {self.global_world_size}, local_world_size: {self.local_world_size}')
+        if self.train_type not in extra_tuners:
+            for adapter in self.adapters:
+                assert self._check_is_adapter(adapter), (
+                    f'`{adapter}` is not an adapter, please try using `--model` to pass it.')
         ModelArguments.__post_init__(self)
         QuantizeArguments.__post_init__(self)
         TemplateArguments.__post_init__(self)
