@@ -10,6 +10,7 @@ from swift.tuners import LoraConfig, Swift
 
 
 class CustomTuner(Tuner):
+    """Full-parameter training of ViT while LoRA training LLM"""
 
     @staticmethod
     def from_pretrained(model: torch.nn.Module, model_id: str, **kwargs) -> torch.nn.Module:
@@ -48,6 +49,7 @@ class CustomTuner(Tuner):
 
 
 def create_custom_optimizer(args, model, dataset):
+    """ViT and LLM use different learning rates."""
     decay_parameters = set(Trainer.get_decay_parameter_names(None, model))
     vit_parameters = [(n, p) for n, p in model.named_parameters() if '.visual.' in n and p.requires_grad]
     llm_parameters = [(n, p) for n, p in model.named_parameters() if '.visual.' not in n and p.requires_grad]

@@ -11,6 +11,7 @@ from swift.llm.argument.base_args import to_abspath
 class ExtraMegatronArguments:
     padded_vocab_size: Optional[int] = None
     rope_scaling: Optional[Union[dict, str]] = None
+    packing: bool = False
 
 
 @dataclass

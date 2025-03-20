@@ -1179,11 +1179,12 @@ class Template(ProcessorMixin):
             res = self._torchacc_xtuner_data_collator(res, padding_to, self.tokenizer, padding_side)
         if self.use_megatron:
             labels = res['labels']
-            loss_mask = (labels != -100).float()
-            position_ids = torch.arange(
-                labels.shape[1], dtype=torch.long, device=labels.device).unsqueeze(0).expand_as(labels).contiguous()
             res['tokens'] = res.pop('input_ids')
-            res.update({'loss_mask': loss_mask, 'position_ids': position_ids})
+            res['loss_mask'] = (labels != -100).float()
+            if not packing_mode:
+                res['position_ids'] = torch.arange(
+                    labels.shape[1], dtype=torch.long,
+                    device=labels.device).unsqueeze(0).expand_as(labels).contiguous()
 
         return res
 

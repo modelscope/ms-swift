@@ -1,7 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+from functools import partial
+
 import torch
 from megatron.core import mpu
-from megatron.training import get_args
+from megatron.core.packed_seq_params import PackedSeqParams
+from megatron.training import get_args, get_timers
 
 
 def get_swift_datasets_provider(train_dataset, val_dataset):
@@ -105,3 +108,40 @@ def get_batch_on_this_tp_rank(data_iterator):
         }
 
     return batch
+
+
+def forward_step(data_iterator, model):
+    from pretrain_gpt import loss_func, get_batch
+    args = get_args()
+    timers = get_timers()
+
+    # Get the batch.
+    timers('batch-generator', log_level=2).start()
+    global stimer
+    with stimer(bdata=True):
+        tokens, labels, loss_mask, attention_mask, position_ids = get_batch(data_iterator)
+        if args.packing:
+            position_ids = position_ids.flatten()
+            indices_q = torch.arange(position_ids.shape[0], device=position_ids.device, dtype=torch.int32)
+
+            cu_seqlens = torch.cat([
+                indices_q[position_ids == 0],
+                torch.tensor(position_ids.shape, device=position_ids.device, dtype=torch.int32),
+            ])
+
+            max_length = position_ids.max() + 1
+            packed_seq_params = PackedSeqParams(
+                cu_seqlens_q=cu_seqlens,
+                cu_seqlens_kv=cu_seqlens,
+                max_seqlen_q=max_length,
+                max_seqlen_kv=max_length,
+                qkv_format='thd')
+        else:
+            packed_seq_params = None
+
+    timers('batch-generator').stop()
+
+    with stimer:
+        output_tensor = model(tokens, position_ids, attention_mask, labels=labels, packed_seq_params=packed_seq_params)
+
+    return output_tensor, partial(loss_func, loss_mask)
