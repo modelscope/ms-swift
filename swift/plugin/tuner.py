@@ -2,7 +2,6 @@
 from typing import Optional
 
 import torch
-import torch.nn as nn
 from peft import IA3Config, PeftModel, get_peft_model
 from transformers import PreTrainedModel
 
@@ -13,7 +12,7 @@ from swift.utils import find_all_linears
 class Tuner:
 
     @staticmethod
-    def prepare_model(args: 'TrainArguments', model: nn.Module) -> nn.Module:
+    def prepare_model(args: 'TrainArguments', model: torch.nn.Module) -> torch.nn.Module:
         """Prepare a new model with a tuner
 
         Args:
@@ -27,7 +26,7 @@ class Tuner:
 
     @staticmethod
     def save_pretrained(
-        model: nn.Module,
+        model: torch.nn.Module,
         save_directory: str,
         state_dict: Optional[dict] = None,
         safe_serialization: bool = True,
@@ -43,7 +42,7 @@ class Tuner:
         raise NotImplementedError
 
     @staticmethod
-    def from_pretrained(model: nn.Module, model_id: str, **kwargs) -> nn.Module:
+    def from_pretrained(model: torch.nn.Module, model_id: str, **kwargs) -> torch.nn.Module:
         """Load the ckpt_dir
 
         Args:
@@ -59,7 +58,7 @@ class PeftTuner(Tuner):
 
     @staticmethod
     def save_pretrained(
-        model: nn.Module,
+        model: torch.nn.Module,
         save_directory: str,
         state_dict: Optional[dict] = None,
         safe_serialization: bool = True,
@@ -75,7 +74,7 @@ class PeftTuner(Tuner):
             model, save_directory, state_dict=state_dict, safe_serialization=safe_serialization, **kwargs)
 
     @staticmethod
-    def from_pretrained(model: nn.Module, model_id: str, **kwargs) -> nn.Module:
+    def from_pretrained(model: torch.nn.Module, model_id: str, **kwargs) -> torch.nn.Module:
         return PeftModel.from_pretrained(model, model_id, **kwargs)
 
 
@@ -83,7 +82,7 @@ class PeftTuner(Tuner):
 class IA3(PeftTuner):
 
     @staticmethod
-    def prepare_model(args: 'TrainArguments', model: nn.Module) -> nn.Module:
+    def prepare_model(args: 'TrainArguments', model: torch.nn.Module) -> torch.nn.Module:
         model_arch: ModelKeys = MODEL_ARCH_MAPPING[model.model_meta.model_arch]
         ia3_config = IA3Config(
             target_modules=find_all_linears(model), feedforward_modules='.*' + model_arch.mlp.split('{}.')[1] + '.*')
@@ -93,7 +92,7 @@ class IA3(PeftTuner):
 class DummyTuner(PeftTuner):
 
     @staticmethod
-    def prepare_model(args: 'TrainArguments', model: nn.Module) -> nn.Module:
+    def prepare_model(args: 'TrainArguments', model: torch.nn.Module) -> torch.nn.Module:
         return model
 
 
