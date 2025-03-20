@@ -1,9 +1,13 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
+from typing import Any, Dict
+
 from swift.llm import TemplateType
-from ..constant import LLMModelType
+from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
-from ..register import Model, ModelGroup, ModelMeta, get_model_tokenizer_with_flash_attn, register_model
+from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,
+                        get_model_tokenizer_with_flash_attn, register_model)
+from ..utils import ModelInfo
 
 register_model(
     ModelMeta(
@@ -117,3 +121,37 @@ register_model(
         architectures=['MistralForCausalLM'],
         requires=['transformers>=4.34'],
     ))
+
+
+def get_model_tokenizer_mistral_2503(model_dir: str,
+                                     model_info: ModelInfo,
+                                     model_kwargs: Dict[str, Any],
+                                     load_model: bool = True,
+                                     **kwargs):
+    try:
+        from transformers import Mistral3ForConditionalGeneration
+    except ImportError:
+        raise ImportError('Please install Gemma3ForConditionalGeneration by running '
+                          '`pip install git+https://github.com/huggingface/transformers@v4.49.0-Mistral-3`')
+
+    kwargs['automodel_class'] = kwargs['automodel_class'] or Mistral3ForConditionalGeneration
+    model, processor = get_model_tokenizer_multimodal(model_dir, model_info, model_kwargs, load_model, **kwargs)
+
+    return model, processor
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.mistral_2503,
+        [
+            ModelGroup([
+                Model('mistralai/Mistral-Small-3.1-24B-Base-2503', 'mistralai/Mistral-Small-3.1-24B-Base-2503'),
+                Model('mistralai/Mistral-Small-3.1-24B-Instruct-2503', 'mistralai/Mistral-Small-3.1-24B-Instruct-2503'),
+            ]),
+        ],
+        TemplateType.mistral_2503,
+        get_model_tokenizer_mistral_2503,
+        architectures=['Mistral3ForConditionalGeneration'],
+        model_arch=ModelArch.llava_hf,
+        requires=['transformers>=4.49'],
+    ), )
