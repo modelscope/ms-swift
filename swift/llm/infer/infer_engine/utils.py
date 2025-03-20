@@ -265,7 +265,7 @@ def patch_lmdeploy(load_weights=False):
             if not load_weights:
                 for _ in e.map(self.model_comm.process_weight, self.gpu_list, ranks):
                     pass
-            if version.parse(lmdeploy.__version__) < version.parse('0.7.3'):
+            if version.parse(lmdeploy.__version__) < version.parse('0.7.2'):
                 for _ in e.map(self.model_comm.create_engine, self.gpu_list, ranks, repeat(self.nccl_params)):
                     pass
             else:
@@ -278,7 +278,7 @@ def patch_lmdeploy(load_weights=False):
         # TODO: support mpi
         self.node_id = 0
         self.node_num = 1
-        if version.parse(lmdeploy.__version__) < version.parse('0.7.3'):
+        if version.parse(lmdeploy.__version__) < version.parse('0.7.2'):
             self.nccl_params = model_comm.create_nccl_params(self.node_id)
         torch.cuda.synchronize()
 
