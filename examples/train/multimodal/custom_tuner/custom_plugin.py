@@ -56,12 +56,12 @@ def create_custom_optimizer(args, model, dataset):
         {
             'params': [p for n, p in vit_parameters if n in decay_parameters],
             'weight_decay': args.weight_decay,
-            'lr': 1e-5,
+            'lr': 0.1 * args.learning_rate,  # 1e-5
         },
         {
             'params': [p for n, p in vit_parameters if n not in decay_parameters],
             'weight_decay': 0.0,
-            'lr': 1e-5,
+            'lr': 0.1 * args.learning_rate,
         },
         # llm
         {
