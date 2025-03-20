@@ -16,6 +16,7 @@ logger = get_logger()
 @dataclass
 class MegatronTrainArguments(MegatronArguments, BaseArguments):
     add_version: bool = True
+    # dataset
     lazy_tokenize: bool = False
     packing: bool = False
 
