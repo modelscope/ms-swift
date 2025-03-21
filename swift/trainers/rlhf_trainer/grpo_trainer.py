@@ -962,11 +962,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 mini_batch_loss, mini_batch_metrics = self.compute_loss(model, mini_batch, return_outputs=True)
                 mb_completion_length = mini_batch_metrics['completion_length']
 
-            with self.accelerator.accumulate(self.model):
-                self.accelerator.backward(mini_batch_loss)
-                self.optimizer.step()
-                self.optimizer.zero_grad()
-
+            self.accelerator.backward(mini_batch_loss)
             # Token-level metrics are weighted by completion length to ensure a fair average over all tokens.
             if self.beta != 0.0:
                 total_kl += mini_batch_metrics['kl'] * mb_completion_length
