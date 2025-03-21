@@ -48,7 +48,7 @@ megatron sft \
               'AI-ModelScope/alpaca-gpt4-data-en#500' \
               'swift/self-cognition#500' \
     --tensor_model_parallel_size 2 \
-    --micro_batch_size 4 \
+    --micro_batch_size 8 \
     --global_batch_size 16 \
     --recompute_granularity selective \
     --train_iters 100 \
@@ -201,7 +201,7 @@ seq_length: Defaults to None, meaning it is set to `max_length`. To restrict the
 
 **Mixed Precision Parameters**
 
-- fp16: FP16 mode. Default is False. Set according to the model's torch_dtype.
+- fp16: FP16 mode. Default is False. Set according to the model's torch_dtype. Please use `--torch_dtype` to set it. By default, it reads from config.json.
 - bf16: BF16 mode. Default is False. Set according to the model's torch_dtype.
 - apply_query_key_layer_scaling: Scales `Q * K^T` by `1 / layer number` (e.g., divide by layer_num for layer_num-th layer). This is helpful for FP16 training. Default is None, meaning that if `--fp16` is used, it will be set to True.
 - attention_softmax_in_fp32: Uses FP32 for computations in attention_mask and softmax. Default is True.

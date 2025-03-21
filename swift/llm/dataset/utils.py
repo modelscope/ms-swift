@@ -145,7 +145,8 @@ class PackingPreprocessor(EncodePreprocessor):
                     packed[key] = sum(labels_list, start=[])
                 else:
                     packed[key] = sum((x[0][key] for x in row), start=[])
-            packed['position_ids'] = sum((list(range(x[1])) for x in row), start=[])
+            if 'position_ids' not in packed:
+                packed['position_ids'] = sum((list(range(x[1])) for x in row), start=[])
             res.append(packed)
         return res
 

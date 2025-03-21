@@ -364,8 +364,9 @@ class Template(ProcessorMixin):
         if return_template_inputs:
             encoded['template_inputs'] = inputs
 
-        if self.use_megatron and encoded.get('labels'):
+        if self.use_megatron:
             encoded['labels'] = encoded['labels'][1:] + [-100]
+            encoded['position_ids'] = list(range(len(encoded['labels'])))
         return encoded
 
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:

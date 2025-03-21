@@ -45,7 +45,7 @@ megatron sft \
               'AI-ModelScope/alpaca-gpt4-data-en#500' \
               'swift/self-cognition#500' \
     --tensor_model_parallel_size 2 \
-    --micro_batch_size 4 \
+    --micro_batch_size 8 \
     --global_batch_size 16 \
     --recompute_granularity selective \
     --train_iters 100 \
@@ -189,7 +189,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - 🔥eval_interval: 评估的间隔（steps），默认为None，即设置为save_interval。
 
 **混合精度参数**
-- fp16: fp16模式。默认为False。会根据模型的torch_dtype进行设置。
+- fp16: fp16模式。默认为False。会根据模型的torch_dtype进行设置。请使用`--torch_dtype`进行设置，默认读取config.json。
 - bf16: bf16模式。默认为False。会根据模型的torch_dtype进行设置。
 - apply_query_key_layer_scaling: 将`Q * K^T` 缩放为 `1 / 层数`（例如：第layer_num层则除以layer_num）。这对fp16训练很有帮助。默认为None，即若使用`--fp16`，则设置为True。
 - attention_softmax_in_fp32: 在attention_mask和softmax中使用fp32进行计算。默认为True。
