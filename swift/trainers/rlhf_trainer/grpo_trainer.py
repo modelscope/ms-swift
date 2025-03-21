@@ -976,8 +976,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         mode = 'eval' if self.control.should_evaluate else 'train'
         if self.beta != 0.0:
-            self._metrics[mode]['kl'].append(total_kl / total_completion_length)
-        self._metrics[mode]['clip_ratio'].append(total_clip_ratio / total_completion_length)
+            self._metrics[mode]['kl'].append(
+                self.accelerator.gather_for_metrics(total_kl / total_completion_length).mean().items())
+        self._metrics[mode]['clip_ratio'].append(
+            self.accelerator.gather_for_metrics(total_clip_ratio / total_completion_length).mean().items())
 
         total_loss = total_loss / total_completion_length
 

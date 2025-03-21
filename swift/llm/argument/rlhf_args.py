@@ -110,6 +110,7 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
         self._set_default()
         super().__post_init__()
         self._init_grpo_ds3()
+        self._check_grpo()
 
         if self.loss_scale is None:
             if self.rlhf_type == 'orpo' and not self.model_meta.is_multimodal:
@@ -186,3 +187,8 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
         if self.rlhf_type == 'grpo' and self.deepspeed:
             if 'zero_optimization' in self.deepspeed and self.deepspeed['zero_optimization']['stage'] == 3:
                 self.deepspeed['zero_optimization']['stage3_prefetch_bucket_size'] = 0
+
+    def _check_grpo(self):
+        if self.mini_batch_size:
+            assert self.per_device_train_batch_size % self.mini_batch_size == 0,\
+                'per_device_train_batch_size needs be divisible by mini_batch_size'
