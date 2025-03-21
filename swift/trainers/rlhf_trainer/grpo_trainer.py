@@ -929,12 +929,16 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return selective_log_softmax(logits, input_ids)  # compute logprobs for the input tokens
 
     def evaluation_loop(self, dataloader, *args, **kwargs):
+        # set mini_batch_size None in evaluation
+        mini_batch_size = self.args.mini_batch_size
+        self.args.mini_batch_size = None
         if self._queue.empty() and self.args.async_generate:
             self._prefetch(dataloader)
         metric_key_prefix = kwargs['metric_key_prefix']
         output = super().evaluation_loop(dataloader, *args, **kwargs)
         metrics = {f'{metric_key_prefix}_{key}': sum(val) / len(val) for key, val in self._metrics['eval'].items()}
         output.metrics.update(metrics)
+        self.args.mini_batch_size = mini_batch_size
         return output
 
     def training_step(self,
