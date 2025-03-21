@@ -132,11 +132,11 @@ def forward_step(data_iterator, model):
     global stimer
     with stimer(bdata=True):
         tokens, labels, attention_mask, position_ids = get_batch(data_iterator)
-        packed_seq_params = get_packed_seq_params(position_ids)
+        packed_seq_params = None if position_ids is None else get_packed_seq_params(position_ids)
 
     timers('batch-generator').stop()
 
     with stimer:
         output_tensor = model(tokens, position_ids, attention_mask, labels=labels, packed_seq_params=packed_seq_params)
-    loss_mask = (labels != -100).float()
+    loss_mask = None if labels is None else (labels != -100).float()
     return output_tensor, partial(loss_func, loss_mask)

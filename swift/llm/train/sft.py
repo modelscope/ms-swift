@@ -13,7 +13,7 @@ from ..argument import TrainArguments
 from ..base import SwiftPipeline
 from ..dataset import EncodePreprocessor, GetLengthPreprocessor, LazyLLMDataset, PackingPreprocessor, load_dataset
 from ..infer import prepare_generation_config
-from ..model import get_model_arch, HfConfigFactory
+from ..model import HfConfigFactory, get_model_arch
 from ..utils import deep_getattr, dynamic_gradient_checkpointing
 from .tuner import TunerMixin
 
