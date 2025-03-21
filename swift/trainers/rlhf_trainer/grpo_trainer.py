@@ -859,7 +859,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     @profiling_decorator
     def compute_loss(self, model, inputs, return_outputs=False):
-        # Compute the per-token log probabilities for the model
+        # Compute the per-token log probabilities for the model, return_outputs=True in mini-batch training
         if isinstance(inputs, list):
             assert len(inputs) == 1
             inputs = inputs[0]
@@ -889,20 +889,20 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         mode = 'eval' if self.control.should_evaluate else 'train'
 
         if self.beta != 0.0:
-            mean_kl = ((per_token_kl * completion_mask).sum(dim=1) / completion_mask.sum(dim=1)).mean()
-            metrics['kl'] = self.accelerator.gather_for_metrics(mean_kl).mean().item()
+            mean_kl = (per_token_kl * completion_mask).sum() / completion_mask.sum()
+            metrics['kl'] = mean_kl
 
         is_clipped = (per_token_loss1 < per_token_loss2).float()
         clip_ratio = (is_clipped * completion_mask).sum() / completion_mask.sum()
-        metrics['clip_ratio'] = self.accelerator.gather_for_metrics(clip_ratio).mean().item()
+        metrics['clip_ratio'] = clip_ratio
 
         # Log metrics or return them
         if return_outputs:
-            metrics['mb_completion_length'] = completion_mask.sum()
+            metrics['completion_length'] = completion_mask.sum()
             return loss, metrics
         else:
             for key, value in metrics.items():
-                self._metrics[mode][key].append(value)
+                self._metrics[mode][key].append(self.accelerator.gather_for_metrics(value).mean().item())
             return loss
 
     # Get the per-token log probabilities for the completions for the model and the reference model
@@ -952,15 +952,15 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         total_loss = torch.tensor(0.0, device=batch_inputs[0]['input_ids'].device)
         # Initialize metrics accumulators
-        total_kl = torch.tensor(0.0, device=batch_inputs[0]['input_ids'].device)
-        total_clip_ratio = torch.tensor(0.0, device=batch_inputs[0]['input_ids'].device)
+        total_kl = 0.0
+        total_clip_ratio = 0.0
         total_completion_length = 0
         # num_mini_batches = len(batch_inputs)
         for mini_batch in batch_inputs:
 
             with self.compute_loss_context_manager():
                 mini_batch_loss, mini_batch_metrics = self.compute_loss(model, mini_batch, return_outputs=True)
-                mb_completion_length = mini_batch_metrics['mb_completion_length']
+                mb_completion_length = mini_batch_metrics['completion_length']
 
             with self.accelerator.accumulate(self.model):
                 self.accelerator.backward(mini_batch_loss)
@@ -968,14 +968,15 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self.optimizer.zero_grad()
 
             # Token-level metrics are weighted by completion length to ensure a fair average over all tokens.
-            if 'kl' in mini_batch_metrics:
+            if self.beta != 0.0:
                 total_kl += mini_batch_metrics['kl'] * mb_completion_length
             total_clip_ratio += mini_batch_metrics['clip_ratio'] * mb_completion_length
             total_completion_length += mb_completion_length
             total_loss += mini_batch_loss * mb_completion_length
 
         mode = 'eval' if self.control.should_evaluate else 'train'
-        self._metrics[mode]['kl'].append(total_kl / total_completion_length)
+        if self.beta != 0.0:
+            self._metrics[mode]['kl'].append(total_kl / total_completion_length)
         self._metrics[mode]['clip_ratio'].append(total_clip_ratio / total_completion_length)
 
         total_loss = total_loss / total_completion_length
@@ -987,7 +988,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return total_loss.detach()
 
-    def _split_into_mini_batches(self, batch: List, mini_batch_size: int) -> List[List]:
+    @staticmethod
+    def _split_into_mini_batches(batch: List, mini_batch_size: int) -> List[List]:
         """
         Splits a full batch into multiple mini-batches based on the specified mini_batch_size.
 
