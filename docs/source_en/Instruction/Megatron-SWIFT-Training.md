@@ -48,7 +48,7 @@ megatron sft \
               'AI-ModelScope/alpaca-gpt4-data-en#500' \
               'swift/self-cognition#500' \
     --tensor_model_parallel_size 2 \
-    --micro_batch_size 8 \
+    --micro_batch_size 4 \
     --global_batch_size 16 \
     --recompute_granularity selective \
     --train_iters 100 \
@@ -100,8 +100,15 @@ The inference results are as follows:
 I am a language model developed by swift, you can call me swift-robot. How can I assist you?
 ```
 
-- More cases can be viewed [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/megatron).
+- More examples: such as packing and multi-machine, can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/megatron).
 - For pretraining, you can use `megatron pt` instead of `megatron sft`, which will use a generative template for training.
+
+## Benchmark
+
+|                  | Megatron-LM      | Deepspeed-ZeRO2 | Deepspeed-ZeRO3 |
+| ---------------- | --------------- | --------------- | --------- |
+| Training Speed   | 9.04s/it        | 10.32s/it       | 10.56s/it |
+| GPU Memory Usage | 8\*64GB          | 8\*80GB          | 8\*58GB    |
 
 ## Command Line Arguments
 

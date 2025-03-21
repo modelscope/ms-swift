@@ -7,7 +7,7 @@ megatron sft \
               'AI-ModelScope/alpaca-gpt4-data-en#500' \
               'swift/self-cognition#500' \
     --tensor_model_parallel_size 2 \
-    --micro_batch_size 8 \
+    --micro_batch_size 4 \
     --global_batch_size 16 \
     --recompute_granularity selective \
     --train_iters 100 \

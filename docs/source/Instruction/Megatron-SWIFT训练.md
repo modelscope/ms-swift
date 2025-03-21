@@ -45,7 +45,7 @@ megatron sft \
               'AI-ModelScope/alpaca-gpt4-data-en#500' \
               'swift/self-cognition#500' \
     --tensor_model_parallel_size 2 \
-    --micro_batch_size 8 \
+    --micro_batch_size 4 \
     --global_batch_size 16 \
     --recompute_granularity selective \
     --train_iters 100 \
@@ -94,8 +94,18 @@ swift infer \
 I am a language model developed by swift, you can call me swift-robot. How can I assist you?
 ```
 
-- 更多案例可以查看[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/megatron)。
+- 更多案例：例如packing、多机，可以查看[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/megatron)。
 - 若要进行预训练，你可以使用`megatron pt`替代`megatron sft`，这将会使用生成式的template进行训练。
+
+## Benchmark
+
+使用`megatron sft`和`swift sft`在单机八卡A800环境下进行14B模型全参数训练的速度对比如下，对应脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/megatron/benchmark)。
+
+|          | Megatron-LM | Deepspeed-ZeRO2 | Deepspeed-ZeRO3 |
+| -------- | ----------- | ---------- | ---------- |
+| 训练速度 |      9.04s/it       |  10.32s/it   | 10.56s/it |
+| 显存占用 | 8\*64GB     |  8\*80GB   | 8\*58GB |
+
 
 ## 命令行参数
 

@@ -35,11 +35,11 @@ def get_batch_on_this_tp_rank(data_iterator):
             data = next(data_iterator)
         else:
             data = None
-        seq_length = torch.tensor(data['tokens'].shape[1]).cuda(non_blocking=True)
+        tokens = data['input_ids']
+        seq_length = torch.tensor(tokens.shape[1]).cuda(non_blocking=True)
         batch = {
-            'tokens': data['tokens'].cuda(non_blocking=True),
+            'tokens': tokens.cuda(non_blocking=True),
             'labels': data['labels'].cuda(non_blocking=True),
-            'loss_mask': data['loss_mask'].cuda(non_blocking=True),
             'attention_mask': None if 'attention_mask' not in data else data['attention_mask'].cuda(non_blocking=True),
             'position_ids': data['position_ids'].cuda(non_blocking=True)
         }
@@ -47,7 +47,6 @@ def get_batch_on_this_tp_rank(data_iterator):
         if args.pipeline_model_parallel_size == 1:
             _broadcast(batch['tokens'])
             _broadcast(batch['labels'])
-            _broadcast(batch['loss_mask'])
             _broadcast(batch['attention_mask'])
             _broadcast(batch['position_ids'])
 
@@ -58,7 +57,6 @@ def get_batch_on_this_tp_rank(data_iterator):
 
         elif mpu.is_pipeline_last_stage():
             _broadcast(batch['labels'])
-            _broadcast(batch['loss_mask'])
             _broadcast(batch['attention_mask'])
 
     else:
@@ -68,7 +66,6 @@ def get_batch_on_this_tp_rank(data_iterator):
         micro_batch_size = 1  # use qkv_format 'thd'
         tokens = torch.empty((micro_batch_size, seq_length), dtype=torch.int64, device=torch.cuda.current_device())
         labels = torch.empty((micro_batch_size, seq_length), dtype=torch.int64, device=torch.cuda.current_device())
-        loss_mask = torch.empty((micro_batch_size, seq_length), dtype=torch.float32, device=torch.cuda.current_device())
         if args.create_attention_mask_in_dataloader:
             attention_mask = torch.empty((micro_batch_size, 1, seq_length, seq_length),
                                          dtype=torch.bool,
@@ -82,13 +79,11 @@ def get_batch_on_this_tp_rank(data_iterator):
         if args.pipeline_model_parallel_size == 1:
             _broadcast(tokens)
             _broadcast(labels)
-            _broadcast(loss_mask)
             _broadcast(attention_mask)
             _broadcast(position_ids)
 
         elif mpu.is_pipeline_first_stage():
             labels = None
-            loss_mask = None
 
             _broadcast(tokens)
             _broadcast(attention_mask)
@@ -99,16 +94,9 @@ def get_batch_on_this_tp_rank(data_iterator):
             position_ids = None
 
             _broadcast(labels)
-            _broadcast(loss_mask)
             _broadcast(attention_mask)
 
-        batch = {
-            'tokens': tokens,
-            'labels': labels,
-            'loss_mask': loss_mask,
-            'attention_mask': attention_mask,
-            'position_ids': position_ids
-        }
+        batch = {'tokens': tokens, 'labels': labels, 'attention_mask': attention_mask, 'position_ids': position_ids}
 
     return batch
 
@@ -143,12 +131,12 @@ def forward_step(data_iterator, model):
     timers('batch-generator', log_level=2).start()
     global stimer
     with stimer(bdata=True):
-        tokens, labels, loss_mask, attention_mask, position_ids = get_batch(data_iterator)
+        tokens, labels, attention_mask, position_ids = get_batch(data_iterator)
         packed_seq_params = get_packed_seq_params(position_ids)
 
     timers('batch-generator').stop()
 
     with stimer:
         output_tensor = model(tokens, position_ids, attention_mask, labels=labels, packed_seq_params=packed_seq_params)
-
+    loss_mask = (labels != -100).float()
     return output_tensor, partial(loss_func, loss_mask)
