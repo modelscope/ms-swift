@@ -364,8 +364,9 @@ class Template(ProcessorMixin):
         if return_template_inputs:
             encoded['template_inputs'] = inputs
 
-        if self.use_megatron and encoded.get('labels'):
+        if self.use_megatron:
             encoded['labels'] = encoded['labels'][1:] + [-100]
+            encoded['position_ids'] = list(range(len(encoded['labels'])))
         return encoded
 
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
@@ -1115,22 +1116,28 @@ class Template(ProcessorMixin):
         assert self.tokenizer.pad_token_id is not None
         padding_side = self.padding_side if self.is_training else 'left'
         padding_right = padding_side == 'right'
+        packing_mode = self.use_megatron or self._packing and 'position_ids' in batch[0]
         res = {}
-        inputs_embeds = [b['inputs_embeds'] for b in batch if b.get('inputs_embeds') is not None]
-        input_ids = [b['input_ids'] for b in batch if b.get('input_ids') is not None]
-        if inputs_embeds:
-            res['inputs_embeds'] = inputs_embeds
-        if input_ids:
-            res['input_ids'] = input_ids
-        for key in ['labels', 'loss_scale', 'position_ids', 'token_type_ids']:
-            val = [b[key] for b in batch if b.get(key) is not None]
-            if val:
-                res[key] = val
+        if packing_mode:
+            # only support llm
+            for k in ['input_ids', 'labels', 'position_ids']:
+                res[k] = [self.gather_list(batch, k)]
+        else:
+            inputs_embeds = [b['inputs_embeds'] for b in batch if b.get('inputs_embeds') is not None]
+            input_ids = [b['input_ids'] for b in batch if b.get('input_ids') is not None]
+            if inputs_embeds:
+                res['inputs_embeds'] = inputs_embeds
+            if input_ids:
+                res['input_ids'] = input_ids
+            for key in ['labels', 'loss_scale', 'position_ids', 'token_type_ids']:
+                val = [b[key] for b in batch if b.get(key) is not None]
+                if val:
+                    res[key] = val
 
         keys = [
             'input_ids', 'inputs_embeds', 'attention_mask', 'labels', 'loss_scale', 'position_ids', 'token_type_ids'
         ]
-        pad_value = [self.tokenizer.pad_token_id, 0., 0, -100, 0., 1, 0]
+        pad_value = [self.tokenizer.pad_token_id, 0., 0, -100, 0., 0., 0]
         # Convert to tensor and remove unnecessary dimensions.
         seq_lens = None
         for key in keys:
@@ -1144,8 +1151,7 @@ class Template(ProcessorMixin):
                 res[key][i] = val
             if not seq_lens:
                 seq_lens = [seq.shape[0] for seq in res[key]]
-        packing_mode = self._packing and 'position_ids' in res
-        if not self.use_megatron and not packing_mode and seq_lens and ('input_ids' in res or 'inputs_embeds' in res):
+        if not packing_mode and seq_lens and ('input_ids' in res or 'inputs_embeds' in res):
             res['attention_mask'] = [torch.ones(seq_len, dtype=torch.int64) for seq_len in seq_lens]
             if self.is_training and self.padding_side == 'left':
                 res['position_ids'] = [torch.arange(seq_len, dtype=torch.int64) for seq_len in seq_lens]
@@ -1177,13 +1183,6 @@ class Template(ProcessorMixin):
             res['pixel_values_videos'] = torch.concat(pixel_values_videos)
         if use_torchacc() or self.sequence_parallel_size > 1:
             res = self._torchacc_xtuner_data_collator(res, padding_to, self.tokenizer, padding_side)
-        if self.use_megatron:
-            labels = res['labels']
-            loss_mask = (labels != -100).float()
-            position_ids = torch.arange(
-                labels.shape[1], dtype=torch.long, device=labels.device).unsqueeze(0).expand_as(labels).contiguous()
-            res['tokens'] = res.pop('input_ids')
-            res.update({'loss_mask': loss_mask, 'position_ids': position_ids})
 
         return res
 

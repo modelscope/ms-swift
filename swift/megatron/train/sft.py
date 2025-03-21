@@ -6,13 +6,13 @@ from datasets import Dataset as HfDataset
 from megatron.core.enums import ModelType
 from megatron.training import pretrain
 
-from swift.llm import EncodePreprocessor, LazyLLMDataset
+from swift.llm import EncodePreprocessor, LazyLLMDataset, PackingPreprocessor
 from swift.llm.train import SwiftSft
 from swift.utils import get_logger, is_master, plot_images
 from ..argument import MegatronTrainArguments
 from ..utils import patch_megatron_tokenizer
 from .patcher import patch_megatron_data_collator, patch_training_log
-from .utils import get_batch_on_this_tp_rank, get_swift_datasets_provider
+from .utils import forward_step, get_swift_datasets_provider
 
 logger = get_logger()
 
@@ -42,7 +42,8 @@ class MegatronSft(SwiftSft):
                 val_dataset = LazyLLMDataset(
                     val_dataset, template.encode, strict=args.strict, random_state=args.data_seed)
         else:
-            preprocessor = EncodePreprocessor(template=template)
+            preprocessor_cls = PackingPreprocessor if args.packing else EncodePreprocessor
+            preprocessor = preprocessor_cls(template=template)
             train_dataset = preprocessor(train_dataset, num_proc=args.dataset_num_proc, strict=args.strict)
             if val_dataset is not None:
                 val_dataset = preprocessor(val_dataset, num_proc=args.dataset_num_proc, strict=args.strict)
@@ -57,10 +58,6 @@ class MegatronSft(SwiftSft):
         return train_dataset, val_dataset
 
     def run(self):
-        import pretrain_gpt
-        from pretrain_gpt import forward_step
-        # patch get_batch_on_this_tp_rank
-        pretrain_gpt.get_batch_on_this_tp_rank = get_batch_on_this_tp_rank
         args = self.args
 
         train_dataset, val_dataset = self._get_dataset()

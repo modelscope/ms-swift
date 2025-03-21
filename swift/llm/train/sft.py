@@ -13,7 +13,7 @@ from ..argument import TrainArguments
 from ..base import SwiftPipeline
 from ..dataset import EncodePreprocessor, GetLengthPreprocessor, LazyLLMDataset, PackingPreprocessor, load_dataset
 from ..infer import prepare_generation_config
-from ..model import get_model_arch
+from ..model import HfConfigFactory, get_model_arch
 from ..utils import deep_getattr, dynamic_gradient_checkpointing
 from .tuner import TunerMixin
 
@@ -34,7 +34,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
     def _prepare_gradient_checkpointing(self):
         args = self.args
-        self.model.config.use_cache = False
+        HfConfigFactory.set_model_config_attr(self.model, 'use_cache', False)
         if args.gradient_checkpointing:
             self.model.supports_gradient_checkpointing = True
             dynamic_gradient_checkpointing(self.model)

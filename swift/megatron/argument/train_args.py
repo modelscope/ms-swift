@@ -16,7 +16,9 @@ logger = get_logger()
 @dataclass
 class MegatronTrainArguments(MegatronArguments, BaseArguments):
     add_version: bool = True
+    # dataset
     lazy_tokenize: bool = False
+    packing: bool = False
 
     def init_model_args(self, config):
         self.megatron_model_meta = get_megatron_model_meta(self.model_type)
@@ -37,15 +39,8 @@ class MegatronTrainArguments(MegatronArguments, BaseArguments):
         if is_master():
             os.makedirs(self.save, exist_ok=True)
 
-    def _init_mixed_precision(self):
-        if self.torch_dtype == torch.bfloat16:
-            self.bf16 = True
-        elif self.torch_dtype == torch.float16:
-            self.fp16 = True
-        self.apply_query_key_layer_scaling = self.fp16 and self.apply_query_key_layer_scaling is None
-
     def __post_init__(self):
         self.load = to_abspath(self.load, check_path_exist=True)
         BaseArguments.__post_init__(self)
-        self._init_mixed_precision()
         self._init_save()
+        self.seq_length = self.seq_length or self.max_length
