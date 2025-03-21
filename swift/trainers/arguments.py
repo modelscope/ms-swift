@@ -148,6 +148,8 @@ class GRPOArgumentsMixin:
     offload_model: bool = False
     gc_collect_after_offload: bool = False
 
+    epsilon_high: Optional[float] = None
+
 
 @dataclass
 class TrainingArguments(SwiftArgumentsMixin, HfTrainingArguments):
