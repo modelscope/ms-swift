@@ -3,6 +3,7 @@ from typing import List, Union
 
 from swift.utils import get_logger, get_model_parameter_info
 from ..argument import RLHFArguments
+from ..model import HfConfigFactory
 from .kto import prepare_kto_dataset
 from .sft import SwiftSft
 
@@ -54,6 +55,7 @@ class SwiftRLHF(SwiftSft):
                 self.train_msg['value_model_parameter_info'] = model_parameter_info
                 logger.info(f'value_model_parameter_info: {model_parameter_info}')
             setattr(self, f'{origin_key}_model', model)
+            HfConfigFactory.set_model_config_attr(model, 'use_cache', False)
             if origin_key == 'reward' and args.rlhf_type == 'grpo':
                 reward_template = self.args.get_template(processor)
                 if reward_template.use_model:
