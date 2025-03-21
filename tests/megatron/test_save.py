@@ -10,9 +10,9 @@ def get_mg_model_tokenizer():
     set_default_ddp_config()
     hf_model, _ = get_model_tokenizer(hf_model_id, torch_dtype=torch.float32)
     _, processor = get_model_tokenizer(model_id, load_model=False)
-    megatron_model_meta = get_megatron_model_meta(model_id)
+    megatron_model_meta = get_megatron_model_meta(processor.model_meta.model_type)
     model_info = processor.model_info
-    kwargs = megatron_model_meta.load_config(model_info.config)
+    kwargs = megatron_model_meta.convert_hf_config(model_info.config)
     megatron_args = MegatronArguments(
         **kwargs,
         seq_length=1,

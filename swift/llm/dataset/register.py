@@ -46,6 +46,7 @@ class DatasetMeta:
     ms_dataset_id: Optional[str] = None
     hf_dataset_id: Optional[str] = None
     dataset_path: Optional[str] = None
+    dataset_name: Optional[str] = None
     ms_revision: Optional[str] = None
     hf_revision: Optional[str] = None
 
@@ -91,11 +92,14 @@ def register_dataset(dataset_meta: DatasetMeta, *, exist_ok: bool = False) -> No
         dataset_meta: The `DatasetMeta` info of the dataset.
         exist_ok: If the dataset id exists, raise error or update it.
     """
-    dataset_id = dataset_meta.ms_dataset_id, dataset_meta.hf_dataset_id, dataset_meta.dataset_path
-    if not exist_ok and dataset_id in DATASET_MAPPING:
-        raise ValueError(f'The `{dataset_id}` has already been registered in the DATASET_MAPPING.')
+    if dataset_meta.dataset_name:
+        dataset_name = dataset_meta.dataset_name
+    else:
+        dataset_name = dataset_meta.ms_dataset_id, dataset_meta.hf_dataset_id, dataset_meta.dataset_path
+    if not exist_ok and dataset_name in DATASET_MAPPING:
+        raise ValueError(f'The `{dataset_name}` has already been registered in the DATASET_MAPPING.')
 
-    DATASET_MAPPING[dataset_id] = dataset_meta
+    DATASET_MAPPING[dataset_name] = dataset_meta
 
 
 def _preprocess_d_info(d_info: Dict[str, Any], *, base_dir: Optional[str] = None) -> Dict[str, Any]:

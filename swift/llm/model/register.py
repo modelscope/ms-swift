@@ -141,7 +141,6 @@ def load_by_unsloth(args):
         dtype=args.torch_dtype,
         max_seq_length=args.max_length,
         load_in_4bit=args.quant_bits == 4,
-        trust_remote_code=True,
     )
     if isinstance(model, PeftModel):
         base_model = model.model
@@ -200,15 +199,6 @@ def get_model_tokenizer_from_local(model_dir: str,
             except ValueError:
                 model = None
 
-        if model_info.task_type == 'embedding' and automodel_class is None:
-            try:
-                model = AutoModel.from_pretrained(
-                    model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
-                from swift.llm.model.patcher import patch_output_normalizer
-                patch_output_normalizer(model)
-            except ValueError:
-                model = None
-
         automodel_class = automodel_class or AutoModelForCausalLM
         if model is None:
             if model_info.task_type == 'seq_cls':
@@ -224,6 +214,11 @@ def get_model_tokenizer_from_local(model_dir: str,
         has_remote_code = hasattr(model_config, 'auto_map') and automodel_class.__name__ in model_config.auto_map
         if has_remote_code and model._auto_class is None:
             model._auto_class = automodel_class.__name__
+
+        if model_info.task_type == 'embedding' and automodel_class.__name__ != 'AutoModel':
+            from swift.llm.model.patcher import patch_output_normalizer
+            patch_output_normalizer(model, model_meta=kwargs['model_meta'])
+
     return model, tokenizer
 
 
@@ -338,9 +333,9 @@ def get_all_models() -> List[str]:
     return models
 
 
-def _get_matched_model_meta(model_id_or_path: str, model_mapping: Dict[str, Any]) -> Optional[ModelMeta]:
+def get_matched_model_meta(model_id_or_path: str) -> Optional[ModelMeta]:
     model_name = get_model_name(model_id_or_path).lower()
-    for model_type, model_meta in model_mapping.items():
+    for model_type, model_meta in MODEL_MAPPING.items():
         model_group = ModelMeta.get_matched_model_group(model_meta, model_name)
         if model_group is not None:
             model_meta = deepcopy(model_meta)
@@ -348,10 +343,6 @@ def _get_matched_model_meta(model_id_or_path: str, model_mapping: Dict[str, Any]
                 if v is not None and k in model_meta.__dict__:
                     setattr(model_meta, k, v)
             return model_meta
-
-
-def get_matched_model_meta(model_id_or_path: str) -> Optional[ModelMeta]:
-    return _get_matched_model_meta(model_id_or_path, MODEL_MAPPING)
 
 
 def _get_arch_mapping():

@@ -19,8 +19,8 @@ class MegatronTrainArguments(MegatronArguments, BaseArguments):
     lazy_tokenize: bool = False
 
     def init_model_args(self, config):
-        self.megatron_model_meta = get_megatron_model_meta(self.model)
-        kwargs = self.megatron_model_meta.load_config(config)
+        self.megatron_model_meta = get_megatron_model_meta(self.model_type)
+        kwargs = self.megatron_model_meta.convert_hf_config(config)
         for k, v in kwargs.items():
             setattr(self, k, v)
         MegatronArguments.__post_init__(self)

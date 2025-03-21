@@ -36,19 +36,25 @@ The source code for the loss functions can be found [here](https://github.com/mo
 
 ## Dataset Format
 
-### Format for `cosine_similarity` Loss
+> **Note:**
+> 1. The `<image>` tag in the multimodal section below can appear in any position within `query`, `response`, or `rejected_response`. It is only required that the number of tags matches the number of values in `images`.
+> 2. The correspondence between tags and `images` follows the order: first matching the `<image>` tags in `query`, then those in `response`, and finally parsing the `<image>` tags in `rejected_response` sequentially.
+> 3. `query` represents the anchor sample, `response` represents the positive or contrastive sample, and `rejected_response` corresponds to hard negative samples.
+> 4. The `<video>` and `<audio>` tags are also supported, enabling native support for video and audio embeddings.
 
-```json
+### Format for Cosine Similarity Loss
+
+```json lines
 # LLM
 {"query": "sentence1", "response": "sentence2", "label": 0.8}
 # MLLM
-{"query": "<image>", "response": "sentence", "images": "/some/images.jpg", "label": 0.7}
-{"query": "<image>sentence1", "response": "sentence2", "images": "/some/images.jpg", "label": 0.7}
+{"query": "<image>", "response": "<image>sentence", "images": ["/some/images1.jpg", "/some/images2.jpg"], "label": 0.7}
+{"query": "sentence1", "response": "<image>sentence2", "images": ["/some/images1.jpg"], "label": 0.7}
 ```
 
-### Format for `contrastive` / `online_contrastive` Loss
+### Format for Contrastive/Online Contrastive Loss
 
-```json
+```json lines
 # LLM
 {"query": "sentence1", "response": "sentence2", "label": 1}
 # MLLM
@@ -56,17 +62,26 @@ The source code for the loss functions can be found [here](https://github.com/mo
 {"query": "<image>sentence1", "response": "sentence2", "images": "/some/images.jpg", "label": 0}
 ```
 
-### Format for `infonce`
+### Format for InfoNCE
 
-```json
+```json lines
 # LLM
 {"query": "sentence1", "response": "sentence2"}
 # MLLM
 {"query": "<image>", "response": "sentence", "images": "/some/images.jpg"}
-{"query": "<image>sentence1", "response": "sentence2", "images": "/some/images.jpg"}
+{"query": "<image>sentence1", "response": "<image>sentence2", "rejected_response": ["<image>sentence1", "<image>sentence2"], "images": ["/some/images.jpg", "/some/images.jpg", "/some/images.jpg", "/some/images.jpg"]}
 ```
 
-When using a dataset in `infonce` format, please set the values of `per_device_train_batch_size` and `per_device_eval_batch_size` to greater than 1.
+InfoNCE loss supports the following environment variables:
+1. `INFONCE_TEMPERATURE`: The temperature parameter. If not set, the default value is 0.01.
+2. `INFONCE_USE_BATCH`: Determines whether to use `rejected_response` within the sample (hard negative samples) or to use all `responses` within a batch. The default is `True`, which means using responses within the batch.
+3. `INFONCE_HARD_NEGATIVES`: The number of hard negatives. If not set, all samples in `rejected_response` will be used. Since the lengths may not be consistent, a for loop will be used to compute the loss (which is slower). If set to a specific number, and there are not enough samples, the missing number will be randomly sampled. If there are excess samples, the first `INFONCE_HARD_NEGATIVES` will be selected.
+4. `INFONCE_MASK_FAKE_NEGATIVE`: Masks out fake negatives. The default is set to False. When enabled, it checks if a sample's similarity is greater than the positive sample's similarity plus 0.1. If so, the sample's similarity is set to -inf to prevent the leakage of the positive sample.
+
+> It is also possible to set the number of hard negatives to be equal in the dataset, so that even if not set, the for loop method will not be used, thereby speeding up computation.
+>
+> `rejected_response` can also be omitted. In this case, `INFONCE_USE_BATCH` remains `True` and will use other samples within the batch as rejected responses.
+
 
 ## Scaffolding
 

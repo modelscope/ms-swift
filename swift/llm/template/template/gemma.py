@@ -28,6 +28,7 @@ register_template(GemmaTemplateMeta(LLMTemplateType.gemma))
 
 
 class PaliGemmaTemplate(Template):
+    placeholder_tokens = ['<image>']
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -63,7 +64,6 @@ register_template(
         chat_sep=None,
         suffix=['<eos>'],
         template_cls=PaliGemmaTemplate,
-        placeholder_tokens=['<image>'],
     ))
 
 
@@ -94,6 +94,7 @@ register_template(Gemma3TextTemplateMeta(LLMTemplateType.gemma3_text, template_c
 
 class Gemma3VisionTemplate(Gemma3Template):
     boi_token_id = 255999
+    placeholder_tokens = ['<start_of_image>']
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -134,6 +135,4 @@ class Gemma3VisionTemplate(Gemma3Template):
         return encoded
 
 
-register_template(
-    GemmaTemplateMeta(
-        MLLMTemplateType.gemma3_vision, template_cls=Gemma3VisionTemplate, placeholder_tokens=['<start_of_image>']))
+register_template(GemmaTemplateMeta(MLLMTemplateType.gemma3_vision, template_cls=Gemma3VisionTemplate))

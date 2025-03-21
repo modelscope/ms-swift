@@ -2,7 +2,7 @@
 from types import MethodType
 
 import torch.nn.functional as F
-from transformers import AutoConfig
+from transformers import AutoConfig, AutoModel
 
 from swift.utils import get_logger
 from ..constant import BertModelType
@@ -33,10 +33,15 @@ register_model(
 
 
 def get_model_tokenizer_gte_bert(*args, **kwargs):
+    kwargs['automodel_class'] = AutoModel
     model, tokenizer = get_model_tokenizer_from_local(*args, **kwargs)
     if model is not None:
-        from swift.llm.model.patcher import patch_output_normalizer
-        patch_output_normalizer(model)
+
+        def _normalizer_hook(module, input, output):
+            output.last_hidden_state = F.normalize(output.last_hidden_state[:, 0], p=2, dim=1)
+            return output
+
+        model.register_forward_hook(_normalizer_hook)
     return model, tokenizer
 
 

@@ -2,7 +2,6 @@
 from types import MethodType
 from typing import Any, Dict
 
-import torch
 from transformers import AutoConfig, AutoTokenizer
 
 from swift.llm import TemplateType
@@ -299,92 +298,3 @@ register_model(
         None,
         get_model_tokenizer_qwen2_gte,
         architectures=['Qwen2ForCausalLM']))
-
-
-def get_model_tokenizer_qwen2_gme(model_dir: str,
-                                  model_info: ModelInfo,
-                                  model_kwargs: Dict[str, Any],
-                                  load_model: bool = True,
-                                  *,
-                                  tokenizer=None,
-                                  model_config=None,
-                                  automodel_class=None,
-                                  **kwargs):
-    from swift.llm.model.model.qwen import get_model_tokenizer_qwen2_vl
-    model, tokenizer = get_model_tokenizer_qwen2_vl(
-        model_dir,
-        model_info,
-        model_kwargs,
-        load_model,
-        tokenizer=tokenizer,
-        model_config=model_config,
-        automodel_class=automodel_class,
-        **kwargs)
-
-    def lm_head_forward(self, hidden_states):
-        return hidden_states
-
-    model.lm_head.forward = MethodType(lm_head_forward, model.lm_head)
-
-    def forward(self,
-                input_ids: torch.LongTensor = None,
-                attention_mask=None,
-                position_ids=None,
-                past_key_values=None,
-                inputs_embeds=None,
-                labels=None,
-                use_cache=None,
-                output_attentions=None,
-                output_hidden_states=None,
-                return_dict=None,
-                pixel_values=None,
-                pixel_values_videos=None,
-                image_grid_thw=None,
-                video_grid_thw=None,
-                rope_deltas=None):
-
-        outputs = self.forward_origin(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            position_ids=position_ids,
-            past_key_values=past_key_values,
-            inputs_embeds=inputs_embeds,
-            labels=labels,
-            use_cache=use_cache,
-            output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
-            pixel_values=pixel_values,
-            pixel_values_videos=pixel_values_videos,
-            image_grid_thw=image_grid_thw,
-            video_grid_thw=video_grid_thw,
-            rope_deltas=rope_deltas)
-        hidden_states = outputs.logits
-        left_padding = (attention_mask[:, -1].sum() == attention_mask.shape[0])
-        if left_padding:
-            embeddings = hidden_states[:, -1]
-        else:
-            sequence_lengths = attention_mask.sum(dim=1) - 1
-            batch_size = hidden_states.shape[0]
-            embeddings = hidden_states[torch.arange(batch_size, device=hidden_states.device), sequence_lengths]
-        embeddings = torch.nn.functional.normalize(embeddings, p=2, dim=1)
-        return {
-            'last_hidden_state': embeddings.contiguous(),
-        }
-
-    model.forward_origin = model.forward
-    model.forward = MethodType(forward, model)
-    return model, tokenizer
-
-
-register_model(
-    ModelMeta(
-        LLMModelType.qwen2_gme, [
-            ModelGroup([
-                Model('iic/gme-Qwen2-VL-2B-Instruct', 'Alibaba-NLP/gme-Qwen2-VL-2B-Instruct'),
-                Model('iic/gme-Qwen2-VL-7B-Instruct', 'Alibaba-NLP/gme-Qwen2-VL-7B-Instruct'),
-            ]),
-        ],
-        TemplateType.qwen2_gme,
-        get_model_tokenizer_qwen2_gme,
-        architectures=['Qwen2VLForConditionalGeneration']))

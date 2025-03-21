@@ -36,14 +36,20 @@ loss的源代码可以在[这里](https://github.com/modelscope/ms-swift/blob/ma
 
 ## 数据集格式
 
+> 注：
+> 1. 下面的多模态部分<image>标签可以出现在query/response/rejected_response的任意位置，只需要标签数量和images的值数量相等即可
+> 2. 标签和images的对应顺序为先对应query中的<image>标签，然后是response中的，之后按顺序解析rejected_response中的
+> 3. query代表anchor sample，response代表positive sample或对比sample，rejected_response是hard negative samples
+> 4. 也支持<video>, <audio>标签，即天然支持video和audio的embedding
+
 ### cosine_similarity loss对应的格式
 
 ```json lines
 # LLM
 {"query": "sentence1", "response":  "sentence2", "label": 0.8}
 # MLLM
-{"query": "<image>", "response":  "sentence", "images": "/some/images.jpg", "label": 0.7}
-{"query": "<image>sentence1", "response":  "sentence2", "images": "/some/images.jpg", "label": 0.7}
+{"query": "<image>", "response":  "<image>sentence", "images": ["/some/images1.jpg", "/some/images2.jpg"], "label": 0.7}
+{"query": "sentence1", "response":  "<image>sentence2", "images": ["/some/images1.jpg"], "label": 0.7}
 ```
 
 
@@ -64,10 +70,17 @@ loss的源代码可以在[这里](https://github.com/modelscope/ms-swift/blob/ma
 {"query": "sentence1", "response":  "sentence2"}
 # MLLM
 {"query": "<image>", "response":  "sentence", "images": "/some/images.jpg"}
-{"query": "<image>sentence1", "response":  "sentence2", "images": "/some/images.jpg"}
+{"query": "<image>sentence1", "response":  "<image>sentence2", "rejected_response": ["<image>sentence1", "<image>sentence2"], "images": ["/some/images.jpg", "/some/images.jpg", "/some/images.jpg", "/some/images.jpg"]}
 ```
 
-使用infonce格式的数据集请将per_device_train_batch_size和per_device_eval_batch_size的值设置为>1
+infonce loss支持几个环境变量：
+1. INFONCE_TEMPERATURE temperature参数，不设置的话默认值是0.01
+2. INFONCE_USE_BATCH 使用sample内部的rejected_response（hard negative样例）还是使用一个batch的所有responses，默认为True代表使用batch内部的responses
+3. INFONCE_HARD_NEGATIVES hard negatives的数量，如果不设置会使用rejected_response的所有samples，由于长度未必一致，因此会采用for循环计算loss（计算会慢），如果设置为某个数值，则如果不够会对缺失数量进行随机采样，超长会选用前`INFONCE_HARD_NEGATIVES`个
+4. INFONCE_MASK_FAKE_NEGATIVE mask掉假negative。默认为False，开启时会判断positive sample的similarity+0.1，比该值大的sample的similarity会被设置为-inf，防止positive sample泄露问题
+
+> 也可以在数据集中将hard negatives数量设置为数量相等，这样即使不设置也不会使用for循环方式，加快计算速度
+> rejected_response也可以没有，这种情况下INFONCE_USE_BATCH保持为True，会使用一个batch内部的其他samples作为rejected responses
 
 ## 脚手架
 

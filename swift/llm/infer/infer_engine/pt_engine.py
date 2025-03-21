@@ -57,7 +57,7 @@ class PtEngine(InferEngine):
             # model kwargs
             attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None,
             device_map: Optional[Union[str, Dict[str, Any]]] = None,
-            quantization_config: Optional[Dict[str, Any]] = None,
+            quantization_config=None,
             model_kwargs: Optional[Dict[str, Any]] = None,
             **kwargs):
         self.model, self.processor = get_model_tokenizer(
@@ -92,8 +92,7 @@ class PtEngine(InferEngine):
 
     def _start_infer_worker(self):
         if self._task_thread is None:
-            self._task_thread = Thread(target=self._infer_worker)
-            self._task_thread.daemon = True
+            self._task_thread = Thread(target=self._infer_worker, daemon=True)
             self._task_thread.start()
 
     def _fetch_infer_requests(self):

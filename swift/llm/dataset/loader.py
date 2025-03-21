@@ -87,15 +87,13 @@ class DatasetSyntax:
             dataset_sample = int(dataset_sample)
         return cls(dataset.strip(), subsets or [], dataset_sample)
 
-    def get_dataset_meta(self, use_hf: Optional[bool] = None):
-        if use_hf is None:
-            use_hf = True if use_hf_hub() else False
+    def get_dataset_meta(self, use_hf: bool):
         dataset_meta_mapping = self._get_dataset_meta_mapping()
         dataset_type = self.dataset_type
         if dataset_type == 'path':
             dataset_meta = dataset_meta_mapping.get((dataset_type, self.dataset.lower()))
         else:
-            dataset_type = {True: 'hf', False: 'ms'}[use_hf]
+            dataset_type = 'repo' if os.path.isdir(self.dataset) else {True: 'hf', False: 'ms'}[use_hf]
             dataset_meta = dataset_meta_mapping.get((dataset_type, self.dataset.lower()))
         return dataset_meta or self._get_matched_dataset_meta(dataset_meta_mapping) or DatasetMeta()
 
@@ -107,7 +105,8 @@ class DatasetSyntax:
         _dataset_meta_mapping = {}
         for dataset_meta in DATASET_MAPPING.values():
             if dataset_meta.dataset_path is not None:
-                _dataset_meta_mapping[('path', dataset_meta.dataset_path.lower())] = dataset_meta
+                dataset_type = 'repo' if os.path.isdir(dataset_meta.dataset_path) else 'path'
+                _dataset_meta_mapping[(dataset_type, dataset_meta.dataset_path.lower())] = dataset_meta
             if dataset_meta.ms_dataset_id is not None:
                 _dataset_meta_mapping[('ms', dataset_meta.ms_dataset_id.lower())] = dataset_meta
             if dataset_meta.hf_dataset_id is not None:
@@ -365,6 +364,7 @@ class DatasetLoader:
                 num_proc=num_proc,
                 strict=strict,
                 streaming=streaming,
+                columns=columns,
                 remove_unused_columns=remove_unused_columns,
             )
         else:
@@ -425,18 +425,20 @@ def load_dataset(
     """The interface to load any registered dataset
 
     Args:
-        download_mode: Download mode, default is `reuse_dataset_if_exists`.
-        columns: Used for manual column mapping of datasets.
-        strict: Raise if any row is not correct.
-        hub_token: The token of the hub.
-        use_hf: Use hf dataset or ms dataset.
-        num_proc: Proc number to use when preprocess the dataset.
         datasets: The dataset name list
+
         split_dataset_ratio: The dataset split ratio
         seed: The dataset random seed
+        num_proc: Proc number to use when preprocess the dataset.
+        streaming: Streaming mode or not
+        use_hf: Use hf dataset or ms dataset.
+        hub_token: The token of the hub.
+        strict: Raise if any row is not correct.
+        download_mode: Download mode, default is `reuse_dataset_if_exists`.
+        columns: Used for manual column mapping of datasets.
+
         model_name: Model name in self-cognition task.
         model_author: Model author in self-cognition task
-        streaming: Streaming mode or not
     Returns:
         The train dataset and val dataset
     """
@@ -449,6 +451,8 @@ def load_dataset(
         num_proc = None
     train_datasets = []
     val_datasets = []
+    if use_hf is None:
+        use_hf = True if use_hf_hub() else False
     load_kwargs = {
         'num_proc': num_proc,
         'use_hf': use_hf,
@@ -459,8 +463,12 @@ def load_dataset(
         'hub_token': hub_token,
         'remove_unused_columns': remove_unused_columns,
     }
-
     for dataset in datasets:
+        # compat dataset_name
+        if dataset in DATASET_MAPPING:
+            dataset_meta = DATASET_MAPPING[dataset]
+            dataset = dataset_meta.dataset_path or (dataset_meta.hf_dataset_id
+                                                    if use_hf else dataset_meta.ms_dataset_id)
         dataset_syntax = DatasetSyntax.parse(dataset)
         dataset_meta = dataset_syntax.get_dataset_meta(use_hf)
         load_function = dataset_meta.load_function

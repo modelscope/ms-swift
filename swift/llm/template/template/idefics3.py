@@ -9,6 +9,7 @@ from ..utils import align_image_inputs
 
 
 class Idefics3Template(Template):
+    placeholder_tokens = ['<image>']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
@@ -33,5 +34,4 @@ register_template(
         suffix=['<end_of_utterance>'],
         system_prefix=['System:{{SYSTEM}}<end_of_utterance>\n'],
         template_cls=Idefics3Template,
-        placeholder_tokens=['<image>'],
     ))
