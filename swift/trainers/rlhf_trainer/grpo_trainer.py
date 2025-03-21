@@ -858,7 +858,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return batch_encoded_inputs
 
     @profiling_decorator
-    def compute_loss(self, model, inputs, return_outputs=False):
+    def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         # Compute the per-token log probabilities for the model, return_outputs=True in mini-batch training
         if isinstance(inputs, list):
             assert len(inputs) == 1
