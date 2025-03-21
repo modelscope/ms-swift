@@ -960,7 +960,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         total_kl = 0.0
         total_clip_ratio = 0.0
         total_completion_length = 0
-        # num_mini_batches = len(batch_inputs)
         for mini_batch in batch_inputs:
 
             with self.compute_loss_context_manager():
