@@ -843,10 +843,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         self._metrics[mode]['reward'].append(rewards.mean().item())
         self._metrics[mode]['reward_std'].append(std_grouped_rewards.mean().item())
-        outputs.update({
-            'ref_per_token_logps': ref_per_token_logps,
-            'advantages': advantages,
-        })
         if self.log_completions and self.state.global_step % self.args.logging_steps == 0:
             # For logging
             table = {
@@ -861,7 +857,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 df = pd.DataFrame(table)
                 wandb.log({'completions': wandb.Table(dataframe=df)})
 
-        return outputs
+        return batch_encoded_inputs
 
     @profiling_decorator
     def compute_loss(self, model, inputs, return_outputs=False):
@@ -972,8 +968,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 mini_batch_loss = mini_batch_loss / self.args.gradient_accumulation_steps
 
             self.accelerator.backward(mini_batch_loss)
-            total_kl += mini_batch_metrics['kl'].detach()
-            total_clip_ratio += mini_batch_metrics['clip_ratio'].detach()
+            if 'kl' in mini_batch_metrics:
+                total_kl += mini_batch_metrics['kl']
+            total_clip_ratio += mini_batch_metrics['clip_ratio']
             total_loss += mini_batch_loss.detach()
 
         mode = 'eval' if self.control.should_evaluate else 'train'
