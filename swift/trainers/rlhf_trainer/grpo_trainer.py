@@ -898,6 +898,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # Log metrics or return them
         if return_outputs:
+            metrics['mb_completion_length'] = completion_mask.sum()
             return loss, metrics
         else:
             for key, value in metrics.items():
@@ -953,27 +954,31 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # Initialize metrics accumulators
         total_kl = torch.tensor(0.0, device=batch_inputs[0]['input_ids'].device)
         total_clip_ratio = torch.tensor(0.0, device=batch_inputs[0]['input_ids'].device)
-        num_mini_batches = len(batch_inputs)
+        total_completion_length = 0
+        # num_mini_batches = len(batch_inputs)
         for mini_batch in batch_inputs:
 
             with self.compute_loss_context_manager():
                 mini_batch_loss, mini_batch_metrics = self.compute_loss(model, mini_batch, return_outputs=True)
+                mb_completion_length = mini_batch_metrics['mb_completion_length']
 
             with self.accelerator.accumulate(self.model):
                 self.accelerator.backward(mini_batch_loss)
                 self.optimizer.step()
                 self.optimizer.zero_grad()
 
+            # Token-level metrics are weighted by completion length to ensure a fair average over all tokens.
             if 'kl' in mini_batch_metrics:
-                total_kl += mini_batch_metrics['kl']
-            total_clip_ratio += mini_batch_metrics['clip_ratio']
-            total_loss += mini_batch_loss.detach()
+                total_kl += mini_batch_metrics['kl'] * mb_completion_length
+            total_clip_ratio += mini_batch_metrics['clip_ratio'] * mb_completion_length
+            total_completion_length += mb_completion_length
+            total_loss += mini_batch_loss * mb_completion_length
 
         mode = 'eval' if self.control.should_evaluate else 'train'
-        self._metrics[mode]['kl'].append(total_kl / num_mini_batches)
-        self._metrics[mode]['clip_ratio'].append(total_clip_ratio / num_mini_batches)
+        self._metrics[mode]['kl'].append(total_kl / total_completion_length)
+        self._metrics[mode]['clip_ratio'].append(total_clip_ratio / total_completion_length)
 
-        total_loss = total_loss / num_mini_batches
+        total_loss = total_loss / total_completion_length
 
         del inputs, batch_inputs
         if (self.args.torch_empty_cache_steps is not None
