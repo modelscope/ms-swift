@@ -21,8 +21,6 @@ import torch.nn as nn
 from accelerate.utils import gather, gather_object, is_peft_model, set_seed
 from torch.nn import ModuleList
 from transformers import PreTrainedModel, TrainerCallback
-from transformers.utils import (is_torch_mlu_available, is_torch_mps_available, is_torch_musa_available,
-                                is_torch_npu_available, is_torch_xpu_available)
 from trl import GRPOTrainer as HFGRPOTrainer
 
 from swift.llm import InferRequest, MultiModelKeys, RequestConfig, RowPreprocessor, get_model_arch, to_device
@@ -961,13 +959,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             with self.compute_loss_context_manager():
                 mini_batch_loss, mini_batch_metrics = self.compute_loss(model, mini_batch, return_outputs=True)
 
-            if self.args.n_gpu > 1:
-                mini_batch_loss = mini_batch_loss.mean()
+            with self.accelerator.accumulate(self.model):
+                self.accelerator.backward(mini_batch_loss)
+                self.optimizer.step()
+                self.optimizer.zero_grad()
 
-            if not self.model_accepts_loss_kwargs and self.compute_loss_func is None:
-                mini_batch_loss = mini_batch_loss / self.args.gradient_accumulation_steps
-
-            self.accelerator.backward(mini_batch_loss)
             if 'kl' in mini_batch_metrics:
                 total_kl += mini_batch_metrics['kl']
             total_clip_ratio += mini_batch_metrics['clip_ratio']
@@ -982,18 +978,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         del inputs, batch_inputs
         if (self.args.torch_empty_cache_steps is not None
                 and self.state.global_step % self.args.torch_empty_cache_steps == 0):
-            if is_torch_xpu_available():
-                torch.xpu.empty_cache()
-            elif is_torch_mlu_available():
-                torch.mlu.empty_cache()
-            elif is_torch_musa_available():
-                torch.musa.empty_cache()
-            elif is_torch_npu_available():
-                torch.npu.empty_cache()
-            elif is_torch_mps_available(min_version='2.0'):
-                torch.mps.empty_cache()
-            else:
-                torch.cuda.empty_cache()
+            gc_collect()
 
         return total_loss.detach()
 
