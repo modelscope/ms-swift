@@ -753,33 +753,34 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         batch_encoded_inputs = []
         from copy import copy
         template = copy(self.template)
-        with self._template_context(template):
-            for mini_batch in mini_batch_inputs:
+        for mini_batch in mini_batch_inputs:
+            with self._template_context(template):
                 mini_batch_encoded_inputs = [template.encode(infer_request) for infer_request in mini_batch]
                 mini_batch_encoded_inputs = to_device(
                     template.data_collator(mini_batch_encoded_inputs), self.model.device)
-                labels = mini_batch_encoded_inputs.pop('labels')
-                logits_to_keep = (labels.shape[-1] - (torch.ne(labels, -100).int().argmax(-1))).max().item()
-                mini_batch_encoded_inputs['logits_to_keep'] = logits_to_keep
-                mini_batch_encoded_inputs['completion_mask'] = labels[:, -logits_to_keep:] != -100
 
-                with torch.no_grad():
-                    if self.old_policy:
-                        mini_batch_encoded_inputs['old_per_token_logps'] = self._get_per_token_logps(
-                            self.model, mini_batch_inputs)
-                    else:
-                        mini_batch_encoded_inputs['old_per_token_logps'] = None
+            labels = mini_batch_encoded_inputs.pop('labels')
+            logits_to_keep = (labels.shape[-1] - (torch.ne(labels, -100).int().argmax(-1))).max().item()
+            mini_batch_encoded_inputs['logits_to_keep'] = logits_to_keep
+            mini_batch_encoded_inputs['completion_mask'] = labels[:, -logits_to_keep:] != -100
 
-                    if self.beta == 0.0:
-                        ref_per_token_logps = None
-                    elif self.ref_model is not None:
-                        ref_per_token_logps = self._get_per_token_logps(self.ref_model, mini_batch_encoded_inputs)
-                    else:
-                        with self.accelerator.unwrap_model(self.model).disable_adapter():
-                            ref_per_token_logps = self._get_per_token_logps(self.model, mini_batch_encoded_inputs)
+            with torch.no_grad():
+                if self.old_policy:
+                    mini_batch_encoded_inputs['old_per_token_logps'] = self._get_per_token_logps(
+                        self.model, mini_batch_inputs)
+                else:
+                    mini_batch_encoded_inputs['old_per_token_logps'] = None
 
-                    mini_batch_encoded_inputs['ref_per_token_logps'] = ref_per_token_logps
-                    batch_encoded_inputs.append(mini_batch_encoded_inputs)
+                if self.beta == 0.0:
+                    ref_per_token_logps = None
+                elif self.ref_model is not None:
+                    ref_per_token_logps = self._get_per_token_logps(self.ref_model, mini_batch_encoded_inputs)
+                else:
+                    with self.accelerator.unwrap_model(self.model).disable_adapter():
+                        ref_per_token_logps = self._get_per_token_logps(self.model, mini_batch_encoded_inputs)
+
+                mini_batch_encoded_inputs['ref_per_token_logps'] = ref_per_token_logps
+                batch_encoded_inputs.append(mini_batch_encoded_inputs)
 
         rewards_per_func = torch.zeros((len(inputs), len(self.reward_funcs)), device=device)
         completions = [example['messages'][-1]['content'] for example in inputs]
