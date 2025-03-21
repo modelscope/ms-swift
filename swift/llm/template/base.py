@@ -1137,7 +1137,7 @@ class Template(ProcessorMixin):
         keys = [
             'input_ids', 'inputs_embeds', 'attention_mask', 'labels', 'loss_scale', 'position_ids', 'token_type_ids'
         ]
-        pad_value = [self.tokenizer.pad_token_id, 0., 0, -100, 0., 0 if self.use_megatron else 1, 0]
+        pad_value = [self.tokenizer.pad_token_id, 0., 0, -100, 0., 0., 0]
         # Convert to tensor and remove unnecessary dimensions.
         seq_lens = None
         for key in keys:
@@ -1183,8 +1183,6 @@ class Template(ProcessorMixin):
             res['pixel_values_videos'] = torch.concat(pixel_values_videos)
         if use_torchacc() or self.sequence_parallel_size > 1:
             res = self._torchacc_xtuner_data_collator(res, padding_to, self.tokenizer, padding_side)
-        if self.use_megatron:
-            res['position_ids'][:, seq_lens[0]:] = 0
 
         return res
 
