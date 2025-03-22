@@ -44,3 +44,5 @@ class MegatronTrainArguments(MegatronArguments, BaseArguments):
         BaseArguments.__post_init__(self)
         self._init_save()
         self.seq_length = self.seq_length or self.max_length
+        if self.streaming:
+            self.dataloader_type = 'external'

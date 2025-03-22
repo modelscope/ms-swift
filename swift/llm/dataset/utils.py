@@ -114,6 +114,10 @@ class PackingPreprocessor(EncodePreprocessor):
         super().__init__(template=template)
         self.template._packing = True
 
+    def _rename_columns(self, dataset):
+        # fix streaming
+        return dataset
+
     def batched_preprocess(self, batched_row: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         rows = self.batched_to_rows(batched_row)
         inputs_list = []
