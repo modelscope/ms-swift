@@ -133,7 +133,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - 🔥cross_entropy_loss_fusion: Enables cross-entropy loss calculation fusion. Default is False.
 - 🔥use_flash_attn: Uses FlashAttention mechanism implementation, default is False.
 - optimizer: Optimizer type, options are 'adam', 'sgd'. Default is adam.
-- dataloader_type: Default is 'cyclic', options are 'single', 'cyclic', 'external'.
+- dataloader_type: Default is 'cyclic', options are 'single', 'cyclic', 'external'. If `--streaming` is enabled, set it to external.
 - manual_gc: Disables the default garbage collector and manually triggers garbage collection. Default is False.
 - manual_gc_interval: Interval at which garbage collection is triggered. Default is 0.
 - seed: Random seed for python, numpy, pytorch, and cuda, default is 42.
@@ -243,4 +243,5 @@ Megatron training parameters inherit from Megatron parameters and basic paramete
 
 - add_version: Adds a directory `<version>-<timestamp>` to `save` to prevent overwriting weights, default is True.
 - 🔥packing: Whether to use sequence packing, defaults to False.
-- 🔥lazy_tokenize: Default is False. If this parameter is set to False, all dataset samples are tokenized before training (this avoids errors during training); if set to True, tokenization occurs during training (this saves memory).
+- 🔥streaming: Stream reading and processing of the dataset, default is False. It is typically set to True when handling large datasets.
+- lazy_tokenize: Default is False. If this parameter is set to False, all dataset samples are tokenized before training (this avoids errors during training); if set to True, tokenization occurs during training (this saves memory).

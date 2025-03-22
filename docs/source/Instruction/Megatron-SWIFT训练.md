@@ -130,7 +130,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 - 🔥cross_entropy_loss_fusion: 启动交叉熵损失计算融合。默认为False。
 - 🔥use_flash_attn: 使用 FlashAttention 注意力机制实现，默认为False。
 - optimizer: 优化器类型，可选为'adam'、'sgd'。默认为adam。
-- dataloader_type: 默认为'cyclic'，可选为'single', 'cyclic', 'external'。
+- dataloader_type: 默认为'cyclic'，可选为'single', 'cyclic', 'external'。若开启`--streaming`，则设置为`external`。
 - manual_gc: 禁用默认垃圾回收器，手动触发垃圾回收。默认为False。
 - manual_gc_interval: 触发垃圾回收的间隔。默认为0。
 - seed: python、numpy、pytorch和cuda的随机种子，默认为42。
@@ -233,4 +233,5 @@ Megatron训练参数继承自Megatron参数和基本参数。基本参数的内�
 
 - add_version: 在`save`上额外增加目录`'<版本号>-<时间戳>'`防止权重覆盖，默认为True。
 - 🔥packing: 是否使用序列packing，默认为False。
-- 🔥lazy_tokenize: 默认为False。若该参数设置为False，则在训练之前对所有的数据集样本进行tokenize（这可以避免在训练中出现报错）；设置为True，则在训练中对数据集进行tokenize（这可以节约内存）。
+- 🔥streaming: 流式读取并处理数据集，默认False。通常在处理大型数据集时，设置为True。
+- lazy_tokenize: 默认为False。若该参数设置为False，则在训练之前对所有的数据集样本进行tokenize（这可以避免在训练中出现报错）；设置为True，则在训练中对数据集进行tokenize（这可以节约内存）。
