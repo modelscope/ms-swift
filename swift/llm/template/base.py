@@ -397,7 +397,7 @@ class Template(ProcessorMixin):
         return generate_ids
 
     @staticmethod
-    def _get_seq_cls_logprobs(pred: int, logprobs: torch.Tensor):
+    def _get_seq_cls_logprobs(pred: int, logprobs: torch.Tensor, top_logprobs: int):
         idxs = logprobs.argsort(descending=True, dim=-1)
         return {
             'content': {
@@ -406,16 +406,16 @@ class Template(ProcessorMixin):
                 'top_logprobs': [{
                     'index': idx,
                     'logprob': logprobs[idx].item()
-                } for idx in idxs.tolist()]
+                } for idx in idxs.tolist()[:top_logprobs]]
             }
         }
 
-    def decode_seq_cls(self, logits: torch.Tensor):
+    def decode_seq_cls(self, logits: torch.Tensor, top_logprobs: int):
         assert isinstance(logits, torch.Tensor)
         if logits.shape[-1] > 1:
             preds = torch.argmax(logits, dim=-1).tolist()
             logprobs = torch.log_softmax(logits, -1)
-            logprobs = [self._get_seq_cls_logprobs(pred, logprobs[i]) for i, pred in enumerate(preds)]
+            logprobs = [self._get_seq_cls_logprobs(pred, logprobs[i], top_logprobs) for i, pred in enumerate(preds)]
         else:
             preds = logits.squeeze(dim=-1).tolist()
             logprobs = [None] * len(preds)

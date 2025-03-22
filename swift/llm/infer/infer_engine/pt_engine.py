@@ -321,6 +321,7 @@ class PtEngine(InferEngine):
                        adapter_request: Optional[AdapterRequest] = None,
                        **kwargs):
         call_kwargs = {}
+        top_logprobs = getattr(kwargs.get('generation_config'), 'top_logprobs', None) or 20
         adapter_names = self._get_adapter_names(adapter_request)
         if adapter_names is not None:
             call_kwargs['adapter_names'] = adapter_names
@@ -328,7 +329,7 @@ class PtEngine(InferEngine):
         inputs.pop('labels', None)
         logits = self.model(**inputs, **call_kwargs).logits
         if template.mode == 'seq_cls':
-            preds, logprobs = template.decode_seq_cls(logits)
+            preds, logprobs = template.decode_seq_cls(logits, top_logprobs)
         elif template.mode == 'prm':
             preds = template.decode_prm(inputs['input_ids'], logits)
             logprobs = [None] * len(preds)
@@ -476,6 +477,8 @@ class PtEngine(InferEngine):
                 self.set_default_max_tokens(request_config, inputs)
                 generation_config = self._prepare_generation_config(request_config)
                 self._add_stop_words(generation_config, request_config, template.template_meta)
+            else:
+                generation_config = request_config
 
             kwargs = {
                 'template': template,
