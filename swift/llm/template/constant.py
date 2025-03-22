@@ -92,7 +92,7 @@ class MLLMTemplateType:
     qwen_audio = 'qwen_audio'
     qwen2_vl = 'qwen2_vl'
     qwen2_5_vl = 'qwen2_5_vl'
-    qwen2_5_omni = qwen2_5_omni
+    qwen2_5_omni = 'qwen2_5_omni'
     qwen2_audio = 'qwen2_audio'
     qwen2_gme = 'qwen2_gme'
     qvq = 'qvq'

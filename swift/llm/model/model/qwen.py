@@ -612,6 +612,33 @@ register_model(
         tags=['vision', 'video']))
 
 
+def get_model_tokenizer_qwen2_5_vl(*args, **kwargs):
+    from transformers import Qwen2_5_VLForConditionalGeneration
+    kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen2_5_VLForConditionalGeneration
+    return get_model_tokenizer_qwen2_vl(*args, **kwargs)
+
+
+def get_model_tokenizer_qwen2_5_omni(*args, **kwargs):
+    from transformers import Qwen2_5OmniModel, Qwen2_5OmniProcessor
+    kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen2_5OmniModel
+    return get_model_tokenizer_qwen2_vl(*args, **kwargs)
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.qwen2_5_omni, [
+            ModelGroup([
+                Model('Qwen/Qwen2.5-Omni-7B', 'Qwen/Qwen2.5-Omni-7B'),
+            ]),
+        ],
+        TemplateType.qwen2_5_omni,
+        get_model_tokenizer_qwen2_5_omni,
+        model_arch=ModelArch.qwen2_5_omni,
+        architectures=['Qwen2_5OmniModel'],
+        requires=['transformers>=4.50', 'soundfile', 'qwen_omni_utils', 'decord'],
+        tags=['vision', 'video', 'audio']))
+
+
 def get_model_tokenizer_qwen2_audio(*args, **kwargs):
     from transformers import Qwen2AudioForConditionalGeneration
     kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen2AudioForConditionalGeneration
