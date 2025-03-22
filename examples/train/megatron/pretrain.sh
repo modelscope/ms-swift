@@ -10,16 +10,16 @@ megatron pt \
     --micro_batch_size 1 \
     --global_batch_size 16 \
     --recompute_granularity selective \
-    --train_iters 2000 \
-    --eval_iters 50 \
+    --train_iters 10000 \
+    --eval_iters 100 \
     --finetune true \
     --cross_entropy_loss_fusion true \
     --lr 1e-5 \
-    --lr_warmup_iters 100 \
+    --lr_warmup_iters 300 \
     --min_lr 1e-6 \
     --save megatron_output/Qwen2.5-7B \
-    --eval_interval 200 \
-    --save_interval 200 \
+    --eval_interval 500 \
+    --save_interval 500 \
     --max_length 8192 \
     --num_workers 8 \
     --dataset_num_proc 8 \
