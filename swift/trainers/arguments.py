@@ -147,6 +147,7 @@ class GRPOArgumentsMixin:
     offload_optimizer: bool = False
     offload_model: bool = False
     gc_collect_after_offload: bool = False
+    multi_turn_mocker: Optional[str] = None
 
 
 @dataclass
