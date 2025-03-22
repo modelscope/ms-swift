@@ -243,6 +243,18 @@ class Template(ProcessorMixin):
             message['content'] = message['content'][:-len('<start-image>')]  # remove the <start-image>
         inputs.generate_mode = generate_mode
 
+    @staticmethod
+    def _extend_tokens(input_ids, labels, replace_idx_list: List[int], get_new_tokens: Callable[[int], List[int]]):
+        added_tokens_len = 0
+        for i, idx in enumerate(replace_idx_list):
+            new_tokens = get_new_tokens(i)
+            token_len = len(new_tokens)
+            input_ids = input_ids[:idx + added_tokens_len] + new_tokens + input_ids[added_tokens_len + idx + 1:]
+            if labels:
+                labels = labels[:idx + added_tokens_len] + [-100] * token_len + labels[added_tokens_len + idx + 1:]
+            added_tokens_len += token_len - 1
+        return input_ids, labels
+
     def _rlhf_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         chosen_inputs, rejected_inputs = inputs, deepcopy(inputs)
         assert chosen_inputs.rejected_response is not None, f'inputs: {inputs}'

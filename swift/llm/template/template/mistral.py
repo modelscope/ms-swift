@@ -23,7 +23,6 @@ class Mistral2503Template(Template):
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
         processor = self.processor
-        processor = self.processor
         images = inputs.images
         input_ids = encoded['input_ids']
         labels = encoded['labels']
@@ -32,9 +31,9 @@ class Mistral2503Template(Template):
             image_inputs = processor.image_processor(images, patch_size=processor.patch_size, return_tensors='pt')
             encoded['pixel_values'] = image_inputs['pixel_values'].to(self.config.torch_dtype)
             encoded['image_sizes'] = image_sizes = image_inputs['image_sizes']
-            added_tokens_len = 0
-            for idx, image_size in zip(idx_list, image_sizes):
-                height, width = image_size
+
+            def _get_new_tokens(i):
+                height, width = image_sizes[i]
                 num_height_tokens = height // (processor.patch_size * processor.spatial_merge_size)
                 num_width_tokens = width // (processor.patch_size * processor.spatial_merge_size)
                 replace_tokens = [[processor.image_token] * num_width_tokens + [processor.image_break_token]
@@ -43,14 +42,9 @@ class Mistral2503Template(Template):
                 replace_tokens = [item for sublist in replace_tokens for item in sublist]
                 replace_tokens[-1] = processor.image_end_token
                 replace_str = ''.join(replace_tokens)
-                img_tokens: List[int] = processor.encode(replace_str, add_special_tokens=False)
-                input_ids = input_ids[:idx + added_tokens_len] + img_tokens + input_ids[idx + added_tokens_len + 1:]
-                if labels is not None:
-                    labels = labels[:idx + added_tokens_len] + [-100] * len(img_tokens) + labels[idx + added_tokens_len
-                                                                                                 + 1:]
-                added_tokens_len += len(img_tokens) - 1
-            encoded['input_ids'] = input_ids
-            encoded['labels'] = labels
+                return processor.encode(replace_str, add_special_tokens=False)
+
+            encoded['input_ids'], encoded['labels'] = self._extend_tokens(input_ids, labels, idx_list, _get_new_tokens)
 
         return encoded
 
