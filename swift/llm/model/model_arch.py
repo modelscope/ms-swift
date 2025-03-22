@@ -25,6 +25,7 @@ class MLLMModelArch:
     qwen_audio = 'qwen_audio'
     qwen2_vl = 'qwen2_vl'
     qwen2_audio = 'qwen2_audio'
+    qwen2_5_omni = 'qwen2_5_omni'
 
     cogvlm = 'cogvlm'
     glm4v = 'glm4v'
@@ -463,6 +464,13 @@ register_model_arch(
         language_model='model',
         aligner='visual.merger',
         vision_tower='visual',
+    ))
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.qwen2_5_omni,
+        language_model='thinker.model',
+        vision_tower=['thinker.audio_tower', 'thinker.visual'],
+        generator=['talker', 'token2wav'],
     ))
 
 register_model_arch(

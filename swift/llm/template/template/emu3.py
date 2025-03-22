@@ -165,7 +165,7 @@ class Emu3ChatTemplate(Template):
         labels = encoded['labels']
         image_tokens = self.processor.tokenize_image(images)
         image_prompts = []
-        idxs = findall(input_ids, self.tokenizer.encode(self.image_placeholder))
+        idx_list = findall(input_ids, self.tokenizer.encode(self.image_placeholder))
         # Create image prompts
         for i in range(len(images)):
             h, w = image_tokens[i].shape
@@ -174,15 +174,9 @@ class Emu3ChatTemplate(Template):
                 self.tokenizer.boi_token + self.processor.prefix_template.format(H=h, W=w) + self.tokenizer.img_token
                 + imgstr + self.tokenizer.eol_token + self.tokenizer.eof_token + self.tokenizer.eoi_token)
             image_prompts.append(self.tokenizer.encode(image_prompt))
-        added_tokens_len = 0
-        # Insert image tokens into input_ids
-        for idx, img_tokens in zip(idxs, image_prompts):
-            input_ids = input_ids[:idx + added_tokens_len] + img_tokens + input_ids[idx + added_tokens_len + 1:]
-            if labels is not None:
-                labels = labels[:idx + added_tokens_len] + [-100] * len(img_tokens) + labels[idx + added_tokens_len
-                                                                                             + 1:]
-            added_tokens_len += len(img_tokens) - 1
 
+        # Insert image tokens into input_ids
+        input_ids, labels = self._extend_tokens(input_ids, labels, idx_list, lambda i: image_prompts[i])
         return {'input_ids': input_ids, 'labels': labels}
 
 

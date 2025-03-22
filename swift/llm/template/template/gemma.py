@@ -110,14 +110,7 @@ class Gemma3VisionTemplate(Gemma3Template):
             labels = encoded['labels']
             idx_list = findall(input_ids, self.boi_token_id)
             img_tokens = self.tokenizer.encode(self.processor.full_image_sequence)
-            added_tokens_len = 0
-
-            for i, idx in enumerate(idx_list):
-                token_len = len(img_tokens)
-                input_ids = input_ids[:idx + added_tokens_len] + img_tokens + input_ids[added_tokens_len + idx + 1:]
-                if labels:
-                    labels = labels[:idx + added_tokens_len] + [-100] * token_len + labels[added_tokens_len + idx + 1:]
-                added_tokens_len += token_len - 1
+            input_ids, labels = self._extend_tokens(input_ids, labels, idx_list, lambda _: img_tokens)
 
             # TODO: customize
             processor_kwargs = Gemma3ProcessorKwargs._defaults['images_kwargs']

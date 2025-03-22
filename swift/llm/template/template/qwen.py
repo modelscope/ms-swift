@@ -247,17 +247,13 @@ class Qwen2VLTemplate(Template):
                             processor.image_processor.temporal_patch_size / vision_process.FPS
                         ] * len(media_grid_thw)
                 idx_list = findall(input_ids, media_token)
-                added_tokens_len = 0
-                for i, idx in enumerate(idx_list):
-                    merge_length = processor.image_processor.merge_size**2
+                merge_length = processor.image_processor.merge_size**2
+
+                def _get_new_tokens(i):
                     token_len = (media_grid_thw[i].prod() // merge_length)
-                    input_ids = input_ids[:idx
-                                          + added_tokens_len] + [media_token] * token_len + input_ids[added_tokens_len
-                                                                                                      + idx + 1:]
-                    if labels:
-                        labels = labels[:idx + added_tokens_len] + [-100] * token_len + labels[added_tokens_len + idx
-                                                                                               + 1:]
-                    added_tokens_len += token_len - 1
+                    return [media_token] * token_len
+
+                input_ids, labels = self._extend_tokens(input_ids, labels, idx_list, _get_new_tokens)
                 encoded.update(media_inputs)
 
         encoded['input_ids'] = input_ids
@@ -342,6 +338,31 @@ class Qwen2_5VLTemplate(Qwen2VLTemplate):
 
 
 register_template(QwenTemplateMeta(MLLMTemplateType.qwen2_5_vl, template_cls=Qwen2_5VLTemplate))
+
+
+class Qwen2_5OmniTemplate(Template):
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    inputs: StdTemplateInputs) -> List[Context]:
+        if media_type == 'video':
+            return ['<|vision_bos|><|VIDEO|><|vision_eos|>']
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        pass
+
+    def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        pass
+
+    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        pass
+
+
+register_template(
+    QwenTemplateMeta(
+        MLLMTemplateType.qwen2_5_omni,
+        default_system=('You are Qwen, a virtual human developed by the Qwen Team, Alibaba Group, '
+                        'capable of perceiving auditory and visual inputs, as well as generating text and speech.'),
+        template_cls=Qwen2_5OmniTemplate))
 
 
 class Ovis1_6Template(Template):
