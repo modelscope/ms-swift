@@ -96,7 +96,6 @@ class mPlugOwl3Template(Template):
         encoded = {}
         if images:
             image_inputs = processor.image_processor(images, cut_enable=cut_enable, return_tensors='pt')
-            added_tokens_len = 0
             cut_shapes = image_inputs['cut_shape'] or [None] * 2 * len(idx_list)
             image_token_list = self.processor.encode('<|image|>', add_special_tokens=False)
 
