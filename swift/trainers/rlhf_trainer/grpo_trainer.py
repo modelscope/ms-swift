@@ -19,6 +19,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from accelerate.utils import gather, gather_object, is_peft_model, set_seed
+from swift.llm.template.template_inputs import StdTemplateInputs
 from torch.nn import ModuleList
 from transformers import PreTrainedModel, TrainerCallback
 from trl import GRPOTrainer as HFGRPOTrainer
@@ -46,10 +47,10 @@ if is_wandb_available():
 
 @contextmanager
 def unwrap_model_for_generation(
-    model,
-    accelerator,
-    gather_deepspeed3_params=True,
-    gather_parameters: List = None,
+        model,
+        accelerator,
+        gather_deepspeed3_params=True,
+        gather_parameters: List = None,
 ):
     unwrapped_model = accelerator.unwrap_model(model)
     if accelerator.state.deepspeed_plugin is not None and accelerator.state.deepspeed_plugin.zero_stage == 3:
@@ -98,7 +99,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                  ref_model: Optional[Union[PreTrainedModel, nn.Module]] = None,
                  reward_model: Optional[Union[PreTrainedModel, nn.Module]] = None,
                  reward_funcs: Optional[List[Union[str, Callable]]] = None,
-                 multi_turn_func: Optional[Union[str, Callable]] = None,
                  *_args,
                  **kwargs):
         from swift.trainers.rlhf_arguments import GRPOConfig
@@ -144,10 +144,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         self.reward_funcs = reward_funcs
 
-        if multi_turn_func:
-            if isinstance(multi_turn_func, str):
-                assert multi_turn_func in multi_turns
-                multi_turn_func = multi_turns[multi_turn_func]
+        if self.args.multi_turn_mocker:
+            if isinstance(self.args.multi_turn_mocker, str):
+                assert self.args.multi_turn_mocker in multi_turns
+                multi_turn_func = multi_turns[self.args.multi_turn_mocker]
 
         self.multi_turn_func = multi_turn_func
 
@@ -175,6 +175,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         use_vllm = args.use_vllm
         use_lmdeploy = args.use_lmdeploy
+
+        # if self.args.tensor_parallel_size > 1:
+        #     import torch.distributed as dist
+        #     assert dist.is_initialized()
+        #     print(f'>>>>>>>>>>>>>>>>>>>>>{self.cur_tp_group_ranks}, {self.infer_rank}')
+        #     self.tp_group = dist.new_group(self.cur_tp_group_ranks, backend='nccl')
+        #     print(f'>>>>>>>>>>>>>>>>>>>>>{self.cur_tp_group_ranks}, {self.infer_rank}, done')
+        #     dist.barrier()
 
         super().__init__(model, ref_model, *_args, **kwargs)
 
@@ -275,10 +283,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self.request_config.n = self.args.tensor_parallel_size
             if self.infer_rank >= 0:
                 self.request_config.seed = self.infer_rank // self.args.tensor_parallel_size
-
-        if self.args.tensor_parallel_size > 1:
-            import torch.distributed as dist
-            self.tp_group = dist.new_group(self.cur_tp_group_ranks)
 
         self.model_accepts_loss_kwargs = False
         for i, reward_func in enumerate(self.reward_funcs):
@@ -430,7 +434,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         rank, local_rank, world_size, local_world_size = get_dist_setting()
         if self.args.tensor_parallel_size > 1:
             tp_groups = rank // self.args.tensor_parallel_size
-            return list(range(tp_groups*self.args.tensor_parallel_size, (tp_groups+1)*self.args.tensor_parallel_size))
+            return list(
+                range(tp_groups * self.args.tensor_parallel_size, (tp_groups + 1) * self.args.tensor_parallel_size))
         else:
             return [rank]
 
@@ -460,9 +465,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if mode in {'vllm', 'pt', 'lmdeploy'}:
             template.set_mode('train')
         template.max_length = None
+        loss_scale = template.loss_scale
+        template.loss_scale = 'default'
         try:
             yield
         finally:
+            template.loss_scale = loss_scale
             template.set_mode(mode)
             template.max_length = max_length
 
@@ -631,24 +639,70 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return [index_to_output[idx] for idx in sorted(index_to_output.keys())]
 
     def _infer_multi_turn(self, inputs_slice, request_config):
-        from swift.llm.infer.protocol import ChatCompletionResponse
+        from swift.llm.infer.protocol import ChatCompletionResponse, ChatCompletionResponseChoice, ChatMessage, UsageInfo
+        request_config = copy(request_config)
         results: List[ChatCompletionResponse] = self.engine.infer(
             infer_requests=inputs_slice, request_config=request_config, use_tqdm=False)
+        prompt_lens = len(inputs_slice)
+        messages_list = [None]*len(inputs_slice)*self.args.tensor_parallel_size
         if self.multi_turn_func:
+            remove_response = True
+            finished_indexes = []
             while len(inputs_slice) > 0:
-                if self.infer_rank_tp_0 >= 0:
-                    for i, output in enumerate(results):
-                        messages = inputs_slice[i]['messages']
-                        InferRequest.remove_response(messages)
-                        messages.append({'role': 'assistant', 'content': output.choices[0].message.content})
-                    results = self.multi_turn_func(inputs_slice)
-                else:
-                    results = [None]*len(results)
-                if self.args.tensor_parallel_size > 1:
-                    import torch.distributed as dist
-                    dist.broadcast_object_list(results, src=self.cur_tp_group_ranks[0], group=self.tp_group)
-                inputs_slice = [r for r in results if not r.is_finished]
+                request_config.n = 1
+                # if self.infer_rank_tp_0 >= 0:
+                inputs = []
+                cnt = 0
+                for i, output in enumerate(results):
+                    for choice in output.choices:
+                        _input: Dict = deepcopy(inputs_slice[i])
+                        if remove_response or _input['messages'][-1]['role'] != 'assistant' or not \
+                        _input['messages'][-1]['content']:
+                            InferRequest.remove_response(_input['messages'])
+                            _input['messages'].append({'role': 'assistant', 'content': choice.message.content})
+                        else:
+                            _input['messages'][-1]['content'] += choice.message.content
+                        if 'index' not in _input:
+                            _input['index'] = cnt
+                        cnt += 1
+                        inputs.append(_input)
+                results = self.multi_turn_func(inputs)
+                # else:
+                #     results = [None]*len(results)
+                # if self.args.tensor_parallel_size > 1:
+                #     import torch.distributed as dist
+                #     from vllm.distributed.parallel_state import get_tp_group
+                #     dist.broadcast_object_list(results, src=self.cur_tp_group_ranks[0], group=get_tp_group().device_group)
+                # dist.barrier()
+                inputs_slice = [r for r in results if not r['finished']]
+                for idx, r in enumerate(results):
+                    if r['finished']:
+                        messages_list[r['index']] = r['messages']
+                if len(inputs_slice) > 0:
+                    _input_std = []
+                    for _input in inputs_slice:
+                        _input_std.append(StdTemplateInputs.from_dict(_input))
+                    results = self.engine.infer(infer_requests=_input_std, request_config=request_config,
+                                                use_tqdm=False)
+                remove_response = False
+
+            outputs = []
+            for i in range(0, len(messages_list), self.args.tensor_parallel_size):
+                outputs.append(messages_list[i: i + self.args.tensor_parallel_size])
+            assert len(outputs) == prompt_lens
+            assert all([len(o) == self.args.tensor_parallel_size for o in outputs])
+            return outputs
         else:
+            for i, output in enumerate(results):
+                _choices = []
+                for choice in output.choices:
+                    _input: Dict = deepcopy(inputs_slice[i])
+                    InferRequest.remove_response(_input['messages'])
+                    _input['messages'].append({'role': 'assistant', 'content': choice.message.content})
+                    _choices.append(_input['messages'])
+                messages_list.append(_choices)
+            assert len(results) == len(prompt_lens)
+            assert all([len(o) == self.args.tensor_parallel_size for o in results])
             return results
 
     def async_infer(self, inputs, inputs_slice, distributed_idx):
@@ -722,9 +776,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         _outputs = []
                         for tp_idx in range(self.args.tensor_parallel_size):
                             for prompt_idx in range(len(outputs)):
-                                output = deepcopy(outputs[prompt_idx])
-                                output.choices = [output.choices[tp_idx]]
-                                _outputs.append(output)
+                                _outputs.append(outputs[prompt_idx][tp_idx])
                         outputs = _outputs
         else:
             if self.args.async_generate:
@@ -782,9 +834,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             outputs = outputs[process_slice]
 
         for i, output in enumerate(outputs):
-            messages = inputs[i]['messages']
-            InferRequest.remove_response(messages)
-            messages.append({'role': 'assistant', 'content': output.choices[0].message.content})
+            inputs[i]['messages'] = output
         from copy import copy
         template = copy(self.template)
         with self._template_context(template):
@@ -896,7 +946,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.beta != 0.0:
             ref_per_token_logps = inputs['ref_per_token_logps']
             per_token_kl = (
-                torch.exp(ref_per_token_logps - per_token_logps) - (ref_per_token_logps - per_token_logps) - 1)
+                    torch.exp(ref_per_token_logps - per_token_logps) - (ref_per_token_logps - per_token_logps) - 1)
 
         advantages = inputs['advantages']
         old_per_token_logps = inputs['old_per_token_logps'] if self.old_policy else per_token_logps.detach()
@@ -936,7 +986,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         inputs = {
             k: v
             for k, v in inputs.items() if k not in
-            ['logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps']
+                                          ['logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages',
+                                           'old_per_token_logps']
         }
         logits = model(**inputs).logits
         # exclude the last logit: it corresponds to the next token pred
