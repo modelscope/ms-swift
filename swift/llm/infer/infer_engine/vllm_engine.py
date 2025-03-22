@@ -158,6 +158,10 @@ class VllmEngine(InferEngine):
         if self.config.architectures is None:
             architectures = {'deepseek_vl2': ['DeepseekVLV2ForCausalLM']}[self.model_meta.model_type]
             engine_kwargs['hf_overrides'] = {'architectures': architectures}
+        if self.model_meta.model_type in ['mistral_2503']:
+            engine_kwargs['load_format'] = 'mistral'
+            engine_kwargs['config_format'] = 'mistral'
+            engine_kwargs['tokenizer_mode'] = 'mistral'
         engine_args = engine_cls(
             model=self.model_dir,
             dtype=dtype_mapping[model_info.torch_dtype],

@@ -311,6 +311,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         llm = llm[0]
                     if name.startswith('base_model'):
                         name = name.replace('base_model.', '')
+                    if name.startswith('_model'):
+                        name = name.replace('_model.', '')
+                    if name.startswith('_ref_model'):
+                        name = name.replace('_ref_model.', '')
                     if name.startswith(llm):
                         layer_count = len(module)
                 else:
