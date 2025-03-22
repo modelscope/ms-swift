@@ -9,7 +9,6 @@ megatron pt \
     --tensor_model_parallel_size 4 \
     --micro_batch_size 1 \
     --global_batch_size 16 \
-    --streaming true \
     --recompute_granularity selective \
     --train_iters 2000 \
     --eval_iters 50 \
