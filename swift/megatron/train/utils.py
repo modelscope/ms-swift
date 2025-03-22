@@ -7,6 +7,7 @@ from megatron.core import mpu
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.utils import StragglerDetector
 from megatron.training import get_args, get_timers
+from megatron.training.training import cyclic_iter
 
 stimer = StragglerDetector()
 
@@ -17,6 +18,47 @@ def get_swift_datasets_provider(train_dataset, val_dataset):
         return train_dataset, val_dataset, None
 
     return swift_datasets_provider
+
+
+class StreamingDataLoader:
+
+    def __init__(self, base_dataloader):
+        self.base_dataloader = base_dataloader
+
+    @staticmethod
+    def _scatter_object_list(inputs):
+        outputs = [None]
+        torch.distributed.scatter_object_list(
+            outputs, inputs, mpu.get_data_parallel_src_rank(), group=mpu.get_data_parallel_group())
+        return outputs[0]
+
+    def __iter__(self):
+        base_iter = iter(self.base_dataloader)
+        while True:
+            if mpu.get_data_parallel_rank() == 0:
+                dp_world_size = mpu.get_data_parallel_world_size()
+                try:
+                    data = [next(base_iter) for _ in range(dp_world_size)]
+                except StopIteration:
+                    data = [None] * dp_world_size
+                data = self._scatter_object_list(data)
+            else:
+                data = self._scatter_object_list(None)
+            if data is None:
+                break
+            yield data
+
+
+def build_streaming_dataloader(args, dataset, collate_fn):
+    base_dataloader = torch.utils.data.DataLoader(
+        dataset,
+        num_workers=args.num_workers,
+        pin_memory=True,
+        persistent_workers=True if args.num_workers > 0 else False,
+        collate_fn=collate_fn,
+        batch_size=args.micro_batch_size,
+    )
+    return iter(cyclic_iter(StreamingDataLoader(base_dataloader)))
 
 
 def get_batch_on_this_tp_rank(data_iterator):
