@@ -11,7 +11,7 @@ kwargs = {
 }
 
 
-def test_llm():
+def test_reg_llm():
     from swift.llm import TrainArguments, sft_main, infer_main, InferArguments
     result = sft_main(
         TrainArguments(
@@ -21,4 +21,23 @@ def test_llm():
             dataset=['sentence-transformers/stsb:reg#200'],
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
-    infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True))
+    infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True, metric='acc'))
+
+
+def test_reg_mllm():
+    from swift.llm import TrainArguments, sft_main, infer_main, InferArguments
+    # OpenGVLab/InternVL2-1B
+    result = sft_main(
+        TrainArguments(
+            model='Qwen/Qwen2-VL-2B-Instruct',
+            train_type='lora',
+            num_labels=1,
+            dataset=['sentence-transformers/stsb:reg#200'],
+            **kwargs))
+    last_model_checkpoint = result['last_model_checkpoint']
+    infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True, metric='acc'))
+
+
+if __name__ == '__main__':
+    # test_reg_llm()
+    test_reg_mllm()
