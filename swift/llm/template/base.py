@@ -431,6 +431,8 @@ class Template(ProcessorMixin):
         if logits is not None:
             if logits.shape[-1] == 1:
                 problem_type = 'regression'
+            else:
+                problem_type = 'single_label_classification'  # compatible with older versions
         assert problem_type is not None
         config.problem_type = problem_type
         return problem_type
@@ -446,7 +448,7 @@ class Template(ProcessorMixin):
                 preds = torch.argmax(logits, dim=-1).tolist()
                 logprobs = torch.log_softmax(logits, -1)
             elif problem_type == 'multi_label_classification':
-                logprobs = F.logsigmoid(logits, -1)
+                logprobs = F.logsigmoid(logits)
                 preds = [(logprob >= 0.5).nonzero().tolist() for logprob in logprobs]
             logprobs = [self._get_seq_cls_logprobs(pred, logprobs[i], top_logprobs) for i, pred in enumerate(preds)]
         return preds, logprobs
