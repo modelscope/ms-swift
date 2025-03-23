@@ -10,12 +10,11 @@ if TYPE_CHECKING:
     from .metric import InferStats, MeanMetric, Metric, compute_acc, get_metric, compute_rouge_bleu
     from .optimizer import optimizers_map
     from .tools import get_tools_prompt, get_tools_keyword
-    from .tuner import Tuner, extra_tuners
+    from .tuner import Tuner, extra_tuners, PeftTuner
     from .prm import prms, PRM
     from .orm import orms, ORM
 
 else:
-    _extra_objects = {k: v for k, v in globals().items() if not k.startswith('_')}
     _import_structure = {
         'callback': ['extra_callbacks'],
         'loss': ['LOSS_MAPPING', 'get_loss_func'],
@@ -23,7 +22,7 @@ else:
         'metric': ['InferStats', 'MeanMetric', 'Metric', 'compute_acc', 'get_metric', 'compute_rouge_bleu'],
         'optimizer': ['optimizers_map'],
         'tools': ['get_tools_prompt', 'get_tools_keyword'],
-        'tuner': ['Tuner', 'extra_tuners'],
+        'tuner': ['Tuner', 'extra_tuners', 'PeftTuner'],
         'prm': ['prms', 'PRM'],
         'orm': ['orms', 'ORM']
     }

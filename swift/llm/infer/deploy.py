@@ -57,8 +57,7 @@ class SwiftDeploy(SwiftInfer):
     def lifespan(self, app: FastAPI):
         args = self.args
         if args.log_interval > 0:
-            thread = Thread(target=lambda: asyncio.run(self._log_stats_hook()))
-            thread.daemon = True
+            thread = Thread(target=lambda: asyncio.run(self._log_stats_hook()), daemon=True)
             thread.start()
         try:
             yield

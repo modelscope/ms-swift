@@ -46,12 +46,12 @@ register_template(QwenTemplateMeta(LLMTemplateType.qwq_preview, default_system=q
 
 class QwQTemplate(Template):
 
-    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+    def _swift_encode(self, inputs: StdTemplateInputs):
         if not self.is_training:
             for message in inputs.messages:
                 if message['role'] == 'assistant' and isinstance(message['content'], str):
                     message['content'] = message['content'].split('</think>')[-1].lstrip('\n')
-        return super()._encode(inputs)
+        return super()._swift_encode(inputs)
 
 
 register_template(
@@ -199,6 +199,7 @@ register_template(QwenTemplateMeta(MLLMTemplateType.qwen2_audio, template_cls=Qw
 class Qwen2VLTemplate(Template):
     image_token_id = 151655
     video_token_id = 151656
+    placeholder_tokens = ['<|image_pad|>', '<|video_pad|>']
     version = 'v2'
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
@@ -246,17 +247,13 @@ class Qwen2VLTemplate(Template):
                             processor.image_processor.temporal_patch_size / vision_process.FPS
                         ] * len(media_grid_thw)
                 idx_list = findall(input_ids, media_token)
-                added_tokens_len = 0
-                for i, idx in enumerate(idx_list):
-                    merge_length = processor.image_processor.merge_size**2
+                merge_length = processor.image_processor.merge_size**2
+
+                def _get_new_tokens(i):
                     token_len = (media_grid_thw[i].prod() // merge_length)
-                    input_ids = input_ids[:idx
-                                          + added_tokens_len] + [media_token] * token_len + input_ids[added_tokens_len
-                                                                                                      + idx + 1:]
-                    if labels:
-                        labels = labels[:idx + added_tokens_len] + [-100] * token_len + labels[added_tokens_len + idx
-                                                                                               + 1:]
-                    added_tokens_len += token_len - 1
+                    return [media_token] * token_len
+
+                input_ids, labels = self._extend_tokens(input_ids, labels, idx_list, _get_new_tokens)
                 encoded.update(media_inputs)
 
         encoded['input_ids'] = input_ids
@@ -324,9 +321,7 @@ class Qwen2VLTemplate(Template):
         return res
 
 
-register_template(
-    QwenTemplateMeta(
-        MLLMTemplateType.qwen2_vl, template_cls=Qwen2VLTemplate, placeholder_tokens=['<|image_pad|>', '<|video_pad|>']))
+register_template(QwenTemplateMeta(MLLMTemplateType.qwen2_vl, template_cls=Qwen2VLTemplate))
 
 register_template(
     QwenTemplateMeta(
@@ -334,7 +329,7 @@ register_template(
         default_system=('You are a helpful and harmless assistant. You are Qwen developed by Alibaba. '
                         'Answer in the language of the question. You should think step-by-step.'),
         template_cls=Qwen2VLTemplate,
-        placeholder_tokens=['<|image_pad|>', '<|video_pad|>']))
+    ))
 
 
 class Qwen2_5VLTemplate(Qwen2VLTemplate):
@@ -342,11 +337,7 @@ class Qwen2_5VLTemplate(Qwen2VLTemplate):
     norm_bbox = 'none'
 
 
-register_template(
-    QwenTemplateMeta(
-        MLLMTemplateType.qwen2_5_vl,
-        template_cls=Qwen2_5VLTemplate,
-        placeholder_tokens=['<|image_pad|>', '<|video_pad|>']))
+register_template(QwenTemplateMeta(MLLMTemplateType.qwen2_5_vl, template_cls=Qwen2_5VLTemplate))
 
 
 class Ovis1_6Template(Template):
@@ -423,6 +414,7 @@ register_template(
 
 
 class Ovis2Template(Ovis1_6Template):
+    placeholder_tokens = ['<|image_pad|>', '<|video_pad|>']
     nframes = 12
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
@@ -435,12 +427,10 @@ class Ovis2Template(Ovis1_6Template):
             return [[-200] * nframes, '\n']
 
 
-register_template(
-    QwenTemplateMeta(
-        MLLMTemplateType.ovis2,
-        template_cls=Ovis2Template,
-        placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
-    ))
+register_template(QwenTemplateMeta(
+    MLLMTemplateType.ovis2,
+    template_cls=Ovis2Template,
+))
 
 
 @dataclass

@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import hashlib
 import inspect
+import math
 import os
 import re
 from copy import deepcopy
@@ -40,6 +41,7 @@ class Template(ProcessorMixin):
     video_placeholder = ['<video>']
     audio_placeholder = ['<audio>']
     cot_process_placeholder = ['ки']
+    placeholder_tokens = []  # For clearer printing
     load_images = True
     skip_prompt = True
     use_model = False
@@ -97,6 +99,9 @@ class Template(ProcessorMixin):
         if response_prefix is not None:
             template_meta.response_prefix = response_prefix
 
+        for i, token in enumerate(self.placeholder_tokens):
+            if isinstance(token, str):
+                self.placeholder_tokens[i] = tokenizer.convert_tokens_to_ids(token)
         template_meta.init(tokenizer)
 
         self.template_meta: TemplateMeta = template_meta
@@ -112,11 +117,11 @@ class Template(ProcessorMixin):
         self.norm_bbox = norm_bbox or self.norm_bbox
         if self.is_encoder_decoder:
             self.skip_prompt = False
-
         self.mode: Literal['pt', 'vllm', 'lmdeploy',  # infer
                            'train', 'rlhf', 'kto',  # train
                            'seq_cls', 'embedding', 'prm'] = 'pt'
         self._packing = False
+        self.use_megatron = False
         if self.model_info.task_type != 'causal_lm':
             self.mode = self.model_info.task_type
         self._handles = []
@@ -238,6 +243,19 @@ class Template(ProcessorMixin):
             message['content'] = message['content'][:-len('<start-image>')]  # remove the <start-image>
         inputs.generate_mode = generate_mode
 
+    @staticmethod
+    def _extend_tokens(input_ids: List[int], labels: Optional[List[int]], replace_idx_list: List[int],
+                       get_new_tokens: Callable[[int], List[int]]) -> Tuple[List[int], Optional[List[int]]]:
+        added_tokens_len = 0
+        for i, idx in enumerate(replace_idx_list):
+            new_tokens = get_new_tokens(i)
+            token_len = len(new_tokens)
+            input_ids = input_ids[:idx + added_tokens_len] + new_tokens + input_ids[added_tokens_len + idx + 1:]
+            if labels:
+                labels = labels[:idx + added_tokens_len] + [-100] * token_len + labels[added_tokens_len + idx + 1:]
+            added_tokens_len += token_len - 1
+        return input_ids, labels
+
     def _rlhf_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         chosen_inputs, rejected_inputs = inputs, deepcopy(inputs)
         assert chosen_inputs.rejected_response is not None, f'inputs: {inputs}'
@@ -259,14 +277,56 @@ class Template(ProcessorMixin):
         return encoded
 
     def _embedding_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        encoded = self._rlhf_encode(inputs)
-        encoded.pop('chosen_labels', None)
-        encoded.pop('rejected_labels', None)
-        if inputs.label is not None:
-            encoded['labels'] = float(inputs.label)
-        else:
-            encoded['labels'] = 0.0
-        return encoded
+        _encoded = {}
+        labels = []
+
+        def split_multi_medias(_inputs):
+            _content = _inputs.messages[-2]['content']
+            image_size = len(re.findall('<image>', _content))
+            video_size = len(re.findall('<video>', _content))
+            audio_size = len(re.findall('<audio>', _content))
+            _inputs.images = inputs.images[:image_size]
+            assert len(_inputs.images) == image_size
+            inputs.images = inputs.images[image_size:]
+            _inputs.videos = inputs.videos[:video_size]
+            assert len(_inputs.videos) == video_size
+            inputs.videos = inputs.videos[video_size:]
+            _inputs.audios = inputs.audios[:audio_size]
+            assert len(_inputs.audios) == audio_size
+            inputs.audios = inputs.audios[audio_size:]
+
+        anchor = deepcopy(inputs)
+        anchor.messages[-1]['content'] = ''
+        anchor.rejected_response = []
+        split_multi_medias(anchor)
+        anchor_encoded = self._encode(anchor)
+        for key in anchor_encoded:
+            _encoded[f'anchor_{key}'] = anchor_encoded[key]
+
+        positive = deepcopy(inputs)
+        positive.messages[-2]['content'] = positive.messages[-1]['content']
+        positive.messages[-1]['content'] = ''
+        positive.rejected_response = []
+        split_multi_medias(positive)
+        positive_encoded = self._encode(positive)
+        for key in positive_encoded:
+            _encoded[f'positive_{key}'] = positive_encoded[key]
+        labels.append(float(inputs.label) if inputs.label is not None else 1.0)
+
+        rejected_len = len(inputs.rejected_response) if inputs.rejected_response else 0
+        for i in range(rejected_len):
+            negative = deepcopy(inputs)
+            negative.messages[-2]['content'] = negative.rejected_response[i]
+            negative.messages[-1]['content'] = ''
+            negative.rejected_response = []
+            split_multi_medias(negative)
+            negative_encoded = self._encode(negative)
+            for key in negative_encoded:
+                _encoded[f'negative{i}_{key}'] = negative_encoded[key]
+            labels.append(0.0)
+
+        _encoded['labels'] = labels
+        return _encoded
 
     def _seq_cls_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = self._encode(inputs)
@@ -316,6 +376,10 @@ class Template(ProcessorMixin):
                 encoded.pop(key)
         if return_template_inputs:
             encoded['template_inputs'] = inputs
+
+        if self.use_megatron:
+            encoded['labels'] = encoded['labels'][1:] + [-100]
+            encoded['position_ids'] = list(range(len(encoded['labels'])))
         return encoded
 
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
@@ -333,8 +397,8 @@ class Template(ProcessorMixin):
         return generate_ids
 
     @staticmethod
-    def _get_seq_cls_logprobs(pred: int, logprobs: torch.Tensor):
-        idxs = logprobs.argsort(descending=True, dim=-1)
+    def _get_seq_cls_logprobs(pred: int, logprobs: torch.Tensor, top_logprobs: int):
+        idxs = logprobs.argsort(descending=True, dim=-1)[:top_logprobs]
         return {
             'content': {
                 'index': pred,
@@ -346,12 +410,12 @@ class Template(ProcessorMixin):
             }
         }
 
-    def decode_seq_cls(self, logits: torch.Tensor):
+    def decode_seq_cls(self, logits: torch.Tensor, top_logprobs: int):
         assert isinstance(logits, torch.Tensor)
         if logits.shape[-1] > 1:
             preds = torch.argmax(logits, dim=-1).tolist()
             logprobs = torch.log_softmax(logits, -1)
-            logprobs = [self._get_seq_cls_logprobs(pred, logprobs[i]) for i, pred in enumerate(preds)]
+            logprobs = [self._get_seq_cls_logprobs(pred, logprobs[i], top_logprobs) for i, pred in enumerate(preds)]
         else:
             preds = logits.squeeze(dim=-1).tolist()
             logprobs = [None] * len(preds)
@@ -637,6 +701,11 @@ class Template(ProcessorMixin):
     @staticmethod
     def _add_default_tags(inputs: StdTemplateInputs):
         total_content = '\n'.join([message['content'] or '' for message in inputs.messages])
+        if inputs.rejected_response:
+            if isinstance(inputs.rejected_response, str):
+                total_content += inputs.rejected_response
+            else:
+                total_content += '\n'.join(inputs.rejected_response)
         if inputs.system:
             total_content = f'{inputs.system}\n{total_content}'
         for media_type in ['image', 'audio', 'video']:
@@ -1023,8 +1092,19 @@ class Template(ProcessorMixin):
                                  batch: List[Dict[str, Any]],
                                  *,
                                  padding_to: Optional[int] = None) -> Dict[str, Any]:
-        labels = [b.pop('labels') for b in batch if b.get('labels') is not None]
-        res = self._rlhf_data_collator(batch, padding_to=padding_to)
+        labels = []
+        new_batch = []
+        for b in batch:
+            keys = [key for key in b.keys() if 'negative' in key]
+            max_neg = max([int(re.findall(r'negative(-?\d+)', key)[0]) for key in keys]) if keys else None
+            indexes = ['anchor_', 'positive_']
+            if max_neg is not None:
+                for i in range(0, max_neg + 1):
+                    indexes.append(f'negative{i}_')
+            for prefix in indexes:
+                new_batch += self._fetch_inputs_startswith([b], prefix)
+            labels.extend(b.get('labels', None))
+        res = self._data_collator(new_batch, padding_to=padding_to)
         if labels:
             res['labels'] = torch.tensor(labels, dtype=torch.float32)
         return res
@@ -1046,26 +1126,31 @@ class Template(ProcessorMixin):
             padding_to(`int`, optional): Whether padding the batch to a fixed length, if none, the batch
                 will be padded to the `longest`
         """
-        from swift.utils import use_torchacc
         assert self.tokenizer.pad_token_id is not None
         padding_side = self.padding_side if self.is_training else 'left'
         padding_right = padding_side == 'right'
+        packing_mode = self.use_megatron or self._packing and 'position_ids' in batch[0]
         res = {}
-        inputs_embeds = [b['inputs_embeds'] for b in batch if b.get('inputs_embeds') is not None]
-        input_ids = [b['input_ids'] for b in batch if b.get('input_ids') is not None]
-        if inputs_embeds:
-            res['inputs_embeds'] = inputs_embeds
-        if input_ids:
-            res['input_ids'] = input_ids
-        for key in ['labels', 'loss_scale', 'position_ids', 'token_type_ids']:
-            val = [b[key] for b in batch if b.get(key) is not None]
-            if val:
-                res[key] = val
+        if packing_mode:
+            # only support llm
+            for k in ['input_ids', 'labels', 'position_ids']:
+                res[k] = [self.gather_list(batch, k)]
+        else:
+            inputs_embeds = [b['inputs_embeds'] for b in batch if b.get('inputs_embeds') is not None]
+            input_ids = [b['input_ids'] for b in batch if b.get('input_ids') is not None]
+            if inputs_embeds:
+                res['inputs_embeds'] = inputs_embeds
+            if input_ids:
+                res['input_ids'] = input_ids
+            for key in ['labels', 'loss_scale', 'position_ids', 'token_type_ids']:
+                val = [b[key] for b in batch if b.get(key) is not None]
+                if val:
+                    res[key] = val
 
         keys = [
             'input_ids', 'inputs_embeds', 'attention_mask', 'labels', 'loss_scale', 'position_ids', 'token_type_ids'
         ]
-        pad_value = [self.tokenizer.pad_token_id, 0., 0, -100, 0., 1, 0]
+        pad_value = [self.tokenizer.pad_token_id, 0., 0, -100, 0., 0., 0]
         # Convert to tensor and remove unnecessary dimensions.
         seq_lens = None
         for key in keys:
@@ -1079,11 +1164,13 @@ class Template(ProcessorMixin):
                 res[key][i] = val
             if not seq_lens:
                 seq_lens = [seq.shape[0] for seq in res[key]]
-        packing_mode = self._packing and 'position_ids' in res
         if not packing_mode and seq_lens and ('input_ids' in res or 'inputs_embeds' in res):
             res['attention_mask'] = [torch.ones(seq_len, dtype=torch.int64) for seq_len in seq_lens]
             if self.is_training and self.padding_side == 'left':
                 res['position_ids'] = [torch.arange(seq_len, dtype=torch.int64) for seq_len in seq_lens]
+
+        if self.use_megatron:
+            padding_to = math.ceil(max(seq_lens) / 128) * 128
 
         for key, pad_value in zip(keys, pad_value):
             if key not in res:
@@ -1109,6 +1196,7 @@ class Template(ProcessorMixin):
             res['pixel_values_videos'] = torch.concat(pixel_values_videos)
         if use_torchacc() or self.sequence_parallel_size > 1:
             res = self._torchacc_xtuner_data_collator(res, padding_to, self.tokenizer, padding_side)
+
         return res
 
     def _torchacc_xtuner_data_collator(self, res, padding_to, tokenizer, padding_side):
@@ -1237,7 +1325,7 @@ class Template(ProcessorMixin):
     def safe_decode(self, input_ids: List[int], **tokenizer_kwargs) -> str:
         if isinstance(self, Template):
             tokenizer = self.tokenizer
-            placeholder_tokens = self.template_meta.placeholder_tokens
+            placeholder_tokens = self.placeholder_tokens
         else:
             tokenizer = self
             placeholder_tokens = []

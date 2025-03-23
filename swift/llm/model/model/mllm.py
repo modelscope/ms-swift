@@ -6,10 +6,11 @@ import torch
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.llm import TemplateType
+from swift.llm.model.model.qwen import get_model_tokenizer_qwen2_vl
 from swift.utils import get_logger
 from ..constant import MLLMModelType
 from ..model_arch import ModelArch
-from ..patcher import patch_output_clone
+from ..patcher import patch_output_clone, patch_output_normalizer
 from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_multimodal,
                         get_model_tokenizer_with_flash_attn, register_model)
 from ..utils import ModelInfo, use_submodel_func
@@ -163,3 +164,17 @@ register_model(
         architectures=['MegrezO'],
         tags=['vision', 'audio'],
     ))
+
+register_model(
+    ModelMeta(
+        MLLMModelType.qwen2_gme, [
+            ModelGroup([
+                Model('iic/gme-Qwen2-VL-2B-Instruct', 'Alibaba-NLP/gme-Qwen2-VL-2B-Instruct'),
+                Model('iic/gme-Qwen2-VL-7B-Instruct', 'Alibaba-NLP/gme-Qwen2-VL-7B-Instruct'),
+            ]),
+        ],
+        TemplateType.qwen2_gme,
+        get_model_tokenizer_qwen2_vl,
+        model_arch=ModelArch.qwen2_vl,
+        architectures=['Qwen2VLForConditionalGeneration'],
+        tags=['vision']))

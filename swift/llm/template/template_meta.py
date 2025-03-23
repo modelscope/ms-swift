@@ -44,7 +44,6 @@ class TemplateMeta:
 
     auto_add_bos: bool = False
     stop_words: List[Word] = field(default_factory=list)
-    placeholder_tokens: List[Union[int, str]] = field(default_factory=list)
 
     tool_prompt: Optional[Prompt] = None
     default_tools_prompt: str = 'react_en'
@@ -59,7 +58,6 @@ class TemplateMeta:
             template_cls=self.template_cls,
             auto_add_bos=True,
             stop_words=self.stop_words,
-            placeholder_tokens=self.placeholder_tokens,
         )
 
     @staticmethod
@@ -119,10 +117,6 @@ class TemplateMeta:
             value = getattr(self, key)
             value = self._token_attr_to_id(tokenizer, value)
             setattr(self, key, value)
-
-        for i, token in enumerate(self.placeholder_tokens):
-            if isinstance(token, str):
-                self.placeholder_tokens[i] = tokenizer.convert_tokens_to_ids(token)
 
         if self.suffix and self.suffix[-1] not in self.stop_words:
             self.stop_words.append(self.suffix[-1])

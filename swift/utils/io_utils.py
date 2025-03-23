@@ -1,5 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
+from queue import Queue
+from threading import Thread
 from typing import Any, Dict, List, Literal, Union
 
 import json
@@ -44,12 +46,20 @@ def write_to_jsonl(fpath: str, obj_list: List[Any], encoding: str = 'utf-8') -> 
 
 class JsonlWriter:
 
-    def __init__(self, fpath: str, *, encoding: str = 'utf-8', strict: bool = True):
+    def __init__(self, fpath: str, *, encoding: str = 'utf-8', strict: bool = True, enable_async: bool = False):
         self.fpath = os.path.abspath(os.path.expanduser(fpath)) if is_master() else None
         self.encoding = encoding
         self.strict = strict
+        self.enable_async = enable_async
+        self._queue = Queue()
+        self._thread = None
 
-    def append(self, obj: Union[Dict, List[Dict]], gather_obj: bool = False):
+    def _append_worker(self):
+        while True:
+            item = self._queue.get()
+            self._append(**item)
+
+    def _append(self, obj: Union[Dict, List[Dict]], gather_obj: bool = False):
         if isinstance(obj, (list, tuple)) and all(isinstance(item, dict) for item in obj):
             obj_list = obj
         else:
@@ -62,6 +72,15 @@ class JsonlWriter:
         for i, _obj in enumerate(obj_list):
             obj_list[i] = json.dumps(_obj, ensure_ascii=False) + '\n'
         self._write_buffer(''.join(obj_list))
+
+    def append(self, obj: Union[Dict, List[Dict]], gather_obj: bool = False):
+        if self.enable_async:
+            if self._thread is None:
+                self._thread = Thread(target=self._append_worker, daemon=True)
+                self._thread.start()
+            self._queue.put({'obj': obj, 'gather_obj': gather_obj})
+        else:
+            self._append(obj, gather_obj=gather_obj)
 
     def _write_buffer(self, text: str):
         if not text:

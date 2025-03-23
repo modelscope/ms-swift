@@ -1,11 +1,13 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Optional
 
-from ..constant import LLMTemplateType
+from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..utils import Prompt
 from .llama import Llama3_2TemplateMeta
+from .qwen import Qwen2VLTemplate, QwenTemplateMeta
 from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
 
 register_template(
@@ -28,6 +30,8 @@ register_template(
         system_prefix=[' \n\n<|system|>:{{SYSTEM}}'],
         default_system=DEFAULT_SYSTEM,
     ))
+
+register_template(QwenTemplateMeta(MLLMTemplateType.qwen2_gme, template_cls=Qwen2VLTemplate, suffix=['<|endoftext|>']))
 
 register_template(
     TemplateMeta(LLMTemplateType.baichuan, prefix=['{{SYSTEM}}'], prompt=[[195], '{{QUERY}}', [196]], chat_sep=[]))
@@ -59,10 +63,12 @@ register_template(
         chat_sep=['</s>[INST] '],
         suffix=['</s>']))
 
+today = datetime.now().strftime('%Y-%m-%d')
+
 mistral_2501_system = (
     'You are Mistral Small 3, a Large Language Model (LLM) created by Mistral AI, a French startup '
     'headquartered in Paris.\n'
-    'Your knowledge base was last updated on 2023-10-01. The current date is 2025-02-07.\n\n'
+    f'Your knowledge base was last updated on 2023-10-01. The current date is {today}.\n\n'
     "When you're not sure about some information, you say that you don't have the information and don't "
     'make up anything.\n'
     "If the user's question is not clear, ambiguous, or does not provide enough context for you to accurately answer "

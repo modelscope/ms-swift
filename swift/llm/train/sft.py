@@ -13,7 +13,7 @@ from ..argument import TrainArguments
 from ..base import SwiftPipeline
 from ..dataset import EncodePreprocessor, GetLengthPreprocessor, LazyLLMDataset, PackingPreprocessor, load_dataset
 from ..infer import prepare_generation_config
-from ..model import get_model_arch
+from ..model import HfConfigFactory, get_model_arch
 from ..utils import deep_getattr, dynamic_gradient_checkpointing
 from .tuner import TunerMixin
 
@@ -34,7 +34,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
     def _prepare_gradient_checkpointing(self):
         args = self.args
-        self.model.config.use_cache = False
+        HfConfigFactory.set_model_config_attr(self.model, 'use_cache', False)
         if args.gradient_checkpointing:
             self.model.supports_gradient_checkpointing = True
             dynamic_gradient_checkpointing(self.model)
@@ -105,15 +105,20 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         padding_to = args.max_length if args.train_type == 'longlora' else None
         return partial(template.data_collator, padding_to=padding_to)
 
+    @staticmethod
+    def _save_val_dataset(output_dir: str, val_dataset):
+        if isinstance(val_dataset, HfDataset):
+            os.makedirs(output_dir, exist_ok=True)
+            val_dataset_path = os.path.join(output_dir, 'val_dataset.jsonl')
+            append_to_jsonl(val_dataset_path, val_dataset.to_list())
+            logger.info(f'The split dataset from the training set will be saved at: {val_dataset_path}.')
+
     def run(self):
         args = self.args
 
         train_dataset, val_dataset = self._get_dataset()
-        if isinstance(val_dataset, HfDataset):
-            os.makedirs(args.output_dir, exist_ok=True)
-            val_dataset_path = os.path.join(args.output_dir, 'val_dataset.jsonl')
-            append_to_jsonl(val_dataset_path, val_dataset.to_list())
-            logger.info(f'The split dataset from the training set will be saved at: {val_dataset_path}.')
+        self._save_val_dataset(args.output_dir, val_dataset)
+
         if args.task_type == 'seq_cls' and isinstance(train_dataset, HfDataset) and 'label' in train_dataset.features:
             min_num_labels = int(max(train_dataset['label']) + 1)
             assert args.num_labels >= min_num_labels, (
@@ -150,9 +155,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         else:
             compute_metrics, preprocess_logits_for_metrics = get_metric('acc')
             compute_metrics = partial(
-                compute_metrics,
-                acc_strategy=args.acc_strategy,
-                is_encoder_decoder=self.model.config.is_encoder_decoder)
+                compute_metrics, acc_strategy=args.acc_strategy, is_encoder_decoder=self.template.is_encoder_decoder)
         return {
             'compute_metrics': compute_metrics,
             'preprocess_logits_for_metrics': preprocess_logits_for_metrics,

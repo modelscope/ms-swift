@@ -88,18 +88,8 @@ The following outlines the standard dataset format for ms-swift, where the "syst
 ```
 
 ### Embedding
-label means the similarity between sentences, use together with loss `cosine_similarity`
-```jsonl
-{"messages": [{"role": "assistant", "content": "今天天气真好呀"}], "rejected_response": "今天天气不错", "label": 0.8}
-{"messages": [{"role": "assistant", "content": "这本书不错"}], "rejected_response": "这个汽车开着有异响", "label": 0.2}
-{"messages": [{"role": "assistant", "content": "天空是蓝色的"}], "rejected_response": "教练我想打篮球", "label": 0.0}
-```
-Also, can be the format below（label only support two values: 0.0 and 1.0）, use loss `contrastive` or `online_contrastive`（contrastive learning）:
-```jsonl
-{"messages": [{"role": "assistant", "content": "今天天气真好呀"}], "rejected_response": "今天天气不错", "label": 1.0}
-{"messages": [{"role": "assistant", "content": "这本书不错"}], "rejected_response": "这个汽车开着有异响", "label": 0.0}
-{"messages": [{"role": "assistant", "content": "天空是蓝色的"}], "rejected_response": "教练我想打篮球", "label": 0.0}
-```
+
+Please refer to [embedding训练文档](../BestPractices/Embedding.md#dataset-format).
 
 ### Multimodal
 
@@ -179,7 +169,7 @@ You can refer to the ms-swift built-in [dataset_info.json](https://github.com/mo
     "ms_dataset_id": "xxx/xxx"
   },
   {
-    "dataset_path": "<dataset_path>"
+    "dataset_path": "<dataset_dir/dataset_path>"
   },
   {
     "ms_dataset_id": "<dataset_id>",
@@ -213,21 +203,23 @@ You can refer to the ms-swift built-in [dataset_info.json](https://github.com/mo
 
 The following parameters are supported:
 
-- ms_dataset_id: Refers to the DatasetMeta parameter
-- hf_dataset_id: Refers to the DatasetMeta parameter
-- dataset_path: Refers to the DatasetMeta parameter
-- subsets: Refers to the DatasetMeta parameter
-- split: Refers to the DatasetMeta parameter
-- columns: Transforms column names before preprocessing the dataset
+- ms_dataset_id: Refers to the DatasetMeta parameter.
+- hf_dataset_id: Refers to the DatasetMeta parameter.
+- dataset_path: Refers to the DatasetMeta parameter.
+- dataset_name: Refers to the DatasetMeta parameter.
+- subsets: Refers to the DatasetMeta parameter.
+- split: Refers to the DatasetMeta parameter.
+- columns: Transforms column names before preprocessing the dataset.
 
 ## Dataset Registration
 
 `register_dataset` will register the dataset in `DATASET_MAPPING`. You can call the function `register_dataset(dataset_meta)` to complete the dataset registration, where `dataset_meta` will store the metadata of the model. The parameter list for DatasetMeta is as follows:
 
-- ms_dataset_id: The dataset_id for ModelScope, default is None
-- hf_dataset_id: The dataset_id for HuggingFace, default is None
-- dataset_path: The local path to the dataset (an absolute path is recommended)
-- subsets: A list of subdataset names or a list of `SubsetDataset` objects, default is `['default']`. (The concepts of subdatasets and splits only exist for dataset_id or dataset_dir (open source datasets cloned via git))
-- split: Defaults to `['train']`
-- preprocess_func: A preprocessing function or callable object, default is `AutoPreprocessor()`. This preprocessing function takes an `HfDataset` as input and returns an `HfDataset` in the standard format
+- ms_dataset_id: The dataset_id for ModelScope, default is None.
+- hf_dataset_id: The dataset_id for HuggingFace, default is None.
+- dataset_path: The local path to the dataset (an absolute path is recommended), default is None.
+- dataset_name: The alias of the dataset, which can be specified via `--dataset <dataset_name>`. This is very convenient when the dataset_path is long. The default value is None.
+- subsets: A list of subdataset names or a list of `SubsetDataset` objects, default is `['default']`. (The concepts of subdatasets and splits only exist for dataset_id or dataset_dir (open source datasets cloned via git)).
+- split: Defaults to `['train']`.
+- preprocess_func: A preprocessing function or callable object, default is `AutoPreprocessor()`. This preprocessing function takes an `HfDataset` as input and returns an `HfDataset` in the standard format.
 - load_function: Defaults to `DatasetLoader.load`. If a custom loading function is needed, it should return an `HfDataset` in the standard format, allowing users maximum flexibility while bypassing the ms-swift dataset loading mechanism. This parameter usually does not need to be modified.

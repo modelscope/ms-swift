@@ -291,8 +291,8 @@ register_model(
     ModelMeta(
         LLMModelType.qwen2_gte, [
             ModelGroup([
-                Model('iic/gte_Qwen2-1.5B-instruct'),
-                Model('iic/gte_Qwen2-7B-instruct'),
+                Model('iic/gte_Qwen2-1.5B-instruct', 'Alibaba-NLP/gte-Qwen2-1.5B-instruct'),
+                Model('iic/gte_Qwen2-7B-instruct', 'Alibaba-NLP/gte-Qwen2-7B-instruct'),
             ]),
         ],
         None,

@@ -19,7 +19,6 @@ from transformers.utils import is_peft_available
 from swift.utils import JsonlWriter, Serializer, gc_collect
 from .arguments import Seq2SeqTrainingArguments, TrainingArguments
 from .mixin import SwiftMixin
-from .torchacc_mixin import TorchAccMixin
 
 
 class Trainer(SwiftMixin, HfTrainer):
@@ -116,7 +115,7 @@ class EmbeddingTrainer(Trainer):
         }
 
 
-class Seq2SeqTrainer(TorchAccMixin, SwiftMixin, HfSeq2SeqTrainer):
+class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
     args: Seq2SeqTrainingArguments
 
     def __init__(self, *args, **kwargs):
@@ -233,7 +232,7 @@ class Seq2SeqTrainer(TorchAccMixin, SwiftMixin, HfSeq2SeqTrainer):
             else:
                 loss = self.label_smoother(outputs, labels)
 
-        if self.args.sequence_parallel_size > 1:
+        if self.template.sequence_parallel_size > 1:
             from swift.trainers.xtuner import reduce_xtuner_sequence_parallel_loss
             loss = reduce_xtuner_sequence_parallel_loss(loss, labels)
 

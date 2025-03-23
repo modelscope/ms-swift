@@ -141,7 +141,7 @@ def test_telechat():
 
 
 def test_telechat2():
-    pt_engine = PtEngine('TeleAI/TeleChat2-7B', torch_dtype=torch.float16)
+    pt_engine = PtEngine('TeleAI/TeleChat2-7B-32K', torch_dtype=torch.float16)
     messages = [{'role': 'system', 'content': '你是一个乐于助人的智能助手，请使用用户提问的语言进行有帮助的问答'}, {'role': 'user', 'content': '你好'}]
     response = _infer_model(pt_engine, messages=messages)
     pt_engine.default_template.template_backend = 'jinja'
@@ -355,6 +355,14 @@ def test_ling():
     assert res == res2, f'res: {res}, res2: {res2}'
 
 
+def test_gemma3():
+    pt_engine = PtEngine('LLM-Research/gemma-3-1b-it')
+    res = _infer_model(pt_engine, system='You are a helpful assistant')
+    pt_engine.default_template.template_backend = 'jinja'
+    res2 = _infer_model(pt_engine, system='You are a helpful assistant')
+    assert res == res2, f'res: {res}, res2: {res2}'
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig, get_template, get_model_tokenizer
     from swift.utils import get_logger, seed_everything
@@ -388,4 +396,5 @@ if __name__ == '__main__':
     # test_mistral_small()
     # test_baichuan_m1()
     # test_moonlight()
-    test_ling()
+    # test_ling()
+    test_gemma3()

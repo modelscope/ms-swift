@@ -158,6 +158,8 @@ if __name__ == '__main__':
         tests_require=parse_requirements('requirements/tests.txt'),
         install_requires=install_requires,
         extras_require=extra_requires,
-        entry_points={'console_scripts': ['swift=swift.cli.main:cli_main']},
+        entry_points={
+            'console_scripts': ['swift=swift.cli.main:cli_main', 'megatron=swift.cli._megatron.main:cli_main']
+        },
         dependency_links=deps_link,
         zip_safe=False)

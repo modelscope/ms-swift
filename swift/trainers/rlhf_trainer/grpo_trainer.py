@@ -24,7 +24,7 @@ from transformers import PreTrainedModel, TrainerCallback
 from trl import GRPOTrainer as HFGRPOTrainer
 
 from swift.llm import InferRequest, MultiModelKeys, RequestConfig, RowPreprocessor, get_model_arch, to_device
-from swift.llm.infer.infer_engine import GRPOVllmEngine, set_device_context
+from swift.llm.infer.infer_engine import set_device_context
 from swift.plugin import orms
 from swift.utils import (JsonlWriter, gc_collect, get_device, get_device_count, get_dist_setting, get_logger,
                          get_node_setting, is_lmdeploy_available, is_vllm_available, is_wandb_available)
@@ -102,7 +102,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         from swift.trainers.rlhf_arguments import GRPOConfig
         args: GRPOConfig = kwargs['args']
         self.args = args
-        self.queue = None
         self.train_queue = Queue()
         self.eval_queue = Queue()
         self.processing_class = kwargs.get('template').tokenizer
@@ -292,11 +291,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         2. other, embeds, lm_heads in one batch
         3. multi-modal components in one batch
         """
+        model = self.accelerator.unwrap_model(self.model)
         if self.args.move_model_batches is None:
             # All in one
-            return [None], [None]
+            return [[n for n, p in model.named_parameters() if 'ref_model' not in n]], [None]
 
-        model = self.accelerator.unwrap_model(self.model)
         model_arch = get_model_arch(model.model_meta.model_arch)
         non_llm_parameters = []
         llm_embeds = []
@@ -308,6 +307,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if isinstance(module, ModuleList):
                 if model_arch is not None and isinstance(model_arch, MultiModelKeys):
                     llm = model_arch.language_model
+                    if isinstance(llm, list):
+                        llm = llm[0]
+                    if name.startswith('base_model'):
+                        name = name.replace('base_model.', '')
                     if name.startswith(llm):
                         layer_count = len(module)
                 else:
@@ -319,13 +322,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             parameters.append([])
 
         def replace_lora(name):
-            if 'lora_A' in name or 'lora_B' in name:
+            if 'lora_' in name:
                 return ''
             else:
                 return name.replace('base_layer.', '')
 
-        def remove_lora(names):
-            names = set([replace_lora(n) for n in names])
+        def remove_lora_and_prefix(names):
+            names = set([re.sub(r'^_model\.', '', replace_lora(n)) for n in names])
             return [n for n in names if n]
 
         def split_llm(name):
@@ -338,8 +341,12 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 llm_embeds.append(name)
 
         for name, parameter in model.named_parameters():
+            if 'ref_model' in name:
+                continue
             if model_arch is not None and isinstance(model_arch, MultiModelKeys):
                 llm = model_arch.language_model
+                if isinstance(llm, list):
+                    llm = llm[0]
                 if name.startswith(llm):
                     split_llm(name)
                 else:
@@ -352,11 +359,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if non_llm_parameters:
             parameters.append(non_llm_parameters)
         parameters = [p for p in parameters if p]
-        return parameters, [remove_lora(p_list) for p_list in parameters]
+        parameters_no_lora = [remove_lora_and_prefix(p_list) for p_list in parameters]
+        return parameters, parameters_no_lora
 
     def prepare_vllm(self, model, fast_infer_device):
         from swift.tuners import Swift
         from swift.llm import VllmEngine
+        from swift.llm.infer.infer_engine import GRPOVllmEngine
         _, _, _, local_world_size = get_dist_setting()
         if local_world_size == self.args.num_infer_workers == get_device_count() and local_world_size > 1:
             cls = GRPOVllmEngine
@@ -516,10 +525,17 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
                 def get_delta_weight(self, adapter) -> torch.Tensor:
                     # may be offload
-                    self.lora_A[adapter].weight.data = self.lora_A[adapter].weight.data.to(
-                        self.base_layer.weight.device)
-                    self.lora_B[adapter].weight.data = self.lora_B[adapter].weight.data.to(
-                        self.base_layer.weight.device)
+                    from peft.tuners import lora
+                    if isinstance(self, lora.Embedding):
+                        self.lora_embedding_A[adapter].data = self.lora_embedding_A[adapter].data.to(
+                            self.base_layer.weight.device)
+                        self.lora_embedding_B[adapter].data = self.lora_embedding_B[adapter].data.to(
+                            self.base_layer.weight.device)
+                    else:
+                        self.lora_A[adapter].weight.data = self.lora_A[adapter].weight.data.to(
+                            self.base_layer.weight.device)
+                        self.lora_B[adapter].weight.data = self.lora_B[adapter].weight.data.to(
+                            self.base_layer.weight.device)
                     tensor = self.get_delta_weight_origin(adapter)
                     return tensor.to(self.base_layer.weight.device)
 
@@ -566,7 +582,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 if parameter_group_no_lora:
                     parameter_group_no_lora = [n.replace('base_model.model.', '') for n in parameter_group_no_lora]
                     state_dict = {k: v for k, v in state_dict.items() if k in parameter_group_no_lora}
-                assert all([state.shape != torch.Size([0]) for state in state_dict.values()])
+                assert len(state_dict) > 0 and all([state.shape != torch.Size([0]) for state in state_dict.values()])
                 if self.infer_rank >= 0:
                     if self.args.async_generate:
                         self._wait_queue()
@@ -581,7 +597,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     unwrapped_model.unmerge_adapter()
 
     def _wait_queue(self):
-        while self.queue.empty():
+        while self._queue.empty():
             time.sleep(0.01)
 
     @staticmethod
@@ -604,9 +620,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 return result
 
         future: Future = self.executor.submit(infer_task)
+        # pre-fetch the queue to avoid switching back to eval_queue at the end of training sample sampling
+        current_queue = self._queue
 
         def done(_self):
-            self.queue.put(DataCache(inputs, _self.result(), distributed_idx))
+            current_queue.put(DataCache(inputs, _self.result(), distributed_idx))
 
         future.add_done_callback(done)
 
@@ -617,9 +635,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.infer_rank >= 0:
             _input_slice = np.array(all_inputs)[distributed_idx[self.infer_rank]]
             outputs = self.engine.infer(_input_slice, self.request_config, use_tqdm=False)
-            self.queue.put(DataCache(inputs, outputs, distributed_idx))
+            self._queue.put(DataCache(inputs, outputs, distributed_idx))
         else:
-            self.queue.put(DataCache(inputs, [], distributed_idx))
+            self._queue.put(DataCache(inputs, [], distributed_idx))
         if self.accelerator.num_processes > 1:
             self.accelerator.wait_for_everyone()
 
@@ -631,7 +649,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self.offload_optimizer()
             if self.args.gc_collect_after_offload:
                 gc_collect()
-            self.engine.engine.wake_up()
+            # Skip the first wake_up to avoid the warning "Executor is not sleeping"
+            if self.engine.inner_model_executor.is_sleeping:
+                self.engine.engine.wake_up()
         # First, have main process load weights if needed
         if self.state.global_step != self._last_loaded_step:
             self._move_model_to_vllm_lmdeploy()
@@ -647,7 +667,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             _input_slice = np.array(all_inputs)[distributed_idx[self.infer_rank]]
             if self.args.async_generate:
                 self.async_infer(inputs, _input_slice, distributed_idx)
-                data_cache = self.queue.get()
+                data_cache = self._queue.get()
                 inputs = data_cache.inputs
                 outputs = data_cache.outputs
                 distributed_idx = data_cache.distributed_idx
@@ -670,8 +690,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         outputs = _outputs
         else:
             if self.args.async_generate:
-                self.queue.put(DataCache(inputs, [], distributed_idx))
-                data_cache = self.queue.get()
+                # using old model to generate, which will ignore the `clip` of advantages.
+                self._queue.put(DataCache(inputs, [], distributed_idx))
+                data_cache = self._queue.get()
                 inputs = data_cache.inputs
                 distributed_idx = data_cache.distributed_idx
             outputs = []
@@ -689,7 +710,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     @property
     def old_policy(self):
-        return self.num_iterations > 1 or self.args.async_generate
+        return self.num_iterations > 1
 
     def _generate_and_score_completions(
             self, inputs: dict[str, Union[torch.Tensor, Any]]) -> dict[str, Union[torch.Tensor, Any]]:
@@ -887,12 +908,17 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return selective_log_softmax(logits, input_ids)  # compute logprobs for the input tokens
 
     def evaluation_loop(self, dataloader, *args, **kwargs):
-        self.queue = self.eval_queue
-        if self.queue.empty() and self.args.async_generate:
+        if self._queue.empty() and self.args.async_generate:
             self._prefetch(dataloader)
         metric_key_prefix = kwargs['metric_key_prefix']
         output = super().evaluation_loop(dataloader, *args, **kwargs)
         metrics = {f'{metric_key_prefix}_{key}': sum(val) / len(val) for key, val in self._metrics['eval'].items()}
         output.metrics.update(metrics)
-        self.queue = self.train_queue
         return output
+
+    @property
+    def _queue(self):
+        if self.control.should_evaluate:
+            return self.eval_queue
+        else:
+            return self.train_queue

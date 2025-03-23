@@ -1,6 +1,6 @@
 # Command Line Parameters
 
-The introduction to command line parameters will cover base arguments, atomic arguments, and integrated arguments, and specific model arguments. The final list of arguments used in the command line is the integration arguments. Integrated arguments inherit from basic arguments and some atomic arguments. Specific model arguments are designed for specific models and can be set using `--model_kwargs'` or the environment variable.
+The introduction to command line parameters will cover base arguments, atomic arguments, and integrated arguments, and specific model arguments. The final list of arguments used in the command line is the integration arguments. Integrated arguments inherit from basic arguments and some atomic arguments. Specific model arguments are designed for specific models and can be set using `--model_kwargs'` or the environment variable. The introduction to the Megatron-SWIFT command-line arguments can be found in the [Megatron-SWIFT Training Documentation](./Megatron-SWIFT-Training.md).
 
 Hints:
 
@@ -37,7 +37,7 @@ Hints:
 - local_repo_path: Some models depend on a GitHub repo when loading. To avoid network issues during `git clone`, a local repo can be used directly. This parameter needs to be passed with the path to the local repo, with the default being `None`.
 
 ### Data Arguments
-- 🔥dataset: A list of dataset IDs or paths. Default is `[]`. The input format for each dataset is: `dataset ID or dataset path:sub-dataset#sampling size`, where sub-dataset and sampling data are optional. Local datasets support jsonl, csv, json, folders, etc. Open-source datasets can be cloned locally via git and used offline by passing the folder. For custom dataset formats, refer to [Custom Dataset](../Customization/Custom-dataset.md).
+- 🔥dataset: A list of dataset IDs or paths. Default is `[]`. The input format for each dataset is: `dataset ID or dataset path:sub-dataset#sampling size`, where sub-dataset and sampling data are optional. Local datasets support jsonl, csv, json, folders, etc. Open-source datasets can be cloned locally via git and used offline by passing the folder. For custom dataset formats, refer to [Custom Dataset](../Customization/Custom-dataset.md). You can pass in `--dataset <dataset1> <dataset2>` to use multiple datasets.
   - Sub-dataset: This parameter is effective only when the dataset is an ID or folder. If a subset was specified during registration, and only one sub-dataset exists, the registered sub-dataset is selected by default; otherwise, it defaults to 'default'. You can use `/` to select multiple sub-datasets, e.g., `<dataset_id>:subset1/subset2`. You can also use 'all' to select all sub-datasets, e.g., `<dataset_id>:all`.
   - Sampling Size: By default, the complete dataset is used. If the sampling size is less than the total number of data samples, samples are selected randomly without repetition. If the sampling size exceeds the total number of data samples, then `sampling size%total data samples` samples are randomly sampled additionally, and data samples are repetitively sampled `sampling size//total data samples` times.
 - 🔥val_dataset: A list of validation set IDs or paths. Default is `[]`.
@@ -117,6 +117,7 @@ This parameter list inherits from transformers `Seq2SeqTrainingArguments`, with 
 - 🔥per_device_train_batch_size: Default is 1.
 - 🔥per_device_eval_batch_size: Default is 1.
 - weight_decay: Weight decay coefficient, default value is 0.1.
+- adam_beta2: Default is 0.95.
 - 🔥learning_rate: Learning rate, defaults to 1e-5 for full parameters, and 1e-4 for LoRA and other tuners.
 - lr_scheduler_type: Type of lr_scheduler, defaults to 'cosine'.
 - lr_scheduler_kwargs: Other parameters for the lr_scheduler, defaults to None.
@@ -145,6 +146,9 @@ Other important parameters:
 - 🔥ddp_backend: Default is None, options include "nccl", "gloo", "mpi", "ccl", "hccl", "cncl", "mccl".
 - 🔥ddp_find_unused_parameters: Default is None.
 - 🔥dataloader_num_workers: Default is 0.
+- dataloader_pin_memory: Default is True.
+- dataloader_persistent_workers: Default is False.
+- dataloader_prefetch_factor: Default is 2.
 - 🔥neftune_noise_alpha: Coefficient of noise added by neftune, default is 0. Usually can be set to 5, 10, 15.
 - average_tokens_across_devices: Whether to average the number of tokens across devices. If set to True, `num_tokens_in_batch` will be synchronized using all_reduce for accurate loss calculation. Default is False.
 - max_grad_norm: Gradient clipping. Default is 1.
@@ -333,13 +337,18 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
 - temperature: Generation parameter override. The temperature setting when `predict_with_generate=True`, defaulting to 0.
 - optimizer: Custom optimizer name for the plugin, defaults to None.
 - metric: Custom metric name for the plugin. Defaults to None, with the default set to 'acc' when `predict_with_generate=False` and 'nlg' when `predict_with_generate=True`.
+- eval_use_evalscope: Whether to use evalscope for evaluation, this parameter needs to be set to enable evaluation, refer to [example](../Instruction/Evaluation.md#evaluation-during-training). Default is False.
+- eval_datasets: Evaluation datasets, multiple datasets can be set, separated by spaces
+- eval_datasets_args: Evaluation dataset parameters in JSON format, parameters for multiple datasets can be set
+- eval_limit: Number of samples from the evaluation dataset
+- eval_generation_config: Model inference configuration during evaluation, in JSON format, default is `{'max_tokens': 512}`
 
 ### RLHF Arguments
 
 RLHF arguments inherit from the [training arguments](#training-arguments).
 
-- 🔥rlhf_type: Type of human alignment algorithm, supporting `dpo`, `orpo`, `simpo`, `kto`, `cpo`, `rm`, and `ppo`. Default is 'dpo'.
-- ref_model: Required for full parameter training when using the dpo, kto, or ppo algorithms. Default is None.
+- 🔥rlhf_type: Type of human alignment algorithm, supporting `dpo`, `orpo`, `simpo`, `kto`, `cpo`, `rm`, `ppo` and `grpo`. Default is 'dpo'.
+- ref_model: Required for full parameter training when using the dpo, kto, ppo or grpo algorithms. Default is None.
 - ref_model_type: Same as model_type. Default is None.
 - ref_model_revision: Same as model_revision. Default is None.
 - 🔥beta: Coefficient for the KL regularization term. Default is `None`, meaning `simpo` algorithm defaults to `2.`, `grpo` algorithm defaults to `0.04`, and other algorithms default to `0.1`. For more details, refer to the [documentation](./RLHF.md).
@@ -497,6 +506,12 @@ Export Arguments include the [basic arguments](#base-arguments) and [merge argum
 - max_length: Max length for the calibration set, default value is 2048.
 - quant_batch_size: Quantization batch size, default is 1.
 - group_size: Group size for quantization, default is 128.
+- to_ollama: Generate the Modelfile required by Ollama. Default is False.
+- 🔥to_mcore: Convert weights from HF format to Megatron format. Default is False.
+- to_hf: Convert weights from Megatron format to HF format. Default is False.
+- mcore_model: Path to the mcore format model. Default is None.
+- thread_count: The number of model slices when `--to_mcore true` is set. Defaults to None, and is automatically configured based on the model size, ensuring that the largest slice is less than 10GB.
+- test_convert_precision: Test the precision error when converting weights between HF and Megatron formats. Default is False.
 - 🔥push_to_hub: Whether to push to the hub, with the default being False. Examples can be found [here](https://github.com/modelscope/ms-swift/blob/main/examples/export/push_to_hub.sh).
 - hub_model_id: Model ID for pushing, default is None.
 - hub_private_repo: Whether it is a private repo, default is False.

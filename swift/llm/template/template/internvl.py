@@ -19,6 +19,7 @@ from .utils import ChatmlTemplateMeta
 class InternvlTemplate(Template):
     skip_prompt = False
     num_image_token = 256
+    placeholder_tokens = ['<IMG_CONTEXT>']
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -76,14 +77,12 @@ register_template(
         MLLMTemplateType.internvl,
         default_system='You are an AI assistant whose name is InternLM (书生·浦语).',
         template_cls=InternvlTemplate,
-        placeholder_tokens=['<IMG_CONTEXT>'],
         auto_add_bos=True))
 register_template(
     Phi3TemplateMeta(
         MLLMTemplateType.internvl_phi3,
         default_system='You are an AI assistant whose name is Phi-3.',
         template_cls=InternvlTemplate,
-        placeholder_tokens=['<IMG_CONTEXT>'],
         auto_add_bos=True))
 
 
@@ -127,17 +126,13 @@ class Internvl2Template(InternvlTemplate):
             num_patches = []
         assert len(num_patches) == len(
             idx_list), f'len(num_patches): {len(num_patches)}, len(idx_list): {len(idx_list)}'
-        added_tokens_len = 0
-        for idx, num_patch in zip(idx_list, num_patches):
+
+        def _get_new_tokens(i):
             img_tokens: List[int] = self.processor.encode(
-                '<IMG_CONTEXT>', add_special_tokens=False) * self.num_image_token * num_patch
-            input_ids = input_ids[:idx + added_tokens_len] + img_tokens + input_ids[idx + added_tokens_len + 1:]
-            if labels is not None:
-                labels = labels[:idx + added_tokens_len] + [-100] * len(img_tokens) + labels[idx + added_tokens_len
-                                                                                             + 1:]
-            added_tokens_len += len(img_tokens) - 1
-        encoded['input_ids'] = input_ids
-        encoded['labels'] = labels
+                '<IMG_CONTEXT>', add_special_tokens=False) * self.num_image_token * num_patches[i]
+            return img_tokens
+
+        encoded['input_ids'], encoded['labels'] = self._extend_tokens(input_ids, labels, idx_list, _get_new_tokens)
         encoded['pixel_values'] = pixel_values
         return encoded
 
@@ -148,7 +143,6 @@ register_template(
         MLLMTemplateType.internvl2,
         default_system=_internvl2_system,
         template_cls=Internvl2Template,
-        placeholder_tokens=['<IMG_CONTEXT>'],
     ))
 
 register_template(
@@ -156,12 +150,10 @@ register_template(
         MLLMTemplateType.internvl2_phi3,
         default_system=_internvl2_system,
         template_cls=Internvl2Template,
-        placeholder_tokens=['<IMG_CONTEXT>'],
     ))
 
 register_template(
     ChatmlTemplateMeta(
         MLLMTemplateType.internvl2_5,
         template_cls=Internvl2Template,
-        placeholder_tokens=['<IMG_CONTEXT>'],
         default_system='你是书生·万象，英文名是InternVL，是由上海人工智能实验室、清华大学及多家合作单位联合开发的多模态大语言模型。'))

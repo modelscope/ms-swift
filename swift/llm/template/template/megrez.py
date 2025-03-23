@@ -27,6 +27,7 @@ register_template(MegrezTemplateMeta(LLMTemplateType.megrez))
 
 class MegrezOmniTemplate(Template):
     skip_prompt = False
+    placeholder_tokens = ['<|unk|>']
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -64,14 +65,11 @@ class MegrezOmniTemplate(Template):
                 encoded['audio_encoding'] = encoding
 
             padding = text.split('<s>')
-            num_new_tokens = 0
-            for idx, text in zip(idx_list, padding):
-                new_tokens = self._tokenize(text)
-                input_ids = input_ids[:idx + num_new_tokens] + new_tokens + input_ids[idx + num_new_tokens + 1:]
-                if labels:
-                    labels = labels[:idx + num_new_tokens] + [-100] * len(new_tokens) + labels[idx + num_new_tokens
-                                                                                               + 1:]
-                num_new_tokens += len(new_tokens) - 1
+
+            def _get_new_tokens(i):
+                return self._tokenize(padding[i])
+
+            input_ids, labels = self._extend_tokens(input_ids, labels, idx_list, _get_new_tokens)
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
         return encoded
@@ -92,5 +90,4 @@ class MegrezOmniTemplate(Template):
         return res
 
 
-register_template(
-    MegrezTemplateMeta(MLLMTemplateType.megrez_omni, placeholder_tokens=['<|unk|>'], template_cls=MegrezOmniTemplate))
+register_template(MegrezTemplateMeta(MLLMTemplateType.megrez_omni, template_cls=MegrezOmniTemplate))

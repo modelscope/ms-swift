@@ -44,10 +44,10 @@ def test_qwen2_5_vl():
     pt_engine.default_template.template_backend = 'jinja'
     response2 = _infer_model(pt_engine, messages=messages, images=images)
     assert response == response2 == (
-        'The dog in the picture appears to be a Labrador Retriever. Labradors are known for their friendly and '
-        'energetic nature, which is evident in the image where the dog seems to be interacting playfully with '
-        'the person. The breed is characterized by its thick, water-repellent coat, which can come in various '
-        'colors including yellow, black, and chocolate.')
+        'The dog in the picture appears to be a Labrador Retriever. Labradors are known for their '
+        'friendly and energetic nature, which is evident in the image where the dog seems to be '
+        "interacting playfully with the person. The dog's size, coat color, and build are "
+        'characteristic of the Labrador Retriever breed.')
 
 
 def test_qvq():
@@ -60,9 +60,10 @@ def test_qvq():
 
 def test_internvl2():
     pt_engine = PtEngine('OpenGVLab/InternVL2-2B')
-    _infer_model(pt_engine)
+    response = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
-    _infer_model(pt_engine)
+    response2 = _infer_model(pt_engine)
+    assert response == response2
 
 
 def test_internvl2_phi3():
@@ -181,10 +182,11 @@ def test_llama_vision():
 
 
 def test_llava_hf():
-    pt_engine = PtEngine('swift/llava-v1.6-mistral-7b-hf')
-    _infer_model(pt_engine)
+    pt_engine = PtEngine('llava-hf/llava-v1.6-mistral-7b-hf')
+    response = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
-    _infer_model(pt_engine)
+    response2 = _infer_model(pt_engine)
+    assert response == response2
 
 
 def test_florence():
@@ -214,8 +216,11 @@ def test_qwen_vl():
 
 
 def test_llava_onevision_hf():
-    pt_engine = PtEngine('AI-ModelScope/llava-onevision-qwen2-0.5b-ov-hf')
-    _infer_model(pt_engine)
+    pt_engine = PtEngine('llava-hf/llava-onevision-qwen2-0.5b-ov-hf')
+    response = _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine)
+    assert response == response2
 
 
 def test_xcomposer2_5():
@@ -258,9 +263,10 @@ def test_mplug_owl2():
 def test_mplug_owl3():
     # pt_engine = PtEngine('iic/mPLUG-Owl3-7B-240728')
     pt_engine = PtEngine('iic/mPLUG-Owl3-7B-241101')
-    _infer_model(pt_engine, system='')
+    response = _infer_model(pt_engine, system='')
     pt_engine.default_template.template_backend = 'jinja'
-    _infer_model(pt_engine, system='')
+    response2 = _infer_model(pt_engine, system='')
+    assert response == response2
 
 
 def test_ovis1_6():
@@ -476,6 +482,24 @@ def test_phi4_vision():
     assert response == '今天天气真好呀'
 
 
+def test_gemma3_vision():
+    pt_engine = PtEngine('LLM-Research/gemma-3-4b-it')
+    response = _infer_model(pt_engine)
+    pt_engine.default_template.template_backend = 'jinja'
+    response2 = _infer_model(pt_engine)
+    assert response == response2
+
+
+def test_mistral_2503():
+    pt_engine = PtEngine('mistralai/Mistral-Small-3.1-24B-Instruct-2503')
+    response = _infer_model(pt_engine, messages=[{'role': 'user', 'content': 'What is shown in this image?'}])
+    assert response == (
+        'The image shows a close-up of a Siamese kitten. The kitten has distinctive blue almond-shaped eyes, '
+        'a pink nose, and a light-colored coat with darker points on the ears, paws, tail, and face, '
+        'which are characteristic features of the Siamese breed. '
+        'The kitten appears to be looking directly at the viewer with a curious and endearing expression.')
+
+
 if __name__ == '__main__':
     from swift.llm import PtEngine, RequestConfig, get_template
     from swift.utils import get_logger, seed_everything
@@ -488,7 +512,7 @@ if __name__ == '__main__':
     # test_llava()
     # test_ovis1_6()
     # test_ovis1_6_llama3()
-    test_ovis2()
+    # test_ovis2()
     # test_yi_vl()
     # test_deepseek_vl()
     # test_deepseek_janus()
@@ -522,3 +546,5 @@ if __name__ == '__main__':
     # test_minicpmo()
     # test_valley()
     # test_ui_tars()
+    # test_gemma3_vision()
+    test_mistral_2503()

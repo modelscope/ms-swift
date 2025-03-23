@@ -261,10 +261,11 @@ class TestRun(unittest.TestCase):
             infer_main(InferArguments(adapters=model_checkpoint, load_data_args=True))
 
         # mllm rlhf
-        visual_rlhf_types = ['dpo', 'orpo', 'simpo', 'cpo']  # 'rm'
-        #  'florence-2-base-ft'
-        # 'swift/llava-v1.6-mistral-7b-hf',
-        test_model = ['OpenGVLab/InternVL2-2B', 'Qwen/Qwen2-VL-2B-Instruct']  # decoder only and encoder-decoder
+        visual_rlhf_types = ['dpo', 'orpo', 'simpo', 'cpo', 'rm']
+        test_model = [
+            'OpenGVLab/InternVL2-2B', 'Qwen/Qwen2-VL-2B-Instruct', 'llava-hf/llava-v1.6-mistral-7b-hf',
+            'AI-ModelScope/Florence-2-base-ft'
+        ]  # decoder only and encoder-decoder
         for rlhf_type in visual_rlhf_types:
             for model in test_model:
                 dataset_name = 'swift/RLAIF-V-Dataset#100'

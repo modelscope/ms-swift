@@ -153,6 +153,7 @@ class Phi3VisionTemplate(Template):
 
 
 class Phi4MMTemplate(Template):
+    placeholder_tokens = ['<|endoftext10|>', '<|endoftext11|>']
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -184,17 +185,14 @@ class Phi4MMTemplate(Template):
         new_encoded = self.processor(
             text=text, images=inputs.images or None, audios=inputs.audios or None, return_tensors='pt')
         placeholders = self._split_list(new_encoded.pop('input_ids')[0].tolist(), 198)
-        added_tokens_len = 0
-        for i, idx in enumerate(images_idx + audios_idx):
-            input_ids = input_ids[:idx + added_tokens_len] + placeholders[i] + input_ids[idx + added_tokens_len + 1:]
-            if labels is not None:
-                labels = labels[:idx + added_tokens_len] + [-100] * len(placeholders[i]) + labels[idx + added_tokens_len
-                                                                                                  + 1:]
-            added_tokens_len += len(placeholders[i]) - 1
+
+        def _get_new_tokens(i):
+            return placeholders[i]
+
+        encoded['input_ids'], encoded['labels'] = self._extend_tokens(input_ids, labels, images_idx + audios_idx,
+                                                                      _get_new_tokens)
         new_encoded.pop('attention_mask')
         encoded.update(new_encoded)
-        encoded['input_ids'] = input_ids
-        encoded['labels'] = labels
         return encoded
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
@@ -212,8 +210,7 @@ class Phi4MMTemplate(Template):
 
 register_template(Phi3TemplateMeta(MLLMTemplateType.phi3_vision, template_cls=Phi3VisionTemplate))
 
-register_template(
-    Phi3TemplateMeta(
-        MLLMTemplateType.phi4_multimodal,
-        template_cls=Phi4MMTemplate,
-        placeholder_tokens=['<|endoftext10|>', '<|endoftext11|>']))
+register_template(Phi3TemplateMeta(
+    MLLMTemplateType.phi4_multimodal,
+    template_cls=Phi4MMTemplate,
+))

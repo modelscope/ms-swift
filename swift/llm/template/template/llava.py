@@ -3,6 +3,8 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional
 
 import torch
+import transformers
+from packaging import version
 
 from ..base import Template
 from ..constant import MLLMTemplateType
@@ -16,6 +18,13 @@ from .utils import ChatmlTemplateMeta
 
 
 class LlavaHfTemplate(Template):
+    placeholder_tokens = ['<image>']
+
+    @property
+    def image_token_index(self):
+        if not hasattr(self, '_image_token_index'):
+            self._image_token_index = self.tokenizer.convert_tokens_to_ids(self.processor.image_token)
+        return self._image_token_index
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -31,6 +40,30 @@ class LlavaHfTemplate(Template):
             encoded['pixel_values'] = image_inputs['pixel_values']
             if 'image_sizes' in image_inputs:
                 encoded['image_sizes'] = image_inputs['image_sizes']
+            if version.parse(transformers.__version__) >= version.parse('4.47'):
+                input_ids = encoded['input_ids']
+                labels = encoded['labels']
+                idx_list = findall(input_ids, self.image_token_index)  # <image>
+                height, width = image_inputs['pixel_values'][0].shape[-2:]
+                added_tokens_len = 0
+                for i, idx in enumerate(idx_list):
+                    if 'image_sizes' in image_inputs:
+                        orig_height, orig_width = image_inputs['image_sizes'][i].tolist()
+                        num_image_tokens = self.processor._get_number_of_features(orig_height, orig_width, height,
+                                                                                  width)
+                    else:
+                        num_image_tokens = (height // self.processor.patch_size) * (
+                            width // self.processor.patch_size) + self.processor.num_additional_image_tokens
+                    if self.processor.vision_feature_select_strategy == 'default':
+                        num_image_tokens -= 1
+                    input_ids = input_ids[:added_tokens_len + idx] + [self.image_token_index] * num_image_tokens \
+                        + input_ids[added_tokens_len + idx + 1:]
+                    if labels is not None:
+                        labels = labels[:added_tokens_len + idx] + [-100] * num_image_tokens \
+                            + labels[added_tokens_len + idx + 1:]
+                    added_tokens_len += num_image_tokens - 1
+                encoded['input_ids'] = input_ids
+                encoded['labels'] = labels
         return encoded
 
 
@@ -41,6 +74,7 @@ register_template(
         prompt=['USER: {{QUERY}}\nASSISTANT:'],
         chat_sep=['</s>'],
         suffix=['</s>'],
+        system_prefix=['<s>{{SYSTEM}}\n'],
         template_cls=LlavaHfTemplate,
     ))
 
@@ -160,6 +194,8 @@ class LlavaOneVisionHfTemplate(Llava1_6HfTemplate):
             height, width = image_inputs['pixel_values'][0].shape[-2:]
             added_tokens_len = 0
             for idx, pixel_v, image_size in zip(idx_list, image_inputs['pixel_values'], image_inputs['image_sizes']):
+                if isinstance(image_size, torch.Tensor):
+                    image_size = image_size.tolist()
                 orig_height, orig_width = image_size
                 num_image_tokens = processor._get_number_of_features(orig_height, orig_width, height, width)
                 input_ids = input_ids[:added_tokens_len
@@ -181,7 +217,6 @@ register_template(
         MLLMTemplateType.llava_onevision_hf,
         default_system=None,
         template_cls=LlavaOneVisionHfTemplate,
-        placeholder_tokens=['<image>'],
     ))
 
 

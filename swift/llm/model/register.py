@@ -2,7 +2,6 @@
 import os
 import platform
 import re
-from contextlib import nullcontext
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from functools import partial
@@ -142,7 +141,6 @@ def load_by_unsloth(args):
         dtype=args.torch_dtype,
         max_seq_length=args.max_length,
         load_in_4bit=args.quant_bits == 4,
-        trust_remote_code=True,
     )
     if isinstance(model, PeftModel):
         base_model = model.model
@@ -179,7 +177,7 @@ def get_model_tokenizer_from_local(model_dir: str,
     model_config.torch_dtype = torch_dtype
     HfConfigFactory.compat_zero3(model_config)
     rope_scaling = kwargs.get('rope_scaling')
-    if rope_scaling is not None:
+    if rope_scaling:
         HfConfigFactory.set_config_attr(model_config, 'rope_scaling', rope_scaling)
 
     if tokenizer is None:
@@ -201,15 +199,6 @@ def get_model_tokenizer_from_local(model_dir: str,
             except ValueError:
                 model = None
 
-        if model_info.task_type == 'embedding' and automodel_class is None:
-            try:
-                model = AutoModel.from_pretrained(
-                    model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
-                from swift.llm.model.patcher import patch_output_normalizer
-                patch_output_normalizer(model)
-            except ValueError:
-                model = None
-
         automodel_class = automodel_class or AutoModelForCausalLM
         if model is None:
             if model_info.task_type == 'seq_cls':
@@ -225,6 +214,11 @@ def get_model_tokenizer_from_local(model_dir: str,
         has_remote_code = hasattr(model_config, 'auto_map') and automodel_class.__name__ in model_config.auto_map
         if has_remote_code and model._auto_class is None:
             model._auto_class = automodel_class.__name__
+
+        if model_info.task_type == 'embedding' and automodel_class.__name__ != 'AutoModel':
+            from swift.llm.model.patcher import patch_output_normalizer
+            patch_output_normalizer(model, model_meta=kwargs['model_meta'])
+
     return model, tokenizer
 
 
@@ -273,14 +267,11 @@ def get_default_device_map():
     if local_rank == -1:
         local_rank = 0
     if is_torch_npu_available():
-        return f'npu:{local_rank}'
+        return 'auto' if is_mp() else f'npu:{local_rank}'
     elif is_torch_mps_available():
         return f'mps:{local_rank}'
     elif is_torch_cuda_available():
-        if is_mp():
-            return 'auto'
-        else:
-            return f'cuda:{local_rank}'
+        return 'auto' if is_mp() else f'cuda:{local_rank}'
     else:
         return 'cpu'
 
@@ -342,7 +333,7 @@ def get_all_models() -> List[str]:
 def get_matched_model_meta(model_id_or_path: str) -> Optional[ModelMeta]:
     model_name = get_model_name(model_id_or_path).lower()
     for model_type, model_meta in MODEL_MAPPING.items():
-        model_group = model_meta.get_matched_model_group(model_name)
+        model_group = ModelMeta.get_matched_model_group(model_meta, model_name)
         if model_group is not None:
             model_meta = deepcopy(model_meta)
             for k, v in asdict(model_group).items():

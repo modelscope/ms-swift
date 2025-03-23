@@ -41,6 +41,7 @@ class MiniCPMVTemplate(Template):
     is_v2_5 = False
     use_model = True
     skip_prompt = False
+    placeholder_tokens = ['<unk>']
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -147,12 +148,10 @@ class MiniCPMV2_5Template(MiniCPMVTemplate):
     is_v2_5 = True
 
 
-register_template(
-    Llama3TemplateMeta(
-        MLLMTemplateType.minicpmv2_5,
-        template_cls=MiniCPMV2_5Template,
-        placeholder_tokens=['<unk>'],
-    ))
+register_template(Llama3TemplateMeta(
+    MLLMTemplateType.minicpmv2_5,
+    template_cls=MiniCPMV2_5Template,
+))
 
 
 class MiniCPMV2_6Template(MiniCPMVTemplate):
@@ -186,19 +185,13 @@ class MiniCPMV2_6Template(MiniCPMVTemplate):
         image_inputs = image_processor([images], return_tensors='pt',
                                        max_slice_nums=max_slice_nums).to(self.config.torch_dtype)
 
-        n_new_tokens = 0
-        for i in range(len(idx_list)):
+        def _get_new_tokens(i):
             placeholder = image_processor.get_slice_image_placeholder(
                 image_inputs.image_sizes[0][i], image_idx=i, max_slice_nums=max_slice_nums, use_image_id=use_image_id)
             placeholder += '\n'
-            placeholder_id = self.processor.encode(placeholder, add_special_tokens=False)
-            input_ids = input_ids[:idx_list[i] + n_new_tokens] + placeholder_id + input_ids[idx_list[i] + n_new_tokens
-                                                                                            + 1:]
-            if labels is not None:
-                labels = labels[:idx_list[i]
-                                + n_new_tokens] + [-100] * len(placeholder_id) + labels[idx_list[i] + n_new_tokens + 1:]
-            n_new_tokens += len(placeholder_id) - 1
+            return self.processor.encode(placeholder, add_special_tokens=False)
 
+        input_ids, labels = self._extend_tokens(input_ids, labels, idx_list, _get_new_tokens)
         if inputs.images:
             input_tensor_ids = torch.tensor(input_ids)
             unk_token = self.processor.encode('<unk>', add_special_tokens=False)[0]
@@ -225,16 +218,12 @@ class MiniCPMV2_6Template(MiniCPMVTemplate):
         return encoded
 
 
-register_template(
-    QwenTemplateMeta(
-        MLLMTemplateType.minicpmv2_6,
-        template_cls=MiniCPMV2_6Template,
-        placeholder_tokens=['<unk>'],
-    ))
+register_template(QwenTemplateMeta(
+    MLLMTemplateType.minicpmv2_6,
+    template_cls=MiniCPMV2_6Template,
+))
 
-register_template(
-    Qwen2_5TemplateMeta(
-        MLLMTemplateType.minicpmo2_6,
-        template_cls=MiniCPMV2_6Template,
-        placeholder_tokens=['<unk>'],
-    ))
+register_template(Qwen2_5TemplateMeta(
+    MLLMTemplateType.minicpmo2_6,
+    template_cls=MiniCPMV2_6Template,
+))

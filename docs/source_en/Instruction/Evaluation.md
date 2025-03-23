@@ -88,6 +88,48 @@ Where:
 
 For a specific list of evaluation parameters, please refer to [here](./Command-line-parameters.md#evaluation-arguments).
 
+## Evaluation During Training
+
+SWIFT supports using EvalScope to evaluate the current model during the training process, allowing for timely understanding of the model's training effectiveness.
+
+**Basic Example**
+
+```shell
+CUDA_VISIBLE_DEVICES=0 \
+swift sft \
+  --model "Qwen/Qwen2.5-0.5B-Instruct" \
+  --train_type "lora" \
+  --dataset "AI-ModelScope/alpaca-gpt4-data-zh#100" \
+  --torch_dtype "bfloat16" \
+  --num_train_epochs "1" \
+  --per_device_train_batch_size "1" \
+  --learning_rate "1e-4" \
+  --lora_rank "8" \
+  --lora_alpha "32" \
+  --target_modules "all-linear" \
+  --gradient_accumulation_steps "16" \
+  --save_steps "50" \
+  --save_total_limit "5" \
+  --logging_steps "5" \
+  --max_length "2048" \
+  --eval_strategy "steps" \
+  --eval_steps "5" \
+  --per_device_eval_batch_size "5" \
+  --eval_use_evalscope \
+  --eval_datasets "gsm8k" \
+  --eval_datasets_args '{"gsm8k": {"few_shot_num": 0}}' \
+  --eval_limit "10"
+```
+
+Note that the launch command is `sft`, and the evaluation-related parameters include:
+- eval_strategy: Evaluation strategy. Defaults to None, following the `save_strategy` policy
+- eval_steps: Defaults to None. If an evaluation dataset exists, it follows the `save_steps` policy
+- eval_use_evalscope: Whether to use evalscope for evaluation, this parameter needs to be set to enable evaluation
+- eval_datasets: Evaluation datasets, multiple datasets can be set, separated by spaces
+- eval_datasets_args: Evaluation dataset parameters in JSON format, parameters for multiple datasets can be set
+- eval_limit: Number of samples from the evaluation dataset
+- eval_generation_config: Model inference configuration during evaluation, in JSON format, default is `{'max_tokens': 512}`
+
 More evaluation examples can be found in [examples](https://github.com/modelscope/ms-swift/tree/main/examples/eval).
 
 ## Custom Evaluation Datasets
