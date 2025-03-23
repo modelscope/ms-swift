@@ -398,7 +398,7 @@ class Template(ProcessorMixin):
 
     @staticmethod
     def _get_seq_cls_logprobs(pred: int, logprobs: torch.Tensor, top_logprobs: int):
-        idxs = logprobs.argsort(descending=True, dim=-1)
+        idxs = logprobs.argsort(descending=True, dim=-1)[:top_logprobs]
         return {
             'content': {
                 'index': pred,
@@ -406,7 +406,7 @@ class Template(ProcessorMixin):
                 'top_logprobs': [{
                     'index': idx,
                     'logprob': logprobs[idx].item()
-                } for idx in idxs.tolist()[:top_logprobs]]
+                } for idx in idxs.tolist()]
             }
         }
 
