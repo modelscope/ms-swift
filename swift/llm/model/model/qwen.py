@@ -612,12 +612,6 @@ register_model(
         tags=['vision', 'video']))
 
 
-def get_model_tokenizer_qwen2_5_vl(*args, **kwargs):
-    from transformers import Qwen2_5_VLForConditionalGeneration
-    kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen2_5_VLForConditionalGeneration
-    return get_model_tokenizer_qwen2_vl(*args, **kwargs)
-
-
 def get_model_tokenizer_qwen2_5_omni(*args, **kwargs):
     from transformers import Qwen2_5OmniModel, Qwen2_5OmniProcessor
     kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen2_5OmniModel
