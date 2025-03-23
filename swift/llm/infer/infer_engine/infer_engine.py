@@ -279,7 +279,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
 
     @staticmethod
     def _batch_encode(infer_requests: List[InferRequest], template: Template, strict: bool):
-        max_workers = min(32, os.cpu_count(), len(infer_requests))
+        max_workers = max(min(32, os.cpu_count(), len(infer_requests)), 1)
         error_list = []
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = [
