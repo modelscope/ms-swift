@@ -29,9 +29,9 @@ from swift.llm.template.template_inputs import StdTemplateInputs
 from swift.plugin import orms
 from swift.utils import (JsonlWriter, gc_collect, get_device, get_device_count, get_dist_setting, get_logger,
                          get_node_setting, is_lmdeploy_available, is_vllm_available, is_wandb_available)
-from .rlhf_mixin import RLHFTrainerMixin
-from ..mixin import SwiftMixin
 from ...plugin.multi_turn import multi_turns
+from ..mixin import SwiftMixin
+from .rlhf_mixin import RLHFTrainerMixin
 
 try:
     from trl.extras.profiling import profiling_decorator
@@ -47,10 +47,10 @@ if is_wandb_available():
 
 @contextmanager
 def unwrap_model_for_generation(
-        model,
-        accelerator,
-        gather_deepspeed3_params=True,
-        gather_parameters: List = None,
+    model,
+    accelerator,
+    gather_deepspeed3_params=True,
+    gather_parameters: List = None,
 ):
     unwrapped_model = accelerator.unwrap_model(model)
     if accelerator.state.deepspeed_plugin is not None and accelerator.state.deepspeed_plugin.zero_stage == 3:
@@ -145,12 +145,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.reward_funcs = reward_funcs
 
         self.multi_turn_func = None
-        if self.args.multi_turn_mocker:
-            if isinstance(self.args.multi_turn_mocker, str):
-                assert self.args.multi_turn_mocker in multi_turns
-                multi_turn_func = multi_turns[self.args.multi_turn_mocker]
-
-            self.multi_turn_func = multi_turn_func
+        if self.args.multi_turn_func:
+            if isinstance(self.args.multi_turn_func, str):
+                assert self.args.multi_turn_func in multi_turns
+                multi_turn_func = multi_turns[self.args.multi_turn_func]
+                self.multi_turn_func = multi_turn_func
+            else:
+                self.multi_turn_func = self.args.multi_turn_func
 
         self.reward_templates = [None] * len(self.reward_funcs)
         if reward_model is not None:
@@ -177,10 +178,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         use_vllm = args.use_vllm
         use_lmdeploy = args.use_lmdeploy
 
-        if self.args.tensor_parallel_size > 1:
+        if self.args.tensor_parallel_size > 1 and self.multi_turn_func:
             import torch.distributed as dist
-            rank, local_rank, world_size, local_world_size = get_dist_setting()
-            for tp_group in self.tp_group_ranks:
+            rank, _, _, _ = get_dist_setting()
+            for tp_group in self.tp_group_ranks():
                 group = dist.new_group(tp_group)
                 if rank in tp_group:
                     self.group = group
@@ -431,21 +432,6 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return -1
 
     @property
-    def cur_tp_group_ranks(self):
-        rank, local_rank, world_size, local_world_size = get_dist_setting()
-        if self.args.tensor_parallel_size > 1:
-            tp_groups = rank // self.args.tensor_parallel_size
-            return list(
-                range(tp_groups * self.args.tensor_parallel_size, (tp_groups + 1) * self.args.tensor_parallel_size))
-        else:
-            return [rank]
-
-    @property
-    def tp_group_ranks(self):
-        rank, local_rank, world_size, local_world_size = get_dist_setting()
-        return [list(range(0, world_size))[i: i+self.args.tensor_parallel_size] for i in range(0, world_size, self.args.tensor_parallel_size)]
-
-    @property
     def local_infer_rank(self):
         rank, local_rank, world_size, local_world_size = get_dist_setting()
         for _vllm_rank in range(self.args.num_infer_workers):
@@ -453,6 +439,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 return _vllm_rank
 
         return -1
+
+    def tp_group_ranks(self):
+        rank, local_rank, world_size, local_world_size = get_dist_setting()
+        return [
+            list(range(0, world_size))[i:i + self.args.tensor_parallel_size]
+            for i in range(0, world_size, self.args.tensor_parallel_size)
+        ]
 
     @staticmethod
     def round_robin(num_reqs, nodes):
@@ -646,15 +639,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     def _infer_multi_turn(self, inputs_slice, request_config):
         from swift.llm.infer.protocol import ChatCompletionResponse
-        rank, local_rank, world_size, local_world_size = get_dist_setting()
+        rank, _, _, _ = get_dist_setting()
         request_config = copy(request_config)
         results: List[ChatCompletionResponse] = self.engine.infer(
             infer_requests=inputs_slice, request_config=request_config, use_tqdm=False)
         prompt_lens = len(inputs_slice)
-        messages_list = [None]*len(inputs_slice)*self.args.tensor_parallel_size
+        messages_list = [None] * (len(inputs_slice) * self.args.tensor_parallel_size)
         if self.multi_turn_func:
             remove_response = True
-            finished_indexes = []
             while len(inputs_slice) > 0:
                 request_config.n = 1
                 if self.infer_rank_tp_0 >= 0:
@@ -664,7 +656,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         for choice in output.choices:
                             _input: Dict = deepcopy(inputs_slice[i])
                             if remove_response or _input['messages'][-1]['role'] != 'assistant' or not \
-                            _input['messages'][-1]['content']:
+                                    _input['messages'][-1]['content']:
                                 InferRequest.remove_response(_input['messages'])
                                 _input['messages'].append({'role': 'assistant', 'content': choice.message.content})
                             else:
@@ -673,24 +665,15 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                                 _input['index'] = cnt
                             cnt += 1
                             inputs.append(_input)
-                    results = self.multi_turn_func(inputs)
-                    import json
-                    # results = [json.dumps(r) for r in results]
-                    print(f'length: {rank}, {len(results)}', flush=True)
+                    results: List[Dict] = self.multi_turn_func(inputs)  # noqa
                 else:
                     length = sum([len(results[i].choices) for i in range(len(results))])
-                    print(f'length: {rank}, {length}', flush=True)
-                    results = [None]*length
-                
-                import torch.distributed as dist
+                    results = [None] * length
+
                 if self.args.tensor_parallel_size > 1:
-                    import json
-                    # from vllm.distributed.parallel_state import get_tp_group
-                    print(f'before broadcast: {rank}', flush=True)
+                    # avoid duplicate calling in the same tensor parallel group
+                    import torch.distributed as dist
                     dist.broadcast_object_list(results, group_src=0, group=self.group)
-                    print(f'after broadcast: {rank}', flush=True)
-                    # results = [json.loads(r) for r in results]
-                # dist.barrier()
                 inputs_slice = [r for r in results if not r['finished']]
                 for idx, r in enumerate(results):
                     if r['finished']:
@@ -699,18 +682,23 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     _input_std = []
                     for _input in inputs_slice:
                         _input_std.append(StdTemplateInputs.from_dict(_input))
-                    results = self.engine.infer(infer_requests=_input_std, request_config=request_config,
-                                                use_tqdm=False)
+                        # StdTemplateInputs will not remove responses in infer
+                    results = self.engine.infer(
+                        infer_requests=_input_std, request_config=request_config, use_tqdm=False)
+                # concat responses from the second loop
                 remove_response = False
 
             outputs = []
             assert not any([m is None for m in messages_list])
             for i in range(0, len(messages_list), self.args.tensor_parallel_size):
-                outputs.append(messages_list[i: i + self.args.tensor_parallel_size])
+                # reformat to [[x, x, x, x] [x, x, x, x]]
+                # this is the same format of sampling_params.n > 1
+                outputs.append(messages_list[i:i + self.args.tensor_parallel_size])
             assert len(outputs) == prompt_lens
             assert all([len(o) == self.args.tensor_parallel_size for o in outputs])
             return outputs
         else:
+            # single turn
             outputs = []
             for i, output in enumerate(results):
                 _choices = []
@@ -967,7 +955,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self.beta != 0.0:
             ref_per_token_logps = inputs['ref_per_token_logps']
             per_token_kl = (
-                    torch.exp(ref_per_token_logps - per_token_logps) - (ref_per_token_logps - per_token_logps) - 1)
+                torch.exp(ref_per_token_logps - per_token_logps) - (ref_per_token_logps - per_token_logps) - 1)
 
         advantages = inputs['advantages']
         old_per_token_logps = inputs['old_per_token_logps'] if self.old_policy else per_token_logps.detach()
@@ -1007,8 +995,7 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         inputs = {
             k: v
             for k, v in inputs.items() if k not in
-                                          ['logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages',
-                                           'old_per_token_logps']
+            ['logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps']
         }
         logits = model(**inputs).logits
         # exclude the last logit: it corresponds to the next token pred

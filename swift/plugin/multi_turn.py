@@ -1,8 +1,8 @@
-
 def check_math_result_and_give_tips(inputs):
     from .orm import MathAccuracy
     acc = MathAccuracy()
-    prompt = 'But wait... It seems I made a mistake'
+    # a trick
+    prompt = 'But wait... It seems I made a mistake,'
     contents = [input['messages'][-1]['content'] for input in inputs]
     rewards = acc(contents, [input['solution'] for input in inputs])
     for reward, input in zip(rewards, inputs):
@@ -20,10 +20,10 @@ def check_math_result_and_give_tips(inputs):
     return inputs
 
 
-def check_math_result_and_give_tips2(inputs):
+def check_math_result_and_give_tips_multi_turn(inputs):
     from .orm import MathAccuracy
     acc = MathAccuracy()
-    prompt = 'But wait... It seems I made a mistake'
+    prompt = 'The answer is not correct, It seems You made a mistake, you need to recheck very carefully.'
     contents = [input['messages'][-1]['content'] for input in inputs]
     rewards = acc(contents, [input['solution'] for input in inputs])
     for reward, input in zip(rewards, inputs):
@@ -37,6 +37,6 @@ def check_math_result_and_give_tips2(inputs):
 
 
 multi_turns = {
-    'math_tip': check_math_result_and_give_tips,
-    'math_multi_round': check_math_result_and_give_tips2,
+    'math_tip_trick': check_math_result_and_give_tips,
+    'math_tip_trick_multi_turn': check_math_result_and_give_tips_multi_turn,
 }

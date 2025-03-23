@@ -78,6 +78,7 @@ You can contact us and communicate with us by adding our group:
 
 
 ## 🎉 News
+- 🎁 2025.03.23: SWIFT supports multi round GRPO, this is used to construct multi turn conversations(use cases like agent tool calling), check script [here](examples/train/grpo/train_multi_round.sh).
 - 🎁 2025.03.16: SWIFT supports training with Megatron's parallel technology. Please refer to the [Megatron-SWIFT Training Documentation](https://swift.readthedocs.io/en/latest/Instruction/Megatron-SWIFT-Training.html).
 - 🎁 2025.03.15: SWIFT support the fine-tuning of gme(multi-modal) embedding models，please check the [training script](examples/train/embedding/train_gme.sh)。
 - 🎁 2025.03.13: We provide a script of GRPO to train a 72B model with only 4 GPUs(4*80G), please check [here](examples/train/grpo/train_72b_4gpu.sh)
