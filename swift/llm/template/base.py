@@ -402,21 +402,22 @@ class Template(ProcessorMixin):
 
     @staticmethod
     def _get_seq_cls_logprobs(pred: int, logprobs: torch.Tensor, top_logprobs: int):
-        idxs = logprobs.argsort(descending=True, dim=-1)[:top_logprobs]
+        idxs = logprobs.argsort(descending=True, dim=-1)[:top_logprobs].tolist()
+        logprobs = logprobs.tolist()
         return {
             'content': {
                 'index': pred,
-                'logprobs': [logprobs[p].item() for p in pred] if isinstance(pred,
-                                                                             (list, tuple)) else logprobs[pred].item(),
+                'logprobs': [logprobs[p] for p in pred] if isinstance(pred,
+                                                                             (list, tuple)) else logprobs[pred],
                 'top_logprobs': [{
                     'index': idx,
-                    'logprob': logprobs[idx].item()
-                } for idx in idxs.tolist()]
+                    'logprob': logprobs[idx]
+                } for idx in idxs]
             }
         }
 
     @staticmethod
-    def _get_problem_type(config, labels=None, logits=None) -> None:
+    def _get_problem_type(config, labels=None, logits=None) -> str:
         problem_type = config.problem_type
         if problem_type is not None:
             return problem_type
@@ -428,7 +429,7 @@ class Template(ProcessorMixin):
                     problem_type = 'multi_label_classification'
             else:
                 problem_type = 'single_label_classification'
-                assert args.num_labels >= labels + 1
+                assert config.num_labels >= labels + 1
         if logits is not None:
             if logits.shape[-1] == 1:
                 problem_type = 'regression'
@@ -448,7 +449,7 @@ class Template(ProcessorMixin):
             if problem_type == 'single_label_classification':
                 preds = torch.argmax(logits, dim=-1).tolist()
                 logprobs = torch.log_softmax(logits, -1)
-            elif problem_type == 'multi_label_classification':
+            else:
                 preds = [(logprob >= 0.5).nonzero(as_tuple=True)[0].tolist() for logprob in torch.sigmoid(logits)]
                 logprobs = F.logsigmoid(logits)
             logprobs = [self._get_seq_cls_logprobs(pred, logprobs[i], top_logprobs) for i, pred in enumerate(preds)]

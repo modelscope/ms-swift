@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import math
 import os
 from dataclasses import dataclass, field
 from functools import wraps
@@ -80,7 +81,7 @@ class TrainArgumentsMixin:
             self.dataloader_drop_last = True
         if self.gradient_accumulation_steps is None:
             world_size = get_dist_setting()[2]
-            self.gradient_accumulation_steps = max(1, 16 // self.per_device_train_batch_size // world_size)
+            self.gradient_accumulation_steps = max(1, math.ceil(16 / self.per_device_train_batch_size / world_size))
         if self.lr_scheduler_kwargs:
             self.lr_scheduler_kwargs = ModelArguments.parse_to_dict(self.lr_scheduler_kwargs)
         if self.gradient_checkpointing_kwargs:
