@@ -267,14 +267,11 @@ def get_default_device_map():
     if local_rank == -1:
         local_rank = 0
     if is_torch_npu_available():
-        return f'npu:{local_rank}'
+        return 'auto' if is_mp() else f'npu:{local_rank}'
     elif is_torch_mps_available():
         return f'mps:{local_rank}'
     elif is_torch_cuda_available():
-        if is_mp():
-            return 'auto'
-        else:
-            return f'cuda:{local_rank}'
+        return 'auto' if is_mp() else f'cuda:{local_rank}'
     else:
         return 'cpu'
 
