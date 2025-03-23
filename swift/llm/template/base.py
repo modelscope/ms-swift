@@ -406,7 +406,8 @@ class Template(ProcessorMixin):
         return {
             'content': {
                 'index': pred,
-                'logprob': logprobs[pred].item(),
+                'logprobs': [logprobs[p].item() for p in pred] if isinstance(pred,
+                                                                             (list, tuple)) else logprobs[pred].item(),
                 'top_logprobs': [{
                     'index': idx,
                     'logprob': logprobs[idx].item()
@@ -448,8 +449,8 @@ class Template(ProcessorMixin):
                 preds = torch.argmax(logits, dim=-1).tolist()
                 logprobs = torch.log_softmax(logits, -1)
             elif problem_type == 'multi_label_classification':
+                preds = [(logprob >= 0.5).nonzero(as_tuple=True)[0].tolist() for logprob in torch.sigmoid(logits)]
                 logprobs = F.logsigmoid(logits)
-                preds = [(logprob >= 0.5).nonzero().tolist() for logprob in logprobs]
             logprobs = [self._get_seq_cls_logprobs(pred, logprobs[i], top_logprobs) for i, pred in enumerate(preds)]
         return preds, logprobs
 
