@@ -244,7 +244,8 @@ class Template(ProcessorMixin):
         inputs.generate_mode = generate_mode
 
     @staticmethod
-    def _extend_tokens(input_ids, labels, replace_idx_list: List[int], get_new_tokens: Callable[[int], List[int]]):
+    def _extend_tokens(input_ids: List[int], labels: Optional[List[int]], replace_idx_list: List[int],
+                       get_new_tokens: Callable[[int], List[int]]) -> Tuple[List[int], Optional[List[int]]]:
         added_tokens_len = 0
         for i, idx in enumerate(replace_idx_list):
             new_tokens = get_new_tokens(i)
@@ -396,8 +397,8 @@ class Template(ProcessorMixin):
         return generate_ids
 
     @staticmethod
-    def _get_seq_cls_logprobs(pred: int, logprobs: torch.Tensor):
-        idxs = logprobs.argsort(descending=True, dim=-1)
+    def _get_seq_cls_logprobs(pred: int, logprobs: torch.Tensor, top_logprobs: int):
+        idxs = logprobs.argsort(descending=True, dim=-1)[:top_logprobs]
         return {
             'content': {
                 'index': pred,
@@ -409,12 +410,12 @@ class Template(ProcessorMixin):
             }
         }
 
-    def decode_seq_cls(self, logits: torch.Tensor):
+    def decode_seq_cls(self, logits: torch.Tensor, top_logprobs: int):
         assert isinstance(logits, torch.Tensor)
         if logits.shape[-1] > 1:
             preds = torch.argmax(logits, dim=-1).tolist()
             logprobs = torch.log_softmax(logits, -1)
-            logprobs = [self._get_seq_cls_logprobs(pred, logprobs[i]) for i, pred in enumerate(preds)]
+            logprobs = [self._get_seq_cls_logprobs(pred, logprobs[i], top_logprobs) for i, pred in enumerate(preds)]
         else:
             preds = logits.squeeze(dim=-1).tolist()
             logprobs = [None] * len(preds)
