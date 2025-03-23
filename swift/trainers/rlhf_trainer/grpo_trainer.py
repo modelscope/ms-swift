@@ -27,9 +27,9 @@ from swift.llm import InferRequest, MultiModelKeys, RequestConfig, RowPreprocess
 from swift.llm.infer.infer_engine import set_device_context
 from swift.llm.template.template_inputs import StdTemplateInputs
 from swift.plugin import orms
+from swift.plugin.multi_turn import multi_turns
 from swift.utils import (JsonlWriter, gc_collect, get_device, get_device_count, get_dist_setting, get_logger,
                          get_node_setting, is_lmdeploy_available, is_vllm_available, is_wandb_available)
-from ...plugin.multi_turn import multi_turns
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 
@@ -455,9 +455,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             distribution[node_id].append(idx)
         return distribution
 
-    @staticmethod
     @contextmanager
-    def _template_context(template):
+    def _template_context(self, template):
         # The max_length for prompt and completion has already been restricted, so there is no need for max_length here.
         max_length = template.max_length
         mode = template.mode
@@ -465,7 +464,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             template.set_mode('train')
         template.max_length = None
         loss_scale = template.loss_scale
-        template.loss_scale = 'default'
+        if self.multi_turn_func:
+            template.loss_scale = 'default'
         try:
             yield
         finally:
