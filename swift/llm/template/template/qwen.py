@@ -46,12 +46,12 @@ register_template(QwenTemplateMeta(LLMTemplateType.qwq_preview, default_system=q
 
 class QwQTemplate(Template):
 
-    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+    def _swift_encode(self, inputs: StdTemplateInputs):
         if not self.is_training:
             for message in inputs.messages:
                 if message['role'] == 'assistant' and isinstance(message['content'], str):
                     message['content'] = message['content'].split('</think>')[-1].lstrip('\n')
-        return super()._encode(inputs)
+        return super()._swift_encode(inputs)
 
 
 register_template(
@@ -344,17 +344,39 @@ class Qwen2_5OmniTemplate(Template):
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
-        if media_type == 'video':
+        from qwen_omni_utils import fetch_image, fetch_video
+        if media_type == 'image':
+            inputs.images[index] = fetch_image({'image': inputs.images[index]})
+            return ['<|vision_bos|><|IMAGE|><|vision_eos|>']
+        elif media_type == 'video':
+            inputs.videos[index] = fetch_video({'video': inputs.videos[index]}).to(torch.uint8)
             return ['<|vision_bos|><|VIDEO|><|vision_eos|>']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        pass
-
-    def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        pass
+        encoded = super()._encode(inputs)
+        processor = self.processor
+        input_ids = encoded['input_ids']
+        labels = encoded['labels']
+        images = inputs.images
+        videos = inputs.videos
+        for media_type in ['images', 'videos']:
+            if locals()[media_type]:
+                if media_type == 'images':
+                    media_inputs = processor.omni_processor(
+                        images=images, videos=None, return_tensors='pt', do_resize=False)
+                else:
+                    media_inputs = processor.image_processor(
+                        images=None, videos=videos, return_tensors='pt', do_resize=False)
+                encoded.update(media_inputs)
+        return encoded
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
-        pass
+        res = super()._data_collator(batch, padding_to=padding_to)
+        for media_type in ['image', 'video']:
+            grid_thw = [b[f'{media_type}_grid_thw'] for b in batch if b.get(f'{media_type}_grid_thw') is not None]
+            if grid_thw:
+                res[f'{media_type}_grid_thw'] = torch.concat(grid_thw)
+        return res
 
 
 register_template(

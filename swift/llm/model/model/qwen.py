@@ -490,8 +490,7 @@ register_model(
         model_arch=ModelArch.llama))
 
 
-def patch_qwen_vl_utils():
-    from qwen_vl_utils import vision_process
+def patch_qwen_vl_utils(vision_process):
     if hasattr(vision_process, '_patch'):
         return
     for key in [
@@ -500,7 +499,6 @@ def patch_qwen_vl_utils():
     ]:
         type_func = float if key == 'fps' else int
         setattr(vision_process, key.upper(), get_env_args(key, type_func, getattr(vision_process, key.upper())))
-    from qwen_vl_utils import vision_process
     _read_video_decord = vision_process._read_video_decord
 
     def _new_read_video_decord(ele: dict):
@@ -520,7 +518,8 @@ def get_model_tokenizer_qwen2_vl(*args, **kwargs):
         patch_output_clone(model.model.embed_tokens)
         patch_output_to_input_device(model.model.embed_tokens)
 
-    patch_qwen_vl_utils()
+    from qwen_vl_utils import vision_process
+    patch_qwen_vl_utils(vision_process)
     return model, tokenizer
 
 
@@ -612,17 +611,24 @@ register_model(
         tags=['vision', 'video']))
 
 
-def get_model_tokenizer_qwen2_5_omni(*args, **kwargs):
-    from transformers import Qwen2_5OmniModel, Qwen2_5OmniProcessor
+def get_model_tokenizer_qwen2_5_omni(model_dir, *args, **kwargs):
+    from transformers import Qwen2_5OmniModel, Qwen2_5OmniProcessor, Qwen2_5OmniConfig
     kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen2_5OmniModel
-    return get_model_tokenizer_qwen2_vl(*args, **kwargs)
+    processor = Qwen2_5OmniProcessor.from_pretrained(model_dir, trust_remote_code=True)
+    kwargs['tokenizer'] = processor.tokenizer
+    kwargs['model_config'] = Qwen2_5OmniConfig.from_pretrained(model_dir, trust_remote_code=True)
+    from qwen_omni_utils import vision_process
+    patch_qwen_vl_utils(vision_process)
+    model, _ = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
+    use_submodel_func(model, 'thinker')
+    return model, processor
 
 
 register_model(
     ModelMeta(
         MLLMModelType.qwen2_5_omni, [
             ModelGroup([
-                Model('Qwen/Qwen2.5-Omni-7B', 'Qwen/Qwen2.5-Omni-7B'),
+                Model('Qwen/Qwen2.5-Omni-7B:thinker', 'Qwen/Qwen2.5-Omni-7B:thinker'),
             ]),
         ],
         TemplateType.qwen2_5_omni,
