@@ -331,8 +331,12 @@ class Template(ProcessorMixin):
     def _seq_cls_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = self._encode(inputs)
         encoded.pop('labels', None)
+        is_regression_task = getattr(self.config, 'num_labels', None) == 1
         if inputs.label is not None:
-            encoded['labels'] = int(inputs.label)
+            label = inputs.label
+            if not isinstance(inputs.label, list) and not is_regression_task:
+                label = int(label)
+            encoded['labels'] = label
         return encoded
 
     @torch.inference_mode()
@@ -1116,7 +1120,9 @@ class Template(ProcessorMixin):
         labels = [b.pop('labels') for b in batch if b.get('labels') is not None]
         res = self._data_collator(batch, padding_to=padding_to)
         if labels:
-            res['labels'] = torch.tensor(labels, dtype=torch.long)
+            is_regression_task = getattr(self.config, 'num_labels', None) == 1
+            dtype = torch.float32 if is_regression_task else torch.long
+            res['labels'] = torch.tensor(labels, dtype=dtype)
         return res
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:

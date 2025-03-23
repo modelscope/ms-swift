@@ -212,8 +212,6 @@ class SwiftInfer(SwiftPipeline):
                     labels = InferRequest.remove_response(data['messages'])
                 else:
                     labels = data.pop('label', None)
-                    if labels is not None:
-                        labels = str(int(labels))
                 labels_list.append(labels)
 
             resp_list = self.infer(

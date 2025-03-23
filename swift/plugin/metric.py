@@ -141,7 +141,7 @@ def compute_acc(preds,
     if preds.ndim >= 2 and not is_encoder_decoder:
         labels = labels[..., 1:]
         preds = preds[..., :-1]
-    if preds.shape != labels.shape:
+    if np.issubdtype(labels.dtype, np.floating) or preds.shape != labels.shape:
         return {}
 
     masks = labels != -100

@@ -119,7 +119,8 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         train_dataset, val_dataset = self._get_dataset()
         self._save_val_dataset(args.output_dir, val_dataset)
 
-        if args.task_type == 'seq_cls' and isinstance(train_dataset, HfDataset) and 'label' in train_dataset.features:
+        if (args.task_type == 'seq_cls' and isinstance(train_dataset, HfDataset) and 'label' in train_dataset.features
+                and args.num_labels > 1):
             min_num_labels = int(max(train_dataset['label']) + 1)
             assert args.num_labels >= min_num_labels, (
                 f'args.num_labels: {args.num_labels}, min_num_labels: {min_num_labels}')
