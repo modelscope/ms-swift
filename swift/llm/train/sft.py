@@ -30,7 +30,6 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         self._prepare_model_tokenizer()
         self._prepare_template()
         self._prepare_callbacks()
-        self.args.save_args()
 
     def _prepare_gradient_checkpointing(self):
         args = self.args
@@ -118,14 +117,9 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
         train_dataset, val_dataset = self._get_dataset()
         self._save_val_dataset(args.output_dir, val_dataset)
-
-        if (args.task_type == 'seq_cls' and isinstance(train_dataset, HfDataset) and 'label' in train_dataset.features
-                and args.num_labels > 1):
-            min_num_labels = int(max(train_dataset['label']) + 1)
-            assert args.num_labels >= min_num_labels, (
-                f'args.num_labels: {args.num_labels}, min_num_labels: {min_num_labels}')
-
         train_dataset, val_dataset = self._encode_dataset(train_dataset, val_dataset)
+        args.save_args()
+
         data_collator = self._get_data_collator()
         # Some tuners require train_dataset and data_collator for preparation: LoRA-GA
         self.model = self.prepare_model(self.args, self.model, template=self.template, train_dataset=train_dataset)
@@ -262,6 +256,8 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         if val_dataset is None:
             args.training_args.evaluation_strategy = IntervalStrategy.NO
             args.training_args.eval_strategy = IntervalStrategy.NO
+
+        args.problem_type = args.problem_type or getattr(self.model.config, 'problem_type', None)
         return train_dataset, val_dataset
 
 

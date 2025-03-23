@@ -331,12 +331,12 @@ class Template(ProcessorMixin):
     def _seq_cls_encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = self._encode(inputs)
         encoded.pop('labels', None)
-        is_regression_task = getattr(self.config, 'num_labels', None) == 1
         if inputs.label is not None:
-            label = inputs.label
-            if not isinstance(inputs.label, list) and not is_regression_task:
-                label = int(label)
-            encoded['labels'] = label
+            labels = inputs.label
+            problem_type = self._get_problem_type(self.config, labels=labels)
+            if problem_type == 'single_label_classification':
+                labels = int(labels)
+            encoded['labels'] = labels
         return encoded
 
     @torch.inference_mode()
@@ -414,15 +414,41 @@ class Template(ProcessorMixin):
             }
         }
 
+    @staticmethod
+    def _get_problem_type(config, labels=None, logits=None) -> None:
+        problem_type = config.problem_type
+        if problem_type is not None:
+            return problem_type
+        if labels is not None:
+            if isinstance(labels, (list, tuple)):
+                if labels and isinstance(labels[0], float):
+                    problem_type = 'regression'
+                else:
+                    problem_type = 'multi_label_classification'
+            else:
+                problem_type = 'single_label_classification'
+                assert args.num_labels >= labels + 1
+        if logits is not None:
+            if logits.shape[-1] == 1:
+                problem_type = 'regression'
+        assert problem_type is not None
+        config.problem_type = problem_type
+        return problem_type
+
     def decode_seq_cls(self, logits: torch.Tensor, top_logprobs: int):
         assert isinstance(logits, torch.Tensor)
-        if logits.shape[-1] > 1:
-            preds = torch.argmax(logits, dim=-1).tolist()
-            logprobs = torch.log_softmax(logits, -1)
-            logprobs = [self._get_seq_cls_logprobs(pred, logprobs[i], top_logprobs) for i, pred in enumerate(preds)]
-        else:
+        problem_type = self._get_problem_type(self.config, logits=logits)
+        if problem_type == 'regression':
             preds = logits.squeeze(dim=-1).tolist()
             logprobs = [None] * len(preds)
+        else:
+            if problem_type == 'single_label_classification':
+                preds = torch.argmax(logits, dim=-1).tolist()
+                logprobs = torch.log_softmax(logits, -1)
+            elif problem_type == 'multi_label_classification':
+                logprobs = F.logsigmoid(logits, -1)
+                preds = [(logprob >= 0.5).nonzero().tolist() for logprob in logprobs]
+            logprobs = [self._get_seq_cls_logprobs(pred, logprobs[i], top_logprobs) for i, pred in enumerate(preds)]
         return preds, logprobs
 
     def decode(self,
@@ -1120,9 +1146,16 @@ class Template(ProcessorMixin):
         labels = [b.pop('labels') for b in batch if b.get('labels') is not None]
         res = self._data_collator(batch, padding_to=padding_to)
         if labels:
-            is_regression_task = getattr(self.config, 'num_labels', None) == 1
-            dtype = torch.float32 if is_regression_task else torch.long
-            res['labels'] = torch.tensor(labels, dtype=dtype)
+            problem_type = self._get_problem_type(self.config)
+            if problem_type == 'regression':
+                labels = torch.tensor(labels, dtype=torch.float32)
+            else:
+                labels = torch.tensor(labels, dtype=torch.long)
+                if problem_type == 'multi_label_classification':
+                    one_hot_labels = torch.zeros((labels.shape[0], self.config.num_labels), dtype=torch.float32)
+                    one_hot_labels[torch.arange(labels.shape[0])[:, None], labels] = 1
+                    labels = one_hot_labels
+            res['labels'] = labels
         return res
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
@@ -1255,6 +1288,8 @@ class Template(ProcessorMixin):
             if val is not None:
                 key_upper = key.upper()
                 logger.info(f'[{key_upper}_IDS] {val}')
+                if key == 'labels' and self.mode in {'seq_cls', 'embedding'}:
+                    continue
                 if isinstance(val, (list, tuple, torch.Tensor)):
                     val_str = self.safe_decode(val, **tokenizer_kwargs)
                     logger.info(f'[{key_upper}] {val_str}')

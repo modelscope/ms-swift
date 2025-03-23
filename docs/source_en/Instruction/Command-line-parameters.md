@@ -30,7 +30,8 @@ Hints:
 - 🔥torch_dtype: Data type of model weights, supports `float16`, `bfloat16`, `float32`. The default is None, and it is read from the 'config.json' file.
 - attn_impl: Type of attention, options are`flash_attn`, `sdpa`, `eager`. The default is sdpa; if not supported, eager is used.
   - Note: These three implementations may not all be supported, depending on the support of the corresponding model.
-- num_labels: This parameter needs to be specified for classification models. It represents the number of labels and defaults to None.
+- num_labels: This parameter is required for classification models (i.e., `--task_type seq_cls`). It represents the number of labels, with a default value of None.
+- problem_type: This parameter is required for classification models (i.e., `--task_type seq_cls`). The options are 'regression', 'single_label_classification', and 'multi_label_classification'. The default value is None, and it will be automatically set based on the number of labels and the dataset type.
 - rope_scaling: Type of rope, supports `linear` and `dynamic`, should be used in conjunction with `max_length`. Default is None.
 - device_map: Device map configuration used by the model, such as 'auto', 'cpu', JSON string, or the path of a JSON file. The default is None, automatically set based on the device and distributed training conditions.
 - max_memory: When device_map is set to 'auto' or 'sequential', the model weights will be allocated to devices based on max_memory, for example: `--max_memory '{0: "20GB", 1: "20GB"}'`. The default value is None.
