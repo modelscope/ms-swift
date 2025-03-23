@@ -19,18 +19,18 @@ import numpy as np
 import torch
 import torch.nn as nn
 from accelerate.utils import gather, gather_object, is_peft_model, set_seed
-from swift.llm.template.template_inputs import StdTemplateInputs
 from torch.nn import ModuleList
 from transformers import PreTrainedModel, TrainerCallback
 from trl import GRPOTrainer as HFGRPOTrainer
 
 from swift.llm import InferRequest, MultiModelKeys, RequestConfig, RowPreprocessor, get_model_arch, to_device
 from swift.llm.infer.infer_engine import set_device_context
+from swift.llm.template.template_inputs import StdTemplateInputs
 from swift.plugin import orms
 from swift.utils import (JsonlWriter, gc_collect, get_device, get_device_count, get_dist_setting, get_logger,
                          get_node_setting, is_lmdeploy_available, is_vllm_available, is_wandb_available)
-from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
+from ..mixin import SwiftMixin
 from ...plugin.multi_turn import multi_turns
 
 try:
@@ -144,12 +144,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         self.reward_funcs = reward_funcs
 
+        self.multi_turn_func = None
         if self.args.multi_turn_mocker:
             if isinstance(self.args.multi_turn_mocker, str):
                 assert self.args.multi_turn_mocker in multi_turns
                 multi_turn_func = multi_turns[self.args.multi_turn_mocker]
 
-        self.multi_turn_func = multi_turn_func
+            self.multi_turn_func = multi_turn_func
 
         self.reward_templates = [None] * len(self.reward_funcs)
         if reward_model is not None:
@@ -176,13 +177,13 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         use_vllm = args.use_vllm
         use_lmdeploy = args.use_lmdeploy
 
-        # if self.args.tensor_parallel_size > 1:
-        #     import torch.distributed as dist
-        #     assert dist.is_initialized()
-        #     print(f'>>>>>>>>>>>>>>>>>>>>>{self.cur_tp_group_ranks}, {self.infer_rank}')
-        #     self.tp_group = dist.new_group(self.cur_tp_group_ranks, backend='nccl')
-        #     print(f'>>>>>>>>>>>>>>>>>>>>>{self.cur_tp_group_ranks}, {self.infer_rank}, done')
-        #     dist.barrier()
+        if self.args.tensor_parallel_size > 1:
+            import torch.distributed as dist
+            rank, local_rank, world_size, local_world_size = get_dist_setting()
+            for tp_group in self.tp_group_ranks:
+                group = dist.new_group(tp_group)
+                if rank in tp_group:
+                    self.group = group
 
         super().__init__(model, ref_model, *_args, **kwargs)
 
@@ -440,6 +441,11 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             return [rank]
 
     @property
+    def tp_group_ranks(self):
+        rank, local_rank, world_size, local_world_size = get_dist_setting()
+        return [list(range(0, world_size))[i: i+self.args.tensor_parallel_size] for i in range(0, world_size, self.args.tensor_parallel_size)]
+
+    @property
     def local_infer_rank(self):
         rank, local_rank, world_size, local_world_size = get_dist_setting()
         for _vllm_rank in range(self.args.num_infer_workers):
@@ -639,7 +645,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return [index_to_output[idx] for idx in sorted(index_to_output.keys())]
 
     def _infer_multi_turn(self, inputs_slice, request_config):
-        from swift.llm.infer.protocol import ChatCompletionResponse, ChatCompletionResponseChoice, ChatMessage, UsageInfo
+        from swift.llm.infer.protocol import ChatCompletionResponse
+        rank, local_rank, world_size, local_world_size = get_dist_setting()
         request_config = copy(request_config)
         results: List[ChatCompletionResponse] = self.engine.infer(
             infer_requests=inputs_slice, request_config=request_config, use_tqdm=False)
@@ -650,29 +657,39 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
             finished_indexes = []
             while len(inputs_slice) > 0:
                 request_config.n = 1
-                # if self.infer_rank_tp_0 >= 0:
-                inputs = []
-                cnt = 0
-                for i, output in enumerate(results):
-                    for choice in output.choices:
-                        _input: Dict = deepcopy(inputs_slice[i])
-                        if remove_response or _input['messages'][-1]['role'] != 'assistant' or not \
-                        _input['messages'][-1]['content']:
-                            InferRequest.remove_response(_input['messages'])
-                            _input['messages'].append({'role': 'assistant', 'content': choice.message.content})
-                        else:
-                            _input['messages'][-1]['content'] += choice.message.content
-                        if 'index' not in _input:
-                            _input['index'] = cnt
-                        cnt += 1
-                        inputs.append(_input)
-                results = self.multi_turn_func(inputs)
-                # else:
-                #     results = [None]*len(results)
-                # if self.args.tensor_parallel_size > 1:
-                #     import torch.distributed as dist
-                #     from vllm.distributed.parallel_state import get_tp_group
-                #     dist.broadcast_object_list(results, src=self.cur_tp_group_ranks[0], group=get_tp_group().device_group)
+                if self.infer_rank_tp_0 >= 0:
+                    inputs = []
+                    cnt = 0
+                    for i, output in enumerate(results):
+                        for choice in output.choices:
+                            _input: Dict = deepcopy(inputs_slice[i])
+                            if remove_response or _input['messages'][-1]['role'] != 'assistant' or not \
+                            _input['messages'][-1]['content']:
+                                InferRequest.remove_response(_input['messages'])
+                                _input['messages'].append({'role': 'assistant', 'content': choice.message.content})
+                            else:
+                                _input['messages'][-1]['content'] += choice.message.content
+                            if 'index' not in _input:
+                                _input['index'] = cnt
+                            cnt += 1
+                            inputs.append(_input)
+                    results = self.multi_turn_func(inputs)
+                    import json
+                    # results = [json.dumps(r) for r in results]
+                    print(f'length: {rank}, {len(results)}', flush=True)
+                else:
+                    length = sum([len(results[i].choices) for i in range(len(results))])
+                    print(f'length: {rank}, {length}', flush=True)
+                    results = [None]*length
+                
+                import torch.distributed as dist
+                if self.args.tensor_parallel_size > 1:
+                    import json
+                    # from vllm.distributed.parallel_state import get_tp_group
+                    print(f'before broadcast: {rank}', flush=True)
+                    dist.broadcast_object_list(results, group_src=0, group=self.group)
+                    print(f'after broadcast: {rank}', flush=True)
+                    # results = [json.loads(r) for r in results]
                 # dist.barrier()
                 inputs_slice = [r for r in results if not r['finished']]
                 for idx, r in enumerate(results):
@@ -687,12 +704,14 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 remove_response = False
 
             outputs = []
+            assert not any([m is None for m in messages_list])
             for i in range(0, len(messages_list), self.args.tensor_parallel_size):
                 outputs.append(messages_list[i: i + self.args.tensor_parallel_size])
             assert len(outputs) == prompt_lens
             assert all([len(o) == self.args.tensor_parallel_size for o in outputs])
             return outputs
         else:
+            outputs = []
             for i, output in enumerate(results):
                 _choices = []
                 for choice in output.choices:
@@ -700,10 +719,10 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     InferRequest.remove_response(_input['messages'])
                     _input['messages'].append({'role': 'assistant', 'content': choice.message.content})
                     _choices.append(_input['messages'])
-                messages_list.append(_choices)
-            assert len(results) == len(prompt_lens)
-            assert all([len(o) == self.args.tensor_parallel_size for o in results])
-            return results
+                outputs.append(_choices)
+            assert len(outputs) == prompt_lens
+            assert all([len(o) == self.args.tensor_parallel_size for o in outputs])
+            return outputs
 
     def async_infer(self, inputs, inputs_slice, distributed_idx):
 
@@ -778,6 +797,8 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             for prompt_idx in range(len(outputs)):
                                 _outputs.append(outputs[prompt_idx][tp_idx])
                         outputs = _outputs
+                elif isinstance(outputs[0][0], list):
+                    outputs = [output[0] for output in outputs]
         else:
             if self.args.async_generate:
                 # using old model to generate, which will ignore the `clip` of advantages.
