@@ -335,7 +335,7 @@ class StsbPreprocessor(ResponsePreprocessor):
 
 
 class StsbGeneratePreprocessor(ResponsePreprocessor):
-    prompt = """Task: Based on the given two sentences, provide a similarity score between 0.0 and 5.0.
+    prompt = """Task: Based on the given two sentences, provide a similarity score between 0.0 and 1.0.
 Sentence 1: {text1}
 Sentence 2: {text2}
 Similarity score: """

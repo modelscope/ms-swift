@@ -407,8 +407,7 @@ class Template(ProcessorMixin):
         return {
             'content': {
                 'index': pred,
-                'logprobs': [logprobs[p] for p in pred] if isinstance(pred,
-                                                                             (list, tuple)) else logprobs[pred],
+                'logprobs': [logprobs[p] for p in pred] if isinstance(pred, (list, tuple)) else logprobs[pred],
                 'top_logprobs': [{
                     'index': idx,
                     'logprob': logprobs[idx]
