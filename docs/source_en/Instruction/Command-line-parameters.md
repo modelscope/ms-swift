@@ -30,7 +30,8 @@ Hints:
 - 🔥torch_dtype: Data type of model weights, supports `float16`, `bfloat16`, `float32`. The default is None, and it is read from the 'config.json' file.
 - attn_impl: Type of attention, options are`flash_attn`, `sdpa`, `eager`. The default is sdpa; if not supported, eager is used.
   - Note: These three implementations may not all be supported, depending on the support of the corresponding model.
-- num_labels: This parameter needs to be specified for classification models. It represents the number of labels and defaults to None.
+- num_labels: This parameter is required for classification models (i.e., `--task_type seq_cls`). It represents the number of labels, with a default value of None.
+- problem_type: This parameter is required for classification models (i.e., `--task_type seq_cls`). The options are 'regression', 'single_label_classification', and 'multi_label_classification'. The default value is None, and it will be automatically set based on the number of labels and the dataset type.
 - rope_scaling: Type of rope, supports `linear` and `dynamic`, should be used in conjunction with `max_length`. Default is None.
 - device_map: Device map configuration used by the model, such as 'auto', 'cpu', JSON string, or the path of a JSON file. The default is None, automatically set based on the device and distributed training conditions.
 - max_memory: When device_map is set to 'auto' or 'sequential', the model weights will be allocated to devices based on max_memory, for example: `--max_memory '{0: "20GB", 1: "20GB"}'`. The default value is None.
@@ -116,6 +117,7 @@ This parameter list inherits from transformers `Seq2SeqTrainingArguments`, with 
 - zero_hpz_partition_size: Default is `None`. This parameter is a feature of `ZeRO++`, which implements model sharding within nodes and data sharding between nodes. If you encounter grad_norm `NaN` issues, please try using `--torch_dtype float16`
 - 🔥per_device_train_batch_size: Default is 1.
 - 🔥per_device_eval_batch_size: Default is 1.
+- 🔥gradient_accumulation_steps: Gradient accumulation, default is None, meaning set gradient_accumulation_steps such that total_batch_size >= 16. The total_batch_size equals `per_device_train_batch_size * gradient_accumulation_steps * world_size`.
 - weight_decay: Weight decay coefficient, default value is 0.1.
 - adam_beta2: Default is 0.95.
 - 🔥learning_rate: Learning rate, defaults to 1e-5 for full parameters, and 1e-4 for LoRA and other tuners.
@@ -131,7 +133,6 @@ This parameter list inherits from transformers `Seq2SeqTrainingArguments`, with 
 
 Other important parameters:
 - 🔥num_train_epochs: Number of training epochs, default is 3.
-- 🔥gradient_accumulation_steps: Gradient accumulation, default is 1.
 - 🔥save_strategy: Strategy for saving the model, options include 'no', 'steps', 'epoch'. Default is 'steps'.
 - 🔥save_steps: Default is 500.
 - 🔥eval_strategy: Evaluation strategy. Default is None and follows the strategy of `save_strategy`.
@@ -143,8 +144,9 @@ Other important parameters:
 - save_only_model: Whether to save only the model weights without including optimizer state, random seed state, etc. Default is False.
 - 🔥resume_from_checkpoint: Parameter for resuming training from a checkpoint, pass the checkpoint path. Default is None.
   - Note: `resume_from_checkpoint` will load the model weights, optimizer weights, and random seed, and continue training from the last trained steps. You can specify `--resume_only_model` to load only the model weights.
-- 🔥ddp_backend: Default is None, options include "nccl", "gloo", "mpi", "ccl", "hccl", "cncl", "mccl".
+- 🔥ddp_backend: Options include "nccl", "gloo", "mpi", "ccl", "hccl", "cncl", and "mccl". Default is None, which allows for automatic selection.
 - 🔥ddp_find_unused_parameters: Default is None.
+- ddp_timeout: The default value is 1800, with the unit being seconds.
 - 🔥dataloader_num_workers: Default is 0.
 - dataloader_pin_memory: Default is True.
 - dataloader_persistent_workers: Default is False.

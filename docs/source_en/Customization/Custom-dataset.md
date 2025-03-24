@@ -81,10 +81,30 @@ The following outlines the standard dataset format for ms-swift, where the "syst
 - Note: GRPO will pass through all additional field content to the ORM, unlike other training methods that, by default, delete extra fields. For example, you can additionally pass in 'solution'. The custom ORM needs to include a positional argument called `completions`, with other arguments as keyword arguments passed through from the additional dataset fields.
 
 ### Sequence Classification
+
+**Single-label Task**:
 ```jsonl
 {"messages": [{"role": "user", "content": "The weather is really nice today"}], "label": 1}
 {"messages": [{"role": "user", "content": "Today is really unlucky"}], "label": 0}
 {"messages": [{"role": "user", "content": "So happy"}], "label": 1}
+```
+
+**Multi-label Task**:
+
+```jsonl
+{"messages": [{"role": "user", "content": "<sentence>"}], "label": [1, 3, 5]}
+```
+
+**Single Regression Task**:
+
+```jsonl
+{"messages": [{"role": "user", "content": "Calculate the similarity between two sentences, with a range of 0-1.\nsentence1: <sentence1>\nsentence2: <sentence2>"}], "label": 0.8}
+```
+
+**Multi Regression Task**:
+
+```jsonl
+{"messages": [{"role": "user", "content": "<sentence>"}], "label": [1.2, -0.6, 0.8]}
 ```
 
 ### Embedding
