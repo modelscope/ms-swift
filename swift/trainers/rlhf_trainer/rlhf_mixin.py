@@ -157,7 +157,7 @@ class RLHFTrainerMixin:
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         res = super().compute_loss(model, inputs, return_outputs=return_outputs)
         # compat transformers>=4.46.*
-        if num_items_in_batch is not None:
+        if num_items_in_batch is not None and self.model_accepts_loss_kwargs:
             loss = res[0] if return_outputs else res
             loss /= self.args.gradient_accumulation_steps
             return (loss, res[1:]) if return_outputs else loss
