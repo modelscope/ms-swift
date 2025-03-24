@@ -74,6 +74,7 @@
 - **模型量化**：支持AWQ、GPTQ和BNB的量化导出，导出的模型支持使用vLLM/LmDeploy推理加速，并支持继续训练。
 
 ## 🎉 新闻
+- 🎁 2025.03.23: SWIFT支持了多轮GRPO, 用于构建多轮对话场景的训练(例如agent tool calling), 请查看[训练脚本](examples/train/grpo/train_multi_round.sh).
 - 🎁 2025.03.16: SWIFT支持了Megatron的并行技术进行训练，请查看[Megatron-SWIFT训练文档](https://swift.readthedocs.io/zh-cn/latest/Instruction/Megatron-SWIFT训练.html)。
 - 🎁 2025.03.15: SWIFT支持了gme（多模态）embedding模型的微调，请查看[训练脚本](examples/train/embedding/train_gme.sh)。
 - 🎁 2025.03.13: 我们提供了一个仅使用4GPU(4*80G)来训练72B模型的脚本, 请查看[这里](examples/train/grpo/train_72b_4gpu.sh)

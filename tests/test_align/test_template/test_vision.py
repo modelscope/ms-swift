@@ -60,9 +60,10 @@ def test_qvq():
 
 def test_internvl2():
     pt_engine = PtEngine('OpenGVLab/InternVL2-2B')
-    _infer_model(pt_engine)
+    response = _infer_model(pt_engine)
     pt_engine.default_template.template_backend = 'jinja'
-    _infer_model(pt_engine)
+    response2 = _infer_model(pt_engine)
+    assert response == response2
 
 
 def test_internvl2_phi3():
@@ -262,9 +263,10 @@ def test_mplug_owl2():
 def test_mplug_owl3():
     # pt_engine = PtEngine('iic/mPLUG-Owl3-7B-240728')
     pt_engine = PtEngine('iic/mPLUG-Owl3-7B-241101')
-    _infer_model(pt_engine, system='')
+    response = _infer_model(pt_engine, system='')
     pt_engine.default_template.template_backend = 'jinja'
-    _infer_model(pt_engine, system='')
+    response2 = _infer_model(pt_engine, system='')
+    assert response == response2
 
 
 def test_ovis1_6():
