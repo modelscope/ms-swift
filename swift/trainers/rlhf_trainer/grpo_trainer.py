@@ -831,6 +831,9 @@ class GRPOTrainer(RLHFTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         for i, output in enumerate(outputs):
             inputs[i]['messages'] = output
+
+        mini_batch_inputs = self._split_into_mini_batches(inputs, mini_batch_size=self.args.mini_batch_size)
+        batch_encoded_inputs = []
         from copy import copy
         template = copy(self.template)
         for mini_batch in mini_batch_inputs:
