@@ -115,6 +115,8 @@ A conversation between User and Assistant. The user asks a question, and the Ass
 - offload_optimizer: 是否在vLLM/LMDeploy推理时offload optimizer参数，默认为False
 - offload_model: 是否在vLLM/LMDeploy推理时offload 模型本身，默认为False
 - gc_collect_after_offload: 是否在offload结束时进行gc（python gc和GPU gc），默认为False
+- mini_batch_size：用于将每个设备上的批次大小（per_device_batch）进一步切分为更小的子批次。为确保切分有效，per_device_batch 需要能够被 mini_batch_size 整除。
+
 
 奖励函数超参，见[内置奖励函数](#内置奖励函数)
 

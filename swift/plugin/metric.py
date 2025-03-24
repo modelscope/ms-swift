@@ -136,6 +136,8 @@ def compute_acc(preds,
                 is_encoder_decoder: bool = False) -> Dict[str, List[float]]:
 
     if isinstance(preds, torch.Tensor):
+        if torch.is_floating_point(labels):
+            return {}
         preds = preds.cpu().numpy()
         labels = labels.cpu().numpy()
     if preds.ndim >= 2 and not is_encoder_decoder:

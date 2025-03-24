@@ -201,11 +201,13 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
         _, _, _, local_world_size = get_dist_setting()
 
         is_colocate_mode = (local_world_size == self.num_infer_workers)
+        fast_infer = self.use_vllm or self.use_lmdeploy
         if is_colocate_mode:
             # colocate mode
-            assert device_count == local_world_size, (
-                f'Colocate mode requires device_count({device_count}) == local_world_size({local_world_size}). '
-                'Please check if your device count matches NPROC_PER_NODE setting.')
+            if fast_infer:
+                assert device_count == local_world_size, (
+                    f'Colocate mode requires device_count({device_count}) == local_world_size({local_world_size}). '
+                    'Please check if your device count matches NPROC_PER_NODE setting.')
             logger.info(
                 'You are using colocate mode because you have set num_infer_workers to be the same as NPROC_PER_NODE, '
                 'where model training and sampling will be performed on a single GPU. '
@@ -214,6 +216,8 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
             assert not self.async_generate, 'async_generate requires async mode, but you are under colocate mode'
             if self.use_lmdeploy and self.tensor_parallel_size > 1:
                 raise ValueError('Currently LMDeploy do not support tensor parallel')
+            if self.use_lmdeploy and self.sleep_level:
+                raise ValueError('Currently LMDeploy do not support sleep')
         else:
             # async mode
             assert device_count == (local_world_size + self.num_infer_workers), (
@@ -226,3 +230,7 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
                                'so you do not need to use sleep_level > 0')
 
             assert self.tensor_parallel_size == 1, ('async mode do not support tensor parallel right now')
+
+        if self.mini_batch_size:
+            assert self.per_device_train_batch_size % self.mini_batch_size == 0,\
+                'per_device_train_batch_size needs be divisible by mini_batch_size'
