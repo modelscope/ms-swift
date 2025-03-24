@@ -342,7 +342,7 @@ class PtEngine(InferEngine):
             choices = [
                 ChatCompletionResponseChoice(
                     index=0,
-                    message=ChatMessage(role='assistant', content=str(pred), tool_calls=None),
+                    message=ChatMessage(role='assistant', content=pred, tool_calls=None),
                     finish_reason='stop',
                     logprobs=logprobs[i])
             ]
