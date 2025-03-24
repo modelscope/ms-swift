@@ -199,14 +199,14 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
         from swift.utils import get_device_count, get_dist_setting
         device_count = get_device_count()
         _, _, _, local_world_size = get_dist_setting()
-
-        is_colocate_mode = (local_world_size == self.num_infer_workers)
+        num_infer_workers = self.num_infer_workers
+        is_colocate_mode = (device_count == num_infer_workers)
         fast_infer = self.use_vllm or self.use_lmdeploy
         if is_colocate_mode:
             # colocate mode
             if fast_infer:
                 assert device_count == local_world_size, (
-                    f'Colocate mode requires device_count({device_count}) == local_world_size({local_world_size}). '
+                    f'Colocate mode requires device_count({device_count}) == num_infer_workers({num_infer_workers}). '
                     'Please check if your device count matches NPROC_PER_NODE setting.')
             logger.info(
                 'You are using colocate mode because you have set num_infer_workers to be the same as NPROC_PER_NODE, '
@@ -216,13 +216,14 @@ class RLHFArguments(GRPOArguments, PPOArguments, RewardModelArguments, TrainArgu
             assert not self.async_generate, 'async_generate requires async mode, but you are under colocate mode'
             if self.use_lmdeploy and self.tensor_parallel_size > 1:
                 raise ValueError('Currently LMDeploy do not support tensor parallel')
-            if self.use_lmdeploy and self.sleep_level:
-                raise ValueError('Currently LMDeploy do not support sleep')
+            if self.use_vllm and self.sleep_level:
+                logger.warning('It is highly recommended to use `sleep_level==1` in colocate mode,'
+                               'otherwise it may lead to an OOM (Out of Memory) error.')
         else:
             # async mode
-            assert device_count == (local_world_size + self.num_infer_workers), (
+            assert device_count == (local_world_size + num_infer_workers), (
                 f'Async mode requires total GPUs({device_count}) = training GPUs({local_world_size}) + '
-                f'inference workers({self.num_infer_workers}). Please adjust your GPU allocation.')
+                f'inference workers({num_infer_workers}). Please adjust your GPU allocation.')
             logger.info(
                 'You are using async mode, where model training and sampling will be performed on different GPUs.')
             if self.sleep_level > 0:
