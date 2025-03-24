@@ -30,7 +30,6 @@ from swift.plugin import orms
 from swift.plugin.multi_turn import multi_turns
 from swift.utils import (JsonlWriter, gc_collect, get_device, get_device_count, get_dist_setting, get_logger,
                          get_node_setting, is_lmdeploy_available, is_vllm_available, is_wandb_available)
-from ...plugin.multi_turn import multi_turns
 from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
 
